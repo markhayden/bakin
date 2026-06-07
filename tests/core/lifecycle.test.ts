@@ -7,6 +7,17 @@ mock.module('@bakin/core/main-agent', () => ({
   getMainAgentName: () => 'Main',
 }))
 
+// Defensive content-dir mocks (CLAUDE.md test isolation rules) — lifecycle
+// transitively imports server-lock → content-dir; nothing here may ever
+// resolve to the real ~/.bakin/.
+const lifecycleTestDir = '/tmp/bakin-lifecycle-test-sentinel'
+const contentDirMock = () => ({
+  getContentDir: () => lifecycleTestDir,
+  getBakinPaths: () => ({ home: lifecycleTestDir, db: `${lifecycleTestDir}/bakin.db`, logs: `${lifecycleTestDir}/logs`, audit: `${lifecycleTestDir}/audit.jsonl` }),
+})
+mock.module('../../src/core/content-dir', contentDirMock)
+mock.module('../../packages/core/src/content-dir', contentDirMock)
+
 mock.module('../../src/core/logger', () => ({
   createLogger: () => ({
     info: mock(),
@@ -57,6 +68,14 @@ mock.module('../../src/core/app-services', () => ({
   getAppServices: () => mockAppServices,
   setAppServices: () => {},
   createAppServices: async () => mockAppServices,
+}))
+
+const mockReleaseServerLock = mock()
+mock.module('../../src/core/server-lock', () => ({
+  releaseServerLock: mockReleaseServerLock,
+  acquireServerLock: mock(() => ({ acquired: true })),
+  readServerLock: mock(() => null),
+  formatBindFailureHelp: (port: number) => `port ${port}`,
 }))
 
 const mockShutdownAll = mock().mockResolvedValue(undefined)
@@ -139,7 +158,33 @@ describe('lifecycle', () => {
       '/tmp/test',
       'system.shutdown',
       'system',
-      { signal: 'SIGINT' },
+      { signal: 'SIGINT', exitCode: 0 },
+    )
+  })
+
+  it('shutdown releases the server singleton lock', async () => {
+    registerShutdownHandlers(mockServer(), '/tmp/test')
+    await processListeners['SIGTERM']()
+    expect(mockReleaseServerLock).toHaveBeenCalled()
+  })
+
+  it('triggerShutdown runs the full chain outside a signal (EADDRINUSE path, #459)', async () => {
+    const mod = await import('../../src/core/lifecycle')
+    const server = mockServer()
+    registerShutdownHandlers(server, '/tmp/test')
+
+    mod.triggerShutdown('EADDRINUSE', 1)
+    // Drain the async chain (the trigger is fire-and-forget by design).
+    await vi.advanceTimersByTimeAsync(10)
+
+    // The antfly child lives behind search.shutdown — it MUST be reached.
+    expect(mockSearchShutdown).toHaveBeenCalled()
+    expect(mockReleaseServerLock).toHaveBeenCalled()
+    expect(mockAppendAudit).toHaveBeenCalledWith(
+      '/tmp/test',
+      'system.shutdown',
+      'system',
+      { signal: 'EADDRINUSE', exitCode: 1 },
     )
   })
 
