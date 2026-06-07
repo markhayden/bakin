@@ -117,26 +117,56 @@ export function mergeJob(
   }
 }
 
-/** Read all jobs merged with sidecar metadata. */
+/** Synthesize a runtime-cron-shaped snapshot from a store-owned Bakin schedule.
+ *  Post-cutover, Bakin schedules have no runtime cron — the store is the source
+ *  of truth — so the merged view is built from the stored schedule definition. */
+export function storeJobToSnapshot(meta: BakinJobMeta): RuntimeCronJobSnapshot {
+  const expr = meta.schedule?.expr ?? ''
+  const kind = meta.schedule?.kind ?? 'cron'
+  return {
+    id: meta.jobId,
+    name: meta.displayName ?? meta.jobId,
+    schedule: { kind, type: kind, expr, value: expr, tz: meta.tz },
+    enabled: meta.enabled !== false,
+    payload: undefined,
+    toolsAllow: undefined,
+    toolsAllowMissing: false,
+    createdAt: meta.createdAt,
+    updatedAt: meta.updatedAt,
+  }
+}
+
+/** Read all jobs merged with sidecar metadata.
+ *
+ *  Two sources are unioned: runtime cron jobs (native OpenClaw crons, surfaced
+ *  read-only) and store-owned Bakin schedules (which have no runtime cron once
+ *  cut over). Bakin records are NEVER auto-deleted here — a read must not mutate
+ *  the schedule store; only genuinely-orphaned NON-Bakin sidecar entries (a
+ *  native cron deleted out-of-band) are swept. */
 export async function readMergedJobs(cron: RuntimeCronReader, defaultOwner: string): Promise<MergedJob[]> {
   const runtimeJobs = (await cron.list()).map(runtimeCronToScheduleJob)
+  const runtimeIds = new Set(runtimeJobs.map(j => j.id))
   const sidecar = readSidecar()
 
   const merged = runtimeJobs.map(job => mergeJob(job, sidecar.jobs[job.id], defaultOwner))
 
-  // Clean up stale sidecar entries for cron jobs deleted from the runtime.
-  const activeIds = new Set(runtimeJobs.map(j => j.id))
+  // Union store-owned Bakin schedules that have no backing runtime cron.
+  for (const meta of Object.values(sidecar.jobs)) {
+    if (runtimeIds.has(meta.jobId) || !meta.isBakinJob) continue
+    merged.push(mergeJob(storeJobToSnapshot(meta), meta, defaultOwner))
+  }
+
+  // Sweep only NON-Bakin sidecar orphans (a native cron removed out-of-band).
+  // Store-owned Bakin schedules intentionally have no runtime cron and must be
+  // kept; they are deleted only through the explicit delete route.
   let dirty = false
-  for (const jobId of Object.keys(sidecar.jobs)) {
-    if (!activeIds.has(jobId)) {
-      log.info('Removing stale sidecar entry', { jobId })
-      delete sidecar.jobs[jobId]
-      dirty = true
-    }
+  for (const [jobId, meta] of Object.entries(sidecar.jobs)) {
+    if (runtimeIds.has(jobId) || meta.isBakinJob) continue
+    log.info('Removing stale non-Bakin sidecar entry', { jobId })
+    delete sidecar.jobs[jobId]
+    dirty = true
   }
-  if (dirty) {
-    writeSidecar(sidecar)
-  }
+  if (dirty) writeSidecar(sidecar)
 
   return merged
 }
