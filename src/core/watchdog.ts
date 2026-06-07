@@ -19,6 +19,7 @@ import {
   moveTask,
   readTaskboard,
 } from './task-store'
+import { getLiveRun, supersedeStaleRun } from './execution-ledger'
 
 const log = createLogger('watchdog')
 const hooks = () => getHookRegistry()
@@ -26,13 +27,6 @@ const hooks = () => getHookRegistry()
 let watchdogTimer: NodeJS.Timeout | null = null
 let lastMcpAlertAt = 0
 let lastRestAlertAt = 0
-
-// Suppress auto-recovery when a task was mutated within this window.
-// Closes the watchdog/dispatch race where dispatch moves a task
-// todo → inProgress and the watchdog, reasoning from a pre-move snapshot
-// taken earlier in the same tick, declares it "stuck" and moves it back.
-// See issue #114.
-const AUTO_RECOVERY_GUARD_MS = 60 * 1000
 
 // Bypass detection patterns — agents trying to work around errors instead of blocking
 const BYPASS_PATTERNS = [
@@ -174,18 +168,6 @@ export function start(contentDir: string): void {
           continue
         }
 
-        // Race guard (#114): a fresh updatedAt means something (usually
-        // dispatch's moveTask) just touched this task. Skip this tick and
-        // re-evaluate on the next one; by then any legitimate mutation will
-        // have written a log entry that feeds lastLogTs above.
-        if (task.updatedAt && now - task.updatedAt < AUTO_RECOVERY_GUARD_MS) {
-          log.debug('Skipping auto-recovery: updatedAt within guard window', {
-            id: task.id,
-            updatedAtAgeMs: now - task.updatedAt,
-          })
-          continue
-        }
-
         const minutesStuck = Math.round(stuckMs / 60000)
 
         // For workflow tasks, check the workflow step's assigned agent — not the card's task.agent
@@ -200,6 +182,34 @@ export function start(contentDir: string): void {
         const agentStale = isAgentHeartbeatStale(contentDir, effectiveAgent)
 
         if (settings.watchdog.autoRecover && agentStale) {
+          // Supersede-first: the ledger arbitrates recovery. A live run with
+          // a fresh heartbeat means the agent is genuinely working (it
+          // replaces the old 60s updatedAt guard — heartbeats are the real
+          // signal the file mtime was a proxy for). Zero live runs = a
+          // stranded task, recover as before. A stale run is superseded
+          // transactionally — of N racing recovery actors exactly one wins;
+          // losers skip. Ledger failure = fail closed (no blind recovery).
+          try {
+            const liveRun = getLiveRun(task.id)
+            if (liveRun) {
+              const supersede = supersedeStaleRun(task.id, now - settings.watchdog.stuckThresholdMs)
+              if (!supersede.superseded) {
+                log.debug('Skipping auto-recovery: live run heartbeat is fresh', { id: task.id, runId: liveRun.runId })
+                continue
+              }
+              appendAudit(contentDir, 'task.run_superseded', 'watchdog', {
+                id: task.id,
+                title: task.title,
+                agent: task.agent,
+                runIds: supersede.runIds,
+                minutesStuck,
+              })
+            }
+          } catch (err) {
+            log.error('Ledger supersede failed — skipping auto-recovery this tick (fail closed)', err, { id: task.id })
+            continue
+          }
+
           // Both task and agent are stale — auto-recover
           const recoveryCount = countAutoRecoveries(task)
 
