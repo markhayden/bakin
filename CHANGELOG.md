@@ -6,6 +6,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.17] - 2026-06-06
+
+### Added
+- **Execution safety ledger — exactly-once task firing and completion.** A SQLite coordination ledger at `~/.bakin/bakin.db` (WAL) where UNIQUE constraints are the locks: cron fires are claimed before task creation, every dispatch path claims its run before sending (the ledger mints the dispatch sequence), completions are first-write-wins (retries report `alreadyComplete` instead of erroring), and billed image results are durable idempotency rows with no TTL so client-timeout retries cannot double-bill. Duplicates are suppressed and audited; a ledger that cannot be opened fails closed.
+- Server singleton lock (`~/.bakin/server.lock`) taken before any side effect, with graceful shutdown on `EADDRINUSE` so a second instance can never double-fire scheduled work.
+- An `execution-safety` doctor check surfacing suppressed duplicates, claim leaks, and ledger health.
+- Optimistic task versioning with freeze-on-complete edit safety, so concurrent edits cannot silently clobber a task that has finished.
+- **Asset tags and folders.** Tags are now first-class asset-level metadata (decoupled from the version mirror) with normalization, a metadata edit drawer with tag input, bulk multi-select tagging, global tag rename/remove and bulk-apply APIs, a tags facet filter, and a folders view that groups assets by tag with breadcrumb navigation and URL-backed state. Generation provenance is indexed for search, and the asset grid uses a content-driven tile layout.
+- **Lazy plugin loading.** Plugin manifests can declare `contributes.nav/routes/slots/eager`; the host boots navigation from the manifest and lazy-loads noncritical plugin clients on demand instead of importing every plugin at startup.
+- Whiskit shared build backend: user-plugin builds run on the system Bun through one hardened runner, `bakin plugins publish` gains `--build`, plugin `check`/`upgrade` route through the Whiskit artifact lane, and dev hot-reload surfaces Whiskit rebuild diagnostics.
+
+### Changed
+- Dispatch I/O efficiency pass: an in-memory task-store index (id→path + column buckets, self-healing), a single SSE broadcast per task write, an mtime-validated asset manifest cache behind asset-service reads with debounced grid refetch, a lesson-retrieval cache, reverse tail reads for audit time-window queries, incremental trajectory forensics scans, an LRU cap on the session store cache, and dispatch threadId sequence mints folded into one persist-before-send state save.
+- Dispatch prompts slimmed: the static tool catalog moved out of every dispatch prompt into a managed execution-tools block in agent workspaces (`bakin agent-rules --apply-all` covers subagent blocks).
+- Core plugin builds skip the server entry; release binaries embed only browser assets (`client.js`/`client.css`) and the server refuses to serve plugin server bundles over HTTP. Whiskit publish fails server builds that retain host-provided browser externals.
+- Watchdog recovery is supersede-first and uses ledger heartbeats for liveness instead of racing the original turn.
+- Shell bundle moved to `/_app/*` so client routes like `/assets` survive a hard refresh.
+
+### Fixed
+- Deterministic Discord digest delivery.
+- Completion retries on an already-done task no longer trip the task store's transition guard.
+- Watchdog respects a manual restart-recovery classification instead of re-diagnosing the turn.
+- Silent lesson drops: lesson retrieval now carries an omission marker when lessons are truncated.
+- `assets.listByTask` hook backed by a taskId index, repairing the broken asset block in dispatch prompts.
+- SDK root barrel is server-safe — the slots registry split from the `<Slot>` rendering layer so server code can import the barrel without pulling in React DOM.
+
 ## [0.0.1-rc.16] - 2026-06-05
 
 ### Added
@@ -228,5 +254,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 [0.0.1-rc.15]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.15
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.16...HEAD
 [0.0.1-rc.16]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.16
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.17...HEAD
+[0.0.1-rc.17]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.17
