@@ -35,6 +35,7 @@ const ledgerMock = () => ({
   hasCompletion: (taskId: string) => completionsFake.has(taskId),
   deleteCompletion: (taskId: string) => completionsFake.delete(taskId),
   getLiveRun: () => null,
+  bumpHeartbeatByTask: () => {},
 })
 mock.module('@/core/execution-ledger', ledgerMock)
 mock.module('../../src/core/execution-ledger', ledgerMock)

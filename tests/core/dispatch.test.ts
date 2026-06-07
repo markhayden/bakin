@@ -13,11 +13,11 @@ import { RuntimeError } from '../../packages/core/src/adapters/runtime'
 const sentinelContentDir = join(tmpdir(), `bakin-dispatch-test-content-${Date.now()}`)
 mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => sentinelContentDir,
-  getBakinPaths: () => ({ root: sentinelContentDir }),
+  getBakinPaths: () => ({ root: sentinelContentDir, home: sentinelContentDir, db: join(sentinelContentDir, 'bakin.db') }),
 }))
 mock.module('../../packages/core/src/content-dir', () => ({
   getContentDir: () => sentinelContentDir,
-  getBakinPaths: () => ({ root: sentinelContentDir }),
+  getBakinPaths: () => ({ root: sentinelContentDir, home: sentinelContentDir, db: join(sentinelContentDir, 'bakin.db') }),
 }))
 
 mock.module('../../src/core/logger', () => ({
@@ -727,7 +727,9 @@ describe('dispatch', () => {
       const args = mockRuntimeSend.mock.calls[0]?.[0] as Record<string, unknown>
       expect(args.threadId).toBe('task:t-thread:d1')
       expect((args.metadata as Record<string, unknown>).oversizedOutputBytes).toBeGreaterThan(0)
-      expect(readState().dispatchSeq['t-thread']).toBe(1)
+      // Seq ownership moved to the execution ledger (run rows + watermarks).
+      const { currentSeq } = require('../../src/core/execution-ledger') as typeof import('../../src/core/execution-ledger')
+      expect(currentSeq('t-thread')).toBe(1)
     })
 
     it('seq survives success: a later re-dispatch of the same task gets a FRESH session key', async () => {
@@ -826,10 +828,11 @@ describe('dispatch', () => {
       // Persist-before-send: the save precedes every turn fire.
       expect(events.indexOf('save')).toBeLessThan(events.indexOf('send'))
 
-      // Both seqs were persisted by that single save.
-      const state = JSON.parse(readFileSync(join(tempDir, '.dispatch-state.json'), 'utf-8'))
-      expect(state.dispatchSeq['t-batch-1']).toBe(1)
-      expect(state.dispatchSeq['t-batch-2']).toBe(1)
+      // Seq durability moved to the ledger: both claims are on disk there
+      // (persist-before-send now means "run row inserted before send").
+      const { currentSeq } = require('../../src/core/execution-ledger') as typeof import('../../src/core/execution-ledger')
+      expect(currentSeq('t-batch-1')).toBe(1)
+      expect(currentSeq('t-batch-2')).toBe(1)
     })
 
     it('audits exactly one row per dispatch: task.dispatched with from/to, no task.moved', async () => {

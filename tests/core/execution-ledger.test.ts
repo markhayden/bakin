@@ -34,6 +34,7 @@ mock.module('../../packages/core/src/logger', loggerMock)
 
 import {
   claimRun,
+  claimNextRun,
   settleRun,
   loseRun,
   supersedeStaleRun,
@@ -41,7 +42,9 @@ import {
   bumpHeartbeat,
   bumpHeartbeatByTask,
   getLiveRun,
+  getLiveRunByKey,
   nextSeq,
+  currentSeq,
   setSeqWatermark,
   claimCronFire,
   attachCronTask,
@@ -120,7 +123,7 @@ describe('runs — one live run per task', () => {
 
     // Stale → superseded, and the race loser gets zero rows
     const win = supersedeStaleRun('t4', t0 + 1)
-    expect(win).toEqual({ superseded: true, runId: 'task:t4:d1' })
+    expect(win).toEqual({ superseded: true, runIds: ['task:t4:d1'] })
     expect(supersedeStaleRun('t4', t0 + 1)).toEqual({ superseded: false })
     expect(getLiveRun('t4')).toBeNull()
   })
@@ -131,7 +134,7 @@ describe('runs — one live run per task', () => {
     bumpHeartbeatByTask('t5', t0 + 500)
     expect(supersedeStaleRun('t5', t0 + 100)).toEqual({ superseded: false })
     bumpHeartbeat('task:t5:d1', t0 + 900)
-    expect(supersedeStaleRun('t5', t0 + 901)).toEqual({ superseded: true, runId: 'task:t5:d1' })
+    expect(supersedeStaleRun('t5', t0 + 901)).toEqual({ superseded: true, runIds: ['task:t5:d1'] })
   })
 
   it('getLiveRun returns the running row', () => {
@@ -151,6 +154,54 @@ describe('runs — one live run per task', () => {
     expect(getLiveRun('t7')).toBeNull()
     expect(getLiveRun('t8')?.runId).toBe('task:t8:d1')
     settleRun('task:t8:d1', 'ok')
+  })
+
+  it('claimNextRun atomically mints and claims; duplicate suppressed; seq advances after settle', () => {
+    const mint = () =>
+      claimNextRun({ taskId: 't9', agent: 'tester', bootId: BOOT, runIdFor: (seq) => `task:t9:d${seq}` })
+
+    const first = mint()
+    expect(first).toEqual({ claimed: true, runId: 'task:t9:d1', seq: 1 })
+
+    const dup = mint()
+    expect(dup.claimed).toBe(false)
+    if (!dup.claimed) expect(dup.liveRunId).toBe('task:t9:d1')
+
+    expect(settleRun('task:t9:d1', 'ok')).toBe(true)
+    expect(mint()).toEqual({ claimed: true, runId: 'task:t9:d2', seq: 2 })
+    settleRun('task:t9:d2', 'ok')
+  })
+
+  it('workflow steps run in parallel: live-run lock scopes to execKey, not task', () => {
+    const step = (stepId: string) =>
+      claimNextRun({
+        taskId: 'wf1',
+        execKey: `wf1:${stepId}`,
+        agent: 'tester',
+        bootId: BOOT,
+        runIdFor: (seq) => `task:wf1:step:${stepId}:d${seq}`,
+      })
+
+    const s1 = step('research')
+    const s2 = step('draft')
+    expect(s1.claimed).toBe(true)
+    expect(s2.claimed).toBe(true)
+    // Shared per-task seq counter (legacy threadId semantics preserved)
+    if (s1.claimed && s2.claimed) {
+      expect([s1.seq, s2.seq].sort()).toEqual([1, 2])
+    }
+
+    // Same step claimed again → suppressed
+    expect(step('research').claimed).toBe(false)
+    expect(getLiveRunByKey('wf1:research')?.agent).toBe('tester')
+    if (s1.claimed) settleRun(s1.runId, 'ok')
+    if (s2.claimed) settleRun(s2.runId, 'ok')
+  })
+
+  it('currentSeq reports the highest used seq', () => {
+    expect(currentSeq('fresh-task')).toBe(0)
+    setSeqWatermark('fresh-task', 7)
+    expect(currentSeq('fresh-task')).toBe(7)
   })
 })
 

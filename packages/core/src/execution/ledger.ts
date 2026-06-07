@@ -19,7 +19,10 @@
  * written — callers must FAIL CLOSED (refuse the operation), never fall
  * back to an unguarded path.
  */
+import { existsSync, readFileSync } from 'fs'
+import { join } from 'path'
 import { createLogger } from '../logger'
+import { getBakinPaths } from '../content-dir'
 import { applyMigrations, getDb, withTx, StorageUnavailableError, type Db } from '../storage/db'
 
 const log = createLogger('execution-ledger')
@@ -32,10 +35,16 @@ const MIGRATIONS = [
   {
     version: 1,
     up: (db: Db) => {
+      // exec_key is the live-run lock scope: the task id for regular tasks,
+      // `${taskId}:${stepId}` for workflow steps — parallel step agents on
+      // one task are legitimate concurrent runs. seq stays per-TASK (shared
+      // counter across steps) to exactly preserve the legacy threadId
+      // semantics of .dispatch-state.json's dispatchSeq.
       db.exec(
         `CREATE TABLE runs (
            run_id        TEXT PRIMARY KEY,
            task_id       TEXT NOT NULL,
+           exec_key      TEXT NOT NULL,
            seq           INTEGER NOT NULL,
            agent         TEXT NOT NULL,
            status        TEXT NOT NULL CHECK (status IN ('running','settled','superseded','lost')),
@@ -47,13 +56,39 @@ const MIGRATIONS = [
            UNIQUE (task_id, seq)
          )`,
       )
-      db.exec('CREATE UNIQUE INDEX runs_one_live_per_task ON runs(task_id) WHERE status = \'running\'')
+      db.exec('CREATE UNIQUE INDEX runs_one_live_per_key ON runs(exec_key) WHERE status = \'running\'')
+      db.exec('CREATE INDEX runs_by_task ON runs(task_id)')
       db.exec(
         `CREATE TABLE seq_watermarks (
            task_id TEXT PRIMARY KEY,
            seq     INTEGER NOT NULL
          )`,
       )
+      // One-time correctness seed: legacy per-task dispatch seqs from
+      // .dispatch-state.json become watermarks so freshly minted threadIds
+      // (task:<id>:d<seq>) can never collide with previously used provider
+      // sessions. Reading an app-owned file from here is deliberate — the
+      // migration is the only place with a strict run-once-before-any-mint
+      // ordering guarantee.
+      try {
+        const stateFile = join(getBakinPaths().home, '.dispatch-state.json')
+        if (existsSync(stateFile)) {
+          const parsed = JSON.parse(readFileSync(stateFile, 'utf-8')) as { dispatchSeq?: Record<string, unknown> }
+          const insert = db.prepare('INSERT OR REPLACE INTO seq_watermarks (task_id, seq) VALUES (?, ?)')
+          let seeded = 0
+          for (const [taskId, seq] of Object.entries(parsed.dispatchSeq ?? {})) {
+            if (typeof seq === 'number' && Number.isFinite(seq) && seq > 0) {
+              insert.run(taskId, Math.floor(seq))
+              seeded++
+            }
+          }
+          if (seeded > 0) log.info('Seeded seq watermarks from legacy dispatch state', { seeded })
+        }
+      } catch (err) {
+        // A malformed legacy file must not brick the ledger — but losing the
+        // watermarks risks threadId reuse, so say it loudly.
+        log.error('Failed to seed seq watermarks from .dispatch-state.json', err)
+      }
       db.exec(
         `CREATE TABLE cron_fires (
            job_id      TEXT NOT NULL,
@@ -119,6 +154,7 @@ function guard<T>(op: string, fn: () => T): T {
 export interface RunRow {
   runId: string
   taskId: string
+  execKey: string
   seq: number
   agent: string
   status: 'running' | 'settled' | 'superseded' | 'lost'
@@ -132,6 +168,7 @@ export interface RunRow {
 interface RawRunRow {
   run_id: string
   task_id: string
+  exec_key: string
   seq: number
   agent: string
   status: RunRow['status']
@@ -146,6 +183,7 @@ function toRunRow(raw: RawRunRow): RunRow {
   return {
     runId: raw.run_id,
     taskId: raw.task_id,
+    execKey: raw.exec_key,
     seq: raw.seq,
     agent: raw.agent,
     status: raw.status,
@@ -160,6 +198,8 @@ function toRunRow(raw: RawRunRow): RunRow {
 export interface RunClaim {
   runId: string
   taskId: string
+  /** Live-run lock scope. Defaults to taskId; workflow steps pass `${taskId}:${stepId}`. */
+  execKey?: string
   seq: number
   agent: string
   bootId: string
@@ -169,24 +209,68 @@ export interface RunClaim {
 export type ClaimRunResult = { claimed: true } | { claimed: false; liveRunId?: string }
 
 /**
- * Claim the live-run slot for a task. The partial unique index
- * (one status='running' row per task) is the lock — a concurrent or
- * duplicate claim fails the INSERT and returns the live run's id.
+ * Claim the live-run slot for an exec key with an explicit seq. The partial
+ * unique index (one status='running' row per exec_key) is the lock — a
+ * concurrent or duplicate claim fails the INSERT and returns the live
+ * run's id.
  */
 export function claimRun(input: RunClaim): ClaimRunResult {
   const db = ledger()
   const now = input.now ?? Date.now()
+  const execKey = input.execKey ?? input.taskId
   try {
     db.prepare(
-      `INSERT INTO runs (run_id, task_id, seq, agent, status, boot_id, started_at, heartbeat_at)
-       VALUES (?, ?, ?, ?, 'running', ?, ?, ?)`,
-    ).run(input.runId, input.taskId, input.seq, input.agent, input.bootId, now, now)
+      `INSERT INTO runs (run_id, task_id, exec_key, seq, agent, status, boot_id, started_at, heartbeat_at)
+       VALUES (?, ?, ?, ?, ?, 'running', ?, ?, ?)`,
+    ).run(input.runId, input.taskId, execKey, input.seq, input.agent, input.bootId, now, now)
     return { claimed: true }
   } catch (err) {
     if (isUniqueViolation(err)) {
-      return { claimed: false, liveRunId: getLiveRun(input.taskId)?.runId }
+      return { claimed: false, liveRunId: getLiveRunByKey(execKey)?.runId }
     }
     return guard(`claimRun(${input.taskId})`, () => {
+      throw err
+    })
+  }
+}
+
+export type ClaimNextRunResult =
+  | { claimed: true; runId: string; seq: number }
+  | { claimed: false; liveRunId?: string }
+
+/**
+ * Atomically mint the next per-task seq AND claim the live-run slot — the
+ * single verb every dispatch path uses. The transaction makes mint+claim
+ * indivisible, and the INSERT's durability is the persist-before-send
+ * guarantee: a turn only fires after its run row is on disk.
+ */
+export function claimNextRun(input: {
+  taskId: string
+  execKey?: string
+  agent: string
+  bootId: string
+  runIdFor: (seq: number) => string
+  now?: number
+}): ClaimNextRunResult {
+  const execKey = input.execKey ?? input.taskId
+  try {
+    return withTx(() => {
+      const seq = computeNextSeq(input.taskId)
+      const runId = input.runIdFor(seq)
+      const now = input.now ?? Date.now()
+      ledger()
+        .prepare(
+          `INSERT INTO runs (run_id, task_id, exec_key, seq, agent, status, boot_id, started_at, heartbeat_at)
+           VALUES (?, ?, ?, ?, ?, 'running', ?, ?, ?)`,
+        )
+        .run(runId, input.taskId, execKey, seq, input.agent, input.bootId, now, now)
+      return { claimed: true as const, runId, seq }
+    })
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      return { claimed: false, liveRunId: getLiveRunByKey(execKey)?.runId }
+    }
+    return guard(`claimNextRun(${input.taskId})`, () => {
       throw err
     })
   }
@@ -218,29 +302,30 @@ export function loseRun(runId: string, reason: string, now?: number): boolean {
   })
 }
 
-export type SupersedeResult = { superseded: true; runId: string } | { superseded: false }
+export type SupersedeResult = { superseded: true; runIds: string[] } | { superseded: false }
 
 /**
- * Supersede the task's live run iff its heartbeat is older than
- * `staleBefore`. Transactional — of N racing supersede attempts exactly one
- * wins; losers see zero rows and must skip recovery.
+ * Supersede the task's stale live runs (heartbeat older than `staleBefore`).
+ * Transactional — of N racing supersede attempts exactly one wins each row;
+ * losers see zero rows and must skip recovery. May supersede multiple rows
+ * for workflow tasks (one per stale step agent).
  */
 export function supersedeStaleRun(taskId: string, staleBefore: number, now?: number): SupersedeResult {
   return guard(`supersedeStaleRun(${taskId})`, () =>
     withTx(() => {
-      const live = ledger()
+      const stale = ledger()
         .prepare<RawRunRow, [string, number]>(
           'SELECT * FROM runs WHERE task_id = ? AND status = \'running\' AND heartbeat_at < ?',
         )
-        .get(taskId, staleBefore)
-      if (!live) return { superseded: false } as const
-      ledger()
-        .prepare(
-          `UPDATE runs SET status = 'superseded', settled_at = ?, settle_reason = 'superseded'
-           WHERE run_id = ? AND status = 'running'`,
-        )
-        .run(now ?? Date.now(), live.run_id)
-      return { superseded: true, runId: live.run_id } as const
+        .all(taskId, staleBefore)
+      if (stale.length === 0) return { superseded: false } as const
+      const update = ledger().prepare(
+        `UPDATE runs SET status = 'superseded', settled_at = ?, settle_reason = 'superseded'
+         WHERE run_id = ? AND status = 'running'`,
+      )
+      const settledAt = now ?? Date.now()
+      for (const row of stale) update.run(settledAt, row.run_id)
+      return { superseded: true, runIds: stale.map((row) => row.run_id) } as const
     }),
   )
 }
@@ -278,6 +363,7 @@ export function bumpHeartbeatByTask(taskId: string, now?: number): void {
   })
 }
 
+/** First live run for the task (regular tasks have at most one). */
 export function getLiveRun(taskId: string): RunRow | null {
   return guard(`getLiveRun(${taskId})`, () => {
     const raw = ledger()
@@ -287,26 +373,41 @@ export function getLiveRun(taskId: string): RunRow | null {
   })
 }
 
+export function getLiveRunByKey(execKey: string): RunRow | null {
+  return guard(`getLiveRunByKey(${execKey})`, () => {
+    const raw = ledger()
+      .prepare<RawRunRow, [string]>('SELECT * FROM runs WHERE exec_key = ? AND status = \'running\'')
+      .get(execKey)
+    return raw ? toRunRow(raw) : null
+  })
+}
+
+function computeNextSeq(taskId: string): number {
+  const row = ledger()
+    .prepare<{ max_seq: number | null }, [string, string]>(
+      `SELECT MAX(seq) AS max_seq FROM (
+         SELECT seq FROM runs WHERE task_id = ?
+         UNION ALL
+         SELECT seq FROM seq_watermarks WHERE task_id = ?
+       )`,
+    )
+    .get(taskId, taskId)
+  return (row?.max_seq ?? 0) + 1
+}
+
 /**
  * Next dispatch seq for a task: max(existing runs, seeded watermark) + 1.
  * Transactional so concurrent mints can't collide; the UNIQUE(task_id, seq)
- * constraint backstops it.
+ * constraint backstops it. Prefer claimNextRun, which mints AND claims in
+ * one transaction.
  */
 export function nextSeq(taskId: string): number {
-  return guard(`nextSeq(${taskId})`, () =>
-    withTx(() => {
-      const row = ledger()
-        .prepare<{ max_seq: number | null }, [string, string]>(
-          `SELECT MAX(seq) AS max_seq FROM (
-             SELECT seq FROM runs WHERE task_id = ?
-             UNION ALL
-             SELECT seq FROM seq_watermarks WHERE task_id = ?
-           )`,
-        )
-        .get(taskId, taskId)
-      return (row?.max_seq ?? 0) + 1
-    }),
-  )
+  return guard(`nextSeq(${taskId})`, () => withTx(() => computeNextSeq(taskId)))
+}
+
+/** Highest seq ever used for the task (0 when none) — salvage labeling etc. */
+export function currentSeq(taskId: string): number {
+  return guard(`currentSeq(${taskId})`, () => computeNextSeq(taskId) - 1)
 }
 
 /** Seed a seq floor (migration from .dispatch-state.json). MAX semantics — never regresses. */

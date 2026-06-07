@@ -1,6 +1,7 @@
 // Re-export from @bakin/core (facade pattern — same as src/core/content-dir.ts)
 export {
   claimRun,
+  claimNextRun,
   settleRun,
   loseRun,
   supersedeStaleRun,
@@ -8,7 +9,9 @@ export {
   bumpHeartbeat,
   bumpHeartbeatByTask,
   getLiveRun,
+  getLiveRunByKey,
   nextSeq,
+  currentSeq,
   setSeqWatermark,
   claimCronFire,
   getCronFire,
@@ -28,6 +31,7 @@ export type {
   RunRow,
   RunClaim,
   ClaimRunResult,
+  ClaimNextRunResult,
   SupersedeResult,
   CronFireRow,
   ClaimCronFireResult,

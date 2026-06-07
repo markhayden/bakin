@@ -16,6 +16,10 @@ import {
 import { generateTaskId } from '@bakin/core/ids'
 import { join } from 'path'
 import { getBakinPaths, getContentDir } from './content-dir'
+import { purgeTaskRows } from './execution-ledger'
+import { createLogger } from './logger'
+
+const log = createLogger('task-store')
 
 export interface TaskLogEntry {
   timestamp: string
@@ -330,6 +334,14 @@ export function deleteTask(identifier: string): Promise<void> {
     const task = requireTask(identifier)
     getSharedBakinTaskStore().removeSync(task.id)
     void cancelWorkflowInstance(task.id)
+    // Cascade the execution ledger: frees any live run claim and drops the
+    // task's runs/completions/watermarks. Advisory — a ledger hiccup must
+    // not block deletion (the boot sweep reaps stragglers).
+    try {
+      purgeTaskRows(task.id)
+    } catch (err) {
+      log.warn('Ledger purge failed for deleted task; boot sweep will reap', { taskId: task.id, err: err instanceof Error ? err.message : String(err) })
+    }
     return Promise.resolve()
   } catch (err) {
     return Promise.reject(err)

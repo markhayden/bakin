@@ -10,6 +10,8 @@ import { appendAudit } from './audit'
 import { recordUsage } from './usage'
 import { getAppServices } from './app-services'
 import { getRuntimeMainAgentId, RuntimeError, RuntimeTurnError } from '@bakin/core/adapters/runtime'
+import { claimNextRun, currentSeq, loseRun, settleRun, type ClaimNextRunResult } from './execution-ledger'
+import { getBootId } from './boot-id'
 import { getHookRegistry } from '../lib/plugin-registry'
 import {
   buildTaskLessonQuery,
@@ -46,24 +48,40 @@ async function sendDispatchMessage(agentId: string, content: string, threadId: s
 }
 
 /**
- * Mint the next per-attempt session key for a task dispatch.
+ * Atomically mint the next per-attempt session key AND claim the live-run
+ * slot in the execution ledger. The runs table's partial unique index (one
+ * running row per exec key) is the correctness mechanism: a duplicate
+ * dispatch (overlapping cycle, manual kick racing the cycle, second server
+ * process) fails the INSERT instead of racing in-memory markers.
  *
- * `seq` is a monotonic per-task counter persisted immediately — it must
- * never be derived from the failure count (which resets on success and
- * would silently resume a stale session on a later re-dispatch) and must
- * survive a crashed cycle (reusing a seq could re-enter a live session).
- * Workflow steps carry the stepId so parallel step agents can't collide.
+ * `seq` stays a monotonic per-task counter (now ledger-owned, seeded from
+ * the legacy .dispatch-state.json watermarks) — it must never be derived
+ * from the failure count and reusing one could re-enter a live provider
+ * session. Workflow steps carry the stepId so parallel step agents can't
+ * collide: their exec key is `${taskId}:${stepId}`.
+ *
+ * Callers MUST settle the claim on every outcome (fireDispatchTurn's settle
+ * handlers do) or release it via loseRun when the turn never fires.
  */
-function nextDispatchThreadId(contentDir: string, state: DispatchState, taskId: string, stepId?: string, opts?: { deferSave?: boolean }): string {
-  if (!state.dispatchSeq) state.dispatchSeq = {}
-  const seq = (state.dispatchSeq[taskId] ?? 0) + 1
-  state.dispatchSeq[taskId] = seq
-  // deferSave callers mint in-memory and MUST persist the state themselves
-  // before any minted turn fires (persist-before-send). The regular dispatch
-  // cycle batches all mints into its single cycle-end save; one-off paths
-  // (dispatchSingleTask, workflow steps) keep the inline save.
-  if (!opts?.deferSave) saveDispatchState(contentDir, state)
-  return stepId ? `task:${taskId}:step:${stepId}:d${seq}` : `task:${taskId}:d${seq}`
+function claimDispatchRun(taskId: string, targetAgent: string, stepId?: string): ClaimNextRunResult {
+  return claimNextRun({
+    taskId,
+    execKey: stepId ? `${taskId}:${stepId}` : taskId,
+    agent: targetAgent,
+    bootId: getBootId(),
+    runIdFor: (seq) => (stepId ? `task:${taskId}:step:${stepId}:d${seq}` : `task:${taskId}:d${seq}`),
+  })
+}
+
+/** Suppressed-duplicate bookkeeping shared by all three dispatch paths. */
+function auditDispatchSuppressed(contentDir: string, task: { id: string; title: string }, targetAgent: string, liveRunId: string | undefined, path: 'cycle' | 'single' | 'workflow'): void {
+  appendAudit(contentDir, 'task.dispatch_suppressed', targetAgent, {
+    id: task.id,
+    title: task.title,
+    liveRunId: liveRunId ?? null,
+    path,
+  })
+  log.warn('Dispatch suppressed — live run already exists', { id: task.id, liveRunId, path })
 }
 
 // Upstream runtime error bodies land in task logs and audit JSONL via
@@ -206,7 +224,12 @@ interface DispatchState {
   serverStart: number
   dispatched: string[]
   failedDispatches: Record<string, FailureRecord>
-  /** Monotonic per-task dispatch counter — see nextDispatchThreadId(). */
+  /**
+   * Legacy monotonic per-task dispatch counter. Seq minting moved to the
+   * execution ledger (seq_watermarks seeded from this field once, by the
+   * ledger's v1 migration). Kept read-only in the type so old state files
+   * parse; never written again.
+   */
   dispatchSeq?: Record<string, number>
 }
 
@@ -604,7 +627,7 @@ async function handleSessionDeath(input: {
   if (!input.state.failedDispatches) input.state.failedDispatches = {}
   const prev = input.state.failedDispatches[input.task.id]?.sessionDeath
   const deaths = (prev?.deaths ?? 0) + 1
-  const seq = input.state.dispatchSeq?.[input.task.id] ?? 0
+  const seq = currentSeq(input.task.id)
 
   const salvagedAssetId = diagnosis.salvagedText
     ? await salvageSessionDeathOutput({
@@ -893,6 +916,13 @@ function fireDispatchTurn(opts: {
   // turn's slot shouldn't free until its outcome has been recorded.
   const settled = sendDispatchMessage(opts.targetAgent, opts.message, opts.threadId)
     .then(async () => {
+      // Free the live-run slot FIRST — the settle reconciliation below (and
+      // any ladder re-dispatch it schedules) must be able to claim anew.
+      try {
+        settleRun(opts.threadId, 'ok')
+      } catch (err) {
+        log.error('Failed to settle run in ledger', err, { threadId: opts.threadId })
+      }
       let completedDecomposition = false
       await withStateLock(() => {
         const state = loadDispatchState(opts.contentDir)
@@ -922,6 +952,15 @@ function fireDispatchTurn(opts: {
     })
     .catch(async (err) => {
       log.error(`${opts.logPrefix}: turn failed for "${opts.task.title}" → ${opts.targetAgent}`, err)
+      // Free the slot before reconciliation — the recovery ladder's
+      // re-dispatch claims a fresh run and must not be suppressed by the
+      // dead one. Session deaths are 'lost'; other failures 'settled'.
+      try {
+        if (err instanceof RuntimeTurnError) loseRun(opts.threadId, 'session-death')
+        else settleRun(opts.threadId, `failed: ${formatDispatchError(err).slice(0, 120)}`)
+      } catch (ledgerErr) {
+        log.error('Failed to settle failed run in ledger', ledgerErr, { threadId: opts.threadId })
+      }
       try {
         await withStateLock(async () => {
           const state = loadDispatchState(opts.contentDir)
@@ -971,7 +1010,6 @@ export function loadDispatchState(contentDir: string): DispatchState {
       const parsed = JSON.parse(readFileSync(stateFile, 'utf-8'))
       if (!Array.isArray(parsed.dispatched)) parsed.dispatched = []
       if (!parsed.failedDispatches || typeof parsed.failedDispatches !== 'object') parsed.failedDispatches = {}
-      if (!parsed.dispatchSeq || typeof parsed.dispatchSeq !== 'object') parsed.dispatchSeq = {}
       return parsed
     }
   } catch (err) {
@@ -1140,7 +1178,17 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
 
       // Per-task guard: one bad task (store hiccup, hook failure) must not
       // abort the cycle — collected intents and other tasks still dispatch.
+      let claim: ClaimNextRunResult | null = null
       try {
+        // Claim FIRST — the ledger run row is the lock; everything after it
+        // is a side effect. A duplicate (overlapping cycle, racing kick,
+        // second process) fails here before any move or send.
+        claim = claimDispatchRun(task.id, targetAgent)
+        if (!claim.claimed) {
+          auditDispatchSuppressed(contentDir, task, targetAgent, claim.liveRunId, 'cycle')
+          continue
+        }
+
         const lessonBlock = await buildDispatchLessonBlock({
           contentDir,
           taskId: task.id,
@@ -1159,7 +1207,7 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
         // where fast agents complete before dispatch moves the task
         await moveTaskToInProgress(task.id, targetAgent)
 
-        const threadId = nextDispatchThreadId(contentDir, state, task.id, undefined, { deferSave: true })
+        const threadId = claim.runId
         dispatchedSet.add(task.id)
         // The internal todo→inProgress move is folded into task.dispatched —
         // one audit row per dispatch, carrying the transition.
@@ -1180,14 +1228,17 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
         pendingByAgent.set(targetAgent, (pendingByAgent.get(targetAgent) ?? 0) + 1)
       } catch (err) {
         log.error(`Failed to prepare dispatch for task "${task.title}"`, err, { id: task.id })
+        // A claim whose turn will never fire must be released, or the task
+        // is locked until the watchdog/boot sweep notices.
+        if (claim?.claimed) loseRun(claim.runId, 'dispatch-prep-failed')
       }
     }
 
     state.lastRun = Date.now()
     state.dispatched = [...dispatchedSet]
     trimDispatched(state, settings.dispatch.maxDispatched)
-    // Persist-before-send: every deferred seq mint above becomes durable in
-    // this single write BEFORE any turn fires below.
+    // Persist-before-send: every claimed run above is already durable in the
+    // ledger; this write persists the advisory dispatch bookkeeping.
     saveDispatchState(contentDir, state)
 
     for (const turn of pendingTurns) fireDispatchTurn(turn)
@@ -1354,10 +1405,18 @@ export async function dispatchSingleTask(
     const dispatchStart = Date.now()
     const initialLogCount = task.log?.length ?? 0
 
+    // Claim first — the ledger row is the lock (a kick racing the cycle or
+    // another process fails here, before any side effect).
+    const claim = claimDispatchRun(task.id, targetAgent)
+    if (!claim.claimed) {
+      auditDispatchSuppressed(contentDir, task, targetAgent, claim.liveRunId, 'single')
+      return
+    }
+
     // Move to inProgress BEFORE sending message to eliminate race condition
     await moveTaskToInProgress(task.id, targetAgent)
 
-    const threadId = nextDispatchThreadId(contentDir, state, task.id)
+    const threadId = claim.runId
     state.dispatched.push(task.id)
     trimDispatched(state, settings.dispatch.maxDispatched)
     saveDispatchState(contentDir, state)
@@ -1730,7 +1789,15 @@ async function dispatchWorkflowTask(
       continue
     }
 
-    const threadId = nextDispatchThreadId(contentDir, state, task.id, stepId)
+    // Claim the step's live-run slot (exec key taskId:stepId — parallel
+    // step agents on one task are legitimate concurrent runs).
+    const claim = claimDispatchRun(task.id, targetAgent, stepId)
+    if (!claim.claimed) {
+      auditDispatchSuppressed(contentDir, task, targetAgent, claim.liveRunId, 'workflow')
+      continue
+    }
+
+    const threadId = claim.runId
     dispatchedSet.add(`${task.id}:${stepId}`)
     appendAudit(contentDir, 'task.dispatched', targetAgent, {
       id: task.id,

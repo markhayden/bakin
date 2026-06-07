@@ -18,7 +18,7 @@ import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import type { TaskSource } from '@bakin/core/tasks/store'
 import { getHookRegistry } from '../lib/plugin-registry'
 import { assertWorkflowToolAllowed } from './workflow-tool-authorization'
-import { deleteCompletion, getLiveRun, hasCompletion, recordCompletion } from './execution-ledger'
+import { bumpHeartbeatByTask, deleteCompletion, getLiveRun, hasCompletion, recordCompletion } from './execution-ledger'
 import {
   addTaskLog as appendTaskLog,
   blockTask as blockStoredTask,
@@ -81,6 +81,14 @@ export async function logProgress(
   await assertWorkflowToolAllowed({ taskId, agent, action: 'progress-log' })
   // Broadcast to live activity feed first (never block on persistence)
   broadcast({ type: 'activity', agent, message, ts: new Date().toISOString(), taskId, ...(channel ? { channel } : {}) })
+  // Progress is the watchdog's liveness signal — bump the run heartbeat so a
+  // quiet-but-alive agent is never superseded. Advisory only: a ledger
+  // hiccup must not break progress logging.
+  try {
+    bumpHeartbeatByTask(taskId)
+  } catch (err) {
+    log.debug('Run heartbeat bump failed', { taskId, err: err instanceof Error ? err.message : String(err) })
+  }
   await appendTaskLog(taskId, agent, message)
 }
 

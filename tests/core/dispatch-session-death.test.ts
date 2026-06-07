@@ -16,11 +16,11 @@ import { tmpdir } from 'os'
 const sentinelContentDir = join(tmpdir(), `bakin-session-death-content-${Date.now()}`)
 mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => sentinelContentDir,
-  getBakinPaths: () => ({ root: sentinelContentDir }),
+  getBakinPaths: () => ({ root: sentinelContentDir, home: sentinelContentDir, db: join(sentinelContentDir, 'bakin.db') }),
 }))
 mock.module('../../packages/core/src/content-dir', () => ({
   getContentDir: () => sentinelContentDir,
-  getBakinPaths: () => ({ root: sentinelContentDir }),
+  getBakinPaths: () => ({ root: sentinelContentDir, home: sentinelContentDir, db: join(sentinelContentDir, 'bakin.db') }),
 }))
 
 mock.module('../../src/core/logger', () => ({

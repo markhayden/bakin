@@ -37,6 +37,8 @@ import * as watcher from './src/core/watcher'
 import * as dispatch from './src/core/dispatch'
 import * as watchdog from './src/core/watchdog'
 import { runRestartRecovery } from './src/core/restart-recovery'
+import { markPriorBootRunsLost } from './src/core/execution-ledger'
+import { getBootId } from './src/core/boot-id'
 import { registerShutdownHandlers } from './src/core/lifecycle'
 import { checkAndContinueDependents } from './src/core/continuation'
 import { getAllRoutes, generateDocs } from './src/core/api-docs'
@@ -739,6 +741,16 @@ const eventBus = new BakinEventBus(broadcast)
     }
 
     void (async () => {
+      // Startup sweep BEFORE restart recovery: runs left 'running' by a
+      // crashed/previous process are marked lost, or their stale claims
+      // would suppress every legitimate re-dispatch below.
+      try {
+        const swept = markPriorBootRunsLost(getBootId())
+        if (swept > 0) log.info('Startup sweep: marked prior-boot runs lost', { swept })
+      } catch (err) {
+        log.error('Startup run sweep failed — stale claims may suppress dispatch until resolved', err)
+      }
+
       let recovered = 0
       try {
         const result = await runRestartRecovery(CONTENT_DIR)
