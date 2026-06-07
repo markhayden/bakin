@@ -47,9 +47,13 @@ export interface Migration {
 interface DbGlobalState {
   db: Database | null
   path: string | null
+  /** Modules whose migrations have been applied on the CURRENT handle —
+   *  spares every domain verb a per-call schema_migrations SELECT on the
+   *  dispatch/heartbeat hot path. Cleared with the handle. */
+  migratedModules: Set<string>
 }
 const g = globalThis as { __bakinDbState?: DbGlobalState }
-if (!g.__bakinDbState) g.__bakinDbState = { db: null, path: null }
+if (!g.__bakinDbState) g.__bakinDbState = { db: null, path: null, migratedModules: new Set() }
 const state: DbGlobalState = g.__bakinDbState
 
 export function getDb(): Db {
@@ -65,6 +69,7 @@ export function getDb(): Db {
     }
     state.db = null
     state.path = null
+    state.migratedModules.clear()
   }
 
   try {
@@ -73,7 +78,10 @@ export function getDb(): Db {
     const db = new Database(path, { create: true })
     db.exec('PRAGMA journal_mode = WAL')
     db.exec('PRAGMA busy_timeout = 5000')
-    db.exec('PRAGMA foreign_keys = ON')
+    // No FOREIGN KEYs by design: the coordination tables deliberately have
+    // no cross-table references (ownership rule), and cleanup cascades
+    // (purgeTaskRows) are explicit app code — don't imply DB-enforced
+    // cascades that don't exist.
     // Per-module migration ledger. A table (not PRAGMA user_version) so
     // future domain modules each get their own version track without
     // colliding on a single global int.
@@ -95,9 +103,13 @@ export function getDb(): Db {
 
 /**
  * Apply a module's pending migrations in order, each inside a transaction.
- * Idempotent — applied versions are skipped.
+ * Idempotent — applied versions are skipped, and a module that has fully
+ * migrated on the current handle short-circuits without touching the db
+ * (domain verbs call this on every operation). A failed migration is NOT
+ * cached, so the next call retries.
  */
 export function applyMigrations(module: string, migrations: Migration[]): void {
+  if (state.migratedModules.has(module) && state.db) return
   const db = getDb()
   const applied = new Set(
     db
@@ -123,6 +135,7 @@ export function applyMigrations(module: string, migrations: Migration[]): void {
       throw new StorageUnavailableError(`migration ${module} v${migration.version} failed`, err)
     }
   }
+  state.migratedModules.add(module)
 }
 
 /** Run `fn` inside a transaction (nested calls become savepoints). */
@@ -134,6 +147,7 @@ export function withTx<T>(fn: () => T): T {
 
 /** Close the shared handle (tests / clean shutdown). Reopens lazily. */
 export function closeDb(): void {
+  state.migratedModules.clear()
   if (!state.db) return
   try {
     state.db.close()

@@ -1238,8 +1238,22 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
     state.dispatched = [...dispatchedSet]
     trimDispatched(state, settings.dispatch.maxDispatched)
     // Persist-before-send: every claimed run above is already durable in the
-    // ledger; this write persists the advisory dispatch bookkeeping.
-    saveDispatchState(contentDir, state)
+    // ledger; this write persists the advisory dispatch bookkeeping. If it
+    // throws, the collected turns will never fire — release their claims or
+    // the tasks stay locked until the watchdog/boot sweep notices.
+    try {
+      saveDispatchState(contentDir, state)
+    } catch (err) {
+      log.error('Dispatch state save failed — releasing collected run claims', err)
+      for (const turn of pendingTurns) {
+        try {
+          loseRun(turn.threadId, 'dispatch-save-failed')
+        } catch (releaseErr) {
+          log.error('Failed to release collected claim', releaseErr, { threadId: turn.threadId })
+        }
+      }
+      return
+    }
 
     for (const turn of pendingTurns) fireDispatchTurn(turn)
     }) // end withStateLock
@@ -1413,13 +1427,25 @@ export async function dispatchSingleTask(
       return
     }
 
-    // Move to inProgress BEFORE sending message to eliminate race condition
-    await moveTaskToInProgress(task.id, targetAgent)
-
     const threadId = claim.runId
-    state.dispatched.push(task.id)
-    trimDispatched(state, settings.dispatch.maxDispatched)
-    saveDispatchState(contentDir, state)
+    try {
+      // Move to inProgress BEFORE sending message to eliminate race condition
+      await moveTaskToInProgress(task.id, targetAgent)
+
+      state.dispatched.push(task.id)
+      trimDispatched(state, settings.dispatch.maxDispatched)
+      saveDispatchState(contentDir, state)
+    } catch (err) {
+      // A claim whose turn will never fire must be released, or the task is
+      // locked until the watchdog/boot sweep notices (mirrors the cycle's
+      // per-task guard).
+      try {
+        loseRun(threadId, 'dispatch-prep-failed')
+      } catch (releaseErr) {
+        log.error('Failed to release claim after prep failure', releaseErr, { threadId })
+      }
+      throw err
+    }
 
     // Internal move folded into task.dispatched — one audit row per dispatch.
     appendAudit(contentDir, 'task.dispatched', targetAgent, { id: task.id, title: task.title, threadId, from: 'todo', to: 'inProgress' })

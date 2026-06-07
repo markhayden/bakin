@@ -278,3 +278,20 @@ Plus tracker hygiene on merge: comment on #436 (items 4+6 resolved structurally)
 ## 12. Process
 
 This spec (approve) → `/agent-skills:plan` (task breakdown + **detailed commit strategy** with rollback checkpoints, copied to `tasks/plan.md` + `tasks/todo.md`) → `/agent-skills:build` → `/agent-skills:test`. Branch: `feat/execution-safety-ledger`, PR to `main`. SPEC.md relocates to `.claude/specs/` in the final docs commit.
+
+## 13. As-Built Addendum (post-implementation, PR #465)
+
+Deviations between this spec and what shipped — each deliberate, found during build/test. The authoritative description of the as-built system is `.claude/knowledge/execution-ledger.md`.
+
+1. **`runs` live-run lock scopes to `exec_key`, not `task_id`.** The spec's `runs_one_live_per_task` index would have blocked parallel workflow-step agents (legitimate concurrent runs on one task). As built: `exec_key` column (`taskId`, or `taskId:stepId` for steps) + `runs_one_live_per_key` partial unique index; `seq` stays per-task, preserving legacy threadId semantics exactly.
+2. **`cron_fires` gained `claimed_at` + `disposition`** (`pending|created|skipped|seeded`) instead of NULL-task_id sentinels. Healer staleness keys on `claimed_at` (claim insert time), NOT `fired_at` — the reconciler replays runs hours old, and an in-flight claim for an old run must not look healable to a concurrent pass (race found by the Prove-It tests).
+3. **`seq_watermarks` table** (not in the spec's schema) holds the one-time `.dispatch-state.json#dispatchSeq` migration floors; `nextSeq = max(runs, watermark) + 1`.
+4. **Schema versioning is a per-module `schema_migrations` table**, not `PRAGMA user_version` — a single global int would collide when a second domain module wants its own migration track.
+5. **`bun:sqlite` allowlist is `storage/db.ts` ONLY** (tighter than §11's two files): the ledger consumes the opaque `Db` handle and never imports sqlite. The rule lives in the existing `tests/architecture/adapter-boundary.test.ts` (no separate `sqlite-boundary.test.ts`).
+6. **Edit-conflict audit event is `tasks.edit_conflict`** (the tasks plugin's `ctx.activity.audit` auto-prefixes the plugin id), not `task.edit_conflict`.
+7. **No `*.fail_closed` audit events.** Fail-closed surfaces through the doctor `execution-safety` check probing the ledger directly (errors when unreachable) plus the throwing call sites' logs.
+8. **Completion-gate ordering nuance:** a move-to-done on a task already in Done skips the (store-rejected `done→done`) column move and goes straight to the gate — a retry of a success must never error. Found by the live smoke test; the unit move-fake now validates transitions.
+9. **UI `expectedVersion` adoption** not included (as §4.6 anticipated) — REST/MCP accept it; UI wiring is future work.
+10. **DB filename:** `~/.bakin/bakin.db` (shared storage core, ledger as first domain module) per the §4.1 design — the §3.1 draft name `execution.db` from rev 1 never shipped.
+
+Validation beyond §8: gold-standard e2e against a real dockerized OpenClaw (real cron fires → 1:1 tasks, bridge replay suppressed, restart + 24h reconcile with zero duplicates, real agent turn completing via MCP with run-linked completion row) — evidence on PR #465. Rig-state gaps found during setup: #467.

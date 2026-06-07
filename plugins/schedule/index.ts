@@ -843,6 +843,11 @@ const HEAL_AFTER_MS = 5 * 60_000
  * so healing creates AT MOST one task per run — and re-evaluates pause/skip
  * state at heal time so a paused job's stranded claim is consumed, not
  * resurrected into a task.
+ *
+ * The scan→heal pass is not itself transactional; it's safe because the
+ * server singleton lock guarantees one process and `reconcileRunning`
+ * serializes passes within it. If either assumption ever changes, the heal
+ * needs a claim-the-heal CAS (e.g. pending → healing disposition).
  */
 async function healPendingCronClaims(): Promise<void> {
   let stale: ReturnType<typeof findHealableCronClaims>

@@ -10,6 +10,7 @@ import * as watchdog from './watchdog'
 import * as watcher from './watcher'
 import * as doctor from './doctor'
 import { maybeGetAppServices } from './app-services'
+import { closeDb } from '../../packages/core/src/storage/db'
 import { releaseServerLock } from './server-lock'
 import { pluginRegistry } from '../lib/plugin-registry'
 
@@ -57,6 +58,10 @@ async function shutdown(signal: string, exitCode = 0): Promise<void> {
   if (registered) {
     appendAudit(registered.contentDir, 'system.shutdown', 'system', { signal, exitCode })
   }
+
+  // Close the execution-ledger handle (checkpoints WAL — disk hygiene; a
+  // crash without this is still safe, SQLite recovers on next open).
+  closeDb()
 
   // Release the singleton lock (no-op if this process doesn't hold it)
   releaseServerLock()
