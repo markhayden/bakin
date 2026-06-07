@@ -172,6 +172,18 @@ const eslintConfig = defineConfig([
       "no-restricted-imports": ["error", adapterBoundaryImportRestrictions],
     },
   },
+  // The shared storage core is the SOLE bun:sqlite importer (enforced by
+  // tests/architecture/adapter-boundary.test.ts). Re-apply the adapter
+  // boundary minus the bun:sqlite path for this one file.
+  {
+    files: ["packages/core/src/storage/db.ts"],
+    rules: {
+      "no-restricted-imports": ["error", {
+        paths: adapterBoundaryImportRestrictions.paths.filter((p) => p.name !== "bun:sqlite"),
+        patterns: adapterBoundaryImportRestrictions.patterns,
+      }],
+    },
+  },
   // Plugin isolation: every plugin talks to Bakin's shell and to other
   // plugins exclusively through @makinbakin/sdk/*. Direct imports from another
   // plugin's internals or from Bakin's src/ components/hooks are banned so
