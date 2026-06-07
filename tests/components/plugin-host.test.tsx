@@ -203,6 +203,12 @@ describe('PluginHost — boot', () => {
     }))
     const consoleDebug = spyOn(console, 'debug').mockImplementation(() => {})
     const originalGetEntriesByType = window.performance.getEntriesByType
+    // Anchor mock entries to live performance.now(): the resource-summary
+    // filter compares entry times against real boot timestamps, and bun runs
+    // the whole suite in one process — absolute times (startTime: 0,
+    // responseEnd: 100_000) fall outside the boot window once the process has
+    // been up >100s, silently dropping the resourceSummary span.
+    const bootBase = performance.now()
     Object.defineProperty(window.performance, 'getEntriesByType', {
       configurable: true,
       value: mock((type: string) => type === 'resource'
@@ -210,8 +216,8 @@ describe('PluginHost — boot', () => {
             {
               name: 'http://localhost/api/plugins/x/assets/client.js?v=diag',
               initiatorType: 'script',
-              startTime: 0,
-              responseEnd: 100_000,
+              startTime: bootBase,
+              responseEnd: bootBase + 100_000,
               duration: 123.45,
               transferSize: 2048,
               encodedBodySize: 1024,
@@ -220,8 +226,8 @@ describe('PluginHost — boot', () => {
             {
               name: 'http://localhost/node_modules/.vite/deps/react.js',
               initiatorType: 'script',
-              startTime: 0,
-              responseEnd: 100_000,
+              startTime: bootBase,
+              responseEnd: bootBase + 100_000,
               duration: 20,
               transferSize: 512,
               encodedBodySize: 256,
