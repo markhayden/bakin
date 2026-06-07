@@ -48,6 +48,8 @@ export interface Task {
   source?: TaskSource
   order?: number
   updatedAt?: number
+  /** Optimistic concurrency counter (absent = 0 on pre-upgrade tasks). */
+  version?: number
 }
 
 export interface TaskColumns {
@@ -147,6 +149,7 @@ function taskToView(task: BakinTask): Task {
     source: task.source,
     order: task.order,
     updatedAt: Date.parse(task.updatedAt),
+    version: task.version ?? 0,
   }
 }
 
