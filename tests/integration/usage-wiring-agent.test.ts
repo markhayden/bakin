@@ -34,6 +34,18 @@ mock.module('../../src/core/audit', () => ({
   appendAudit: mock(),
 }))
 
+// In-memory completion-gate fake — usage wiring, not ledger semantics.
+const ledgerMock = () => ({
+  recordCompletion: (taskId: string, input: { runId?: string; agent: string; channel?: string }) => ({
+    recorded: true as const,
+  }),
+  hasCompletion: () => false,
+  deleteCompletion: () => false,
+  getLiveRun: () => null,
+})
+mock.module('@/core/execution-ledger', ledgerMock)
+mock.module('../../src/core/execution-ledger', ledgerMock)
+
 // Watcher would otherwise try to chokidar the temp dir.
 mock.module('../../src/core/watcher', () => ({
   watchContentDir: mock(),

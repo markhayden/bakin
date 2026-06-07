@@ -387,10 +387,12 @@ const routes = [
       }
       try {
         const effectiveChannel = (body.channel === 'human' && agent === 'human') ? 'human' as const : 'rest' as const
-        await moveTaskWithEffects(identifier, to, agent, { from, channel: effectiveChannel })
-        ctx.activity.log(agent, `Moved task to "${to}"`, { taskId: identifier })
-        indexTask(ctx, identifier).catch(() => {})
-        return Response.json({ ok: true as const })
+        const { alreadyComplete } = await moveTaskWithEffects(identifier, to, agent, { from, channel: effectiveChannel })
+        if (!alreadyComplete) {
+          ctx.activity.log(agent, `Moved task to "${to}"`, { taskId: identifier })
+          indexTask(ctx, identifier).catch(() => {})
+        }
+        return Response.json({ ok: true as const, ...(alreadyComplete ? { alreadyComplete: true as const } : {}) })
       } catch (err) {
         const msg = (err as Error).message
         if (msg.includes('Workflow tasks cannot be moved')) {
@@ -525,10 +527,12 @@ const routes = [
       const agent = body.agent || 'system'
       const summary = body.summary || ''
       try {
-        await reportComplete(taskId, agent, summary, 'rest')
-        ctx.activity.log(agent, `Completed task: ${summary}`, { taskId })
-        indexTask(ctx, taskId).catch(() => {})
-        return Response.json({ ok: true as const })
+        const { alreadyComplete } = await reportComplete(taskId, agent, summary, 'rest')
+        if (!alreadyComplete) {
+          ctx.activity.log(agent, `Completed task: ${summary}`, { taskId })
+          indexTask(ctx, taskId).catch(() => {})
+        }
+        return Response.json({ ok: true as const, ...(alreadyComplete ? { alreadyComplete: true as const } : {}) })
       } catch (err) {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
       }
@@ -742,7 +746,10 @@ const tasksPlugin: BakinPlugin = definePlugin({
           return { ok: false, error: 'reason is required when moving to blocked' }
         }
         try {
-          await moveTaskWithEffects(taskId, to, agent, { channel: 'mcp' })
+          const { alreadyComplete } = await moveTaskWithEffects(taskId, to, agent, { channel: 'mcp' })
+          if (alreadyComplete) {
+            return { ok: true, alreadyComplete: true, note: 'Task was already completed — no duplicate side effects fired.' }
+          }
           indexTask(ctx, taskId).catch(() => {})
           return { ok: true }
         } catch (err) {
@@ -782,7 +789,12 @@ const tasksPlugin: BakinPlugin = definePlugin({
       },
       handler: async (params: Record<string, unknown>, agent: string) => {
         try {
-          await reportComplete(params.taskId as string, agent, params.summary as string, 'mcp')
+          const { alreadyComplete } = await reportComplete(params.taskId as string, agent, params.summary as string, 'mcp')
+          if (alreadyComplete) {
+            // An agent retrying a timed-out completion must see success, not
+            // an error — the work happened exactly once.
+            return { ok: true, alreadyComplete: true, note: 'Task was already completed — no duplicate side effects fired.' }
+          }
           indexTask(ctx, params.taskId as string).catch(() => {})
           return { ok: true }
         } catch (err) {

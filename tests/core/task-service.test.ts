@@ -22,6 +22,23 @@ mock.module('@/core/continuation', () => ({
   checkAndContinueDependents: mock(() => Promise.resolve()),
 }))
 
+// In-memory completion-gate fake — these unit tests exercise task-service
+// orchestration, not ledger semantics (covered by completion-gate.test.ts).
+const completionsFake = new Map<string, { taskId: string; runId: string | null; agent: string; channel: string | null; completedAt: number }>()
+const ledgerMock = () => ({
+  recordCompletion: (taskId: string, input: { runId?: string; agent: string; channel?: string }) => {
+    const existing = completionsFake.get(taskId)
+    if (existing) return { recorded: false as const, existing }
+    completionsFake.set(taskId, { taskId, runId: input.runId ?? null, agent: input.agent, channel: input.channel ?? null, completedAt: Date.now() })
+    return { recorded: true as const }
+  },
+  hasCompletion: (taskId: string) => completionsFake.has(taskId),
+  deleteCompletion: (taskId: string) => completionsFake.delete(taskId),
+  getLiveRun: () => null,
+})
+mock.module('@/core/execution-ledger', ledgerMock)
+mock.module('../../src/core/execution-ledger', ledgerMock)
+
 const mockRuntimeSend = mock((...args: unknown[]) => {
   void args
   return Promise.resolve({ id: 'runtime-msg' })
@@ -142,6 +159,7 @@ describe('task-service', () => {
 
   beforeEach(async () => {
     mock.clearAllMocks()
+    completionsFake.clear()
     mockBroadcast = mock()
     ;(globalThis as any).__bakinBroadcast = mockBroadcast
     service = await import('@/core/task-service')
