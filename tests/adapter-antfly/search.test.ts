@@ -447,6 +447,47 @@ describe('AntflySearchAdapter', () => {
     expect(created.schema).toBeUndefined()
   })
 
+  it('forwards optional api_url/multimodal embedder fields verbatim', async () => {
+    // Documented antfly EmbedderConfig pass-throughs: api_url routes the
+    // embedder over HTTP to a named inference endpoint, multimodal declares
+    // non-text support for models outside the built-in registry. Unset
+    // entries must omit the keys entirely.
+    const adapter = await createInitializedAdapter({
+      embedders: {
+        default: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5', dimension: 384 },
+        visual: {
+          provider: 'antfly',
+          model: 'antflydb/clipclap',
+          dimension: 512,
+          api_url: 'http://127.0.0.1:3738',
+          multimodal: true,
+        },
+      },
+    })
+
+    await adapter.tables.create('bakin_assets', {
+      fields: { content: { type: 'text' }, image_url: { type: 'keyword' } },
+      indexes: [
+        { name: 'assets_text', fields: ['content'], kind: 'vector' },
+        { name: 'assets_visual', fields: ['image_url'], kind: 'vector', embedderRef: 'visual', mediaUrlField: 'image_url' },
+      ],
+    })
+
+    const created = (mockTablesCreate.mock.calls as unknown as Array<[string, Record<string, unknown>]>)[0][1]
+    const indexes = created.indexes as Record<string, { embedder: Record<string, unknown> }>
+    expect(indexes.assets_visual.embedder).toEqual({
+      provider: 'antfly',
+      model: 'antflydb/clipclap',
+      api_url: 'http://127.0.0.1:3738',
+      multimodal: true,
+    })
+    // Default embedder carries no pass-through keys.
+    expect(indexes.assets_text.embedder).toEqual({
+      provider: 'antfly',
+      model: 'BAAI/bge-small-en-v1.5',
+    })
+  })
+
   it('maps generic media URL indexes to Antfly media templates', async () => {
     const adapter = await createInitializedAdapter()
 

@@ -14,8 +14,21 @@ export interface AntflySettings {
   /**
    * `dimension` is required for dense embeddings indexes: the v0.2 server
    * demands declared dims at table-create time (no auto-probe at this RC).
+   *
+   * `api_url` and `multimodal` are optional pass-throughs to antfly's
+   * EmbedderConfig: `api_url` routes that embedder's calls over HTTP to the
+   * named inference endpoint (e.g. the private instance's own /ai/v1)
+   * instead of the in-process runtime; `multimodal` declares non-text
+   * content support for models outside antfly's built-in registry. Both are
+   * documented antfly fields forwarded verbatim — unset entries omit them.
    */
-  embedders: Record<string, { provider: string; model: string; dimension: number }>
+  embedders: Record<string, {
+    provider: string
+    model: string
+    dimension: number
+    api_url?: string
+    multimodal?: boolean
+  }>
   chunking: {
     defaultTargetTokens: number
     defaultOverlapTokens: number

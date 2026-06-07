@@ -61,13 +61,17 @@ export function buildTableConfig(table: string, config: TableConfig, settings: A
   for (const idx of config.indexes ?? []) {
     if (idx.kind === 'text') continue
     const embedder = resolveEmbedder(idx.embedderRef ?? 'default', settings)
+    const embedderConfig: Record<string, unknown> = { provider: embedder.provider, model: embedder.model }
+    // Optional EmbedderConfig pass-throughs (see AntflySettings.embedders).
+    if (embedder.api_url !== undefined) embedderConfig.api_url = embedder.api_url
+    if (embedder.multimodal !== undefined) embedderConfig.multimodal = embedder.multimodal
     const entry: Record<string, unknown> = {
       name: idx.name,
       type: 'embeddings',
       template: indexTemplate(idx),
       // Declared dims are required for dense indexes at this server version.
       dimension: embedder.dimension,
-      embedder: { provider: embedder.provider, model: embedder.model },
+      embedder: embedderConfig,
     }
     if (idx.chunker?.enabled) {
       // v0.2 nests chunking under ChunkerConfig; 'fixed' is the built-in
@@ -93,7 +97,7 @@ function indexTemplate(idx: SearchIndexConfig): string {
   return idx.template ?? idx.fields.map((field) => `{{${field}}}`).join(' ')
 }
 
-function resolveEmbedder(ref: string, settings: AntflySettings): { provider: string; model: string; dimension: number } {
+function resolveEmbedder(ref: string, settings: AntflySettings): AntflySettings['embedders'][string] {
   const match = settings.embedders[ref]
   if (!match) {
     const available = Object.keys(settings.embedders).join(', ')
