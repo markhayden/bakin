@@ -4,11 +4,43 @@
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
 import { dirname } from 'path'
+import { randomUUID } from 'crypto'
+import { z } from 'zod'
 import { createLogger } from '../../../src/core/logger'
 import { getContentDir } from '../../../src/core/content-dir'
 import type { ScheduleSidecar, BakinJobMeta } from '../types'
 
 const log = createLogger('schedule:sidecar')
+
+/** Mint a Bakin-owned schedule id (no longer derived from the runtime cron id). */
+export function newScheduleId(): string {
+  return `sch_${randomUUID()}`
+}
+
+// Validated on read. The envelope is strict (a bad version/shape means an
+// unreadable file → empty, never a half-parsed store); individual jobs are
+// validated leniently and a single malformed entry is dropped rather than
+// nuking every other valid schedule.
+const scheduleDefSchema = z.object({
+  kind: z.enum(['cron', 'every', 'at']),
+  expr: z.string(),
+})
+
+const bakinJobMetaSchema = z
+  .object({
+    jobId: z.string(),
+    isBakinJob: z.boolean(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+    schedule: scheduleDefSchema.optional(),
+    enabled: z.boolean().optional(),
+  })
+  .passthrough()
+
+const sidecarEnvelopeSchema = z.object({
+  version: z.literal(1),
+  jobs: z.record(z.string(), z.unknown()),
+})
 
 const DEFAULTS = {
   maxFailures: 3,
@@ -27,12 +59,21 @@ export function readSidecar(): ScheduleSidecar {
   }
   try {
     const raw = readFileSync(path, 'utf-8')
-    const data = JSON.parse(raw)
-    if (data.version !== 1 || typeof data.jobs !== 'object') {
+    const envelope = sidecarEnvelopeSchema.safeParse(JSON.parse(raw))
+    if (!envelope.success) {
       log.warn('Invalid sidecar format, returning empty')
       return { version: 1, jobs: {} }
     }
-    return data as ScheduleSidecar
+    const jobs: Record<string, BakinJobMeta> = {}
+    for (const [id, rawJob] of Object.entries(envelope.data.jobs)) {
+      const parsed = bakinJobMetaSchema.safeParse(rawJob)
+      if (parsed.success) {
+        jobs[id] = parsed.data as unknown as BakinJobMeta
+      } else {
+        log.warn('Skipping structurally-invalid schedule job', { jobId: id })
+      }
+    }
+    return { version: 1, jobs }
   } catch (err) {
     log.warn('Failed to read sidecar', err)
     return { version: 1, jobs: {} }

@@ -39,6 +39,7 @@ import {
   shouldSkip,
   recordFailure,
   recordSuccess,
+  newScheduleId,
 } from '@bakin/schedule/lib/sidecar'
 import type { BakinJobMeta, ScheduleSidecar } from '@bakin/schedule/types'
 
@@ -104,6 +105,43 @@ describe('schedule/sidecar', () => {
       const sidecar = readSidecar()
       expect(sidecar.version).toBe(1)
       expect(Object.keys(sidecar.jobs)).toHaveLength(0)
+    })
+  })
+
+  describe('Bakin-owned schedule fields', () => {
+    it('round-trips the schedule definition and enabled flag', () => {
+      upsertJob(makeMeta({
+        jobId: 'j1',
+        schedule: { kind: 'cron', expr: '0 9 * * *' },
+        enabled: true,
+      }))
+      const job = getJob('j1')
+      expect(job!.schedule).toEqual({ kind: 'cron', expr: '0 9 * * *' })
+      expect(job!.enabled).toBe(true)
+    })
+
+    it('skips a structurally-invalid job but keeps the valid ones', () => {
+      const path = join(testDir, 'schedule', 'sidecar.json')
+      writeFileSync(path, JSON.stringify({
+        version: 1,
+        jobs: {
+          good: makeMeta({ jobId: 'good', displayName: 'Keep me' }),
+          bad: { jobId: 'bad', isBakinJob: 'not-a-boolean' }, // wrong type → dropped
+        },
+      }))
+      const sidecar = readSidecar()
+      expect(sidecar.jobs.good).toBeDefined()
+      expect(sidecar.jobs.good.displayName).toBe('Keep me')
+      expect(sidecar.jobs.bad).toBeUndefined()
+    })
+  })
+
+  describe('newScheduleId', () => {
+    it('mints a Bakin-owned id with the sch_ prefix', () => {
+      expect(newScheduleId()).toMatch(/^sch_[0-9a-f-]{36}$/)
+    })
+    it('mints unique ids', () => {
+      expect(newScheduleId()).not.toBe(newScheduleId())
     })
   })
 
