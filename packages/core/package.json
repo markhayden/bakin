@@ -36,6 +36,8 @@
     "./constants": "./src/constants.ts",
     "./storage": "./src/storage/markdown-adapter.ts",
     "./storage/scoped-plugin-storage": "./src/storage/scoped-plugin-storage.ts",
+    "./storage/db": "./src/storage/db.ts",
+    "./execution/ledger": "./src/execution/ledger.ts",
     "./events": "./src/events/event-bus.ts",
     "./parsers/*": "./src/parsers/*.ts",
     "./format": "./src/format.ts"
