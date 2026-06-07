@@ -185,8 +185,10 @@ describe('cron_fires — claim before create', () => {
     attachCronTask('job2', 'run-created', 'task-xyz')
     claimCronFire('job2', 'run-skipped', now - 10_000)
     markCronFireSkipped('job2', 'run-skipped')
-    claimCronFire('job2', 'run-stale-pending', now - 10_000)
-    claimCronFire('job2', 'run-fresh-pending', now)
+    claimCronFire('job2', 'run-stale-pending', now - 10_000, 'pending', now - 10_000)
+    // Old LOGICAL fire time but freshly claimed (reconciler catch-up replay) —
+    // must NOT be healable while its create is in flight.
+    claimCronFire('job2', 'run-fresh-pending', now - 10_000, 'pending', now)
 
     const healable = findHealableCronClaims(5_000, now)
     expect(healable.map((c) => c.runId)).toEqual(['run-stale-pending'])

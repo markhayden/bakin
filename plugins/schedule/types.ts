@@ -37,8 +37,8 @@ export interface BakinJobMeta {
   createdAt: string
   updatedAt: string
   lastTaskId?: string
-  processedRunIds?: string[]
-  lastProcessedRunAt?: string
+  // Run-level dedup lives in the execution ledger (cron_fires) — the legacy
+  // processedRunIds/lastProcessedRunAt fields are seeded there once on boot.
   originalRuntimeCron?: {
     provider: string
     capturedAt: string

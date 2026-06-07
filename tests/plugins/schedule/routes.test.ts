@@ -257,6 +257,7 @@ mock.module('@bakin/schedule/lib/cron-parser', () => ({
 import { activatePlugin, findRoute, findTool, callRoute, callTool, callSearchRoute } from '../test-helpers'
 const schedulePlugin = (await import('@bakin/schedule/index')).default
 import { upsertJob, getJob } from '@bakin/schedule/lib/sidecar'
+import { getCronFire } from '../../../src/core/execution-ledger'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1033,7 +1034,8 @@ describe('schedule routes', () => {
       })
 
       expect(mockCreateTask).toHaveBeenCalledTimes(1)
-      expect(getJob('job-run-bakin')!.processedRunIds).toContain('run-now')
+      // Run-level dedup lives in the execution ledger (cron_fires) now
+      expect(getCronFire('job-run-bakin', 'run-now')?.disposition).toBe('created')
     })
 
     it.skip('returns 400 when jobId is missing — legacy: routing requires :jobId in path', () => {})

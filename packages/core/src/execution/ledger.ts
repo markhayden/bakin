@@ -58,7 +58,8 @@ const MIGRATIONS = [
         `CREATE TABLE cron_fires (
            job_id      TEXT NOT NULL,
            run_id      TEXT NOT NULL,
-           fired_at    INTEGER NOT NULL,
+           fired_at    INTEGER NOT NULL, -- the run's logical time (may be old: reconciler catch-up)
+           claimed_at  INTEGER NOT NULL, -- when WE claimed it — healer staleness keys on this
            task_id     TEXT,
            disposition TEXT NOT NULL DEFAULT 'pending'
                        CHECK (disposition IN ('pending','created','skipped','seeded')),
@@ -328,6 +329,7 @@ export interface CronFireRow {
   jobId: string
   runId: string
   firedAt: number
+  claimedAt: number
   taskId: string | null
   disposition: 'pending' | 'created' | 'skipped' | 'seeded'
 }
@@ -336,6 +338,7 @@ interface RawCronFireRow {
   job_id: string
   run_id: string
   fired_at: number
+  claimed_at: number
   task_id: string | null
   disposition: CronFireRow['disposition']
 }
@@ -345,6 +348,7 @@ function toCronFireRow(raw: RawCronFireRow): CronFireRow {
     jobId: raw.job_id,
     runId: raw.run_id,
     firedAt: raw.fired_at,
+    claimedAt: raw.claimed_at,
     taskId: raw.task_id,
     disposition: raw.disposition,
   }
@@ -361,13 +365,15 @@ export function claimCronFire(
   runId: string,
   firedAt?: number,
   disposition: CronFireRow['disposition'] = 'pending',
+  now?: number,
 ): ClaimCronFireResult {
   const db = ledger()
   try {
-    db.prepare('INSERT INTO cron_fires (job_id, run_id, fired_at, disposition) VALUES (?, ?, ?, ?)').run(
+    db.prepare('INSERT INTO cron_fires (job_id, run_id, fired_at, claimed_at, disposition) VALUES (?, ?, ?, ?, ?)').run(
       jobId,
       runId,
       firedAt ?? Date.now(),
+      now ?? Date.now(),
       disposition,
     )
     return { claimed: true }
@@ -412,13 +418,17 @@ export function markCronFireSkipped(jobId: string, runId: string): void {
  * Claims that stayed 'pending' too long: the process died between claim and
  * task creation. The healer re-creates the task UNDER THE SAME CLAIM —
  * rarely-miss, never-duplicate.
+ *
+ * Staleness keys on claimed_at (when the claim row was inserted), NOT
+ * fired_at: the reconciler replays runs hours old, and an in-flight claim
+ * for an old run must not look instantly healable to a concurrent pass.
  */
 export function findHealableCronClaims(olderThanMs: number, now?: number): CronFireRow[] {
   return guard('findHealableCronClaims', () => {
     const cutoff = (now ?? Date.now()) - olderThanMs
     return ledger()
       .prepare<RawCronFireRow, [number]>(
-        'SELECT * FROM cron_fires WHERE disposition = \'pending\' AND fired_at < ? ORDER BY fired_at',
+        'SELECT * FROM cron_fires WHERE disposition = \'pending\' AND claimed_at < ? ORDER BY claimed_at',
       )
       .all(cutoff)
       .map(toCronFireRow)

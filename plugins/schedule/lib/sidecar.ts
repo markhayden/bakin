@@ -16,8 +16,6 @@ const DEFAULTS = {
   requireTriage: false,
 } as const
 
-const MAX_PROCESSED_RUN_IDS = 100
-
 function getSidecarPath(): string {
   return `${getContentDir()}/schedule/sidecar.json`
 }
@@ -69,15 +67,10 @@ export function removeJob(jobId: string): boolean {
   return true
 }
 
-export function hasProcessedRun(meta: BakinJobMeta, runId: string): boolean {
-  return (meta.processedRunIds ?? []).includes(runId)
-}
-
-export function recordProcessedRun(meta: BakinJobMeta, runId: string, processedAt = new Date().toISOString()): void {
-  const ids = meta.processedRunIds ?? []
-  meta.processedRunIds = [...ids.filter(id => id !== runId), runId].slice(-MAX_PROCESSED_RUN_IDS)
-  meta.lastProcessedRunAt = processedAt
-}
+// Run-level dedup lives in the execution ledger (cron_fires table) — the
+// legacy processedRunIds sidecar machinery was a TOCTOU race (state persisted
+// AFTER slow task creation) and is seeded into the ledger once on upgrade by
+// seedCronFireLedgerFromSidecar() in the plugin entry.
 
 /** Apply defaults to a sidecar entry for display. */
 export function withDefaults(
