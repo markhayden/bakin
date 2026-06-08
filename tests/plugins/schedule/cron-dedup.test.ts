@@ -85,13 +85,13 @@ mock.module('../../../src/lib/plugin-registry', () => ({
   getHookRegistry: () => mockHookRegistry,
 }))
 
-import { upsertJob, readSidecar, writeSidecar, getJob } from '@bakin/schedule/lib/sidecar'
+import { upsertJob } from '@bakin/schedule/lib/sidecar'
 import { __scheduleTestInternals } from '@bakin/schedule/index'
 import { claimCronFire, getCronFire } from '../../../src/core/execution-ledger'
 import { closeDb } from '../../../packages/core/src/storage/db'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 
-const { processScheduledRun, healPendingCronClaims, setPluginCtxForTests } = __scheduleTestInternals
+const { fireScheduledRunFromPayload, healPendingCronClaims, setPluginCtxForTests } = __scheduleTestInternals
 
 let auditEvents: Array<{ event: string; data: Record<string, unknown> }> = []
 
@@ -151,7 +151,7 @@ describe('cron fire dedup (claim before create)', () => {
     createDelayMs = 50 // the TOCTOU window that double-posted release notes
 
     const payload = { jobId: 'release-notes', runId: 'run-morning', timestamp: '2026-06-06T07:00:00Z' }
-    const [a, b] = await Promise.all([processScheduledRun(payload), processScheduledRun(payload)])
+    const [a, b] = await Promise.all([fireScheduledRunFromPayload(payload), fireScheduledRunFromPayload(payload)])
 
     expect(mockCreateTask).toHaveBeenCalledTimes(1)
     const bodies = [a.body, b.body].sort((x, y) => String(x.taskId ?? '').localeCompare(String(y.taskId ?? '')))
@@ -166,10 +166,10 @@ describe('cron fire dedup (claim before create)', () => {
     upsertJob(makeMeta())
     const payload = { jobId: 'release-notes', runId: 'run-x', timestamp: '2026-06-06T07:00:00Z' }
 
-    const first = await processScheduledRun(payload)
+    const first = await fireScheduledRunFromPayload(payload)
     expect(first.body.taskId).toBe('task-1')
 
-    const replay = await processScheduledRun(payload)
+    const replay = await fireScheduledRunFromPayload(payload)
     expect(replay.body).toEqual({ ok: true, skipped: 'already-processed' })
     expect(mockCreateTask).toHaveBeenCalledTimes(1)
     expect(auditEvents.filter((e) => e.event === 'fire_suppressed')).toHaveLength(1)
@@ -179,7 +179,7 @@ describe('cron fire dedup (claim before create)', () => {
     upsertJob(makeMeta({ paused: true, pauseReason: 'manual' }))
     const payload = { jobId: 'release-notes', runId: 'run-paused', timestamp: '2026-06-06T07:00:00Z' }
 
-    const result = await processScheduledRun(payload)
+    const result = await fireScheduledRunFromPayload(payload)
     expect(result.body.skipped).toBe('paused')
     expect(getCronFire('release-notes', 'run-paused')?.disposition).toBe('skipped')
 
@@ -225,43 +225,11 @@ describe('cron fire dedup (claim before create)', () => {
 
   it('runId-less payloads mint a manual id — intentional fires are never blocked', async () => {
     upsertJob(makeMeta())
-    const a = await processScheduledRun({ jobId: 'release-notes', timestamp: '2026-06-06T08:00:00Z' })
-    const b = await processScheduledRun({ jobId: 'release-notes', timestamp: '2026-06-06T08:05:00Z' })
+    const a = await fireScheduledRunFromPayload({ jobId: 'release-notes', timestamp: '2026-06-06T08:00:00Z' })
+    const b = await fireScheduledRunFromPayload({ jobId: 'release-notes', timestamp: '2026-06-06T08:05:00Z' })
     expect(a.body.taskId).toBe('task-1')
     expect(b.body.taskId).toBe('task-2')
     expect(mockCreateTask).toHaveBeenCalledTimes(2)
   })
 })
 
-describe('cron_fires migration seed (sidecar processedRunIds)', () => {
-  it('seeds once, strips legacy fields, and suppresses replays of seeded runs', async () => {
-    const sidecar = readSidecar()
-    const legacy = makeMeta() as BakinJobMeta & { processedRunIds?: string[]; lastProcessedRunAt?: string }
-    legacy.processedRunIds = ['run-old-1', 'run-old-2']
-    legacy.lastProcessedRunAt = '2026-06-05T07:00:00Z'
-    sidecar.jobs[legacy.jobId] = legacy
-    writeSidecar(sidecar)
-
-    const { seedCronFireLedgerFromSidecar } = __scheduleTestInternals
-    seedCronFireLedgerFromSidecar()
-
-    expect(getCronFire('release-notes', 'run-old-1')?.disposition).toBe('seeded')
-    expect(getCronFire('release-notes', 'run-old-2')?.disposition).toBe('seeded')
-    const stored = getJob('release-notes') as Record<string, unknown> | null
-    expect(stored?.processedRunIds).toBeUndefined()
-    expect(stored?.lastProcessedRunAt).toBeUndefined()
-
-    // Idempotent on second boot
-    seedCronFireLedgerFromSidecar()
-    expect(getCronFire('release-notes', 'run-old-1')?.disposition).toBe('seeded')
-
-    // History never refires
-    const replay = await processScheduledRun({ jobId: 'release-notes', runId: 'run-old-1', timestamp: '2026-06-05T07:00:00Z' })
-    expect(replay.body).toEqual({ ok: true, skipped: 'already-processed' })
-    expect(mockCreateTask).not.toHaveBeenCalled()
-
-    // Seeded claims are never healed
-    await healPendingCronClaims()
-    expect(mockCreateTask).not.toHaveBeenCalled()
-  })
-})

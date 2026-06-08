@@ -921,8 +921,8 @@ describe('schedule routes', () => {
   // POST /:jobId/run — trigger immediate run
   // -----------------------------------------------------------------------
   describe('POST /:jobId/run', () => {
-    it('triggers an immediate run via runtime cron', async () => {
-      mockRuntimeCronJobs.push({ id: 'job-run', name: 'Run', schedule: '0 9 * * *', command: 'run', enabled: true })
+    it('fires a Bakin schedule immediately without any runtime cron', async () => {
+      upsertJob(makeMeta({ jobId: 'job-run', schedule: { kind: 'cron', expr: '0 9 * * *' }, taskPrompt: 'Do it' }))
       const route = findRoute(plugin.routes, 'POST', '/:jobId/run')!
       expect(route).toBeDefined()
 
@@ -933,34 +933,34 @@ describe('schedule routes', () => {
 
       expect(status).toBe(200)
       expect(body.ok).toBe(true)
-      expect(mockCronRunNow).toHaveBeenCalledWith('job-run')
+      expect(mockCronRunNow).not.toHaveBeenCalled()
+      expect(mockCreateTask).toHaveBeenCalledTimes(1)
     })
 
-    it('creates a Bakin task for a successful Bakin-owned run-now result once', async () => {
-      upsertJob(makeMeta({ jobId: 'job-run-bakin', displayName: 'Run Bakin', taskPrompt: 'Do it' }))
-      mockRuntimeCronJobs.push({ id: 'job-run-bakin', name: 'Run Bakin', schedule: '0 9 * * *', command: 'run', enabled: true })
+    it('returns 404 for a non-Bakin / unknown job', async () => {
+      const route = findRoute(plugin.routes, 'POST', '/:jobId/run')!
+      const { status } = await callRoute(route, plugin.ctx, {
+        searchParams: { jobId: 'ghost' },
+        body: {},
+      })
+      expect(status).toBe(404)
+    })
+
+    it('each manual run is an intentional fire (not deduped)', async () => {
+      upsertJob(makeMeta({ jobId: 'job-run-bakin', displayName: 'Run Bakin', schedule: { kind: 'cron', expr: '0 9 * * *' }, taskPrompt: 'Do it' }))
       const route = findRoute(plugin.routes, 'POST', '/:jobId/run')!
 
-      await callRoute(route, plugin.ctx, {
-        searchParams: { jobId: 'job-run-bakin' },
-        body: {},
-      })
-      await callRoute(route, plugin.ctx, {
-        searchParams: { jobId: 'job-run-bakin' },
-        body: {},
-      })
+      await callRoute(route, plugin.ctx, { searchParams: { jobId: 'job-run-bakin' }, body: {} })
+      await callRoute(route, plugin.ctx, { searchParams: { jobId: 'job-run-bakin' }, body: {} })
 
-      expect(mockCreateTask).toHaveBeenCalledTimes(1)
-      // Run-level dedup lives in the execution ledger (cron_fires) now
-      expect(getCronFire('job-run-bakin', 'run-now')?.disposition).toBe('created')
+      // Manual triggers mint a unique run id each time → each one fires.
+      expect(mockCreateTask).toHaveBeenCalledTimes(2)
     })
 
     it.skip('returns 400 when jobId is missing — legacy: routing requires :jobId in path', () => {})
 
-    it.skip('reads jobId from body when not in searchParams — legacy fallback; routing requires :jobId in path', () => {})
-
     it('audits and logs the run_now action', async () => {
-      mockRuntimeCronJobs.push({ id: 'job-audit-run', name: 'Run', schedule: '0 9 * * *', command: 'run', enabled: true })
+      upsertJob(makeMeta({ jobId: 'job-audit-run', schedule: { kind: 'cron', expr: '0 9 * * *' } }))
       const route = findRoute(plugin.routes, 'POST', '/:jobId/run')!
       await callRoute(route, plugin.ctx, {
         searchParams: { jobId: 'job-audit-run' },
@@ -1053,12 +1053,10 @@ describe('schedule routes', () => {
     })
   })
 
-  // -----------------------------------------------------------------------
-  // Bridge route is skipped (tested in bridge.test.ts)
-  // -----------------------------------------------------------------------
-  it('registers a /bridge route', () => {
-    const route = findRoute(plugin.routes, 'POST', '/bridge')
-    expect(route).toBeDefined()
+  it('no longer registers the removed /bridge route', () => {
+    // The cron→task bridge webhook was removed when Bakin took ownership of
+    // scheduling; nothing should POST to /bridge anymore.
+    expect(findRoute(plugin.routes, 'POST', '/bridge')).toBeUndefined()
   })
 })
 
@@ -1724,7 +1722,6 @@ describe('schedule plugin activation', () => {
       { method: 'POST', path: '/:jobId/run' },
       { method: 'GET', path: '/:jobId/runs' },
       { method: 'POST', path: '/parse' },
-      { method: 'POST', path: '/bridge' },
     ]
 
     for (const expected of expectedRoutes) {
