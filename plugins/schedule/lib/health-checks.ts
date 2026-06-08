@@ -145,8 +145,9 @@ async function checkScheduleSyncInternal(
  * cutover a Bakin schedule fires from the store and must have NO runtime cron —
  * a lingering one means the cutover didn't complete (e.g. OpenClaw was
  * unreachable at boot) and the job can rogue-fire. The repair completes the
- * migration. This is the end-user migration/repair command:
- *   bakin check schedule-cutover   /   bakin install schedule-cutover
+ * migration. Surfaced by `bakin doctor --full` (server-side check) and
+ * completed by `bakin doctor --fix` — `bakin check` only routes the fixed
+ * onboarding checks, not plugin-registered health checks like this one.
  */
 export async function checkScheduleCutover(
   cron: RuntimeCronReader,
