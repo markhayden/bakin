@@ -279,3 +279,51 @@ describe('FR2: triage blocks do not count toward auto-pause', () => {
     expect(mockCreateTask).toHaveBeenCalledTimes(1)
   })
 })
+
+// ---------------------------------------------------------------------------
+// FR3 — catch-up tasks labeled by occurrence date
+// ---------------------------------------------------------------------------
+describe('FR3: task labeled by occurrence/fired date, not creation time', () => {
+  it('AC3.1: a catch-up fire for a past occurrence is titled with that occurrence date', async () => {
+    upsertJob(makeMeta()) // taskTitle: 'Release notes {date}'
+
+    await fireScheduledRunFromPayload({
+      jobId: 'release-notes', runId: 'run-catchup', timestamp: '2026-06-07T15:00:00Z',
+    })
+
+    expect(createdTaskOpts[0]?.title).toBe('Release notes 2026-06-07')
+  })
+
+  it('AC3.2: an on-time fire is titled with that fire date', async () => {
+    upsertJob(makeMeta())
+
+    await fireScheduledRunFromPayload({
+      jobId: 'release-notes', runId: 'run-ontime', timestamp: '2026-06-08T15:00:00Z',
+    })
+
+    expect(createdTaskOpts[0]?.title).toBe('Release notes 2026-06-08')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// FR4 — end-to-end cascade: a stale blocked triage task no longer eats the
+// next real fire, and the new run is correctly labeled + not penalized.
+// ---------------------------------------------------------------------------
+describe('FR4: blocked triage task does not suppress the next real fire', () => {
+  it('AC4.1: next occurrence fires, is dispatched, correctly dated, and not counted as a failure', async () => {
+    upsertJob(makeMeta({ lastTaskId: 'task-stale-triage', consecutiveFailures: 0 }))
+    // Yesterday's catch-up triage block, still sitting in blocked.
+    emptyBoard.columns.blocked.push({ id: 'task-stale-triage', blockedReason: MISSED_WINDOW_REASON })
+
+    // Today's real fire.
+    const result = await fireScheduledRunFromPayload({
+      jobId: 'release-notes', runId: 'run-today', timestamp: '2026-06-08T15:00:00Z',
+    })
+
+    expect(result.body.skipped).toBeUndefined()
+    expect(result.body.taskId).toBe(createdTasks[0])
+    expect(createdTaskOpts[0]?.title).toBe('Release notes 2026-06-08')
+    expect(getJob('release-notes')!.consecutiveFailures).toBe(0)
+    expect(getJob('release-notes')!.paused).toBeFalsy()
+  })
+})

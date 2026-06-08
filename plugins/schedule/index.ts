@@ -327,7 +327,7 @@ async function fireScheduledRun(meta: BakinJobMeta, jobId: string, runId: string
     })
     return { status: 200, body: { ok: true, skipped: 'already-processed' } }
   }
-  return runClaimedFire(meta, jobId, runId)
+  return runClaimedFire(meta, jobId, runId, { firedAtMs })
 }
 
 /** Drive a fire from a {jobId, runId?, timestamp?} payload — manual triggers
@@ -372,7 +372,7 @@ async function runClaimedFire(
   meta: BakinJobMeta,
   jobId: string,
   runId: string,
-  opts: { column?: string; blockedReason?: string } = {},
+  opts: { column?: string; blockedReason?: string; firedAtMs?: number } = {},
 ): Promise<ProcessRunResult> {
   const defaults = withDefaults(meta, await getScheduleDefaultOwner())
 
@@ -444,17 +444,19 @@ async function runClaimedFire(
     }
   }
 
-  // Create the task
-  const now = new Date()
+  // Create the task. Label by the run's logical OCCURRENCE time, not wall-clock
+  // creation time — a catch-up task for a missed run must read as the day it was
+  // supposed to fire, not the (later) day it was created (see SPEC FR3).
+  const labelDate = new Date(opts.firedAtMs ?? Date.now())
   const templateVars = {
-    date: now.toISOString().slice(0, 10),
+    date: labelDate.toISOString().slice(0, 10),
     agent: meta.agentId ?? 'unassigned',
     jobName: meta.displayName ?? jobId,
   }
 
   const title = meta.taskTitle
     ? expandTemplate(meta.taskTitle, templateVars)
-    : `${meta.displayName ?? jobId} — ${now.toLocaleDateString()}`
+    : `${meta.displayName ?? jobId} — ${labelDate.toLocaleDateString()}`
 
   const description = meta.taskPrompt
     ? expandTemplate(meta.taskPrompt, templateVars)
@@ -544,7 +546,7 @@ async function healPendingCronClaims(): Promise<void> {
       markCronFireSkipped(claim.jobId, claim.runId, 'job-removed')
       continue
     }
-    const result = await runClaimedFire(meta, claim.jobId, claim.runId)
+    const result = await runClaimedFire(meta, claim.jobId, claim.runId, { firedAtMs: claim.firedAt })
     pluginCtx?.activity.audit('fire_healed', 'system', {
       jobId: claim.jobId,
       runId: claim.runId,
@@ -570,10 +572,12 @@ function schedulerDeps(): SchedulerDeps {
     listJobs: () => Object.values(readSidecar().jobs).filter(job => job.isBakinJob),
     getCronFire: (jobId, runId) => getCronFire(jobId, runId),
     claimCronFire: (jobId, runId, firedAt) => claimCronFire(jobId, runId, firedAt),
-    fire: async (meta, jobId, runId, _occurrence, opts) => {
+    fire: async (meta, jobId, runId, occurrence, opts) => {
       await runClaimedFire(
         meta, jobId, runId,
-        opts?.blocked ? { column: 'blocked', blockedReason: MISSED_WINDOW_REASON } : {},
+        opts?.blocked
+          ? { column: 'blocked', blockedReason: MISSED_WINDOW_REASON, firedAtMs: occurrence.getTime() }
+          : { firedAtMs: occurrence.getTime() },
       )
     },
     log,
