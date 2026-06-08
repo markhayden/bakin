@@ -87,8 +87,8 @@ Each task is a single revertable commit. Any task can be reverted without breaki
 - Keep the fix inside `plugins/schedule/`; do not touch `src/core/dispatch.ts` (boundary in SPEC §9).
 
 ## Task checklist
-- [ ] T1 — extract `MISSED_WINDOW_REASON` (CP-A)
-- [ ] T2 — FR1 overlap excludes blocked
-- [ ] T3 — FR2 triage ≠ failure (CP-B)
-- [ ] T4 — FR3 occurrence-dated label + FR4 cascade regression (CP-C)
-- [ ] T5 — docs (CP-D)
+- [x] T1 — extract `MISSED_WINDOW_REASON` (CP-A) ✅ 25887fc9
+- [x] T2 — FR1 overlap excludes blocked ✅ 00047741
+- [x] T3 — FR2 triage ≠ failure (CP-B) ✅ af75c222
+- [x] T4 — FR3 occurrence-dated label + FR4 cascade regression (CP-C) ✅ 7483e25e
+- [x] T5 — docs (CP-D)
