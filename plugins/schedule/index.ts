@@ -333,6 +333,18 @@ async function fireScheduledRunFromPayload(payload: { jobId: string; runId?: str
   return fireScheduledRun(meta, payload.jobId, runId, firedAt)
 }
 
+/** True if a task with this id exists on the board (any column). Lets a fire
+ *  detect "row created but a post-create effect threw" and attach the claim
+ *  instead of leaving it pending for the healer to duplicate. */
+function storedTaskExists(taskId: string): boolean {
+  try {
+    const board = readTaskboard() as unknown as { columns: Record<string, Array<{ id: string }>> }
+    return Object.values(board.columns).some(col => (col ?? []).some(t => t.id === taskId))
+  } catch {
+    return false
+  }
+}
+
 async function runClaimedFire(
   meta: BakinJobMeta,
   jobId: string,
@@ -423,9 +435,15 @@ async function runClaimedFire(
     ? expandTemplate(meta.taskPrompt, templateVars)
     : undefined
 
+  // Pre-mint the task id so that if a post-create effect throws (e.g. the
+  // workflow-start hook fails AFTER the row is written), we can still attach the
+  // existing task to the claim. Otherwise the claim stays `pending`, the healer
+  // re-drives it, and a *second* task is minted for the same occurrence (#472).
+  const column = opts.column ?? 'todo'
+  const taskId = `task-${randomUUID()}`
   try {
-    const column = opts.column ?? 'todo'
-    const result = await createTaskWithEffects({
+    await createTaskWithEffects({
+      id: taskId,
       title,
       description,
       column,
@@ -441,29 +459,36 @@ async function runClaimedFire(
         purpose: 'scheduled-run',
       },
     })
-    const taskId = result.id
-
-    meta.lastTaskId = taskId
-    attachCronTask(jobId, runId, taskId)
-    upsertJob(meta)
-
-    // Audit + activity feed
-    if (pluginCtx) {
-      pluginCtx.activity.audit('task_created', 'system', {
-        jobId, runId, taskId, agent: meta.agentId, owner: defaults.owner,
-        ...(column !== 'todo' ? { column, blockedReason: opts.blockedReason } : {}),
-      })
-      const where = column === 'blocked' ? ' (blocked — missed schedule window)' : ''
-      pluginCtx.activity.log('system', `Schedule "${meta.displayName ?? jobId}" created task ${taskId}${meta.agentId ? ` for ${meta.agentId}` : ''}${where}`, { taskId })
-    }
-
-    return { status: 200, body: { ok: true, taskId } }
   } catch (err) {
-    log.error('Bridge failed to create task', err)
-    recordFailure(meta)
-    upsertJob(meta)
-    return { status: 500, body: { ok: false, error: (err as Error).message } }
+    // If the row was never written, the claim is safe to retry — leave it
+    // pending and surface the failure. If it WAS written (post-create effect
+    // failed), fall through to attach it so the next heal can't duplicate it.
+    if (!storedTaskExists(taskId)) {
+      log.error('Schedule failed to create task', err)
+      recordFailure(meta)
+      upsertJob(meta)
+      return { status: 500, body: { ok: false, error: (err as Error).message } }
+    }
+    log.warn('Scheduled task row created but a post-create effect failed; attaching to claim to avoid a duplicate', {
+      jobId, runId, taskId, error: err instanceof Error ? err.message : String(err),
+    })
   }
+
+  meta.lastTaskId = taskId
+  attachCronTask(jobId, runId, taskId)
+  upsertJob(meta)
+
+  // Audit + activity feed
+  if (pluginCtx) {
+    pluginCtx.activity.audit('task_created', 'system', {
+      jobId, runId, taskId, agent: meta.agentId, owner: defaults.owner,
+      ...(column !== 'todo' ? { column, blockedReason: opts.blockedReason } : {}),
+    })
+    const where = column === 'blocked' ? ' (blocked — missed schedule window)' : ''
+    pluginCtx.activity.log('system', `Schedule "${meta.displayName ?? jobId}" created task ${taskId}${meta.agentId ? ` for ${meta.agentId}` : ''}${where}`, { taskId })
+  }
+
+  return { status: 200, body: { ok: true, taskId } }
 }
 
 const HEAL_AFTER_MS = 5 * 60_000

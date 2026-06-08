@@ -60,9 +60,9 @@ mock.module('../../../src/core/audit', () => ({
 let createDelayMs = 0
 let createdTasks: string[] = []
 const mockCreateTask = mock(async (opts?: unknown) => {
-  void opts
   if (createDelayMs > 0) await new Promise((r) => setTimeout(r, createDelayMs))
-  const id = `task-${createdTasks.length + 1}`
+  // Honor the caller-minted id (runClaimedFire now pre-mints task ids).
+  const id = (opts as { id?: string })?.id ?? `task-${createdTasks.length + 1}`
   createdTasks.push(id)
   return { id, workflowId: undefined }
 })
@@ -135,6 +135,7 @@ beforeEach(() => {
   createdTasks = []
   createDelayMs = 0
   auditEvents = []
+  for (const col of Object.values(emptyBoard.columns)) (col as unknown[]).length = 0
   mockCreateTask.mockClear()
   setPluginCtxForTests(makeCtx())
 })
@@ -154,12 +155,13 @@ describe('cron fire dedup (claim before create)', () => {
     const [a, b] = await Promise.all([fireScheduledRunFromPayload(payload), fireScheduledRunFromPayload(payload)])
 
     expect(mockCreateTask).toHaveBeenCalledTimes(1)
-    const bodies = [a.body, b.body].sort((x, y) => String(x.taskId ?? '').localeCompare(String(y.taskId ?? '')))
-    expect(bodies.some((r) => r.taskId === 'task-1')).toBe(true)
+    expect(createdTasks).toHaveLength(1)
+    const bodies = [a.body, b.body]
+    expect(bodies.some((r) => r.taskId === createdTasks[0])).toBe(true)
     expect(bodies.some((r) => r.skipped === 'already-processed')).toBe(true)
     expect(auditEvents.filter((e) => e.event === 'fire_suppressed')).toHaveLength(1)
     expect(getCronFire('release-notes', 'run-morning')?.disposition).toBe('created')
-    expect(getCronFire('release-notes', 'run-morning')?.taskId).toBe('task-1')
+    expect(getCronFire('release-notes', 'run-morning')?.taskId).toBe(createdTasks[0])
   })
 
   it('a sequential replay of the same runId is suppressed', async () => {
@@ -167,7 +169,7 @@ describe('cron fire dedup (claim before create)', () => {
     const payload = { jobId: 'release-notes', runId: 'run-x', timestamp: '2026-06-06T07:00:00Z' }
 
     const first = await fireScheduledRunFromPayload(payload)
-    expect(first.body.taskId).toBe('task-1')
+    expect(first.body.taskId).toBe(createdTasks[0])
 
     const replay = await fireScheduledRunFromPayload(payload)
     expect(replay.body).toEqual({ ok: true, skipped: 'already-processed' })
@@ -198,7 +200,7 @@ describe('cron fire dedup (claim before create)', () => {
     expect(mockCreateTask).toHaveBeenCalledTimes(1)
     const fire = getCronFire('release-notes', 'run-crashed')
     expect(fire?.disposition).toBe('created')
-    expect(fire?.taskId).toBe('task-1')
+    expect(fire?.taskId).toBe(createdTasks[0])
     expect(auditEvents.filter((e) => e.event === 'fire_healed')).toHaveLength(1)
 
     // Healing is idempotent — a second pass finds nothing pending
@@ -227,9 +229,33 @@ describe('cron fire dedup (claim before create)', () => {
     upsertJob(makeMeta())
     const a = await fireScheduledRunFromPayload({ jobId: 'release-notes', timestamp: '2026-06-06T08:00:00Z' })
     const b = await fireScheduledRunFromPayload({ jobId: 'release-notes', timestamp: '2026-06-06T08:05:00Z' })
-    expect(a.body.taskId).toBe('task-1')
-    expect(b.body.taskId).toBe('task-2')
+    expect(a.body.taskId).toBe(createdTasks[0])
+    expect(b.body.taskId).toBe(createdTasks[1])
+    expect(a.body.taskId).not.toBe(b.body.taskId)
     expect(mockCreateTask).toHaveBeenCalledTimes(2)
+  })
+
+  it('Prove-It (#472): a post-create effect failure does not duplicate the task on heal', async () => {
+    upsertJob(makeMeta())
+    // Simulate createTaskWithEffects writing the row, then a post-create effect
+    // (e.g. workflow-start) throwing — the task EXISTS but the call rejects.
+    mockCreateTask.mockImplementationOnce(async (opts: unknown) => {
+      const id = (opts as { id?: string }).id!
+      emptyBoard.columns.todo.push({ id } as never)
+      throw new Error('Failed to start workflow "x"')
+    })
+    const payload = { jobId: 'release-notes', runId: 'run-partial', timestamp: '2026-06-06T07:00:00Z' }
+    const result = await fireScheduledRunFromPayload(payload)
+
+    // The existing task is attached to the claim (disposition created), not left pending.
+    const fire = getCronFire('release-notes', 'run-partial')
+    expect(fire?.disposition).toBe('created')
+    expect(fire?.taskId).toBe(result.body.taskId)
+
+    // Heal must NOT mint a second task for the same occurrence.
+    mockCreateTask.mockClear()
+    await healPendingCronClaims()
+    expect(mockCreateTask).not.toHaveBeenCalled()
   })
 })
 
