@@ -400,10 +400,11 @@ async function runClaimedFire(
 
   // Both the overlap guard and last-task-outcome tracking inspect the board;
   // read it once. A read failure means we skip both checks and proceed.
-  let board: { columns: Record<string, Array<{ id: string }>> } | null = null
+  type BoardTask = { id: string; blockedReason?: string }
+  let board: { columns: Record<string, BoardTask[]> } | null = null
   if (meta.lastTaskId) {
     try {
-      board = readTaskboard() as unknown as { columns: Record<string, Array<{ id: string }>> }
+      board = readTaskboard() as unknown as { columns: Record<string, BoardTask[]> }
     } catch {
       log.debug('Could not read taskboard for overlap/outcome checks', { taskId: meta.lastTaskId })
     }
@@ -428,8 +429,12 @@ async function runClaimedFire(
     if (doneOrArchived.some(t => t.id === meta.lastTaskId)) {
       recordSuccess(meta)
     } else {
-      const blocked = board.columns.blocked ?? []
-      if (blocked.some(t => t.id === meta.lastTaskId)) {
+      // A blocked last-task counts as a failure ONLY if it genuinely failed
+      // during dispatch. A catch-up triage block (MISSED_WINDOW_REASON) never
+      // ran — penalizing the job for it would auto-pause a healthy schedule
+      // just because the server slept through a fire (see SPEC FR2).
+      const blockedTask = (board.columns.blocked ?? []).find(t => t.id === meta.lastTaskId)
+      if (blockedTask && blockedTask.blockedReason !== MISSED_WINDOW_REASON) {
         const autoPaused = recordFailure(meta)
         if (autoPaused) {
           upsertJob(meta)

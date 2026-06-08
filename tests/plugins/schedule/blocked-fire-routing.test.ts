@@ -210,3 +210,72 @@ describe('FR1: overlap guard excludes blocked', () => {
     expect(mockCreateTask).toHaveBeenCalledTimes(1)
   })
 })
+
+// ---------------------------------------------------------------------------
+// FR2 — triage blocks are not failures
+// ---------------------------------------------------------------------------
+describe('FR2: triage blocks do not count toward auto-pause', () => {
+  const DISPATCH_FAILURE_REASON = 'Agent run ended before reporting completion. session died.'
+
+  it('AC2.1: a "missed schedule window" triage block does NOT record a failure', async () => {
+    upsertJob(makeMeta({ lastTaskId: 'task-triage', consecutiveFailures: 0 }))
+    emptyBoard.columns.blocked.push({ id: 'task-triage', blockedReason: MISSED_WINDOW_REASON })
+
+    await fireScheduledRunFromPayload({
+      jobId: 'release-notes', runId: 'run-after-triage', timestamp: '2026-06-08T07:00:00Z',
+    })
+
+    expect(getJob('release-notes')!.consecutiveFailures).toBe(0)
+    expect(mockCreateTask).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC2.2: a dispatch-failure block DOES record a failure', async () => {
+    upsertJob(makeMeta({ lastTaskId: 'task-failed', consecutiveFailures: 0 }))
+    emptyBoard.columns.blocked.push({ id: 'task-failed', blockedReason: DISPATCH_FAILURE_REASON })
+
+    await fireScheduledRunFromPayload({
+      jobId: 'release-notes', runId: 'run-after-fail', timestamp: '2026-06-08T07:00:00Z',
+    })
+
+    expect(getJob('release-notes')!.consecutiveFailures).toBe(1)
+  })
+
+  it('AC2.2: repeated dispatch-failure blocks auto-pause at maxFailures', async () => {
+    upsertJob(makeMeta({ lastTaskId: 'task-failed', consecutiveFailures: 2, maxFailures: 3 }))
+    emptyBoard.columns.blocked.push({ id: 'task-failed', blockedReason: DISPATCH_FAILURE_REASON })
+
+    const result = await fireScheduledRunFromPayload({
+      jobId: 'release-notes', runId: 'run-auto-pause', timestamp: '2026-06-08T07:00:00Z',
+    })
+
+    expect(result.body.skipped).toBe('auto-paused')
+    expect(getJob('release-notes')!.paused).toBe(true)
+    expect(mockCreateTask).not.toHaveBeenCalled()
+  })
+
+  it('AC2.1: a triage block never auto-pauses even at the failure threshold', async () => {
+    upsertJob(makeMeta({ lastTaskId: 'task-triage', consecutiveFailures: 2, maxFailures: 3 }))
+    emptyBoard.columns.blocked.push({ id: 'task-triage', blockedReason: MISSED_WINDOW_REASON })
+
+    const result = await fireScheduledRunFromPayload({
+      jobId: 'release-notes', runId: 'run-triage-threshold', timestamp: '2026-06-08T07:00:00Z',
+    })
+
+    expect(result.body.skipped).toBeUndefined()
+    expect(getJob('release-notes')!.paused).toBeFalsy()
+    expect(getJob('release-notes')!.consecutiveFailures).toBe(2)
+    expect(mockCreateTask).toHaveBeenCalledTimes(1)
+  })
+
+  it('AC2.3: a done last-task records success (resets failures)', async () => {
+    upsertJob(makeMeta({ lastTaskId: 'task-done', consecutiveFailures: 2 }))
+    emptyBoard.columns.done.push({ id: 'task-done' })
+
+    await fireScheduledRunFromPayload({
+      jobId: 'release-notes', runId: 'run-after-done', timestamp: '2026-06-08T07:00:00Z',
+    })
+
+    expect(getJob('release-notes')!.consecutiveFailures).toBe(0)
+    expect(mockCreateTask).toHaveBeenCalledTimes(1)
+  })
+})
