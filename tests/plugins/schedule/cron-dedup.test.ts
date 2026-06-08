@@ -241,7 +241,7 @@ describe('cron fire dedup (claim before create)', () => {
     const result = await fireScheduledRunFromPayload(payload)
 
     expect(result.body.skipped).toBe('paused')
-    const ev = auditEvents.filter((e) => e.event === 'schedule.fire_skipped')
+    const ev = auditEvents.filter((e) => e.event === 'fire_skipped')
     expect(ev).toHaveLength(1)
     expect(ev[0].data.reason).toBe('paused')
     expect(ev[0].data.runId).toBe('run-paused-audit')
@@ -255,7 +255,7 @@ describe('cron fire dedup (claim before create)', () => {
     const result = await fireScheduledRunFromPayload(payload)
 
     expect(result.body.skipped).toBe('overlap')
-    const ev = auditEvents.filter((e) => e.event === 'schedule.fire_skipped')
+    const ev = auditEvents.filter((e) => e.event === 'fire_skipped')
     expect(ev).toHaveLength(1)
     expect(ev[0].data.reason).toBe('overlap')
     expect(getCronFire('release-notes', 'run-overlap-audit')?.skipReason).toBe('overlap')

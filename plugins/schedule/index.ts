@@ -352,7 +352,9 @@ type SkipReason = 'paused' | 'skip-count' | 'auto-paused' | 'overlap'
  *  silently dropping beats. */
 function skipFire(jobId: string, runId: string, reason: SkipReason): ProcessRunResult {
   markCronFireSkipped(jobId, runId, reason)
-  pluginCtx?.activity.audit('schedule.fire_skipped', 'system', { jobId, runId, reason })
+  // activity.audit prepends the plugin id → observable event is `schedule.fire_skipped`
+  // (matches fire_suppressed/fire_healed/task_created — bare operation, no manual prefix).
+  pluginCtx?.activity.audit('fire_skipped', 'system', { jobId, runId, reason })
   return { status: 200, body: { ok: true, skipped: reason } }
 }
 
