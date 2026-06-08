@@ -85,6 +85,14 @@ const DEFAULT_TICK_INTERVAL_SECONDS = 30
 const MIN_TICK_INTERVAL_SECONDS = 5
 const DEFAULT_CATCH_UP_WINDOW_MINUTES = 60
 
+/** `blockedReason` stamped on a catch-up task that landed in `blocked` because
+ *  its occurrence was older than the catch-up window. This is a *triage*
+ *  marker (the run never dispatched), NOT a failure — distinct from the
+ *  dispatch-failure reasons set in `src/core/dispatch.ts`. The outcome check
+ *  compares against this constant so a slept-through fire doesn't penalize a
+ *  healthy job's auto-pause counter. */
+export const MISSED_WINDOW_REASON = 'missed schedule window'
+
 /** Resolved tick interval in ms, clamped to a safe floor. */
 function tickIntervalMs(): number {
   const raw = pluginCtx?.getSettings<ScheduleSettings>()?.tickIntervalSeconds
@@ -494,7 +502,7 @@ async function runClaimedFire(
       jobId, runId, taskId, agent: meta.agentId, owner: defaults.owner,
       ...(column !== 'todo' ? { column, blockedReason: opts.blockedReason } : {}),
     })
-    const where = column === 'blocked' ? ' (blocked — missed schedule window)' : ''
+    const where = column === 'blocked' ? ` (blocked — ${MISSED_WINDOW_REASON})` : ''
     pluginCtx.activity.log('system', `Schedule "${meta.displayName ?? jobId}" created task ${taskId}${meta.agentId ? ` for ${meta.agentId}` : ''}${where}`, { taskId })
   }
 
@@ -558,7 +566,7 @@ function schedulerDeps(): SchedulerDeps {
     fire: async (meta, jobId, runId, _occurrence, opts) => {
       await runClaimedFire(
         meta, jobId, runId,
-        opts?.blocked ? { column: 'blocked', blockedReason: 'missed schedule window' } : {},
+        opts?.blocked ? { column: 'blocked', blockedReason: MISSED_WINDOW_REASON } : {},
       )
     },
     log,
