@@ -14,6 +14,7 @@ import {
   callSearchRoute,
   type ActivatedPlugin,
 } from '../test-helpers'
+import type { TaskRunEntry } from '@bakin/tasks/types'
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 
@@ -53,6 +54,8 @@ mock.module('../../../src/lib/content-files', () => ({
 // In-memory completion-gate fake — route tests exercise handler wiring, not
 // ledger semantics (covered by tests/core/completion-gate.test.ts).
 const completionsFake = new Map<string, { taskId: string; runId: string | null; agent: string; channel: string | null; completedAt: number }>()
+// Seedable per-task runs for the run-history route (the route maps these via runs-reader).
+let mockTaskRuns: Record<string, Array<Record<string, unknown>>> = {}
 const ledgerMock = () => ({
   recordCompletion: (taskId: string, input: { runId?: string; agent: string; channel?: string }) => {
     const existing = completionsFake.get(taskId)
@@ -64,6 +67,7 @@ const ledgerMock = () => ({
   deleteCompletion: (taskId: string) => completionsFake.delete(taskId),
   getLiveRun: () => null,
   bumpHeartbeatByTask: () => {},
+  listRunsByTask: (taskId: string, limit = 50) => (mockTaskRuns[taskId] ?? []).slice(0, limit),
 })
 mock.module('@/core/execution-ledger', ledgerMock)
 mock.module('../../../src/core/execution-ledger', ledgerMock)
@@ -144,6 +148,7 @@ afterAll(() => {
 
 beforeEach(() => {
   mock.clearAllMocks()
+  mockTaskRuns = {}
   // bun:test's clearAllMocks only clears call history; reset implementations
   // so a previous test's mockRejectedValue doesn't leak into the next.
   for (const m of [
@@ -201,14 +206,15 @@ describe('Tasks Plugin — :taskId path-param routing', () => {
 // ─── Route Registration ────────────────────────────────────────────────────
 
 describe('Tasks Plugin — Route Registration', () => {
-  it('registers 14 routes', () => {
-    expect(activated.routes.length).toBe(14)
+  it('registers 15 routes', () => {
+    expect(activated.routes.length).toBe(15)
   })
 
   it.each([
     ['GET', '/'],
     ['GET', '/summary'],
     ['GET', '/:taskId'],
+    ['GET', '/:taskId/runs'],
     ['POST', '/'],
     ['PUT', '/:taskId'],
     ['DELETE', '/:taskId'],
@@ -326,6 +332,43 @@ describe('GET /:taskId — Get Task', () => {
 
     expect(status).toBe(404)
     expect(body.error).toBe('Task not found')
+  })
+})
+
+// ─── GET /:taskId/runs — run history ───────────────────────────────────────
+
+describe('GET /:taskId/runs — dispatch run history', () => {
+  it('maps ledger runs to entries newest-first with status, settle reason, and duration', async () => {
+    const t0 = 1_700_000_000_000
+    const row = (over: Record<string, unknown>) => ({
+      taskId: 'task-runs', execKey: 'task-runs', agent: 'pixel', bootId: 'b',
+      heartbeatAt: t0, settledAt: null, settleReason: null, ...over,
+    })
+    // Seeded newest-first (as the real listRunsByTask returns them).
+    mockTaskRuns['task-runs'] = [
+      row({ runId: 'task:task-runs:d3', seq: 3, status: 'running', startedAt: t0 + 2000 }),
+      row({ runId: 'task:task-runs:d2', seq: 2, status: 'settled', startedAt: t0 + 1000, settledAt: t0 + 1500, settleReason: 'turn-ok' }),
+      row({ runId: 'task:task-runs:d1', seq: 1, status: 'lost', startedAt: t0, settledAt: t0 + 200, settleReason: 'session-death' }),
+    ]
+
+    const route = findRoute(activated.routes, 'GET', '/:taskId/runs')!
+    expect(route).toBeDefined()
+    const { status, body } = await callRoute(route, activated.ctx, { searchParams: { taskId: 'task-runs' } })
+
+    expect(status).toBe(200)
+    const runs = body.runs as TaskRunEntry[]
+    expect(runs.map(r => r.seq)).toEqual([3, 2, 1])
+    expect(runs.map(r => r.status)).toEqual(['running', 'settled', 'lost'])
+    expect(runs.find(r => r.seq === 2)).toMatchObject({ settleReason: 'turn-ok', durationMs: 500, agent: 'pixel' })
+    expect(runs.find(r => r.seq === 3)?.durationMs).toBeUndefined() // still running, no duration
+    expect(runs[0].startedAt).toBe(new Date(t0 + 2000).toISOString())
+  })
+
+  it('returns an empty list for a task with no runs (never an error)', async () => {
+    const route = findRoute(activated.routes, 'GET', '/:taskId/runs')!
+    const { status, body } = await callRoute(route, activated.ctx, { searchParams: { taskId: 'no-runs' } })
+    expect(status).toBe(200)
+    expect(body.runs).toEqual([])
   })
 })
 
