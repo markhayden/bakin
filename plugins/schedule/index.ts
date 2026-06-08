@@ -8,7 +8,7 @@ import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { definePlugin, defineRoute, searchRoute } from '@bakin/core/routing'
 import { readMergedJobs } from './lib/jobs-reader'
 import { getLastRun, readRuns } from './lib/runs-reader'
-import { upsertJob, removeJob, getJob, readSidecar, isPaused, shouldSkip, recordFailure, recordSuccess, withDefaults, newScheduleId } from './lib/sidecar'
+import { upsertJob, removeJob, getJob, readSidecar, isPaused, shouldSkip, recordFailure, recordSuccess, withDefaults, newScheduleId, resumeDuePauses } from './lib/sidecar'
 import { claimCronFire, getCronFire, attachCronTask, markCronFireSkipped, findHealableCronClaims } from '../../src/core/execution-ledger'
 import { parseSchedule } from './lib/cron-parser'
 import { runSchedulerTick, runStartupCatchUp, DEFAULT_TICK_WINDOW_MS, type SchedulerDeps } from './lib/scheduler'
@@ -360,49 +360,50 @@ async function runClaimedFire(
   if ((defaults.consecutiveFailures ?? 0) >= (defaults.maxFailures ?? 3)) {
     meta.paused = true
     meta.pauseReason = 'auto-failures'
+    meta.enabled = false // mirror manual pause: skip at the scheduler gate, no claim churn
     markCronFireSkipped(jobId, runId)
     upsertJob(meta)
     return { status: 200, body: { ok: true, skipped: 'auto-paused' } }
   }
 
-  // Check overlap
-  if (!defaults.allowOverlap && meta.lastTaskId) {
+  // Both the overlap guard and last-task-outcome tracking inspect the board;
+  // read it once. A read failure means we skip both checks and proceed.
+  let board: { columns: Record<string, Array<{ id: string }>> } | null = null
+  if (meta.lastTaskId) {
     try {
-      const board = readTaskboard() as unknown as { columns: Record<string, Array<{ id: string }>> }
-      const activeColumns = ['todo', 'inProgress', 'review', 'blocked'] as const
-      for (const col of activeColumns) {
-        const tasks = board.columns[col] ?? []
-        if (tasks.some(t => t.id === meta.lastTaskId)) {
-          markCronFireSkipped(jobId, runId)
-          return { status: 200, body: { ok: true, skipped: 'overlap' } }
-        }
-      }
+      board = readTaskboard() as unknown as { columns: Record<string, Array<{ id: string }>> }
     } catch {
-      // If we can't check, proceed anyway
-      log.debug('Could not check overlap for task', { taskId: meta.lastTaskId })
+      log.debug('Could not read taskboard for overlap/outcome checks', { taskId: meta.lastTaskId })
+    }
+  }
+
+  // Check overlap
+  if (board && !defaults.allowOverlap && meta.lastTaskId) {
+    const activeColumns = ['todo', 'inProgress', 'review', 'blocked'] as const
+    for (const col of activeColumns) {
+      const tasks = board.columns[col] ?? []
+      if (tasks.some(t => t.id === meta.lastTaskId)) {
+        markCronFireSkipped(jobId, runId)
+        return { status: 200, body: { ok: true, skipped: 'overlap' } }
+      }
     }
   }
 
   // Check last task outcome for failure tracking
-  if (meta.lastTaskId) {
-    try {
-      const board2 = readTaskboard() as unknown as { columns: Record<string, Array<{ id: string }>> }
-      const doneOrArchived = [...(board2.columns.done ?? []), ...(board2.columns.archived ?? [])]
-      if (doneOrArchived.some(t => t.id === meta.lastTaskId)) {
-        recordSuccess(meta)
-      } else {
-        const blocked = board2.columns.blocked ?? []
-        if (blocked.some(t => t.id === meta.lastTaskId)) {
-          const autoPaused = recordFailure(meta)
-          if (autoPaused) {
-            markCronFireSkipped(jobId, runId)
-            upsertJob(meta)
-            return { status: 200, body: { ok: true, skipped: 'auto-paused' } }
-          }
+  if (board && meta.lastTaskId) {
+    const doneOrArchived = [...(board.columns.done ?? []), ...(board.columns.archived ?? [])]
+    if (doneOrArchived.some(t => t.id === meta.lastTaskId)) {
+      recordSuccess(meta)
+    } else {
+      const blocked = board.columns.blocked ?? []
+      if (blocked.some(t => t.id === meta.lastTaskId)) {
+        const autoPaused = recordFailure(meta)
+        if (autoPaused) {
+          markCronFireSkipped(jobId, runId)
+          upsertJob(meta)
+          return { status: 200, body: { ok: true, skipped: 'auto-paused' } }
         }
       }
-    } catch {
-      log.debug('Could not check last task outcome')
     }
   }
 
@@ -509,8 +510,7 @@ async function healPendingCronClaims(): Promise<void> {
 // fire path. healPendingCronClaims() then recovers any claim stranded by a
 // crash between claim and task creation.
 
-let schedulerTimer: ReturnType<typeof setInterval> | null = null
-let schedulerRunning = false
+let schedulerTimer: ReturnType<typeof setTimeout> | null = null
 
 function schedulerDeps(): SchedulerDeps {
   return {
@@ -545,21 +545,29 @@ function runScheduleCutover(): ReturnType<typeof migrateBakinSchedulesOffOpenCla
 }
 
 function startScheduler(): void {
-  if (schedulerTimer) clearInterval(schedulerTimer)
-  schedulerTimer = setInterval(() => {
-    if (schedulerRunning) return
-    schedulerRunning = true
-    runSchedulerTick(schedulerDeps())
+  stopScheduler()
+  // Self-rescheduling loop (not setInterval) so each cycle re-reads the tick
+  // interval — a settings change takes effect without a restart, and the next
+  // cycle is only armed after the previous finishes (no overlap). Each cycle:
+  // resume expired timed-pauses → fire due occurrences → heal stranded claims.
+  const cycle = () => {
+    Promise.resolve()
+      .then(() => { resumeDuePauses() })
+      .then(() => runSchedulerTick(schedulerDeps()))
       .then(() => healPendingCronClaims())
-      .catch(err => log.warn('Scheduler tick failed', err))
-      .finally(() => { schedulerRunning = false })
-  }, tickIntervalMs())
+      .catch(err => log.warn('Scheduler cycle failed', err))
+      .finally(() => {
+        schedulerTimer = setTimeout(cycle, tickIntervalMs())
+        schedulerTimer.unref?.()
+      })
+  }
+  schedulerTimer = setTimeout(cycle, tickIntervalMs())
   schedulerTimer.unref?.()
 }
 
 function stopScheduler(): void {
   if (!schedulerTimer) return
-  clearInterval(schedulerTimer)
+  clearTimeout(schedulerTimer)
   schedulerTimer = null
 }
 
@@ -1329,7 +1337,10 @@ const schedulePlugin: BakinPlugin = definePlugin({
 
     // Fire (or block) anything missed while the server was down, then start the
     // steady tick. Catch-up first so a just-missed occurrence isn't double-handled.
+    // Re-enable any timed pause that lapsed during downtime so its missed run is
+    // caught up rather than left dormant by the enabled-gate.
     try {
+      resumeDuePauses()
       await runStartupCatchUp(schedulerDeps(), catchUpWindowMs())
     } catch (err) {
       log.error('Schedule startup catch-up failed', err)

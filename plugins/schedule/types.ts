@@ -169,20 +169,8 @@ export interface ParseResult {
 }
 
 // ---------------------------------------------------------------------------
-// Bridge webhook payload
+// Fire result (shape returned by runClaimedFire / fireScheduledRun)
 // ---------------------------------------------------------------------------
-
-export interface BridgePayload {
-  jobId: string
-  /**
-   * Runtime cron run id. Optional on the wire (the bridge zod schema agrees):
-   * ad-hoc payloads without one mint a unique `manual-<uuid>` so intentional
-   * fires are never blocked by the cron-fire claim's (job_id, run_id) key.
-   */
-  runId?: string
-  timestamp: string
-  [key: string]: unknown
-}
 
 export interface BridgeResult {
   ok: boolean

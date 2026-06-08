@@ -19,8 +19,10 @@ const TRANSPORT_LIMIT = 2000
 /** A no-split instruction is risky once the cap is anywhere near the ceiling. */
 const NEAR_LIMIT = 1500
 
-const NO_SPLIT = /\b(?:do not|don'?t|never|no)\s+split\b|\b(?:in|as)\s+(?:a\s+)?(?:one|single)\s+message\b|\bone\s+message\s+only\b/i
-const CHAR_CAP = /(\d{3,5})\s*(?:char|character)/i
+const NO_SPLIT = /\b(?:do not|don'?t|never|no)\s+split\b|\b(?:a\s+)?(?:single|one)\s+messages?\b/i
+// Capture the full digit run (not \d{3,5}, which mis-grabs the last 5 digits of
+// e.g. "100000" → "00000" → 0); parseInt then clamps absurd caps to "high".
+const CHAR_CAP = /(\d{3,})\s*(?:char|character)/i
 
 /** Inspect a schedule's task prompt for channel transport danger-zone wording. */
 export function checkSchedulePrompt(prompt: string | undefined): PromptWarning[] {

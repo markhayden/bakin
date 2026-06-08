@@ -93,6 +93,10 @@ export async function runStartupCatchUp(deps: SchedulerDeps, catchUpWindowMs: nu
     if (!isFireable(meta)) continue
     const occurrence = prevRun(meta.schedule!.expr, meta.tz, new Date(nowMs))
     if (!occurrence) continue
+    // Don't fire an occurrence that predates the schedule's creation — a newly
+    // created job has no "missed" runs from before it existed.
+    const createdMs = Date.parse(meta.createdAt)
+    if (Number.isFinite(createdMs) && occurrence.getTime() < createdMs) continue
     const runId = makeOccurrenceRunId(meta.jobId, occurrence)
     if (deps.getCronFire(meta.jobId, runId)) continue
     const claim = deps.claimCronFire(meta.jobId, runId, occurrence.getTime())

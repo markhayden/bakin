@@ -13,6 +13,17 @@ describe('schedule/prompt-guard', () => {
     expect(w.some(x => x.code === 'transport-danger-zone')).toBe(true)
   })
 
+  it('flags common single-message phrasings without an "in/as" anchor', () => {
+    for (const p of ['Keep it to a single message', 'Send a single message', 'Respond with one message']) {
+      expect(checkSchedulePrompt(p).some(x => x.code === 'transport-danger-zone'), p).toBe(true)
+    }
+  })
+
+  it('treats an absurdly large multi-digit cap as high (no digit mis-capture)', () => {
+    const w = checkSchedulePrompt('Write a digest up to 100000 characters.')
+    expect(w.some(x => x.code === 'high-char-cap')).toBe(true)
+  })
+
   it('does not flag the safe chunking pattern', () => {
     const w = checkSchedulePrompt('Keep each chunk under 900 chars, split deliberately, read back, and delete bad duplicates.')
     expect(w).toEqual([])

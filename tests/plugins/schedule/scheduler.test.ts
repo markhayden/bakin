@@ -179,5 +179,14 @@ describe('schedule/scheduler', () => {
       await runStartupCatchUp(deps, WINDOW_MS)
       expect(fired).toHaveLength(0)
     })
+
+    it('does not fire an occurrence that predates the schedule createdAt', async () => {
+      // now 09:10; last occurrence 09:00; job created at 09:05 — the 09:00 run is
+      // before the job existed and must not be caught up (no phantom fire).
+      const now = Date.parse('2026-06-07T15:10:00Z')
+      const { deps, fired } = makeDeps([meta({ createdAt: '2026-06-07T15:05:00Z' })], now)
+      await runStartupCatchUp(deps, WINDOW_MS)
+      expect(fired).toHaveLength(0)
+    })
   })
 })

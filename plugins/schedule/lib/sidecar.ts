@@ -137,15 +137,41 @@ export function isPaused(meta: BakinJobMeta): { paused: boolean; reason?: string
   if (meta.pauseUntil) {
     const until = new Date(meta.pauseUntil)
     if (until <= new Date()) {
-      // Auto-resume: clear pause state
+      // Auto-resume: clear pause state AND re-enable. Pause sets enabled=false
+      // (so the scheduler's enabled-gate cheaply skips paused jobs); resume must
+      // restore it or the job stays dormant forever.
       meta.paused = false
       meta.pauseUntil = undefined
       meta.pauseReason = undefined
+      meta.enabled = true
       return { paused: false }
     }
   }
 
   return { paused: true, reason: meta.pauseReason ?? 'manual' }
+}
+
+/**
+ * Auto-resume any job whose timed pause (`pauseUntil`) has elapsed: clears the
+ * pause and re-enables it so the scheduler's enabled-gate lets it fire again.
+ * Run before the scheduler tick / startup catch-up — the enabled-gate means a
+ * dormant paused job otherwise never reaches the runClaimedFire auto-resume.
+ * Returns the number of jobs resumed.
+ */
+export function resumeDuePauses(now: number = Date.now()): number {
+  const sidecar = readSidecar()
+  let resumed = 0
+  for (const meta of Object.values(sidecar.jobs)) {
+    if (meta.paused && meta.pauseUntil && Date.parse(meta.pauseUntil) <= now) {
+      meta.paused = false
+      meta.pauseUntil = undefined
+      meta.pauseReason = undefined
+      meta.enabled = true
+      resumed += 1
+    }
+  }
+  if (resumed > 0) writeSidecar(sidecar)
+  return resumed
 }
 
 /** Check and handle skip-next-N logic. Returns true if this run should be skipped. */
@@ -169,6 +195,7 @@ export function recordFailure(meta: BakinJobMeta): boolean {
   if (meta.consecutiveFailures >= max) {
     meta.paused = true
     meta.pauseReason = 'auto-failures'
+    meta.enabled = false // mirror manual pause: skip at the scheduler gate, no claim churn
     log.warn('Auto-paused schedule after consecutive failures', {
       jobId: meta.jobId,
       failures: meta.consecutiveFailures,

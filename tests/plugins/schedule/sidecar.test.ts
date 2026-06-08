@@ -40,6 +40,7 @@ import {
   recordFailure,
   recordSuccess,
   newScheduleId,
+  resumeDuePauses,
 } from '@bakin/schedule/lib/sidecar'
 import type { BakinJobMeta, ScheduleSidecar } from '@bakin/schedule/types'
 
@@ -214,9 +215,10 @@ describe('schedule/sidecar', () => {
       expect(result.reason).toBe('manual')
     })
 
-    it('auto-resumes when pauseUntil has passed', () => {
+    it('auto-resumes when pauseUntil has passed, restoring enabled', () => {
       const meta = makeMeta({
         paused: true,
+        enabled: false, // pause sets enabled=false
         pauseUntil: '2020-01-01T00:00:00Z', // in the past
         pauseReason: 'manual',
       })
@@ -224,6 +226,7 @@ describe('schedule/sidecar', () => {
       expect(result.paused).toBe(false)
       expect(meta.paused).toBe(false)
       expect(meta.pauseUntil).toBeUndefined()
+      expect(meta.enabled).toBe(true) // must re-enable or the scheduler gate keeps it dormant
     })
 
     it('stays paused when pauseUntil is in the future', () => {
@@ -233,6 +236,27 @@ describe('schedule/sidecar', () => {
         pauseReason: 'manual',
       })
       expect(isPaused(meta).paused).toBe(true)
+    })
+  })
+
+  describe('resumeDuePauses', () => {
+    it('re-enables and clears a job whose pauseUntil has elapsed', () => {
+      upsertJob(makeMeta({ jobId: 'due', paused: true, enabled: false, pauseUntil: '2020-01-01T00:00:00Z', pauseReason: 'manual' }))
+      const resumed = resumeDuePauses()
+      expect(resumed).toBe(1)
+      const job = getJob('due')!
+      expect(job.paused).toBe(false)
+      expect(job.enabled).toBe(true)
+      expect(job.pauseUntil).toBeUndefined()
+    })
+
+    it('leaves a future timed pause and a manual (no-pauseUntil) pause untouched', () => {
+      upsertJob(makeMeta({ jobId: 'future', paused: true, enabled: false, pauseUntil: '2099-01-01T00:00:00Z' }))
+      upsertJob(makeMeta({ jobId: 'manual', paused: true, enabled: false })) // no pauseUntil
+      const resumed = resumeDuePauses()
+      expect(resumed).toBe(0)
+      expect(getJob('future')!.enabled).toBe(false)
+      expect(getJob('manual')!.paused).toBe(true)
     })
   })
 
