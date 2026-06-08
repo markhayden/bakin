@@ -6,6 +6,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.18] - 2026-06-08
+
+### Added
+- **Bakin-owned scheduler — ends the scheduled-task double-fire.** Bakin now owns the firing of its own schedules instead of delegating to OpenClaw cron (which used to fire a rogue agent turn *and* a Bakin task for the same job). A dependency-injected, fake-clock-testable tick computes due occurrences, claims a deterministic per-occurrence run id in the execution ledger (exactly-once via the `(job_id, run_id)` key), and creates the task directly. Startup catch-up coalesces a downtime gap to the single most-recent missed occurrence and lands it in **Todo** within a configurable safety window or **Blocked** when stale. An idempotent cutover migrates existing schedules off OpenClaw cron, exposed as the `bakin check schedule-cutover` / `bakin install schedule-cutover` doctor command.
+- Native (runtime-owned) crons are surfaced **read-only** with adopt / restore-native actions, a next-run column, and 403/404 mutation guards — Bakin owns Bakin schedules; the runtime owns the crons agents create for themselves.
+- A prompt **danger-zone guard** that warns when a schedule prompt tells the agent to keep one large message and not split near the channel transport limit (the shape that caused the "Invalid Form Body" split/repair loop).
+- **Schedule run visibility.** Each schedule's job drawer now shows a real run history read from the execution ledger (`cron_fires`) — fired / skipped / blocked per occurrence — replacing the post-cutover-empty runtime-cron history. Skipped fires (overlap / paused / skip-count / auto-paused) emit a `schedule.fire_skipped` activity-audit event and persist their reason (new `cron_fires.skip_reason` column) instead of silently dropping beats.
+- **Per-task run history.** The task detail drawer gains a collapsible **Run History** section listing every dispatch attempt for the task (seq, agent, time, status — settled / superseded / lost — settle reason, duration) from the `runs` ledger, via `GET /api/plugins/tasks/:taskId/runs` and a `listRunsByTask` read verb.
+
+### Changed
+- The scheduling of Bakin tasks is now Bakin-owned end to end; OpenClaw cron is no longer involved in firing them. Removed the cron→task bridge webhook + shared secret, the reconcile-poll, the legacy main-session-wake repair cluster, the sidecar `processedRunIds` seeding, and the adapter's Bakin-specific cron payload shaping (~500 lines of wrangling).
+- Mock (`dev:mock`) seeds Bakin schedules, `cron_fires`, and `runs` history so the new run-history surfaces are exercisable; native-cron fixtures trimmed so the list isn't a wall of "missing cron tools" warnings.
+
+### Fixed
+- The 9am scheduled-task double-post (one cron fire → two executions → duplicate Discord post + delivery-repair loop) — eliminated structurally by the Bakin-owned scheduler.
+- Schedule fire no longer duplicates a task when a post-create effect fails after the task row is written — the existing task is attached to the claim instead of left for the healer to re-create (#472).
+- A timed pause whose window elapsed no longer leaves a schedule permanently disabled; a newly created schedule no longer phantom-fires its pre-creation occurrence on the first tick.
+- The schedule list-row actions menu sizes to its content instead of clipping / wrapping "Adopt into Bakin".
+
 ## [0.0.1-rc.17] - 2026-06-06
 
 ### Added
@@ -256,5 +275,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 [0.0.1-rc.16]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.16
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.17...HEAD
 [0.0.1-rc.17]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.17
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.18...HEAD
+[0.0.1-rc.18]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.18
