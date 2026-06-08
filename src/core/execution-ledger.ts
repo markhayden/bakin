@@ -10,6 +10,7 @@ export {
   bumpHeartbeatByTask,
   getLiveRun,
   getLiveRunByKey,
+  listRunsByTask,
   nextSeq,
   currentSeq,
   setSeqWatermark,
