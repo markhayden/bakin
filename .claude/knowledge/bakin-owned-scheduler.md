@@ -39,7 +39,7 @@ The cron→task **bridge webhook** + shared secret, the **reconcile-poll** (`rec
 
 ## Known follow-up
 
-**Recovered/repaired delivery-failure visibility (deferred).** Turn-*killing* delivery failures already surface via dispatch audit. The original incident's *recovered* failures happen when the agent posts via its message tool **inside OpenClaw** and then repairs — not observable at Bakin's `channels.sendMessage` (only the watchdog calls that). Surfacing them needs OpenClaw **trajectory tool-error introspection** in the adapter/session-forensics layer — a separate effort. The prompt-guard attacks the root cause that triggers the loop.
+**Recovered/repaired delivery-failure visibility (deferred — [issue #471](https://github.com/markhayden/bakin/issues/471)).** Turn-*killing* delivery failures already surface via dispatch audit. The original incident's *recovered* failures happen when the agent posts via its message tool **inside OpenClaw** and then repairs — not observable at Bakin's `channels.sendMessage` (only the watchdog calls that). Surfacing them needs OpenClaw **trajectory tool-error introspection** in the adapter/session-forensics layer — a separate effort. The prompt-guard attacks the root cause that triggers the loop. Revisit if a repaired-delivery incident recurs with the guard in place.
 
 ## Key files
 
