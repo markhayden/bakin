@@ -44,6 +44,10 @@ function readLedgerRuns(jobId: string, limit: number): RunEntry[] {
 }
 
 export function cronFireToEntry(fire: CronFireRow): RunEntry {
+  // A cron_fires row records the FIRE outcome (did the schedule create/skip a
+  // task), not the task's terminal result — so 'success' = "a task was created".
+  // RunEntry's 'failure' status is only reachable via the native-cron adapter
+  // path (runtimeRunToEntry); ledger fires are never red.
   const status: RunEntry['status'] =
     fire.disposition === 'skipped' ? 'skipped' : fire.disposition === 'pending' ? 'pending' : 'success' // created | seeded
   return {

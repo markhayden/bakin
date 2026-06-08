@@ -345,7 +345,9 @@ function storedTaskExists(taskId: string): boolean {
   }
 }
 
-type SkipReason = 'paused' | 'skip-count' | 'auto-paused' | 'overlap'
+// Every reason a fire can be skipped. 'job-removed' is the only one set outside
+// skipFire() — the healer consumes an orphaned claim with no live ctx to audit.
+type SkipReason = 'paused' | 'skip-count' | 'auto-paused' | 'overlap' | 'job-removed'
 
 /** Record a skipped fire (ledger disposition + reason) AND surface it on the
  *  activity feed, so an overrunning or paused schedule shows up instead of
