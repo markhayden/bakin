@@ -345,6 +345,17 @@ function storedTaskExists(taskId: string): boolean {
   }
 }
 
+type SkipReason = 'paused' | 'skip-count' | 'auto-paused' | 'overlap'
+
+/** Record a skipped fire (ledger disposition + reason) AND surface it on the
+ *  activity feed, so an overrunning or paused schedule shows up instead of
+ *  silently dropping beats. */
+function skipFire(jobId: string, runId: string, reason: SkipReason): ProcessRunResult {
+  markCronFireSkipped(jobId, runId, reason)
+  pluginCtx?.activity.audit('schedule.fire_skipped', 'system', { jobId, runId, reason })
+  return { status: 200, body: { ok: true, skipped: reason } }
+}
+
 async function runClaimedFire(
   meta: BakinJobMeta,
   jobId: string,
@@ -356,16 +367,14 @@ async function runClaimedFire(
   // Check pause state
   const pauseState = isPaused(meta)
   if (pauseState.paused) {
-    markCronFireSkipped(jobId, runId) // consumed — never healed into a task
     upsertJob(meta) // persist any auto-resume changes
-    return { status: 200, body: { ok: true, skipped: 'paused' } }
+    return skipFire(jobId, runId, 'paused') // consumed — never healed into a task
   }
 
   // Check skip-next-N
   if (shouldSkip(meta)) {
-    markCronFireSkipped(jobId, runId)
     upsertJob(meta)
-    return { status: 200, body: { ok: true, skipped: 'skip-count' } }
+    return skipFire(jobId, runId, 'skip-count')
   }
 
   // Check failure auto-pause
@@ -373,9 +382,8 @@ async function runClaimedFire(
     meta.paused = true
     meta.pauseReason = 'auto-failures'
     meta.enabled = false // mirror manual pause: skip at the scheduler gate, no claim churn
-    markCronFireSkipped(jobId, runId)
     upsertJob(meta)
-    return { status: 200, body: { ok: true, skipped: 'auto-paused' } }
+    return skipFire(jobId, runId, 'auto-paused')
   }
 
   // Both the overlap guard and last-task-outcome tracking inspect the board;
@@ -395,8 +403,7 @@ async function runClaimedFire(
     for (const col of activeColumns) {
       const tasks = board.columns[col] ?? []
       if (tasks.some(t => t.id === meta.lastTaskId)) {
-        markCronFireSkipped(jobId, runId)
-        return { status: 200, body: { ok: true, skipped: 'overlap' } }
+        return skipFire(jobId, runId, 'overlap')
       }
     }
   }
@@ -411,9 +418,8 @@ async function runClaimedFire(
       if (blocked.some(t => t.id === meta.lastTaskId)) {
         const autoPaused = recordFailure(meta)
         if (autoPaused) {
-          markCronFireSkipped(jobId, runId)
           upsertJob(meta)
-          return { status: 200, body: { ok: true, skipped: 'auto-paused' } }
+          return skipFire(jobId, runId, 'auto-paused')
         }
       }
     }
@@ -516,7 +522,7 @@ async function healPendingCronClaims(): Promise<void> {
     const meta = getJob(claim.jobId)
     if (!meta?.isBakinJob) {
       // Job deleted/unmanaged since the claim — consume it.
-      markCronFireSkipped(claim.jobId, claim.runId)
+      markCronFireSkipped(claim.jobId, claim.runId, 'job-removed')
       continue
     }
     const result = await runClaimedFire(meta, claim.jobId, claim.runId)
