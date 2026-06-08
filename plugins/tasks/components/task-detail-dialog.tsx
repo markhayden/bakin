@@ -984,8 +984,6 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
 
         {workflowProgressJSX}
 
-        {task.id && <TaskRunHistory taskId={task.id} />}
-
         {/* Description */}
         {task.description && (
           <div>
@@ -1025,6 +1023,8 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
           )}
           {notesListJSX}
         </div>
+
+        {task.id && <TaskRunHistory taskId={task.id} />}
       </div>
     </BakinDrawer>
   )
