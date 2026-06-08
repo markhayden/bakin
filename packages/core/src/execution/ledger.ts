@@ -120,6 +120,15 @@ const MIGRATIONS = [
       )
     },
   },
+  {
+    // Persist WHY a fire was skipped (overlap / paused / skip-count / auto-paused)
+    // so the per-schedule run history can show it without log-spelunking. The
+    // disposition stays the coordination fact; skip_reason is the human label.
+    version: 2,
+    up: (db: Db) => {
+      db.exec('ALTER TABLE cron_fires ADD COLUMN skip_reason TEXT')
+    },
+  },
 ]
 
 /** Open the db with this module's schema applied. Every verb goes through here. */
@@ -433,6 +442,7 @@ export interface CronFireRow {
   claimedAt: number
   taskId: string | null
   disposition: 'pending' | 'created' | 'skipped' | 'seeded'
+  skipReason: string | null
 }
 
 interface RawCronFireRow {
@@ -442,6 +452,7 @@ interface RawCronFireRow {
   claimed_at: number
   task_id: string | null
   disposition: CronFireRow['disposition']
+  skip_reason: string | null
 }
 
 function toCronFireRow(raw: RawCronFireRow): CronFireRow {
@@ -452,6 +463,7 @@ function toCronFireRow(raw: RawCronFireRow): CronFireRow {
     claimedAt: raw.claimed_at,
     taskId: raw.task_id,
     disposition: raw.disposition,
+    skipReason: raw.skip_reason ?? null,
   }
 }
 
@@ -506,12 +518,25 @@ export function attachCronTask(jobId: string, runId: string, taskId: string): vo
   })
 }
 
-/** A deliberately skipped fire (paused / skip-N / no-overlap) — consumed, never healed. */
-export function markCronFireSkipped(jobId: string, runId: string): void {
+/** A deliberately skipped fire (paused / skip-N / no-overlap) — consumed, never
+ *  healed. `reason` is the human label surfaced in the run history. */
+export function markCronFireSkipped(jobId: string, runId: string, reason?: string): void {
   guard(`markCronFireSkipped(${jobId}, ${runId})`, () => {
     ledger()
-      .prepare('UPDATE cron_fires SET disposition = \'skipped\' WHERE job_id = ? AND run_id = ?')
-      .run(jobId, runId)
+      .prepare('UPDATE cron_fires SET disposition = \'skipped\', skip_reason = ? WHERE job_id = ? AND run_id = ?')
+      .run(reason ?? null, jobId, runId)
+  })
+}
+
+/** A job's fires, newest logical-fire-time first — backs the run-history UI. */
+export function listCronFires(jobId: string, limit = 50): CronFireRow[] {
+  return guard(`listCronFires(${jobId})`, () => {
+    return ledger()
+      .prepare<RawCronFireRow, [string, number]>(
+        'SELECT * FROM cron_fires WHERE job_id = ? ORDER BY fired_at DESC LIMIT ?',
+      )
+      .all(jobId, limit)
+      .map(toCronFireRow)
   })
 }
 

@@ -47,9 +47,11 @@ import {
   currentSeq,
   setSeqWatermark,
   claimCronFire,
+  getCronFire,
   attachCronTask,
   markCronFireSkipped,
   findHealableCronClaims,
+  listCronFires,
   recordCompletion,
   hasCompletion,
   getCompletion,
@@ -249,6 +251,37 @@ describe('cron_fires — claim before create', () => {
   it('same runId across different jobs is independent', () => {
     expect(claimCronFire('jobA', 'shared-run').claimed).toBe(true)
     expect(claimCronFire('jobB', 'shared-run').claimed).toBe(true)
+  })
+
+  it('records the skip reason and round-trips it on read', () => {
+    claimCronFire('job-skip', 'run-overlap', Date.now())
+    markCronFireSkipped('job-skip', 'run-overlap', 'overlap')
+    expect(getCronFire('job-skip', 'run-overlap')?.skipReason).toBe('overlap')
+    // a reason-less skip leaves the column null (back-compat with bare callers)
+    claimCronFire('job-skip', 'run-bare', Date.now())
+    markCronFireSkipped('job-skip', 'run-bare')
+    expect(getCronFire('job-skip', 'run-bare')?.skipReason).toBeNull()
+  })
+})
+
+describe('listCronFires — per-job history, newest first', () => {
+  it('returns a job\'s fires newest-first with disposition + reason, bounded by limit', () => {
+    const base = Date.now()
+    claimCronFire('hist', 'r1', base - 30_000)
+    attachCronTask('hist', 'r1', 'task-1')
+    claimCronFire('hist', 'r2', base - 20_000)
+    markCronFireSkipped('hist', 'r2', 'paused')
+    claimCronFire('hist', 'r3', base - 10_000) // stays pending
+    claimCronFire('other', 'x1', base - 5_000) // different job — excluded
+
+    const all = listCronFires('hist', 50)
+    expect(all.map((f) => f.runId)).toEqual(['r3', 'r2', 'r1']) // newest fired_at first
+    expect(all.find((f) => f.runId === 'r1')?.disposition).toBe('created')
+    expect(all.find((f) => f.runId === 'r1')?.taskId).toBe('task-1')
+    expect(all.find((f) => f.runId === 'r2')?.skipReason).toBe('paused')
+
+    expect(listCronFires('hist', 2).map((f) => f.runId)).toEqual(['r3', 'r2']) // limit honored
+    expect(listCronFires('nope', 50)).toEqual([])
   })
 })
 
