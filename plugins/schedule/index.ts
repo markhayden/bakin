@@ -409,9 +409,11 @@ async function runClaimedFire(
     }
   }
 
-  // Check overlap
+  // Check overlap. `blocked` is intentionally excluded: a blocked task is
+  // awaiting human triage, not running, so it must not suppress the next real
+  // fire (that cascade silently ate scheduled runs — see SPEC).
   if (board && !defaults.allowOverlap && meta.lastTaskId) {
-    const activeColumns = ['todo', 'inProgress', 'review', 'blocked'] as const
+    const activeColumns = ['todo', 'inProgress', 'review'] as const
     for (const col of activeColumns) {
       const tasks = board.columns[col] ?? []
       if (tasks.some(t => t.id === meta.lastTaskId)) {
