@@ -51,3 +51,17 @@ export interface TaskBoard {
 }
 
 export type ColumnId = keyof TaskColumns
+
+/** One dispatch attempt for a task, from the execution ledger's `runs` table.
+ *  Mirrored client-side in src/hooks/use-task-run-history.ts — keep in sync. */
+export interface TaskRunEntry {
+  runId: string
+  taskId: string
+  seq: number
+  agent: string
+  status: 'running' | 'settled' | 'superseded' | 'lost'
+  startedAt: string // ISO
+  settledAt?: string // ISO
+  settleReason?: string
+  durationMs?: number
+}

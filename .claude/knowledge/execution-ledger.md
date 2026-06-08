@@ -72,6 +72,7 @@ exactly preserving legacy threadId semantics.
 | Boot | `server.ts` before restart recovery | `markPriorBootRunsLost(bootId)` |
 | Money ops | `plugins/images` `runBilledImageCall` | `getIdempotent`, `putIdempotent` |
 | Edit safety | `plugins/tasks` `taskEditGuard` | `hasCompletion` |
+| Run history (read-only) | `plugins/tasks` task drawer via `GET /:taskId/runs` (per-task attempts); `plugins/schedule` job drawer (per-schedule fires) | `listRunsByTask`, `listCronFires` |
 | Cleanup | `task-store.deleteTask` (advisory) | `purgeTaskRows` (cron_fires kept — they dedupe the job, not the task) |
 
 ## Semantics

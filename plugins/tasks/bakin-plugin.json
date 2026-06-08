@@ -42,6 +42,11 @@
         "summary": "Get a single task by ID"
       },
       {
+        "method": "GET",
+        "path": "/:taskId/runs",
+        "summary": "Get dispatch run history for a task"
+      },
+      {
         "method": "PUT",
         "path": "/:taskId",
         "summary": "Update a task"

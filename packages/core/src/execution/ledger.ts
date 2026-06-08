@@ -391,6 +391,18 @@ export function getLiveRunByKey(execKey: string): RunRow | null {
   })
 }
 
+/** Every dispatch attempt for a task, newest-first — backs the run-history UI. */
+export function listRunsByTask(taskId: string, limit = 50): RunRow[] {
+  return guard(`listRunsByTask(${taskId})`, () => {
+    return ledger()
+      .prepare<RawRunRow, [string, number]>(
+        'SELECT * FROM runs WHERE task_id = ? ORDER BY started_at DESC LIMIT ?',
+      )
+      .all(taskId, limit)
+      .map(toRunRow)
+  })
+}
+
 function computeNextSeq(taskId: string): number {
   const row = ledger()
     .prepare<{ max_seq: number | null }, [string, string]>(

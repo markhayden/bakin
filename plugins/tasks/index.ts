@@ -27,6 +27,7 @@ import {
 } from '../../src/core/task-service'
 import { createLogger } from '../../src/core/logger'
 import { hasCompletion } from '../../src/core/execution-ledger'
+import { readTaskRuns } from './lib/runs-reader'
 import { getContentDir } from '../../packages/core/src/content-dir'
 import {
   checkSessionDeathIncidents,
@@ -111,6 +112,8 @@ async function indexTask(ctx: PluginContextLite, taskId: string): Promise<void> 
 // ─── Schemas (module scope) ──────────────────────────────────────────────
 
 const taskIdParams = z.object({ taskId: z.string() })
+
+const runsHistoryQuery = z.object({ limit: z.coerce.number().int().positive().optional() })
 
 const okResponse = z.object({ ok: z.literal(true) })
 const errorResponse = z.object({ error: z.string() })
@@ -306,6 +309,19 @@ const routes = [
         return Response.json({ error: 'Task not found' }, { status: 404 })
       }
       return Response.json(result)
+    },
+  }),
+
+  defineRoute({
+    path: '/:taskId/runs',
+    method: 'GET',
+    summary: 'Get dispatch run history for a task',
+    params: taskIdParams,
+    query: runsHistoryQuery,
+    responses: { 200: z.object({}).passthrough() },
+    handler: async (_req, _ctx, { params, query }) => {
+      // Unknown task → empty list, never an error (a not-yet-dispatched task has no runs).
+      return Response.json({ runs: readTaskRuns(params.taskId, query.limit ?? 50) })
     },
   }),
 

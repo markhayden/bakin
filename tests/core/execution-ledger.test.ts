@@ -43,6 +43,7 @@ import {
   bumpHeartbeatByTask,
   getLiveRun,
   getLiveRunByKey,
+  listRunsByTask,
   nextSeq,
   currentSeq,
   setSeqWatermark,
@@ -204,6 +205,30 @@ describe('runs — one live run per task', () => {
     expect(currentSeq('fresh-task')).toBe(0)
     setSeqWatermark('fresh-task', 7)
     expect(currentSeq('fresh-task')).toBe(7)
+  })
+})
+
+describe('listRunsByTask — per-task attempt history, newest first', () => {
+  it('returns every run for a task newest-first with status + settle reason, bounded by limit', () => {
+    const base = 5_000_000
+    claim('rh', 1, { now: base })
+    loseRun('task:rh:d1', 'session-death', base + 10)
+    claim('rh', 2, { now: base + 1_000 })
+    settleRun('task:rh:d2', 'turn-ok', base + 1_010)
+    claim('rh', 3, { now: base + 2_000 }) // left running (live)
+    claim('other', 1, { now: base + 3_000 }) // different task — must be excluded
+
+    const runs = listRunsByTask('rh', 50)
+    expect(runs.map((r) => r.seq)).toEqual([3, 2, 1]) // newest started_at first
+    expect(runs.map((r) => r.status)).toEqual(['running', 'settled', 'lost'])
+    expect(runs.find((r) => r.seq === 2)?.settleReason).toBe('turn-ok')
+    expect(runs.find((r) => r.seq === 1)?.settleReason).toBe('session-death')
+    expect(runs.every((r) => r.agent === 'tester')).toBe(true)
+
+    expect(listRunsByTask('rh', 2).map((r) => r.seq)).toEqual([3, 2]) // limit honored
+    expect(listRunsByTask('no-such-task', 50)).toEqual([])
+
+    settleRun('task:rh:d3', 'ok') // free the live slot for any later test on this task
   })
 })
 
