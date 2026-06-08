@@ -47,11 +47,16 @@ export function RunHistory({ jobId }: { jobId: string }) {
                 ? 'bg-green-500/10 text-green-400 border-green-500/20'
                 : run.status === 'skipped'
                 ? 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
+                : run.status === 'pending'
+                ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
                 : 'bg-red-500/10 text-red-400 border-red-500/20'
             }
           >
             {run.status}
           </Badge>
+          {run.status === 'skipped' && run.skippedReason && (
+            <span className="text-xs text-muted-foreground">{run.skippedReason}</span>
+          )}
           {run.taskId && (
             <span className="text-xs text-muted-foreground font-mono">{run.taskId.slice(0, 8)}</span>
           )}

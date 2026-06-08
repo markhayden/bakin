@@ -257,7 +257,8 @@ mock.module('@bakin/schedule/lib/cron-parser', () => ({
 import { activatePlugin, findRoute, findTool, callRoute, callTool, callSearchRoute } from '../test-helpers'
 const schedulePlugin = (await import('@bakin/schedule/index')).default
 import { upsertJob, getJob } from '@bakin/schedule/lib/sidecar'
-import { getCronFire } from '../../../src/core/execution-ledger'
+import { getCronFire, claimCronFire, attachCronTask, markCronFireSkipped } from '../../../src/core/execution-ledger'
+import { closeDb } from '../../../packages/core/src/storage/db'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -328,6 +329,7 @@ beforeEach(() => {
 })
 
 afterAll(() => {
+  closeDb() // release the ledger handle before deleting its inode (SQLITE_IOERR_VNODE)
   rmSync(testDir, { recursive: true, force: true })
 })
 
@@ -1036,6 +1038,25 @@ describe('schedule routes', () => {
       expect(runs[0].runId).toBe('r1')
     })
 
+    it('reads a Bakin job\'s fire history from the ledger (fires + skips), newest-first', async () => {
+      // Bakin schedules have no runtime cron runs post-cutover — history is in the ledger.
+      upsertJob(makeMeta({ jobId: 'job-ledger', isBakinJob: true }))
+      const base = Date.parse('2026-03-30T09:00:00Z')
+      claimCronFire('job-ledger', 'run-a', base)
+      attachCronTask('job-ledger', 'run-a', 'task-aaaaaaaa')
+      claimCronFire('job-ledger', 'run-b', base + 60_000)
+      markCronFireSkipped('job-ledger', 'run-b', 'overlap')
+
+      const route = findRoute(plugin.routes, 'GET', '/:jobId/runs')!
+      const { status, body } = await callRoute(route, plugin.ctx, { searchParams: { jobId: 'job-ledger' } })
+
+      expect(status).toBe(200)
+      const runs = body.runs as RunEntry[]
+      expect(runs.map(r => r.runId)).toEqual(['run-b', 'run-a']) // newest fired_at first
+      expect(runs.find(r => r.runId === 'run-a')).toMatchObject({ status: 'success', taskId: 'task-aaaaaaaa' })
+      expect(runs.find(r => r.runId === 'run-b')).toMatchObject({ status: 'skipped', skippedReason: 'overlap' })
+    })
+
     it.skip('returns 400 when jobId is missing — legacy: routing requires :jobId in path', () => {})
 
     it('returns empty array when no runs exist', async () => {
@@ -1506,9 +1527,10 @@ describe('schedule exec tools', () => {
       expect(job.lastRun).toBeNull()
     })
 
-    it('includes lastRun when available', async () => {
+    it('includes lastRun from the ledger for a Bakin job', async () => {
       upsertJob(makeMeta({ jobId: 'job-get-run' }))
-      lastRunOverride = { runId: 'r99', jobId: 'job-get-run', timestamp: '2026-03-31T09:00:00Z', status: 'success' }
+      claimCronFire('job-get-run', 'r99', Date.parse('2026-03-31T09:00:00Z'))
+      attachCronTask('job-get-run', 'r99', 'task-r99')
 
       const tool = findTool(plugin.execTools, 'bakin_exec_schedule_get')!
       const result = await callTool(tool, { jobId: 'job-get-run' })
@@ -1516,6 +1538,8 @@ describe('schedule exec tools', () => {
       const job = result.job as Record<string, unknown>
       const lastRun = job.lastRun as RunEntry
       expect(lastRun.runId).toBe('r99')
+      expect(lastRun.status).toBe('success')
+      expect(lastRun.taskId).toBe('task-r99')
     })
 
     it('returns error when jobId is missing', async () => {

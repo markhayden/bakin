@@ -149,7 +149,7 @@ export interface RunEntry {
   runId: string
   jobId: string
   timestamp: string
-  status: 'success' | 'failure' | 'skipped'
+  status: 'success' | 'failure' | 'skipped' | 'pending'
   duration?: number
   error?: string
   taskId?: string // Bakin task created by this run
