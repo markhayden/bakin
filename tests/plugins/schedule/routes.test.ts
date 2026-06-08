@@ -455,6 +455,24 @@ describe('schedule routes', () => {
       expect(plugin.ctx.activity.log).toHaveBeenCalled()
     })
 
+    it('returns a transport danger-zone warning for a no-split prompt', async () => {
+      const route = findRoute(plugin.routes, 'POST', '/')!
+      const { body } = await callRoute(route, plugin.ctx, {
+        body: { name: 'Daily', schedule: '0 9 * * *', taskPrompt: 'Keep under 1900 chars and do not split.' },
+      })
+      expect(body.ok).toBe(true)
+      const warnings = body.warnings as Array<{ code: string }> | undefined
+      expect(warnings?.[0]?.code).toBe('transport-danger-zone')
+    })
+
+    it('returns no warnings for the safe chunking prompt', async () => {
+      const route = findRoute(plugin.routes, 'POST', '/')!
+      const { body } = await callRoute(route, plugin.ctx, {
+        body: { name: 'Daily', schedule: '0 9 * * *', taskPrompt: 'Chunk under 900 chars and split deliberately.' },
+      })
+      expect(body.warnings).toBeUndefined()
+    })
+
     it('returns 400 when name is missing', async () => {
       const route = findRoute(plugin.routes, 'POST', '/')!
       const { status, body } = await callRoute(route, plugin.ctx, {

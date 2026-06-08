@@ -14,6 +14,7 @@ import { parseSchedule } from './lib/cron-parser'
 import { runSchedulerTick, runStartupCatchUp, DEFAULT_TICK_WINDOW_MS, type SchedulerDeps } from './lib/scheduler'
 import { migrateBakinSchedulesOffOpenClawCron } from './lib/cutover'
 import { checkScheduleCutover, scheduleCutoverRepair } from './lib/health-checks'
+import { checkSchedulePrompt } from './lib/prompt-guard'
 import { createTaskWithEffects } from '../../src/core/task-service'
 import { createLogger } from '../../src/core/logger'
 import { readTaskboard } from '../../src/core/task-store'
@@ -607,7 +608,8 @@ const routes = [
       indexJob(jobId)
       ctx.activity.audit('job.created', body.owner ?? 'system', { jobId, name: body.name })
       ctx.activity.log(body.owner ?? 'system', `Created schedule "${body.name}"`)
-      return json({ ok: true, jobId, cron: parsed.cron, human: parsed.human, tz })
+      const warnings = checkSchedulePrompt(body.taskPrompt)
+      return json({ ok: true, jobId, cron: parsed.cron, human: parsed.human, tz, ...(warnings.length ? { warnings } : {}) })
     },
   }),
 
@@ -646,7 +648,8 @@ const routes = [
       indexJob(jobId)
       ctx.activity.audit('job.updated', 'system', { jobId })
       ctx.activity.log('system', `Updated schedule "${meta.displayName || jobId}"`)
-      return json({ ok: true })
+      const warnings = checkSchedulePrompt(meta.taskPrompt)
+      return json({ ok: true, ...(warnings.length ? { warnings } : {}) })
     },
   }),
 
@@ -1048,7 +1051,8 @@ const schedulePlugin: BakinPlugin = definePlugin({
         upsertJob(meta)
         indexJob(jobId)
 
-        return { ok: true, jobId, cron: parsed.cron, human: parsed.human, tz }
+        const warnings = checkSchedulePrompt(params.taskPrompt as string | undefined)
+        return { ok: true, jobId, cron: parsed.cron, human: parsed.human, tz, ...(warnings.length ? { warnings } : {}) }
       },
     })
 
@@ -1086,7 +1090,8 @@ const schedulePlugin: BakinPlugin = definePlugin({
         upsertJob(meta)
         indexJob(params.jobId as string)
 
-        return { ok: true }
+        const warnings = checkSchedulePrompt(meta.taskPrompt)
+        return { ok: true, ...(warnings.length ? { warnings } : {}) }
       },
     })
 
