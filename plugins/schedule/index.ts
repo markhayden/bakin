@@ -51,6 +51,27 @@ function expandTemplate(template: string, vars: Record<string, string>): string 
   return result
 }
 
+type BakinMutationGuard =
+  | { ok: true; meta: BakinJobMeta }
+  | { ok: false; status: number; error: string }
+
+const READ_ONLY_ERROR = 'Runtime cron jobs are read-only in Bakin — adopt it first to manage it.'
+
+/**
+ * Mutations apply only to Bakin-owned schedules. Resolves a jobId to one of:
+ * the Bakin schedule (proceed), a native runtime cron that exists but isn't
+ * Bakin-owned (read-only → 403), or an unknown id (→ 404). Keeps PUT / pause /
+ * delete (route + exec) consistent instead of each guarding differently.
+ */
+async function guardBakinMutation(jobId: string): Promise<BakinMutationGuard> {
+  const meta = getJob(jobId)
+  if (meta?.isBakinJob) return { ok: true, meta }
+  const runtime = pluginCtx ? await pluginCtx.runtime.cron.get(jobId).catch(() => null) : null
+  return runtime
+    ? { ok: false, status: 403, error: READ_ONLY_ERROR }
+    : { ok: false, status: 404, error: 'Schedule not found' }
+}
+
 /** Schedule plugin settings. */
 interface ScheduleSettings {
   /** Scheduler tick cadence in seconds (floor-clamped). Default 30. */
@@ -623,9 +644,9 @@ const routes = [
     handler: async (_req, ctx, { params, body }) => {
       const jobId = params.jobId || (body as { jobId?: string }).jobId
       if (!jobId) return json({ error: 'jobId required' }, 400)
-      const meta = getJob(jobId)
-      if (!meta) return json({ error: 'Job not found in sidecar' }, 404)
-      if (!meta.isBakinJob) return json({ error: 'Runtime cron jobs are read-only in Bakin — adopt it first to manage it.' }, 403)
+      const guard = await guardBakinMutation(jobId)
+      if (!guard.ok) return json({ error: guard.error }, guard.status)
+      const meta = guard.meta
       const b = body as Record<string, unknown>
       if (b.schedule && typeof b.schedule === 'string') {
         const parsed = parseSchedule(b.schedule)
@@ -697,10 +718,8 @@ const routes = [
     responses: { 200: okResponse, 400: errorResponse, 403: errorResponse },
     handler: async (_req, ctx, { params }) => {
       const jobId = params.jobId
-      const meta = getJob(jobId)
-      if (!meta?.isBakinJob) {
-        return json({ error: 'Runtime cron jobs are read-only in Bakin — remove it via OpenClaw, or adopt it first.' }, 403)
-      }
+      const guard = await guardBakinMutation(jobId)
+      if (!guard.ok) return json({ error: guard.error }, guard.status)
       const result = await deleteScheduleJob(ctx, jobId)
       ctx.activity.audit('job.deleted', 'system', { jobId })
       ctx.activity.log('system', `Deleted schedule "${jobId}"`)
@@ -823,10 +842,9 @@ const routes = [
     handler: async (_req, ctx, { params, body }) => {
       const jobId = params.jobId || body.jobId
       if (!jobId) return json({ error: 'jobId required' }, 400)
-      const meta = getJob(jobId)
-      if (!meta?.isBakinJob) {
-        return json({ error: 'Runtime cron jobs are read-only in Bakin — adopt it first to manage it.' }, 403)
-      }
+      const guard = await guardBakinMutation(jobId)
+      if (!guard.ok) return json({ error: guard.error }, guard.status)
+      const meta = guard.meta
       switch (body.action) {
         case 'pause':
           meta.paused = true
@@ -1072,9 +1090,9 @@ const schedulePlugin: BakinPlugin = definePlugin({
       handler: async (params: Record<string, unknown>) => {
         if (!params.jobId) return { ok: false, error: 'jobId required' }
 
-        const meta = getJob(params.jobId as string)
-        if (!meta) return { ok: false, error: 'Job not found' }
-        if (!meta.isBakinJob) return { ok: false, error: 'Runtime cron jobs are read-only in Bakin — adopt it first to manage it.' }
+        const guard = await guardBakinMutation(params.jobId as string)
+        if (!guard.ok) return { ok: false, error: guard.error }
+        const meta = guard.meta
 
         if (params.schedule) {
           const parsed = parseSchedule(params.schedule as string)
@@ -1108,10 +1126,9 @@ const schedulePlugin: BakinPlugin = definePlugin({
       handler: async (params: Record<string, unknown>) => {
         if (!params.jobId || !params.action) return { ok: false, error: 'jobId and action required' }
 
-        const meta = getJob(params.jobId as string)
-        if (!meta?.isBakinJob) {
-          return { ok: false, error: 'Runtime cron jobs are read-only in Bakin — adopt it first to manage it.' }
-        }
+        const guard = await guardBakinMutation(params.jobId as string)
+        if (!guard.ok) return { ok: false, error: guard.error }
+        const meta = guard.meta
 
         switch (params.action) {
           case 'pause':
@@ -1150,8 +1167,8 @@ const schedulePlugin: BakinPlugin = definePlugin({
       },
       handler: async (params: Record<string, unknown>) => {
         if (!params.jobId) return { ok: false, error: 'jobId required' }
-        const meta = getJob(params.jobId as string)
-        if (!meta?.isBakinJob) return { ok: false, error: 'Runtime cron jobs are read-only in Bakin — remove it via OpenClaw, or adopt it first.' }
+        const guard = await guardBakinMutation(params.jobId as string)
+        if (!guard.ok) return { ok: false, error: guard.error }
         const result = await deleteScheduleJob(ctx, params.jobId as string)
         return { ok: true, ...result }
       },

@@ -925,10 +925,20 @@ describe('schedule routes', () => {
       expect(body.error).toBe('invalid input')
     })
 
-    it('rejects pausing a non-Bakin / unknown job (read-only)', async () => {
+    it('returns 404 for an unknown job', async () => {
+      const route = findRoute(plugin.routes, 'POST', '/:jobId/pause')!
+      const { status } = await callRoute(route, plugin.ctx, {
+        searchParams: { jobId: 'ghost-job' },
+        body: { action: 'pause' },
+      })
+      expect(status).toBe(404)
+    })
+
+    it('rejects pausing a native (non-Bakin) runtime cron with 403 read-only', async () => {
+      mockRuntimeCronJobs.push({ id: 'native-pause', name: 'Native', schedule: '0 9 * * *', command: 'run', enabled: true })
       const route = findRoute(plugin.routes, 'POST', '/:jobId/pause')!
       const { status, body } = await callRoute(route, plugin.ctx, {
-        searchParams: { jobId: 'ghost-job' },
+        searchParams: { jobId: 'native-pause' },
         body: { action: 'pause' },
       })
       expect(status).toBe(403)
@@ -1417,9 +1427,17 @@ describe('schedule exec tools', () => {
       expect(result.error).toContain('jobId and action required')
     })
 
-    it('rejects pausing a non-Bakin / unknown job (read-only)', async () => {
+    it('returns not-found for an unknown job', async () => {
       const tool = findTool(plugin.execTools, 'bakin_exec_schedule_pause')!
       const result = await callTool(tool, { jobId: 'ghost', action: 'pause' })
+      expect(result.ok).toBe(false)
+      expect(result.error).toContain('not found')
+    })
+
+    it('rejects pausing a native (non-Bakin) runtime cron (read-only)', async () => {
+      mockRuntimeCronJobs.push({ id: 'native-exec-pause', name: 'Native', schedule: '0 9 * * *', command: 'run', enabled: true })
+      const tool = findTool(plugin.execTools, 'bakin_exec_schedule_pause')!
+      const result = await callTool(tool, { jobId: 'native-exec-pause', action: 'pause' })
       expect(result.ok).toBe(false)
       expect(result.error).toContain('read-only')
     })
