@@ -745,6 +745,19 @@ describe('schedule routes', () => {
       expect(plugin.ctx.search.remove).toHaveBeenCalledWith('job-del')
     })
 
+    it('refuses to delete a native (non-Bakin) runtime cron — read-only', async () => {
+      // A native OpenClaw cron surfaced read-only has no Bakin sidecar entry.
+      mockRuntimeCronJobs.push({ id: 'native-del', name: 'Native', schedule: '0 9 * * *', command: 'run', enabled: true })
+      const route = findRoute(plugin.routes, 'DELETE', '/:jobId')!
+      const { status, body } = await callRoute(route, plugin.ctx, {
+        searchParams: { jobId: 'native-del' },
+        body: {},
+      })
+      expect(status).toBe(403)
+      expect(body.error).toContain('read-only')
+      expect(mockCronRemove).not.toHaveBeenCalled()
+    })
+
     it('cleans up Bakin records when the runtime cron job is already gone', async () => {
       upsertJob(makeMeta({ jobId: 'job-stale-del' }))
       mockCronRemoveError = new Error('Cron job not found: job-stale-del')
@@ -894,14 +907,14 @@ describe('schedule routes', () => {
       expect(body.error).toBe('invalid input')
     })
 
-    it('returns 404 for non-existent job', async () => {
+    it('rejects pausing a non-Bakin / unknown job (read-only)', async () => {
       const route = findRoute(plugin.routes, 'POST', '/:jobId/pause')!
       const { status, body } = await callRoute(route, plugin.ctx, {
         searchParams: { jobId: 'ghost-job' },
         body: { action: 'pause' },
       })
-      expect(status).toBe(404)
-      expect(body.error).toContain('not found')
+      expect(status).toBe(403)
+      expect(body.error).toContain('read-only')
     })
 
     it('audits the pause action', async () => {
@@ -1386,11 +1399,11 @@ describe('schedule exec tools', () => {
       expect(result.error).toContain('jobId and action required')
     })
 
-    it('returns error for non-existent job', async () => {
+    it('rejects pausing a non-Bakin / unknown job (read-only)', async () => {
       const tool = findTool(plugin.execTools, 'bakin_exec_schedule_pause')!
       const result = await callTool(tool, { jobId: 'ghost', action: 'pause' })
       expect(result.ok).toBe(false)
-      expect(result.error).toContain('not found')
+      expect(result.error).toContain('read-only')
     })
   })
 

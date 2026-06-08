@@ -326,6 +326,18 @@ describe('schedule/jobs-reader', () => {
       expect(owned.enabled).toBe(true)
     })
 
+    it('computes a future next-run for a store-owned cron schedule', async () => {
+      writeSidecarFile({
+        version: 1,
+        jobs: {
+          owned: makeMeta({ jobId: 'owned', schedule: { kind: 'cron', expr: '0 9 * * *' }, tz: 'America/Denver' }),
+        },
+      })
+      const jobs = await readMergedJobs(cronReader([]), defaultOwner)
+      expect(jobs[0].nextRun).toBeDefined()
+      expect(Date.parse(jobs[0].nextRun!)).toBeGreaterThan(Date.now())
+    })
+
     it('reflects the store enabled=false flag on a store-owned schedule', async () => {
       writeSidecarFile({
         version: 1,

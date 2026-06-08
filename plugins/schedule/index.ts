@@ -617,12 +617,13 @@ const routes = [
     summary: 'Update a scheduled job',
     params: jobIdParams,
     body: updateJobBody,
-    responses: { 200: okResponse, 400: errorResponse, 404: errorResponse, 500: errorResponse },
+    responses: { 200: okResponse, 400: errorResponse, 403: errorResponse, 404: errorResponse, 500: errorResponse },
     handler: async (_req, ctx, { params, body }) => {
       const jobId = params.jobId || (body as { jobId?: string }).jobId
       if (!jobId) return json({ error: 'jobId required' }, 400)
       const meta = getJob(jobId)
       if (!meta) return json({ error: 'Job not found in sidecar' }, 404)
+      if (!meta.isBakinJob) return json({ error: 'Runtime cron jobs are read-only in Bakin — adopt it first to manage it.' }, 403)
       const b = body as Record<string, unknown>
       if (b.schedule && typeof b.schedule === 'string') {
         const parsed = parseSchedule(b.schedule)
@@ -690,9 +691,13 @@ const routes = [
     summary: 'Delete a scheduled job',
     params: jobIdParams,
     body: deleteJobBody,
-    responses: { 200: okResponse, 400: errorResponse },
+    responses: { 200: okResponse, 400: errorResponse, 403: errorResponse },
     handler: async (_req, ctx, { params }) => {
       const jobId = params.jobId
+      const meta = getJob(jobId)
+      if (!meta?.isBakinJob) {
+        return json({ error: 'Runtime cron jobs are read-only in Bakin — remove it via OpenClaw, or adopt it first.' }, 403)
+      }
       const result = await deleteScheduleJob(ctx, jobId)
       ctx.activity.audit('job.deleted', 'system', { jobId })
       ctx.activity.log('system', `Deleted schedule "${jobId}"`)
@@ -811,20 +816,13 @@ const routes = [
     summary: 'Pause/resume/skip a scheduled job',
     params: jobIdParams,
     body: pauseJobBody,
-    responses: { 200: okResponse, 400: errorResponse, 404: errorResponse },
+    responses: { 200: okResponse, 400: errorResponse, 403: errorResponse, 404: errorResponse },
     handler: async (_req, ctx, { params, body }) => {
       const jobId = params.jobId || body.jobId
       if (!jobId) return json({ error: 'jobId required' }, 400)
       const meta = getJob(jobId)
-      if (!meta) {
-        if (body.action === 'skip') return json({ error: 'Skip is only available for Bakin schedules' }, 400)
-        const runtimeJob = await ctx.runtime.cron.get(jobId)
-        if (!runtimeJob) return json({ error: 'Job not found' }, 404)
-        await ctx.runtime.cron.update(jobId, { enabled: body.action === 'resume' })
-        indexJob(jobId)
-        ctx.activity.audit(`job.${body.action === 'pause' ? 'disabled' : 'enabled'}`, 'system', { jobId })
-        ctx.activity.log('system', `Runtime cron "${jobId}" ${body.action === 'pause' ? 'disabled' : 'enabled'}`)
-        return json({ ok: true })
+      if (!meta?.isBakinJob) {
+        return json({ error: 'Runtime cron jobs are read-only in Bakin — adopt it first to manage it.' }, 403)
       }
       switch (body.action) {
         case 'pause':
@@ -1072,6 +1070,7 @@ const schedulePlugin: BakinPlugin = definePlugin({
 
         const meta = getJob(params.jobId as string)
         if (!meta) return { ok: false, error: 'Job not found' }
+        if (!meta.isBakinJob) return { ok: false, error: 'Runtime cron jobs are read-only in Bakin — adopt it first to manage it.' }
 
         if (params.schedule) {
           const parsed = parseSchedule(params.schedule as string)
@@ -1105,12 +1104,8 @@ const schedulePlugin: BakinPlugin = definePlugin({
         if (!params.jobId || !params.action) return { ok: false, error: 'jobId and action required' }
 
         const meta = getJob(params.jobId as string)
-        if (!meta) {
-          if (params.action === 'skip') return { ok: false, error: 'Skip is only available for Bakin schedules' }
-          const runtimeJob = await ctx.runtime.cron.get(params.jobId as string)
-          if (!runtimeJob) return { ok: false, error: 'Job not found' }
-          await ctx.runtime.cron.update(params.jobId as string, { enabled: params.action === 'resume' })
-          return { ok: true }
+        if (!meta?.isBakinJob) {
+          return { ok: false, error: 'Runtime cron jobs are read-only in Bakin — adopt it first to manage it.' }
         }
 
         switch (params.action) {
@@ -1150,6 +1145,8 @@ const schedulePlugin: BakinPlugin = definePlugin({
       },
       handler: async (params: Record<string, unknown>) => {
         if (!params.jobId) return { ok: false, error: 'jobId required' }
+        const meta = getJob(params.jobId as string)
+        if (!meta?.isBakinJob) return { ok: false, error: 'Runtime cron jobs are read-only in Bakin — remove it via OpenClaw, or adopt it first.' }
         const result = await deleteScheduleJob(ctx, params.jobId as string)
         return { ok: true, ...result }
       },
