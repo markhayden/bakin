@@ -41,6 +41,20 @@ export function nextRun(expr: string, tz: string | undefined, after: Date): Date
 }
 
 /**
+ * The most recent occurrence strictly before `before`, evaluated in `tz`.
+ * Returns null for an invalid expression. Used by startup catch-up to find the
+ * last occurrence that should already have fired.
+ */
+export function prevRun(expr: string, tz: string | undefined, before: Date): Date | null {
+  try {
+    const it = CronExpressionParser.parse(expr, { tz: tzOrDefault(tz), currentDate: before })
+    return it.prev().toDate()
+  } catch {
+    return null
+  }
+}
+
+/**
  * All occurrences in the window `(from, to]`, ascending, evaluated in `tz`.
  * Strictly after `from`, up to and including `to`. Returns an empty array for
  * an invalid expression or an empty window.

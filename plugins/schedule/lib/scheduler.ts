@@ -12,7 +12,7 @@
  * or filesystem coupling. Production wiring lives in the plugin entry (T4).
  * Catch-up of fires missed during downtime is handled separately (T6).
  */
-import { occurrencesBetween } from './cron-eval'
+import { occurrencesBetween, prevRun } from './cron-eval'
 import type { BakinJobMeta } from '../types'
 
 /** Default window scanned each tick. Must exceed the tick interval so no
@@ -30,8 +30,9 @@ export interface SchedulerDeps {
   getCronFire: (jobId: string, runId: string) => unknown | null
   /** Authoritative claim. The (job_id, run_id) PK makes a duplicate fail. */
   claimCronFire: (jobId: string, runId: string, firedAt: number) => { claimed: boolean }
-  /** Post-claim fire (pause/skip/overlap checks + task creation). */
-  fire: (meta: BakinJobMeta, jobId: string, runId: string, occurrence: Date) => Promise<void>
+  /** Post-claim fire (pause/skip/overlap checks + task creation). `blocked`
+   *  materializes the task into the blocked column (stale catch-up). */
+  fire: (meta: BakinJobMeta, jobId: string, runId: string, occurrence: Date, opts?: { blocked?: boolean }) => Promise<void>
   log?: { warn: (msg: string, data?: unknown) => void }
 }
 
@@ -74,6 +75,37 @@ export async function runSchedulerTick(deps: SchedulerDeps): Promise<void> {
           error: err instanceof Error ? err.message : String(err),
         })
       }
+    }
+  }
+}
+
+/**
+ * Startup catch-up for fires missed while the server was down. For each
+ * fireable job, take the SINGLE most-recent occurrence that should already
+ * have fired (coalescing any older misses away — no stale bursts). If it
+ * hasn't been claimed, fire it: into `todo` when it's within `catchUpWindowMs`
+ * of now, or into `blocked` (for the user to triage) when it's older. The
+ * occurrence runId keeps this exactly-once and deduped against the steady tick.
+ */
+export async function runStartupCatchUp(deps: SchedulerDeps, catchUpWindowMs: number): Promise<void> {
+  const nowMs = deps.now()
+  for (const meta of deps.listJobs()) {
+    if (!isFireable(meta)) continue
+    const occurrence = prevRun(meta.schedule!.expr, meta.tz, new Date(nowMs))
+    if (!occurrence) continue
+    const runId = makeOccurrenceRunId(meta.jobId, occurrence)
+    if (deps.getCronFire(meta.jobId, runId)) continue
+    const claim = deps.claimCronFire(meta.jobId, runId, occurrence.getTime())
+    if (!claim.claimed) continue
+    const blocked = nowMs - occurrence.getTime() > catchUpWindowMs
+    try {
+      await deps.fire(meta, meta.jobId, runId, occurrence, { blocked })
+    } catch (err) {
+      deps.log?.warn('Catch-up fire failed', {
+        jobId: meta.jobId,
+        runId,
+        error: err instanceof Error ? err.message : String(err),
+      })
     }
   }
 }

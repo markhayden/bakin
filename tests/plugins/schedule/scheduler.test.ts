@@ -1,5 +1,5 @@
 import { describe, it, expect, mock } from 'bun:test'
-import { makeOccurrenceRunId, runSchedulerTick, type SchedulerDeps } from '@bakin/schedule/lib/scheduler'
+import { makeOccurrenceRunId, runSchedulerTick, runStartupCatchUp, type SchedulerDeps } from '@bakin/schedule/lib/scheduler'
 import type { BakinJobMeta } from '@bakin/schedule/types'
 
 function meta(overrides: Partial<BakinJobMeta> = {}): BakinJobMeta {
@@ -21,7 +21,7 @@ function meta(overrides: Partial<BakinJobMeta> = {}): BakinJobMeta {
  */
 function makeDeps(jobs: BakinJobMeta[], now: number, opts: { tickWindowMs?: number } = {}) {
   const claimed = new Set<string>()
-  const fired: Array<{ jobId: string; runId: string; occurrence: string }> = []
+  const fired: Array<{ jobId: string; runId: string; occurrence: string; blocked: boolean }> = []
   const deps: SchedulerDeps = {
     now: () => now,
     tickWindowMs: opts.tickWindowMs ?? 90_000,
@@ -33,8 +33,8 @@ function makeDeps(jobs: BakinJobMeta[], now: number, opts: { tickWindowMs?: numb
       claimed.add(key)
       return { claimed: true }
     },
-    fire: mock(async (m: BakinJobMeta, jobId: string, runId: string, occurrence: Date) => {
-      fired.push({ jobId, runId, occurrence: occurrence.toISOString() })
+    fire: mock(async (m: BakinJobMeta, jobId: string, runId: string, occurrence: Date, fireOpts?: { blocked?: boolean }) => {
+      fired.push({ jobId, runId, occurrence: occurrence.toISOString(), blocked: fireOpts?.blocked ?? false })
     }),
     log: { warn: mock() },
   }
@@ -126,6 +126,58 @@ describe('schedule/scheduler', () => {
       )
       await runSchedulerTick(deps)
       expect(fired.map(f => f.jobId).sort()).toEqual(['sch_a', 'sch_b'])
+    })
+  })
+
+  describe('runStartupCatchUp', () => {
+    const WINDOW_MS = 60 * 60_000 // 1h
+
+    it('fires a recent missed occurrence into todo (not blocked)', async () => {
+      // now = 9:10am MDT — the 9:00 occurrence was missed 10m ago, within window.
+      const now = Date.parse('2026-06-07T15:10:00Z')
+      const { deps, fired } = makeDeps([meta()], now)
+      await runStartupCatchUp(deps, WINDOW_MS)
+      expect(fired).toHaveLength(1)
+      expect(fired[0].occurrence).toBe('2026-06-07T15:00:00.000Z')
+      expect(fired[0].blocked).toBe(false)
+    })
+
+    it('lands a stale missed occurrence in blocked', async () => {
+      // now = 11:00am MDT — the 9:00 occurrence is 2h old, beyond the 1h window.
+      const now = Date.parse('2026-06-07T17:00:00Z')
+      const { deps, fired } = makeDeps([meta()], now)
+      await runStartupCatchUp(deps, WINDOW_MS)
+      expect(fired).toHaveLength(1)
+      expect(fired[0].occurrence).toBe('2026-06-07T15:00:00.000Z')
+      expect(fired[0].blocked).toBe(true)
+    })
+
+    it('coalesces a long outage to a single most-recent occurrence', async () => {
+      // Down for ~3 days; only the most recent 9am occurrence is materialized.
+      const now = Date.parse('2026-06-10T17:00:00Z')
+      const { deps, fired } = makeDeps([meta()], now)
+      await runStartupCatchUp(deps, WINDOW_MS)
+      expect(fired).toHaveLength(1)
+      expect(fired[0].occurrence).toBe('2026-06-10T15:00:00.000Z')
+      expect(fired[0].blocked).toBe(true)
+    })
+
+    it('does not refire an occurrence already claimed by the steady tick', async () => {
+      const now = Date.parse('2026-06-07T15:10:00Z')
+      const { deps, fired, claimed } = makeDeps([meta()], now)
+      claimed.add(`sch_1:${makeOccurrenceRunId('sch_1', new Date('2026-06-07T15:00:00Z'))}`)
+      await runStartupCatchUp(deps, WINDOW_MS)
+      expect(fired).toHaveLength(0)
+    })
+
+    it('skips disabled jobs and jobs without a schedule', async () => {
+      const now = Date.parse('2026-06-07T15:10:00Z')
+      const { deps, fired } = makeDeps(
+        [meta({ jobId: 'off', enabled: false }), meta({ jobId: 'noexpr', schedule: undefined })],
+        now,
+      )
+      await runStartupCatchUp(deps, WINDOW_MS)
+      expect(fired).toHaveLength(0)
     })
   })
 })

@@ -312,6 +312,8 @@ export async function createTaskWithEffects(opts: {
   dependsOn?: string
   date?: string
   channel?: Channel
+  /** When creating directly into the blocked column, the reason shown to the user. */
+  blockedReason?: string
 }): Promise<{ id: string; workflowId?: string; suggestedWorkflow?: string }> {
   // Auto-match workflow if none was explicitly provided
   const suggested = !opts.workflowId ? (await hooks().invoke<string | null>('workflows.matchWorkflow', { title: opts.title, description: opts.description }) || undefined) : undefined
@@ -353,6 +355,10 @@ export async function createTaskWithEffects(opts: {
 
   if (opts.date) {
     await updateStoredTask(task.id, { date: opts.date })
+  }
+
+  if (opts.blockedReason) {
+    await updateStoredTask(task.id, { blockedReason: opts.blockedReason })
   }
 
   // Start workflow instance if one was specified

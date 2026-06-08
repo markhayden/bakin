@@ -11,7 +11,7 @@ import { getLastRun, readRuns } from './lib/runs-reader'
 import { upsertJob, removeJob, getJob, readSidecar, isPaused, shouldSkip, recordFailure, recordSuccess, withDefaults, newScheduleId } from './lib/sidecar'
 import { claimCronFire, getCronFire, attachCronTask, markCronFireSkipped, findHealableCronClaims } from '../../src/core/execution-ledger'
 import { parseSchedule } from './lib/cron-parser'
-import { runSchedulerTick, DEFAULT_TICK_WINDOW_MS, type SchedulerDeps } from './lib/scheduler'
+import { runSchedulerTick, runStartupCatchUp, DEFAULT_TICK_WINDOW_MS, type SchedulerDeps } from './lib/scheduler'
 import { migrateBakinSchedulesOffOpenClawCron } from './lib/cutover'
 import { createTaskWithEffects } from '../../src/core/task-service'
 import { createLogger } from '../../src/core/logger'
@@ -60,12 +60,21 @@ interface ScheduleSettings {
 
 const DEFAULT_TICK_INTERVAL_SECONDS = 30
 const MIN_TICK_INTERVAL_SECONDS = 5
+const DEFAULT_CATCH_UP_WINDOW_MINUTES = 60
 
 /** Resolved tick interval in ms, clamped to a safe floor. */
 function tickIntervalMs(): number {
   const raw = pluginCtx?.getSettings<ScheduleSettings>()?.tickIntervalSeconds
   const seconds = typeof raw === 'number' && raw >= MIN_TICK_INTERVAL_SECONDS ? raw : DEFAULT_TICK_INTERVAL_SECONDS
   return seconds * 1000
+}
+
+/** Resolved catch-up safety window in ms. A missed occurrence fires into `todo`
+ *  if within this window, else into `blocked` for the user to triage. */
+function catchUpWindowMs(): number {
+  const raw = pluginCtx?.getSettings<ScheduleSettings>()?.catchUpWindowMinutes
+  const minutes = typeof raw === 'number' && raw >= 0 ? raw : DEFAULT_CATCH_UP_WINDOW_MINUTES
+  return minutes * 60_000
 }
 
 interface EnsureBakinJobResult {
@@ -301,7 +310,12 @@ async function fireScheduledRunFromPayload(payload: { jobId: string; runId?: str
   return fireScheduledRun(meta, payload.jobId, runId, firedAt)
 }
 
-async function runClaimedFire(meta: BakinJobMeta, jobId: string, runId: string): Promise<ProcessRunResult> {
+async function runClaimedFire(
+  meta: BakinJobMeta,
+  jobId: string,
+  runId: string,
+  opts: { column?: string; blockedReason?: string } = {},
+): Promise<ProcessRunResult> {
   const defaults = withDefaults(meta, await getScheduleDefaultOwner())
 
   // Check pause state
@@ -386,10 +400,12 @@ async function runClaimedFire(meta: BakinJobMeta, jobId: string, runId: string):
     : undefined
 
   try {
+    const column = opts.column ?? 'todo'
     const result = await createTaskWithEffects({
       title,
       description,
-      column: 'todo',
+      column,
+      blockedReason: opts.blockedReason,
       assignee: defaults.requireTriage ? undefined : meta.agentId,
       workflowId: meta.workflowId,
       createdBy: 'schedule',
@@ -409,8 +425,12 @@ async function runClaimedFire(meta: BakinJobMeta, jobId: string, runId: string):
 
     // Audit + activity feed
     if (pluginCtx) {
-      pluginCtx.activity.audit('task_created', 'system', { jobId, runId, taskId, agent: meta.agentId, owner: defaults.owner })
-      pluginCtx.activity.log('system', `Schedule "${meta.displayName ?? jobId}" created task ${taskId}${meta.agentId ? ` for ${meta.agentId}` : ''}`, { taskId })
+      pluginCtx.activity.audit('task_created', 'system', {
+        jobId, runId, taskId, agent: meta.agentId, owner: defaults.owner,
+        ...(column !== 'todo' ? { column, blockedReason: opts.blockedReason } : {}),
+      })
+      const where = column === 'blocked' ? ' (blocked — missed schedule window)' : ''
+      pluginCtx.activity.log('system', `Schedule "${meta.displayName ?? jobId}" created task ${taskId}${meta.agentId ? ` for ${meta.agentId}` : ''}${where}`, { taskId })
     }
 
     return { status: 200, body: { ok: true, taskId } }
@@ -477,7 +497,12 @@ function schedulerDeps(): SchedulerDeps {
     listJobs: () => Object.values(readSidecar().jobs).filter(job => job.isBakinJob),
     getCronFire: (jobId, runId) => getCronFire(jobId, runId),
     claimCronFire: (jobId, runId, firedAt) => claimCronFire(jobId, runId, firedAt),
-    fire: async (meta, jobId, runId) => { await runClaimedFire(meta, jobId, runId) },
+    fire: async (meta, jobId, runId, _occurrence, opts) => {
+      await runClaimedFire(
+        meta, jobId, runId,
+        opts?.blocked ? { column: 'blocked', blockedReason: 'missed schedule window' } : {},
+      )
+    },
     log,
   }
 }
@@ -1261,6 +1286,14 @@ const schedulePlugin: BakinPlugin = definePlugin({
       })
     } catch (err) {
       log.error('Schedule cutover failed', err)
+    }
+
+    // Fire (or block) anything missed while the server was down, then start the
+    // steady tick. Catch-up first so a just-missed occurrence isn't double-handled.
+    try {
+      await runStartupCatchUp(schedulerDeps(), catchUpWindowMs())
+    } catch (err) {
+      log.error('Schedule startup catch-up failed', err)
     }
 
     startScheduler()
