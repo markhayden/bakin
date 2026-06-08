@@ -392,6 +392,7 @@ export function updateTask(
     dependsOn?: string | null
     date?: string | null
     channel?: string
+    blockedReason?: string
   },
 ): Promise<void> {
   try {
@@ -410,6 +411,7 @@ export function updateTask(
     if ('scheduleJobId' in updates) patch.scheduleJobId = updates.scheduleJobId || undefined
     if ('dependsOn' in updates) patch.dependsOn = updates.dependsOn || undefined
     if ('date' in updates) patch.date = updates.date || undefined
+    if ('blockedReason' in updates) patch.blockedReason = updates.blockedReason || undefined
 
     if (updates.column !== undefined && updates.column !== asColumnId(task)) {
       assertTransitionAllowed(task, updates.column, isHuman)

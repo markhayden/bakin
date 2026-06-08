@@ -2,23 +2,24 @@
  * Schedule plugin — server entry point.
  * Registers API routes, exec tools, and the cron→task bridge.
  */
-import { randomBytes, randomUUID, timingSafeEqual } from 'crypto'
+import { randomUUID } from 'crypto'
 import { z } from 'zod'
-import type { BakinPlugin, HealthCheckResult, HealthRepairHandler, PluginContext } from '@bakin/core/plugin-types'
+import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { definePlugin, defineRoute, searchRoute } from '@bakin/core/routing'
-import type { CronJob, CronRun, UpdateCronJobInput } from '@bakin/core/adapters/runtime'
 import { readMergedJobs } from './lib/jobs-reader'
 import { getLastRun, readRuns } from './lib/runs-reader'
-import { upsertJob, removeJob, getJob, readSidecar, writeSidecar, isPaused, shouldSkip, recordFailure, recordSuccess, withDefaults } from './lib/sidecar'
+import { upsertJob, removeJob, getJob, readSidecar, isPaused, shouldSkip, recordFailure, recordSuccess, withDefaults, newScheduleId, resumeDuePauses } from './lib/sidecar'
 import { claimCronFire, getCronFire, attachCronTask, markCronFireSkipped, findHealableCronClaims } from '../../src/core/execution-ledger'
 import { parseSchedule } from './lib/cron-parser'
+import { runSchedulerTick, runStartupCatchUp, DEFAULT_TICK_WINDOW_MS, type SchedulerDeps } from './lib/scheduler'
+import { migrateBakinSchedulesOffOpenClawCron } from './lib/cutover'
+import { checkScheduleCutover, scheduleCutoverRepair } from './lib/health-checks'
+import { checkSchedulePrompt } from './lib/prompt-guard'
 import { createTaskWithEffects } from '../../src/core/task-service'
-import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
 import { readTaskboard } from '../../src/core/task-store'
-import { checkScheduleSync, scheduleSyncRepair } from './lib/health-checks'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
-import type { BakinJobMeta, BridgePayload, BridgeResult, MergedJob } from './types'
+import type { BakinJobMeta, BridgeResult, MergedJob } from './types'
 
 const log = createLogger('schedule')
 
@@ -42,10 +43,6 @@ function json(data: unknown, status = 200): Response {
   })
 }
 
-async function readBody<T>(req: Request): Promise<T> {
-  return req.json() as Promise<T>
-}
-
 function expandTemplate(template: string, vars: Record<string, string>): string {
   let result = template
   for (const [key, value] of Object.entries(vars)) {
@@ -54,11 +51,53 @@ function expandTemplate(template: string, vars: Record<string, string>): string 
   return result
 }
 
-/** Settings shape used by handleBridge + webhook URL construction. */
+type BakinMutationGuard =
+  | { ok: true; meta: BakinJobMeta }
+  | { ok: false; status: number; error: string }
+
+const READ_ONLY_ERROR = 'Runtime cron jobs are read-only in Bakin — adopt it first to manage it.'
+
+/**
+ * Mutations apply only to Bakin-owned schedules. Resolves a jobId to one of:
+ * the Bakin schedule (proceed), a native runtime cron that exists but isn't
+ * Bakin-owned (read-only → 403), or an unknown id (→ 404). Keeps PUT / pause /
+ * delete (route + exec) consistent instead of each guarding differently.
+ */
+async function guardBakinMutation(jobId: string): Promise<BakinMutationGuard> {
+  const meta = getJob(jobId)
+  if (meta?.isBakinJob) return { ok: true, meta }
+  const runtime = pluginCtx ? await pluginCtx.runtime.cron.get(jobId).catch(() => null) : null
+  return runtime
+    ? { ok: false, status: 403, error: READ_ONLY_ERROR }
+    : { ok: false, status: 404, error: 'Schedule not found' }
+}
+
+/** Schedule plugin settings. */
 interface ScheduleSettings {
-  bridgeEnabled?: boolean
-  bridgeSecret?: string
-  reconcileLookbackHours?: number
+  /** Scheduler tick cadence in seconds (floor-clamped). Default 30. */
+  tickIntervalSeconds?: number
+  /** Catch-up safety window in minutes: a missed occurrence fires into `todo`
+   *  if within this window of now, else lands in `blocked`. Default 60. */
+  catchUpWindowMinutes?: number
+}
+
+const DEFAULT_TICK_INTERVAL_SECONDS = 30
+const MIN_TICK_INTERVAL_SECONDS = 5
+const DEFAULT_CATCH_UP_WINDOW_MINUTES = 60
+
+/** Resolved tick interval in ms, clamped to a safe floor. */
+function tickIntervalMs(): number {
+  const raw = pluginCtx?.getSettings<ScheduleSettings>()?.tickIntervalSeconds
+  const seconds = typeof raw === 'number' && raw >= MIN_TICK_INTERVAL_SECONDS ? raw : DEFAULT_TICK_INTERVAL_SECONDS
+  return seconds * 1000
+}
+
+/** Resolved catch-up safety window in ms. A missed occurrence fires into `todo`
+ *  if within this window, else into `blocked` for the user to triage. */
+function catchUpWindowMs(): number {
+  const raw = pluginCtx?.getSettings<ScheduleSettings>()?.catchUpWindowMinutes
+  const minutes = typeof raw === 'number' && raw >= 0 ? raw : DEFAULT_CATCH_UP_WINDOW_MINUTES
+  return minutes * 60_000
 }
 
 interface EnsureBakinJobResult {
@@ -71,96 +110,49 @@ interface EnsureBakinJobResult {
 
 type ScheduleDeleteContext = Pick<PluginContext, 'runtime' | 'search'>
 
-/** Constant-time string comparison. Returns false for any length mismatch. */
-function safeEqual(a: string, b: string): boolean {
-  const aBuf = Buffer.from(a, 'utf-8')
-  const bBuf = Buffer.from(b, 'utf-8')
-  if (aBuf.length !== bBuf.length) return false
-  return timingSafeEqual(aBuf, bBuf)
-}
-
-/**
- * Resolve the bridge secret, generating and persisting one on first use.
- * Returns null if pluginCtx isn't set yet (shouldn't happen after activate()).
- */
-function getOrCreateBridgeSecret(): string | null {
-  if (!pluginCtx) return null
-  const settings = pluginCtx.getSettings<ScheduleSettings>()
-  if (settings.bridgeSecret && settings.bridgeSecret.length >= 32) {
-    return settings.bridgeSecret
-  }
-  const fresh = randomBytes(32).toString('hex')
-  pluginCtx.updateSettings({ bridgeSecret: fresh })
-  return fresh
-}
-
 async function getScheduleDefaultOwner(): Promise<string> {
   return pluginCtx?.runtime ? getRuntimeMainAgentId(pluginCtx.runtime) : 'main'
 }
 
 async function ensureBakinJob(ctx: PluginContext, input: Record<string, unknown>): Promise<EnsureBakinJobResult> {
-  const jobId = typeof input.jobId === 'string' && input.jobId.trim() ? input.jobId.trim() : undefined
+  const logicalId = typeof input.jobId === 'string' && input.jobId.trim() ? input.jobId.trim() : undefined
   const name = typeof input.name === 'string' ? input.name.trim() : ''
   const schedule = typeof input.schedule === 'string' ? input.schedule.trim() : ''
   const command = typeof input.command === 'string' ? input.command.trim() : ''
-  if (!jobId || !name || !schedule || !command) {
+  if (!logicalId || !name || !schedule || !command) {
     return { ok: false, error: 'jobId, name, schedule, and command are required' }
   }
 
   const parsed = parseSchedule(schedule)
   if (!parsed) return { ok: false, error: 'Could not parse schedule expression' }
 
-  const metadata = input.metadata && typeof input.metadata === 'object' && !Array.isArray(input.metadata)
-    ? input.metadata as Record<string, unknown>
-    : {}
   const tz = typeof input.tz === 'string' && input.tz.trim() ? input.tz.trim() : getSystemTimezone()
   const enabled = typeof input.enabled === 'boolean' ? input.enabled : true
   const now = new Date().toISOString()
-  const runtimePatch = {
-    name,
-    schedule: parsed.cron,
-    command,
-    enabled,
-    metadata: {
-      ...metadata,
-      tz,
-      logicalJobId: jobId,
-      source: metadata.source ?? 'bakin',
-      scheduleType: 'cron',
-      bakinSchedule: true,
-    },
-  }
 
-  const logicalExisting = getJobByLogicalJobId(jobId)
-  const runtimeJobs = await ctx.runtime.cron.list()
-  const existingRuntime = findExistingBakinRuntimeJob(runtimeJobs, { jobId, runtimeJobId: logicalExisting?.jobId, name, command })
-  let runtimeJob: CronJob
-  if (existingRuntime) {
-    runtimeJob = await ctx.runtime.cron.update(existingRuntime.id, runtimePatch)
-  } else {
-    runtimeJob = await ctx.runtime.cron.create({ id: jobId, ...runtimePatch })
-  }
-  const runtimeJobId = runtimeJob.id || existingRuntime?.id || jobId
-
-  const staleExisting = runtimeJobId !== jobId ? getJob(jobId) : null
-  const existing = getJob(runtimeJobId) ?? logicalExisting ?? staleExisting
+  // Idempotent provisioning keyed by the caller-owned logical id. Bakin owns
+  // the schedule outright now — no OpenClaw cron is created.
+  const existing = getJob(logicalId) ?? getJobByLogicalJobId(logicalId)
+  const jobId = existing?.jobId ?? logicalId
   const owner = typeof input.owner === 'string' && input.owner.trim()
     ? input.owner.trim()
     : existing?.owner ?? await getRuntimeMainAgentId(ctx.runtime)
-  const description = typeof input.description === 'string' ? input.description : existing?.description
+
   const meta: BakinJobMeta = {
     ...(existing ?? {}),
-    jobId: runtimeJobId,
-    logicalJobId: jobId,
+    jobId,
+    logicalJobId: logicalId,
     isBakinJob: true,
     source: 'bakin',
+    schedule: { kind: 'cron', expr: parsed.cron },
+    enabled,
     displayName: name,
-    description,
+    description: typeof input.description === 'string' ? input.description : existing?.description,
     owner,
     requireTriage: typeof input.requireTriage === 'boolean' ? input.requireTriage : existing?.requireTriage ?? false,
     agentId: typeof input.agentId === 'string' ? input.agentId : existing?.agentId,
     workflowId: typeof input.workflowId === 'string' ? input.workflowId : existing?.workflowId,
-    taskPrompt: typeof input.taskPrompt === 'string' ? input.taskPrompt : existing?.taskPrompt,
+    taskPrompt: typeof input.taskPrompt === 'string' ? input.taskPrompt : existing?.taskPrompt ?? command,
     taskTitle: typeof input.taskTitle === 'string' ? input.taskTitle : existing?.taskTitle,
     allowOverlap: typeof input.allowOverlap === 'boolean' ? input.allowOverlap : existing?.allowOverlap ?? false,
     maxFailures: typeof input.maxFailures === 'number' ? input.maxFailures : existing?.maxFailures ?? 3,
@@ -170,27 +162,9 @@ async function ensureBakinJob(ctx: PluginContext, input: Record<string, unknown>
     updatedAt: now,
   }
   upsertJob(meta)
-  for (const staleId of new Set([jobId, logicalExisting?.jobId, staleExisting?.jobId])) {
-    if (staleId && staleId !== runtimeJobId) removeJob(staleId)
-  }
-  indexJob(runtimeJobId)
+  indexJob(jobId)
 
-  return { ok: true, jobId: runtimeJobId, cron: parsed.cron, human: parsed.human }
-}
-
-function findExistingBakinRuntimeJob(
-  jobs: CronJob[],
-  input: { jobId: string; runtimeJobId?: string; name: string; command: string },
-): CronJob | undefined {
-  return (input.runtimeJobId ? jobs.find(job => job.id === input.runtimeJobId) : undefined)
-    ?? jobs.find(job => job.id === input.jobId)
-    ?? findUniqueCronJob(jobs, job => job.command === input.command && job.name === input.name)
-    ?? findUniqueCronJob(jobs, job => job.name === input.name && job.command.startsWith('bakin:'))
-}
-
-function findUniqueCronJob(jobs: CronJob[], predicate: (job: CronJob) => boolean): CronJob | undefined {
-  const matches = jobs.filter(predicate)
-  return matches.length === 1 ? matches[0] : undefined
+  return { ok: true, jobId, cron: parsed.cron, human: parsed.human }
 }
 
 function getJobByLogicalJobId(logicalJobId: string): BakinJobMeta | null {
@@ -198,184 +172,6 @@ function getJobByLogicalJobId(logicalJobId: string): BakinJobMeta | null {
     .filter(job => job.logicalJobId === logicalJobId)
     .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
   return matches[0] ?? null
-}
-
-function scheduleUpdateMetadata(meta: BakinJobMeta): UpdateCronJobInput['metadata'] | undefined {
-  if (!meta.tz) return undefined
-  return {
-    tz: meta.tz,
-    scheduleType: 'cron',
-    ...(meta.isBakinJob ? { bakinSchedule: true } : {}),
-    ...(meta.logicalJobId ? { logicalJobId: meta.logicalJobId } : {}),
-  }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value)
-}
-
-function needsBakinCronWakeRepair(raw: unknown): boolean {
-  if (!isRecord(raw)) return false
-  const payload = isRecord(raw.payload) ? raw.payload : null
-  return raw.sessionTarget === 'main' || payload?.kind === 'systemEvent'
-}
-
-function scheduleMetadataForRepair(meta: BakinJobMeta): UpdateCronJobInput['metadata'] {
-  return scheduleUpdateMetadata(meta) ?? {
-    scheduleType: 'cron',
-    bakinSchedule: true,
-    ...(meta.logicalJobId ? { logicalJobId: meta.logicalJobId } : {}),
-  }
-}
-
-interface LegacyCronRepairSummary {
-  checked: number
-  repaired: number
-  failed: number
-  remainingLegacy: number
-}
-
-async function repairMainSessionBakinCronPayloads(ctx: PluginContext): Promise<LegacyCronRepairSummary> {
-  const summary: LegacyCronRepairSummary = { checked: 0, repaired: 0, failed: 0, remainingLegacy: 0 }
-  const jobs = Object.values(readSidecar().jobs).filter(job => job.isBakinJob)
-  for (const meta of jobs) {
-    summary.checked += 1
-    try {
-      const raw = await ctx.runtime.cron.getRaw(meta.jobId, 'schedule startup checks for legacy main-session Bakin cron payloads')
-      if (!needsBakinCronWakeRepair(raw)) continue
-      const runtime = await ctx.runtime.cron.get(meta.jobId)
-      const runtimeCommand = runtime?.command?.trim() ?? ''
-      const command = runtimeCommand.startsWith('bakin:')
-        ? runtimeCommand
-        : `bakin:schedule:${meta.displayName ?? meta.jobId}`
-      await ctx.runtime.cron.update(meta.jobId, {
-        command,
-        metadata: scheduleMetadataForRepair(meta),
-      })
-      summary.repaired += 1
-      log.info('Repaired Bakin schedule cron payload to avoid main-session wake', { jobId: meta.jobId })
-    } catch (err) {
-      summary.failed += 1
-      summary.remainingLegacy += 1
-      log.warn('Failed to repair legacy Bakin schedule cron payload', {
-        jobId: meta.jobId,
-        error: err instanceof Error ? err.message : String(err),
-      })
-    }
-  }
-  return summary
-}
-
-function shouldRetryLegacyCronRepair(summary: LegacyCronRepairSummary): boolean {
-  return summary.failed > 0 || summary.remainingLegacy > 0
-}
-
-function scheduleLegacyCronRepairRetry(ctx: PluginContext, attempt: number): void {
-  if (legacyCronRepairTimer) clearTimeout(legacyCronRepairTimer)
-  const delay = LEGACY_CRON_REPAIR_RETRY_DELAYS_MS[attempt]
-  if (delay === undefined) return
-  legacyCronRepairTimer = setTimeout(() => {
-    legacyCronRepairTimer = null
-    runLegacyCronRepair(ctx, attempt + 1).catch((err) => {
-      log.warn('Legacy Bakin schedule cron repair retry failed', err)
-    })
-  }, delay)
-  legacyCronRepairTimer.unref?.()
-}
-
-async function runLegacyCronRepair(ctx: PluginContext, attempt = 0): Promise<void> {
-  const summary = await repairMainSessionBakinCronPayloads(ctx)
-  if (shouldRetryLegacyCronRepair(summary)) {
-    if (attempt < LEGACY_CRON_REPAIR_RETRY_DELAYS_MS.length) {
-      scheduleLegacyCronRepairRetry(ctx, attempt)
-    } else {
-      log.warn('Legacy Bakin schedule cron repair exhausted retries', summary)
-    }
-  }
-}
-
-async function checkLegacyBakinCronPayloads(ctx: PluginContext): Promise<HealthCheckResult[]> {
-  const check = 'schedule-legacy-cron-wake'
-  const jobs = Object.values(readSidecar().jobs).filter(job => job.isBakinJob)
-  if (jobs.length === 0) {
-    return [{ check, status: 'ok', message: 'No Bakin schedule cron jobs to inspect', autoFixable: false }]
-  }
-
-  const legacy: string[] = []
-  const failures: string[] = []
-  for (const meta of jobs) {
-    try {
-      const raw = await ctx.runtime.cron.getRaw(meta.jobId, 'schedule health checks for legacy main-session Bakin cron payloads')
-      if (needsBakinCronWakeRepair(raw)) legacy.push(meta.displayName ?? meta.jobId)
-    } catch (err) {
-      failures.push(`${meta.displayName ?? meta.jobId}: ${err instanceof Error ? err.message : String(err)}`)
-    }
-  }
-
-  const rows: HealthCheckResult[] = []
-  if (legacy.length > 0) {
-    rows.push({
-      check,
-      status: 'warn',
-      message: `${legacy.length} Bakin schedule cron job(s) still wake the main session: ${legacy.join(', ')}`,
-      autoFixable: true,
-    })
-  }
-  if (failures.length > 0) {
-    rows.push({
-      check,
-      status: 'warn',
-      message: `Failed to inspect ${failures.length} Bakin schedule cron job(s): ${failures.join('; ')}`,
-      autoFixable: false,
-    })
-  }
-
-  return rows.length > 0
-    ? rows
-    : [{ check, status: 'ok', message: `${jobs.length} Bakin schedule cron job(s), none wake the main session`, autoFixable: false }]
-}
-
-function legacyCronWakeRepair(ctx: PluginContext): HealthRepairHandler {
-  const check = 'schedule-legacy-cron-wake'
-  return {
-    async plan(rows) {
-      const matching = rows.filter(row => row.check === check && row.autoFixable)
-      if (matching.length === 0) return []
-      return [{
-        id: 'schedule.repair-legacy-cron-wake',
-        checkId: check,
-        title: 'Repair legacy Bakin schedule cron payloads',
-        reason: matching.map(row => row.message).join('; '),
-        safety: 'safe',
-        requiresConfirmation: true,
-        changes: [{
-          kind: 'runtime',
-          target: 'OpenClaw cron jobs',
-          action: 'update',
-          description: 'Rewrite Bakin-owned cron payloads so they no longer wake the main session.',
-        }],
-      }]
-    },
-    async apply(items) {
-      if (items.length === 0) return []
-      const summary = await repairMainSessionBakinCronPayloads(ctx)
-      const failed = shouldRetryLegacyCronRepair(summary)
-      return [{
-        id: 'schedule.repair-legacy-cron-wake',
-        checkId: check,
-        status: failed ? 'failed' : 'applied',
-        message: `Checked ${summary.checked}, repaired ${summary.repaired}, failed ${summary.failed}`,
-        changes: summary.repaired > 0
-          ? [{
-              kind: 'runtime' as const,
-              target: 'OpenClaw cron jobs',
-              action: 'update' as const,
-              description: `Repaired ${summary.repaired} legacy Bakin schedule cron job(s).`,
-            }]
-          : [],
-      }]
-    },
-  }
 }
 
 function isCronAlreadyGoneError(err: unknown): boolean {
@@ -404,14 +200,8 @@ async function deleteScheduleJob(ctx: ScheduleDeleteContext, jobId: string): Pro
 // Bridge logic (cron → task)
 // ---------------------------------------------------------------------------
 
-/** Module-level ctx set during activate(), used by handleBridge + routes */
+/** Module-level ctx set during activate(), used by routes + the scheduler. */
 let pluginCtx: PluginContext | null = null
-let reconcileTimer: ReturnType<typeof setInterval> | null = null
-let legacyCronRepairTimer: ReturnType<typeof setTimeout> | null = null
-let reconcileRunning = false
-
-const RECONCILE_INTERVAL_MS = 60_000
-const LEGACY_CRON_REPAIR_RETRY_DELAYS_MS = [30_000, 120_000, 300_000] as const
 
 // ─── Module-scope helpers (use pluginCtx for runtime access) ─────────────
 
@@ -491,15 +281,6 @@ const parseBody = z.object({
   input: z.string().min(1),
 })
 
-const bridgeBody = z.object({
-  jobId: z.string(),
-  runId: z.string().optional(),
-}).passthrough()
-
-const bridgeQuery = z.object({
-  secret: z.string().optional(),
-})
-
 const adoptJobBody = z.object({
   jobId: z.string().optional(),
   name: z.string().optional(),
@@ -519,124 +300,16 @@ const restoreNativeBody = z.object({
   jobId: z.string().optional(),
 }).passthrough().optional()
 
-async function handleBridge(req: Request): Promise<Response> {
-  // Gate 1: feature flag. The bridge setting defaults to enabled, but admins
-  // can disable it to stop ALL cron-driven task creation without tearing down
-  // the underlying runtime cron jobs.
-  const settings = pluginCtx?.getSettings<ScheduleSettings>() ?? {}
-  if (settings.bridgeEnabled === false) {
-    log.warn('Bridge call rejected — bridgeEnabled setting is false')
-    return json({ ok: false, error: 'bridge disabled' }, 503)
-  }
-
-  // Gate 2: shared-secret auth. Runtime cron calls the webhook with ?secret=<hex>
-  // from the URL used by future direct webhook callers. We require a match so a stale cron from a
-  // previous install — or any unauthorized caller — cannot create tasks.
-  const expected = getOrCreateBridgeSecret()
-  if (!expected) {
-    log.error('Bridge call rejected — plugin context not initialized')
-    return json({ ok: false, error: 'bridge not ready' }, 503)
-  }
-  const url = new URL(req.url)
-  const provided = url.searchParams.get('secret') || ''
-  if (!safeEqual(provided, expected)) {
-    log.warn('Bridge call rejected — invalid or missing secret')
-    return json({ ok: false, error: 'unauthorized' }, 401)
-  }
-
-  const payload = await readBody<BridgePayload>(req)
-  const result = await processScheduledRun(payload)
-  return json(result.body, result.status)
-}
-
 interface ProcessRunResult {
   status: number
   body: BridgeResult
 }
 
-interface BakinCommand {
-  pluginId: string
-  action: string
-}
-
-interface PluginRunHookResult {
-  ok?: boolean
-  error?: string
-  taskId?: string
-}
-
-const BAKIN_COMMAND_RE = /^bakin:([^:]+):([^:]+)$/
-
-function parseBakinCommand(command: string | undefined): BakinCommand | null {
-  if (!command) return null
-  const match = command.match(BAKIN_COMMAND_RE)
-  if (!match) return null
-  return { pluginId: match[1], action: match[2] }
-}
-
-async function getRuntimeJobCommand(jobId: string): Promise<string | undefined> {
-  if (!pluginCtx) return undefined
-  try {
-    return (await pluginCtx.runtime.cron.get(jobId))?.command
-  } catch (err) {
-    log.warn('Failed to inspect runtime cron command', { jobId, error: err instanceof Error ? err.message : String(err) })
-    return undefined
-  }
-}
-
-async function processPluginScheduledRun(
-  payload: BridgePayload,
-  command: string,
-  parsed: BakinCommand,
-): Promise<ProcessRunResult> {
-  if (!pluginCtx) {
-    return { status: 503, body: { ok: false, error: 'bridge not ready' } }
-  }
-
-  const hookName = `${parsed.pluginId}.${parsed.action}.run`
-  if (!pluginCtx.hooks.has(hookName)) {
-    return { status: 500, body: { ok: false, error: `hook ${hookName} not registered` } }
-  }
-
-  try {
-    const result = await pluginCtx.hooks.invoke<PluginRunHookResult | undefined>(hookName, {
-      ...payload,
-      command,
-      pluginId: parsed.pluginId,
-      action: parsed.action,
-    })
-    if (result?.ok === false) {
-      return { status: 500, body: { ok: false, error: result.error ?? `hook ${hookName} failed` } }
-    }
-    return { status: 200, body: { ok: true, ...(result?.taskId ? { taskId: result.taskId } : {}) } }
-  } catch (err) {
-    return { status: 500, body: { ok: false, error: err instanceof Error ? err.message : String(err) } }
-  }
-}
-
-async function processScheduledRun(payload: BridgePayload): Promise<ProcessRunResult> {
-  const { jobId } = payload
-  const command = await getRuntimeJobCommand(jobId)
-  const parsedCommand = parseBakinCommand(command)
-  if (parsedCommand && parsedCommand.pluginId !== 'schedule') {
-    return processPluginScheduledRun(payload, command!, parsedCommand)
-  }
-
-  const meta = getJob(jobId)
-  if (!meta || !meta.isBakinJob) {
-    return { status: 200, body: { ok: true, skipped: 'not-bakin' } }
-  }
-
-  // Claim the fire BEFORE any side effect. The (job_id, run_id) primary key
-  // makes a second fire for the same run physically impossible — a duplicate
-  // (concurrent reconcile, webhook retry, restart replay) fails the INSERT
-  // and is suppressed + audited instead of racing a sidecar flag. Payloads
-  // without a runtime runId (ad-hoc bridge calls) mint a unique manual id so
-  // intentional fires are never blocked.
-  const runId = payload.runId || `manual-${randomUUID()}`
-  const firedAtParsed = Date.parse(payload.timestamp)
-  const firedAt = Number.isFinite(firedAtParsed) ? firedAtParsed : Date.now()
-  const claim = claimCronFire(jobId, runId, firedAt)
+/** Claim a run, then fire it through the shared post-claim path. A lost claim
+ *  (duplicate) is suppressed + audited, never an error — the (job_id, run_id)
+ *  ledger key is the lock. */
+async function fireScheduledRun(meta: BakinJobMeta, jobId: string, runId: string, firedAtMs: number): Promise<ProcessRunResult> {
+  const claim = claimCronFire(jobId, runId, firedAtMs)
   if (!claim.claimed) {
     pluginCtx?.activity.audit('fire_suppressed', 'system', {
       jobId,
@@ -646,16 +319,38 @@ async function processScheduledRun(payload: BridgePayload): Promise<ProcessRunRe
     })
     return { status: 200, body: { ok: true, skipped: 'already-processed' } }
   }
-
   return runClaimedFire(meta, jobId, runId)
 }
 
-/**
- * Everything after a successful cron-fire claim: pause/skip/overlap checks,
- * task creation, claim disposition. Shared by the bridge path and the
- * pending-claim healer (which re-evaluates these checks at heal time).
- */
-async function runClaimedFire(meta: BakinJobMeta, jobId: string, runId: string): Promise<ProcessRunResult> {
+/** Drive a fire from a {jobId, runId?, timestamp?} payload — manual triggers
+ *  and test harnesses. Mints a unique manual runId when none is given. */
+async function fireScheduledRunFromPayload(payload: { jobId: string; runId?: string; timestamp?: string }): Promise<ProcessRunResult> {
+  const meta = getJob(payload.jobId)
+  if (!meta?.isBakinJob) return { status: 200, body: { ok: true, skipped: 'not-bakin' } }
+  const runId = payload.runId || `manual-${randomUUID()}`
+  const parsed = payload.timestamp ? Date.parse(payload.timestamp) : NaN
+  const firedAt = Number.isFinite(parsed) ? parsed : Date.now()
+  return fireScheduledRun(meta, payload.jobId, runId, firedAt)
+}
+
+/** True if a task with this id exists on the board (any column). Lets a fire
+ *  detect "row created but a post-create effect threw" and attach the claim
+ *  instead of leaving it pending for the healer to duplicate. */
+function storedTaskExists(taskId: string): boolean {
+  try {
+    const board = readTaskboard() as unknown as { columns: Record<string, Array<{ id: string }>> }
+    return Object.values(board.columns).some(col => (col ?? []).some(t => t.id === taskId))
+  } catch {
+    return false
+  }
+}
+
+async function runClaimedFire(
+  meta: BakinJobMeta,
+  jobId: string,
+  runId: string,
+  opts: { column?: string; blockedReason?: string } = {},
+): Promise<ProcessRunResult> {
   const defaults = withDefaults(meta, await getScheduleDefaultOwner())
 
   // Check pause state
@@ -677,49 +372,50 @@ async function runClaimedFire(meta: BakinJobMeta, jobId: string, runId: string):
   if ((defaults.consecutiveFailures ?? 0) >= (defaults.maxFailures ?? 3)) {
     meta.paused = true
     meta.pauseReason = 'auto-failures'
+    meta.enabled = false // mirror manual pause: skip at the scheduler gate, no claim churn
     markCronFireSkipped(jobId, runId)
     upsertJob(meta)
     return { status: 200, body: { ok: true, skipped: 'auto-paused' } }
   }
 
-  // Check overlap
-  if (!defaults.allowOverlap && meta.lastTaskId) {
+  // Both the overlap guard and last-task-outcome tracking inspect the board;
+  // read it once. A read failure means we skip both checks and proceed.
+  let board: { columns: Record<string, Array<{ id: string }>> } | null = null
+  if (meta.lastTaskId) {
     try {
-      const board = readTaskboard() as unknown as { columns: Record<string, Array<{ id: string }>> }
-      const activeColumns = ['todo', 'inProgress', 'review', 'blocked'] as const
-      for (const col of activeColumns) {
-        const tasks = board.columns[col] ?? []
-        if (tasks.some(t => t.id === meta.lastTaskId)) {
-          markCronFireSkipped(jobId, runId)
-          return { status: 200, body: { ok: true, skipped: 'overlap' } }
-        }
-      }
+      board = readTaskboard() as unknown as { columns: Record<string, Array<{ id: string }>> }
     } catch {
-      // If we can't check, proceed anyway
-      log.debug('Could not check overlap for task', { taskId: meta.lastTaskId })
+      log.debug('Could not read taskboard for overlap/outcome checks', { taskId: meta.lastTaskId })
+    }
+  }
+
+  // Check overlap
+  if (board && !defaults.allowOverlap && meta.lastTaskId) {
+    const activeColumns = ['todo', 'inProgress', 'review', 'blocked'] as const
+    for (const col of activeColumns) {
+      const tasks = board.columns[col] ?? []
+      if (tasks.some(t => t.id === meta.lastTaskId)) {
+        markCronFireSkipped(jobId, runId)
+        return { status: 200, body: { ok: true, skipped: 'overlap' } }
+      }
     }
   }
 
   // Check last task outcome for failure tracking
-  if (meta.lastTaskId) {
-    try {
-      const board2 = readTaskboard() as unknown as { columns: Record<string, Array<{ id: string }>> }
-      const doneOrArchived = [...(board2.columns.done ?? []), ...(board2.columns.archived ?? [])]
-      if (doneOrArchived.some(t => t.id === meta.lastTaskId)) {
-        recordSuccess(meta)
-      } else {
-        const blocked = board2.columns.blocked ?? []
-        if (blocked.some(t => t.id === meta.lastTaskId)) {
-          const autoPaused = recordFailure(meta)
-          if (autoPaused) {
-            markCronFireSkipped(jobId, runId)
-            upsertJob(meta)
-            return { status: 200, body: { ok: true, skipped: 'auto-paused' } }
-          }
+  if (board && meta.lastTaskId) {
+    const doneOrArchived = [...(board.columns.done ?? []), ...(board.columns.archived ?? [])]
+    if (doneOrArchived.some(t => t.id === meta.lastTaskId)) {
+      recordSuccess(meta)
+    } else {
+      const blocked = board.columns.blocked ?? []
+      if (blocked.some(t => t.id === meta.lastTaskId)) {
+        const autoPaused = recordFailure(meta)
+        if (autoPaused) {
+          markCronFireSkipped(jobId, runId)
+          upsertJob(meta)
+          return { status: 200, body: { ok: true, skipped: 'auto-paused' } }
         }
       }
-    } catch {
-      log.debug('Could not check last task outcome')
     }
   }
 
@@ -739,11 +435,19 @@ async function runClaimedFire(meta: BakinJobMeta, jobId: string, runId: string):
     ? expandTemplate(meta.taskPrompt, templateVars)
     : undefined
 
+  // Pre-mint the task id so that if a post-create effect throws (e.g. the
+  // workflow-start hook fails AFTER the row is written), we can still attach the
+  // existing task to the claim. Otherwise the claim stays `pending`, the healer
+  // re-drives it, and a *second* task is minted for the same occurrence (#472).
+  const column = opts.column ?? 'todo'
+  const taskId = `task-${randomUUID()}`
   try {
-    const result = await createTaskWithEffects({
+    await createTaskWithEffects({
+      id: taskId,
       title,
       description,
-      column: 'todo',
+      column,
+      blockedReason: opts.blockedReason,
       assignee: defaults.requireTriage ? undefined : meta.agentId,
       workflowId: meta.workflowId,
       createdBy: 'schedule',
@@ -755,87 +459,38 @@ async function runClaimedFire(meta: BakinJobMeta, jobId: string, runId: string):
         purpose: 'scheduled-run',
       },
     })
-    const taskId = result.id
-
-    meta.lastTaskId = taskId
-    attachCronTask(jobId, runId, taskId)
-    upsertJob(meta)
-
-    // Audit + activity feed
-    if (pluginCtx) {
-      pluginCtx.activity.audit('task_created', 'system', { jobId, runId, taskId, agent: meta.agentId, owner: defaults.owner })
-      pluginCtx.activity.log('system', `Schedule "${meta.displayName ?? jobId}" created task ${taskId}${meta.agentId ? ` for ${meta.agentId}` : ''}`, { taskId })
-    }
-
-    return { status: 200, body: { ok: true, taskId } }
   } catch (err) {
-    log.error('Bridge failed to create task', err)
-    recordFailure(meta)
-    upsertJob(meta)
-    return { status: 500, body: { ok: false, error: (err as Error).message } }
-  }
-}
-
-function runTimestamp(run: CronRun): string {
-  return run.startedAt ?? run.endedAt ?? new Date().toISOString()
-}
-
-function runTimeMs(run: CronRun): number {
-  const parsed = Date.parse(runTimestamp(run))
-  return Number.isFinite(parsed) ? parsed : Date.now()
-}
-
-function reconcileLookbackMs(startup: boolean): number {
-  if (!startup) return 0
-  const settings = pluginCtx?.getSettings<ScheduleSettings>() ?? {}
-  const rawHours = typeof settings.reconcileLookbackHours === 'number' ? settings.reconcileLookbackHours : 24
-  const hours = Math.max(0, Math.min(rawHours, 168))
-  return hours * 60 * 60 * 1000
-}
-
-async function reconcileScheduleRuns(startup = false): Promise<void> {
-  if (!pluginCtx || reconcileRunning) return
-  reconcileRunning = true
-  try {
-    const cutoffMs = reconcileLookbackMs(startup)
-    const cutoff = startup
-      ? cutoffMs > 0 ? Date.now() - cutoffMs : Number.POSITIVE_INFINITY
-      : 0
-    const jobs = await readMergedJobs(pluginCtx.runtime.cron, await getScheduleDefaultOwner())
-    for (const job of jobs) {
-      if (!job.isBakinJob) continue
-      const meta = getJob(job.id)
-      if (!meta?.isBakinJob) continue
-      const runs = await pluginCtx.runtime.cron.listRuns(job.id).catch((err) => {
-        log.warn('Failed to read schedule run history', { jobId: job.id, error: err instanceof Error ? err.message : String(err) })
-        return [] as CronRun[]
-      })
-      const jobCreatedAtMs = Number.isFinite(Date.parse(meta.createdAt)) ? Date.parse(meta.createdAt) : 0
-      const candidates = runs
-        .filter(run => run.status === 'succeeded')
-        .filter(run => runTimeMs(run) >= jobCreatedAtMs)
-        .filter(run => startup ? runTimeMs(run) >= cutoff : true)
-        .sort((a, b) => runTimeMs(a) - runTimeMs(b))
-      for (const run of candidates) {
-        const latest = getJob(job.id)
-        // Cheap pre-filter only — the claimCronFire INSERT inside
-        // processScheduledRun is the authoritative dedup.
-        if (!latest?.isBakinJob || getCronFire(job.id, run.id)) continue
-        await processScheduledRun({
-          jobId: job.id,
-          runId: run.id,
-          timestamp: runTimestamp(run),
-        })
-      }
+    // If the row was never written, the claim is safe to retry — leave it
+    // pending and surface the failure. If it WAS written (post-create effect
+    // failed), fall through to attach it so the next heal can't duplicate it.
+    if (!storedTaskExists(taskId)) {
+      log.error('Schedule failed to create task', err)
+      recordFailure(meta)
+      upsertJob(meta)
+      return { status: 500, body: { ok: false, error: (err as Error).message } }
     }
-    await healPendingCronClaims()
-  } finally {
-    reconcileRunning = false
+    log.warn('Scheduled task row created but a post-create effect failed; attaching to claim to avoid a duplicate', {
+      jobId, runId, taskId, error: err instanceof Error ? err.message : String(err),
+    })
   }
+
+  meta.lastTaskId = taskId
+  attachCronTask(jobId, runId, taskId)
+  upsertJob(meta)
+
+  // Audit + activity feed
+  if (pluginCtx) {
+    pluginCtx.activity.audit('task_created', 'system', {
+      jobId, runId, taskId, agent: meta.agentId, owner: defaults.owner,
+      ...(column !== 'todo' ? { column, blockedReason: opts.blockedReason } : {}),
+    })
+    const where = column === 'blocked' ? ' (blocked — missed schedule window)' : ''
+    pluginCtx.activity.log('system', `Schedule "${meta.displayName ?? jobId}" created task ${taskId}${meta.agentId ? ` for ${meta.agentId}` : ''}${where}`, { taskId })
+  }
+
+  return { status: 200, body: { ok: true, taskId } }
 }
 
-/** A claim older than this with no task attached means the process died
- *  between claim and task creation — heal it (rarely-miss, never-duplicate). */
 const HEAL_AFTER_MS = 5 * 60_000
 
 /**
@@ -845,9 +500,9 @@ const HEAL_AFTER_MS = 5 * 60_000
  * resurrected into a task.
  *
  * The scan→heal pass is not itself transactional; it's safe because the
- * server singleton lock guarantees one process and `reconcileRunning`
- * serializes passes within it. If either assumption ever changes, the heal
- * needs a claim-the-heal CAS (e.g. pending → healing disposition).
+ * server singleton lock guarantees one process and the scheduler's in-flight
+ * guard serializes ticks within it. If either assumption ever changes, the
+ * heal needs a claim-the-heal CAS (e.g. pending → healing disposition).
  */
 async function healPendingCronClaims(): Promise<void> {
   let stale: ReturnType<typeof findHealableCronClaims>
@@ -874,47 +529,77 @@ async function healPendingCronClaims(): Promise<void> {
   }
 }
 
-/**
- * One-time migration: seed the cron-fire ledger from the legacy sidecar
- * processedRunIds so upgrade never refires history, then strip the legacy
- * fields. Idempotent — seeded claims dedupe on the primary key, and the
- * second boot finds no legacy fields to migrate.
- */
-function seedCronFireLedgerFromSidecar(): void {
-  const sidecar = readSidecar()
-  let seeded = 0
-  let changed = false
-  for (const meta of Object.values(sidecar.jobs)) {
-    const legacy = meta as BakinJobMeta & { processedRunIds?: string[]; lastProcessedRunAt?: string }
-    const firedAtParsed = legacy.lastProcessedRunAt ? Date.parse(legacy.lastProcessedRunAt) : NaN
-    const firedAt = Number.isFinite(firedAtParsed) ? firedAtParsed : Date.now()
-    for (const runId of legacy.processedRunIds ?? []) {
-      const result = claimCronFire(meta.jobId, runId, firedAt, 'seeded')
-      if (result.claimed) seeded++
-    }
-    if (legacy.processedRunIds !== undefined || legacy.lastProcessedRunAt !== undefined) {
-      delete legacy.processedRunIds
-      delete legacy.lastProcessedRunAt
-      changed = true
-    }
+// ─── Bakin-owned scheduler ───────────────────────────────────────────────
+// Bakin fires its own schedules directly from the store; each tick computes
+// due occurrences, claims each in the ledger, and runs the shared post-claim
+// fire path. healPendingCronClaims() then recovers any claim stranded by a
+// crash between claim and task creation.
+
+let schedulerTimer: ReturnType<typeof setTimeout> | null = null
+
+function schedulerDeps(): SchedulerDeps {
+  return {
+    now: () => Date.now(),
+    // Window must exceed the tick interval so no occurrence slips between ticks.
+    tickWindowMs: Math.max(DEFAULT_TICK_WINDOW_MS, tickIntervalMs() * 2),
+    listJobs: () => Object.values(readSidecar().jobs).filter(job => job.isBakinJob),
+    getCronFire: (jobId, runId) => getCronFire(jobId, runId),
+    claimCronFire: (jobId, runId, firedAt) => claimCronFire(jobId, runId, firedAt),
+    fire: async (meta, jobId, runId, _occurrence, opts) => {
+      await runClaimedFire(
+        meta, jobId, runId,
+        opts?.blocked ? { column: 'blocked', blockedReason: 'missed schedule window' } : {},
+      )
+    },
+    log,
   }
-  if (changed) writeSidecar(sidecar)
-  if (seeded > 0) log.info('Seeded cron-fire ledger from legacy sidecar', { seeded })
 }
 
-function startReconciler(): void {
-  if (reconcileTimer) clearInterval(reconcileTimer)
-  reconcileScheduleRuns(true).catch(err => log.warn('Startup schedule reconcile failed', err))
-  reconcileTimer = setInterval(() => {
-    reconcileScheduleRuns(false).catch(err => log.warn('Schedule reconcile failed', err))
-  }, RECONCILE_INTERVAL_MS)
-  reconcileTimer.unref?.()
+/** Run the idempotent cutover using the live runtime adapter. Shared by
+ *  activate() (automatic) and the doctor repair (manual). */
+function runScheduleCutover(): ReturnType<typeof migrateBakinSchedulesOffOpenClawCron> {
+  const cron = pluginCtx!.runtime.cron
+  return migrateBakinSchedulesOffOpenClawCron({
+    cronGet: async (jobId) => {
+      const job = await cron.get(jobId)
+      return job ? { schedule: job.schedule, enabled: job.enabled, metadata: job.metadata } : null
+    },
+    cronRemove: (jobId) => cron.remove(jobId),
+    systemTz: getSystemTimezone,
+  })
 }
 
-function stopReconciler(): void {
-  if (!reconcileTimer) return
-  clearInterval(reconcileTimer)
-  reconcileTimer = null
+function startScheduler(): void {
+  stopScheduler()
+  // Self-rescheduling loop (not setInterval) so each cycle re-reads the tick
+  // interval — a settings change takes effect without a restart, and the next
+  // cycle is only armed after the previous finishes (no overlap). Each cycle:
+  // resume expired timed-pauses → fire due occurrences → heal stranded claims.
+  const cycle = () => {
+    Promise.resolve()
+      .then(() => { resumeDuePauses() })
+      .then(() => runSchedulerTick(schedulerDeps()))
+      .then(() => healPendingCronClaims())
+      .catch(err => log.warn('Scheduler cycle failed', err))
+      .finally(() => {
+        schedulerTimer = setTimeout(cycle, tickIntervalMs())
+        schedulerTimer.unref?.()
+      })
+  }
+  schedulerTimer = setTimeout(cycle, tickIntervalMs())
+  schedulerTimer.unref?.()
+}
+
+function stopScheduler(): void {
+  if (!schedulerTimer) return
+  clearTimeout(schedulerTimer)
+  schedulerTimer = null
+}
+
+/** Fire a single occurrence on demand (run-now / manual trigger). Claims a
+ *  unique manual run so it is never blocked by occurrence dedup. */
+async function fireManualRun(meta: BakinJobMeta, jobId: string): Promise<void> {
+  await fireScheduledRun(meta, jobId, `manual-${randomUUID()}`, Date.now())
 }
 
 // ---------------------------------------------------------------------------
@@ -951,18 +636,14 @@ const routes = [
         return json({ error: 'Could not parse schedule expression' }, 400)
       }
       const tz = body.tz || getSystemTimezone()
-      const created = await ctx.runtime.cron.create({
-        name: body.name,
-        schedule: parsed.cron,
-        command: `bakin:schedule:${body.name}`,
-        metadata: { tz, bakinSchedule: true, scheduleType: 'cron' },
-      })
-      const jobId = created.id
+      const jobId = newScheduleId()
       const owner = body.owner ?? await getRuntimeMainAgentId(ctx.runtime)
       const meta: BakinJobMeta = {
         jobId,
         isBakinJob: true,
         source: 'bakin',
+        schedule: { kind: 'cron', expr: parsed.cron },
+        enabled: true,
         displayName: body.name,
         agentId: body.agentId,
         owner,
@@ -981,7 +662,8 @@ const routes = [
       indexJob(jobId)
       ctx.activity.audit('job.created', body.owner ?? 'system', { jobId, name: body.name })
       ctx.activity.log(body.owner ?? 'system', `Created schedule "${body.name}"`)
-      return json({ ok: true, jobId, cron: parsed.cron, human: parsed.human, tz })
+      const warnings = checkSchedulePrompt(body.taskPrompt)
+      return json({ ok: true, jobId, cron: parsed.cron, human: parsed.human, tz, ...(warnings.length ? { warnings } : {}) })
     },
   }),
 
@@ -991,26 +673,22 @@ const routes = [
     summary: 'Update a scheduled job',
     params: jobIdParams,
     body: updateJobBody,
-    responses: { 200: okResponse, 400: errorResponse, 404: errorResponse, 500: errorResponse },
+    responses: { 200: okResponse, 400: errorResponse, 403: errorResponse, 404: errorResponse, 500: errorResponse },
     handler: async (_req, ctx, { params, body }) => {
       const jobId = params.jobId || (body as { jobId?: string }).jobId
       if (!jobId) return json({ error: 'jobId required' }, 400)
-      const meta = getJob(jobId)
-      if (!meta) return json({ error: 'Job not found in sidecar' }, 404)
-      const runtimePatch: UpdateCronJobInput = {}
+      const guard = await guardBakinMutation(jobId)
+      if (!guard.ok) return json({ error: guard.error }, guard.status)
+      const meta = guard.meta
       const b = body as Record<string, unknown>
       if (b.schedule && typeof b.schedule === 'string') {
         const parsed = parseSchedule(b.schedule)
         if (!parsed) return json({ error: 'Could not parse schedule' }, 400)
-        runtimePatch.schedule = parsed.cron
-        const metadata = scheduleUpdateMetadata(meta)
-        if (metadata) runtimePatch.metadata = metadata
+        meta.schedule = { kind: 'cron', expr: parsed.cron }
       }
       if (b.name && typeof b.name === 'string') {
-        runtimePatch.name = b.name
         meta.displayName = b.name
       }
-      if (Object.keys(runtimePatch).length > 0) await ctx.runtime.cron.update(jobId, runtimePatch)
       const sidecarFields = [
         'displayName', 'description', 'agentId', 'owner', 'requireTriage',
         'workflowId', 'taskPrompt', 'taskTitle', 'allowOverlap', 'maxFailures',
@@ -1024,7 +702,8 @@ const routes = [
       indexJob(jobId)
       ctx.activity.audit('job.updated', 'system', { jobId })
       ctx.activity.log('system', `Updated schedule "${meta.displayName || jobId}"`)
-      return json({ ok: true })
+      const warnings = checkSchedulePrompt(meta.taskPrompt)
+      return json({ ok: true, ...(warnings.length ? { warnings } : {}) })
     },
   }),
 
@@ -1069,9 +748,11 @@ const routes = [
     summary: 'Delete a scheduled job',
     params: jobIdParams,
     body: deleteJobBody,
-    responses: { 200: okResponse, 400: errorResponse },
+    responses: { 200: okResponse, 400: errorResponse, 403: errorResponse },
     handler: async (_req, ctx, { params }) => {
       const jobId = params.jobId
+      const guard = await guardBakinMutation(jobId)
+      if (!guard.ok) return json({ error: guard.error }, guard.status)
       const result = await deleteScheduleJob(ctx, jobId)
       ctx.activity.audit('job.deleted', 'system', { jobId })
       ctx.activity.log('system', `Deleted schedule "${jobId}"`)
@@ -1108,24 +789,13 @@ const routes = [
       const owner = (body.owner ?? undefined) || existing?.owner || await getRuntimeMainAgentId(ctx.runtime)
       const taskPrompt = (body.taskPrompt ?? undefined) || existing?.taskPrompt || runtimeJob.command
 
-      await ctx.runtime.cron.update(jobId, {
-        name: displayName,
-        schedule: parsed.cron,
-        command: `bakin:schedule:${jobId}`,
-        metadata: {
-          ...(runtimeJob.metadata ?? {}),
-          tz,
-          scheduleType: 'cron',
-          bakinSchedule: true,
-          adoptedByBakin: true,
-        },
-      })
-
       const meta: BakinJobMeta = {
         ...(existing ?? {}),
         jobId,
         isBakinJob: true,
         source: 'adopted',
+        schedule: { kind: 'cron', expr: parsed.cron },
+        enabled: runtimeJob.enabled ?? true,
         displayName,
         agentId: body.agentId === null ? undefined : body.agentId ?? existing?.agentId,
         owner,
@@ -1146,6 +816,8 @@ const routes = [
         updatedAt: now,
       }
       upsertJob(meta)
+      // Bakin owns the schedule now — remove the native cron so it stops firing.
+      await ctx.runtime.cron.remove(jobId)
       indexJob(jobId)
 
       ctx.activity.audit('job.adopted', 'system', { jobId })
@@ -1199,27 +871,19 @@ const routes = [
     summary: 'Pause/resume/skip a scheduled job',
     params: jobIdParams,
     body: pauseJobBody,
-    responses: { 200: okResponse, 400: errorResponse, 404: errorResponse },
+    responses: { 200: okResponse, 400: errorResponse, 403: errorResponse, 404: errorResponse },
     handler: async (_req, ctx, { params, body }) => {
       const jobId = params.jobId || body.jobId
       if (!jobId) return json({ error: 'jobId required' }, 400)
-      const meta = getJob(jobId)
-      if (!meta) {
-        if (body.action === 'skip') return json({ error: 'Skip is only available for Bakin schedules' }, 400)
-        const runtimeJob = await ctx.runtime.cron.get(jobId)
-        if (!runtimeJob) return json({ error: 'Job not found' }, 404)
-        await ctx.runtime.cron.update(jobId, { enabled: body.action === 'resume' })
-        indexJob(jobId)
-        ctx.activity.audit(`job.${body.action === 'pause' ? 'disabled' : 'enabled'}`, 'system', { jobId })
-        ctx.activity.log('system', `Runtime cron "${jobId}" ${body.action === 'pause' ? 'disabled' : 'enabled'}`)
-        return json({ ok: true })
-      }
+      const guard = await guardBakinMutation(jobId)
+      if (!guard.ok) return json({ error: guard.error }, guard.status)
+      const meta = guard.meta
       switch (body.action) {
         case 'pause':
           meta.paused = true
           meta.pauseReason = 'manual'
           meta.pauseUntil = body.pauseUntil
-          await ctx.runtime.cron.update(jobId, { enabled: false })
+          meta.enabled = false
           break
         case 'resume':
           meta.paused = false
@@ -1228,7 +892,7 @@ const routes = [
           meta.skipNextN = undefined
           meta.skippedCount = undefined
           meta.consecutiveFailures = 0
-          await ctx.runtime.cron.update(jobId, { enabled: true })
+          meta.enabled = true
           break
         case 'skip':
           if (!meta.isBakinJob) return json({ error: 'Skip is only available for Bakin schedules' }, 400)
@@ -1253,12 +917,9 @@ const routes = [
     responses: { 200: okResponse, 400: errorResponse, 404: errorResponse },
     handler: async (_req, ctx, { params }) => {
       const jobId = params.jobId
-      const runtimeJob = await ctx.runtime.cron.get(jobId)
-      if (!runtimeJob) return json({ error: 'Job not found' }, 404)
-      const run = await ctx.runtime.cron.runNow(jobId)
-      if (run.status === 'succeeded') {
-        await processScheduledRun({ jobId, runId: run.id, timestamp: runTimestamp(run) })
-      }
+      const meta = getJob(jobId)
+      if (!meta?.isBakinJob) return json({ error: 'Job not found' }, 404)
+      await fireManualRun(meta, jobId)
       ctx.activity.audit('job.run_now', 'system', { jobId })
       ctx.activity.log('system', `Triggered immediate run for "${jobId}"`)
       return json({ ok: true })
@@ -1295,17 +956,6 @@ const routes = [
     },
   }),
 
-  defineRoute({
-    path: '/bridge',
-    method: 'POST',
-    summary: 'Cron bridge webhook',
-    description: 'Internal webhook the runtime cron POSTs to when a job fires. Auth via shared secret.',
-    visibility: 'internal',
-    body: bridgeBody,
-    query: bridgeQuery,
-    responses: { 200: passthrough, 401: errorResponse, 503: errorResponse, 500: errorResponse },
-    handler: async (req) => handleBridge(req),
-  }),
 
   searchRoute({ table: 'schedule' }),
 ]
@@ -1321,12 +971,10 @@ const schedulePlugin: BakinPlugin = definePlugin({
       { key: 'maxConcurrentJobs', type: 'number', label: 'Max concurrent jobs', description: 'Maximum jobs that can run at the same time', default: 3 },
       { key: 'failureCooldownMs', type: 'number', label: 'Failure cooldown (ms)', description: 'Wait time after failure before retrying', default: 300000 },
       { key: 'maxFailures', type: 'number', label: 'Max consecutive failures', description: 'Pause job after this many consecutive failures', default: 3 },
-      { key: 'bridgeEnabled', type: 'boolean', label: 'Bridge enabled', description: 'Allow cron jobs to create tasks via the bridge', default: true },
-      { key: 'reconcileLookbackHours', type: 'number', label: 'Startup reconciliation window', description: 'Create missed scheduled tasks only for successful runtime cron runs newer than this many hours. Set to 0 to disable startup backfill.', default: 24 },
+      { key: 'tickIntervalSeconds', type: 'number', label: 'Scheduler tick interval (seconds)', description: 'How often the scheduler checks for due schedules. Floor-clamped to 5s.', default: 30 },
+      { key: 'catchUpWindowMinutes', type: 'number', label: 'Missed-fire safety window (minutes)', description: 'After downtime, a missed run fires normally if within this window; older runs land in Blocked for you to triage. Larger = more tolerant.', default: 60 },
     ],
   },
-  // bridgeSecret is stored alongside settings but not exposed in the UI —
-  // it's auto-generated on first use (see getOrCreateBridgeSecret).
 
   navItems: [],
   contentFiles: [],
@@ -1430,18 +1078,14 @@ const schedulePlugin: BakinPlugin = definePlugin({
         if (!parsed) return { ok: false, error: 'Could not parse schedule expression' }
 
         const tz = getSystemTimezone()
-        const created = await ctx.runtime.cron.create({
-          name: params.name as string,
-          schedule: parsed.cron,
-          command: `bakin:schedule:${params.name as string}`,
-          metadata: { tz, bakinSchedule: true, scheduleType: 'cron' },
-        })
-        const jobId = created.id
+        const jobId = newScheduleId()
 
         const meta: BakinJobMeta = {
           jobId,
           isBakinJob: true,
           source: 'bakin',
+          schedule: { kind: 'cron', expr: parsed.cron },
+          enabled: true,
           displayName: params.name as string,
           agentId: params.agentId as string | undefined,
           owner: await getRuntimeMainAgentId(ctx.runtime),
@@ -1458,7 +1102,8 @@ const schedulePlugin: BakinPlugin = definePlugin({
         upsertJob(meta)
         indexJob(jobId)
 
-        return { ok: true, jobId, cron: parsed.cron, human: parsed.human, tz }
+        const warnings = checkSchedulePrompt(params.taskPrompt as string | undefined)
+        return { ok: true, jobId, cron: parsed.cron, human: parsed.human, tz, ...(warnings.length ? { warnings } : {}) }
       },
     })
 
@@ -1478,18 +1123,15 @@ const schedulePlugin: BakinPlugin = definePlugin({
       handler: async (params: Record<string, unknown>) => {
         if (!params.jobId) return { ok: false, error: 'jobId required' }
 
-        const meta = getJob(params.jobId as string)
-        if (!meta) return { ok: false, error: 'Job not found' }
+        const guard = await guardBakinMutation(params.jobId as string)
+        if (!guard.ok) return { ok: false, error: guard.error }
+        const meta = guard.meta
 
         if (params.schedule) {
           const parsed = parseSchedule(params.schedule as string)
           if (!parsed) return { ok: false, error: 'Could not parse schedule' }
-          const patch: UpdateCronJobInput = { schedule: parsed.cron }
-          const metadata = scheduleUpdateMetadata(meta)
-          if (metadata) patch.metadata = metadata
-          await ctx.runtime.cron.update(params.jobId as string, patch)
+          meta.schedule = { kind: 'cron', expr: parsed.cron }
         }
-        if (params.name) await ctx.runtime.cron.update(params.jobId as string, { name: params.name as string })
 
         const fields = ['displayName', 'agentId', 'workflowId', 'taskPrompt', 'taskTitle']
         for (const f of fields) {
@@ -1499,7 +1141,8 @@ const schedulePlugin: BakinPlugin = definePlugin({
         upsertJob(meta)
         indexJob(params.jobId as string)
 
-        return { ok: true }
+        const warnings = checkSchedulePrompt(meta.taskPrompt)
+        return { ok: true, ...(warnings.length ? { warnings } : {}) }
       },
     })
 
@@ -1516,21 +1159,16 @@ const schedulePlugin: BakinPlugin = definePlugin({
       handler: async (params: Record<string, unknown>) => {
         if (!params.jobId || !params.action) return { ok: false, error: 'jobId and action required' }
 
-        const meta = getJob(params.jobId as string)
-        if (!meta) {
-          if (params.action === 'skip') return { ok: false, error: 'Skip is only available for Bakin schedules' }
-          const runtimeJob = await ctx.runtime.cron.get(params.jobId as string)
-          if (!runtimeJob) return { ok: false, error: 'Job not found' }
-          await ctx.runtime.cron.update(params.jobId as string, { enabled: params.action === 'resume' })
-          return { ok: true }
-        }
+        const guard = await guardBakinMutation(params.jobId as string)
+        if (!guard.ok) return { ok: false, error: guard.error }
+        const meta = guard.meta
 
         switch (params.action) {
           case 'pause':
             meta.paused = true
             meta.pauseReason = 'manual'
             if (params.pauseUntil) meta.pauseUntil = params.pauseUntil as string
-            await ctx.runtime.cron.update(params.jobId as string, { enabled: false })
+            meta.enabled = false
             break
           case 'resume':
             meta.paused = false
@@ -1539,7 +1177,7 @@ const schedulePlugin: BakinPlugin = definePlugin({
             meta.skipNextN = undefined
             meta.skippedCount = undefined
             meta.consecutiveFailures = 0
-            await ctx.runtime.cron.update(params.jobId as string, { enabled: true })
+            meta.enabled = true
             break
           case 'skip':
             if (!meta.isBakinJob) return { ok: false, error: 'Skip is only available for Bakin schedules' }
@@ -1562,6 +1200,8 @@ const schedulePlugin: BakinPlugin = definePlugin({
       },
       handler: async (params: Record<string, unknown>) => {
         if (!params.jobId) return { ok: false, error: 'jobId required' }
+        const guard = await guardBakinMutation(params.jobId as string)
+        if (!guard.ok) return { ok: false, error: guard.error }
         const result = await deleteScheduleJob(ctx, params.jobId as string)
         return { ok: true, ...result }
       },
@@ -1614,15 +1254,13 @@ const schedulePlugin: BakinPlugin = definePlugin({
         jobId: z.string().describe('Job ID (required)'),
       },
       handler: async (params: Record<string, unknown>) => {
-        if (!params.jobId) return { ok: false, error: 'jobId required' }
-        const runtimeJob = await ctx.runtime.cron.get(params.jobId as string)
-        if (!runtimeJob) return { ok: false, error: 'Job not found' }
-        const run = await ctx.runtime.cron.runNow(params.jobId as string)
-        if (run.status === 'succeeded') {
-          await processScheduledRun({ jobId: params.jobId as string, runId: run.id, timestamp: runTimestamp(run) })
-        }
-        ctx.activity.audit('job.run_now', 'system', { jobId: params.jobId })
-        return { ok: true, jobId: params.jobId }
+        const jobId = params.jobId as string | undefined
+        if (!jobId) return { ok: false, error: 'jobId required' }
+        const meta = getJob(jobId)
+        if (!meta?.isBakinJob) return { ok: false, error: 'Job not found' }
+        await fireManualRun(meta, jobId)
+        ctx.activity.audit('job.run_now', 'system', { jobId })
+        return { ok: true, jobId }
       },
     })
 
@@ -1701,30 +1339,40 @@ const schedulePlugin: BakinPlugin = definePlugin({
     })
 
     // ─── Health check (migrated out of core/doctor.ts per #139 C4) ──────
-    ctx.registerHealthCheck({
-      id: 'schedule-sync',
-      name: 'Runtime cron jobs and Bakin sidecar sync',
-      run: async () => checkScheduleSync(getContentDir(), ctx.runtime.cron, await getRuntimeMainAgentId(ctx.runtime)),
-      repair: scheduleSyncRepair(getContentDir(), ctx.runtime.cron, () => getRuntimeMainAgentId(ctx.runtime)),
-    })
-
-    ctx.registerHealthCheck({
-      id: 'schedule-legacy-cron-wake',
-      name: 'Bakin schedule cron wake mode',
-      run: async () => checkLegacyBakinCronPayloads(ctx),
-      repair: legacyCronWakeRepair(ctx),
-    })
-
+    // Cut any Bakin schedules off OpenClaw cron (import expr → store, remove the
+    // runtime cron) so the scheduler is the sole fire path. Idempotent; runs
+    // every activate to close the upgrade gap and recover from a prior partial.
     try {
-      seedCronFireLedgerFromSidecar()
+      await runScheduleCutover()
     } catch (err) {
-      log.error('Cron-fire ledger seed failed', err)
+      log.error('Schedule cutover failed', err)
     }
-    startReconciler()
-    log.info('Schedule plugin activated')
-    runLegacyCronRepair(ctx).catch((err) => {
-      log.warn('Legacy Bakin schedule cron repair failed', err)
+
+    // Doctor check + repair surfacing any schedule whose cutover didn't complete
+    // (e.g. OpenClaw unreachable at boot) — the end-user migration command.
+    ctx.registerHealthCheck({
+      id: 'schedule-cutover',
+      name: 'Bakin schedules cut over from OpenClaw cron',
+      run: async () => checkScheduleCutover(
+        ctx.runtime.cron,
+        () => Object.values(readSidecar().jobs).filter(j => j.isBakinJob).map(j => j.jobId),
+      ),
+      repair: scheduleCutoverRepair(runScheduleCutover),
     })
+
+    // Fire (or block) anything missed while the server was down, then start the
+    // steady tick. Catch-up first so a just-missed occurrence isn't double-handled.
+    // Re-enable any timed pause that lapsed during downtime so its missed run is
+    // caught up rather than left dormant by the enabled-gate.
+    try {
+      resumeDuePauses()
+      await runStartupCatchUp(schedulerDeps(), catchUpWindowMs())
+    } catch (err) {
+      log.error('Schedule startup catch-up failed', err)
+    }
+
+    startScheduler()
+    log.info('Schedule plugin activated')
   },
 
   async onReady() {
@@ -1737,11 +1385,7 @@ const schedulePlugin: BakinPlugin = definePlugin({
   },
 
   onShutdown() {
-    stopReconciler()
-    if (legacyCronRepairTimer) {
-      clearTimeout(legacyCronRepairTimer)
-      legacyCronRepairTimer = null
-    }
+    stopScheduler()
     log.info('Schedule plugin shutting down')
   },
 }) as unknown as BakinPlugin
@@ -1749,15 +1393,13 @@ const schedulePlugin: BakinPlugin = definePlugin({
 export default schedulePlugin
 
 /**
- * Test-only internals. The plugin loader reads only the default export;
- * these let race/heal/seed tests drive the bridge logic directly without a
- * full route round-trip.
+ * Test-only internals. The plugin loader reads only the default export; these
+ * let exactly-once / heal tests drive the claim→fire path directly without a
+ * full scheduler tick.
  */
 export const __scheduleTestInternals = {
-  processScheduledRun,
+  fireScheduledRunFromPayload,
   healPendingCronClaims,
-  seedCronFireLedgerFromSidecar,
-  reconcileScheduleRuns,
   setPluginCtxForTests: (ctx: unknown) => {
     pluginCtx = ctx as PluginContext | null
   },

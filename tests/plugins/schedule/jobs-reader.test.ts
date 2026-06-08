@@ -280,12 +280,15 @@ describe('schedule/jobs-reader', () => {
       expect(j2.displayName).toBe('Job 2')
     })
 
-    it('removes stale sidecar entries for deleted runtime jobs', async () => {
+    it('sweeps stale NON-Bakin sidecar orphans but keeps Bakin schedules', async () => {
       writeSidecarFile({
         version: 1,
         jobs: {
           active: makeMeta({ jobId: 'active' }),
-          stale: makeMeta({ jobId: 'stale' }),
+          // A native cron deleted out-of-band — should be swept.
+          nativeOrphan: makeMeta({ jobId: 'nativeOrphan', isBakinJob: false }),
+          // A store-owned Bakin schedule with no runtime cron — must be KEPT.
+          bakinOwned: makeMeta({ jobId: 'bakinOwned', schedule: { kind: 'cron', expr: '0 9 * * *' } }),
         },
       })
 
@@ -295,7 +298,55 @@ describe('schedule/jobs-reader', () => {
 
       const sidecar = JSON.parse(readFileSync(sidecarPath, 'utf-8')) as ScheduleSidecar
       expect(sidecar.jobs.active).toBeDefined()
-      expect(sidecar.jobs.stale).toBeUndefined()
+      expect(sidecar.jobs.nativeOrphan).toBeUndefined()
+      expect(sidecar.jobs.bakinOwned).toBeDefined()
+    })
+
+    it('surfaces store-owned Bakin schedules that have no runtime cron', async () => {
+      writeSidecarFile({
+        version: 1,
+        jobs: {
+          owned: makeMeta({
+            jobId: 'owned',
+            displayName: 'Daily Scramble',
+            schedule: { kind: 'cron', expr: '0 9 * * *' },
+            enabled: true,
+          }),
+        },
+      })
+
+      const jobs = await readMergedJobs(cronReader([]), defaultOwner)
+      expect(jobs).toHaveLength(1)
+      const owned = jobs[0]
+      expect(owned.id).toBe('owned')
+      expect(owned.isBakinJob).toBe(true)
+      expect(owned.canAdopt).toBe(false)
+      expect(owned.schedule.value).toBe('0 9 * * *')
+      expect(owned.humanSchedule).toBe('Daily at 9am')
+      expect(owned.enabled).toBe(true)
+    })
+
+    it('computes a future next-run for a store-owned cron schedule', async () => {
+      writeSidecarFile({
+        version: 1,
+        jobs: {
+          owned: makeMeta({ jobId: 'owned', schedule: { kind: 'cron', expr: '0 9 * * *' }, tz: 'America/Denver' }),
+        },
+      })
+      const jobs = await readMergedJobs(cronReader([]), defaultOwner)
+      expect(jobs[0].nextRun).toBeDefined()
+      expect(Date.parse(jobs[0].nextRun!)).toBeGreaterThan(Date.now())
+    })
+
+    it('reflects the store enabled=false flag on a store-owned schedule', async () => {
+      writeSidecarFile({
+        version: 1,
+        jobs: {
+          owned: makeMeta({ jobId: 'owned', schedule: { kind: 'cron', expr: '0 9 * * *' }, enabled: false }),
+        },
+      })
+      const jobs = await readMergedJobs(cronReader([]), defaultOwner)
+      expect(jobs[0].enabled).toBe(false)
     })
   })
 })

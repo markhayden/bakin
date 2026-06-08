@@ -11,11 +11,25 @@ export interface ScheduleSidecar {
   jobs: Record<string, BakinJobMeta>
 }
 
+/**
+ * The schedule definition Bakin owns. Once a job is migrated off OpenClaw cron
+ * (see cutover), this is the canonical source of when the job fires — the Bakin
+ * scheduler reads `expr`/`tz` directly and never consults the runtime cron store.
+ */
+export interface ScheduleDef {
+  kind: 'cron' | 'every' | 'at'
+  expr: string
+}
+
 export interface BakinJobMeta {
   jobId: string
   /** Stable caller-owned id used when a runtime/provider generates a different job id. */
   logicalJobId?: string
   isBakinJob: boolean
+  /** Bakin-owned schedule definition. Canonical once cut over from OpenClaw cron. */
+  schedule?: ScheduleDef
+  /** Bakin-owned enabled flag. Replaces the OpenClaw cron `enabled` for Bakin jobs. */
+  enabled?: boolean
   source?: 'bakin' | 'runtime' | 'adopted'
   displayName?: string
   description?: string
@@ -155,20 +169,8 @@ export interface ParseResult {
 }
 
 // ---------------------------------------------------------------------------
-// Bridge webhook payload
+// Fire result (shape returned by runClaimedFire / fireScheduledRun)
 // ---------------------------------------------------------------------------
-
-export interface BridgePayload {
-  jobId: string
-  /**
-   * Runtime cron run id. Optional on the wire (the bridge zod schema agrees):
-   * ad-hoc payloads without one mint a unique `manual-<uuid>` so intentional
-   * fires are never blocked by the cron-fire claim's (job_id, run_id) key.
-   */
-  runId?: string
-  timestamp: string
-  [key: string]: unknown
-}
 
 export interface BridgeResult {
   ok: boolean

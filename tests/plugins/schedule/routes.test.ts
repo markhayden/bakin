@@ -357,88 +357,6 @@ describe('schedule search indexing', () => {
     }))
   })
 
-  it('repairs legacy main-session Bakin cron payloads on activation', async () => {
-    upsertJob(makeMeta({
-      jobId: 'legacy-main-cron',
-      displayName: 'Legacy Main Cron',
-      tz: 'America/Denver',
-    }))
-    mockRuntimeCronJobs.push({
-      id: 'legacy-main-cron',
-      name: 'Legacy Main Cron',
-      schedule: '0 9 * * *',
-      command: 'bakin:schedule:Legacy Main Cron',
-      enabled: true,
-      sessionTarget: 'main',
-      payload: { kind: 'systemEvent', text: 'bakin:schedule:Legacy Main Cron' },
-    } as CronJob)
-
-    await activatePlugin(schedulePlugin, testDir)
-    await new Promise(resolve => setTimeout(resolve, 0))
-
-    expect(mockCronUpdate).toHaveBeenCalledWith('legacy-main-cron', expect.objectContaining({
-      command: 'bakin:schedule:Legacy Main Cron',
-      metadata: expect.objectContaining({
-        bakinSchedule: true,
-        scheduleType: 'cron',
-        tz: 'America/Denver',
-      }),
-    }))
-  })
-
-  it('registers a repairable health warning for legacy main-session cron payloads', async () => {
-    const activated = await activatePlugin(schedulePlugin, testDir)
-    const registerMock = activated.ctx.registerHealthCheck as unknown as {
-      mock: { calls: Array<[Record<string, unknown>]> }
-    }
-    const health = registerMock.mock.calls
-      .map(call => call[0])
-      .find(def => def.id === 'schedule-legacy-cron-wake') as {
-        run: () => Promise<Array<Record<string, unknown>>>
-        repair: {
-          plan: (rows: Array<Record<string, unknown>>) => Promise<Array<Record<string, unknown>>>
-          apply: (items: Array<Record<string, unknown>>) => Promise<Array<Record<string, unknown>>>
-        }
-      } | undefined
-
-    expect(health).toBeDefined()
-    upsertJob(makeMeta({
-      jobId: 'legacy-health-cron',
-      displayName: 'Legacy Health Cron',
-    }))
-    mockRuntimeCronJobs.push({
-      id: 'legacy-health-cron',
-      name: 'Legacy Health Cron',
-      schedule: '0 9 * * *',
-      command: 'bakin:schedule:Legacy Health Cron',
-      enabled: true,
-      sessionTarget: 'main',
-      payload: { kind: 'systemEvent', text: 'bakin:schedule:Legacy Health Cron' },
-    } as CronJob)
-
-    const rows = await health!.run()
-    expect(rows).toEqual([
-      expect.objectContaining({
-        check: 'schedule-legacy-cron-wake',
-        status: 'warn',
-        autoFixable: true,
-      }),
-    ])
-
-    const plan = await health!.repair.plan(rows)
-    expect(plan).toHaveLength(1)
-    const result = await health!.repair.apply(plan)
-    expect(result).toEqual([
-      expect.objectContaining({
-        id: 'schedule.repair-legacy-cron-wake',
-        status: 'applied',
-      }),
-    ])
-    expect(mockCronUpdate).toHaveBeenCalledWith('legacy-health-cron', expect.objectContaining({
-      command: 'bakin:schedule:Legacy Health Cron',
-      metadata: expect.objectContaining({ bakinSchedule: true, scheduleType: 'cron' }),
-    }))
-  })
 })
 
 describe('schedule routes', () => {
@@ -515,27 +433,44 @@ describe('schedule routes', () => {
 
       expect(status).toBe(200)
       expect(body.ok).toBe(true)
-      expect(body.jobId).toBe('new-job-id')
+      expect(body.jobId).toMatch(/^sch_/)
       expect(body.cron).toBe('0 9 * * *')
       expect(body.human).toBe('Every day at 9am')
       expect(body.tz).toBeDefined()
 
-      // Verify runtime cron create was called
-      expect(mockCronCreate).toHaveBeenCalledTimes(1)
-      const addArgs = (mockCronCreate.mock.calls[0] as unknown[])[0] as Record<string, unknown>
-      expect(addArgs.name).toBe('Morning Tasks')
-      expect(addArgs.schedule).toBe('0 9 * * *')
+      // Bakin owns the schedule — no OpenClaw cron job is created.
+      expect(mockCronCreate).not.toHaveBeenCalled()
 
-      // Verify sidecar entry created
-      const meta = getJob('new-job-id')
+      // Verify store entry created with the Bakin-owned schedule definition.
+      const meta = getJob(body.jobId as string)
       expect(meta).not.toBeNull()
       expect(meta!.displayName).toBe('Morning Tasks')
       expect(meta!.agentId).toBe('chef')
       expect(meta!.isBakinJob).toBe(true)
+      expect(meta!.schedule).toEqual({ kind: 'cron', expr: '0 9 * * *' })
+      expect(meta!.enabled).toBe(true)
 
       // Verify audit
       expect(plugin.ctx.activity.audit).toHaveBeenCalled()
       expect(plugin.ctx.activity.log).toHaveBeenCalled()
+    })
+
+    it('returns a transport danger-zone warning for a no-split prompt', async () => {
+      const route = findRoute(plugin.routes, 'POST', '/')!
+      const { body } = await callRoute(route, plugin.ctx, {
+        body: { name: 'Daily', schedule: '0 9 * * *', taskPrompt: 'Keep under 1900 chars and do not split.' },
+      })
+      expect(body.ok).toBe(true)
+      const warnings = body.warnings as Array<{ code: string }> | undefined
+      expect(warnings?.[0]?.code).toBe('transport-danger-zone')
+    })
+
+    it('returns no warnings for the safe chunking prompt', async () => {
+      const route = findRoute(plugin.routes, 'POST', '/')!
+      const { body } = await callRoute(route, plugin.ctx, {
+        body: { name: 'Daily', schedule: '0 9 * * *', taskPrompt: 'Chunk under 900 chars and split deliberately.' },
+      })
+      expect(body.warnings).toBeUndefined()
     })
 
     it('returns 400 when name is missing', async () => {
@@ -567,16 +502,16 @@ describe('schedule routes', () => {
 
     it('defaults owner to the main agent', async () => {
       const route = findRoute(plugin.routes, 'POST', '/')!
-      await callRoute(route, plugin.ctx, {
+      const { body } = await callRoute(route, plugin.ctx, {
         body: { name: 'No Owner', schedule: '0 9 * * *' },
       })
-      const meta = getJob('new-job-id')
+      const meta = getJob(body.jobId as string)
       expect(meta!.owner).toBe('main')
     })
 
     it('respects provided optional fields', async () => {
       const route = findRoute(plugin.routes, 'POST', '/')!
-      await callRoute(route, plugin.ctx, {
+      const { body } = await callRoute(route, plugin.ctx, {
         body: {
           name: 'Full Job',
           schedule: '0 9 * * *',
@@ -590,7 +525,7 @@ describe('schedule routes', () => {
           maxFailures: 5,
         },
       })
-      const meta = getJob('new-job-id')
+      const meta = getJob(body.jobId as string)
       expect(meta!.agentId).toBe('pixel')
       expect(meta!.workflowId).toBe('wf-abc')
       expect(meta!.taskPrompt).toBe('Generate report for {date}')
@@ -645,8 +580,8 @@ describe('schedule routes', () => {
       expect(body.error).toContain('not found')
     })
 
-    it('calls runtime cron update when schedule is changed', async () => {
-      upsertJob(makeMeta({ jobId: 'job-123' }))
+    it('updates the stored schedule definition when the schedule is changed', async () => {
+      upsertJob(makeMeta({ jobId: 'job-123', schedule: { kind: 'cron', expr: '0 9 * * *' } }))
 
       const route = findRoute(plugin.routes, 'PUT', '/:jobId')!
       await callRoute(route, plugin.ctx, {
@@ -654,11 +589,13 @@ describe('schedule routes', () => {
         body: { schedule: '0 10 * * *' },
       })
 
-      expect(mockCronUpdate).toHaveBeenCalledWith('job-123', { schedule: '0 10 * * *' })
+      // Bakin owns the schedule — no OpenClaw cron update.
+      expect(mockCronUpdate).not.toHaveBeenCalled()
+      expect(getJob('job-123')!.schedule).toEqual({ kind: 'cron', expr: '0 10 * * *' })
     })
 
     it('preserves the schedule timezone when the cron expression changes', async () => {
-      upsertJob(makeMeta({ jobId: 'job-tz', tz: 'America/Denver' }))
+      upsertJob(makeMeta({ jobId: 'job-tz', tz: 'America/Denver', schedule: { kind: 'cron', expr: '0 9 * * *' } }))
 
       const route = findRoute(plugin.routes, 'PUT', '/:jobId')!
       await callRoute(route, plugin.ctx, {
@@ -666,13 +603,12 @@ describe('schedule routes', () => {
         body: { schedule: '0 10 * * *' },
       })
 
-      expect(mockCronUpdate).toHaveBeenCalledWith('job-tz', expect.objectContaining({
-        schedule: '0 10 * * *',
-        metadata: expect.objectContaining({ tz: 'America/Denver' }),
-      }))
+      const meta = getJob('job-tz')!
+      expect(meta.schedule).toEqual({ kind: 'cron', expr: '0 10 * * *' })
+      expect(meta.tz).toBe('America/Denver')
     })
 
-    it('calls runtime cron update when name is changed', async () => {
+    it('updates the stored display name when the name is changed', async () => {
       upsertJob(makeMeta({ jobId: 'job-123' }))
 
       const route = findRoute(plugin.routes, 'PUT', '/:jobId')!
@@ -681,7 +617,8 @@ describe('schedule routes', () => {
         body: { name: 'Renamed Job' },
       })
 
-      expect(mockCronUpdate).toHaveBeenCalledWith('job-123', { name: 'Renamed Job' })
+      expect(mockCronUpdate).not.toHaveBeenCalled()
+      expect(getJob('job-123')!.displayName).toBe('Renamed Job')
     })
 
     it('returns 400 for bad schedule expression on update', async () => {
@@ -740,16 +677,14 @@ describe('schedule routes', () => {
       expect(status).toBe(200)
       expect(body.ok).toBe(true)
       expect(mockCronGetRaw).toHaveBeenCalledWith('native-1', expect.stringContaining('schedule adopt'))
-      expect(mockCronUpdate).toHaveBeenCalledWith('native-1', expect.objectContaining({
-        name: 'Adopted Cron',
-        schedule: '0 10 * * *',
-        command: 'bakin:schedule:native-1',
-        metadata: expect.objectContaining({ bakinSchedule: true, adoptedByBakin: true }),
-      }))
+      // Bakin owns the schedule now: the native cron is removed, not rewritten.
+      expect(mockCronRemove).toHaveBeenCalledWith('native-1')
 
       const meta = getJob('native-1')
       expect(meta!.isBakinJob).toBe(true)
       expect(meta!.source).toBe('adopted')
+      expect(meta!.schedule).toEqual({ kind: 'cron', expr: '0 10 * * *' })
+      expect(meta!.enabled).toBe(true)
       expect(meta!.agentId).toBe('pixel')
       expect(meta!.taskPrompt).toBe('Create the Bakin task')
       expect(meta!.originalRuntimeCron?.snapshot).toEqual(expect.objectContaining({ id: 'native-1', command: 'Do the native thing' }))
@@ -826,6 +761,19 @@ describe('schedule routes', () => {
       expect(mockCronRemove).toHaveBeenCalledWith('job-del')
       expect(getJob('job-del')).toBeNull()
       expect(plugin.ctx.search.remove).toHaveBeenCalledWith('job-del')
+    })
+
+    it('refuses to delete a native (non-Bakin) runtime cron — read-only', async () => {
+      // A native OpenClaw cron surfaced read-only has no Bakin sidecar entry.
+      mockRuntimeCronJobs.push({ id: 'native-del', name: 'Native', schedule: '0 9 * * *', command: 'run', enabled: true })
+      const route = findRoute(plugin.routes, 'DELETE', '/:jobId')!
+      const { status, body } = await callRoute(route, plugin.ctx, {
+        searchParams: { jobId: 'native-del' },
+        body: {},
+      })
+      expect(status).toBe(403)
+      expect(body.error).toContain('read-only')
+      expect(mockCronRemove).not.toHaveBeenCalled()
     })
 
     it('cleans up Bakin records when the runtime cron job is already gone', async () => {
@@ -977,14 +925,24 @@ describe('schedule routes', () => {
       expect(body.error).toBe('invalid input')
     })
 
-    it('returns 404 for non-existent job', async () => {
+    it('returns 404 for an unknown job', async () => {
       const route = findRoute(plugin.routes, 'POST', '/:jobId/pause')!
-      const { status, body } = await callRoute(route, plugin.ctx, {
+      const { status } = await callRoute(route, plugin.ctx, {
         searchParams: { jobId: 'ghost-job' },
         body: { action: 'pause' },
       })
       expect(status).toBe(404)
-      expect(body.error).toContain('not found')
+    })
+
+    it('rejects pausing a native (non-Bakin) runtime cron with 403 read-only', async () => {
+      mockRuntimeCronJobs.push({ id: 'native-pause', name: 'Native', schedule: '0 9 * * *', command: 'run', enabled: true })
+      const route = findRoute(plugin.routes, 'POST', '/:jobId/pause')!
+      const { status, body } = await callRoute(route, plugin.ctx, {
+        searchParams: { jobId: 'native-pause' },
+        body: { action: 'pause' },
+      })
+      expect(status).toBe(403)
+      expect(body.error).toContain('read-only')
     })
 
     it('audits the pause action', async () => {
@@ -1004,8 +962,8 @@ describe('schedule routes', () => {
   // POST /:jobId/run — trigger immediate run
   // -----------------------------------------------------------------------
   describe('POST /:jobId/run', () => {
-    it('triggers an immediate run via runtime cron', async () => {
-      mockRuntimeCronJobs.push({ id: 'job-run', name: 'Run', schedule: '0 9 * * *', command: 'run', enabled: true })
+    it('fires a Bakin schedule immediately without any runtime cron', async () => {
+      upsertJob(makeMeta({ jobId: 'job-run', schedule: { kind: 'cron', expr: '0 9 * * *' }, taskPrompt: 'Do it' }))
       const route = findRoute(plugin.routes, 'POST', '/:jobId/run')!
       expect(route).toBeDefined()
 
@@ -1016,34 +974,34 @@ describe('schedule routes', () => {
 
       expect(status).toBe(200)
       expect(body.ok).toBe(true)
-      expect(mockCronRunNow).toHaveBeenCalledWith('job-run')
+      expect(mockCronRunNow).not.toHaveBeenCalled()
+      expect(mockCreateTask).toHaveBeenCalledTimes(1)
     })
 
-    it('creates a Bakin task for a successful Bakin-owned run-now result once', async () => {
-      upsertJob(makeMeta({ jobId: 'job-run-bakin', displayName: 'Run Bakin', taskPrompt: 'Do it' }))
-      mockRuntimeCronJobs.push({ id: 'job-run-bakin', name: 'Run Bakin', schedule: '0 9 * * *', command: 'run', enabled: true })
+    it('returns 404 for a non-Bakin / unknown job', async () => {
+      const route = findRoute(plugin.routes, 'POST', '/:jobId/run')!
+      const { status } = await callRoute(route, plugin.ctx, {
+        searchParams: { jobId: 'ghost' },
+        body: {},
+      })
+      expect(status).toBe(404)
+    })
+
+    it('each manual run is an intentional fire (not deduped)', async () => {
+      upsertJob(makeMeta({ jobId: 'job-run-bakin', displayName: 'Run Bakin', schedule: { kind: 'cron', expr: '0 9 * * *' }, taskPrompt: 'Do it' }))
       const route = findRoute(plugin.routes, 'POST', '/:jobId/run')!
 
-      await callRoute(route, plugin.ctx, {
-        searchParams: { jobId: 'job-run-bakin' },
-        body: {},
-      })
-      await callRoute(route, plugin.ctx, {
-        searchParams: { jobId: 'job-run-bakin' },
-        body: {},
-      })
+      await callRoute(route, plugin.ctx, { searchParams: { jobId: 'job-run-bakin' }, body: {} })
+      await callRoute(route, plugin.ctx, { searchParams: { jobId: 'job-run-bakin' }, body: {} })
 
-      expect(mockCreateTask).toHaveBeenCalledTimes(1)
-      // Run-level dedup lives in the execution ledger (cron_fires) now
-      expect(getCronFire('job-run-bakin', 'run-now')?.disposition).toBe('created')
+      // Manual triggers mint a unique run id each time → each one fires.
+      expect(mockCreateTask).toHaveBeenCalledTimes(2)
     })
 
     it.skip('returns 400 when jobId is missing — legacy: routing requires :jobId in path', () => {})
 
-    it.skip('reads jobId from body when not in searchParams — legacy fallback; routing requires :jobId in path', () => {})
-
     it('audits and logs the run_now action', async () => {
-      mockRuntimeCronJobs.push({ id: 'job-audit-run', name: 'Run', schedule: '0 9 * * *', command: 'run', enabled: true })
+      upsertJob(makeMeta({ jobId: 'job-audit-run', schedule: { kind: 'cron', expr: '0 9 * * *' } }))
       const route = findRoute(plugin.routes, 'POST', '/:jobId/run')!
       await callRoute(route, plugin.ctx, {
         searchParams: { jobId: 'job-audit-run' },
@@ -1136,12 +1094,10 @@ describe('schedule routes', () => {
     })
   })
 
-  // -----------------------------------------------------------------------
-  // Bridge route is skipped (tested in bridge.test.ts)
-  // -----------------------------------------------------------------------
-  it('registers a /bridge route', () => {
-    const route = findRoute(plugin.routes, 'POST', '/bridge')
-    expect(route).toBeDefined()
+  it('no longer registers the removed /bridge route', () => {
+    // The cron→task bridge webhook was removed when Bakin took ownership of
+    // scheduling; nothing should POST to /bridge anymore.
+    expect(findRoute(plugin.routes, 'POST', '/bridge')).toBeUndefined()
   })
 })
 
@@ -1266,15 +1222,18 @@ describe('schedule exec tools', () => {
       })
 
       expect(result.ok).toBe(true)
-      expect(result.jobId).toBe('new-job-id')
+      expect(result.jobId).toMatch(/^sch_/)
       expect(result.cron).toBe('0 9 * * *')
       expect(result.tz).toBeDefined()
 
-      expect(mockCronCreate).toHaveBeenCalledTimes(1)
+      // Bakin owns the schedule — no OpenClaw cron job is created.
+      expect(mockCronCreate).not.toHaveBeenCalled()
 
-      // Verify sidecar
-      const meta = getJob('new-job-id')
+      // Verify store
+      const meta = getJob(result.jobId as string)
       expect(meta!.displayName).toBe('Nightly Digest')
+      expect(meta!.schedule).toEqual({ kind: 'cron', expr: '0 9 * * *' })
+      expect(meta!.enabled).toBe(true)
       expect(meta!.agentId).toBe('pixel')
       expect(meta!.isBakinJob).toBe(true)
       expect(meta!.owner).toBe('main')
@@ -1309,7 +1268,7 @@ describe('schedule exec tools', () => {
   // bakin_exec_schedule_update
   // -----------------------------------------------------------------------
   describe('bakin_exec_schedule_update', () => {
-    it('updates sidecar and runtime cron fields', async () => {
+    it('updates stored fields', async () => {
       upsertJob(makeMeta({ jobId: 'job-upd' }))
 
       const tool = findTool(plugin.execTools, 'bakin_exec_schedule_update')!
@@ -1323,9 +1282,7 @@ describe('schedule exec tools', () => {
       })
 
       expect(result.ok).toBe(true)
-
-      // runtime cron update called for name change
-      expect(mockCronUpdate).toHaveBeenCalledWith('job-upd', { name: 'Renamed' })
+      expect(mockCronUpdate).not.toHaveBeenCalled()
 
       const meta = getJob('job-upd')
       expect(meta!.displayName).toBe('Renamed')
@@ -1333,8 +1290,8 @@ describe('schedule exec tools', () => {
       expect(meta!.taskPrompt).toBe('Updated prompt')
     })
 
-    it('calls runtime cron update when schedule is changed', async () => {
-      upsertJob(makeMeta({ jobId: 'job-upd-sched' }))
+    it('updates the stored schedule definition when changed', async () => {
+      upsertJob(makeMeta({ jobId: 'job-upd-sched', schedule: { kind: 'cron', expr: '0 9 * * *' } }))
 
       const tool = findTool(plugin.execTools, 'bakin_exec_schedule_update')!
       await callTool(tool, {
@@ -1342,11 +1299,12 @@ describe('schedule exec tools', () => {
         schedule: '0 10 * * *',
       })
 
-      expect(mockCronUpdate).toHaveBeenCalledWith('job-upd-sched', { schedule: '0 10 * * *' })
+      expect(mockCronUpdate).not.toHaveBeenCalled()
+      expect(getJob('job-upd-sched')!.schedule).toEqual({ kind: 'cron', expr: '0 10 * * *' })
     })
 
     it('preserves timezone when the exec tool changes a schedule', async () => {
-      upsertJob(makeMeta({ jobId: 'job-upd-tz', tz: 'America/Denver' }))
+      upsertJob(makeMeta({ jobId: 'job-upd-tz', tz: 'America/Denver', schedule: { kind: 'cron', expr: '0 9 * * *' } }))
 
       const tool = findTool(plugin.execTools, 'bakin_exec_schedule_update')!
       await callTool(tool, {
@@ -1354,10 +1312,9 @@ describe('schedule exec tools', () => {
         schedule: '0 10 * * *',
       })
 
-      expect(mockCronUpdate).toHaveBeenCalledWith('job-upd-tz', expect.objectContaining({
-        schedule: '0 10 * * *',
-        metadata: expect.objectContaining({ tz: 'America/Denver' }),
-      }))
+      const meta = getJob('job-upd-tz')!
+      expect(meta.schedule).toEqual({ kind: 'cron', expr: '0 10 * * *' })
+      expect(meta.tz).toBe('America/Denver')
     })
 
     it('returns error when jobId is missing', async () => {
@@ -1470,11 +1427,19 @@ describe('schedule exec tools', () => {
       expect(result.error).toContain('jobId and action required')
     })
 
-    it('returns error for non-existent job', async () => {
+    it('returns not-found for an unknown job', async () => {
       const tool = findTool(plugin.execTools, 'bakin_exec_schedule_pause')!
       const result = await callTool(tool, { jobId: 'ghost', action: 'pause' })
       expect(result.ok).toBe(false)
       expect(result.error).toContain('not found')
+    })
+
+    it('rejects pausing a native (non-Bakin) runtime cron (read-only)', async () => {
+      mockRuntimeCronJobs.push({ id: 'native-exec-pause', name: 'Native', schedule: '0 9 * * *', command: 'run', enabled: true })
+      const tool = findTool(plugin.execTools, 'bakin_exec_schedule_pause')!
+      const result = await callTool(tool, { jobId: 'native-exec-pause', action: 'pause' })
+      expect(result.ok).toBe(false)
+      expect(result.error).toContain('read-only')
     })
   })
 
@@ -1572,9 +1537,8 @@ describe('schedule exec tools', () => {
   // bakin_exec_schedule_run_now
   // -----------------------------------------------------------------------
   describe('bakin_exec_schedule_run_now', () => {
-    it('triggers runtime cron runNow', async () => {
-      upsertJob(makeMeta({ jobId: 'job-rn' }))
-      mockRuntimeCronJobs.push({ id: 'job-rn', name: 'Run', schedule: '0 9 * * *', command: 'run', enabled: true })
+    it('fires a manual run that creates a task (no runtime cron involved)', async () => {
+      upsertJob(makeMeta({ jobId: 'job-rn', schedule: { kind: 'cron', expr: '0 9 * * *' } }))
 
       const tool = findTool(plugin.execTools, 'bakin_exec_schedule_run_now')!
       expect(tool).toBeDefined()
@@ -1583,7 +1547,9 @@ describe('schedule exec tools', () => {
       expect(result.ok).toBe(true)
       expect(result.jobId).toBe('job-rn')
 
-      expect(mockCronRunNow).toHaveBeenCalledWith('job-rn')
+      // Bakin fires directly into the task path — OpenClaw runNow is never used.
+      expect(mockCronRunNow).not.toHaveBeenCalled()
+      expect(mockCreateTask).toHaveBeenCalled()
     })
 
     it('audits and logs the run', async () => {
@@ -1805,7 +1771,6 @@ describe('schedule plugin activation', () => {
       { method: 'POST', path: '/:jobId/run' },
       { method: 'GET', path: '/:jobId/runs' },
       { method: 'POST', path: '/parse' },
-      { method: 'POST', path: '/bridge' },
     ]
 
     for (const expected of expectedRoutes) {
@@ -1832,7 +1797,7 @@ describe('schedule plugin activation', () => {
     }
   })
 
-  it('registers a hook for provider-backed Bakin-managed plugin jobs', async () => {
+  it('provisions a Bakin schedule in the store keyed by logical id (no OpenClaw cron)', async () => {
     const activated = await activatePlugin(schedulePlugin, testDir)
     const registerMock = activated.ctx.hooks.register as unknown as {
       mock: { calls: Array<[string, (data: Record<string, unknown>) => Promise<Record<string, unknown>>, Record<string, unknown>]> }
@@ -1851,29 +1816,20 @@ describe('schedule plugin activation', () => {
 
     expect(result).toEqual(expect.objectContaining({
       ok: true,
-      jobId: 'runtime-plugin-nightly-sync',
+      jobId: 'plugin-nightly-sync',
       cron: '*/5 * * * *',
     }))
-    expect(mockCronCreate).toHaveBeenCalledWith(expect.objectContaining({
-      id: 'plugin-nightly-sync',
-      name: 'Plugin nightly sync',
-      schedule: '*/5 * * * *',
-      command: 'bakin:reports:refresh',
-      metadata: expect.objectContaining({
-        pluginId: 'reports',
-        bakinSchedule: true,
-        scheduleType: 'cron',
-      }),
-    }))
-    expect(getJob('runtime-plugin-nightly-sync')).toEqual(expect.objectContaining({
+    expect(mockCronCreate).not.toHaveBeenCalled()
+    expect(getJob('plugin-nightly-sync')).toEqual(expect.objectContaining({
       isBakinJob: true,
       source: 'bakin',
       displayName: 'Plugin nightly sync',
       logicalJobId: 'plugin-nightly-sync',
+      schedule: { kind: 'cron', expr: '*/5 * * * *' },
     }))
   })
 
-  it('updates an existing provider-backed plugin job by logical id after a rename', async () => {
+  it('updates an existing Bakin schedule by logical id after a rename', async () => {
     const activated = await activatePlugin(schedulePlugin, testDir)
     const registerMock = activated.ctx.hooks.register as unknown as {
       mock: { calls: Array<[string, (data: Record<string, unknown>) => Promise<Record<string, unknown>>, Record<string, unknown>]> }
@@ -1889,7 +1845,7 @@ describe('schedule plugin activation', () => {
       command: 'bakin:reports:refresh',
       metadata: { pluginId: 'reports' },
     })
-    expect(first.jobId).toBe('runtime-plugin-nightly-sync')
+    expect(first.jobId).toBe('plugin-nightly-sync')
 
     mockCronCreate.mockClear()
     mockCronUpdate.mockClear()
@@ -1904,22 +1860,19 @@ describe('schedule plugin activation', () => {
 
     expect(second).toEqual(expect.objectContaining({
       ok: true,
-      jobId: 'runtime-plugin-nightly-sync',
+      jobId: 'plugin-nightly-sync',
       cron: '0 2 * * *',
     }))
     expect(mockCronCreate).not.toHaveBeenCalled()
-    expect(mockCronUpdate).toHaveBeenCalledWith('runtime-plugin-nightly-sync', expect.objectContaining({
-      name: 'Plugin nightly sync renamed',
-      schedule: '0 2 * * *',
-      command: 'bakin:reports:refresh',
-    }))
-    expect(getJob('runtime-plugin-nightly-sync')).toEqual(expect.objectContaining({
+    expect(mockCronUpdate).not.toHaveBeenCalled()
+    expect(getJob('plugin-nightly-sync')).toEqual(expect.objectContaining({
       displayName: 'Plugin nightly sync renamed',
       logicalJobId: 'plugin-nightly-sync',
+      schedule: { kind: 'cron', expr: '0 2 * * *' },
     }))
   })
 
-  it('does not recover provider-backed plugin jobs by command alone', async () => {
+  it('ignores runtime crons entirely (store-only provisioning)', async () => {
     const activated = await activatePlugin(schedulePlugin, testDir)
     const registerMock = activated.ctx.hooks.register as unknown as {
       mock: { calls: Array<[string, (data: Record<string, unknown>) => Promise<Record<string, unknown>>, Record<string, unknown>]> }
@@ -1927,6 +1880,7 @@ describe('schedule plugin activation', () => {
     const call = registerMock.mock.calls.find(([name]) => name === 'schedule.ensureBakinJob')
     expect(call).toBeDefined()
 
+    // A runtime cron with a matching command must NOT influence provisioning.
     mockRuntimeCronJobs.push({
       id: 'runtime-existing-reports-refresh',
       name: 'Existing reports refresh',
@@ -1945,14 +1899,11 @@ describe('schedule plugin activation', () => {
 
     expect(result).toEqual(expect.objectContaining({
       ok: true,
-      jobId: 'runtime-plugin-nightly-sync',
+      jobId: 'plugin-nightly-sync',
     }))
     expect(mockCronUpdate).not.toHaveBeenCalled()
-    expect(mockCronCreate).toHaveBeenCalledWith(expect.objectContaining({
-      id: 'plugin-nightly-sync',
-      name: 'Plugin nightly sync',
-      command: 'bakin:reports:refresh',
-    }))
+    expect(mockCronCreate).not.toHaveBeenCalled()
+    expect(getJob('plugin-nightly-sync')!.logicalJobId).toBe('plugin-nightly-sync')
   })
 
   it('sets pluginId to schedule', () => {

@@ -86,11 +86,6 @@
       },
       {
         "method": "POST",
-        "path": "/bridge",
-        "summary": "Cron bridge webhook"
-      },
-      {
-        "method": "POST",
         "path": "/parse",
         "summary": "Parse schedule expression"
       }
