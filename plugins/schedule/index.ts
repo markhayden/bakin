@@ -446,17 +446,22 @@ async function runClaimedFire(
 
   // Create the task. Label by the run's logical OCCURRENCE time, not wall-clock
   // creation time — a catch-up task for a missed run must read as the day it was
-  // supposed to fire, not the (later) day it was created (see SPEC FR3).
+  // supposed to fire, not the (later) day it was created (see SPEC FR3). The
+  // occurrence is an absolute instant; render it in the JOB's timezone so an
+  // evening run that crosses UTC midnight still reads as its local day.
   const labelDate = new Date(opts.firedAtMs ?? Date.now())
+  const labelTz = meta.tz || getSystemTimezone()
   const templateVars = {
-    date: labelDate.toISOString().slice(0, 10),
+    date: new Intl.DateTimeFormat('en-CA', {
+      timeZone: labelTz, year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(labelDate), // en-CA → YYYY-MM-DD
     agent: meta.agentId ?? 'unassigned',
     jobName: meta.displayName ?? jobId,
   }
 
   const title = meta.taskTitle
     ? expandTemplate(meta.taskTitle, templateVars)
-    : `${meta.displayName ?? jobId} — ${labelDate.toLocaleDateString()}`
+    : `${meta.displayName ?? jobId} — ${labelDate.toLocaleDateString(undefined, { timeZone: labelTz })}`
 
   const description = meta.taskPrompt
     ? expandTemplate(meta.taskPrompt, templateVars)
@@ -511,7 +516,7 @@ async function runClaimedFire(
       jobId, runId, taskId, agent: meta.agentId, owner: defaults.owner,
       ...(column !== 'todo' ? { column, blockedReason: opts.blockedReason } : {}),
     })
-    const where = column === 'blocked' ? ` (blocked — ${MISSED_WINDOW_REASON})` : ''
+    const where = column === 'blocked' ? ` (blocked — ${opts.blockedReason ?? MISSED_WINDOW_REASON})` : ''
     pluginCtx.activity.log('system', `Schedule "${meta.displayName ?? jobId}" created task ${taskId}${meta.agentId ? ` for ${meta.agentId}` : ''}${where}`, { taskId })
   }
 

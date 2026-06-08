@@ -303,6 +303,18 @@ describe('FR3: task labeled by occurrence/fired date, not creation time', () => 
 
     expect(createdTaskOpts[0]?.title).toBe('Release notes 2026-06-08')
   })
+
+  it('AC3.3: the date is rendered in the JOB timezone, not UTC (crosses UTC midnight)', async () => {
+    // 2026-06-08T01:00Z is 2026-06-07 18:00 in Los Angeles — the label must read
+    // the LOCAL day (06-07), not the UTC day (06-08).
+    upsertJob(makeMeta({ tz: 'America/Los_Angeles' }))
+
+    await fireScheduledRunFromPayload({
+      jobId: 'release-notes', runId: 'run-tz', timestamp: '2026-06-08T01:00:00Z',
+    })
+
+    expect(createdTaskOpts[0]?.title).toBe('Release notes 2026-06-07')
+  })
 })
 
 // ---------------------------------------------------------------------------
