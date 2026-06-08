@@ -1048,9 +1048,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     return {
       ...runtime,
       metadata: input.metadata ?? runtime.metadata,
-      toolsAllow: isBakinCron(input.command, input.metadata)
-        ? undefined
-        : normalizeCronToolsAllow(input.toolsAllow) ?? runtime.toolsAllow,
+      toolsAllow: normalizeCronToolsAllow(input.toolsAllow) ?? runtime.toolsAllow,
     }
   }
 
@@ -1067,16 +1065,11 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
     const command = patch.command ?? refreshed.command
     const metadata = patch.metadata ?? refreshed.metadata
-    const bakinCron = isBakinCron(command, metadata)
     return {
       ...refreshed,
       command,
       metadata,
-      toolsAllow: bakinCron
-        ? undefined
-        : patch.toolsAllow !== undefined
-          ? effective.toolsAllow
-          : refreshed.toolsAllow,
+      toolsAllow: patch.toolsAllow !== undefined ? effective.toolsAllow : refreshed.toolsAllow,
     }
   }
 
@@ -1931,14 +1924,6 @@ function cronStoreJobToRuntime(job: OpenClawCronStoreJob): CronJob {
   }
 }
 
-function isBakinScheduleMetadata(metadata: RuntimeMetadata | undefined): boolean {
-  return metadata?.bakinSchedule === true || metadata?.['bakin.schedule'] === true
-}
-
-function isBakinCron(command: string, metadata: RuntimeMetadata | undefined): boolean {
-  return isBakinScheduleMetadata(metadata) || command.trim().startsWith('bakin:')
-}
-
 function cronCreateArgs(input: CreateCronJobInput): string[] {
   const args = [
     'cron',
@@ -1981,23 +1966,10 @@ function cronUpdateArgs(id: string, current: CronJob, patch: UpdateCronJobInput)
 function appendCronPayloadArgs(
   args: string[],
   command: string,
-  metadata: RuntimeMetadata | undefined,
+  _metadata: RuntimeMetadata | undefined,
   toolsAllow: string[] | null | undefined,
   opts: { allowClearTools?: boolean } = {},
 ): void {
-  if (isBakinCron(command, metadata)) {
-    args.push(
-      '--session',
-      'isolated',
-      '--message',
-      command,
-      '--no-deliver',
-      '--light-context',
-    )
-    if (opts.allowClearTools !== false) args.push('--clear-tools')
-    return
-  }
-
   args.push('--session', 'isolated', '--message', command)
   if (toolsAllow === undefined) return
 
@@ -2010,14 +1982,13 @@ function appendCronPayloadArgs(
 }
 
 function cronJobFromInput(id: string, input: CreateCronJobInput): CronJob {
-  const bakinCron = isBakinCron(input.command, input.metadata)
   return {
     id,
     name: input.name,
     schedule: input.schedule,
     command: input.command,
     enabled: input.enabled ?? true,
-    toolsAllow: bakinCron ? undefined : normalizeCronToolsAllow(input.toolsAllow),
+    toolsAllow: normalizeCronToolsAllow(input.toolsAllow),
     metadata: input.metadata,
   }
 }
@@ -2037,20 +2008,19 @@ function cronJobFromUpdatePatch(id: string, current: CronJob, patch: UpdateCronJ
     schedule: patch.schedule ?? current.schedule,
     command,
     enabled: patch.enabled ?? current.enabled,
-    toolsAllow: isBakinCron(command, metadata) ? undefined : toolsAllow,
+    toolsAllow,
     metadata,
   }
 }
 
 function withCronInputFallbacks(raw: OpenClawCronStoreJob, id: string, input: CreateCronJobInput): OpenClawCronStoreJob {
-  const bakinCron = isBakinCron(input.command, input.metadata)
   return {
     ...raw,
     id,
     name: raw.name ?? input.name,
     enabled: raw.enabled ?? input.enabled ?? true,
     schedule: raw.schedule ?? { kind: 'cron', expr: input.schedule },
-    payload: raw.payload ?? cronPayloadForCommand(input.command, undefined, bakinCron),
+    payload: raw.payload ?? cronPayloadForCommand(input.command, undefined),
     metadata: raw.metadata ?? input.metadata,
   }
 }
@@ -2058,11 +2028,7 @@ function withCronInputFallbacks(raw: OpenClawCronStoreJob, id: string, input: Cr
 function cronPayloadForCommand(
   command: string,
   current: OpenClawCronStoreJob['payload'],
-  bakinSchedule: boolean,
 ): OpenClawCronStoreJob['payload'] {
-  if (bakinSchedule) {
-    return { kind: 'agentTurn', message: command }
-  }
   if (current?.kind === 'systemEvent') {
     return { kind: 'systemEvent', text: command }
   }
