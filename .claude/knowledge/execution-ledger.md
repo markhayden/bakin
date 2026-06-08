@@ -47,8 +47,8 @@ seq_watermarks task_id PK, seq — floors seeded once from the legacy
               threadIds never collide with previously used provider sessions
 cron_fires    (job_id, run_id) PK ← THE cron lock; fired_at (logical run
               time), claimed_at (insert time — healer staleness keys on
-              THIS: the reconciler replays runs hours old, and an in-flight
-              claim for an old run must not look healable), task_id,
+              THIS: startup catch-up may fire an occurrence hours old, and an
+              in-flight claim for an old run must not look healable), task_id,
               disposition pending|created|skipped|seeded
 completions   task_id PK ← first completion wins; run_id, agent, channel
 idempotency   key PK (e.g. the image 9-tuple signature), kind, result_json
@@ -64,7 +64,7 @@ exactly preserving legacy threadId semantics.
 
 | Layer | Caller | Verbs |
 |---|---|---|
-| Cron dedup | `plugins/schedule` `processScheduledRun` (claim-first), healer, seed | `claimCronFire`, `attachCronTask`, `markCronFireSkipped`, `findHealableCronClaims`, `getCronFire` |
+| Cron dedup | `plugins/schedule` scheduler tick + startup catch-up (claim-first) + heal pass | `claimCronFire`, `attachCronTask`, `markCronFireSkipped`, `findHealableCronClaims`, `getCronFire` |
 | Completion gate | `task-service.moveTaskWithEffects` done-branch (single chokepoint; `reportComplete` flows through it) | `recordCompletion`, `deleteCompletion` (reopen), `hasCompletion` |
 | Dispatch claims | `dispatch.ts` all 3 paths via `claimDispatchRun` | `claimNextRun` (atomic mint+claim), `settleRun`, `loseRun`, `currentSeq` |
 | Watchdog | supersede-first recovery | `getLiveRun`, `supersedeStaleRun` (transactional; N racing actors → 1 winner) |
@@ -76,12 +76,15 @@ exactly preserving legacy threadId semantics.
 
 ## Semantics
 
-- **Cron:** claim BEFORE task creation — rarely-miss, never-duplicate. A
-  claim stranded `pending` (crash between claim and create) is healed by
-  the reconciler UNDER THE SAME CLAIM after 5 min, re-evaluating pause/skip
-  at heal time. Manual fires without a runtime runId mint `manual-<uuid>` —
-  intentional repeats are never blocked. Legacy sidecar `processedRunIds`
-  were seeded once (`disposition='seeded'`) and the fields deleted.
+- **Cron:** the Bakin scheduler claims each occurrence (runId
+  `jobId:occurrenceISO`) BEFORE task creation — rarely-miss, never-duplicate.
+  A claim stranded `pending` (crash between claim and create) is healed by the
+  scheduler's heal pass (`healPendingCronClaims`) UNDER THE SAME CLAIM after
+  5 min, re-evaluating pause/skip at heal time. Manual `run`/`run_now` fires
+  mint `manual-<uuid>` — intentional repeats are never blocked. (`seeded` is a
+  legacy disposition that may still exist on rows from the old sidecar
+  migration; nothing writes it anymore.) See
+  `.claude/knowledge/bakin-owned-scheduler.md`.
 - **Completion:** first write wins; the winner emits `task.completed` +
   hooks + continuation + orchestrator notify exactly once; losers audit
   `task.completion_suppressed` and surface `{ ok: true, alreadyComplete:

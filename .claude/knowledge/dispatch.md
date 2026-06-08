@@ -276,22 +276,15 @@ When recovery returns tasks to `todo`, `server.ts` starts the loops and then
 immediately triggers one dispatch cycle so recovered work does not wait for the
 next interval.
 
-## Plugin-Owned Cron Commands
+## Scheduled tasks
 
-The schedule plugin bridge recognizes runtime cron commands shaped like
-`bakin:<pluginId>:<action>`. The reserved `pluginId` value `schedule` keeps the
-legacy schedule-owned task path: the bridge looks up the schedule sidecar and
-creates a Bakin task as before.
-
-This bridge is for recurring cron integrations, not for plugin business logic
-that should be represented as board tasks. Prefer `availableAt` tasks for
+Scheduled tasks are fired by the schedule plugin's own tick scheduler — Bakin no
+longer delegates to OpenClaw cron, and the old cron→task bridge webhook (and its
+`bakin:<pluginId>:<action>` command routing) has been removed. The scheduler
+claims each occurrence in the execution ledger and creates a board task through
+the normal dispatch path. Deep reference:
+`.claude/knowledge/bakin-owned-scheduler.md`. Prefer `availableAt` tasks for
 one-time scheduled work.
-
-For any other plugin id, the bridge bypasses sidecar lookup and invokes
-`${pluginId}.${action}.run` through `ctx.hooks`. The hook owns the work and may
-return `{ ok: true, taskId? }` or `{ ok: false, error }`; no Bakin task is
-created by the schedule bridge itself. Missing hooks are recorded as bridge
-failures with a clear `hook plugin.action.run not registered` error.
 
 ## Where to look
 
@@ -302,6 +295,6 @@ failures with a clear `hook plugin.action.run not registered` error.
 - `src/core/dispatch.ts` — classification, recovery ladder, concurrency registry, prompt builders
 - `src/core/continuation.ts` — dependency continuation as full re-dispatch
 - `src/core/restart-recovery.ts` — post-boot recovery of orphaned `inProgress` tasks
-- `plugins/schedule/index.ts` — cron bridge, including `bakin:<pluginId>:<action>` hook dispatch
+- `plugins/schedule/index.ts` — Bakin-owned scheduler wiring (see `.claude/knowledge/bakin-owned-scheduler.md`)
 - `.claude/knowledge/session-forensics.md` — trajectory schema, diagnosis flow, ladder walkthroughs
 - `.claude/knowledge/adapter-architecture.md` — adapter boundaries and task/runtime ownership
