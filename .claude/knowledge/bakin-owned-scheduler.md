@@ -25,6 +25,12 @@ The fix: **Bakin owns scheduling for Bakin schedules.** OpenClaw cron is no long
 
 The crons the runtime/agents create for themselves are surfaced **read-only**. `lib/jobs-reader.ts` unions two sources: runtime crons (`cron.list()`) and store-owned Bakin schedules (synthesized from the stored schedule when they have no runtime cron). Mutating a non-Bakin job (PUT / pause / skip / delete, route + exec tool) is rejected with 403 / `ok:false` and guidance to **adopt** it first. `adopt` copies the expr into a Bakin schedule and removes the native cron; `restore-native` puts it back. The reader never auto-deletes a Bakin record (a read must not mutate the store) — only genuinely-orphaned non-Bakin sidecar entries are swept.
 
+## Run history & skip visibility
+
+The ledger's `cron_fires` table is the durable per-fire record (`(job_id, run_id)` PK, `disposition` ∈ `pending|created|skipped|seeded`, `task_id`, and `skip_reason` — added in migration v2). Because Bakin schedules have no OpenClaw cron runs, the job-drawer run history reads the **ledger**, not the runtime adapter: `lib/runs-reader.ts` routes by ownership — a Bakin job → `listCronFires(jobId, limit)` mapped to `RunEntry` (created→`success`+taskId, skipped→`skipped`+`skippedReason`, pending→`pending`); a native cron → `cron.listRuns`. (Pre-cutover the drawer read `cron.listRuns` for everything, so Bakin jobs showed empty history — this is the fix.)
+
+Skips are **visible**: every `skipFire()` in `runClaimedFire` (overlap / paused / skip-count / auto-paused) records the reason to `cron_fires.skip_reason` *and* emits a `schedule.fire_skipped` activity-audit event, so an overrunning or paused schedule shows up on the feed instead of silently dropping beats. The default `allowOverlap: false` already serializes a job (a fire whose prior task is still in an active column is skipped, not piled on) — this just makes that serialization observable. Heal-time consume of an orphaned claim records `skip_reason: 'job-removed'` (no feed event).
+
 ## Migration / repair command
 
 `schedule-cutover` doctor check (`lib/health-checks.ts`): flags any Bakin schedule still backed by an OpenClaw cron job (incomplete cutover → rogue-fire risk). Its repair runs the same idempotent `migrateBakinSchedulesOffOpenClawCron`. So `bakin check schedule-cutover` / `bakin install schedule-cutover` is the end-user migration command for when OpenClaw was unreachable at boot.
@@ -45,5 +51,6 @@ The cron→task **bridge webhook** + shared secret, the **reconcile-poll** (`rec
 
 - `plugins/schedule/lib/{cron-eval,scheduler,cutover,prompt-guard,sidecar,jobs-reader,health-checks}.ts`
 - `plugins/schedule/index.ts` — routes, exec tools, `activate()` wiring, read-only guards
-- Ledger: `packages/core/src/execution/ledger.ts` (`cron_fires`), facade `src/core/execution-ledger.ts`
+- Ledger: `packages/core/src/execution/ledger.ts` (`cron_fires` + `skip_reason`, `listCronFires`), facade `src/core/execution-ledger.ts`
+- Run history: `plugins/schedule/lib/runs-reader.ts` (ownership routing), `components/run-history.tsx`, client type `src/hooks/use-schedule.ts` (`RunEntry`)
 - Tests: `tests/plugins/schedule/*` (engine + catch-up are fake-clock; cutover/health/routes are mocked)

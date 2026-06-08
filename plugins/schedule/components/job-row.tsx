@@ -122,7 +122,7 @@ export function JobRow({
           >
             <MoreHorizontal className="size-4" />
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-36" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+          <DropdownMenuContent align="end" className="w-auto min-w-36 whitespace-nowrap" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
             <DropdownMenuItem onClick={onRunNow}>
               <Play className="size-3.5 mr-2" /> Run Now
             </DropdownMenuItem>

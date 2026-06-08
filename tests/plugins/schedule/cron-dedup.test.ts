@@ -235,6 +235,33 @@ describe('cron fire dedup (claim before create)', () => {
     expect(mockCreateTask).toHaveBeenCalledTimes(2)
   })
 
+  it('emits schedule.fire_skipped with the reason when a paused job fires', async () => {
+    upsertJob(makeMeta({ paused: true, pauseReason: 'manual' }))
+    const payload = { jobId: 'release-notes', runId: 'run-paused-audit', timestamp: '2026-06-06T07:00:00Z' }
+    const result = await fireScheduledRunFromPayload(payload)
+
+    expect(result.body.skipped).toBe('paused')
+    const ev = auditEvents.filter((e) => e.event === 'fire_skipped')
+    expect(ev).toHaveLength(1)
+    expect(ev[0].data.reason).toBe('paused')
+    expect(ev[0].data.runId).toBe('run-paused-audit')
+    expect(getCronFire('release-notes', 'run-paused-audit')?.skipReason).toBe('paused')
+  })
+
+  it('emits schedule.fire_skipped with reason "overlap" when the prior task is still active', async () => {
+    upsertJob(makeMeta({ allowOverlap: false, lastTaskId: 'task-active' }))
+    emptyBoard.columns.todo.push({ id: 'task-active' } as never)
+    const payload = { jobId: 'release-notes', runId: 'run-overlap-audit', timestamp: '2026-06-06T07:00:00Z' }
+    const result = await fireScheduledRunFromPayload(payload)
+
+    expect(result.body.skipped).toBe('overlap')
+    const ev = auditEvents.filter((e) => e.event === 'fire_skipped')
+    expect(ev).toHaveLength(1)
+    expect(ev[0].data.reason).toBe('overlap')
+    expect(getCronFire('release-notes', 'run-overlap-audit')?.skipReason).toBe('overlap')
+    expect(mockCreateTask).not.toHaveBeenCalled()
+  })
+
   it('Prove-It (#472): a post-create effect failure does not duplicate the task on heal', async () => {
     upsertJob(makeMeta())
     // Simulate createTaskWithEffects writing the row, then a post-create effect
