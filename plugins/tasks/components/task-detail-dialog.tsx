@@ -19,6 +19,7 @@ import { toast } from "@makinbakin/sdk/hooks"
 import type { Task, ColumnId, TaskLogEntry } from '../types'
 import { compactDispatchFailureLabel, getDispatchFailureDetail, specificDispatchFailureLabel, type DispatchFailureDetail } from '../lib/dispatch-failure'
 import { isRenderableAssetRef } from '../lib/output-assets'
+import { TaskRunHistory } from './task-run-history'
 import { createShortClientId } from '../lib/client-id'
 
 /** Normalize step output — handles string (possibly JSON), object, or unexpected types. */
@@ -982,6 +983,8 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
         {gateApprovalJSX}
 
         {workflowProgressJSX}
+
+        {task.id && <TaskRunHistory taskId={task.id} />}
 
         {/* Description */}
         {task.description && (

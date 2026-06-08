@@ -28,6 +28,9 @@ export { useScheduleJobs } from '@/hooks/use-schedule'
 /** Fetch run history for a scheduled job. */
 export { useRunHistory } from '@/hooks/use-schedule'
 export type { ScheduleJob, RunEntry } from '@/hooks/use-schedule'
+/** Fetch dispatch run history for a task. */
+export { useTaskRunHistory } from '@/hooks/use-task-run-history'
+export type { TaskRunEntry } from '@/hooks/use-task-run-history'
 /** Hybrid full-text + semantic search across plugins with facet filtering. */
 export { useSearch } from '@/hooks/use-search'
 /** Re-rank a local list to match the order returned by a search query. */
