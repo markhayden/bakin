@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, cpSync, readFileSync, writeFileSync, rmSync, sym
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { initBakinHome, resetContentDir } from '../../packages/core/src/content-dir'
-import { claimCronFire, attachCronTask, markCronFireSkipped } from '../../src/core/execution-ledger'
+import { claimCronFire, attachCronTask, markCronFireSkipped, claimRun, settleRun, loseRun, supersedeStaleRun } from '../../src/core/execution-ledger'
 import { closeDb } from '../../packages/core/src/storage/db'
 import { getMockHome } from './env'
 
@@ -80,6 +80,7 @@ export function seed(force = false): void {
   // Seed Bakin-owned schedules + their ledger fire history (run-history UI).
   seedSchedules(mockHome)
   seedScheduleFires()
+  seedTaskRuns()
 
   // Create a sample gateway log for today
   seedGatewayLog()
@@ -222,6 +223,40 @@ function seedScheduleFires(): void {
   }
   closeDb() // release the handle; the spawned server opens its own connection
   console.log(`[seed] Schedule run history seeded (${fires.length} fires)`)
+}
+
+/**
+ * Seed `runs` history so the per-task Run History UI shows real attempts.
+ * All rows are TERMINAL (settled/lost/superseded) — a seeded 'running' row
+ * would be flipped to 'lost' by the boot sweep, and faking "running" with
+ * nothing live is misleading. Targets the mock home (BAKIN_HOME pinned above).
+ */
+function seedTaskRuns(): void {
+  const MIN = 60_000
+  const now = Date.now()
+  const boot = 'seed-boot'
+  const rid = (task: string, seq: number) => `task:${task}:d${seq}`
+
+  // The common case: one clean attempt.
+  claimRun({ runId: rid('task-dn-001', 1), taskId: 'task-dn-001', seq: 1, agent: 'pixel', bootId: boot, now: now - 120 * MIN })
+  settleRun(rid('task-dn-001', 1), 'turn-ok', now - 118 * MIN)
+
+  // A single settled attempt on an in-progress task.
+  claimRun({ runId: rid('task-ip-001', 1), taskId: 'task-ip-001', seq: 1, agent: 'pixel', bootId: boot, now: now - 30 * MIN })
+  settleRun(rid('task-ip-001', 1), 'turn-ok', now - 26 * MIN)
+
+  // The "why did this dispatch 3×" story (matches its task.auto_recovered audit):
+  // #1 died mid-session → #2 went stale and was superseded → #3 finished.
+  const T = 'task-ip-003'
+  claimRun({ runId: rid(T, 1), taskId: T, seq: 1, agent: 'rolo', bootId: boot, now: now - 210 * MIN })
+  loseRun(rid(T, 1), 'session-death', now - 205 * MIN)
+  claimRun({ runId: rid(T, 2), taskId: T, seq: 2, agent: 'rolo', bootId: boot, now: now - 200 * MIN })
+  supersedeStaleRun(T, now - 200 * MIN + 1, now - 198 * MIN) // d2 heartbeat stale → superseded
+  claimRun({ runId: rid(T, 3), taskId: T, seq: 3, agent: 'rolo', bootId: boot, now: now - 50 * MIN })
+  settleRun(rid(T, 3), 'turn-ok', now - 47 * MIN)
+
+  closeDb()
+  console.log('[seed] Task run history seeded (3 tasks, 5 runs)')
 }
 
 function seedGatewayLog(): void {
