@@ -86,6 +86,39 @@ Each task is a single revertable commit. Any task can be reverted without breaki
 - The typed board read in T3 must use the canonical `TaskBoard` type (avoid re-introducing an `any`/narrow cast).
 - Keep the fix inside `plugins/schedule/`; do not touch `src/core/dispatch.ts` (boundary in SPEC §9).
 
+## Docker gold-standard verification (isolated mode)
+
+Confirms the fix against a real OpenClaw + Bakin server, not the mock. Needs
+1Password auth (`OP_SERVICE_ACCOUNT_TOKEN`) for `instance up` to resolve rig
+secrets — that's why it's a human-run / token-gated step.
+
+```bash
+export OP_SERVICE_ACCOUNT_TOKEN=…              # 1Password service-account token
+bun run instance up   --mode isolated          # OpenClaw container + disposable BAKIN_HOME under dev/
+bun run instance status                         # gateway reachable
+bun run instance dev  --mode isolated &         # Bakin server on :3737 (foreground; bg or separate shell)
+
+# --- drive the blocked-overlap repro (FR1/FR4) via the CLI client ---
+JOB=$(bun run instance run --mode isolated -- schedule add "Overlap Probe" "every day at 9am" --prompt "reply ok" | sed -n 's/.*\(sch_[0-9a-f-]*\).*/\1/p')
+bun run instance run --mode isolated -- schedule run "$JOB"        # → task A in todo
+A=… # task A id from the output / `tasks list`
+bun run instance run --mode isolated -- tasks block "$A"          # move A → blocked
+bun run instance run --mode isolated -- schedule run "$JOB"        # → must create task B (NOT skipped:overlap)
+bun run instance run --mode isolated -- schedule runs "$JOB"       # both fires 'created'; none 'skipped:overlap'
+
+bun run instance down                            # teardown (reset to wipe)
+```
+
+**Pass criteria (specific to this fix):**
+- The second `schedule run` while task A sits in `blocked` returns a new `taskId`
+  (pre-fix it returned `skipped: 'overlap'`).
+- `schedule runs` shows both fires as `created` — no `overlap` skip.
+- (FR3 visual) A catch-up task created after a downtime that spans a fire is
+  titled with the missed occurrence's date, not today's.
+
+Also re-run the existing runbook scenarios 5 (downtime catch-up) & 6 (pause/
+skip/overlap) from `tasks/t15-e2e-runbook.md` to confirm no regression.
+
 ## Task checklist
 - [x] T1 — extract `MISSED_WINDOW_REASON` (CP-A) ✅ 25887fc9
 - [x] T2 — FR1 overlap excludes blocked ✅ 00047741
