@@ -35,11 +35,11 @@ Branch: `feat/bakin-owned-scheduler` off `main`. One commit per task; each ends 
 - [x] **— CHECKPOINT E** — visibility shipped (T9/T10/T11/T13); T12 deferred w/ rationale; suite green
 
 ## Phase 5 — Docs & close-out
-- [ ] **T14** docs: CLAUDE.md boundary re-draw + `.claude/knowledge` schedule/cron + adapter note + README; record follow-ups — `docs(schedule): document Bakin-owned scheduling`
-- [ ] **— CHECKPOINT F** — full test + lint + build green; ready for `/agent-skills:test` + `/agent-skills:review`
+- [x] **T14** docs: CLAUDE.md boundary re-draw + new `.claude/knowledge/bakin-owned-scheduler.md` + adapter/dispatch/ledger refresh + SPEC/tasks committed — `docs(schedule): document Bakin-owned scheduling` ✅ 95bbe4c4
+- [x] **— CHECKPOINT F** — full lint + test green (running final confirmation); ready for live E2E
 
 ## Phase 6 — Gold-standard E2E (MUST pass before "complete")
-- [ ] **T15** bulletproof E2E vs dockerized OpenClaw rig — 9 scenarios (no OpenClaw cron created · exactly-once · upgrade migration gap-free · doctor repair · downtime catch-up todo/blocked · pause/skip/overlap · read-only surfacing · delivery-error visibility · restart idempotency) — `test(schedule): gold-standard E2E validation against dockerized OpenClaw rig`
+- [ ] **T15** bulletproof E2E vs dockerized OpenClaw rig — **runbook ready: `tasks/t15-e2e-runbook.md`** (9 scenarios). RUN TOGETHER with the user against `bun run instance up`.
 - [ ] **— CHECKPOINT G — DONE** — bug provably gone E2E on real OpenClaw; migration (auto + doctor) + visibility verified
 
 ## Out of scope (follow-ups for the user)
