@@ -193,7 +193,11 @@ describe('checkScheduleSync - runtime failures', () => {
 })
 
 describe('plugin registration', () => {
-  it('registers the schedule-sync health check on activate', async () => {
+  it('no longer registers the legacy schedule-sync / cron-wake health checks', async () => {
+    // Bakin owns scheduling now: a sync check whose repair re-created OpenClaw
+    // crons would reintroduce the double-fire, and the legacy main-session-wake
+    // repair is obsolete. Both registrations were removed (orphan-cron check
+    // arrives separately). This guards against either creeping back in.
     const schedulePlugin = (await import('../../../plugins/schedule')).default
     const registeredIds: string[] = []
     const noop = mock()
@@ -202,7 +206,7 @@ describe('plugin registration', () => {
       pluginId: 'schedule',
       runtime: {
         agents: { list: mock(async () => [{ id: 'main', name: 'Main', role: 'Orchestrator' }]) },
-        cron: { list: mock(async () => []) },
+        cron: { list: mock(async () => []), get: mock(async () => null), remove: noopAsync },
       },
       registerRoute: noop, registerExecTool: noop, registerNav: noop,
       registerSlot: noop, registerSkill: noop, registerWorkflow: noop,
@@ -222,7 +226,9 @@ describe('plugin registration', () => {
       events: { on: noop, emit: noop, off: noop },
     }
     await schedulePlugin.activate(ctx as unknown as Parameters<typeof schedulePlugin.activate>[0])
+    schedulePlugin.onShutdown?.() // stop the scheduler interval started by activate
 
-    expect(registeredIds).toContain('schedule-sync')
+    expect(registeredIds).not.toContain('schedule-sync')
+    expect(registeredIds).not.toContain('schedule-legacy-cron-wake')
   })
 })
