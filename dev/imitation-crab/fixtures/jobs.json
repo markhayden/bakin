@@ -8,6 +8,7 @@
       "enabled": true,
       "delivery": { "mode": "none" },
       "payload": { "message": "bakin:schedule:daily-brief" },
+      "toolsAllow": ["web_search", "message", "file_read"],
       "createdAt": "2026-03-15T12:00:00Z"
     },
     {
@@ -17,7 +18,18 @@
       "enabled": true,
       "delivery": { "mode": "none" },
       "payload": { "message": "bakin:schedule:weekly-review" },
+      "toolsAllow": ["web_search", "message"],
       "createdAt": "2026-03-15T12:00:00Z"
+    },
+    {
+      "id": "social-metrics",
+      "name": "Social Metrics Collector",
+      "schedule": { "kind": "cron", "expr": "0 8 * * *", "tz": "America/Denver" },
+      "enabled": true,
+      "delivery": { "mode": "announce" },
+      "payload": { "message": "bakin:schedule:social-metrics" },
+      "toolsAllow": ["web_search", "message", "shell"],
+      "createdAt": "2026-03-25T09:00:00Z"
     },
     {
       "id": "content-pipeline",
@@ -27,51 +39,6 @@
       "delivery": { "mode": "none" },
       "payload": { "message": "bakin:schedule:content-pipeline" },
       "createdAt": "2026-03-20T08:00:00Z"
-    },
-    {
-      "id": "recipe-photo-check",
-      "name": "Recipe Photo Audit",
-      "schedule": { "kind": "every", "expr": "12h" },
-      "enabled": true,
-      "delivery": { "mode": "none" },
-      "payload": { "message": "bakin:schedule:recipe-photo-check" },
-      "createdAt": "2026-03-22T10:00:00Z"
-    },
-    {
-      "id": "social-metrics",
-      "name": "Social Metrics Collector",
-      "schedule": { "kind": "cron", "expr": "0 8 * * *", "tz": "America/Denver" },
-      "enabled": true,
-      "delivery": { "mode": "announce" },
-      "payload": { "message": "bakin:schedule:social-metrics" },
-      "createdAt": "2026-03-25T09:00:00Z"
-    },
-    {
-      "id": "menu-price-sync",
-      "name": "Menu Price Sync",
-      "schedule": { "kind": "cron", "expr": "0 6 * * 1", "tz": "America/Denver" },
-      "enabled": true,
-      "delivery": { "mode": "none" },
-      "payload": { "message": "bakin:schedule:menu-price-sync" },
-      "createdAt": "2026-03-28T07:00:00Z"
-    },
-    {
-      "id": "blog-seo-scan",
-      "name": "Blog SEO Scanner",
-      "schedule": { "kind": "cron", "expr": "0 2 * * 3", "tz": "America/Denver" },
-      "enabled": true,
-      "delivery": { "mode": "none" },
-      "payload": { "message": "bakin:schedule:blog-seo-scan" },
-      "createdAt": "2026-04-01T08:00:00Z"
-    },
-    {
-      "id": "ingredient-restock",
-      "name": "Ingredient Restock Alert",
-      "schedule": { "kind": "every", "expr": "6h" },
-      "enabled": false,
-      "delivery": { "mode": "none" },
-      "payload": { "message": "bakin:schedule:ingredient-restock" },
-      "createdAt": "2026-04-02T10:00:00Z"
     }
   ]
 }
