@@ -13,6 +13,7 @@ import { claimCronFire, getCronFire, attachCronTask, markCronFireSkipped, findHe
 import { parseSchedule } from './lib/cron-parser'
 import { runSchedulerTick, runStartupCatchUp, DEFAULT_TICK_WINDOW_MS, type SchedulerDeps } from './lib/scheduler'
 import { migrateBakinSchedulesOffOpenClawCron } from './lib/cutover'
+import { checkScheduleCutover, scheduleCutoverRepair } from './lib/health-checks'
 import { createTaskWithEffects } from '../../src/core/task-service'
 import { createLogger } from '../../src/core/logger'
 import { readTaskboard } from '../../src/core/task-store'
@@ -505,6 +506,20 @@ function schedulerDeps(): SchedulerDeps {
     },
     log,
   }
+}
+
+/** Run the idempotent cutover using the live runtime adapter. Shared by
+ *  activate() (automatic) and the doctor repair (manual). */
+function runScheduleCutover(): ReturnType<typeof migrateBakinSchedulesOffOpenClawCron> {
+  const cron = pluginCtx!.runtime.cron
+  return migrateBakinSchedulesOffOpenClawCron({
+    cronGet: async (jobId) => {
+      const job = await cron.get(jobId)
+      return job ? { schedule: job.schedule, enabled: job.enabled, metadata: job.metadata } : null
+    },
+    cronRemove: (jobId) => cron.remove(jobId),
+    systemTz: getSystemTimezone,
+  })
 }
 
 function startScheduler(): void {
@@ -1276,17 +1291,22 @@ const schedulePlugin: BakinPlugin = definePlugin({
     // runtime cron) so the scheduler is the sole fire path. Idempotent; runs
     // every activate to close the upgrade gap and recover from a prior partial.
     try {
-      await migrateBakinSchedulesOffOpenClawCron({
-        cronGet: async (jobId) => {
-          const job = await ctx.runtime.cron.get(jobId)
-          return job ? { schedule: job.schedule, enabled: job.enabled, metadata: job.metadata } : null
-        },
-        cronRemove: (jobId) => ctx.runtime.cron.remove(jobId),
-        systemTz: getSystemTimezone,
-      })
+      await runScheduleCutover()
     } catch (err) {
       log.error('Schedule cutover failed', err)
     }
+
+    // Doctor check + repair surfacing any schedule whose cutover didn't complete
+    // (e.g. OpenClaw unreachable at boot) — the end-user migration command.
+    ctx.registerHealthCheck({
+      id: 'schedule-cutover',
+      name: 'Bakin schedules cut over from OpenClaw cron',
+      run: async () => checkScheduleCutover(
+        ctx.runtime.cron,
+        () => Object.values(readSidecar().jobs).filter(j => j.isBakinJob).map(j => j.jobId),
+      ),
+      repair: scheduleCutoverRepair(runScheduleCutover),
+    })
 
     // Fire (or block) anything missed while the server was down, then start the
     // steady tick. Catch-up first so a just-missed occurrence isn't double-handled.

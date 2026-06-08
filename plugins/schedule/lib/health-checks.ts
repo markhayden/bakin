@@ -138,6 +138,76 @@ async function checkScheduleSyncInternal(
   return results
 }
 
+// ─── Cutover: Bakin schedules still backed by an OpenClaw cron job ─────────
+
+/**
+ * Detect Bakin schedules that still have a backing OpenClaw cron job. After
+ * cutover a Bakin schedule fires from the store and must have NO runtime cron —
+ * a lingering one means the cutover didn't complete (e.g. OpenClaw was
+ * unreachable at boot) and the job can rogue-fire. The repair completes the
+ * migration. This is the end-user migration/repair command:
+ *   bakin check schedule-cutover   /   bakin install schedule-cutover
+ */
+export async function checkScheduleCutover(
+  cron: RuntimeCronReader,
+  bakinJobIds: () => string[],
+): Promise<HealthCheckResult[]> {
+  const check = 'schedule-cutover'
+  let runtimeIds: Set<string>
+  try {
+    runtimeIds = new Set((await cron.list()).map(job => job.id))
+  } catch (err) {
+    return [warn(check, `Failed to read runtime cron jobs: ${err}`)]
+  }
+
+  const lingering = bakinJobIds().filter(id => runtimeIds.has(id))
+  if (lingering.length === 0) {
+    return [ok(check, 'All Bakin schedules are cut over (no backing OpenClaw cron jobs)')]
+  }
+  return lingering.map(id =>
+    warn(check, `Bakin schedule "${id}" still has an OpenClaw cron job and can rogue-fire — run the repair to complete cutover.`, true),
+  )
+}
+
+export function scheduleCutoverRepair(
+  runMigration: () => Promise<{ migrated: number; failed: number }>,
+): HealthRepairHandler {
+  const check = 'schedule-cutover'
+  return {
+    async plan(rows) {
+      const matching = rows.filter(row => row.check === check && row.autoFixable)
+      if (matching.length === 0) return []
+      return [{
+        id: 'schedule.complete-cutover',
+        checkId: check,
+        title: 'Complete cutover of Bakin schedules off OpenClaw cron',
+        reason: matching.map(row => row.message).join('; '),
+        safety: 'safe',
+        requiresConfirmation: true,
+        changes: [{
+          kind: 'runtime',
+          target: 'OpenClaw cron jobs',
+          action: 'delete',
+          description: 'Import the schedule expression into Bakin and remove the backing OpenClaw cron job.',
+        }],
+      }]
+    },
+    async apply(items) {
+      if (items.length === 0) return []
+      const summary = await runMigration()
+      return [{
+        id: 'schedule.complete-cutover',
+        checkId: check,
+        status: summary.failed > 0 ? 'failed' : 'applied',
+        message: `Migrated ${summary.migrated} schedule(s) off OpenClaw cron${summary.failed > 0 ? `, ${summary.failed} failed` : ''}`,
+        changes: summary.migrated > 0
+          ? [{ kind: 'runtime' as const, target: 'OpenClaw cron jobs', action: 'delete' as const, description: `Removed ${summary.migrated} backing OpenClaw cron job(s).` }]
+          : [],
+      }]
+    },
+  }
+}
+
 export function scheduleSyncRepair(
   contentDir: string,
   cron: RuntimeCronReader,

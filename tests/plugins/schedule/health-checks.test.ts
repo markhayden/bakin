@@ -53,7 +53,7 @@ mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
-import { checkScheduleSync, scheduleSyncRepair } from '../../../plugins/schedule/lib/health-checks'
+import { checkScheduleSync, scheduleSyncRepair, checkScheduleCutover } from '../../../plugins/schedule/lib/health-checks'
 
 const sidecarPath = join(testDir, 'schedule', 'sidecar.json')
 let runtimeJobs: CronJob[] = []
@@ -230,5 +230,31 @@ describe('plugin registration', () => {
 
     expect(registeredIds).not.toContain('schedule-sync')
     expect(registeredIds).not.toContain('schedule-legacy-cron-wake')
+    // The cutover/migration check replaces them.
+    expect(registeredIds).toContain('schedule-cutover')
+  })
+})
+
+describe('schedule/checkScheduleCutover', () => {
+  const cron = (ids: string[]) => ({ list: async () => ids.map(id => ({ id, name: id, schedule: '0 9 * * *', command: 'x', enabled: true })) as unknown as CronJob[] })
+
+  it('is ok when no Bakin schedule has a backing runtime cron', async () => {
+    const rows = await checkScheduleCutover(cron(['native-1']), () => ['sch_a', 'sch_b'])
+    expect(rows).toHaveLength(1)
+    expect(rows[0].status).toBe('ok')
+  })
+
+  it('warns (auto-fixable) for a Bakin schedule still backed by a runtime cron', async () => {
+    const rows = await checkScheduleCutover(cron(['sch_a', 'native-1']), () => ['sch_a', 'sch_b'])
+    expect(rows).toHaveLength(1)
+    expect(rows[0].status).toBe('warn')
+    expect(rows[0].autoFixable).toBe(true)
+    expect(rows[0].message).toContain('sch_a')
+  })
+
+  it('reports a warning when the runtime cannot be read', async () => {
+    const failing = { list: async () => { throw new Error('runtime down') } }
+    const rows = await checkScheduleCutover(failing, () => ['sch_a'])
+    expect(rows[0].status).toBe('warn')
   })
 })
