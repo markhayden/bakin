@@ -85,6 +85,14 @@ const DEFAULT_TICK_INTERVAL_SECONDS = 30
 const MIN_TICK_INTERVAL_SECONDS = 5
 const DEFAULT_CATCH_UP_WINDOW_MINUTES = 60
 
+/** `blockedReason` stamped on a catch-up task that landed in `blocked` because
+ *  its occurrence was older than the catch-up window. This is a *triage*
+ *  marker (the run never dispatched), NOT a failure — distinct from the
+ *  dispatch-failure reasons set in `src/core/dispatch.ts`. The outcome check
+ *  compares against this constant so a slept-through fire doesn't penalize a
+ *  healthy job's auto-pause counter. */
+export const MISSED_WINDOW_REASON = 'missed schedule window'
+
 /** Resolved tick interval in ms, clamped to a safe floor. */
 function tickIntervalMs(): number {
   const raw = pluginCtx?.getSettings<ScheduleSettings>()?.tickIntervalSeconds
@@ -319,7 +327,7 @@ async function fireScheduledRun(meta: BakinJobMeta, jobId: string, runId: string
     })
     return { status: 200, body: { ok: true, skipped: 'already-processed' } }
   }
-  return runClaimedFire(meta, jobId, runId)
+  return runClaimedFire(meta, jobId, runId, { firedAtMs })
 }
 
 /** Drive a fire from a {jobId, runId?, timestamp?} payload — manual triggers
@@ -364,7 +372,7 @@ async function runClaimedFire(
   meta: BakinJobMeta,
   jobId: string,
   runId: string,
-  opts: { column?: string; blockedReason?: string } = {},
+  opts: { column?: string; blockedReason?: string; firedAtMs?: number } = {},
 ): Promise<ProcessRunResult> {
   const defaults = withDefaults(meta, await getScheduleDefaultOwner())
 
@@ -392,18 +400,21 @@ async function runClaimedFire(
 
   // Both the overlap guard and last-task-outcome tracking inspect the board;
   // read it once. A read failure means we skip both checks and proceed.
-  let board: { columns: Record<string, Array<{ id: string }>> } | null = null
+  type BoardTask = { id: string; blockedReason?: string }
+  let board: { columns: Record<string, BoardTask[]> } | null = null
   if (meta.lastTaskId) {
     try {
-      board = readTaskboard() as unknown as { columns: Record<string, Array<{ id: string }>> }
+      board = readTaskboard() as unknown as { columns: Record<string, BoardTask[]> }
     } catch {
       log.debug('Could not read taskboard for overlap/outcome checks', { taskId: meta.lastTaskId })
     }
   }
 
-  // Check overlap
+  // Check overlap. `blocked` is intentionally excluded: a blocked task is
+  // awaiting human triage, not running, so it must not suppress the next real
+  // fire (that cascade silently ate scheduled runs — see SPEC).
   if (board && !defaults.allowOverlap && meta.lastTaskId) {
-    const activeColumns = ['todo', 'inProgress', 'review', 'blocked'] as const
+    const activeColumns = ['todo', 'inProgress', 'review'] as const
     for (const col of activeColumns) {
       const tasks = board.columns[col] ?? []
       if (tasks.some(t => t.id === meta.lastTaskId)) {
@@ -418,8 +429,12 @@ async function runClaimedFire(
     if (doneOrArchived.some(t => t.id === meta.lastTaskId)) {
       recordSuccess(meta)
     } else {
-      const blocked = board.columns.blocked ?? []
-      if (blocked.some(t => t.id === meta.lastTaskId)) {
+      // A blocked last-task counts as a failure ONLY if it genuinely failed
+      // during dispatch. A catch-up triage block (MISSED_WINDOW_REASON) never
+      // ran — penalizing the job for it would auto-pause a healthy schedule
+      // just because the server slept through a fire (see SPEC FR2).
+      const blockedTask = (board.columns.blocked ?? []).find(t => t.id === meta.lastTaskId)
+      if (blockedTask && blockedTask.blockedReason !== MISSED_WINDOW_REASON) {
         const autoPaused = recordFailure(meta)
         if (autoPaused) {
           upsertJob(meta)
@@ -429,17 +444,24 @@ async function runClaimedFire(
     }
   }
 
-  // Create the task
-  const now = new Date()
+  // Create the task. Label by the run's logical OCCURRENCE time, not wall-clock
+  // creation time — a catch-up task for a missed run must read as the day it was
+  // supposed to fire, not the (later) day it was created (see SPEC FR3). The
+  // occurrence is an absolute instant; render it in the JOB's timezone so an
+  // evening run that crosses UTC midnight still reads as its local day.
+  const labelDate = new Date(opts.firedAtMs ?? Date.now())
+  const labelTz = meta.tz || getSystemTimezone()
   const templateVars = {
-    date: now.toISOString().slice(0, 10),
+    date: new Intl.DateTimeFormat('en-CA', {
+      timeZone: labelTz, year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(labelDate), // en-CA → YYYY-MM-DD
     agent: meta.agentId ?? 'unassigned',
     jobName: meta.displayName ?? jobId,
   }
 
   const title = meta.taskTitle
     ? expandTemplate(meta.taskTitle, templateVars)
-    : `${meta.displayName ?? jobId} — ${now.toLocaleDateString()}`
+    : `${meta.displayName ?? jobId} — ${labelDate.toLocaleDateString(undefined, { timeZone: labelTz })}`
 
   const description = meta.taskPrompt
     ? expandTemplate(meta.taskPrompt, templateVars)
@@ -494,7 +516,7 @@ async function runClaimedFire(
       jobId, runId, taskId, agent: meta.agentId, owner: defaults.owner,
       ...(column !== 'todo' ? { column, blockedReason: opts.blockedReason } : {}),
     })
-    const where = column === 'blocked' ? ' (blocked — missed schedule window)' : ''
+    const where = column === 'blocked' ? ` (blocked — ${opts.blockedReason ?? MISSED_WINDOW_REASON})` : ''
     pluginCtx.activity.log('system', `Schedule "${meta.displayName ?? jobId}" created task ${taskId}${meta.agentId ? ` for ${meta.agentId}` : ''}${where}`, { taskId })
   }
 
@@ -529,7 +551,7 @@ async function healPendingCronClaims(): Promise<void> {
       markCronFireSkipped(claim.jobId, claim.runId, 'job-removed')
       continue
     }
-    const result = await runClaimedFire(meta, claim.jobId, claim.runId)
+    const result = await runClaimedFire(meta, claim.jobId, claim.runId, { firedAtMs: claim.firedAt })
     pluginCtx?.activity.audit('fire_healed', 'system', {
       jobId: claim.jobId,
       runId: claim.runId,
@@ -555,10 +577,12 @@ function schedulerDeps(): SchedulerDeps {
     listJobs: () => Object.values(readSidecar().jobs).filter(job => job.isBakinJob),
     getCronFire: (jobId, runId) => getCronFire(jobId, runId),
     claimCronFire: (jobId, runId, firedAt) => claimCronFire(jobId, runId, firedAt),
-    fire: async (meta, jobId, runId, _occurrence, opts) => {
+    fire: async (meta, jobId, runId, occurrence, opts) => {
       await runClaimedFire(
         meta, jobId, runId,
-        opts?.blocked ? { column: 'blocked', blockedReason: 'missed schedule window' } : {},
+        opts?.blocked
+          ? { column: 'blocked', blockedReason: MISSED_WINDOW_REASON, firedAtMs: occurrence.getTime() }
+          : { firedAtMs: occurrence.getTime() },
       )
     },
     log,
