@@ -161,9 +161,21 @@ return `assetId`. **None of them write tags** — the old machine stamps
 `source`/`generation` and polluted the folder namespace; `import` passes the
 caller's tags through untouched. **Billed calls are idempotent** via `idempotency.ts` (in-flight
 dedup + ~5min TTL result cache, keyed by `{taskId, op, source, promptHash,
-provider, model, w, h, quality}`) — prevents the client-timeout double-bill
-without adding a retry. No `sourcePath` on edit (import loose files first); no
-`savePromptPacket` (the prompt lives per-version in the manifest).
+provider, model, w, h, quality, references}`) — prevents the client-timeout
+double-bill without adding a retry. No `sourcePath` on edit (import loose files
+first); no `savePromptPacket` (the prompt lives per-version in the manifest).
+
+**`generation` provenance (per-version):** `provider`/`model`/`surface`/
+`routeSource`, plus optional `quality` and `references`.
+- `quality` is recorded **only on the shim path** (OpenClaw has no quality
+  flag); native generations omit it. The schema field is optional; the
+  asset-reuse match treats a missing quality as native-normal (#379).
+- `references` (#418) is `Array<{assetId, version}>` — the reference/context
+  images that conditioned the generation. Raw-path references passed to the image
+  tools are auto-imported (source-path dedup) so every entry is a tracked asset.
+  The asset **detail page renders a "References" row** of clickable chips linking
+  to each referenced asset. References also participate in the idempotency key
+  (same prompt + different references ≠ duplicate).
 
 ## save-by-source upsert
 

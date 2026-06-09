@@ -321,4 +321,147 @@ describe('images tools', () => {
     expect(exported[0]).toMatchObject({ assetId: '20260528-source-a1b2c3d4' })
     expect(exported[0].input).toMatchObject({ surface: 'open-graph', format: 'jpg', width: 1200, height: 630 })
   })
+
+  describe('reference images (#418)', () => {
+    // A runtime-configured provider yields servedBy: 'runtime' so the native
+    // reference path is exercised (the default harness has no runtime provider →
+    // servedBy 'shim', which references are not allowed on).
+    const runtimeProvider = () => mock(async () => [
+      { id: 'openai', label: 'OpenAI', configured: true, selected: true, defaultModel: 'gpt-image-2', models: ['gpt-image-2'] },
+    ])
+
+    it('generates conditioned on a reference asset and records lineage', async () => {
+      const outFile = join(testDir, 'ref-generated.png')
+      writeFileSync(outFile, 'img')
+      const refAbs = join(testDir, 'horse.png')
+      writeFileSync(refAbs, 'horse')
+      const generate = mock(async () => ({
+        provider: 'openai', model: 'gpt-image-2',
+        images: [{ filePath: outFile, mimeType: 'image/png', width: 1024, height: 1024 }],
+        metadata: { servedBy: 'runtime' },
+      }))
+      const { ctx, created } = makeContext(
+        { runtime: { images: { providers: runtimeProvider(), generate } } } as never,
+        { absPath: refAbs, mimeType: 'image/png', version: 3 },
+      )
+      const refId = '20260601-horse-aaaabbbb'
+
+      const result = await generateImage(ctx, {
+        prompt: 'a charming horse in space', taskId: 'task-ref', provider: 'openai',
+        model: 'gpt-image-2', surface: 'instagram-feed-portrait', referenceImages: [refId],
+      }, 'pixel')
+
+      expect(result.ok).toBe(true)
+      expect(generate).toHaveBeenCalledWith(expect.objectContaining({ referenceImages: [refAbs] }))
+      expect(created[0].generation).toMatchObject({ references: [{ assetId: refId, version: 3 }] })
+    })
+
+    it('auto-imports a raw-path reference into a managed asset', async () => {
+      const outFile = join(testDir, 'gen.png')
+      writeFileSync(outFile, 'img')
+      const refPath = join(testDir, 'loose-logo.png')
+      writeFileSync(refPath, 'logo-bytes')
+      const generate = mock(async () => ({
+        provider: 'openai', model: 'gpt-image-2',
+        images: [{ filePath: outFile, mimeType: 'image/png', width: 1024, height: 1024 }],
+        metadata: { servedBy: 'runtime' },
+      }))
+      const { ctx, created } = makeContext({ runtime: { images: { providers: runtimeProvider(), generate } } } as never, null)
+
+      const result = await generateImage(ctx, {
+        prompt: 'brand thing', taskId: 'task-import', provider: 'openai',
+        model: 'gpt-image-2', surface: 'instagram-feed-portrait', referenceImages: [refPath],
+      }, 'pixel')
+
+      expect(result.ok).toBe(true)
+      expect(generate).toHaveBeenCalledWith(expect.objectContaining({ referenceImages: [refPath] }))
+      const refs = (created[0].generation as { references?: Array<{ assetId: string }> }).references
+      expect(refs).toHaveLength(1)
+      expect(refs![0].assetId).toMatch(/^\d{8}-/) // a freshly minted managed assetId
+    })
+
+    it('rejects references served via the shim, before billing', async () => {
+      const generate = mock(async () => { throw new Error('should not bill') })
+      const { ctx } = makeContext(
+        { runtime: { images: { providers: mock(async () => []), generate } } } as never,
+        { absPath: join(testDir, 'x.png'), mimeType: 'image/png', version: 1 },
+      )
+      const result = await generateImage(ctx, {
+        prompt: 'x', taskId: 'task-shimref', provider: 'openai', model: 'gpt-image-2',
+        surface: 'instagram-feed-portrait', referenceImages: ['20260601-horse-aaaabbbb'],
+      }, 'pixel')
+
+      expect(result.ok).toBe(false)
+      expect(result.error).toMatch(/native runtime/i)
+      expect(generate).not.toHaveBeenCalled()
+    })
+
+    it('rejects references when the model lacks the reference-images capability', async () => {
+      // A runtime-only provider/model synthesizes capabilities without reference-images.
+      const providers = mock(async () => [
+        { id: 'replicate', label: 'Replicate', configured: true, selected: true, defaultModel: 'flux', models: ['flux'] },
+      ])
+      const generate = mock(async () => { throw new Error('should not bill') })
+      const { ctx } = makeContext(
+        { runtime: { images: { providers, generate } } } as never,
+        { absPath: join(testDir, 'x.png'), mimeType: 'image/png', version: 1 },
+      )
+      const result = await generateImage(ctx, {
+        prompt: 'x', taskId: 'task-cap', provider: 'replicate', model: 'flux',
+        surface: 'instagram-feed-portrait', referenceImages: ['20260601-horse-aaaabbbb'],
+      }, 'pixel')
+
+      expect(result.ok).toBe(false)
+      expect(result.error).toMatch(/does not support reference images/i)
+      expect(generate).not.toHaveBeenCalled()
+    })
+
+    it('rejects more than the max reference images, before billing', async () => {
+      const generate = mock(async () => { throw new Error('should not bill') })
+      const { ctx } = makeContext(
+        { runtime: { images: { providers: runtimeProvider(), generate } } } as never,
+        { absPath: join(testDir, 'x.png'), mimeType: 'image/png', version: 1 },
+      )
+      const refs = [1, 2, 3, 4, 5].map(n => `2026060${n}-ref-aaaabbbb`)
+      const result = await generateImage(ctx, {
+        prompt: 'x', taskId: 'task-cap2', provider: 'openai', model: 'gpt-image-2',
+        surface: 'instagram-feed-portrait', referenceImages: refs,
+      }, 'pixel')
+
+      expect(result.ok).toBe(false)
+      expect(result.error).toMatch(/too many reference images/i)
+      expect(generate).not.toHaveBeenCalled()
+    })
+
+    it('appends references after the base file on edit', async () => {
+      const outFile = join(testDir, 'edited.png')
+      writeFileSync(outFile, 'img')
+      const baseAbs = join(testDir, 'base.png')
+      writeFileSync(baseAbs, 'base')
+      const refAbs = join(testDir, 'ref.png')
+      writeFileSync(refAbs, 'ref')
+      const edit = mock(async () => ({
+        provider: 'openai', model: 'gpt-image-2',
+        images: [{ filePath: outFile, mimeType: 'image/png', width: 1024, height: 1024 }],
+        metadata: { servedBy: 'runtime' },
+      }))
+      // resolveVersionFile is called for both the base asset AND the reference
+      // assetId; the mock returns the same ref, so assert the base path comes first.
+      const { ctx } = makeContext(
+        { runtime: { images: { providers: runtimeProvider(), edit } } } as never,
+        { absPath: baseAbs, mimeType: 'image/png', version: 1 },
+      )
+
+      const result = await editImage(ctx, {
+        assetId: '20260601-logo-aaaabbbb', prompt: 'match this', taskId: 'task-edit-ref',
+        provider: 'openai', model: 'gpt-image-2', surface: 'instagram-feed-portrait',
+        referenceImages: ['20260601-swatch-ccccdddd'],
+      }, 'pixel')
+
+      expect(result.ok).toBe(true)
+      const editArgs = (edit.mock.calls[0] as unknown[])[0] as { files: string[] }
+      expect(editArgs.files[0]).toBe(baseAbs) // base stays first
+      expect(editArgs.files).toHaveLength(2)
+    })
+  })
 })

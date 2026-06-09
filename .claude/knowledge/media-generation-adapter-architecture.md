@@ -4,10 +4,11 @@ Status: **Shipped (Phases 1–2); kept as the architecture reference.** Landed:
 capability-contract tightening (dropped `outputPath`), shim namespace settled
 (`@bakin/core/media`), the Bakin-owned provider secret store (env → store,
 atomic `0600`, validated provider ids), the `/api/secrets` write API, and the
-image-scoped Provider Keys settings tab. Open follow-ups are tracked on
-GitHub: #378 (all-domains credential inventory), #379 (path parity), #380
-(shared mime/provider tables), #381 (image model catalog drift). The Hermes
-adapter validates the abstraction when a 2nd runtime is built.
+image-scoped Provider Keys settings tab. **#380 (shared mime/provider tables),
+#379 (path parity), and #418 (reference images) have landed** — see §Follow-ups
+landed below. Open follow-ups: #378 (all-domains credential inventory), #381
+(image model catalog drift). The Hermes adapter validates the abstraction when a
+2nd runtime is built.
 Scope: image generation today; the template generalizes to video / audio / any
 provider-backed media modality and to runtimes beyond OpenClaw.
 
@@ -279,3 +280,35 @@ Tracked, not MVP-blocking:
   (`@bakin/core/media/secret-store`), keyed per provider (shared across
   modalities); the future dashboard editing rides the existing settings
   renderer via a new "secret" field type.
+
+## Follow-ups landed (#380 / #379 / #418)
+
+- **#380 — single source of truth for format/credential tables.**
+  `packages/core/src/media/image-format.ts` (a pure module, also exported as the
+  `@bakin/core/media/image-format` subpath so it's client-bundle-safe) owns the
+  canonical image `mime ↔ ext` map (`extensionForImageMime`,
+  `IMAGE_EXTENSION_TO_MIME`) and the provider→env-var table
+  (`IMAGE_PROVIDER_ENV_VARS`). The shim's `extForMime`/`resolveDirectImageKey`,
+  the images plugin's provider `envVars`, and the assets `EXTENSION_TO_MIME`
+  image rows all consume it. A test asserts the images manifest `secrets` ⊆ the
+  table. Fixed the latent `image/gif → .jpg` mistyping.
+
+- **#379 — shim guardrail + truthful quality.** The shim now carries the full
+  generation option surface and **throws before the billed call** on anything it
+  can't honor (`count>1`, `aspectRatio`, `resolution`, `background`, non-png
+  `outputFormat`) — no silent drops. OpenClaw has **no quality flag** (verified
+  against `openclaw/openclaw` `src/cli/capability-cli.ts`), so `quality` is a
+  shim-only concept: the asset sidecar records `generation.quality` only on the
+  shim path; native generations omit it (schema field is now optional). The
+  asset-reuse match treats a missing quality as native-normal.
+
+- **#418 — reference/context images.** `referenceImages` (managed assetIds
+  and/or raw paths; raw paths auto-imported with source-path dedup; cap 4) thread
+  through `RuntimeImageGenerateInput`. The native `infer image generate` has no
+  `--file`, so a generate carrying references is routed through the **edit-style
+  invocation** (`infer image edit --file …`); edit appends references after the
+  base. References are **native-only** — the shim rejects them loudly before
+  billing. Gated on the curated static model's `reference-images` capability
+  (preferred over runtime-synthesized capabilities, which would clobber it — see
+  #381). Lineage is recorded in `generation.references` (`assetId@version`) and
+  participates in the idempotency key.

@@ -47,7 +47,7 @@ printf 'MCPORTER_CALL_TIMEOUT=%s\\n' "$MCPORTER_CALL_TIMEOUT" >> "${callsFile}"
 echo "{}"
 exit 0
 fi
-if [ "$1" = "infer" ] && [ "$2" = "image" ] && [ "$3" = "generate" ]; then
+if [ "$1" = "infer" ] && [ "$2" = "image" ] && { [ "$3" = "generate" ] || [ "$3" = "edit" ]; }; then
 out=""
 while [ "$#" -gt 0 ]; do
   if [ "$1" = "--output" ]; then
@@ -139,6 +139,35 @@ echo "{}"
     expect(existsSync(result.images[0]!.filePath)).toBe(true)
     expect(readFileSync(callsFile, 'utf-8')).toContain('openai/gpt-image-2')
     expect(readFileSync(callsFile, 'utf-8')).toContain('1024x1024')
+    // OpenClaw has no quality flag; the adapter must never emit one (#379).
+    expect(readFileSync(callsFile, 'utf-8')).not.toContain('--quality')
+  })
+
+  it('routes a reference-image generate through infer image edit with one --file per reference (#418)', async () => {
+    const refA = join(testDir, 'ref-a.png')
+    const refB = join(testDir, 'ref-b.png')
+    writeFileSync(refA, 'a')
+    writeFileSync(refB, 'b')
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: openclaw } })
+
+    const result = await runtime.images!.generate({
+      prompt: 'On-brand social image',
+      provider: 'openai',
+      model: 'gpt-image-2',
+      width: 1024,
+      height: 1024,
+      outputFormat: 'png',
+      referenceImages: [refA, refB],
+    })
+
+    const calls = readFileSync(callsFile, 'utf-8')
+    const argv = calls.split('\n')
+    // Generate has no --file; references force the edit-style invocation.
+    expect(argv.slice(0, 3)).toEqual(['infer', 'image', 'edit'])
+    expect(calls).toContain(`--file\n${refA}`)
+    expect(calls).toContain(`--file\n${refB}`)
+    expect(existsSync(result.images[0]!.filePath)).toBe(true)
   })
 
   it('falls back to the direct shim when OpenClaw cannot serve the model natively', async () => {

@@ -264,10 +264,12 @@ export function getAssetSummary(assetId: string): AssetSummary | null {
 }
 
 /** List assets (one summary per asset, current-version view), newest first. */
-export function listAssets(filter?: { type?: AssetType; taskId?: string | null }): AssetSummary[] {
+export function listAssets(filter?: { type?: AssetType; taskId?: string | null; tags?: string[] }): AssetSummary[] {
   const contentDir = getContentDir()
   const storeRoot = join(contentDir, 'assets', 'store')
   if (!existsSync(storeRoot)) return []
+  // AND semantics: an asset must carry every requested tag (normalized) to match.
+  const wantTags = filter?.tags && filter.tags.length > 0 ? normalizeTags(filter.tags) : null
   const summaries: AssetSummary[] = []
   for (const month of readdirSync(storeRoot)) {
     const monthDir = join(storeRoot, month)
@@ -284,6 +286,10 @@ export function listAssets(filter?: { type?: AssetType; taskId?: string | null }
       if (!manifest) continue
       if (filter?.type && manifest.type !== filter.type) continue
       if (filter?.taskId !== undefined && manifest.taskId !== filter.taskId) continue
+      if (wantTags) {
+        const have = new Set(manifest.tags)
+        if (!wantTags.every(tag => have.has(tag))) continue
+      }
       summaries.push(toSummary(manifest))
     }
   }

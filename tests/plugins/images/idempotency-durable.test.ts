@@ -47,6 +47,7 @@ function makeKey(overrides: Partial<ImageCallKey> = {}): ImageCallKey {
     width: 1024,
     height: 1024,
     quality: 'high',
+    references: '',
     ...overrides,
   }
 }

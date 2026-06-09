@@ -364,6 +364,13 @@ export interface RuntimeImageGenerateInput {
   resolution?: string
   outputFormat?: RuntimeImageOutputFormat
   background?: RuntimeImageBackground
+  /**
+   * Reference/context image file paths conditioning the generation. The caller
+   * (Bakin) resolves managed asset ids to concrete paths before the adapter
+   * sees them. Native generation has no file input, so a generate carrying
+   * references is routed through the edit-style invocation (#418).
+   */
+  referenceImages?: string[]
   timeoutMs?: number
   metadata?: RuntimeMetadata
 }

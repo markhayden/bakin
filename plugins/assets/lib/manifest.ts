@@ -28,6 +28,13 @@ const GenerationSchema = z.object({
   quality: z.string().optional(),
   routeSource: z.string(),
   routeReason: z.string().optional(),
+  // Reference/context images that conditioned this generation, by managed
+  // asset identity (#418). Lineage Bakin owns at the persist step — the runtime
+  // only ever saw opaque file paths.
+  references: z.array(z.object({
+    assetId: z.string(),
+    version: z.number().int().positive(),
+  })).optional(),
 })
 
 export const AssetVersionSchema = z.object({

@@ -874,6 +874,13 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       return value
     },
     generate: async (input: RuntimeImageGenerateInput): Promise<RuntimeImageGenerationResult> => {
+      // Native `infer image generate` has no file input, so a generate carrying
+      // reference images is served by the edit-style invocation (#418). The shim
+      // can't do references — the plugin rejects that combination upstream.
+      if (input.referenceImages?.length) {
+        const editInput: RuntimeImageEditInput = { ...input, files: input.referenceImages }
+        return tagRuntimeServed(await this.runImageInference('edit', editInput))
+      }
       if (await this.canServeImageNatively(input)) {
         return tagRuntimeServed(await this.runImageInference('generate', input))
       }

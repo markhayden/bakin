@@ -20,6 +20,7 @@ const baseKey: ImageCallKey = {
   width: 1024,
   height: 1536,
   quality: 'standard',
+  references: '',
 }
 
 const delay = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
@@ -37,6 +38,16 @@ describe('imageCallSignature', () => {
     expect(imageCallSignature({ ...baseKey, width: 512 })).not.toBe(sig)
     expect(imageCallSignature({ ...baseKey, source: 'a.png' })).not.toBe(sig)
     expect(imageCallSignature({ ...baseKey, taskId: 'task-2' })).not.toBe(sig)
+  })
+
+  it('same prompt with different references is not a duplicate (#418)', () => {
+    const withRefs = imageCallSignature({ ...baseKey, references: '20260601-a@1' })
+    const otherRefs = imageCallSignature({ ...baseKey, references: '20260601-b@2' })
+    const noRefs = imageCallSignature({ ...baseKey, references: '' })
+    expect(withRefs).not.toBe(noRefs)
+    expect(withRefs).not.toBe(otherRefs)
+    // Identical reference sets dedupe as before.
+    expect(imageCallSignature({ ...baseKey, references: '20260601-a@1' })).toBe(withRefs)
   })
 })
 

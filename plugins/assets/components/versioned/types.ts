@@ -39,6 +39,8 @@ export interface AssetGenerationInfo {
   quality?: string
   routeSource: string
   routeReason?: string
+  /** Reference/context images that conditioned this generation (#418). */
+  references?: Array<{ assetId: string; version: number }>
 }
 
 export interface AssetVersion {

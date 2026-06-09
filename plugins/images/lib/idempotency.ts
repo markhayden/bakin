@@ -32,6 +32,9 @@ export interface ImageCallKey {
   width: number
   height: number
   quality: string
+  /** Order-stable fingerprint of reference images (assetId@version, sorted);
+   *  '' when none. Same prompt + different references must not dedupe (#418). */
+  references: string
 }
 
 export function imageCallSignature(key: ImageCallKey): string {
@@ -46,6 +49,7 @@ export function imageCallSignature(key: ImageCallKey): string {
     key.width,
     key.height,
     key.quality,
+    key.references,
   ])
   return createHash('sha256').update(canonical).digest('hex')
 }

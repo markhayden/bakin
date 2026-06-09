@@ -134,4 +134,18 @@ describe('asset-service create + read', () => {
     expect(listAssets({ type: 'images' }).every((a) => a.type === 'images')).toBe(true)
     expect(listAssets({ taskId: 'task-1' }).every((a) => a.taskId === 'task-1')).toBe(true)
   })
+
+  it('filters by tag with AND semantics (the UI "folders", #418)', async () => {
+    await createAsset({
+      sourceFilePath: join(srcDir, 'pic.png'), type: 'images', agent: 'pixel', taskId: 'task-brand',
+      slug: 'brand-hero', op: 'generate', tags: ['Brand', 'hero'],
+    })
+    // Single tag, normalized (Brand → brand).
+    const brand = listAssets({ tags: ['brand'] })
+    expect(brand.length).toBe(1)
+    expect(brand[0].tags).toEqual(expect.arrayContaining(['brand', 'hero']))
+    // AND: must carry every requested tag.
+    expect(listAssets({ tags: ['brand', 'hero'] }).length).toBe(1)
+    expect(listAssets({ tags: ['brand', 'missing'] }).length).toBe(0)
+  })
 })
