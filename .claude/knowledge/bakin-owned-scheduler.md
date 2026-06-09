@@ -37,7 +37,7 @@ Skips are **visible**: every `skipFire()` in `runClaimedFire` (overlap / paused 
 
 ## Migration / repair command
 
-`schedule-cutover` doctor check (`lib/health-checks.ts`): flags any Bakin schedule still backed by an OpenClaw cron job (incomplete cutover → rogue-fire risk). Its repair runs the same idempotent `migrateBakinSchedulesOffOpenClawCron`. So `bakin check schedule-cutover` / `bakin install schedule-cutover` is the end-user migration command for when OpenClaw was unreachable at boot.
+`schedule-cutover` doctor check (`lib/health-checks.ts`): flags any Bakin schedule still backed by an OpenClaw cron job (incomplete cutover → rogue-fire risk). Its repair runs the same idempotent `migrateBakinSchedulesOffOpenClawCron`. It's a plugin-registered health check, so it's surfaced by `bakin doctor --full` and completed by `bakin doctor --fix` (NOT `bakin check`, which only routes the fixed onboarding checks). The cutover also runs automatically on every `activate()`, so this is the explicit verify/repair path for when OpenClaw was unreachable at boot.
 
 ## Prompt danger-zone guard
 
