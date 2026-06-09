@@ -1,13 +1,13 @@
 import type { PluginContext } from '@bakin/core/plugin-types'
 import type { RuntimeImageProvider } from '@bakin/core/adapters/runtime'
-import { listStoredProviders } from '@bakin/core/media'
+import { IMAGE_PROVIDER_ENV_VARS, listStoredProviders } from '@bakin/core/media'
 import type { ImageModelDescriptor, ImagePluginSettings, ImageProviderDescriptor, ImageProviderReadiness } from '../types'
 
 export const IMAGE_PROVIDERS: ImageProviderDescriptor[] = [
   {
     id: 'openai',
     label: 'OpenAI',
-    envVars: ['OPENAI_API_KEY'],
+    envVars: IMAGE_PROVIDER_ENV_VARS.openai,
     models: [
       {
         id: 'gpt-image-2',
@@ -50,7 +50,7 @@ export const IMAGE_PROVIDERS: ImageProviderDescriptor[] = [
   {
     id: 'google',
     label: 'Google Gemini',
-    envVars: ['GEMINI_API_KEY', 'GOOGLE_AI_API_KEY'],
+    envVars: IMAGE_PROVIDER_ENV_VARS.google,
     models: [
       {
         id: 'gemini-3.1-flash-image-preview',

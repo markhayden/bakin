@@ -15,8 +15,7 @@
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-
-export type DirectImageProviderId = 'openai' | 'google'
+import { IMAGE_PROVIDER_ENV_VARS, extensionForImageMime, type DirectImageProviderId } from './image-format'
 
 export interface DirectImageRequest {
   provider: DirectImageProviderId
@@ -49,17 +48,15 @@ export function resolveDirectImageKey(
   provider: DirectImageProviderId,
   env: Record<string, string | undefined> = process.env,
 ): string | null {
-  if (provider === 'openai') return env.OPENAI_API_KEY || null
-  return env.GEMINI_API_KEY || env.GOOGLE_AI_API_KEY || null
-}
-
-function extForMime(mimeType: string): string {
-  return mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : 'jpg'
+  for (const name of IMAGE_PROVIDER_ENV_VARS[provider]) {
+    if (env[name]) return env[name] as string
+  }
+  return null
 }
 
 function writeTempImage(prefix: string, mimeType: string, bytes: Buffer): string {
   const dir = mkdtempSync(join(tmpdir(), 'bakin-images-'))
-  const filePath = join(dir, `${prefix}.${extForMime(mimeType)}`)
+  const filePath = join(dir, `${prefix}.${extensionForImageMime(mimeType)}`)
   writeFileSync(filePath, bytes)
   return filePath
 }

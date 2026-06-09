@@ -19,7 +19,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, renameSync, rmSync } from 'fs'
 import { dirname, join } from 'path'
 import { getContentDir } from '../content-dir'
-import { resolveDirectImageKey, type DirectImageProviderId } from './direct-image-provider'
+import { resolveDirectImageKey } from './direct-image-provider'
+import { type DirectImageProviderId } from './image-format'
 
 interface ProviderSecret {
   apiKey?: string
