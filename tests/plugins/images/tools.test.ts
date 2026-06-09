@@ -177,6 +177,34 @@ describe('images tools', () => {
     expect(generate).not.toHaveBeenCalled()
   })
 
+  it('reuses a native generated asset that recorded no quality, on an identical retry (#379)', async () => {
+    const prompt = 'A lighthouse at dusk, long exposure.'
+    const file = join(testDir, 'native-generated.png')
+    writeFileSync(file, 'img')
+    const existing = await createAsset({
+      sourceFilePath: file, type: 'images', agent: 'pixel', taskId: 'task-native-retry',
+      slug: 'instagram-feed-portrait-image', op: 'generate', tool: 'bakin_exec_images_generate',
+      prompt, promptHash: promptHash(prompt), description: prompt,
+      source: { kind: 'generated', path: null },
+      // Native generation: quality deliberately absent (the runtime never applied one).
+      generation: { provider: 'openai', model: 'gpt-image-2', surface: 'instagram-feed-portrait', routeSource: 'runtime' },
+    })
+    const generate = mock(async () => { throw new Error('provider should not be called') })
+    const { ctx } = makeContext({ runtime: { images: { providers: mock(async () => []), generate } } as never })
+
+    // The retry still carries a quality tier (from settings/default); the
+    // reuse-match must treat the stored asset's missing quality as native-normal.
+    const result = await generateImage(ctx, {
+      prompt, taskId: 'task-native-retry', provider: 'openai', model: 'gpt-image-2',
+      surface: 'instagram-feed-portrait', quality: 'premium',
+    }, 'pixel')
+
+    expect(result.ok).toBe(true)
+    expect(result.assetId).toBe(existing.assetId)
+    expect(result.reused).toBe(true)
+    expect(generate).not.toHaveBeenCalled()
+  })
+
   it('fails clearly when the active runtime has no image capability', async () => {
     const { ctx } = makeContext()
     const result = await generateImage(ctx, { prompt: 'x', taskId: 'task-none', provider: 'openai', model: 'gpt-image-2', surface: 'blog-hero' }, 'pixel')
