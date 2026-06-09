@@ -203,8 +203,10 @@ async function persistImageResult(
     provider: req.route.provider,
     model: req.route.model,
     surface: req.dims.surface,
-    quality: req.quality,
     routeSource,
+    // Quality is honored only on the shim path; the native runtime has no
+    // quality knob, so don't record a tier it never applied (#379).
+    ...(routeSource === 'shim' ? { quality: req.quality } : {}),
   }
 
   const ref = opts.create
@@ -242,12 +244,17 @@ async function persistImageResult(
 
 function versionMatchesRequest(version: AssetVersion | undefined, req: PreparedImageRequest, promptHash: string, tool: string): boolean {
   if (!version) return false
+  // Quality only participates when it was actually recorded (shim path). A
+  // native version omits quality, so comparing it would wrongly miss the reuse
+  // for an otherwise-identical native re-request (#379).
+  const qualityMatches = version.generation?.quality === undefined
+    || version.generation.quality === req.quality
   return version.tool === tool
     && version.promptHash === promptHash
     && version.generation?.provider === req.route.provider
     && version.generation?.model === req.route.model
     && version.generation?.surface === req.dims.surface
-    && version.generation?.quality === req.quality
+    && qualityMatches
 }
 
 function reusableGenerateResult(params: ImagesGenerateParams, req: PreparedImageRequest, promptHash: string): ExecToolResult | null {

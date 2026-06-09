@@ -91,6 +91,8 @@ describe('images tools', () => {
     expect(generate).toHaveBeenCalledWith(expect.objectContaining({ provider: 'google', model: 'gemini-3.1-flash-image-preview', width: 1080, height: 1920 }))
     expect(created[0]).toMatchObject({ sourceFilePath: runtimeFile, type: 'images', op: 'generate', tool: 'bakin_exec_images_generate' })
     expect(created[0].generation).toMatchObject({ provider: 'google', model: 'gemini-3.1-flash-image-preview', surface: 'instagram-story', routeSource: 'runtime' })
+    // Native path has no quality knob — don't record a tier it never applied (#379).
+    expect((created[0].generation as Record<string, unknown>).quality).toBeUndefined()
     expect((created[0].source as { kind: string }).kind).toBe('generated')
     // No machine tags: provenance lives in generation/op, tags are the user's namespace.
     expect(created[0].tags).toBeUndefined()
@@ -106,12 +108,14 @@ describe('images tools', () => {
     }))
     const { ctx, created } = makeContext({ runtime: { images: { providers: mock(async () => []), generate } } as never })
 
-    const result = await generateImage(ctx, { prompt: 'Premium hero', taskId: 'task-shim', provider: 'openai', model: 'gpt-image-1.5', surface: 'blog-hero' }, 'pixel')
+    const result = await generateImage(ctx, { prompt: 'Premium hero', taskId: 'task-shim', provider: 'openai', model: 'gpt-image-1.5', surface: 'blog-hero', quality: 'premium' }, 'pixel')
 
     expect(result.ok).toBe(true)
     expect(result.routeSource).toBe('shim')
     expect(result.credentialSource).toBe('bakin-env')
     expect(created[0].generation).toMatchObject({ routeSource: 'shim' })
+    // Shim path honors quality, so it IS recorded (#379).
+    expect((created[0].generation as Record<string, unknown>).quality).toBe('premium')
   })
 
   it('clamps oversized custom dimensions proportionally before generating', async () => {

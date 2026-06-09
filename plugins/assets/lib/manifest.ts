@@ -22,7 +22,10 @@ const GenerationSchema = z.object({
   provider: z.string(),
   model: z.string(),
   surface: z.string(),
-  quality: z.string(),
+  // Optional: quality is honored only on the direct-provider shim path. The
+  // native runtime (OpenClaw) has no quality knob, so native generations omit
+  // it rather than record a tier they never applied (#379).
+  quality: z.string().optional(),
   routeSource: z.string(),
   routeReason: z.string().optional(),
 })

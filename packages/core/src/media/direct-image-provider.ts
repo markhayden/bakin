@@ -25,6 +25,42 @@ export interface DirectImageRequest {
   height: number
   quality: 'draft' | 'standard' | 'premium'
   apiKey: string
+  // Generation options the native path forwards but the shim cannot honor.
+  // Carried so the shim can reject them loudly (see assertShimCanHonor) rather
+  // than silently dropping them — the divergence #379 was filed to close.
+  count?: number
+  aspectRatio?: string
+  resolution?: string
+  background?: string
+  outputFormat?: string
+}
+
+/** Formats the shim can actually produce (providers default to PNG; the shim
+ *  doesn't transcode). Anything else is rejected rather than mislabeled. */
+const SHIM_SUPPORTED_OUTPUT_FORMATS = new Set(['png'])
+
+/**
+ * The shim talks to the providers' single-image generation endpoints and does
+ * not forward sizing/format options. Reject any option it can't honor BEFORE
+ * the billed call so a future caller gets an immediate, precise error instead
+ * of a silently-wrong (but charged) image.
+ */
+function assertShimCanHonor(request: DirectImageRequest): void {
+  if (typeof request.count === 'number' && request.count > 1) {
+    throw new Error(`direct-image shim cannot honor count > 1 (requested ${request.count})`)
+  }
+  if (request.aspectRatio) {
+    throw new Error(`direct-image shim cannot honor aspectRatio (requested ${request.aspectRatio}); pass width/height instead`)
+  }
+  if (request.resolution) {
+    throw new Error(`direct-image shim cannot honor resolution (requested ${request.resolution})`)
+  }
+  if (request.background) {
+    throw new Error(`direct-image shim cannot honor background (requested ${request.background})`)
+  }
+  if (request.outputFormat && !SHIM_SUPPORTED_OUTPUT_FORMATS.has(request.outputFormat)) {
+    throw new Error(`direct-image shim cannot honor outputFormat "${request.outputFormat}" (supported: png)`)
+  }
 }
 
 export interface DirectImageResult {
@@ -184,5 +220,6 @@ async function generateGemini(request: DirectImageRequest): Promise<DirectImageR
  * surfaces to the caller to re-trigger explicitly.
  */
 export async function generateDirectImage(request: DirectImageRequest): Promise<DirectImageResult> {
+  assertShimCanHonor(request)
   return request.provider === 'openai' ? generateOpenAI(request) : generateGemini(request)
 }
