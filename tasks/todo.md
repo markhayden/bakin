@@ -15,4 +15,6 @@ Branch: `feat/task-outcome-run-history` off `main`. One commit per task; each en
 - [x] **T4** `.claude/knowledge/execution-ledger.md` consumers-table update + stale-mention sweep (no other doc references the runs response or badge colors; README unaffected) — `docs(ledger): note run-history outcome join in execution-ledger knowledge`
 
 ## Final gate
-- [ ] `bun run test` green; PR references #476 with rollback ladder
+- [x] Coverage audit: archived-badge component test added; all 4 outcome states covered at unit + component level
+- [x] `bun run test` green (4801 pass / 0 fail), typecheck + lint clean
+- [ ] PR references #476 with rollback ladder

@@ -86,6 +86,12 @@ describe('TaskRunHistory task outcome', () => {
     expect(screen.getByText('blocked')).toBeDefined()
   })
 
+  it('shows an archived outcome badge', () => {
+    hookResult = { runs: [run()], outcome: { state: 'archived' }, loading: false }
+    render(<TaskRunHistory taskId="t1" />)
+    expect(screen.getByText('archived')).toBeDefined()
+  })
+
   it('renders the settled badge blue, never green', () => {
     hookResult = { runs: [run()], outcome: { state: 'in_progress' }, loading: false }
     render(<TaskRunHistory taskId="t1" />)
