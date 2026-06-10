@@ -581,5 +581,71 @@ describe('images tools', () => {
       expect(refs).toContainEqual({ assetId: refId, version: 2 })
       expect(refs!.some(ref => ref.assetId !== refId && /^\d{8}-/.test(ref.assetId))).toBe(true)
     })
+
+    it('resolves a media:// reference through the runtime and auto-imports it', async () => {
+      const outFile = join(testDir, 'media-gen.png')
+      writeFileSync(outFile, 'img')
+      const mediaAbs = join(testDir, 'inbound-cat.png')
+      writeFileSync(mediaAbs, 'cat-bytes')
+      const generate = mock(async () => ({
+        provider: 'openai', model: 'gpt-image-2',
+        images: [{ filePath: outFile, mimeType: 'image/png', width: 1024, height: 1024 }],
+        metadata: { servedBy: 'runtime' },
+      }))
+      const resolveUri = mock(async (uri: string) => uri === 'media://inbound/cat.png' ? mediaAbs : null)
+      const { ctx, created } = makeContext(
+        { runtime: { media: { resolveUri }, images: { providers: runtimeProvider(), generate } } } as never,
+        null,
+      )
+
+      const result = await generateImage(ctx, {
+        prompt: 'a cat like this', taskId: 'task-media', provider: 'openai',
+        model: 'gpt-image-2', surface: 'instagram-feed-portrait',
+        referenceImages: ['media://inbound/cat.png'],
+      }, 'pixel')
+
+      expect(result.ok).toBe(true)
+      expect(resolveUri).toHaveBeenCalledWith('media://inbound/cat.png')
+      expect(generate).toHaveBeenCalledWith(expect.objectContaining({ referenceImages: [mediaAbs] }))
+      // The resolved file is auto-imported: lineage carries a minted assetId.
+      const refs = (created[0].generation as { references?: Array<{ assetId: string }> }).references
+      expect(refs).toHaveLength(1)
+      expect(refs![0].assetId).toMatch(/^\d{8}-/)
+    })
+
+    it('rejects a media:// reference when the runtime cannot resolve media URIs, before billing', async () => {
+      const generate = mock(async () => { throw new Error('should not bill') })
+      const { ctx } = makeContext(
+        { runtime: { images: { providers: runtimeProvider(), generate } } } as never,
+        null,
+      )
+
+      const result = await generateImage(ctx, {
+        prompt: 'x', taskId: 'task-media-unsupported', provider: 'openai', model: 'gpt-image-2',
+        surface: 'instagram-feed-portrait', referenceImages: ['media://inbound/cat.png'],
+      }, 'pixel')
+
+      expect(result.ok).toBe(false)
+      expect(result.error).toMatch(/cannot resolve media:\/\/ URIs/i)
+      expect(generate).not.toHaveBeenCalled()
+    })
+
+    it('rejects an unresolvable media:// reference, before billing', async () => {
+      const generate = mock(async () => { throw new Error('should not bill') })
+      const resolveUri = mock(async () => null)
+      const { ctx } = makeContext(
+        { runtime: { media: { resolveUri }, images: { providers: runtimeProvider(), generate } } } as never,
+        null,
+      )
+
+      const result = await generateImage(ctx, {
+        prompt: 'x', taskId: 'task-media-missing', provider: 'openai', model: 'gpt-image-2',
+        surface: 'instagram-feed-portrait', referenceImages: ['media://inbound/gone.png'],
+      }, 'pixel')
+
+      expect(result.ok).toBe(false)
+      expect(result.error).toMatch(/reference media URI not found/i)
+      expect(generate).not.toHaveBeenCalled()
+    })
   })
 })

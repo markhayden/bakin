@@ -530,6 +530,17 @@ export interface AgentRuntimeAdapter {
 
   images?: RuntimeImagesAccess
 
+  /**
+   * Access to the runtime's private media store (e.g. channel attachments).
+   * `resolveUri` maps a runtime-private URI (OpenClaw's `media://…`) to an
+   * absolute local file path; null for unknown schemes or missing files —
+   * never throws for not-found. Optional: runtimes without a media store
+   * omit it, and callers must treat absence as "cannot resolve".
+   */
+  media?: {
+    resolveUri(uri: string): Promise<string | null>
+  }
+
   cron: {
     list(): Promise<CronJob[]>
     get(id: string): Promise<CronJob | null>

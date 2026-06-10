@@ -206,7 +206,19 @@ async function resolveReferences(
 
   const paths: string[] = []
   const lineage: Array<{ assetId: string; version: number }> = []
-  for (const entry of entries) {
+  for (const rawEntry of entries) {
+    // Runtime-private media URIs (e.g. a Discord attachment OpenClaw stored as
+    // media://inbound/…) resolve to a local path adapter-side, then flow
+    // through the same auto-import as any raw path — tracked, task-linked.
+    let entry = rawEntry
+    if (/^media:\/\//.test(rawEntry)) {
+      if (!ctx.runtime.media?.resolveUri) {
+        return { error: `The active runtime cannot resolve media:// URIs (reference ${rawEntry}); pass an assetId or local path instead` }
+      }
+      const resolved = await ctx.runtime.media.resolveUri(rawEntry)
+      if (!resolved) return { error: `Reference media URI not found: ${rawEntry}` }
+      entry = resolved
+    }
     if (isValidAssetId(entry)) {
       const ref = await ctx.assets.resolveVersionFile(entry)
       if (!ref) return { error: `Reference asset not found: ${entry}` }

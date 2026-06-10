@@ -901,6 +901,23 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     },
   }
 
+  media = {
+    /**
+     * Resolve an OpenClaw `media://<rel>` URI (how the runtime addresses
+     * channel attachments, e.g. media://inbound/<file>) to its absolute path
+     * under the OpenClaw home's media root. Null for other schemes, missing
+     * files, or anything escaping the media root.
+     */
+    resolveUri: async (uri: string): Promise<string | null> => {
+      const match = /^media:\/\/(.+)$/.exec(uri)
+      if (!match) return null
+      const root = resolve(getOpenClawPath('media'))
+      const candidate = resolve(root, match[1])
+      if (candidate !== root && !candidate.startsWith(root + sep)) return null
+      return existsSync(candidate) ? candidate : null
+    },
+  }
+
   private async cachedImageProviders(): Promise<RuntimeImageProvider[]> {
     const cached = this.imageProvidersCache
     if (cached && Date.now() - cached.at < OPENCLAW_IMAGE_PROVIDERS_TTL_MS) return cached.value
