@@ -23,6 +23,8 @@ export function mapAuditMessage(event: string, data: Record<string, unknown>): s
       return `Ignored a duplicate completion${data.title ? ` of "${data.title}"` : ''} — ${data.firstAgent || 'another run'} had already completed this task${data.firstChannel ? ` via ${data.firstChannel}` : ''}.`
     case 'task.dispatch_failure_ignored':
       return `A session error arrived after "${data.title || data.id}" had already moved to ${data.column || 'done'} — no action needed.`
+    case 'team.message_blocked':
+      return `Blocked a message to ${data.agentId} — they are already running task ${data.taskId}.`
     case 'system.init': return 'Bakin started'
     case 'system.dispatch_error': return `Dispatch failed: ${data.error || 'unknown error'}`
     case 'workflow.step_dispatched': return `Step "${data.label || 'unknown'}" dispatched to ${data.agent || 'agent'}`

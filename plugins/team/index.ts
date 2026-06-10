@@ -30,7 +30,7 @@ import { startAgent, stopAgent } from '../../src/lib/agents'
 import { getSettings, resetSettingsCache } from '../../src/core/settings'
 import { syncConfig as syncMcporter } from '../../src/core/mcporter'
 import { sendMessageToAgent } from '../../src/core/agents'
-import { getLiveRun } from '../../src/core/execution-ledger'
+import { getLiveRun, LedgerUnavailableError } from '../../src/core/execution-ledger'
 import { appendAudit } from '../../src/core/audit'
 import { getAllAgentUsage } from '../../src/core/agent-usage'
 import { getStatsByMs } from '../../src/core/usage'
@@ -1902,9 +1902,22 @@ const teamPlugin: BakinPlugin = definePlugin({
         // already running would land unthreaded in their main session and
         // spawn a parallel worker (live-test incident, task d1b213a5). Refuse
         // hard — the dispatched run is the worker; comments go on the task.
-        const taskTokens = [...new Set(message.match(/\b[0-9a-f]{8}\b/g) ?? [])].slice(0, 10)
+        const taskTokens = [...new Set(message.match(/\b[0-9a-f]{8}\b/g) ?? [])]
         for (const taskId of taskTokens) {
-          const live = getLiveRun(taskId)
+          let live: ReturnType<typeof getLiveRun>
+          try {
+            live = getLiveRun(taskId)
+          } catch (err) {
+            // Fail CLOSED: without the ledger we cannot rule out a live run,
+            // and the cost of a duplicate worker is a double bill.
+            if (err instanceof LedgerUnavailableError) {
+              return {
+                ok: false as const,
+                error: `Cannot verify whether ${agentId} is already working task ${taskId} (execution ledger unavailable) — refusing to risk a duplicate worker. Add a task comment via bakin_exec_log, or retry once the ledger is healthy.`,
+              }
+            }
+            throw err
+          }
           if (live && live.agent === agentId) {
             const ageSeconds = Math.max(0, Math.round((Date.now() - live.startedAt) / 1000))
             appendAudit(getContentDir(), 'team.message_blocked', agent, {

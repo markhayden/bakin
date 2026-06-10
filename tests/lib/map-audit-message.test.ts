@@ -35,6 +35,12 @@ describe('mapAuditMessage', () => {
     })).toBe('Ignored a duplicate completion — pixel had already completed this task.')
   })
 
+  it('explains team.message_blocked — the duplicate-worker save must not render raw', () => {
+    expect(mapAuditMessage('team.message_blocked', {
+      agentId: 'pixel', taskId: 'd1b213a5', runId: 'task:d1b213a5:d1',
+    })).toBe('Blocked a message to pixel — they are already running task d1b213a5.')
+  })
+
   it('explains task.dispatch_failure_ignored as a non-event', () => {
     expect(mapAuditMessage('task.dispatch_failure_ignored', {
       id: 'd1b213a5', title: 'Create reference-style gray cat image', column: 'done',
