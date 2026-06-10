@@ -6,6 +6,7 @@ import { createHash } from 'crypto'
 import { existsSync } from 'fs'
 import { basename, extname } from 'path'
 import { getAppServices } from '@/core/app-services'
+import { getIdempotent, putIdempotent } from '@/core/execution-ledger'
 import { resolveRuntimeChannelRef } from '@/core/channel-aliases'
 import { assertWorkflowToolAllowed } from '@/core/workflow-tool-authorization'
 import { resolveFile } from '@bakin/assets/lib/asset-service'
@@ -22,6 +23,8 @@ export interface PostChannelParams {
   videoAssetId?: string
   embed?: Record<string, unknown>
   taskId?: string
+  /** Explicit intent to send a second copy of an already-delivered asset. */
+  repost?: boolean
 }
 
 /**
@@ -69,6 +72,27 @@ export async function postChannel(
   }
   const { content, imageAssetId, videoAssetId, embed, taskId } = params
 
+  // A deliverable goes to a channel ONCE per task (live-test incident: the
+  // same asset posted twice with different captions — monitor post + completion
+  // reply). Durable in the ledger so it survives restarts; caption differences
+  // don't matter, the asset IS the deliverable. repost=true is the explicit
+  // escape hatch; only successful deliveries below record a row.
+  const deliveredAssetIds = [imageAssetId, videoAssetId].filter((id): id is string => Boolean(id))
+  const deliveryKeys = taskId
+    ? deliveredAssetIds.map(assetId => `channel-post:${taskId}:${channel}:${assetId}`)
+    : []
+  if (!params.repost) {
+    for (const key of deliveryKeys) {
+      const prior = getIdempotent(key)
+      if (prior) {
+        const at = (prior.result as { at?: string } | null)?.at
+        return fail(
+          `Asset already delivered to ${displayChannel(channel)} for task ${taskId}${at ? ` at ${at}` : ''}. A deliverable goes out once — if a second copy is genuinely intended, pass repost=true.`,
+        )
+      }
+    }
+  }
+
   const files = [
     filePayload(imageAssetId, resolveAssetAbsPath(imageAssetId)),
     filePayload(videoAssetId, resolveAssetAbsPath(videoAssetId)),
@@ -99,6 +123,11 @@ export async function postChannel(
     // an agent retry caused by a client timeout or ambiguous adapter failure
     // does not emit a second copy of the same message.
     postCompleted.set(signature, { result, expiresAt: Date.now() + POST_IDEMPOTENCY_TTL_MS })
+    if (result.ok) {
+      for (const key of deliveryKeys) {
+        putIdempotent(key, 'channel.post', { at: new Date().toISOString() })
+      }
+    }
     return result
   } finally {
     if (postInflight.get(signature) === promise) postInflight.delete(signature)
@@ -165,6 +194,7 @@ function postSignature(input: PostChannelParams & { channel: string; files: Arra
     embed: input.embed ?? null,
     files: input.files,
     imageAssetId: input.imageAssetId ?? null,
+    repost: input.repost ?? false,
     taskId: input.taskId ?? null,
     testMode: isTestMode(),
     videoAssetId: input.videoAssetId ?? null,
@@ -260,6 +290,7 @@ addExecTool({
     videoAssetId: z.string().optional().describe('Asset id of a video to attach (current version is sent).'),
     embed: z.record(z.string(), z.unknown()).optional().describe('Optional rich metadata for adapters that support it'),
     taskId: z.string().optional().describe('Task ID for audit trail'),
+    repost: z.boolean().optional().describe('An attached asset is delivered to a channel once per task; set true ONLY when a second copy is genuinely intended.'),
   },
   handler: async (params: Record<string, unknown>, agent: string, ctx) => {
     return postChannel({ ...params, agent } as PostChannelParams, ctx?.runtime)
