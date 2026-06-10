@@ -50,6 +50,7 @@ Iteration (correction passes, re-rolls, quality loops):
 - Iterating on your own output appends a VERSION of the same asset — never a sibling asset. Revise conditioned on the current image with `bakin_exec_images_edit`; re-roll fresh (optionally with references) with `bakin_exec_images_generate` + `versionOf=<assetId>`.
 - The tool enforces this: a generate that references your own same-task output without `versionOf` is refused. `allowNewAsset=true` exists only for a deliberately separate companion image (same style, different scene) — never for corrections.
 - Deliver ONE assetId at the end; reviewers browse the version history on that asset.
+- The tool result IS the managed asset — never copy the render to a workspace file and re-save it via `bakin_exec_assets_save`, and pass references by assetId once imported, never by file path. (Both are deduped server-side, but don't rely on the net.)
 
 Timeouts and retries:
 

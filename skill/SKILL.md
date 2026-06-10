@@ -90,6 +90,8 @@ When a brief says "like this image" / "based on the attached reference", the gen
 
 Iterating on your own output appends a VERSION, never a new asset: revise with `bakin_exec_images_edit`, or re-roll fresh with `bakin_exec_images_generate` + `versionOf=<assetId>`. One assetId per deliverable, n versions.
 
+Image tool results are already managed assets — never copy one to a workspace file and re-save it via `bakin_exec_assets_save`; report the assetId you already hold. Pass references by assetId once imported, never by file path.
+
 ## Channel Delivery Discipline
 
 A finished asset goes to a channel EXACTLY ONCE, via `bakin_exec_post_channel` with `imageAssetId`/`videoAssetId` + `taskId` — never pasted natively into a channel reply (native posts bypass the audit trail and the once-per-channel guard). Post it only as the reply/handoff for the originating request; progress updates never attach the deliverable, and spotting a finished asset while monitoring a task is not a trigger to post it. The tool refuses a second delivery of the same asset to the same channel for the same task; `repost=true` exists only for a genuinely intended second copy.

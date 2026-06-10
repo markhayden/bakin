@@ -209,7 +209,40 @@ Channel Delivery Discipline section), `generate-image` workflow skill, and
 the bits companion PR (pixel AGENTS.md policy + skill mechanics, within the
 350-word budget).
 
-## 9. Out of Scope (ticketed/follow-up)
+## 9. Round 3 — third live test (task 627ee59e, penguin screenshot, 2026-06-10)
+
+Versioning held where the agent used edit (deliverable got v1→v2). Two
+identity leaks minted duplicates; both closed deterministically:
+
+### R4 — `feat(assets)`: store-path reflection + same-task content dedupe
+- **Duplicate reference:** pixel passed a reference as a file path INTO the
+  asset store (`…/store/<id>/v1.png`) instead of the assetId; source-path
+  dedup keyed on the original `media/inbound` path, so a clone was minted —
+  with `source.path` pointing inside another asset's directory.
+  Fix: `resolveStoreFile()` maps store-internal paths (version files and
+  thumbs) back to `assetId@version`; `upsertFromSource` returns that identity
+  (`changed: false`) instead of cloning, and `resolveReferences` reflects the
+  path into proper lineage (a thumb path resolves to the real version file).
+- **Duplicate deliverable:** pixel copied the finished render to
+  `workspace/tmp/…` and re-saved it via `bakin_exec_assets_save` (following
+  the OUTPUT DISCIPLINE rule literally) — new path, new asset (op upload).
+  Fix: when an upsert would CREATE an asset and the input carries a taskId,
+  byte-identical content against any version of the same task's same-type
+  assets (size prefilter + sha256) returns the existing identity instead.
+  Deliberately task-scoped: reusing an image on a different task remains a
+  new asset.
+- Considered and rejected: a task-level "one asset unless declared" rule —
+  needs intent inference and fights legit multi-deliverable tasks; the
+  iteration guard (R1) already owns the intent layer, these close the
+  identity layer (same file, new clothes).
+
+### R5 — guidance: never re-save managed assets, references by assetId
+asset-rules + OUTPUT DISCIPLINE managed blocks, bakin skill, generate-image
+workflow skill (both repos): image tool results are already managed assets —
+report the assetId, never copy-and-resave; references go by assetId once
+imported, never by file path.
+
+## 10. Out of Scope (ticketed/follow-up)
 
 - `ctx.assets.upsertFromSource` on `AssetsAPI` (architecture nit from review — pre-existing pattern).
 - References UI chip linking to the recorded (not current) version — pre-existing URL-state gap.

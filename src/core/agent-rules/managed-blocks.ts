@@ -535,7 +535,8 @@ All created content (images, video, audio, text, plans, data) MUST go to the ass
    - \`agent\` (required, string — NOT \`author\`), \`taskId\` (required, string or null), \`created\` (required, ISO 8601 — NOT \`createdAt\`)
    - Optional: \`tool\`, \`description\`, \`tags\` (string[]), \`originalFilename\`
    - Do NOT add custom fields (e.g. \`prompt\`, \`resolution\`)
-5. **Version with timestamps:** \`20260323-hero-image.png\` for revisions.`,
+5. **Version with timestamps:** \`20260323-hero-image.png\` for revisions.
+6. **\`bakin_exec_images_*\` results are ALREADY managed assets.** Never copy a generated/edited image to a workspace file and re-save it via \`bakin_exec_assets_save\` — you already hold its \`assetId\`; report that. Pass references by \`assetId\` once imported, never by file path.`,
   },
 
   {
@@ -564,7 +565,7 @@ Log via \`mcporter call bakin-${agentId}.bakin_exec_tasks_log_progress taskId=<t
 ### Output Discipline — oversized chat output kills your session
 
 The runtime cannot deliver large completions. Hard rules:
-- Any deliverable or output larger than ~8KB MUST be written to a workspace file and saved as an asset BEFORE you continue (\`bakin_exec_assets_save\`)
+- Any deliverable or output larger than ~8KB MUST be written to a workspace file and saved as an asset BEFORE you continue (\`bakin_exec_assets_save\`) — UNLESS it is already a managed asset (anything \`bakin_exec_images_*\` returned an assetId for): report that assetId, never re-save it
 - Multiple deliverables = a checklist. Produce them ONE AT A TIME: write the file → save it as an asset → log progress → start the next. NEVER draft several deliverables in a single response.
 - Keep every chat/completion message short: status, decisions, and asset ids — never deliverable content.
 - Numerous independent deliverables → split into subtasks (see the Dependency Pattern section) instead of doing them all in one turn. In a workflow step, save large output as an asset and reference the asset id in your submitted step output.
