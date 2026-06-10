@@ -32,6 +32,10 @@ export interface ImagesGenerateParams {
   quality?: 'draft' | 'standard' | 'premium'
   /** Managed assetIds and/or file paths used as reference/context images (#418). */
   referenceImages?: string[]
+  /** Append the render as a new VERSION of this asset (iteration/re-roll) instead of minting a new asset. */
+  versionOf?: string
+  /** Explicit intent: this generate references own same-task output but is a deliberately separate companion asset. */
+  allowNewAsset?: boolean
 }
 
 export interface ImagesImportParams {
@@ -232,6 +236,9 @@ async function resolveReferences(
         sourceFilePath: entry, type: 'images', agent, taskId: params.taskId,
         op: 'import', tool: 'bakin_exec_images_import',
         description: basename(entry), source: { kind: 'import', path: entry },
+        // Tagged so the assets view can filter reference material out of
+        // deliverables (and the self-iteration guard can tell them apart).
+        tags: ['reference'],
       })
       paths.push(entry)
       lineage.push({ assetId: up.assetId, version: up.version })
@@ -276,7 +283,7 @@ async function persistImageResult(
   ctx: PluginContext,
   params: ImagesGenerateParams,
   agent: string,
-  opts: { req: PreparedImageRequest; result: RuntimeImageGenerationResult; tool: string } & ({ create: true } | { create: false; assetId: string }),
+  opts: { req: PreparedImageRequest; result: RuntimeImageGenerationResult; tool: string } & ({ create: true } | { create: false; assetId: string; op?: 'edit' | 'generate' }),
 ): Promise<ExecToolResult> {
   const { req, result, tool } = opts
   const image = result.images[0]
@@ -313,7 +320,7 @@ async function persistImageResult(
         source: { kind: 'generated', path: null }, generation,
       })
     : await ctx.assets.addVersion(opts.assetId, {
-        sourceFilePath: image.filePath, op: 'edit', tool,
+        sourceFilePath: image.filePath, op: opts.op ?? 'edit', tool,
         prompt: req.prompt, promptHash, description,
         generation,
       })
@@ -408,6 +415,28 @@ function imageToolResultFromVersion(
 export async function generateImage(ctx: PluginContext, params: ImagesGenerateParams, agent: string): Promise<ExecToolResult> {
   const req = await prepareImageRequest(ctx, params, agent)
   if ('error' in req) return fail(req.error)
+
+  // Iteration lands as a VERSION, not a sibling asset (live-test incident:
+  // a correction pass referencing the first pass minted a second asset).
+  if (params.versionOf) {
+    const target = await ctx.assets.resolveVersionFile(params.versionOf)
+    if (!target) return fail(`versionOf asset not found: ${params.versionOf}`)
+  } else if (!params.allowNewAsset) {
+    // Guard the iteration trap: referencing your own generated output from
+    // THIS task without declaring intent. Imported reference material (op
+    // import/upload) on the same task is the normal flow and never trips this.
+    for (const ref of req.references.lineage) {
+      const manifest = getAsset(ref.assetId)
+      const current = currentVersion(manifest)
+      if (!manifest || !current) continue
+      if (manifest.taskId === params.taskId && (current.op === 'generate' || current.op === 'edit')) {
+        return fail(
+          `Reference ${ref.assetId} is your own output on this task. If this is an iteration/correction of that deliverable, pass versionOf="${ref.assetId}" so the render appends a new VERSION (one asset, stable id). If it is a deliberately separate companion image, pass allowNewAsset=true.`,
+        )
+      }
+    }
+  }
+
   const promptHash = hashPrompt(req.prompt)
   const reused = reusableGenerateResult(params, req, promptHash)
   if (reused) return reused
@@ -419,9 +448,10 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
 
   // Idempotent: a client (mcporter) timeout that retries this identical billed
   // call must not bill twice. Reference identity participates so the same prompt
-  // with different references is not treated as a duplicate (#418).
+  // with different references is not treated as a duplicate (#418); versionOf
+  // participates so a re-roll into an asset is distinct from a fresh generate.
   const key: ImageCallKey = {
-    taskId: params.taskId, op: 'generate', source: null,
+    taskId: params.taskId, op: 'generate', source: params.versionOf ?? null,
     promptHash, provider: req.route.provider, model: req.route.model,
     width: req.dims.width, height: req.dims.height, quality: req.quality,
     references: req.references.fingerprint,
@@ -433,7 +463,10 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
         width: req.dims.width, height: req.dims.height, outputFormat: 'png', metadata: { quality: req.quality },
         ...(req.references.paths.length ? { referenceImages: req.references.paths } : {}),
       })
-      return await persistImageResult(ctx, params, agent, { req, result, tool: 'bakin_exec_images_generate', create: true })
+      const persist = params.versionOf
+        ? { req, result, tool: 'bakin_exec_images_generate', create: false as const, assetId: params.versionOf, op: 'generate' as const }
+        : { req, result, tool: 'bakin_exec_images_generate', create: true as const }
+      return await persistImageResult(ctx, params, agent, persist)
     } catch (err) {
       return fail(`Image generation failed: ${errorMessage(err)}`)
     }
@@ -442,6 +475,7 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
 
 export async function editImage(ctx: PluginContext, params: ImagesEditParams, agent: string): Promise<ExecToolResult> {
   if (!params.assetId) return fail('edit requires a managed assetId')
+  if (params.versionOf) return fail('versionOf is a generate parameter — edit already appends a new version to assetId')
   if (params.referenceImages?.includes(params.assetId)) {
     return fail(`Reference ${params.assetId} equals the asset being edited — the edit already includes its current version; references add OTHER context images`)
   }

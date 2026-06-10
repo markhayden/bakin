@@ -406,6 +406,10 @@ describe('images tools', () => {
       const refs = (created[0].generation as { references?: Array<{ assetId: string }> }).references
       expect(refs).toHaveLength(1)
       expect(refs![0].assetId).toMatch(/^\d{8}-/) // a freshly minted managed assetId
+      // Auto-imported references are tagged so the assets view can filter them
+      // out from deliverables.
+      const { getAsset } = await import('../../../plugins/assets/lib/asset-service')
+      expect(getAsset(refs![0].assetId)?.tags).toContain('reference')
     })
 
     it('rejects references served via the shim, before billing', async () => {
@@ -490,6 +494,178 @@ describe('images tools', () => {
       const editArgs = (edit.mock.calls[0] as unknown[])[0] as { files: string[] }
       expect(editArgs.files[0]).toBe(baseAbs) // base stays first
       expect(editArgs.files).toHaveLength(2)
+    })
+
+    it('versionOf appends the render as a new version of an existing asset (op: generate)', async () => {
+      const outFile = join(testDir, 'reroll.png')
+      writeFileSync(outFile, 'img')
+      const baseAbs = join(testDir, 'pass1.png')
+      writeFileSync(baseAbs, 'pass1')
+      const generate = mock(async () => ({
+        provider: 'openai', model: 'gpt-image-2',
+        images: [{ filePath: outFile, mimeType: 'image/png', width: 1024, height: 1024 }],
+        metadata: { servedBy: 'runtime' },
+      }))
+      const { ctx, created, versioned } = makeContext(
+        { runtime: { images: { providers: runtimeProvider(), generate } } } as never,
+        { absPath: baseAbs, mimeType: 'image/png', version: 1 },
+      )
+
+      const result = await generateImage(ctx, {
+        prompt: 'clearer side profile, same dusty world', taskId: 'task-reroll',
+        provider: 'openai', model: 'gpt-image-2', surface: 'instagram-feed-portrait',
+        versionOf: '20260601-horse-aaaabbbb',
+      }, 'pixel')
+
+      expect(result.ok).toBe(true)
+      expect(result.version).toBe(2)
+      expect(created).toHaveLength(0)
+      expect(versioned).toHaveLength(1)
+      expect(versioned[0].assetId).toBe('20260601-horse-aaaabbbb')
+      expect(versioned[0].input.op).toBe('generate')
+    })
+
+    it('versionOf fails cleanly when the target asset does not exist, before billing', async () => {
+      const generate = mock(async () => { throw new Error('should not bill') })
+      const { ctx } = makeContext(
+        { runtime: { images: { providers: runtimeProvider(), generate } } } as never,
+        null,
+      )
+
+      const result = await generateImage(ctx, {
+        prompt: 'x', taskId: 'task-reroll-missing', provider: 'openai', model: 'gpt-image-2',
+        surface: 'instagram-feed-portrait', versionOf: '20260601-ghost-aaaabbbb',
+      }, 'pixel')
+
+      expect(result.ok).toBe(false)
+      expect(result.error).toMatch(/versionOf asset not found/i)
+      expect(generate).not.toHaveBeenCalled()
+    })
+
+    it('refuses generate referencing the agent OWN same-task output without versionOf — the iteration trap', async () => {
+      // Seed a REAL generated asset on this task (pixel's first pass).
+      const passFile = join(testDir, 'first-pass.png')
+      writeFileSync(passFile, 'first-pass')
+      const { createAsset } = await import('../../../plugins/assets/lib/asset-service')
+      const firstPass = await createAsset({
+        sourceFilePath: passFile, type: 'images', agent: 'pixel', taskId: 'task-iter',
+        slug: 'horse-image', op: 'generate', tool: 'bakin_exec_images_generate',
+        description: 'first pass', source: { kind: 'generated', path: null },
+      })
+
+      const generate = mock(async () => { throw new Error('should not bill') })
+      const { ctx } = makeContext(
+        { runtime: { images: { providers: runtimeProvider(), generate } } } as never,
+        { absPath: passFile, mimeType: 'image/png', version: 1 },
+      )
+
+      const result = await generateImage(ctx, {
+        prompt: 'correction pass: clearer side profile', taskId: 'task-iter',
+        provider: 'openai', model: 'gpt-image-2', surface: 'instagram-feed-portrait',
+        referenceImages: [firstPass.assetId],
+      }, 'pixel')
+
+      expect(result.ok).toBe(false)
+      expect(result.error).toMatch(/your own output on this task/i)
+      expect(result.error).toContain('versionOf')
+      expect(result.error).toContain('allowNewAsset')
+      expect(generate).not.toHaveBeenCalled()
+    })
+
+    it('allows the iteration when versionOf targets the referenced first pass', async () => {
+      const passFile = join(testDir, 'first-pass-v.png')
+      writeFileSync(passFile, 'first-pass')
+      const { createAsset } = await import('../../../plugins/assets/lib/asset-service')
+      const firstPass = await createAsset({
+        sourceFilePath: passFile, type: 'images', agent: 'pixel', taskId: 'task-iter2',
+        slug: 'horse-image', op: 'generate', tool: 'bakin_exec_images_generate',
+        description: 'first pass', source: { kind: 'generated', path: null },
+      })
+      const outFile = join(testDir, 'second-pass.png')
+      writeFileSync(outFile, 'second')
+      const generate = mock(async () => ({
+        provider: 'openai', model: 'gpt-image-2',
+        images: [{ filePath: outFile, mimeType: 'image/png', width: 1024, height: 1024 }],
+        metadata: { servedBy: 'runtime' },
+      }))
+      const { ctx, versioned } = makeContext(
+        { runtime: { images: { providers: runtimeProvider(), generate } } } as never,
+        { absPath: passFile, mimeType: 'image/png', version: 1 },
+      )
+
+      const result = await generateImage(ctx, {
+        prompt: 'correction pass', taskId: 'task-iter2', provider: 'openai',
+        model: 'gpt-image-2', surface: 'instagram-feed-portrait',
+        referenceImages: [firstPass.assetId], versionOf: firstPass.assetId,
+      }, 'pixel')
+
+      expect(result.ok).toBe(true)
+      expect(versioned).toHaveLength(1)
+      expect(versioned[0].assetId).toBe(firstPass.assetId)
+    })
+
+    it('allows a deliberate companion image via allowNewAsset', async () => {
+      const passFile = join(testDir, 'first-pass-c.png')
+      writeFileSync(passFile, 'first-pass')
+      const { createAsset } = await import('../../../plugins/assets/lib/asset-service')
+      const firstPass = await createAsset({
+        sourceFilePath: passFile, type: 'images', agent: 'pixel', taskId: 'task-set',
+        slug: 'horse-image', op: 'generate', tool: 'bakin_exec_images_generate',
+        description: 'first of a set', source: { kind: 'generated', path: null },
+      })
+      const outFile = join(testDir, 'companion.png')
+      writeFileSync(outFile, 'companion')
+      const generate = mock(async () => ({
+        provider: 'openai', model: 'gpt-image-2',
+        images: [{ filePath: outFile, mimeType: 'image/png', width: 1024, height: 1024 }],
+        metadata: { servedBy: 'runtime' },
+      }))
+      const { ctx, created } = makeContext(
+        { runtime: { images: { providers: runtimeProvider(), generate } } } as never,
+        { absPath: passFile, mimeType: 'image/png', version: 1 },
+      )
+
+      const result = await generateImage(ctx, {
+        prompt: 'same style, different scene: grazing at dawn', taskId: 'task-set',
+        provider: 'openai', model: 'gpt-image-2', surface: 'instagram-feed-portrait',
+        referenceImages: [firstPass.assetId], allowNewAsset: true,
+      }, 'pixel')
+
+      expect(result.ok).toBe(true)
+      expect(created).toHaveLength(1)
+    })
+
+    it('does NOT trip the iteration guard for an imported same-task reference', async () => {
+      // main imported Mark's attachment against this task — referencing it is
+      // the normal flow, not iteration.
+      const refFile = join(testDir, 'attachment.png')
+      writeFileSync(refFile, 'attachment')
+      const { createAsset } = await import('../../../plugins/assets/lib/asset-service')
+      const imported = await createAsset({
+        sourceFilePath: refFile, type: 'images', agent: 'main', taskId: 'task-attach',
+        slug: 'reference', op: 'import', tool: 'bakin_exec_images_import',
+        description: 'attachment', source: { kind: 'import', path: refFile }, tags: ['reference'],
+      })
+      const outFile = join(testDir, 'from-attachment.png')
+      writeFileSync(outFile, 'render')
+      const generate = mock(async () => ({
+        provider: 'openai', model: 'gpt-image-2',
+        images: [{ filePath: outFile, mimeType: 'image/png', width: 1024, height: 1024 }],
+        metadata: { servedBy: 'runtime' },
+      }))
+      const { ctx, created } = makeContext(
+        { runtime: { images: { providers: runtimeProvider(), generate } } } as never,
+        { absPath: refFile, mimeType: 'image/png', version: 1 },
+      )
+
+      const result = await generateImage(ctx, {
+        prompt: 'a horse like this', taskId: 'task-attach', provider: 'openai',
+        model: 'gpt-image-2', surface: 'instagram-feed-portrait',
+        referenceImages: [imported.assetId],
+      }, 'pixel')
+
+      expect(result.ok).toBe(true)
+      expect(created).toHaveLength(1)
     })
 
     it('rejects an edit whose reference equals the asset being edited, before billing', async () => {

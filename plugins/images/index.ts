@@ -49,7 +49,9 @@ const generateShape = {
   width: z.number().int().positive().optional().describe('Optional custom width. Defaults from surface profile.'),
   height: z.number().int().positive().optional().describe('Optional custom height. Defaults from surface profile.'),
   quality: imageQualityEnum.optional().describe('Generation quality tier (honored only on the direct-provider path).'),
-  referenceImages: z.array(z.string()).optional().describe('Reference/context images to condition the generation: managed assetIds and/or local file paths (mix freely; max 4). Loose paths are auto-imported as assets. Requires a model with the reference-images capability on the native runtime.'),
+  referenceImages: z.array(z.string()).optional().describe('Reference/context images to condition the generation: managed assetIds, local file paths, and/or media:// attachment URIs (mix freely; max 4). Loose paths and media URIs are auto-imported as assets. Requires a model with the reference-images capability on the native runtime.'),
+  versionOf: z.string().optional().describe('Iteration/re-roll: append the render as a new VERSION of this existing asset instead of minting a new asset. Use this whenever you regenerate or correct your own prior output for the same deliverable.'),
+  allowNewAsset: z.boolean().optional().describe('Set true ONLY when a generate that references your own same-task output is a deliberately separate companion image (e.g. same style, different scene) — not an iteration.'),
 }
 
 const editShape = {
