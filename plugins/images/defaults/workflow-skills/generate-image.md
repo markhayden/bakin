@@ -38,6 +38,13 @@ managed versioned asset.
 3. Verify the tool returned `ok: true`.
 4. Submit the tool's returned `assetId`, `version`, provider, model, surface, width, height, and promptHash.
 
+Reference images:
+
+- When the brief provides a reference ("like this image", "match this style", an attached file), pass the image itself via `referenceImages` — do NOT transcribe what you see into the prompt. Entries can be managed assetIds, local file paths, or the runtime's `media://` attachment URIs (max 4, mixed forms allowed).
+- References require a native runtime model whose capabilities include `reference-images` (check `bakin_exec_images_recommend` / `bakin_exec_images_profiles`); the call fails cleanly before billing otherwise.
+- Raw paths and `media://` URIs are auto-imported as tracked assets linked to the task, and the generated asset records its reference lineage — the References row on the asset page is your provenance.
+- To revise an existing managed asset, use `bakin_exec_images_edit` with its `assetId` instead; `referenceImages` there supplies extra context images, never the asset being edited.
+
 Timeouts and retries:
 
 - If the generation call times out or the transport result is ambiguous, first call `bakin_exec_assets_list` with the same task id and `type: "images"`.
