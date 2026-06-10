@@ -247,3 +247,14 @@ imported, never by file path.
 - `ctx.assets.upsertFromSource` on `AssetsAPI` (architecture nit from review — pre-existing pattern).
 - References UI chip linking to the recorded (not current) version — pre-existing URL-state gap.
 - Style guides as a managed product feature.
+- Accepted residuals from the final review (documented, low-risk):
+  `resolveStoreFile` prefix match is byte-case-sensitive (APFS case-variant
+  paths bypass reflection) and lexical (symlinks not followed) — agents echo
+  canonical tool-result paths; export paths (`exports/<name>`) don't reflect
+  to the parent asset; the deliver-once ledger check is check-then-act
+  (concurrent different-caption posts can race — observed incident was
+  sequential); the iteration guard keys off the CURRENT version's op, so an
+  imported-then-edited asset referenced via store path trips it
+  (`allowNewAsset` covers); same-prompt re-roll into `versionOf` is swallowed
+  as reuse (tweak the prompt for a pure RNG re-roll — consistent with edit
+  idempotency).
