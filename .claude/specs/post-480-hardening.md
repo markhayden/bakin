@@ -172,7 +172,44 @@ Per CLAUDE.md: strict TS, Zod at boundaries, `createLogger`, no empty catches, k
 - Dedupe billed generates with different prompts at the idempotency layer — the upstream guard (C4) is the fix.
 - Block or alter ledger completion-suppression behavior — narration only (C6).
 
-## 8. Out of Scope (ticketed/follow-up)
+## 8. Round 2 — second live test (task 6abc2131, 2026-06-10)
+
+The guard + guidance worked (single dispatch, references used, QA loop ran).
+Three remaining failure classes, fixed on the same branch:
+
+### R1 — `feat(images)`: reference tag + iteration-as-version
+- Auto-imported references get `tags: ['reference']` (filterable in the
+  assets view; also distinguishes reference material from deliverables).
+- **Iteration trap:** pixel's correction pass referenced its own first pass
+  and minted a sibling asset. Fix (Mark-approved design): `versionOf` on
+  `images_generate` appends the render as a new version (op `'generate'`,
+  participates in the idempotency key via `source`, target validated
+  pre-billing, rejected on edit); a generate referencing the agent's own
+  same-task GENERATED output without `versionOf` is refused with a teaching
+  error; `allowNewAsset=true` is the explicit companion-image escape hatch.
+  Imported same-task references never trip the guard.
+
+### R2 — `feat(channels)`: deliver-once guard on post_channel
+- The same asset was posted to Discord twice (main's monitor loop + the
+  completion reply; different captions, so the existing signature TTL cache
+  could not catch it — and the posts were runtime-native, bypassing Bakin).
+- Deterministic half: `post_channel` records successful asset deliveries in
+  the durable ledger (`channel-post:<taskId>:<channel>:<assetId>`) and
+  refuses a re-delivery regardless of caption; `repost=true` is the explicit
+  escape hatch; failed deliveries never burn the slot.
+- Guidance half (the part that actually bit): orchestrator rules — finished
+  assets go to channels exactly once, via `post_channel` with
+  `imageAssetId` + `taskId` (never pasted natively); only as the
+  reply/handoff for the originating request; monitoring a task is never a
+  posting trigger.
+
+### R3 — guidance: iterate-as-version across all surfaces
+managed-blocks media-delegation + Tool Reference, `skill/SKILL.md` (incl. a
+Channel Delivery Discipline section), `generate-image` workflow skill, and
+the bits companion PR (pixel AGENTS.md policy + skill mechanics, within the
+350-word budget).
+
+## 9. Out of Scope (ticketed/follow-up)
 
 - `ctx.assets.upsertFromSource` on `AssetsAPI` (architecture nit from review — pre-existing pattern).
 - References UI chip linking to the recorded (not current) version — pre-existing URL-state gap.

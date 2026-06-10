@@ -45,6 +45,12 @@ Reference images:
 - Raw paths and `media://` URIs are auto-imported as tracked assets linked to the task, and the generated asset records its reference lineage — the References row on the asset page is your provenance.
 - To revise an existing managed asset, use `bakin_exec_images_edit` with its `assetId` instead; `referenceImages` there supplies extra context images, never the asset being edited.
 
+Iteration (correction passes, re-rolls, quality loops):
+
+- Iterating on your own output appends a VERSION of the same asset — never a sibling asset. Revise conditioned on the current image with `bakin_exec_images_edit`; re-roll fresh (optionally with references) with `bakin_exec_images_generate` + `versionOf=<assetId>`.
+- The tool enforces this: a generate that references your own same-task output without `versionOf` is refused. `allowNewAsset=true` exists only for a deliberately separate companion image (same style, different scene) — never for corrections.
+- Deliver ONE assetId at the end; reviewers browse the version history on that asset.
+
 Timeouts and retries:
 
 - If the generation call times out or the transport result is ambiguous, first call `bakin_exec_assets_list` with the same task id and `type: "images"`.
