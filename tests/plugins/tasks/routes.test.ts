@@ -165,8 +165,9 @@ beforeEach(() => {
     mockSetDependency, mockClearDependency, mockReorderTasks, mockGetTask,
     mockMoveTaskWithEffects, mockBlockTaskWithEffects, mockCreateTaskWithEffects,
     mockReportComplete, mockSetDependencyWithEffects, mockGetTaskDetails,
-    mockLogProgress, mockTriggerDispatch,
+    mockLogProgress, mockTriggerDispatch, mockGetTaskWithColumn,
   ]) m.mockReset()
+  mockGetTaskWithColumn.mockReturnValue(null)
   completionsFake.clear()
   // Handlers destructure the completion-gate result from these two.
   mockMoveTaskWithEffects.mockResolvedValue({ alreadyComplete: false })
@@ -377,6 +378,46 @@ describe('GET /:taskId/runs — dispatch run history', () => {
     const { status, body } = await callRoute(route, activated.ctx, { searchParams: { taskId: 'no-runs' } })
     expect(status).toBe(200)
     expect(body.runs).toEqual([])
+  })
+
+  it('includes a done outcome from the completion ledger alongside the runs', async () => {
+    const completedAt = 1_700_000_500_000
+    completionsFake.set('task-done', { taskId: 'task-done', runId: 'task:task-done:d1', agent: 'pixel', channel: null, completedAt })
+    mockTaskRuns['task-done'] = [{
+      runId: 'task:task-done:d1', taskId: 'task-done', seq: 1, agent: 'pixel', status: 'settled',
+      startedAt: completedAt - 1000, settledAt: completedAt, settleReason: 'turn-ok',
+    }]
+
+    const route = findRoute(activated.routes, 'GET', '/:taskId/runs')!
+    const { status, body } = await callRoute(route, activated.ctx, { searchParams: { taskId: 'task-done' } })
+
+    expect(status).toBe(200)
+    expect(body.outcome).toEqual({
+      state: 'done',
+      completedAt: new Date(completedAt).toISOString(),
+      agent: 'pixel',
+    })
+  })
+
+  it('derives the outcome from the task column when no completion exists', async () => {
+    mockGetTaskWithColumn.mockReturnValue({ task: { id: 'task-blocked' }, column: 'blocked' })
+    mockTaskRuns['task-blocked'] = [{
+      runId: 'task:task-blocked:d1', taskId: 'task-blocked', seq: 1, agent: 'pixel', status: 'settled',
+      startedAt: 1_700_000_000_000, settledAt: 1_700_000_001_000, settleReason: 'turn-ok',
+    }]
+
+    const route = findRoute(activated.routes, 'GET', '/:taskId/runs')!
+    const { body } = await callRoute(route, activated.ctx, { searchParams: { taskId: 'task-blocked' } })
+
+    expect(body.outcome).toEqual({ state: 'blocked' })
+  })
+
+  it('omits the outcome key for an unknown task', async () => {
+    const route = findRoute(activated.routes, 'GET', '/:taskId/runs')!
+    const { status, body } = await callRoute(route, activated.ctx, { searchParams: { taskId: 'ghost' } })
+    expect(status).toBe(200)
+    expect(body.runs).toEqual([])
+    expect('outcome' in body).toBe(false)
   })
 })
 
