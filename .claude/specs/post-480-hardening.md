@@ -55,15 +55,19 @@ Dependency-ordered, one commit each unless noted. Conventional commits with scop
 ### C4 — `feat(team): refuse team messages that would spawn a duplicate task worker`
 *Item 1. The headline guard.*
 
-- `plugins/tasks/index.ts` (activate): register hook `tasks.live-run` → handler takes `{ taskId }`, returns `{ runId, agent, startedAt } | null` via the execution-ledger facade (`getLiveRun`). Plugin→plugin stays on HookRegistry per CLAUDE.md.
-- `plugins/team/index.ts` (`bakin_exec_team_message` handler): extract task-id-shaped tokens (`/\b[0-9a-f]{8}\b/g`) from the message; for each, invoke `tasks.live-run`. If a live run exists **and its agent is the message target**, hard-refuse: return `{ ok: false, error }` naming the task, runId, run age, and the alternatives (task comment via `bakin_exec_log`, or wait). Emit audit event `team.message_blocked` with `{ agentId, taskId, runId }` so the save is visible in Live Activity.
-- Ledger-unavailable: per the fail-closed convention this guard *blocks* the send for matched task tokens (consistent with execution-ledger semantics); messages with no task-shaped tokens are unaffected.
+- *(As implemented — refined from the original hook sketch: the execution
+  ledger is core, not a plugin, so the HookRegistry rule doesn't apply;
+  `plugins/team` imports the `src/core/execution-ledger` facade directly,
+  matching its existing `src/core/agents` import.)*
+- `plugins/team/index.ts` (`bakin_exec_team_message` handler): extract ALL distinct task-id-shaped tokens (`/\b[0-9a-f]{8}\b/g`, no cap) from the message; for each, `getLiveRun(taskId)`. If a live run exists **and its agent is the message target**, hard-refuse: return `{ ok: false, error }` naming the task, runId, run age, and the alternatives (task comment via `bakin_exec_log`, or wait). Emit audit event `team.message_blocked` with `{ agentId, taskId, runId }` so the save is visible in Live Activity (humanized by the audit-message mapper, see C6).
+- Ledger-unavailable: fail CLOSED for task-bearing messages — `LedgerUnavailableError` is caught (`instanceof`, never message text) and returned as a structured refusal explaining the ledger is down; token-free messages deliver unaffected.
 
 **Acceptance:**
 - Message naming a task with a live run for the target agent → refused, audited, runtime `sendMessageToAgent` NOT called (asserted).
 - Message naming a task whose live run belongs to a *different* agent → delivered.
 - Message naming a completed/settled task → delivered.
-- Message with no task tokens → delivered, no hook invocation needed.
+- Message with no task tokens → delivered.
+- Ledger unavailable + task-bearing message → structured refusal, send NOT called (asserted); token-free message still delivers.
 
 ### C5 — `feat(tasks): live-run visibility in tasks_get + dispatch-notified copy in tasks_create`
 *Items 2 + 8.*
@@ -76,11 +80,20 @@ Dependency-ordered, one commit each unless noted. Conventional commits with scop
 ### C6 — `feat(core): human-readable summaries for suppressed/ignored task events`
 *Item 7.*
 
-- `src/core/task-service.ts:163` (`task.completion_suppressed`): add `summary` to the audit data, e.g. `"Ignored a duplicate completion — <firstAgent> already completed this task via <firstChannel>."`
-- `src/core/dispatch.ts:750` (`task.dispatch_failure_ignored`): add `summary`, e.g. `"A session error arrived after the task had already moved to <column> — no action needed."`
-- Feed rendering (`packages/host/src/components/layout/layout-shell.tsx` + wherever activity items derive titles): prefer `data.summary`/`data.label` over the raw event name; raw name stays as the secondary line (current behavior preserved as fallback). Emit-time copy, not a client-side event→string map: the summary travels with the audit row into JSONL, SSE, and search.
+- *(As implemented — refined from the original emit-time-`summary` sketch:
+  the feed already has a canonical humanization point, `mapAuditMessage` in
+  `src/lib/map-audit-message.ts`, used by both the activity API and the SSE
+  hook; these events rendered raw only because no case existed for them.
+  Per-event cases there match how every other event renders. Trade-off
+  accepted: the human copy is derived at read time and does not land in
+  `audit.jsonl`/search rows — the raw data fields it derives from do.)*
+- `src/lib/map-audit-message.ts`: cases for `task.completion_suppressed`,
+  `task.dispatch_failure_ignored`, and `team.message_blocked` (C4's own
+  event must not render raw either).
+- `src/core/task-service.ts:163`: `task.completion_suppressed` emit data
+  gains `title` so the copy can name the task.
 
-**Acceptance:** unit test that both emit sites include `summary`; existing audit consumers unaffected (additive data field, no schema bump).
+**Acceptance:** mapper unit tests assert the exact copy for all three events (including missing-optional-field variants); existing audit consumers unaffected (the only emit change is the additive `title` field, no schema bump).
 
 ### C7 — `docs(agents): teach referenceImages + attachment-import across guidance surfaces`
 *Items 4 + 5 + 2(rules half). Bakin-repo guidance surfaces only.*
@@ -131,7 +144,7 @@ tests/**                                         per commit
 
 ## 5. Code Style
 
-Per CLAUDE.md: strict TS, Zod at boundaries, `createLogger`, no empty catches, kebab-case files, import order. Error classification by `kind`, never message text. New hook follows `{pluginId}.{operation}` naming (`tasks.live-run`, audit event `team.message_blocked`).
+Per CLAUDE.md: strict TS, Zod at boundaries, `createLogger`, no empty catches, kebab-case files, import order. Error classification by `kind`/`instanceof`, never message text. New audit event: `team.message_blocked`.
 
 ## 6. Testing Strategy
 

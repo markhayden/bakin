@@ -733,6 +733,9 @@ const tasksPlugin: BakinPlugin = definePlugin({
         // Surface the in-flight run so a session that received the task
         // through a side channel can see another worker already owns it
         // (live-test incident: a duplicate worker had no way to know).
+        // Deliberately NOT wrapped: a ledger failure must fail this read
+        // rather than report liveRun:null — "nobody owns this" is exactly
+        // the wrong answer to give a would-be duplicate worker.
         const live = getLiveRun(params.taskId as string)
         const liveRun = live
           ? { runId: live.runId, agent: live.agent, startedAt: new Date(live.startedAt).toISOString() }
