@@ -158,6 +158,25 @@ doc contradicts the new behavior.
 - Never `git add -A` after a local build (generated-version build-stamp trap).
 - PR references #476; body maps commits to the rollback ladder.
 
+## Docker gold-standard verification (isolated mode) — PASSED 2026-06-09
+
+Run against a real OpenClaw container + live Bakin server (`instance up/dev
+--mode isolated`), driving the user stories end-to-end via CLI + API:
+
+| Story | Result |
+|---|---|
+| Agent turn settles, task still open | ✅ run `settled/turn ok` while `outcome: in_progress` — the false-success read is gone |
+| Block after settled run | ✅ `outcome: blocked`, run badge stays `settled` |
+| Human completes (log + move to done) | ✅ `outcome: done` + `completedAt` + `agent` from the completions row |
+| Archive after done | ✅ outcome stays `done` (completion wins) |
+| Agent completes via MCP (`bakin_exec_tasks_complete`) | ✅ `outcome: done` with agent attribution |
+| Unknown task | ✅ `{"runs":[]}`, no outcome key, HTTP 200 |
+| Served UI bundle | ✅ `/api/plugins/tasks/assets/client.js` maps `settled` → blue, `done` outcome → green, "in progress" label present |
+
+Incidental finds (pre-existing board guards, working as designed): blocked →
+done is an invalid transition (must pass through todo), and moves to done
+require at least one log entry.
+
 ## Rollback strategy
 
 | Revert | Leaves |

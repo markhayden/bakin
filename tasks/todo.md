@@ -17,4 +17,5 @@ Branch: `feat/task-outcome-run-history` off `main`. One commit per task; each en
 ## Final gate
 - [x] Coverage audit: archived-badge component test added; all 4 outcome states covered at unit + component level
 - [x] `bun run test` green (4801 pass / 0 fail), typecheck + lint clean
+- [x] Docker gold-standard E2E (isolated rig, real OpenClaw): 6 user stories + served-bundle check all passed — see plan.md
 - [ ] PR references #476 with rollback ladder
