@@ -17,8 +17,13 @@ export function readTaskRuns(taskId: string, limit = 50): TaskRunEntry[] {
  * A completions row wins (it always implies the board reached done — archiving
  * a done task keeps it); otherwise the current column decides. Unknown task →
  * undefined.
+ *
+ * The completion check is a cheap indexed lookup and always runs. The column
+ * fallback hits the task store, where an unknown id falls through to an
+ * uncached full shard walk — callers that can't vouch for the task (e.g. the
+ * runs route with zero dispatch history) pass columnFallback=false to skip it.
  */
-export function readTaskOutcome(taskId: string): TaskOutcome | undefined {
+export function readTaskOutcome(taskId: string, columnFallback = true): TaskOutcome | undefined {
   const completion = getCompletion(taskId)
   if (completion) {
     return {
@@ -27,6 +32,7 @@ export function readTaskOutcome(taskId: string): TaskOutcome | undefined {
       agent: completion.agent,
     }
   }
+  if (!columnFallback) return undefined
   const entry = getTaskWithColumn(taskId)
   if (!entry) return undefined
   switch (entry.column) {

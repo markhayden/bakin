@@ -3,12 +3,14 @@
  * readTaskOutcome joins the completion ledger with the task column —
  * completion row wins; otherwise the column maps to the outcome state.
  */
-import { describe, it, expect, mock } from 'bun:test'
-import { mkdtempSync } from 'fs'
+import { describe, it, expect, mock, afterAll } from 'bun:test'
+import { mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
-process.env.BAKIN_HOME = mkdtempSync(join(tmpdir(), 'bakin-test-home-'))
+const testHome = mkdtempSync(join(tmpdir(), 'bakin-test-home-'))
+process.env.BAKIN_HOME = testHome
+afterAll(() => rmSync(testHome, { recursive: true, force: true }))
 
 mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
@@ -93,5 +95,15 @@ describe('tasks/runs-reader readTaskOutcome', () => {
   it('unknown task (no completion, no board entry) → undefined', () => {
     seed('t7', {})
     expect(readTaskOutcome('t7')).toBeUndefined()
+  })
+
+  it('columnFallback=false: completion still wins without touching the board', () => {
+    seed('t8', { completed: true })
+    expect(readTaskOutcome('t8', false)?.state).toBe('done')
+  })
+
+  it('columnFallback=false: no completion → undefined even when a board entry exists', () => {
+    seed('t9', { column: 'blocked' })
+    expect(readTaskOutcome('t9', false)).toBeUndefined()
   })
 })

@@ -321,10 +321,10 @@ const routes = [
     responses: { 200: z.object({}).passthrough() },
     handler: async (_req, _ctx, { params, query }) => {
       // Unknown task → empty list, never an error (a not-yet-dispatched task has no runs).
-      return Response.json({
-        runs: readTaskRuns(params.taskId, query.limit ?? 50),
-        outcome: readTaskOutcome(params.taskId),
-      })
+      // Column fallback is gated on dispatch history so unknown ids can't trigger
+      // the task store's full shard walk on every request.
+      const runs = readTaskRuns(params.taskId, query.limit ?? 50)
+      return Response.json({ runs, outcome: readTaskOutcome(params.taskId, runs.length > 0) })
     },
   }),
 

@@ -419,6 +419,23 @@ describe('GET /:taskId/runs — dispatch run history', () => {
     expect(body.runs).toEqual([])
     expect('outcome' in body).toBe(false)
   })
+
+  it('never touches the task store for a task with no runs (unknown ids would trigger a full shard walk)', async () => {
+    const route = findRoute(activated.routes, 'GET', '/:taskId/runs')!
+    await callRoute(route, activated.ctx, { searchParams: { taskId: 'ghost' } })
+    expect(mockGetTaskWithColumn).not.toHaveBeenCalled()
+  })
+
+  it('still reports done for a completed task with no runs (completion lookup is cheap and ungated)', async () => {
+    const completedAt = 1_700_000_500_000
+    completionsFake.set('done-no-runs', { taskId: 'done-no-runs', runId: null, agent: 'pixel', channel: null, completedAt })
+
+    const route = findRoute(activated.routes, 'GET', '/:taskId/runs')!
+    const { body } = await callRoute(route, activated.ctx, { searchParams: { taskId: 'done-no-runs' } })
+
+    expect(body.outcome).toMatchObject({ state: 'done' })
+    expect(mockGetTaskWithColumn).not.toHaveBeenCalled()
+  })
 })
 
 // ─── POST / — Create Task ──────────────────────────────────────────────────
