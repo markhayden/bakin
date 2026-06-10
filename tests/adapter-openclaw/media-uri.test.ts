@@ -16,6 +16,9 @@ const contentDirMock = () => ({
 })
 mock.module('../../src/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
+mock.module('../../src/core/logger', () => ({
+  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
+}))
 
 import { createOpenClawRuntimeAdapter } from '@bakin/adapter-openclaw'
 
@@ -39,6 +42,11 @@ describe('OpenClaw media:// URI resolution', () => {
   it('returns null for other URI schemes', async () => {
     await expect(runtime.media!.resolveUri('https://example.com/x.png')).resolves.toBeNull()
     await expect(runtime.media!.resolveUri('/etc/passwd')).resolves.toBeNull()
+  })
+
+  it('returns null for a directory (only files are valid references)', async () => {
+    await expect(runtime.media!.resolveUri('media://inbound')).resolves.toBeNull()
+    await expect(runtime.media!.resolveUri('media://.')).resolves.toBeNull()
   })
 
   it('rejects traversal out of the media root', async () => {

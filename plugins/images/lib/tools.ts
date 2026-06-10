@@ -451,6 +451,11 @@ export async function editImage(ctx: PluginContext, params: ImagesEditParams, ag
 
   const req = await prepareImageRequest(ctx, params, agent)
   if ('error' in req) return fail(req.error)
+  // Re-check after resolution: a raw path or media:// reference whose
+  // auto-import deduped to the base asset would send the base file twice.
+  if (req.references.lineage.some(ref => ref.assetId === params.assetId)) {
+    return fail(`Reference resolves to the asset being edited (${params.assetId}) — the edit already includes its current version; references add OTHER context images`)
+  }
   const promptHash = hashPrompt(req.prompt)
   const reused = reusableEditResult(params.assetId, req, promptHash)
   if (reused) return reused

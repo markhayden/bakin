@@ -913,8 +913,12 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       if (!match) return null
       const root = resolve(getOpenClawPath('media'))
       const candidate = resolve(root, match[1])
-      if (candidate !== root && !candidate.startsWith(root + sep)) return null
-      return existsSync(candidate) ? candidate : null
+      if (!candidate.startsWith(root + sep)) return null
+      try {
+        return statSync(candidate).isFile() ? candidate : null
+      } catch {
+        return null // missing file — "not found" is a value here, not an error
+      }
     },
   }
 
