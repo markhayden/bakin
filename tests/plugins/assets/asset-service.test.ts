@@ -5,7 +5,7 @@
  */
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { mkdirSync, writeFileSync, rmSync, existsSync, readdirSync } from 'node:fs'
+import { mkdirSync, writeFileSync, rmSync, existsSync, readdirSync, readFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 
 const testDir = join(tmpdir(), `bakin-asset-svc-${Date.now()}-${randomUUID()}`)
@@ -17,7 +17,7 @@ import sharp from 'sharp'
 import { generateAssetId, yearMonthFromAssetId, isValidAssetId, assetDirRelPath } from '../../../plugins/assets/lib/asset-id'
 import { withAssetLock } from '../../../plugins/assets/lib/asset-lock'
 import { readManifest, writeManifestAtomic, type AssetManifest } from '../../../plugins/assets/lib/manifest'
-import { createAsset, getAsset, resolveFile, assetExists, listAssets } from '../../../plugins/assets/lib/asset-service'
+import { createAsset, getAsset, resolveFile, assetExists, listAssets, resolveStoreFile, upsertFromSource } from '../../../plugins/assets/lib/asset-service'
 
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 const srcDir = join(testDir, 'src')
@@ -147,5 +147,77 @@ describe('asset-service create + read', () => {
     // AND: must carry every requested tag.
     expect(listAssets({ tags: ['brand', 'hero'] }).length).toBe(1)
     expect(listAssets({ tags: ['brand', 'missing'] }).length).toBe(0)
+  })
+})
+
+describe('store-path reflection + same-task content dedupe (penguin-test fixes)', () => {
+  it('resolveStoreFile maps a store version file (and its thumb) back to assetId@version', async () => {
+    const { assetId } = await createAsset({
+      sourceFilePath: join(srcDir, 'pic.png'), type: 'images', agent: 'pixel', taskId: 'task-reflect',
+      slug: 'reflect', op: 'import',
+    })
+    const dirAbs = join(testDir, assetDirRelPath(assetId)!)
+    const hit = resolveStoreFile(join(dirAbs, 'v1.png'))
+    expect(hit).toMatchObject({ assetId, version: 1 })
+    expect(hit!.absPath.endsWith('v1.png')).toBe(true)
+    // A thumb path resolves to the same version, with absPath = the REAL file.
+    expect(resolveStoreFile(join(dirAbs, 'v1.thumb.jpg'))).toMatchObject({ assetId, version: 1 })
+    expect(resolveStoreFile(join(dirAbs, 'v1.thumb.jpg'))!.absPath.endsWith('v1.png')).toBe(true)
+    // Non-store paths and store-internal non-version files do not resolve.
+    expect(resolveStoreFile(join(srcDir, 'pic.png'))).toBeNull()
+    expect(resolveStoreFile(join(dirAbs, 'manifest.json'))).toBeNull()
+  })
+
+  it('upsertFromSource of a store-internal path returns the existing identity — never a duplicate', async () => {
+    const { assetId } = await createAsset({
+      sourceFilePath: join(srcDir, 'pic.png'), type: 'images', agent: 'pixel', taskId: 'task-noclone',
+      slug: 'original', op: 'import',
+    })
+    const storePath = join(testDir, assetDirRelPath(assetId)!, 'v1.png')
+    const before = listAssets().length
+
+    const up = await upsertFromSource(storePath, {
+      sourceFilePath: storePath, type: 'images', agent: 'pixel', taskId: 'task-noclone',
+      op: 'import', description: 'v1.png', source: { kind: 'import', path: storePath },
+    })
+
+    expect(up).toMatchObject({ assetId, version: 1, changed: false })
+    expect(listAssets().length).toBe(before)
+  })
+
+  it('upsertFromSource dedupes byte-identical content on the SAME task (new path, same bytes)', async () => {
+    const original = await createAsset({
+      sourceFilePath: join(srcDir, 'pic.png'), type: 'images', agent: 'pixel', taskId: 'task-bytes',
+      slug: 'deliverable', op: 'generate',
+    })
+    // The agent copies the finished render to a fresh workspace path and re-saves it.
+    const copyPath = join(srcDir, 'final-copy.png')
+    writeFileSync(copyPath, readFileSync(join(testDir, assetDirRelPath(original.assetId)!, 'v1.png')))
+    const before = listAssets().length
+
+    const up = await upsertFromSource(copyPath, {
+      sourceFilePath: copyPath, type: 'images', agent: 'pixel', taskId: 'task-bytes',
+      op: 'upload', description: 'final copy', source: { kind: 'workspace-file', path: copyPath },
+    })
+
+    expect(up).toMatchObject({ assetId: original.assetId, version: 1, changed: false })
+    expect(listAssets().length).toBe(before)
+  })
+
+  it('does NOT dedupe identical bytes across DIFFERENT tasks', async () => {
+    const original = await createAsset({
+      sourceFilePath: join(srcDir, 'pic.png'), type: 'images', agent: 'pixel', taskId: 'task-a',
+      slug: 'a-img', op: 'generate',
+    })
+    const copyPath = join(srcDir, 'cross-task.png')
+    writeFileSync(copyPath, readFileSync(join(testDir, assetDirRelPath(original.assetId)!, 'v1.png')))
+
+    const up = await upsertFromSource(copyPath, {
+      sourceFilePath: copyPath, type: 'images', agent: 'pixel', taskId: 'task-b',
+      op: 'upload', description: 'reuse on another task', source: { kind: 'workspace-file', path: copyPath },
+    })
+
+    expect(up.assetId).not.toBe(original.assetId)
+    expect(up.changed).toBe(true)
   })
 })

@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { basename } from 'node:path'
 import type { ExecToolResult, PluginContext } from '@bakin/core/plugin-types'
 import type { RuntimeImageGenerationResult } from '@bakin/core/adapters/runtime'
-import { getAsset, listAssets, upsertFromSource } from '../../assets/lib/asset-service'
+import { getAsset, listAssets, upsertFromSource, resolveStoreFile } from '../../assets/lib/asset-service'
 import { isValidAssetId } from '../../assets/lib/asset-id'
 import type { AssetManifest, AssetVersion } from '../../assets/lib/manifest'
 import type { ImageProviderId, ImageProviderReadiness } from '../types'
@@ -222,6 +222,15 @@ async function resolveReferences(
       const resolved = await ctx.runtime.media.resolveUri(rawEntry)
       if (!resolved) return { error: `Reference media URI not found: ${rawEntry}` }
       entry = resolved
+    }
+    // A path INSIDE the asset store is already managed — reflect it to its
+    // identity (and to the real version file when given a thumb) instead of
+    // letting auto-import clone it.
+    const managed = resolveStoreFile(entry)
+    if (managed) {
+      paths.push(managed.absPath)
+      lineage.push({ assetId: managed.assetId, version: managed.version })
+      continue
     }
     if (isValidAssetId(entry)) {
       const ref = await ctx.assets.resolveVersionFile(entry)

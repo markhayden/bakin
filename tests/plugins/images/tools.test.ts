@@ -758,6 +758,45 @@ describe('images tools', () => {
       expect(refs!.some(ref => ref.assetId !== refId && /^\d{8}-/.test(ref.assetId))).toBe(true)
     })
 
+    it('a reference passed as a store-internal PATH maps to the existing asset — never a duplicate import', async () => {
+      // Penguin-test incident: pixel passed .../store/<id>/v1.png instead of
+      // the assetId and minted a clone of the already-imported reference.
+      const srcFile = join(testDir, 'screenshot.png')
+      writeFileSync(srcFile, 'screenshot-bytes')
+      const { createAsset, listAssets: listReal } = await import('../../../plugins/assets/lib/asset-service')
+      const { assetDirRelPath } = await import('../../../plugins/assets/lib/asset-id')
+      const imported = await createAsset({
+        sourceFilePath: srcFile, type: 'images', agent: 'pixel', taskId: 'task-storepath',
+        slug: 'screenshot', op: 'import', tool: 'bakin_exec_images_import',
+        description: 'screenshot', source: { kind: 'import', path: srcFile }, tags: ['reference'],
+      })
+      const storePath = join(testDir, assetDirRelPath(imported.assetId)!, 'v1.png')
+      const outFile = join(testDir, 'penguinized.png')
+      writeFileSync(outFile, 'render')
+      const generate = mock(async () => ({
+        provider: 'openai', model: 'gpt-image-2',
+        images: [{ filePath: outFile, mimeType: 'image/png', width: 1024, height: 1024 }],
+        metadata: { servedBy: 'runtime' },
+      }))
+      const { ctx, created } = makeContext(
+        { runtime: { images: { providers: runtimeProvider(), generate } } } as never,
+        null,
+      )
+      const assetCountBefore = listReal().length
+
+      const result = await generateImage(ctx, {
+        prompt: 'replace thumbnails with penguins', taskId: 'task-storepath',
+        provider: 'openai', model: 'gpt-image-2', surface: 'instagram-feed-portrait',
+        referenceImages: [storePath],
+      }, 'pixel')
+
+      expect(result.ok).toBe(true)
+      expect(generate).toHaveBeenCalledWith(expect.objectContaining({ referenceImages: [storePath] }))
+      expect(created[0].generation).toMatchObject({ references: [{ assetId: imported.assetId, version: 1 }] })
+      // No clone minted in the real store.
+      expect(listReal().length).toBe(assetCountBefore)
+    })
+
     it('resolves a media:// reference through the runtime and auto-imports it', async () => {
       const outFile = join(testDir, 'media-gen.png')
       writeFileSync(outFile, 'img')

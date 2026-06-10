@@ -11,13 +11,13 @@
  * same spine.
  */
 import { mkdirSync, copyFileSync, existsSync, readdirSync, statSync, renameSync, rmSync, readFileSync } from 'node:fs'
-import { join, extname } from 'node:path'
+import { join, extname, resolve, sep } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { getContentDir } from '../../../src/core/content-dir'
 import { createLogger } from '../../../src/core/logger'
 import { getMimeType, type AssetType } from './constants'
-import { generateAssetId, assetDirRelPath, yearMonthFromAssetId } from './asset-id'
+import { generateAssetId, assetDirRelPath, yearMonthFromAssetId, isValidAssetId } from './asset-id'
 import { normalizeTags } from './tags'
 import { withAssetLock } from './asset-lock'
 import { getManifestCached } from './manifest-cache'
@@ -740,10 +740,70 @@ export async function upsertFromSource(sourcePath: string, input: AssetCreateInp
   return withAssetLock(`source:${sourcePath}`, () => upsertFromSourceInner(sourcePath, input))
 }
 
+/**
+ * Map an absolute path INSIDE the asset store back to the asset identity it
+ * belongs to. Recognizes per-version files (`v{n}.{ext}`) and their thumbs;
+ * `absPath` in the result is always the REAL version file (never the thumb).
+ * Null for anything outside the store or store-internal non-version files
+ * (manifest.json, exports/).
+ */
+export function resolveStoreFile(absPath: string): { assetId: string; version: number; absPath: string } | null {
+  const storeRoot = resolve(getContentDir(), 'assets', 'store')
+  const resolved = resolve(absPath)
+  if (!resolved.startsWith(storeRoot + sep)) return null
+  const segments = resolved.slice(storeRoot.length + 1).split(sep)
+  if (segments.length !== 3) return null // exports/<name> and deeper are derived, not versions
+  const [, assetId, file] = segments
+  if (!isValidAssetId(assetId)) return null
+  const manifest = getAsset(assetId)
+  if (!manifest) return null
+  const version = manifest.versions.find((v) => v.file === file || v.thumb === file)
+  if (!version) return null
+  return { assetId, version: version.version, absPath: join(getContentDir(), assetDirRelPath(assetId)!, version.file) }
+}
+
+/** Find an asset version on the SAME task whose bytes equal the file at sourcePath. */
+function findSameTaskContentMatch(sourcePath: string, taskId: string, type: AssetType): { assetId: string; version: number } | null {
+  let size: number
+  try {
+    size = statSync(sourcePath).size
+  } catch {
+    return null
+  }
+  const sourceHash = sha256File(sourcePath)
+  if (!sourceHash) return null
+  for (const summary of listAssets({ taskId, type })) {
+    const manifest = getAsset(summary.assetId)
+    const dirRel = assetDirRelPath(summary.assetId)
+    if (!manifest || !dirRel) continue
+    for (const version of manifest.versions) {
+      if (version.size !== size) continue
+      if (sha256File(join(getContentDir(), dirRel, version.file)) === sourceHash) {
+        return { assetId: summary.assetId, version: version.version }
+      }
+    }
+  }
+  return null
+}
+
 async function upsertFromSourceInner(sourcePath: string, input: AssetCreateInput): Promise<{ assetId: string; version: number; changed: boolean }> {
+  // Reflection: a path INSIDE the asset store is already managed — return its
+  // identity instead of cloning it (live incident: a reference passed as
+  // .../store/<id>/v1.png minted a duplicate asset pointing into the store).
+  const managed = resolveStoreFile(sourcePath)
+  if (managed) return { assetId: managed.assetId, version: managed.version, changed: false }
+
   const source = input.source ?? { kind: 'workspace-file' as const, path: sourcePath }
   const existingId = findBySourcePath(sourcePath)
   if (!existingId) {
+    // Same-task content dedupe: the same bytes under a fresh path (an agent
+    // copying its finished render to workspace/tmp and re-saving) is the SAME
+    // deliverable, not a new asset. Scoped to one task — reusing an image on
+    // a different task is legitimately a new asset.
+    if (input.taskId) {
+      const match = findSameTaskContentMatch(sourcePath, input.taskId, input.type)
+      if (match) return { ...match, changed: false }
+    }
     const created = await createAsset({ ...input, source })
     return { assetId: created.assetId, version: created.version, changed: true }
   }
