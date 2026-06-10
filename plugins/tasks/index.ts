@@ -26,7 +26,7 @@ import {
   triggerDispatch,
 } from '../../src/core/task-service'
 import { createLogger } from '../../src/core/logger'
-import { hasCompletion } from '../../src/core/execution-ledger'
+import { getLiveRun, hasCompletion } from '../../src/core/execution-ledger'
 import { readTaskRuns } from './lib/runs-reader'
 import { getContentDir } from '../../packages/core/src/content-dir'
 import {
@@ -730,7 +730,15 @@ const tasksPlugin: BakinPlugin = definePlugin({
           // still work if an installed plugin's extension is unavailable.
         }
 
-        return { ok: true, ...enriched }
+        // Surface the in-flight run so a session that received the task
+        // through a side channel can see another worker already owns it
+        // (live-test incident: a duplicate worker had no way to know).
+        const live = getLiveRun(params.taskId as string)
+        const liveRun = live
+          ? { runId: live.runId, agent: live.agent, startedAt: new Date(live.startedAt).toISOString() }
+          : null
+
+        return { ok: true, ...enriched, liveRun }
       },
     })
 
@@ -778,6 +786,12 @@ const tasksPlugin: BakinPlugin = definePlugin({
           indexTask(ctx, result.id).catch(() => {})
 
           const notices: string[] = []
+          if (assignee) {
+            // Creation IS the briefing: dispatch sends the assignee the full
+            // task. A separate team message about it lands in their main
+            // session and starts a duplicate worker (live-test incident).
+            notices.push(`Task assigned — dispatch will notify ${assignee} with the full task; do NOT send them a separate message about it.`)
+          }
           if (!parentId && !result.workflowId && !skipWorkflowReason) {
             notices.push('No workflow attached. Consider providing workflowId next time — use bakin_exec_workflows_list to see options.')
           }
