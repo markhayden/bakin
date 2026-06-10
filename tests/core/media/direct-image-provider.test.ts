@@ -1,4 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+// The module under test never touches the content dir (it writes to OS tmpdir),
+// but mock the resolvers anyway so a future import can't leak into ~/.bakin/.
+const testDir = join(tmpdir(), `bakin-test-direct-image-${Date.now()}`)
+const contentDirMock = () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ db: join(testDir, 'bakin.db') }),
+})
+mock.module('../../../src/core/content-dir', contentDirMock)
+mock.module('../../../packages/core/src/content-dir', contentDirMock)
+
 import {
   generateDirectImage,
   isDirectImageProvider,
@@ -84,6 +97,7 @@ describe('direct-image-provider', () => {
         ['resolution', { resolution: '4K' }],
         ['background', { background: 'transparent' as const }],
         ['outputFormat webp', { outputFormat: 'webp' as const }],
+        ['size', { size: '1024x1536' }],
       ])('throws on %s without making a provider call', async (_label, extra) => {
         const fetchSpy = spyOn(globalThis, 'fetch')
         await expect(generateDirectImage({ ...base, ...extra })).rejects.toThrow()

@@ -196,6 +196,36 @@ echo "{}"
     expect(readFileSync(callsFile, 'utf-8')).not.toContain('generate')
   })
 
+  it.each([
+    ['count > 1', { count: 2 }],
+    ['aspectRatio', { aspectRatio: '16:9' }],
+    ['resolution', { resolution: '4K' }],
+    ['background', { background: 'transparent' as const }],
+    ['outputFormat webp', { outputFormat: 'webp' as const }],
+    ['size', { size: '1024x1536' }],
+  ])('shim fallback rejects %s before billing instead of silently dropping it (#379)', async (_label, extra) => {
+    process.env.OPENAI_API_KEY = 'shim-key'
+    // Mocked so a broken guard fails on the call count, never on real network.
+    const fetchSpy = spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: [{ b64_json: Buffer.from('img').toString('base64') }] }),
+    } as unknown as Response)
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: openclaw } })
+
+    // gpt-image-1.5 is not in the mock binary's advertised set → shim route.
+    await expect(runtime.images!.generate({
+      prompt: 'Premium hero',
+      provider: 'openai',
+      model: 'gpt-image-1.5',
+      width: 1024,
+      height: 1024,
+      ...extra,
+    })).rejects.toThrow(/shim cannot honor/)
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
   it('labels the credential source as bakin-store when the key comes from the store', async () => {
     delete process.env.OPENAI_API_KEY
     setStoredProviderKey('openai', 'stored-key')

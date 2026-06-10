@@ -938,6 +938,15 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       height: input.height ?? 1024,
       quality: imageQualityFromMetadata(input.metadata),
       apiKey: resolved.apiKey,
+      // Forward the full generation option surface so the shim's guardrail
+      // (assertShimCanHonor) sees what it can't honor and rejects BEFORE the
+      // billed call — omitting these re-opens the silent drop #379 closed.
+      ...(input.count !== undefined ? { count: input.count } : {}),
+      ...(input.aspectRatio !== undefined ? { aspectRatio: input.aspectRatio } : {}),
+      ...(input.resolution !== undefined ? { resolution: input.resolution } : {}),
+      ...(input.background !== undefined ? { background: input.background } : {}),
+      ...(input.outputFormat !== undefined ? { outputFormat: input.outputFormat } : {}),
+      ...(input.size !== undefined ? { size: input.size } : {}),
     })
     return {
       images: [{

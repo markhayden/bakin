@@ -33,6 +33,7 @@ export interface DirectImageRequest {
   resolution?: string
   background?: string
   outputFormat?: string
+  size?: string
 }
 
 /** Formats the shim can actually produce (providers default to PNG; the shim
@@ -60,6 +61,9 @@ function assertShimCanHonor(request: DirectImageRequest): void {
   }
   if (request.outputFormat && !SHIM_SUPPORTED_OUTPUT_FORMATS.has(request.outputFormat)) {
     throw new Error(`direct-image shim cannot honor outputFormat "${request.outputFormat}" (supported: png)`)
+  }
+  if (request.size) {
+    throw new Error(`direct-image shim cannot honor size (requested ${request.size}); pass width/height instead`)
   }
 }
 
