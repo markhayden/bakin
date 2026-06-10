@@ -20,6 +20,34 @@ describe('mapAuditMessage', () => {
     expect(mapAuditMessage('system.init', {})).toBe('Bakin started')
   })
 
+  // Internal ledger events fire exactly when the user is most confused —
+  // they must explain themselves instead of rendering raw event names.
+  it('explains task.completion_suppressed using the first-completion data', () => {
+    expect(mapAuditMessage('task.completion_suppressed', {
+      id: 'd1b213a5', title: 'Create reference-style gray cat image',
+      firstAgent: 'pixel', firstChannel: 'mcp', firstCompletedAt: 1781063978406,
+    })).toBe('Ignored a duplicate completion of "Create reference-style gray cat image" — pixel had already completed this task via mcp.')
+  })
+
+  it('explains task.completion_suppressed without optional fields', () => {
+    expect(mapAuditMessage('task.completion_suppressed', {
+      id: 'd1b213a5', firstAgent: 'pixel', firstChannel: null,
+    })).toBe('Ignored a duplicate completion — pixel had already completed this task.')
+  })
+
+  it('explains team.message_blocked — the duplicate-worker save must not render raw', () => {
+    expect(mapAuditMessage('team.message_blocked', {
+      agentId: 'pixel', taskId: 'd1b213a5', runId: 'task:d1b213a5:d1',
+    })).toBe('Blocked a message to pixel — they are already running task d1b213a5.')
+  })
+
+  it('explains task.dispatch_failure_ignored as a non-event', () => {
+    expect(mapAuditMessage('task.dispatch_failure_ignored', {
+      id: 'd1b213a5', title: 'Create reference-style gray cat image', column: 'done',
+      error: 'OpenClaw session error before reporting completion (completion: 0KB)',
+    })).toBe('A session error arrived after "Create reference-style gray cat image" had already moved to done — no action needed.')
+  })
+
   it('maps model provider dispatch failures to a compact readable message', () => {
     expect(mapAuditMessage('task.dispatch_failed', {
       category: 'model_provider_unavailable',

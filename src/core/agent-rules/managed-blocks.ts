@@ -59,8 +59,11 @@ These rules govern AGENT_NAME_PLACEHOLDER as orchestrator of the Bakin multi-age
 - Do not log casual chat, quick answers, acknowledgements, or reactions as tasks.
 - AGENT_NAME_PLACEHOLDER delegates. Do not do subagent work inline, produce another agent's deliverable, fabricate progress, or mark another agent's task done.
 - Create one clear task per agent per deliverable. Let the assigned agent decompose follow-up work.
+- Creating a task IS the briefing. Dispatch sends the assignee the full task automatically — never also send them a team message about it. That message lands in their main session and starts a duplicate worker doing the same job twice (Bakin refuses such messages when it can detect them).
+- Channel attachments become task assets. When a request arrives with an attached image, create the task, then import the attachment against it (\`bakin_exec_images_import taskId=<id> filePath=<path>\`) and reference the returned assetId in the task description — the reference is then visible on the task and directly usable via \`referenceImages\`. The attachment's \`media://\` URI also works directly as a \`referenceImages\` entry.
 - Multi-deliverable requests must be structured, never freeform. Write the deliverables as a markdown checklist ("- [ ] …") in the task description (the agent produces and saves each one in succession), or split them into separate tasks / a workflow. A single task asking for N documents in prose is the shape that kills runtime sessions with oversized output.
 - Deliverables live in assets, not chat. Expect agents to save outputs with \`bakin_exec_assets_save\` and report short summaries + asset ids; never ask an agent to paste a full document into a message.
+- Deliver a finished asset to a channel EXACTLY ONCE, via \`bakin_exec_post_channel\` with \`imageAssetId\`/\`videoAssetId\` + \`taskId\` (never paste media natively into a channel reply — native posts bypass the audit trail and the once-per-channel guard). Post it only as the reply/handoff for the originating request. Progress updates never attach the deliverable, and noticing a finished asset while monitoring a task is NOT a trigger to post it.
 - Use workflows when they apply. Before task creation, call \`bakin_exec_workflows_list\` when the request could map to a workflow. Pass \`workflowId\`, or include \`skipWorkflowReason\` for a one-off request.
 - Workflow tasks are hands-off. Submit step output with workflow tools; do not manually move workflow tasks or approve/reject gates outside the Bakin UI.
 - External actions and publishing require Mark's approval unless the request explicitly grants it.
@@ -406,6 +409,7 @@ mcporter call bakin-${agentId}.bakin_exec_get_paths
 > Auto-managed by \`bakin doctor\`. Do not edit this block manually.
 
 - **NEVER use runtime-native agent commands to spawn or message other agents directly.** Always create a Bakin task via \`mcporter call bakin-${agentId}.bakin_exec_tasks_create title="<task>" assignee="<agent>"\` instead. Direct spawning bypasses the pipeline.
+- **NEVER message an agent about a task they were just assigned.** Dispatch already delivered the full task to them; a separate \`bakin_exec_team_message\` about it lands in their main session and starts a DUPLICATE worker doing the same job twice. Add a task comment (\`bakin_exec_log\`) instead.
 - **NEVER modify task state directly.** Use Bakin tools via mcporter only.
 - **NEVER post to runtime channels without explicit instruction.** Content goes through Mark's review first.
 - **NEVER hardcode file paths.** Always discover paths via \`mcporter call bakin-${agentId}.bakin_exec_get_paths\`. Hardcoded paths break when the content directory moves.
@@ -440,7 +444,7 @@ Then exit — you will be automatically re-dispatched when their task completes.
 
 > Auto-managed by \`bakin doctor\`. Do not edit this block manually.\n`
 
-      content += `\n**IMAGES:** Default to the core images plugin tools for image work — **prefer \`bakin_exec_images_generate\`** over the runtime's built-in image generation. It calls the same providers but adds surface sizing, provider routing, generation provenance, and saving the result as a managed asset in one step (use \`bakin_exec_images_recommend\` to pick a route, and \`bakin_exec_images_import\`/\`bakin_exec_images_export\` for existing files). When invoking image generation or editing through mcporter, pass \`--timeout 600000\`. Reach for the runtime's native image generation only as a quick fallback for throwaway images that don't need to be a tracked, routed asset. Prefer Pixel for dedicated image creation when she is installed; workflows route to Pixel automatically and fall back to the assigned agent. Always return the managed asset \`assetId\`, not a filesystem path or filename.\n`
+      content += `\n**IMAGES:** Default to the core images plugin tools for image work — **prefer \`bakin_exec_images_generate\`** over the runtime's built-in image generation. It calls the same providers but adds surface sizing, provider routing, generation provenance, and saving the result as a managed asset in one step (use \`bakin_exec_images_recommend\` to pick a route, and \`bakin_exec_images_import\`/\`bakin_exec_images_export\` for existing files). **When the brief says "like this image" or provides a reference, pass the image itself via \`referenceImages\`** — managed assetIds, local paths, or the runtime's \`media://\` attachment URIs, up to 4, native runtime models only — instead of transcribing what you see into the prompt. Raw paths and media URIs are auto-imported as tracked assets, and the generation records its reference lineage. **Iterating on your own output appends a VERSION, never a new asset:** revise with \`bakin_exec_images_edit\`, or re-roll fresh with \`bakin_exec_images_generate versionOf=<assetId>\` — one assetId per deliverable, n versions. When invoking image generation or editing through mcporter, pass \`--timeout 600000\`. Reach for the runtime's native image generation only as a quick fallback for throwaway images that don't need to be a tracked, routed asset. Prefer Pixel for dedicated image creation when she is installed; workflows route to Pixel automatically and fall back to the assigned agent. Always return the managed asset \`assetId\`, not a filesystem path or filename.\n`
 
       if (!canVideo) {
         content += `\n**VIDEO:** You cannot generate video. Ever. Not with Runway, not with any other tool. All video generation goes through Rolo. Create a Rolo task via \`mcporter call bakin-${agentId}.bakin_exec_tasks_create\` and wait.\n`
@@ -531,7 +535,8 @@ All created content (images, video, audio, text, plans, data) MUST go to the ass
    - \`agent\` (required, string — NOT \`author\`), \`taskId\` (required, string or null), \`created\` (required, ISO 8601 — NOT \`createdAt\`)
    - Optional: \`tool\`, \`description\`, \`tags\` (string[]), \`originalFilename\`
    - Do NOT add custom fields (e.g. \`prompt\`, \`resolution\`)
-5. **Version with timestamps:** \`20260323-hero-image.png\` for revisions.`,
+5. **Version with timestamps:** \`20260323-hero-image.png\` for revisions.
+6. **\`bakin_exec_images_*\` results are ALREADY managed assets.** Never copy a generated/edited image to a workspace file and re-save it via \`bakin_exec_assets_save\` — you already hold its \`assetId\`; report that. Pass references by \`assetId\` once imported, never by file path.`,
   },
 
   {
@@ -560,7 +565,7 @@ Log via \`mcporter call bakin-${agentId}.bakin_exec_tasks_log_progress taskId=<t
 ### Output Discipline — oversized chat output kills your session
 
 The runtime cannot deliver large completions. Hard rules:
-- Any deliverable or output larger than ~8KB MUST be written to a workspace file and saved as an asset BEFORE you continue (\`bakin_exec_assets_save\`)
+- Any deliverable or output larger than ~8KB MUST be written to a workspace file and saved as an asset BEFORE you continue (\`bakin_exec_assets_save\`) — UNLESS it is already a managed asset (anything \`bakin_exec_images_*\` returned an assetId for): report that assetId, never re-save it
 - Multiple deliverables = a checklist. Produce them ONE AT A TIME: write the file → save it as an asset → log progress → start the next. NEVER draft several deliverables in a single response.
 - Keep every chat/completion message short: status, decisions, and asset ids — never deliverable content.
 - Numerous independent deliverables → split into subtasks (see the Dependency Pattern section) instead of doing them all in one turn. In a workflow step, save large output as an asset and reference the asset id in your submitted step output.
@@ -578,11 +583,17 @@ mcporter call bakin-${agentId}.bakin_exec_assets_open assetId=<assetId>
 mcporter call bakin-${agentId}.bakin_exec_images_recommend surface=<surface> objective="<goal>"
 mcporter call bakin-${agentId}.bakin_exec_images_generate taskId=<taskId> prompt="<text>" surface=<surface> provider=auto
 
+# Same, conditioned on reference images (assetIds, local paths, or media:// URIs — max 4)
+mcporter call bakin-${agentId}.bakin_exec_images_generate --args '{"taskId":"<taskId>","prompt":"<text>","surface":"<surface>","referenceImages":["<assetId|path|media://inbound/file.png>"]}'
+
+# Iteration/re-roll of your own prior output — appends a new VERSION of that asset
+mcporter call bakin-${agentId}.bakin_exec_images_generate --args '{"taskId":"<taskId>","prompt":"<corrected prompt>","surface":"<surface>","versionOf":"<assetId>"}'
+
 # Check workflow gate statuses
 mcporter call bakin-${agentId}.bakin_exec_check_gates taskId=<taskId>
 
 # Post to a runtime channel (with optional attachment) — only when instructed
-mcporter call bakin-${agentId}.bakin_exec_post_channel channel="<name>" content="<message>" taskId=<taskId>
+mcporter call bakin-${agentId}.bakin_exec_post_channel channel="<name>" content="<message>" imageAssetId=<assetId> taskId=<taskId>
 
 # Task lifecycle
 mcporter call bakin-${agentId}.bakin_exec_tasks_get taskId=<taskId>

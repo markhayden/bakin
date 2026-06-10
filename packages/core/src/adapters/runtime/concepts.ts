@@ -364,6 +364,13 @@ export interface RuntimeImageGenerateInput {
   resolution?: string
   outputFormat?: RuntimeImageOutputFormat
   background?: RuntimeImageBackground
+  /**
+   * Reference/context image file paths conditioning the generation. The caller
+   * (Bakin) resolves managed asset ids to concrete paths before the adapter
+   * sees them. Native generation has no file input, so a generate carrying
+   * references is routed through the edit-style invocation (#418).
+   */
+  referenceImages?: string[]
   timeoutMs?: number
   metadata?: RuntimeMetadata
 }
@@ -522,6 +529,17 @@ export interface AgentRuntimeAdapter {
   }
 
   images?: RuntimeImagesAccess
+
+  /**
+   * Access to the runtime's private media store (e.g. channel attachments).
+   * `resolveUri` maps a runtime-private URI (OpenClaw's `media://…`) to an
+   * absolute local file path; null for unknown schemes or missing files —
+   * never throws for not-found. Optional: runtimes without a media store
+   * omit it, and callers must treat absence as "cannot resolve".
+   */
+  media?: {
+    resolveUri(uri: string): Promise<string | null>
+  }
 
   cron: {
     list(): Promise<CronJob[]>

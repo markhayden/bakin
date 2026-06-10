@@ -868,9 +868,12 @@ export interface AssetGenerationInfo {
   provider: string
   model: string
   surface: string
-  quality: string
+  /** Honored only on the shim path; native generations omit it (#379). */
+  quality?: string
   routeSource: string
   routeReason?: string
+  /** Reference/context images that conditioned this generation (#418). */
+  references?: Array<{ assetId: string; version: number }>
 }
 
 /** Create a new versioned asset (v1) from a source file. */

@@ -56,6 +56,8 @@ mock.module('../../../src/lib/content-files', () => ({
 const completionsFake = new Map<string, { taskId: string; runId: string | null; agent: string; channel: string | null; completedAt: number }>()
 // Seedable per-task runs for the run-history route (the route maps these via runs-reader).
 let mockTaskRuns: Record<string, Array<Record<string, unknown>>> = {}
+// Seedable live runs for the tasks_get liveRun block.
+let mockLiveRuns: Record<string, { runId: string; agent: string; startedAt: number }> = {}
 const ledgerMock = () => ({
   recordCompletion: (taskId: string, input: { runId?: string; agent: string; channel?: string }) => {
     const existing = completionsFake.get(taskId)
@@ -66,7 +68,10 @@ const ledgerMock = () => ({
   hasCompletion: (taskId: string) => completionsFake.has(taskId),
   getCompletion: (taskId: string) => completionsFake.get(taskId) ?? null,
   deleteCompletion: (taskId: string) => completionsFake.delete(taskId),
-  getLiveRun: () => null,
+  getLiveRun: (taskId: string) => {
+    const run = mockLiveRuns[taskId]
+    return run ? { ...run, taskId, status: 'running' } : null
+  },
   bumpHeartbeatByTask: () => {},
   listRunsByTask: (taskId: string, limit = 50) => (mockTaskRuns[taskId] ?? []).slice(0, limit),
 })
@@ -157,6 +162,7 @@ afterAll(() => {
 beforeEach(() => {
   mock.clearAllMocks()
   mockTaskRuns = {}
+  mockLiveRuns = {}
   // bun:test's clearAllMocks only clears call history; reset implementations
   // so a previous test's mockRejectedValue doesn't leak into the next.
   for (const m of [
@@ -1143,9 +1149,57 @@ describe('bakin_exec_tasks_get', () => {
   })
 })
 
+describe('bakin_exec_tasks_get liveRun visibility', () => {
+  it('includes the live run while one is in flight, so duplicate sessions can self-detect', async () => {
+    mockGetTaskDetails.mockResolvedValue({ task: { id: 'd1b213a5', title: 'Cat image' }, column: 'inProgress' })
+    mockLiveRuns['d1b213a5'] = { runId: 'task:d1b213a5:d1', agent: 'pixel', startedAt: 1781063794175 }
+
+    const tool = findTool(activated.execTools, 'bakin_exec_tasks_get')!
+    const result = await callTool(tool, { taskId: 'd1b213a5' })
+
+    expect(result.ok).toBe(true)
+    expect(result.liveRun).toEqual({
+      runId: 'task:d1b213a5:d1',
+      agent: 'pixel',
+      startedAt: new Date(1781063794175).toISOString(),
+    })
+  })
+
+  it('returns liveRun null when no run is in flight', async () => {
+    mockGetTaskDetails.mockResolvedValue({ task: { id: 'abc', title: 'Done thing' }, column: 'done' })
+
+    const tool = findTool(activated.execTools, 'bakin_exec_tasks_get')!
+    const result = await callTool(tool, { taskId: 'abc' })
+
+    expect(result.ok).toBe(true)
+    expect(result.liveRun).toBeNull()
+  })
+})
+
 // ─── bakin_exec_tasks_create ───────────────────────────────────────────────
 
 describe('bakin_exec_tasks_create', () => {
+  it('tells the creator that dispatch notifies the assignee — no separate message needed', async () => {
+    mockCreateTaskWithEffects.mockResolvedValue({ id: 'new-t', workflowId: 'wf-1' })
+
+    const tool = findTool(activated.execTools, 'bakin_exec_tasks_create')!
+    const result = await callTool(tool, { title: 'New Task', assignee: 'pixel', workflowId: 'wf-1' }, 'main')
+
+    expect(result.ok).toBe(true)
+    expect(result.notice).toContain('dispatch will notify pixel')
+    expect(result.notice).toContain('do NOT send them a separate message')
+  })
+
+  it('omits the dispatch copy when nothing was dispatched', async () => {
+    mockCreateTaskWithEffects.mockResolvedValue({ id: 'new-t3', workflowId: 'wf-1' })
+
+    const tool = findTool(activated.execTools, 'bakin_exec_tasks_create')!
+    const result = await callTool(tool, { title: 'Unassigned Task', workflowId: 'wf-1' }, 'main')
+
+    expect(result.ok).toBe(true)
+    expect(result.notice ?? '').not.toContain('separate message')
+  })
+
   it('creates a task with workflow', async () => {
     mockCreateTaskWithEffects.mockResolvedValue({ id: 'new-t', workflowId: 'wf-1' })
 

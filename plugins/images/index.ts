@@ -48,7 +48,10 @@ const generateShape = {
   model: z.string().optional().describe('Provider model id, such as gpt-image-2 or gemini-3.1-flash-image-preview.'),
   width: z.number().int().positive().optional().describe('Optional custom width. Defaults from surface profile.'),
   height: z.number().int().positive().optional().describe('Optional custom height. Defaults from surface profile.'),
-  quality: imageQualityEnum.optional().describe('Generation quality tier.'),
+  quality: imageQualityEnum.optional().describe('Generation quality tier (honored only on the direct-provider path).'),
+  referenceImages: z.array(z.string()).optional().describe('Reference/context images to condition the generation: managed assetIds, local file paths, and/or media:// attachment URIs (mix freely; max 4). Loose paths and media URIs are auto-imported as assets. Requires a model with the reference-images capability on the native runtime.'),
+  versionOf: z.string().optional().describe('Iteration/re-roll: append the render as a new VERSION of this existing asset instead of minting a new asset. Use this whenever you regenerate or correct your own prior output for the same deliverable.'),
+  allowNewAsset: z.boolean().optional().describe('Set true ONLY when a generate that references your own same-task output is a deliberately separate companion image (e.g. same style, different scene) — not an iteration.'),
 }
 
 const editShape = {
@@ -60,7 +63,8 @@ const editShape = {
   model: z.string().optional().describe('Provider model id.'),
   width: z.number().int().positive().optional().describe('Optional custom width.'),
   height: z.number().int().positive().optional().describe('Optional custom height.'),
-  quality: imageQualityEnum.optional().describe('Edit quality tier.'),
+  quality: imageQualityEnum.optional().describe('Edit quality tier (honored only on the direct-provider path).'),
+  referenceImages: z.array(z.string()).optional().describe('Additional reference/context images alongside the edited asset: managed assetIds and/or local file paths (max 4). Loose paths are auto-imported. Requires a model with the reference-images capability.'),
 }
 
 const importShape = {
@@ -203,14 +207,14 @@ const imagesPlugin = definePlugin({
     })
     ctx.registerExecTool({
       name: 'bakin_exec_images_generate',
-      description: 'Generate an image through a configured runtime image provider, save it as a new managed asset (v1), and return its assetId.',
+      description: 'Generate an image through a configured runtime image provider, save it as a NEW managed asset (v1), and return its assetId. Pass referenceImages to create a new image conditioned on existing assets/files (e.g. "in the style of these"); to revise an existing asset in place use bakin_exec_images_edit instead.',
       label: 'Generated an image',
       parameters: generateShape,
       handler: async (params, agent) => generateImage(ctx, params as never, agent),
     })
     ctx.registerExecTool({
       name: 'bakin_exec_images_edit',
-      description: 'Edit a managed image asset (by assetId) through the runtime image provider — edits the current version, appends a new version, and returns the assetId.',
+      description: 'Edit a managed image asset (by assetId) through the runtime image provider — edits the current version, appends a NEW VERSION to that same asset, and returns the assetId. Pass referenceImages to supply extra context images alongside the edited asset.',
       label: 'Edited an image',
       parameters: editShape,
       handler: async (params, agent) => editImage(ctx, params as never, agent),

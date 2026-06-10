@@ -32,6 +32,18 @@ export interface ImageCallKey {
   width: number
   height: number
   quality: string
+  /** Order-stable fingerprint of reference images (assetId@version, sorted);
+   *  '' when none. Same prompt + different references must not dedupe (#418).
+   *
+   *  Accepted drift edge: the fingerprint binds each reference to its version
+   *  AT CALL TIME. If a referenced asset gains a version (or a loose file's
+   *  bytes change) between a client timeout and its retry, the retry's
+   *  signature differs → ledger miss → a second billed call. Accepted because
+   *  the inputs genuinely changed — the retry is a different generation, not
+   *  a replay — and the window requires a concurrent edit on a single-user
+   *  box. Do NOT "fix" by dropping versions from the fingerprint: that would
+   *  wrongly dedupe a deliberate regenerate-against-the-new-version. */
+  references: string
 }
 
 export function imageCallSignature(key: ImageCallKey): string {
@@ -46,6 +58,7 @@ export function imageCallSignature(key: ImageCallKey): string {
     key.width,
     key.height,
     key.quality,
+    key.references,
   ])
   return createHash('sha256').update(canonical).digest('hex')
 }

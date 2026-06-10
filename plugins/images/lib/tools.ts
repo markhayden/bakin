@@ -3,9 +3,10 @@ import { existsSync } from 'node:fs'
 import { basename } from 'node:path'
 import type { ExecToolResult, PluginContext } from '@bakin/core/plugin-types'
 import type { RuntimeImageGenerationResult } from '@bakin/core/adapters/runtime'
-import { getAsset, listAssets } from '../../assets/lib/asset-service'
+import { getAsset, listAssets, upsertFromSource, resolveStoreFile } from '../../assets/lib/asset-service'
+import { isValidAssetId } from '../../assets/lib/asset-id'
 import type { AssetManifest, AssetVersion } from '../../assets/lib/manifest'
-import type { ImageProviderId } from '../types'
+import type { ImageProviderId, ImageProviderReadiness } from '../types'
 import { effectiveImageSettings, getImageProvider, providerReadiness } from './providers'
 import { resolveImageRoute } from './routing'
 import { getImageProfile } from './platform-profiles'
@@ -13,6 +14,9 @@ import { runBilledImageCall, type ImageCallKey } from './idempotency'
 
 /** Largest edge we send to a provider / feed into sharp, to bound cost. */
 const MAX_IMAGE_EDGE = 2048
+/** Upper bound on reference/context images per call (#418). Providers cap input
+ *  images; keep it conservative and bump here if a workflow needs more. */
+const MAX_REFERENCE_IMAGES = 4
 type Sharp = typeof import('sharp')
 let sharpModule: Promise<Sharp | null> | null = null
 
@@ -26,6 +30,12 @@ export interface ImagesGenerateParams {
   width?: number
   height?: number
   quality?: 'draft' | 'standard' | 'premium'
+  /** Managed assetIds and/or file paths used as reference/context images (#418). */
+  referenceImages?: string[]
+  /** Append the render as a new VERSION of this asset (iteration/re-roll) instead of minting a new asset. */
+  versionOf?: string
+  /** Explicit intent: this generate references own same-task output but is a deliberately separate companion asset. */
+  allowNewAsset?: boolean
 }
 
 export interface ImagesImportParams {
@@ -145,15 +155,110 @@ export async function importImage(ctx: PluginContext, params: ImagesImportParams
   }
 }
 
+/** Reference/context images resolved to concrete paths + their managed lineage. */
+interface ResolvedReferences {
+  /** Concrete file paths handed to the runtime capability. */
+  paths: string[]
+  /** Managed identity recorded in generation provenance + the dedupe key. */
+  lineage: Array<{ assetId: string; version: number }>
+  /** Order-stable fingerprint of the reference set (assetId@version, sorted). */
+  fingerprint: string
+}
+
+const EMPTY_REFERENCES: ResolvedReferences = { paths: [], lineage: [], fingerprint: '' }
+
 interface PreparedImageRequest {
   prompt: string
   dims: { surface: string; width: number; height: number }
   route: { provider: ImageProviderId; model: string }
   quality: 'draft' | 'standard' | 'premium'
+  references: ResolvedReferences
 }
 
-/** Shared prologue for generate + edit: compile prompt, resolve surface + route, validate routability. */
-async function prepareImageRequest(ctx: PluginContext, params: ImagesGenerateParams): Promise<PreparedImageRequest | { error: string }> {
+/**
+ * Resolve reference images for a generate/edit (#418). AssetIds resolve to their
+ * current version; raw paths are auto-imported (source-path dedup) so every
+ * reference becomes a tracked, navigable asset. Gates BEFORE billing on the
+ * count cap, the model's `reference-images` capability, and the serving path
+ * (references require the native runtime — the direct shim can't take inputs).
+ */
+async function resolveReferences(
+  ctx: PluginContext,
+  params: ImagesGenerateParams,
+  agent: string,
+  route: { provider: ImageProviderId; model: string },
+  readyProvider: ImageProviderReadiness | undefined,
+): Promise<ResolvedReferences | { error: string }> {
+  const entries = params.referenceImages ?? []
+  if (entries.length === 0) return EMPTY_REFERENCES
+  if (entries.length > MAX_REFERENCE_IMAGES) {
+    return { error: `Too many reference images: ${entries.length} (max ${MAX_REFERENCE_IMAGES})` }
+  }
+
+  // Prefer the curated static descriptor for capabilities — runtime-discovered
+  // capabilities are best-effort and would otherwise clobber the static
+  // reference-images flag in the merge (see #381 capability-drift).
+  const modelDesc = getImageProvider(route.provider)?.models.find(model => model.id === route.model)
+    ?? readyProvider?.models.find(model => model.id === route.model)
+  if (!modelDesc?.capabilities.includes('reference-images')) {
+    return { error: `Model does not support reference images: ${route.provider}/${route.model}` }
+  }
+  if (readyProvider?.servedBy !== 'runtime') {
+    const via = readyProvider?.servedBy === 'shim' ? 'served via the direct shim' : 'not natively configured'
+    return { error: `Reference images require the native runtime; ${route.provider} is ${via}` }
+  }
+
+  const paths: string[] = []
+  const lineage: Array<{ assetId: string; version: number }> = []
+  for (const rawEntry of entries) {
+    // Runtime-private media URIs (e.g. a Discord attachment OpenClaw stored as
+    // media://inbound/…) resolve to a local path adapter-side, then flow
+    // through the same auto-import as any raw path — tracked, task-linked.
+    let entry = rawEntry
+    if (/^media:\/\//.test(rawEntry)) {
+      if (!ctx.runtime.media?.resolveUri) {
+        return { error: `The active runtime cannot resolve media:// URIs (reference ${rawEntry}); pass an assetId or local path instead` }
+      }
+      const resolved = await ctx.runtime.media.resolveUri(rawEntry)
+      if (!resolved) return { error: `Reference media URI not found: ${rawEntry}` }
+      entry = resolved
+    }
+    // A path INSIDE the asset store is already managed — reflect it to its
+    // identity (and to the real version file when given a thumb) instead of
+    // letting auto-import clone it.
+    const managed = resolveStoreFile(entry)
+    if (managed) {
+      paths.push(managed.absPath)
+      lineage.push({ assetId: managed.assetId, version: managed.version })
+      continue
+    }
+    if (isValidAssetId(entry)) {
+      const ref = await ctx.assets.resolveVersionFile(entry)
+      if (!ref) return { error: `Reference asset not found: ${entry}` }
+      paths.push(ref.absPath)
+      lineage.push({ assetId: entry, version: ref.version })
+    } else {
+      if (!existsSync(entry)) return { error: `Reference file not found: ${entry}` }
+      // Auto-import the loose file so the reference is tracked provenance, not a
+      // path+hash that can't be browsed later. Source-path dedup avoids dupes.
+      const up = await upsertFromSource(entry, {
+        sourceFilePath: entry, type: 'images', agent, taskId: params.taskId,
+        op: 'import', tool: 'bakin_exec_images_import',
+        description: basename(entry), source: { kind: 'import', path: entry },
+        // Tagged so the assets view can filter reference material out of
+        // deliverables (and the self-iteration guard can tell them apart).
+        tags: ['reference'],
+      })
+      paths.push(entry)
+      lineage.push({ assetId: up.assetId, version: up.version })
+    }
+  }
+  const fingerprint = lineage.map(ref => `${ref.assetId}@${ref.version}`).sort().join(',')
+  return { paths, lineage, fingerprint }
+}
+
+/** Shared prologue for generate + edit: compile prompt, resolve surface + route, validate routability + references. */
+async function prepareImageRequest(ctx: PluginContext, params: ImagesGenerateParams, agent: string): Promise<PreparedImageRequest | { error: string }> {
   const prompt = compilePrompt(params)
   if (!prompt) return { error: 'prompt or promptPacket is required' }
   const settings = effectiveImageSettings(ctx)
@@ -171,7 +276,10 @@ async function prepareImageRequest(ctx: PluginContext, params: ImagesGeneratePar
     || readyProvider?.models.some(model => model.id === route.model && model.status === 'routable')
   if (!knownModel) return { error: `Image model is not routable: ${route.provider}/${route.model}` }
 
-  return { prompt, dims, route, quality: params.quality ?? settings.quality }
+  const references = await resolveReferences(ctx, params, agent, route, readyProvider)
+  if ('error' in references) return references
+
+  return { prompt, dims, route, quality: params.quality ?? settings.quality, references }
 }
 
 /**
@@ -184,7 +292,7 @@ async function persistImageResult(
   ctx: PluginContext,
   params: ImagesGenerateParams,
   agent: string,
-  opts: { req: PreparedImageRequest; result: RuntimeImageGenerationResult; tool: string } & ({ create: true } | { create: false; assetId: string }),
+  opts: { req: PreparedImageRequest; result: RuntimeImageGenerationResult; tool: string } & ({ create: true } | { create: false; assetId: string; op?: 'edit' | 'generate' }),
 ): Promise<ExecToolResult> {
   const { req, result, tool } = opts
   const image = result.images[0]
@@ -203,8 +311,12 @@ async function persistImageResult(
     provider: req.route.provider,
     model: req.route.model,
     surface: req.dims.surface,
-    quality: req.quality,
     routeSource,
+    // Quality is honored only on the shim path; the native runtime has no
+    // quality knob, so don't record a tier it never applied (#379).
+    ...(routeSource === 'shim' ? { quality: req.quality } : {}),
+    // Reference lineage — which managed assets conditioned this generation (#418).
+    ...(req.references.lineage.length ? { references: req.references.lineage } : {}),
   }
 
   const ref = opts.create
@@ -217,7 +329,7 @@ async function persistImageResult(
         source: { kind: 'generated', path: null }, generation,
       })
     : await ctx.assets.addVersion(opts.assetId, {
-        sourceFilePath: image.filePath, op: 'edit', tool,
+        sourceFilePath: image.filePath, op: opts.op ?? 'edit', tool,
         prompt: req.prompt, promptHash, description,
         generation,
       })
@@ -240,14 +352,27 @@ async function persistImageResult(
   }
 }
 
+function referencesFingerprint(version: AssetVersion | undefined): string {
+  const refs = version?.generation?.references ?? []
+  return refs.map(ref => `${ref.assetId}@${ref.version}`).sort().join(',')
+}
+
 function versionMatchesRequest(version: AssetVersion | undefined, req: PreparedImageRequest, promptHash: string, tool: string): boolean {
   if (!version) return false
+  // Quality only participates when it was actually recorded (shim path). A
+  // native version omits quality, so comparing it would wrongly miss the reuse
+  // for an otherwise-identical native re-request (#379).
+  const qualityMatches = version.generation?.quality === undefined
+    || version.generation.quality === req.quality
+  // Same prompt with different references is NOT a duplicate (#418).
+  const referencesMatch = referencesFingerprint(version) === req.references.fingerprint
   return version.tool === tool
     && version.promptHash === promptHash
     && version.generation?.provider === req.route.provider
     && version.generation?.model === req.route.model
     && version.generation?.surface === req.dims.surface
-    && version.generation?.quality === req.quality
+    && qualityMatches
+    && referencesMatch
 }
 
 function reusableGenerateResult(params: ImagesGenerateParams, req: PreparedImageRequest, promptHash: string): ExecToolResult | null {
@@ -260,6 +385,14 @@ function reusableGenerateResult(params: ImagesGenerateParams, req: PreparedImage
     return imageToolResultFromVersion(summary.assetId, current, req, { reused: true, idempotency: 'asset' })
   }
   return null
+}
+
+/** Reuse check for a versionOf re-roll: only the target asset's current version counts. */
+function reusableVersionOfResult(assetId: string, req: PreparedImageRequest, promptHash: string): ExecToolResult | null {
+  const manifest = getAsset(assetId)
+  const current = currentVersion(manifest)
+  if (!current || !versionMatchesRequest(current, req, promptHash, 'bakin_exec_images_generate')) return null
+  return imageToolResultFromVersion(assetId, current, req, { reused: true, idempotency: 'asset' })
 }
 
 function reusableEditResult(assetId: string, req: PreparedImageRequest, promptHash: string): ExecToolResult | null {
@@ -297,10 +430,42 @@ function imageToolResultFromVersion(
 }
 
 export async function generateImage(ctx: PluginContext, params: ImagesGenerateParams, agent: string): Promise<ExecToolResult> {
-  const req = await prepareImageRequest(ctx, params)
+  const req = await prepareImageRequest(ctx, params, agent)
   if ('error' in req) return fail(req.error)
+
+  // Iteration lands as a VERSION, not a sibling asset (live-test incident:
+  // a correction pass referencing the first pass minted a second asset).
+  if (params.versionOf && params.allowNewAsset) {
+    return fail('versionOf and allowNewAsset contradict — versionOf appends a version of an existing asset, allowNewAsset declares a separate companion asset. Pass exactly one.')
+  }
+  if (params.versionOf) {
+    const targetManifest = getAsset(params.versionOf)
+    if (!targetManifest) return fail(`versionOf asset not found: ${params.versionOf}`)
+    if (targetManifest.type !== 'images') {
+      return fail(`versionOf must target an images asset; ${params.versionOf} is type '${targetManifest.type}'`)
+    }
+  } else if (!params.allowNewAsset) {
+    // Guard the iteration trap: referencing your own generated output from
+    // THIS task without declaring intent. Imported reference material (op
+    // import/upload) on the same task is the normal flow and never trips this.
+    for (const ref of req.references.lineage) {
+      const manifest = getAsset(ref.assetId)
+      const current = currentVersion(manifest)
+      if (!manifest || !current) continue
+      if (manifest.taskId === params.taskId && (current.op === 'generate' || current.op === 'edit')) {
+        return fail(
+          `Reference ${ref.assetId} is your own output on this task. If this is an iteration/correction of that deliverable, pass versionOf="${ref.assetId}" so the render appends a new VERSION (one asset, stable id). If it is a deliberately separate companion image, pass allowNewAsset=true.`,
+        )
+      }
+    }
+  }
+
   const promptHash = hashPrompt(req.prompt)
-  const reused = reusableGenerateResult(params, req, promptHash)
+  // With versionOf, reuse is scoped to the TARGET asset only — a matching
+  // sibling must not hijack an explicit re-roll into a different asset.
+  const reused = params.versionOf
+    ? reusableVersionOfResult(params.versionOf, req, promptHash)
+    : reusableGenerateResult(params, req, promptHash)
   if (reused) return reused
 
   // The runtime capability owns transport: native when it can, the shared
@@ -309,19 +474,26 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
   const runGenerate = ctx.runtime.images.generate
 
   // Idempotent: a client (mcporter) timeout that retries this identical billed
-  // call must not bill twice.
+  // call must not bill twice. Reference identity participates so the same prompt
+  // with different references is not treated as a duplicate (#418); versionOf
+  // participates so a re-roll into an asset is distinct from a fresh generate.
   const key: ImageCallKey = {
-    taskId: params.taskId, op: 'generate', source: null,
+    taskId: params.taskId, op: 'generate', source: params.versionOf ?? null,
     promptHash, provider: req.route.provider, model: req.route.model,
     width: req.dims.width, height: req.dims.height, quality: req.quality,
+    references: req.references.fingerprint,
   }
   return runBilledImageCall(key, async () => {
     try {
       const result = await runGenerate({
         prompt: req.prompt, provider: req.route.provider, model: req.route.model,
         width: req.dims.width, height: req.dims.height, outputFormat: 'png', metadata: { quality: req.quality },
+        ...(req.references.paths.length ? { referenceImages: req.references.paths } : {}),
       })
-      return await persistImageResult(ctx, params, agent, { req, result, tool: 'bakin_exec_images_generate', create: true })
+      const persist = params.versionOf
+        ? { req, result, tool: 'bakin_exec_images_generate', create: false as const, assetId: params.versionOf, op: 'generate' as const }
+        : { req, result, tool: 'bakin_exec_images_generate', create: true as const }
+      return await persistImageResult(ctx, params, agent, persist)
     } catch (err) {
       return fail(`Image generation failed: ${errorMessage(err)}`)
     }
@@ -330,12 +502,21 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
 
 export async function editImage(ctx: PluginContext, params: ImagesEditParams, agent: string): Promise<ExecToolResult> {
   if (!params.assetId) return fail('edit requires a managed assetId')
+  if (params.versionOf) return fail('versionOf is a generate parameter — edit already appends a new version to assetId')
+  if (params.referenceImages?.includes(params.assetId)) {
+    return fail(`Reference ${params.assetId} equals the asset being edited — the edit already includes its current version; references add OTHER context images`)
+  }
   // Source is the current version of the managed asset.
   const source = await ctx.assets.resolveVersionFile(params.assetId)
   if (!source) return fail(`Asset not found: ${params.assetId}`)
 
-  const req = await prepareImageRequest(ctx, params)
+  const req = await prepareImageRequest(ctx, params, agent)
   if ('error' in req) return fail(req.error)
+  // Re-check after resolution: a raw path or media:// reference whose
+  // auto-import deduped to the base asset would send the base file twice.
+  if (req.references.lineage.some(ref => ref.assetId === params.assetId)) {
+    return fail(`Reference resolves to the asset being edited (${params.assetId}) — the edit already includes its current version; references add OTHER context images`)
+  }
   const promptHash = hashPrompt(req.prompt)
   const reused = reusableEditResult(params.assetId, req, promptHash)
   if (reused) return reused
@@ -348,13 +529,15 @@ export async function editImage(ctx: PluginContext, params: ImagesEditParams, ag
     taskId: params.taskId, op: 'edit', source: params.assetId,
     promptHash, provider: req.route.provider, model: req.route.model,
     width: req.dims.width, height: req.dims.height, quality: req.quality,
+    references: req.references.fingerprint,
   }
   return runBilledImageCall(key, async () => {
     try {
+      // The base (current version) stays first; extra references append after it.
       const result = await runEdit({
         prompt: req.prompt, provider: req.route.provider, model: req.route.model,
         width: req.dims.width, height: req.dims.height, outputFormat: 'png',
-        files: [source.absPath], metadata: { quality: req.quality },
+        files: [source.absPath, ...req.references.paths], metadata: { quality: req.quality },
       })
       return await persistImageResult(ctx, params, agent, { req, result, tool: 'bakin_exec_images_edit', create: false, assetId: params.assetId })
     } catch (err) {

@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate, Link } from '@tanstack/react-router'
 import { Badge, Button } from '@makinbakin/sdk/ui'
 import { ArrowLeft, Download, Pencil, Trash2, Upload, Loader2, X } from 'lucide-react'
-import { AssetMetaSummary } from './atoms'
+import { AssetMetaSummary, AssetThumb } from './atoms'
 import { AssetEditDrawer } from './AssetEditDrawer'
 import { AssetPreview } from './AssetPreview'
 import { VersionRow } from './VersionRow'
@@ -191,6 +191,28 @@ export function VersionedAssetDetail() {
         onOpenChange={setEditOpen}
         onSaved={fetchManifest}
       />
+
+      {/* References — assets that conditioned this generation (#418) */}
+      {previewVer.generation?.references && previewVer.generation.references.length > 0 && (
+        <div className="mb-4">
+          <h2 className="mb-1.5 text-xs font-semibold uppercase text-muted-foreground">References</h2>
+          <div className="flex flex-wrap gap-2" data-testid="references">
+            {previewVer.generation.references.map(ref => (
+              <Link
+                key={`${ref.assetId}@${ref.version}`}
+                to="/assets/$assetId"
+                params={{ assetId: ref.assetId }}
+                className="flex items-center gap-2 rounded-md border border-border px-2 py-1 text-xs hover:bg-white/5"
+              >
+                <span className="size-8 shrink-0 overflow-hidden rounded">
+                  <AssetThumb assetId={ref.assetId} type="images" version={ref.version} className="h-full w-full object-cover" />
+                </span>
+                <span className="text-muted-foreground">{ref.assetId} <span className="opacity-60">v{ref.version}</span></span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Exports */}
       {manifest.exports.length > 0 && (

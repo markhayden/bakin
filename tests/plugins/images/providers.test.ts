@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { rmSync } from 'fs'
+import { readFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { PluginContext } from '@bakin/core/plugin-types'
+import { IMAGE_PROVIDER_ENV_VARS } from '@bakin/core/media'
 import { resetContentDir } from '../../../src/core/content-dir'
 import { DEFAULT_IMAGE_SETTINGS, listImageProviders, providerReadiness, providerReadinessFromEnv } from '../../../plugins/images/lib/providers'
 
@@ -125,5 +126,23 @@ describe('image providers', () => {
       quality: 'standard',
     })
     expect(DEFAULT_IMAGE_SETTINGS.fallbackOrder.length).toBeGreaterThan(1)
+  })
+
+  describe('credential env-var source of truth (#380)', () => {
+    it('sources provider envVars from the shared core table', () => {
+      const byId = new Map(listImageProviders().map(provider => [provider.id, provider]))
+      expect(byId.get('openai')?.envVars).toEqual(IMAGE_PROVIDER_ENV_VARS.openai)
+      expect(byId.get('google')?.envVars).toEqual(IMAGE_PROVIDER_ENV_VARS.google)
+    })
+
+    it('declares no manifest secret that is absent from the shared table (rename guard)', () => {
+      const manifest = JSON.parse(
+        readFileSync(join(import.meta.dir, '../../../plugins/images/bakin-plugin.json'), 'utf8'),
+      ) as { secrets?: Array<{ name: string }> }
+      const known = new Set(Object.values(IMAGE_PROVIDER_ENV_VARS).flat())
+      for (const secret of manifest.secrets ?? []) {
+        expect(known.has(secret.name)).toBe(true)
+      }
+    })
   })
 })

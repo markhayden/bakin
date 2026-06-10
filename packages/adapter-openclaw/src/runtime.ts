@@ -874,6 +874,13 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       return value
     },
     generate: async (input: RuntimeImageGenerateInput): Promise<RuntimeImageGenerationResult> => {
+      // Native `infer image generate` has no file input, so a generate carrying
+      // reference images is served by the edit-style invocation (#418). The shim
+      // can't do references — the plugin rejects that combination upstream.
+      if (input.referenceImages?.length) {
+        const editInput: RuntimeImageEditInput = { ...input, files: input.referenceImages }
+        return tagRuntimeServed(await this.runImageInference('edit', editInput))
+      }
       if (await this.canServeImageNatively(input)) {
         return tagRuntimeServed(await this.runImageInference('generate', input))
       }
@@ -891,6 +898,27 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     },
     edit: async (input: RuntimeImageEditInput): Promise<RuntimeImageGenerationResult> => {
       return tagRuntimeServed(await this.runImageInference('edit', input))
+    },
+  }
+
+  media = {
+    /**
+     * Resolve an OpenClaw `media://<rel>` URI (how the runtime addresses
+     * channel attachments, e.g. media://inbound/<file>) to its absolute path
+     * under the OpenClaw home's media root. Null for other schemes, missing
+     * files, or anything escaping the media root.
+     */
+    resolveUri: async (uri: string): Promise<string | null> => {
+      const match = /^media:\/\/(.+)$/.exec(uri)
+      if (!match) return null
+      const root = resolve(getOpenClawPath('media'))
+      const candidate = resolve(root, match[1])
+      if (!candidate.startsWith(root + sep)) return null
+      try {
+        return statSync(candidate).isFile() ? candidate : null
+      } catch {
+        return null // missing file — "not found" is a value here, not an error
+      }
     },
   }
 
@@ -931,6 +959,15 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       height: input.height ?? 1024,
       quality: imageQualityFromMetadata(input.metadata),
       apiKey: resolved.apiKey,
+      // Forward the full generation option surface so the shim's guardrail
+      // (assertShimCanHonor) sees what it can't honor and rejects BEFORE the
+      // billed call — omitting these re-opens the silent drop #379 closed.
+      ...(input.count !== undefined ? { count: input.count } : {}),
+      ...(input.aspectRatio !== undefined ? { aspectRatio: input.aspectRatio } : {}),
+      ...(input.resolution !== undefined ? { resolution: input.resolution } : {}),
+      ...(input.background !== undefined ? { background: input.background } : {}),
+      ...(input.outputFormat !== undefined ? { outputFormat: input.outputFormat } : {}),
+      ...(input.size !== undefined ? { size: input.size } : {}),
     })
     return {
       images: [{

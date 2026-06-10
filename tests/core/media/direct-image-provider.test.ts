@@ -1,4 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+// The module under test never touches the content dir (it writes to OS tmpdir),
+// but mock the resolvers anyway so a future import can't leak into ~/.bakin/.
+const testDir = join(tmpdir(), `bakin-test-direct-image-${Date.now()}`)
+const contentDirMock = () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ db: join(testDir, 'bakin.db') }),
+})
+mock.module('../../../src/core/content-dir', contentDirMock)
+mock.module('../../../packages/core/src/content-dir', contentDirMock)
+
 import {
   generateDirectImage,
   isDirectImageProvider,
@@ -65,6 +78,42 @@ describe('direct-image-provider', () => {
         apiKey: 'key',
       })
       expect(result.mimeType).toBe('image/png')
+    })
+
+    describe('rejects options it cannot honor, before billing (#379)', () => {
+      const base = {
+        provider: 'openai' as const,
+        model: 'gpt-image-2',
+        prompt: 'x',
+        width: 1024,
+        height: 1024,
+        quality: 'standard' as const,
+        apiKey: 'key',
+      }
+
+      it.each([
+        ['count > 1', { count: 2 }],
+        ['aspectRatio', { aspectRatio: '16:9' }],
+        ['resolution', { resolution: '4K' }],
+        ['background', { background: 'transparent' as const }],
+        ['outputFormat webp', { outputFormat: 'webp' as const }],
+        ['size', { size: '1024x1536' }],
+      ])('throws on %s without making a provider call', async (_label, extra) => {
+        const fetchSpy = spyOn(globalThis, 'fetch')
+        await expect(generateDirectImage({ ...base, ...extra })).rejects.toThrow()
+        expect(fetchSpy).not.toHaveBeenCalled()
+      })
+
+      it('allows the honored single-png path (count 1, outputFormat png)', async () => {
+        const fetchSpy = spyOn(globalThis, 'fetch').mockResolvedValue({
+          ok: true,
+          json: async () => ({ data: [{ b64_json: Buffer.from('img').toString('base64') }] }),
+        } as unknown as Response)
+        await expect(
+          generateDirectImage({ ...base, count: 1, outputFormat: 'png' }),
+        ).resolves.toBeDefined()
+        expect(fetchSpy).toHaveBeenCalledTimes(1)
+      })
     })
 
     it('never retries a failed generation (no double-bill), even on a 5xx', async () => {

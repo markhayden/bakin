@@ -30,6 +30,8 @@ import { startAgent, stopAgent } from '../../src/lib/agents'
 import { getSettings, resetSettingsCache } from '../../src/core/settings'
 import { syncConfig as syncMcporter } from '../../src/core/mcporter'
 import { sendMessageToAgent } from '../../src/core/agents'
+import { getLiveRun, LedgerUnavailableError } from '../../src/core/execution-ledger'
+import { appendAudit } from '../../src/core/audit'
 import { getAllAgentUsage } from '../../src/core/agent-usage'
 import { getStatsByMs } from '../../src/core/usage'
 import { retrieveAgentPackageLessons } from '../../src/core/agent-packages/lesson-retrieval'
@@ -1891,10 +1893,43 @@ const teamPlugin: BakinPlugin = definePlugin({
       description: 'Send a message to an agent via the active runtime.',
       parameters: {
         agentId: z.string().describe('Agent ID'),
-        message: z.string().describe('Message to send'),
+        message: z.string().describe('Message to send. Do NOT use this to brief an agent about a task they were just assigned — dispatch already notified them, and a second message starts a duplicate worker in their main session.'),
       },
-      handler: async (params: Record<string, unknown>) => {
-        const result = await sendMessageToAgent(params.agentId as string, params.message as string)
+      handler: async (params: Record<string, unknown>, agent: string) => {
+        const agentId = params.agentId as string
+        const message = params.message as string
+        // Duplicate-worker guard: a message naming a task the TARGET agent is
+        // already running would land unthreaded in their main session and
+        // spawn a parallel worker (live-test incident, task d1b213a5). Refuse
+        // hard — the dispatched run is the worker; comments go on the task.
+        const taskTokens = [...new Set(message.match(/\b[0-9a-f]{8}\b/g) ?? [])]
+        for (const taskId of taskTokens) {
+          let live: ReturnType<typeof getLiveRun>
+          try {
+            live = getLiveRun(taskId)
+          } catch (err) {
+            // Fail CLOSED: without the ledger we cannot rule out a live run,
+            // and the cost of a duplicate worker is a double bill.
+            if (err instanceof LedgerUnavailableError) {
+              return {
+                ok: false as const,
+                error: `Cannot verify whether ${agentId} is already working task ${taskId} (execution ledger unavailable) — refusing to risk a duplicate worker. Add a task comment via bakin_exec_log, or retry once the ledger is healthy.`,
+              }
+            }
+            throw err
+          }
+          if (live && live.agent === agentId) {
+            const ageSeconds = Math.max(0, Math.round((Date.now() - live.startedAt) / 1000))
+            appendAudit(getContentDir(), 'team.message_blocked', agent, {
+              agentId, taskId, runId: live.runId,
+            })
+            return {
+              ok: false as const,
+              error: `${agentId} is already working task ${taskId} (run ${live.runId}, started ${ageSeconds}s ago). Sending this message would start a duplicate worker in their main session. Add a task comment via bakin_exec_log instead, or wait for the run to finish.`,
+            }
+          }
+        }
+        const result = await sendMessageToAgent(agentId, message)
         return result
       },
     })

@@ -22,9 +22,19 @@ const GenerationSchema = z.object({
   provider: z.string(),
   model: z.string(),
   surface: z.string(),
-  quality: z.string(),
+  // Optional: quality is honored only on the direct-provider shim path. The
+  // native runtime (OpenClaw) has no quality knob, so native generations omit
+  // it rather than record a tier they never applied (#379).
+  quality: z.string().optional(),
   routeSource: z.string(),
   routeReason: z.string().optional(),
+  // Reference/context images that conditioned this generation, by managed
+  // asset identity (#418). Lineage Bakin owns at the persist step — the runtime
+  // only ever saw opaque file paths.
+  references: z.array(z.object({
+    assetId: z.string(),
+    version: z.number().int().positive(),
+  })).optional(),
 })
 
 export const AssetVersionSchema = z.object({
