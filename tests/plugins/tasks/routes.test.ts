@@ -64,6 +64,7 @@ const ledgerMock = () => ({
     return { recorded: true as const }
   },
   hasCompletion: (taskId: string) => completionsFake.has(taskId),
+  getCompletion: (taskId: string) => completionsFake.get(taskId) ?? null,
   deleteCompletion: (taskId: string) => completionsFake.delete(taskId),
   getLiveRun: () => null,
   bumpHeartbeatByTask: () => {},
@@ -89,8 +90,11 @@ const mockSetDependency = mock()
 const mockClearDependency = mock()
 const mockReorderTasks = mock()
 const mockGetTask = mock()
+const mockGetTaskWithColumn = mock(
+  (_id: string): { task: Record<string, unknown>; column: string } | null => null,
+)
 
-mock.module('@/core/task-store', () => ({
+const taskStoreMock = () => ({
   readTaskboard: (...args: unknown[]) => mockReadTaskboard(...args),
   createTask: (...args: unknown[]) => mockCreateTask(...args),
   deleteTask: (...args: unknown[]) => mockDeleteTask(...args),
@@ -103,9 +107,13 @@ mock.module('@/core/task-store', () => ({
   clearDependency: (...args: unknown[]) => mockClearDependency(...args),
   reorderTasks: (...args: unknown[]) => mockReorderTasks(...args),
   getTask: (...args: unknown[]) => mockGetTask(...args),
+  getTaskWithColumn: (...args: unknown[]) => mockGetTaskWithColumn(...(args as [string])),
   autoArchiveDoneTasks: mock().mockReturnValue(0),
   archiveOldTasks: mock().mockReturnValue(0),
-}))
+})
+// Both specifiers — runs-reader imports task-store relatively (same trap as the ledger mock).
+mock.module('@/core/task-store', taskStoreMock)
+mock.module('../../../src/core/task-store', taskStoreMock)
 
 // Mock task-service functions
 const mockMoveTaskWithEffects = mock()
@@ -157,8 +165,9 @@ beforeEach(() => {
     mockSetDependency, mockClearDependency, mockReorderTasks, mockGetTask,
     mockMoveTaskWithEffects, mockBlockTaskWithEffects, mockCreateTaskWithEffects,
     mockReportComplete, mockSetDependencyWithEffects, mockGetTaskDetails,
-    mockLogProgress, mockTriggerDispatch,
+    mockLogProgress, mockTriggerDispatch, mockGetTaskWithColumn,
   ]) m.mockReset()
+  mockGetTaskWithColumn.mockReturnValue(null)
   completionsFake.clear()
   // Handlers destructure the completion-gate result from these two.
   mockMoveTaskWithEffects.mockResolvedValue({ alreadyComplete: false })
@@ -369,6 +378,63 @@ describe('GET /:taskId/runs — dispatch run history', () => {
     const { status, body } = await callRoute(route, activated.ctx, { searchParams: { taskId: 'no-runs' } })
     expect(status).toBe(200)
     expect(body.runs).toEqual([])
+  })
+
+  it('includes a done outcome from the completion ledger alongside the runs', async () => {
+    const completedAt = 1_700_000_500_000
+    completionsFake.set('task-done', { taskId: 'task-done', runId: 'task:task-done:d1', agent: 'pixel', channel: null, completedAt })
+    mockTaskRuns['task-done'] = [{
+      runId: 'task:task-done:d1', taskId: 'task-done', seq: 1, agent: 'pixel', status: 'settled',
+      startedAt: completedAt - 1000, settledAt: completedAt, settleReason: 'turn-ok',
+    }]
+
+    const route = findRoute(activated.routes, 'GET', '/:taskId/runs')!
+    const { status, body } = await callRoute(route, activated.ctx, { searchParams: { taskId: 'task-done' } })
+
+    expect(status).toBe(200)
+    expect(body.outcome).toEqual({
+      state: 'done',
+      completedAt: new Date(completedAt).toISOString(),
+      agent: 'pixel',
+    })
+  })
+
+  it('derives the outcome from the task column when no completion exists', async () => {
+    mockGetTaskWithColumn.mockReturnValue({ task: { id: 'task-blocked' }, column: 'blocked' })
+    mockTaskRuns['task-blocked'] = [{
+      runId: 'task:task-blocked:d1', taskId: 'task-blocked', seq: 1, agent: 'pixel', status: 'settled',
+      startedAt: 1_700_000_000_000, settledAt: 1_700_000_001_000, settleReason: 'turn-ok',
+    }]
+
+    const route = findRoute(activated.routes, 'GET', '/:taskId/runs')!
+    const { body } = await callRoute(route, activated.ctx, { searchParams: { taskId: 'task-blocked' } })
+
+    expect(body.outcome).toEqual({ state: 'blocked' })
+  })
+
+  it('omits the outcome key for an unknown task', async () => {
+    const route = findRoute(activated.routes, 'GET', '/:taskId/runs')!
+    const { status, body } = await callRoute(route, activated.ctx, { searchParams: { taskId: 'ghost' } })
+    expect(status).toBe(200)
+    expect(body.runs).toEqual([])
+    expect('outcome' in body).toBe(false)
+  })
+
+  it('never touches the task store for a task with no runs (unknown ids would trigger a full shard walk)', async () => {
+    const route = findRoute(activated.routes, 'GET', '/:taskId/runs')!
+    await callRoute(route, activated.ctx, { searchParams: { taskId: 'ghost' } })
+    expect(mockGetTaskWithColumn).not.toHaveBeenCalled()
+  })
+
+  it('still reports done for a completed task with no runs (completion lookup is cheap and ungated)', async () => {
+    const completedAt = 1_700_000_500_000
+    completionsFake.set('done-no-runs', { taskId: 'done-no-runs', runId: null, agent: 'pixel', channel: null, completedAt })
+
+    const route = findRoute(activated.routes, 'GET', '/:taskId/runs')!
+    const { body } = await callRoute(route, activated.ctx, { searchParams: { taskId: 'done-no-runs' } })
+
+    expect(body.outcome).toMatchObject({ state: 'done' })
+    expect(mockGetTaskWithColumn).not.toHaveBeenCalled()
   })
 })
 
