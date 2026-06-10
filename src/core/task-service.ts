@@ -162,6 +162,7 @@ export async function moveTaskWithEffects(
     if (!completion.recorded) {
       appendAudit(getContentDir(), 'task.completion_suppressed', agent, {
         id: taskId,
+        title: taskBeforeMove?.title,
         firstCompletedAt: completion.existing.completedAt,
         firstAgent: completion.existing.agent,
         firstChannel: completion.existing.channel,
