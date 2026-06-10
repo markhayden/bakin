@@ -61,6 +61,7 @@ const mockAssignTask = mock(async (id: string) => bump(id))
 mock.module('@/core/task-store', () => ({
   readTaskboard: mock(() => ({ columns: {} })),
   getTask: mock((id: string) => tasks.get(id) ?? null),
+  getTaskWithColumn: mock(() => null),
   updateTask: mockUpdateTask,
   assignTask: mockAssignTask,
   deleteTask: mock(async () => {}),

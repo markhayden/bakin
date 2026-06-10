@@ -64,6 +64,7 @@ const ledgerMock = () => ({
     return { recorded: true as const }
   },
   hasCompletion: (taskId: string) => completionsFake.has(taskId),
+  getCompletion: (taskId: string) => completionsFake.get(taskId) ?? null,
   deleteCompletion: (taskId: string) => completionsFake.delete(taskId),
   getLiveRun: () => null,
   bumpHeartbeatByTask: () => {},
@@ -89,8 +90,11 @@ const mockSetDependency = mock()
 const mockClearDependency = mock()
 const mockReorderTasks = mock()
 const mockGetTask = mock()
+const mockGetTaskWithColumn = mock(
+  (_id: string): { task: Record<string, unknown>; column: string } | null => null,
+)
 
-mock.module('@/core/task-store', () => ({
+const taskStoreMock = () => ({
   readTaskboard: (...args: unknown[]) => mockReadTaskboard(...args),
   createTask: (...args: unknown[]) => mockCreateTask(...args),
   deleteTask: (...args: unknown[]) => mockDeleteTask(...args),
@@ -103,9 +107,13 @@ mock.module('@/core/task-store', () => ({
   clearDependency: (...args: unknown[]) => mockClearDependency(...args),
   reorderTasks: (...args: unknown[]) => mockReorderTasks(...args),
   getTask: (...args: unknown[]) => mockGetTask(...args),
+  getTaskWithColumn: (...args: unknown[]) => mockGetTaskWithColumn(...(args as [string])),
   autoArchiveDoneTasks: mock().mockReturnValue(0),
   archiveOldTasks: mock().mockReturnValue(0),
-}))
+})
+// Both specifiers — runs-reader imports task-store relatively (same trap as the ledger mock).
+mock.module('@/core/task-store', taskStoreMock)
+mock.module('../../../src/core/task-store', taskStoreMock)
 
 // Mock task-service functions
 const mockMoveTaskWithEffects = mock()
