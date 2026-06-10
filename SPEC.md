@@ -1,153 +1,152 @@
-# SPEC — Schedule: blocked tasks must not suppress real fires
+# SPEC — Tasks: reflect real task outcome in Run History
 
-> Status: draft for approval · Owner: Mark · Date: 2026-06-08
+> Status: draft for approval · Owner: Mark · Date: 2026-06-09
+> Issue: [#476](https://github.com/markhayden/bakin/issues/476) · Follow-on to #463 / PR #475
 
 ## 1. Objective
 
-A stalled `blocked` task currently behaves as if a run is still "in flight," which
-silently suppresses a job's next genuine scheduled fire. Fix the scheduler so a
-`blocked` last-task is treated as *needs human triage*, not *currently running*:
-the next real fire proceeds, the job's health (auto-pause) is not falsely
-penalized by triage blocks, and catch-up tasks are labeled with the date they
-were *supposed* to run.
+The Run History timeline in the task drawer shows each run's dispatch status from
+the ledger `runs` table. `settled` means *the agent's turn ended cleanly*, not
+that the task succeeded — so a green `settled` badge on a task that later
+blocked or stalled reads as a false success.
 
-Target environment: single-user, self-hosted Bakin on a Mac mini. No
-backwards-compat or shims. Priority: reduce tech debt; keep it clean and clear.
+Fix: surface the task's terminal outcome (from the completion ledger + task
+column) alongside the dispatch history, and stop using green for `settled`.
 
-## 2. Background — confirmed root cause
+Target environment: single-user, self-hosted Bakin. No backwards-compat or
+shims — the API response shape may change freely. Priority: reduce tech debt;
+keep it clean and clear.
 
-Triage on the production machine established the chain (not a timezone bug, not a
-failing default):
+### Acceptance criteria (from the issue)
 
-1. Schedule **cutover** ran, then startup **catch-up** created the previous
-   period's missed fires directly in `blocked` (`blockedReason: "missed schedule
-   window"`). These tasks **never dispatch** (empty log, no execution).
-2. **Cascade (the real bug):** at the real fire time, the live scheduler skipped
-   the fire as `overlap` because the `blocked` task still existed — so the genuine
-   run was silently suppressed until the user hand-moved the task to `todo`.
-3. **Cosmetic:** catch-up task titles used `new Date()` (today) instead of the
-   occurrence date, so a stale prior-day run masqueraded as "today's" run.
+1. Run history visibly distinguishes "the agent's turn settled" from "the task
+   succeeded / failed / blocked".
+2. Read-only; reuses the completion ledger + task column. No new audit query
+   surface, no new write verbs, no schema changes.
+3. A `settled` run on a task that's still in progress no longer reads as a
+   success.
 
-Relevant code, all in `plugins/schedule/index.ts`:
-- Overlap guard: `runClaimedFire` lines **404–413** — `activeColumns` includes `'blocked'`.
-- Failure tracking: lines **416–428** — any `blocked` last-task calls `recordFailure()`.
-- Title/date: line **433** — `const now = new Date()` used for `templateVars.date`.
-- Fire callback: line **558** — receives the occurrence as `_occurrence` and **discards it**, so `runClaimedFire` never gets the occurrence.
+## 2. Design decisions (interview-resolved)
 
-## 3. Scope
+| Decision | Resolution |
+|---|---|
+| Scope | Tasks plugin only. The schedule plugin's `cronFireToEntry` surface is out of scope (follow-up issue if ever needed). |
+| Data shape | Sibling object: `GET /api/plugins/tasks/:taskId/runs` returns `{ runs, outcome }`. Outcome is task-level state — it is **not** stamped onto run entries. |
+| Derivation location | Server-side, in `plugins/tasks/lib/runs-reader.ts` (`readTaskOutcome`). One tested place owns the semantics; UI stays a dumb renderer. |
+| Outcome semantics | Completion row wins: completion exists → `done` (even if since archived). Else by column: `blocked` → `blocked`, `archived` → `archived` (abandoned), `done` → `done` (legacy task with no row), anything else → `in_progress`. |
+| UI shape | Outcome badge on the Run History **header** line. Per-run `settled` badge recolored green → neutral blue; green becomes exclusively "task done". `lost` stays red, `running` amber, `superseded` zinc. Outcome colors: done → green, blocked → red, in_progress → amber, archived → zinc. |
+| Empty state | Unchanged: component renders nothing when a task has zero runs (no outcome badge either). |
 
-**In scope**
-- Overlap guard no longer treats `blocked` as active.
-- Failure/auto-pause tracking ignores *triage* blocks; still counts *dispatch-failure* blocks.
-- Catch-up task title/date derived from the **occurrence**, not creation time.
-- Tests + knowledge-doc update.
+### Outcome derivation (normative)
 
-**Out of scope (non-goals)**
-- The cutover/migration path itself (one-time, already resolved).
-- Whether catch-up creates a `blocked` triage task at all (the catch-up *window*
-  policy stays as-is — it remains the legitimate "here's a stale run, triage it"
-  signal).
-- Auto-cleanup/auto-archive of stale blocked triage tasks.
-- Any change to dispatch-side block paths (`src/core/dispatch.ts`).
+```
+getCompletion(taskId) row exists ──→ done (completedAt, agent from row)
+else column = blocked            ──→ blocked
+else column = archived           ──→ archived   (never completed)
+else column = done               ──→ done       (legacy; no completedAt/agent)
+else                             ──→ in_progress
+```
 
-## 4. Functional requirements & acceptance criteria
+Unknown task (no board entry, no completion): `outcome` is omitted — the route
+already returns an empty runs list for unknown tasks and must not start
+erroring.
 
-### FR1 — Overlap guard excludes `blocked`
-`activeColumns` becomes `['todo', 'inProgress', 'review']`.
+### Types
 
-- **AC1.1** Last task in `blocked` → the next fire is **created/dispatched** (not skipped as `overlap`).
-- **AC1.2** Last task in `inProgress`, `review`, or `todo` → fire is still skipped as `overlap` (unchanged).
-- **AC1.3** `allowOverlap: true` continues to bypass the guard entirely (unchanged).
+```ts
+/** Task-level terminal outcome, derived from completion ledger + column. */
+export interface TaskOutcome {
+  state: 'done' | 'blocked' | 'archived' | 'in_progress'
+  /** Set when state === 'done' and a completion row exists. */
+  completedAt?: string // ISO
+  /** Agent that recorded the completion, when known. */
+  agent?: string
+}
+```
 
-### FR2 — Triage blocks are not failures
-The literal `'missed schedule window'` is extracted to an exported constant
-(e.g. `MISSED_WINDOW_REASON`) owned by the schedule plugin and reused at the
-creation site. The outcome check (416–428) classifies the `blocked` last-task by
-`blockedReason`:
+Declared in `plugins/tasks/types.ts`, mirrored in
+`src/hooks/use-task-run-history.ts` (existing keep-in-sync pattern for
+`TaskRunEntry`). The hook returns `{ runs, outcome, loading }`.
 
-- **AC2.1** Last task blocked with reason === `MISSED_WINDOW_REASON` → **no**
-  `recordFailure`, no auto-pause contribution (it's a notification).
-- **AC2.2** Last task blocked with any other reason (dispatch failures:
-  `"Agent run ended before reporting completion…"`, `"Dispatch failed N times…"`)
-  → `recordFailure` as today (can auto-pause after `maxFailures`).
-- **AC2.3** Last task in `done`/`archived` → `recordSuccess` (unchanged).
-- **AC2.4** Discrimination is by an owned constant compared against the task's
-  `blockedReason`, **not** brittle substring matching of external error text.
+## 3. Touched files (project structure)
 
-### FR3 — Catch-up tasks labeled by occurrence date
-Thread the occurrence through the fire callback into `runClaimedFire`; use it for
-`templateVars.date` and the default title. Manual fires (no occurrence) fall back
-to their existing `firedAt`/now.
+| File | Change |
+|---|---|
+| `plugins/tasks/lib/runs-reader.ts` | Add `readTaskOutcome(taskId): TaskOutcome \| undefined` using `getCompletion` (from `src/core/execution-ledger`, already exported) + `getTaskWithColumn` (from `src/core/task-store`). |
+| `plugins/tasks/types.ts` | Add `TaskOutcome`. |
+| `plugins/tasks/index.ts` | `/:taskId/runs` handler returns `{ runs, outcome }`. |
+| `src/hooks/use-task-run-history.ts` | Mirror `TaskOutcome`; expose `outcome` from the hook. |
+| `plugins/tasks/components/task-run-history.tsx` | Header outcome badge; recolor `settled` to blue. |
+| `tests/plugins/tasks/*` | Coverage for derivation + route shape (see §5). |
+| `.claude/knowledge/execution-ledger.md` | Update the read-only consumers table (run-history row) to note the outcome join on `completions`. |
 
-- **AC3.1** A catch-up task for an occurrence on day *D* has a title/`date` of *D*,
-  not the (later) creation day.
-- **AC3.2** A normal on-time fire is unchanged (occurrence ≈ now).
-- **AC3.3** `runClaimedFire` no longer reads wall-clock `new Date()` for the label;
-  the occurrence (or explicit manual `firedAt`) is the single source.
+No new source files except possibly a dedicated test file. No `packages/core`
+changes (`getCompletion` already exists). No README impact (verified — no
+run-history mention). No SDK/vendor/build changes.
 
-### FR4 — End-to-end regression (the cascade)
-- **AC4.1** Given a `blocked` triage task as the job's last task, when the next
-  occurrence fires, a new task is created and dispatched, and the job's
-  `consecutiveFailures` is unchanged (not incremented).
+## 4. Commands & code style
 
-## 5. Implementation approach
+- Dev: `bun run dev` (plugin HMR covers the component; server-side changes to
+  `runs-reader.ts`/`index.ts` need a manual server restart).
+- Full suite: `bun run test`. Single file: `bun test tests/plugins/tasks/<f>.test.ts --isolate`.
+- Conventions per CLAUDE.md: strict TS (no `any` across boundaries), Zod at
+  API boundaries, `const` over `let`, kebab-case files, import order
+  (builtins → external → SDK → `@/*` → relative).
+- Commits: conventional with scope (see §6).
 
-Behavior change is confined to `plugins/schedule/index.ts` plus the fire callback
-passing the occurrence. The `SchedulerDeps.fire` signature already carries
-`occurrence`, so only the callback body and `runClaimedFire` signature change.
+## 5. Testing strategy
 
-1. Export `MISSED_WINDOW_REASON = 'missed schedule window'`; use it at line 561
-   and in the outcome check.
-2. `runClaimedFire(meta, jobId, runId, opts)` gains an `occurrence?: Date` (or a
-   `firedAtMs`) input; `templateVars.date`/title derive from it; default to now
-   for manual fires.
-3. Fire callback (≈558) passes the real `occurrence` instead of `_occurrence`.
-4. Overlap `activeColumns` → drop `'blocked'`.
-5. Outcome check → skip `recordFailure` when `blockedReason === MISSED_WINDOW_REASON`.
+Per CLAUDE.md testing rules: mock **both** content-dir resolvers, OpenClaw
+home, logger, watcher; temp dirs + `afterAll` cleanup; `closeDb()` before
+`rmSync` if the real ledger is exercised; use `tests/plugins/test-helpers.ts`
+for route tests.
 
-Keep functions pure where practical; no new dependencies.
+Unit — `readTaskOutcome` derivation (table-driven over the normative rules):
+1. Completion row exists, column done → `done` with `completedAt` + `agent`.
+2. Completion row exists, column archived → `done` (completion wins).
+3. No completion, column blocked → `blocked`.
+4. No completion, column archived → `archived`.
+5. No completion, column done (legacy) → `done`, no `completedAt`.
+6. No completion, column inProgress/todo/backlog/review → `in_progress`.
+7. Unknown task → `undefined`.
 
-## 6. Code style
-Per `CLAUDE.md`: TypeScript strict, no `any` across boundaries, `const` over
-`let`, `UPPER_SNAKE_CASE` for the new constant, existing import order, conventional
-commits with `fix(schedule):` / `refactor(schedule):` scopes.
+Route — `GET /:taskId/runs` returns `{ runs, outcome }`; unknown task returns
+`{ runs: [] }` without error.
 
-## 7. Commands
-- Test (file): `bun test tests/plugins/schedule/<file>.test.ts --isolate`
-- Full suite: `bun run test`
-- `bun run typecheck` · `bun run lint`
-- Manual: `bun run dev:mock`
+Existing tests in `tests/plugins/tasks/routes.test.ts` asserting the runs
+response must keep passing (updated only if they pin the exact response keys).
 
-## 8. Testing strategy
-TDD (Prove-It): write failing tests first. Use `tests/plugins/schedule/` with the
-isolated mock context helpers (`activatePlugin`, `callRoute`) and the mandatory
-content-dir / OpenClaw-home mocks (per `CLAUDE.md` testing rules).
+## 6. Commit strategy (rollback checkpoints)
 
-- **overlap**: blocked last-task → fire proceeds (AC1.1); inProgress/review/todo → skipped (AC1.2); allowOverlap bypass (AC1.3).
-- **failure tracking**: triage block → no recordFailure (AC2.1); dispatch-failure block → recordFailure (AC2.2); done → recordSuccess (AC2.3).
-- **date label**: catch-up task titled by occurrence date (AC3.1); on-time unchanged (AC3.2).
-- **regression**: cascade scenario end-to-end (AC4.1).
+Branch: `feat/task-outcome-run-history`. Each commit builds + tests green —
+natural rollback points:
 
-Run: `bun test tests/plugins/schedule/ --isolate`, then full `bun run test`.
+1. `feat(tasks): add readTaskOutcome derivation over completions + column`
+   — runs-reader + types + unit tests. Pure addition; nothing consumes it yet.
+2. `feat(tasks): return task outcome from the runs route`
+   — route + route tests + hook mirror. API now serves `{ runs, outcome }`;
+   UI unchanged and tolerant of the extra key.
+3. `feat(tasks): show task outcome in run history header, demote settled to blue`
+   — component change, the user-visible payoff.
+4. `docs(ledger): note run-history outcome join in execution-ledger knowledge`
+   — knowledge doc update (can fold into 2 if trivial).
 
-## 9. Boundaries
-- **Always:** mock both content-dir resolvers + OpenClaw home in tests; keep the
-  fix confined to `plugins/schedule/`; update `.claude/knowledge/bakin-owned-scheduler.md`.
-- **Ask first:** any change that would alter `src/core/dispatch.ts` block paths,
-  the catch-up window policy, or task-store semantics.
-- **Never:** classify blocks by external error-message text; write to real
-  `~/.bakin`/`~/.openclaw` from tests; add backwards-compat shims.
+Reverting 3 leaves a useful API; reverting 2–3 leaves a harmless helper.
 
-## 10. Commit checkpoints (carried into /plan)
-1. `refactor(schedule): extract MISSED_WINDOW_REASON constant` (no behavior change).
-2. `fix(schedule): exclude blocked from overlap guard` + tests (FR1).
-3. `fix(schedule): don't count triage blocks toward auto-pause` + tests (FR2).
-4. `fix(schedule): label catch-up tasks by occurrence date` + tests (FR3, FR4).
-5. `docs(schedule): update bakin-owned-scheduler knowledge for blocked semantics`.
+## 7. Boundaries
 
-Each checkpoint is independently revertable.
+**Always:**
+- Read-only against the ledger — only `getCompletion`; never write verbs.
+- Respect the adapter boundary: everything stays in `plugins/tasks` +
+  existing `src/core` facades.
+- Outcome derivation stays server-side in one function.
 
-## 11. Docs impacted
-- `.claude/knowledge/bakin-owned-scheduler.md` — overlap ignores `blocked`, triage
-  blocks don't penalize health, catch-up labels by occurrence.
-- `README.md` / `CLAUDE.md` — not expected to change (verify during build).
+**Ask first:**
+- Any change to ledger schema or verbs (should be unnecessary).
+- Any change to the schedule plugin (out of scope).
+
+**Never:**
+- Backwards-compat shims for the old response shape (single-user machine).
+- New audit-log queries for outcome (issue explicitly excludes this).
+- Per-run outcome stamping.
+- Fabricating outcome states beyond the four derived ones.

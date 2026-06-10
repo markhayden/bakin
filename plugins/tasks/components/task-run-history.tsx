@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useTaskRunHistory, type TaskRunEntry } from "@makinbakin/sdk/hooks"
+import { useTaskRunHistory, type TaskOutcome, type TaskRunEntry } from "@makinbakin/sdk/hooks"
 import { Badge, Separator } from "@makinbakin/sdk/ui"
 import { ChevronRight } from 'lucide-react'
 
@@ -26,11 +26,27 @@ function formatDuration(ms?: number): string | null {
   return `${Math.floor(s / 60)}m ${s % 60}s`
 }
 
+// `settled` is blue, not green — a settled turn is not a succeeded task (#476);
+// green is reserved for the task-done outcome badge.
 const STATUS_CLASS: Record<TaskRunEntry['status'], string> = {
-  settled: 'bg-green-500/10 text-green-400 border-green-500/20',
+  settled: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
   superseded: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20',
   lost: 'bg-red-500/10 text-red-400 border-red-500/20',
   running: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+}
+
+const OUTCOME_CLASS: Record<TaskOutcome['state'], string> = {
+  done: 'bg-green-500/10 text-green-400 border-green-500/20',
+  blocked: 'bg-red-500/10 text-red-400 border-red-500/20',
+  in_progress: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+  archived: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20',
+}
+
+const OUTCOME_LABEL: Record<TaskOutcome['state'], string> = {
+  done: 'done',
+  blocked: 'blocked',
+  in_progress: 'in progress',
+  archived: 'archived',
 }
 
 /**
@@ -40,7 +56,7 @@ const STATUS_CLASS: Record<TaskRunEntry['status'], string> = {
  * task has no runs.
  */
 export function TaskRunHistory({ taskId }: { taskId: string }) {
-  const { runs, loading } = useTaskRunHistory(taskId)
+  const { runs, outcome, loading } = useTaskRunHistory(taskId)
   const [open, setOpen] = useState(true)
 
   if (loading || runs.length === 0) return null
@@ -59,6 +75,14 @@ export function TaskRunHistory({ taskId }: { taskId: string }) {
         >
           <h3 className="text-[11px] text-muted-foreground uppercase tracking-wider">Run History</h3>
           <span className="text-[11px] text-muted-foreground/70">{summary}</span>
+          {outcome && (
+            <>
+              <Badge variant="outline" className={OUTCOME_CLASS[outcome.state]}>{OUTCOME_LABEL[outcome.state]}</Badge>
+              {outcome.completedAt && (
+                <span className="text-[11px] text-muted-foreground/70">{relativeTime(outcome.completedAt)}</span>
+              )}
+            </>
+          )}
           <ChevronRight className={`size-3 text-muted-foreground ml-auto transition-transform ${open ? 'rotate-90' : ''}`} />
         </button>
         {open && (
