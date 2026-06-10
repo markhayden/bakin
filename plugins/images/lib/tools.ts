@@ -199,8 +199,9 @@ async function resolveReferences(
   if (!modelDesc?.capabilities.includes('reference-images')) {
     return { error: `Model does not support reference images: ${route.provider}/${route.model}` }
   }
-  if (readyProvider?.servedBy === 'shim') {
-    return { error: `Reference images require the native runtime; ${route.provider} is served via the direct shim` }
+  if (readyProvider?.servedBy !== 'runtime') {
+    const via = readyProvider?.servedBy === 'shim' ? 'served via the direct shim' : 'not natively configured'
+    return { error: `Reference images require the native runtime; ${route.provider} is ${via}` }
   }
 
   const paths: string[] = []
@@ -429,6 +430,9 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
 
 export async function editImage(ctx: PluginContext, params: ImagesEditParams, agent: string): Promise<ExecToolResult> {
   if (!params.assetId) return fail('edit requires a managed assetId')
+  if (params.referenceImages?.includes(params.assetId)) {
+    return fail(`Reference ${params.assetId} equals the asset being edited — the edit already includes its current version; references add OTHER context images`)
+  }
   // Source is the current version of the managed asset.
   const source = await ctx.assets.resolveVersionFile(params.assetId)
   if (!source) return fail(`Asset not found: ${params.assetId}`)

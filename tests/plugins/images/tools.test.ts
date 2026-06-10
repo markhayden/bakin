@@ -491,5 +491,95 @@ describe('images tools', () => {
       expect(editArgs.files[0]).toBe(baseAbs) // base stays first
       expect(editArgs.files).toHaveLength(2)
     })
+
+    it('rejects an edit whose reference equals the asset being edited, before billing', async () => {
+      const edit = mock(async () => { throw new Error('should not bill') })
+      const { ctx } = makeContext(
+        { runtime: { images: { providers: runtimeProvider(), edit } } } as never,
+        { absPath: join(testDir, 'base.png'), mimeType: 'image/png', version: 1 },
+      )
+
+      const result = await editImage(ctx, {
+        assetId: '20260601-logo-aaaabbbb', prompt: 'tweak', taskId: 'task-self-ref',
+        provider: 'openai', model: 'gpt-image-2', surface: 'instagram-feed-portrait',
+        referenceImages: ['20260601-logo-aaaabbbb'],
+      }, 'pixel')
+
+      expect(result.ok).toBe(false)
+      expect(result.error).toMatch(/equals the asset being edited/i)
+      expect(edit).not.toHaveBeenCalled()
+    })
+
+    it('rejects references on an unconfigured provider with a clear pre-flight error', async () => {
+      // No runtime config and no Bakin key → servedBy 'unconfigured'. The gate
+      // must give the pre-flight message, not a later opaque CLI failure.
+      delete process.env.OPENAI_API_KEY
+      delete process.env.GEMINI_API_KEY
+      const generate = mock(async () => { throw new Error('should not bill') })
+      const { ctx } = makeContext(
+        { runtime: { images: { providers: mock(async () => []), generate } } } as never,
+        { absPath: join(testDir, 'x.png'), mimeType: 'image/png', version: 1 },
+      )
+
+      const result = await generateImage(ctx, {
+        prompt: 'x', taskId: 'task-unconf', provider: 'openai', model: 'gpt-image-2',
+        surface: 'instagram-feed-portrait', referenceImages: ['20260601-horse-aaaabbbb'],
+      }, 'pixel')
+
+      expect(result.ok).toBe(false)
+      expect(result.error).toMatch(/native runtime/i)
+      expect(result.error).toMatch(/not natively configured/i)
+      expect(generate).not.toHaveBeenCalled()
+    })
+
+    it('rejects an unresolvable assetId reference, before billing', async () => {
+      const generate = mock(async () => { throw new Error('should not bill') })
+      // sourceRef null → resolveVersionFile finds nothing for the reference id.
+      const { ctx } = makeContext(
+        { runtime: { images: { providers: runtimeProvider(), generate } } } as never,
+        null,
+      )
+
+      const result = await generateImage(ctx, {
+        prompt: 'x', taskId: 'task-missing-ref', provider: 'openai', model: 'gpt-image-2',
+        surface: 'instagram-feed-portrait', referenceImages: ['20260601-ghost-aaaabbbb'],
+      }, 'pixel')
+
+      expect(result.ok).toBe(false)
+      expect(result.error).toMatch(/reference asset not found/i)
+      expect(generate).not.toHaveBeenCalled()
+    })
+
+    it('resolves a mixed assetId + raw-path reference list and records both in lineage', async () => {
+      const outFile = join(testDir, 'mixed-gen.png')
+      writeFileSync(outFile, 'img')
+      const refAbs = join(testDir, 'managed-ref.png')
+      writeFileSync(refAbs, 'managed')
+      const loosePath = join(testDir, 'loose-ref.png')
+      writeFileSync(loosePath, 'loose')
+      const generate = mock(async () => ({
+        provider: 'openai', model: 'gpt-image-2',
+        images: [{ filePath: outFile, mimeType: 'image/png', width: 1024, height: 1024 }],
+        metadata: { servedBy: 'runtime' },
+      }))
+      const { ctx, created } = makeContext(
+        { runtime: { images: { providers: runtimeProvider(), generate } } } as never,
+        { absPath: refAbs, mimeType: 'image/png', version: 2 },
+      )
+      const refId = '20260601-swatch-ccccdddd'
+
+      const result = await generateImage(ctx, {
+        prompt: 'brand collage', taskId: 'task-mixed', provider: 'openai',
+        model: 'gpt-image-2', surface: 'instagram-feed-portrait',
+        referenceImages: [refId, loosePath],
+      }, 'pixel')
+
+      expect(result.ok).toBe(true)
+      expect(generate).toHaveBeenCalledWith(expect.objectContaining({ referenceImages: [refAbs, loosePath] }))
+      const refs = (created[0].generation as { references?: Array<{ assetId: string; version: number }> }).references
+      expect(refs).toHaveLength(2)
+      expect(refs).toContainEqual({ assetId: refId, version: 2 })
+      expect(refs!.some(ref => ref.assetId !== refId && /^\d{8}-/.test(ref.assetId))).toBe(true)
+    })
   })
 })
