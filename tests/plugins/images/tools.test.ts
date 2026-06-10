@@ -501,6 +501,12 @@ describe('images tools', () => {
       writeFileSync(outFile, 'img')
       const baseAbs = join(testDir, 'pass1.png')
       writeFileSync(baseAbs, 'pass1')
+      const { createAsset } = await import('../../../plugins/assets/lib/asset-service')
+      const target = await createAsset({
+        sourceFilePath: baseAbs, type: 'images', agent: 'pixel', taskId: 'task-reroll',
+        slug: 'horse-image', op: 'generate', tool: 'bakin_exec_images_generate',
+        description: 'first pass', source: { kind: 'generated', path: null },
+      })
       const generate = mock(async () => ({
         provider: 'openai', model: 'gpt-image-2',
         images: [{ filePath: outFile, mimeType: 'image/png', width: 1024, height: 1024 }],
@@ -514,15 +520,100 @@ describe('images tools', () => {
       const result = await generateImage(ctx, {
         prompt: 'clearer side profile, same dusty world', taskId: 'task-reroll',
         provider: 'openai', model: 'gpt-image-2', surface: 'instagram-feed-portrait',
-        versionOf: '20260601-horse-aaaabbbb',
+        versionOf: target.assetId,
       }, 'pixel')
 
       expect(result.ok).toBe(true)
       expect(result.version).toBe(2)
       expect(created).toHaveLength(0)
       expect(versioned).toHaveLength(1)
-      expect(versioned[0].assetId).toBe('20260601-horse-aaaabbbb')
+      expect(versioned[0].assetId).toBe(target.assetId)
       expect(versioned[0].input.op).toBe('generate')
+    })
+
+    it('versionOf must target an images asset, before billing', async () => {
+      const notePath = join(testDir, 'note.md')
+      writeFileSync(notePath, '# notes')
+      const { createAsset } = await import('../../../plugins/assets/lib/asset-service')
+      const textAsset = await createAsset({
+        sourceFilePath: notePath, type: 'text', agent: 'pixel', taskId: 'task-type',
+        slug: 'notes', op: 'upload', description: 'notes',
+      })
+      const generate = mock(async () => { throw new Error('should not bill') })
+      const { ctx } = makeContext(
+        { runtime: { images: { providers: runtimeProvider(), generate } } } as never,
+        { absPath: notePath, mimeType: 'text/markdown', version: 1 },
+      )
+
+      const result = await generateImage(ctx, {
+        prompt: 'x', taskId: 'task-type', provider: 'openai', model: 'gpt-image-2',
+        surface: 'instagram-feed-portrait', versionOf: textAsset.assetId,
+      }, 'pixel')
+
+      expect(result.ok).toBe(false)
+      expect(result.error).toMatch(/versionOf must target an images asset/i)
+      expect(generate).not.toHaveBeenCalled()
+    })
+
+    it('rejects the contradictory versionOf + allowNewAsset combination', async () => {
+      const generate = mock(async () => { throw new Error('should not bill') })
+      const { ctx } = makeContext(
+        { runtime: { images: { providers: runtimeProvider(), generate } } } as never,
+        null,
+      )
+
+      const result = await generateImage(ctx, {
+        prompt: 'x', taskId: 'task-contradict', provider: 'openai', model: 'gpt-image-2',
+        surface: 'instagram-feed-portrait', versionOf: '20260601-h-aaaabbbb', allowNewAsset: true,
+      }, 'pixel')
+
+      expect(result.ok).toBe(false)
+      expect(result.error).toMatch(/versionOf and allowNewAsset/i)
+      expect(generate).not.toHaveBeenCalled()
+    })
+
+    it('versionOf is never hijacked by a matching SIBLING asset in the reuse check', async () => {
+      // A sibling on the same task whose current version matches the request
+      // must not swallow an explicit versionOf re-roll as "reused".
+      const prompt = 'identical prompt for both'
+      const siblingFile = join(testDir, 'sibling.png')
+      writeFileSync(siblingFile, 'sibling')
+      const targetFile = join(testDir, 'target.png')
+      writeFileSync(targetFile, 'target')
+      const { createAsset } = await import('../../../plugins/assets/lib/asset-service')
+      const sibling = await createAsset({
+        sourceFilePath: siblingFile, type: 'images', agent: 'pixel', taskId: 'task-hijack',
+        slug: 'sibling', op: 'generate', tool: 'bakin_exec_images_generate',
+        prompt, promptHash: promptHash(prompt), description: 'sibling',
+        source: { kind: 'generated', path: null },
+        generation: { provider: 'openai', model: 'gpt-image-2', surface: 'instagram-feed-portrait', routeSource: 'runtime' },
+      })
+      const target = await createAsset({
+        sourceFilePath: targetFile, type: 'images', agent: 'pixel', taskId: 'task-hijack',
+        slug: 'target', op: 'generate', tool: 'bakin_exec_images_generate',
+        description: 'target', source: { kind: 'generated', path: null },
+      })
+      const outFile = join(testDir, 'hijack-out.png')
+      writeFileSync(outFile, 'render')
+      const generate = mock(async () => ({
+        provider: 'openai', model: 'gpt-image-2',
+        images: [{ filePath: outFile, mimeType: 'image/png', width: 1024, height: 1024 }],
+        metadata: { servedBy: 'runtime' },
+      }))
+      const { ctx, versioned } = makeContext(
+        { runtime: { images: { providers: runtimeProvider(), generate } } } as never,
+        { absPath: targetFile, mimeType: 'image/png', version: 1 },
+      )
+
+      const result = await generateImage(ctx, {
+        prompt, taskId: 'task-hijack', provider: 'openai', model: 'gpt-image-2',
+        surface: 'instagram-feed-portrait', versionOf: target.assetId,
+      }, 'pixel')
+
+      expect(result.ok).toBe(true)
+      expect(result.assetId).not.toBe(sibling.assetId)
+      expect(versioned).toHaveLength(1)
+      expect(versioned[0].assetId).toBe(target.assetId)
     })
 
     it('versionOf fails cleanly when the target asset does not exist, before billing', async () => {

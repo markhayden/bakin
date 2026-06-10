@@ -305,6 +305,23 @@ describe('postChannel', () => {
     expect(deliverContent).toHaveBeenCalledTimes(1)
   })
 
+  it('an IDENTICAL retry of a successful asset post is deduped, not refused', async () => {
+    // The mcporter-timeout contract: the caller never saw the success and
+    // retries verbatim — that must return the cached result, not a refusal
+    // whose error text invites repost=true (and a real double-send).
+    const params = {
+      channel: 'general', content: 'final render attached', agent: 'main',
+      taskId: 'task-horse', imageAssetId: '20260610-horse-947652b5',
+    }
+    const first = await postChannel(params, runtime)
+    const second = await postChannel(params, runtime)
+
+    expect(first.ok).toBe(true)
+    expect(second.ok).toBe(true)
+    expect(second.deduped).toBe(true)
+    expect(deliverContent).toHaveBeenCalledTimes(1)
+  })
+
   it('repost=true deliberately sends a second copy', async () => {
     await postChannel({
       channel: 'general', content: 'first', agent: 'main',

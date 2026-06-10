@@ -6,7 +6,8 @@ import { createHash } from 'crypto'
 import { existsSync } from 'fs'
 import { basename, extname } from 'path'
 import { getAppServices } from '@/core/app-services'
-import { getIdempotent, putIdempotent } from '@/core/execution-ledger'
+import { getIdempotent, putIdempotent, LedgerUnavailableError } from '@/core/execution-ledger'
+import { createLogger } from '@/core/logger'
 import { resolveRuntimeChannelRef } from '@/core/channel-aliases'
 import { assertWorkflowToolAllowed } from '@/core/workflow-tool-authorization'
 import { resolveFile } from '@bakin/assets/lib/asset-service'
@@ -39,6 +40,7 @@ function resolveAssetAbsPath(assetId: string | undefined): string | null {
 
 // When BAKIN_CHANNEL_TEST_MODE=1 (or "true"), all posts are routed to
 // the testing-ground channel regardless of what the caller requested.
+const log = createLogger('post-channel')
 const TEST_CHANNEL = 'testing-ground'
 const POST_IDEMPOTENCY_TTL_MS = 5 * 60 * 1000
 export const CHANNEL_POST_CHUNK_LIMIT = 1900
@@ -72,32 +74,14 @@ export async function postChannel(
   }
   const { content, imageAssetId, videoAssetId, embed, taskId } = params
 
-  // A deliverable goes to a channel ONCE per task (live-test incident: the
-  // same asset posted twice with different captions — monitor post + completion
-  // reply). Durable in the ledger so it survives restarts; caption differences
-  // don't matter, the asset IS the deliverable. repost=true is the explicit
-  // escape hatch; only successful deliveries below record a row.
-  const deliveredAssetIds = [imageAssetId, videoAssetId].filter((id): id is string => Boolean(id))
-  const deliveryKeys = taskId
-    ? deliveredAssetIds.map(assetId => `channel-post:${taskId}:${channel}:${assetId}`)
-    : []
-  if (!params.repost) {
-    for (const key of deliveryKeys) {
-      const prior = getIdempotent(key)
-      if (prior) {
-        const at = (prior.result as { at?: string } | null)?.at
-        return fail(
-          `Asset already delivered to ${displayChannel(channel)} for task ${taskId}${at ? ` at ${at}` : ''}. A deliverable goes out once — if a second copy is genuinely intended, pass repost=true.`,
-        )
-      }
-    }
-  }
-
   const files = [
     filePayload(imageAssetId, resolveAssetAbsPath(imageAssetId)),
     filePayload(videoAssetId, resolveAssetAbsPath(videoAssetId)),
   ].filter((file): file is { name: string; path: string } => Boolean(file))
 
+  // Identical-retry dedup runs FIRST: a verbatim retry of a post we already
+  // sent (mcporter timeout — the caller never saw the success) must return
+  // the cached result, never a refusal whose error text invites repost=true.
   const signature = postSignature({ ...params, channel, files })
   const existing = postInflight.get(signature)
   if (existing) return existing
@@ -105,6 +89,39 @@ export async function postChannel(
   if (cached) {
     if (cached.expiresAt > Date.now()) return { ...cached.result, deduped: true }
     postCompleted.delete(signature)
+  }
+
+  // A deliverable goes to a channel ONCE per task (live-test incident: the
+  // same asset posted twice with DIFFERENT captions — monitor post + completion
+  // reply, which the signature cache above cannot catch). Durable in the
+  // ledger so it survives restarts; the asset IS the deliverable. repost=true
+  // is the explicit escape hatch; only successful deliveries record a row.
+  // Best-effort against concurrent different-caption posts (check-then-act);
+  // the observed incident was sequential.
+  const deliveredAssetIds = [imageAssetId, videoAssetId].filter((id): id is string => Boolean(id))
+  const deliveryKeys = taskId
+    ? deliveredAssetIds.map(assetId => `channel-post:${taskId}:${channel}:${assetId}`)
+    : []
+  if (!params.repost) {
+    for (const key of deliveryKeys) {
+      let prior
+      try {
+        prior = getIdempotent(key)
+      } catch (err) {
+        // Fail closed with an explanation: without the ledger we cannot rule
+        // out a prior delivery, and external sends are non-idempotent.
+        if (err instanceof LedgerUnavailableError) {
+          return fail(`Cannot verify whether this asset was already delivered (execution ledger unavailable) — refusing to risk a duplicate post. Retry once the ledger is healthy.`)
+        }
+        throw err
+      }
+      if (prior) {
+        const at = (prior.result as { at?: string } | null)?.at
+        return fail(
+          `Asset already delivered to ${displayChannel(channel)} for task ${taskId}${at ? ` at ${at}` : ''}. A deliverable goes out once — if a second copy is genuinely intended, pass repost=true.`,
+        )
+      }
+    }
   }
 
   const promise = deliverChannelPost(runtime, {
@@ -125,7 +142,14 @@ export async function postChannel(
     postCompleted.set(signature, { result, expiresAt: Date.now() + POST_IDEMPOTENCY_TTL_MS })
     if (result.ok) {
       for (const key of deliveryKeys) {
-        putIdempotent(key, 'channel.post', { at: new Date().toISOString() })
+        try {
+          putIdempotent(key, 'channel.post', { at: new Date().toISOString() })
+        } catch (err) {
+          // The message already went out — failing the call now would read as
+          // "post failed" and provoke a retry. Log; the TTL cache still
+          // covers verbatim retries for the next few minutes.
+          log.warn('Failed to record channel delivery in the ledger', { key, error: err instanceof Error ? err.message : String(err) })
+        }
       }
     }
     return result

@@ -387,6 +387,14 @@ function reusableGenerateResult(params: ImagesGenerateParams, req: PreparedImage
   return null
 }
 
+/** Reuse check for a versionOf re-roll: only the target asset's current version counts. */
+function reusableVersionOfResult(assetId: string, req: PreparedImageRequest, promptHash: string): ExecToolResult | null {
+  const manifest = getAsset(assetId)
+  const current = currentVersion(manifest)
+  if (!current || !versionMatchesRequest(current, req, promptHash, 'bakin_exec_images_generate')) return null
+  return imageToolResultFromVersion(assetId, current, req, { reused: true, idempotency: 'asset' })
+}
+
 function reusableEditResult(assetId: string, req: PreparedImageRequest, promptHash: string): ExecToolResult | null {
   const manifest = getAsset(assetId)
   const current = currentVersion(manifest)
@@ -427,9 +435,15 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
 
   // Iteration lands as a VERSION, not a sibling asset (live-test incident:
   // a correction pass referencing the first pass minted a second asset).
+  if (params.versionOf && params.allowNewAsset) {
+    return fail('versionOf and allowNewAsset contradict — versionOf appends a version of an existing asset, allowNewAsset declares a separate companion asset. Pass exactly one.')
+  }
   if (params.versionOf) {
-    const target = await ctx.assets.resolveVersionFile(params.versionOf)
-    if (!target) return fail(`versionOf asset not found: ${params.versionOf}`)
+    const targetManifest = getAsset(params.versionOf)
+    if (!targetManifest) return fail(`versionOf asset not found: ${params.versionOf}`)
+    if (targetManifest.type !== 'images') {
+      return fail(`versionOf must target an images asset; ${params.versionOf} is type '${targetManifest.type}'`)
+    }
   } else if (!params.allowNewAsset) {
     // Guard the iteration trap: referencing your own generated output from
     // THIS task without declaring intent. Imported reference material (op
@@ -447,7 +461,11 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
   }
 
   const promptHash = hashPrompt(req.prompt)
-  const reused = reusableGenerateResult(params, req, promptHash)
+  // With versionOf, reuse is scoped to the TARGET asset only — a matching
+  // sibling must not hijack an explicit re-roll into a different asset.
+  const reused = params.versionOf
+    ? reusableVersionOfResult(params.versionOf, req, promptHash)
+    : reusableGenerateResult(params, req, promptHash)
   if (reused) return reused
 
   // The runtime capability owns transport: native when it can, the shared
