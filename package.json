@@ -22,6 +22,7 @@
     "build:assert-production-assets": "bun run scripts/assert-production-assets.ts",
     "build:assets-manifest": "bun run scripts/generate-embedded-assets.ts",
     "build:binary": "bun run scripts/build-binary.ts",
+    "size:report": "bun run scripts/report-sizes.ts",
     "prestart": "bun run build:css && bun run build:vendors && bun run build:plugins && bun run build:host-shell && bun run build:assets-manifest",
     "start": "bun run prestart && bun run server.ts",
     "server": "bun run server.ts",
