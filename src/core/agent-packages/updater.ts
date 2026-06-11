@@ -39,12 +39,6 @@ const log = createLogger('agent-pkg:update')
 
 export interface UpdateOptions {
   packageId: string
-  /**
-   * When true, rewrite workspace files (SOUL.md/IDENTITY.md/etc.) from the
-   * package template even though the agent has been editing them. Always
-   * still honored: `.userEdited` sentinels.
-   */
-  refreshTemplate?: boolean
 }
 
 export interface UpdateResult {
@@ -78,7 +72,7 @@ export async function updatePackageById(options: UpdateOptions): Promise<UpdateR
     // No-op when the commit SHA hasn't moved. Local sources have empty
     // commitSha — for those we always re-project (the user just ran
     // update, presumably because something changed locally).
-    if (entry.commitSha && fetched.commitSha === entry.commitSha && !options.refreshTemplate) {
+    if (entry.commitSha && fetched.commitSha === entry.commitSha) {
       log.info('Update no-op — commit SHA unchanged', {
         packageId: options.packageId,
         commitSha: entry.commitSha,
@@ -112,17 +106,14 @@ export async function updatePackageById(options: UpdateOptions): Promise<UpdateR
       enabledLessons: entry.kind === 'agent' ? entry.lessonsEnabled ?? [] : undefined,
     })
 
-    // Roll back the old projections so the new ones land on a clean slate.
-    // Two carve-outs:
-    //   - Workspace files stay unless --refresh-template was passed; the agent
-    //     owns them after first install and the new projector will only
-    //     re-write under refreshTemplate.
-    //   - Lesson markers stay (keepBlocks) because the projector replaces
-    //     them in-place via injectBlock; a removeBlock + injectBlock round
-    //     trip would briefly drop the catalog block from the agent's SOUL.md.
+    // Roll back the old skill/asset projections so the new ones land on a
+    // clean slate. Workspace files are NOT unprojected — the projector
+    // rewrites their managed block in place (agent content outside the
+    // block is never touched). Legacy lesson-marker entries are likewise
+    // left alone (the migration removes them).
     if (entry.projections && entry.projections.length > 0) {
       const toUnproject = entry.projections.filter((p) => {
-        if (p.kind === 'workspace-file' && !options.refreshTemplate) return false
+        if (p.kind === 'workspace-file') return false
         if (p.kind === 'lesson-marker') return false
         return true
       })
@@ -145,8 +136,6 @@ export async function updatePackageById(options: UpdateOptions): Promise<UpdateR
       manifest,
       stagingDir: fetched.stagingDir,
       agentId: entry.agentId,
-      mode: 'update',
-      refreshTemplate: options.refreshTemplate,
       enabledLessons: entry.lessonsEnabled,
       installedBy,
     })
@@ -187,7 +176,6 @@ export async function updatePackageById(options: UpdateOptions): Promise<UpdateR
         toVersion: manifest.version,
         fromSha: entry.commitSha,
         toSha: fetched.commitSha,
-        refreshTemplate: options.refreshTemplate ?? false,
       },
       'cli',
     )

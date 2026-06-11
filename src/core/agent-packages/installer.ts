@@ -57,7 +57,6 @@ import {
 import {
   projectPackage,
   unprojectPackage,
-  type ProjectionMode,
   type ProjectorResult,
 } from './projector'
 import { getAgentState } from './agent-state'
@@ -300,7 +299,7 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
     // ─── 3. Compute install mode for kind:"agent" ──────────────────────────
     const lock = readLockfile()
     originalLock = lock
-    let mode: ProjectionMode = 'fresh'
+    let mode: 'fresh' | 'adopt' = 'fresh'
 
     // Lockfile key conventions:
     //   - agent kind:        plain id (e.g. "pixel")        — one agent per id
@@ -377,7 +376,6 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
         manifest: dep.manifest,
         stagingDir: dep.fetched.stagingDir,
         agentId: undefined,
-        mode: 'fresh',
         replace: options.replace,
         installedBy: {
           package: dep.resolvedId,
@@ -396,7 +394,6 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
       manifest,
       stagingDir: topFetched.stagingDir,
       agentId,
-      mode,
       replace: options.replace,
       installedBy: {
         package: resolvedTopId,

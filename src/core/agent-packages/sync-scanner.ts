@@ -302,7 +302,7 @@ function entryNeedsMigration(entry: PackageEntry): boolean {
   )
 }
 
-function mainAgentOf(agents: RuntimeAgent[]): { id: string; name: string } {
+export function mainAgentOf(agents: RuntimeAgent[]): { id: string; name: string } {
   const main = agents.find((a) => a.id === 'main')
     ?? agents.find((a) => a.role?.toLowerCase() === 'orchestrator')
     ?? agents[0]

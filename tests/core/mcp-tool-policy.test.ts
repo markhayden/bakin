@@ -113,13 +113,13 @@ describe('MCP tool policy', () => {
     }
   })
 
-  it('scopes adopted agents when their package declares allowedTools', async () => {
+  it('scopes adopt-installed agents when their package declares allowedTools', async () => {
     const suffix = `adopted_${Date.now()}`
     const allowedTool = `bakin_exec_policy_adopted_allowed_${suffix}`
     const blockedTool = `bakin_exec_policy_adopted_blocked_${suffix}`
     registerDummyTool(allowedTool)
     registerDummyTool(blockedTool)
-    writeAgentPackage('pixel', 'adopted', [allowedTool])
+    writeAgentPackage('pixel', 'managed', [allowedTool])
 
     const { client, close } = await connectPolicyClient('pixel')
     try {
@@ -230,7 +230,7 @@ function writeEmptyLockfile(): void {
 
 function writeAgentPackage(
   agentId: string,
-  state: 'managed' | 'adopted',
+  state: 'managed',
   allowedTools: string[] | undefined,
 ): void {
   const {

@@ -268,7 +268,10 @@ describe('removePackageById — basic remove', () => {
     expect(result.removed).toContain('pixel')
     expect(result.deletedAgent).toBe(false)
 
-    // Files gone
+    // Skills/assets gone. SOUL.md held ONLY the managed block (fresh
+    // install, no agent prose) — stripping the block leaves a husk, which
+    // unproject removes. Files with agent prose outside the block survive
+    // (covered in projector.test.ts).
     expect(existsSync(join(openClawDir, 'workspaces', 'pixel', 'SOUL.md'))).toBe(false)
     expect(existsSync(join(testDir, 'agents', 'pixel', 'avatar.jpg'))).toBe(false)
     expect(existsSync(join(testDir, 'packages', 'agents', 'pixel@0.1.0'))).toBe(false)
@@ -293,23 +296,18 @@ describe('removePackageById — basic remove', () => {
     expect(openClawAgents.find((a) => a.id === 'pixel')).toBeUndefined()
   })
 
-  it('with --keep-blocks, leaves lesson markers in place when files survive', async () => {
+  it('with --keep-blocks, leaves the managed block in place', async () => {
     const src = seedAgentPackage()
     await installPackage({ source: src })
 
-    // Pre-userEdit the SOUL.md so unproject won't delete it; markers should
-    // survive --keep-blocks.
     const soulPath = join(openClawDir, 'workspaces', 'pixel', 'SOUL.md')
-    const { markUserEdited } = await import('../../packages/core/src/agent-packages/markers')
-    markUserEdited(soulPath)
 
     await removePackageById({ packageId: 'pixel', keepBlocks: true })
 
-    // SOUL.md kept (userEdited) AND its markers kept (keepBlocks)
+    // SOUL.md kept and its managed block kept (keepBlocks)
     expect(existsSync(soulPath)).toBe(true)
     const soul = readFileSync(soulPath, 'utf-8')
-    expect(hasBlock(soul, 'lesson-catalog')).toBe(true)
-    expect(hasBlock(soul, 'lesson:pixel:style')).toBe(true)
+    expect(hasBlock(soul, 'managed')).toBe(true)
   })
 })
 

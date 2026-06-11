@@ -127,7 +127,10 @@ export function scanAgentAssets(lockfile?: Lockfile): ScanReport {
         continue
       }
 
-      if (p.kind === 'workspace-file' && p.templateOnly && isRuntimeWorkspaceTarget(p.target)) {
+      // Runtime workspace-file projections (legacy templateOnly AND the new
+      // composed-block shape) are verified by the sync scanner, not here —
+      // this component is superseded by `agent-sync` in C7.
+      if (p.kind === 'workspace-file' && isRuntimeWorkspaceTarget(p.target)) {
         report.ok.push(finding)
         continue
       }
