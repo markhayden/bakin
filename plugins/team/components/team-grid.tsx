@@ -1,8 +1,8 @@
 'use client'
 
-import { useMemo, useCallback, useState } from 'react'
+import { useMemo, useCallback, useState, useEffect } from 'react'
 import { useRouter } from '@makinbakin/sdk/hooks'
-import { Plus, Users, Settings2, Loader2 } from 'lucide-react'
+import { Plus, Users, Settings2, Loader2, ScrollText } from 'lucide-react'
 import {
   ReactFlow,
   Background,
@@ -163,16 +163,25 @@ export function AgentCardNode({ data }: NodeProps) {
 
 interface SectionNodeData extends Record<string, unknown> {
   label: string
+  teamId?: string
+  hasContext?: boolean
 }
 
 function SectionNode({ data }: NodeProps) {
-  const { label } = data as SectionNodeData
+  const { label, teamId, hasContext } = data as SectionNodeData
   return (
-    <div className="flex items-center justify-center px-4">
+    <div className="flex items-center justify-center gap-1 px-4">
       <Handle type="target" position={Position.Top} className="!bg-transparent !border-0" />
-      <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500 whitespace-nowrap">
+      <a
+        href={teamId ? `/team/teams/${encodeURIComponent(teamId)}` : '/team'}
+        className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500 whitespace-nowrap hover:text-zinc-300 hover:underline"
+        title={hasContext ? 'Team carries shared context — click to view' : 'Open team page'}
+      >
         {label}
-      </span>
+      </a>
+      {hasContext && (
+        <ScrollText className="size-3 text-info" aria-label={`${label} has shared context rules`} />
+      )}
       <Handle type="source" position={Position.Bottom} className="!bg-transparent !border-0" />
     </div>
   )
@@ -196,6 +205,23 @@ export function TeamGrid() {
   const reload = useAgentStore((s) => s.load)
   const [showCreate, setShowCreate] = useState(false)
   const [showTeams, setShowTeams] = useState(false)
+  const [teamsWithContext, setTeamsWithContext] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch('/api/plugins/team/context')
+        const json = await res.json()
+        if (cancelled || !json.ok) return
+        const ids = (json.teams ?? [])
+          .filter((t: { content: string | null }) => (t.content ?? '').trim().length > 0)
+          .map((t: { teamId: string }) => t.teamId)
+        setTeamsWithContext(new Set(ids))
+      } catch { /* badge is best-effort */ }
+    })()
+    return () => { cancelled = true }
+  }, [])
   const runtimeStatus = useRuntimeStatus()
   const [submitting, setSubmitting] = useState(false)
   const [pendingCreate, setPendingCreate] = useState<{ data: AgentFormData; avatarFile: File | null } | null>(null)
@@ -210,7 +236,7 @@ export function TeamGrid() {
 
   const { nodes, edges } = useMemo(
     () => loaded
-      ? buildGraph({ agents: agentsWithStatus, teams, displaySettings, mainAgentId })
+      ? buildGraph({ agents: agentsWithStatus, teams, displaySettings, mainAgentId, teamsWithContext })
       : { nodes: [], edges: [] },
     [agentsWithStatus, teams, displaySettings, mainAgentId, loaded],
   )
