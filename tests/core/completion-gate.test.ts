@@ -66,7 +66,7 @@ mock.module('@bakin/core/adapters/runtime', () => ({
 
 // Task-store fake: slow-able move so concurrent completions genuinely overlap.
 let moveDelayMs = 0
-let boardColumns: Record<string, Array<{ id: string; title: string; workflowId?: string }>> = {
+let boardColumns: Record<string, Array<{ id: string; title: string; workflowId?: string; updatedAt?: number }>> = {
   todo: [], inProgress: [], review: [], done: [], blocked: [], archived: [],
 }
 const mockMoveTask = mock(async (taskId: unknown, to: unknown) => {
@@ -93,6 +93,7 @@ const taskStoreMock = () => ({
     }
     return null
   }),
+  getTasksByColumn: mock((col: string) => boardColumns[col] ?? []),
   moveTask: mockMoveTask,
   readTaskboard: mock(() => ({ columns: boardColumns })),
   setDependency: mock(() => Promise.resolve()),
@@ -125,7 +126,7 @@ mock.module('@/core/logger', loggerMock)
 mock.module('../../src/core/logger', loggerMock)
 mock.module('../../packages/core/src/logger', loggerMock)
 
-import { reportComplete, moveTaskWithEffects, blockTaskWithEffects, reopenIfLeavingDone, syncLedgerForStoreMove } from '../../src/core/task-service'
+import { reportComplete, moveTaskWithEffects, blockTaskWithEffects, reopenIfLeavingDone, syncLedgerForStoreMove, backfillMissingCompletionRows } from '../../src/core/task-service'
 import { hasCompletion, recordCompletion } from '../../src/core/execution-ledger'
 import { closeDb } from '../../packages/core/src/storage/db'
 
@@ -298,6 +299,34 @@ describe('completion gate — first write wins', () => {
     // done → done is rejected by the store; the ledger must not gain a row
     expect(syncLedgerForStoreMove('task-1', 'done', 'workflow')).rejects.toThrow('Invalid transition')
     expect(hasCompletion('task-1')).toBe(false)
+  })
+
+  it('backfill heals done tasks without a row, idempotently, stamping the task updatedAt', () => {
+    boardColumns.done = [{ id: 'legacy-1', title: 'Pre-ledger done', updatedAt: 1750000000000 }]
+
+    expect(backfillMissingCompletionRows()).toBe(1)
+    expect(hasCompletion('legacy-1')).toBe(true)
+    expect(auditCount('task.completion_backfilled')).toBe(1)
+
+    // completedAt carries the task's updatedAt — observable via the gate's
+    // first-write-wins report on a duplicate attempt
+    const dup = recordCompletion('legacy-1', { agent: 'x' })
+    expect(dup.recorded).toBe(false)
+    if (!dup.recorded) expect(dup.existing.completedAt).toBe(1750000000000)
+
+    // second run is a no-op
+    expect(backfillMissingCompletionRows()).toBe(0)
+    expect(auditCount('task.completion_backfilled')).toBe(1)
+  })
+
+  it('backfill leaves rowed done tasks and non-done columns untouched', async () => {
+    await reportComplete('task-1', 'agent-a', 'done', 'mcp')
+    boardColumns.done = boardColumns.inProgress
+    boardColumns.inProgress = []
+    boardColumns.archived = [{ id: 'old-arch', title: 'Archived without row', updatedAt: 1 }]
+
+    expect(backfillMissingCompletionRows()).toBe(0)
+    expect(hasCompletion('old-arch')).toBe(false)
   })
 
   it('heals the crash window: completion row exists but task never reached done', async () => {

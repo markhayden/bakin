@@ -79,9 +79,9 @@ describe('tasks/runs-reader readTaskOutcome', () => {
     expect(readTaskOutcome('t4')).toEqual({ state: 'archived' })
   })
 
-  it('no completion + column done → done without completion fields (legacy)', () => {
+  it('no completion + column done → in_progress (boot backfill retired the legacy branch)', () => {
     seed('t5', { column: 'done' })
-    expect(readTaskOutcome('t5')).toEqual({ state: 'done' })
+    expect(readTaskOutcome('t5')).toEqual({ state: 'in_progress' })
   })
 
   it.each(['inProgress', 'todo', 'backlog', 'review'])(

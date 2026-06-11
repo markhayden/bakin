@@ -96,6 +96,7 @@ const taskStoreMock = {
   addTaskLog: mockAddTaskLog,
   blockTask: mockBlockTask,
   createTask: mockCreateTask,
+  getTasksByColumn: mock(() => []),
   getTaskWithColumn: mockGetTaskWithColumn,
   moveTask: mockMoveTask,
   readTaskboard: mockReadTaskboard,

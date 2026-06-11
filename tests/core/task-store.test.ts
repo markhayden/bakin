@@ -85,6 +85,8 @@ import {
   VALID_TRANSITIONS,
   localDateString,
 } from '@/core/task-store'
+import { recordCompletion, hasCompletion } from '@/core/execution-ledger'
+import { closeDb } from '../../packages/core/src/storage/db'
 
 // ---------------------------------------------------------------------------
 // Setup / Teardown
@@ -96,6 +98,7 @@ beforeEach(() => {
 })
 
 afterAll(() => {
+  closeDb()
   rmSync(testHome, { recursive: true, force: true })
 })
 
@@ -574,6 +577,20 @@ describe('archiveOldTasks', () => {
     const count = archiveOldTasks(30)
     expect(count).toBe(1)
     expect(getTask(task.id)).toBeNull()
+  })
+
+  it('purges ledger completion rows for deleted old tasks', async () => {
+    const task = await createTask('Ancient done', 'todo')
+    await addTaskLog(task.id, 'pixel', 'work')
+    await moveTask(task.id, 'done')
+    recordCompletion(task.id, { agent: 'pixel' })
+    expect(hasCompletion(task.id)).toBe(true)
+
+    const sixtyDaysAgo = Date.now() - (60 * 24 * 60 * 60 * 1000)
+    writeRawTask(task.id, { updatedAt: new Date(sixtyDaysAgo).toISOString() })
+
+    expect(archiveOldTasks(30)).toBe(1)
+    expect(hasCompletion(task.id)).toBe(false)
   })
 
   it('does not delete recent tasks', async () => {

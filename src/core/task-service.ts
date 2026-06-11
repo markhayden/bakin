@@ -23,6 +23,7 @@ import {
   addTaskLog as appendTaskLog,
   blockTask as blockStoredTask,
   createTask as createStoredTask,
+  getTasksByColumn,
   getTaskWithColumn,
   moveTask as moveStoredTask,
   readTaskboard,
@@ -101,6 +102,30 @@ export async function syncLedgerForStoreMove(
   if (to.toLowerCase() === 'done') {
     recordCompletion(taskId, { runId: getLiveRun(taskId)?.runId, agent, channel: opts?.channel })
   }
+}
+
+/**
+ * Boot-time heal: every done-column task without a completions row gets a
+ * synthetic one stamped with the task's updatedAt. Pre-ledger done tasks are
+ * the main population; the heal also reconverges any row lost to a since-fixed
+ * leak path. Idempotent (recordCompletion is insert-if-missing), so it simply
+ * runs every boot — after it, "completions row" ⟺ "task is done" holds for
+ * every reader and readTaskOutcome needs no done-column fallback. Done-column
+ * only: archived-without-row stays untouched (a human force-archive may never
+ * have been done).
+ */
+export function backfillMissingCompletionRows(): number {
+  let healed = 0
+  for (const task of getTasksByColumn('done')) {
+    if (hasCompletion(task.id)) continue
+    const completedAt = Number.isFinite(task.updatedAt) ? task.updatedAt : undefined
+    const result = recordCompletion(task.id, { agent: 'system', now: completedAt })
+    if (result.recorded) {
+      appendAudit(getContentDir(), 'task.completion_backfilled', 'system', { id: task.id, title: task.title, completedAt })
+      healed++
+    }
+  }
+  return healed
 }
 
 // ---------------------------------------------------------------------------

@@ -494,6 +494,13 @@ export function archiveOldTasks(olderThanDays: number): number {
     const col = asColumnId(task)
     if ((col === 'done' || col === 'archived') && Date.parse(task.updatedAt) < cutoff) {
       store.removeSync(task.id)
+      // Same ledger cascade as deleteTask — without it, deleted tasks
+      // orphan their completions/runs rows forever. Advisory.
+      try {
+        purgeTaskRows(task.id)
+      } catch (err) {
+        log.warn('Ledger purge failed for archived-away task', { taskId: task.id, err: err instanceof Error ? err.message : String(err) })
+      }
       removed++
     }
   }

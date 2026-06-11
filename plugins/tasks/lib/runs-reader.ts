@@ -40,8 +40,9 @@ export function readTaskOutcome(taskId: string, columnFallback = true): TaskOutc
       return { state: 'blocked' }
     case 'archived':
       return { state: 'archived' }
-    case 'done': // legacy done task without a completions row
-      return { state: 'done' }
+    // No done case: the boot backfill guarantees every done task has a
+    // completions row, so done-without-row is a transient inconsistency
+    // best reported as in_progress, never as a completed outcome.
     default:
       return { state: 'in_progress' }
   }
