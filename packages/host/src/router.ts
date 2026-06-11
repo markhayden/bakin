@@ -11,6 +11,7 @@ import { Route as IndexRoute } from './routes/index'
 import { Route as TasksRoute } from './routes/tasks'
 import { Route as TeamIndexRoute } from './routes/team.index'
 import { Route as TeamIdRoute } from './routes/team.$id'
+import { Route as TeamTeamsRoute } from './routes/team.teams.$teamId'
 import { Route as WorkflowsIndexRoute } from './routes/workflows.index'
 import { Route as WorkflowsNewRoute } from './routes/workflows.new'
 import { Route as WorkflowsIdIndexRoute } from './routes/workflows.$id.index'
@@ -28,6 +29,7 @@ const routeTree = RootRoute.addChildren([
   IndexRoute,
   TasksRoute,
   TeamIndexRoute,
+  TeamTeamsRoute,
   TeamIdRoute,
   WorkflowsIndexRoute,
   WorkflowsNewRoute,

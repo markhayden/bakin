@@ -334,22 +334,21 @@ describe('PackageCard — update and remove actions', () => {
     return fetchMock
   }
 
-  it('opens update modal and sends update-package payload', async () => {
+  it('opens the sync modal and posts to the sync route', async () => {
     const fetchMock = setupActionFetch()
 
     render(<PackageCardBody agentId="pixel" packageState={UPDATE_ROW} />)
 
     expect(screen.getByText('update available')).toBeDefined()
     fireEvent.click(screen.getByRole('button', { name: 'Upgrade agent package' }))
-    expect(screen.getByRole('heading', { name: 'Upgrade pixel' })).toBeDefined()
+    expect(screen.getByRole('heading', { name: 'Sync pixel' })).toBeDefined()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Update package' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Sync agent' }))
 
     await waitFor(() => {
       expect(fetchMock.mock.calls.some((call) => (
-        call[0] === '/api/agent-packages/pixel/update'
+        call[0] === '/api/agent-packages/pixel/sync'
         && (call[1] as RequestInit | undefined)?.method === 'POST'
-        && String((call[1] as RequestInit | undefined)?.body).includes('"refreshTemplate":false')
       ))).toBe(true)
     })
   })

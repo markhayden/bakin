@@ -40,6 +40,8 @@ export interface BuildGraphInput {
   displaySettings: AgentDisplaySettingsMap
   /** Canonical main/orchestrator agent id. Null when the roster is broken. */
   mainAgentId: string | null
+  /** Team ids whose shared context file has content (rules badge on the section node). */
+  teamsWithContext?: Set<string>
 }
 
 export interface BuildGraphResult {
@@ -85,7 +87,7 @@ function resolveReporter(
  * inputs and you'll get identical output.
  */
 export function buildGraph(input: BuildGraphInput): BuildGraphResult {
-  const { agents, teams, displaySettings, mainAgentId } = input
+  const { agents, teams, displaySettings, mainAgentId, teamsWithContext } = input
   const nodes: Node[] = []
   const edges: Edge[] = []
   const agentMap = new Map(agents.map((a) => [a.id, a]))
@@ -217,7 +219,7 @@ export function buildGraph(input: BuildGraphInput): BuildGraphResult {
         id: `section-${team.id}`,
         type: 'section',
         position: { x: centerX - SECTION_W / 2, y: sectionY },
-        data: { label: team.label },
+        data: { label: team.label, teamId: team.id, hasContext: teamsWithContext?.has(team.id) ?? false },
       })
       edges.push({
         id: `${reporterId}->section-${team.id}`,

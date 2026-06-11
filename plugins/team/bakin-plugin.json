@@ -322,7 +322,8 @@
     ],
     "slots": [
       "page:/team",
-      "page:/team/[id]"
+      "page:/team/[id]",
+      "page:/team/teams/[teamId]"
     ]
   }
 }

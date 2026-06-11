@@ -138,6 +138,7 @@ const doctorResponse = z.object({
 const doctorRepairApplyBody = z.object({
   accepted: z.boolean(),
   itemIds: z.array(z.string()).optional(),
+  allowDestructive: z.boolean().optional(),
 })
 
 const acceptedBody = z.object({
@@ -323,6 +324,7 @@ const routes = [
           projectRoot: process.cwd(),
           accepted: body.accepted,
           itemIds: body.itemIds,
+          allowDestructive: body.allowDestructive,
         })
         return Response.json(report, {
           status: report.status === 'confirmation_required' ? 409 : 200,
