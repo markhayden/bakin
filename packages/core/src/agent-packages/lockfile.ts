@@ -38,6 +38,7 @@ const ProjectionKindSchema = z.enum([
 const ProjectionInputsSchema = z.object({
   packageSha: z.string().optional(),
   globalSha: z.string().optional(),
+  roleSha: z.string().optional(),
   teamSha: z.string().optional(),
   lessonsSha: z.string().optional(),
 })
@@ -110,6 +111,7 @@ export const LockfileSchema = z.object({
 })
 
 export type ProjectionKind = z.infer<typeof ProjectionKindSchema>
+export type ProjectionInputs = z.infer<typeof ProjectionInputsSchema>
 export type ProjectionEntry = z.infer<typeof ProjectionEntrySchema>
 export type PackageEntry = z.infer<typeof PackageEntrySchema>
 export type PackageState = z.infer<typeof PackageStateSchema>

@@ -51,11 +51,22 @@ reporting) is hard because that boundary doesn't exist.
    not aliased). `--refresh-template` and `bakin agent-rules --apply-all` are
    deleted. `--check` does detection + report only. The check/repair onboarding
    pair is renamed `bakin check agent-sync` / `bakin install agent-sync`.
-7. **Layered context: global / team / individual.**
+7. **Layered context: global / role / team / individual.**
    - Global: `~/.bakin/team/context/global.md` — applies to every runtime agent.
+   - Role (build amendment, C3): `~/.bakin/team/context/roles/{orchestrator,subagent}.md`
+     — built-in role layer; orchestrator = main agent, subagent = everyone
+     else. Added because Bakin ships TWO distinct rule sets (orchestrator
+     rules vs the subagent managed-context sections), not one — global.md
+     alone could not express that without changing main's context. Bakin's
+     shipped defaults live in the role files' managed blocks; global.md is
+     wholly user-owned.
    - Team: `~/.bakin/team/context/<teamId>.md` — applies to members of that
-     `OrgTeam` (existing team plugin entity, `AgentDisplaySettings.teamId`).
+     `OrgTeam` (existing team plugin entity, `AgentDisplaySettings.teamId`;
+     resolved via the existing `team.getAgentTeam` hook).
    - Individual: the agent package's workspace templates.
+   - Context files support `{{agentId}}`/`{{agentName}}`/`{{mainAgentId}}`/
+     `{{mainAgentName}}` tokens and are flattened on composition (block
+     markers + HTML comments stripped).
 8. **Context files use the same block pattern fractally.** `global.md` = user
    free-form content + a `bakin`-managed block holding Bakin's shipped default
    rules (successor of `ORCHESTRATOR_RULES_CONTENT`, which is deleted from

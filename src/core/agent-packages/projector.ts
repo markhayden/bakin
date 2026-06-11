@@ -54,6 +54,7 @@ import {
   removeBlock,
 } from '../../../packages/core/src/agent-packages/managed-blocks'
 import { validatePackageContributionIntegrity } from './package-integrity'
+import { type LessonFileMeta, readPackageLessons } from './lesson-files'
 
 const log = createLogger('agent-pkg:project')
 
@@ -464,55 +465,11 @@ function projectAssets(
 
 // ─── Lesson markers (SOUL.md catalog + per-lesson blocks) ────────────────────
 
-interface LessonFileMeta {
-  lessonId: string
-  title: string
-  body: string
-  defaultEnabled: boolean
-  packageRel: string
-}
-
-function parseLessonFile(absPath: string, packageRel: string): LessonFileMeta {
-  const raw = readFileSync(absPath, 'utf-8')
-  const match = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/)
-  let title = basename(absPath).replace(/\.md$/i, '')
-  let defaultEnabled = false
-  let body = raw.trim()
-
-  if (match) {
-    body = match[2].trim()
-    // Light frontmatter parse — we only need title + defaultEnabled, and
-    // bringing in js-yaml here pulls a heavy dep into the projector. The
-    // installer is the right place for full frontmatter access.
-    for (const line of match[1].split('\n')) {
-      const trimmed = line.trim()
-      if (trimmed.startsWith('title:')) {
-        title = trimmed.slice('title:'.length).trim().replace(/^['"]|['"]$/g, '')
-      } else if (trimmed.startsWith('defaultEnabled:')) {
-        defaultEnabled = trimmed.slice('defaultEnabled:'.length).trim() === 'true'
-      }
-    }
-  }
-
-  const lessonId = basename(absPath).replace(/\.md$/i, '')
-  return { lessonId, title, body, defaultEnabled, packageRel }
-}
-
 function readLessonFiles(
   manifest: AgentManifest,
   options: ProjectorOptions,
 ): LessonFileMeta[] {
-  const rels = manifest.contributions.lessons ?? []
-  const out: LessonFileMeta[] = []
-  for (const rel of rels) {
-    const abs = join(options.stagingDir, rel)
-    if (!existsSync(abs)) {
-      log.warn('Lesson source missing — skipping', { rel })
-      continue
-    }
-    out.push(parseLessonFile(abs, rel))
-  }
-  return out
+  return readPackageLessons(manifest, options.stagingDir)
 }
 
 function lessonBlockId(packageId: string, lessonId: string): string {
