@@ -15,7 +15,10 @@ function relativeTime(ts: string): string {
   const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
   if (diffDays === 0) return `Today ${time}`
   if (diffDays === 1) return `Yesterday ${time}`
-  return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} ${time}`
+  // Prior-year timestamps carry the year — "Jan 5" alone is ambiguous once
+  // runs and completions live longer than the calendar.
+  const sameYear = d.getFullYear() === now.getFullYear()
+  return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(sameYear ? {} : { year: 'numeric' }) })} ${time}`
 }
 
 function formatDuration(ms?: number): string | null {
