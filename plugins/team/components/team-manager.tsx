@@ -101,6 +101,13 @@ export function TeamManager() {
         />
       ) : (
         <div className="space-y-3">
+          <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-3">
+            <div className="flex-1 min-w-0">
+              <a href="/team/teams/global" className="text-sm font-semibold hover:underline">Global</a>
+              <div className="text-xs text-muted-foreground">Shared context for every agent</div>
+            </div>
+            <code className="text-[10px] text-muted-foreground font-mono">global</code>
+          </div>
           {teams.map((team) => {
             return (
               <div
@@ -108,7 +115,9 @@ export function TeamManager() {
                 className="flex items-center gap-3 rounded-lg border border-border bg-card p-3"
               >
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold">{team.label}</div>
+                  <a href={`/team/teams/${encodeURIComponent(team.id)}`} className="text-sm font-semibold hover:underline">
+                    {team.label}
+                  </a>
                   <div className="text-xs text-muted-foreground">
                     Reports to{' '}
                     <select
