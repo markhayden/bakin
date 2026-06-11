@@ -484,20 +484,6 @@ describe('read-only CLI TTY commands', () => {
     expect(errorOutput()).toBe('')
   })
 
-  it('renders agent-rules command help with the shared TUI when stdout is a TTY', async () => {
-    process.argv = ['bun', 'cli/bakin.ts', 'agent-rules']
-
-    const { main } = await import('../../cli/bakin')
-    await main()
-
-    expect(output()).toContain("┃ 🐷 Bakin'")
-    expect(output()).toContain('Help')
-    expect(output()).toContain('AGENT RULES')
-    expect(output()).toContain('bakin agent-rules --apply')
-    expect(output()).not.toContain('Usage: bakin agent-rules --apply')
-    expect(errorOutput()).toBe('')
-  })
-
   it('renders status with the shared TUI when stdout is a TTY', async () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse({

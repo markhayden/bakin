@@ -62,6 +62,7 @@ import {
   mainAgentOf,
   sha256OfString,
 } from './sync-scanner'
+import { seedContextFiles } from '../team-context'
 
 const log = createLogger('agent-pkg:project')
 
@@ -278,6 +279,10 @@ async function projectComposedBlocks(
   writeLog: WriteLog,
 ): Promise<void> {
   const runtime = getAppServices().runtime
+  // Context layers must exist before expected-state derivation, or a fresh
+  // machine's first install composes without role context and immediately
+  // reports drift. Create-if-missing; never overwrites.
+  seedContextFiles()
 
   let agentName = manifest.agent?.identity?.name ?? agentId
   let main = { id: 'main', name: 'Main' }

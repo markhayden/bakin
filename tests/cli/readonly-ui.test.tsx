@@ -4,7 +4,6 @@ import { renderToString } from 'ink'
 import {
   AgentLessonsListReport,
   AgentPackagesListReport,
-  AgentRulesReport,
   AgentStatusReport,
   AgentTasksReport,
   AgentsListReport,
@@ -333,30 +332,6 @@ describe('read-only CLI TUI screens', () => {
     expect(output).toContain('Updated setting dispatch.intervalMs.')
     expect(output).toContain('Value: 300000')
     expect(output).not.toContain('"ok"')
-  })
-
-  it('renders agent-rules check results with shared TUI primitives', () => {
-    const output = renderToString(
-      <AgentRulesReport
-        mode="check"
-        scope="orchestrator"
-        results={[
-          { check: 'managed-context', status: 'ok', message: 'Managed context is current' },
-          { check: 'subagent-context', status: 'fixed', message: 'Updated stale context' },
-          { check: 'runtime-agents', status: 'warn', message: 'No runtime agents found' },
-          { check: 'workspace', status: 'error', message: 'Failed to read AGENTS.md' },
-        ]}
-      />,
-    )
-
-    expect(output).toContain('Agent Rules')
-    expect(output).toContain('scope: orchestrator')
-    expect(output).toContain('CHECKS')
-    expect(output).toContain('managed-context')
-    expect(output).toContain('Updated stale context')
-    expect(output).toContain('No runtime agents found')
-    expect(output).toContain('Failed to read AGENTS.md')
-    expect(output).not.toContain('[OK] managed-context')
   })
 
   it('renders reindex results with shared TUI tables', () => {

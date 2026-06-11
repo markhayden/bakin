@@ -279,8 +279,12 @@ describe('projectPackage — composed managed blocks', () => {
     const identity = readFileSync(runtimeWorkspaceFile('pixel', 'IDENTITY.md'), 'utf-8')
     expect(extractBlock(identity, MANAGED_BLOCK_ID)).toContain('- **Name:** Pixel')
 
+    // SOUL + IDENTITY from the package, plus AGENTS.md which always gets
+    // the context-layer block (role context is seeded by the projector).
     const wsProjections = result.projections.filter((p) => p.kind === 'workspace-file')
-    expect(wsProjections).toHaveLength(2)
+    expect(wsProjections).toHaveLength(3)
+    const agentsMd = readFileSync(runtimeWorkspaceFile('pixel', 'AGENTS.md'), 'utf-8')
+    expect(extractBlock(agentsMd, MANAGED_BLOCK_ID)).toContain('bakin-section: role:subagent')
     expect(wsProjections.every((p) => typeof p.composedSha === 'string')).toBe(true)
     expect(wsProjections.every((p) => p.templateOnly === undefined)).toBe(true)
     expect(result.projections.some((p) => p.kind === 'lesson-marker')).toBe(false)

@@ -51,9 +51,9 @@ function DoctorScreen() {
           { status: 'ok', label: 'search-models', message: 'All 3 Termite models are present' },
           {
             status: 'warn',
-            label: 'agent-assets',
+            label: 'agent-sync',
             message: '1 agent-package projection needs repair; patch is missing from the runtime workspace.',
-            next: 'bakin install agent-assets',
+            next: 'bakin install agent-sync',
           },
         ]} />
       </Section>
@@ -132,7 +132,7 @@ function DoctorFixScreen() {
           },
           {
             status: 'ready',
-            label: 'team.agent-assets',
+            label: 'team.agent-sync',
             message: 'Reproject the patch agent package into the runtime workspace.',
             detail: 'invoke agent package installer in repair mode',
           },
@@ -174,14 +174,14 @@ function DoctorAppliedScreen() {
       <Section title="Applied">
         <FindingRows rows={[
           { status: 'applied', label: 'tasks.taskboard', message: 'Added missing board columns and preserved existing tasks.' },
-          { status: 'applied', label: 'team.agent-assets', message: 'Reprojected patch agent package into the runtime workspace.' },
+          { status: 'applied', label: 'team.agent-sync', message: 'Reprojected patch agent package into the runtime workspace.' },
           { status: 'applied', label: 'health.skill', message: 'Updated the health plugin runtime skill projection.' },
         ]} />
       </Section>
       <Section title="Verification">
         <FindingRows rows={[
           { status: 'ok', label: 'tasks.taskboard', message: 'Task board is healthy after repair.' },
-          { status: 'ok', label: 'team.agent-assets', message: 'All projected agent-package files are present.' },
+          { status: 'ok', label: 'team.agent-sync', message: 'All projected agent-package files are present.' },
           {
             status: 'warn',
             label: 'channels',
@@ -307,7 +307,7 @@ function OnboardScreen() {
             { status: 'ok', label: 'runtime', message: 'OpenClaw reachable; main orchestrator agent found' },
             { status: 'ok', label: 'search', message: 'Antfly installed and search index path prepared' },
             { status: 'run', label: 'plugins', message: 'Installing selected official plugins and building their assets.' },
-            { status: 'run', label: 'agent-assets', message: 'Projecting selected agent packages into the runtime workspace.' },
+            { status: 'run', label: 'agent-sync', message: 'Projecting selected agent packages into the runtime workspace.' },
             { status: 'todo', label: 'channels', message: 'Approval and notification channels have not run yet.' },
             { status: 'todo', label: 'doctor', message: 'Final health sweep will run after setup completes.' },
           ]} />

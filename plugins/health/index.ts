@@ -31,7 +31,6 @@ import { checkSearchAdapter } from './lib/system-checks/search'
 import { checkAndSyncSkill, syncSkillRepair } from './lib/system-checks/sync-skill'
 import { checkPluginAssets } from './lib/system-checks/plugin-assets'
 import { checkPluginArtifacts } from './lib/system-checks/plugin-artifacts'
-import { applyManagedBlocksForRuntime } from '../../src/core/agent-rules/managed-blocks'
 
 type RegistryAccessor = () => Array<Record<string, unknown>>
 type McpSessionsAccessor = () => { activeSessions: Array<{ agent: string; sessions: number; connectedAt: string }>; upSince: string }
@@ -54,54 +53,6 @@ const stripRun = (def: HealthCheckDef) => ({
   pluginId: def.pluginId,
   autoFix: !!def.repair || !!def.autoFix,
 })
-
-function managedBlockRepair(
-  runtime: PluginContext['runtime'],
-  scope: 'orchestrator' | 'subagents',
-  checkId: string,
-): HealthRepairHandler {
-  return {
-    async plan(rows) {
-      const matching = rows.filter(row => row.autoFixable)
-      if (matching.length === 0) return []
-      return [{
-        id: `health.${checkId}.managed-blocks`,
-        checkId,
-        title: scope === 'orchestrator'
-          ? 'Repair main agent managed context'
-          : 'Repair subagent managed context',
-        reason: matching.map(row => row.message).join('; '),
-        safety: 'safe',
-        requiresConfirmation: true,
-        changes: [{
-          kind: 'runtime',
-          target: scope === 'orchestrator' ? 'main AGENTS.md' : 'subagent AGENTS.md files',
-          action: 'update',
-          description: 'Apply Bakin managed-context blocks through the runtime adapter.',
-        }],
-      }]
-    },
-    async apply(items) {
-      if (items.length === 0) return []
-      const rows = await applyManagedBlocksForRuntime(runtime, true, { scope })
-      const failures = rows.filter(row => row.status === 'error')
-      return [{
-        id: `health.${checkId}.managed-blocks`,
-        checkId,
-        status: failures.length > 0 ? 'failed' : 'applied',
-        message: rows.map(row => row.message).join('; '),
-        changes: rows
-          .filter(row => row.status === 'fixed')
-          .map(row => ({
-            kind: 'runtime' as const,
-            target: scope === 'orchestrator' ? 'main AGENTS.md' : 'subagent AGENTS.md files',
-            action: 'update' as const,
-            description: row.message,
-          })),
-      }]
-    },
-  }
-}
 
 function buildDoctorResponse(results: Array<{ status: string }> & unknown[]) {
   const errors = results.filter(r => r.status === 'error').length
@@ -589,12 +540,6 @@ const healthPlugin: BakinPlugin = definePlugin({
       run: () => checkSearchAdapter(),
     })
     ctx.registerHealthCheck({
-      id: 'orchestrator-rules',
-      name: 'Main agent AGENTS.md managed context',
-      run: () => applyManagedBlocksForRuntime(ctx.runtime, false, { scope: 'orchestrator' }),
-      repair: managedBlockRepair(ctx.runtime, 'orchestrator', 'orchestrator-rules'),
-    })
-    ctx.registerHealthCheck({
       id: 'skill',
       name: 'Bakin SKILL.md sync to runtime',
       run: () => checkAndSyncSkill(process.cwd(), ctx.runtime),
@@ -614,12 +559,6 @@ const healthPlugin: BakinPlugin = definePlugin({
       id: 'plugin-registry',
       name: 'Plugin activation state',
       run: () => Promise.resolve(checkPluginRegistry()),
-    })
-    ctx.registerHealthCheck({
-      id: 'managed-blocks',
-      name: 'Per-agent AGENTS.md managed context',
-      run: () => applyManagedBlocksForRuntime(ctx.runtime, false, { scope: 'subagents' }),
-      repair: managedBlockRepair(ctx.runtime, 'subagents', 'managed-blocks'),
     })
   },
 

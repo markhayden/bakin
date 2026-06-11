@@ -30,7 +30,6 @@ import {
 import type { Permission } from '@bakin/core/plugins/permissions'
 import { extractApiErrorMessage, formatApiError } from '../src/core/cli/api-error'
 import type {
-  AgentRuleResultData,
   CommandFailureData,
   CommandIssueData,
   HelpGroupData,
@@ -377,18 +376,6 @@ async function printPathsTui(paths: Record<string, unknown>, isBakinHome: unknow
     import('react'),
   ])
   console.log(renderToString(createElement(PathsReport, { paths, isBakinHome })))
-}
-
-async function printAgentRulesTui(
-  results: AgentRuleResultData[],
-  options: { mode: 'check' | 'apply'; scope: 'orchestrator' | 'all' },
-): Promise<void> {
-  const [{ AgentRulesReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(AgentRulesReport, { results, ...options })))
 }
 
 async function printTasksListTui(columns: Record<string, Array<Record<string, unknown>>>, column?: string): Promise<void> {
@@ -1981,7 +1968,7 @@ async function runOfflineDoctor(): Promise<CliDoctorResult> {
     { searchComponent },
     { searchModelsComponent },
     { mcporterComponent },
-    { agentAssetsComponent },
+    { agentSyncComponent },
     { recommendedPluginsComponent },
   ] = await Promise.all([
     import('../src/core/onboarding/mkdir'),
@@ -1989,7 +1976,7 @@ async function runOfflineDoctor(): Promise<CliDoctorResult> {
     import('../src/core/onboarding/search'),
     import('../src/core/onboarding/search-models'),
     import('../src/core/onboarding/mcporter'),
-    import('../src/core/onboarding/agent-assets'),
+    import('../src/core/onboarding/agent-sync'),
     import('../src/core/onboarding/recommended-plugins'),
   ])
   const checks = []
@@ -1999,7 +1986,7 @@ async function runOfflineDoctor(): Promise<CliDoctorResult> {
     searchComponent,
     searchModelsComponent,
     mcporterComponent,
-    agentAssetsComponent,
+    agentSyncComponent,
     recommendedPluginsComponent,
   ]) {
     try {
@@ -2488,68 +2475,6 @@ async function cmdDoctor(args: string[] = process.argv.slice(2)): Promise<void> 
 // ---------------------------------------------------------------------------
 // Agent Rules
 // ---------------------------------------------------------------------------
-
-// Agent-rules context management is owned by src/core/agent-rules/managed-blocks.ts.
-// Imported lazily inside cmdAgentRules so the CLI stays a pure entry point.
-
-const AGENT_RULES_HELP_GROUPS: HelpGroupData[] = [{
-  group: 'Agent Rules',
-  commands: [
-    { usage: 'bakin agent-rules --apply', summary: 'Write main-agent managed context to AGENTS.md' },
-    { usage: 'bakin agent-rules --check', summary: 'Check if main-agent managed context is current' },
-    { usage: 'bakin agent-rules --apply-all', summary: 'Apply managed context to all agent AGENTS.md files' },
-    { usage: 'bakin agent-rules --check-all', summary: 'Check managed context across all agents' },
-  ],
-}]
-
-async function cmdAgentRules(options: { apply?: boolean; check?: boolean; applyAll?: boolean; checkAll?: boolean } = {}): Promise<void> {
-  if (!options.apply && !options.check && !options.applyAll && !options.checkAll) {
-    if (process.stdout.isTTY) {
-      await printHelpReportTui(AGENT_RULES_HELP_GROUPS)
-      return
-    }
-    console.log('Usage: bakin agent-rules --apply       # Write main-agent managed context to AGENTS.md')
-    console.log('       bakin agent-rules --check       # Check if main-agent managed context is current')
-    console.log('       bakin agent-rules --apply-all   # Apply managed context to all agent AGENTS.md files')
-    console.log('       bakin agent-rules --check-all   # Check managed context across all agents')
-    return
-  }
-
-  const scope = options.apply || options.check ? 'orchestrator' : 'all'
-  const autoFix = !!(options.apply || options.applyAll)
-
-  const previousConsoleFormat = process.env.BAKIN_CONSOLE_FORMAT
-  const shouldSilenceRuntimeLogs = process.stdout.isTTY && previousConsoleFormat === undefined
-  let results: Awaited<ReturnType<typeof import('../src/core/agent-rules/managed-blocks')['applyManagedBlocks']>>
-  try {
-    if (shouldSilenceRuntimeLogs) process.env.BAKIN_CONSOLE_FORMAT = 'silent'
-    const { applyManagedBlocks } = await import('../src/core/agent-rules/managed-blocks')
-    results = await applyManagedBlocks(autoFix, { scope })
-  } finally {
-    if (shouldSilenceRuntimeLogs) delete process.env.BAKIN_CONSOLE_FORMAT
-  }
-
-  const errors = results.filter(r => r.status === 'error')
-  const warnings = results.filter(r => r.status === 'warn')
-  const fixes = results.filter(r => r.status === 'fixed')
-  const oks = results.filter(r => r.status === 'ok')
-
-  if (process.stdout.isTTY) {
-    await printAgentRulesTui(results, {
-      mode: autoFix ? 'apply' : 'check',
-      scope,
-    })
-  } else {
-    for (const r of results) {
-      const icon = r.status === 'ok' ? '[OK]' : r.status === 'fixed' ? '[FIXED]' : r.status === 'warn' ? '[WARN]' : '[ERROR]'
-      console.log(`${icon} ${r.check}: ${r.message}`)
-    }
-
-    console.log(`\n${oks.length} up to date, ${fixes.length} fixed, ${warnings.length} warnings, ${errors.length} errors`)
-  }
-
-  if (errors.length > 0 || warnings.length > 0) process.exit(1)
-}
 
 async function cmdPaths(key?: string, opts: { json?: boolean } = {}): Promise<void> {
   const result = await apiGet(`/api/paths${key ? `?key=${encodeURIComponent(key)}` : ''}`) as Record<string, unknown>
@@ -3902,7 +3827,7 @@ async function cmdOnboardingSettingsInit(options: { json?: boolean } = {}): Prom
 }
 
 async function cmdOnboardingCheckSingle(
-  target: 'runtime' | 'search' | 'search-models' | 'llm' | 'channels' | 'plugin-assets' | 'agent-assets' | 'recommended-plugins' | 'recommended-agents',
+  target: 'runtime' | 'search' | 'search-models' | 'llm' | 'channels' | 'plugin-assets' | 'agent-sync' | 'recommended-plugins' | 'recommended-agents',
   options: { verbose?: boolean } = {},
 ): Promise<void> {
   const componentMap: Record<string, () => Promise<{ check(): Promise<import('../src/core/onboarding/types').CheckResult> }>> = {
@@ -3912,7 +3837,7 @@ async function cmdOnboardingCheckSingle(
     llm: async () => (await import('../src/core/onboarding/credentials')).llmComponent,
     channels: async () => (await import('../src/core/onboarding/credentials')).channelsComponent,
     'plugin-assets': async () => (await import('../src/core/onboarding/plugin-assets')).pluginAssetsComponent,
-    'agent-assets': async () => (await import('../src/core/onboarding/agent-assets')).agentAssetsComponent,
+    'agent-sync': async () => (await import('../src/core/onboarding/agent-sync')).agentSyncComponent,
     'recommended-plugins': async () => (await import('../src/core/onboarding/recommended-plugins')).recommendedPluginsComponent,
     'recommended-agents': async () => (await import('../src/core/onboarding/recommended-agents')).recommendedAgentsComponent,
   }
@@ -3956,7 +3881,7 @@ async function cmdOnboardingInstallSingle(target: string, args: string[]): Promi
     'search-models': async () => (await import('../src/core/onboarding/search-models')).searchModelsComponent,
     mcporter: async () => (await import('../src/core/onboarding/mcporter')).mcporterComponent,
     'plugin-assets': async () => (await import('../src/core/onboarding/plugin-assets')).pluginAssetsComponent,
-    'agent-assets': async () => (await import('../src/core/onboarding/agent-assets')).agentAssetsComponent,
+    'agent-sync': async () => (await import('../src/core/onboarding/agent-sync')).agentSyncComponent,
     'recommended-plugins': async () => (await import('../src/core/onboarding/recommended-plugins')).recommendedPluginsComponent,
     'recommended-agents': async () => (await import('../src/core/onboarding/recommended-agents')).recommendedAgentsComponent,
   }
@@ -4455,34 +4380,25 @@ export async function main(): Promise<void> {
         }
         break
 
-      case 'agent-rules': {
-        const apply = args.includes('--apply')
-        const check = args.includes('--check')
-        const applyAll = args.includes('--apply-all')
-        const checkAll = args.includes('--check-all')
-        await cmdAgentRules({ apply, check, applyAll, checkAll })
-        break
-      }
-
       case 'mkdir':
         await cmdOnboardingMkdir({ json: args.includes('--json') })
         break
 
       case 'check':
-        if (sub === 'runtime' || sub === 'search' || sub === 'search-models' || sub === 'llm' || sub === 'channels' || sub === 'plugin-assets' || sub === 'agent-assets' || sub === 'recommended-plugins' || sub === 'recommended-agents') {
+        if (sub === 'runtime' || sub === 'search' || sub === 'search-models' || sub === 'llm' || sub === 'channels' || sub === 'plugin-assets' || sub === 'agent-sync' || sub === 'recommended-plugins' || sub === 'recommended-agents') {
           await cmdOnboardingCheckSingle(sub, { verbose: args.includes('--verbose') })
         } else if (sub === 'all') {
           await cmdOnboardingCheckAll({ verbose: args.includes('--verbose') })
         } else {
-          await exitUnknownSubcommand('check', sub, ['runtime', 'search', 'search-models', 'llm', 'channels', 'plugin-assets', 'agent-assets', 'recommended-plugins', 'recommended-agents', 'all'])
+          await exitUnknownSubcommand('check', sub, ['runtime', 'search', 'search-models', 'llm', 'channels', 'plugin-assets', 'agent-sync', 'recommended-plugins', 'recommended-agents', 'all'])
         }
         break
 
       case 'install':
-        if (sub === 'search' || sub === 'search-models' || sub === 'mcporter' || sub === 'plugin-assets' || sub === 'agent-assets' || sub === 'recommended-plugins' || sub === 'recommended-agents') {
+        if (sub === 'search' || sub === 'search-models' || sub === 'mcporter' || sub === 'plugin-assets' || sub === 'agent-sync' || sub === 'recommended-plugins' || sub === 'recommended-agents') {
           await cmdOnboardingInstallSingle(sub, args)
         } else {
-          await exitUnknownSubcommand('install', sub, ['search', 'search-models', 'mcporter', 'plugin-assets', 'agent-assets', 'recommended-plugins', 'recommended-agents'])
+          await exitUnknownSubcommand('install', sub, ['search', 'search-models', 'mcporter', 'plugin-assets', 'agent-sync', 'recommended-plugins', 'recommended-agents'])
         }
         break
 

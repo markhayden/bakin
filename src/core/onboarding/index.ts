@@ -49,7 +49,7 @@ import { searchModelsComponent } from './search-models'
 import { mcporterComponent } from './mcporter'
 import { openClawIntegrationComponent } from './openclaw-integration'
 import { pluginAssetsComponent } from './plugin-assets'
-import { agentAssetsComponent } from './agent-assets'
+import { agentSyncComponent } from './agent-sync'
 import { llmComponent, channelsComponent } from './credentials'
 import { recommendedPluginsComponent } from './recommended-plugins'
 import { recommendedAgentsComponent } from './recommended-agents'
@@ -77,7 +77,7 @@ export const COMPONENT_ORDER: readonly OnboardingComponent[] = [
   mcporterComponent,
   openClawIntegrationComponent,
   pluginAssetsComponent,
-  agentAssetsComponent,
+  agentSyncComponent,
   llmComponent,
   channelsComponent,
   recommendedPluginsComponent,

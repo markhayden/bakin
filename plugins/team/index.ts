@@ -37,7 +37,7 @@ import { getStatsByMs } from '../../src/core/usage'
 import { retrieveAgentPackageLessons } from '../../src/core/agent-packages/lesson-retrieval'
 import { getRuntimeMainAgentId, type AgentRuntimeAdapter, type RuntimeAgent } from '@bakin/core/adapters/runtime'
 import { readLatestSessionTranscript } from './lib/session-reader'
-import { agentAssetsRepair, checkAgentRoster, checkPersonas, checkAgentAssets, personaRepair } from './lib/health-checks'
+import { agentSyncRepair, checkAgentRoster, checkPersonas, checkAgentSync, personaRepair } from './lib/health-checks'
 import type {
   AgentMeta,
   AgentProfile,
@@ -2189,10 +2189,10 @@ const teamPlugin: BakinPlugin = definePlugin({
       repair: personaRepair(getContentDir(), runtimeAgentReader),
     })
     ctx.registerHealthCheck({
-      id: 'agent-assets',
-      name: 'Agent-package projection drift',
-      run: () => checkAgentAssets(),
-      repair: agentAssetsRepair(),
+      id: 'agent-sync',
+      name: 'Agent sync (managed blocks + projections)',
+      run: () => checkAgentSync(),
+      repair: agentSyncRepair(),
     })
   },
 
