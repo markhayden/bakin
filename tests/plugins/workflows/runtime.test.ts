@@ -47,6 +47,12 @@ const moveTaskHook = mock(async (data: Record<string, unknown>) => {
   const task = hookTasks.get(data.identifier as string)
   if (task) task.column = data.to as string
 })
+// Ledger-sync seam (#482): the runtime's store moves must go through
+// task-service's syncLedgerForStoreMove. The spy delegates to moveTaskHook so
+// move-sequence assertions keep observing the same store calls.
+const syncLedgerForStoreMoveHook = mock(async (taskId: string, to: string, _agent: string, opts?: { from?: string }) => {
+  await moveTaskHook({ identifier: taskId, to, from: opts?.from })
+})
 
 function readTaskboardForTest() {
   const columns: Record<string, HookTask[]> = {
@@ -87,12 +93,13 @@ const taskStoreMock = {
 mock.module('../../../src/core/task-store', () => taskStoreMock)
 mock.module('@/core/task-store', () => taskStoreMock)
 
-mock.module('../../../src/core/task-service', () => ({
+const taskServiceMock = () => ({
   createTaskWithEffects: (data: Record<string, unknown>) => createTaskWithEffectsHook(data),
-}))
-mock.module('@/core/task-service', () => ({
-  createTaskWithEffects: (data: Record<string, unknown>) => createTaskWithEffectsHook(data),
-}))
+  syncLedgerForStoreMove: (taskId: string, to: string, agent: string, opts?: { from?: string }) =>
+    syncLedgerForStoreMoveHook(taskId, to, agent, opts),
+})
+mock.module('../../../src/core/task-service', taskServiceMock)
+mock.module('@/core/task-service', taskServiceMock)
 
 // Mock audit to prevent writes to audit.jsonl
 mock.module('../../../src/core/audit', () => ({
@@ -886,6 +893,43 @@ steps: []
 
       expect(result.success).toBe(false)
       expect(result.errors).toEqual(['Workflow instance does not match task'])
+    })
+  })
+
+  // ─── Ledger sync wiring (#482) ─────────────────────────────────────
+
+  describe('ledger sync wiring', () => {
+    it('workflow completion lands the task on done through the ledger-sync helper', async () => {
+      createInstance('task-ledger-done', 'linear', testDir)
+      completeStep('task-ledger-done', 'step-one', { r: 1 }, undefined, testDir)
+      completeStep('task-ledger-done', 'step-two', { r: 2 }, undefined, testDir)
+      completeStep('task-ledger-done', 'step-three', { r: 3 }, undefined, testDir)
+
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(syncLedgerForStoreMoveHook).toHaveBeenCalledWith(
+        'task-ledger-done', 'done', 'workflow', expect.anything(),
+      )
+    })
+
+    it('reopen moves the task off done through the ledger-sync helper', async () => {
+      createInstance('task-ledger-reopen', 'linear', testDir)
+      completeStep('task-ledger-reopen', 'step-one', { r: 1 }, undefined, testDir)
+      completeStep('task-ledger-reopen', 'step-two', { r: 2 }, undefined, testDir)
+      completeStep('task-ledger-reopen', 'step-three', { r: 3 }, undefined, testDir)
+      syncLedgerForStoreMoveHook.mockClear()
+
+      const result = reopenFromStep('task-ledger-reopen', {
+        stepId: 'step-two',
+        reason: 'Redo it',
+        actor: { id: 'mark', source: 'web' },
+        contentDir: testDir,
+      })
+      expect(result.success).toBe(true)
+
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(syncLedgerForStoreMoveHook).toHaveBeenCalledWith(
+        'task-ledger-reopen', 'inProgress', 'workflow', expect.anything(),
+      )
     })
   })
 
