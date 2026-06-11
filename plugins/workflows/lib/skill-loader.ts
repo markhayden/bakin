@@ -32,6 +32,14 @@ import { getAgentPackageSkills } from './agent-package-skill-registry'
 
 const skillCache = new Map<string, SkillDefinition | null>()
 
+/**
+ * Drop every cached skill resolution. Called after agent-package sync /
+ * migration so re-projected skills take effect without a server restart.
+ */
+export function clearSkillCache(): void {
+  skillCache.clear()
+}
+
 const SCOPE_FENCE = '\n\n---\n**SCOPE BOUNDARY:** Your scope is LIMITED to the instructions above. Do not generate deliverables not specified above. Submit your output via the step/complete API — this is the ONLY way your work enters the system.'
 
 /**

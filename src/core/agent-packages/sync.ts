@@ -421,6 +421,63 @@ export async function syncAllAgents(
   return results
 }
 
+export interface PackSyncReceipt {
+  packageId: string
+  kind: string
+  syncedAt: string
+  checkOnly: boolean
+  versionBefore: string
+  versionAfter: string
+  commitBefore: string
+  commitAfter: string
+  changed: boolean
+}
+
+/**
+ * Minimal sync symmetry for standalone packs (skill/workflow/lesson packs):
+ * fetch + re-project via the updater, or report-only with --check. Packs
+ * have no workspace blocks or receipts file — the response IS the receipt.
+ */
+export async function syncPack(
+  packageId: string,
+  opts: { check?: boolean } = {},
+): Promise<PackSyncReceipt> {
+  const lock = readLockfile()
+  const entry = lock.packages[packageId]
+  if (!entry) throw new Error(`Package "${packageId}" is not installed.`)
+  if (entry.kind === 'agent') {
+    throw new Error(`"${packageId}" is an agent package — use \`bakin agents sync ${entry.agentId ?? packageId}\`.`)
+  }
+
+  if (opts.check) {
+    const status = await checkPackageUpdate(packageId)
+    return {
+      packageId,
+      kind: entry.kind,
+      syncedAt: new Date().toISOString(),
+      checkOnly: true,
+      versionBefore: entry.version,
+      versionAfter: status.latestVersion ?? entry.version,
+      commitBefore: entry.commitSha,
+      commitAfter: status.latestCommitSha ?? entry.commitSha,
+      changed: status.upgradeAvailable === true,
+    }
+  }
+
+  const update = await updatePackageById({ packageId })
+  return {
+    packageId,
+    kind: entry.kind,
+    syncedAt: new Date().toISOString(),
+    checkOnly: false,
+    versionBefore: update.fromVersion,
+    versionAfter: update.toVersion,
+    commitBefore: update.fromCommitSha,
+    commitAfter: update.toCommitSha,
+    changed: update.changed,
+  }
+}
+
 /** True when ANY lockfile entry still has the pre-block projection shape. */
 export function lockfileNeedsMigration(lockfile?: Lockfile): boolean {
   const lock = lockfile ?? readLockfile()

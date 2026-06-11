@@ -197,10 +197,11 @@ dispatch carrying the taskId-templated `assets_save` command) and
 `sharedExecutionToolDocs()` (taskId-templated invocations — intentional
 differences are parameters, so the builders can't drift). The static half of
 the old ~4KB catalog (logging rules, discipline rationale, dependency
-pattern, tool reference) lives in the `execution-tools` **managed block**
-projected into subagent AGENTS.md (`src/core/agent-rules/managed-blocks.ts`;
-run `bakin agent-rules --apply-all` after deploy — plain `--apply` writes the
-main-agent context only and will NOT project this subagent-target block). The
+pattern, tool reference) lives in the SUBAGENT ROLE CONTEXT layer
+(`~/.bakin/team/context/roles/subagent.md`, defaults in
+`src/core/team-context-defaults.ts`) composed into each subagent's AGENTS.md
+managed block — `bakin agents sync` (or the doctor's agent-sync repair)
+refreshes it after deploy. The
 triage roster is derived
 from `runtime.agents.list()`; core contains no hardcoded agent names.
 Recovery variants: corrective prompts open with `PREVIOUS ATTEMPT FAILED`;

@@ -215,8 +215,10 @@ without Bakin ever writing runtime-memory content:
    composes a task from the actionable hits (`composeTask`), and creates **one task
    per agent** via `ctx.tasks.create` so the agent edits its own files. Agents with
    no actionable hits are skipped. For `managed` targets it sets the `.userEdited`
-   sentinel (`@bakin/core/agent-packages/markers`) so the edit survives a later
-   `agents update --refresh-template`. Each dispatch audits `memory.cleanup_dispatched`.
+   sentinel (`@bakin/core/agent-packages/markers`) — meaningful for SKILLS
+   (sync skips sentineled skills until reclaimed); workspace files ignore
+   sentinels under the block model (agent content outside the managed block
+   survives sync anyway). Each dispatch audits `memory.cleanup_dispatched`.
 3. **Verify** (`POST /cleanup/verify` `{term, agents[]}`) — re-runs the find per
    agent; `clean` keys on actionable-remaining (informational tiers don't count).
 
