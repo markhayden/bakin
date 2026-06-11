@@ -19,6 +19,8 @@ Run it before and after any dependency or build-boundary change.
 ## Baseline (2026-06-10, pre-#424 cleanup)
 
 Binaries: darwin-arm64 71.0 MB, linux-x64 107.9 MB, linux-arm64 107.4 MB.
+(Sizes here and in `size:report` are MiB-based, matching `build-binary.ts`;
+the spec's "74 MB / 113 MB" are the same bytes in decimal MB.)
 Server-graph total: 11.93 MB source bytes across 84 packages/groups.
 The binary is dominated by the embedded Bun runtime + embedded browser
 assets; total optimizable dependency source is ~3 MB (~3-4% of binary).

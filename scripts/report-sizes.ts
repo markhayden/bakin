@@ -73,8 +73,8 @@ function scanDir(dir: string, filter: (name: string) => boolean): ArtifactSectio
   const files: SizeRow[] = []
   for (const name of readdirSync(dir)) {
     if (!filter(name)) continue
-    const stat = statSync(join(dir, name))
-    if (!stat.isFile()) continue
+    const stat = statSync(join(dir, name), { throwIfNoEntry: false })
+    if (!stat?.isFile()) continue
     files.push({ name, bytes: stat.size })
   }
   files.sort((a, b) => b.bytes - a.bytes)
@@ -131,15 +131,16 @@ async function reportServerGraph(): Promise<void> {
     const metafile = join(outDir, 'meta.json')
     const proc = Bun.spawn(
       ['bun', 'build', 'server.ts', '--target=bun', '--outdir', outDir, `--metafile=${metafile}`],
-      { cwd: REPO_ROOT, stdout: 'pipe', stderr: 'pipe' },
+      { cwd: REPO_ROOT, stdout: 'ignore', stderr: 'pipe' },
     )
     if ((await proc.exited) !== 0) {
       console.error(await new Response(proc.stderr).text())
       throw new Error('server.ts analysis bundle failed')
     }
     const meta = JSON.parse(readFileSync(metafile, 'utf-8')) as {
-      inputs: Record<string, MetafileInput>
+      inputs?: Record<string, MetafileInput>
     }
+    if (!meta.inputs) throw new Error('metafile missing "inputs" — did the bun --metafile format change?')
     const rows = aggregateMetafileInputs(meta.inputs)
     const total = rows.reduce((sum, r) => sum + r.bytes, 0)
     for (const row of rows) {
