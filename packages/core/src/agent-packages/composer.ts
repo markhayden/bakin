@@ -42,6 +42,12 @@ export interface LessonEntry {
 export interface ComposeInputs {
   /** Effective content of the global context file. AGENTS.md only. */
   global?: string
+  /**
+   * Effective content of the agent's role context file (built-in role layer:
+   * 'orchestrator' for the main agent, 'subagent' for everyone else).
+   * AGENTS.md only.
+   */
+  role?: { id: string; content: string }
   /** Effective content of the agent's team context file. AGENTS.md only. */
   team?: { id: string; content: string }
   /** Package workspace template for this file. Managed agents only. */
@@ -83,6 +89,8 @@ function sectionsFor(file: ComposableFile, inputs: ComposeInputs): Section[] {
   if (file === 'AGENTS.md') {
     const global = normalized(inputs.global)
     if (global) sections.push({ label: 'global', content: global })
+    const role = normalized(inputs.role?.content)
+    if (role && inputs.role) sections.push({ label: `role:${inputs.role.id}`, content: role })
     const team = normalized(inputs.team?.content)
     if (team && inputs.team) sections.push({ label: `team:${inputs.team.id}`, content: team })
     if (pkg) sections.push({ label: 'package', content: pkg })

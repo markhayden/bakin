@@ -71,6 +71,26 @@ describe('composeManagedBlock — AGENTS.md recipe', () => {
     expect(body!.startsWith('<!-- Managed by Bakin.')).toBe(true)
   })
 
+  it('includes the role section after global (built-in role layer)', () => {
+    const body = composeManagedBlock('AGENTS.md', {
+      global: '# Global Rules',
+      role: { id: 'orchestrator', content: '# Orchestrator Rules\n\n- Delegate, never do inline work' },
+    })
+    const globalIdx = body!.indexOf('<!-- bakin-section: global -->')
+    const roleIdx = body!.indexOf('<!-- bakin-section: role:orchestrator -->')
+    expect(globalIdx).toBeGreaterThan(-1)
+    expect(roleIdx).toBeGreaterThan(globalIdx)
+    expect(body!).toContain('Delegate, never do inline work')
+  })
+
+  it('ignores the role layer in non-AGENTS files', () => {
+    const body = composeManagedBlock('SOUL.md', {
+      packageTemplate: { packageId: 'pixel', content: '# Soul' },
+      role: { id: 'subagent', content: 'must not appear' },
+    })
+    expect(body).not.toContain('must not appear')
+  })
+
   it('supports the unmanaged-agent recipe (global + team, no package)', () => {
     const body = composeManagedBlock('AGENTS.md', {
       global: PIXEL_INPUTS.global,
