@@ -1632,7 +1632,7 @@ async function cmdAgentPackagesUpdate(agentId: string | undefined, flags: Agents
   }
   const actions: PackageActionData[] = []
   for (const a of list.agents) {
-    if (a.state !== 'managed' && a.state !== 'adopted') continue
+    if (a.state !== 'managed') continue
     try {
       const result = await apiPost(`/api/agent-packages/${encodeURIComponent(a.agentId)}/update`, body)
       if (!flags.json && process.stdout.isTTY) {

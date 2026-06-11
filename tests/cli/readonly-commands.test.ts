@@ -871,7 +871,7 @@ describe('read-only CLI TTY commands', () => {
       ok: true,
       agents: [
         { agentId: 'patch', state: 'managed', packageId: 'bakin.patch', version: '1.2.0' },
-        { agentId: 'docs', state: 'adopted', packageId: 'bakin.docs', entry: { version: '1.1.0' } },
+        { agentId: 'docs', state: 'managed', packageId: 'bakin.docs', entry: { version: '1.1.0' } },
       ],
     }))
     process.argv = ['bun', 'cli/bakin.ts', 'agents', 'list', '--packages']
@@ -925,7 +925,7 @@ describe('read-only CLI TTY commands', () => {
       ok: true,
       agents: [
         { agentId: 'patch', state: 'managed', packageId: 'bakin.patch', version: '1.2.0' },
-        { agentId: 'docs', state: 'adopted', packageId: 'bakin.docs', entry: { version: '1.1.0' } },
+        { agentId: 'docs', state: 'managed', packageId: 'bakin.docs', entry: { version: '1.1.0' } },
       ],
     }))
     process.argv = ['bun', 'cli/bakin.ts', 'agents', 'list', '--packages']

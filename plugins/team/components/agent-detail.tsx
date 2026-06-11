@@ -296,7 +296,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
 
 function LessonsTab({ agentId, packageState }: { agentId: string; packageState: PackageStateRow | undefined }) {
   const state = packageState?.state ?? 'unmanaged'
-  if (state === 'managed' || state === 'adopted') {
+  if (state === 'managed') {
     return (
       <div className="w-full">
         <LessonToggleList agentId={agentId} />

@@ -58,7 +58,7 @@ export async function post(req: Request, _url: URL): Promise<Response> {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     log.error('packages/install failed', err as Error, { source: parsed.data.source })
-    const isConflict = /already managed|already adopted|collision/i.test(message)
+    const isConflict = /already managed|collision/i.test(message)
     return Response.json({ ok: false, error: message }, { status: isConflict ? 409 : 500 })
   }
 }

@@ -11,7 +11,7 @@
  *   2. Fetch top-level source → staging
  *   3. Validate manifest
  *   4. For kind:"agent" — figure out target agent state (absent / unmanaged /
- *      adopted / managed) and decide install mode (fresh / adopt / refuse)
+ *      managed) and decide install mode (fresh / adopt / refuse)
  *   5. Resolve declared dependencies (single-level for V1)
  *   6. Pre-flight collision check — refuse if any projection target collides
  *      with a different package's existing projection (different sha)
@@ -321,10 +321,10 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
     if (manifest.kind === 'agent') {
       agentId = manifest.id
       const stateInfo = await getAgentState(agentId, lock)
-      if (stateInfo.state === 'managed' || stateInfo.state === 'adopted') {
+      if (stateInfo.state === 'managed') {
         throw new Error(
-          `Agent "${agentId}" is already ${stateInfo.state} by package "${stateInfo.packageId}". ` +
-            `Run \`bakin agents update ${stateInfo.packageId}\` to update or \`bakin agents remove ${stateInfo.packageId}\` first.`,
+          `Agent "${agentId}" is already managed by package "${stateInfo.packageId}". ` +
+            `Run \`bakin agents sync ${stateInfo.packageId}\` to update or \`bakin agents remove ${stateInfo.packageId}\` first.`,
         )
       }
       if (stateInfo.state === 'unmanaged') {
@@ -485,7 +485,7 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
       dependencies: resolved.map((r) => `${r.resolvedId}@${r.manifest.version}`),
     }
     if (manifest.kind === 'agent' && agentId) {
-      parentEntry.state = mode === 'adopt' ? 'adopted' : 'managed'
+      parentEntry.state = 'managed'
       parentEntry.agentId = agentId
       parentEntry.lessonsEnabled =
         manifest.install.enableLessons ??

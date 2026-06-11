@@ -63,7 +63,7 @@ export { useAgentDisplayName } from '@bakin/team/hooks/use-agent-store'
 export { useAgentIds } from '@bakin/team/hooks/use-agent-store'
 /** Get the ID of the designated main/orchestrator agent. */
 export { useMainAgentId } from '@bakin/team/hooks/use-agent-store'
-/** Read agent-package install state (managed/adopted/unmanaged). */
+/** Read agent-package install state (managed/unmanaged). */
 export { usePackageState } from '@bakin/team/hooks/use-agent-store'
 /** Convert a hex color to a muted variant for backgrounds. */
 export { hexToMuted } from '@bakin/team/hooks/use-agent-store'

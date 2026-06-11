@@ -2,7 +2,7 @@
  * GET /api/agent-packages
  *
  * Returns one info entry per runtime-known agent plus any lockfile-only
- * orphans, with state classification (absent / unmanaged / adopted /
+ * orphans, with state classification (absent / unmanaged /
  * managed) and the underlying lockfile entry when present.
  *
  * The Teams UI uses this for state badges; the CLI uses it for

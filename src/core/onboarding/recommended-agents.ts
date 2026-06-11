@@ -86,7 +86,7 @@ async function agentCandidates(): Promise<AgentInstallCandidate[]> {
   for (const agent of await catalogAgents()) {
     if (installed.has(agent.id)) continue
     const stateInfo = await getAgentState(agent.id)
-    if (stateInfo.state === 'managed' || stateInfo.state === 'adopted') continue
+    if (stateInfo.state === 'managed') continue
     candidates.push({ agent, state: stateInfo.state })
   }
 

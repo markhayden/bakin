@@ -127,7 +127,7 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
   const [actionBusy, setActionBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
-  const hasPackage = Boolean(packageState?.entry && (state === 'managed' || state === 'adopted' || state === 'update-available'))
+  const hasPackage = Boolean(packageState?.entry && (state === 'managed' || state === 'update-available'))
   const updateAvailable = Boolean(packageState?.updateStatus?.upgradeAvailable || state === 'update-available')
   const displayState = updateAvailable ? 'update-available' : state
 

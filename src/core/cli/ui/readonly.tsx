@@ -1425,7 +1425,6 @@ function reindexTableRows(tables: ReindexTableData[]): ReindexTableRow[] {
 function packageStateStatus(state: string): TuiStatus {
   switch (state) {
     case 'managed':
-    case 'adopted':
       return 'ok'
     case 'missing':
     case 'drifted':
@@ -2541,7 +2540,6 @@ export function AgentPackagesListReport({ agents, color = true }: {
 }) {
   const rows = agentPackageTableRows(agents)
   const managed = rows.filter(row => row.state === 'managed').length
-  const adopted = rows.filter(row => row.state === 'adopted').length
 
   return (
     <Box flexDirection="column">
@@ -2549,7 +2547,6 @@ export function AgentPackagesListReport({ agents, color = true }: {
       <SummaryStrip items={[
         { label: plural(rows.length, 'agent'), value: rows.length, status: rows.length > 0 ? 'ok' : 'skip' },
         { label: 'managed', value: managed, status: managed > 0 ? 'ok' : 'skip' },
-        { label: 'adopted', value: adopted, status: adopted > 0 ? 'ready' : 'skip' },
       ]} color={color} />
       <Section title="Package state" color={color}>
         {rows.length > 0 ? (

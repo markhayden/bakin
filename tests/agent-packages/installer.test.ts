@@ -405,8 +405,9 @@ describe('installPackage — adopt mode', () => {
     expect(soul).toContain('# user wrote this')
     expect(hasBlock(soul, 'lesson-catalog')).toBe(true)
 
-    // Lockfile state = adopted
-    expect(readLockfile().packages.pixel.state).toBe('adopted')
+    // Adopt is an install-time action, not a persistent state — the entry
+    // is 'managed' like any other (layered-context spec, adopted collapse).
+    expect(readLockfile().packages.pixel.state).toBe('managed')
   })
 })
 
