@@ -1518,7 +1518,10 @@ interface AgentsCmdFlags {
   replace?: boolean
   keepBlocks?: boolean
   deleteAgent?: boolean
-  refreshTemplate?: boolean
+  check?: boolean
+  reclaim?: string[]
+  reclaimAll?: boolean
+  yes?: boolean
   force?: boolean
   json?: boolean
 }
@@ -1594,41 +1597,54 @@ async function cmdAgentPackagesDelete(agentId: string, flags: AgentsCmdFlags): P
   await cmdAgentPackagesRemove(agentId, { ...flags, deleteAgent: true })
 }
 
-async function cmdAgentPackagesUpdate(agentId: string | undefined, flags: AgentsCmdFlags): Promise<void> {
+async function cmdAgentPackagesSync(agentId: string | undefined, flags: AgentsCmdFlags): Promise<void> {
   const body: Record<string, unknown> = {}
-  if (flags.refreshTemplate) body.refreshTemplate = true
+  if (flags.check) body.check = true
+  if (flags.reclaimAll) body.reclaim = 'all'
+  else if (flags.reclaim?.length) body.reclaim = flags.reclaim
+
+  const syncOne = async (id: string): Promise<unknown> => {
+    let result = await apiPost(`/api/agent-packages/${encodeURIComponent(id)}/sync`, body) as Record<string, unknown>
+    if (result.migrationRequired) {
+      const confirmed = flags.yes || await confirmPrompt(
+        `Package for "${id}" predates block-based projection. Run the one-time migration?\n` +
+        '  This FULLY OVERWRITES package-managed workspace files with freshly composed content\n' +
+        '  (a tarball backup is written to ~/.bakin/.backups/ first). Proceed?',
+      )
+      if (!confirmed) {
+        return { ok: false, error: 'Migration declined — agent left un-synced.' }
+      }
+      const migration = await apiPost('/api/agent-packages/migrate', {}) as Record<string, unknown>
+      if (!migration.ok) return migration
+      result = await apiPost(`/api/agent-packages/${encodeURIComponent(id)}/sync`, body) as Record<string, unknown>
+    }
+    return result
+  }
+
+  const action = flags.check ? 'checked' : 'synced'
 
   if (agentId) {
-    const result = await apiPost(`/api/agent-packages/${encodeURIComponent(agentId)}/update`, body)
+    const result = await syncOne(agentId)
     if (!flags.json && process.stdout.isTTY) {
-      await printPackageActionTui({
-        action: 'updated',
-        scope: 'agent package',
-        target: agentId,
-        result,
-      })
+      await printPackageActionTui({ action, scope: 'agent', target: agentId, result })
       return
     }
     print(result)
     return
   }
 
-  // No agentId — update every managed agent package.
+  // No agentId — sync every runtime agent (managed agents get the full
+  // sequence; unmanaged agents get their context block maintained).
   const list = await apiGet('/api/agent-packages') as {
     agents: Array<{ agentId: string; state: string }>
   }
   const actions: PackageActionData[] = []
   for (const a of list.agents) {
-    if (a.state !== 'managed') continue
+    if (a.state === 'absent') continue
     try {
-      const result = await apiPost(`/api/agent-packages/${encodeURIComponent(a.agentId)}/update`, body)
+      const result = await syncOne(a.agentId)
       if (!flags.json && process.stdout.isTTY) {
-        actions.push({
-          action: 'updated',
-          scope: 'agent package',
-          target: a.agentId,
-          result,
-        })
+        actions.push({ action, scope: 'agent', target: a.agentId, result })
         continue
       }
       console.log(`${a.agentId}:`)
@@ -1636,8 +1652,8 @@ async function cmdAgentPackagesUpdate(agentId: string | undefined, flags: Agents
     } catch (err) {
       if (!flags.json && process.stdout.isTTY) {
         actions.push({
-          action: 'updated',
-          scope: 'agent package',
+          action,
+          scope: 'agent',
           target: a.agentId,
           result: { ok: false, error: err instanceof Error ? err.message : String(err) },
         })
@@ -1753,13 +1769,13 @@ async function cmdPackagesRemove(packageId: string, flags: AgentsCmdFlags): Prom
   print(result)
 }
 
-async function cmdPackagesUpdate(packageId: string, flags: AgentsCmdFlags): Promise<void> {
+async function cmdPackagesSync(packageId: string, flags: AgentsCmdFlags): Promise<void> {
   const body: Record<string, unknown> = {}
-  if (flags.refreshTemplate) body.refreshTemplate = true
-  const result = await apiPost(`/api/packages/${encodeURIComponent(packageId)}/update`, body)
+  if (flags.check) body.check = true
+  const result = await apiPost(`/api/packages/${encodeURIComponent(packageId)}/sync`, body)
   if (!flags.json && process.stdout.isTTY) {
     await printPackageActionTui({
-      action: 'updated',
+      action: flags.check ? 'checked' : 'synced',
       scope: 'package',
       target: packageId,
       result,
@@ -1794,8 +1810,17 @@ function parseAgentsFlags(args: string[]): AgentsCmdFlags {
       case '--orphan':
         flags.deleteAgent = false
         break
-      case '--refresh-template':
-        flags.refreshTemplate = true
+      case '--check':
+        flags.check = true
+        break
+      case '--reclaim':
+        flags.reclaim = [...(flags.reclaim ?? []), args[++i]]
+        break
+      case '--reclaim-all':
+        flags.reclaimAll = true
+        break
+      case '--yes':
+        flags.yes = true
         break
       case '--force':
         flags.force = true
@@ -2185,6 +2210,18 @@ async function printDoctorRepairVerifyTui(requestId: string, result: Record<stri
     import('react'),
   ])
   console.log(renderToString(createElement(DoctorRepairVerifyReport, { requestId, result })))
+}
+
+async function confirmPrompt(message: string): Promise<boolean> {
+  if (!process.stdin.isTTY) return false
+  const readline = await import('node:readline/promises')
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+  try {
+    const answer = await rl.question(`\n${message} [y/N] `)
+    return /^(y|yes)$/i.test(answer.trim())
+  } finally {
+    rl.close()
+  }
 }
 
 async function confirmDoctorRepair(plan: CliDoctorRepairPlan): Promise<boolean> {
@@ -4168,11 +4205,11 @@ export async function main(): Promise<void> {
         } else if (sub === 'remove') {
           if (!args[2]) await exitUsage('bakin agents remove <agent-id> [--keep-blocks] [--delete-agent] [--delete] [--force]')
           await cmdAgentPackagesRemove(args[2], parseAgentsFlags(args.slice(3)))
-        } else if (sub === 'update') {
-          // `bakin agents update` (no id) updates everything; `bakin agents update <id>` is targeted
+        } else if (sub === 'sync') {
+          // `bakin agents sync` (no id) syncs every agent; `bakin agents sync <id>` is targeted
           const id = args[2] && !args[2].startsWith('--') ? args[2] : undefined
           const flagsStart = id ? 3 : 2
-          await cmdAgentPackagesUpdate(id, parseAgentsFlags(args.slice(flagsStart)))
+          await cmdAgentPackagesSync(id, parseAgentsFlags(args.slice(flagsStart)))
         } else if (sub === 'lessons') {
           const lessonSub = args[2]
           if (lessonSub === 'list') {
@@ -4337,11 +4374,11 @@ export async function main(): Promise<void> {
         } else if (sub === 'remove') {
           if (!args[2]) await exitUsage('bakin packages remove <package-id> [--force] [--keep-blocks]')
           await cmdPackagesRemove(args[2], parseAgentsFlags(args.slice(3)))
-        } else if (sub === 'update') {
-          if (!args[2]) await exitUsage('bakin packages update <package-id> [--refresh-template]')
-          await cmdPackagesUpdate(args[2], parseAgentsFlags(args.slice(3)))
+        } else if (sub === 'sync') {
+          if (!args[2]) await exitUsage('bakin packages sync <package-id> [--check]')
+          await cmdPackagesSync(args[2], parseAgentsFlags(args.slice(3)))
         } else {
-          await exitUnknownSubcommand('packages', sub, ['install', 'list', 'remove', 'update'])
+          await exitUnknownSubcommand('packages', sub, ['install', 'list', 'remove', 'sync'])
         }
         break
 

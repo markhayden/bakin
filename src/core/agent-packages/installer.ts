@@ -313,7 +313,7 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
     if (manifest.kind !== 'agent' && lock.packages[parentLockfileKey] && !options.replace) {
       throw new Error(
         `Package "${parentLockfileKey}" is already installed. ` +
-          `Run \`bakin packages update ${parentLockfileKey}\` to update or \`bakin packages remove ${parentLockfileKey}\` first.`,
+          `Run \`bakin packages sync ${parentLockfileKey}\` to update or \`bakin packages remove ${parentLockfileKey}\` first.`,
       )
     }
 

@@ -1,5 +1,5 @@
 /**
- * Update flow — `bakin agents update <id>` and `bakin packages update <id>`.
+ * Source-update flow used by `bakin agents sync` / `bakin packages sync`.
  *
  * Refetches the package's source at the same `source` + `ref` recorded in
  * the lockfile, compares the new commit SHA to the recorded one, and
@@ -8,7 +8,7 @@
  * install per the settled D5 decision — the user controls models through
  * the Models UI from then on).
  *
- * No-op when commit SHAs match — useful so `bakin agents update` can run
+ * No-op when commit SHAs match — useful so the sync engine can run it
  * unconditionally as a doctor companion without spamming writes.
  */
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'fs'

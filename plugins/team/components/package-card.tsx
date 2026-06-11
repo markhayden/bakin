@@ -294,7 +294,7 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
           <p className="text-xs text-muted-foreground">
             A newer version of the source package is available. Update from the CLI:
           </p>
-          <CliHint command={`bakin agents update ${agentId}`} />
+          <CliHint command={`bakin agents sync ${agentId}`} />
         </div>
       )}
       <AdoptDialog

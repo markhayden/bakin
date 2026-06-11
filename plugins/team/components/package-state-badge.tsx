@@ -54,12 +54,12 @@ const STATE_STYLES: Record<PackageState, { label: string; cls: string; tip: stri
   drifted: {
     label: 'drifted',
     cls: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300',
-    tip: 'Projection sha mismatch detected. Run `bakin install agent-assets` to repair, or set `.userEdited` to lock the file.',
+    tip: 'Projection sha mismatch detected. Run `bakin agents sync` (or `bakin install agent-sync`) to repair.',
   },
   'update-available': {
     label: 'update available',
     cls: 'bg-info/10 text-info',
-    tip: 'Source repo has moved past the recorded commit. Run `bakin agents update` to pull.',
+    tip: 'Source repo has moved past the recorded commit. Run `bakin agents sync` to pull.',
   },
 }
 

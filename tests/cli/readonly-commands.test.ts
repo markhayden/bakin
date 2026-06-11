@@ -980,19 +980,23 @@ describe('read-only CLI TTY commands', () => {
     log.mockClear()
     fetchMock.mockResolvedValueOnce(jsonResponse({
       ok: true,
-      result: {
-        packageId: 'bakin.workflow',
-        changed: true,
-        fromVersion: '1.0.0',
-        toVersion: '1.1.0',
+      receipt: {
+        agentId: 'bakin.workflow',
+        state: 'managed',
+        checkOnly: false,
+        package: { id: 'bakin.workflow', versionBefore: '1.0.0', versionAfter: '1.1.0', commitBefore: 'a', commitAfter: 'b', fetched: true, changed: true },
+        blocks: [],
+        projections: [],
+        skipped: [],
+        verification: { status: 'ok', findings: [] },
       },
     }))
-    process.argv = ['bun', 'cli/bakin.ts', 'packages', 'update', 'bakin.workflow']
+    process.argv = ['bun', 'cli/bakin.ts', 'packages', 'sync', 'bakin.workflow']
     await main()
     expect(output()).toContain('Package action')
-    expect(output()).toContain('Updated package bakin.workflow.')
+    expect(output()).toContain('Synced package bakin.workflow — verification ok.')
     expect(output()).toContain('1.0.0 -> 1.1.0')
-    expect(output()).not.toContain('"fromVersion"')
+    expect(output()).not.toContain('"versionBefore"')
   })
 
   it('renders schedule list and run history with shared TUI screens in a TTY', async () => {
