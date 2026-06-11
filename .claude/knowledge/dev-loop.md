@@ -142,6 +142,7 @@ The shell and every plugin share React via the import map:
 /vendor/react.js           ← single React instance, loaded once per page
 /vendor/react-dom.js       ← single react-dom instance, uses /vendor/react.js
 /vendor/sdk-*.js           ← @bakin/sdk bundles, externalize react
+/vendor/sdk-shared-*.js    ← code-split chunks shared by the SDK bundles (relative imports, no map entries)
 ```
 
 The dev watcher preserves this:
