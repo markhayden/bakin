@@ -899,11 +899,20 @@ Produces the bundles that the browser import map points at:
 
 ```
 packages/host/public/vendor/
-  react.js, react-dom.js, react-dom-client.js
-  jsx-runtime.js, jsx-dev-runtime.js
+  react.js, react-dom.js
+  jsx-runtime.js, jsx-dev-runtime.js, tanstack-router.js
   sdk-index.js, sdk-ui.js, sdk-hooks.js, sdk-components.js,
-  sdk-slots.js, sdk-types.js, sdk-utils.js
+  sdk-slots.js, sdk-types.js, sdk-utils.js, sdk-metadata.js,
+  sdk-routing.js
+  sdk-shared-<hash>.js   ← code-split chunks shared by the SDK bundles
 ```
+
+The nine SDK sub-paths are built in one `bun build --splitting`
+invocation, so code shared between sub-paths exists once in the
+`sdk-shared-*` chunks (loaded via relative imports — they need no
+import-map entries). Only the chunk names are content-hashed; the entry
+filenames are stable (#422, guarded by
+`tests/scripts/sdk-vendor-bundles.test.ts`).
 
 The `<script type="importmap">` in `packages/host/public/index.html`
 maps `react`, `react-dom`, `@bakin/sdk`, `@bakin/sdk/ui`, etc. to those

@@ -57,5 +57,19 @@ bundle-relevant removal (react-devtools-core) is reinstalled by Bun as
 ink's optional peer regardless of our manifest. The cleanup's value is an
 honest manifest + the measurement tooling + this decision record.
 
-For the SDK vendor-bundle dedup work (browser payload, not binary), see
-#422 and the vendor-layout notes in `repo-architecture.md`.
+## SDK vendor dedup results (#422, 2026-06-10)
+
+The split vendor build (`scripts/build-vendors.ts`, single
+`bun build --splitting` for the nine SDK sub-paths) deduplicated the
+browser payload:
+
+- SDK vendor total: **1.55 MB → 0.96 MB (−39%)** — entry bundles plus
+  `sdk-shared-<hash>.js` chunks.
+- Compiled binaries (embedded assets): darwin-arm64 71.0 → 70.4 MB,
+  linux-x64 107.9 → 107.3 MB, linux-arm64 107.4 → 106.9 MB.
+- Import map unchanged; guarded by
+  `tests/scripts/sdk-vendor-bundles.test.ts` (structural dedup +
+  entrypoint contract).
+
+Vendor-layout notes: `repo-architecture.md`, `plugin-system.md`
+§ Vendor bundles.
