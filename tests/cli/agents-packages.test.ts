@@ -37,13 +37,13 @@ const CLI_SOURCE = readFileSync(
 )
 
 describe('cli: agents subcommands', () => {
-  it('exposes install / list / orphan / remove / delete / update / lessons subcommands', () => {
+  it('exposes install / list / orphan / remove / delete / sync / lessons subcommands', () => {
     expect(CLI_SOURCE).toContain("case 'agents':")
     expect(CLI_SOURCE).toContain("sub === 'install'")
     expect(CLI_SOURCE).toContain("sub === 'orphan'")
     expect(CLI_SOURCE).toContain("sub === 'remove'")
     expect(CLI_SOURCE).toContain("sub === 'delete'")
-    expect(CLI_SOURCE).toContain("sub === 'update'")
+    expect(CLI_SOURCE).toContain("sub === 'sync'")
     expect(CLI_SOURCE).toContain("sub === 'lessons'")
   })
 
@@ -60,8 +60,8 @@ describe('cli: agents subcommands', () => {
     expect(CLI_SOURCE).toContain("cmdAgentPackagesDelete(args[2]")
   })
 
-  it('routes agents update to cmdAgentPackagesUpdate', () => {
-    expect(CLI_SOURCE).toContain('cmdAgentPackagesUpdate')
+  it('routes agents sync to cmdAgentPackagesSync', () => {
+    expect(CLI_SOURCE).toContain('cmdAgentPackagesSync')
   })
 
   it('routes agents lessons enable/disable to cmdAgentPackagesLessonsToggle', () => {
@@ -80,12 +80,12 @@ describe('cli: agents subcommands', () => {
 })
 
 describe('cli: packages subcommands', () => {
-  it('exposes install / list / remove / update', () => {
+  it('exposes install / list / remove / sync', () => {
     expect(CLI_SOURCE).toContain("case 'packages':")
     expect(CLI_SOURCE).toContain('cmdPackagesInstall(args[2]')
     expect(CLI_SOURCE).toContain('cmdPackagesList(parseAgentsFlags')
     expect(CLI_SOURCE).toContain('cmdPackagesRemove(args[2]')
-    expect(CLI_SOURCE).toContain('cmdPackagesUpdate(args[2]')
+    expect(CLI_SOURCE).toContain('cmdPackagesSync(args[2]')
   })
 })
 
@@ -98,7 +98,8 @@ describe('cli: parseAgentsFlags handles all documented flags', () => {
     expect(CLI_SOURCE).toContain("case '--delete-agent':")
     expect(CLI_SOURCE).toContain("case '--delete':")
     expect(CLI_SOURCE).toContain("case '--orphan':")
-    expect(CLI_SOURCE).toContain("case '--refresh-template':")
+    expect(CLI_SOURCE).toContain("case '--reclaim':")
+    expect(CLI_SOURCE).toContain("case '--check':")
     expect(CLI_SOURCE).toContain("case '--force':")
     expect(CLI_SOURCE).toContain("case '--json':")
   })

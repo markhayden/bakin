@@ -14,8 +14,16 @@ import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 
-import { agentAssetsComponent } from '../../../src/core/onboarding/agent-assets'
-import type { HealthCheckResult, HealthRepairHandler } from '../../../packages/core/src/plugin-types'
+import { scanAgentSync, type SyncScanReport } from '../../../src/core/agent-packages/sync-scanner'
+import { syncAllAgents } from '../../../src/core/agent-packages/sync'
+import { migrateToManagedBlocks } from '../../../src/core/agent-packages/migration'
+import { refreshRoleContextBlocks } from '../../../src/core/team-context'
+import type {
+  HealthCheckResult,
+  HealthRepairApplyResult,
+  HealthRepairHandler,
+  HealthRepairPlanItem,
+} from '../../../packages/core/src/plugin-types'
 
 type RuntimeAgentReader = Pick<AgentRuntimeAdapter['agents'], 'list'>
 
@@ -166,73 +174,156 @@ export function personaRepair(contentDir: string, runtime: RuntimeAgentReader): 
   }
 }
 
-// ─── Agent-package projections: drift / missing / broken-marker findings ──
+// ─── Agent sync: managed blocks + projections vs expected state ────────────
 
 /**
- * Surface drift / missing / broken-marker findings from the
- * agent-assets onboarding component. Report-only; agentAssetsRepair runs the
- * same install() flow as `bakin install agent-assets` explicitly.
- *
- * Doctor sweep companion to the user-facing `bakin doctor` view; the
- * onboarding component (src/core/onboarding/agent-assets.ts) drives
- * the CLI surface, this wrapper reuses its scan + install paths so
- * the two views never disagree.
+ * The unified local sync check (layered-context spec): managed-block
+ * staleness with per-layer attribution, skill/asset drift, role-context
+ * freshness, `.userEdited` locks, and migration state. Wraps the same
+ * scanner as `bakin check agent-sync` so the two views never disagree.
+ * Local-only — never touches the network.
  */
-export async function checkAgentAssets(): Promise<HealthCheckResult[]> {
+export async function checkAgentSync(): Promise<HealthCheckResult[]> {
+  let report: SyncScanReport
   try {
-    const checkResult = await agentAssetsComponent.check()
-    if (checkResult.status === 'ok') {
-      return [ok('agent-assets', checkResult.message)]
-    }
-
-    const reminder = checkResult.remediation ?? 'Run `bakin install agent-assets` to repair.'
-    return [warn('agent-assets', `${checkResult.message} — ${reminder}`, true)]
+    report = await scanAgentSync()
   } catch (err) {
-    return [warn('agent-assets', `agent-assets check failed: ${err}`)]
+    return [error('agent-sync', `agent-sync scan failed: ${err}`)]
   }
+
+  if (report.findings.length === 0) {
+    return [ok(
+      'agent-sync',
+      `${report.agentsScanned} agent(s) in sync — ${report.blocksOk} block(s), ${report.projectionsOk} projection(s) verified`,
+    )]
+  }
+
+  const results: HealthCheckResult[] = []
+  const errors = report.findings.filter((f) => f.severity === 'error')
+  const fixable = report.findings.filter((f) => f.severity === 'warn' && f.autoFixable)
+  const locked = report.findings.filter((f) => f.type === 'user-edited')
+  const migration = report.findings.filter((f) => f.type === 'migration-needed')
+
+  if (errors.length > 0) {
+    results.push(error(
+      'agent-sync',
+      `${errors.length} structural issue(s): ${errors.slice(0, 3).map((f) => f.message).join('; ')}${errors.length > 3 ? '; …' : ''}`,
+    ))
+  }
+  if (fixable.length > 0) {
+    results.push(warn(
+      'agent-sync',
+      `${fixable.length} stale item(s): ${fixable.slice(0, 3).map((f) => f.message).join('; ')}${fixable.length > 3 ? '; …' : ''}`,
+      true,
+    ))
+  }
+  if (migration.length > 0) {
+    results.push(warn(
+      'agent-sync',
+      `${migration.length} package(s) need the one-time block migration — run \`bakin agents sync\` and confirm`,
+    ))
+  }
+  if (locked.length > 0) {
+    results.push(warn(
+      'agent-sync',
+      `${locked.length} user-edited file(s) locked from sync: ${locked.map((f) => f.target).join(', ')}`,
+    ))
+  }
+  return results
 }
 
-export function agentAssetsRepair(): HealthRepairHandler {
+export function agentSyncRepair(): HealthRepairHandler {
   return {
     async plan(rows) {
-      const matching = rows.filter(row => row.check === 'agent-assets' && row.autoFixable)
-      if (matching.length === 0) return []
-      return [{
-        id: 'team.install-agent-assets',
-        checkId: 'agent-assets',
-        title: 'Repair agent-package projections',
-        reason: matching.map(row => row.message).join('; '),
-        safety: 'safe',
-        requiresConfirmation: true,
-        changes: [{
-          kind: 'runtime',
-          target: 'agent-package projections',
-          action: 'invoke',
-          description: 'Run the agent-assets install flow to repair missing or drifted projected files.',
-        }],
-      }]
+      if (!rows.some(row => row.check === 'agent-sync' && row.status !== 'ok')) return []
+      // Re-scan for rich findings — the summary rows don't carry them.
+      const report = await scanAgentSync()
+      const items: HealthRepairPlanItem[] = []
+
+      const fixable = report.findings.filter((f) => f.autoFixable)
+      if (fixable.length > 0) {
+        const agents = [...new Set(fixable.map((f) => f.agentId).filter(Boolean))] as string[]
+        items.push({
+          id: 'team.agent-sync.local',
+          checkId: 'agent-sync',
+          title: 'Sync agents locally (recompose blocks, re-project files)',
+          reason: fixable.slice(0, 5).map((f) => f.message).join('; ') + (fixable.length > 5 ? '; …' : ''),
+          safety: 'safe',
+          requiresConfirmation: false,
+          changes: [{
+            kind: 'runtime',
+            target: agents.length > 0 ? agents.join(', ') : 'all agents',
+            action: 'update',
+            description: 'Recompose managed blocks and re-project skills/assets from installed sources (no network).',
+          }],
+        })
+      }
+
+      if (report.migrationNeeded) {
+        const packages = report.findings
+          .filter((f) => f.type === 'migration-needed')
+          .map((f) => f.packageId)
+          .filter(Boolean)
+        items.push({
+          id: 'team.agent-sync.migrate',
+          checkId: 'agent-sync',
+          title: 'Run the one-time block migration (FULL OVERWRITE of package workspace files)',
+          reason: `Packages predate block-based projection: ${packages.join(', ')}. Workspace files will be replaced with freshly composed content; a tarball backup is taken first.`,
+          safety: 'destructive',
+          requiresConfirmation: true,
+          changes: [{
+            kind: 'runtime',
+            target: packages.join(', '),
+            action: 'update',
+            description: "Overwrite managed agents' workspace files with composed blocks; swap legacy blocks on unmanaged agents; rewrite the lockfile.",
+          }],
+        })
+      }
+
+      return items
     },
     async apply(items) {
-      if (items.length === 0) return []
-      const installResult = await agentAssetsComponent.install({
-        interactive: false,
-        autoApprove: true,
-        json: false,
-        checkOnly: false,
-        force: false,
-      })
-      return [{
-        id: 'team.install-agent-assets',
-        checkId: 'agent-assets',
-        status: installResult.status === 'failed' ? 'failed' : 'applied',
-        message: installResult.message,
-        changes: [{
-          kind: 'runtime',
-          target: 'agent-package projections',
-          action: 'invoke',
-          description: `agent-assets install returned ${installResult.status}.`,
-        }],
-      }]
+      const results: HealthRepairApplyResult[] = []
+      for (const item of items) {
+        if (item.id === 'team.agent-sync.migrate') {
+          const result = await migrateToManagedBlocks({ trigger: 'system' })
+          const failed = result.agents.filter((a) => a.error)
+          results.push({
+            id: item.id,
+            checkId: 'agent-sync',
+            status: failed.length > 0 && failed.length === result.agents.length ? 'failed' : 'applied',
+            message: result.alreadyMigrated
+              ? 'Already migrated — nothing to do.'
+              : `Migrated ${result.agents.length - failed.length} agent(s)${failed.length > 0 ? `; failed: ${failed.map((f) => f.agentId).join(', ')}` : ''}. Backup: ${result.backupPath ?? 'n/a'}`,
+            changes: result.agents.filter((a) => !a.error).map((a) => ({
+              kind: 'runtime' as const,
+              target: a.agentId,
+              action: 'update' as const,
+              description: a.state === 'managed'
+                ? `Overwrote ${a.filesOverwritten.join(', ')}`
+                : `Swapped legacy blocks (${a.legacyBlocksRemoved.join(', ')})`,
+            })),
+          })
+          continue
+        }
+
+        refreshRoleContextBlocks()
+        const syncResults = await syncAllAgents({ fetch: false, trigger: 'system' })
+        const failed = syncResults.filter((r) => r.error)
+        results.push({
+          id: item.id,
+          checkId: 'agent-sync',
+          status: failed.length === syncResults.length && syncResults.length > 0 ? 'failed' : 'applied',
+          message: `Synced ${syncResults.length - failed.length} agent(s) locally${failed.length > 0 ? `; failed: ${failed.map((f) => `${f.agentId} (${f.error})`).join('; ')}` : ''}.`,
+          changes: syncResults.filter((r) => r.receipt).map((r) => ({
+            kind: 'runtime' as const,
+            target: r.agentId,
+            action: 'update' as const,
+            description: `${r.receipt!.blocks.filter((b) => b.action === 'recomposed').length} block(s) recomposed, ${r.receipt!.projections.length} projection(s) written.`,
+          })),
+        })
+      }
+      return results
     },
   }
 }

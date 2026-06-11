@@ -127,7 +127,7 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
   const [actionBusy, setActionBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
-  const hasPackage = Boolean(packageState?.entry && (state === 'managed' || state === 'adopted' || state === 'update-available'))
+  const hasPackage = Boolean(packageState?.entry && (state === 'managed' || state === 'update-available'))
   const updateAvailable = Boolean(packageState?.updateStatus?.upgradeAvailable || state === 'update-available')
   const displayState = updateAvailable ? 'update-available' : state
 
@@ -294,7 +294,7 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
           <p className="text-xs text-muted-foreground">
             A newer version of the source package is available. Update from the CLI:
           </p>
-          <CliHint command={`bakin agents update ${agentId}`} />
+          <CliHint command={`bakin agents sync ${agentId}`} />
         </div>
       )}
       <AdoptDialog

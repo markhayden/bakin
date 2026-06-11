@@ -34,7 +34,7 @@ import type { AgentWithStatus } from '../types'
 
 /**
  * Render a compact package badge on an agent card only when the state is
- * attention-worthy. Healthy states (managed/adopted/absent/undefined) leave
+ * attention-worthy. Healthy states (managed/absent/undefined) leave
  * the card uncluttered — the convention is "no badge means OK."
  */
 const ATTENTION_STATES: PackageState[] = ['unmanaged', 'drifted', 'update-available']

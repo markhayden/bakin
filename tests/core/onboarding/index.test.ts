@@ -25,7 +25,7 @@ interface ScriptedComponent {
   installCalls: number
 }
 
-const COMPONENT_NAMES = ['mkdir', 'settings', 'runtime', 'search', 'search-models', 'mcporter', 'openclaw-integration', 'plugin-assets', 'agent-assets', 'llm', 'channels', 'recommended-plugins', 'recommended-agents'] as const
+const COMPONENT_NAMES = ['mkdir', 'settings', 'runtime', 'search', 'search-models', 'mcporter', 'openclaw-integration', 'plugin-assets', 'agent-sync', 'llm', 'channels', 'recommended-plugins', 'recommended-agents'] as const
 
 let scripts: Record<(typeof COMPONENT_NAMES)[number], ScriptedComponent>
 
@@ -60,7 +60,7 @@ mock.module('../../../src/core/onboarding/search-models', () => ({ searchModelsC
 mock.module('../../../src/core/onboarding/mcporter', () => ({ mcporterComponent: makeMock('mcporter') }))
 mock.module('../../../src/core/onboarding/openclaw-integration', () => ({ openClawIntegrationComponent: makeMock('openclaw-integration') }))
 mock.module('../../../src/core/onboarding/plugin-assets', () => ({ pluginAssetsComponent: makeMock('plugin-assets') }))
-mock.module('../../../src/core/onboarding/agent-assets', () => ({ agentAssetsComponent: makeMock('agent-assets') }))
+mock.module('../../../src/core/onboarding/agent-sync', () => ({ agentSyncComponent: makeMock('agent-sync') }))
 mock.module('../../../src/core/onboarding/credentials', () => ({
   llmComponent: makeMock('llm'),
   channelsComponent: makeMock('channels'),
@@ -219,7 +219,7 @@ describe('runOnboard orchestrator', () => {
         'mcporter',
         'openclaw-integration',
         'plugin-assets',
-        'agent-assets',
+        'agent-sync',
         'llm',
         'channels',
         'recommended-plugins',
@@ -258,7 +258,7 @@ describe('runOnboard orchestrator', () => {
         mcporter: 'ok',
         'openclaw-integration': 'ok',
         'plugin-assets': 'ok',
-        'agent-assets': 'ok',
+        'agent-sync': 'ok',
         llm: 'ok',
         channels: 'ok',
         'recommended-plugins': 'ok',

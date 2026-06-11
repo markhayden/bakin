@@ -30,7 +30,6 @@ import {
 import type { Permission } from '@bakin/core/plugins/permissions'
 import { extractApiErrorMessage, formatApiError } from '../src/core/cli/api-error'
 import type {
-  AgentRuleResultData,
   CommandFailureData,
   CommandIssueData,
   HelpGroupData,
@@ -377,18 +376,6 @@ async function printPathsTui(paths: Record<string, unknown>, isBakinHome: unknow
     import('react'),
   ])
   console.log(renderToString(createElement(PathsReport, { paths, isBakinHome })))
-}
-
-async function printAgentRulesTui(
-  results: AgentRuleResultData[],
-  options: { mode: 'check' | 'apply'; scope: 'orchestrator' | 'all' },
-): Promise<void> {
-  const [{ AgentRulesReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(AgentRulesReport, { results, ...options })))
 }
 
 async function printTasksListTui(columns: Record<string, Array<Record<string, unknown>>>, column?: string): Promise<void> {
@@ -1531,7 +1518,10 @@ interface AgentsCmdFlags {
   replace?: boolean
   keepBlocks?: boolean
   deleteAgent?: boolean
-  refreshTemplate?: boolean
+  check?: boolean
+  reclaim?: string[]
+  reclaimAll?: boolean
+  yes?: boolean
   force?: boolean
   json?: boolean
 }
@@ -1607,41 +1597,54 @@ async function cmdAgentPackagesDelete(agentId: string, flags: AgentsCmdFlags): P
   await cmdAgentPackagesRemove(agentId, { ...flags, deleteAgent: true })
 }
 
-async function cmdAgentPackagesUpdate(agentId: string | undefined, flags: AgentsCmdFlags): Promise<void> {
+async function cmdAgentPackagesSync(agentId: string | undefined, flags: AgentsCmdFlags): Promise<void> {
   const body: Record<string, unknown> = {}
-  if (flags.refreshTemplate) body.refreshTemplate = true
+  if (flags.check) body.check = true
+  if (flags.reclaimAll) body.reclaim = 'all'
+  else if (flags.reclaim?.length) body.reclaim = flags.reclaim
+
+  const syncOne = async (id: string): Promise<unknown> => {
+    let result = await apiPost(`/api/agent-packages/${encodeURIComponent(id)}/sync`, body) as Record<string, unknown>
+    if (result.migrationRequired) {
+      const confirmed = flags.yes || await confirmPrompt(
+        `Package for "${id}" predates block-based projection. Run the one-time migration?\n` +
+        '  This FULLY OVERWRITES package-managed workspace files with freshly composed content\n' +
+        '  (a tarball backup is written to ~/.bakin/.backups/ first). Proceed?',
+      )
+      if (!confirmed) {
+        return { ok: false, error: 'Migration declined — agent left un-synced.' }
+      }
+      const migration = await apiPost('/api/agent-packages/migrate', {}) as Record<string, unknown>
+      if (!migration.ok) return migration
+      result = await apiPost(`/api/agent-packages/${encodeURIComponent(id)}/sync`, body) as Record<string, unknown>
+    }
+    return result
+  }
+
+  const action = flags.check ? 'checked' : 'synced'
 
   if (agentId) {
-    const result = await apiPost(`/api/agent-packages/${encodeURIComponent(agentId)}/update`, body)
+    const result = await syncOne(agentId)
     if (!flags.json && process.stdout.isTTY) {
-      await printPackageActionTui({
-        action: 'updated',
-        scope: 'agent package',
-        target: agentId,
-        result,
-      })
+      await printPackageActionTui({ action, scope: 'agent', target: agentId, result })
       return
     }
     print(result)
     return
   }
 
-  // No agentId — update every managed agent package.
+  // No agentId — sync every runtime agent (managed agents get the full
+  // sequence; unmanaged agents get their context block maintained).
   const list = await apiGet('/api/agent-packages') as {
     agents: Array<{ agentId: string; state: string }>
   }
   const actions: PackageActionData[] = []
   for (const a of list.agents) {
-    if (a.state !== 'managed' && a.state !== 'adopted') continue
+    if (a.state === 'absent') continue
     try {
-      const result = await apiPost(`/api/agent-packages/${encodeURIComponent(a.agentId)}/update`, body)
+      const result = await syncOne(a.agentId)
       if (!flags.json && process.stdout.isTTY) {
-        actions.push({
-          action: 'updated',
-          scope: 'agent package',
-          target: a.agentId,
-          result,
-        })
+        actions.push({ action, scope: 'agent', target: a.agentId, result })
         continue
       }
       console.log(`${a.agentId}:`)
@@ -1649,8 +1652,8 @@ async function cmdAgentPackagesUpdate(agentId: string | undefined, flags: Agents
     } catch (err) {
       if (!flags.json && process.stdout.isTTY) {
         actions.push({
-          action: 'updated',
-          scope: 'agent package',
+          action,
+          scope: 'agent',
           target: a.agentId,
           result: { ok: false, error: err instanceof Error ? err.message : String(err) },
         })
@@ -1766,13 +1769,13 @@ async function cmdPackagesRemove(packageId: string, flags: AgentsCmdFlags): Prom
   print(result)
 }
 
-async function cmdPackagesUpdate(packageId: string, flags: AgentsCmdFlags): Promise<void> {
+async function cmdPackagesSync(packageId: string, flags: AgentsCmdFlags): Promise<void> {
   const body: Record<string, unknown> = {}
-  if (flags.refreshTemplate) body.refreshTemplate = true
-  const result = await apiPost(`/api/packages/${encodeURIComponent(packageId)}/update`, body)
+  if (flags.check) body.check = true
+  const result = await apiPost(`/api/packages/${encodeURIComponent(packageId)}/sync`, body)
   if (!flags.json && process.stdout.isTTY) {
     await printPackageActionTui({
-      action: 'updated',
+      action: flags.check ? 'checked' : 'synced',
       scope: 'package',
       target: packageId,
       result,
@@ -1807,8 +1810,17 @@ function parseAgentsFlags(args: string[]): AgentsCmdFlags {
       case '--orphan':
         flags.deleteAgent = false
         break
-      case '--refresh-template':
-        flags.refreshTemplate = true
+      case '--check':
+        flags.check = true
+        break
+      case '--reclaim':
+        flags.reclaim = [...(flags.reclaim ?? []), args[++i]]
+        break
+      case '--reclaim-all':
+        flags.reclaimAll = true
+        break
+      case '--yes':
+        flags.yes = true
         break
       case '--force':
         flags.force = true
@@ -1981,7 +1993,7 @@ async function runOfflineDoctor(): Promise<CliDoctorResult> {
     { searchComponent },
     { searchModelsComponent },
     { mcporterComponent },
-    { agentAssetsComponent },
+    { agentSyncComponent },
     { recommendedPluginsComponent },
   ] = await Promise.all([
     import('../src/core/onboarding/mkdir'),
@@ -1989,7 +2001,7 @@ async function runOfflineDoctor(): Promise<CliDoctorResult> {
     import('../src/core/onboarding/search'),
     import('../src/core/onboarding/search-models'),
     import('../src/core/onboarding/mcporter'),
-    import('../src/core/onboarding/agent-assets'),
+    import('../src/core/onboarding/agent-sync'),
     import('../src/core/onboarding/recommended-plugins'),
   ])
   const checks = []
@@ -1999,7 +2011,7 @@ async function runOfflineDoctor(): Promise<CliDoctorResult> {
     searchComponent,
     searchModelsComponent,
     mcporterComponent,
-    agentAssetsComponent,
+    agentSyncComponent,
     recommendedPluginsComponent,
   ]) {
     try {
@@ -2198,6 +2210,18 @@ async function printDoctorRepairVerifyTui(requestId: string, result: Record<stri
     import('react'),
   ])
   console.log(renderToString(createElement(DoctorRepairVerifyReport, { requestId, result })))
+}
+
+async function confirmPrompt(message: string): Promise<boolean> {
+  if (!process.stdin.isTTY) return false
+  const readline = await import('node:readline/promises')
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+  try {
+    const answer = await rl.question(`\n${message} [y/N] `)
+    return /^(y|yes)$/i.test(answer.trim())
+  } finally {
+    rl.close()
+  }
 }
 
 async function confirmDoctorRepair(plan: CliDoctorRepairPlan): Promise<boolean> {
@@ -2488,68 +2512,6 @@ async function cmdDoctor(args: string[] = process.argv.slice(2)): Promise<void> 
 // ---------------------------------------------------------------------------
 // Agent Rules
 // ---------------------------------------------------------------------------
-
-// Agent-rules context management is owned by src/core/agent-rules/managed-blocks.ts.
-// Imported lazily inside cmdAgentRules so the CLI stays a pure entry point.
-
-const AGENT_RULES_HELP_GROUPS: HelpGroupData[] = [{
-  group: 'Agent Rules',
-  commands: [
-    { usage: 'bakin agent-rules --apply', summary: 'Write main-agent managed context to AGENTS.md' },
-    { usage: 'bakin agent-rules --check', summary: 'Check if main-agent managed context is current' },
-    { usage: 'bakin agent-rules --apply-all', summary: 'Apply managed context to all agent AGENTS.md files' },
-    { usage: 'bakin agent-rules --check-all', summary: 'Check managed context across all agents' },
-  ],
-}]
-
-async function cmdAgentRules(options: { apply?: boolean; check?: boolean; applyAll?: boolean; checkAll?: boolean } = {}): Promise<void> {
-  if (!options.apply && !options.check && !options.applyAll && !options.checkAll) {
-    if (process.stdout.isTTY) {
-      await printHelpReportTui(AGENT_RULES_HELP_GROUPS)
-      return
-    }
-    console.log('Usage: bakin agent-rules --apply       # Write main-agent managed context to AGENTS.md')
-    console.log('       bakin agent-rules --check       # Check if main-agent managed context is current')
-    console.log('       bakin agent-rules --apply-all   # Apply managed context to all agent AGENTS.md files')
-    console.log('       bakin agent-rules --check-all   # Check managed context across all agents')
-    return
-  }
-
-  const scope = options.apply || options.check ? 'orchestrator' : 'all'
-  const autoFix = !!(options.apply || options.applyAll)
-
-  const previousConsoleFormat = process.env.BAKIN_CONSOLE_FORMAT
-  const shouldSilenceRuntimeLogs = process.stdout.isTTY && previousConsoleFormat === undefined
-  let results: Awaited<ReturnType<typeof import('../src/core/agent-rules/managed-blocks')['applyManagedBlocks']>>
-  try {
-    if (shouldSilenceRuntimeLogs) process.env.BAKIN_CONSOLE_FORMAT = 'silent'
-    const { applyManagedBlocks } = await import('../src/core/agent-rules/managed-blocks')
-    results = await applyManagedBlocks(autoFix, { scope })
-  } finally {
-    if (shouldSilenceRuntimeLogs) delete process.env.BAKIN_CONSOLE_FORMAT
-  }
-
-  const errors = results.filter(r => r.status === 'error')
-  const warnings = results.filter(r => r.status === 'warn')
-  const fixes = results.filter(r => r.status === 'fixed')
-  const oks = results.filter(r => r.status === 'ok')
-
-  if (process.stdout.isTTY) {
-    await printAgentRulesTui(results, {
-      mode: autoFix ? 'apply' : 'check',
-      scope,
-    })
-  } else {
-    for (const r of results) {
-      const icon = r.status === 'ok' ? '[OK]' : r.status === 'fixed' ? '[FIXED]' : r.status === 'warn' ? '[WARN]' : '[ERROR]'
-      console.log(`${icon} ${r.check}: ${r.message}`)
-    }
-
-    console.log(`\n${oks.length} up to date, ${fixes.length} fixed, ${warnings.length} warnings, ${errors.length} errors`)
-  }
-
-  if (errors.length > 0 || warnings.length > 0) process.exit(1)
-}
 
 async function cmdPaths(key?: string, opts: { json?: boolean } = {}): Promise<void> {
   const result = await apiGet(`/api/paths${key ? `?key=${encodeURIComponent(key)}` : ''}`) as Record<string, unknown>
@@ -3902,7 +3864,7 @@ async function cmdOnboardingSettingsInit(options: { json?: boolean } = {}): Prom
 }
 
 async function cmdOnboardingCheckSingle(
-  target: 'runtime' | 'search' | 'search-models' | 'llm' | 'channels' | 'plugin-assets' | 'agent-assets' | 'recommended-plugins' | 'recommended-agents',
+  target: 'runtime' | 'search' | 'search-models' | 'llm' | 'channels' | 'plugin-assets' | 'agent-sync' | 'recommended-plugins' | 'recommended-agents',
   options: { verbose?: boolean } = {},
 ): Promise<void> {
   const componentMap: Record<string, () => Promise<{ check(): Promise<import('../src/core/onboarding/types').CheckResult> }>> = {
@@ -3912,7 +3874,7 @@ async function cmdOnboardingCheckSingle(
     llm: async () => (await import('../src/core/onboarding/credentials')).llmComponent,
     channels: async () => (await import('../src/core/onboarding/credentials')).channelsComponent,
     'plugin-assets': async () => (await import('../src/core/onboarding/plugin-assets')).pluginAssetsComponent,
-    'agent-assets': async () => (await import('../src/core/onboarding/agent-assets')).agentAssetsComponent,
+    'agent-sync': async () => (await import('../src/core/onboarding/agent-sync')).agentSyncComponent,
     'recommended-plugins': async () => (await import('../src/core/onboarding/recommended-plugins')).recommendedPluginsComponent,
     'recommended-agents': async () => (await import('../src/core/onboarding/recommended-agents')).recommendedAgentsComponent,
   }
@@ -3956,7 +3918,7 @@ async function cmdOnboardingInstallSingle(target: string, args: string[]): Promi
     'search-models': async () => (await import('../src/core/onboarding/search-models')).searchModelsComponent,
     mcporter: async () => (await import('../src/core/onboarding/mcporter')).mcporterComponent,
     'plugin-assets': async () => (await import('../src/core/onboarding/plugin-assets')).pluginAssetsComponent,
-    'agent-assets': async () => (await import('../src/core/onboarding/agent-assets')).agentAssetsComponent,
+    'agent-sync': async () => (await import('../src/core/onboarding/agent-sync')).agentSyncComponent,
     'recommended-plugins': async () => (await import('../src/core/onboarding/recommended-plugins')).recommendedPluginsComponent,
     'recommended-agents': async () => (await import('../src/core/onboarding/recommended-agents')).recommendedAgentsComponent,
   }
@@ -4243,11 +4205,11 @@ export async function main(): Promise<void> {
         } else if (sub === 'remove') {
           if (!args[2]) await exitUsage('bakin agents remove <agent-id> [--keep-blocks] [--delete-agent] [--delete] [--force]')
           await cmdAgentPackagesRemove(args[2], parseAgentsFlags(args.slice(3)))
-        } else if (sub === 'update') {
-          // `bakin agents update` (no id) updates everything; `bakin agents update <id>` is targeted
+        } else if (sub === 'sync') {
+          // `bakin agents sync` (no id) syncs every agent; `bakin agents sync <id>` is targeted
           const id = args[2] && !args[2].startsWith('--') ? args[2] : undefined
           const flagsStart = id ? 3 : 2
-          await cmdAgentPackagesUpdate(id, parseAgentsFlags(args.slice(flagsStart)))
+          await cmdAgentPackagesSync(id, parseAgentsFlags(args.slice(flagsStart)))
         } else if (sub === 'lessons') {
           const lessonSub = args[2]
           if (lessonSub === 'list') {
@@ -4412,11 +4374,11 @@ export async function main(): Promise<void> {
         } else if (sub === 'remove') {
           if (!args[2]) await exitUsage('bakin packages remove <package-id> [--force] [--keep-blocks]')
           await cmdPackagesRemove(args[2], parseAgentsFlags(args.slice(3)))
-        } else if (sub === 'update') {
-          if (!args[2]) await exitUsage('bakin packages update <package-id> [--refresh-template]')
-          await cmdPackagesUpdate(args[2], parseAgentsFlags(args.slice(3)))
+        } else if (sub === 'sync') {
+          if (!args[2]) await exitUsage('bakin packages sync <package-id> [--check]')
+          await cmdPackagesSync(args[2], parseAgentsFlags(args.slice(3)))
         } else {
-          await exitUnknownSubcommand('packages', sub, ['install', 'list', 'remove', 'update'])
+          await exitUnknownSubcommand('packages', sub, ['install', 'list', 'remove', 'sync'])
         }
         break
 
@@ -4455,34 +4417,25 @@ export async function main(): Promise<void> {
         }
         break
 
-      case 'agent-rules': {
-        const apply = args.includes('--apply')
-        const check = args.includes('--check')
-        const applyAll = args.includes('--apply-all')
-        const checkAll = args.includes('--check-all')
-        await cmdAgentRules({ apply, check, applyAll, checkAll })
-        break
-      }
-
       case 'mkdir':
         await cmdOnboardingMkdir({ json: args.includes('--json') })
         break
 
       case 'check':
-        if (sub === 'runtime' || sub === 'search' || sub === 'search-models' || sub === 'llm' || sub === 'channels' || sub === 'plugin-assets' || sub === 'agent-assets' || sub === 'recommended-plugins' || sub === 'recommended-agents') {
+        if (sub === 'runtime' || sub === 'search' || sub === 'search-models' || sub === 'llm' || sub === 'channels' || sub === 'plugin-assets' || sub === 'agent-sync' || sub === 'recommended-plugins' || sub === 'recommended-agents') {
           await cmdOnboardingCheckSingle(sub, { verbose: args.includes('--verbose') })
         } else if (sub === 'all') {
           await cmdOnboardingCheckAll({ verbose: args.includes('--verbose') })
         } else {
-          await exitUnknownSubcommand('check', sub, ['runtime', 'search', 'search-models', 'llm', 'channels', 'plugin-assets', 'agent-assets', 'recommended-plugins', 'recommended-agents', 'all'])
+          await exitUnknownSubcommand('check', sub, ['runtime', 'search', 'search-models', 'llm', 'channels', 'plugin-assets', 'agent-sync', 'recommended-plugins', 'recommended-agents', 'all'])
         }
         break
 
       case 'install':
-        if (sub === 'search' || sub === 'search-models' || sub === 'mcporter' || sub === 'plugin-assets' || sub === 'agent-assets' || sub === 'recommended-plugins' || sub === 'recommended-agents') {
+        if (sub === 'search' || sub === 'search-models' || sub === 'mcporter' || sub === 'plugin-assets' || sub === 'agent-sync' || sub === 'recommended-plugins' || sub === 'recommended-agents') {
           await cmdOnboardingInstallSingle(sub, args)
         } else {
-          await exitUnknownSubcommand('install', sub, ['search', 'search-models', 'mcporter', 'plugin-assets', 'agent-assets', 'recommended-plugins', 'recommended-agents'])
+          await exitUnknownSubcommand('install', sub, ['search', 'search-models', 'mcporter', 'plugin-assets', 'agent-sync', 'recommended-plugins', 'recommended-agents'])
         }
         break
 

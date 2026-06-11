@@ -111,7 +111,7 @@ export function unregisterPluginDefinitions(pluginId: string): void {
  * Register an agent-package-owned workflow definition.
  * Symmetric to `registerPluginDefinition`: throws if a *different* package
  * has already registered the same id; the same package may overwrite its
- * own registration (e.g. when the user runs `bakin agents update`).
+ * own registration (e.g. when the user runs `bakin agents sync`).
  */
 export function registerAgentPackageDefinition(
   packageId: string,

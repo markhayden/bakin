@@ -5,7 +5,7 @@
  *
  * The team grid renders a compact PackageStateBadge on agent cards only when
  * the package state is "attention-worthy" — unmanaged, drifted, or
- * update-available. Healthy states (managed, adopted) and missing data
+ * update-available. Healthy states (managed) and missing data
  * leave the card unchanged.
  *
  * This test primes the Zustand store with a single agent and varies its
@@ -96,12 +96,6 @@ describe('AgentCardNode — package state badge wiring', () => {
 
   it('renders no badge for healthy state: managed', () => {
     primeState({ pixel: { agentId: 'pixel', state: 'managed' } })
-    renderCard()
-    expect(screen.queryByLabelText(/Package state:/)).toBeNull()
-  })
-
-  it('renders no badge for healthy state: adopted', () => {
-    primeState({ pixel: { agentId: 'pixel', state: 'adopted' } })
     renderCard()
     expect(screen.queryByLabelText(/Package state:/)).toBeNull()
   })

@@ -188,7 +188,7 @@ export const cleanupDispatchRoute = defineRoute({
           continue
         }
         // Pin managed (package-projected) files as user-edited so the agent's
-        // cleanup survives a later `agents update --refresh-template`. Skills are
+        // cleanup survives later syncs (managed blocks recompose). Skills are
         // dir-projected, so mark the dir; dedupe (chunks share a target). This
         // writes a Bakin projection-layer sentinel, not runtime-memory content.
         const managedTargets = [

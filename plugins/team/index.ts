@@ -37,7 +37,7 @@ import { getStatsByMs } from '../../src/core/usage'
 import { retrieveAgentPackageLessons } from '../../src/core/agent-packages/lesson-retrieval'
 import { getRuntimeMainAgentId, type AgentRuntimeAdapter, type RuntimeAgent } from '@bakin/core/adapters/runtime'
 import { readLatestSessionTranscript } from './lib/session-reader'
-import { agentAssetsRepair, checkAgentRoster, checkPersonas, checkAgentAssets, personaRepair } from './lib/health-checks'
+import { agentSyncRepair, checkAgentRoster, checkPersonas, checkAgentSync, personaRepair } from './lib/health-checks'
 import type {
   AgentMeta,
   AgentProfile,
@@ -1570,6 +1570,135 @@ function populateTeamRoutes(arr: any[]): void {
     },
   }))
 
+  // ─── Layered context files (layered-context spec, C9) ────────────────────
+  // Scope segment: 'global' | 'role' (with :id orchestrator|subagent) |
+  // 'team' (with :id = teamId). PUT replaces the file; role files get their
+  // Bakin-managed block re-asserted afterwards so a mangled block can't
+  // brick the role defaults.
+
+  // GET /context — full overview for the UI
+  arr.push(defineRoute({
+    path: '/context',
+    method: 'GET',
+    description: 'List layered context files (global, roles, teams)',
+    summary: 'List layered context files',
+    responses: { 200: passthroughTeam, 201: passthroughTeam, 400: errorResponseTeam, 403: errorResponseTeam, 404: errorResponseTeam, 409: errorResponseTeam, 500: errorResponseTeam },
+    handler: async () => {
+      const { getGlobalContextPath, getRoleContextPath, getTeamContextPath, seedContextFiles } = await import('../../src/core/team-context')
+      seedContextFiles()
+      const read = (path: string) => existsSync(path) ? readFileSync(path, 'utf-8') : null
+      const teams = readTeams()
+      return Response.json({
+        ok: true,
+        global: { path: getGlobalContextPath(), content: read(getGlobalContextPath()) },
+        roles: {
+          orchestrator: { path: getRoleContextPath('orchestrator'), content: read(getRoleContextPath('orchestrator')) },
+          subagent: { path: getRoleContextPath('subagent'), content: read(getRoleContextPath('subagent')) },
+        },
+        teams: teams.map((t) => ({
+          teamId: t.id,
+          label: t.label,
+          path: getTeamContextPath(t.id),
+          content: read(getTeamContextPath(t.id)),
+        })),
+      })
+    },
+  }))
+
+  // GET/PUT /context/:scope/:id? — read or write one context file
+  for (const method of ['GET', 'PUT'] as const) {
+    arr.push(defineRoute({
+      path: '/context/:scope',
+      method,
+      description: `${method === 'GET' ? 'Read' : 'Write'} a layered context file (scope: global, or role/team via ?id=)`,
+      summary: `${method === 'GET' ? 'Read' : 'Write'} a layered context file`,
+      params: z.object({ scope: z.string() }),
+      responses: { 200: passthroughTeam, 201: passthroughTeam, 400: errorResponseTeam, 403: errorResponseTeam, 404: errorResponseTeam, 409: errorResponseTeam, 500: errorResponseTeam },
+      handler: async (req: Request) => {
+        const url = new URL(req.url)
+        const scope = url.searchParams.get('scope') ?? ''
+        const id = url.searchParams.get('id') ?? ''
+        const ctxMod = await import('../../src/core/team-context')
+
+        let path: string
+        if (scope === 'global') path = ctxMod.getGlobalContextPath()
+        else if (scope === 'role' && (id === 'orchestrator' || id === 'subagent')) path = ctxMod.getRoleContextPath(id)
+        else if (scope === 'team' && id) {
+          if (!readTeams().some((t) => t.id === id)) {
+            return Response.json({ ok: false, error: `Team "${id}" not found` }, { status: 404 })
+          }
+          path = ctxMod.getTeamContextPath(id)
+        } else {
+          return Response.json({ ok: false, error: 'scope must be global, role (id=orchestrator|subagent), or team (id=<teamId>)' }, { status: 400 })
+        }
+
+        if (req.method === 'GET') {
+          ctxMod.seedContextFiles()
+          return Response.json({
+            ok: true,
+            path,
+            content: existsSync(path) ? readFileSync(path, 'utf-8') : null,
+          })
+        }
+
+        const body = await req.json().catch(() => null) as { content?: unknown } | null
+        if (!body || typeof body.content !== 'string') {
+          return Response.json({ ok: false, error: 'Body must be { content: string }' }, { status: 400 })
+        }
+        mkdirSync(dirname(path), { recursive: true })
+        writeFileSync(path, body.content, 'utf-8')
+        if (scope === 'role') {
+          // Re-assert the Bakin-managed block — user edits outside it are
+          // preserved; a deleted/mangled block is restored to the shipped
+          // defaults.
+          ctxMod.refreshRoleContextBlocks()
+        }
+        return Response.json({ ok: true, path, content: readFileSync(path, 'utf-8') })
+      },
+    }))
+  }
+
+  // POST /teams/:teamId/sync — sync every member of a team
+  arr.push(defineRoute({
+    path: '/teams/:teamId/sync',
+    method: 'POST',
+    description: 'Sync every member agent of a team (recompose blocks, re-project, verify)',
+    summary: 'Sync every member agent of a team',
+    params: z.object({ teamId: z.string() }),
+    responses: { 200: passthroughTeam, 201: passthroughTeam, 400: errorResponseTeam, 403: errorResponseTeam, 404: errorResponseTeam, 409: errorResponseTeam, 500: errorResponseTeam },
+    handler: async (req: Request, ctx: PluginContextLite) => {
+      const url = new URL(req.url)
+      const teamId = url.searchParams.get('teamId')
+      if (!teamId) return Response.json({ ok: false, error: 'teamId required' }, { status: 400 })
+      if (!readTeams().some((t) => t.id === teamId)) {
+        return Response.json({ ok: false, error: `Team "${teamId}" not found` }, { status: 404 })
+      }
+
+      const body = await req.json().catch(() => ({})) as { check?: boolean; fetch?: boolean }
+      const { syncAgent } = await import('../../src/core/agent-packages/sync')
+      const { reloadAgentPackageRegistries } = await import('../../src/core/agent-packages/post-sync-reload')
+
+      const memberIds = await getTeamMembers(ctx.runtime, teamId)
+      const results: Array<{ agentId: string; receipt?: unknown; error?: string }> = []
+      for (const agentId of memberIds) {
+        try {
+          results.push({
+            agentId,
+            receipt: await syncAgent(agentId, {
+              check: body.check,
+              fetch: body.fetch ?? false,
+              trigger: 'rest',
+            }),
+          })
+        } catch (err) {
+          results.push({ agentId, error: err instanceof Error ? err.message : String(err) })
+        }
+      }
+      if (!body.check) await reloadAgentPackageRegistries({ kind: 'synced' })
+      return Response.json({ ok: true, teamId, results })
+    },
+  }))
+
   // PUT /:agentId/team — Assign agent to a team
   arr.push(defineRoute({
     path: '/:agentId/team',
@@ -2189,10 +2318,10 @@ const teamPlugin: BakinPlugin = definePlugin({
       repair: personaRepair(getContentDir(), runtimeAgentReader),
     })
     ctx.registerHealthCheck({
-      id: 'agent-assets',
-      name: 'Agent-package projection drift',
-      run: () => checkAgentAssets(),
-      repair: agentAssetsRepair(),
+      id: 'agent-sync',
+      name: 'Agent sync (managed blocks + projections)',
+      run: () => checkAgentSync(),
+      repair: agentSyncRepair(),
     })
   },
 

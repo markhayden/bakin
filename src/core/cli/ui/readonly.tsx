@@ -202,13 +202,6 @@ export interface SettingsActionData {
   detail?: unknown
 }
 
-export interface AgentRuleResultData {
-  check?: unknown
-  status?: unknown
-  message?: unknown
-  autoFixable?: unknown
-}
-
 export interface AgentPackageData {
   agentId?: unknown
   state?: unknown
@@ -701,7 +694,65 @@ function packageActionMessage(action: PackageActionData): string {
   if (name === 'removed') return `Removed ${scope} ${target}.`
   if (name === 'updated' && objectField(payload, 'changed') === false) return `Checked ${scope} ${target}; no changes.`
   if (name === 'updated') return `Updated ${scope} ${target}.`
+  if (name === 'synced' || name === 'checked') {
+    const receipt = objectField(payload, 'receipt')
+    const verification = isPlainRecord(receipt) ? objectField(receipt, 'verification') : undefined
+    const status = isPlainRecord(verification) ? valueText(objectField(verification, 'status'), '') : ''
+    const verb = name === 'checked' ? 'Checked' : 'Synced'
+    return `${verb} ${scope} ${target}${status ? ` — verification ${status}` : ''}.`
+  }
   return `${name.charAt(0).toUpperCase()}${name.slice(1)} ${scope} ${target}.`
+}
+
+/** Receipt detail lines for sync/check actions (layered-context spec). */
+function syncReceiptDetails(receipt: unknown): string[] {
+  if (!isPlainRecord(receipt)) return []
+  const details: string[] = []
+
+  const pkg = objectField(receipt, 'package')
+  if (isPlainRecord(pkg)) {
+    const before = valueText(objectField(pkg, 'versionBefore'), '')
+    const after = valueText(objectField(pkg, 'versionAfter'), '')
+    if (before && after && before !== after) {
+      details.push(`Version: ${before} -> ${after}`)
+    } else if (objectField(pkg, 'fetched') === true && objectField(pkg, 'changed') === false) {
+      details.push('Upstream unchanged.')
+    }
+  }
+
+  const blocks = objectField(receipt, 'blocks')
+  if (Array.isArray(blocks)) {
+    const recomposed = blocks
+      .filter((b): b is Record<string, unknown> => isPlainRecord(b) && b.action === 'recomposed')
+      .map((b) => valueText(b.file, ''))
+      .filter(Boolean)
+    if (recomposed.length > 0) details.push(`Blocks recomposed: ${recomposed.join(', ')}`)
+  }
+
+  const projections = objectField(receipt, 'projections')
+  if (Array.isArray(projections) && projections.length > 0) {
+    const reclaimed = projections.filter((pr) => isPlainRecord(pr) && pr.action === 'reclaimed').length
+    details.push(`Projections written: ${projections.length}${reclaimed > 0 ? ` (${reclaimed} reclaimed)` : ''}`)
+  }
+
+  const skipped = objectField(receipt, 'skipped')
+  if (Array.isArray(skipped)) {
+    for (const entry of skipped) {
+      if (!isPlainRecord(entry)) continue
+      const hint = valueText(entry.hint, '')
+      details.push(`Skipped (user-edited; your changes preserved): ${valueText(entry.target, '')}${hint ? `\n  Reclaim: ${hint}` : ''}`)
+    }
+  }
+
+  const verification = objectField(receipt, 'verification')
+  if (isPlainRecord(verification) && Array.isArray(verification.findings)) {
+    for (const finding of verification.findings as unknown[]) {
+      if (!isPlainRecord(finding)) continue
+      details.push(`Finding: ${valueText(finding.message, '')}`)
+    }
+  }
+
+  return details.filter(Boolean)
 }
 
 function packageDependencyDetails(value: unknown): string[] {
@@ -729,6 +780,7 @@ function packageActionDetail(action: PackageActionData): string {
   const toCommit = valueText(objectField(payload, 'toCommitSha'), '')
   const isLesson = valueText(action.scope, '') === 'lesson'
 
+  details.push(...syncReceiptDetails(objectField(payload, 'receipt')))
   if (objectField(payload, 'createdAgent') === true) details.push('Created runtime agent.')
   if (objectField(payload, 'adopted') === true) details.push('Adopted existing runtime agent.')
   details.push(...dependencies)
@@ -1083,51 +1135,6 @@ function pathRows(paths: unknown): DetailFieldRow[] {
     .map(([field, value]) => ({ field, value: valueText(value) }))
 }
 
-function agentRuleStatus(value: unknown): TuiStatus {
-  switch (value) {
-    case 'ok':
-      return 'ok'
-    case 'fixed':
-      return 'applied'
-    case 'warn':
-      return 'warn'
-    case 'error':
-      return 'fail'
-    default:
-      return 'skip'
-  }
-}
-
-function agentRuleSummaryItems(results: AgentRuleResultData[]): SummaryItem[] {
-  const ok = results.filter(result => result.status === 'ok').length
-  const fixed = results.filter(result => result.status === 'fixed').length
-  const warnings = results.filter(result => result.status === 'warn').length
-  const errors = results.filter(result => result.status === 'error').length
-
-  return [
-    { label: 'up to date', value: ok, status: 'ok' },
-    { label: 'fixed', value: fixed, status: fixed > 0 ? 'applied' : 'ok' },
-    { label: 'warnings', value: warnings, status: warnings > 0 ? 'warn' : 'ok' },
-    { label: 'errors', value: errors, status: errors > 0 ? 'fail' : 'ok' },
-  ]
-}
-
-function agentRuleRows(results: AgentRuleResultData[], mode: 'check' | 'apply') {
-  return results.map(result => {
-    const status = agentRuleStatus(result.status)
-    const autoFixable = Boolean(result.autoFixable)
-    const next = mode === 'check' && autoFixable && (status === 'warn' || status === 'fail')
-      ? 'Run `bakin agent-rules --apply` to write managed context.'
-      : undefined
-
-    return {
-      status,
-      label: valueText(result.check, 'check'),
-      message: valueText(result.message, 'No result message returned.'),
-      next,
-    }
-  })
-}
 
 function contentPreview(value: unknown): string {
   const text = valueText(value, '')
@@ -1425,7 +1432,6 @@ function reindexTableRows(tables: ReindexTableData[]): ReindexTableRow[] {
 function packageStateStatus(state: string): TuiStatus {
   switch (state) {
     case 'managed':
-    case 'adopted':
       return 'ok'
     case 'missing':
     case 'drifted':
@@ -1943,34 +1949,6 @@ export function PathsReport({ paths, isBakinHome, color = true }: {
           />
         ) : (
           <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'No paths returned by the server.' }]} color={color} />
-        )}
-      </Section>
-    </Box>
-  )
-}
-
-export function AgentRulesReport({ results, mode, scope, color = true }: {
-  results: AgentRuleResultData[]
-  mode: 'check' | 'apply'
-  scope: 'orchestrator' | 'all'
-  color?: boolean
-}) {
-  const rows = agentRuleRows(results, mode)
-
-  return (
-    <Box flexDirection="column">
-      <ScreenHeader
-        title="Agent Rules"
-        subtitle={mode === 'apply' ? 'Managed AGENTS.md context applied' : 'Managed AGENTS.md context checked'}
-        meta={`scope: ${scope}`}
-        color={color}
-      />
-      <SummaryStrip items={agentRuleSummaryItems(results)} color={color} />
-      <Section title="Checks" color={color}>
-        {rows.length > 0 ? (
-          <FindingRows rows={rows} color={color} />
-        ) : (
-          <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'No agent-rules results returned.' }]} color={color} />
         )}
       </Section>
     </Box>
@@ -2541,7 +2519,6 @@ export function AgentPackagesListReport({ agents, color = true }: {
 }) {
   const rows = agentPackageTableRows(agents)
   const managed = rows.filter(row => row.state === 'managed').length
-  const adopted = rows.filter(row => row.state === 'adopted').length
 
   return (
     <Box flexDirection="column">
@@ -2549,7 +2526,6 @@ export function AgentPackagesListReport({ agents, color = true }: {
       <SummaryStrip items={[
         { label: plural(rows.length, 'agent'), value: rows.length, status: rows.length > 0 ? 'ok' : 'skip' },
         { label: 'managed', value: managed, status: managed > 0 ? 'ok' : 'skip' },
-        { label: 'adopted', value: adopted, status: adopted > 0 ? 'ready' : 'skip' },
       ]} color={color} />
       <Section title="Package state" color={color}>
         {rows.length > 0 ? (

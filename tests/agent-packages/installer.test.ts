@@ -344,12 +344,12 @@ describe('installPackage — fresh install (kind:"agent")', () => {
     expect(existsSync(skill)).toBe(true)
     expect(existsSync(avatar)).toBe(true)
 
-    // Lesson markers injected
+    // Composed managed block carries catalog + enabled lesson body
     const soul = readFileSync(wsSoul, 'utf-8')
-    expect(hasBlock(soul, 'lesson-catalog')).toBe(true)
-    expect(hasBlock(soul, 'lesson:pixel:style')).toBe(true)
-    const catalog = extractBlock(soul, 'lesson-catalog') ?? ''
-    expect(catalog).toContain('[x] **Style**')
+    expect(hasBlock(soul, 'managed')).toBe(true)
+    const body = extractBlock(soul, 'managed') ?? ''
+    expect(body).toContain('[x] **Style**')
+    expect(body).toContain('Style lessons body.')
   })
 
   it('moves the staging dir into ~/.bakin/packages/agents/<id>@<version>/', async () => {
@@ -405,8 +405,9 @@ describe('installPackage — adopt mode', () => {
     expect(soul).toContain('# user wrote this')
     expect(hasBlock(soul, 'lesson-catalog')).toBe(true)
 
-    // Lockfile state = adopted
-    expect(readLockfile().packages.pixel.state).toBe('adopted')
+    // Adopt is an install-time action, not a persistent state — the entry
+    // is 'managed' like any other (layered-context spec, adopted collapse).
+    expect(readLockfile().packages.pixel.state).toBe('managed')
   })
 })
 

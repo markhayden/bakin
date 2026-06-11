@@ -17,7 +17,6 @@ import { Badge } from '@makinbakin/sdk/ui'
 export type PackageState =
   | 'absent'
   | 'unmanaged'
-  | 'adopted'
   | 'managed'
   | 'drifted'
   | 'update-available'
@@ -47,25 +46,20 @@ const STATE_STYLES: Record<PackageState, { label: string; cls: string; tip: stri
     cls: 'bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-400',
     tip: 'Exists in the active runtime but no Bakin agent-package tracks it. Install or adopt to enable lessons / project asset management.',
   },
-  adopted: {
-    label: 'adopted',
-    cls: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
-    tip: 'Package attached to an existing runtime agent. Bakin manages lesson markers + projected assets but never touches the workspace template files.',
-  },
   managed: {
     label: 'managed',
     cls: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
-    tip: 'Agent fully package-managed. Workspace files were seeded from the package template; lessons + assets project from the package source.',
+    tip: 'Agent package-managed. Bakin owns the composed workspace-file blocks; skills + assets project from the package source.',
   },
   drifted: {
     label: 'drifted',
     cls: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300',
-    tip: 'Projection sha mismatch detected. Run `bakin install agent-assets` to repair, or set `.userEdited` to lock the file.',
+    tip: 'Projection sha mismatch detected. Run `bakin agents sync` (or `bakin install agent-sync`) to repair.',
   },
   'update-available': {
     label: 'update available',
     cls: 'bg-info/10 text-info',
-    tip: 'Source repo has moved past the recorded commit. Run `bakin agents update` to pull.',
+    tip: 'Source repo has moved past the recorded commit. Run `bakin agents sync` to pull.',
   },
 }
 

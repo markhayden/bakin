@@ -41,24 +41,24 @@ describe('CLI UI primitives', () => {
       <Section title="Local checks">
         <FindingRows rows={[{
           status: 'warn',
-          label: 'agent-assets',
+          label: 'agent-sync',
           message: '1 agent-package projection needs repair.',
-          detail: 'Run `bakin install agent-assets` to repair drift.',
-          next: 'bakin install agent-assets',
+          detail: 'Run `bakin install agent-sync` to repair drift.',
+          next: 'bakin install agent-sync',
         }]} />
       </Section>,
     )
 
     expect(output).toContain('LOCAL CHECKS\n------------')
-    expect(output).toContain(' WARN      agent-assets')
+    expect(output).toContain(' WARN      agent-sync')
     expect(output).toContain('1 agent-package projection needs repair.')
-    expect(output).toContain('Next: bakin install agent-assets')
+    expect(output).toContain('Next: bakin install agent-sync')
     expect(output).not.toContain('[WARN]')
 
     const lines = output.split('\n')
     const messageLine = lines.find(line => line.includes('1 agent-package projection needs repair.'))
-    const detailLine = lines.find(line => line.includes('Run `bakin install agent-assets`'))
-    const nextLine = lines.find(line => line.includes('Next: bakin install agent-assets'))
+    const detailLine = lines.find(line => line.includes('Run `bakin install agent-sync`'))
+    const nextLine = lines.find(line => line.includes('Next: bakin install agent-sync'))
     expect(detailLine?.indexOf('Run')).toBe(messageLine?.indexOf('1 agent-package'))
     expect(nextLine?.indexOf('Next')).toBe(messageLine?.indexOf('1 agent-package'))
   })

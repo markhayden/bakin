@@ -11,7 +11,7 @@
  *   2. Fetch top-level source → staging
  *   3. Validate manifest
  *   4. For kind:"agent" — figure out target agent state (absent / unmanaged /
- *      adopted / managed) and decide install mode (fresh / adopt / refuse)
+ *      managed) and decide install mode (fresh / adopt / refuse)
  *   5. Resolve declared dependencies (single-level for V1)
  *   6. Pre-flight collision check — refuse if any projection target collides
  *      with a different package's existing projection (different sha)
@@ -57,7 +57,6 @@ import {
 import {
   projectPackage,
   unprojectPackage,
-  type ProjectionMode,
   type ProjectorResult,
 } from './projector'
 import { getAgentState } from './agent-state'
@@ -300,7 +299,7 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
     // ─── 3. Compute install mode for kind:"agent" ──────────────────────────
     const lock = readLockfile()
     originalLock = lock
-    let mode: ProjectionMode = 'fresh'
+    let mode: 'fresh' | 'adopt' = 'fresh'
 
     // Lockfile key conventions:
     //   - agent kind:        plain id (e.g. "pixel")        — one agent per id
@@ -314,17 +313,17 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
     if (manifest.kind !== 'agent' && lock.packages[parentLockfileKey] && !options.replace) {
       throw new Error(
         `Package "${parentLockfileKey}" is already installed. ` +
-          `Run \`bakin packages update ${parentLockfileKey}\` to update or \`bakin packages remove ${parentLockfileKey}\` first.`,
+          `Run \`bakin packages sync ${parentLockfileKey}\` to update or \`bakin packages remove ${parentLockfileKey}\` first.`,
       )
     }
 
     if (manifest.kind === 'agent') {
       agentId = manifest.id
       const stateInfo = await getAgentState(agentId, lock)
-      if (stateInfo.state === 'managed' || stateInfo.state === 'adopted') {
+      if (stateInfo.state === 'managed') {
         throw new Error(
-          `Agent "${agentId}" is already ${stateInfo.state} by package "${stateInfo.packageId}". ` +
-            `Run \`bakin agents update ${stateInfo.packageId}\` to update or \`bakin agents remove ${stateInfo.packageId}\` first.`,
+          `Agent "${agentId}" is already managed by package "${stateInfo.packageId}". ` +
+            `Run \`bakin agents sync ${stateInfo.packageId}\` to update or \`bakin agents remove ${stateInfo.packageId}\` first.`,
         )
       }
       if (stateInfo.state === 'unmanaged') {
@@ -377,7 +376,6 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
         manifest: dep.manifest,
         stagingDir: dep.fetched.stagingDir,
         agentId: undefined,
-        mode: 'fresh',
         replace: options.replace,
         installedBy: {
           package: dep.resolvedId,
@@ -396,7 +394,6 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
       manifest,
       stagingDir: topFetched.stagingDir,
       agentId,
-      mode,
       replace: options.replace,
       installedBy: {
         package: resolvedTopId,
@@ -485,7 +482,7 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
       dependencies: resolved.map((r) => `${r.resolvedId}@${r.manifest.version}`),
     }
     if (manifest.kind === 'agent' && agentId) {
-      parentEntry.state = mode === 'adopt' ? 'adopted' : 'managed'
+      parentEntry.state = 'managed'
       parentEntry.agentId = agentId
       parentEntry.lessonsEnabled =
         manifest.install.enableLessons ??

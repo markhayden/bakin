@@ -82,7 +82,7 @@ import * as installRoute from '../../packages/host/src/api/agent-packages/instal
 import * as listRoute from '../../packages/host/src/api/agent-packages/list'
 import * as dynamicRoute from '../../packages/host/src/api/agent-packages/dynamic'
 import * as packagesListRoute from '../../packages/host/src/api/packages/list'
-import { writeLockfile } from '../../packages/core/src/agent-packages/lockfile'
+import { readLockfile, writeLockfile } from '../../packages/core/src/agent-packages/lockfile'
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
@@ -197,7 +197,7 @@ describe('GET /api/agent-packages', () => {
     expect(pixelEntry?.entry?.version).toBe('0.1.0')
   })
 
-  it('returns the updated version after an agent package update', async () => {
+  it('returns a receipt with the updated version after POST /sync', async () => {
     const src = seedAgentPackage()
     {
       const { req, url } = makeRequest('POST', '/api/agent-packages/install', { source: src })
@@ -208,13 +208,20 @@ describe('GET /api/agent-packages', () => {
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'))
     writeFileSync(manifestPath, JSON.stringify({ ...manifest, version: '0.2.0' }))
 
-    const { req: updateReq, url: updateUrl } = makeRequest('POST', '/api/agent-packages/pixel/update', {})
-    const updateRes = await dynamicRoute.handler(updateReq, updateUrl)
-    expect(updateRes.status).toBe(200)
-    const updateBody = await updateRes.json()
-    expect(updateBody.ok).toBe(true)
-    expect(updateBody.result.fromVersion).toBe('0.1.0')
-    expect(updateBody.result.toVersion).toBe('0.2.0')
+    const { req: syncReq, url: syncUrl } = makeRequest('POST', '/api/agent-packages/pixel/sync', {})
+    const syncRes = await dynamicRoute.handler(syncReq, syncUrl)
+    expect(syncRes.status).toBe(200)
+    const syncBody = await syncRes.json()
+    expect(syncBody.ok).toBe(true)
+    expect(syncBody.receipt.package.versionBefore).toBe('0.1.0')
+    expect(syncBody.receipt.package.versionAfter).toBe('0.2.0')
+    expect(syncBody.receipt.verification.status).toBe('ok')
+
+    // Receipt persisted and retrievable
+    const { req: rReq, url: rUrl } = makeRequest('GET', '/api/agent-packages/pixel/receipt')
+    const rRes = await dynamicRoute.handler(rReq, rUrl)
+    expect(rRes.status).toBe(200)
+    expect((await rRes.json()).receipt.agentId).toBe('pixel')
 
     const { req, url } = makeRequest('GET', '/api/agent-packages')
     const res = await listRoute.get(req, url)
@@ -223,7 +230,43 @@ describe('GET /api/agent-packages', () => {
     const pixelEntry = body.agents.find((a: { agentId: string }) => a.agentId === 'pixel')
     expect(pixelEntry?.state).toBe('managed')
     expect(pixelEntry?.version).toBe('0.2.0')
-    expect(pixelEntry?.entry?.version).toBe('0.2.0')
+  })
+
+  it('responds 409 migrationRequired for legacy lockfile shapes, and /migrate clears it', async () => {
+    const src = seedAgentPackage()
+    {
+      const { req, url } = makeRequest('POST', '/api/agent-packages/install', { source: src })
+      await installRoute.post(req, url)
+    }
+
+    // Rewrite the lockfile into the legacy pre-block shape
+    const lock = readLockfile()
+    const entry = lock.packages.pixel
+    writeLockfile({
+      version: 1,
+      packages: {
+        pixel: {
+          ...entry,
+          projections: [
+            { kind: 'workspace-file', target: 'runtime:workspace-file:pixel:SOUL.md', sha256: 'x', templateOnly: true },
+          ],
+        },
+      },
+    })
+
+    const { req: syncReq, url: syncUrl } = makeRequest('POST', '/api/agent-packages/pixel/sync', {})
+    const syncRes = await dynamicRoute.handler(syncReq, syncUrl)
+    expect(syncRes.status).toBe(409)
+    expect((await syncRes.json()).migrationRequired).toBe(true)
+
+    const { req: mReq, url: mUrl } = makeRequest('POST', '/api/agent-packages/migrate', {})
+    const mRes = await dynamicRoute.handler(mReq, mUrl)
+    expect(mRes.status).toBe(200)
+    expect((await mRes.json()).ok).toBe(true)
+
+    const { req: again, url: againUrl } = makeRequest('POST', '/api/agent-packages/pixel/sync', {})
+    const againRes = await dynamicRoute.handler(again, againUrl)
+    expect(againRes.status).toBe(200)
   })
 
   it('enriches package rows with update status when check=1 without mutating installed version', async () => {

@@ -2,7 +2,7 @@
  * Team-plugin-owned doctor checks.
  *
  * Migrated out of src/core/doctor.ts (#139 C1) — these three checks
- * (agent-roster, personas, agent-assets) now live under the team
+ * (agent-roster, personas, agent-sync) now live under the team
  * plugin and are registered via ctx.registerHealthCheck. This file
  * absorbs the prior tests/core/doctor-agent-assets.test.ts and adds
  * direct coverage for the migrated functions plus a registration
@@ -93,13 +93,13 @@ mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
-import { agentAssetsComponent } from '../../../src/core/onboarding/agent-assets'
+import { agentSyncComponent } from '../../../src/core/onboarding/agent-sync'
 import { installPackage } from '../../../src/core/agent-packages/installer'
 import {
-  agentAssetsRepair,
+  agentSyncRepair,
   checkAgentRoster,
   checkPersonas,
-  checkAgentAssets,
+  checkAgentSync,
   personaRepair,
 } from '../../../plugins/team/lib/health-checks'
 
@@ -228,76 +228,69 @@ describe('checkPersonas', () => {
   })
 })
 
-// ─── checkAgentAssets — wrapper coverage ──────────────────────────────────
+// ─── checkAgentSync — wrapper coverage ─────────────────────────────────────
 
-describe('checkAgentAssets — wrapper', () => {
-  // Spy on the singleton's `check` method instead of mutating the export.
-  // bun:test's spyOn restoration is automatic per `afterEach` and survives
-  // assertion throws — fixes the fragility flagged in PR #173 review.
-  let checkSpy: ReturnType<typeof spyOn> | null = null
-  afterEach(() => {
-    if (checkSpy) {
-      checkSpy.mockRestore()
-      checkSpy = null
-    }
-  })
-
-  it('returns ok when component check returns ok', async () => {
-    checkSpy = spyOn(agentAssetsComponent, 'check').mockImplementation(async () => ({
-      name: 'agent-assets',
-      status: 'ok' as const,
-      message: 'no projections',
-    }))
-    const results = await checkAgentAssets()
+describe('checkAgentSync — wrapper', () => {
+  it('returns ok when the scanner reports a clean state', async () => {
+    // Empty roster + empty lockfile + freshly seeded context files = clean.
+    const { seedContextFiles } = await import('../../../src/core/team-context')
+    seedContextFiles()
+    const results = await checkAgentSync()
     expect(results).toHaveLength(1)
-    expect(results[0].check).toBe('agent-assets')
+    expect(results[0].check).toBe('agent-sync')
     expect(results[0].status).toBe('ok')
   })
 
-  it('returns warn with reminder when component reports drift and autoFix=false', async () => {
-    checkSpy = spyOn(agentAssetsComponent, 'check').mockImplementation(async () => ({
-      name: 'agent-assets',
-      status: 'warn' as const,
-      message: '1 projection drifted',
-      remediation: 'Run `bakin install agent-assets` to repair.',
-    }))
-    const results = await checkAgentAssets()
-    expect(results).toHaveLength(1)
-    expect(results[0].status).toBe('warn')
-    expect(results[0].autoFixable).toBe(true)
-    expect(results[0].message).toMatch(/bakin install agent-assets/)
+  it('reports stale role context as an auto-fixable warn', async () => {
+    // No context files seeded → role-context-stale findings.
+    const results = await checkAgentSync()
+    expect(results.some((r) => r.status === 'warn' && r.autoFixable)).toBe(true)
   })
 
-  it('plans and applies agent-assets repair explicitly', async () => {
-    checkSpy = spyOn(agentAssetsComponent, 'check').mockImplementation(async () => ({
-      name: 'agent-assets',
-      status: 'warn' as const,
-      message: '1 projection drifted',
-      remediation: 'Run `bakin install agent-assets` to repair.',
-    }))
-    const installSpy = spyOn(agentAssetsComponent, 'install').mockImplementation(async () => ({
-      name: 'agent-assets',
-      status: 'installed' as const,
-      message: 'projection repaired',
-      durationMs: 1,
-    }))
-
-    const results = await checkAgentAssets()
-    const repair = agentAssetsRepair()
+  it('plans a safe local-sync repair for auto-fixable findings and applies it', async () => {
+    const results = await checkAgentSync()
+    const repair = agentSyncRepair()
     const plan = await repair.plan(results)
-    expect(plan).toHaveLength(1)
-    const applied = await repair.apply(plan)
+    expect(plan.length).toBeGreaterThanOrEqual(1)
+    const local = plan.find((p) => p.id === 'team.agent-sync.local')
+    expect(local?.safety).toBe('safe')
+    expect(local?.requiresConfirmation).toBe(false)
+
+    const applied = await repair.apply([local!])
     expect(applied[0].status).toBe('applied')
-    expect(installSpy).toHaveBeenCalled()
-    installSpy.mockRestore()
+
+    const after = await checkAgentSync()
+    expect(after[0].status).toBe('ok')
+  })
+
+  it('plans the migration as a destructive, confirmation-required item', async () => {
+    const { writeLockfile } = await import('../../../packages/core/src/agent-packages/lockfile')
+    writeLockfile({
+      version: 1,
+      packages: {
+        pixel: {
+          kind: 'agent', version: '0.1.0', source: '/nowhere', ref: '', commitSha: '',
+          installedAt: '2026-01-01T00:00:00Z', state: 'managed', agentId: 'pixel',
+          projections: [
+            { kind: 'workspace-file', target: 'runtime:workspace-file:pixel:SOUL.md', sha256: 'x', templateOnly: true },
+          ],
+        },
+      },
+    })
+    const results = await checkAgentSync()
+    expect(results.some((r) => r.message.includes('migration'))).toBe(true)
+
+    const plan = await agentSyncRepair().plan(results)
+    const migrate = plan.find((p) => p.id === 'team.agent-sync.migrate')
+    expect(migrate?.safety).toBe('destructive')
+    expect(migrate?.requiresConfirmation).toBe(true)
   })
 })
 
-// ─── checkAgentAssets — integration via real component ────────────────────
+// ─── checkAgentSync — integration via real component ──────────────────────
 //
-// Absorbed from tests/core/doctor-agent-assets.test.ts. Exercises the
-// agent-assets onboarding component directly to verify drift detection
-// and repair semantics that the wrapper depends on.
+// Exercises the agent-sync onboarding component directly to verify drift
+// detection and repair semantics that the wrapper depends on.
 
 function seedAgentPackage(): string {
   const dir = join(testDir, 'pixel-pkg')
@@ -340,53 +333,51 @@ const NON_INTERACTIVE = {
   force: false,
 }
 
-describe('agent-assets component integration', () => {
+describe('agent-sync component integration', () => {
   it('component check returns ok when projections match the lockfile', async () => {
+    runtimeAgents = [{ id: 'main', name: 'Roscoe', status: 'active' }]
     const src = seedAgentPackage()
     await installPackage({ source: src })
+    await agentSyncComponent.install(NON_INTERACTIVE) // settle unmanaged main
 
-    const result = await agentAssetsComponent.check()
+    const result = await agentSyncComponent.check()
     expect(result.status).toBe('ok')
   })
 
   it('component check returns warn when an asset is missing or drifted', async () => {
+    runtimeAgents = [{ id: 'main', name: 'Roscoe', status: 'active' }]
     const src = seedAgentPackage()
     await installPackage({ source: src })
+    await agentSyncComponent.install(NON_INTERACTIVE)
 
     // Mutate avatar.jpg — non-template projection sha drift
     const avatar = join(testDir, 'agents', 'pixel', 'avatar.jpg')
     writeFileSync(avatar, 'corrupted-content')
 
-    const result = await agentAssetsComponent.check()
+    const result = await agentSyncComponent.check()
     expect(result.status).toBe('warn')
-    expect(result.message).toContain('drifted')
+    expect(result.message).toContain('asset-drifted')
   })
 
-  it('component install in autoFix mode repairs non-template drift in-place', async () => {
+  it('component install repairs a deleted asset in-place', async () => {
+    runtimeAgents = [{ id: 'main', name: 'Roscoe', status: 'active' }]
     const src = seedAgentPackage()
     await installPackage({ source: src })
+    await agentSyncComponent.install(NON_INTERACTIVE)
 
-    // Delete an asset projection (avatar.jpg) — non-template, so update
-    // mode repairs it. Workspace files (SOUL.md / IDENTITY.md / etc.)
-    // are templateOnly and only repaired via --refresh-template; the
-    // doctor's autoFix path doesn't pass that flag because the agent
-    // may have legitimately edited those files post-install.
     const avatar = join(testDir, 'agents', 'pixel', 'avatar.jpg')
     rmSync(avatar)
     expect(existsSync(avatar)).toBe(false)
 
-    const beforeCheck = await agentAssetsComponent.check()
-    expect(beforeCheck.status).toBe('warn')
-    expect(beforeCheck.message).toContain('missing')
+    const beforeCheck = await agentSyncComponent.check()
+    expect(beforeCheck.status).toBe('error')
+    expect(beforeCheck.message).toContain('asset-missing')
 
-    const installResult = await agentAssetsComponent.install(NON_INTERACTIVE)
+    const installResult = await agentSyncComponent.install(NON_INTERACTIVE)
     expect(['installed', 'noop']).toContain(installResult.status)
 
-    // Avatar is back
     expect(existsSync(avatar)).toBe(true)
-
-    // And the post-repair check is clean
-    const afterCheck = await agentAssetsComponent.check()
+    const afterCheck = await agentSyncComponent.check()
     expect(afterCheck.status).toBe('ok')
   })
 })
@@ -436,6 +427,6 @@ describe('plugin registration', () => {
 
     expect(registeredIds).toContain('agent-roster')
     expect(registeredIds).toContain('personas')
-    expect(registeredIds).toContain('agent-assets')
+    expect(registeredIds).toContain('agent-sync')
   })
 })

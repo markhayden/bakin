@@ -4,7 +4,7 @@
  * Lessons tab contract for agent-detail.
  *
  * - Tab is always visible in the tab bar (regardless of package state)
- * - For managed/adopted agents the tab renders LessonToggleList
+ * - For managed agents the tab renders LessonToggleList
  *   (which fetches from /api/agent-packages/:id/lessons)
  * - For unmanaged/absent/undefined the tab renders a "Lessons require a package"
  *   placeholder with a hint pointing back at the Package card
@@ -140,15 +140,6 @@ describe('AgentDetail — Lessons tab', () => {
     await waitFor(() => expect(screen.getByText('Lesson One')).toBeDefined())
     expect(screen.getByText('Lesson Two')).toBeDefined()
     expect(screen.queryByText('Lessons require a package')).toBeNull()
-  })
-
-  it('renders LessonToggleList for state=adopted', async () => {
-    primeState({
-      pixel: { agentId: 'pixel', state: 'adopted', packageId: 'examples/pixel@0.1.0' },
-    })
-    queryState.tab = 'lessons'
-    await openDetail()
-    await waitFor(() => expect(screen.getByText('Lesson One')).toBeDefined())
   })
 
   it('renders "Lessons require a package" empty state for state=unmanaged', async () => {

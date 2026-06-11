@@ -209,12 +209,12 @@ describe('useAgentStore — package state plumbing', () => {
       ok: true,
       agents: [
         { agentId: 'pixel', state: 'managed', version: '0.1.0', packageId: 'examples/pixel@0.1.0', entry: PKG_OK.agents?.[0].entry },
-        { agentId: 'orca', state: 'adopted', version: '0.2.0', packageId: 'examples/orca@0.2.0', entry: { version: '0.2.0', source: 'github:examples/orca', ref: 'main', commitSha: 'def5678', installedAt: '2026-04-25T00:00:00Z' } },
+        { agentId: 'orca', state: 'managed', version: '0.2.0', packageId: 'examples/orca@0.2.0', entry: { version: '0.2.0', source: 'github:examples/orca', ref: 'main', commitSha: 'def5678', installedAt: '2026-04-25T00:00:00Z' } },
       ],
     }
     await useAgentStore.getState().refreshPackageStates()
 
-    expect(useAgentStore.getState().packageStates['orca']?.state).toBe('adopted')
+    expect(useAgentStore.getState().packageStates['orca']?.state).toBe('managed')
     expect(useAgentStore.getState().packageStates['orca']?.version).toBe('0.2.0')
   })
 

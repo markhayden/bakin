@@ -1,21 +1,17 @@
 /**
  * Focused mutator for `bakin agents lessons {enable,disable,list}`.
  *
- * Toggling a single lesson on/off doesn't justify a full re-project — the
- * lesson-marker block in SOUL.md is the only thing that changes. This
- * helper updates that block + the lockfile's `lessonsEnabled` array, and
- * leaves the rest of the projection alone.
- *
- * Reads the lesson body fresh from the package's installed source dir so
- * the marker injection always reflects the file content currently on disk
- * (handles the case where a `bakin agents update` ran between toggles).
+ * Under the composed-block model (layered-context spec) a lesson toggle is
+ * just a lockfile `lessonsEnabled` change followed by a LOCAL sync — the
+ * sync engine recomposes SOUL.md's managed block (catalog checkboxes +
+ * enabled lesson bodies) from the installed source and writes the receipt.
+ * No bespoke block surgery remains here.
  */
 import { existsSync, readFileSync } from 'fs'
 import { basename, join } from 'path'
 import { createLogger } from '../logger'
 import { getContentDir } from '../content-dir'
 import { appendAudit } from '../audit'
-import { getAppServices } from '../app-services'
 import {
   type AgentManifest,
   type Manifest,
@@ -27,10 +23,7 @@ import {
   writeLockfile,
 } from '../../../packages/core/src/agent-packages/lockfile'
 import { getPackageSourceDir } from '../../../packages/core/src/agent-packages/package-paths'
-import {
-  injectBlock,
-  removeBlock,
-} from '../../../packages/core/src/agent-packages/managed-blocks'
+import { syncAgent } from './sync'
 
 const log = createLogger('agent-pkg:lessons')
 
@@ -116,43 +109,20 @@ export async function setLessonEnabled(
   }
 
   const currentEnabled = new Set(entry.lessonsEnabled ?? [])
-  const lessonForEnable = enabled ? parseRequiredLessonFile(target.abs, target.rel, currentEnabled) : null
+  if (enabled) parseRequiredLessonFile(target.abs, target.rel, currentEnabled) // validates body exists
   const wasEnabled = currentEnabled.has(lessonId)
   if (wasEnabled === enabled) {
     return { packageId, lessonId, enabled, changed: false }
   }
 
-  // Mutate the SOUL.md through the runtime workspace API.
-  const runtime = getAppServices().runtime
-  const soulFile = await runtime.agents.readWorkspaceFile(entry.agentId, 'SOUL.md')
-  if (!soulFile) {
-    throw new Error(`SOUL.md missing for agent "${entry.agentId}" in the runtime workspace.`)
-  }
-  if (soulFile.metadata?.userEdited === true) {
-    throw new Error(
-      `SOUL.md is marked .userEdited — refusing to mutate. Remove the sentinel to re-enable lesson toggling.`,
-    )
-  }
+  if (enabled) currentEnabled.add(lessonId)
+  else currentEnabled.delete(lessonId)
 
-  const blockId = `lesson:${packageId}:${lessonId}`
-  let soul = soulFile.content
-  if (lessonForEnable) {
-    soul = injectBlock(soul, blockId, lessonForEnable.body)
-    currentEnabled.add(lessonId)
-  } else {
-    soul = removeBlock(soul, blockId)
-    currentEnabled.delete(lessonId)
-  }
-
-  // Refresh the catalog block to reflect the new enabled state
-  const allLessons = lessonPaths.map((l) => parseLessonFile(l.abs, l.rel, currentEnabled))
-  soul = injectBlock(soul, 'lesson-catalog', buildCatalogBody(packageId, allLessons, currentEnabled))
-
-  await runtime.agents.writeWorkspaceFile(entry.agentId, { path: 'SOUL.md', content: soul })
-
-  // Update lockfile
+  // Update the lockfile, then let the sync engine recompose SOUL.md's
+  // managed block (local-only — no network fetch for a toggle).
   const nextEntry = { ...entry, lessonsEnabled: Array.from(currentEnabled).sort() }
   writeLockfile(addPackage(lock, packageId, nextEntry))
+  await syncAgent(entry.agentId, { fetch: false, trigger: 'cli' })
 
   appendAudit(
     getContentDir(),
@@ -256,25 +226,6 @@ function parseRequiredLessonFile(
   return lesson
 }
 
-function buildCatalogBody(
-  packageId: string,
-  lessons: Array<{ lessonId: string; title: string }>,
-  enabled: Set<string>,
-): string {
-  if (lessons.length === 0) {
-    return `> No lessons available from ${packageId}.`
-  }
-  const lines = [
-    `> Lessons available from agent-package \`${packageId}\`. ` +
-      `Toggle individual lessons via \`bakin agents lessons enable|disable\`.`,
-    '',
-  ]
-  for (const k of lessons) {
-    const mark = enabled.has(k.lessonId) ? '[x]' : '[ ]'
-    lines.push(`- ${mark} **${k.title}** (\`${k.lessonId}\`)`)
-  }
-  return lines.join('\n')
-}
 
 // Reference type imports so unused-import linting doesn't trip
 void ((null as unknown) as AgentManifest)

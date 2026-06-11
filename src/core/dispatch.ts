@@ -1523,10 +1523,11 @@ function sharedExecutionToolDocs(agentName: string, taskId: string, opts: { allo
 /**
  * The prevention half of session-death hardening: a short artifact-first
  * reminder injected into EVERY dispatch prompt, carrying the taskId-templated
- * save command. The full rule prose lives in the `execution-tools` managed
- * block in each agent's AGENTS.md (projected by `bakin agent-rules --apply-all`
- * / doctor) — this inline reminder keeps the safety-critical presence
- * per-dispatch without re-shipping the static catalog every turn.
+ * save command. The full rule prose lives in the subagent role-context layer
+ * composed into each agent's AGENTS.md managed block (maintained by
+ * `bakin agents sync` / doctor) — this inline reminder keeps the
+ * safety-critical presence per-dispatch without re-shipping the static
+ * catalog every turn.
  */
 function outputDisciplineSection(agentName: string, taskId: string, opts: { subtasksAllowed: boolean }): string[] {
   const { mc } = mcporterHelpers(agentName)

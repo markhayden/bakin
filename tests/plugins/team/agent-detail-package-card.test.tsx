@@ -192,28 +192,6 @@ describe('PackageCard — read-only display per state', () => {
     expect(screen.queryByText('0.1.0')).toBeNull()
   })
 
-  it('renders an adopted badge + entry fields when state=adopted', async () => {
-    primeState({
-      pixel: {
-        agentId: 'pixel',
-        state: 'adopted',
-        packageId: 'examples/pixel@0.1.0',
-        entry: {
-          version: '0.1.0',
-          source: 'github:examples/pixel',
-          ref: 'main',
-          commitSha: 'feedface',
-          installedAt: '2026-04-20T00:00:00Z',
-        },
-      },
-    })
-    await renderDetail()
-    expect(screen.getByText('adopted')).toBeDefined()
-    expect(screen.getByText('0.1.0')).toBeDefined()
-    expect(screen.getByText('github:examples/pixel')).toBeDefined()
-    expect(screen.queryByRole('button', { name: 'Adopt' })).toBeNull()
-  })
-
   it('renders a CLI hint with Copy button for state=drifted', async () => {
     primeState({
       pixel: { agentId: 'pixel', state: 'drifted', packageId: 'examples/pixel@0.1.0' },
