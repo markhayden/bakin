@@ -282,8 +282,15 @@ export async function blockTaskWithEffects(
   reason: string,
   agent: string,
   channel?: Channel,
-): Promise<void> {
+): Promise<{ alreadyComplete: boolean }> {
   await assertWorkflowToolAllowed({ taskId, agent, action: 'task-block' })
+  // Completion guard — channel-independent, so it also covers the human
+  // kanban drag that bypasses the store's transition table. A completed
+  // task cannot be blocked; the row stays authoritative until an explicit
+  // reopen (move out of Done). No side effects fire on the guarded path.
+  if (hasCompletion(taskId)) {
+    return { alreadyComplete: true }
+  }
   await blockStoredTask(taskId, reason, agent, channel)
   const title = await resolveTitle(taskId)
   const contentDir = getContentDir()
@@ -326,6 +333,8 @@ export async function blockTaskWithEffects(
       log.info('Did not propagate block to parent', { parentTaskId, err: err instanceof Error ? err.message : String(err) })
     }
   }
+
+  return { alreadyComplete: false }
 }
 
 /**

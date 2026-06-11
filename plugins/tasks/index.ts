@@ -430,7 +430,7 @@ const routes = [
     summary: 'Move a task to a different column',
     params: taskIdParams,
     body: moveTaskBody,
-    responses: { 200: okResponse, 400: errorResponse, 403: errorResponse, 500: errorResponse },
+    responses: { 200: okResponse, 400: errorResponse, 403: errorResponse, 409: errorResponse, 500: errorResponse },
     handler: async (_req, ctx, { params, body }) => {
       const identifier = params.taskId || body.id || body.title
       if (!identifier) {
@@ -442,7 +442,10 @@ const routes = [
           return Response.json({ error: 'reason required when moving to blocked' }, { status: 400 })
         }
         try {
-          await blockTaskWithEffects(identifier, reason, agent, (body.channel === 'human' && agent === 'human') ? 'human' : 'rest')
+          const { alreadyComplete } = await blockTaskWithEffects(identifier, reason, agent, (body.channel === 'human' && agent === 'human') ? 'human' : 'rest')
+          if (alreadyComplete) {
+            return Response.json({ error: `Task ${identifier} is completed — reopen it (move it out of Done) before blocking.` }, { status: 409 })
+          }
           ctx.activity.log(agent, `Blocked task: ${reason}`, { taskId: identifier })
           indexTask(ctx, identifier).catch(() => {})
           return Response.json({ ok: true as const })
@@ -857,7 +860,12 @@ const tasksPlugin: BakinPlugin = definePlugin({
       },
       handler: async (params: Record<string, unknown>, agent: string) => {
         try {
-          await blockTaskWithEffects(params.taskId as string, params.reason as string, agent, 'mcp')
+          const { alreadyComplete } = await blockTaskWithEffects(params.taskId as string, params.reason as string, agent, 'mcp')
+          if (alreadyComplete) {
+            // An agent retrying a block on a task that completed meanwhile
+            // must see success, not an error — same contract as complete.
+            return { ok: true, alreadyComplete: true, note: 'Task is already completed — block ignored. Reopen it (move it out of Done) first if it truly needs blocking.' }
+          }
           indexTask(ctx, params.taskId as string).catch(() => {})
           return { ok: true }
         } catch (err) {

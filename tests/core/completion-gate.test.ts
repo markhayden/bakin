@@ -81,9 +81,10 @@ const mockMoveTask = mock(async (taskId: unknown, to: unknown) => {
   if (moveDelayMs > 0) await new Promise((r) => setTimeout(r, moveDelayMs))
 })
 const mockAddTaskLog = mock((..._args: unknown[]) => Promise.resolve())
+const mockBlockTaskStore = mock(() => Promise.resolve())
 const taskStoreMock = () => ({
   addTaskLog: mockAddTaskLog,
-  blockTask: mock(() => Promise.resolve()),
+  blockTask: mockBlockTaskStore,
   createTask: mock(() => Promise.resolve({ id: 'new-task' })),
   getTaskWithColumn: mock((id: string) => {
     for (const [column, tasks] of Object.entries(boardColumns)) {
@@ -124,7 +125,7 @@ mock.module('@/core/logger', loggerMock)
 mock.module('../../src/core/logger', loggerMock)
 mock.module('../../packages/core/src/logger', loggerMock)
 
-import { reportComplete, moveTaskWithEffects, reopenIfLeavingDone, syncLedgerForStoreMove } from '../../src/core/task-service'
+import { reportComplete, moveTaskWithEffects, blockTaskWithEffects, reopenIfLeavingDone, syncLedgerForStoreMove } from '../../src/core/task-service'
 import { hasCompletion, recordCompletion } from '../../src/core/execution-ledger'
 import { closeDb } from '../../packages/core/src/storage/db'
 
@@ -140,6 +141,7 @@ beforeEach(() => {
   mockContinuation.mockClear()
   mockMoveTask.mockClear()
   mockAddTaskLog.mockClear()
+  mockBlockTaskStore.mockClear()
   boardColumns = {
     todo: [],
     inProgress: [{ id: 'task-1', title: 'Test Task' }],
@@ -225,6 +227,25 @@ describe('completion gate — first write wins', () => {
     await moveTaskWithEffects('task-1', 'archived', 'system', { from: 'done', channel: 'system' })
     expect(hasCompletion('task-1')).toBe(true)
     expect(auditCount('task.reopened')).toBe(0)
+  })
+
+  it('block on a completed task is a guarded no-op: no store call, no audit, row survives', async () => {
+    await reportComplete('task-1', 'agent-a', 'done', 'mcp')
+    boardColumns.done = boardColumns.inProgress
+    boardColumns.inProgress = []
+
+    const result = await blockTaskWithEffects('task-1', 'stale agent retry', 'agent-b', 'mcp')
+    expect(result.alreadyComplete).toBe(true)
+    expect(mockBlockTaskStore).not.toHaveBeenCalled()
+    expect(auditCount('task.blocked')).toBe(0)
+    expect(hasCompletion('task-1')).toBe(true)
+  })
+
+  it('block on an uncompleted task still goes through with effects', async () => {
+    const result = await blockTaskWithEffects('task-1', 'waiting on api', 'agent-a', 'mcp')
+    expect(result.alreadyComplete).toBe(false)
+    expect(mockBlockTaskStore).toHaveBeenCalledWith('task-1', 'waiting on api', 'agent-a', 'mcp')
+    expect(auditCount('task.blocked')).toBe(1)
   })
 
   it('reopenIfLeavingDone deletes the row and audits when leaving done for an active column', () => {
