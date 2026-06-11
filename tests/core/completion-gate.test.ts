@@ -249,6 +249,20 @@ describe('completion gate — first write wins', () => {
     expect(auditCount('task.blocked')).toBe(1)
   })
 
+  it('a done parent never breaks a child block: propagation is swallowed', async () => {
+    boardColumns.inProgress = [{ id: 'parent-1--step', title: 'Child step' }]
+    boardColumns.done = [{ id: 'parent-1', title: 'Done parent' }]
+    // Child block succeeds; the parent (done) transition is rejected by the
+    // store guard — blockTaskWithEffects must swallow it, not propagate.
+    mockBlockTaskStore
+      .mockImplementationOnce(() => Promise.resolve()) // child
+      .mockImplementationOnce(() => Promise.reject(new Error('Invalid transition: done -> blocked'))) // parent
+
+    const result = await blockTaskWithEffects('parent-1--step', 'child stuck', 'agent-a', 'mcp')
+    expect(result.alreadyComplete).toBe(false)
+    expect(auditCount('task.blocked')).toBe(1) // child audited; no parent audit
+  })
+
   it('reopenIfLeavingDone deletes the row and audits when leaving done for an active column', () => {
     recordCompletion('task-1', { agent: 'agent-a', channel: 'mcp' })
     boardColumns.done = boardColumns.inProgress
