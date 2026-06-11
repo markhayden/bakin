@@ -85,6 +85,8 @@ import {
   VALID_TRANSITIONS,
   localDateString,
 } from '@/core/task-store'
+import { recordCompletion, hasCompletion } from '@/core/execution-ledger'
+import { closeDb } from '../../packages/core/src/storage/db'
 
 // ---------------------------------------------------------------------------
 // Setup / Teardown
@@ -96,6 +98,7 @@ beforeEach(() => {
 })
 
 afterAll(() => {
+  closeDb()
   rmSync(testHome, { recursive: true, force: true })
 })
 
@@ -323,6 +326,34 @@ describe('blockTask', () => {
   it('rejects non-existent task', async () => {
     await expect(blockTask('ghost', 'reason')).rejects.toThrow('Task not found')
   })
+
+  it('rejects done → blocked for non-human callers', async () => {
+    const task = await createTask('Done task', 'todo')
+    await addTaskLog(task.id, 'pixel', 'Work done')
+    await moveTask(task.id, 'done')
+
+    await expect(blockTask(task.id, 'stale agent retry', 'agent-a')).rejects.toThrow('Invalid transition')
+    expect(getTaskWithColumn(task.id)!.column).toBe('done')
+  })
+
+  it('re-blocking an already-blocked task is an idempotent reason update', async () => {
+    const task = await createTask('Block me twice', 'todo')
+    await blockTask(task.id, 'first reason', 'agent-a')
+    await blockTask(task.id, 'second reason', 'agent-a')
+
+    const result = getTaskWithColumn(task.id)
+    expect(result!.column).toBe('blocked')
+    expect(result!.task.blockedReason).toBe('second reason')
+  })
+
+  it('human channel bypasses the transition table, matching moveTask', async () => {
+    const task = await createTask('Backlog item', 'backlog')
+    // backlog → blocked is not in VALID_TRANSITIONS: agents are rejected...
+    await expect(blockTask(task.id, 'nope', 'agent-a')).rejects.toThrow('Invalid transition')
+    // ...but the operator can force it
+    await blockTask(task.id, 'operator call', 'human', 'human')
+    expect(getTaskWithColumn(task.id)!.column).toBe('blocked')
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -546,6 +577,20 @@ describe('archiveOldTasks', () => {
     const count = archiveOldTasks(30)
     expect(count).toBe(1)
     expect(getTask(task.id)).toBeNull()
+  })
+
+  it('purges ledger completion rows for deleted old tasks', async () => {
+    const task = await createTask('Ancient done', 'todo')
+    await addTaskLog(task.id, 'pixel', 'work')
+    await moveTask(task.id, 'done')
+    recordCompletion(task.id, { agent: 'pixel' })
+    expect(hasCompletion(task.id)).toBe(true)
+
+    const sixtyDaysAgo = Date.now() - (60 * 24 * 60 * 60 * 1000)
+    writeRawTask(task.id, { updatedAt: new Date(sixtyDaysAgo).toISOString() })
+
+    expect(archiveOldTasks(30)).toBe(1)
+    expect(hasCompletion(task.id)).toBe(false)
   })
 
   it('does not delete recent tasks', async () => {

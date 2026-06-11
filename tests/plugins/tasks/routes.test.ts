@@ -718,7 +718,7 @@ describe('POST /:taskId/move — Move Task', () => {
   })
 
   it('calls blockTaskWithEffects with reason when moving to blocked', async () => {
-    mockBlockTaskWithEffects.mockResolvedValue(undefined)
+    mockBlockTaskWithEffects.mockResolvedValue({ alreadyComplete: false })
 
     const route = findRoute(activated.routes, 'POST', '/:taskId/move')!
     const { status, body } = await callRoute(route, activated.ctx, {
@@ -864,7 +864,7 @@ describe('POST /:taskId/log — Add Log Entry', () => {
 
 describe('POST /:taskId/block — Block Task', () => {
   it('blocks a task with reason', async () => {
-    mockBlockTaskWithEffects.mockResolvedValue(undefined)
+    mockBlockTaskWithEffects.mockResolvedValue({ alreadyComplete: false })
 
     const route = findRoute(activated.routes, 'POST', '/:taskId/block')!
     const { status, body } = await callRoute(route, activated.ctx, {
@@ -878,7 +878,7 @@ describe('POST /:taskId/block — Block Task', () => {
   })
 
   it('defaults agent to system', async () => {
-    mockBlockTaskWithEffects.mockResolvedValue(undefined)
+    mockBlockTaskWithEffects.mockResolvedValue({ alreadyComplete: false })
 
     const route = findRoute(activated.routes, 'POST', '/:taskId/block')!
     await callRoute(route, activated.ctx, {
@@ -1429,7 +1429,7 @@ describe('bakin_exec_tasks_move', () => {
 
 describe('bakin_exec_tasks_block', () => {
   it('blocks a task', async () => {
-    mockBlockTaskWithEffects.mockResolvedValue(undefined)
+    mockBlockTaskWithEffects.mockResolvedValue({ alreadyComplete: false })
 
     const tool = findTool(activated.execTools, 'bakin_exec_tasks_block')!
     const result = await callTool(tool, { taskId: 'task-b', reason: 'need API key' }, 'trainer')

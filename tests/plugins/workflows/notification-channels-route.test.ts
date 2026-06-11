@@ -52,16 +52,36 @@ mock.module('../../../src/core/watcher', () => ({
   start: mock(),
   stop: mock(),
 }))
-mock.module('@/core/task-store', () => ({
+const taskStoreMock = () => ({
   readTaskboard: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getAllTasks: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getTask: () => null,
   getTaskWithColumn: () => null,
+  getTasksByColumn: () => [],
+  getTasksByAgent: () => [],
+  readAllColumns: () => ({ todo: [], inProgress: [], review: [], done: [], blocked: [], archived: [], backlog: [] }),
+  getTodoTasks: () => [],
+  getAgentTasks: () => [],
   createTask: mock(),
   moveTask: mock(),
+  assignTask: mock(),
+  deleteTask: mock(),
   addTaskLog: mock(),
   updateTask: mock(),
-}))
+  blockTask: mock(),
+  setDependency: mock(),
+  clearDependency: mock(),
+  reorderTasks: mock(),
+  moveTaskToInProgress: mock(),
+  archiveOldTasks: mock(() => 0),
+  getArchivedCount: () => 0,
+  autoArchiveDoneTasks: mock(() => 0),
+  localDateString: () => '2026-06-10',
+  normalizeColumn: (col: string) => col,
+  VALID_TRANSITIONS: {},
+})
+mock.module('@/core/task-store', taskStoreMock)
+mock.module('../../../src/core/task-store', taskStoreMock)
 ;(globalThis as any).__bakinBroadcast = mock()
 
 const workflowsPlugin = require('../../../plugins/workflows/index').default as typeof import('../../../plugins/workflows/index').default

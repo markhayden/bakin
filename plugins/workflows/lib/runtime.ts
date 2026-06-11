@@ -42,8 +42,8 @@ import {
   createTask,
   getTask,
   getTaskWithColumn,
-  moveTask,
 } from '../../../src/core/task-store'
+import { syncLedgerForStoreMove } from '../../../src/core/task-service'
 
 const log = createLogger('workflow-runtime')
 
@@ -56,8 +56,11 @@ async function addTaskLogToStore(identifier: string, author: string, message: st
   await addTaskLog(identifier, author, message)
 }
 
+// Every workflow move goes through the ledger-sync helper: leaving done
+// deletes the completion row (reopen), landing on done records one — the
+// raw store move alone would strand/skip rows (#482 path 2).
 async function moveTaskInStore(identifier: string, to: string, from?: string): Promise<void> {
-  await moveTask(identifier, to, from)
+  await syncLedgerForStoreMove(identifier, to, 'workflow', { from })
 }
 
 interface WorkflowTaskReviewMoveResult {

@@ -1,187 +1,179 @@
-# PLAN — Task Outcome in Run History (#476)
+# Plan: Completion-row invariant hardening (#482) + rig fixes (#467)
 
-> Derived from `SPEC.md`. Plan-mode artifact: ordering, vertical slices, acceptance + verification, checkpoints, and the commit/rollback strategy.
-> Branch: `feat/task-outcome-run-history` off `main`. One commit per task; each task ends green (full suite).
-> Prior plan archived at `tasks/plan-bakin-owned-scheduler.md`.
+Spec: `.claude/specs/cleanup-completion-invariant-and-rig.md` (approved 2026-06-10).
+Two independent branches/PRs. WS1 first. Every commit lands green (`bun run test`), TDD prove-it
+per invariant path (test fails against current code first).
 
-## Dependency graph
+## Context
 
-```
-T1 readTaskOutcome + TaskOutcome type (+unit tests)
- │
- ├─► T2 route returns { runs, outcome } + hook/SDK mirror (+route tests)
- │        │
- │        └─► T3 UI: header outcome badge + settled→blue (+component test)
- │
- └─► T4 docs: execution-ledger.md consumers table   (independent after T1)
-```
+The execution ledger's invariant — *a completions row implies the task is effectively done; every
+exit from done except archive deletes the row* — has confirmed violations: block-from-done (3
+unguarded entry points) and workflow moves off done keep the row, so Run History shows a green
+`done` badge on blocked/re-running tasks and stale rows accumulate in `bakin.db`. Separately, the
+dockerized rig has two known defects breaking the cron→dispatch e2e path. Owner approved: fix #482
+(+ its three minor follow-ups) and #467; defer #462/#471 untouched.
 
-Critical path: T1 → T2 → T3. T4 can land any time after T1; sequenced last.
+## Vetting-driven design adjustments (vs. spec §2 — surfaced for approval here)
 
-## Slicing principle
+1. **Workflow done-moves must also RECORD completions (new).** `recordCompletion` has exactly one
+   caller (`moveTaskWithEffects`); the workflow engine completes tasks via raw store moves
+   (`runtime.ts:134, :933, :1501`) → **every workflow-completed task is done-without-row, ongoing,
+   not just pre-ledger**. Without fixing this, removing the legacy fallback in `readTaskOutcome`
+   would regress workflow completions to `in_progress`, and the boot backfill would mask a live
+   leak. Fix: `moveTaskInStore` becomes ledger-symmetric via one task-service helper —
+   `syncLedgerForStoreMove(taskId, to, agent, channel?)` = reopen-delete when leaving done to an
+   active column + `recordCompletion` (insert-if-missing, agent `workflow`) after a successful
+   move to done.
+2. **`blocked→blocked` stays idempotent.** Store `blockTask` skips the transition check when
+   already blocked (reason update still applies) — preserves MCP block-retry semantics and the
+   parent-reason-overwrite in `blockTaskWithEffects`. Channel arrives as a NEW 4th param (don't
+   overload `agent`).
+3. **WS2 scopes must reconcile reused state.** `ensureApprovedDevice` early-returns when identity
+   exists, so widening `OPERATOR_SCOPES` alone never reaches the exact reused-rig scenario #467
+   describes. Add pure `widenDeviceScopes(...)` applied idempotently in the existing-identity
+   branch (union into `scopes`, `approvedScopes`, `tokens.operator.scopes`; keypair/token
+   preserved).
+4. **`archiveOldTasks` orphans completion rows** (`task-store.ts:482` deletes without
+   `purgeTaskRows`, unlike `deleteTask`) — fold the one-line purge into WS1 commit 5 (same
+   stale-row family). `ctx.tasks.move` (unused, unvalidated) gets documented as an invariant
+   escape hatch in the knowledge doc, no code change.
 
-Each task is a vertical slice that compiles, tests, and commits on its own.
-T1 is a pure addition (nothing consumes it); T2 changes the API contract while
-the UI remains tolerant (it ignores unknown keys); T3 is the user-visible
-payoff. Reverting T3 leaves a useful API; reverting T2–T3 leaves a harmless
-helper.
-
----
-
-## T1 — `readTaskOutcome` derivation + `TaskOutcome` type
-
-**Files:** `plugins/tasks/lib/runs-reader.ts`, `plugins/tasks/types.ts`,
-`tests/plugins/tasks/runs-reader.test.ts` (new; mirrors
-`tests/plugins/schedule/runs-reader.test.ts` placement).
-
-**Change:**
-- `TaskOutcome` interface in `plugins/tasks/types.ts` (per SPEC §2 Types).
-- `readTaskOutcome(taskId: string): TaskOutcome | undefined` in
-  `runs-reader.ts`:
-  - `getCompletion(taskId)` via the existing relative import path
-    (`../../../src/core/execution-ledger`).
-  - `getTaskWithColumn(taskId)` from `../../../src/core/task-store`.
-  - Normative derivation (SPEC §2): completion row → `done` with
-    `completedAt` (ISO) + `agent`; else column `blocked`/`archived` →
-    same-named state; column `done` → `done` without completion fields;
-    other columns → `in_progress`; unknown task (no row, no board entry)
-    → `undefined`.
-
-**Tests (table-driven, mock `src/core/execution-ledger` + `src/core/task-store`
-via BOTH the relative and `@/` specifiers, plus logger; no real ledger):**
-1. completion + column done → `done` with `completedAt`/`agent`
-2. completion + column archived → `done` (completion wins)
-3. no completion + blocked → `blocked`
-4. no completion + archived → `archived`
-5. no completion + done (legacy) → `done`, no `completedAt`
-6. no completion + each of inProgress/todo/backlog/review → `in_progress`
-7. unknown task → `undefined`
-
-**Acceptance:** all 7 derivation cases pass; no behavior change anywhere else.
-**Verify:** `bun test tests/plugins/tasks/runs-reader.test.ts --isolate`, then
-`bun run test` green.
-**Commit:** `feat(tasks): add readTaskOutcome derivation over completions + column`
+Known fail-soft edge (flag in PR, no code): watchdog step-timeout escalation can attempt
+`review→blocked` if a human moved the task during a stuck step; store guard now rejects it into
+the existing catch + `log.error`.
 
 ---
 
-## T2 — Route returns `{ runs, outcome }` + client mirror
+## WS1 — branch `fix/completion-row-invariant` (PR "Fixes #482")
 
-**Files:** `plugins/tasks/index.ts` (`/:taskId/runs` handler),
-`src/hooks/use-task-run-history.ts`, `packages/sdk/src/hooks/index.ts`,
-`tests/plugins/tasks/routes.test.ts`.
+### Commit 1 — `refactor(core): extract reopenIfLeavingDone + syncLedgerForStoreMove helpers`
+- `src/core/task-service.ts`: extract `reopenIfLeavingDone(taskId, to, agent, channel?)` from
+  lines 137-140 (delete row + `task.reopened` audit when target ≠ done/archived);
+  `moveTaskWithEffects` calls it (behavior-identical). Add `syncLedgerForStoreMove` (reopen on
+  leave + record-on-enter-done, agent `workflow`) — exported, unused until commit 4.
+- **Accept:** existing `tests/core/completion-gate.test.ts` passes unchanged; new unit tests for
+  both helpers against the real temp-dir ledger (reopen deletes + audits; record is
+  insert-if-missing; archive leaves row).
+- **Verify:** `bun test tests/core/completion-gate.test.ts --isolate` then full suite.
 
-**Change:**
-- Handler: `Response.json({ runs: readTaskRuns(...), outcome: readTaskOutcome(params.taskId) })`.
-  `outcome: undefined` serializes to an absent key — unknown tasks keep
-  returning `{ runs: [] }` with status 200.
-- Hook: mirror `TaskOutcome` (keep-in-sync comment, same as `TaskRunEntry`),
-  add `outcome` state, return `{ runs, outcome, loading }`.
-- SDK: `export type { TaskOutcome }` beside the existing `TaskRunEntry`
-  re-export (`packages/sdk/src/hooks/index.ts:33`).
+### Commit 2 — `fix(core): enforce transitions in store blockTask (idempotent re-block)`
+- `src/core/task-store.ts`: `blockTask(identifier, reason, agent?, channel?)` — when current
+  column ≠ `blocked`, call `assertTransitionAllowed(task, 'blocked', isHuman)` (isHuman =
+  channel === 'human', matching `moveTask`); `blocked→blocked` = idempotent reason update.
+- `src/core/task-service.ts`: `blockTaskWithEffects` threads channel to both `blockStoredTask`
+  calls; parent-propagation catch comment names the done-parent skip; log bumped to info.
+- **Accept (TDD, in `tests/core/task-store.test.ts` — completion-gate mocks the store so it
+  cannot host these):** done→blocked throws for non-human; blocked→blocked succeeds + updates
+  reason; human channel bypass preserved (existing todo→blocked cases still green).
+- **Verify:** task-store + completion-gate files, then full suite.
 
-**Tests (extend `routes.test.ts`):**
-- Existing ledger fake gains `getCompletion` (reads `completionsFake`); the
-  `@/core/task-store` mock gains `getTaskWithColumn` — and the same mock is
-  registered for the relative specifier `../../../src/core/task-store` (the
-  ledger mock already does both; missing one is a leak surface).
-- Runs + completion seeded → body has `outcome.state === 'done'` with
-  `completedAt`/`agent`; runs + no completion + column blocked → `blocked`;
-  unknown task → `runs: []`, no `outcome` key, status 200.
-- Existing run-history assertions keep passing untouched (they don't pin
-  response keys).
+### Commit 3 — `fix(tasks): reject block-on-done across move/block/MCP entry points`
+- `src/core/task-service.ts`: `blockTaskWithEffects` returns `{ alreadyComplete: boolean }` —
+  checks `hasCompletion(taskId)` FIRST (before store call): if set, no side effects, return
+  `{ alreadyComplete: true }`.
+- `plugins/tasks/index.ts`: move route's blocked branch → 409 `{ error }` when alreadyComplete
+  (was 500-on-throw); MCP `bakin_exec_tasks_block` → `{ ok: true, alreadyComplete: true, note:
+  'Task is already completed — block ignored. Reopen it (move it out of Done) first if it truly
+  needs blocking.' }` (matches `bakin_exec_tasks_complete` contract). `POST /:taskId/block`
+  unchanged (taskEditGuard already 409s).
+- **Accept (TDD, `tests/plugins/tasks/` via `callRoute`/`callTool` helpers):** move-to-blocked on
+  completed task → 409, row survives, column stays done, no parent block fired; MCP block on
+  completed task → soft payload, no error; block on inProgress task still works end-to-end.
+- **Verify:** plugin tests + full suite.
 
-**Acceptance:** API serves the sibling outcome object per SPEC; empty-task
-behavior unchanged.
-**Verify:** `bun test tests/plugins/tasks/routes.test.ts --isolate`, then
-`bun run test` green.
-**Commit:** `feat(tasks): return task outcome from the runs route`
+### Commit 4 — `fix(workflows): keep ledger in sync for workflow store moves`
+- `plugins/workflows/lib/runtime.ts`: `moveTaskInStore` calls `syncLedgerForStoreMove` (reopen
+  before store move; record after successful done move).
+- **Accept (TDD):** real-ledger semantics in `tests/core/completion-gate.test.ts` (workflow-style
+  move off done deletes row + audits reopen; move to done inserts row; cancel/child paths
+  idempotent). Call-wiring in `tests/plugins/workflows/runtime.test.ts` — add the helper as a spy
+  to the existing task-service mock (lines ~90-93); drive `reopenFromStep` on a completed
+  instance + a workflow-completion scenario; assert spy ordering around the existing
+  `moveTaskHook`.
+- **Verify:** both files + full suite.
 
-— **CHECKPOINT A** — API contract complete and tested; UI untouched. Safe
-rollback point: reverting everything after this still leaves a correct API.
+### Commit 5 — `feat(core): backfill pre-ledger completions, retire legacy outcome branch`
+- `src/core/task-service.ts`: `backfillMissingCompletionRows()` — for each done-column task
+  (`getTasksByColumn('done')`) without `hasCompletion`, `recordCompletion(taskId, { agent:
+  'system', now: task.updatedAt })` + audit `task.completion_backfilled`. Done-column only
+  (archived-without-row is ambiguous: humans/createTask can archive directly).
+- `server.ts` (~777, after `markPriorBootRunsLost`, before `runRestartRecovery`): call it in its
+  own try/catch (idempotent; failure must not block boot).
+- `plugins/tasks/lib/runs-reader.ts`: remove the `done → { state: 'done' }` no-row fallback
+  (blocked/archived/in_progress fallbacks stay).
+- `src/core/task-store.ts`: `archiveOldTasks` calls `purgeTaskRows` per deleted task (same
+  advisory try/catch as `deleteTask`).
+- **Accept (TDD):** backfill inserts for done-without-row, second run no-ops, archived/non-done
+  untouched, completed_at = task updatedAt; runs-reader test pins workflow-completed task (row
+  present post-commit-4) reads `done` and a hypothetical done-without-row now reads in_progress;
+  archiveOldTasks purges rows.
+- **Verify:** completion-gate + runs-reader + task-store files, full suite.
 
----
+### Commit 6 — `fix(tasks): run-history year display + useTaskRunHistory reset/abort`
+- `plugins/tasks/components/task-run-history.tsx`: `relativeTime()` appends year for
+  non-current-year dates.
+- `src/hooks/use-task-run-history.ts`: reset runs/outcome/loading on `taskId` change;
+  AbortController cleanup on unmount/change.
+- **Accept:** relativeTime unit cases (today/yesterday/this-year/prior-year); hook test for
+  taskId-change reset (pattern-match existing hook tests if present, else minimal).
+- **Verify:** targeted tests + full suite.
 
-## T3 — UI: header outcome badge + demote settled green → blue
+### Commit 7 — `docs(knowledge): execution-ledger invariant + guard updates`
+- `.claude/knowledge/execution-ledger.md`: invariant statement (now biconditional for the
+  workflow path), the two-layer guard design (service `hasCompletion` = load-bearing +
+  channel-independent; store transition check = non-human defense), block-on-done rejection
+  semantics, backfill, exits-from-done inventory incl. `updateTask` column path + `ctx.tasks.move`
+  escape hatch. Check `.claude/knowledge/dispatch.md` + tasks-related docs for stale claims;
+  README unaffected (verify).
+- **Verify:** docs grep for stale invariant wording; full suite (no code).
 
-**Files:** `plugins/tasks/components/task-run-history.tsx`,
-`tests/plugins/tasks/task-run-history.test.tsx` (new; follows
-`task-card.test.tsx` component-test pattern).
+## WS2 — branch `fix/rig-scopes-agentdir` (PR "Fixes #467")
 
-**Change (per SPEC UI mock):**
-- Consume `outcome` from `useTaskRunHistory`.
-- Header line gains an outcome badge after the summary text:
-  done → green (`✓ done` + relative completedAt when present), blocked → red,
-  in_progress → amber, archived → zinc. Label text: `done` / `blocked` /
-  `in progress` / `archived` (display form of the enum).
-- `STATUS_CLASS.settled` green → blue (`bg-blue-500/10 text-blue-400
-  border-blue-500/20`); `lost`/`running`/`superseded` unchanged.
-- No-runs early return unchanged (outcome never renders without runs).
+### Commit 1 — `fix(rig): widen + reconcile pre-approved operator scopes`
+- `scripts/instance/device-approve.ts`: `OPERATOR_SCOPES` += `operator.admin`,
+  `operator.pairing`; new pure `widenDeviceScopes(paired, deviceAuth, scopes)`; applied
+  idempotently in `ensureApprovedDevice`'s existing-identity branch (reused state gets widened
+  without `instance reset`).
+- **Accept (TDD, `tests/scripts/instance/device-approve.test.ts`):** fresh state carries all 4
+  scopes in all 3 encodings; reused narrow-scope state gets unioned, keypair/token untouched;
+  second run no-ops.
+- **Verify:** that file + full suite.
 
-**Tests:**
-- Header shows the outcome badge per state (done/blocked/in_progress);
-  settled badge no longer carries green classes; zero runs renders nothing
-  even when outcome would be `done`.
+### Commit 2 — `fix(rig): normalize stored agent paths to container home on up`
+- New pure `normalizeAgentPaths(config, hostOpenclawHome)` (rewrites `agents.defaults.workspace`,
+  `agents.list[*].{workspace,agentDir}` host-prefix → `/home/node/.openclaw`; prefix-match only
+  on `paths.openclawHome`). Wired in `scripts/instance/lifecycle.ts` between the bootstrap-config
+  block and gateway start (~:218-220), guarded by `deps.exists(openclaw.json)`, write-only-when-
+  changed (don't touch `.bak*` siblings). Host-side rewrite via bind mount = no extra gateway
+  restart.
+- **Accept (TDD, fakeDeps pattern):** pure-function cases (host paths translated, container paths
+  no-op, mixed config, missing fields); lifecycle test asserts rewrite happens before
+  `composeUpArgs` and skips on fresh state (no config file).
+- **Verify:** instance tests + full suite. Manual rig smoke optional (isolated mode only).
 
-**Acceptance:** acceptance criteria 1 & 3 of the issue — a settled run on an
-in-progress task shows blue `settled` + amber `in progress`; green appears
-only for task-done.
-**Verify:** component test green; full `bun run test`; visual spot-check via
-`bun run dev:mock` (imitation-crab seeds run-history data).
-**Commit:** `feat(tasks): show task outcome in run history header, demote settled to blue`
+### Commit 3 — `docs(knowledge): rig hard-won list — scopes, agentDir normalization, BAKIN_URL`
+- `.claude/knowledge/dockerized-openclaw-rig.md` hard-won section: cron CLI scope requirement
+  (2026.5.28: admin+pairing) + reused-state reconcile; agentDir normalization on `up` (mirrors
+  shim translation); extend the existing `BAKIN_URL` bullet with the mcporter-baked-at-up-time /
+  non-default-port rewiring gotcha from the issue.
 
-— **CHECKPOINT B** — feature complete and user-visible; full suite green.
+## Dependency graph / order
 
----
+WS1: 1 → {2, 3} → 4 → 5 → 6 (independent) → 7. Commit 5's fallback removal REQUIRES commit 4.
+WS2: independent of WS1; commits 1, 2 independent; 3 last. Execute WS1 fully, PR, then WS2, PR.
 
-## T4 — Docs: knowledge alignment
+## Verification (end-to-end)
 
-**Files:** `.claude/knowledge/execution-ledger.md` (consumers table, the
-"Run history (read-only)" row) — note the tasks drawer now joins
-`getCompletion` + task column into a task-outcome line. Sweep for other stale
-mentions (`grep -rn "runs-reader\|run history" .claude/knowledge/`):
-`shared-ui-patterns.md` references the schedule drawer only — untouched
-unless wording drifts. README verified unaffected (no run-history mention).
+- Full suite green at every commit: `bun run test`.
+- TDD discipline: each new invariant test demonstrably fails against the pre-commit code (run
+  before implementing).
+- All new tests mock both content-dir resolvers + OpenClaw home; ledger tests `closeDb()` before
+  temp-dir cleanup (CLAUDE.md rules).
+- Never `git add -A` (build-stamp trap); stage explicit paths.
+- PRs: `Fixes #482` / `Fixes #467`, bodies summarize invariant + guards; flag the watchdog
+  review→blocked fail-soft edge in WS1's PR body.
 
-**Acceptance:** knowledge docs describe the outcome join accurately; no other
-doc contradicts the new behavior.
-**Verify:** re-read the touched doc section; `bun run test` still green
-(docs-only).
-**Commit:** `docs(ledger): note run-history outcome join in execution-ledger knowledge`
+## Bookkeeping after approval
 
----
-
-## Final gate (before PR)
-
-- Full suite: `bun run test` green.
-- `SPEC.md` + `tasks/plan.md` + `tasks/todo.md` committed on the branch
-  (first commit, or alongside T1).
-- Never `git add -A` after a local build (generated-version build-stamp trap).
-- PR references #476; body maps commits to the rollback ladder.
-
-## Docker gold-standard verification (isolated mode) — PASSED 2026-06-09
-
-Run against a real OpenClaw container + live Bakin server (`instance up/dev
---mode isolated`), driving the user stories end-to-end via CLI + API:
-
-| Story | Result |
-|---|---|
-| Agent turn settles, task still open | ✅ run `settled/turn ok` while `outcome: in_progress` — the false-success read is gone |
-| Block after settled run | ✅ `outcome: blocked`, run badge stays `settled` |
-| Human completes (log + move to done) | ✅ `outcome: done` + `completedAt` + `agent` from the completions row |
-| Archive after done | ✅ outcome stays `done` (completion wins) |
-| Agent completes via MCP (`bakin_exec_tasks_complete`) | ✅ `outcome: done` with agent attribution |
-| Unknown task | ✅ `{"runs":[]}`, no outcome key, HTTP 200 |
-| Served UI bundle | ✅ `/api/plugins/tasks/assets/client.js` maps `settled` → blue, `done` outcome → green, "in progress" label present |
-
-Incidental finds (pre-existing board guards, working as designed): blocked →
-done is an invalid transition (must pass through todo), and moves to done
-require at least one log entry.
-
-## Rollback strategy
-
-| Revert | Leaves |
-|---|---|
-| T4 | feature intact, docs stale (re-do docs) |
-| T3 | correct `{ runs, outcome }` API, old UI |
-| T3+T2 | unused-but-tested helper, zero surface change |
-| all | clean main |
+- Materialize this plan to `tasks/plan.md` + checklist to `tasks/todo.md` (per planning skill),
+  and append the vetting-driven design adjustments to the spec file so spec/plan stay consistent.

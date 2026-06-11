@@ -60,6 +60,7 @@ const taskStoreMock = {
   getAllTasks: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getTask: () => null,
   getTaskWithColumn: () => null,
+  getTasksByColumn: () => [],
   getTasksByAgent: () => [],
   getTodoTasks: () => ({ columns: { todo: [], 'in-progress': [], done: [] }, todoTasks: [] }),
   createTask: mock(async () => ({ id: 'task-1', title: 'Task', checked: false })),

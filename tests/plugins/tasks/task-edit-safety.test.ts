@@ -77,7 +77,7 @@ mock.module('@/core/task-store', () => ({
 }))
 
 const mockSetDependencyWithEffects = mock(async () => {})
-const mockBlockTaskWithEffects = mock(async () => {})
+const mockBlockTaskWithEffects = mock(async (): Promise<{ alreadyComplete: boolean }> => ({ alreadyComplete: false }))
 mock.module('../../../src/core/task-service', () => ({
   moveTaskWithEffects: mock(async () => ({ alreadyComplete: false })),
   blockTaskWithEffects: mockBlockTaskWithEffects,
@@ -183,5 +183,42 @@ describe('freeze-on-complete', () => {
     const route = findRoute(activated.routes, 'PUT', '/:taskId')!
     const { status } = await callRoute(route, activated.ctx, { path: '/t-1', body: { title: 'Editable again' } })
     expect(status).toBe(200)
+  })
+})
+
+describe('block-on-done entry points', () => {
+  it('POST /:taskId/move with to=blocked maps alreadyComplete to a 409, like the guarded block route', async () => {
+    mockBlockTaskWithEffects.mockResolvedValueOnce({ alreadyComplete: true })
+    const route = findRoute(activated.routes, 'POST', '/:taskId/move')!
+    const { status, body } = await callRoute(route, activated.ctx, {
+      path: '/t-1/move',
+      body: { to: 'blocked', reason: 'kanban drag on a done card', agent: 'human', channel: 'human' },
+    })
+    expect(status).toBe(409)
+    expect(String(body.error)).toContain('reopen')
+  })
+
+  it('MCP block tool returns the soft already-complete payload, never an error', async () => {
+    mockBlockTaskWithEffects.mockResolvedValueOnce({ alreadyComplete: true })
+    const tool = findTool(activated.execTools, 'bakin_exec_tasks_block')!
+    const result = await callTool(tool, { taskId: 't-1', reason: 'stale retry' }, 'pixel')
+    expect(result.ok).toBe(true)
+    expect(result.alreadyComplete).toBe(true)
+    expect(String(result.note)).toContain('Reopen')
+  })
+
+  it('blocking an uncompleted task still works through both entry points', async () => {
+    const route = findRoute(activated.routes, 'POST', '/:taskId/move')!
+    const { status, body } = await callRoute(route, activated.ctx, {
+      path: '/t-1/move',
+      body: { to: 'blocked', reason: 'waiting on api', agent: 'pixel' },
+    })
+    expect(status).toBe(200)
+    expect(body.ok).toBe(true)
+
+    const tool = findTool(activated.execTools, 'bakin_exec_tasks_block')!
+    const result = await callTool(tool, { taskId: 't-1', reason: 'waiting on api' }, 'pixel')
+    expect(result.ok).toBe(true)
+    expect(result.alreadyComplete).toBeUndefined()
   })
 })

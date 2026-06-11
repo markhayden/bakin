@@ -23,6 +23,7 @@ import {
   addTaskLog as appendTaskLog,
   blockTask as blockStoredTask,
   createTask as createStoredTask,
+  getTasksByColumn,
   getTaskWithColumn,
   moveTask as moveStoredTask,
   readTaskboard,
@@ -63,6 +64,69 @@ function getPort(): number {
 // ---------------------------------------------------------------------------
 
 export type Channel = 'human' | 'mcp' | 'rest' | 'cli' | 'system'
+
+// ---------------------------------------------------------------------------
+// Ledger sync helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Reopen: moving a completed task anywhere active deletes its completion
+ * row (the ONLY unfreeze path) so the next completion is a fresh
+ * first-write. Archiving a done task is lifecycle, not reopen.
+ */
+export function reopenIfLeavingDone(taskId: string, to: string, agent: string, channel?: Channel): void {
+  const toLowerCased = to.toLowerCase()
+  if (toLowerCased === 'done' || toLowerCased === 'archived') return
+  if (!hasCompletion(taskId)) return
+  deleteCompletion(taskId)
+  appendAudit(getContentDir(), 'task.reopened', agent, { id: taskId, to }, channel)
+}
+
+/**
+ * Ledger-aware raw store move for callers that bypass moveTaskWithEffects'
+ * full side-effect pipeline (the workflow engine). Keeps the completions
+ * table in sync in BOTH directions: leaving done deletes the row (reopen),
+ * landing on done records one. The record is insert-if-missing — a
+ * duplicate landing is a silent no-op, never an error — and only happens
+ * after the store move succeeds, so a row still implies the board reached
+ * done.
+ */
+export async function syncLedgerForStoreMove(
+  taskId: string,
+  to: string,
+  agent: string,
+  opts?: { from?: string; channel?: Channel },
+): Promise<void> {
+  reopenIfLeavingDone(taskId, to, agent, opts?.channel)
+  await moveStoredTask(taskId, to, opts?.from, opts?.channel)
+  if (to.toLowerCase() === 'done') {
+    recordCompletion(taskId, { runId: getLiveRun(taskId)?.runId, agent, channel: opts?.channel })
+  }
+}
+
+/**
+ * Boot-time heal: every done-column task without a completions row gets a
+ * synthetic one stamped with the task's updatedAt. Pre-ledger done tasks are
+ * the main population; the heal also reconverges any row lost to a since-fixed
+ * leak path. Idempotent (recordCompletion is insert-if-missing), so it simply
+ * runs every boot — after it, "completions row" ⟺ "task is done" holds for
+ * every reader and readTaskOutcome needs no done-column fallback. Done-column
+ * only: archived-without-row stays untouched (a human force-archive may never
+ * have been done).
+ */
+export function backfillMissingCompletionRows(): number {
+  let healed = 0
+  for (const task of getTasksByColumn('done')) {
+    if (hasCompletion(task.id)) continue
+    const completedAt = Number.isFinite(task.updatedAt) ? task.updatedAt : undefined
+    const result = recordCompletion(task.id, { agent: 'system', now: completedAt })
+    if (result.recorded) {
+      appendAudit(getContentDir(), 'task.completion_backfilled', 'system', { id: task.id, title: task.title, completedAt })
+      healed++
+    }
+  }
+  return healed
+}
 
 // ---------------------------------------------------------------------------
 // Service functions
@@ -131,13 +195,7 @@ export async function moveTaskWithEffects(
   const before = getTaskWithColumn(taskId)
   const taskBeforeMove = before?.task
 
-  // Reopen: moving a completed task anywhere active deletes its completion
-  // row (the ONLY unfreeze path) so the next completion is a fresh
-  // first-write. Archiving a done task is lifecycle, not reopen.
-  if (!movingToDone && toLowerCased !== 'archived' && hasCompletion(taskId)) {
-    deleteCompletion(taskId)
-    appendAudit(getContentDir(), 'task.reopened', agent, { id: taskId, to }, opts?.channel)
-  }
+  reopenIfLeavingDone(taskId, to, agent, opts?.channel)
 
   // A done task "moved" to done again is a completion RETRY, not a move —
   // the store rejects done→done as an invalid transition, and a retry must
@@ -249,9 +307,16 @@ export async function blockTaskWithEffects(
   reason: string,
   agent: string,
   channel?: Channel,
-): Promise<void> {
+): Promise<{ alreadyComplete: boolean }> {
   await assertWorkflowToolAllowed({ taskId, agent, action: 'task-block' })
-  await blockStoredTask(taskId, reason, agent)
+  // Completion guard — channel-independent, so it also covers the human
+  // kanban drag that bypasses the store's transition table. A completed
+  // task cannot be blocked; the row stays authoritative until an explicit
+  // reopen (move out of Done). No side effects fire on the guarded path.
+  if (hasCompletion(taskId)) {
+    return { alreadyComplete: true }
+  }
+  await blockStoredTask(taskId, reason, agent, channel)
   const title = await resolveTitle(taskId)
   const contentDir = getContentDir()
   appendAudit(contentDir, 'task.blocked', agent, { id: taskId, title, reason }, channel)
@@ -281,14 +346,20 @@ export async function blockTaskWithEffects(
     const parentTitle = await resolveTitle(parentTaskId)
     const childReason = `Child workflow blocked: ${reason}`
     try {
+      // Deliberately no channel: propagation is a system action, so a done
+      // parent is rejected by the store's transition table even when the
+      // child block came from a human — reopen the parent first if needed.
       await blockStoredTask(parentTaskId, childReason, 'system')
       appendAudit(contentDir, 'task.blocked', 'system', { id: parentTaskId, title: parentTitle, reason: childReason, blockedBy: taskId }, channel)
       log.info('Parent task blocked due to child', { parentTaskId, childTaskId: taskId })
     } catch (err) {
-      // Parent may already be blocked or in a state that can't transition — that's fine
-      log.debug('Could not propagate block to parent', { parentTaskId, err: err instanceof Error ? err.message : String(err) })
+      // Parent may already be done (transition rejected) or in another state
+      // that can't transition — skip propagation, the child block stands
+      log.info('Did not propagate block to parent', { parentTaskId, err: err instanceof Error ? err.message : String(err) })
     }
   }
+
+  return { alreadyComplete: false }
 }
 
 /**

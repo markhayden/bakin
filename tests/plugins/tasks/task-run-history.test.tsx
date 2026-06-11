@@ -106,6 +106,16 @@ describe('TaskRunHistory task outcome', () => {
     expect(screen.getByText('done').className).toContain('green')
   })
 
+  it('includes the year on timestamps from a previous year', () => {
+    hookResult = {
+      runs: [run({ startedAt: '2025-03-05T12:00:00.000Z', settledAt: '2025-03-05T12:01:00.000Z' })],
+      outcome: { state: 'in_progress' },
+      loading: false,
+    }
+    render(<TaskRunHistory taskId="t1" />)
+    expect(screen.getByText(/2025/)).toBeDefined()
+  })
+
   it('renders nothing without runs, even when an outcome exists', () => {
     hookResult = { runs: [], outcome: { state: 'done' }, loading: false }
     const { container } = render(<TaskRunHistory taskId="t1" />)

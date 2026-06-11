@@ -38,6 +38,7 @@ import * as dispatch from './src/core/dispatch'
 import * as watchdog from './src/core/watchdog'
 import { runRestartRecovery } from './src/core/restart-recovery'
 import { markPriorBootRunsLost } from './src/core/execution-ledger'
+import { backfillMissingCompletionRows } from './src/core/task-service'
 import { getBootId } from './src/core/boot-id'
 import { acquireServerLock, formatBindFailureHelp } from './src/core/server-lock'
 import { registerShutdownHandlers, triggerShutdown } from './src/core/lifecycle'
@@ -777,6 +778,17 @@ const eventBus = new BakinEventBus(broadcast)
         if (swept > 0) log.info('Startup sweep: marked prior-boot runs lost', { swept })
       } catch (err) {
         log.error('Startup run sweep failed — stale claims may suppress dispatch until resolved', err)
+      }
+
+      // Ledger heal: done tasks without a completions row (pre-ledger
+      // history, or rows lost to since-fixed leak paths) get synthetic rows
+      // so "row ⟺ done" holds for every reader. Idempotent — a failure
+      // must not block boot, it just retries next start.
+      try {
+        const healed = backfillMissingCompletionRows()
+        if (healed > 0) log.info('Completion backfill: synthetic rows recorded for done tasks', { healed })
+      } catch (err) {
+        log.error('Completion backfill failed', err)
       }
 
       let recovered = 0

@@ -31,13 +31,14 @@ export function useTaskRunHistory(taskId: string | null, limit = 50) {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    if (!taskId) {
-      setRuns([])
-      setOutcome(undefined)
-      return
-    }
+    // Reset first so a taskId switch never shows the previous task's history
+    // while the new fetch is in flight.
+    setRuns([])
+    setOutcome(undefined)
+    if (!taskId) return
+    const controller = new AbortController()
     setLoading(true)
-    fetch(`/api/plugins/tasks/${taskId}/runs?limit=${limit}`)
+    fetch(`/api/plugins/tasks/${taskId}/runs?limit=${limit}`, { signal: controller.signal })
       .then(res => (res.ok ? res.json() : null))
       .then(data => {
         if (data) {
@@ -46,7 +47,10 @@ export function useTaskRunHistory(taskId: string | null, limit = 50) {
         }
       })
       .catch(() => {})
-      .finally(() => setLoading(false))
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false)
+      })
+    return () => controller.abort()
   }, [taskId, limit])
 
   return { runs, outcome, loading }

@@ -96,6 +96,7 @@ const taskStoreMock = {
   addTaskLog: mockAddTaskLog,
   blockTask: mockBlockTask,
   createTask: mockCreateTask,
+  getTasksByColumn: mock(() => []),
   getTaskWithColumn: mockGetTaskWithColumn,
   moveTask: mockMoveTask,
   readTaskboard: mockReadTaskboard,
@@ -293,7 +294,7 @@ describe('task-service', () => {
       const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
       await service.blockTaskWithEffects('task-1', 'API key expired', 'pixel')
 
-      expect(mockBlockTask).toHaveBeenCalledWith('task-1', 'API key expired', 'pixel')
+      expect(mockBlockTask).toHaveBeenCalledWith('task-1', 'API key expired', 'pixel', undefined)
       expect(appendAudit).toHaveBeenCalledWith(
         expect.any(String),
         'task.blocked',
