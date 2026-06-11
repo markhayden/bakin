@@ -17,6 +17,7 @@ import {
   codexLoginArgs,
   type OpenClawExec,
 } from './codex'
+import { normalizeAgentPaths } from './agent-paths'
 import { mcporterBakinUrlBase, mcporterConfigJson, mcporterWriteArgs, parseAgentIds } from './mcporter'
 import { buildConfigCommands } from './openclaw-config'
 import { parseSecretsTemplate, redactSecrets, resolveSecrets } from './op-resolve'
@@ -40,6 +41,8 @@ export interface LifecycleDeps {
   exists: (path: string) => boolean
   /** Pre-approve Bakin's gateway device so operator.write is granted (no-op if already set up). */
   ensureDevice: () => void
+  readTextFile: (path: string) => string
+  writeTextFile: (path: string, content: string) => void
   sleep: (ms: number) => Promise<void>
   log: (message: string) => void
   env: Record<string, string | undefined>
@@ -214,6 +217,25 @@ export async function up(
       if (result.code !== 0) {
         throw new Error(`OpenClaw config init failed (${command.join(' ')}): ${result.stderr.trim() || `exit ${result.code}`}`)
       }
+    }
+  }
+
+  // Reused rig state may hold HOST agent paths (stored pre-translation by a
+  // previous run's `agents add`) — in-container dispatch then fails with
+  // EACCES mkdir '/Users'. Rewrite them to the container home BEFORE the
+  // gateway starts so it reads normalized config on boot (the stored-config
+  // counterpart of the openclaw-shim's CLI arg translation, #467).
+  const openclawConfigPath = join(paths.openclawHome, 'openclaw.json')
+  if (deps.exists(openclawConfigPath)) {
+    try {
+      const parsed = JSON.parse(deps.readTextFile(openclawConfigPath)) as Record<string, unknown>
+      const normalized = normalizeAgentPaths(parsed, paths.openclawHome)
+      if (normalized.changed) {
+        deps.log('normalizing stored agent paths to the container home…')
+        deps.writeTextFile(openclawConfigPath, JSON.stringify(normalized.config, null, 2))
+      }
+    } catch (err) {
+      deps.log(`agent-path normalization skipped (unreadable openclaw.json): ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 

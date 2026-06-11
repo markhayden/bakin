@@ -33,10 +33,12 @@ function fakeDeps(over: Partial<{
   results: (argv: string[]) => RunResult
   env: Record<string, string | undefined>
   exists: boolean
+  configText: string
 }> = {}) {
   const calls: string[][] = []
   const wiped: string[] = []
   const mkdirs: string[] = []
+  const writes: Array<{ path: string; content: string; beforeCallCount: number }> = []
   const runner: CommandRunner = {
     async run(argv) {
       calls.push(argv)
@@ -53,11 +55,13 @@ function fakeDeps(over: Partial<{
     mkdirp: async (p) => { mkdirs.push(p) },
     exists: () => over.exists ?? true, // default: config already present (init skipped)
     ensureDevice: () => {},
+    readTextFile: () => over.configText ?? '{}',
+    writeTextFile: (path, content) => { writes.push({ path, content, beforeCallCount: calls.length }) },
     sleep: async () => {},
     log: () => {},
     env: over.env ?? { OP_SERVICE_ACCOUNT_TOKEN: 'tok' },
   }
-  return { deps, calls, wiped, mkdirs }
+  return { deps, calls, wiped, mkdirs, writes }
 }
 
 describe('compose argv builders', () => {
@@ -168,6 +172,47 @@ describe('up — native', () => {
     const upIdx = order.findIndex((c) => c.includes('up -d'))
     expect(initIdx).toBeGreaterThanOrEqual(0)
     expect(upIdx).toBeGreaterThan(initIdx)
+  })
+})
+
+describe('up — agent-path normalization', () => {
+  const HOST_HOME = '/tmp/fake-repo/dev/openclaw-home'
+
+  it('rewrites stored host agent paths to the container home before the gateway starts', async () => {
+    const { paths, plan } = planFor(['up'])
+    const config = {
+      agents: {
+        list: [{ id: 'main', agentDir: `${HOST_HOME}/agents/main/agent`, workspace: `${HOST_HOME}/workspace` }],
+      },
+    }
+    const { deps, calls, writes } = fakeDeps({ exists: true, configText: JSON.stringify(config) })
+    await up(plan, paths, 'BRAVE_API_KEY=op://V/brave/cred', deps)
+
+    expect(writes).toHaveLength(1)
+    expect(writes[0]!.path).toBe(`${HOST_HOME}/openclaw.json`)
+    const written = JSON.parse(writes[0]!.content) as typeof config
+    expect(written.agents.list[0]!.agentDir).toBe('/home/node/.openclaw/agents/main/agent')
+    expect(written.agents.list[0]!.workspace).toBe('/home/node/.openclaw/workspace')
+
+    // rewrite happens before docker compose up (gateway reads config on start)
+    const upIdx = calls.findIndex((c) => c.join(' ').includes('up -d'))
+    expect(upIdx).toBeGreaterThanOrEqual(0)
+    expect(writes[0]!.beforeCallCount).toBeLessThanOrEqual(upIdx)
+  })
+
+  it('writes nothing when stored paths are already container-form', async () => {
+    const { paths, plan } = planFor(['up'])
+    const config = { agents: { list: [{ id: 'main', agentDir: '/home/node/.openclaw/agents/main/agent' }] } }
+    const { deps, writes } = fakeDeps({ exists: true, configText: JSON.stringify(config) })
+    await up(plan, paths, 'BRAVE_API_KEY=op://V/brave/cred', deps)
+    expect(writes).toHaveLength(0)
+  })
+
+  it('skips normalization on fresh state (no openclaw.json)', async () => {
+    const { paths, plan } = planFor(['up'])
+    const { deps, writes } = fakeDeps({ exists: false })
+    await up(plan, paths, 'BRAVE_API_KEY=op://V/brave/cred', deps)
+    expect(writes).toHaveLength(0)
   })
 })
 

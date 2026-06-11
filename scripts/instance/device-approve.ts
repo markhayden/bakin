@@ -11,10 +11,13 @@
  * Boundary: dev-rig module, exempt from provider-boundary rules.
  */
 import { createHash, generateKeyPairSync } from 'node:crypto'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-const OPERATOR_SCOPES = ['operator.read', 'operator.write']
+// OpenClaw 2026.5.28's cron CLI requests operator.admin + operator.pairing on
+// top of read/write — without them every `cron add/list` dies on "scope
+// upgrade pending approval" (the documented pairing chicken-and-egg, #467).
+const OPERATOR_SCOPES = ['operator.read', 'operator.write', 'operator.admin', 'operator.pairing']
 
 function base64url(bytes: Buffer): string {
   return bytes.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
@@ -86,14 +89,91 @@ export function buildApprovedDeviceState(kp: DeviceKeypair, token: string, nowMs
   return { identity, deviceAuth, paired }
 }
 
+type ScopedRecord = Record<string, unknown>
+
+function unionScopes(target: unknown, scopes: readonly string[]): { value: string[]; changed: boolean } {
+  const existing = Array.isArray(target) ? target.filter((s): s is string => typeof s === 'string') : []
+  const value = [...existing]
+  let changed = false
+  for (const scope of scopes) {
+    if (!value.includes(scope)) {
+      value.push(scope)
+      changed = true
+    }
+  }
+  return { value, changed }
+}
+
 /**
- * Ensure the openclaw home has a pre-approved Bakin device. No-op if an
- * identity already exists (don't clobber a working pairing).
+ * Union the required operator scopes into existing device state. Pure —
+ * keypair and token are untouched. Reused rig state predates the wider
+ * scope list, and an `instance reset` to regenerate it would lose Codex
+ * auth; widening in place avoids both.
+ */
+export function widenDeviceScopes(
+  paired: Record<string, ScopedRecord>,
+  deviceAuth: ScopedRecord,
+  scopes: readonly string[] = OPERATOR_SCOPES,
+): { paired: Record<string, ScopedRecord>; deviceAuth: ScopedRecord; changed: boolean } {
+  let changed = false
+  const nextPaired = structuredClone(paired)
+  for (const record of Object.values(nextPaired)) {
+    for (const key of ['scopes', 'approvedScopes'] as const) {
+      const result = unionScopes(record[key], scopes)
+      if (result.changed) {
+        record[key] = result.value
+        changed = true
+      }
+    }
+    const operatorToken = (record.tokens as Record<string, ScopedRecord> | undefined)?.operator
+    if (operatorToken) {
+      const result = unionScopes(operatorToken.scopes, scopes)
+      if (result.changed) {
+        operatorToken.scopes = result.value
+        changed = true
+      }
+    }
+  }
+  const nextAuth = structuredClone(deviceAuth)
+  const authToken = (nextAuth.tokens as Record<string, ScopedRecord> | undefined)?.operator
+  if (authToken) {
+    const result = unionScopes(authToken.scopes, scopes)
+    if (result.changed) {
+      authToken.scopes = result.value
+      changed = true
+    }
+  }
+  return { paired: nextPaired, deviceAuth: nextAuth, changed }
+}
+
+/**
+ * Ensure the openclaw home has a pre-approved Bakin device. When an identity
+ * already exists, the pairing is kept (never clobbered) but its scopes are
+ * reconciled against OPERATOR_SCOPES — `up` runs this before the gateway
+ * starts, so widened scopes are read on the next gateway boot.
  */
 export function ensureApprovedDevice(openclawHome: string, nowMs: number, token: string): boolean {
   const identityDir = join(openclawHome, 'identity')
   const devicesDir = join(openclawHome, 'devices')
-  if (existsSync(join(identityDir, 'device.json'))) return false
+  if (existsSync(join(identityDir, 'device.json'))) {
+    try {
+      const pairedPath = join(devicesDir, 'paired.json')
+      const authPath = join(identityDir, 'device-auth.json')
+      if (existsSync(pairedPath) && existsSync(authPath)) {
+        const paired = JSON.parse(readFileSync(pairedPath, 'utf-8')) as Record<string, ScopedRecord>
+        const deviceAuth = JSON.parse(readFileSync(authPath, 'utf-8')) as ScopedRecord
+        const widened = widenDeviceScopes(paired, deviceAuth)
+        if (widened.changed) {
+          writeFileSync(pairedPath, JSON.stringify(widened.paired, null, 2))
+          writeFileSync(authPath, JSON.stringify(widened.deviceAuth, null, 2))
+          console.log('[device-approve] widened operator scopes on existing rig state')
+        }
+      }
+    } catch (err) {
+      console.warn(`[device-approve] scope reconcile skipped: ${err instanceof Error ? err.message : String(err)}`)
+    }
+    return false
+  }
 
   mkdirSync(identityDir, { recursive: true })
   mkdirSync(devicesDir, { recursive: true })

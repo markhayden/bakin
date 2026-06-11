@@ -13,7 +13,7 @@
  *   sandbox   Bakin runs inside the container (clean Linux box).
  */
 import { randomUUID } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { mkdir, readdir, rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 
@@ -75,6 +75,8 @@ function makeDeps(paths: InstancePaths): LifecycleDeps {
     ensureDevice: () => {
       ensureApprovedDevice(paths.openclawHome, Date.now(), `bakin-dev-${randomUUID()}`)
     },
+    readTextFile: (path) => readFileSync(path, 'utf-8'),
+    writeTextFile: (path, content) => { writeFileSync(path, content) },
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
     log: (message) => console.log(`▸ ${message}`),
     env: process.env,
