@@ -136,7 +136,10 @@ owner of the active `output` step.
 
 When a workflow-backed task is explicitly blocked through `blockTaskWithEffects`,
 core task-service invokes `workflows.cancelInstance` best-effort with the block
-reason. A blocked board task must not leave a stale `in_progress` workflow
+reason. (A completed task never reaches this path — the completion guard rejects
+the block first, #482.) The engine's own column moves go through
+`syncLedgerForStoreMove`, so reopening a completed instance deletes the
+completion row and re-completion records a fresh one. A blocked board task must not leave a stale `in_progress` workflow
 instance behind. Recovery should happen through explicit reopen/retry flows
 such as `workflows.reopenFromStep`, not by silently continuing the canceled
 instance.

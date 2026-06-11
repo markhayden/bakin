@@ -277,8 +277,10 @@ documents that fallback; ID is preferred.
 | Function | Side effects |
 |----------|-------------|
 | `logProgress` | Workflow owner authorization → SSE broadcast → persist log entry |
-| `moveTaskWithEffects` | Workflow done-guard → move → audit → Antfly index → continuation trigger → project auto-check → parent unblock |
-| `blockTaskWithEffects` | Workflow owner authorization → block task → audit → propagate to parent (for child workflow tasks) |
+| `moveTaskWithEffects` | Workflow done-guard → reopen-delete when leaving done (`reopenIfLeavingDone`) → move → completion gate → audit → Antfly index → continuation trigger → project auto-check → parent unblock |
+| `blockTaskWithEffects` | Workflow owner authorization → completion guard (completed task ⇒ `{ alreadyComplete: true }`, no effects; move route maps to 409, MCP block to soft payload, #482) → block task → audit → propagate to parent (system-strict — never human-bypassed, so a done parent is skipped) |
+| `syncLedgerForStoreMove` | The workflow engine's ledger-aware store move: reopen-delete on leaving done → store move → insert-if-missing completion row on landing on done |
+| `backfillMissingCompletionRows` | Boot heal: synthetic completion rows for done-column tasks without one; idempotent, audited `task.completion_backfilled` |
 | `createTaskWithEffects` | Auto-match workflow → create → start workflow instance → audit |
 | `reportComplete` | Workflow active-task authorization → log → move to done → notify orchestrator |
 | `setDependencyWithEffects` | Set dependency → audit |

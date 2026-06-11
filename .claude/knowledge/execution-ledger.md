@@ -65,15 +65,16 @@ exactly preserving legacy threadId semantics.
 | Layer | Caller | Verbs |
 |---|---|---|
 | Cron dedup | `plugins/schedule` scheduler tick + startup catch-up (claim-first) + heal pass | `claimCronFire`, `attachCronTask`, `markCronFireSkipped`, `findHealableCronClaims`, `getCronFire` |
-| Completion gate | `task-service.moveTaskWithEffects` done-branch (single chokepoint; `reportComplete` flows through it) | `recordCompletion`, `deleteCompletion` (reopen), `hasCompletion` |
+| Completion gate | `task-service.moveTaskWithEffects` done-branch (`reportComplete` flows through it) + `task-service.syncLedgerForStoreMove` (the workflow engine's ledger-aware store move — `moveTaskInStore` routes ALL workflow moves through it, #482) | `recordCompletion`, `deleteCompletion` (via `reopenIfLeavingDone`), `hasCompletion` |
+| Block guard | `task-service.blockTaskWithEffects` — completion row ⇒ `{ alreadyComplete: true }`, no side effects; move route maps it to 409, MCP block to the soft payload (#482) | `hasCompletion` |
 | Dispatch claims | `dispatch.ts` all 3 paths via `claimDispatchRun` | `claimNextRun` (atomic mint+claim), `settleRun`, `loseRun`, `currentSeq` |
 | Watchdog | supersede-first recovery | `getLiveRun`, `supersedeStaleRun` (transactional; N racing actors → 1 winner) |
 | Liveness | `task-service.logProgress` (advisory) | `bumpHeartbeatByTask` |
-| Boot | `server.ts` before restart recovery | `markPriorBootRunsLost(bootId)` |
+| Boot | `server.ts` before restart recovery: run sweep, then completion backfill (`backfillMissingCompletionRows` — synthetic rows for done-without-row tasks, idempotent every boot) | `markPriorBootRunsLost(bootId)`, `recordCompletion` |
 | Money ops | `plugins/images` `runBilledImageCall` | `getIdempotent`, `putIdempotent` |
 | Edit safety | `plugins/tasks` `taskEditGuard` | `hasCompletion` |
-| Run history (read-only) | `plugins/tasks` task drawer via `GET /:taskId/runs` (per-task attempts + task outcome: `readTaskOutcome` joins the completions row with the task column — completion wins, else blocked/archived/done(legacy)/in_progress; the column fallback is gated on dispatch history so unknown ids never trigger the task store's shard walk, #476); `plugins/schedule` job drawer (per-schedule fires) | `listRunsByTask`, `getCompletion`, `listCronFires` |
-| Cleanup | `task-store.deleteTask` (advisory) | `purgeTaskRows` (cron_fires kept — they dedupe the job, not the task) |
+| Run history (read-only) | `plugins/tasks` task drawer via `GET /:taskId/runs` (per-task attempts + task outcome: `readTaskOutcome` joins the completions row with the task column — completion wins, else blocked/archived/in_progress; the boot backfill retired the done-without-row legacy branch (#482); the column fallback is gated on dispatch history so unknown ids never trigger the task store's shard walk, #476); `plugins/schedule` job drawer (per-schedule fires) | `listRunsByTask`, `getCompletion`, `listCronFires` |
+| Cleanup | `task-store.deleteTask` + `task-store.archiveOldTasks` (both advisory) | `purgeTaskRows` (cron_fires kept — they dedupe the job, not the task) |
 
 ## Semantics
 
@@ -91,7 +92,28 @@ exactly preserving legacy threadId semantics.
   `task.completion_suppressed` and surface `{ ok: true, alreadyComplete:
   true }` — an agent retrying a timed-out success must NEVER see an error.
   Reopen (moving a completed task to any active column; archive exempt)
-  deletes the row (`task.reopened`) — the only unfreeze path.
+  deletes the row (`task.reopened`) — the only unfreeze path. The invariant
+  is biconditional since #482: a completions row ⟺ the task is done. EVERY
+  exit from done clears the row — `moveTaskWithEffects` and the workflow
+  engine's `syncLedgerForStoreMove` both run `reopenIfLeavingDone` — and
+  workflow done-moves record rows symmetrically. The boot backfill
+  (`task.completion_backfilled`) healed pre-ledger done tasks once and
+  reconverges every start.
+- **Block-on-done is rejected, two layers deep.** Service layer:
+  `blockTaskWithEffects` returns `{ alreadyComplete: true }` on a row-bearing
+  task with zero side effects — channel-independent, so it covers the human
+  kanban drag; REST/move map it to 409, MCP to the soft success payload.
+  Store layer: `blockTask` enforces `VALID_TRANSITIONS` like `moveTask`
+  (human bypass preserved; `blocked→blocked` stays an idempotent reason
+  update so retries never error). Parent-block propagation drops the
+  caller's channel, so a done parent is never yanked to blocked. Known
+  fail-soft edge: the watchdog's step-timeout escalation can attempt
+  `review→blocked` if a human moved the task mid-step — rejected into its
+  existing catch. Escape hatches that bypass ALL of this (do not use for
+  task lifecycle): the packages-store `ctx.tasks.move` plugin API writes
+  columns with no validation and no ledger sync; store `updateTask`'s
+  `column` patch validates transitions but skips the ledger (covered
+  upstream by `taskEditGuard`'s completion 409).
 - **Runs:** settle-before-reconcile in the turn handlers so the recovery
   ladder can claim anew; superseded runs that turn out alive may still
   complete (first-completion-wins decides); durable idempotency makes the
@@ -105,8 +127,8 @@ exactly preserving legacy threadId semantics.
 ## Audit events
 
 `schedule.fire_suppressed`, `schedule.fire_healed`, `task.completed`,
-`task.completion_suppressed`, `task.reopened`, `task.dispatch_suppressed`,
-`task.run_superseded`, `tasks.edit_conflict`. Doctor's `execution-safety`
+`task.completion_suppressed`, `task.completion_backfilled`, `task.reopened`,
+`task.dispatch_suppressed`, `task.run_superseded`, `tasks.edit_conflict`. Doctor's `execution-safety`
 check (plugins/health) counts the suppression kinds over 24h — green means
 no duplicates were even attempted; warn means the guards fired (inspect
 audit.jsonl); error means the ledger is unreachable and the guards are
