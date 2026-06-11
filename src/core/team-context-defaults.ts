@@ -69,6 +69,10 @@ mcporter call bakin-{{agentId}}.bakin_exec_get_paths
 - **NEVER run scripts/bin/*.ts directly.** Those are debug wrappers that bypass Bakin tracking — no MCP call, no Health metrics, no audit log. Always use the MCP tool via \`mcporter call bakin-{{agentId}}.bakin_exec_<tool> ...\` instead.
 - **NEVER use runtime-native cron directly for recurring tasks.** Use \`mcporter call bakin-{{agentId}}.bakin_exec_schedule_create name="..." schedule="every day at 9am" agentId="..." taskPrompt="..."\` instead. Direct cron jobs bypass Bakin — no agent context, no task creation, no audit trail.
 
+## Bakin Reporting Rules
+
+- **Respond only to the agent that invoked you.** Check the task for an \`assignedBy\` or \`author\` field; report to that agent, or to the human operator when they created the task directly. (Your agent package may define the exact completion-report format.)
+
 ## Bakin Dependency Pattern
 
 If your task requires output from another agent, create their task first, note its task ID, then register a dependency:
