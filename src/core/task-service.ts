@@ -65,6 +65,45 @@ function getPort(): number {
 export type Channel = 'human' | 'mcp' | 'rest' | 'cli' | 'system'
 
 // ---------------------------------------------------------------------------
+// Ledger sync helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Reopen: moving a completed task anywhere active deletes its completion
+ * row (the ONLY unfreeze path) so the next completion is a fresh
+ * first-write. Archiving a done task is lifecycle, not reopen.
+ */
+export function reopenIfLeavingDone(taskId: string, to: string, agent: string, channel?: Channel): void {
+  const toLowerCased = to.toLowerCase()
+  if (toLowerCased === 'done' || toLowerCased === 'archived') return
+  if (!hasCompletion(taskId)) return
+  deleteCompletion(taskId)
+  appendAudit(getContentDir(), 'task.reopened', agent, { id: taskId, to }, channel)
+}
+
+/**
+ * Ledger-aware raw store move for callers that bypass moveTaskWithEffects'
+ * full side-effect pipeline (the workflow engine). Keeps the completions
+ * table in sync in BOTH directions: leaving done deletes the row (reopen),
+ * landing on done records one. The record is insert-if-missing — a
+ * duplicate landing is a silent no-op, never an error — and only happens
+ * after the store move succeeds, so a row still implies the board reached
+ * done.
+ */
+export async function syncLedgerForStoreMove(
+  taskId: string,
+  to: string,
+  agent: string,
+  opts?: { from?: string; channel?: Channel },
+): Promise<void> {
+  reopenIfLeavingDone(taskId, to, agent, opts?.channel)
+  await moveStoredTask(taskId, to, opts?.from, opts?.channel)
+  if (to.toLowerCase() === 'done') {
+    recordCompletion(taskId, { runId: getLiveRun(taskId)?.runId, agent, channel: opts?.channel })
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Service functions
 // ---------------------------------------------------------------------------
 
@@ -131,13 +170,7 @@ export async function moveTaskWithEffects(
   const before = getTaskWithColumn(taskId)
   const taskBeforeMove = before?.task
 
-  // Reopen: moving a completed task anywhere active deletes its completion
-  // row (the ONLY unfreeze path) so the next completion is a fresh
-  // first-write. Archiving a done task is lifecycle, not reopen.
-  if (!movingToDone && toLowerCased !== 'archived' && hasCompletion(taskId)) {
-    deleteCompletion(taskId)
-    appendAudit(getContentDir(), 'task.reopened', agent, { id: taskId, to }, opts?.channel)
-  }
+  reopenIfLeavingDone(taskId, to, agent, opts?.channel)
 
   // A done task "moved" to done again is a completion RETRY, not a move —
   // the store rejects done→done as an invalid transition, and a retry must
