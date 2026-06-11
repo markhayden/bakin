@@ -284,7 +284,7 @@ export async function blockTaskWithEffects(
   channel?: Channel,
 ): Promise<void> {
   await assertWorkflowToolAllowed({ taskId, agent, action: 'task-block' })
-  await blockStoredTask(taskId, reason, agent)
+  await blockStoredTask(taskId, reason, agent, channel)
   const title = await resolveTitle(taskId)
   const contentDir = getContentDir()
   appendAudit(contentDir, 'task.blocked', agent, { id: taskId, title, reason }, channel)
@@ -314,12 +314,16 @@ export async function blockTaskWithEffects(
     const parentTitle = await resolveTitle(parentTaskId)
     const childReason = `Child workflow blocked: ${reason}`
     try {
+      // Deliberately no channel: propagation is a system action, so a done
+      // parent is rejected by the store's transition table even when the
+      // child block came from a human — reopen the parent first if needed.
       await blockStoredTask(parentTaskId, childReason, 'system')
       appendAudit(contentDir, 'task.blocked', 'system', { id: parentTaskId, title: parentTitle, reason: childReason, blockedBy: taskId }, channel)
       log.info('Parent task blocked due to child', { parentTaskId, childTaskId: taskId })
     } catch (err) {
-      // Parent may already be blocked or in a state that can't transition — that's fine
-      log.debug('Could not propagate block to parent', { parentTaskId, err: err instanceof Error ? err.message : String(err) })
+      // Parent may already be done (transition rejected) or in another state
+      // that can't transition — skip propagation, the child block stands
+      log.info('Did not propagate block to parent', { parentTaskId, err: err instanceof Error ? err.message : String(err) })
     }
   }
 }

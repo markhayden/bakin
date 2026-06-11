@@ -361,10 +361,17 @@ export function addTaskLog(identifier: string, author: string, message: string, 
   }
 }
 
-export function blockTask(identifier: string, reason: string, agent?: string): Promise<void> {
+export function blockTask(identifier: string, reason: string, agent?: string, channel?: string): Promise<void> {
   try {
     void agent
     const task = requireTask(identifier)
+    // Re-blocking an already-blocked task is an idempotent reason update —
+    // retries must never error. Every other source column goes through the
+    // same transition table as moveTask, so done → blocked is rejected for
+    // non-human callers instead of silently un-doneing a completed task.
+    if (asColumnId(task) !== 'blocked') {
+      assertTransitionAllowed(task, 'blocked', channel === 'human')
+    }
     getSharedBakinTaskStore().updateSync(task.id, {
       ...columnPatch('blocked'),
       blockedReason: reason,

@@ -323,6 +323,34 @@ describe('blockTask', () => {
   it('rejects non-existent task', async () => {
     await expect(blockTask('ghost', 'reason')).rejects.toThrow('Task not found')
   })
+
+  it('rejects done → blocked for non-human callers', async () => {
+    const task = await createTask('Done task', 'todo')
+    await addTaskLog(task.id, 'pixel', 'Work done')
+    await moveTask(task.id, 'done')
+
+    await expect(blockTask(task.id, 'stale agent retry', 'agent-a')).rejects.toThrow('Invalid transition')
+    expect(getTaskWithColumn(task.id)!.column).toBe('done')
+  })
+
+  it('re-blocking an already-blocked task is an idempotent reason update', async () => {
+    const task = await createTask('Block me twice', 'todo')
+    await blockTask(task.id, 'first reason', 'agent-a')
+    await blockTask(task.id, 'second reason', 'agent-a')
+
+    const result = getTaskWithColumn(task.id)
+    expect(result!.column).toBe('blocked')
+    expect(result!.task.blockedReason).toBe('second reason')
+  })
+
+  it('human channel bypasses the transition table, matching moveTask', async () => {
+    const task = await createTask('Backlog item', 'backlog')
+    // backlog → blocked is not in VALID_TRANSITIONS: agents are rejected...
+    await expect(blockTask(task.id, 'nope', 'agent-a')).rejects.toThrow('Invalid transition')
+    // ...but the operator can force it
+    await blockTask(task.id, 'operator call', 'human', 'human')
+    expect(getTaskWithColumn(task.id)!.column).toBe('blocked')
+  })
 })
 
 // ---------------------------------------------------------------------------
