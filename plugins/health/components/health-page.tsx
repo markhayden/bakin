@@ -18,7 +18,8 @@ import {
 } from "@makinbakin/sdk/ui"
 import { PluginHeader } from "@makinbakin/sdk/components"
 import { UnderlineTabs } from "@makinbakin/sdk/components"
-import { Search, CircleCheck, Clock, AlertCircle } from 'lucide-react'
+import { Search, CircleCheck, Clock, AlertCircle, Wrench } from 'lucide-react'
+import { RepairDialog } from './repair-dialog'
 import type { HealthCheckResult } from '@makinbakin/sdk'
 
 const PLUGIN_CHECK_INTERVAL_MS = 60 * 60 * 1000
@@ -438,6 +439,7 @@ function AgentUsagePanel({ feed }: { feed: UsageFeedData | null }) {
 
 export function HealthPage() {
   const [data, setData] = useState<HealthSummary | null>(null)
+  const [repairOpen, setRepairOpen] = useState(false)
   const [registry, setRegistry] = useState<RegistryData | null>(null)
   const [pluginManifest, setPluginManifest] = useState<PluginManifestData | null>(null)
   const [pluginChecking, setPluginChecking] = useState(false)
@@ -1084,7 +1086,7 @@ export function HealthPage() {
                   </span>
                 )}
               </span>
-              <div className="flex gap-2 text-xs">
+              <div className="flex items-center gap-2 text-xs">
                 <Badge className={STATUS_STYLES.ok}>
                   {doctor.summary.total - doctor.summary.errors - doctor.summary.warnings} ok
                 </Badge>
@@ -1093,6 +1095,11 @@ export function HealthPage() {
                 )}
                 {doctor.summary.errors > 0 && (
                   <Badge className={STATUS_STYLES.error}>{doctor.summary.errors} error</Badge>
+                )}
+                {doctor.summary.warnings + doctor.summary.errors > 0 && (
+                  <Button size="sm" variant="outline" className="h-6 gap-1 px-2 text-xs" onClick={() => setRepairOpen(true)}>
+                    <Wrench className="size-3" /> Repair…
+                  </Button>
                 )}
               </div>
             </CardTitle>
@@ -1118,6 +1125,8 @@ export function HealthPage() {
           </CardContent>
         </Card>
       )}
+
+      <RepairDialog open={repairOpen} onOpenChange={setRepairOpen} onApplied={() => { void fetchData() }} />
 
       {/* Server info footer */}
       {server && (

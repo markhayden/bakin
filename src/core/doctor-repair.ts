@@ -72,6 +72,13 @@ export interface DoctorRepairOptions {
 export interface DoctorRepairApplyOptions extends DoctorRepairOptions {
   accepted: boolean
   itemIds?: string[]
+  /**
+   * Apply non-safe (manual/destructive) items too. Honored ONLY when the
+   * caller explicitly selected items via `itemIds` — a blanket apply can
+   * never sweep destructive repairs in. The UI's per-item confirmation
+   * checkboxes are the consent surface for this flag.
+   */
+  allowDestructive?: boolean
 }
 
 function errorMessage(err: unknown): string {
@@ -195,8 +202,9 @@ export async function applyDoctorRepair(options: DoctorRepairApplyOptions): Prom
     }
   }
 
-  const safeItems = selectedItems.filter(item => item.safety === 'safe')
-  const blockedItems = selectedItems.filter(item => item.safety !== 'safe')
+  const destructiveAllowed = options.allowDestructive === true && !!options.itemIds
+  const safeItems = selectedItems.filter(item => item.safety === 'safe' || destructiveAllowed)
+  const blockedItems = selectedItems.filter(item => item.safety !== 'safe' && !destructiveAllowed)
   const skipped: HealthRepairApplyResult[] = blockedItems.map(item => ({
     id: item.id,
     checkId: item.checkId,
