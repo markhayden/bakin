@@ -210,8 +210,7 @@ export function TeamDetail({ teamId }: { teamId: string }) {
           <Textarea
             value={content ?? ''}
             onChange={(e) => { setContent(e.target.value); setDirty(true) }}
-            rows={24}
-            className="font-mono text-xs"
+            className="min-h-96 font-mono text-xs"
             placeholder={isGlobal ? '# House rules for every agent…' : `# Rules for the ${team?.label ?? teamId} team…`}
             aria-label="Shared context content"
           />
