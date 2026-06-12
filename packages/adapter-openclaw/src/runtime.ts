@@ -22,6 +22,7 @@ import type {
   RuntimeImageProvider,
   RuntimeMetadata,
   RuntimeMemorySearchResult,
+  RuntimeSessionStoreStats,
   RuntimeSkill,
   UpdateCronJobInput,
   WorkspaceFile,
@@ -808,6 +809,35 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   sessions = {
     list: async () => [],
     get: async () => null,
+    storeStats: async (): Promise<RuntimeSessionStoreStats[]> => {
+      const agentsDir = getOpenClawPath('agents')
+      if (!existsSync(agentsDir)) return []
+      const stats: RuntimeSessionStoreStats[] = []
+      for (const entry of readdirSync(agentsDir, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue
+        const sessionsDir = join(agentsDir, entry.name, 'sessions')
+        if (!existsSync(sessionsDir)) continue
+        let fileCount = 0
+        let diskBytes = 0
+        for (const file of readdirSync(sessionsDir, { withFileTypes: true })) {
+          if (!file.isFile()) continue
+          fileCount += 1
+          diskBytes += statSync(join(sessionsDir, file.name)).size
+        }
+        let storeEntries = 0
+        try {
+          const store: unknown = JSON.parse(readFileSync(join(sessionsDir, 'sessions.json'), 'utf-8'))
+          if (store && typeof store === 'object') storeEntries = Object.keys(store).length
+        } catch (err) {
+          this.logger.debug('Session store missing or unparsable while collecting stats', {
+            agentId: entry.name,
+            error: String(err),
+          })
+        }
+        stats.push({ agentId: entry.name, storeEntries, fileCount, diskBytes })
+      }
+      return stats
+    },
   }
 
   memory = {

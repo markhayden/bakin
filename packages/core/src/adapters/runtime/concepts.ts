@@ -245,6 +245,16 @@ export interface RuntimeSession {
   metadata?: RuntimeMetadata
 }
 
+export interface RuntimeSessionStoreStats {
+  agentId: string
+  /** Live entries in the runtime's session store for this agent. */
+  storeEntries: number
+  /** Files in the agent's sessions directory, including the store itself. */
+  fileCount: number
+  /** Total bytes of the agent's sessions directory. */
+  diskBytes: number
+}
+
 export interface RuntimeMemoryTier {
   id: string
   label: string
@@ -507,6 +517,12 @@ export interface AgentRuntimeAdapter {
   sessions: {
     list(agentId?: string): Promise<RuntimeSession[]>
     get(sessionId: string): Promise<RuntimeSession | null>
+    /**
+     * Per-agent session-store disk stats. Optional: runtimes without a
+     * file-backed session store omit it, and callers must treat absence
+     * as "stats unavailable" — skip, never error.
+     */
+    storeStats?(): Promise<RuntimeSessionStoreStats[]>
   }
 
   memory: {
