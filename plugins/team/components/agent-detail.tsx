@@ -31,7 +31,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'soul', label: 'Soul' },
   { id: 'memory', label: 'Memory' },
   { id: 'heartbeat', label: 'Heartbeat' },
-  { id: 'rules', label: 'Rules' },
+  { id: 'rules', label: 'AGENTS.md' },
   { id: 'tools', label: 'Tools' },
   { id: 'skills', label: 'Skills' },
   { id: 'lessons', label: 'Lessons' },

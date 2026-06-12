@@ -169,16 +169,21 @@ interface SectionNodeData extends Record<string, unknown> {
 
 function SectionNode({ data }: NodeProps) {
   const { label, teamId, hasContext } = data as SectionNodeData
+  const router = useRouter()
   return (
     <div className="flex items-center justify-center gap-1 px-4">
       <Handle type="target" position={Position.Top} className="!bg-transparent !border-0" />
-      <a
-        href={teamId ? `/team/teams/${encodeURIComponent(teamId)}` : '/team'}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          if (teamId) router.push(`/team/teams/${encodeURIComponent(teamId)}`)
+        }}
         className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500 whitespace-nowrap hover:text-zinc-300 hover:underline"
         title={hasContext ? 'Team carries shared context — click to view' : 'Open team page'}
       >
         {label}
-      </a>
+      </button>
       {hasContext && (
         <ScrollText className="size-3 text-info" aria-label={`${label} has shared context rules`} />
       )}

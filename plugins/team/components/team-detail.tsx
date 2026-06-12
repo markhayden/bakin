@@ -203,24 +203,32 @@ export function TeamDetail({ teamId }: { teamId: string }) {
         </CardHeader>
         <CardContent className="space-y-2">
           <p className="text-xs text-muted-foreground">
-            {isGlobal
-              ? 'Reaches EVERY agent’s AGENTS.md managed block on sync. Content inside a bakin:managed block (role files) is Bakin-owned and re-asserted automatically.'
-              : 'Reaches every member’s AGENTS.md managed block on sync.'}
+            Standing instructions for {isGlobal ? 'every agent' : `every ${team?.label ?? teamId} member`} —
+            write them once here instead of editing each agent. On <span className="font-medium text-foreground">Sync</span>,
+            Bakin composes this into each agent's AGENTS.md managed block; their own notes outside the block are never touched.
           </p>
+          {(content ?? '').trim() === '' && (
+            <p className="text-xs text-muted-foreground">
+              Good fits: house rules, tone, conventions, escalation. Personalize with{' '}
+              <code className="text-[11px]">{'{{agentName}}'}</code>, <code className="text-[11px]">{'{{agentId}}'}</code>,{' '}
+              <code className="text-[11px]">{'{{mainAgentName}}'}</code>.
+            </p>
+          )}
           <Textarea
             value={content ?? ''}
             onChange={(e) => { setContent(e.target.value); setDirty(true) }}
-            rows={12}
-            className="font-mono text-xs"
-            placeholder={isGlobal ? '# House rules for every agent…' : `# Rules for the ${team?.label ?? teamId} team…`}
+            className="min-h-96 font-mono text-xs"
+            placeholder={isGlobal
+              ? `# House rules\n\n- Keep replies short and direct.\n- {{agentName}} reports blockers to {{mainAgentName}} immediately.`
+              : `# ${team?.label ?? teamId} team rules\n\n- Follow the team style guide.\n- Hand finished work back by assetId, never file paths.`}
             aria-label="Shared context content"
           />
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-end gap-2">
+            {saveError && <span className="text-xs text-red-400">{saveError}</span>}
+            {dirty && <span className="text-xs text-yellow-500">Unsaved changes — members go stale after save until synced.</span>}
             <Button size="sm" onClick={save} disabled={!dirty || saving}>
               {saving ? 'Saving…' : 'Save'}
             </Button>
-            {dirty && <span className="text-xs text-yellow-500">Unsaved changes — members go stale after save until synced.</span>}
-            {saveError && <span className="text-xs text-red-400">{saveError}</span>}
           </div>
         </CardContent>
       </Card>
