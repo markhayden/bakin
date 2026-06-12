@@ -42,13 +42,6 @@ export interface BuildLogger {
 }
 
 export interface BuildUserPluginOptions {
-  /**
-   * GitHub-installed plugins may ship prebuilt dist artifacts. Release
-   * binaries should use those artifacts when complete instead of trying to
-   * rebuild against repo-local SDK source paths that do not exist on a
-   * normal user's machine.
-   */
-  trustExistingDist?: boolean
   diagnosticsLog?: BuildLogger
   pluginId?: string
 }
@@ -177,10 +170,11 @@ function emitStageSpan(
  *
  * - Declared deps install with `bun install --ignore-scripts` (pure-JS
  *   installs; lifecycle scripts are withheld until the elevated path lands).
- * - When `trustExistingDist` is set and every expected dist output is
- *   present, skips the rebuild. This is used for GitHub-installed plugins
- *   that ship their own build artifacts.
- * - Skips the build when the dist outputs are newer than every source file.
+ * - Skips the build when the dist outputs are newer than every source file
+ *   (pure freshness cache). A shipped dist/ is never trusted on its own:
+ *   github/local installs always build from the import-validated source —
+ *   only Whiskit artifact installs (provenance-verified upstream) skip the
+ *   build step entirely, before this function is called.
  */
 export async function buildUserPlugin(
   pluginDir: string,
@@ -220,20 +214,7 @@ export async function buildUserPlugin(
     const expectedDist = [distServer, ...(hasClient ? [distClient] : [])]
     const allDistPresent = expectedDist.every(p => existsSync(p))
     const clientDistFresh = !hasClient || isFreshClientDist(distClient)
-    const trustCompleteDist = options.trustExistingDist && allDistPresent
-    let buildServer = true
     if (allDistPresent) {
-      if (trustCompleteDist && clientDistFresh) {
-        totalSpan?.end({ status: 'skipped', reason: 'trusted-dist', hasClient })
-        return
-      }
-      if (trustCompleteDist && hasClient) {
-        // Trusted prebuilt server dist + stale client (jsx-dev artifact):
-        // refresh the client only — server rebuilds on consumer machines
-        // would need SDK sources the machine may not have.
-        buildServer = false
-      }
-
       errorStage = 'freshness check failed'
       const newestSource = newestMtimeMs(pluginDir, new Set(['dist', 'node_modules']))
       const oldestDist = oldestMtimeMs(expectedDist)
@@ -250,7 +231,7 @@ export async function buildUserPlugin(
       pluginId,
       production: isProductionBuild(),
       installDeps: true,
-      serverBuild: buildServer,
+      serverBuild: true,
       onStage: diag ? (event) => emitStageSpan(diag, pluginId, event) : undefined,
     })
     totalSpan?.end({ status: 'ok', rebuilt: true, hasClient })
@@ -314,8 +295,7 @@ export async function buildAllUserPlugins(
     }
 
     try {
-      const trustExistingDist = lockedPlugins[name]?.type === 'github' && lockedPlugins[name]?.linked !== true
-      await buildUserPlugin(pluginDir, { trustExistingDist, diagnosticsLog: log, pluginId: name })
+      await buildUserPlugin(pluginDir, { diagnosticsLog: log, pluginId: name })
       log.info(`Built user plugin "${name}"`)
     } catch (err) {
       log.error(
