@@ -28,6 +28,7 @@ mock.module('@/core/content-dir', () => ({
 }))
 
 mock.module('@/core/settings', () => ({
+  resetSettingsCache: () => {},
   getSettings: mock(() => ({
     search: {
       adapter: 'antfly',

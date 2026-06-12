@@ -23,6 +23,7 @@ let mockChannelAliases: Record<string, string> = {}
 let mockNotificationChannel = ''
 let mockNotificationTarget = ''
 const settingsMock = {
+  resetSettingsCache: () => {},
   getSettings: () => ({
     notifications: {
       channel: mockNotificationChannel,

@@ -27,6 +27,7 @@ mock.module('../../src/core/logger', () => ({
 }))
 
 mock.module('../../src/core/settings', () => ({
+  resetSettingsCache: () => {},
   getSettings: mock().mockReturnValue({
     watchdog: {
       intervalMs: 1000,

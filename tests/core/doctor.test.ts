@@ -41,6 +41,7 @@ mock.module('@/core/content-dir', () => ({
 
 // Mock settings
 mock.module('@/core/settings', () => ({
+  resetSettingsCache: () => {},
   getSettings: mock(() => ({
     runtime: {
       adapter: 'openclaw',

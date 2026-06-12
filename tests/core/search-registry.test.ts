@@ -24,6 +24,7 @@ mock.module('@/core/content-dir', () => ({
 }))
 
 mock.module('@/core/settings', () => ({
+  resetSettingsCache: () => {},
   getSettings: mock(() => ({
     plugins: {
       requireSignatures: false,
