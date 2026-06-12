@@ -6,6 +6,7 @@
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { join } from 'path'
+import { PLUGIN_ID_RE } from '@bakin/core/plugins/manifest'
 import { getContentDir } from '@/core/content-dir'
 import { broadcastPluginSettingsChanged } from '@/core/sse'
 import { pluginRegistry } from '@/lib/plugin-registry'
@@ -22,6 +23,9 @@ function extractPluginId(url: URL): string {
 
 export async function get(_req: Request, url: URL): Promise<Response> {
   const pluginId = extractPluginId(url)
+  if (!PLUGIN_ID_RE.test(pluginId)) {
+    return Response.json({ error: 'Invalid plugin id' }, { status: 400 })
+  }
   const path = getSettingsPath(pluginId)
   if (!existsSync(path)) {
     return Response.json({})
@@ -36,6 +40,9 @@ export async function get(_req: Request, url: URL): Promise<Response> {
 
 export async function put(req: Request, url: URL): Promise<Response> {
   const pluginId = extractPluginId(url)
+  if (!PLUGIN_ID_RE.test(pluginId)) {
+    return Response.json({ error: 'Invalid plugin id' }, { status: 400 })
+  }
   const body = await req.json()
   const path = getSettingsPath(pluginId)
   const dir = join(getContentDir(), 'plugin-settings')
