@@ -75,6 +75,7 @@ export type {
   RuntimePermissionPatch,
   RawCronSnapshot,
   RuntimeSession,
+  RuntimeSessionStoreStats,
   RuntimeSkill,
   ToolResult,
   UpdateCronJobInput,

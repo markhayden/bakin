@@ -22,6 +22,7 @@ import type {
   RuntimeImageProvider,
   RuntimeMetadata,
   RuntimeMemorySearchResult,
+  RuntimeSessionStoreStats,
   RuntimeSkill,
   UpdateCronJobInput,
   WorkspaceFile,
@@ -808,6 +809,45 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   sessions = {
     list: async () => [],
     get: async () => null,
+    storeStats: async (): Promise<RuntimeSessionStoreStats[]> => {
+      const agentsDir = getOpenClawPath('agents')
+      if (!existsSync(agentsDir)) return []
+      const stats: RuntimeSessionStoreStats[] = []
+      for (const entry of readdirSync(agentsDir, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue
+        const sessionsDir = join(agentsDir, entry.name, 'sessions')
+        if (!existsSync(sessionsDir)) continue
+        // Top-level files are session artifacts (transcripts, the store
+        // itself); subtrees like skills-prompts/ are cache disk pressure
+        // only and must not skew the orphan file count.
+        let fileCount = 0
+        let diskBytes = 0
+        const walk = (dir: string, topLevel: boolean) => {
+          for (const file of readdirSync(dir, { withFileTypes: true })) {
+            const path = join(dir, file.name)
+            if (file.isDirectory()) {
+              walk(path, false)
+            } else if (file.isFile()) {
+              if (topLevel) fileCount += 1
+              diskBytes += statSync(path).size
+            }
+          }
+        }
+        walk(sessionsDir, true)
+        let storeEntries = 0
+        try {
+          const store: unknown = JSON.parse(readFileSync(join(sessionsDir, 'sessions.json'), 'utf-8'))
+          if (store && typeof store === 'object') storeEntries = Object.keys(store).length
+        } catch (err) {
+          this.logger.debug('Session store missing or unparsable while collecting stats', {
+            agentId: entry.name,
+            error: String(err),
+          })
+        }
+        stats.push({ agentId: entry.name, storeEntries, fileCount, diskBytes })
+      }
+      return stats
+    },
   }
 
   memory = {
