@@ -12,8 +12,7 @@
  * `Bun.build()` fast path when running from source (dev hot loop — no
  * subprocess per save), the system-`bun` backend under the compiled binary.
  * What stays here is the caller-side policy: freshness/rebuild skip,
- * trusted prebuilt dist handling, provenance verification at startup, and
- * the startup-diagnostics spans.
+ * provenance verification at startup, and the startup-diagnostics spans.
  *
  * Rebuild skip: if every dist output is newer than every source entry,
  * the build is a no-op. This keeps server boot fast when nothing changed.
@@ -21,7 +20,6 @@
 import { existsSync, statSync, readdirSync, readFileSync } from 'node:fs'
 import type { Dirent } from 'node:fs'
 import { basename, join } from 'node:path'
-import { readPluginLockfile, type PluginLockEntry } from '@bakin/core/plugins/lockfile'
 import { startStartupSpan, type StartupDiagnosticLogger } from '@/core/startup-diagnostics'
 import { validatePluginImports, NON_RUNTIME_DIRS, type PluginPackageJson } from '@/core/whiskit/import-scan'
 import {
@@ -257,12 +255,6 @@ export async function buildAllUserPlugins(
   log: BuildLogger,
 ): Promise<void> {
   if (!existsSync(userPluginsDir)) return
-  let lockedPlugins: Record<string, PluginLockEntry> = {}
-  try {
-    lockedPlugins = readPluginLockfile().plugins
-  } catch (err) {
-    log.error('Failed to read plugin lockfile before building user plugins', err)
-  }
   let entries: Dirent[]
   try {
     entries = readdirSync(userPluginsDir, { withFileTypes: true }) as Dirent[]
