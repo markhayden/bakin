@@ -23,6 +23,7 @@ import { checkContentDir } from './lib/system-checks/content-dir'
 import { checkService } from './lib/system-checks/service'
 import { checkMcporter, mcporterRepair } from './lib/system-checks/mcporter'
 import { checkRuntime } from './lib/system-checks/runtime'
+import { checkSessionStore } from './lib/system-checks/session-store'
 import { checkChannelApprovals } from './lib/system-checks/channel-approvals'
 import { checkChannelAliases } from './lib/system-checks/channel-aliases'
 import { checkRestartRecovery } from './lib/system-checks/restart-recovery'
@@ -515,6 +516,11 @@ const healthPlugin: BakinPlugin = definePlugin({
       id: 'runtime',
       name: 'Runtime reachability',
       run: () => checkRuntime(ctx.runtime),
+    })
+    ctx.registerHealthCheck({
+      id: 'session-store',
+      name: 'Runtime session-store growth',
+      run: () => checkSessionStore(ctx.runtime),
     })
     ctx.registerHealthCheck({
       id: 'channel-approvals',
