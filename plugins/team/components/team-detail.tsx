@@ -223,12 +223,12 @@ export function TeamDetail({ teamId }: { teamId: string }) {
               : `# ${team?.label ?? teamId} team rules\n\n- Follow the team style guide.\n- Hand finished work back by assetId, never file paths.`}
             aria-label="Shared context content"
           />
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-end gap-2">
+            {saveError && <span className="text-xs text-red-400">{saveError}</span>}
+            {dirty && <span className="text-xs text-yellow-500">Unsaved changes — members go stale after save until synced.</span>}
             <Button size="sm" onClick={save} disabled={!dirty || saving}>
               {saving ? 'Saving…' : 'Save'}
             </Button>
-            {dirty && <span className="text-xs text-yellow-500">Unsaved changes — members go stale after save until synced.</span>}
-            {saveError && <span className="text-xs text-red-400">{saveError}</span>}
           </div>
         </CardContent>
       </Card>
