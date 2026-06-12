@@ -1,6 +1,6 @@
 # Plan: Tailwind Direct Spawn
 
-Spec: `.claude/specs/tailwind-direct-spawn.md` (approved 2026-06-12). Small two-commit change; tasks are strictly linear.
+Spec: `.claude/specs/tailwind-direct-spawn.md` (approved 2026-06-11). Small two-commit change; tasks are strictly linear.
 
 ## Task 1 — the fix (commit 1)
 

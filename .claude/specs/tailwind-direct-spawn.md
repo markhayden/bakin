@@ -11,7 +11,7 @@ Killing the dev loop must not orphan the tailwind watch process, and tailwind mu
 1. **Leak:** `scripts/dev.ts` `startTailwindWatch()` spawns `bunx @tailwindcss/cli … --watch=always`. On this machine the chain is volta-shim → bunx → **node grandchild** (the CLI's `#!/usr/bin/env node` shebang). `tailwindChild.kill('SIGTERM')` hits only the wrapper; the node grandchild reparents to launchd and watches files forever. Observed twice during #459 verification (pids 91436, 91590, ppid 1).
 2. **Version drift:** the bunx temp dir was `bunx-501-@tailwindcss/cli@latest` — bunx downloaded floating **@latest** instead of using the repo's pinned devDependency `@tailwindcss/cli@^4.2.4` (present at `node_modules/.bin/tailwindcss` → `../@tailwindcss/cli/dist/index.mjs`).
 
-## Design (decisions confirmed 2026-06-12)
+## Design (decisions confirmed 2026-06-11)
 
 1. **`scripts/dev.ts`:** spawn the local bin directly under bun — `nodeSpawn('bun', [join(REPO_ROOT, 'node_modules/.bin/tailwindcss'), '-i', …, '-o', …, '--watch=always'], …)`. The child pid IS the tailwind process: SIGTERM kills it, no grandchild, no wrapper resolution at boot, version comes from the lockfile. Verified: `bun node_modules/.bin/tailwindcss --help` runs v4.2.4 clean (bun executes the .mjs directly, shebang ignored). Everything else (stdio piping, log classification, `--watch=always` for closed stdin, exit listener, `.killed` guard) unchanged.
 2. **`package.json` `build:css`:** switch `bunx @tailwindcss/cli …` → `tailwindcss …` — package scripts have `node_modules/.bin` on PATH, so this unambiguously resolves to the pinned version. One-shot command (no leak), fixed for drift + consistency.
