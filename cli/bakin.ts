@@ -1604,7 +1604,10 @@ async function cmdAgentPackagesSync(agentId: string | undefined, flags: AgentsCm
   else if (flags.reclaim?.length) body.reclaim = flags.reclaim
 
   const syncOne = async (id: string): Promise<unknown> => {
-    let result = await apiPost(`/api/agent-packages/${encodeURIComponent(id)}/sync`, body) as Record<string, unknown>
+    // apiPostJson (not apiPost) — the 409 migrationRequired response is a
+    // structured payload we branch on, not a transport error to throw.
+    const first = await apiPostJson(`/api/agent-packages/${encodeURIComponent(id)}/sync`, body)
+    let result = first.data as Record<string, unknown>
     if (result.migrationRequired) {
       const confirmed = flags.yes || await confirmPrompt(
         `Package for "${id}" predates block-based projection. Run the one-time migration?\n` +
@@ -1616,7 +1619,8 @@ async function cmdAgentPackagesSync(agentId: string | undefined, flags: AgentsCm
       }
       const migration = await apiPost('/api/agent-packages/migrate', {}) as Record<string, unknown>
       if (!migration.ok) return migration
-      result = await apiPost(`/api/agent-packages/${encodeURIComponent(id)}/sync`, body) as Record<string, unknown>
+      const second = await apiPostJson(`/api/agent-packages/${encodeURIComponent(id)}/sync`, body)
+      result = second.data as Record<string, unknown>
     }
     return result
   }
