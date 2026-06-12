@@ -60,6 +60,7 @@ import chokidar from 'chokidar'
 import { broadcastDev, type DevEvent, type DevScope } from '../packages/host/src/api/dev/events'
 import { buildOnePlugin } from './dev-build-one-plugin'
 import { isBenignTailwindLine } from './dev-log-classifier'
+import { registerDevShutdown } from './dev-shutdown'
 
 const REPO_ROOT = resolve(import.meta.dir, '..')
 const PLUGINS_DIR = join(REPO_ROOT, 'plugins')
@@ -487,13 +488,18 @@ function startCssWatcher(): void {
 
 // ---------- Shutdown ----------------------------------------------------
 
+// Signal handling lives in dev-shutdown.ts: we register before server.ts
+// imports, so we must NOT call process.exit once lifecycle.ts's handlers
+// exist on the same signals — that preempted the graceful chain and
+// orphaned the antfly child (#459 defect 1).
 function registerShutdown(): void {
-  const cleanup = () => {
-    if (tailwindChild && !tailwindChild.killed) tailwindChild.kill('SIGTERM')
-  }
-  process.on('SIGINT', () => { cleanup(); process.exit(0) })
-  process.on('SIGTERM', () => { cleanup(); process.exit(0) })
-  process.on('exit', cleanup)
+  registerDevShutdown({
+    proc: process,
+    killTailwind: () => {
+      if (tailwindChild && !tailwindChild.killed) tailwindChild.kill('SIGTERM')
+    },
+    warn: (message) => devLog('warn', 'dev', message),
+  })
 }
 
 // ---------- Main --------------------------------------------------------
