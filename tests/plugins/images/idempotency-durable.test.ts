@@ -32,8 +32,9 @@ const loggerMock = () => ({
 mock.module('../../../src/core/logger', loggerMock)
 mock.module('../../../packages/core/src/logger', loggerMock)
 
-import { runBilledImageCall, type ImageCallKey } from '../../../plugins/images/lib/idempotency'
+import { runBilledImageCall, imageCallSignature, type ImageCallKey } from '../../../plugins/images/lib/idempotency'
 import type { ExecToolResult } from '@bakin/core/plugin-types'
+import { getIdempotent } from '../../../src/core/execution-ledger'
 import { closeDb } from '../../../packages/core/src/storage/db'
 
 function makeKey(overrides: Partial<ImageCallKey> = {}): ImageCallKey {
@@ -103,6 +104,35 @@ describe('durable image idempotency', () => {
     await runBilledImageCall(makeKey({ taskId: 'task-a' }), billedCall('asset-a'))
     await runBilledImageCall(makeKey({ taskId: 'task-b' }), billedCall('asset-b'))
     expect(bills).toBe(2)
+  })
+
+  it('persists coordination facts only — no prompt content in the ledger row', async () => {
+    const key = makeKey({ promptHash: 'prompt-content' })
+    const full = {
+      ok: true, assetId: 'asset-c', version: 1, width: 1024, height: 1024,
+      promptHash: 'prompt-content',
+      prompt: 'SECRET PROMPT TEXT', providerText: 'PROVIDER COMMENTARY',
+    } as unknown as ExecToolResult
+
+    // The caller of the FIRST run still receives the full result.
+    const first = await runBilledImageCall(key, async () => full)
+    expect((first as { prompt?: string }).prompt).toBe('SECRET PROMPT TEXT')
+
+    // The persisted ledger row carries no content — coordination facts only.
+    const row = getIdempotent(imageCallSignature(key))
+    const json = JSON.stringify(row)
+    expect(json).not.toContain('SECRET PROMPT TEXT')
+    expect(json).not.toContain('PROVIDER COMMENTARY')
+    const stored = row?.result as { assetId?: string; promptHash?: string }
+    expect(stored.assetId).toBe('asset-c')
+    expect(stored.promptHash).toBe('prompt-content')
+
+    // A ledger replay returns the stripped row (asset identity intact).
+    closeDb()
+    const replay = await runBilledImageCall(key, billedCall('asset-x'))
+    expect((replay as { assetId?: string }).assetId).toBe('asset-c')
+    expect((replay as { prompt?: string }).prompt).toBeUndefined()
+    expect(bills).toBe(0)
   })
 
   it('concurrent identical calls share one in-flight promise (one bill)', async () => {
