@@ -54,6 +54,7 @@ The orchestrator is intentionally trivial — it has no opinion about what's bei
 | `plugins/health/lib/system-checks/service.ts` | `service` |
 | `plugins/health/lib/system-checks/mcporter.ts` | `mcporter` |
 | `plugins/health/lib/system-checks/runtime.ts` | `runtime` |
+| `plugins/health/lib/system-checks/session-store.ts` | `session-store` |
 | `plugins/health/lib/system-checks/channel-aliases.ts` | `channel-aliases` |
 | `plugins/health/lib/system-checks/restart-recovery.ts` | `restart-recovery` |
 | `plugins/health/lib/system-checks/channel-approvals.ts` | `channel-approvals` |
