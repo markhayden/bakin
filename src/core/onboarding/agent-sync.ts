@@ -16,6 +16,7 @@
  * so the two views never disagree.
  */
 import { createLogger } from '../logger'
+import { createAppServices, maybeGetAppServices } from '../app-services'
 import { scanAgentSync, type SyncScanReport } from '../agent-packages/sync-scanner'
 import { syncAllAgents } from '../agent-packages/sync'
 import { refreshRoleContextBlocks } from '../team-context'
@@ -36,9 +37,21 @@ function summarize(report: SyncScanReport): { errors: number; warns: number; par
   }
 }
 
+/**
+ * The scanner talks to the runtime adapter. In the server process AppServices
+ * already exist; the CLI's `bakin check/install agent-sync` path runs in its
+ * own process and must create them first (same pattern as the credentials +
+ * openclaw-integration components).
+ */
+async function ensureAppServices(): Promise<void> {
+  if (maybeGetAppServices()) return
+  await createAppServices()
+}
+
 async function check(): Promise<CheckResult> {
   let report: SyncScanReport
   try {
+    await ensureAppServices()
     report = await scanAgentSync()
   } catch (err) {
     return {
@@ -73,6 +86,7 @@ async function check(): Promise<CheckResult> {
 
 async function install(_opts: OnboardingOptions): Promise<InstallResult> {
   const start = Date.now()
+  await ensureAppServices()
   const before = await scanAgentSync()
 
   if (before.findings.length === 0) {
