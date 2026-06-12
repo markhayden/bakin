@@ -59,6 +59,18 @@ describe('registerDevShutdown', () => {
     expect(h.proc.exitCalls).toEqual([])
   })
 
+  test('lifecycle listener registered later still runs on the signal (#459 regression)', () => {
+    const h = setup()
+    let lifecycleRan = false
+    // Mirrors lifecycle.registerShutdownHandlers(): registered after
+    // dev.ts on the same signal — listener order means dev runs first
+    // and must not exit, or this never executes.
+    h.proc.on('SIGTERM', () => { lifecycleRan = true })
+    h.proc.emit('SIGTERM')
+    expect(lifecycleRan).toBe(true)
+    expect(h.proc.exitCalls).toEqual([])
+  })
+
   test('second signal (same signal) forces exit 130 with a warning', () => {
     const h = setup()
     h.proc.on('SIGINT', () => {})
@@ -67,6 +79,7 @@ describe('registerDevShutdown', () => {
     h.proc.emit('SIGINT')
     expect(h.proc.exitCalls).toEqual([130])
     expect(h.warnings.length).toBe(1)
+    expect(h.warnings[0]).toContain('SIGINT')
   })
 
   test('second signal (mixed signals) forces exit 130', () => {
