@@ -38,14 +38,16 @@ export function registerDevShutdown({ proc, killTailwind, warn }: DevShutdownDep
     signalCount++
     if (signalCount > 1) {
       warn(`second ${signal} during shutdown — forcing exit`)
-      proc.exit(130)
+      proc.exit(signal === 'SIGINT' ? 130 : 143)
       return
     }
     killTailwind()
     // Sole listener → build phase, the server hasn't registered its
     // lifecycle handlers yet: we own the exit. Otherwise the lifecycle
     // listener (registered later on this same signal) runs next and
-    // owns the full graceful shutdown + exit.
+    // owns the full graceful shutdown + exit. Invariant: only dev.ts and
+    // lifecycle.ts register these signals in this process — a stray third
+    // listener degrades the build-phase Ctrl+C to the second-signal path.
     if (proc.listenerCount(signal) <= 1) proc.exit(0)
   }
 

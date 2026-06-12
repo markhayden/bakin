@@ -99,7 +99,7 @@ The dev-client bundle itself is disk-only — written to `packages/host/public/_
 
 - **Build phase (sole listener):** the dev handler kills the tailwind child and owns `process.exit(0)` — Ctrl+C during the prestart builds exits promptly.
 - **After server boot:** `lifecycle.registerShutdownHandlers()` has added its own listener on the same signals. The dev handler detects this via `process.listenerCount(signal) > 1`, kills tailwind, and falls through — the lifecycle listener then runs the full graceful chain (plugins → dispatch/watchdog/doctor → watcher → `search.shutdown()` which stops the antfly child → SSE → HTTP → audit → ledger → server lock) and owns the exit. The dev handler must NEVER call `process.exit` here: that preempts the chain and orphans antfly on its port (#459 defect 1).
-- **Second signal (escape hatch):** a repeated SIGINT/SIGTERM while a graceful shutdown is hung logs a warning and force-exits 130.
+- **Second signal (escape hatch):** a repeated SIGINT/SIGTERM while a graceful shutdown is hung logs a warning and force-exits (130 for SIGINT, 143 for SIGTERM).
 - A `process.on('exit')` hook kills tailwind on every JS-level exit path regardless of who calls `process.exit`.
 
 Known gap: a signal landing after antfly is spawned but before `registerShutdownHandlers()` (end of `server.ts` `main()`) exits via the dev path and can orphan antfly — accepted in the spec; the adapter-side sync exit hook on the antfly-zig branch (PR #457) covers it. Separate pre-existing leak: killing the tailwind `bunx` wrapper can orphan the underlying node `tailwindcss` process (grandchild not in the wrapper's signal path).

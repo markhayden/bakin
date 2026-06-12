@@ -6,8 +6,9 @@
  * Uses a fake process object: emitting real signals on the test process
  * would kill the runner.
  */
-import { describe, expect, test } from 'bun:test'
 import { EventEmitter } from 'node:events'
+
+import { describe, expect, test } from 'bun:test'
 
 import { registerDevShutdown } from '../../scripts/dev-shutdown'
 
@@ -82,20 +83,23 @@ describe('registerDevShutdown', () => {
     expect(h.warnings[0]).toContain('SIGINT')
   })
 
-  test('second signal (mixed signals) forces exit 130', () => {
+  test('second signal (mixed signals) forces exit with the second signal code', () => {
     const h = setup()
     h.proc.on('SIGINT', () => {})
     h.proc.on('SIGTERM', () => {})
     h.proc.emit('SIGINT')
     h.proc.emit('SIGTERM')
-    expect(h.proc.exitCalls).toEqual([130])
+    expect(h.proc.exitCalls).toEqual([143])
   })
 
-  test('tailwind is killed only once across first signal + exit hook', () => {
+  test('signal then exit event calls killTailwind twice — dedup is the caller\'s job', () => {
+    // The module does not dedupe; scripts/dev.ts guards with
+    // `!tailwindChild.killed` so the double call is harmless there.
     const h = setup()
     h.proc.on('SIGTERM', () => {})
     h.proc.emit('SIGTERM')
-    expect(h.tailwindKills).toBe(1)
+    h.proc.emit('exit')
+    expect(h.tailwindKills).toBe(2)
   })
 
   test('exit event kills tailwind (covers every JS exit path)', () => {
