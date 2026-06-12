@@ -12,10 +12,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@makinbakin/sdk/ui"
-import { useAgentStore } from '@makinbakin/sdk/hooks'
+import { useAgentStore, useRouter } from '@makinbakin/sdk/hooks'
 import type { OrgTeam } from '../types'
 
 export function TeamManager() {
+  const router = useRouter()
   const teams = useAgentStore((s) => s.teams)
   const agents = useAgentStore((s) => s.agents)
   const reload = useAgentStore((s) => s.load)
@@ -103,7 +104,7 @@ export function TeamManager() {
         <div className="space-y-3">
           <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-3">
             <div className="flex-1 min-w-0">
-              <a href="/team/teams/global" className="text-sm font-semibold hover:underline">Global</a>
+              <button type="button" onClick={() => router.push('/team/teams/global')} className="text-sm font-semibold hover:underline text-left">Global</button>
               <div className="text-xs text-muted-foreground">Shared context for every agent</div>
             </div>
             <code className="text-[10px] text-muted-foreground font-mono">global</code>
@@ -115,9 +116,9 @@ export function TeamManager() {
                 className="flex items-center gap-3 rounded-lg border border-border bg-card p-3"
               >
                 <div className="flex-1 min-w-0">
-                  <a href={`/team/teams/${encodeURIComponent(team.id)}`} className="text-sm font-semibold hover:underline">
+                  <button type="button" onClick={() => router.push(`/team/teams/${encodeURIComponent(team.id)}`)} className="text-sm font-semibold hover:underline text-left">
                     {team.label}
-                  </a>
+                  </button>
                   <div className="text-xs text-muted-foreground">
                     Reports to{' '}
                     <select
