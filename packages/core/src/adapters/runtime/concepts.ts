@@ -249,9 +249,13 @@ export interface RuntimeSessionStoreStats {
   agentId: string
   /** Live entries in the runtime's session store for this agent. */
   storeEntries: number
-  /** Files in the agent's sessions directory, including the store itself. */
+  /**
+   * Top-level files in the agent's sessions directory (session artifacts,
+   * including the store itself) — cache subtrees are excluded so the
+   * orphaned-artifact ratio stays meaningful.
+   */
   fileCount: number
-  /** Total bytes of the agent's sessions directory. */
+  /** Total bytes of the agent's sessions directory, subtrees included. */
   diskBytes: number
 }
 

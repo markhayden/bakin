@@ -110,6 +110,12 @@ describe('session-store system check', () => {
     expect(results.map((r) => r.status).sort()).toEqual(['error', 'warn'])
   })
 
+  it('returns ok for an empty stats list (no agents with session stores)', async () => {
+    const results = await checkSessionStore(runtimeWith([]))
+    expect(results).toHaveLength(1)
+    expect(results[0]?.status).toBe('ok')
+  })
+
   it('returns ok when the runtime does not expose storeStats', async () => {
     const results = await checkSessionStore({ sessions: { list: async () => [], get: async () => null } })
     expect(results).toHaveLength(1)

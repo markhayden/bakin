@@ -817,13 +817,23 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         if (!entry.isDirectory()) continue
         const sessionsDir = join(agentsDir, entry.name, 'sessions')
         if (!existsSync(sessionsDir)) continue
+        // Top-level files are session artifacts (transcripts, the store
+        // itself); subtrees like skills-prompts/ are cache disk pressure
+        // only and must not skew the orphan file count.
         let fileCount = 0
         let diskBytes = 0
-        for (const file of readdirSync(sessionsDir, { withFileTypes: true })) {
-          if (!file.isFile()) continue
-          fileCount += 1
-          diskBytes += statSync(join(sessionsDir, file.name)).size
+        const walk = (dir: string, topLevel: boolean) => {
+          for (const file of readdirSync(dir, { withFileTypes: true })) {
+            const path = join(dir, file.name)
+            if (file.isDirectory()) {
+              walk(path, false)
+            } else if (file.isFile()) {
+              if (topLevel) fileCount += 1
+              diskBytes += statSync(path).size
+            }
+          }
         }
+        walk(sessionsDir, true)
         let storeEntries = 0
         try {
           const store: unknown = JSON.parse(readFileSync(join(sessionsDir, 'sessions.json'), 'utf-8'))

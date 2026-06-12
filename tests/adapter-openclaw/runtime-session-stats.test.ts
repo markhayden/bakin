@@ -104,6 +104,22 @@ describe('OpenClaw runtime sessions.storeStats', () => {
     expect(broken?.fileCount).toBe(2)
   })
 
+  it('counts nested subtree bytes but only top-level files toward fileCount', async () => {
+    // Real stores carry skills-prompts/sha256/** caches: they are disk
+    // pressure (diskBytes) but not session artifacts (fileCount).
+    seedAgent('main', { store: '{}', artifacts: { 'a.jsonl': 'x'.repeat(10) } })
+    const nested = join(testDir, 'agents', 'main', 'sessions', 'skills-prompts', 'sha256')
+    mkdirSync(nested, { recursive: true })
+    writeFileSync(join(nested, 'cache.txt'), 'z'.repeat(40), 'utf-8')
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+    const main = ((await runtime.sessions.storeStats?.()) ?? []).find((s) => s.agentId === 'main')
+
+    expect(main?.fileCount).toBe(2) // sessions.json + a.jsonl only
+    expect(main?.diskBytes).toBe(2 + 10 + 40) // store + artifact + nested cache
+  })
+
   it('returns an empty list when no agents dir exists', async () => {
     const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
     const runtime = createOpenClawRuntimeAdapter()
