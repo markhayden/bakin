@@ -16,6 +16,8 @@ import { readTaskboard } from '../../../src/core/task-store'
 import type { HealthCheckResult, HealthRepairHandler } from '../../../packages/core/src/plugin-types'
 
 import { listDefinitions } from './parser'
+import { getAgentPackageSkills } from './agent-package-skill-registry'
+import { getPluginSkills } from '../../../src/lib/plugin-registry'
 import { listInstances } from './runtime'
 import {
   repairWorkflowSkillDrift,
@@ -182,18 +184,28 @@ export async function checkWorkflowDefinitions(contentDir: string): Promise<Heal
   const results: HealthCheckResult[] = []
   const skillsDir = join(contentDir, 'workflows', 'skills')
 
+  // Mirror the skill-loader's resolution tiers: a skill "exists" when a user
+  // file is on disk OR an agent package / plugin registered it. Checking the
+  // file alone false-positives whenever a packaged skill has no local shadow.
+  const registered = new Set([
+    ...getAgentPackageSkills().keys(),
+    ...getPluginSkills().keys(),
+  ])
+  const skillExists = (name: string): boolean =>
+    existsSync(join(skillsDir, `${name}.md`)) || registered.has(name)
+
   try {
     const defs = listDefinitions(contentDir)
     for (const { name, definition } of defs) {
       for (const step of definition.steps) {
         const skillName = (step as { skill?: string }).skill
-        if (skillName && !existsSync(join(skillsDir, `${skillName}.md`))) {
+        if (skillName && !skillExists(skillName)) {
           results.push(warn('workflow-definitions', `Workflow "${name}" step "${(step as { id: string }).id}" references skill "${skillName}" which does not exist`))
         }
         // Check parallel children too
         if ((step as { type?: string }).type === 'parallel' && 'steps' in step) {
           for (const child of (step as { steps: Array<{ id: string; skill?: string }> }).steps) {
-            if (child.skill && !existsSync(join(skillsDir, `${child.skill}.md`))) {
+            if (child.skill && !skillExists(child.skill)) {
               results.push(warn('workflow-definitions', `Workflow "${name}" parallel step "${child.id}" references skill "${child.skill}" which does not exist`))
             }
           }

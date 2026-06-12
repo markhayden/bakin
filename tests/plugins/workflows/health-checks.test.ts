@@ -252,6 +252,34 @@ steps:
     const results = await checkWorkflowDefinitions(testDir)
     expect(results.some(r => r.status === 'warn' && r.message.includes('missing-skill'))).toBe(true)
   })
+
+  it('resolves skills registered by agent packages (no local file shadow needed)', async () => {
+    const { registerAgentPackageSkill, unregisterAgentPackageSkills } = await import('../../../plugins/workflows/lib/agent-package-skill-registry')
+    registerAgentPackageSkill('pixel', 'packaged-skill', {
+      name: 'packaged-skill',
+      description: 'from the pixel package',
+      instructions: 'body',
+    } as never)
+    try {
+      writeFileSync(
+        join(definitionsDir, 'packaged-flow.yaml'),
+        `name: Packaged flow
+description: test
+version: 1
+steps:
+  - id: s1
+    label: Step 1
+    type: agent
+    agent: main
+    skill: packaged-skill
+`,
+      )
+      const results = await checkWorkflowDefinitions(testDir)
+      expect(results.some(r => r.message.includes('packaged-skill'))).toBe(false)
+    } finally {
+      unregisterAgentPackageSkills('pixel')
+    }
+  })
 })
 
 describe('checkStaleWorkflowInstances', () => {
