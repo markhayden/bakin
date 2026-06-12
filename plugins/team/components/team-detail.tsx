@@ -204,8 +204,8 @@ export function TeamDetail({ teamId }: { teamId: string }) {
         <CardContent className="space-y-2">
           <p className="text-xs text-muted-foreground">
             {isGlobal
-              ? 'Reaches EVERY agent’s AGENTS.md managed block on sync. Content inside a bakin:managed block (role files) is Bakin-owned and re-asserted automatically.'
-              : 'Reaches every member’s AGENTS.md managed block on sync.'}
+              ? 'Reaches every agent’s AGENTS.md via Bakin blocks on sync.'
+              : 'Reaches every member’s AGENTS.md via Bakin blocks on sync.'}
           </p>
           <Textarea
             value={content ?? ''}
