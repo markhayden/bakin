@@ -49,7 +49,7 @@ scripts/dev.ts (process.env.BAKIN_DEV = '1', BAKIN_DEV_HOTRELOAD = '1')
     │     • `bakin dev --no-color` sets NO_COLOR=1
     ├── Initial prestart build (css, vendors, plugins, host-shell)
     ├── Bun.build(dev-client.ts → public/__bakin-dev/client.js)
-    ├── Spawn bunx @tailwindcss/cli --watch=always   (child process)
+    ├── Spawn bun node_modules/.bin/tailwindcss --watch=always   (child process)
     ├── chokidar watchers:
     │     • packages/host/src/**         → rebuild shell → dev:reload
     │     • plugins/<id>/<devWatch>       → rebuildOnePlugin(id) → dev:hot-swap
@@ -102,7 +102,9 @@ The dev-client bundle itself is disk-only — written to `packages/host/public/_
 - **Second signal (escape hatch):** a repeated SIGINT/SIGTERM while a graceful shutdown is hung logs a warning and force-exits (130 for SIGINT, 143 for SIGTERM).
 - A `process.on('exit')` hook kills tailwind on every JS-level exit path regardless of who calls `process.exit`.
 
-Known gap: a signal landing after antfly is spawned but before `registerShutdownHandlers()` (end of `server.ts` `main()`) exits via the dev path and can orphan antfly — accepted in the spec; the adapter-side sync exit hook on the antfly-zig branch (PR #457) covers it. Separate pre-existing leak: killing the tailwind `bunx` wrapper can orphan the underlying node `tailwindcss` process (grandchild not in the wrapper's signal path).
+Known gap: a signal landing after antfly is spawned but before `registerShutdownHandlers()` (end of `server.ts` `main()`) exits via the dev path and can orphan antfly — accepted in the spec; the adapter-side sync exit hook on the antfly-zig branch (PR #457) covers it.
+
+The tailwind child is spawned as the lockfile-pinned `node_modules/.bin/tailwindcss` directly under bun — the child pid IS the tailwind process, so `kill('SIGTERM')` reaches it. It was previously spawned via `bunx`, which inserted a wrapper chain (volta-shim → bunx → node) that ate the signal and orphaned the node `--watch` grandchild, and downloaded floating `@tailwindcss/cli@latest` instead of the pinned devDependency. Comment-only CSS edits may not rewrite the output file (identical result, mtime unchanged) — use an output-changing rule when verifying the watch pipeline.
 
 ## Imitation Crab
 

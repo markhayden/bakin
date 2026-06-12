@@ -66,6 +66,7 @@ const REPO_ROOT = resolve(import.meta.dir, '..')
 const PLUGINS_DIR = join(REPO_ROOT, 'plugins')
 const DEV_CLIENT_ENTRY = join(REPO_ROOT, 'packages/host/src/dev-client/client.ts')
 const DEV_CLIENT_OUTDIR = join(REPO_ROOT, 'packages/host/public/__bakin-dev')
+const TAILWIND_BIN = join(REPO_ROOT, 'node_modules/.bin/tailwindcss')
 
 const CORE_PLUGINS = [
   'tasks', 'team', 'workflows', 'assets',
@@ -218,10 +219,14 @@ function startTailwindWatch(): void {
   // --watch=always keeps the watcher alive when stdin is closed (we use
   // stdio:'ignore' for stdin). Plain --watch exits on stdin close and
   // silently stops emitting output.
+  // Spawn the lockfile-pinned local bin directly under bun: the child pid
+  // IS the tailwind process, so kill('SIGTERM') reaches it. bunx added a
+  // wrapper chain that ate the signal (orphaned node grandchild) and
+  // downloaded floating @tailwindcss/cli@latest instead of the devDep.
   tailwindChild = nodeSpawn(
-    'bunx',
+    'bun',
     [
-      '@tailwindcss/cli',
+      TAILWIND_BIN,
       '-i', './packages/host/src/globals.css',
       '-o', './packages/host/public/globals.css',
       '--watch=always',
