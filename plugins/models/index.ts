@@ -14,7 +14,7 @@ import {
   writePersistedCache,
   clearPersistedCache,
 } from './lib/models-cache'
-import { getKnownModel, getKnownProvider } from './data/known-models'
+import { getKnownModel, getKnownProvider, formatCostRange } from './data/known-models'
 
 // ---------------------------------------------------------------------------
 // Runtime restart sync tracking (globalThis-backed so every reach into this module
@@ -214,7 +214,9 @@ async function loadConfiguredModelsFromRuntime(ctx: PluginContext): Promise<Avai
         // Unknown models get none of these and render plain in the UI.
         description: known?.description,
         bestFor: known?.bestFor,
-        costRange: known?.costRange,
+        // Display cost: literal for non-token-priced models, derived from
+        // structured pricing for LLMs. Unknown models get neither.
+        costRange: known?.costRange ?? (known?.pricing ? formatCostRange(known.pricing) : undefined),
         contextWindowDisplay: known?.contextWindow,
         kind: known?.kind,
         brandIconSlug: known?.brandIconSlug,

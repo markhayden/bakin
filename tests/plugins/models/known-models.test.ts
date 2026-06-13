@@ -39,6 +39,8 @@ import {
   KNOWN_PROVIDERS,
   getKnownModel,
   getKnownProvider,
+  formatCostRange,
+  computeCostUsdMicros,
 } from '../../../plugins/models/data/known-models'
 
 describe('known-models — seed shape', () => {
@@ -102,6 +104,54 @@ describe('getKnownModel', () => {
 
   it('does not accidentally match on partial prefix', () => {
     expect(getKnownModel('anthropic/claude-sonnet')).toBeUndefined()
+  })
+})
+
+describe('structured pricing', () => {
+  it('cloud LLM entries carry structured pricing (numbers, not a string)', () => {
+    const sonnet = getKnownModel('anthropic/claude-sonnet-4-6')!
+    expect(sonnet.pricing).toBeDefined()
+    expect(sonnet.pricing!.inputPer1M).toBe(3)
+    expect(sonnet.pricing!.outputPer1M).toBe(15)
+    expect(sonnet.pricing!.updatedAt).toBeTruthy()
+    // LLMs with pricing don't carry a redundant literal costRange string.
+    expect(sonnet.costRange).toBeUndefined()
+  })
+
+  it('local LLM entries keep a literal costRange and have no token pricing', () => {
+    const llama = getKnownModel('ollama/llama-3.3')!
+    expect(llama.pricing).toBeUndefined()
+    expect(llama.costRange).toBe('Local (no API cost)')
+  })
+
+  it('image/video entries keep their literal costRange', () => {
+    const img = KNOWN_MODELS.find(m => m.kind === 'image' && m.costRange)!
+    expect(img.costRange).toBeTruthy()
+    expect(img.pricing).toBeUndefined()
+  })
+
+  it('formatCostRange renders a display string from structured pricing', () => {
+    expect(formatCostRange({ inputPer1M: 3, outputPer1M: 15, updatedAt: '2026-06' }))
+      .toBe('$3 in / $15 out per 1M')
+    expect(formatCostRange({ inputPer1M: 0.3, outputPer1M: 2.5, updatedAt: '2026-06' }))
+      .toBe('$0.30 in / $2.50 out per 1M')
+  })
+
+  it('computeCostUsdMicros multiplies tokens by per-1M pricing', () => {
+    // 1.5M input @ $3 = $4.50; 0.32M output @ $15 = $4.80 → $9.30 → 9_300_000 micro-$
+    const micros = computeCostUsdMicros(
+      { input: 1_500_000, output: 320_000 },
+      { inputPer1M: 3, outputPer1M: 15, updatedAt: '2026-06' },
+    )
+    expect(micros).toBe(9_300_000)
+  })
+
+  it('computeCostUsdMicros returns null when pricing is absent', () => {
+    expect(computeCostUsdMicros({ input: 1000, output: 500 }, undefined)).toBeNull()
+  })
+
+  it('computeCostUsdMicros returns null when usage has no token counts', () => {
+    expect(computeCostUsdMicros({}, { inputPer1M: 3, outputPer1M: 15, updatedAt: '2026-06' })).toBeNull()
   })
 })
 
