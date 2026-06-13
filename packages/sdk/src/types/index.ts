@@ -827,15 +827,30 @@ export interface SearchResponse {
   }
 }
 
+/** Per-index health within a registered content-type table. */
+export interface SearchHealthIndex {
+  name: string
+  type: string
+  totalIndexed: number
+  walBacklog: number
+  error?: string
+  rebuilding: boolean
+  backfillProgress?: number
+}
+
+/** Health of a single registered content-type table. */
+export interface SearchHealthTable {
+  table: string
+  pluginId: string
+  stats: Record<string, unknown> | null
+  indexHealth?: SearchHealthIndex[]
+  healthy: boolean
+}
+
 /** Health snapshot reported by the search adapter (per-table state). */
 export interface SearchHealthSnapshot {
   enabled: boolean
-  tables: Array<{
-    table: string
-    pluginId: string
-    stats: Record<string, unknown> | null
-    healthy: boolean
-  }>
+  tables: SearchHealthTable[]
 }
 
 /** Atomic transform operation applied to an indexed document. */
@@ -847,13 +862,47 @@ export interface SearchTransformOp {
 
 /** Search API exposed via `ctx.search` — index, query, transform documents. */
 export interface SearchAPI {
+  /**
+   * Register a content type this plugin will index. Must be called during
+   * `activate()`. Creates the search table if needed. Prefer
+   * `registerFileBackedContentType` when the source of truth is a file under
+   * `~/.bakin/`; use this raw form only for non-filesystem sources.
+   */
   registerContentType(def: SearchContentTypeDefinition): void
+  /**
+   * Register a file-backed content type. Wraps `registerContentType` and wires
+   * watcher sync + unlink hooks scoped to the declared file patterns, plus a
+   * startup reconcile that detects mtime drift on boot.
+   */
   registerFileBackedContentType(def: FileBackedContentTypeDefinition): void
+  /** Index or update a document. Fire-and-forget. */
   index(key: string, doc: Record<string, unknown>): Promise<void>
+  /** Remove a document from the index. */
   remove(key: string): Promise<void>
+  /** Atomic field update without re-embedding. For metadata-only changes. */
   transform(key: string, operations: SearchTransformOp[]): Promise<void>
+  /** Search this plugin's content type. */
   query(params: SearchQueryParams): Promise<SearchResponse>
+  /** Global search adapter and registered-table health snapshot. */
   health?(): Promise<SearchHealthSnapshot>
+  /**
+   * Plugin-scoped maintenance operations for indexers that own non-file-backed
+   * tables. Intentionally narrower than the raw adapter: callers can only
+   * touch their own registered content type.
+   */
+  maintenance?: SearchMaintenanceAPI
+}
+
+/** Plugin-scoped maintenance for indexers owning non-file-backed tables. */
+export interface SearchMaintenanceAPI {
+  /** Whether the backing search service is reachable. */
+  available(): Promise<boolean>
+  /** Iterate every document in this plugin's registered content type. */
+  scan(): AsyncIterable<{ key: string; document: Record<string, unknown> }>
+  /** Remove several documents from this plugin's registered content type. */
+  batchRemove(keys: string[]): Promise<number>
+  /** Drop and recreate this plugin's registered content type table. */
+  resetContentType(): Promise<void>
 }
 
 // ---------------------------------------------------------------------------
