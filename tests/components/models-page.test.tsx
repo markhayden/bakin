@@ -179,9 +179,6 @@ describe('ModelsPage component', () => {
       if (url === '/api/plugins/models/aliases' && method === 'GET') {
         return jsonResponse({ aliases: aliasesState })
       }
-      if (url === '/api/plugins/models/profiles' && method === 'GET') {
-        return jsonResponse({ profiles: [] })
-      }
       if (url === '/api/plugins/models/defaults' && method === 'POST') {
         configState = {
           ...configState,

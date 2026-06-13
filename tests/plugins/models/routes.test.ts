@@ -143,14 +143,12 @@ describe('Models Plugin Activation', () => {
       'GET /aliases',
       'GET /available',
       'GET /config',
-      'GET /profiles',
       'GET /runtime/status',
       'POST /aliases',
       'POST /config',
       'POST /defaults',
       'POST /refresh',
       'POST /runtime/restart',
-      'PUT /profiles',
     ])
   })
 
@@ -179,8 +177,8 @@ describe('Models Plugin Activation', () => {
   it('has valid settings schema', () => {
     expect(modelsPlugin.settingsSchema).toBeDefined()
     const fields = modelsPlugin.settingsSchema!.fields
-    expect(fields.length).toBe(2)
-    expect(fields.map((f) => f.key).sort()).toEqual(['defaultModel', 'showUsageMetrics'])
+    expect(fields.length).toBe(1)
+    expect(fields.map((f) => f.key).sort()).toEqual(['defaultModel'])
   })
 })
 
@@ -522,41 +520,6 @@ describe('POST /aliases', () => {
     expect(aliases.opus).toBeDefined()
 
     writeRuntimeConfig() // reset
-  })
-})
-
-describe('GET /profiles', () => {
-  it('returns default profiles when none saved', async () => {
-    const route = findRoute(activated.routes, 'GET', '/profiles')!
-    const { status, body } = await callRoute(route, activated.ctx)
-    expect(status).toBe(200)
-
-    const profiles = body.profiles as Array<Record<string, unknown>>
-    expect(profiles.length).toBeGreaterThan(0)
-    expect(profiles[0].taskType).toBeDefined()
-    expect(profiles[0].recommendedModel).toBeDefined()
-  })
-})
-
-describe('PUT /profiles', () => {
-  it('validates profile structure', async () => {
-    const route = findRoute(activated.routes, 'PUT', '/profiles')!
-    const { status } = await callRoute(route, activated.ctx, {
-      body: { profiles: [{ taskType: '', recommendedModel: 'test', notes: 'x' }] },
-    })
-    expect(status).toBe(400)
-  })
-
-  it('saves valid profiles', async () => {
-    const route = findRoute(activated.routes, 'PUT', '/profiles')!
-    const newProfiles = [
-      { taskType: 'Testing', recommendedModel: 'claude-haiku-4-5', notes: 'Quick iteration' },
-    ]
-    const { body: data } = await callRoute(route, activated.ctx, {
-      body: { profiles: newProfiles },
-    })
-    expect(data.ok).toBe(true)
-    expect(activated.ctx.updateSettings).toHaveBeenCalledWith({ taskProfiles: newProfiles })
   })
 })
 

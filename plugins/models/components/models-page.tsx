@@ -3,7 +3,7 @@
 // React
 import { useEffect, useState, useCallback } from 'react'
 // External
-import { ArrowDown, ArrowUp, Plus, X, Users, Layers, RefreshCw, AlertTriangle } from 'lucide-react'
+import { ArrowDown, ArrowUp, Plus, X, Users, RefreshCw, AlertTriangle } from 'lucide-react'
 // Internal
 import { Button } from "@makinbakin/sdk/ui"
 import { PluginHeader } from "@makinbakin/sdk/components"
@@ -21,7 +21,7 @@ import { AgentAvatar } from "@makinbakin/sdk/components"
 import { ModelSelect } from "@makinbakin/sdk/components"
 import { useRuntimeStatus } from "@makinbakin/sdk/hooks"
 // Relative
-import type { AgentModelConfig, AvailableModel, ModelsConfigResponse, TaskProfile } from '../types'
+import type { AgentModelConfig, AvailableModel, ModelsConfigResponse } from '../types'
 import { BrandIcon } from './brand-icon'
 
 // ---------------------------------------------------------------------------
@@ -52,7 +52,6 @@ const TABS = [
   { id: 'agents', label: 'Agent Config' },
   { id: 'available', label: 'Available Models' },
   { id: 'aliases', label: 'Aliases' },
-  { id: 'profiles', label: 'Task Profiles' },
 ] as const
 
 // ---------------------------------------------------------------------------
@@ -103,7 +102,6 @@ export function ModelsPage() {
   const [modelsLoaded, setModelsLoaded] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [aliases, setAliases] = useState<Record<string, string>>({})
-  const [profiles, setProfiles] = useState<TaskProfile[]>([])
   const [pendingOwn, setPendingOwn] = useState<Record<string, string>>({})
   const [pendingSub, setPendingSub] = useState<Record<string, string>>({})
   const [defaultModel, setDefaultModel] = useState('')
@@ -112,7 +110,6 @@ export function ModelsPage() {
   const [pendingDefaultModel, setPendingDefaultModel] = useState<string | null>(null)
   const [pendingDefaultSubagentModel, setPendingDefaultSubagentModel] = useState<string | null | undefined>(undefined)
   const [pendingFallbackModels, setPendingFallbackModels] = useState<string[] | null>(null)
-  const [pendingProfiles, setPendingProfiles] = useState<TaskProfile[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<string | null>(null)
   const runtimeStatus = useRuntimeStatus()
@@ -192,23 +189,11 @@ export function ModelsPage() {
     }
   }, [])
 
-  const fetchProfiles = useCallback(async () => {
-    try {
-      const res = await fetch('/api/plugins/models/profiles')
-      if (!res.ok) throw new Error(`Profiles fetch failed (${res.status})`)
-      const data = await res.json()
-      if (data.profiles) setProfiles(data.profiles)
-    } catch (err) {
-      console.error('Failed to fetch profiles:', err)
-    }
-  }, [])
-
   useEffect(() => {
     fetchConfig()
     fetchAvailable()
     fetchAliases()
-    fetchProfiles()
-  }, [fetchConfig, fetchAvailable, fetchAliases, fetchProfiles])
+  }, [fetchConfig, fetchAvailable, fetchAliases])
 
   // Auto-refresh in the background when the served cache was stale.
   // We surface the cached data immediately; the refresh swaps rows
@@ -356,47 +341,6 @@ export function ModelsPage() {
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Profile actions
-  // -------------------------------------------------------------------------
-  const updateProfile = (index: number, field: keyof TaskProfile, value: string) => {
-    const current = pendingProfiles ?? [...profiles]
-    const updated = [...current]
-    updated[index] = { ...updated[index], [field]: value }
-    setPendingProfiles(updated)
-  }
-
-  const addProfile = () => {
-    const current = pendingProfiles ?? [...profiles]
-    setPendingProfiles([...current, { taskType: '', recommendedModel: '', notes: '' }])
-  }
-
-  const removeProfile = (index: number) => {
-    const current = pendingProfiles ?? [...profiles]
-    setPendingProfiles(current.filter((_, i) => i !== index))
-  }
-
-  const saveProfiles = async () => {
-    if (!pendingProfiles) return
-    setSaving('profiles')
-    try {
-      const res = await fetch('/api/plugins/models/profiles', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ profiles: pendingProfiles }),
-      })
-      const data = await res.json()
-      if (data.ok) {
-        setProfiles(pendingProfiles)
-        setPendingProfiles(null)
-      }
-    } catch (err) {
-      console.error('Failed to save profiles:', err)
-    } finally {
-      setSaving(null)
-    }
-  }
-
   const hasPending = Object.keys(pendingOwn).length > 0 || Object.keys(pendingSub).length > 0
   const defaultsDirty = pendingDefaultModel !== null || pendingDefaultSubagentModel !== undefined || pendingFallbackModels !== null
 
@@ -415,14 +359,12 @@ export function ModelsPage() {
   const effectiveFallbackModels = pendingFallbackModels ?? fallbackModels
   const fallbackCandidates = modelOptions.filter((model) => model.id !== effectiveDefaultModel)
 
-  const displayProfiles = pendingProfiles ?? profiles
-
   return (
     <div className="p-6 flex flex-col flex-1 gap-6">
       <PluginHeader
         title="Models"
         count={modelOptions.length}
-        subtitle="Agent model config, aliases, and task profiles"
+        subtitle="Agent model config and aliases"
       />
 
       {/* Error banner */}
@@ -862,86 +804,6 @@ export function ModelsPage() {
         </div>
       )}
 
-      {tab === 'profiles' && (
-        <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">
-                Map task types to recommended models. Not yet wired to dispatch — used as configuration reference.
-              </p>
-              <div className="flex items-center gap-2">
-                {pendingProfiles && (
-                  <>
-                    <Button variant="outline" size="xs" onClick={() => setPendingProfiles(null)}>
-                      Discard
-                    </Button>
-                    <Button size="xs" onClick={saveProfiles} disabled={saving === 'profiles'}>
-                      {saving === 'profiles' ? 'Saving...' : 'Save Profiles'}
-                    </Button>
-                  </>
-                )}
-                <Button variant="outline" size="xs" onClick={addProfile}>
-                  Add Profile
-                </Button>
-              </div>
-            </div>
-
-            {displayProfiles.length === 0 ? (
-              <EmptyState icon={Layers} title="No task profiles configured" />
-            ) : (
-              <div className="overflow-hidden rounded-xl border border-border">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-card">
-                      <TableHead>Task Type</TableHead>
-                      <TableHead>Recommended Model</TableHead>
-                      <TableHead>Notes</TableHead>
-                      <TableHead className="w-[60px]" />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {displayProfiles.map((row, i) => (
-                      <TableRow key={i}>
-                        <TableCell>
-                          <Input
-                            value={row.taskType}
-                            onChange={(e) => updateProfile(i, 'taskType', e.target.value)}
-                            className="h-8 text-sm"
-                            placeholder="e.g. Heartbeat check"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <ModelSelect
-                            value={row.recommendedModel}
-                            onChange={(v) => updateProfile(i, 'recommendedModel', v)}
-                            models={modelOptions}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            value={row.notes}
-                            onChange={(e) => updateProfile(i, 'notes', e.target.value)}
-                            className="h-8 text-sm"
-                            placeholder="e.g. Fast, cheap"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="xs"
-                            onClick={() => removeProfile(i)}
-                            className="text-muted-foreground hover:text-destructive"
-                          >
-                            Remove
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-        </div>
-      )}
     </div>
   )
 }

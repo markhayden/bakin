@@ -66,16 +66,7 @@ export interface AliasesResponse {
   aliases: Record<string, string>
 }
 
-/** Editable task-to-model mapping (stored in plugin settings) */
-export interface TaskProfile {
-  taskType: string
-  recommendedModel: string
-  notes: string
-}
-
 /** Shape of models plugin settings */
 export interface ModelsPluginSettings {
-  showUsageMetrics?: boolean
   defaultModel?: string
-  taskProfiles?: TaskProfile[]
 }

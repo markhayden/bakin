@@ -1,6 +1,6 @@
 /**
  * Models plugin — server entry point.
- * API routes for model config, available models, aliases, task profiles, and defaults.
+ * API routes for model config, available models, aliases, and defaults.
  */
 // External
 import { z } from 'zod'
@@ -8,7 +8,7 @@ import { z } from 'zod'
 import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { definePlugin, defineRoute } from '@bakin/core/routing'
 // Relative
-import type { AgentModelConfig, AvailableModel, TaskProfile, ModelsPluginSettings } from './types'
+import type { AgentModelConfig, AvailableModel } from './types'
 import {
   readPersistedCache,
   writePersistedCache,
@@ -320,18 +320,6 @@ function readAliases(config: RuntimeModelConfig): Record<string, string> {
 }
 
 // ---------------------------------------------------------------------------
-// Task profiles defaults
-// ---------------------------------------------------------------------------
-const DEFAULT_TASK_PROFILES: TaskProfile[] = [
-  { taskType: 'Heartbeat check', recommendedModel: 'claude-haiku-4-5-20251001', notes: 'Fast, cheap' },
-  { taskType: 'Content writing', recommendedModel: 'claude-sonnet-4-6-20250514', notes: 'Quality output' },
-  { taskType: 'Image brief', recommendedModel: 'claude-sonnet-4-6-20250514', notes: 'Creative' },
-  { taskType: 'Video production', recommendedModel: 'claude-sonnet-4-6-20250514', notes: 'Creative' },
-  { taskType: 'Code/development', recommendedModel: 'claude-opus-4-6-20250514', notes: 'Complex reasoning' },
-  { taskType: 'Orchestration', recommendedModel: 'claude-sonnet-4-6-20250514', notes: 'Multi-step planning' },
-]
-
-// ---------------------------------------------------------------------------
 // Zod schemas for request validation
 // ---------------------------------------------------------------------------
 const ConfigUpdateSchema = z.object({
@@ -352,15 +340,6 @@ const AliasActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('prepopulate') }),
 ]).or(z.object({ aliases: z.record(z.string(), z.string()) }))
 
-const TaskProfileSchema = z.object({
-  taskType: z.string().min(1),
-  recommendedModel: z.string().min(1),
-  notes: z.string(),
-})
-
-const TaskProfilesUpdateSchema = z.object({
-  profiles: z.array(TaskProfileSchema),
-})
 
 // ---------------------------------------------------------------------------
 // Response shapes
@@ -606,40 +585,6 @@ const routes = [
   }),
 
   defineRoute({
-    path: '/profiles',
-    method: 'GET',
-    summary: 'List task profiles',
-    responses: { 200: passthrough, 500: errorResponse },
-    handler: async (_req, ctx) => {
-      try {
-        const settings = ctx.getSettings<ModelsPluginSettings>()
-        const profiles = settings.taskProfiles ?? DEFAULT_TASK_PROFILES
-        return Response.json({ profiles })
-      } catch (err) {
-        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
-      }
-    },
-  }),
-
-  defineRoute({
-    path: '/profiles',
-    method: 'PUT',
-    summary: 'Replace task profiles',
-    body: TaskProfilesUpdateSchema,
-    responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
-    handler: async (_req, ctx, { body }) => {
-      try {
-        (ctx as unknown as PluginContext).updateSettings({ taskProfiles: body.profiles })
-        ctx.activity.audit('profiles.updated', 'system', { count: body.profiles.length })
-        ctx.activity.log('system', `Updated ${body.profiles.length} task profiles`, { category: 'models' })
-        return Response.json({ ok: true })
-      } catch (err) {
-        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
-      }
-    },
-  }),
-
-  defineRoute({
     path: '/runtime/status',
     method: 'GET',
     summary: 'Runtime config sync status',
@@ -686,7 +631,6 @@ const modelsPlugin: BakinPlugin = definePlugin({
 
   settingsSchema: {
     fields: [
-      { key: 'showUsageMetrics', type: 'boolean', label: 'Show usage metrics', description: 'Display token usage and cost estimates', default: true },
       { key: 'defaultModel', type: 'select', label: 'Default model', description: 'Default model for new agents', options: [{ value: 'openai-codex/gpt-5.4', label: 'GPT-5.4' }, { value: 'anthropic/claude-sonnet-4-6', label: 'Claude Sonnet 4.6' }, { value: 'anthropic/claude-opus-4-6', label: 'Claude Opus 4.6' }], default: 'openai-codex/gpt-5.4' },
     ],
   },
