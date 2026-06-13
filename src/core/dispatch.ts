@@ -9,8 +9,8 @@ import { getSettings } from './settings'
 import { appendAudit } from './audit'
 import { recordUsage } from './usage'
 import { getAppServices } from './app-services'
-import { getRuntimeMainAgentId, RuntimeError, RuntimeTurnError } from '@bakin/core/adapters/runtime'
-import { claimNextRun, currentSeq, loseRun, settleRun, type ClaimNextRunResult } from './execution-ledger'
+import { getRuntimeMainAgentId, RuntimeError, RuntimeTurnError, type MessageResult } from '@bakin/core/adapters/runtime'
+import { claimNextRun, currentSeq, loseRun, settleRun, recordRunCost, type ClaimNextRunResult } from './execution-ledger'
 import { getBootId } from './boot-id'
 import { getHookRegistry } from '../lib/plugin-registry'
 import {
@@ -38,13 +38,57 @@ const IMAGE_MCPORTER_TIMEOUT_MS = 600000
  * sends (orchestrator/watchdog/doctor) deliberately stay in the agent's
  * default session and don't go through here.
  */
-async function sendDispatchMessage(agentId: string, content: string, threadId: string): Promise<void> {
-  await getAppServices().runtime.messaging.send({
+async function sendDispatchMessage(agentId: string, content: string, threadId: string): Promise<MessageResult> {
+  return getAppServices().runtime.messaging.send({
     agentId,
     content,
     threadId,
     metadata: { oversizedOutputBytes: getSettings().dispatch.oversizedOutputBytes },
   })
+}
+
+/**
+ * Record the cost of a settled turn. The threadId IS the ledger run id, so
+ * the row is first-write-wins idempotent. Pricing is delegated to the models
+ * plugin via the `models.priceTurn` hook (core stays pricing-agnostic);
+ * absent plugin → null model/cost, tokens still recorded ("unmetered"). The
+ * same data also feeds the live usage recorder. Never throws into the settle
+ * path — a metering failure must not fail a successful turn.
+ */
+async function recordTurnCost(runId: string, taskId: string, agent: string, result: MessageResult): Promise<void> {
+  try {
+    const usage = result.usage
+    const priced = await hooks().invoke<{ model: string | null; costUsdMicros: number | null }>(
+      'models.priceTurn',
+      { agentId: agent, model: usage?.model, input: usage?.input, output: usage?.output },
+    )
+    const model = priced?.model ?? usage?.model ?? null
+    const costUsdMicros = priced?.costUsdMicros ?? null
+    recordRunCost({
+      runId,
+      taskId,
+      agent,
+      model: model ?? undefined,
+      inputTokens: usage?.input ?? null,
+      outputTokens: usage?.output ?? null,
+      totalTokens: usage?.total ?? null,
+      costUsdMicros,
+      occurredAt: Date.now(),
+    })
+    recordUsage({
+      kind: 'agent',
+      name: 'turn',
+      agent,
+      durationMs: null,
+      status: 'ok',
+      ...(usage?.input !== undefined ? { tokensIn: usage.input } : {}),
+      ...(usage?.output !== undefined ? { tokensOut: usage.output } : {}),
+      ...(costUsdMicros !== null ? { costUsdMicros } : {}),
+      meta: { taskId, ...(model ? { model } : {}) },
+    })
+  } catch (err) {
+    log.error('Failed to record turn cost', err, { runId, taskId, agent })
+  }
 }
 
 /**
@@ -915,7 +959,7 @@ function fireDispatchTurn(opts: {
   // completes — awaitDispatchIdle() must mean "all bookkeeping done", and a
   // turn's slot shouldn't free until its outcome has been recorded.
   const settled = sendDispatchMessage(opts.targetAgent, opts.message, opts.threadId)
-    .then(async () => {
+    .then(async (result) => {
       // Free the live-run slot FIRST — the settle reconciliation below (and
       // any ladder re-dispatch it schedules) must be able to claim anew.
       try {
@@ -923,6 +967,8 @@ function fireDispatchTurn(opts: {
       } catch (err) {
         log.error('Failed to settle run in ledger', err, { threadId: opts.threadId })
       }
+      // Attribute the turn's token/dollar cost (run_id == threadId).
+      await recordTurnCost(opts.threadId, opts.task.id, opts.targetAgent, result)
       let completedDecomposition = false
       await withStateLock(() => {
         const state = loadDispatchState(opts.contentDir)

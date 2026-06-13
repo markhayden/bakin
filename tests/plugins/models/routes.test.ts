@@ -160,8 +160,8 @@ describe('Models Plugin Activation', () => {
     ])
   })
 
-  it('registers 5 hooks', () => {
-    expect(activated.ctx.hooks.register).toHaveBeenCalledTimes(5)
+  it('registers 6 hooks', () => {
+    expect(activated.ctx.hooks.register).toHaveBeenCalledTimes(6)
     const hookNames = (activated.ctx.hooks.register as ReturnType<typeof mock>).mock.calls.map(
       (c: unknown[]) => c[0]
     )
@@ -171,7 +171,35 @@ describe('Models Plugin Activation', () => {
       'models.getEffectiveModel',
       'models.markConfigDirty',
       'models.markRuntimeRestarted',
+      'models.priceTurn',
     ])
+  })
+
+  describe('models.priceTurn hook', () => {
+    function priceTurnHandler(): (data: Record<string, unknown>) => Promise<{ model: string | null; costUsdMicros: number | null }> {
+      const call = (activated.ctx.hooks.register as ReturnType<typeof mock>).mock.calls.find(
+        (c: unknown[]) => c[0] === 'models.priceTurn'
+      )!
+      return call[1] as (data: Record<string, unknown>) => Promise<{ model: string | null; costUsdMicros: number | null }>
+    }
+
+    it('prices a turn from an explicit catalog model', async () => {
+      const result = await priceTurnHandler()({ model: 'anthropic/claude-sonnet-4-6', input: 1_000_000, output: 1_000_000 })
+      expect(result.model).toBe('anthropic/claude-sonnet-4-6')
+      // 1M in @ $3 + 1M out @ $15 = $18 → 18_000_000 micro-$
+      expect(result.costUsdMicros).toBe(18_000_000)
+    })
+
+    it('returns null cost for an unpriced model but still resolves the model id', async () => {
+      const result = await priceTurnHandler()({ model: 'mystery/unknown', input: 1000, output: 500 })
+      expect(result.model).toBe('mystery/unknown')
+      expect(result.costUsdMicros).toBeNull()
+    })
+
+    it('returns null cost when token counts are absent', async () => {
+      const result = await priceTurnHandler()({ model: 'anthropic/claude-sonnet-4-6' })
+      expect(result.costUsdMicros).toBeNull()
+    })
   })
 
   it('has valid settings schema', () => {

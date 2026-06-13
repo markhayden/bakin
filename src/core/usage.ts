@@ -20,6 +20,11 @@ export interface UsageEntry {
   agent: string | null
   durationMs: number | null
   status: 'ok' | 'error'
+  /** Per-turn token usage, when the entry is a completed agent turn. */
+  tokensIn?: number
+  tokensOut?: number
+  /** Estimated turn cost in micro-dollars; absent when unmetered. */
+  costUsdMicros?: number
   meta?: Record<string, unknown>
 }
 
@@ -94,6 +99,9 @@ export function recordUsage(entry: Omit<UsageEntry, 'ts'> & { ts?: string }): vo
     agent: entry.agent,
     durationMs: entry.durationMs,
     status: entry.status,
+    ...(entry.tokensIn !== undefined ? { tokensIn: entry.tokensIn } : {}),
+    ...(entry.tokensOut !== undefined ? { tokensOut: entry.tokensOut } : {}),
+    ...(entry.costUsdMicros !== undefined ? { costUsdMicros: entry.costUsdMicros } : {}),
     ...(entry.meta ? { meta: entry.meta } : {}),
   }
   state.entries.push(full)

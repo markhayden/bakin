@@ -14,7 +14,7 @@ import {
   writePersistedCache,
   clearPersistedCache,
 } from './lib/models-cache'
-import { getKnownModel, getKnownProvider, formatCostRange } from './data/known-models'
+import { getKnownModel, getKnownProvider, formatCostRange, computeCostUsdMicros } from './data/known-models'
 
 // ---------------------------------------------------------------------------
 // Runtime restart sync tracking (globalThis-backed so every reach into this module
@@ -663,6 +663,28 @@ const modelsPlugin: BakinPlugin = definePlugin({
       const result = await fetchAvailableModels(ctx as unknown as PluginContext)
       return result.models
     }, { label: 'List available models.', summary: 'Returns the model catalog available from the currently configured providers. Use it to populate pickers, validate assignments, or compare model options before saving config.', hookKind: 'rpc' })
+
+    // Price one completed agent turn: resolve the model that ran (explicit
+    // override → agent's effective model), look up catalog pricing, and
+    // return an estimated micro-dollar cost. Cost is null when the model has
+    // no catalog pricing (unmetered) — never fabricated. Core dispatch calls
+    // this on settle so it stays pricing-agnostic (the models plugin owns
+    // both per-agent model config and pricing).
+    ctx.hooks.register('models.priceTurn', async (data: Record<string, unknown>) => {
+      const agentId = data.agentId as string | undefined
+      const explicit = data.model as string | undefined
+      const input = typeof data.input === 'number' ? data.input : undefined
+      const output = typeof data.output === 'number' ? data.output : undefined
+
+      let model = explicit ? normalizeModelId(explicit) : null
+      if (!model && agentId) {
+        const agents = await resolveAgents(ctx as unknown as PluginContext)
+        model = agents.find((a) => a.agentId === agentId)?.effectiveModel ?? null
+      }
+      const pricing = model ? getKnownModel(model)?.pricing : undefined
+      const costUsdMicros = computeCostUsdMicros({ input, output }, pricing)
+      return { model, costUsdMicros }
+    }, { label: 'Price a turn.', summary: 'Resolves the model an agent turn ran on and returns an estimated cost in micro-dollars from the catalog pricing. Use it to attribute spend to a completed turn. Cost is null when the model is unpriced.', hookKind: 'rpc' })
 
 
     // -------------------------------------------------------------------
