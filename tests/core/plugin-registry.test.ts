@@ -155,7 +155,7 @@ const mockedRemoveExecToolsByPlugin = mock((pluginId: string) => {
   return removed
 })
 
-mock.module('../../scripts/lib/registry', () => ({
+mock.module('@/core/exec-tools/registry', () => ({
   addExecTool: mockedAddExecTool,
   getExecTool: (name: string) => mockedExecTools.get(name),
   getAllExecTools: () => [...mockedExecTools.values()],
@@ -209,7 +209,7 @@ describe('PluginRegistryImpl', () => {
     const audit = await import('@/core/audit')
     mockAppendAudit = vi.mocked(audit.appendAudit)
 
-    const scriptReg = await import('../../scripts/lib/registry')
+    const scriptReg = await import('@/core/exec-tools/registry')
     mockAddExecTool = vi.mocked(scriptReg.addExecTool)
 
     const apiDocs = await import('@/core/api-docs')

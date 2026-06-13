@@ -177,7 +177,7 @@ afterAll(() => {
 async function getTool(name: string) {
   // Importing search-tools triggers self-registration via addExecTool.
   await import('../../scripts/lib/search-tools')
-  const { getExecTool } = require('../../scripts/lib/registry') as typeof import('../../scripts/lib/registry')
+  const { getExecTool } = require('@/core/exec-tools/registry') as typeof import('@/core/exec-tools/registry')
   const tool = getExecTool(name)
   if (!tool) throw new Error(`Tool ${name} not registered`)
   return tool

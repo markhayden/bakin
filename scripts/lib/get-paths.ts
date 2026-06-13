@@ -3,7 +3,7 @@
  * System-level tool (stays in scripts, not plugin-specific).
  */
 import { getBakinPaths } from '../../src/core/content-dir'
-import { addExecTool } from './registry'
+import { addExecTool } from '../../src/core/exec-tools/registry'
 
 addExecTool({
   name: 'bakin_exec_get_paths',

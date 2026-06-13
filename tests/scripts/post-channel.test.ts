@@ -4,7 +4,7 @@ import { dirname, join } from 'path'
 import { tmpdir } from 'os'
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 
-mock.module('../../scripts/lib/registry', () => ({
+mock.module('@/core/exec-tools/registry', () => ({
   addExecTool: mock(),
 }))
 

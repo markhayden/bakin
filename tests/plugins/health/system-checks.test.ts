@@ -210,7 +210,7 @@ mock.module('../../../src/core/onboarding/plugin-assets', () => ({
   },
 }))
 
-mock.module('../../../scripts/lib/registry', () => ({
+mock.module('@/core/exec-tools/registry', () => ({
   getAllExecTools: () => [],
 }))
 

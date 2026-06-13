@@ -10,7 +10,7 @@ mock.module('../../src/core/task-service', () => ({
   logProgress: mock(),
 }))
 
-mock.module('../../scripts/lib/registry', () => ({
+mock.module('@/core/exec-tools/registry', () => ({
   addExecTool: mock(),
 }))
 

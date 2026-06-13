@@ -43,7 +43,7 @@ import type {
 } from '@bakin/core/plugin-types'
 import type { AppServices } from '@bakin/core/app-services'
 import { registerRouteDoc } from '../core/api-docs'
-import { addExecTool, removeExecToolsByPlugin } from '../../scripts/lib/registry'
+import { addExecTool, removeExecToolsByPlugin } from '../core/exec-tools/registry'
 import { runMigrations } from '../core/migrations'
 import { getContentDir } from '../core/content-dir'
 import { createLogger } from '../core/logger'

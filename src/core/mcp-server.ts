@@ -31,7 +31,7 @@ import {
   readJsonBody,
 } from './request-body'
 import { recordUsage } from '@/core/usage'
-import { getAllExecTools, getExecTool, getToolContext } from '../../scripts/lib/registry'
+import { getAllExecTools, getExecTool, getToolContext } from './exec-tools/registry'
 import {
   describeMcpToolDenial,
   isToolAllowedByPolicy,
