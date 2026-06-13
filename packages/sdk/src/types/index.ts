@@ -1447,10 +1447,21 @@ export interface WorkflowDefinition {
 }
 
 /** A running instance of a workflow attached to a task. */
+/**
+ * A running workflow instance (permissive view of the wire shape produced by
+ * the workflows plugin). The key field is `instanceId` — NOT `id`. The full
+ * typed shape (stepStates, history, …) is internal to the workflows plugin;
+ * this published view types the commonly-read fields and stays open via the
+ * index signature.
+ */
 export interface WorkflowInstance {
-  id: string
+  instanceId: string
+  workflowId?: string
   taskId?: string
+  currentStepId?: string
   status?: string
+  createdAt?: string
+  updatedAt?: string
   [key: string]: unknown
 }
 
