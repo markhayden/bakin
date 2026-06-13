@@ -11,7 +11,7 @@ import { createLogger } from './logger'
 import { getSettings } from './settings'
 import { appendAudit } from './audit'
 import { isStale } from '../lib/format'
-import { getHookRegistry } from '../lib/plugin-registry'
+import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import {
   addTaskLog,
   blockTask,

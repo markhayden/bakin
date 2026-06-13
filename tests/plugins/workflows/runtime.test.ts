@@ -140,7 +140,7 @@ import {
 } from '@bakin/workflows/lib/runtime'
 import { invalidateSkillCache } from '@bakin/workflows/lib/skill-loader'
 import { setEventBus } from '@bakin/workflows/lib/notifications'
-import { getHookRegistry } from '../../../src/lib/plugin-registry'
+import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 
 describe('runtime', () => {
   const defsDir = join(testDir, 'workflows', 'definitions')

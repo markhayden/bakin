@@ -217,7 +217,7 @@ describe('PluginRegistryImpl', () => {
 
     const mod = await import('@/lib/plugin-registry')
     pluginRegistry = mod.pluginRegistry
-    getHookRegistry = mod.getHookRegistry
+    getHookRegistry = (await import('@bakin/core/hooks/hook-registry-singleton')).getHookRegistry
     getPluginSkills = mod.getPluginSkills
     registerCorePlugins = mod.registerCorePlugins
     // bun:test has no vi.resetModules; reset the singleton via its own API

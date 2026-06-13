@@ -8,7 +8,7 @@
 import { join } from 'path'
 import { existsSync, readFileSync } from 'fs'
 import type { ExecToolDefinition, PluginToolContext } from '@bakin/core/plugin-types'
-import { getHookRegistry } from '../../src/lib/plugin-registry'
+import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { getContentDir } from '../../src/core/content-dir'
 import { appendAudit } from '../../src/core/audit'
 import { MarkdownStorageAdapter } from '../../src/lib/storage/markdown-adapter'

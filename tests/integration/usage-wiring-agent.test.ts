@@ -68,8 +68,10 @@ mock.module('../../src/core/watcher', () => ({
 // Stub the plugin registry / hooks so task-service can call hooks without
 // loading real plugins. We install a per-test registry via globalThis so
 // mutations to hook handlers are scoped.
+// Shared by both the plugin-registry mock and the hook-registry-singleton mock
+// (getHookRegistry now lives in the leaf), so hook handlers are one map.
+const handlers = new Map<string, (data: unknown) => unknown>()
 mock.module('../../src/lib/plugin-registry', () => {
-  const handlers = new Map<string, (data: unknown) => unknown>()
   return {
     getHookRegistry: () => ({
       register: (name: string, handler: (data: unknown) => unknown) => {
@@ -95,6 +97,30 @@ mock.module('../../src/lib/plugin-registry', () => {
     }),
   }
 })
+mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
+  getHookRegistry: () => ({
+      register: (name: string, handler: (data: unknown) => unknown) => {
+        handlers.set(name, handler)
+        return () => handlers.delete(name)
+      },
+      has: (name: string) => handlers.has(name),
+      call: async <T>(name: string, data: T): Promise<T> => {
+        const h = handlers.get(name)
+        if (!h) return data
+        const result = await h(data)
+        return (result === undefined || result === null ? data : result) as T
+      },
+      callAll: async (name: string, data: Record<string, unknown>): Promise<void> => {
+        const h = handlers.get(name)
+        if (h) await h(data)
+      },
+      invoke: async <R>(name: string, data: unknown): Promise<R | undefined> => {
+        const h = handlers.get(name)
+        if (!h) return undefined
+        return (await h(data)) as R
+      },
+    }),
+}))
 
 // Prevent main-agent lookup from touching files.
 mock.module('@bakin/core/main-agent', () => ({

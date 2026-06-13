@@ -12,7 +12,7 @@ import { getAppServices } from './app-services'
 import { getRuntimeMainAgentId, RuntimeError, RuntimeTurnError } from '@bakin/core/adapters/runtime'
 import { claimNextRun, currentSeq, loseRun, settleRun, type ClaimNextRunResult } from './execution-ledger'
 import { getBootId } from './boot-id'
-import { getHookRegistry } from '../lib/plugin-registry'
+import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import {
   buildTaskLessonQuery,
   formatLessonsForDispatch,

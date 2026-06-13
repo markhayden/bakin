@@ -84,6 +84,9 @@ const mockHookRegistry = {
 mock.module('../../../src/lib/plugin-registry', () => ({
   getHookRegistry: () => mockHookRegistry,
 }))
+mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
+  getHookRegistry: () => mockHookRegistry,
+}))
 
 import { upsertJob } from '@bakin/schedule/lib/sidecar'
 import { __scheduleTestInternals } from '@bakin/schedule/index'

@@ -128,6 +128,13 @@ mock.module('../../src/lib/plugin-registry', () => ({
     register: mock(),
   }),
 }))
+mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
+  getHookRegistry: mock().mockReturnValue({
+    invoke: mock().mockResolvedValue(undefined),
+    has: mock().mockReturnValue(false),
+    register: mock(),
+  }),
+}))
 
 mock.module('../../src/lib/format', () => ({
   isStale: mock().mockReturnValue(true),
@@ -140,7 +147,7 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 
 import { loadDispatchState, start, stop, getDispatchInfo, isTaskDispatchEligible } from '../../src/core/dispatch'
 import { dispatchTasks, awaitDispatchIdle } from '../../src/core/dispatch'
-import { getHookRegistry } from '../../src/lib/plugin-registry'
+import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import type { HookRegistry } from '../../packages/core/src/hooks/hook-registry'
 
 describe('dispatch', () => {

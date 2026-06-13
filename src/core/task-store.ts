@@ -194,7 +194,7 @@ function assertTransitionAllowed(task: BakinTask, toCol: ColumnId, isHuman: bool
 
 async function cancelWorkflowInstance(taskId: string): Promise<void> {
   try {
-    const { getHookRegistry } = await import('../lib/plugin-registry')
+    const { getHookRegistry } = await import('@bakin/core/hooks/hook-registry-singleton')
     await getHookRegistry().invoke('workflows.cancelInstance', { taskId })
   } catch {
     // Best effort: workflows may not be activated in tests or early boot.

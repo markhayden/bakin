@@ -37,6 +37,13 @@ mock.module('../../src/lib/plugin-registry', () => ({
     register: mock(),
   }),
 }))
+mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
+  getHookRegistry: mock().mockReturnValue({
+    invoke: mock().mockResolvedValue(undefined),
+    has: mock().mockReturnValue(false),
+    register: mock(),
+  }),
+}))
 mock.module('../../src/lib/format', () => ({ isStale: mock().mockReturnValue(true) }))
 
 const retrieveSpy = mock(async (_opts: Record<string, unknown>) => ({

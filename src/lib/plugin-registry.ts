@@ -48,7 +48,7 @@ import { runMigrations } from '../core/migrations'
 import { getContentDir } from '../core/content-dir'
 import { createLogger } from '../core/logger'
 import { appendAudit } from '../core/audit'
-import { HookRegistry } from '../../packages/core/src/hooks/hook-registry'
+import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { buildSearchAPI, getContentTypes, purgeContentType } from '../core/search-registry'
 import { loadPluginSkills } from './plugin-skill-loader'
 import { setCorePluginCheck, readPluginLockfile } from '../../packages/core/src/plugins/lockfile'
@@ -232,16 +232,11 @@ function isPluginDirectoryEntry(parentDir: string, name: string): boolean {
   }
 }
 
-/** Singleton hook registry shared across all plugins and core modules.
- *  Backed by globalThis so a single process has exactly one hook map, even
- *  when this module is reached from both the shell entry and dynamically
- *  imported plugin bundles. */
-const hookRegistry: HookRegistry = (globalThis as any).__bakinHookRegistry ??= new HookRegistry()
-
-/** Access the hook registry from core modules to call hooks */
-export function getHookRegistry(): HookRegistry {
-  return hookRegistry
-}
+// The hook-registry singleton + getHookRegistry now live in the dependency-free
+// leaf @bakin/core/hooks/hook-registry-singleton. Core modules, the exec-tool
+// registry, and the per-request plugin context import it from there — never from
+// this loader — so there is no import cycle back through plugin-registry. This
+// loader is just another consumer.
 
 /**
  * Set of plugin ids that ship with the Bakin binary (vs. user-installed
@@ -633,7 +628,7 @@ class PluginRegistryImpl {
       }
     }
 
-    try { report.hooks = hookRegistry.unregisterByPlugin(pluginId) } catch (err) {
+    try { report.hooks = getHookRegistry().unregisterByPlugin(pluginId) } catch (err) {
       log.warn('deactivate: unregisterByPlugin failed', { pluginId, err: String(err) })
     }
     try { report.execTools = removeExecToolsByPlugin(pluginId) } catch (err) {
@@ -956,12 +951,12 @@ class PluginRegistryImpl {
         register: (name: string, handler: (data: any) => any, metadata) => {
           // Forward the plugin id so unregisterByPlugin can sweep this
           // handler when the plugin is removed (#119).
-          return hookRegistry.register(name, handler, { pluginId, metadata })
+          return getHookRegistry().register(name, handler, { pluginId, metadata })
         },
-        call: <T>(name: string, data: T) => hookRegistry.call<T>(name, data),
-        callAll: (name: string, data: Record<string, unknown>) => hookRegistry.callAll(name, data),
-        has: (name: string) => hookRegistry.has(name),
-        invoke: <R>(name: string, data: unknown) => hookRegistry.invoke<R>(name, data),
+        call: <T>(name: string, data: T) => getHookRegistry().call<T>(name, data),
+        callAll: (name: string, data: Record<string, unknown>) => getHookRegistry().callAll(name, data),
+        has: (name: string) => getHookRegistry().has(name),
+        invoke: <R>(name: string, data: unknown) => getHookRegistry().invoke<R>(name, data),
       },
     }
     return wrapPluginContextPermissions(ctx, {

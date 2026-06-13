@@ -31,6 +31,8 @@
     "./plugin-types": "./src/plugin-types.ts",
     "./routing": "./src/routing/index.ts",
     "./openapi": "./src/openapi/index.ts",
+    "./hooks/hook-registry": "./src/hooks/hook-registry.ts",
+    "./hooks/hook-registry-singleton": "./src/hooks/hook-registry-singleton.ts",
     "./plugins/manifest": "./src/plugins/manifest.ts",
     "./plugins/signatures": "./src/plugins/signatures.ts",
     "./plugins/permissions": "./src/plugins/permissions.ts",

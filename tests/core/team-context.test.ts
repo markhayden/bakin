@@ -51,6 +51,16 @@ mock.module('../../src/lib/plugin-registry', () => ({
     },
   }),
 }))
+mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
+  getHookRegistry: () => ({
+    invoke: async <R,>(name: string, data: unknown): Promise<R | undefined> => {
+      if (name === 'team.getAgentTeam' && agentTeamHandler) {
+        return (await agentTeamHandler(data)) as R
+      }
+      return undefined
+    },
+  }),
+}))
 
 import {
   effectiveContextContent,

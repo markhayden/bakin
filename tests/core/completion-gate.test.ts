@@ -110,6 +110,14 @@ mock.module('../../src/lib/plugin-registry', () => ({
     has: mock(() => false),
   }),
 }))
+mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
+  getHookRegistry: () => ({
+    invoke: mock(async () => undefined),
+    callAll: mock(async () => undefined),
+    register: mock(),
+    has: mock(() => false),
+  }),
+}))
 
 mock.module('../../src/core/workflow-tool-authorization', () => ({
   assertWorkflowToolAllowed: mock(() => Promise.resolve()),

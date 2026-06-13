@@ -9,7 +9,7 @@
  * assetId:version so a promote/edit busts the browser cache).
  */
 import { readFileSync, existsSync, statSync, openSync, readSync, closeSync } from 'fs'
-import { getHookRegistry } from '@/lib/plugin-registry'
+import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 
 type AssetServeResult =
   | { match: false }

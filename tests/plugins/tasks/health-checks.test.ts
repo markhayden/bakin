@@ -152,6 +152,15 @@ mock.module('../../../src/lib/plugin-registry', () => ({
     register: () => () => {},
   }),
 }))
+mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
+  getHookRegistry: () => ({
+    invoke: async (_name: string, _data: Record<string, unknown>) => {
+      return undefined
+    },
+    has: () => false,
+    register: () => () => {},
+  }),
+}))
 
 import {
   checkTaskboard,

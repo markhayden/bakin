@@ -31,7 +31,7 @@ import {
 } from '../../packages/core/src/agent-packages/composer'
 import { extractBlock, injectBlock } from '../../packages/core/src/agent-packages/managed-blocks'
 import { getContentDir } from './content-dir'
-import { getHookRegistry } from '../lib/plugin-registry'
+import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { createLogger } from './logger'
 import { ROLE_DEFAULTS } from './team-context-defaults'
 

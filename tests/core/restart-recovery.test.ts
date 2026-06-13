@@ -86,6 +86,11 @@ mock.module('../../src/lib/plugin-registry', () => ({
     invoke: (...args: unknown[]) => mockHookInvoke(...args),
   })),
 }))
+mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
+  getHookRegistry: mock(() => ({
+    invoke: (...args: unknown[]) => mockHookInvoke(...args),
+  })),
+}))
 
 import {
   findRestartRecoveryCandidates,

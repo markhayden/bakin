@@ -18,6 +18,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { join } from 'path'
 import { MarkdownStorageAdapter } from '@/lib/storage/markdown-adapter'
 import { ScopedPluginStorageAdapter } from '@bakin/core/storage/scoped-plugin-storage'
+import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { BakinEventBus } from '@/lib/events/event-bus'
 import { getContentDir } from '@/core/content-dir'
 import { getAppServices } from '@/core/app-services'
@@ -110,37 +111,14 @@ function buildCtx(pluginId: string): PluginContext {
     },
     search: buildSearchAPI(pluginId, { registerRoute: noopRegisterRoute, skipFileBackedWiring: true }),
     hooks: {
-      register: (name, handler, metadata) => {
-        const registry = (globalThis as Record<string, unknown>).__bakinHookRegistry as
-          | { register: (n: string, h: (data: unknown) => unknown, options?: unknown) => () => void }
-          | undefined
-        if (registry) return registry.register(name, handler as (data: unknown) => unknown, { pluginId, metadata })
-        return () => {}
-      },
-      call: async <T>(name: string, data: T) => {
-        const registry = (globalThis as Record<string, unknown>).__bakinHookRegistry as
-          | { call: <T>(n: string, d: T) => Promise<T> }
-          | undefined
-        return registry ? registry.call<T>(name, data) : data
-      },
+      register: (name, handler, metadata) =>
+        getHookRegistry().register(name, handler as (data: unknown) => unknown, { pluginId, metadata }),
+      call: async <T>(name: string, data: T) => getHookRegistry().call<T>(name, data),
       callAll: async (name: string, data: Record<string, unknown>) => {
-        const registry = (globalThis as Record<string, unknown>).__bakinHookRegistry as
-          | { callAll: (n: string, d: Record<string, unknown>) => Promise<void> }
-          | undefined
-        if (registry) await registry.callAll(name, data)
+        await getHookRegistry().callAll(name, data)
       },
-      has: (name) => {
-        const registry = (globalThis as Record<string, unknown>).__bakinHookRegistry as
-          | { has: (n: string) => boolean }
-          | undefined
-        return registry ? registry.has(name) : false
-      },
-      invoke: async <R>(name: string, data: unknown) => {
-        const registry = (globalThis as Record<string, unknown>).__bakinHookRegistry as
-          | { invoke: <R>(n: string, d: unknown) => Promise<R | undefined> }
-          | undefined
-        return registry ? registry.invoke<R>(name, data) : undefined
-      },
+      has: (name) => getHookRegistry().has(name),
+      invoke: async <R>(name: string, data: unknown) => getHookRegistry().invoke<R>(name, data),
     },
   }
   return wrapPluginContextPermissions(ctx, {
