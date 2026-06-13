@@ -123,6 +123,10 @@ interface OpenClawAgentTurnOptions {
   toolsMode?: MessageArgs['toolsMode']
   toolsAllow?: string[]
   toolsDeny?: string[]
+  /** Per-turn model override (`provider/model`); omit to use the agent default. */
+  model?: string
+  /** Per-turn thinking level; omit to use the runtime default. */
+  thinking?: string
   /** Oversized-output threshold for session-death diagnoses (core policy). */
   oversizedOutputBytes?: number
 }
@@ -510,6 +514,8 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         toolsMode: args.toolsMode,
         toolsAllow: args.toolsAllow,
         toolsDeny: args.toolsDeny,
+        model: args.model,
+        thinking: args.thinking,
         oversizedOutputBytes: oversizedOutputBytesFrom(args.metadata),
       })
       // Threaded sends expose the real (deterministic) provider session id
@@ -529,6 +535,8 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       toolsMode: args.toolsMode,
       toolsAllow: args.toolsAllow,
       toolsDeny: args.toolsDeny,
+      model: args.model,
+      thinking: args.thinking,
       oversizedOutputBytes: oversizedOutputBytesFrom(args.metadata),
     }),
   }
@@ -1255,6 +1263,10 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     }
     applyRuntimeMessageToolPolicy(params, opts)
     if (cliSessionId) params.sessionId = cliSessionId
+    // Per-turn routing overrides (Bakin's policy → gateway agent RPC). Omit
+    // when unset so the runtime uses the agent's configured model/default.
+    if (opts.model) params.model = opts.model
+    if (opts.thinking) params.thinking = opts.thinking
 
     // Capture where the trajectory ends BEFORE the turn starts so any
     // post-mortem only sees events from this attempt (the file accrues one

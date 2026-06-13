@@ -169,6 +169,38 @@ describe('OpenClaw runtime Gateway chat', () => {
     expect(first.metadata?.sessionId).not.toBe(second.metadata?.sessionId)
   })
 
+  it('forwards per-turn model + thinking to the gateway agent params', async () => {
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    await runtime.messaging.send({
+      agentId: 'pixel',
+      content: 'Route me.',
+      threadId: 'task:t-route:d1',
+      model: 'anthropic/claude-haiku-4-5',
+      thinking: 'low',
+    })
+
+    const ws = FakeWebSocket.instances[0]!
+    const agentRequest = ws.sentFrames.find(frame => frame.method === 'agent')
+    expect(agentRequest?.params).toMatchObject({
+      model: 'anthropic/claude-haiku-4-5',
+      thinking: 'low',
+    })
+  })
+
+  it('omits model/thinking from the gateway params when not set (inherit)', async () => {
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    await runtime.messaging.send({ agentId: 'pixel', content: 'Default.', threadId: 'task:t-default:d1' })
+
+    const ws = FakeWebSocket.instances[0]!
+    const agentRequest = ws.sentFrames.find(frame => frame.method === 'agent')
+    expect(agentRequest?.params).not.toHaveProperty('model')
+    expect(agentRequest?.params).not.toHaveProperty('thinking')
+  })
+
   it('forwards per-turn tool policy on messaging sends', async () => {
     const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
     const runtime = createOpenClawRuntimeAdapter()
