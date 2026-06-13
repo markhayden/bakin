@@ -70,7 +70,7 @@ function auditBudgetOnce(contentDir: string, event: 'budget.warn' | 'budget.defe
  * the spend ledger can't be read, defer — consistent with the ledger's
  * existing fail-closed posture. No policy (plugin absent / empty) → allow.
  */
-async function budgetGate(agentId: string, contentDir: string): Promise<BudgetDecision> {
+export async function budgetGate(agentId: string, contentDir: string): Promise<BudgetDecision> {
   let policy: BudgetPolicy | undefined
   try {
     policy = (await hooks().invoke<BudgetPolicy>('models.getBudgetPolicy', {})) ?? undefined
