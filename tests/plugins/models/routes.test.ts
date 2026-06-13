@@ -96,6 +96,16 @@ mock.module('../../../src/core/logger', () => ({
   }),
 }))
 
+// Spend route reads the ledger facade; mock it with canned rollups so the
+// route test doesn't need a real db.
+class FakeLedgerUnavailable extends Error {}
+mock.module('../../../src/core/execution-ledger', () => ({
+  spendTotal: mock(() => 150_000),
+  spendByAgent: mock(() => [{ agent: 'pixel', costUsdMicros: 100_000, runs: 4 }, { agent: 'patch', costUsdMicros: 0, runs: 2 }]),
+  spendByModel: mock(() => [{ model: 'anthropic/claude-sonnet-4-6', costUsdMicros: 100_000, runs: 4 }, { model: '', costUsdMicros: 0, runs: 2 }]),
+  LedgerUnavailableError: FakeLedgerUnavailable,
+}))
+
 // ---------------------------------------------------------------------------
 // Import after mocks
 // ---------------------------------------------------------------------------
@@ -144,6 +154,7 @@ describe('Models Plugin Activation', () => {
       'GET /available',
       'GET /config',
       'GET /runtime/status',
+      'GET /spend',
       'POST /aliases',
       'POST /config',
       'POST /defaults',
@@ -548,6 +559,32 @@ describe('POST /aliases', () => {
     expect(aliases.opus).toBeDefined()
 
     writeRuntimeConfig() // reset
+  })
+})
+
+describe('GET /spend', () => {
+  it('returns windowed spend rollups (total, byAgent, byModel)', async () => {
+    const route = findRoute(activated.routes, 'GET', '/spend')!
+    const { status, body } = await callRoute(route, activated.ctx, { searchParams: { window: '24h' } })
+    expect(status).toBe(200)
+    expect(body.window).toBe('24h')
+    expect(body.totalUsdMicros).toBe(150_000)
+    expect(body.byAgent).toEqual([
+      { agent: 'pixel', costUsdMicros: 100_000, runs: 4 },
+      { agent: 'patch', costUsdMicros: 0, runs: 2 },
+    ])
+    // Unmodeled '' model id surfaces as a recognizable "unknown" label.
+    expect(body.byModel).toEqual(expect.arrayContaining([
+      { model: 'anthropic/claude-sonnet-4-6', costUsdMicros: 100_000, runs: 4 },
+      { model: 'unknown', costUsdMicros: 0, runs: 2 },
+    ]))
+  })
+
+  it('defaults to a 24h window when none is given', async () => {
+    const route = findRoute(activated.routes, 'GET', '/spend')!
+    const { status, body } = await callRoute(route, activated.ctx)
+    expect(status).toBe(200)
+    expect(body.window).toBe('24h')
   })
 })
 

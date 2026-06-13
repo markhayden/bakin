@@ -15,6 +15,7 @@ import {
   clearPersistedCache,
 } from './lib/models-cache'
 import { getKnownModel, getKnownProvider, formatCostRange, computeCostUsdMicros } from './data/known-models'
+import { spendTotal, spendByAgent, spendByModel, LedgerUnavailableError } from '../../src/core/execution-ledger'
 
 // ---------------------------------------------------------------------------
 // Runtime restart sync tracking (globalThis-backed so every reach into this module
@@ -350,6 +351,18 @@ const okResponse = z.object({ ok: z.literal(true) }).passthrough()
 const errorResponse = z.object({ error: z.string() }).passthrough()
 const passthrough = z.object({}).passthrough()
 
+// Spend reporting windows. Coarser than the live-usage 5m/1h windows —
+// spend is a daily/monthly story. 'all' = since the beginning of time.
+type SpendWindow = '24h' | '7d' | '30d' | 'all'
+const SPEND_WINDOW_MS: Record<Exclude<SpendWindow, 'all'>, number> = {
+  '24h': 86_400_000,
+  '7d': 604_800_000,
+  '30d': 2_592_000_000,
+}
+function parseSpendWindow(raw: string | null): SpendWindow {
+  return raw === '7d' || raw === '30d' || raw === 'all' ? raw : '24h'
+}
+
 // ---------------------------------------------------------------------------
 // Routes (declarative)
 // ---------------------------------------------------------------------------
@@ -581,6 +594,34 @@ const routes = [
         ctx.activity.log('system', 'Updated model aliases', { category: 'models' })
         return Response.json({ ok: true })
       } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/spend',
+    method: 'GET',
+    summary: 'Estimated agent spend over a window',
+    description: 'Windowed token/cost rollups from the execution ledger (total, by agent, by model). Costs are estimates — cached-token discounts are not modeled.',
+    responses: { 200: passthrough, 500: errorResponse },
+    handler: async (req) => {
+      try {
+        const window = parseSpendWindow(new URL(req.url).searchParams.get('window'))
+        const sinceMs = window === 'all' ? 0 : Date.now() - SPEND_WINDOW_MS[window]
+        const byModel = spendByModel(sinceMs).map((r) => ({ ...r, model: r.model || 'unknown' }))
+        return Response.json({
+          window,
+          estimated: true,
+          totalUsdMicros: spendTotal({ sinceMs }),
+          byAgent: spendByAgent(sinceMs),
+          byModel,
+        })
+      } catch (err) {
+        // A reporting read must not crash the page when the ledger is down.
+        if (err instanceof LedgerUnavailableError) {
+          return Response.json({ error: 'Spend ledger unavailable', totalUsdMicros: 0, byAgent: [], byModel: [] }, { status: 500 })
+        }
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
       }
     },

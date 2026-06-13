@@ -52,7 +52,32 @@ const TABS = [
   { id: 'agents', label: 'Agent Config' },
   { id: 'available', label: 'Available Models' },
   { id: 'aliases', label: 'Aliases' },
+  { id: 'spend', label: 'Spend' },
 ] as const
+
+const SPEND_WINDOWS = [
+  { id: '24h', label: '24h' },
+  { id: '7d', label: '7 days' },
+  { id: '30d', label: '30 days' },
+  { id: 'all', label: 'All time' },
+] as const
+
+/** Render micro-dollars as a dollar amount. Returns null for an unmetered
+ *  (zero-cost) row so the UI can show "$ unavailable" instead of "$0.00". */
+function formatUsdMicros(micros: number): string | null {
+  if (!micros) return null
+  return `$${(micros / 1_000_000).toFixed(micros < 10_000 ? 4 : 2)}`
+}
+
+interface SpendRowAgent { agent: string; costUsdMicros: number; runs: number }
+interface SpendRowModel { model: string; costUsdMicros: number; runs: number }
+interface SpendResponse {
+  window: string
+  estimated: boolean
+  totalUsdMicros: number
+  byAgent: SpendRowAgent[]
+  byModel: SpendRowModel[]
+}
 
 // ---------------------------------------------------------------------------
 // Loading skeleton
@@ -116,6 +141,9 @@ export function ModelsPage() {
   const [newAliasName, setNewAliasName] = useState('')
   const [newAliasTarget, setNewAliasTarget] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [spendWindow, setSpendWindow] = useQueryState('window', '24h')
+  const [spend, setSpend] = useState<SpendResponse | null>(null)
+  const [spendLoading, setSpendLoading] = useState(false)
 
   // -------------------------------------------------------------------------
   // Data fetching
@@ -189,11 +217,29 @@ export function ModelsPage() {
     }
   }, [])
 
+  const fetchSpend = useCallback(async (window: string) => {
+    setSpendLoading(true)
+    try {
+      const res = await fetch(`/api/plugins/models/spend?window=${encodeURIComponent(window)}`)
+      if (!res.ok) throw new Error(`Spend fetch failed (${res.status})`)
+      setSpend(await res.json() as SpendResponse)
+    } catch (err) {
+      console.error('Failed to fetch spend:', err)
+      setSpend(null)
+    } finally {
+      setSpendLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     fetchConfig()
     fetchAvailable()
     fetchAliases()
   }, [fetchConfig, fetchAvailable, fetchAliases])
+
+  useEffect(() => {
+    if (tab === 'spend') fetchSpend(spendWindow)
+  }, [tab, spendWindow, fetchSpend])
 
   // Auto-refresh in the background when the served cache was stale.
   // We surface the cached data immediately; the refresh swaps rows
@@ -801,6 +847,91 @@ export function ModelsPage() {
                 Add
               </Button>
             </div>
+        </div>
+      )}
+
+      {tab === 'spend' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Estimated spend from recorded token usage. Cached-token discounts aren&apos;t modeled, so totals read slightly high — treat as estimates, not an invoice.
+            </p>
+            <div className="flex items-center gap-1">
+              {SPEND_WINDOWS.map((w) => (
+                <Button
+                  key={w.id}
+                  variant={spendWindow === w.id ? 'default' : 'outline'}
+                  size="xs"
+                  onClick={() => setSpendWindow(w.id)}
+                >
+                  {w.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          {spendLoading && !spend ? (
+            <Skeleton className="h-32 w-full" />
+          ) : !spend ? (
+            <EmptyState icon={AlertTriangle} title="Spend data unavailable" />
+          ) : (
+            <>
+              <div className="rounded-xl border border-border bg-card p-4">
+                <div className="text-xs text-muted-foreground">Estimated total ({spend.window})</div>
+                <div className="text-2xl font-semibold tabular-nums">
+                  {formatUsdMicros(spend.totalUsdMicros) ?? '$ unavailable'}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <div className="overflow-hidden rounded-xl border border-border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-card">
+                        <TableHead>Agent</TableHead>
+                        <TableHead className="text-right">Runs</TableHead>
+                        <TableHead className="text-right">Est. cost</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {spend.byAgent.length === 0 ? (
+                        <TableRow><TableCell colSpan={3} className="text-muted-foreground">No spend in this window</TableCell></TableRow>
+                      ) : spend.byAgent.map((r) => (
+                        <TableRow key={r.agent}>
+                          <TableCell className="font-medium">{r.agent}</TableCell>
+                          <TableCell className="text-right tabular-nums">{r.runs}</TableCell>
+                          <TableCell className="text-right tabular-nums">{formatUsdMicros(r.costUsdMicros) ?? <span className="text-muted-foreground">$ unavailable</span>}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                <div className="overflow-hidden rounded-xl border border-border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-card">
+                        <TableHead>Model</TableHead>
+                        <TableHead className="text-right">Runs</TableHead>
+                        <TableHead className="text-right">Est. cost</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {spend.byModel.length === 0 ? (
+                        <TableRow><TableCell colSpan={3} className="text-muted-foreground">No spend in this window</TableCell></TableRow>
+                      ) : spend.byModel.map((r) => (
+                        <TableRow key={r.model}>
+                          <TableCell className="font-medium">{r.model}</TableCell>
+                          <TableCell className="text-right tabular-nums">{r.runs}</TableCell>
+                          <TableCell className="text-right tabular-nums">{formatUsdMicros(r.costUsdMicros) ?? <span className="text-muted-foreground">$ unavailable</span>}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
