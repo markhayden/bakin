@@ -1,0 +1,378 @@
+// Part of the @makinbakin/sdk/types contract — see ./index.ts for the
+// module's self-containment + two-tier rationale.
+import type { ComponentType } from 'react'
+import type { ZodRawShape } from 'zod'
+import type { ActivityAPI, EventBus, HookAPI, PluginContext, StorageAdapter } from './context'
+import type { ContractStability, ContractVisibility, DocsExample, HttpMethod, SchemaLike, SourceLocation } from './primitives'
+import type { AgentRuntimeAdapter } from './runtime'
+import type { AssetsAPI, SearchAPI, Task, TaskService } from './services'
+
+/** Visual tone for a {@link NavBadge}. Maps to a fixed palette in the sidebar.
+ *  Ordered by severity: `error` (red) is the most urgent and wins rollups. */
+export type NavBadgeTone = 'error' | 'attention' | 'info' | 'success'
+
+/**
+ * Runtime badge attached to a nav item. Both fields are optional:
+ *   - `count` present → renders as a small pill (clamped at `99+`).
+ *   - `count` omitted but object present → renders as a small dot.
+ *   - `count: 0` or passing `null` to `setNavBadge` clears the badge.
+ * `tone` defaults to `'attention'`.
+ */
+export interface NavBadge {
+  count?: number
+  tone?: NavBadgeTone
+}
+
+/** Sidebar navigation item registered by a plugin via `ctx.registerNav()`. */
+export interface NavItem {
+  /** Unique nav item id (used for active-state tracking and badge keying). */
+  id: string
+  /** Display label in the sidebar. */
+  label: string
+  /** Lucide icon name (e.g. "tasks", "calendar"). */
+  icon?: string
+  /** Target route path. */
+  href?: string
+  /** Sort order within the parent group. Lower renders first. */
+  order?: number
+  /** Optional nested nav items for groups. */
+  children?: NavItem[]
+  /** If true, the group cannot be collapsed. */
+  alwaysExpanded?: boolean
+  /**
+   * Initial badge state. Runtime updates flow through `setNavBadge` — the
+   * rendered badge for an item is `runtimeRegistry.get(id) ?? item.badge`.
+   * Most plugins leave this undefined and set badges purely at runtime.
+   */
+  badge?: NavBadge
+}
+
+/** HTTP route handler registered by a plugin via `ctx.registerRoute()`. */
+export interface APIRoute {
+  /** Route path relative to `/api/plugins/{pluginId}`. */
+  path: string
+  /** HTTP method. */
+  method: HttpMethod
+  /** Request handler. Receives a standard Request and the plugin context. */
+  handler: (req: Request, ctx: PluginContext) => Response | Promise<Response>
+  /** One-line summary for docs. */
+  summary?: string
+  /** Full description for docs. */
+  description?: string
+  /** Path param descriptor (e.g. ":id"). */
+  params?: string
+  /** Input schema for validation and docs. */
+  input?: SchemaLike
+  /** Output schema for docs. */
+  output?: SchemaLike
+  /** Visibility tier (public/internal/experimental). */
+  visibility?: ContractVisibility
+  /** Stability tier. */
+  stability?: ContractStability
+  /** Reference examples for the docs site. */
+  examples?: DocsExample[]
+  /** Source location for generated docs back-references. */
+  source?: SourceLocation
+  /** Permissions required to call this route. */
+  permissions?: string[]
+}
+
+/** Slot registration record: place a component at a named extension point. */
+export interface UISlotRegistration {
+  slot: string
+  component: ComponentType<Record<string, unknown>>
+  order?: number
+}
+
+/** Static content file shipped with a plugin (e.g. README, docs page). */
+export interface ContentFile {
+  path: string
+}
+
+// ---------------------------------------------------------------------------
+// Runtime-facing public types
+// ---------------------------------------------------------------------------
+
+/** Result returned from an exec tool handler. */
+export interface ExecToolResult {
+  ok: boolean
+  error?: string
+  details?: unknown
+  [key: string]: unknown
+}
+
+/** Context passed to an exec tool handler. Subset of PluginContext sans UI registration. */
+export interface PluginToolContext {
+  /** Plugin-scoped storage adapter. */
+  storage: StorageAdapter
+  /** Cross-plugin event bus. */
+  events: EventBus
+  /** ID of the plugin owning this tool. */
+  pluginId: string
+  /** Agent runtime adapter (messaging, agents, channels, cron). */
+  runtime: AgentRuntimeAdapter
+  /** Task CRUD service. */
+  tasks: TaskService
+  /** Search API. */
+  search: SearchAPI
+  /** Assets API. */
+  assets: AssetsAPI
+  /** Hook registry. */
+  hooks: HookAPI
+  /** Activity feed and audit log. */
+  activity: ActivityAPI
+  /** Read this plugin's persisted settings. */
+  getSettings<T = Record<string, unknown>>(): T
+}
+
+/** MCP exec tool definition registered via `ctx.registerExecTool()`. */
+export interface ExecToolDefinition {
+  /** Tool name. Convention: `bakin_exec_{pluginId}_{action}`. */
+  name: string
+  /** Description shown to the agent (used for tool selection). */
+  description: string
+  /** Optional UI label for the activity feed. */
+  label?: string
+  /** If true, this tool can fire multiple times in a single agent turn. */
+  activityDuplicate?: boolean
+  /** Zod raw shape describing the tool's parameters. */
+  parameters: ZodRawShape
+  /** Handler that executes the tool. */
+  handler: (params: Record<string, unknown>, agent: string, ctx?: PluginToolContext) => Promise<ExecToolResult>
+  /** Optional source-file path for generated docs. */
+  source?: string
+}
+
+/** Runtime skill definition registered via `ctx.registerSkill()`. */
+export interface SkillDefinition {
+  name: string
+  instructions: string
+  output_schema?: Record<string, unknown>
+  source?: string
+  /** Absolute source markdown file path when the skill was loaded from a managed package/plugin file. */
+  sourcePath?: string
+}
+
+/** Layout hints for a workflow's canvas rendering. */
+export interface WorkflowLayoutInput {
+  positions?: Record<string, { x: number; y: number; [key: string]: unknown }>
+  [key: string]: unknown
+}
+
+/** Plugin-contributed workflow definition input shape. */
+export interface WorkflowDefinitionInput {
+  id?: string
+  name: string
+  description: string
+  version: number
+  inputs?: Record<string, unknown>
+  layout?: WorkflowLayoutInput
+  steps: unknown[]
+  [key: string]: unknown
+}
+
+/** Field types supported by FormField. */
+export type FormFieldType = 'string' | 'text' | 'number' | 'boolean' | 'select' | 'agent' | 'skill' | 'list'
+
+/** Form field descriptor for plugin-contributed workflow nodes. */
+export interface FormField {
+  name: string
+  type: FormFieldType
+  required?: boolean
+  description?: string
+  options?: { value: string; label: string }[]
+}
+
+/** Edge constraints for a plugin-contributed workflow node type. */
+export interface EdgeRules {
+  maxInbound?: number
+  maxOutbound?: number
+}
+
+/** Workflow node type contributed by a plugin (custom step kind). */
+export interface PluginNodeTypeInput<T = unknown> {
+  kind: string
+  zodSchema: SchemaLike<T>
+  formFields: FormField[]
+  edgeRules?: EdgeRules
+}
+
+/** Notification channel definition contributed by a plugin. */
+export interface PluginNotificationChannelInput {
+  id: string
+  label: string
+  initials?: string
+  icon?: string
+}
+
+/** Result row returned by a health check (doctor). */
+export interface HealthCheckResult {
+  /** Stable check identifier. */
+  check: string
+  /** Severity of the result. */
+  status: 'ok' | 'warn' | 'error' | 'fixed'
+  /** Human-readable message describing the finding. */
+  message: string
+  /** Whether the issue can be auto-fixed by an attached repair handler. */
+  autoFixable: boolean
+}
+
+/** Repair safety tier: safe (auto), manual (needs review), destructive (data-affecting). */
+export type HealthRepairSafety = 'safe' | 'manual' | 'destructive'
+
+/** Single change a repair plan will apply. */
+export interface HealthRepairChange {
+  kind: 'file' | 'setting' | 'service' | 'runtime' | 'task' | 'other'
+  target: string
+  action: 'create' | 'update' | 'delete' | 'install' | 'invoke'
+  description: string
+}
+
+/** One item in a repair plan: what will change and why. */
+export interface HealthRepairPlanItem {
+  id: string
+  checkId: string
+  title: string
+  reason: string
+  safety: HealthRepairSafety
+  requiresConfirmation: boolean
+  changes: HealthRepairChange[]
+}
+
+/** Result of applying a single repair plan item. */
+export interface HealthRepairApplyResult {
+  id: string
+  checkId: string
+  status: 'applied' | 'skipped' | 'failed'
+  message: string
+  changes: HealthRepairChange[]
+}
+
+/** Two-phase repair handler attached to a health check. */
+export interface HealthRepairHandler {
+  plan(rows: HealthCheckResult[]): Promise<HealthRepairPlanItem[]>
+  apply(items: HealthRepairPlanItem[]): Promise<HealthRepairApplyResult[]>
+}
+
+/**
+ * Health check registration input passed to `ctx.registerHealthCheck()`.
+ * The plugin id is auto-namespaced as `{pluginId}.{id}`. `run()` returns an
+ * array so one registered check can contribute multiple result rows.
+ */
+export interface PluginHealthCheckInput {
+  id: string
+  name: string
+  /**
+   * Runs the check, returns any number of result rows. Throws/rejects are
+   * caught by the doctor orchestrator and converted to a synthetic error
+   * result — a single bad handler never crashes the sweep.
+   */
+  run: () => Promise<HealthCheckResult[]>
+  /**
+   * Legacy advisory flag for older admin surfaces. New code should derive
+   * repairability from `repair`.
+   */
+  autoFix?: boolean
+  /**
+   * Optional explicit repair contract. Diagnostics call only `run()`; repair
+   * flows call `plan()` first, then `apply()` after explicit confirmation.
+   */
+  repair?: HealthRepairHandler
+}
+
+// ---------------------------------------------------------------------------
+// Settings schema
+// ---------------------------------------------------------------------------
+
+interface BaseSettingsField {
+  key: string
+  label: string
+  description?: string
+  required?: boolean
+}
+
+/** Single-line text settings field. */
+export interface StringSettingsField extends BaseSettingsField {
+  type: 'string'
+  default?: string
+}
+
+/** Numeric settings field with optional default. */
+export interface NumberSettingsField extends BaseSettingsField {
+  type: 'number'
+  default?: number
+}
+
+/** Boolean toggle settings field. */
+export interface BooleanSettingsField extends BaseSettingsField {
+  type: 'boolean'
+  default?: boolean
+}
+
+/** Dropdown settings field with predefined options. */
+export interface SelectSettingsField extends BaseSettingsField {
+  type: 'select'
+  options: { value: string; label: string }[]
+  default?: string
+}
+
+/** Repeatable list settings field with per-item shape. */
+export interface ListSettingsField extends BaseSettingsField {
+  type: 'list'
+  itemShape: Record<string, StringSettingsField | NumberSettingsField | BooleanSettingsField | SelectSettingsField>
+  default?: unknown[]
+  addLabel?: string
+  minItems?: number
+  maxItems?: number
+  uniqueField?: string
+}
+
+/** Union of all supported settings field types. */
+export type SettingsField =
+  | StringSettingsField
+  | NumberSettingsField
+  | BooleanSettingsField
+  | SelectSettingsField
+  | ListSettingsField
+
+/** Plugin settings schema — declares fields rendered on the settings page. */
+export interface PluginSettingsSchema {
+  /** Ordered list of settings fields for the form. */
+  fields: SettingsField[]
+}
+
+// ---------------------------------------------------------------------------
+// Plugin context and plugin object
+// ---------------------------------------------------------------------------
+
+/** A workflow definition stored on disk (YAML or programmatic). */
+export interface WorkflowDefinition {
+  id?: string
+  name: string
+  description?: string
+  version?: number
+  steps: unknown[]
+  [key: string]: unknown
+}
+
+/** A running instance of a workflow attached to a task. */
+/**
+ * A running workflow instance (permissive view of the wire shape produced by
+ * the workflows plugin). The key field is `instanceId` — NOT `id`. The full
+ * typed shape (stepStates, history, …) is internal to the workflows plugin;
+ * this published view types the commonly-read fields and stays open via the
+ * index signature.
+ */
+export interface WorkflowInstance {
+  instanceId: string
+  workflowId?: string
+  taskId?: string
+  currentStepId?: string
+  status?: string
+  createdAt?: string
+  updatedAt?: string
+  [key: string]: unknown
+}
+
+/** Alias for WorkflowDefinition when used as a reusable template. */
+export type WorkflowTemplate = WorkflowDefinition
