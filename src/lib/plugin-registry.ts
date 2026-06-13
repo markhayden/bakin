@@ -49,7 +49,7 @@ import { getContentDir } from '../core/content-dir'
 import { createLogger } from '../core/logger'
 import { appendAudit } from '../core/audit'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
-import { buildSearchAPI, getContentTypes, purgeContentType } from '../core/search-registry'
+import { getContentTypes, purgeContentType } from '../core/search-registry'
 import { loadPluginSkills } from './plugin-skill-loader'
 import { setCorePluginCheck, readPluginLockfile } from '../../packages/core/src/plugins/lockfile'
 import { parseManifestPermissions } from '../../packages/core/src/plugins/permissions'
@@ -57,15 +57,9 @@ import {
   PluginManifestError,
   readPluginManifestJson,
 } from '../../packages/core/src/plugins/manifest'
-import { ScopedPluginStorageAdapter } from '../../packages/core/src/storage/scoped-plugin-storage'
 import { getAppServices } from '../core/app-services'
 import type { PluginManifest as PublicPluginManifest } from '@makinbakin/sdk/types'
-import {
-  createPluginAssetsAPI,
-  createPluginRuntimeFacade,
-  createPluginTaskService,
-} from './plugin-context-services'
-import { wrapPluginContextPermissions } from './plugin-permissions'
+import { buildPluginContext, type PluginContextRegistrars } from './plugin-context-factory'
 import { startStartupSpan } from '../core/startup-diagnostics'
 
 /**
@@ -825,18 +819,7 @@ class PluginRegistryImpl {
       state.routes.push(route)
       registerRouteDoc(pluginId, route)
     }
-    const pluginStorage = state.source === 'user'
-      ? new ScopedPluginStorageAdapter(getContentDir(), pluginId)
-      : storage
-    const assets = createPluginAssetsAPI()
-    const usePublicRuntimeFacade = state.source === 'user'
-    const ctx: PluginContext = {
-      storage: pluginStorage,
-      events,
-      pluginId,
-      runtime: usePublicRuntimeFacade ? createPluginRuntimeFacade(services.runtime) : services.runtime,
-      tasks: createPluginTaskService(services.tasks),
-      assets,
+    const registrars: PluginContextRegistrars = {
       registerNav: (items: NavItem[]) => { state.navItems.push(...items) },
       registerRoute,
       registerSlot: (reg: UISlotRegistration) => { state.slots.push(reg) },
@@ -856,10 +839,7 @@ class PluginRegistryImpl {
         try {
           registerPluginDefinition(pluginId, id, def as unknown as WorkflowDefinition)
         } catch (err) {
-          log.error(
-            `registerWorkflow collision in plugin "${pluginId}" for id "${id}"`,
-            err as Error,
-          )
+          log.error(`registerWorkflow collision in plugin "${pluginId}" for id "${id}"`, err as Error)
         }
       },
       registerNodeType: <T = unknown>(def: PluginNodeTypeInput<T>): string => {
@@ -868,10 +848,7 @@ class PluginRegistryImpl {
           state.nodeKinds.push(namespacedKind)
           return namespacedKind
         } catch (err) {
-          log.error(
-            `registerNodeType collision in plugin "${pluginId}" for kind "${def.kind}"`,
-            err as Error,
-          )
+          log.error(`registerNodeType collision in plugin "${pluginId}" for kind "${def.kind}"`, err as Error)
           return `${pluginId}.${def.kind}`
         }
       },
@@ -881,10 +858,7 @@ class PluginRegistryImpl {
           state.channelIds.push(namespacedId)
           return namespacedId
         } catch (err) {
-          log.error(
-            `registerNotificationChannel collision in plugin "${pluginId}" for id "${def.id}"`,
-            err as Error,
-          )
+          log.error(`registerNotificationChannel collision in plugin "${pluginId}" for id "${def.id}"`, err as Error)
           return `${pluginId}.${def.id}`
         }
       },
@@ -894,74 +868,21 @@ class PluginRegistryImpl {
           state.healthCheckIds.push(namespacedId)
           return namespacedId
         } catch (err) {
-          log.error(
-            `registerHealthCheck collision in plugin "${pluginId}" for id "${def.id}"`,
-            err as Error,
-          )
+          log.error(`registerHealthCheck collision in plugin "${pluginId}" for id "${def.id}"`, err as Error)
           return `${pluginId}.${def.id}`
         }
       },
       watchFiles: (patterns: string[]) => { state.watchPatterns.push(...patterns) },
-      getSettings: <T = Record<string, unknown>>(): T => {
-        const settingsPath = join(getContentDir(), 'plugin-settings', `${pluginId}.json`)
-        try {
-          if (existsSync(settingsPath)) {
-            return JSON.parse(readFileSync(settingsPath, 'utf-8')) as T
-          }
-        } catch { /* return empty */ }
-        return {} as T
-      },
-      updateSettings: (patch: Record<string, unknown>): void => {
-        const settingsDir = join(getContentDir(), 'plugin-settings')
-        const settingsPath = join(settingsDir, `${pluginId}.json`)
-        let current: Record<string, unknown> = {}
-        try {
-          if (existsSync(settingsPath)) {
-            current = JSON.parse(readFileSync(settingsPath, 'utf-8'))
-          }
-        } catch { /* start fresh */ }
-        const merged = { ...current, ...patch }
-        const { mkdirSync, writeFileSync } = require('fs')
-        if (!existsSync(settingsDir)) mkdirSync(settingsDir, { recursive: true })
-        writeFileSync(settingsPath, JSON.stringify(merged, null, 2))
-        state.plugin.onSettingsChange?.(merged)
-      },
-      activity: {
-        log: (agent: string, message: string, opts?: { taskId?: string; category?: string }) => {
-          const broadcastFn = (globalThis as any).__bakinBroadcast
-          if (broadcastFn) {
-            broadcastFn({
-              type: 'activity',
-              agent,
-              message,
-              ts: new Date().toISOString(),
-              pluginId,
-              ...(opts?.taskId ? { taskId: opts.taskId } : {}),
-              ...(opts?.category ? { category: opts.category } : {}),
-            })
-          }
-        },
-        audit: (event: string, agent: string, data?: Record<string, unknown>) => {
-          appendAudit(getContentDir(), `${pluginId}.${event}`, agent, data || {})
-        },
-      },
-      log: createPluginScopedLogger(pluginId),
-      search: buildSearchAPI(pluginId, { registerRoute }),
-      hooks: {
-        register: (name: string, handler: (data: any) => any, metadata) => {
-          // Forward the plugin id so unregisterByPlugin can sweep this
-          // handler when the plugin is removed (#119).
-          return getHookRegistry().register(name, handler, { pluginId, metadata })
-        },
-        call: <T>(name: string, data: T) => getHookRegistry().call<T>(name, data),
-        callAll: (name: string, data: Record<string, unknown>) => getHookRegistry().callAll(name, data),
-        has: (name: string) => getHookRegistry().has(name),
-        invoke: <R>(name: string, data: unknown) => getHookRegistry().invoke<R>(name, data),
-      },
     }
-    return wrapPluginContextPermissions(ctx, {
+    return buildPluginContext({
       pluginId,
       source: state.source,
+      services,
+      storage,
+      events,
+      registrars,
+      log: createPluginScopedLogger(pluginId),
+      onSettingsChange: (merged) => state.plugin.onSettingsChange?.(merged),
       manifestPermissions: state.manifest?.permissions ?? [],
     })
   }
