@@ -1,152 +1,162 @@
-# SPEC — Tasks: reflect real task outcome in Run History
+# SPEC: Full System Audit & Granularity Refactor
 
-> Status: draft for approval · Owner: Mark · Date: 2026-06-09
-> Issue: [#476](https://github.com/markhayden/bakin/issues/476) · Follow-on to #463 / PR #475
+**Status:** Draft — pending approval
+**Date:** 2026-06-11
+**Driver:** Mark Hayden (sole user/operator)
+**Priority:** Reduce tech debt. No backwards compatibility, no shims. Clean and clear.
 
 ## 1. Objective
 
-The Run History timeline in the task drawer shows each run's dispatch status from
-the ledger `runs` table. `settled` means *the agent's turn ended cleanly*, not
-that the task succeeded — so a green `settled` badge on a task that later
-blocked or stalled reads as a false success.
+Audit the entire Bakin system (~258k lines TS, 1,237 files) for architecture problems,
+security issues, oversized files, cross-plugin duplication, and SDK gaps — then execute
+a phased refactor that decomposes oversized files into focused modules, extracts shared
+code to the right layer, and fixes design problems found along the way.
 
-Fix: surface the task's terminal outcome (from the completion ledger + task
-column) alongside the dispatch history, and stop using green for `settled`.
+**Success criteria:**
+- A prioritized, adversarially-verified audit report exists and Mark has triaged it.
+- No source file over ~800 lines without an explicit cohesion justification recorded
+  in the audit report; no test file over ~1,200 lines.
+- Code duplicated across 2+ plugins lives in exactly one place (SDK or packages/core).
+- All security findings within the threat model are fixed or explicitly accepted.
+- The two-CLI situation (`src/core/cli.ts` + `cli/bakin.ts`) is consolidated into one
+  coherent structure.
+- Full test suite green, binary builds, dev server boots, docs accurate — at every
+  PR boundary.
 
-Target environment: single-user, self-hosted Bakin. No backwards-compat or
-shims — the API response shape may change freely. Priority: reduce tech debt;
-keep it clean and clear.
+## 2. Phases
 
-### Acceptance criteria (from the issue)
+### Phase 0 — Audit (multi-agent workflow)
+Fan out parallel auditor agents, one per dimension; adversarially verify significant
+findings before they enter the report.
 
-1. Run history visibly distinguishes "the agent's turn settled" from "the task
-   succeeded / failed / blocked".
-2. Read-only; reuses the completion ledger + task column. No new audit query
-   surface, no new write verbs, no schema changes.
-3. A `settled` run on a task that's still in progress no longer reads as a
-   success.
+Dimensions:
+1. **Architecture** — layering violations, adapter-boundary leaks, plugin coupling,
+   the two-CLI overlap, dead code, wrong-layer logic.
+2. **Security** — threat model: *Tailscale is the perimeter*. In scope: path traversal
+   in file-serving routes, command/prompt injection via agent-controlled content,
+   plugin-install supply chain (`github:` installs run arbitrary code), secrets leaking
+   into logs/audit/search indexes, SSRF from server-side fetches. Out of scope:
+   missing-auth/CSRF findings.
+3. **File size & cohesion** — every source file >800 lines and test file >1,200 lines:
+   proposed split seams, or a cohesion argument for staying whole.
+4. **Duplication** — code repeated across plugins/components; for each cluster, the
+   proposed shared home (SDK vs packages/core) and consumer count.
+5. **SDK gaps** — things plugins reach around the SDK to do (deep imports, copy-paste
+   from host, missing hooks/components/utilities). 2+ real consumers required to
+   propose extraction; no speculative API.
+6. **Tooling** — scripts/ (docs generator, build pipeline, instance rig) and
+   dev/imitation-crab audited with the same lenses.
 
-## 2. Design decisions (interview-resolved)
+**Output:** `.claude/specs/audit-2026-06/REPORT.md` — findings with severity
+(P0 fix-now / P1 this-effort / P2 documented-deferred), file:line evidence, and a
+proposed workstream breakdown. Mark triages the report before any plan is written.
 
-| Decision | Resolution |
+### Phase 1 — Foundations (from audit findings)
+SDK and packages/core extractions land **first** so later file splits sit on the right
+shared code. Placement rule: duplicated client code (UI, hooks, utilities) →
+`@makinbakin/sdk`; duplicated server code → `packages/core`, reaching plugins via `ctx`.
+Bar: 2+ real consumers today.
+
+### Phase 2 — Decomposition & redesign
+Per-file split + redesign, in audit-priority order. Redesign-while-splitting is
+explicitly allowed: if a file's internals are bad, fix the design in the same pass.
+Each file = one coherent, revertable commit. CLI consolidation is a first-class
+workstream here, not just a `bakin.ts` split.
+
+### Phase 3 — Security fixes
+P0s may be pulled forward into any phase (fix-now). Remaining accepted findings are
+fixed as their own workstream.
+
+### Phase 4 — Test coverage & docs sweep
+`/agent-skills:test` pass over redesigned areas; verify `.claude/knowledge/*`,
+`CLAUDE.md`, `README.md`, and `docs/*` reflect reality.
+
+Each of Phases 1–3 gets its own `/agent-skills:plan` derived from the triaged report,
+then `/agent-skills:build` execution.
+
+## 3. Commands
+
+| Action | Command |
 |---|---|
-| Scope | Tasks plugin only. The schedule plugin's `cronFireToEntry` surface is out of scope (follow-up issue if ever needed). |
-| Data shape | Sibling object: `GET /api/plugins/tasks/:taskId/runs` returns `{ runs, outcome }`. Outcome is task-level state — it is **not** stamped onto run entries. |
-| Derivation location | Server-side, in `plugins/tasks/lib/runs-reader.ts` (`readTaskOutcome`). One tested place owns the semantics; UI stays a dumb renderer. |
-| Outcome semantics | Completion row wins: completion exists → `done` (even if since archived). Else by column: `blocked` → `blocked`, `archived` → `archived` (abandoned), `done` → `done` (legacy task with no row), anything else → `in_progress`. |
-| UI shape | Outcome badge on the Run History **header** line. Per-run `settled` badge recolored green → neutral blue; green becomes exclusively "task done". `lost` stays red, `running` amber, `superseded` zinc. Outcome colors: done → green, blocked → red, in_progress → amber, archived → zinc. |
-| Empty state | Unchanged: component renders nothing when a task has zero runs (no outcome badge either). |
+| Full test suite | `bun run test` |
+| Single test file | `bun test <path> --isolate` |
+| Typecheck | `bun run typecheck` (tsc -p tsconfig.app.json --noEmit) |
+| Lint | `bun run lint` |
+| Full binary build | `bun run build` |
+| Dev server | `bun run dev` (mock: `bun run dev:mock`) |
+| Isolated instance | `bun run instance up` / `instance dev --mode isolated` |
 
-### Outcome derivation (normative)
+**Build-stamp trap:** `bun run build` rewrites a tracked generated-version file —
+never `git add -A` after a local build.
 
-```
-getCompletion(taskId) row exists ──→ done (completedAt, agent from row)
-else column = blocked            ──→ blocked
-else column = archived           ──→ archived   (never completed)
-else column = done               ──→ done       (legacy; no completedAt/agent)
-else                             ──→ in_progress
-```
+## 4. Project structure rules
 
-Unknown task (no board entry, no completion): `outcome` is omitted — the route
-already returns an empty runs list for unknown tasks and must not start
-erroring.
+- Source files target 200–400 lines; >800 requires recorded justification.
+- Splits follow existing conventions: plugins decompose into `lib/` + `components/`
+  + `lib/routes/`; core modules into focused siblings under their package.
+- Extraction destinations: client → `packages/sdk/src/*` (exported via the existing
+  sub-path structure; mind vendor-bundle weight, #422 splitting), server →
+  `packages/core/src/*`.
+- Plugin authors' canonical surface stays `@makinbakin/sdk/*` — no new deep-import
+  patterns. No direct plugin-to-plugin imports (HookRegistry only).
+- Adapter boundary holds: provider code stays behind `packages/adapter-*` factories.
 
-### Types
+## 5. Code style
 
-```ts
-/** Task-level terminal outcome, derived from completion ledger + column. */
-export interface TaskOutcome {
-  state: 'done' | 'blocked' | 'archived' | 'in_progress'
-  /** Set when state === 'done' and a completion row exists. */
-  completedAt?: string // ISO
-  /** Agent that recorded the completion, when known. */
-  agent?: string
-}
-```
+Per CLAUDE.md, unchanged: strict TS (no `any` across boundaries), Zod at system
+boundaries, functional preference, `createLogger('module')`, no empty catches,
+`const` over `let`, kebab-case files, conventional commits with scope.
 
-Declared in `plugins/tasks/types.ts`, mirrored in
-`src/hooks/use-task-run-history.ts` (existing keep-in-sync pattern for
-`TaskRunEntry`). The hook returns `{ runs, outcome, loading }`.
+## 6. Testing strategy
 
-## 3. Touched files (project structure)
+- Every commit: `bun run test` green + typecheck clean.
+- Redesigned behavior ships with new/updated tests **in the same commit**.
+- Split test files along the same seams as the source they test.
+- All filesystem-touching tests follow the CLAUDE.md mock rules (both content-dir
+  resolvers, OpenClaw home, logger, watcher; env vars before imports; `--isolate`).
+- Every PR: `bun run build` succeeds, dev server boots, UI-touching changes get a
+  browser smoke check.
 
-| File | Change |
-|---|---|
-| `plugins/tasks/lib/runs-reader.ts` | Add `readTaskOutcome(taskId): TaskOutcome \| undefined` using `getCompletion` (from `src/core/execution-ledger`, already exported) + `getTaskWithColumn` (from `src/core/task-store`). |
-| `plugins/tasks/types.ts` | Add `TaskOutcome`. |
-| `plugins/tasks/index.ts` | `/:taskId/runs` handler returns `{ runs, outcome }`. |
-| `src/hooks/use-task-run-history.ts` | Mirror `TaskOutcome`; expose `outcome` from the hook. |
-| `plugins/tasks/components/task-run-history.tsx` | Header outcome badge; recolor `settled` to blue. |
-| `tests/plugins/tasks/*` | Coverage for derivation + route shape (see §5). |
-| `.claude/knowledge/execution-ledger.md` | Update the read-only consumers table (run-history row) to note the outcome join on `completions`. |
+## 7. Commit & rollback strategy
 
-No new source files except possibly a dedicated test file. No `packages/core`
-changes (`getCompletion` already exists). No README impact (verified — no
-run-history mention). No SDK/vendor/build changes.
+- **Branch + PR per workstream** (e.g. `audit/report`, `refactor/sdk-extractions`,
+  `refactor/cli`, `refactor/plugin-team`, …). Mark reviews and merges every PR.
+- **One commit per finding/file** — a file's split+redesign is a single commit; an
+  extraction (shared module + all consumers migrated) is a single commit. Every
+  commit is a rollback checkpoint: suite green, typecheck clean.
+- Conventional commits with scope: `refactor(team): split index.ts into lib modules`,
+  `feat(sdk): extract shared facet utilities`, `fix(security): …`.
+- Dependency order between PRs documented in each plan; SDK/core extraction PRs merge
+  before the refactor PRs that depend on them.
+- No shims, no re-export compatibility layers, no deprecation periods — dead paths
+  are deleted in the commit that obsoletes them.
 
-## 4. Commands & code style
-
-- Dev: `bun run dev` (plugin HMR covers the component; server-side changes to
-  `runs-reader.ts`/`index.ts` need a manual server restart).
-- Full suite: `bun run test`. Single file: `bun test tests/plugins/tasks/<f>.test.ts --isolate`.
-- Conventions per CLAUDE.md: strict TS (no `any` across boundaries), Zod at
-  API boundaries, `const` over `let`, kebab-case files, import order
-  (builtins → external → SDK → `@/*` → relative).
-- Commits: conventional with scope (see §6).
-
-## 5. Testing strategy
-
-Per CLAUDE.md testing rules: mock **both** content-dir resolvers, OpenClaw
-home, logger, watcher; temp dirs + `afterAll` cleanup; `closeDb()` before
-`rmSync` if the real ledger is exercised; use `tests/plugins/test-helpers.ts`
-for route tests.
-
-Unit — `readTaskOutcome` derivation (table-driven over the normative rules):
-1. Completion row exists, column done → `done` with `completedAt` + `agent`.
-2. Completion row exists, column archived → `done` (completion wins).
-3. No completion, column blocked → `blocked`.
-4. No completion, column archived → `archived`.
-5. No completion, column done (legacy) → `done`, no `completedAt`.
-6. No completion, column inProgress/todo/backlog/review → `in_progress`.
-7. Unknown task → `undefined`.
-
-Route — `GET /:taskId/runs` returns `{ runs, outcome }`; unknown task returns
-`{ runs: [] }` without error.
-
-Existing tests in `tests/plugins/tasks/routes.test.ts` asserting the runs
-response must keep passing (updated only if they pin the exact response keys).
-
-## 6. Commit strategy (rollback checkpoints)
-
-Branch: `feat/task-outcome-run-history`. Each commit builds + tests green —
-natural rollback points:
-
-1. `feat(tasks): add readTaskOutcome derivation over completions + column`
-   — runs-reader + types + unit tests. Pure addition; nothing consumes it yet.
-2. `feat(tasks): return task outcome from the runs route`
-   — route + route tests + hook mirror. API now serves `{ runs, outcome }`;
-   UI unchanged and tolerant of the extra key.
-3. `feat(tasks): show task outcome in run history header, demote settled to blue`
-   — component change, the user-visible payoff.
-4. `docs(ledger): note run-history outcome join in execution-ledger knowledge`
-   — knowledge doc update (can fold into 2 if trivial).
-
-Reverting 3 leaves a useful API; reverting 2–3 leaves a harmless helper.
-
-## 7. Boundaries
+## 8. Boundaries
 
 **Always:**
-- Read-only against the ledger — only `getCompletion`; never write verbs.
-- Respect the adapter boundary: everything stays in `plugins/tasks` +
-  existing `src/core` facades.
-- Outcome derivation stays server-side in one function.
+- Update `.claude/knowledge/*` docs in the same PR that changes the system they
+  describe; check `CLAUDE.md` and `README.md` for impact.
+- Keep the adapter boundary, execution-ledger invariants, usage-recorder singleton,
+  and testing isolation rules intact through every refactor.
+- Verify behavior claims with tests, not inspection.
 
 **Ask first:**
-- Any change to ledger schema or verbs (should be unnecessary).
-- Any change to the schedule plugin (out of scope).
+- Deleting anything that looks dead but is reachable from the binary CLI surface,
+  release pipeline, or agent-package projection (three-mode verification: binary
+  users, repo users, repo devs).
+- Any change to the release pipeline / signing / npm publish flow.
+- Pulling a P2 (deferred) finding into scope.
 
 **Never:**
-- Backwards-compat shims for the old response shape (single-user machine).
-- New audit-log queries for outcome (issue explicitly excludes this).
-- Per-run outcome stamping.
-- Fabricating outcome states beyond the four derived ones.
+- Backwards-compat shims or re-export layers.
+- Tests that touch real `~/.bakin/` or `~/.openclaw/`.
+- New stat-tracking parallel to `src/core/usage.ts`; fabricated model metadata;
+  error-classification by message text.
+- Merge to main without Mark's PR review.
+
+## 9. Threat model (security audit calibration)
+
+Tailscale is the auth perimeter — the network boundary is trusted. The audit asks:
+*what can hurt the system from inside the perimeter, or through content the agents
+ingest?* Agent-controlled and external content (web fetches, installed plugins,
+agent-written files) is untrusted input even though the human user is trusted.
