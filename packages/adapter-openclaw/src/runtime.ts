@@ -30,7 +30,7 @@ import type {
 import type { AdapterHealthCheckDefinition, AdapterInitOpts, AdapterLogger } from '@bakin/core/adapters/shared'
 import { RuntimeError, RuntimeTurnError } from '@bakin/core/adapters/runtime'
 import { readFileFrom, safeFileSize } from './file-utils'
-import { inspectTrajectoryRun, trajectoryFilePathFor, watchTrajectoryForDeath, TrajectoryRecoveredTurn } from './trajectory-forensics'
+import { inspectTrajectoryRun, trajectoryFilePathFor, watchTrajectoryForDeath, TrajectoryRecoveredTurn, type TrajectoryUsage } from './trajectory-forensics'
 import { generateDirectImage, isDirectImageProvider, resolveProviderApiKeySource } from '@bakin/core/media'
 import { isUserEdited } from '@bakin/core/agent-packages/markers'
 import {
@@ -125,6 +125,14 @@ interface OpenClawAgentTurnOptions {
   toolsDeny?: string[]
   /** Oversized-output threshold for session-death diagnoses (core policy). */
   oversizedOutputBytes?: number
+}
+
+/** Result of one OpenClaw agent turn: the assistant text plus token usage
+ *  (sourced from the trajectory `model.completed` event; absent when the
+ *  runtime recorded none or the turn had no trajectory). */
+interface OpenClawTurnResult {
+  content: string
+  usage?: TrajectoryUsage
 }
 
 class OpenClawCommandError extends RuntimeError {
@@ -495,7 +503,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
   messaging = {
     send: async (args: MessageArgs) => {
-      const content = await this.chatCompletion({
+      const { content, usage } = await this.chatCompletion({
         agentId: args.agentId,
         messages: [{ role: 'user', content: args.content }],
         sessionKey: args.threadId,
@@ -510,6 +518,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       return {
         id: `msg-${Date.now()}`,
         content,
+        ...(usage ? { usage } : {}),
         ...(sessionId ? { metadata: { sessionId } } : {}),
       }
     },
@@ -1186,7 +1195,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     return headers
   }
 
-  private async chatCompletion(opts: OpenClawAgentTurnOptions): Promise<string> {
+  private async chatCompletion(opts: OpenClawAgentTurnOptions): Promise<OpenClawTurnResult> {
     return this.runOpenClawAgentGateway(opts)
   }
 
@@ -1211,12 +1220,28 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   private async *runOpenClawAgentGatewayStream(opts: OpenClawAgentTurnOptions): AsyncIterable<ChatChunk> {
-    const content = await this.runOpenClawAgentGateway(opts)
+    const { content } = await this.runOpenClawAgentGateway(opts)
     if (content) yield { type: 'text', content }
     yield { type: 'done' }
   }
 
-  private async runOpenClawAgentGateway(opts: OpenClawAgentTurnOptions): Promise<string> {
+  /**
+   * Best-effort token usage for the just-finished turn, read from the
+   * trajectory's success `model.completed` event. Threaded sends only (no
+   * trajectory file → no usage). Returns undefined when the runtime recorded
+   * none — never fabricated.
+   */
+  private readTurnUsage(trajectoryFile: string | null, trajectoryOffset: number, opts: OpenClawAgentTurnOptions): TrajectoryUsage | undefined {
+    if (!trajectoryFile) return undefined
+    const outcome = inspectTrajectoryRun({
+      trajectoryFile,
+      sinceByteOffset: trajectoryOffset,
+      oversizedOutputBytes: opts.oversizedOutputBytes,
+    })
+    return outcome?.kind === 'success' ? outcome.usage : undefined
+  }
+
+  private async runOpenClawAgentGateway(opts: OpenClawAgentTurnOptions): Promise<OpenClawTurnResult> {
     const cliSessionId = opts.sessionKey ? openClawCliSessionId(opts.agentId, opts.sessionKey) : null
     const params: Record<string, unknown> = {
       agentId: opts.agentId,
@@ -1265,7 +1290,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         ? await Promise.race([request, deathWatch.promise])
         : await request
       const content = extractOpenClawAgentText(payload)
-      if (content) return content
+      if (content) return { content, usage: this.readTurnUsage(trajectoryFile, trajectoryOffset, opts) }
       // A SUCCESS frame whose payload yields no extractable text (payload
       // shape drift) is still recoverable when the trajectory recorded the
       // completion — don't fail a turn whose content exists on disk.
@@ -1280,7 +1305,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
             agentId: opts.agentId,
             sessionId: outcome.sessionId,
           })
-          return outcome.content
+          return { content: outcome.content, usage: outcome.usage }
         }
       }
       throw new RuntimeError('OpenClaw chat failed: agent response did not include assistant text', { kind: 'runtime_failed' })
@@ -1294,7 +1319,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
           agentId: opts.agentId,
           sessionId: err.sessionId,
         })
-        return err.content
+        return { content: err.content, usage: err.usage }
       }
       if (err instanceof RuntimeTurnError) {
         // Fail-fast verdict — the diagnosis is already complete. Cancel the
@@ -1319,7 +1344,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
             { kind: 'runtime_failed', cause: err },
           )
       const verdict = this.postMortemAgentTurn(typed, trajectoryFile, trajectoryOffset, opts)
-      if (verdict?.kind === 'recovered') return verdict.content
+      if (verdict?.kind === 'recovered') return { content: verdict.content, usage: verdict.usage }
       if (verdict?.kind === 'death') throw verdict.error
       throw typed
     } finally {
@@ -1341,7 +1366,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     trajectoryFile: string | null,
     trajectoryOffset: number,
     opts: OpenClawAgentTurnOptions,
-  ): { kind: 'recovered'; content: string } | { kind: 'death'; error: RuntimeTurnError } | null {
+  ): { kind: 'recovered'; content: string; usage?: TrajectoryUsage } | { kind: 'death'; error: RuntimeTurnError } | null {
     if (!trajectoryFile) return null
     // timeout/transport: the frame never arrived. runtime_failed: an error
     // FRAME arrived — but a graceful gateway shutdown mid-turn sends one
@@ -1368,7 +1393,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         sessionId: outcome.sessionId,
         error: err.message,
       })
-      return { kind: 'recovered', content: outcome.content }
+      return { kind: 'recovered', content: outcome.content, usage: outcome.usage }
     }
 
     this.logger.warn('OpenClaw agent turn died; trajectory post-mortem attached', {

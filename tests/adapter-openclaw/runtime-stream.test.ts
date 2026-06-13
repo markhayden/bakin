@@ -109,6 +109,39 @@ describe('OpenClaw runtime Gateway chat', () => {
     expect(agentRequest?.params).not.toHaveProperty('timeoutMs')
     expect(agentRequest?.params.sessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
     expect(result.metadata?.sessionId).toBe(agentRequest?.params.sessionId)
+    // No trajectory written for this turn → usage is honestly absent, never zero-filled.
+    expect(result.usage).toBeUndefined()
+  })
+
+  it('surfaces token usage on a successful turn from the trajectory', async () => {
+    FakeWebSocket.onRequest = (frame, ws) => {
+      if (frame.method !== 'agent') return
+      const sessionId = frame.params.sessionId as string
+      const dir = join(testDir, 'agents', 'pixel', 'sessions')
+      mkdirSync(dir, { recursive: true })
+      const lines = [
+        { type: 'session.started', data: { toolCount: 3 } },
+        { type: 'model.completed', data: { timedOut: false, aborted: false, usage: { input: 1500, output: 320, total: 1820 }, assistantTexts: ['done'] } },
+        { type: 'session.ended', data: { status: 'success', timedOut: false } },
+      ].map((e, i) => JSON.stringify({
+        traceSchema: 'openclaw-trajectory', schemaVersion: 1, traceId: sessionId,
+        type: e.type, ts: new Date(0).toISOString(), seq: i + 1, sessionId, runId: 'run-1', data: e.data,
+      }))
+      writeFileSync(join(dir, `${sessionId}.trajectory.jsonl`), lines.join('\n') + '\n')
+      ws.emitMessage({ type: 'res', id: frame.id, ok: true, payload: gatewayAgentPayload('done') })
+    }
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    const result = await runtime.messaging.send({
+      agentId: 'pixel',
+      content: 'Say done.',
+      threadId: 'task:t-usage:d1',
+    })
+
+    expect(result.content).toBe('done')
+    expect(result.usage).toEqual({ input: 1500, output: 320, total: 1820 })
   })
 
   it('unthreaded sends keep a random idempotency key and expose no session id', async () => {

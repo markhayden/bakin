@@ -71,9 +71,20 @@ export interface MessageArgs extends RuntimeMessageToolPolicy {
   metadata?: RuntimeMetadata
 }
 
+/** Token usage for one agent turn, when the runtime reports it. */
+export interface MessageUsage {
+  input?: number
+  output?: number
+  total?: number
+  /** Resolved model the runtime ran, when known. */
+  model?: string
+}
+
 export interface MessageResult {
   id: string
   content?: string
+  /** Per-turn token usage, omitted when the runtime reported none. */
+  usage?: MessageUsage
   metadata?: RuntimeMetadata
 }
 
