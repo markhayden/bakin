@@ -20,8 +20,8 @@ single canonical home for all shared contract types; core re-exports from it.**
 - [x] A10 — strip src/types residue to its 3 live types
 
 ## Phase B — split (pure reorg)
-- [ ] B1 — split sdk/types/index.ts → primitives/manifest/runtime/services/registration/context (+ barrel)
+- [x] B1 — split sdk/types/index.ts → primitives/manifest/runtime/services/registration/context (+ barrel) + dropped 8 dead misc types
 - [~] B2 — MOOT: unification shrank core/plugin-types.ts 1129→738 lines (under the 800 threshold); split no longer warranted
 
 ## PR gate
-- [ ] test + typecheck + lint + full build green; SDK publish guard clean; boot smoke; doc sweep → open PR
+- [x] gate green: typecheck + 4996 tests + lint + full build + build:vendors + boot smoke (10 plugins); SDK self-containment verified; docs updated → PR
