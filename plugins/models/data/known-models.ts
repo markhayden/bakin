@@ -403,6 +403,10 @@ export function computeCostUsdMicros(
   if (!pricing) return null
   const input = usage.input ?? 0
   const output = usage.output ?? 0
+  // Pricing needs the input/output split (different per-1M rates). A usage
+  // block carrying only a combined `total` can't be priced accurately, so we
+  // return null (unmetered) rather than guess — input/output is always
+  // present in practice; this is the honest fallback for the degenerate case.
   if (input === 0 && output === 0) return null
   const dollars = (input / 1_000_000) * pricing.inputPer1M + (output / 1_000_000) * pricing.outputPer1M
   return Math.round(dollars * 1_000_000)

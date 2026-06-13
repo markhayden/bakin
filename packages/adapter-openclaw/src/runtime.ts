@@ -1238,6 +1238,14 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
    * trajectory's success `model.completed` event. Threaded sends only (no
    * trajectory file → no usage). Returns undefined when the runtime recorded
    * none — never fabricated.
+   *
+   * Relies on OpenClaw's write ordering: `model.completed` (carrying usage)
+   * is written to the trajectory before `session.ended`, and the gateway
+   * success frame is delivered after the run ends — so by the time we read
+   * here the usage line is already on disk. (The fail-fast death watch relies
+   * on the same ordering to read `session.ended`.) If a future runtime broke
+   * that ordering, the only effect is a silently unmetered turn — never a
+   * crash or a wrong cost.
    */
   private readTurnUsage(trajectoryFile: string | null, trajectoryOffset: number, opts: OpenClawAgentTurnOptions): TrajectoryUsage | undefined {
     if (!trajectoryFile) return undefined
