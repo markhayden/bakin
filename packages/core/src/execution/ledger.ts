@@ -129,6 +129,31 @@ const MIGRATIONS = [
       db.exec('ALTER TABLE cron_fires ADD COLUMN skip_reason TEXT')
     },
   },
+  {
+    // Per-run cost attribution. One row per settled run (run_id is the same
+    // key dispatch settles on). A billing fact, not content: token counts +
+    // an estimated micro-dollar cost (null when the model has no catalog
+    // pricing or the runtime reported no usage). first-write-wins on the
+    // PK, so a transport retry of the same run can't double-count.
+    version: 3,
+    up: (db: Db) => {
+      db.exec(
+        `CREATE TABLE run_costs (
+           run_id           TEXT PRIMARY KEY,
+           task_id          TEXT NOT NULL,
+           agent            TEXT NOT NULL,
+           model            TEXT,
+           input_tokens     INTEGER,
+           output_tokens    INTEGER,
+           total_tokens     INTEGER,
+           cost_usd_micros  INTEGER,
+           occurred_at      INTEGER NOT NULL
+         )`,
+      )
+      db.exec('CREATE INDEX run_costs_by_agent_time ON run_costs(agent, occurred_at)')
+      db.exec('CREATE INDEX run_costs_by_time ON run_costs(occurred_at)')
+    },
+  },
 ]
 
 /** Open the db with this module's schema applied. Every verb goes through here. */
@@ -685,6 +710,105 @@ export function putIdempotent(key: string, kind: string, result: unknown, now?: 
 }
 
 // ---------------------------------------------------------------------------
+// run costs (per-run billing facts)
+// ---------------------------------------------------------------------------
+
+export interface RunCostInput {
+  runId: string
+  taskId: string
+  agent: string
+  model?: string
+  inputTokens?: number | null
+  outputTokens?: number | null
+  totalTokens?: number | null
+  /** Estimated cost; null when the model has no catalog pricing (unmetered). */
+  costUsdMicros?: number | null
+  occurredAt: number
+}
+
+export interface SpendByAgentRow {
+  agent: string
+  costUsdMicros: number
+  runs: number
+}
+
+export interface SpendByModelRow {
+  model: string
+  costUsdMicros: number
+  runs: number
+}
+
+/**
+ * Record the cost of one settled run. first-write-wins on run_id (a transport
+ * retry of the same run can't double-count). Token/cost columns are nullable:
+ * an unmetered run (no usage, or a model with no catalog pricing) still gets a
+ * row — it counts as a run with zero dollars, never a fabricated cost.
+ */
+export function recordRunCost(input: RunCostInput): void {
+  guard(`recordRunCost(${input.runId})`, () => {
+    ledger()
+      .prepare(
+        `INSERT OR IGNORE INTO run_costs
+           (run_id, task_id, agent, model, input_tokens, output_tokens, total_tokens, cost_usd_micros, occurred_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        input.runId,
+        input.taskId,
+        input.agent,
+        input.model ?? null,
+        input.inputTokens ?? null,
+        input.outputTokens ?? null,
+        input.totalTokens ?? null,
+        input.costUsdMicros ?? null,
+        input.occurredAt,
+      )
+  })
+}
+
+/** Total estimated spend (micro-dollars) in a window, optionally scoped to one agent. */
+export function spendTotal(opts: { agent?: string; sinceMs: number; untilMs?: number }): number {
+  return guard('spendTotal', () => {
+    const clauses = ['occurred_at >= ?']
+    const params: (string | number)[] = [opts.sinceMs]
+    if (opts.untilMs !== undefined) { clauses.push('occurred_at <= ?'); params.push(opts.untilMs) }
+    if (opts.agent !== undefined) { clauses.push('agent = ?'); params.push(opts.agent) }
+    const row = ledger()
+      .prepare<{ total: number }, (string | number)[]>(
+        `SELECT COALESCE(SUM(cost_usd_micros), 0) AS total FROM run_costs WHERE ${clauses.join(' AND ')}`,
+      )
+      .get(...params)
+    return row?.total ?? 0
+  })
+}
+
+/** Per-agent spend rollup since a timestamp (cost in micro-dollars, run count). */
+export function spendByAgent(sinceMs: number): SpendByAgentRow[] {
+  return guard('spendByAgent', () => {
+    return ledger()
+      .prepare<{ agent: string; micros: number; runs: number }, [number]>(
+        `SELECT agent, COALESCE(SUM(cost_usd_micros), 0) AS micros, COUNT(*) AS runs
+           FROM run_costs WHERE occurred_at >= ? GROUP BY agent`,
+      )
+      .all(sinceMs)
+      .map((r) => ({ agent: r.agent, costUsdMicros: r.micros, runs: r.runs }))
+  })
+}
+
+/** Per-model spend rollup since a timestamp. Rows with no model are grouped under ''. */
+export function spendByModel(sinceMs: number): SpendByModelRow[] {
+  return guard('spendByModel', () => {
+    return ledger()
+      .prepare<{ model: string | null; micros: number; runs: number }, [number]>(
+        `SELECT model, COALESCE(SUM(cost_usd_micros), 0) AS micros, COUNT(*) AS runs
+           FROM run_costs WHERE occurred_at >= ? GROUP BY model`,
+      )
+      .all(sinceMs)
+      .map((r) => ({ model: r.model ?? '', costUsdMicros: r.micros, runs: r.runs }))
+  })
+}
+
+// ---------------------------------------------------------------------------
 // maintenance
 // ---------------------------------------------------------------------------
 
@@ -696,6 +820,7 @@ export function purgeTaskRows(taskId: string): void {
       db.prepare('DELETE FROM runs WHERE task_id = ?').run(taskId)
       db.prepare('DELETE FROM completions WHERE task_id = ?').run(taskId)
       db.prepare('DELETE FROM seq_watermarks WHERE task_id = ?').run(taskId)
+      db.prepare('DELETE FROM run_costs WHERE task_id = ?').run(taskId)
     })
   })
 }
