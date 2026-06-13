@@ -33,6 +33,7 @@
     "./openapi": "./src/openapi/index.ts",
     "./hooks/hook-registry": "./src/hooks/hook-registry.ts",
     "./hooks/hook-registry-singleton": "./src/hooks/hook-registry-singleton.ts",
+    "./skills/plugin-skill-registry": "./src/skills/plugin-skill-registry.ts",
     "./plugins/manifest": "./src/plugins/manifest.ts",
     "./plugins/signatures": "./src/plugins/signatures.ts",
     "./plugins/permissions": "./src/plugins/permissions.ts",

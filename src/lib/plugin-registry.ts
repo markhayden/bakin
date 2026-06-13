@@ -49,6 +49,7 @@ import { getContentDir } from '../core/content-dir'
 import { createLogger } from '../core/logger'
 import { appendAudit } from '../core/audit'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
+import { getPluginSkills as skillRegistry, clearPluginSkills, removePluginSkillsByPlugin } from '@bakin/core/skills/plugin-skill-registry'
 import { getContentTypes, purgeContentType } from '../core/search-registry'
 import { loadPluginSkills } from './plugin-skill-loader'
 import { setCorePluginCheck, readPluginLockfile } from '../../packages/core/src/plugins/lockfile'
@@ -357,24 +358,11 @@ function slugifyWorkflowId(name: string): string {
     .replace(/-$/, '')
 }
 
-/** Skills registered by plugins (keyed by name, first-registered wins) */
-const pluginSkills = new Map<string, SkillDefinition>()
-
-export function getPluginSkills(): Map<string, SkillDefinition> {
-  return pluginSkills
-}
-
-export function removePluginSkillsByPlugin(pluginId: string): number {
-  let removed = 0
-  const source = `plugin:${pluginId}`
-  for (const [name, skill] of [...pluginSkills.entries()]) {
-    if (skill.source === source) {
-      pluginSkills.delete(name)
-      removed++
-    }
-  }
-  return removed
-}
+// The plugin-skill registry (map + getPluginSkills/removePluginSkillsByPlugin)
+// now lives in the dependency-free leaf @bakin/core/skills/plugin-skill-registry,
+// so skill consumers (e.g. workflow-skill-drift) don't cycle back through this
+// loader. Re-exported here for the existing public surface.
+export { getPluginSkills, removePluginSkillsByPlugin } from '@bakin/core/skills/plugin-skill-registry'
 
 let userPluginImportCounter = 0
 
@@ -830,8 +818,8 @@ class PluginRegistryImpl {
       },
       registerSkill: (skill: SkillDefinition) => {
         skill.source = `plugin:${pluginId}`
-        if (!pluginSkills.has(skill.name)) {
-          pluginSkills.set(skill.name, skill)
+        if (!skillRegistry().has(skill.name)) {
+          skillRegistry().set(skill.name, skill)
         }
       },
       registerWorkflow: (def: WorkflowDefinitionInput) => {
@@ -1508,7 +1496,7 @@ class PluginRegistryImpl {
     this.failedPlugins.clear()
     corePluginTable = {}
     corePluginIds.clear()
-    pluginSkills.clear()
+    clearPluginSkills()
     this.initialized = false
     this.runtime = null
   }

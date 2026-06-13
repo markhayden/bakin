@@ -4,7 +4,7 @@ import { basename, join } from 'path'
 
 import type { SkillDefinition } from '@bakin/core/plugin-types'
 
-import { getPluginSkills } from '../../../src/lib/plugin-registry'
+import { getPluginSkills } from '@bakin/core/skills/plugin-skill-registry'
 import {
   getAgentPackageSkillOwner,
   getAgentPackageSkills,

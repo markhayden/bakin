@@ -17,7 +17,7 @@ import type { HealthCheckResult, HealthRepairHandler } from '../../../packages/c
 
 import { listDefinitions } from './parser'
 import { getAgentPackageSkills } from './agent-package-skill-registry'
-import { getPluginSkills } from '../../../src/lib/plugin-registry'
+import { getPluginSkills } from '@bakin/core/skills/plugin-skill-registry'
 import { listInstances } from './runtime'
 import {
   repairWorkflowSkillDrift,

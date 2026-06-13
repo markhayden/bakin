@@ -27,7 +27,7 @@ import { join } from 'path'
 import yaml from 'js-yaml'
 import type { SkillDefinition } from '../types'
 import { getContentDir } from './content-dir'
-import { getPluginSkills } from '../../../src/lib/plugin-registry'
+import { getPluginSkills } from '@bakin/core/skills/plugin-skill-registry'
 import { getAgentPackageSkills } from './agent-package-skill-registry'
 
 const skillCache = new Map<string, SkillDefinition | null>()

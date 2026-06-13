@@ -67,7 +67,7 @@ describe('buildPluginContext settings', () => {
     expect(existsSync(file)).toBe(true)
     expect(JSON.parse(readFileSync(file, 'utf-8'))).toEqual({ a: 1, b: 2 })
     // getSettings reads it back.
-    expect(ctx.getSettings()).toEqual({ a: 1, b: 2 })
+    expect(ctx.getSettings<Record<string, unknown>>()).toEqual({ a: 1, b: 2 })
   })
 
   it('omitting onSettingsChange is safe (no throw)', () => {
@@ -81,6 +81,6 @@ describe('buildPluginContext settings', () => {
       manifestPermissions: [],
     })
     expect(() => ctx.updateSettings({ x: true })).not.toThrow()
-    expect(ctx.getSettings()).toEqual({ x: true })
+    expect(ctx.getSettings<Record<string, unknown>>()).toEqual({ x: true })
   })
 })

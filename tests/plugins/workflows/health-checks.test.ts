@@ -68,6 +68,10 @@ mock.module('../../../src/lib/plugin-registry', () => ({
     register: () => () => {},
   }),
 }))
+// getPluginSkills now lives in the leaf; the source reads it from there.
+mock.module('@bakin/core/skills/plugin-skill-registry', () => ({
+  getPluginSkills: () => mockWorkflowPluginSkills,
+}))
 mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
   getHookRegistry: () => ({
     invoke: async (_name: string) => {
