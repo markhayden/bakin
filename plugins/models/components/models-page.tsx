@@ -70,6 +70,7 @@ const THINKING_LEVELS = ['inherit', 'off', 'minimal', 'low', 'medium', 'high', '
 interface RoutingPolicyRow { origin: string; model?: string; thinking?: string }
 interface TagOverrideRow { tag: string; model?: string; thinking?: string }
 interface RoutingConfigShape { policies: RoutingPolicyRow[]; tagOverrides: TagOverrideRow[] }
+interface BudgetShape { global?: { dailyUsd?: number; monthlyUsd?: number; warnPct?: number }; perAgent?: Record<string, { dailyUsd?: number; monthlyUsd?: number }> }
 
 const SPEND_WINDOWS = [
   { id: '24h', label: '24h' },
@@ -162,6 +163,8 @@ export function ModelsPage() {
   const [spendLoading, setSpendLoading] = useState(false)
   const [routing, setRouting] = useState<RoutingConfigShape>({ policies: [], tagOverrides: [] })
   const [pendingRouting, setPendingRouting] = useState<RoutingConfigShape | null>(null)
+  const [budget, setBudget] = useState<BudgetShape>({})
+  const [pendingBudget, setPendingBudget] = useState<BudgetShape | null>(null)
 
   // -------------------------------------------------------------------------
   // Data fetching
@@ -255,9 +258,43 @@ export function ModelsPage() {
     fetchAliases()
   }, [fetchConfig, fetchAvailable, fetchAliases])
 
+  const fetchBudget = useCallback(async () => {
+    try {
+      const res = await fetch('/api/plugins/models/budget')
+      if (!res.ok) throw new Error(`Budget fetch failed (${res.status})`)
+      setBudget(await res.json() as BudgetShape)
+    } catch (err) {
+      console.error('Failed to fetch budget:', err)
+    }
+  }, [])
+
+  const saveBudget = async () => {
+    if (!pendingBudget) return
+    setSaving('budget')
+    try {
+      // Drop blank/zero caps so an empty field clears the limit.
+      const g = pendingBudget.global ?? {}
+      const global: BudgetShape['global'] = {
+        ...(g.dailyUsd ? { dailyUsd: g.dailyUsd } : {}),
+        ...(g.monthlyUsd ? { monthlyUsd: g.monthlyUsd } : {}),
+        ...(g.warnPct ? { warnPct: g.warnPct } : {}),
+      }
+      const clean: BudgetShape = Object.keys(global).length ? { global } : {}
+      const res = await fetch('/api/plugins/models/budget', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(clean),
+      })
+      const data = await res.json()
+      if (data.ok) { setBudget(clean); setPendingBudget(null) }
+    } catch (err) {
+      console.error('Failed to save budget:', err)
+    } finally {
+      setSaving(null)
+    }
+  }
+
   useEffect(() => {
-    if (tab === 'spend') fetchSpend(spendWindow)
-  }, [tab, spendWindow, fetchSpend])
+    if (tab === 'spend') { fetchSpend(spendWindow); fetchBudget() }
+  }, [tab, spendWindow, fetchSpend, fetchBudget])
 
   const fetchRouting = useCallback(async () => {
     try {
@@ -1071,10 +1108,43 @@ export function ModelsPage() {
             <EmptyState icon={AlertTriangle} title="Spend data unavailable" />
           ) : (
             <>
-              <div className="rounded-xl border border-border bg-card p-4">
-                <div className="text-xs text-muted-foreground">Estimated total ({spend.window})</div>
-                <div className="text-2xl font-semibold tabular-nums">
-                  {formatUsdMicros(spend.totalUsdMicros) ?? '$ unavailable'}
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <div className="rounded-xl border border-border bg-card p-4">
+                  <div className="text-xs text-muted-foreground">Estimated total ({spend.window})</div>
+                  <div className="text-2xl font-semibold tabular-nums">
+                    {formatUsdMicros(spend.totalUsdMicros) ?? '$ unavailable'}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-border bg-card p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs text-muted-foreground">Budget caps (global)</div>
+                    {pendingBudget ? (
+                      <div className="flex items-center gap-2">
+                        <Button variant="outline" size="xs" onClick={() => setPendingBudget(null)}>Discard</Button>
+                        <Button size="xs" onClick={saveBudget} disabled={saving === 'budget'}>{saving === 'budget' ? 'Saving...' : 'Save'}</Button>
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <label className="flex-1 text-xs text-muted-foreground">
+                      Daily $
+                      <Input
+                        type="number" min="0" className="mt-1 h-8 text-sm"
+                        value={(pendingBudget ?? budget).global?.dailyUsd ?? ''}
+                        onChange={(e) => setPendingBudget({ ...(pendingBudget ?? budget), global: { ...(pendingBudget ?? budget).global, dailyUsd: e.target.value ? Number(e.target.value) : undefined } })}
+                      />
+                    </label>
+                    <label className="flex-1 text-xs text-muted-foreground">
+                      Monthly $
+                      <Input
+                        type="number" min="0" className="mt-1 h-8 text-sm"
+                        value={(pendingBudget ?? budget).global?.monthlyUsd ?? ''}
+                        onChange={(e) => setPendingBudget({ ...(pendingBudget ?? budget), global: { ...(pendingBudget ?? budget).global, monthlyUsd: e.target.value ? Number(e.target.value) : undefined } })}
+                      />
+                    </label>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">At 100% of a cap, dispatch defers new turns until the window resets. Leave blank for no limit.</p>
                 </div>
               </div>
 

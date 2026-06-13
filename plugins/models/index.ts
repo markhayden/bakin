@@ -368,6 +368,15 @@ const RoutingConfigSchema = z.object({
   tagOverrides: z.array(TagOverrideSchema),
 })
 
+const BudgetCapsSchema = z.object({
+  dailyUsd: z.number().positive().optional(),
+  monthlyUsd: z.number().positive().optional(),
+})
+const BudgetPolicySchema = z.object({
+  global: BudgetCapsSchema.extend({ warnPct: z.number().gt(0).lte(1).optional() }).optional(),
+  perAgent: z.record(z.string(), BudgetCapsSchema).optional(),
+})
+
 // Spend reporting windows. Coarser than the live-usage 5m/1h windows —
 // spend is a daily/monthly story. 'all' = since the beginning of time.
 type SpendWindow = '24h' | '7d' | '30d' | 'all'
@@ -642,6 +651,38 @@ const routes = [
         (ctx as unknown as PluginContext).updateSettings({ routing: body })
         ctx.activity.audit('routing.updated', 'system', { policies: body.policies.length, tagOverrides: body.tagOverrides.length })
         ctx.activity.log('system', `Updated routing policy (${body.policies.length} origins, ${body.tagOverrides.length} tag overrides)`, { category: 'models' })
+        return Response.json({ ok: true })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/budget',
+    method: 'GET',
+    summary: 'Spend-cap policy',
+    responses: { 200: passthrough, 500: errorResponse },
+    handler: async (_req, ctx) => {
+      try {
+        return Response.json(ctx.getSettings<ModelsPluginSettings>().budget ?? {})
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/budget',
+    method: 'PUT',
+    summary: 'Replace the budget policy',
+    body: BudgetPolicySchema,
+    responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
+    handler: async (_req, ctx, { body }) => {
+      try {
+        (ctx as unknown as PluginContext).updateSettings({ budget: body })
+        ctx.activity.audit('budget.updated', 'system', { hasGlobal: !!body.global, perAgent: Object.keys(body.perAgent ?? {}).length })
+        ctx.activity.log('system', 'Updated budget policy', { category: 'models' })
         return Response.json({ ok: true })
       } catch (err) {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })

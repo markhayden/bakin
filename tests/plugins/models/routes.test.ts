@@ -152,6 +152,7 @@ describe('Models Plugin Activation', () => {
     expect(routePaths).toEqual([
       'GET /aliases',
       'GET /available',
+      'GET /budget',
       'GET /config',
       'GET /routing',
       'GET /runtime/status',
@@ -161,6 +162,7 @@ describe('Models Plugin Activation', () => {
       'POST /defaults',
       'POST /refresh',
       'POST /runtime/restart',
+      'PUT /budget',
       'PUT /routing',
     ])
   })
@@ -591,6 +593,30 @@ describe('routing config', () => {
     const { status } = await callRoute(route, activated.ctx, {
       body: { policies: [{ origin: 'bogus', model: 'm' }], tagOverrides: [] },
     })
+    expect(status).toBe(400)
+  })
+})
+
+describe('budget policy', () => {
+  it('GET /budget returns an empty policy by default', async () => {
+    const route = findRoute(activated.routes, 'GET', '/budget')!
+    const { status, body } = await callRoute(route, activated.ctx)
+    expect(status).toBe(200)
+    expect(body).toEqual({})
+  })
+
+  it('PUT /budget validates and persists caps', async () => {
+    const route = findRoute(activated.routes, 'PUT', '/budget')!
+    const policy = { global: { dailyUsd: 25, monthlyUsd: 500, warnPct: 0.8 }, perAgent: { pixel: { dailyUsd: 5 } } }
+    const { status, body } = await callRoute(route, activated.ctx, { body: policy })
+    expect(status).toBe(200)
+    expect(body.ok).toBe(true)
+    expect(activated.ctx.updateSettings).toHaveBeenCalledWith({ budget: policy })
+  })
+
+  it('PUT /budget rejects a negative cap', async () => {
+    const route = findRoute(activated.routes, 'PUT', '/budget')!
+    const { status } = await callRoute(route, activated.ctx, { body: { global: { dailyUsd: -5 } } })
     expect(status).toBe(400)
   })
 })

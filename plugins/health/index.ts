@@ -28,6 +28,7 @@ import { checkChannelApprovals } from './lib/system-checks/channel-approvals'
 import { checkChannelAliases } from './lib/system-checks/channel-aliases'
 import { checkRestartRecovery } from './lib/system-checks/restart-recovery'
 import { checkExecutionSafety } from './lib/system-checks/execution-safety'
+import { checkBudget } from './lib/system-checks/budget'
 import { checkSearchAdapter } from './lib/system-checks/search'
 import { checkAndSyncSkill, syncSkillRepair } from './lib/system-checks/sync-skill'
 import { checkPluginAssets } from './lib/system-checks/plugin-assets'
@@ -541,6 +542,11 @@ const healthPlugin: BakinPlugin = definePlugin({
       id: 'execution-safety',
       name: 'Duplicate-execution suppression + ledger health',
       run: () => checkExecutionSafety(),
+    })
+    ctx.registerHealthCheck({
+      id: 'budget',
+      name: 'Spend vs budget caps',
+      run: () => checkBudget(),
     })
     ctx.registerHealthCheck({
       id: 'search',

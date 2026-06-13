@@ -185,6 +185,9 @@ describe('ModelsPage component', () => {
       if (url === '/api/plugins/models/routing' && method === 'GET') {
         return jsonResponse({ policies: [], tagOverrides: [] })
       }
+      if (url === '/api/plugins/models/budget' && method === 'GET') {
+        return jsonResponse({})
+      }
       if (url === '/api/plugins/models/defaults' && method === 'POST') {
         configState = {
           ...configState,
