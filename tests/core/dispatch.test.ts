@@ -912,6 +912,42 @@ describe('dispatch', () => {
       expect(args.thinking).toBe('low')
     })
 
+    it('defers dispatch when a budget cap is exceeded (task stays in todo, no send)', async () => {
+      const { spendTotal } = require('../../src/core/execution-ledger') as typeof import('../../src/core/execution-ledger')
+      // Seed >$1 of spend "today" for the agent so a $1 daily cap is exceeded.
+      const { recordRunCost } = require('../../src/core/execution-ledger') as typeof import('../../src/core/execution-ledger')
+      recordRunCost({ runId: 'seed:budget:d1', taskId: 'seed-b', agent: 'pixel', model: 'm', inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsdMicros: 2_000_000, occurredAt: Date.now() })
+      void spendTotal
+      setDispatchColumns({ todo: [{ id: 't-budget', title: 'Over budget', agent: 'pixel' }] })
+      vi.mocked(getHookRegistry).mockReturnValue({
+        invoke: mock(async (hook: string) => {
+          if (hook === 'models.getBudgetPolicy') return { global: { dailyUsd: 1 } }
+          return undefined
+        }),
+        has: mock().mockReturnValue(false),
+        register: mock(),
+      } as unknown as HookRegistry)
+
+      await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
+
+      expect(mockRuntimeSend).not.toHaveBeenCalled()
+    })
+
+    it('regression: no budget policy → dispatch proceeds normally', async () => {
+      setDispatchColumns({ todo: [{ id: 't-nobudget', title: 'No cap', agent: 'pixel' }] })
+      vi.mocked(getHookRegistry).mockReturnValue({
+        invoke: mock(async (hook: string) => (hook === 'models.getBudgetPolicy' ? {} : undefined)),
+        has: mock().mockReturnValue(false),
+        register: mock(),
+      } as unknown as HookRegistry)
+
+      await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
+
+      expect(mockRuntimeSend).toHaveBeenCalledTimes(1)
+    })
+
     it('regression: empty routing config leaves the turn with no model/thinking (inherit)', async () => {
       setDispatchColumns({ todo: [{ id: 't-inherit', title: 'Adhoc task', agent: 'pixel' }] })
       vi.mocked(getHookRegistry).mockReturnValue({

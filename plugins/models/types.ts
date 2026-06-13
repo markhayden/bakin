@@ -1,6 +1,7 @@
 import type { RoutingConfig } from '../../src/core/model-routing'
+import type { BudgetPolicy } from '../../src/core/budget'
 
-export type { RoutingConfig }
+export type { RoutingConfig, BudgetPolicy }
 
 export interface AgentModelConfig {
   agentId: string
@@ -75,4 +76,6 @@ export interface ModelsPluginSettings {
   defaultModel?: string
   /** Per-turn model/thinking routing policy (origins + tag overrides). */
   routing?: RoutingConfig
+  /** Spend-cap policy (global + per-agent daily/monthly limits). */
+  budget?: BudgetPolicy
 }

@@ -10,8 +10,9 @@ import { appendAudit } from './audit'
 import { recordUsage } from './usage'
 import { getAppServices } from './app-services'
 import { getRuntimeMainAgentId, RuntimeError, RuntimeTurnError, type MessageResult } from '@bakin/core/adapters/runtime'
-import { claimNextRun, currentSeq, loseRun, settleRun, recordRunCost, type ClaimNextRunResult } from './execution-ledger'
+import { claimNextRun, currentSeq, loseRun, settleRun, recordRunCost, spendTotal, type ClaimNextRunResult } from './execution-ledger'
 import { resolveTurnModel, type ResolvedTurn, type RoutingConfig } from './model-routing'
+import { evaluateBudget, dayStartMs, monthStartMs, type BudgetPolicy, type BudgetSpend, type BudgetDecision } from './budget'
 import { getBootId } from './boot-id'
 import { getHookRegistry } from '../lib/plugin-registry'
 import {
@@ -48,6 +49,64 @@ async function sendDispatchMessage(agentId: string, content: string, threadId: s
     ...(routing?.thinking ? { thinking: routing.thinking } : {}),
     metadata: { oversizedOutputBytes: getSettings().dispatch.oversizedOutputBytes },
   })
+}
+
+// Budget warn/defer audits fire once per (event, scope, window, window-start)
+// so a cap sitting at 85% — or a deferred task re-evaluated every cycle —
+// doesn't spam the audit log. Keyed by window start, so it auto-rolls when
+// the day/month turns over. In-memory; resets on restart (acceptable).
+const budgetAuditedWindows = new Set<string>()
+
+function auditBudgetOnce(contentDir: string, event: 'budget.warn' | 'budget.deferred', agent: string, detail: Record<string, unknown>, windowStartMs: number): void {
+  const key = `${event}:${detail.scope}:${detail.window}:${windowStartMs}`
+  if (budgetAuditedWindows.has(key)) return
+  budgetAuditedWindows.add(key)
+  appendAudit(contentDir, event, agent, detail)
+}
+
+/**
+ * Consult the budget policy before a dispatch claims a run. allow / warn /
+ * defer; warn and defer are audited (debounced per window). FAIL-CLOSED: if
+ * the spend ledger can't be read, defer — consistent with the ledger's
+ * existing fail-closed posture. No policy (plugin absent / empty) → allow.
+ */
+async function budgetGate(agentId: string, contentDir: string): Promise<BudgetDecision> {
+  let policy: BudgetPolicy | undefined
+  try {
+    policy = (await hooks().invoke<BudgetPolicy>('models.getBudgetPolicy', {})) ?? undefined
+  } catch (err) {
+    log.error('Budget policy read failed; allowing (no policy)', err, { agentId })
+    return { action: 'allow' }
+  }
+  if (!policy || (!policy.global && !policy.perAgent)) return { action: 'allow' }
+
+  const now = Date.now()
+  const dayStart = dayStartMs(now)
+  const monthStart = monthStartMs(now)
+  let spend: BudgetSpend
+  try {
+    spend = {
+      globalDayMicros: spendTotal({ sinceMs: dayStart }),
+      globalMonthMicros: spendTotal({ sinceMs: monthStart }),
+      agentDayMicros: spendTotal({ agent: agentId, sinceMs: dayStart }),
+      agentMonthMicros: spendTotal({ agent: agentId, sinceMs: monthStart }),
+    }
+  } catch (err) {
+    log.error('Budget spend read failed; deferring (fail-closed)', err, { agentId })
+    auditBudgetOnce(contentDir, 'budget.deferred', agentId, { scope: 'global', window: 'daily', reason: 'ledger-unavailable' }, dayStart)
+    return { action: 'defer', scope: 'global', window: 'daily', spentUsdMicros: 0, capUsdMicros: 0 }
+  }
+
+  const decision = evaluateBudget({ policy, agent: agentId, spend })
+  if (decision.action !== 'allow') {
+    const windowStart = decision.window === 'monthly' ? monthStart : dayStart
+    const event = decision.action === 'defer' ? 'budget.deferred' : 'budget.warn'
+    auditBudgetOnce(contentDir, event, agentId, {
+      scope: decision.scope, window: decision.window,
+      spentUsdMicros: decision.spentUsdMicros, capUsdMicros: decision.capUsdMicros,
+    }, windowStart)
+  }
+  return decision
 }
 
 /**
@@ -1264,6 +1323,13 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
         continue
       }
 
+      // Spend ceiling: defer (leave in todo) when a budget cap is hit. Runs
+      // before the claim so we don't reserve a run we won't fire.
+      if ((await budgetGate(targetAgent, contentDir)).action === 'defer') {
+        log.debug('Dispatch deferred by budget gate', { id: task.id, agent: targetAgent })
+        continue
+      }
+
       // Per-task guard: one bad task (store hiccup, hook failure) must not
       // abort the cycle — collected intents and other tasks still dispatch.
       let claim: ClaimNextRunResult | null = null
@@ -1506,6 +1572,12 @@ export async function dispatchSingleTask(
       : buildDispatchMessage(task, targetAgent, contentDir, mainAgentId, lessonBlock, continuation, recovery, runtimeRoster, assetsBlock)
     const dispatchStart = Date.now()
     const initialLogCount = task.log?.length ?? 0
+
+    // Spend ceiling — defer (leave in todo) when a budget cap is hit.
+    if ((await budgetGate(targetAgent, contentDir)).action === 'defer') {
+      log.debug('Single-task dispatch deferred by budget gate', { id: task.id, agent: targetAgent, source })
+      return
+    }
 
     // Claim first — the ledger row is the lock (a kick racing the cycle or
     // another process fails here, before any side effect).
@@ -1902,6 +1974,12 @@ async function dispatchWorkflowTask(
     const gate = concurrencyGate(targetAgent, getSettings())
     if (gate) {
       log.debug('Workflow step dispatch deferred by concurrency gate', { taskId: task.id, stepId, agent: targetAgent, gate })
+      continue
+    }
+
+    // Spend ceiling — defer the step when a budget cap is hit.
+    if ((await budgetGate(targetAgent, contentDir)).action === 'defer') {
+      log.debug('Workflow step dispatch deferred by budget gate', { taskId: task.id, stepId, agent: targetAgent })
       continue
     }
 
