@@ -54,7 +54,9 @@ completions   task_id PK ← first completion wins; run_id, agent, channel
 idempotency   key PK (e.g. the image 9-tuple signature), kind, result_json
               — durable, NO TTL, INSERT OR IGNORE (first write wins)
 run_costs     run_id PK ← per-turn cost attribution (#464, migration v3);
-              task_id, agent, model, input/output/total_tokens,
+              task_id (NULL for non-dispatch sends — watchdog/doctor/
+              orchestrator — which get a synthetic run_id), agent, model,
+              input/output/total_tokens,
               cost_usd_micros (NULL = unmetered), occurred_at. A billing
               fact, not content: written once on settle via recordRunCost
               (INSERT OR IGNORE → first write wins, so a transport retry of
