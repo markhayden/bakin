@@ -41,6 +41,7 @@
     "./constants": "./src/constants.ts",
     "./storage": "./src/storage/markdown-adapter.ts",
     "./storage/scoped-plugin-storage": "./src/storage/scoped-plugin-storage.ts",
+    "./storage/atomic-write": "./src/storage/atomic-write.ts",
     "./storage/db": "./src/storage/db.ts",
     "./execution/ledger": "./src/execution/ledger.ts",
     "./events": "./src/events/event-bus.ts",

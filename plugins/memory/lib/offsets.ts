@@ -10,9 +10,10 @@
  * Writes go through tmp + rename for atomicity — a crash mid-write leaves
  * the previous snapshot intact.
  */
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { getContentDir } from '@bakin/core/content-dir'
+import { atomicWriteJson } from '@bakin/core/storage/atomic-write'
 import { createLogger } from '../../../src/core/logger'
 
 const log = createLogger('memory:offsets')
@@ -51,13 +52,7 @@ function load(): void {
 
 function persist(): void {
   if (!cache) return
-  const dir = pluginDir()
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-  const file = getOffsetsFilePath()
-  const tmp = `${file}.tmp`
-  const payload = JSON.stringify(Object.fromEntries(cache), null, 2)
-  writeFileSync(tmp, payload, 'utf-8')
-  renameSync(tmp, file)
+  atomicWriteJson(getOffsetsFilePath(), Object.fromEntries(cache), { trailingNewline: false })
 }
 
 export function getOffset(fileKey: string): number {

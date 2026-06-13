@@ -8,10 +8,10 @@
  * observable. Reads tolerate a transient parse failure (return null) rather
  * than throw.
  */
-import { randomBytes } from 'node:crypto'
-import { readFileSync, writeFileSync, renameSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
+import { atomicWriteJson } from '@bakin/core/storage/atomic-write'
 
 import { taskAssetIndexUpsert } from './task-asset-index'
 
@@ -116,9 +116,7 @@ export function readManifest(assetDirAbs: string): AssetManifest | null {
 export function writeManifestAtomic(assetDirAbs: string, manifest: AssetManifest): void {
   const validated = AssetManifestSchema.parse(manifest)
   const dest = join(assetDirAbs, MANIFEST_FILENAME)
-  const tmp = join(assetDirAbs, `.${MANIFEST_FILENAME}.${randomBytes(6).toString('hex')}.tmp`)
-  writeFileSync(tmp, JSON.stringify(validated, null, 2), 'utf-8')
-  renameSync(tmp, dest)
+  atomicWriteJson(dest, validated, { trailingNewline: false })
   // Single choke point for every asset mutation — keep the taskId index in
   // sync synchronously so the very next dispatch sees the link (the content
   // watcher's onSync is debounced and only acts as the self-heal backstop).

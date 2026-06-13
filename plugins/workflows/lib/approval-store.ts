@@ -1,5 +1,6 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'fs'
+import { existsSync, readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
+import { atomicWriteJson } from '@bakin/core/storage/atomic-write'
 import type {
   ApprovalDelivery,
   ApprovalRenderRef,
@@ -26,12 +27,7 @@ function readRecord(path: string): DurableApprovalRecord | null {
 }
 
 function writeRecord(record: DurableApprovalRecord, contentDir: string): DurableApprovalRecord {
-  const dir = approvalsDir(contentDir)
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-  const path = approvalPath(contentDir, record.approvalId)
-  const tmp = `${path}.${process.pid}.${Date.now()}.tmp`
-  writeFileSync(tmp, JSON.stringify(record, null, 2), 'utf-8')
-  renameSync(tmp, path)
+  atomicWriteJson(approvalPath(contentDir, record.approvalId), record, { trailingNewline: false })
   return record
 }
 
