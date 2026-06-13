@@ -11,6 +11,7 @@ import {
   type BakinTask,
   type BakinTaskPatch,
   type SyncBakinTaskStore,
+  type TaskLogEntry,
   type TaskSource,
 } from '@bakin/core/tasks/store'
 import { generateTaskId } from '@bakin/core/ids'
@@ -21,12 +22,8 @@ import { createLogger } from './logger'
 
 const log = createLogger('task-store')
 
-export interface TaskLogEntry {
-  timestamp: string
-  author: string
-  message: string
-  data?: Record<string, unknown>
-}
+// TaskLogEntry is single-homed in the SDK; re-exported via @bakin/core/tasks/store.
+export type { TaskLogEntry } from '@bakin/core/tasks/store'
 
 export interface Task {
   id: string

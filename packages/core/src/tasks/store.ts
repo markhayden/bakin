@@ -1,6 +1,11 @@
+import type { TaskLogEntry } from '@makinbakin/sdk/types'
 import type { Unsubscribe } from '../adapters/shared'
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
+
+// TaskLogEntry is single-homed in the SDK (published TaskService contract);
+// re-exported here so the in-repo store stays the internal import source.
+export type { TaskLogEntry } from '@makinbakin/sdk/types'
 
 export interface BakinTask {
   id: string
@@ -93,12 +98,6 @@ export interface TaskListOpts {
   includePendingDelete?: boolean
 }
 
-export interface TaskLogEntry {
-  timestamp: string
-  author: string
-  message: string
-  data?: Record<string, unknown>
-}
 
 export interface TaskComment {
   id: string

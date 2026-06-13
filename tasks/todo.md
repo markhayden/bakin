@@ -1,12 +1,27 @@
-# TODO — fix/security (audit findings)
+# TODO — WS1 refactor/contract-types
 
-Branch `fix/security-audit` off `main`. One commit per task, each green on
-`bun run test` + `bun run typecheck`. Detail: `tasks/plan.md`.
+Branch `refactor/contract-types` off `main`. One commit per task; each green on
+`bun run test` + `bun run typecheck`. Detail + crux decision: `tasks/plan.md`.
 
-- [x] T1 — delete `src/core/plugin-installer.ts` + test ✅ da27f235
-- [x] T2 — avatar route: validate agent id (TDD, traversal failed first) ✅ e54cc26e
-- [x] T3 — plugin-settings route: plugin-id guard (canonical regex) ✅ 86f8d271
-- [x] T4 — image idempotency rows: coordination facts only + ledger doc ✅ f0af0668
-- [x] T5 — antfly password → secret store + migration + search doc ✅ f8cb7e1f
-- [x] T6 — drop `trustExistingDist`: rebuild github installs from source ✅ 1d4a4b34
-- [x] T7 — gate green (test/typecheck/lint/build + isolated boot smoke incl. live migration) → **PR #497**
+Decision (forced by the SDK's self-contained publish constraint): **SDK types module is the
+single canonical home for all shared contract types; core re-exports from it.**
+
+## Phase A — unify (kills the drift)
+- [x] A0 — delete 7 verified-dead files (~620 LOC); re-verify deadness at HEAD
+- [x] A1 — health-check contract family → SDK canonical, core re-exports
+- [x] A2 — exec-tool types → SDK canonical
+- [x] A3 — search API contract → SDK canonical
+- [x] A4 — manifest contract (core's PluginManifest is stale) → drop core copy, re-export SDK
+- [x] A5 — PluginContext + BakinPlugin (RISKY: runtime-adapter surface) → SDK canonical
+- [x] A6 — Task / TaskLogEntry (add updatedAt/version to SDK) → single-home in SDK
+- [x] A7 — AvailableModel (reconcile required-ness) → SDK canonical
+- [x] A8 — WorkflowInstance/Def (fix id→instanceId wire shape) → SDK canonical
+- [x] A9 — AgentUsage → SDK type-only + drop plugin-dir-escaping import
+- [x] A10 — strip src/types residue to its 3 live types
+
+## Phase B — split (pure reorg)
+- [x] B1 — split sdk/types/index.ts → primitives/manifest/runtime/services/registration/context (+ barrel) + dropped 8 dead misc types
+- [~] B2 — MOOT: unification shrank core/plugin-types.ts 1129→738 lines (under the 800 threshold); split no longer warranted
+
+## PR gate
+- [x] gate green: typecheck + 4996 tests + lint + full build + build:vendors + boot smoke (10 plugins); SDK self-containment verified; docs updated → PR
