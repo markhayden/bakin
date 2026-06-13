@@ -4,7 +4,7 @@
  */
 
 import type { ZodRawShape, ZodType } from 'zod'
-import type { PluginHealthCheckInput } from '@makinbakin/sdk/types'
+import type { ExecToolResult, PluginHealthCheckInput } from '@makinbakin/sdk/types'
 import type { ContractStability, ContractVisibility, DocsExample, SchemaLike, SourceLocation } from './docs'
 import type { AgentRuntimeAdapter } from './adapters/runtime'
 import type { APIRoute as DeclarativeAPIRoute, PluginContextLite } from './routing/types'
@@ -99,13 +99,10 @@ export interface ContentFile {
 // Execution Tools (scripts exposed as MCP tools)
 // ---------------------------------------------------------------------------
 
-/** Result returned by execution tool handlers */
-export interface ExecToolResult {
-  ok: boolean
-  error?: string
-  details?: unknown
-  [key: string]: unknown
-}
+// ExecToolResult is single-homed in the SDK (the plugin-author surface).
+// Core re-exports it; PluginToolContext/ExecToolDefinition below reference the
+// imported type.
+export type { ExecToolResult } from '@makinbakin/sdk/types'
 
 /** Definition for a registerable execution tool */
 /** Context available to exec tool handlers — provides access to plugin services */
