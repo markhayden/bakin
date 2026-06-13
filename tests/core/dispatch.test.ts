@@ -948,6 +948,34 @@ describe('dispatch', () => {
       expect(mockRuntimeSend).toHaveBeenCalledTimes(1)
     })
 
+    it('routes a session-death recovery re-dispatch on the MAIN cycle to the recovery origin', async () => {
+      // A task with a persisted sessionDeath record re-dispatched via the
+      // normal cycle (ladder timer lost / budget-deferred) must still route
+      // to 'recovery' — not its task-shape origin.
+      setDispatchColumns({ todo: [{ id: 't-recover', title: 'Died once', agent: 'pixel' }] })
+      writeFileSync(join(tempDir, '.dispatch-state.json'), JSON.stringify({
+        lastRun: Date.now(),
+        dispatched: [],
+        failedDispatches: {
+          't-recover': { count: 1, lastAttempt: Date.now(), kind: 'structural', sessionDeath: { stage: 'corrective', deaths: 1, lastDiagnosis: { reason: 'session_interrupted' }, salvagedAssetIds: [] } },
+        },
+      }))
+      vi.mocked(getHookRegistry).mockReturnValue({
+        invoke: mock(async (hook: string) => {
+          if (hook === 'models.getRoutingConfig') return { policies: [{ origin: 'recovery', model: 'anthropic/claude-opus-4-6' }], tagOverrides: [] }
+          return undefined
+        }),
+        has: mock().mockReturnValue(false),
+        register: mock(),
+      } as unknown as HookRegistry)
+
+      await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
+
+      const args = mockRuntimeSend.mock.calls[0]?.[0] as Record<string, unknown>
+      expect(args?.model).toBe('anthropic/claude-opus-4-6')
+    })
+
     it('regression: empty routing config leaves the turn with no model/thinking (inherit)', async () => {
       setDispatchColumns({ todo: [{ id: 't-inherit', title: 'Adhoc task', agent: 'pixel' }] })
       vi.mocked(getHookRegistry).mockReturnValue({

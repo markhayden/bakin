@@ -1378,6 +1378,11 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
           initialLogCount,
           logPrefix: 'Dispatch failed',
           dispatchKind: 'regular',
+          // A task carrying a sessionDeath record is a recovery re-dispatch
+          // even on the main cycle (e.g. the ladder's immediate re-dispatch
+          // was lost to a restart or budget-deferred). Route it to the
+          // 'recovery' origin just like dispatchSingleTask(...,'recovery').
+          isRecovery: !!recovery,
         })
         pendingByAgent.set(targetAgent, (pendingByAgent.get(targetAgent) ?? 0) + 1)
       } catch (err) {
