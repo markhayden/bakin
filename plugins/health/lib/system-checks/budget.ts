@@ -10,7 +10,7 @@
 import { queryAuditEvents } from '../../../../src/core/audit'
 import { getContentDir } from '../../../../src/core/content-dir'
 import { spendTotal, LedgerUnavailableError } from '../../../../src/core/execution-ledger'
-import { dayStartMs, monthStartMs, DEFAULT_WARN_PCT, type BudgetPolicy } from '../../../../src/core/budget'
+import { evaluateBudget, dayStartMs, monthStartMs, type BudgetPolicy } from '../../../../src/core/budget'
 import { getHookRegistry } from '../../../../src/lib/plugin-registry'
 import type { HealthCheckResult } from '../../../../packages/core/src/plugin-types'
 
@@ -48,28 +48,24 @@ export async function checkBudget(): Promise<HealthCheckResult[]> {
     return [result('error', `Spend ledger is ${kind} — budget gating is failing closed (dispatch deferring). ${detail}`)]
   }
 
-  const warnPct = policy.global?.warnPct ?? DEFAULT_WARN_PCT
   const deferred = queryAuditEvents(getContentDir(), { kinds: ['budget.deferred'], sinceMs: WINDOW_MS }).length
 
-  // Worst global utilization across day/month caps.
-  const checks: Array<{ window: string; spent: number; capUsd: number }> = []
-  if (policy.global?.dailyUsd) checks.push({ window: 'daily', spent: dayMicros, capUsd: policy.global.dailyUsd })
-  if (policy.global?.monthlyUsd) checks.push({ window: 'monthly', spent: monthMicros, capUsd: policy.global.monthlyUsd })
+  // Reuse the SAME cap arithmetic the dispatch gate uses (evaluateBudget) so
+  // the doctor can't drift from what dispatch actually enforces. Evaluate the
+  // GLOBAL scope only (agent spend zeroed, no per-agent caps).
+  const decision = evaluateBudget({
+    policy: { global: policy.global },
+    agent: '',
+    spend: { globalDayMicros: dayMicros, globalMonthMicros: monthMicros, agentDayMicros: 0, agentMonthMicros: 0 },
+  })
+  const deferNote = deferred ? ` ${deferred} run(s) deferred in the last 24h.` : ''
 
-  let worst: { window: string; spent: number; capMicros: number; pct: number } | null = null
-  for (const c of checks) {
-    const capMicros = Math.round(c.capUsd * 1_000_000)
-    const pct = capMicros > 0 ? c.spent / capMicros : 0
-    if (!worst || pct > worst.pct) worst = { window: c.window, spent: c.spent, capMicros, pct }
+  if (decision.action === 'defer') {
+    return [result('error', `Global ${decision.window} spend ${fmtUsd(decision.spentUsdMicros)} is at/over the ${fmtUsd(decision.capUsdMicros)} cap — dispatch is deferring.${deferNote}`)]
   }
-
-  if (worst && worst.pct >= 1) {
-    return [result('error', `Global ${worst.window} spend ${fmtUsd(worst.spent)} is at/over the ${fmtUsd(worst.capMicros)} cap — dispatch is deferring${deferred ? ` (${deferred} run(s) deferred in 24h)` : ''}.`)]
+  if (decision.action === 'warn' || deferred > 0) {
+    const util = decision.action === 'warn' ? ` Global ${decision.window} at ${Math.round((decision.spentUsdMicros / decision.capUsdMicros) * 100)}% of ${fmtUsd(decision.capUsdMicros)}.` : ''
+    return [result('warn', `Spend approaching budget.${util}${deferNote}`)]
   }
-  if ((worst && worst.pct >= warnPct) || deferred > 0) {
-    const util = worst ? ` Global ${worst.window} at ${Math.round(worst.pct * 100)}% of ${fmtUsd(worst.capMicros)}.` : ''
-    return [result('warn', `Spend approaching budget.${util}${deferred ? ` ${deferred} run(s) deferred in the last 24h.` : ''}`)]
-  }
-  const utilNote = worst ? ` Global ${worst.window} at ${Math.round(worst.pct * 100)}% of ${fmtUsd(worst.capMicros)}.` : ''
-  return [result('ok', `Spend within budget.${utilNote}`)]
+  return [result('ok', 'Spend within budget.')]
 }

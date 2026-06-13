@@ -8,8 +8,10 @@
  * Diverges from paperclip deliberately: a breach DEFERS the run (the task
  * stays claimable and resumes when the window rolls over or the cap is
  * raised) rather than pausing the agent — no work is lost, spend just
- * throttles. Windows are calendar day + calendar month (local time): daily
- * catches a runaway night fast, monthly aligns with the provider invoice.
+ * throttles. Windows are calendar day + calendar month in LOCAL time: daily
+ * catches a runaway night fast; monthly roughly tracks a billing month but is
+ * NOT invoice-exact — it resets at local (not UTC) midnight and the cost is an
+ * estimate that omits cached-token discounts, so it reads slightly high.
  */
 
 export interface BudgetCaps {

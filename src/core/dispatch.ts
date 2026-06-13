@@ -71,7 +71,7 @@ function auditBudgetOnce(contentDir: string, event: 'budget.warn' | 'budget.defe
  * the spend ledger can't be read, defer — consistent with the ledger's
  * existing fail-closed posture. No policy (plugin absent / empty) → allow.
  */
-export async function budgetGate(agentId: string, contentDir: string): Promise<BudgetDecision> {
+export async function budgetGate(agentId: string, contentDir: string, spendCache?: Map<string, number>): Promise<BudgetDecision> {
   let policy: BudgetPolicy | undefined
   try {
     policy = (await hooks().invoke<BudgetPolicy>('models.getBudgetPolicy', {})) ?? undefined
@@ -84,13 +84,26 @@ export async function budgetGate(agentId: string, contentDir: string): Promise<B
   const now = Date.now()
   const dayStart = dayStartMs(now)
   const monthStart = monthStartMs(now)
+  // Memoize spend reads within a dispatch cycle: the two GLOBAL totals are
+  // identical for every task in the cycle, and costs are only recorded on
+  // settle (after the loop), so a per-cycle cache is safe and saves ~2 SQL
+  // aggregates per task. Cache key includes the window start so it can't
+  // bleed across a day/month boundary.
+  const spendAt = (agent: string | undefined, sinceMs: number): number => {
+    const key = `${agent ?? '*'}:${sinceMs}`
+    const hit = spendCache?.get(key)
+    if (hit !== undefined) return hit
+    const v = spendTotal(agent ? { agent, sinceMs } : { sinceMs })
+    spendCache?.set(key, v)
+    return v
+  }
   let spend: BudgetSpend
   try {
     spend = {
-      globalDayMicros: spendTotal({ sinceMs: dayStart }),
-      globalMonthMicros: spendTotal({ sinceMs: monthStart }),
-      agentDayMicros: spendTotal({ agent: agentId, sinceMs: dayStart }),
-      agentMonthMicros: spendTotal({ agent: agentId, sinceMs: monthStart }),
+      globalDayMicros: spendAt(undefined, dayStart),
+      globalMonthMicros: spendAt(undefined, monthStart),
+      agentDayMicros: spendAt(agentId, dayStart),
+      agentMonthMicros: spendAt(agentId, monthStart),
     }
   } catch (err) {
     log.error('Budget spend read failed; deferring (fail-closed)', err, { agentId })
@@ -108,6 +121,11 @@ export async function budgetGate(agentId: string, contentDir: string): Promise<B
     }, windowStart)
   }
   return decision
+}
+
+/** True when budget says defer — the shared shape all three dispatch paths use. */
+async function deferForBudget(agentId: string, contentDir: string, spendCache?: Map<string, number>): Promise<boolean> {
+  return (await budgetGate(agentId, contentDir, spendCache)).action === 'defer'
 }
 
 /**
@@ -1228,6 +1246,9 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
     // not fired yet, and unfired seqs re-mint identically next cycle.
     const pendingTurns: Array<Parameters<typeof fireDispatchTurn>[0]> = []
     const pendingByAgent = new Map<string, number>()
+    // Per-cycle memo for budget spend reads (global totals are identical for
+    // every task in this cycle; costs only land on settle, after the loop).
+    const budgetSpendCache = new Map<string, number>()
 
     for (const task of todoTasks) {
       if (dispatchedSet.has(task.id)) continue
@@ -1291,8 +1312,9 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
       }
 
       // Spend ceiling: defer (leave in todo) when a budget cap is hit. Runs
-      // before the claim so we don't reserve a run we won't fire.
-      if ((await budgetGate(targetAgent, contentDir)).action === 'defer') {
+      // before the claim so we don't reserve a run we won't fire. The
+      // per-cycle cache collapses the redundant global spend reads.
+      if (await deferForBudget(targetAgent, contentDir, budgetSpendCache)) {
         log.debug('Dispatch deferred by budget gate', { id: task.id, agent: targetAgent })
         continue
       }
@@ -1546,7 +1568,7 @@ export async function dispatchSingleTask(
     const initialLogCount = task.log?.length ?? 0
 
     // Spend ceiling — defer (leave in todo) when a budget cap is hit.
-    if ((await budgetGate(targetAgent, contentDir)).action === 'defer') {
+    if (await deferForBudget(targetAgent, contentDir)) {
       log.debug('Single-task dispatch deferred by budget gate', { id: task.id, agent: targetAgent, source })
       return
     }
@@ -1950,7 +1972,7 @@ async function dispatchWorkflowTask(
     }
 
     // Spend ceiling — defer the step when a budget cap is hit.
-    if ((await budgetGate(targetAgent, contentDir)).action === 'defer') {
+    if (await deferForBudget(targetAgent, contentDir)) {
       log.debug('Workflow step dispatch deferred by budget gate', { taskId: task.id, stepId, agent: targetAgent })
       continue
     }
