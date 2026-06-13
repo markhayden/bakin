@@ -153,6 +153,7 @@ describe('Models Plugin Activation', () => {
       'GET /aliases',
       'GET /available',
       'GET /config',
+      'GET /routing',
       'GET /runtime/status',
       'GET /spend',
       'POST /aliases',
@@ -160,6 +161,7 @@ describe('Models Plugin Activation', () => {
       'POST /defaults',
       'POST /refresh',
       'POST /runtime/restart',
+      'PUT /routing',
     ])
   })
 
@@ -560,6 +562,35 @@ describe('POST /aliases', () => {
     expect(aliases.opus).toBeDefined()
 
     writeRuntimeConfig() // reset
+  })
+})
+
+describe('routing config', () => {
+  it('GET /routing returns an empty config by default', async () => {
+    const route = findRoute(activated.routes, 'GET', '/routing')!
+    const { status, body } = await callRoute(route, activated.ctx)
+    expect(status).toBe(200)
+    expect(body).toEqual({ policies: [], tagOverrides: [] })
+  })
+
+  it('PUT /routing validates and persists policies + tag overrides', async () => {
+    const route = findRoute(activated.routes, 'PUT', '/routing')!
+    const config = {
+      policies: [{ origin: 'scheduled', model: 'anthropic/claude-haiku-4-5', thinking: 'low' }],
+      tagOverrides: [{ tag: 'heavy', model: 'anthropic/claude-opus-4-6' }],
+    }
+    const { status, body } = await callRoute(route, activated.ctx, { body: config })
+    expect(status).toBe(200)
+    expect(body.ok).toBe(true)
+    expect(activated.ctx.updateSettings).toHaveBeenCalledWith({ routing: config })
+  })
+
+  it('PUT /routing rejects an unknown origin', async () => {
+    const route = findRoute(activated.routes, 'PUT', '/routing')!
+    const { status } = await callRoute(route, activated.ctx, {
+      body: { policies: [{ origin: 'bogus', model: 'm' }], tagOverrides: [] },
+    })
+    expect(status).toBe(400)
   })
 })
 

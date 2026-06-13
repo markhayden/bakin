@@ -182,6 +182,9 @@ describe('ModelsPage component', () => {
       if (url.startsWith('/api/plugins/models/spend') && method === 'GET') {
         return jsonResponse({ window: '24h', estimated: true, totalUsdMicros: 0, byAgent: [], byModel: [] })
       }
+      if (url === '/api/plugins/models/routing' && method === 'GET') {
+        return jsonResponse({ policies: [], tagOverrides: [] })
+      }
       if (url === '/api/plugins/models/defaults' && method === 'POST') {
         configState = {
           ...configState,

@@ -3,7 +3,7 @@
 // React
 import { useEffect, useState, useCallback } from 'react'
 // External
-import { ArrowDown, ArrowUp, Plus, X, Users, RefreshCw, AlertTriangle } from 'lucide-react'
+import { ArrowDown, ArrowUp, Plus, X, Users, Layers, RefreshCw, AlertTriangle } from 'lucide-react'
 // Internal
 import { Button } from "@makinbakin/sdk/ui"
 import { PluginHeader } from "@makinbakin/sdk/components"
@@ -52,8 +52,24 @@ const TABS = [
   { id: 'agents', label: 'Agent Config' },
   { id: 'available', label: 'Available Models' },
   { id: 'aliases', label: 'Aliases' },
+  { id: 'routing', label: 'Routing' },
   { id: 'spend', label: 'Spend' },
 ] as const
+
+// Dispatch origins routing can target, with a short hint of what each is.
+const ROUTING_ORIGINS = [
+  { id: 'scheduled', label: 'Scheduled', hint: 'Cron-fired tasks' },
+  { id: 'workflow', label: 'Workflow', hint: 'Workflow step turns' },
+  { id: 'adhoc', label: 'Ad-hoc', hint: 'Manually kicked tasks' },
+  { id: 'recovery', label: 'Recovery', hint: 'Session-death re-dispatch' },
+  { id: 'decomposition', label: 'Decomposition', hint: 'Subtask breakdown' },
+] as const
+
+const THINKING_LEVELS = ['inherit', 'off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive', 'max'] as const
+
+interface RoutingPolicyRow { origin: string; model?: string; thinking?: string }
+interface TagOverrideRow { tag: string; model?: string; thinking?: string }
+interface RoutingConfigShape { policies: RoutingPolicyRow[]; tagOverrides: TagOverrideRow[] }
 
 const SPEND_WINDOWS = [
   { id: '24h', label: '24h' },
@@ -144,6 +160,8 @@ export function ModelsPage() {
   const [spendWindow, setSpendWindow] = useQueryState('window', '24h')
   const [spend, setSpend] = useState<SpendResponse | null>(null)
   const [spendLoading, setSpendLoading] = useState(false)
+  const [routing, setRouting] = useState<RoutingConfigShape>({ policies: [], tagOverrides: [] })
+  const [pendingRouting, setPendingRouting] = useState<RoutingConfigShape | null>(null)
 
   // -------------------------------------------------------------------------
   // Data fetching
@@ -240,6 +258,21 @@ export function ModelsPage() {
   useEffect(() => {
     if (tab === 'spend') fetchSpend(spendWindow)
   }, [tab, spendWindow, fetchSpend])
+
+  const fetchRouting = useCallback(async () => {
+    try {
+      const res = await fetch('/api/plugins/models/routing')
+      if (!res.ok) throw new Error(`Routing fetch failed (${res.status})`)
+      const data = await res.json() as RoutingConfigShape
+      setRouting({ policies: data.policies ?? [], tagOverrides: data.tagOverrides ?? [] })
+    } catch (err) {
+      console.error('Failed to fetch routing:', err)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (tab === 'routing') fetchRouting()
+  }, [tab, fetchRouting])
 
   // Auto-refresh in the background when the served cache was stale.
   // We surface the cached data immediately; the refresh swaps rows
@@ -384,6 +417,64 @@ export function ModelsPage() {
       }
     } catch (err) {
       console.error('Failed to prepopulate aliases:', err)
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Routing actions
+  // -------------------------------------------------------------------------
+  const displayRouting = pendingRouting ?? routing
+
+  const setOriginField = (origin: string, field: 'model' | 'thinking', value: string) => {
+    const base = pendingRouting ?? { policies: [...routing.policies], tagOverrides: [...routing.tagOverrides] }
+    const policies = base.policies.filter((p) => p.origin !== origin)
+    const existing = base.policies.find((p) => p.origin === origin) ?? { origin }
+    const next: RoutingPolicyRow = { ...existing, [field]: value || undefined }
+    // Drop the row entirely when it carries no override (keeps storage clean).
+    if (next.model || (next.thinking && next.thinking !== 'inherit')) policies.push(next)
+    setPendingRouting({ ...base, policies })
+  }
+
+  const addTagOverride = () => {
+    const base = pendingRouting ?? { policies: [...routing.policies], tagOverrides: [...routing.tagOverrides] }
+    setPendingRouting({ ...base, tagOverrides: [...base.tagOverrides, { tag: '' }] })
+  }
+
+  const updateTagOverride = (index: number, field: 'tag' | 'model' | 'thinking', value: string) => {
+    const base = pendingRouting ?? { policies: [...routing.policies], tagOverrides: [...routing.tagOverrides] }
+    const tagOverrides = [...base.tagOverrides]
+    tagOverrides[index] = { ...tagOverrides[index], [field]: field === 'tag' ? value : (value || undefined) }
+    setPendingRouting({ ...base, tagOverrides })
+  }
+
+  const removeTagOverride = (index: number) => {
+    const base = pendingRouting ?? { policies: [...routing.policies], tagOverrides: [...routing.tagOverrides] }
+    setPendingRouting({ ...base, tagOverrides: base.tagOverrides.filter((_, i) => i !== index) })
+  }
+
+  const saveRouting = async () => {
+    if (!pendingRouting) return
+    setSaving('routing')
+    try {
+      // Drop blank tag rows; normalize 'inherit' thinking to unset.
+      const clean: RoutingConfigShape = {
+        policies: pendingRouting.policies.map((p) => ({ origin: p.origin, ...(p.model ? { model: p.model } : {}), ...(p.thinking && p.thinking !== 'inherit' ? { thinking: p.thinking } : {}) })),
+        tagOverrides: pendingRouting.tagOverrides.filter((t) => t.tag.trim()).map((t) => ({ tag: t.tag.trim(), ...(t.model ? { model: t.model } : {}), ...(t.thinking && t.thinking !== 'inherit' ? { thinking: t.thinking } : {}) })),
+      }
+      const res = await fetch('/api/plugins/models/routing', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(clean),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        setRouting(clean)
+        setPendingRouting(null)
+      }
+    } catch (err) {
+      console.error('Failed to save routing:', err)
+    } finally {
+      setSaving(null)
     }
   }
 
@@ -847,6 +938,110 @@ export function ModelsPage() {
                 Add
               </Button>
             </div>
+        </div>
+      )}
+
+      {tab === 'routing' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Route each dispatch origin to a model and thinking level. Leave a row blank to inherit the agent&apos;s configured model. Tag overrides win over origin policies.
+            </p>
+            {pendingRouting && (
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="xs" onClick={() => setPendingRouting(null)}>Discard</Button>
+                <Button size="xs" onClick={saveRouting} disabled={saving === 'routing'}>
+                  {saving === 'routing' ? 'Saving...' : 'Save Routing'}
+                </Button>
+              </div>
+            )}
+          </div>
+
+          <div className="overflow-hidden rounded-xl border border-border">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-card">
+                  <TableHead>Origin</TableHead>
+                  <TableHead>Model</TableHead>
+                  <TableHead className="w-[160px]">Thinking</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {ROUTING_ORIGINS.map((o) => {
+                  const policy = displayRouting.policies.find((p) => p.origin === o.id)
+                  return (
+                    <TableRow key={o.id}>
+                      <TableCell>
+                        <div className="font-medium">{o.label}</div>
+                        <div className="text-[11px] text-muted-foreground">{o.hint}</div>
+                      </TableCell>
+                      <TableCell>
+                        <ModelSelect
+                          value={policy?.model ?? ''}
+                          onChange={(v) => setOriginField(o.id, 'model', v)}
+                          models={modelOptions}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <select
+                          className="h-8 w-full rounded-md border border-border bg-background px-2 text-sm"
+                          value={policy?.thinking ?? 'inherit'}
+                          onChange={(e) => setOriginField(o.id, 'thinking', e.target.value)}
+                        >
+                          {THINKING_LEVELS.map((t) => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium">Tag overrides</h3>
+            <Button variant="outline" size="xs" onClick={addTagOverride}><Plus className="h-3 w-3" /> Add override</Button>
+          </div>
+          {displayRouting.tagOverrides.length === 0 ? (
+            <EmptyState icon={Layers} title="No tag overrides" />
+          ) : (
+            <div className="overflow-hidden rounded-xl border border-border">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-card">
+                    <TableHead>Tag</TableHead>
+                    <TableHead>Model</TableHead>
+                    <TableHead className="w-[160px]">Thinking</TableHead>
+                    <TableHead className="w-[60px]" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {displayRouting.tagOverrides.map((row, i) => (
+                    <TableRow key={i}>
+                      <TableCell>
+                        <Input value={row.tag} onChange={(e) => updateTagOverride(i, 'tag', e.target.value)} className="h-8 text-sm" placeholder="e.g. heavy" />
+                      </TableCell>
+                      <TableCell>
+                        <ModelSelect value={row.model ?? ''} onChange={(v) => updateTagOverride(i, 'model', v)} models={modelOptions} />
+                      </TableCell>
+                      <TableCell>
+                        <select
+                          className="h-8 w-full rounded-md border border-border bg-background px-2 text-sm"
+                          value={row.thinking ?? 'inherit'}
+                          onChange={(e) => updateTagOverride(i, 'thinking', e.target.value)}
+                        >
+                          {THINKING_LEVELS.map((t) => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </TableCell>
+                      <TableCell>
+                        <Button variant="ghost" size="xs" onClick={() => removeTagOverride(i)} className="text-muted-foreground hover:text-destructive">Remove</Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </div>
       )}
 

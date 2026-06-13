@@ -16,6 +16,7 @@ import {
 } from './lib/models-cache'
 import { getKnownModel, getKnownProvider, formatCostRange, computeCostUsdMicros } from './data/known-models'
 import { spendTotal, spendByAgent, spendByModel, LedgerUnavailableError } from '../../src/core/execution-ledger'
+import { ORIGINS } from '../../src/core/model-routing'
 
 // ---------------------------------------------------------------------------
 // Runtime restart sync tracking (globalThis-backed so every reach into this module
@@ -351,6 +352,22 @@ const okResponse = z.object({ ok: z.literal(true) }).passthrough()
 const errorResponse = z.object({ error: z.string() }).passthrough()
 const passthrough = z.object({}).passthrough()
 
+const ThinkingSettingSchema = z.enum(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive', 'max', 'inherit'])
+const RoutingPolicySchema = z.object({
+  origin: z.enum(ORIGINS as unknown as [string, ...string[]]),
+  model: z.string().optional(),
+  thinking: ThinkingSettingSchema.optional(),
+})
+const TagOverrideSchema = z.object({
+  tag: z.string().min(1),
+  model: z.string().optional(),
+  thinking: ThinkingSettingSchema.optional(),
+})
+const RoutingConfigSchema = z.object({
+  policies: z.array(RoutingPolicySchema),
+  tagOverrides: z.array(TagOverrideSchema),
+})
+
 // Spend reporting windows. Coarser than the live-usage 5m/1h windows —
 // spend is a daily/monthly story. 'all' = since the beginning of time.
 type SpendWindow = '24h' | '7d' | '30d' | 'all'
@@ -592,6 +609,39 @@ const routes = [
         setModelsCache(null)
         ctx.activity.audit('aliases.updated', 'system')
         ctx.activity.log('system', 'Updated model aliases', { category: 'models' })
+        return Response.json({ ok: true })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/routing',
+    method: 'GET',
+    summary: 'Per-turn model/thinking routing policy',
+    responses: { 200: passthrough, 500: errorResponse },
+    handler: async (_req, ctx) => {
+      try {
+        const settings = ctx.getSettings<ModelsPluginSettings>()
+        return Response.json(settings.routing ?? { policies: [], tagOverrides: [] })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/routing',
+    method: 'PUT',
+    summary: 'Replace the routing policy',
+    body: RoutingConfigSchema,
+    responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
+    handler: async (_req, ctx, { body }) => {
+      try {
+        (ctx as unknown as PluginContext).updateSettings({ routing: body })
+        ctx.activity.audit('routing.updated', 'system', { policies: body.policies.length, tagOverrides: body.tagOverrides.length })
+        ctx.activity.log('system', `Updated routing policy (${body.policies.length} origins, ${body.tagOverrides.length} tag overrides)`, { category: 'models' })
         return Response.json({ ok: true })
       } catch (err) {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
