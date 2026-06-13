@@ -3,7 +3,7 @@
 import type { ContractStability, ContractVisibility, DocsExample, SchemaLike } from './primitives'
 import type { APIRoute, ContentFile, ExecToolDefinition, NavItem, PluginHealthCheckInput, PluginNodeTypeInput, PluginNotificationChannelInput, PluginSettingsSchema, SkillDefinition, UISlotRegistration, WorkflowDefinitionInput } from './registration'
 import type { AgentRuntimeAdapter } from './runtime'
-import type { AssetsAPI, SearchAPI, Task, TaskService } from './services'
+import type { AssetsAPI, SearchAPI, TaskService } from './services'
 
 /** File metadata returned by storage adapter `stat()`. */
 export interface StorageStat {
