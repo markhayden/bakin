@@ -107,25 +107,41 @@ parser already imports from the SDK. Delete core's stale declaration, re-export 
 - **Accept:** typecheck green; `manifest.ts`/`signatures.ts` already-SDK imports unaffected.
 - Commit: `refactor(types): drop stale core PluginManifest, re-export the SDK manifest contract`
 
-### A5 — PluginContext + BakinPlugin (RISKY)
-These reference the runtime-adapter surface. The SDK's `ctx.runtime` is a self-contained mirror;
-core's `PluginContext` references `AgentRuntimeAdapter` from `./adapters/runtime`. Reconcile so the
-canonical SDK `PluginContext`/`BakinPlugin` is the source of truth and core re-exports — verifying
-the runtime surface the SDK exposes matches what core's `ctx.runtime` actually provides. If the
-surfaces genuinely differ (core full adapter vs SDK plugin-facing subset), keep core's internal
-`PluginContextLite`/adapter types local and re-export only the public `PluginContext` shape.
-- **Accept:** typecheck green across host + all 10 plugins (this is the broad blast-radius type).
-- Commit: `refactor(types): single-home PluginContext + BakinPlugin in the SDK`
+### A5 — REVISED: two-tier types are deliberate, not drift (decision 2026-06-12)
+**Finding that overturned the original A5:** the audit called `PluginContext`/`BakinPlugin`
+"duplicated verbatim," but core and the SDK are an *intentional two-tier contract*, not a fork:
+- core's `PluginContext.runtime` is the **full** `AgentRuntimeAdapter` (`adapters/runtime/concepts.ts`
+  — agents×11, tools, sessions, memory, config, images, media, restart). 6 core plugins use 15+
+  full-only methods (`memory.statEntry`, `agents.writeWorkspaceFile`, `config.replace`,
+  `images.generate`, `cron.getRaw`…). The SDK's adapter is a deliberate narrow published subset.
+- core's `ctx.tasks` returns its `PluginTask` projection (`PluginTaskService`); the SDK returns
+  `Task` (`TaskService`). core's `BakinPlugin` is a superset (`routes?: DeclarativeAPIRoute[]`).
+  `StorageAdapter`/`NavItem`/`APIRoute`/`HookAPI`/`SkillDefinition` are all core-fuller.
 
-### A6 — Task / TaskLogEntry
-Declared 4–6× (src/types, src/core/task-store, packages/core/{plugin-types,tasks/store},
-packages/sdk/types, plugins/tasks/types). SDK copy lacks `updatedAt`/`version`. Add them to the
-SDK declaration (additive, matches runtime shape); make `src/core/task-store.ts`,
-`packages/core/src/tasks/store.ts`, `packages/core/src/plugin-types.ts`, and
-`plugins/tasks/types.ts` import/re-export from the SDK; remove `src/types` Task/TaskLogEntry.
-- **Accept:** typecheck green; existing task-store/tasks-route tests green (shape is a superset, no
-  behavior change); confirm `version`/`updatedAt` consumers (optimistic concurrency) still compile.
-- Commit: `refactor(types): single-home Task/TaskLogEntry in the SDK (add updatedAt/version)`
+A blind re-export would break the 6 plugins (narrowing) or leak `concepts.ts` into the
+self-contained SDK (impossible). **Decision (Mark, approved):** accept the split; do NOT force-unify.
+Collapsing the boundary (making core plugins use the narrow surface) is WS2 (adapter-boundary) work.
+
+A5 deliverable: (1) a clear header comment in BOTH type files documenting the two-tier design so
+nobody "fixes" it later; (2) single-home the genuinely-identical, non-two-tier leaf services that
+`PluginContext` composes — `EventBus`, `ActivityAPI`, `PluginLogger` (primitives, verified identical),
+and `AssetsAPI` if its dependency types are SDK-resident + identical. The two-tier types
+(`PluginContext`, `PluginToolContext`, `ExecToolDefinition`'s ctx, `BakinPlugin`, the full adapter,
+`PluginTask*`, `StorageAdapter`, `NavItem`, `APIRoute`, `HookAPI`, `SkillDefinition`,
+`UISlotRegistration`) stay core-local by design.
+- **Accept:** typecheck green; comment present; no behavior change.
+- Commit: `refactor(types): single-home identical leaf services; document the two-tier split`
+
+### A6 — REVISED: TaskLogEntry single-homed; internal Task deduped (two-tier respected)
+`TaskLogEntry` is byte-identical in 6 places → single-home in the SDK; core (`task-store`,
+`tasks/store`, `plugin-types`'s `PluginTask.log`) and `plugins/tasks/types` re-export it.
+For `Task`: respect the two-tier split — the SDK keeps its published `Task` projection; the
+**internal storage `Task`** duplicated across `src/core/task-store.ts` and
+`packages/core/src/tasks/store.ts` collapses to one internal home (the `src/types` copy is deleted in
+A10). Do NOT merge the SDK's published `Task` with the internal storage shape. Reconcile the SDK
+`Task`/`PluginTask` only for genuine published-contract bugs (e.g. missing fields a plugin needs).
+- **Accept:** typecheck + task-store/tasks-route tests green; TaskLogEntry single-declared.
+- Commit: `refactor(types): single-home TaskLogEntry in the SDK; dedupe the internal storage Task`
 
 ### A7 — AvailableModel
 `plugins/models/types.ts` vs SDK, drifted (required-ness, `source?`). Reconcile to the real route

@@ -4,6 +4,15 @@
  * This module is intentionally self-contained. External plugins must be able
  * to typecheck against `@makinbakin/sdk/types` without resolving `@bakin/core`,
  * Bakin source aliases, adapter packages, or another plugin's internals.
+ *
+ * Two-tier contract: this is the PUBLISHED, deliberately narrower plugin-author
+ * surface. `packages/core/src/plugin-types.ts` is the INTERNAL surface in-process
+ * core plugins receive — it carries the FULL `AgentRuntimeAdapter`, the
+ * `PluginTask` projection, `BakinPlugin.routes`, and fuller `StorageAdapter`/
+ * `NavItem`/`APIRoute`/`HookAPI`/`SkillDefinition`. Those divergences are
+ * intentional, not drift. Genuinely-identical leaf data types are single-homed
+ * HERE and re-exported by core; do not collapse the context/runtime/plugin
+ * surface across the two tiers (see core's header for the rationale).
  */
 
 import type { ComponentType } from 'react'

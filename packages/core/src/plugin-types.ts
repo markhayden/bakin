@@ -1,10 +1,32 @@
 /**
- * Plugin system type definitions for Bakin.
- * All plugin interfaces are defined here — no behavioral changes.
+ * Plugin system type definitions for Bakin (the internal, in-process surface).
+ *
+ * Two-tier contract — read before "deduplicating" against the SDK:
+ * `@makinbakin/sdk/types` is the PUBLISHED, self-contained, deliberately
+ * NARROWER plugin-author surface; this file is the INTERNAL surface that
+ * in-process core plugins actually receive. They are NOT a fork to collapse.
+ * Concretely:
+ *   - `PluginContext.runtime` here is the FULL `AgentRuntimeAdapter`
+ *     (adapters/runtime/concepts.ts: agents×11, tools, sessions, memory,
+ *     config, images, media, restart…). Core plugins use ~15 full-only
+ *     methods. The SDK exposes a curated subset.
+ *   - `ctx.tasks` here returns the `PluginTask` projection; the SDK returns
+ *     `Task`. `BakinPlugin` here adds `routes?`. `StorageAdapter`/`NavItem`/
+ *     `APIRoute`/`HookAPI`/`SkillDefinition` are intentionally fuller here.
+ * Genuinely-identical LEAF data types (health, exec-result, search, manifest,
+ * EventBus/ActivityAPI/PluginLogger, TaskLogEntry, …) ARE single-homed in the
+ * SDK and re-exported below. Collapsing the boundary itself is WS2 work.
  */
 
 import type { ZodRawShape, ZodType } from 'zod'
-import type { ExecToolResult, PluginHealthCheckInput, SearchAPI } from '@makinbakin/sdk/types'
+import type {
+  ActivityAPI,
+  EventBus,
+  ExecToolResult,
+  PluginHealthCheckInput,
+  PluginLogger,
+  SearchAPI,
+} from '@makinbakin/sdk/types'
 import type { ContractStability, ContractVisibility, DocsExample, SchemaLike, SourceLocation } from './docs'
 import type { AgentRuntimeAdapter } from './adapters/runtime'
 import type { APIRoute as DeclarativeAPIRoute, PluginContextLite } from './routing/types'
@@ -50,11 +72,8 @@ export interface StorageAdapter {
 // ---------------------------------------------------------------------------
 // Events
 // ---------------------------------------------------------------------------
-export interface EventBus {
-  emit(event: string, data?: Record<string, unknown>): void
-  on(pattern: string, handler: (event: string, data: Record<string, unknown>) => void): () => void
-  once(pattern: string, handler: (event: string, data: Record<string, unknown>) => void): () => void
-}
+// Identical leaf primitive — single-homed in the SDK, re-exported here.
+export type { EventBus } from '@makinbakin/sdk/types'
 
 // ---------------------------------------------------------------------------
 // Navigation + Routes + UI Slots
@@ -171,19 +190,8 @@ export interface WorkflowDefinitionInput {
 // ---------------------------------------------------------------------------
 // Activity API (structured logging for plugins)
 // ---------------------------------------------------------------------------
-export interface ActivityAPI {
-  /** Log a human-readable message to the live activity feed */
-  log(agent: string, message: string, opts?: { taskId?: string; category?: string }): void
-  /** Log a structured audit event */
-  audit(event: string, agent: string, data?: Record<string, unknown>): void
-}
-
-export interface PluginLogger {
-  debug(message: string, data?: Record<string, unknown>): void
-  info(message: string, data?: Record<string, unknown>): void
-  warn(message: string, errorOrData?: unknown, data?: Record<string, unknown>): void
-  error(message: string, errorOrData?: unknown, data?: Record<string, unknown>): void
-}
+// Identical leaf primitives — single-homed in the SDK, re-exported here.
+export type { ActivityAPI, PluginLogger } from '@makinbakin/sdk/types'
 
 // ---------------------------------------------------------------------------
 // Plugin Context (provided to activate())
