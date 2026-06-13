@@ -718,51 +718,15 @@ export interface BakinPlugin {
 }
 
 // ---------------------------------------------------------------------------
-// Plugin Manifest (bakin-plugin.json)
+// Plugin Manifest (bakin-plugin.json) + config
 // ---------------------------------------------------------------------------
-export interface PluginManifestSignature {
-  algorithm: 'ed25519'
-  signer: string
-  publicKey: string
-  signature: string
-}
-
-export interface SecretDeclaration {
-  /** Canonical environment variable name, for example `ANTHROPIC_API_KEY`. */
-  name: string
-  /** Human-readable setup note. Never include a secret value here. */
-  description: string
-  /** Missing required secrets should be reported by setup/health checks. Defaults to true. */
-  required: boolean
-}
-
-export interface PluginManifest {
-  id: string
-  name: string
-  version: string
-  bakin: string
-  description: string
-  entry: { server: string; client?: string }
-  contentFiles?: string[]
-  secrets?: SecretDeclaration[]
-  tests?: string
-  dependencies?: string[]
-  permissions?: string[]
-  signature?: PluginManifestSignature
-}
-
-// ---------------------------------------------------------------------------
-// Config
-// ---------------------------------------------------------------------------
-export interface PluginEntry {
-  path: string
-  enabled?: boolean // defaults to true
-}
-
-export interface BakinConfig {
-  plugins: PluginEntry[]
-  theme?: Record<string, string>
-  storage?: {
-    contentDir?: string
-  }
-}
+// Single-homed in the SDK. Core's previous PluginManifest had drifted stale
+// (missing runtimeCapabilities/contributes/devWatch); the SDK copy is the
+// current superset and is what core's own manifest parser already imports.
+export type {
+  PluginManifestSignature,
+  SecretDeclaration,
+  PluginManifest,
+  PluginEntry,
+  BakinConfig,
+} from '@makinbakin/sdk/types'
