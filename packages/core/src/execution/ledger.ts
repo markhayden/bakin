@@ -140,7 +140,7 @@ const MIGRATIONS = [
       db.exec(
         `CREATE TABLE run_costs (
            run_id           TEXT PRIMARY KEY,
-           task_id          TEXT NOT NULL,
+           task_id          TEXT,
            agent            TEXT NOT NULL,
            model            TEXT,
            input_tokens     INTEGER,
@@ -715,7 +715,8 @@ export function putIdempotent(key: string, kind: string, result: unknown, now?: 
 
 export interface RunCostInput {
   runId: string
-  taskId: string
+  /** Null for non-dispatch turns (watchdog/doctor/orchestrator sends). */
+  taskId?: string | null
   agent: string
   model?: string
   inputTokens?: number | null
@@ -754,7 +755,7 @@ export function recordRunCost(input: RunCostInput): void {
       )
       .run(
         input.runId,
-        input.taskId,
+        input.taskId ?? null,
         input.agent,
         input.model ?? null,
         input.inputTokens ?? null,

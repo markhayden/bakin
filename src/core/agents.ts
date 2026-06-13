@@ -6,6 +6,7 @@ import { readFileSync, existsSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { getAppServices } from './app-services'
 import { createLogger } from './logger'
+import { meterAgentTurn } from './agent-cost'
 import { createFileBakinTaskStore } from '@bakin/core/tasks/store'
 import { getBakinPaths } from './content-dir'
 
@@ -73,6 +74,7 @@ export async function sendMessageToAgent(
 ): Promise<{ ok: boolean; reply?: string; error?: string }> {
   try {
     const result = await getAppServices().runtime.messaging.send({ agentId, content: message })
+    await meterAgentTurn({ agent: agentId, result, name: 'send' })
     return { ok: true, reply: result.content ?? '' }
   } catch (err) {
     log.error(`Failed to send message to agent ${agentId}`, err)

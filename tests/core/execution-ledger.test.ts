@@ -405,6 +405,12 @@ describe('run costs', () => {
     expect(spendTotal({ agent: 'pixel', sinceMs: T0 - 200_000 })).toBe(11100) // includes it
   })
 
+  it('records a non-dispatch row with no task_id and counts it in spend', () => {
+    recordRunCost({ runId: 'turn:nondispatch-1', agent: 'main', model: 'm', inputTokens: 10, outputTokens: 5, totalTokens: 15, costUsdMicros: 7000, occurredAt: T0 + 9000 })
+    const main = spendByAgent(T0 - 1).find(r => r.agent === 'main')
+    expect(main).toEqual({ agent: 'main', costUsdMicros: 7000, runs: 1 })
+  })
+
   it('counts a null-cost (unmetered) row as a run but adds zero dollars', () => {
     recordRunCost({ runId: 'task:rc-unm:d1', taskId: 'rc-unm', agent: 'patch', model: 'mystery/x', inputTokens: 100, outputTokens: 50, totalTokens: 150, costUsdMicros: null, occurredAt: T0 + 5000 })
     const patch = spendByAgent(T0 - 1).find(r => r.agent === 'patch')

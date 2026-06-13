@@ -10,7 +10,8 @@ import { appendAudit } from './audit'
 import { recordUsage } from './usage'
 import { getAppServices } from './app-services'
 import { getRuntimeMainAgentId, RuntimeError, RuntimeTurnError, type MessageResult } from '@bakin/core/adapters/runtime'
-import { claimNextRun, currentSeq, loseRun, settleRun, recordRunCost, spendTotal, type ClaimNextRunResult } from './execution-ledger'
+import { claimNextRun, currentSeq, loseRun, settleRun, spendTotal, type ClaimNextRunResult } from './execution-ledger'
+import { meterAgentTurn } from './agent-cost'
 import { resolveTurnModel, type ResolvedTurn, type RoutingConfig } from './model-routing'
 import { evaluateBudget, dayStartMs, monthStartMs, type BudgetPolicy, type BudgetSpend, type BudgetDecision } from './budget'
 import { getBootId } from './boot-id'
@@ -138,42 +139,8 @@ async function resolveDispatchRouting(task: DispatchTask, isRecovery: boolean): 
  * same data also feeds the live usage recorder. Never throws into the settle
  * path — a metering failure must not fail a successful turn.
  */
-async function recordTurnCost(runId: string, taskId: string, agent: string, result: MessageResult, resolvedModel?: string): Promise<void> {
-  try {
-    const usage = result.usage
-    const priced = await hooks().invoke<{ model: string | null; costUsdMicros: number | null }>(
-      'models.priceTurn',
-      // Prefer the model routing actually resolved for this turn; fall back to
-      // whatever the runtime reported, then the agent's configured default.
-      { agentId: agent, model: resolvedModel ?? usage?.model, input: usage?.input, output: usage?.output },
-    )
-    const model = priced?.model ?? usage?.model ?? null
-    const costUsdMicros = priced?.costUsdMicros ?? null
-    recordRunCost({
-      runId,
-      taskId,
-      agent,
-      model: model ?? undefined,
-      inputTokens: usage?.input ?? null,
-      outputTokens: usage?.output ?? null,
-      totalTokens: usage?.total ?? null,
-      costUsdMicros,
-      occurredAt: Date.now(),
-    })
-    recordUsage({
-      kind: 'agent',
-      name: 'turn',
-      agent,
-      durationMs: null,
-      status: 'ok',
-      ...(usage?.input !== undefined ? { tokensIn: usage.input } : {}),
-      ...(usage?.output !== undefined ? { tokensOut: usage.output } : {}),
-      ...(costUsdMicros !== null ? { costUsdMicros } : {}),
-      meta: { taskId, ...(model ? { model } : {}) },
-    })
-  } catch (err) {
-    log.error('Failed to record turn cost', err, { runId, taskId, agent })
-  }
+function recordTurnCost(runId: string, taskId: string, agent: string, result: MessageResult, resolvedModel?: string): Promise<void> {
+  return meterAgentTurn({ runId, taskId, agent, result, resolvedModel })
 }
 
 /**
