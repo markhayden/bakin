@@ -48,7 +48,7 @@ Give the single operator real, durable visibility into agent **spend**, and two 
 - `openclaw agent --model <id>` → **"Model override for this run"** (per-turn). ✅
 - `openclaw agent --thinking <off|minimal|low|medium|high|xhigh|adaptive|max>` → per-turn thinking knob. ✅
 - The CLI `agent` command runs **via the Gateway** (`agent` is a gateway RPC method; `gateway call --expect-final` references it). Bakin uses the RPC, not the CLI.
-- **Open verification item (build-time, blocking for Routing):** confirm the gateway `agent` RPC param name for the per-turn model override (expected `model`) and thinking (expected `thinking`). The CLI proves the capability; the RPC field names must be confirmed by inspecting OpenClaw's gateway agent handler or a single probe `gateway call agent` before wiring. If the RPC does *not* accept them, Routing is blocked (the only fallback — mutating agent config per dispatch — is stateful/racy and is explicitly rejected).
+- **VERIFIED (P2.0, OpenClaw 2026.6.5):** the gateway `agent` RPC accepts both `model` (string, `provider/model` id) and `thinking` (string level) as **top-level params**, alongside the `agentId`/`message`/`sessionId`/`idempotencyKey`/`deliver`/`timeout` params Bakin's adapter already sends. Source: `dist/agent-via-gateway-*.js` — the `callGateway({ method: 'agent', params: { message, agentId, model, …, thinking, … } })` call site. Routing is unblocked; the only fallback (mutating agent config per dispatch) is not needed and stays rejected.
 
 ### 2.4 Dispatch-time signals available for routing
 
