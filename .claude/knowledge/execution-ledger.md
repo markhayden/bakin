@@ -53,6 +53,15 @@ cron_fires    (job_id, run_id) PK ← THE cron lock; fired_at (logical run
 completions   task_id PK ← first completion wins; run_id, agent, channel
 idempotency   key PK (e.g. the image 9-tuple signature), kind, result_json
               — durable, NO TTL, INSERT OR IGNORE (first write wins)
+run_costs     run_id PK ← per-turn cost attribution (#464, migration v3);
+              task_id, agent, model, input/output/total_tokens,
+              cost_usd_micros (NULL = unmetered), occurred_at. A billing
+              fact, not content: written once on settle via recordRunCost
+              (INSERT OR IGNORE → first write wins, so a transport retry of
+              the same run can't double-count). Verbs: spendTotal({agent?,
+              sinceMs, untilMs?}), spendByAgent(sinceMs), spendByModel(sinceMs)
+              — null costs coalesce to 0 (counted as runs, never dropped).
+              Consumed by the models Spend view + dispatch budget gating.
 ```
 
 `exec_key` is the live-run lock scope: the task id for regular tasks,

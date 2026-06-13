@@ -24,8 +24,28 @@ Merged into each runtime-sourced `AvailableModel` server-side via `getKnownModel
 
 `<BrandIcon>` inlines SVG paths from simple-icons.org (CC0) for the 5 brands we have logos for. Unknown slugs render a first-letter chip in the provider's brand color.
 
+## Cost optimization (metering → routing → gating)
+
+Issue #464, widened from budget gating to the full cost story. Deep spec/plan: `.claude/specs/models-cost-optimization.md` (+ `-plan.md`).
+
+### Structured pricing
+
+`KnownModel.pricing` (`{ inputPer1M, outputPer1M, cachedReadPer1M?, updatedAt }`) is the cost source of truth for cloud LLMs; the display string is **derived** via `formatCostRange`. `costRange` survives only as a literal for non-token models (image/video/local). `computeCostUsdMicros(usage, pricing)` returns **null** when pricing or token counts are absent — never a fabricated zero. Cached-token discounts aren't modeled, so estimates read slightly high.
+
+### Metering
+
+The OpenClaw adapter surfaces per-turn `usage` (from the trajectory `model.completed` event) on `MessageResult.usage`. On settle, `dispatch.recordTurnCost` writes a durable per-run row to the ledger `run_costs` table (keyed by `run_id`; see `.claude/knowledge/execution-ledger.md`) and feeds the in-memory usage recorder (`tokensIn/tokensOut/costUsdMicros`). Pricing is delegated to the `models.priceTurn` hook so core stays pricing-agnostic. `GET /spend?window=24h|7d|30d|all` returns rollups (total/by-agent/by-model); the **Spend** tab renders them with an "estimated" caveat and "$ unavailable" for unmetered rows.
+
+### Routing (per-turn model + thinking)
+
+Bakin-owned policy resolved at dispatch (`src/core/model-routing.ts`); OpenClaw serves it (`model`/`thinking` on the gateway `agent` RPC). Routing key = dispatch **origin** (`scheduled|workflow|adhoc|recovery|decomposition`) + a per-task **tag override**. Cascade: tag → origin → inherit (nothing resolved = the agent's configured model, unchanged behavior). Stored in `settings.routing`, exposed via `models.getRoutingConfig`; the **Routing** tab edits it. Thinking levels include `inherit`.
+
+### Budget gating (#464)
+
+`settings.budget` (`BudgetPolicy`: global + per-agent daily/monthly USD caps + `warnPct`), exposed via `models.getBudgetPolicy`. `dispatch.budgetGate` consults it against ledger spend before claiming a run: **warn** at `warnPct` (default 0.8), **defer** at 100% (task stays in todo, resumes when the window rolls over — never pauses the agent, diverging from paperclip). **Fail-closed**: an unreadable ledger defers. Audits debounce per window. The health plugin's `budget` check surfaces utilization + deferred-run count; the Spend tab has a global-caps editor.
+
 ## How to extend
 
-- **Add a model:** PR an entry in `known-models.ts`.
+- **Add a model:** PR an entry in `known-models.ts` (include `pricing` for cloud LLMs; bump `PRICING_AS_OF` on price edits).
 - **Add a brand logo:** inline the SVG path in `brand-icon.tsx`.
-- **Never:** fabricate model metadata or invent providers — render plain instead.
+- **Never:** fabricate model metadata, pricing, or cost — render plain / "$ unavailable" instead.

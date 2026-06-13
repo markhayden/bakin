@@ -1,6 +1,6 @@
 # Spec — Model Cost Metering, Routing & Budget Gating
 
-**Status:** Recommendation / spec phase. No code in this session.
+**Status:** IMPLEMENTED on `feat/models-cost-optimization` — Phases 0–4 (metering → routing → gating → docs) landed per `-plan.md`. This document is retained as the design record.
 **Origin:** Issue #464 (`feat(core): cost/budget gating in dispatch`) — widened from "budget gating" to the full cost-optimization picture the issue under-describes.
 **Supersedes:** the dead `taskProfiles` feature in the Models plugin (deleted, not migrated).
 **Related:** `.claude/specs/execution-safety-ledger.md` §10.4, `.claude/knowledge/usage-recording.md`, `.claude/knowledge/models-plugin.md`, `.claude/knowledge/dispatch.md`, `.claude/knowledge/adapter-architecture.md`.
