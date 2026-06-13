@@ -26,6 +26,7 @@ import type {
   PluginHealthCheckInput,
   PluginLogger,
   SearchAPI,
+  TaskLogEntry,
 } from '@makinbakin/sdk/types'
 import type { ContractStability, ContractVisibility, DocsExample, SchemaLike, SourceLocation } from './docs'
 import type { AgentRuntimeAdapter } from './adapters/runtime'
@@ -437,12 +438,9 @@ export interface PluginTaskSource {
   purpose?: string
 }
 
-export interface TaskLogEntry {
-  timestamp: string
-  author: string
-  message: string
-  data?: Record<string, unknown>
-}
+// Single-homed in the SDK; re-exported here (referenced by PluginTask.log
+// and PluginTaskService.appendLog below).
+export type { TaskLogEntry } from '@makinbakin/sdk/types'
 
 export interface PluginTaskCreateInput {
   id?: string
