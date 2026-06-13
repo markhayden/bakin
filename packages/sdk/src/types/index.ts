@@ -1475,6 +1475,33 @@ export interface WorkflowStep {
 /** Alias for WorkflowDefinition when used as a reusable template. */
 export type WorkflowTemplate = WorkflowDefinition
 
+/**
+ * Per-agent context/token usage for a runtime session — the wire shape served
+ * by the health and team usage panels.
+ */
+export interface AgentUsage {
+  agent: string
+  sessionId: string
+  sessionStarted: string
+  model: string
+  messages: number
+  tokens: {
+    input: number
+    output: number
+    cacheRead: number
+    cacheWrite: number
+    total: number
+  }
+  cost: {
+    input: number | null
+    output: number | null
+    cacheRead: number | null
+    cacheWrite: number | null
+    total: number | null
+    source: 'runtime' | 'unavailable'
+  }
+}
+
 /** The `bakin.config.ts` shape — root configuration for a Bakin installation. */
 export interface BakinConfig {
   /** Plugins to load at startup. */
