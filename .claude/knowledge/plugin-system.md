@@ -1079,8 +1079,11 @@ empty badge map.
 
 ## HookRegistry — Cross-Plugin Server Communication
 
-`packages/core/src/hooks/hook-registry.ts` — singleton shared across all
-plugins and core modules. Backed by `globalThis.__bakinHookRegistry` so
+`packages/core/src/hooks/hook-registry.ts` defines the `HookRegistry` class;
+the process singleton + `getHookRegistry()` live in the dependency-free leaf
+`packages/core/src/hooks/hook-registry-singleton.ts` (so the exec-tool
+registry, the plugin loader, and core modules import it without cycling back
+through the loader). Backed by `globalThis.__bakinHookRegistry` so
 hot reload + Bun's module re-evaluation don't lose handler references.
 Same pattern is used for the plugin registry
 (`globalThis.__bakinPluginRegistry`), SSE broadcast
@@ -1110,7 +1113,7 @@ Same pattern is used for the plugin registry
 
 ### Invoking hooks from core
 ```typescript
-import { getHookRegistry } from '@/lib/plugin-registry'
+import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 const hooks = getHookRegistry()
 const instance = await hooks.invoke<WorkflowInstance>('workflows.loadInstance', { taskId })
 ```

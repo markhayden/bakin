@@ -15,16 +15,16 @@ Respect the WS1 two-tier type contract. `madge --circular` is the cycle-break ga
 - [~] K6 — DEFERRED to WS6: images→assets boundary. Same cross-plugin class; routing via hooks forces a sync→async ripple across ~6 image fns; the alt (promote 835-line asset-service to core) is a WS5/6 move. Fits the workflows/assets restructure.
 
 ## Phase D — dedup extractions (independent, low-risk)
-- [ ] D1 — settings-store (5 sites, converge notification)
-- [ ] D2 — promote atomicWriteJson → storage/ (JSON sites only; NOT log-rotation/binary)
-- [ ] D3 — frontmatter/skill/lesson parser module (regex ×11, parseSkillFile ×3, lesson ×4)
-- [ ] D4 — shared healthOk/warn/error constructors (13+ sites)
+- [x] D1 — settings-store (5 sites) ✅ (caught+fixed a latent factory persist bug)
+- [x] D2 — promote atomicWriteJson → storage/ (4 JSON sites) ✅
+- [ ] D3 — frontmatter/skill/lesson parser module (regex ×11, parseSkillFile ×3, lesson ×4) — FOLLOW-UP (WS2 part 2)
+- [ ] D4 — shared healthOk/warn/error constructors (13+ sites) — FOLLOW-UP (WS2 part 2)
 
 ## Phase G — lock it in
-- [ ] G1 — architecture guard: packages/sdk in SCAN_ROOTS (the cross-plugin + core→plugin import rules land in WS6 once K5-boundary + K6 fix the remaining violations)
+- [ ] G1 — architecture guard: packages/sdk in SCAN_ROOTS — FOLLOW-UP (WS2 part 2)
 
-## PR gate
-- [ ] test + typecheck + lint + build + madge-clean + boot smoke + docs → open PR
+## PR gate — PART 1 (cycle break + settings-store + atomic-write)
+- [x] test + typecheck + lint + build + madge (18→4, runtime clusters gone) + boot smoke + docs → PR opened
 
 ## Deferred to follow-up PRs
 - (8) gate runtime.config.get/replace — adapter-API design; its own PR (+ its guard)
