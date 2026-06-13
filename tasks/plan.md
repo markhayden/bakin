@@ -1,216 +1,220 @@
-# Plan: WS1 — refactor/contract-types
+# Plan: WS2 — refactor/core-extractions
 
 Spec: `SPEC.md` + `.claude/specs/audit-2026-06/REPORT.md` (triage-approved 2026-06-11).
-Branch: `refactor/contract-types` off `main`. One revertable commit per finding/file; every
-commit green on `bun run test` + `bun run typecheck`. PR gate: `bun run build` + lint + boot
-smoke + doc sweep. No shims, no compat re-export layers — dead declarations are deleted in the
-commit that obsoletes them.
+Branch: `refactor/core-extractions` off `main` (WS1 merged). One revertable commit per finding;
+every commit green on `bun run test` + `bun run typecheck`. PR gate: `bun run build` + lint +
+boot smoke + `madge` cycle check + docs. No shims; dead paths deleted in the commit that obsoletes
+them. **Respect the WS1 two-tier type contract** (`.claude/knowledge/repo-architecture.md` §
+two-tier) — core keeps its fuller internal surface; do not collapse it.
 
-## The crux decision — RESOLVED BY HARD CONSTRAINT (not a judgment call)
+## Goal
 
-The report is internally contradictory on source-of-truth direction: the **contract-types
-finding** says *SDK is home, core re-exports*; the **Task finding** says *core is home, SDK
-re-exports*. This is settled by a documented, publish-enforced constraint:
+Move runtime infrastructure to its correct layer and kill server-side duplication. **No behavior
+change** except the two explicitly-flagged fixes (images→assets boundary; settings-notification
+convergence). The headline win: break the 18-cycle circular-dependency cluster and the
+core→plugin boundary violation, then lock both in with architecture-test guards.
 
-> `packages/sdk/src/types/index.ts` header: *"This module is intentionally self-contained.
-> External plugins must be able to typecheck against `@makinbakin/sdk/types` without resolving
-> `@bakin/core`, Bakin source aliases, adapter packages, or another plugin's internals."*
+## Confirmed state (recon, 2026-06-13)
 
-Enforced by `scripts/build-sdk-package.ts` → `assertNoForbiddenImports`, which fails the publish
-if any emitted `.js`/`.d.ts` references `@bakin/core` or `/src/`. Therefore the SDK types module
-**physically cannot** re-export from core. Since plugins reach `Task` (and every contract type)
-through `ctx` typed against the self-contained SDK, those types **must** be declared in the SDK.
+- `madge` reports **18 cycles**; cycles 5–17 all route through `scripts/lib/registry.ts`, cycle 4
+  through `plugins/workflows/lib/source-registry.ts`. (Cycle 18 is a benign type-only cycle from
+  WS1's B1 split — `sdk/types/context.ts ↔ registration.ts`; erased at compile, left as-is.)
+- **The hard back-edge:** `scripts/lib/registry.ts:11` imports `getHookRegistry` from
+  `src/lib/plugin-registry`, which imports `addExecTool`/`removeExecToolsByPlugin` back from
+  `registry.ts` (cycle 16). The hook-registry singleton (`__bakinHookRegistry`) is declared at
+  `src/lib/plugin-registry.ts:239`; the catch-all route also reaches it via raw `globalThis`
+  (`[[...path]].ts:114-139`).
+- exec-tool registry importers (5): `src/core/mcp-server.ts`, `src/core/bakin-skill.ts`,
+  `src/core/plugin-host/reload-pipeline.ts`, `src/lib/plugin-registry.ts`,
+  `packages/host/src/api/exec-tools/[toolName].ts`.
+- workflow-registry core importers: `src/lib/plugin-registry.ts:29-35`,
+  `src/core/plugin-host/reload-pipeline.ts:40-41`, `src/core/agent-packages/load-sources.ts:43`.
+- `config.get/replace` consumers (real, substantive): `plugins/models/index.ts:84,88`,
+  `plugins/team/index.ts:216`, `src/core/openclaw-integration.ts:41,70,79`.
 
-**Decision (forced): the SDK types module is the single canonical home for every shared plugin
-contract type. `packages/core/src/plugin-types.ts` re-exports them from `@makinbakin/sdk/types`;
-plugin-local copies are deleted in favor of the SDK declaration.** This matches what core
-*already* does (`plugins/manifest.ts`, `plugins/signatures.ts` import types from the SDK) and the
-zero-dep DAG (`plugins → sdk`, `core → sdk`). Drifted SDK declarations are reconciled UP to the
-real runtime/wire shape (add `updatedAt`/`version` to `Task`, fix `instanceId` on
-`WorkflowInstance`, reconcile `AvailableModel` required-ness) — the SDK type becomes the superset,
-never a downgrade.
+## Two decisions to resolve before building (see questions)
 
-`@bakin/core/plugin-types` stays as core's API surface (it re-exports the SDK contract + keeps
-core-internal-only types) — that is the layered public surface, **not** a compat shim. The 38
-in-repo plugin files importing from `@bakin/core/plugin-types` are **not** mass-migrated this
-workstream (no correctness benefit once the declaration is single-homed; opportunistic later).
-
-The one pre-existing inverted edge (`sdk/utils` → `@bakin/core/format`, the P2 package cycle) is
-**out of scope** here — WS1 adds no new inverted edges; the formatter relocation is WS3.
+1. **Finding (8) — gate `runtime.config.get/replace`.** This is *adapter-API design* (the audit's
+   own fix is "promote to typed adapter methods like `runtime.models.getAssignments()`"), not
+   extraction/dedup. It touches the OpenClaw adapter's config-schema knowledge and 3 real
+   consumers. **Recommendation: split it out** of WS2 into its own focused PR aligned with the
+   adapter-boundary theme — keep WS2 about layering + dedup. The architecture guard for it (part
+   of 9) moves with it.
+2. **PR shape.** The structural keystones (cycle break + workflow-registry move + context factory +
+   guards) are interdependent; the dedups (settings-store, atomic-write, frontmatter, health
+   constructors) are independent and low-risk. **Recommendation: one PR** with checkpointed commits
+   (matches the per-workstream model), structural first so the guards land on the fixed structure.
 
 ## Dependency graph & sequencing
 
 ```
-Phase A  unify each type family (SDK canonical → core re-exports → drop plugin dups)
-  A0 dead files            ── independent, lands first (noise reduction)
-  A1 health family         ── verbatim-identical, lowest risk
-  A2 exec-tool types       ──┐ verbatim / near-verbatim
-  A3 search API types      ──┤  each: reconcile in SDK, core re-exports, typecheck gate
-  A4 manifest types        ──┤  (core's PluginManifest is STALE — SDK is superset)
-  A5 PluginContext+BakinPlugin ─ RISKY: pulls in runtime-adapter surface; dedicated commit
-  A6 Task / TaskLogEntry   ──┤  add updatedAt/version to SDK; core/task-store + plugins re-export
-  A7 AvailableModel        ──┤
-  A8 WorkflowInstance/Def  ──┤  fix instanceId
-  A9 AgentUsage            ──┘  + fix the plugin-dir-escaping import
-  A10 src/types residue    ── delete 12 dead, keep 3 live (Heartbeat/ActivityEvent/ContentState)
+Phase K — structural (break the cycle + the boundary)         ── interdependent, ordered
+  K1 extract hook-registry singleton → leaf module            (removes registry→plugin-registry back-edge)
+  K2 move scripts/lib/registry.ts → src/core/exec-tools/      (runtime code to its layer; 5 importers)
+  K3 extract the ONE PluginContext factory (buildContext+buildCtx)
+  K4 madge gate: confirm the scripts/lib cluster (cycles 5-17,16) is GONE
+  K5 move workflow source/node-type/notification-channel registries → packages/core (breaks cycle 4 + boundary)
+  K6 fix images→assets direct import (route via assets hooks)
         │
-        ▼  (single source of truth now established — drift killed)
-Phase B  split the two now-canonical god-files (pure reorg, types-only, zero runtime risk)
-  B1 split packages/sdk/src/types/index.ts → primitives/manifest/runtime/services/registration/context (+ barrel)
-  B2 split packages/core/src/plugin-types.ts → plugin-contract/{search-api,services,registrations} (+ slimmed core)
+Phase D — dedup extractions (independent, low-risk, any order)
+  D1 settings-store          (5 sites, converge notification)
+  D2 atomic-write promotion  (JSON sites only — NOT log-rotation/binary renames)
+  D3 frontmatter module      (regex ×11, parseSkillFile ×3, lesson parser ×4)
+  D4 health constructors     (13+ sites, 2 signatures → one)
+        │
+Phase G — lock it in
+  G1 architecture-test guards: packages/sdk in SCAN_ROOTS + cross-plugin-import rule
 ```
-
-Phase A lands the correctness win (drift eliminated) and is independently valuable; Phase B is
-organization. If we stop after A, the workstream's primary goal is already met.
 
 ## Tasks
 
-> Each Phase-A unify commit follows the same recipe: (1) ensure the SDK declaration is the correct
-> superset (reconcile any drift), (2) delete the duplicate declaration(s) in core/plugins and
-> replace with `export type { X } from '@makinbakin/sdk/types'` (core) or direct SDK import
-> (plugins), (3) `bun run typecheck` is the proof — a shape mismatch fails compilation. No new
-> tests needed for pure type re-homing; typecheck IS the test. Where a runtime shape changes
-> (Task gaining fields is additive/safe), the existing suite is the guard.
+### K1 — Extract the hook-registry singleton to a leaf module
+`getHookRegistry()` + the `__bakinHookRegistry` globalThis cell move from `src/lib/plugin-registry.ts:239-244`
+to a dependency-free leaf (e.g. `packages/core/src/hooks/hook-registry-singleton.ts`, next to the
+existing `hook-registry.ts`). `plugin-registry.ts`, the soon-moved exec-tool registry, and the
+catch-all route (replace its raw `globalThis` reads at `[[...path]].ts:114-139`) all import from it.
+- **Risk:** the singleton must live in exactly ONE module post-move or HMR/`resetHookRegistry` breaks.
+- **Accept:** typecheck + suite green; `getHookRegistry` has one definition; catch-all no longer
+  pokes `globalThis.__bakinHookRegistry` directly.
+- Commit: `refactor(core): extract the hook-registry singleton to a leaf module`
 
-### A0 — Delete verified-dead files
-`plugins/tasks/components/new-task-dialog.tsx`, `plugins/team/components/curated-browser.tsx`,
-`src/components/calendar/calendar-view.tsx`, `src/lib/parsers/calendar.ts`,
-`src/components/plugin-slot.tsx`, `src/core/cli/ui/panel.tsx`,
-`packages/host/src/components/layout/skeleton-loader.tsx`.
-- Re-verify deadness at HEAD before deleting (grep every alias/dynamic-import form; new-task-dialog
-  only referenced by a docs screenshot id, which captures by route — safe).
-- **Accept:** `bun run test` + `bun run typecheck` + `bun run build:plugins` green; grep finds no
-  importers.
-- Commit: `chore: delete seven verified-dead files (~620 LOC)`
+### K2 — Move the exec-tool registry into src/core
+`scripts/lib/registry.ts` → `src/core/exec-tools/registry.ts` (it's the production registry —
+globalThis Map + `PluginToolContext` builder + `addExecTool`/`getAllExecTools`/`removeExecToolsByPlugin`;
+not build tooling). Repoint the 5 importers. Its `getHookRegistry` import now resolves to K1's leaf
+(no back-edge). Keep its other co-located `scripts/lib/*` peers (`heartbeat`, `log-progress`,
+`search-tools`, `post-channel`, `npm-registry`, `get-paths`, `common`) — assess each: those that are
+runtime exec-tool tools move with it; pure build helpers stay. (Audit also flagged moving
+`scripts/lib/*` runtime tools out of `scripts/`; scope to the exec-tool registry + its runtime peers,
+leave genuinely-build-only files.)
+- **Risk:** `addExecTool` self-registration side effects on import; the binary embeds none of
+  `scripts/` server code (#421) — verify the move doesn't change what's embedded.
+- **Accept:** typecheck + suite green; no `scripts/lib/registry` importers remain; exec tools still
+  register (mcp-server `getAllExecTools()` returns the same set — assert count in a test).
+- Commit: `refactor(core): move the exec-tool registry from scripts/lib into src/core/exec-tools`
 
-### A1 — Health check contract family
-`HealthCheckResult`, `HealthRepairSafety/Change/PlanItem/ApplyResult/Handler`,
-`PluginHealthCheckInput`. Verbatim-identical (SDK adds doc comments only).
-- SDK keeps canonical; `packages/core/src/plugin-types.ts` re-exports from `@makinbakin/sdk/types`.
-- **Accept:** typecheck green; 17 health-check consumers compile unchanged.
-- Commit: `refactor(types): single-home the health-check contract in the SDK`
+### K3 — Unify the PluginContext factory
+`buildContext` (`src/lib/plugin-registry.ts:811-972`) and the per-request `buildCtx`
+(`packages/host/src/api/plugins/[pluginId]/[[...path]].ts:46-151`) are duplicated and have **drifted
+in `updateSettings`**. Extract one `buildPluginContext({pluginId, state, storage, events, services})`
+(e.g. `src/lib/plugin-context-factory.ts`) that builds the shared dynamic surfaces (settings,
+activity, hooks, search, storage, runtime/tasks facades) and takes the registration surfaces as a
+parameter (real registrars at activate-time; no-op/throwing stubs for the per-request path). Both
+sites call it. Converge `updateSettings` to one behavior (the registry's — fires the change
+notification; the per-request copy had dropped it).
+- **Depends on:** K1 (factory uses the hook singleton). Pairs with D1 (settings-store) — do D1
+  first if convenient so the factory consumes it.
+- **Accept:** typecheck + suite green; the two ctx surfaces are byte-identical (one factory); a test
+  asserts per-request `updateSettings` now notifies.
+- Commit: `refactor(core): unify the duplicated PluginContext factory`
 
-### A2 — Exec-tool types
-`ExecToolDefinition`, `ExecToolResult` (+ context types). SDK canonical, core re-exports.
-- Commit: `refactor(types): single-home exec-tool contract types in the SDK`
+### K4 — madge cycle gate (checkpoint, not a commit on its own)
+After K1–K3, run `bunx madge --circular` over the same scope. The `scripts/lib/registry` cluster
+(cycles 5–17 + 16) must be gone. If residual back-edges remain, extract the offending pure maps into
+leaf modules per the audit rec ("pure registry maps with no src/core imports") until the cluster
+clears. Fold those extractions into K1–K3's commits or a K3b commit.
+- **Accept:** `madge --circular` shows only the benign type-only SDK cycle (and cycle 4 until K5).
 
-### A3 — Search API contract
-`SearchAPI`, `SearchQueryParams`, `SearchIndexDefinition`, `SearchContentTypeDefinition`,
-`SearchSchemaField`, result/aggregation shapes. Reconcile, SDK canonical, core re-exports.
-- Commit: `refactor(types): single-home the search API contract in the SDK`
+### K5 — Move the workflow registries into core
+`source-registry.ts`, `node-type-registry.ts`, `notification-channel-registry.ts` move from
+`plugins/workflows/lib/` → `packages/core/src/workflows/` (core extension points the loader owns,
+like `hook-registry`). Core importers (`plugin-registry:29-35`, `reload-pipeline:40-41`,
+`agent-packages/load-sources:43`) import from core. The workflows plugin consumes them via the same
+core module (no longer the source of truth). Breaks cycle 4 + the documented HookRegistry-only
+boundary violation (core no longer needs the workflows plugin's source tree to boot).
+- **Risk:** these registries self-seed at module load (notification-channel built-ins); the seed
+  must run in exactly one place post-move. `WorkflowDefinition`/node-type types they reference are
+  workflows-plugin types — move only the registry MACHINERY, keep the workflow domain types in the
+  plugin (the registries can be generic over them, or take a minimal core-side type).
+- **Accept:** typecheck + suite (incl. workflows runtime tests) green; madge cycle 4 gone; core boots
+  without importing `plugins/workflows/*`.
+- Commit: `refactor(core): move the workflow extension-point registries into packages/core`
 
-### A4 — Manifest contract
-`PluginManifest`, `PluginManifestSignature`, `SecretDeclaration`, `PluginPermission`,
-`RuntimeCapability`, `PluginEntry…`. **Core's `PluginManifest` is STALE** (missing
-`runtimeCapabilities`/`contributes`/`devWatch`) — the SDK copy is the superset; core's manifest
-parser already imports from the SDK. Delete core's stale declaration, re-export from SDK.
-- **Accept:** typecheck green; `manifest.ts`/`signatures.ts` already-SDK imports unaffected.
-- Commit: `refactor(types): drop stale core PluginManifest, re-export the SDK manifest contract`
+### K6 — Fix the images→assets direct import
+`plugins/images/lib/tools.ts:6-8` imports `getAsset`/`listAssets`/`upsertFromSource`/`resolveStoreFile`/
+`isValidAssetId` + manifest types from `../../assets/lib/*`. Route through the assets plugin's hooks
+(the assets plugin already registers `assets.*` hooks — verify coverage; add the missing
+`assets.upsertFromSource`/`assets.resolveStoreFile` hooks if needed). Manifest TYPES come from the
+SDK/core, not a cross-plugin import.
+- **Risk:** hook calls are async + untyped-ish; ensure the images tools still get the manifest shape
+  they need. If hooks can't cleanly cover it, the fallback (audit-sanctioned) is promoting
+  asset-service into `packages/core` — flag if so.
+- **Accept:** typecheck + images tests green; no `plugins/images → plugins/assets` import remains.
+- Commit: `fix(images): reach assets through hooks, not a direct cross-plugin import`
 
-### A5 — REVISED: two-tier types are deliberate, not drift (decision 2026-06-12)
-**Finding that overturned the original A5:** the audit called `PluginContext`/`BakinPlugin`
-"duplicated verbatim," but core and the SDK are an *intentional two-tier contract*, not a fork:
-- core's `PluginContext.runtime` is the **full** `AgentRuntimeAdapter` (`adapters/runtime/concepts.ts`
-  — agents×11, tools, sessions, memory, config, images, media, restart). 6 core plugins use 15+
-  full-only methods (`memory.statEntry`, `agents.writeWorkspaceFile`, `config.replace`,
-  `images.generate`, `cron.getRaw`…). The SDK's adapter is a deliberate narrow published subset.
-- core's `ctx.tasks` returns its `PluginTask` projection (`PluginTaskService`); the SDK returns
-  `Task` (`TaskService`). core's `BakinPlugin` is a superset (`routes?: DeclarativeAPIRoute[]`).
-  `StorageAdapter`/`NavItem`/`APIRoute`/`HookAPI`/`SkillDefinition` are all core-fuller.
+### D1 — Plugin settings-store
+`packages/core/src/plugins/settings-store.ts`: `readPluginSettings(pluginId)`,
+`writePluginSettings(pluginId, value|patch)` + an injectable `onWrite` notifier. Replace the 5
+hand-rolled copies (`plugin-registry` ctx getSettings/updateSettings, the catch-all ctx,
+`plugin-settings/[pluginId].ts`, `agents/settings.ts`, `team/index.ts`). The host wires
+`notifySettingsChange` + `broadcastPluginSettingsChanged` into it once — converging the diverging
+notification behavior the audit flagged.
+- **Accept:** typecheck + suite green; one settings read/write path; all sites notify consistently.
+- Commit: `refactor(core): single settings-store for plugin settings read/write + notify`
 
-A blind re-export would break the 6 plugins (narrowing) or leak `concepts.ts` into the
-self-contained SDK (impossible). **Decision (Mark, approved):** accept the split; do NOT force-unify.
-Collapsing the boundary (making core plugins use the narrow surface) is WS2 (adapter-boundary) work.
+### D2 — Promote atomicWriteJson
+Move `atomicWriteJson` from `packages/core/src/install-core/atomic-write.ts` to a neutral
+`packages/core/src/storage/atomic-write.ts` (+ a `writeTextAtomic` sibling), add an options bag
+(`{mode, trailingNewline, suffix}`). Replace the hand-rolled tmp+rename **JSON** copies
+(`memory/offsets`, `assets/manifest`, `workflows/approval-store`, `models/models-cache`,
+`tasks/store`, …). **Do NOT touch** non-JSON atomic writers (log rotation in `logger.ts`,
+`markdown-adapter`, `scoped-plugin-storage`, `self-update` binary, `secret-store` — already 0600)
+unless they're trivially JSON. The 4 existing `install-core` consumers re-point to the new home.
+- **Risk:** `memory/offsets` uses a fixed `.tmp` suffix (collision-prone) — the new util's
+  per-pid/unique suffix is a strict improvement; verify offset persistence tests pass.
+- **Accept:** typecheck + suite green; `atomicWriteJson` has one home; grep shows the JSON copies gone.
+- Commit: `refactor(core): promote atomicWriteJson to storage/ and replace hand-rolled JSON writers`
 
-A5 deliverable: (1) a clear header comment in BOTH type files documenting the two-tier design so
-nobody "fixes" it later; (2) single-home the genuinely-identical, non-two-tier leaf services that
-`PluginContext` composes — `EventBus`, `ActivityAPI`, `PluginLogger` (primitives, verified identical),
-and `AssetsAPI` if its dependency types are SDK-resident + identical. The two-tier types
-(`PluginContext`, `PluginToolContext`, `ExecToolDefinition`'s ctx, `BakinPlugin`, the full adapter,
-`PluginTask*`, `StorageAdapter`, `NavItem`, `APIRoute`, `HookAPI`, `SkillDefinition`,
-`UISlotRegistration`) stay core-local by design.
-- **Accept:** typecheck green; comment present; no behavior change.
-- Commit: `refactor(types): single-home identical leaf services; document the two-tier split`
+### D3 — Frontmatter parsing module
+`packages/core/src/format/frontmatter.ts`: `splitFrontmatter(raw)`, `parseYamlFrontmatter(raw)`,
+`parseLessonFrontmatter(raw)` (superset of fields: title, tags, defaultEnabled). Replace the
+`/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/` regex (×11 files), the verbatim `parseSkillFile` (×3:
+`src/lib/plugin-skill-loader`, `plugins/workflows/lib/skill-loader`, …), and the hand-rolled lesson
+parser (×4 agent-packages modules + `team/index.ts`).
+- **Accept:** typecheck + suite green (skill-loader + lesson tests); regex defined once.
+- Commit: `refactor(core): single frontmatter/skill/lesson parser module`
 
-### A6 — REVISED: TaskLogEntry single-homed; internal Task deduped (two-tier respected)
-`TaskLogEntry` is byte-identical in 6 places → single-home in the SDK; core (`task-store`,
-`tasks/store`, `plugin-types`'s `PluginTask.log`) and `plugins/tasks/types` re-export it.
-For `Task`: respect the two-tier split — the SDK keeps its published `Task` projection; the
-**internal storage `Task`** duplicated across `src/core/task-store.ts` and
-`packages/core/src/tasks/store.ts` collapses to one internal home (the `src/types` copy is deleted in
-A10). Do NOT merge the SDK's published `Task` with the internal storage shape. Reconcile the SDK
-`Task`/`PluginTask` only for genuine published-contract bugs (e.g. missing fields a plugin needs).
-- **Accept:** typecheck + task-store/tasks-route tests green; TaskLogEntry single-declared.
-- Commit: `refactor(types): single-home TaskLogEntry in the SDK; dedupe the internal storage Task`
+### D4 — Health-check result constructors
+Export `healthOk`/`healthWarn`/`healthError(check, message, opts)` from `packages/core` (next to the
+`HealthCheckResult` type) and re-export through `@makinbakin/sdk` so user plugins get them. Replace
+the 13+ private `ok/warn/error` copies (two divergent signatures — `(check, message)` vs
+`(check, message, extra)`) across the plugin health-checks.
+- **Note:** `HealthCheckResult` is single-homed in the SDK (WS1) — put the *constructors* in core,
+  SDK re-exports, matching the WS1 two-tier pattern (type in SDK, helpers reachable both ways).
+- **Accept:** typecheck + suite green; constructors defined once; the 13+ sites use them.
+- Commit: `refactor(core): shared healthOk/warn/error constructors`
 
-### A7 — AvailableModel
-`plugins/models/types.ts` vs SDK, drifted (required-ness, `source?`). Reconcile to the real route
-payload; SDK canonical; `plugins/models/types.ts` re-exports.
-- Commit: `refactor(types): single-home AvailableModel in the SDK`
+### G1 — Architecture-test guards
+Add to `tests/architecture/`: (a) `packages/sdk/src` in SCAN_ROOTS; (b) a rule failing any import
+matching `from '../../<otherPluginId>/'` or `@bakin/<pluginId>` whose source file lives under
+`plugins/<thisPluginId>/` (locks in K5/K6 — no cross-plugin imports). Config-surface governance
+(finding 8's guard) ships with the (8) PR, not here.
+- **Accept:** the new guards pass on the WS2 tree and FAIL on a deliberately-reintroduced violation
+  (prove the guard bites).
+- Commit: `test(architecture): guard cross-plugin imports + scan packages/sdk`
 
-### A8 — WorkflowInstance / WorkflowDefinition
-SDK shape uses `id`; the wire shape is `instanceId` (`plugins/workflows/types.ts:240`). Fix the SDK
-declaration to the real wire shape; reconcile `plugins/tasks` consumers and the workflows plugin.
-- **Accept:** typecheck green; tasks-plugin workflow dialogs compile against the corrected type.
-- Commit: `refactor(types): fix WorkflowInstance wire shape and single-home it in the SDK`
-
-### A9 — AgentUsage
-`src/core/agent-usage.ts` + verbatim copy in `plugins/health/components/health-page.tsx` + a
-plugin-dir-escaping relative import in `plugins/team/components/overview-tab.tsx`. Export
-type-only `AgentUsage` from the SDK; import it in health + team; delete the copies and the escaping
-import.
-- Commit: `refactor(types): single-home AgentUsage in the SDK, drop the plugin-dir-escaping import`
-
-### A10 — src/types residue
-Shrink `src/types/index.ts` to the 3 live exports (`Heartbeat`, `ActivityEvent`, `ContentState`);
-delete the 12 dead (Calendar*, Memory*, ProjectMeta, OfficeData, TaskBoard, ColumnId, the now-moved
-Task/TaskLogEntry/TaskColumns). Verify the 6 importers only use the live 3.
-- **Accept:** typecheck + test green; grep confirms no importer references a deleted export.
-- Commit: `refactor(types): strip the Next.js-era src/types residue to its 3 live types`
-
-### B1 — Split the SDK types file
-`packages/sdk/src/types/index.ts` (1401) → `primitives.ts` / `manifest.ts` / `runtime.ts` /
-`services.ts` / `registration.ts` / `context.ts`, per the cohesion plan; `index.ts` becomes a
-barrel (`export *`). The barrel path is the vendor-bundle entrypoint
-(`scripts/build-sdk-package.ts` `SDK_EXPORTS`) and `@makinbakin/sdk/types` — **must stay**.
-- **Accept:** typecheck + `bun run build:vendors` + full `bun run build` green; SDK publish dry-run
-  (`assertNoForbiddenImports`) clean — no module references `@bakin/core`/`/src/`.
-- Commit: `refactor(sdk): split types/index.ts into focused contract modules`
-
-### B2 — Split the core plugin-types file
-`packages/core/src/plugin-types.ts` (1129) → `plugin-contract/{search-api,services,registrations}.ts`
-+ slimmed `plugin-types.ts` (PluginContext/BakinPlugin/manifest + the re-exports). Pure types, zero
-runtime side effects (cohesion plan: lowest-risk split in the repo).
-- **Accept:** typecheck + full build green; all 38 `@bakin/core/plugin-types` importers compile.
-- Commit: `refactor(core): split plugin-types.ts into plugin-contract modules`
-
-### PR gate (checkpoint)
-- `bun run test` + `bun run typecheck` + `bun run lint` green.
-- `bun run build` succeeds (all binaries) — **no `git add -A`** after (build-stamp trap: revert
-  `packages/core/src/generated-version.ts` + `packages/host/src/api/_embedded-assets-static.ts`).
-- SDK publish guard: run the publish build (or `findForbiddenPackageImports`) to prove the split
-  SDK still has no forbidden imports.
-- Boot smoke in an isolated `BAKIN_HOME` (BAKIN_SKIP_ONBOARDING_CHECK=1) — server serves 200.
-- Doc sweep: `.claude/knowledge/{plugin-system,repo-architecture,adapter-architecture}.md`,
-  `docs/plugin-authoring.md`, CLAUDE.md (the plugin-contract/SDK descriptions). Update the
-  `repo-architecture.md` type-ownership note + `plugin-system.md` if either names the old layout.
-- Open PR `refactor/contract-types` → main; Mark reviews/merges.
+### PR gate
+- `bun run test` + `typecheck` + `lint` green; `bun run build` (3 binaries, revert stamp files —
+  build-stamp trap); `madge --circular` shows only the benign type-only SDK cycle; boot smoke in an
+  isolated `BAKIN_HOME` (10 plugins load); optional dockerized-rig E2E re-run.
+- Docs: `.claude/knowledge/{plugin-system,repo-architecture,adapter-architecture,workflows-plugin}.md`
+  (registry homes moved; HookRegistry-boundary note); `CLAUDE.md` (the "exec-tool registry lives in
+  scripts/" and "workflows registries" descriptions change). Update the plugin-communication +
+  exec-tool-registration sections.
+- Open PR `refactor/core-extractions`; Mark reviews/merges.
 
 ## Risks & mitigations
-
-- **A5 PluginContext blast radius** — the broadest type; a wrong reconciliation breaks all 10
-  plugins + host at compile. Mitigation: do it as its own commit, typecheck is exhaustive, revert
-  is clean. If the SDK runtime surface ≠ core's full adapter, keep the internal split (public
-  shape in SDK, internal `PluginContextLite`/adapter local to core).
-- **SDK self-containment** — any accidental `@bakin/core`/`/src/` import in an SDK types module
-  fails publish. Mitigation: the publish guard runs in the PR gate; B1's acceptance includes it.
-- **Hidden runtime coupling on Task fields** — `version`/`updatedAt` feed optimistic concurrency.
-  Mitigation: additive only (SDK gains the fields it lacked); existing task tests are the guard.
-- **Dead-file staleness** — audit ran a few commits back. Mitigation: A0 re-verifies at HEAD.
+- **Cycle doesn't fully break (K4):** madge is the gate; iterate leaf extractions until clear. Don't
+  declare done on typecheck alone.
+- **globalThis singletons duplicated:** hook registry (K1), exec-tool registry (K2), workflow
+  registries (K5) must each have exactly ONE module owning the globalThis cell + its reset; a second
+  copy silently breaks HMR/`reset*`. Grep for the cell name after each move.
+- **Module-load side effects:** registries self-seed on import; preserve seed-once semantics.
+- **Test isolation:** new core modules touched by tests need the CLAUDE.md mocks (both content-dir
+  resolvers, etc.); D1/D2 touch storage paths — mock accordingly.
+- **Two-tier contract:** K3's factory and D4's constructors must not narrow core's fuller surface.
 
 ## Rollback
-
-Every commit is an independent checkpoint (typecheck + suite green). Phase B reverts cleanly to the
-unified-but-unsplit state; Phase A commits revert per type family. A0 and A10 are independent of the
-unification chain. If review prefers smaller units, Phase A and Phase B can split into two PRs
-(`refactor/contract-types-unify`, `-split`) — B depends on A, not vice-versa.
+Each commit is an independent checkpoint (suite + typecheck green). Phase D commits are fully
+independent of Phase K. K1→K2→K3→K5 have a forward dependency chain; revert in reverse. If review
+prefers, Phase D can split into its own PR (`refactor/core-dedup`).

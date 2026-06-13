@@ -1,27 +1,30 @@
-# TODO — WS1 refactor/contract-types
+# TODO — WS2 refactor/core-extractions
 
-Branch `refactor/contract-types` off `main`. One commit per task; each green on
-`bun run test` + `bun run typecheck`. Detail + crux decision: `tasks/plan.md`.
+Branch `refactor/core-extractions` off `main`. One commit per task; each green on
+`bun run test` + `bun run typecheck`. Detail + decisions: `tasks/plan.md`.
 
-Decision (forced by the SDK's self-contained publish constraint): **SDK types module is the
-single canonical home for all shared contract types; core re-exports from it.**
+No behavior change except K6 (images→assets boundary) and D1 (settings-notify convergence).
+Respect the WS1 two-tier type contract. `madge --circular` is the cycle-break gate.
 
-## Phase A — unify (kills the drift)
-- [x] A0 — delete 7 verified-dead files (~620 LOC); re-verify deadness at HEAD
-- [x] A1 — health-check contract family → SDK canonical, core re-exports
-- [x] A2 — exec-tool types → SDK canonical
-- [x] A3 — search API contract → SDK canonical
-- [x] A4 — manifest contract (core's PluginManifest is stale) → drop core copy, re-export SDK
-- [x] A5 — PluginContext + BakinPlugin (RISKY: runtime-adapter surface) → SDK canonical
-- [x] A6 — Task / TaskLogEntry (add updatedAt/version to SDK) → single-home in SDK
-- [x] A7 — AvailableModel (reconcile required-ness) → SDK canonical
-- [x] A8 — WorkflowInstance/Def (fix id→instanceId wire shape) → SDK canonical
-- [x] A9 — AgentUsage → SDK type-only + drop plugin-dir-escaping import
-- [x] A10 — strip src/types residue to its 3 live types
+## Phase K — structural (break the cycle + the boundary)
+- [ ] K1 — extract hook-registry singleton to a leaf module (removes the registry back-edge)
+- [ ] K2 — move scripts/lib/registry.ts → src/core/exec-tools/ (5 importers repointed)
+- [ ] K3 — unify the PluginContext factory (buildContext + buildCtx; converge updateSettings)
+- [ ] K4 — madge gate: scripts/lib cluster (cycles 5-17,16) gone; iterate leaf extractions if not
+- [ ] K5 — move workflow source/node-type/notification-channel registries → packages/core (cycle 4 + boundary)
+- [ ] K6 — fix images→assets direct import (route via assets hooks)
 
-## Phase B — split (pure reorg)
-- [x] B1 — split sdk/types/index.ts → primitives/manifest/runtime/services/registration/context (+ barrel) + dropped 8 dead misc types
-- [~] B2 — MOOT: unification shrank core/plugin-types.ts 1129→738 lines (under the 800 threshold); split no longer warranted
+## Phase D — dedup extractions (independent, low-risk)
+- [ ] D1 — settings-store (5 sites, converge notification)
+- [ ] D2 — promote atomicWriteJson → storage/ (JSON sites only; NOT log-rotation/binary)
+- [ ] D3 — frontmatter/skill/lesson parser module (regex ×11, parseSkillFile ×3, lesson ×4)
+- [ ] D4 — shared healthOk/warn/error constructors (13+ sites)
+
+## Phase G — lock it in
+- [ ] G1 — architecture guards: packages/sdk in SCAN_ROOTS + cross-plugin-import rule (prove it bites)
 
 ## PR gate
-- [x] gate green: typecheck + 4996 tests + lint + full build + build:vendors + boot smoke (10 plugins); SDK self-containment verified; docs updated → PR
+- [ ] test + typecheck + lint + build + madge-clean + boot smoke + docs → open PR
+
+## Deferred decision (not in this PR unless you say so)
+- [ ] (8) gate runtime.config.get/replace — adapter-API design; recommend its own PR (+ its guard)
