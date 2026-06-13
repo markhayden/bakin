@@ -17,11 +17,11 @@ Respect the WS1 two-tier type contract. `madge --circular` is the cycle-break ga
 ## Phase D — dedup extractions (independent, low-risk)
 - [x] D1 — settings-store (5 sites) ✅ (caught+fixed a latent factory persist bug)
 - [x] D2 — promote atomicWriteJson → storage/ (4 JSON sites) ✅
-- [ ] D3 — frontmatter/skill/lesson parser module (regex ×11, parseSkillFile ×3, lesson ×4) — FOLLOW-UP (WS2 part 2)
-- [ ] D4 — shared healthOk/warn/error constructors (13+ sites) — FOLLOW-UP (WS2 part 2)
+- [x] D3 — frontmatter/skill/lesson parser module ✅
+- [x] D4 — shared healthOk/warn/error/fixed constructors (13 sites) ✅
 
 ## Phase G — lock it in
-- [ ] G1 — architecture guard: packages/sdk in SCAN_ROOTS — FOLLOW-UP (WS2 part 2)
+- [x] G1 — architecture guard: packages/sdk in SCAN_ROOTS ✅
 
 ## PR gate — PART 1 (cycle break + settings-store + atomic-write)
 - [x] test + typecheck + lint + build + madge (18→4, runtime clusters gone) + boot smoke + docs → PR opened
