@@ -1,3 +1,7 @@
+import type { RoutingConfig } from '../../src/core/model-routing'
+
+export type { RoutingConfig }
+
 export interface AgentModelConfig {
   agentId: string
   name: string
@@ -69,4 +73,6 @@ export interface AliasesResponse {
 /** Shape of models plugin settings */
 export interface ModelsPluginSettings {
   defaultModel?: string
+  /** Per-turn model/thinking routing policy (origins + tag overrides). */
+  routing?: RoutingConfig
 }

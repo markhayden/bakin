@@ -890,6 +890,43 @@ describe('dispatch', () => {
       const trainer = spendByAgent(t0).find((r) => r.agent === 'trainer')
       expect(trainer).toEqual({ agent: 'trainer', costUsdMicros: 0, runs: 1 })
     })
+
+    it('applies the resolved routing model/thinking to the turn (origin policy)', async () => {
+      setDispatchColumns({ todo: [{ id: 't-routed', title: 'Scheduled task', agent: 'pixel', scheduleJobId: 'job-1' }] })
+      vi.mocked(getHookRegistry).mockReturnValue({
+        invoke: mock(async (hook: string) => {
+          if (hook === 'models.getRoutingConfig') {
+            return { policies: [{ origin: 'scheduled', model: 'anthropic/claude-haiku-4-5', thinking: 'low' }], tagOverrides: [] }
+          }
+          return undefined
+        }),
+        has: mock().mockReturnValue(false),
+        register: mock(),
+      } as unknown as HookRegistry)
+
+      await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
+
+      const args = mockRuntimeSend.mock.calls[0]?.[0] as Record<string, unknown>
+      expect(args.model).toBe('anthropic/claude-haiku-4-5')
+      expect(args.thinking).toBe('low')
+    })
+
+    it('regression: empty routing config leaves the turn with no model/thinking (inherit)', async () => {
+      setDispatchColumns({ todo: [{ id: 't-inherit', title: 'Adhoc task', agent: 'pixel' }] })
+      vi.mocked(getHookRegistry).mockReturnValue({
+        invoke: mock(async (hook: string) => (hook === 'models.getRoutingConfig' ? { policies: [], tagOverrides: [] } : undefined)),
+        has: mock().mockReturnValue(false),
+        register: mock(),
+      } as unknown as HookRegistry)
+
+      await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
+
+      const args = mockRuntimeSend.mock.calls[0]?.[0] as Record<string, unknown>
+      expect(args).not.toHaveProperty('model')
+      expect(args).not.toHaveProperty('thinking')
+    })
   })
 
   describe('workflow re-dispatch guard', () => {

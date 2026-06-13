@@ -171,8 +171,8 @@ describe('Models Plugin Activation', () => {
     ])
   })
 
-  it('registers 6 hooks', () => {
-    expect(activated.ctx.hooks.register).toHaveBeenCalledTimes(6)
+  it('registers 7 hooks', () => {
+    expect(activated.ctx.hooks.register).toHaveBeenCalledTimes(7)
     const hookNames = (activated.ctx.hooks.register as ReturnType<typeof mock>).mock.calls.map(
       (c: unknown[]) => c[0]
     )
@@ -180,6 +180,7 @@ describe('Models Plugin Activation', () => {
       'models.configChanged',
       'models.getAvailableModels',
       'models.getEffectiveModel',
+      'models.getRoutingConfig',
       'models.markConfigDirty',
       'models.markRuntimeRestarted',
       'models.priceTurn',

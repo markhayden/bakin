@@ -11,6 +11,7 @@ import { recordUsage } from './usage'
 import { getAppServices } from './app-services'
 import { getRuntimeMainAgentId, RuntimeError, RuntimeTurnError, type MessageResult } from '@bakin/core/adapters/runtime'
 import { claimNextRun, currentSeq, loseRun, settleRun, recordRunCost, type ClaimNextRunResult } from './execution-ledger'
+import { resolveTurnModel, type ResolvedTurn, type RoutingConfig } from './model-routing'
 import { getBootId } from './boot-id'
 import { getHookRegistry } from '../lib/plugin-registry'
 import {
@@ -38,13 +39,36 @@ const IMAGE_MCPORTER_TIMEOUT_MS = 600000
  * sends (orchestrator/watchdog/doctor) deliberately stay in the agent's
  * default session and don't go through here.
  */
-async function sendDispatchMessage(agentId: string, content: string, threadId: string): Promise<MessageResult> {
+async function sendDispatchMessage(agentId: string, content: string, threadId: string, routing?: ResolvedTurn): Promise<MessageResult> {
   return getAppServices().runtime.messaging.send({
     agentId,
     content,
     threadId,
+    ...(routing?.model ? { model: routing.model } : {}),
+    ...(routing?.thinking ? { thinking: routing.thinking } : {}),
     metadata: { oversizedOutputBytes: getSettings().dispatch.oversizedOutputBytes },
   })
+}
+
+/**
+ * Resolve the per-turn model/thinking for a dispatch from the Bakin-owned
+ * routing policy (stored in the models plugin; read via hook). Returns {} —
+ * inherit, unchanged dispatch — when no plugin/config/match applies or the
+ * read fails. Never throws into the dispatch path.
+ */
+async function resolveDispatchRouting(task: DispatchTask, isRecovery: boolean): Promise<ResolvedTurn> {
+  try {
+    const config = await hooks().invoke<RoutingConfig>('models.getRoutingConfig', {})
+    if (!config) return {}
+    return resolveTurnModel({
+      task: { tags: task.tags, scheduleJobId: task.scheduleJobId, workflowId: task.workflowId, parentId: task.parentId },
+      isRecovery,
+      config,
+    })
+  } catch (err) {
+    log.error('Routing resolve failed; using agent default', err, { id: task.id })
+    return {}
+  }
 }
 
 /**
@@ -55,12 +79,14 @@ async function sendDispatchMessage(agentId: string, content: string, threadId: s
  * same data also feeds the live usage recorder. Never throws into the settle
  * path — a metering failure must not fail a successful turn.
  */
-async function recordTurnCost(runId: string, taskId: string, agent: string, result: MessageResult): Promise<void> {
+async function recordTurnCost(runId: string, taskId: string, agent: string, result: MessageResult, resolvedModel?: string): Promise<void> {
   try {
     const usage = result.usage
     const priced = await hooks().invoke<{ model: string | null; costUsdMicros: number | null }>(
       'models.priceTurn',
-      { agentId: agent, model: usage?.model, input: usage?.input, output: usage?.output },
+      // Prefer the model routing actually resolved for this turn; fall back to
+      // whatever the runtime reported, then the agent's configured default.
+      { agentId: agent, model: resolvedModel ?? usage?.model, input: usage?.input, output: usage?.output },
     )
     const model = priced?.model ?? usage?.model ?? null
     const costUsdMicros = priced?.costUsdMicros ?? null
@@ -286,6 +312,10 @@ type DispatchTask = {
   projectId?: string
   availableAt?: string
   dependsOn?: string
+  // Origin signals for per-turn model routing (present on the stored task).
+  scheduleJobId?: string
+  parentId?: string | null
+  tags?: string[]
   log?: Array<{ timestamp: string; message?: string }>
 }
 
@@ -953,13 +983,24 @@ function fireDispatchTurn(opts: {
   initialLogCount: number
   logPrefix: string
   dispatchKind: 'regular' | 'workflow'
+  /** True when this is a recovery-ladder re-dispatch (routes to the
+   *  'recovery' origin policy regardless of the task's shape). */
+  isRecovery?: boolean
   onSettled?: (outcome: 'ok' | 'error', err?: unknown) => void
 }): void {
   // The registry entry is released only AFTER settle reconciliation
   // completes — awaitDispatchIdle() must mean "all bookkeeping done", and a
   // turn's slot shouldn't free until its outcome has been recorded.
-  const settled = sendDispatchMessage(opts.targetAgent, opts.message, opts.threadId)
-    .then(async (result) => {
+  const settled = resolveDispatchRouting(opts.task, opts.isRecovery ?? false)
+    .then(async (routing) => {
+      if (routing.model || routing.thinking) {
+        appendAudit(opts.contentDir, 'task.routed', opts.targetAgent, {
+          id: opts.task.id,
+          ...(routing.model ? { model: routing.model } : {}),
+          ...(routing.thinking ? { thinking: routing.thinking } : {}),
+        })
+      }
+      const result = await sendDispatchMessage(opts.targetAgent, opts.message, opts.threadId, routing)
       // Free the live-run slot FIRST — the settle reconciliation below (and
       // any ladder re-dispatch it schedules) must be able to claim anew.
       try {
@@ -967,8 +1008,9 @@ function fireDispatchTurn(opts: {
       } catch (err) {
         log.error('Failed to settle run in ledger', err, { threadId: opts.threadId })
       }
-      // Attribute the turn's token/dollar cost (run_id == threadId).
-      await recordTurnCost(opts.threadId, opts.task.id, opts.targetAgent, result)
+      // Attribute the turn's token/dollar cost (run_id == threadId). The
+      // resolved routing model is what actually ran — price against it.
+      await recordTurnCost(opts.threadId, opts.task.id, opts.targetAgent, result, routing.model)
       let completedDecomposition = false
       await withStateLock(() => {
         const state = loadDispatchState(opts.contentDir)
@@ -1510,6 +1552,7 @@ export async function dispatchSingleTask(
       initialLogCount,
       logPrefix: 'Immediate dispatch failed',
       dispatchKind: 'regular',
+      isRecovery: source === 'recovery',
       onSettled: (outcome, err) => {
         recordUsage({
           kind: 'agent',

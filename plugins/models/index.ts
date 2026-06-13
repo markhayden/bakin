@@ -8,7 +8,7 @@ import { z } from 'zod'
 import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { definePlugin, defineRoute } from '@bakin/core/routing'
 // Relative
-import type { AgentModelConfig, AvailableModel } from './types'
+import type { AgentModelConfig, AvailableModel, ModelsPluginSettings } from './types'
 import {
   readPersistedCache,
   writePersistedCache,
@@ -726,6 +726,14 @@ const modelsPlugin: BakinPlugin = definePlugin({
       const costUsdMicros = computeCostUsdMicros({ input, output }, pricing)
       return { model, costUsdMicros }
     }, { label: 'Price a turn.', summary: 'Resolves the model an agent turn ran on and returns an estimated cost in micro-dollars from the catalog pricing. Use it to attribute spend to a completed turn. Cost is null when the model is unpriced.', hookKind: 'rpc' })
+
+    // Expose the per-turn routing policy to core dispatch, which resolves the
+    // model/thinking for each turn before sending. Returns an empty config
+    // when none is set → dispatch inherits the agent's configured model.
+    ctx.hooks.register('models.getRoutingConfig', () => {
+      const settings = ctx.getSettings<ModelsPluginSettings>()
+      return settings.routing ?? { policies: [], tagOverrides: [] }
+    }, { label: 'Get routing config.', summary: 'Returns the per-turn model/thinking routing policy (origins + tag overrides) that dispatch applies before each agent turn. Use it to read the current routing rules.', hookKind: 'rpc' })
 
 
     // -------------------------------------------------------------------
