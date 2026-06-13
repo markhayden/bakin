@@ -7,6 +7,7 @@ import {
   type PackageEntry,
 } from '../../../packages/core/src/agent-packages/lockfile'
 import { getPackageSourceDir } from '../../../packages/core/src/agent-packages/package-paths'
+import { parseLessonFrontmatter } from '@bakin/core/format/frontmatter'
 import { crossTableSearch } from '../search-registry'
 
 export interface AgentPackageLessonRetrievalSettings {
@@ -235,27 +236,8 @@ function readLessonFromDisk(
 }
 
 function parseLessonMarkdown(raw: string, fallbackTitle: string): { title: string; body: string; tags: string[] } {
-  const match = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/)
-  if (!match) return { title: fallbackTitle, body: raw.trim(), tags: [] }
-
-  let title = fallbackTitle
-  let tags: string[] = []
-  for (const line of match[1].split('\n')) {
-    const trimmed = line.trim()
-    if (trimmed.startsWith('title:')) {
-      title = trimmed.slice('title:'.length).trim().replace(/^['"]|['"]$/g, '') || fallbackTitle
-    } else if (trimmed.startsWith('tags:')) {
-      const rest = trimmed.slice('tags:'.length).trim()
-      if (rest.startsWith('[') && rest.endsWith(']')) {
-        tags = rest
-          .slice(1, -1)
-          .split(',')
-          .map((tag) => tag.trim().replace(/^['"]|['"]$/g, ''))
-          .filter(Boolean)
-      }
-    }
-  }
-  return { title, body: match[2].trim(), tags }
+  const { title, tags, body } = parseLessonFrontmatter(raw)
+  return { title: title || fallbackTitle, body, tags }
 }
 
 function stringField(value: unknown): string {

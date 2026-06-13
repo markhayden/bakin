@@ -30,6 +30,7 @@ import {
   readPluginSettings as readStoredPluginSettings,
   writePluginSettings as writeStoredPluginSettings,
 } from '@bakin/core/plugins/settings-store'
+import { parseLessonFrontmatter as parseLessonFm } from '@bakin/core/format/frontmatter'
 import { startAgent, stopAgent } from '../../src/lib/agents'
 import { getSettings, resetSettingsCache } from '../../src/core/settings'
 import { syncConfig as syncMcporter } from '../../src/core/mcporter'
@@ -634,30 +635,8 @@ function parseLessonFrontmatter(raw: string): {
   tags: string[]
   defaultEnabled: boolean
 } {
-  const match = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/)
-  if (!match) return { title: '', body: raw.trim(), tags: [], defaultEnabled: false }
-  const body = match[2].trim()
-  let title = ''
-  let defaultEnabled = false
-  let tags: string[] = []
-  for (const line of match[1].split('\n')) {
-    const trimmed = line.trim()
-    if (trimmed.startsWith('title:')) {
-      title = trimmed.slice('title:'.length).trim().replace(/^['"]|['"]$/g, '')
-    } else if (trimmed.startsWith('defaultEnabled:')) {
-      defaultEnabled = trimmed.slice('defaultEnabled:'.length).trim() === 'true'
-    } else if (trimmed.startsWith('tags:')) {
-      const rest = trimmed.slice('tags:'.length).trim()
-      if (rest.startsWith('[') && rest.endsWith(']')) {
-        tags = rest
-          .slice(1, -1)
-          .split(',')
-          .map((t) => t.trim().replace(/^['"]|['"]$/g, ''))
-          .filter((t) => t.length > 0)
-      }
-    }
-  }
-  return { title, body, tags, defaultEnabled }
+  const { title, body, tags, defaultEnabled } = parseLessonFm(raw)
+  return { title: title ?? '', body, tags, defaultEnabled }
 }
 
 async function agentLessonFileToDoc(rel: string): Promise<LessonDoc | null> {

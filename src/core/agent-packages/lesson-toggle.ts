@@ -9,6 +9,7 @@
  */
 import { existsSync, readFileSync } from 'fs'
 import { basename, join } from 'path'
+import { parseLessonFrontmatter } from '@bakin/core/format/frontmatter'
 import { createLogger } from '../logger'
 import { getContentDir } from '../content-dir'
 import { appendAudit } from '../audit'
@@ -174,30 +175,11 @@ function parseLessonFile(
   let body = ''
 
   if (existsSync(absPath)) {
-    const raw = readFileSync(absPath, 'utf-8')
-    const match = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/)
-    if (match) {
-      body = match[2].trim()
-      for (const line of match[1].split('\n')) {
-        const trimmed = line.trim()
-        if (trimmed.startsWith('title:')) {
-          title = trimmed.slice('title:'.length).trim().replace(/^['"]|['"]$/g, '')
-        } else if (trimmed.startsWith('defaultEnabled:')) {
-          defaultEnabled = trimmed.slice('defaultEnabled:'.length).trim() === 'true'
-        } else if (trimmed.startsWith('tags:')) {
-          const rest = trimmed.slice('tags:'.length).trim()
-          if (rest.startsWith('[') && rest.endsWith(']')) {
-            tags = rest
-              .slice(1, -1)
-              .split(',')
-              .map((t) => t.trim().replace(/^['"]|['"]$/g, ''))
-              .filter((t) => t.length > 0)
-          }
-        }
-      }
-    } else {
-      body = raw.trim()
-    }
+    const parsed = parseLessonFrontmatter(readFileSync(absPath, 'utf-8'))
+    title = parsed.title || lessonId
+    tags = parsed.tags
+    defaultEnabled = parsed.defaultEnabled
+    body = parsed.body
   }
 
   return {

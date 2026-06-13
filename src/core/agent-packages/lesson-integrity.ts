@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, statSync } from 'fs'
 import { basename, isAbsolute, normalize, relative, resolve } from 'path'
 import type { Manifest } from '../../../packages/core/src/agent-packages/manifest'
+import { splitFrontmatter } from '@bakin/core/format/frontmatter'
 
 const LESSON_ID_PATTERN = /^[a-z0-9][a-z0-9-_]{0,39}$/i
 const LESSON_PATH_PATTERN = /^lessons\/[^/]+\.md$/i
@@ -108,7 +109,5 @@ function isPathInside(root: string, target: string): boolean {
 }
 
 function extractLessonBody(raw: string): string {
-  const normalized = raw.replace(/\r\n/g, '\n')
-  const match = normalized.match(/^---\n[\s\S]*?\n---\n?([\s\S]*)$/)
-  return match ? match[1].trim() : normalized.trim()
+  return splitFrontmatter(raw.replace(/\r\n/g, '\n')).body
 }
