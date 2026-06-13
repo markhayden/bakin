@@ -35,6 +35,7 @@
     "./hooks/hook-registry-singleton": "./src/hooks/hook-registry-singleton.ts",
     "./skills/plugin-skill-registry": "./src/skills/plugin-skill-registry.ts",
     "./plugins/manifest": "./src/plugins/manifest.ts",
+    "./plugins/settings-store": "./src/plugins/settings-store.ts",
     "./plugins/signatures": "./src/plugins/signatures.ts",
     "./plugins/permissions": "./src/plugins/permissions.ts",
     "./constants": "./src/constants.ts",

@@ -123,13 +123,25 @@ mock.module('@/core/audit', () => ({
   appendAudit: mock(),
 }))
 
+// One shared getContentDir mock so the @/ facade AND the packages/core
+// resolver (used by the settings-store) return the same dir.
+const sharedGetContentDir = mock()
 mock.module('@/core/content-dir', () => ({
-  getContentDir: mock(),
+  getContentDir: sharedGetContentDir,
   getBakinPaths: mock(() => ({})),
   isUsingBakinHome: () => true,
   resetContentDir: () => {},
   initBakinHome: () => {},
 }))
+const coreContentDirMock = () => ({
+  getContentDir: sharedGetContentDir,
+  getBakinPaths: mock(() => ({})),
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+  initBakinHome: () => {},
+})
+mock.module('../../packages/core/src/content-dir', coreContentDirMock)
+mock.module('@bakin/core/content-dir', coreContentDirMock)
 
 mock.module('@/core/migrations', () => ({
   runMigrations: mock().mockResolvedValue(0),

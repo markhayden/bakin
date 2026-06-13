@@ -13,8 +13,6 @@
  * catch-all's `buildCtx`); their `updateSettings` had diverged — the
  * per-request copy silently skipped the `onSettingsChange` notification.
  */
-import { join } from 'path'
-import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'fs'
 import type {
   PluginContext,
   StorageAdapter,
@@ -26,6 +24,7 @@ import type { AppServices } from '@bakin/core/app-services'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { ScopedPluginStorageAdapter } from '../../packages/core/src/storage/scoped-plugin-storage'
 import { getContentDir } from '../core/content-dir'
+import { readPluginSettings, mergePluginSettings } from '@bakin/core/plugins/settings-store'
 import { appendAudit } from '../core/audit'
 import { buildSearchAPI } from '../core/search-registry'
 import { wrapPluginContextPermissions } from './plugin-permissions'
@@ -68,11 +67,6 @@ export interface BuildPluginContextOptions {
   manifestPermissions: string[]
 }
 
-function settingsPathFor(pluginId: string): { dir: string; file: string } {
-  const dir = join(getContentDir(), 'plugin-settings')
-  return { dir, file: join(dir, `${pluginId}.json`) }
-}
-
 export function buildPluginContext(opts: BuildPluginContextOptions): PluginContext {
   const { pluginId, source, services, events, registrars } = opts
   const storage = source === 'user'
@@ -97,22 +91,11 @@ export function buildPluginContext(opts: BuildPluginContextOptions): PluginConte
     registerNotificationChannel: registrars.registerNotificationChannel,
     registerHealthCheck: registrars.registerHealthCheck,
     watchFiles: registrars.watchFiles,
-    getSettings: <T = Record<string, unknown>>(): T => {
-      const { file } = settingsPathFor(pluginId)
-      try {
-        if (existsSync(file)) return JSON.parse(readFileSync(file, 'utf-8')) as T
-      } catch { /* return empty */ }
-      return {} as T
-    },
+    getSettings: <T = Record<string, unknown>>(): T => readPluginSettings<T>(pluginId),
     updateSettings: (patch: Record<string, unknown>): void => {
-      const { dir, file } = settingsPathFor(pluginId)
-      let current: Record<string, unknown> = {}
-      try {
-        if (existsSync(file)) current = JSON.parse(readFileSync(file, 'utf-8'))
-      } catch { /* start fresh */ }
-      const merged = { ...current, ...patch }
-      if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-      writeFileSync(file, JSON.stringify(merged, null, 2))
+      // Persist unconditionally, THEN notify — keeping these on one line behind
+      // `onSettingsChange?.()` would short-circuit the write when no notifier.
+      const merged = mergePluginSettings(pluginId, patch)
       opts.onSettingsChange?.(merged)
     },
     activity: {

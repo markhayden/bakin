@@ -26,6 +26,10 @@ import type { PluginContextLite } from '@bakin/core/routing'
 import { createLogger } from '../../src/core/logger'
 import { readHeartbeats } from '../../src/lib/content-files'
 import { getContentDir, getBakinPaths } from '../../packages/core/src/content-dir'
+import {
+  readPluginSettings as readStoredPluginSettings,
+  writePluginSettings as writeStoredPluginSettings,
+} from '@bakin/core/plugins/settings-store'
 import { startAgent, stopAgent } from '../../src/lib/agents'
 import { getSettings, resetSettingsCache } from '../../src/core/settings'
 import { syncConfig as syncMcporter } from '../../src/core/mcporter'
@@ -67,33 +71,20 @@ const DEFAULT_COLORS: Record<string, string> = {
   coach: '#fbbf24',
 }
 
-function getSettingsPath(): string {
-  return join(getContentDir(), 'plugin-settings', 'team.json')
-}
-
 function readPluginSettings(): TeamPluginSettings {
-  const path = getSettingsPath()
-  try {
-    if (existsSync(path)) {
-      const raw = JSON.parse(readFileSync(path, 'utf-8'))
-      // Migrate: old format was just AgentDisplaySettingsMap at root
-      if (raw && !raw.displaySettings && !raw.teams) {
-        return { displaySettings: raw as AgentDisplaySettingsMap, teams: [] }
-      }
-      return {
-        displaySettings: raw.displaySettings ?? {},
-        teams: raw.teams ?? [],
-      }
-    }
-  } catch { /* ignore */ }
-  return { displaySettings: {}, teams: [] }
+  const raw = readStoredPluginSettings<Record<string, unknown>>('team')
+  // Migrate: old format was just AgentDisplaySettingsMap at root.
+  if (raw && Object.keys(raw).length > 0 && !raw.displaySettings && !raw.teams) {
+    return { displaySettings: raw as AgentDisplaySettingsMap, teams: [] }
+  }
+  return {
+    displaySettings: (raw.displaySettings as AgentDisplaySettingsMap) ?? {},
+    teams: (raw.teams as TeamPluginSettings['teams']) ?? [],
+  }
 }
 
 function writePluginSettings(settings: TeamPluginSettings): void {
-  const path = getSettingsPath()
-  const dir = join(getContentDir(), 'plugin-settings')
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-  writeFileSync(path, JSON.stringify(settings, null, 2))
+  writeStoredPluginSettings('team', settings)
 }
 
 function readDisplaySettings(): AgentDisplaySettingsMap {

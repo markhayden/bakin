@@ -21,6 +21,14 @@ mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
 }))
 
+// The settings-store (in packages/core) resolves via the core content-dir.
+mock.module('../../packages/core/src/content-dir', () => ({
+  getContentDir: () => testDir,
+}))
+mock.module('@bakin/core/content-dir', () => ({
+  getContentDir: () => testDir,
+}))
+
 mock.module('../../src/lib/plugin-registry', () => ({
   pluginRegistry: {
     notifySettingsChange,
