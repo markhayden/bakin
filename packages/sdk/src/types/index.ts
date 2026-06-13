@@ -1124,12 +1124,29 @@ export interface HealthRepairHandler {
   apply(items: HealthRepairPlanItem[]): Promise<HealthRepairApplyResult[]>
 }
 
-/** Health check registration input passed to `ctx.registerHealthCheck()`. */
+/**
+ * Health check registration input passed to `ctx.registerHealthCheck()`.
+ * The plugin id is auto-namespaced as `{pluginId}.{id}`. `run()` returns an
+ * array so one registered check can contribute multiple result rows.
+ */
 export interface PluginHealthCheckInput {
   id: string
   name: string
+  /**
+   * Runs the check, returns any number of result rows. Throws/rejects are
+   * caught by the doctor orchestrator and converted to a synthetic error
+   * result — a single bad handler never crashes the sweep.
+   */
   run: () => Promise<HealthCheckResult[]>
+  /**
+   * Legacy advisory flag for older admin surfaces. New code should derive
+   * repairability from `repair`.
+   */
   autoFix?: boolean
+  /**
+   * Optional explicit repair contract. Diagnostics call only `run()`; repair
+   * flows call `plan()` first, then `apply()` after explicit confirmation.
+   */
   repair?: HealthRepairHandler
 }
 

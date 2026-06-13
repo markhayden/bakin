@@ -4,6 +4,7 @@
  */
 
 import type { ZodRawShape, ZodType } from 'zod'
+import type { PluginHealthCheckInput } from '@makinbakin/sdk/types'
 import type { ContractStability, ContractVisibility, DocsExample, SchemaLike, SourceLocation } from './docs'
 import type { AgentRuntimeAdapter } from './adapters/runtime'
 import type { APIRoute as DeclarativeAPIRoute, PluginContextLite } from './routing/types'
@@ -300,75 +301,21 @@ export interface NotificationChannelDef extends PluginNotificationChannelInput {
 // Health check registration
 // ---------------------------------------------------------------------------
 
-/**
- * Canonical result shape for a single doctor check row.
- */
-export interface HealthCheckResult {
-  check: string
-  status: 'ok' | 'warn' | 'error' | 'fixed'
-  message: string
-  autoFixable: boolean
-}
+// The health-check contract is single-homed in the SDK (the plugin-author
+// surface, `@makinbakin/sdk/types`). Core re-exports it so internal consumers
+// (doctor, app-services) and the in-repo plugin sites keep importing it from
+// '@bakin/core/plugin-types'.
+export type {
+  HealthCheckResult,
+  HealthRepairSafety,
+  HealthRepairChange,
+  HealthRepairPlanItem,
+  HealthRepairApplyResult,
+  HealthRepairHandler,
+  PluginHealthCheckInput,
+} from '@makinbakin/sdk/types'
 
-export type HealthRepairSafety = 'safe' | 'manual' | 'destructive'
-
-export interface HealthRepairChange {
-  kind: 'file' | 'setting' | 'service' | 'runtime' | 'task' | 'other'
-  target: string
-  action: 'create' | 'update' | 'delete' | 'install' | 'invoke'
-  description: string
-}
-
-export interface HealthRepairPlanItem {
-  id: string
-  checkId: string
-  title: string
-  reason: string
-  safety: HealthRepairSafety
-  requiresConfirmation: boolean
-  changes: HealthRepairChange[]
-}
-
-export interface HealthRepairApplyResult {
-  id: string
-  checkId: string
-  status: 'applied' | 'skipped' | 'failed'
-  message: string
-  changes: HealthRepairChange[]
-}
-
-export interface HealthRepairHandler {
-  plan(rows: HealthCheckResult[]): Promise<HealthRepairPlanItem[]>
-  apply(items: HealthRepairPlanItem[]): Promise<HealthRepairApplyResult[]>
-}
-
-/**
- * Input shape plugins pass to `ctx.registerHealthCheck`. The plugin id is
- * auto-namespaced as `{pluginId}.{id}`. `run()` returns an array so one
- * registered check can contribute multiple result rows (mirrors how the
- * existing `checkPersonas` returns one per agent).
- */
-export interface PluginHealthCheckInput {
-  id: string
-  name: string
-  /**
-   * Runs the check, returns any number of result rows. Throws/rejects are
-   * caught by the doctor orchestrator and converted to a synthetic error
-   * result — a single bad handler never crashes the sweep.
-   */
-  run: () => Promise<HealthCheckResult[]>
-  /**
-   * Legacy advisory flag for older admin surfaces. New code should derive
-   * repairability from `repair`.
-   */
-  autoFix?: boolean
-  /**
-   * Optional explicit repair contract. Diagnostics call only `run()`; repair
-   * flows call `plan()` first, then `apply()` after explicit confirmation.
-   */
-  repair?: HealthRepairHandler
-}
-
+/** Core-internal: a registered plugin health check with its resolved owner. */
 export interface HealthCheckDef extends PluginHealthCheckInput {
   runtime: 'plugin'
   pluginId: string
