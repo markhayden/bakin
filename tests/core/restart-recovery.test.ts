@@ -33,6 +33,7 @@ const mockGetSettings = mock(() => ({
 }))
 
 mock.module('../../src/core/settings', () => ({
+  resetSettingsCache: () => {},
   getSettings: mockGetSettings,
 }))
 

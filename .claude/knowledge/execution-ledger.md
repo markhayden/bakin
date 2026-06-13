@@ -52,7 +52,11 @@ cron_fires    (job_id, run_id) PK ← THE cron lock; fired_at (logical run
               disposition pending|created|skipped|seeded
 completions   task_id PK ← first completion wins; run_id, agent, channel
 idempotency   key PK (e.g. the image 9-tuple signature), kind, result_json
-              — durable, NO TTL, INSERT OR IGNORE (first write wins)
+              — durable, NO TTL, INSERT OR IGNORE (first write wins).
+              result_json is coordination-only: image rows persist asset
+              identity + promptHash; prompt text / providerText are stripped
+              before write (the caller's first-run result keeps them — only
+              the dedup row is content-free)
 ```
 
 `exec_key` is the live-run lock scope: the task id for regular tasks,

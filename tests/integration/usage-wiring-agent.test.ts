@@ -243,6 +243,7 @@ describe('T2.3 agent usage wiring', () => {
   it('dispatchSingleTask records an agent dispatch usage entry on success', async () => {
     // Stub settings before importing dispatch.
     mock.module('../../src/core/settings', () => ({
+  resetSettingsCache: () => {},
       getSettings: () => ({
         dispatch: {
           maxRetries: 3,

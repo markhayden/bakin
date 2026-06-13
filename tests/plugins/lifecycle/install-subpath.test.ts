@@ -43,11 +43,11 @@ mock.module('../../../src/core/logger', () => ({
 // Subpath install still calls the real Bun build at the end; stub it so
 // the test stays hermetic. The build step is exercised separately in
 // tests/api/plugins-build.test.ts.
-const buildUserPluginCalls: Array<{ pluginDir: string; options?: { trustExistingDist?: boolean } }> = []
+const buildUserPluginCalls: Array<{ pluginDir: string; options?: Record<string, unknown> }> = []
 mock.module(
   '../../../packages/host/src/plugin-host/user-plugin-builder',
   () => ({
-    buildUserPlugin: async (pluginDir: string, options?: { trustExistingDist?: boolean }) => {
+    buildUserPlugin: async (pluginDir: string, options?: Record<string, unknown>) => {
       buildUserPluginCalls.push({ pluginDir, options })
     },
   }),
@@ -146,7 +146,8 @@ describe.skipIf(!gitAvailable())('install subpath — happy path', () => {
     expect(existsSync(join(fooDir, 'README.md'))).toBe(false)
     // Subpath installs intentionally drop the cloned repo's `.git/`.
     expect(existsSync(join(fooDir, '.git'))).toBe(false)
-    expect(buildUserPluginCalls.at(-1)?.options).toEqual({ trustExistingDist: true })
+    // github installs build from the import-validated source — no dist trust.
+    expect(buildUserPluginCalls.at(-1)?.options).toBeUndefined()
   })
 
   it('records the full source string (with #subpath) in the lockfile', async () => {
