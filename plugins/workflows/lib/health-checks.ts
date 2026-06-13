@@ -14,6 +14,7 @@ import { join } from 'path'
 
 import { readTaskboard } from '../../../src/core/task-store'
 import type { HealthCheckResult, HealthRepairHandler } from '../../../packages/core/src/plugin-types'
+import { healthOk as ok, healthWarn as warn, healthFixed as fixed } from '@makinbakin/sdk/utils'
 
 import { listDefinitions } from './parser'
 import { getAgentPackageSkills } from './agent-package-skill-registry'
@@ -27,15 +28,6 @@ import {
 
 // ─── Result constructors (inlined; eventual migration target) ─────────────
 
-function ok(check: string, message: string): HealthCheckResult {
-  return { check, status: 'ok', message, autoFixable: false }
-}
-function warn(check: string, message: string, autoFixable = false): HealthCheckResult {
-  return { check, status: 'warn', message, autoFixable }
-}
-function fixed(check: string, message: string): HealthCheckResult {
-  return { check, status: 'fixed', message, autoFixable: true }
-}
 
 // ─── Workflow skills: YAML + output_schema check ──────────────────────────
 

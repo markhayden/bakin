@@ -8,6 +8,7 @@
  * human judgment.
  */
 import { execSync } from 'child_process'
+import { healthOk, healthWarn, healthError } from '@makinbakin/sdk/utils'
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 
@@ -17,13 +18,13 @@ import type { HealthCheckResult } from '../../../../packages/core/src/plugin-typ
 const SERVICE_LABEL = 'com.makinbakin.bakin'
 
 function ok(message: string): HealthCheckResult {
-  return { check: 'service', status: 'ok', message, autoFixable: false }
+  return healthOk('service', message)
 }
 function warn(message: string): HealthCheckResult {
-  return { check: 'service', status: 'warn', message, autoFixable: false }
+  return healthWarn('service', message)
 }
 function error(message: string): HealthCheckResult {
-  return { check: 'service', status: 'error', message, autoFixable: false }
+  return healthError('service', message)
 }
 
 export function checkService(projectRoot: string): HealthCheckResult[] {

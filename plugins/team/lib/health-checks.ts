@@ -13,6 +13,7 @@
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
+import { healthOk as ok, healthWarn as warn, healthError as error } from '@makinbakin/sdk/utils'
 
 import { scanAgentSync, type SyncScanReport } from '../../../src/core/agent-packages/sync-scanner'
 import { syncAllAgents } from '../../../src/core/agent-packages/sync'
@@ -29,15 +30,6 @@ type RuntimeAgentReader = Pick<AgentRuntimeAdapter['agents'], 'list'>
 
 // ─── Result constructors (inlined; matches workflows precedent) ─────────────
 
-function ok(check: string, message: string): HealthCheckResult {
-  return { check, status: 'ok', message, autoFixable: false }
-}
-function warn(check: string, message: string, autoFixable = false): HealthCheckResult {
-  return { check, status: 'warn', message, autoFixable }
-}
-function error(check: string, message: string): HealthCheckResult {
-  return { check, status: 'error', message, autoFixable: false }
-}
 
 // ─── Agent roster: runtime agents exposed to Bakin ─────────────────────────
 

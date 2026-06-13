@@ -5,16 +5,17 @@
  * because it only installs a CLI tool and writes config.
  */
 import * as mcporter from '../../../../src/core/mcporter'
+import { healthOk, healthWarn, healthError } from '@makinbakin/sdk/utils'
 import type { HealthCheckResult, HealthRepairHandler } from '../../../../packages/core/src/plugin-types'
 
 function ok(message: string): HealthCheckResult {
-  return { check: 'mcporter', status: 'ok', message, autoFixable: false }
+  return healthOk('mcporter', message)
 }
 function warn(message: string, autoFixable = false): HealthCheckResult {
-  return { check: 'mcporter', status: 'warn', message, autoFixable }
+  return healthWarn('mcporter', message, autoFixable)
 }
 function error(message: string): HealthCheckResult {
-  return { check: 'mcporter', status: 'error', message, autoFixable: false }
+  return healthError('mcporter', message)
 }
 function fixed(message: string): HealthCheckResult {
   return { check: 'mcporter', status: 'fixed', message, autoFixable: true }

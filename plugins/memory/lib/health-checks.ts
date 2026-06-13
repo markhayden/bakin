@@ -15,18 +15,10 @@
  */
 import { getSettings } from '../../../src/core/settings'
 import type { HealthCheckResult, SearchHealthSnapshot } from '../../../packages/core/src/plugin-types'
+import { healthOk as ok, healthWarn as warn, healthError as error } from '@makinbakin/sdk/utils'
 
 // ─── Result constructors (inlined; matches workflows precedent) ─────────────
 
-function ok(check: string, message: string): HealthCheckResult {
-  return { check, status: 'ok', message, autoFixable: false }
-}
-function warn(check: string, message: string, autoFixable = false): HealthCheckResult {
-  return { check, status: 'warn', message, autoFixable }
-}
-function error(check: string, message: string): HealthCheckResult {
-  return { check, status: 'error', message, autoFixable: false }
-}
 
 function documentCountFromStats(stats: Record<string, unknown> | null | undefined): number | null {
   if (!stats) return null

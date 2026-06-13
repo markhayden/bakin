@@ -6,6 +6,25 @@
  * so plugins have a single import path instead of reaching into `@/lib/*`.
  */
 
+import type { HealthCheckResult } from '../types'
+
+/** Build an `ok` health-check result. */
+export function healthOk(check: string, message: string): HealthCheckResult {
+  return { check, status: 'ok', message, autoFixable: false }
+}
+/** Build a `warn` health-check result (optionally auto-fixable). */
+export function healthWarn(check: string, message: string, autoFixable = false): HealthCheckResult {
+  return { check, status: 'warn', message, autoFixable }
+}
+/** Build an `error` health-check result (optionally auto-fixable). */
+export function healthError(check: string, message: string, autoFixable = false): HealthCheckResult {
+  return { check, status: 'error', message, autoFixable }
+}
+/** Build a `fixed` health-check result (the auto-repair just ran). */
+export function healthFixed(check: string, message: string): HealthCheckResult {
+  return { check, status: 'fixed', message, autoFixable: true }
+}
+
 /** Tailwind class merger (clsx + tailwind-merge). */
 export { cn } from '../../../../src/lib/utils'
 

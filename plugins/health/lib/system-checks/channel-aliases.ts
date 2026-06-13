@@ -1,14 +1,15 @@
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
+import { healthOk, healthWarn } from '@makinbakin/sdk/utils'
 import type { HealthCheckResult } from '../../../../packages/core/src/plugin-types'
 import { getSettings } from '../../../../src/core/settings'
 import { readConfiguredChannelAliases, resolveChannelRef } from '../../../../src/core/channel-aliases'
 
 function ok(message: string): HealthCheckResult {
-  return { check: 'channel-aliases', status: 'ok', message, autoFixable: false }
+  return healthOk('channel-aliases', message)
 }
 
 function warn(message: string): HealthCheckResult {
-  return { check: 'channel-aliases', status: 'warn', message, autoFixable: false }
+  return healthWarn('channel-aliases', message)
 }
 
 function targetDriver(target: string): string {
