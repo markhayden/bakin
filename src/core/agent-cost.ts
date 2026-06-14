@@ -80,3 +80,50 @@ export async function meterAgentTurn(opts: {
     log.error('Failed to meter agent turn', err, { agent: opts.agent, runId: opts.runId })
   }
 }
+
+/**
+ * Record the cost of an image generation/edit as a spend event (no tokens;
+ * cost from the flat per-image rate via models.priceImage). Counts toward the
+ * budget cap like any other run. Unpriced models record the run with null
+ * cost. Never throws.
+ */
+export async function meterImageTurn(opts: {
+  agent: string
+  /** `provider/model` of the image generation. */
+  model: string
+  /** Number of images generated (billed count). */
+  count: number
+  taskId?: string | null
+}): Promise<void> {
+  try {
+    const [{ recordRunCost }, { recordUsage }, { getHookRegistry }] = await Promise.all([
+      import('./execution-ledger'),
+      import('./usage'),
+      import('../lib/plugin-registry'),
+    ])
+    const priced = await getHookRegistry().invoke<{ model: string | null; costUsdMicros: number | null }>(
+      'models.priceImage',
+      { model: opts.model, count: opts.count },
+    )
+    const costUsdMicros = priced?.costUsdMicros ?? null
+    recordRunCost({
+      runId: `image:${randomUUID()}`,
+      taskId: opts.taskId ?? null,
+      agent: opts.agent,
+      model: opts.model,
+      costUsdMicros,
+      occurredAt: Date.now(),
+    })
+    recordUsage({
+      kind: 'agent',
+      name: 'image',
+      agent: opts.agent,
+      durationMs: null,
+      status: 'ok',
+      ...(costUsdMicros !== null ? { costUsdMicros } : {}),
+      meta: { ...(opts.taskId ? { taskId: opts.taskId } : {}), model: opts.model, count: opts.count },
+    })
+  } catch (err) {
+    log.error('Failed to meter image turn', err, { agent: opts.agent, model: opts.model })
+  }
+}

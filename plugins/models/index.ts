@@ -14,7 +14,7 @@ import {
   writePersistedCache,
   clearPersistedCache,
 } from './lib/models-cache'
-import { getKnownModel, getKnownProvider, formatCostRange, computeCostUsdMicros } from './data/known-models'
+import { getKnownModel, getKnownProvider, formatCostRange, computeCostUsdMicros, computeImageCostUsdMicros } from './data/known-models'
 import { spendTotal, spendByAgent, spendByModel, LedgerUnavailableError } from '../../src/core/execution-ledger'
 import { ORIGINS } from '../../src/core/model-routing'
 
@@ -818,6 +818,16 @@ const modelsPlugin: BakinPlugin = definePlugin({
       const costUsdMicros = computeCostUsdMicros({ input, output, cacheRead }, pricing)
       return { model, costUsdMicros }
     }, { label: 'Price a turn.', summary: 'Resolves the model an agent turn ran on and returns an estimated cost in micro-dollars from the catalog pricing. Use it to attribute spend to a completed turn. Cost is null when the model is unpriced.', hookKind: 'rpc' })
+
+    // Price an image generation by flat per-image rate (count × imagePerUsd).
+    // Null when the model has no flat rate (provider-priced/ranged) — the run
+    // is still recorded, just unpriced.
+    ctx.hooks.register('models.priceImage', (data: Record<string, unknown>) => {
+      const model = typeof data.model === 'string' ? normalizeModelId(data.model) : undefined
+      const count = typeof data.count === 'number' ? data.count : 1
+      const imagePerUsd = model ? getKnownModel(model)?.imagePerUsd : undefined
+      return { model: model ?? null, costUsdMicros: computeImageCostUsdMicros(count, imagePerUsd) }
+    }, { label: 'Price an image.', summary: 'Returns an estimated cost in micro-dollars for an image generation (count × the model’s flat per-image rate), or null when the model is provider-priced. Use it to attribute image-generation spend.', hookKind: 'rpc' })
 
     // Expose the per-turn routing policy to core dispatch, which resolves the
     // model/thinking for each turn before sending. Returns an empty config

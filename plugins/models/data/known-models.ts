@@ -48,6 +48,10 @@ export interface KnownModel {
    *  e.g. '$0.055 per image', 'Local (no API cost)'. For token-priced LLMs,
    *  leave unset and let `pricing` drive the derived display. */
   costRange?: string
+  /** Structured per-image price (USD) for image models with a flat rate.
+   *  Omit for provider-priced / ranged / subscription models — those record
+   *  the run but stay unpriced ('$ unavailable'), never guessed. */
+  imagePerUsd?: number
   kind: 'llm' | 'image' | 'video'
   /** simple-icons slug (e.g. 'openai', 'anthropic'). Falls through to the
    *  provider's icon at render time when omitted. */
@@ -272,6 +276,7 @@ export const KNOWN_MODELS: readonly KnownModel[] = [
     bestFor: 'Detailed photographic output',
     tier: 'standard',
     costRange: '$0.055 per image',
+    imagePerUsd: 0.055,
     kind: 'image',
     brandIconSlug: 'blackforestlabs',
   },
@@ -420,4 +425,14 @@ export function computeCostUsdMicros(
     (output / 1_000_000) * pricing.outputPer1M +
     (cacheRead / 1_000_000) * cacheReadRate
   return Math.round(dollars * 1_000_000)
+}
+
+/**
+ * Estimated cost (micro-dollars) for an image generation of `count` images.
+ * Returns null when the model has no flat per-image price (provider-priced,
+ * ranged, or subscription) — unmetered rather than guessed.
+ */
+export function computeImageCostUsdMicros(count: number, imagePerUsd: number | undefined): number | null {
+  if (!imagePerUsd || count <= 0) return null
+  return Math.round(imagePerUsd * count * 1_000_000)
 }

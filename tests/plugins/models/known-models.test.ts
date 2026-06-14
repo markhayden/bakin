@@ -41,6 +41,7 @@ import {
   getKnownProvider,
   formatCostRange,
   computeCostUsdMicros,
+  computeImageCostUsdMicros,
 } from '../../../plugins/models/data/known-models'
 
 describe('known-models — seed shape', () => {
@@ -170,6 +171,20 @@ describe('structured pricing', () => {
 
   it('computeCostUsdMicros returns null when usage has no token counts', () => {
     expect(computeCostUsdMicros({}, { inputPer1M: 3, outputPer1M: 15, updatedAt: '2026-06' })).toBeNull()
+  })
+
+  it('computeImageCostUsdMicros multiplies count by the per-image rate', () => {
+    expect(computeImageCostUsdMicros(3, 0.055)).toBe(165_000) // 3 × $0.055
+  })
+
+  it('computeImageCostUsdMicros returns null for provider-priced / zero count', () => {
+    expect(computeImageCostUsdMicros(2, undefined)).toBeNull()
+    expect(computeImageCostUsdMicros(0, 0.055)).toBeNull()
+  })
+
+  it('flux-pro has a structured per-image rate; provider-priced models do not', () => {
+    expect(getKnownModel('black-forest-labs/flux-pro')!.imagePerUsd).toBe(0.055)
+    expect(getKnownModel('openai/gpt-image-2')!.imagePerUsd).toBeUndefined()
   })
 })
 

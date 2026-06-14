@@ -20,16 +20,22 @@ const usageRows: Array<Record<string, unknown>> = []
 mock.module('../../src/core/usage', () => ({ recordUsage: (e: Record<string, unknown>) => usageRows.push(e) }))
 
 let priceTurnImpl: (data: Record<string, unknown>) => unknown = () => ({ model: null, costUsdMicros: null })
+let priceImageImpl: (data: Record<string, unknown>) => unknown = () => ({ model: null, costUsdMicros: null })
 mock.module('../../src/lib/plugin-registry', () => ({
-  getHookRegistry: () => ({ invoke: async (name: string, data: Record<string, unknown>) => (name === 'models.priceTurn' ? priceTurnImpl(data) : undefined) }),
+  getHookRegistry: () => ({ invoke: async (name: string, data: Record<string, unknown>) => {
+    if (name === 'models.priceTurn') return priceTurnImpl(data)
+    if (name === 'models.priceImage') return priceImageImpl(data)
+    return undefined
+  } }),
 }))
 
-import { meterAgentTurn } from '../../src/core/agent-cost'
+import { meterAgentTurn, meterImageTurn } from '../../src/core/agent-cost'
 
 beforeEach(() => {
   costRows.length = 0
   usageRows.length = 0
   priceTurnImpl = () => ({ model: null, costUsdMicros: null })
+  priceImageImpl = () => ({ model: null, costUsdMicros: null })
 })
 
 describe('meterAgentTurn', () => {
@@ -63,5 +69,23 @@ describe('meterAgentTurn', () => {
     await meterAgentTurn({ agent: 'pixel', result: { id: 'm', usage: { input: 1, output: 1 } } })
     // priceTurn threw → whole meter swallowed; no row, no throw.
     expect(costRows).toHaveLength(0)
+  })
+})
+
+describe('meterImageTurn', () => {
+  it('records an image spend event with cost from priceImage', async () => {
+    priceImageImpl = () => ({ model: 'black-forest-labs/flux-pro', costUsdMicros: 110_000 })
+    await meterImageTurn({ agent: 'pixel', model: 'black-forest-labs/flux-pro', count: 2, taskId: 't1' })
+    expect(costRows).toHaveLength(1)
+    expect(costRows[0]).toMatchObject({ agent: 'pixel', model: 'black-forest-labs/flux-pro', taskId: 't1', costUsdMicros: 110_000 })
+    expect(String(costRows[0].runId)).toStartWith('image:')
+    expect(usageRows[0]).toMatchObject({ name: 'image', costUsdMicros: 110_000 })
+  })
+
+  it('records the run with null cost for a provider-priced model', async () => {
+    priceImageImpl = () => ({ model: 'openai/gpt-image-2', costUsdMicros: null })
+    await meterImageTurn({ agent: 'pixel', model: 'openai/gpt-image-2', count: 1 })
+    expect(costRows[0].costUsdMicros).toBeNull()
+    expect(costRows[0].taskId).toBeNull()
   })
 })

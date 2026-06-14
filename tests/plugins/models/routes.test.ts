@@ -175,8 +175,8 @@ describe('Models Plugin Activation', () => {
     ])
   })
 
-  it('registers 8 hooks', () => {
-    expect(activated.ctx.hooks.register).toHaveBeenCalledTimes(8)
+  it('registers 9 hooks', () => {
+    expect(activated.ctx.hooks.register).toHaveBeenCalledTimes(9)
     const hookNames = (activated.ctx.hooks.register as ReturnType<typeof mock>).mock.calls.map(
       (c: unknown[]) => c[0]
     )
@@ -188,6 +188,7 @@ describe('Models Plugin Activation', () => {
       'models.getRoutingConfig',
       'models.markConfigDirty',
       'models.markRuntimeRestarted',
+      'models.priceImage',
       'models.priceTurn',
     ])
   })
@@ -216,6 +217,25 @@ describe('Models Plugin Activation', () => {
     it('returns null cost when token counts are absent', async () => {
       const result = await priceTurnHandler()({ model: 'anthropic/claude-sonnet-4-6' })
       expect(result.costUsdMicros).toBeNull()
+    })
+  })
+
+  describe('models.priceImage hook', () => {
+    function priceImageHandler(): (data: Record<string, unknown>) => { model: string | null; costUsdMicros: number | null } {
+      const call = (activated.ctx.hooks.register as ReturnType<typeof mock>).mock.calls.find(
+        (c: unknown[]) => c[0] === 'models.priceImage'
+      )!
+      return call[1] as (data: Record<string, unknown>) => { model: string | null; costUsdMicros: number | null }
+    }
+
+    it('prices an image at the flat per-image rate × count', () => {
+      expect(priceImageHandler()({ model: 'black-forest-labs/flux-pro', count: 2 }).costUsdMicros).toBe(110_000)
+    })
+
+    it('returns null cost for a provider-priced image model', () => {
+      const r = priceImageHandler()({ model: 'openai/gpt-image-2', count: 1 })
+      expect(r.model).toBe('openai/gpt-image-2')
+      expect(r.costUsdMicros).toBeNull()
     })
   })
 

@@ -11,6 +11,7 @@ import { effectiveImageSettings, getImageProvider, providerReadiness } from './p
 import { resolveImageRoute } from './routing'
 import { getImageProfile } from './platform-profiles'
 import { runBilledImageCall, type ImageCallKey } from './idempotency'
+import { meterImageTurn } from '../../../src/core/agent-cost'
 
 /** Largest edge we send to a provider / feed into sharp, to bound cost. */
 const MAX_IMAGE_EDGE = 2048
@@ -333,6 +334,16 @@ async function persistImageResult(
         prompt: req.prompt, promptHash, description,
         generation,
       })
+
+  // Meter the image generation as a spend event (counts toward the budget
+  // cap; priced by flat per-image rate where the model declares one). Image
+  // inference is a separate billed path from chat-turn tokens.
+  await meterImageTurn({
+    agent,
+    model: `${req.route.provider}/${req.route.model}`,
+    count: result.images.length,
+    taskId: params.taskId,
+  })
 
   return {
     ok: true,
