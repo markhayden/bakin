@@ -1,25 +1,27 @@
-# TODO — Completion-row invariant (#482) + rig fixes (#467)
+# TODO — WS1 refactor/contract-types
 
-Two branches off `main`: `fix/completion-row-invariant` then `fix/rig-scopes-agentdir`.
-One commit per task; each ends green (`bun run test`). See `tasks/plan.md` for detail.
+Branch `refactor/contract-types` off `main`. One commit per task; each green on
+`bun run test` + `bun run typecheck`. Detail + crux decision: `tasks/plan.md`.
 
-## WS1 — fix/completion-row-invariant (PR "Fixes #482")
-- [x] **C1** extract `reopenIfLeavingDone` + `syncLedgerForStoreMove` helpers ✅ e6eb4b04
-- [x] **C2** store `blockTask` enforces transitions, `blocked→blocked` idempotent, channel 4th param ✅ 0052ac0e
-- [x] **C3** `blockTaskWithEffects` returns `{ alreadyComplete }`; move route 409; MCP soft response ✅ 99a8c960
-- [x] **C4** `moveTaskInStore` ledger-symmetric via `syncLedgerForStoreMove` ✅ 523204c2
-- [x] **C5** boot backfill + retire legacy `readTaskOutcome` done-fallback + `archiveOldTasks` purge ✅ 275900cb
-- [x] **C6** `relativeTime` year + `useTaskRunHistory` reset/abort ✅ 2f14f991
-- [x] **C7** knowledge docs (execution-ledger invariant, guards, exits-from-done inventory)
-- [ ] **PR #482** opened (body flags watchdog review→blocked fail-soft edge)
+Decision (forced by the SDK's self-contained publish constraint): **SDK types module is the
+single canonical home for all shared contract types; core re-exports from it.**
 
-## WS2 — fix/rig-scopes-agentdir (PR "Fixes #467")
-- [ ] **C1** widen `OPERATOR_SCOPES` + `widenDeviceScopes` reused-state reconcile — `fix(rig): widen + reconcile pre-approved operator scopes`
-- [ ] **C2** `normalizeAgentPaths` pure fn + wire into `up` pre-gateway — `fix(rig): normalize stored agent paths to container home on up`
-- [ ] **C3** rig knowledge doc hard-won bullets — `docs(knowledge): rig hard-won list — scopes, agentDir normalization, BAKIN_URL`
-- [ ] **PR #467** opened
+## Phase A — unify (kills the drift)
+- [x] A0 — delete 7 verified-dead files (~620 LOC); re-verify deadness at HEAD
+- [x] A1 — health-check contract family → SDK canonical, core re-exports
+- [x] A2 — exec-tool types → SDK canonical
+- [x] A3 — search API contract → SDK canonical
+- [x] A4 — manifest contract (core's PluginManifest is stale) → drop core copy, re-export SDK
+- [x] A5 — PluginContext + BakinPlugin (RISKY: runtime-adapter surface) → SDK canonical
+- [x] A6 — Task / TaskLogEntry (add updatedAt/version to SDK) → single-home in SDK
+- [x] A7 — AvailableModel (reconcile required-ness) → SDK canonical
+- [x] A8 — WorkflowInstance/Def (fix id→instanceId wire shape) → SDK canonical
+- [x] A9 — AgentUsage → SDK type-only + drop plugin-dir-escaping import
+- [x] A10 — strip src/types residue to its 3 live types
 
-## Rules (every commit)
-- TDD: each new invariant test demonstrably fails against pre-commit code first
-- Mock BOTH content-dir resolvers + OpenClaw home; `closeDb()` before temp-dir rm
-- Stage explicit paths only — never `git add -A`
+## Phase B — split (pure reorg)
+- [x] B1 — split sdk/types/index.ts → primitives/manifest/runtime/services/registration/context (+ barrel) + dropped 8 dead misc types
+- [~] B2 — MOOT: unification shrank core/plugin-types.ts 1129→738 lines (under the 800 threshold); split no longer warranted
+
+## PR gate
+- [x] gate green: typecheck + 4996 tests + lint + full build + build:vendors + boot smoke (10 plugins); SDK self-containment verified; docs updated → PR

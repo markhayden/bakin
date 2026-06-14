@@ -13,9 +13,8 @@ import { useEffect, useState } from 'react'
 import { Loader2, Sparkles, BookOpen, MessageSquare, Coins, Database, Activity } from 'lucide-react'
 import { ModelSelect } from '@makinbakin/sdk/components'
 import { useAgentStore, useAgentColor } from '@makinbakin/sdk/hooks'
-import type { AvailableModel } from '@makinbakin/sdk/types'
+import type { AgentUsage, AvailableModel } from '@makinbakin/sdk/types'
 import type { AgentProfile, PackageStateRow, RecentActivity } from '../types'
-import type { AgentUsage } from '../../../src/core/agent-usage'
 import { PackageCardBody } from './package-card'
 
 export interface OverviewTabProps {

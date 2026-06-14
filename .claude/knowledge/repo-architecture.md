@@ -93,9 +93,24 @@ packages/sdk/src/
 ├── hooks/                  ← useAgent, useSSE, useSearch, useQueryState, ...
 ├── components/             ← PluginHeader, FacetFilter, AgentAvatar, ...
 ├── slots/                  ← Slot, registerSlot primitive
-├── types/                  ← Full type re-exports
+├── types/                  ← CANONICAL contract types, self-contained, split into
+│                             primitives/manifest/runtime/services/registration/context
+│                             behind an index.ts barrel (see the two-tier note below)
 └── utils/                  ← cn, formatAge, formatSize, isStale
 ```
+
+**Two-tier type contract.** `packages/sdk/src/types` is the single source of
+truth for shared plugin-contract types and is *self-contained* (no
+`@bakin/core`/repo-source imports — enforced by the publish guard in
+`scripts/build-sdk-package.ts`). `packages/core/src/plugin-types.ts` re-exports
+the genuinely-identical leaf types from the SDK (health, exec-result, search,
+manifest, EventBus/ActivityAPI/PluginLogger, TaskLogEntry, AvailableModel,
+AgentUsage) rather than redeclaring them. It keeps its own *fuller, internal*
+tier for the surfaces in-process core plugins actually use — the full
+`AgentRuntimeAdapter`, the `PluginTask` projection, `BakinPlugin.routes`, and
+richer `StorageAdapter`/`NavItem`/`APIRoute`/`HookAPI`/`SkillDefinition`. Those
+divergences are intentional, not drift; don't collapse them (collapsing the
+runtime boundary is adapter-boundary work, not type cleanup).
 
 Sub-paths are declared via `exports` in `packages/sdk/package.json`:
 `@bakin/sdk/ui`, `@bakin/sdk/hooks`, `@bakin/sdk/components`,

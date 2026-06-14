@@ -139,6 +139,20 @@ export function createIdempotencyRegistry<T>(opts: IdempotencyOptions = {}): Ide
 const imageCallRegistry = createIdempotencyRegistry<ExecToolResult>()
 
 /**
+ * The ledger holds coordination facts only — never content. The tool result
+ * returned to the caller carries prompt text and provider commentary; the
+ * persisted dedup row must not. Identity stays in promptHash (already part
+ * of the call signature), so a replay still returns the right asset.
+ */
+const CONTENT_FIELDS = ['prompt', 'providerText'] as const
+
+function coordinationOnly(result: ExecToolResult): ExecToolResult {
+  const row: Record<string, unknown> = { ...(result as Record<string, unknown>) }
+  for (const field of CONTENT_FIELDS) delete row[field]
+  return row as ExecToolResult
+}
+
+/**
  * Run a billed image operation idempotently. The result is cached only when
  * it succeeded (`ok === true`); failures re-issue on the next identical
  * call. Completed results persist in the execution ledger — durable, no
@@ -154,6 +168,6 @@ export function runBilledImageCall(
   return imageCallRegistry.run(signature, fn, {
     cacheable: (r) => r.ok === true,
     load: () => (getIdempotent(signature)?.result as ExecToolResult | null) ?? null,
-    save: (result) => putIdempotent(signature, `image.${key.op}`, result),
+    save: (result) => putIdempotent(signature, `image.${key.op}`, coordinationOnly(result)),
   })
 }

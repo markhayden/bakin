@@ -49,6 +49,7 @@ mock.module('@/core/watcher', () => ({
 }))
 
 mock.module('@/core/settings', () => ({
+  resetSettingsCache: () => {},
   getSettings: mock(() => ({
     search: {
       adapter: 'antfly',

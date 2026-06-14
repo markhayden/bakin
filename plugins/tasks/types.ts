@@ -1,9 +1,6 @@
-export interface TaskLogEntry {
-  timestamp: string
-  author: string
-  message: string
-  data?: Record<string, unknown>
-}
+// TaskLogEntry is single-homed in the SDK (published TaskService contract).
+import type { TaskLogEntry } from '@makinbakin/sdk/types'
+export type { TaskLogEntry }
 
 export interface TaskSource {
   pluginId?: string

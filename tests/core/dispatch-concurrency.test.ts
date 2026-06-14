@@ -39,6 +39,7 @@ const settingsValue = {
   agentPackages: { lessonsRetrieval: { enabled: false } },
 }
 mock.module('../../src/core/settings', () => ({
+  resetSettingsCache: () => {},
   getSettings: mock(() => settingsValue),
 }))
 

@@ -64,6 +64,7 @@ mock.module('../../../packages/adapter-openclaw/src/main-agent', () => ({
   getMainAgentName: () => 'Main',
 }))
 mock.module('../../../src/core/settings', () => ({
+  resetSettingsCache: () => {},
   getSettings: () => ({
     runtime: {
       adapter: 'openclaw',

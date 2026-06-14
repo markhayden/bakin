@@ -21,6 +21,7 @@ import { UnderlineTabs } from "@makinbakin/sdk/components"
 import { Search, CircleCheck, Clock, AlertCircle, Wrench } from 'lucide-react'
 import { RepairDialog } from './repair-dialog'
 import type { HealthCheckResult } from '@makinbakin/sdk'
+import type { AgentUsage } from '@makinbakin/sdk/types'
 
 const PLUGIN_CHECK_INTERVAL_MS = 60 * 60 * 1000
 
@@ -88,28 +89,6 @@ interface PluginManifestData {
   plugins: PluginManifestEntry[]
 }
 
-interface AgentUsage {
-  agent: string
-  sessionId: string
-  sessionStarted: string
-  model: string
-  messages: number
-  tokens: {
-    input: number
-    output: number
-    cacheRead: number
-    cacheWrite: number
-    total: number
-  }
-  cost: {
-    input: number | null
-    output: number | null
-    cacheRead: number | null
-    cacheWrite: number | null
-    total: number | null
-    source: 'runtime' | 'unavailable'
-  }
-}
 
 interface ErrorsByKind {
   total: number

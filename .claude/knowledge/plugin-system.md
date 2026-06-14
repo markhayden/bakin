@@ -931,7 +931,7 @@ Plugin authors import from `@bakin/sdk/*`. Full sub-path map:
 | `@bakin/sdk/hooks` | React hooks (`useAgent`, `useAgentList`, `useSSE`, `useSearch`, `useQueryState`, `useQueryArrayState`, `useDebug`, `useNotificationChannels`, ...) |
 | `@bakin/sdk/components` | Shared components (`PluginHeader`, `FacetFilter`, `AgentAvatar`, `AgentSelect`, `ChannelIcon`, `BakinDrawer`, ...) |
 | `@bakin/sdk/slots` | `Slot`, `registerSlot`, `__clearSlot` |
-| `@bakin/sdk/types` | Full type re-exports (`PluginContext`, `BakinPlugin`, `AssetMeta`, `Task`, `WorkflowDefinition`, ...) |
+| `@bakin/sdk/types` | Canonical, self-contained contract types (`PluginContext`, `BakinPlugin`, `Task`, `WorkflowDefinition`, ...), split into primitives/manifest/runtime/services/registration/context behind a barrel. The single source of truth — `packages/core/src/plugin-types.ts` re-exports the identical leaf types from here and keeps its own fuller internal tier (see repo-architecture.md § two-tier type contract). |
 | `@bakin/sdk/utils` | `cn`, `formatAge`, `formatSize`, `isStale` |
 
 Published to npm as `@bakin/sdk`. `scripts/publish-sdk.ts` pushes on the

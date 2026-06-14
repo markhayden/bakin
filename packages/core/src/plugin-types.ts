@@ -1,9 +1,33 @@
 /**
- * Plugin system type definitions for Bakin.
- * All plugin interfaces are defined here — no behavioral changes.
+ * Plugin system type definitions for Bakin (the internal, in-process surface).
+ *
+ * Two-tier contract — read before "deduplicating" against the SDK:
+ * `@makinbakin/sdk/types` is the PUBLISHED, self-contained, deliberately
+ * NARROWER plugin-author surface; this file is the INTERNAL surface that
+ * in-process core plugins actually receive. They are NOT a fork to collapse.
+ * Concretely:
+ *   - `PluginContext.runtime` here is the FULL `AgentRuntimeAdapter`
+ *     (adapters/runtime/concepts.ts: agents×11, tools, sessions, memory,
+ *     config, images, media, restart…). Core plugins use ~15 full-only
+ *     methods. The SDK exposes a curated subset.
+ *   - `ctx.tasks` here returns the `PluginTask` projection; the SDK returns
+ *     `Task`. `BakinPlugin` here adds `routes?`. `StorageAdapter`/`NavItem`/
+ *     `APIRoute`/`HookAPI`/`SkillDefinition` are intentionally fuller here.
+ * Genuinely-identical LEAF data types (health, exec-result, search, manifest,
+ * EventBus/ActivityAPI/PluginLogger, TaskLogEntry, …) ARE single-homed in the
+ * SDK and re-exported below. Collapsing the boundary itself is WS2 work.
  */
 
 import type { ZodRawShape, ZodType } from 'zod'
+import type {
+  ActivityAPI,
+  EventBus,
+  ExecToolResult,
+  PluginHealthCheckInput,
+  PluginLogger,
+  SearchAPI,
+  TaskLogEntry,
+} from '@makinbakin/sdk/types'
 import type { ContractStability, ContractVisibility, DocsExample, SchemaLike, SourceLocation } from './docs'
 import type { AgentRuntimeAdapter } from './adapters/runtime'
 import type { APIRoute as DeclarativeAPIRoute, PluginContextLite } from './routing/types'
@@ -49,11 +73,8 @@ export interface StorageAdapter {
 // ---------------------------------------------------------------------------
 // Events
 // ---------------------------------------------------------------------------
-export interface EventBus {
-  emit(event: string, data?: Record<string, unknown>): void
-  on(pattern: string, handler: (event: string, data: Record<string, unknown>) => void): () => void
-  once(pattern: string, handler: (event: string, data: Record<string, unknown>) => void): () => void
-}
+// Identical leaf primitive — single-homed in the SDK, re-exported here.
+export type { EventBus } from '@makinbakin/sdk/types'
 
 // ---------------------------------------------------------------------------
 // Navigation + Routes + UI Slots
@@ -98,13 +119,10 @@ export interface ContentFile {
 // Execution Tools (scripts exposed as MCP tools)
 // ---------------------------------------------------------------------------
 
-/** Result returned by execution tool handlers */
-export interface ExecToolResult {
-  ok: boolean
-  error?: string
-  details?: unknown
-  [key: string]: unknown
-}
+// ExecToolResult is single-homed in the SDK (the plugin-author surface).
+// Core re-exports it; PluginToolContext/ExecToolDefinition below reference the
+// imported type.
+export type { ExecToolResult } from '@makinbakin/sdk/types'
 
 /** Definition for a registerable execution tool */
 /** Context available to exec tool handlers — provides access to plugin services */
@@ -173,19 +191,8 @@ export interface WorkflowDefinitionInput {
 // ---------------------------------------------------------------------------
 // Activity API (structured logging for plugins)
 // ---------------------------------------------------------------------------
-export interface ActivityAPI {
-  /** Log a human-readable message to the live activity feed */
-  log(agent: string, message: string, opts?: { taskId?: string; category?: string }): void
-  /** Log a structured audit event */
-  audit(event: string, agent: string, data?: Record<string, unknown>): void
-}
-
-export interface PluginLogger {
-  debug(message: string, data?: Record<string, unknown>): void
-  info(message: string, data?: Record<string, unknown>): void
-  warn(message: string, errorOrData?: unknown, data?: Record<string, unknown>): void
-  error(message: string, errorOrData?: unknown, data?: Record<string, unknown>): void
-}
+// Identical leaf primitives — single-homed in the SDK, re-exported here.
+export type { ActivityAPI, PluginLogger } from '@makinbakin/sdk/types'
 
 // ---------------------------------------------------------------------------
 // Plugin Context (provided to activate())
@@ -300,75 +307,21 @@ export interface NotificationChannelDef extends PluginNotificationChannelInput {
 // Health check registration
 // ---------------------------------------------------------------------------
 
-/**
- * Canonical result shape for a single doctor check row.
- */
-export interface HealthCheckResult {
-  check: string
-  status: 'ok' | 'warn' | 'error' | 'fixed'
-  message: string
-  autoFixable: boolean
-}
+// The health-check contract is single-homed in the SDK (the plugin-author
+// surface, `@makinbakin/sdk/types`). Core re-exports it so internal consumers
+// (doctor, app-services) and the in-repo plugin sites keep importing it from
+// '@bakin/core/plugin-types'.
+export type {
+  HealthCheckResult,
+  HealthRepairSafety,
+  HealthRepairChange,
+  HealthRepairPlanItem,
+  HealthRepairApplyResult,
+  HealthRepairHandler,
+  PluginHealthCheckInput,
+} from '@makinbakin/sdk/types'
 
-export type HealthRepairSafety = 'safe' | 'manual' | 'destructive'
-
-export interface HealthRepairChange {
-  kind: 'file' | 'setting' | 'service' | 'runtime' | 'task' | 'other'
-  target: string
-  action: 'create' | 'update' | 'delete' | 'install' | 'invoke'
-  description: string
-}
-
-export interface HealthRepairPlanItem {
-  id: string
-  checkId: string
-  title: string
-  reason: string
-  safety: HealthRepairSafety
-  requiresConfirmation: boolean
-  changes: HealthRepairChange[]
-}
-
-export interface HealthRepairApplyResult {
-  id: string
-  checkId: string
-  status: 'applied' | 'skipped' | 'failed'
-  message: string
-  changes: HealthRepairChange[]
-}
-
-export interface HealthRepairHandler {
-  plan(rows: HealthCheckResult[]): Promise<HealthRepairPlanItem[]>
-  apply(items: HealthRepairPlanItem[]): Promise<HealthRepairApplyResult[]>
-}
-
-/**
- * Input shape plugins pass to `ctx.registerHealthCheck`. The plugin id is
- * auto-namespaced as `{pluginId}.{id}`. `run()` returns an array so one
- * registered check can contribute multiple result rows (mirrors how the
- * existing `checkPersonas` returns one per agent).
- */
-export interface PluginHealthCheckInput {
-  id: string
-  name: string
-  /**
-   * Runs the check, returns any number of result rows. Throws/rejects are
-   * caught by the doctor orchestrator and converted to a synthetic error
-   * result — a single bad handler never crashes the sweep.
-   */
-  run: () => Promise<HealthCheckResult[]>
-  /**
-   * Legacy advisory flag for older admin surfaces. New code should derive
-   * repairability from `repair`.
-   */
-  autoFix?: boolean
-  /**
-   * Optional explicit repair contract. Diagnostics call only `run()`; repair
-   * flows call `plan()` first, then `apply()` after explicit confirmation.
-   */
-  repair?: HealthRepairHandler
-}
-
+/** Core-internal: a registered plugin health check with its resolved owner. */
 export interface HealthCheckDef extends PluginHealthCheckInput {
   runtime: 'plugin'
   pluginId: string
@@ -485,12 +438,9 @@ export interface PluginTaskSource {
   purpose?: string
 }
 
-export interface TaskLogEntry {
-  timestamp: string
-  author: string
-  message: string
-  data?: Record<string, unknown>
-}
+// Single-homed in the SDK; re-exported here (referenced by PluginTask.log
+// and PluginTaskService.appendLog below).
+export type { TaskLogEntry } from '@makinbakin/sdk/types'
 
 export interface PluginTaskCreateInput {
   id?: string
@@ -642,330 +592,25 @@ export interface AssetsAPI {
 // Search API (adapter-backed vector + full-text search)
 // ---------------------------------------------------------------------------
 
-/** Field type for search content type schemas */
-export interface SearchSchemaField {
-  type: 'text' | 'keyword' | 'number' | 'boolean' | 'datetime' | 'array'
-}
-
-/**
- * One vector index on a search table. A content type can declare multiple
- * indexes to embed the same document into several vector spaces — e.g. a
- * text index using BGE and a visual index using CLIP on the assets table.
- * Each index has its own embedder (resolved via embedderRef), input
- * declaration, and optional chunker config.
- */
-export interface SearchIndexDefinition {
-  /** Index name as stored by the search adapter. Must be stable across restarts. */
-  name: string
-  /** Ref into settings.search.settings.embedders — 'default', 'visual', or custom. */
-  embedderRef: string
-  /** Handlebars template for this index's text embedding input. */
-  embeddingTemplate?: string
-  /**
-   * Document field containing a URL to media bytes for visual/multimodal
-   * embedding input. The search adapter owns provider-specific helper syntax.
-   */
-  mediaUrlField?: string
-  /** Per-index chunker config, overrides any table-level default. */
-  chunker?: {
-    enabled: boolean
-    targetTokens?: number
-    overlapTokens?: number
-  }
-}
-
-/** Definition for a searchable content type registered by a plugin */
-export interface SearchContentTypeDefinition {
-  /** Table name — auto-prefixed with `bakin_`. E.g., 'tasks' → 'bakin_tasks' */
-  table: string
-  /** Schema for the document fields */
-  schema: Record<string, SearchSchemaField>
-  /** Fields to include in full-text search */
-  searchableFields: string[]
-  /**
-   * Handlebars template for embedding generation. Used when `indexes` is
-   * not provided — the registry synthesizes a single default index named
-   * `embeddings` with this template and the default embedder.
-   */
-  embeddingTemplate: string
-  /**
-   * Optional per-index definitions. When provided, overrides
-   * `embeddingTemplate` and creates one embedding index per entry with
-   * its own embedder. Used by content types that want multimodal indexing
-   * (e.g. assets with both a text index and a visual index).
-   */
-  indexes?: SearchIndexDefinition[]
-  /** Fields to expose as aggregatable facets */
-  facets?: string[]
-  /**
-   * Document field to use as input for the cross-encoder reranker. When
-   * set, queries against this content type attach the configured reranker
-   * and score the query-document pair using the value at this field.
-   * When unset, queries skip reranking for this content type.
-   */
-  rerankField?: string
-  /** TTL duration (Go format: '24h', '7d', '30d') */
-  ttl?: string
-  /** TTL field (defaults to 'created_at') */
-  ttlField?: string
-  /** Chunking config for long documents — used by the synthesized default index. */
-  chunker?: {
-    enabled: boolean
-    targetTokens?: number
-    overlapTokens?: number
-  }
-  /**
-   * Backfill function — called during full/per-table reindex.
-   * Must yield ALL documents for this content type from source.
-   */
-  reindex: () => AsyncGenerator<{ key: string; doc: Record<string, unknown> }>
-  /**
-   * Existence check — called during orphan cleanup.
-   * Returns true if the source document for this key still exists.
-   */
-  verifyExists: (key: string) => Promise<boolean>
-}
-
-/** Parameters for a search query */
-export interface SearchQueryParams {
-  /** Search query string */
-  q: string
-  /** Structured keyword filters */
-  filters?: Record<string, string | boolean | number>
-  /** Facets to include in aggregations */
-  facets?: string[]
-  /** Max results */
-  limit?: number
-  /** Result offset for pagination */
-  offset?: number
-  /**
-   * Whether to run the cross-encoder reranker on results. Defaults to
-   * true when the reranker is enabled in settings. Set false for latency-
-   * sensitive paths (facet-only queries, ID lookups, bulk scans) where
-   * the extra ~100-500ms isn't worth it.
-   */
-  rerank?: boolean
-  /**
-   * Raw adapter-specific aggregations passed through unchanged to the query layer.
-   * Use for date histograms, range buckets, stats aggregations, or any
-   * other shape beyond the term-facet convenience in `facets`. Merged
-   * with facet-derived aggregations (these win on key collision).
-   * See the active search adapter docs for the aggregation schema.
-   */
-  aggregations?: Record<string, unknown>
-  /**
-   * Search strategy override. Defaults to the site-wide search strategy.
-   * Pass 'full_text_only' for filter-driven
-   * counts or ID lookups — semantic search rejects `limit: 0` queries
-   * with the "semantic search requires topk limit to be positive" error.
-   */
-  strategy?: 'rrf' | 'semantic_only' | 'full_text_only'
-}
-
-/** A single search result */
-export interface SearchResult {
-  id: string
-  table: string
-  score: number
-  fields: Record<string, unknown>
-  /** Cross-encoder reranker score (present when a reranker was used). */
-  rerankScore?: number
-  /** Per-index score breakdown (e.g. { full_text_index_v0, assets_text, assets_visual }). */
-  indexScores?: Record<string, number>
-}
-
-/** Search response from a query */
-export interface SearchResponse {
-  results: SearchResult[]
-  /**
-   * Mapped term-facet aggregations — keyed by facet field, each a list
-   * of { value, count }. Populated from `params.facets` for convenience.
-   */
-  aggregations?: Record<string, Array<{ value: string; count: number }>>
-  /**
-   * Raw aggregation response from the search adapter, unmodified. Populated whenever
-   * the underlying query returned aggregations — use this for non-term
-   * shapes like date_histogram, range, stats, etc.
-   */
-  rawAggregations?: Record<string, unknown>
-  meta: {
-    query: string
-    total: number
-    took_ms: number
-    source: 'search' | 'fallback'
-  }
-}
-
-export interface SearchHealthIndex {
-  name: string
-  type: string
-  totalIndexed: number
-  walBacklog: number
-  error?: string
-  rebuilding: boolean
-  backfillProgress?: number
-}
-
-export interface SearchHealthTable {
-  table: string
-  pluginId: string
-  stats: Record<string, unknown> | null
-  indexHealth?: SearchHealthIndex[]
-  healthy: boolean
-}
-
-export interface SearchHealthSnapshot {
-  enabled: boolean
-  tables: SearchHealthTable[]
-}
-
-/** Atomic transform operation (update fields without re-embedding) */
-export interface SearchTransformOp {
-  op: '$set' | '$inc' | '$push'
-  field?: string
-  value: unknown
-}
-
-/**
- * One file-pattern → mapper pair used by `FileBackedContentTypeDefinition`.
- * A registration may carry multiple of these when a single content type
- * draws from several distinct file shapes (e.g. workflows store
- * definitions as `.yaml` and instances as `.json`, both indexed into the
- * same `bakin_workflows` table with different key prefixes).
- */
-export interface FilePatternMapper {
-  /** Glob pattern relative to contentDir. First-match-wins across the patterns array. */
-  pattern: string
-  /**
-   * Derive the search key for a file matching this pattern. Return null
-   * to skip the file (e.g. it matches the glob but is missing required
-   * companion data).
-   */
-  fileToId: (relPath: string) => string | null
-  /**
-   * Build the search document for a file matching this pattern.
-   * `content` is the raw file bytes as a UTF-8 string (empty for binary
-   * assets, which the watcher recognizes by their `assets/` prefix).
-   * Return null to skip indexing (e.g. derived state isn't ready yet).
-   */
-  fileToDoc: (relPath: string, content: string) => Promise<Record<string, unknown> | null>
-}
-
-/**
- * A content type whose source of truth is one or more files under
- * `~/.bakin/`. Registering via `registerFileBackedContentType` wires up:
- *
- *   1. Standard `registerContentType` (table creation, schema, reindex).
- *   2. A watcher sync hook that re-indexes on add/change.
- *   3. A watcher unlink hook that removes on delete.
- *   4. A startup reconcile that detects mtime drift and corrects it.
- *
- * Plugins should reach for this helper first. Use raw `registerContentType`
- * only when the source of truth is NOT the filesystem (e.g. SQLite,
- * external API, runtime adapter).
- */
-export interface FileBackedContentTypeDefinition extends SearchContentTypeDefinition {
-  /**
-   * One or more file-pattern mappers. Patterns should not overlap;
-   * first match wins. A file that matches no pattern is ignored.
-   */
-  filePatterns: FilePatternMapper[]
-  /**
-   * Optional exclude patterns applied BEFORE any mapper matches. Useful
-   * for skipping subdirectories like `assets/**\/.trash/**` or sidecar
-   * files like `**\/*.meta.json`.
-   */
-  excludePatterns?: string[]
-  /**
-   * Escape hatch for sync events. When provided, the helper invokes
-   * this instead of the default `fileToDoc → ctx.search.index` flow for
-   * any file matching this content type's patterns. The plugin takes
-   * full responsibility for indexing.
-   *
-   * Use when pairing logic (e.g. assets' binary↔sidecar coupling) can't
-   * be expressed as a single mapper. The matched `FilePatternMapper` is
-   * still consulted for `fileToId` if the plugin needs the canonical key.
-   */
-  onSync?: (relPath: string, content: string) => Promise<void>
-  /**
-   * Escape hatch for unlink events. Same story as `onSync`. If unset,
-   * the helper calls the matched mapper's `fileToId(relPath)` and then
-   * `ctx.search.remove(id)`.
-   */
-  onUnlink?: (relPath: string) => Promise<void>
-  /**
-   * Whether to run the startup reconcile loop on plugin activation.
-   * Defaults to true. Set false only when the plugin wants to drive its
-   * own initial population (rare).
-   */
-  buildOnStartup?: boolean
-  /**
-   * Keep indexed documents that are not represented by a matched file when
-   * verifyExists(key) still returns true. Use this only for hybrid content
-   * types that combine file-backed rows with registry/runtime rows in the
-   * same table.
-   */
-  preserveVirtualDocuments?: boolean
-}
-
-/** Search API provided to plugins via ctx.search */
-export interface SearchAPI {
-  /**
-   * Register a content type this plugin will index.
-   * Must be called during activate(). Creates the search table if needed.
-   *
-   * Prefer `registerFileBackedContentType` when the source of truth is
-   * a file under `~/.bakin/` — it wires up watcher hooks and startup
-   * reconcile automatically. Use this raw form only for non-filesystem
-   * sources (SQLite, external APIs, runtime adapters).
-   */
-  registerContentType(def: SearchContentTypeDefinition): void
-
-  /**
-   * Register a file-backed content type. Wraps `registerContentType` and
-   * additionally wires watcher sync + unlink hooks scoped to the declared
-   * file patterns, plus a startup reconcile that detects mtime drift on
-   * boot. This is the blessed API for any plugin whose data lives in the
-   * filesystem under `~/.bakin/`.
-   */
-  registerFileBackedContentType(def: FileBackedContentTypeDefinition): void
-
-  /** Index or update a document. Fire-and-forget. */
-  index(key: string, doc: Record<string, unknown>): Promise<void>
-
-  /** Remove a document from the index. */
-  remove(key: string): Promise<void>
-
-  /** Atomic field update without re-embedding. For metadata-only changes. */
-  transform(key: string, operations: SearchTransformOp[]): Promise<void>
-
-  /** Search this plugin's content type. */
-  query(params: SearchQueryParams): Promise<SearchResponse>
-
-  /** Global search adapter and registered-table health snapshot. */
-  health?(): Promise<SearchHealthSnapshot>
-
-  /**
-   * Plugin-scoped maintenance operations for indexers that own non-file-backed
-   * tables. This is intentionally narrower than the raw adapter: callers can
-   * only touch their own registered content type.
-   */
-  maintenance?: SearchMaintenanceAPI
-}
-
-export interface SearchMaintenanceAPI {
-  /** Whether the backing search service is reachable. */
-  available(): Promise<boolean>
-
-  /** Iterate every document in this plugin's registered content type. */
-  scan(): AsyncIterable<{ key: string; document: Record<string, unknown> }>
-
-  /** Remove several documents from this plugin's registered content type. */
-  batchRemove(keys: string[]): Promise<number>
-
-  /** Drop and recreate this plugin's registered content type table. */
-  resetContentType(): Promise<void>
-}
+// The search API contract is single-homed in the SDK (the plugin-author
+// surface). Core re-exports the whole cluster; the import below is for the
+// local PluginContext/PluginToolContext `search: SearchAPI` references.
+export type {
+  SearchSchemaField,
+  SearchIndexDefinition,
+  SearchContentTypeDefinition,
+  SearchQueryParams,
+  SearchResult,
+  SearchResponse,
+  SearchHealthIndex,
+  SearchHealthTable,
+  SearchHealthSnapshot,
+  SearchTransformOp,
+  FilePatternMapper,
+  FileBackedContentTypeDefinition,
+  SearchAPI,
+  SearchMaintenanceAPI,
+} from '@makinbakin/sdk/types'
 
 // ---------------------------------------------------------------------------
 // Settings Schema
@@ -1079,51 +724,15 @@ export interface BakinPlugin {
 }
 
 // ---------------------------------------------------------------------------
-// Plugin Manifest (bakin-plugin.json)
+// Plugin Manifest (bakin-plugin.json) + config
 // ---------------------------------------------------------------------------
-export interface PluginManifestSignature {
-  algorithm: 'ed25519'
-  signer: string
-  publicKey: string
-  signature: string
-}
-
-export interface SecretDeclaration {
-  /** Canonical environment variable name, for example `ANTHROPIC_API_KEY`. */
-  name: string
-  /** Human-readable setup note. Never include a secret value here. */
-  description: string
-  /** Missing required secrets should be reported by setup/health checks. Defaults to true. */
-  required: boolean
-}
-
-export interface PluginManifest {
-  id: string
-  name: string
-  version: string
-  bakin: string
-  description: string
-  entry: { server: string; client?: string }
-  contentFiles?: string[]
-  secrets?: SecretDeclaration[]
-  tests?: string
-  dependencies?: string[]
-  permissions?: string[]
-  signature?: PluginManifestSignature
-}
-
-// ---------------------------------------------------------------------------
-// Config
-// ---------------------------------------------------------------------------
-export interface PluginEntry {
-  path: string
-  enabled?: boolean // defaults to true
-}
-
-export interface BakinConfig {
-  plugins: PluginEntry[]
-  theme?: Record<string, string>
-  storage?: {
-    contentDir?: string
-  }
-}
+// Single-homed in the SDK. Core's previous PluginManifest had drifted stale
+// (missing runtimeCapabilities/contributes/devWatch); the SDK copy is the
+// current superset and is what core's own manifest parser already imports.
+export type {
+  PluginManifestSignature,
+  SecretDeclaration,
+  PluginManifest,
+  PluginEntry,
+  BakinConfig,
+} from '@makinbakin/sdk/types'

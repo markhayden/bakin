@@ -537,7 +537,7 @@ All under `settings.search.settings`:
 |---|---|---|
 | `enabled` | `boolean` | Enable/disable Antfly integration |
 | `url` | `string` | Antfly server URL (must include `/api/v1` suffix) |
-| `auth` | `object?` | Optional basic auth `{ username, password }` |
+| `auth` | `object?` | Optional basic auth `{ username }` — the password lives in the secret store (`providers.antfly` in `~/.bakin/secrets.json`; env `ANTFLY_PASSWORD` overrides) and is injected at adapter init by `createAppServices`, never stored or served from settings.json |
 | `search.strategy` | `string` | Default search strategy (`rrf` \| `semantic_only` \| `full_text_only`) |
 | `search.defaultLimit` | `number` | Default result count |
 | `search.reranker.enabled` | `boolean` | Master switch for cross-encoder reranking |
