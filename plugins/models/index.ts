@@ -807,6 +807,7 @@ const modelsPlugin: BakinPlugin = definePlugin({
       const explicit = data.model as string | undefined
       const input = typeof data.input === 'number' ? data.input : undefined
       const output = typeof data.output === 'number' ? data.output : undefined
+      const cacheRead = typeof data.cacheRead === 'number' ? data.cacheRead : undefined
 
       let model = explicit ? normalizeModelId(explicit) : null
       if (!model && agentId) {
@@ -814,7 +815,7 @@ const modelsPlugin: BakinPlugin = definePlugin({
         model = agents.find((a) => a.agentId === agentId)?.effectiveModel ?? null
       }
       const pricing = model ? getKnownModel(model)?.pricing : undefined
-      const costUsdMicros = computeCostUsdMicros({ input, output }, pricing)
+      const costUsdMicros = computeCostUsdMicros({ input, output, cacheRead }, pricing)
       return { model, costUsdMicros }
     }, { label: 'Price a turn.', summary: 'Resolves the model an agent turn ran on and returns an estimated cost in micro-dollars from the catalog pricing. Use it to attribute spend to a completed turn. Cost is null when the model is unpriced.', hookKind: 'rpc' })
 

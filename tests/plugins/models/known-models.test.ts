@@ -146,6 +146,24 @@ describe('structured pricing', () => {
     expect(micros).toBe(9_300_000)
   })
 
+  it('computeCostUsdMicros prices cache reads at the default 0.1x input when unspecified', () => {
+    // 1M input @ $3 = $3.00; 1M cacheRead @ 0.1x = $0.30 → $3.30 → 3_300_000.
+    const micros = computeCostUsdMicros(
+      { input: 1_000_000, output: 0, cacheRead: 1_000_000 },
+      { inputPer1M: 3, outputPer1M: 15, updatedAt: '2026-06' },
+    )
+    expect(micros).toBe(3_300_000)
+  })
+
+  it('computeCostUsdMicros honors an explicit cachedReadPer1M over the default', () => {
+    // output 1M @ $15 = $15; cacheRead 1M @ explicit $0.5 = $0.50 → $15.50.
+    const micros = computeCostUsdMicros(
+      { input: 0, output: 1_000_000, cacheRead: 1_000_000 },
+      { inputPer1M: 3, outputPer1M: 15, cachedReadPer1M: 0.5, updatedAt: '2026-06' },
+    )
+    expect(micros).toBe(15_500_000)
+  })
+
   it('computeCostUsdMicros returns null when pricing is absent', () => {
     expect(computeCostUsdMicros({ input: 1000, output: 500 }, undefined)).toBeNull()
   })

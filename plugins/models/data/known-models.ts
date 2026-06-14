@@ -397,17 +397,27 @@ export function formatCostRange(pricing: ModelPricing): string {
  * when prompt caching is active — it's an estimate, not an invoice.
  */
 export function computeCostUsdMicros(
-  usage: { input?: number; output?: number; total?: number },
+  usage: { input?: number; output?: number; total?: number; cacheRead?: number },
   pricing: ModelPricing | undefined,
 ): number | null {
   if (!pricing) return null
   const input = usage.input ?? 0
   const output = usage.output ?? 0
+  const cacheRead = usage.cacheRead ?? 0
   // Pricing needs the input/output split (different per-1M rates). A usage
   // block carrying only a combined `total` can't be priced accurately, so we
   // return null (unmetered) rather than guess — input/output is always
   // present in practice; this is the honest fallback for the degenerate case.
   if (input === 0 && output === 0) return null
-  const dollars = (input / 1_000_000) * pricing.inputPer1M + (output / 1_000_000) * pricing.outputPer1M
+  // Cached-input reads are billed far below fresh input. Use the model's
+  // declared cachedReadPer1M, else approximate at 0.1x input — the common
+  // cross-provider default. Estimate-grade (the whole feature is), but far
+  // better than pricing cache reads at $0 (large cache reads otherwise make
+  // cost read way low — e.g. a turn with 34k cache reads).
+  const cacheReadRate = pricing.cachedReadPer1M ?? pricing.inputPer1M * 0.1
+  const dollars =
+    (input / 1_000_000) * pricing.inputPer1M +
+    (output / 1_000_000) * pricing.outputPer1M +
+    (cacheRead / 1_000_000) * cacheReadRate
   return Math.round(dollars * 1_000_000)
 }

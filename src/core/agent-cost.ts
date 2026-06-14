@@ -50,7 +50,7 @@ export async function meterAgentTurn(opts: {
     const ranModel = usage?.model ?? opts.resolvedModel
     const priced = await getHookRegistry().invoke<{ model: string | null; costUsdMicros: number | null }>(
       'models.priceTurn',
-      { agentId: opts.agent, model: ranModel, input: usage?.input, output: usage?.output },
+      { agentId: opts.agent, model: ranModel, input: usage?.input, output: usage?.output, cacheRead: usage?.cacheRead },
     )
     const model = ranModel ?? priced?.model ?? null
     const costUsdMicros = priced?.costUsdMicros ?? null

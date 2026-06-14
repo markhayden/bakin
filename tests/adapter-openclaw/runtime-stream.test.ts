@@ -189,6 +189,22 @@ describe('OpenClaw runtime Gateway chat', () => {
     })
   })
 
+  it('prefers usage from the gateway payload (incl. cache tokens), no trajectory needed', async () => {
+    // The gap-1 case: an UNTHREADED send has no trajectory, yet usage still
+    // flows from the response payload — and carries cacheRead the trajectory
+    // model.completed event omits.
+    FakeWebSocket.onRequest = (frame, ws) => {
+      if (frame.method !== 'agent') return
+      ws.emitMessage({ type: 'res', id: frame.id, ok: true, payload: gatewayAgentPayload('done', { input: 537, output: 73, total: 610, cacheRead: 34200 }) })
+    }
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    const result = await runtime.messaging.send({ agentId: 'pixel', content: 'no thread' })
+
+    expect(result.usage).toEqual({ input: 537, output: 73, total: 610, cacheRead: 34200 })
+  })
+
   it('omits model/thinking from the gateway params when not set (inherit)', async () => {
     const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
     const runtime = createOpenClawRuntimeAdapter()
@@ -856,7 +872,7 @@ function gatewayAgentAcceptedAck(): Record<string, unknown> {
   return { runId: 'run-1', status: 'accepted', acceptedAt: Date.now() }
 }
 
-function gatewayAgentPayload(text: string): Record<string, unknown> {
+function gatewayAgentPayload(text: string, usage?: Record<string, number>): Record<string, unknown> {
   return {
     runId: 'run-1',
     status: 'ok',
@@ -866,6 +882,7 @@ function gatewayAgentPayload(text: string): Record<string, unknown> {
       meta: {
         finalAssistantVisibleText: text,
         finalAssistantRawText: text,
+        ...(usage ? { agentMeta: { provider: 'openai', model: 'gpt-5.4', usage } } : {}),
       },
     },
   }

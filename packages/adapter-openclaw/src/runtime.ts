@@ -14,6 +14,7 @@ import type {
   CreateCronJobInput,
   CreateRuntimeAgentInput,
   MessageArgs,
+  MessageUsage,
   RuntimeAgent,
   RuntimeAvailableModel,
   RuntimeImageEditInput,
@@ -132,11 +133,12 @@ interface OpenClawAgentTurnOptions {
 }
 
 /** Result of one OpenClaw agent turn: the assistant text plus token usage
- *  (sourced from the trajectory `model.completed` event; absent when the
- *  runtime recorded none or the turn had no trajectory). */
+ *  (preferred from the gateway payload, which carries cache tokens and works
+ *  for unthreaded sends; falls back to the trajectory `model.completed`
+ *  event). Absent when the runtime reported none. */
 interface OpenClawTurnResult {
   content: string
-  usage?: TrajectoryUsage
+  usage?: MessageUsage
 }
 
 class OpenClawCommandError extends RuntimeError {
@@ -1310,7 +1312,13 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         ? await Promise.race([request, deathWatch.promise])
         : await request
       const content = extractOpenClawAgentText(payload)
-      if (content) return { content, usage: this.readTurnUsage(trajectoryFile, trajectoryOffset, opts) }
+      if (content) {
+        // Prefer usage from the gateway payload (carries cache tokens, works
+        // for unthreaded sends, no extra disk read). Fall back to the
+        // trajectory only when the payload omitted it.
+        const usage = extractOpenClawAgentUsage(payload) ?? this.readTurnUsage(trajectoryFile, trajectoryOffset, opts)
+        return { content, ...(usage ? { usage } : {}) }
+      }
       // A SUCCESS frame whose payload yields no extractable text (payload
       // shape drift) is still recoverable when the trajectory recorded the
       // completion — don't fail a turn whose content exists on disk.
@@ -1551,6 +1559,29 @@ function extractOpenClawAgentText(value: unknown): string {
   }
   const summary = getJsonPath(parsed, ['summary'])
   return typeof summary === 'string' ? summary : ''
+}
+
+/**
+ * Token usage from the gateway agent response payload (`result.meta.agentMeta
+ * .usage`). Returned for every send — threaded or not — and carries cache
+ * tokens the trajectory `model.completed` event omits. Tokens only: the model
+ * is resolved Bakin-side (agent config / routing), not from the payload, to
+ * avoid provider-id-string mismatches against the pricing catalog. Returns
+ * undefined when no token counts are present (never fabricated).
+ */
+function extractOpenClawAgentUsage(value: unknown): MessageUsage | undefined {
+  const parsed = typeof value === 'string' ? parseJsonObject(value.trim()) : value
+  if (!parsed) return undefined
+  const usage = getJsonPath(parsed, ['result', 'meta', 'agentMeta', 'usage'])
+  if (!isPlainObject(usage)) return undefined
+  const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
+  const out: MessageUsage = {}
+  const input = num(usage.input); if (input !== undefined) out.input = input
+  const output = num(usage.output); if (output !== undefined) out.output = output
+  const total = num(usage.total); if (total !== undefined) out.total = total
+  const cacheRead = num(usage.cacheRead); if (cacheRead !== undefined) out.cacheRead = cacheRead
+  const cacheWrite = num(usage.cacheWrite); if (cacheWrite !== undefined) out.cacheWrite = cacheWrite
+  return out.input !== undefined || out.output !== undefined || out.total !== undefined ? out : undefined
 }
 
 function getJsonPath(value: unknown, path: string[]): unknown {

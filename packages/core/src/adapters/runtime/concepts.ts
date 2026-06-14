@@ -85,6 +85,10 @@ export interface MessageUsage {
   input?: number
   output?: number
   total?: number
+  /** Cached-input tokens read (priced far below fresh input when known). */
+  cacheRead?: number
+  /** Cached-input tokens written (cache creation). */
+  cacheWrite?: number
   /** Resolved model the runtime ran, when known. */
   model?: string
 }
