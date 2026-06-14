@@ -79,8 +79,8 @@ Cron expressions and run logs live in the runtime home. Bakin reads them; the ru
 | Max concurrent jobs | `number` | `3` | Maximum jobs that can run at the same time |
 | Failure cooldown (ms) | `number` | `300000` | Wait time after failure before retrying |
 | Max consecutive failures | `number` | `3` | Pause job after this many consecutive failures |
-| Bridge enabled | `boolean` | `true` | Allow cron jobs to create tasks via the bridge |
-| Startup reconciliation window | `number` | `24` | Create missed scheduled tasks only for successful runtime cron runs newer than this many hours. Set to 0 to disable startup backfill. |
+| Scheduler tick interval (seconds) | `number` | `30` | How often the scheduler checks for due schedules. Floor-clamped to 5s. |
+| Missed-fire safety window (minutes) | `number` | `60` | After downtime, a missed run fires normally if within this window; older runs land in Blocked for you to triage. Larger = more tolerant. |
 
 </div>
 <!-- /docs:settings -->

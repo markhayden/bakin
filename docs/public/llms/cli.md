@@ -6,4 +6,4 @@ Audience: coding agents and technical authors.
 
 Canonical docs: https://makinbakin.com/docs/
 
-The CLI reference is generated from src/core/cli/registry.ts. Current public command count: 65. Help output and generated docs use the same registry.
+The CLI reference is generated from src/core/cli/registry.ts. Current public command count: 64. Help output and generated docs use the same registry.

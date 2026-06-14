@@ -62,13 +62,20 @@ curl -sS \
 ```
 </OpenApiReference>
 
-<OpenApiReference operationId="core.post.api-agent-packages-agent-id-update">
+<OpenApiReference operationId="core.get.api-agent-packages-agent-id-receipt">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/agent-packages/<agentId>/receipt'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core.post.api-agent-packages-agent-id-sync">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   -X POST \
-  'http://localhost:3737/api/agent-packages/<agentId>/update' \
+  'http://localhost:3737/api/agent-packages/<agentId>/sync' \
   -H 'Content-Type: application/json' \
-  --data '{"refreshTemplate":true}'
+  --data '{"check":true,"reclaim":"value"}'
 ```
 </OpenApiReference>
 
@@ -79,6 +86,14 @@ curl -sS \
   'http://localhost:3737/api/agent-packages/install' \
   -H 'Content-Type: application/json' \
   --data '{"source":"value","adopt":true,"installAs":"value"}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core.post.api-agent-packages-migrate">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/agent-packages/migrate'
 ```
 </OpenApiReference>
 
@@ -293,11 +308,13 @@ curl -sS \
 ```
 </OpenApiReference>
 
-<OpenApiReference operationId="core.post.api-packages-package-id-update">
+<OpenApiReference operationId="core.post.api-packages-package-id-sync">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   -X POST \
-  'http://localhost:3737/api/packages/<packageId>/update'
+  'http://localhost:3737/api/packages/<packageId>/sync' \
+  -H 'Content-Type: application/json' \
+  --data '{"check":true}'
 ```
 </OpenApiReference>
 
@@ -502,6 +519,30 @@ curl -sS \
 ```
 </OpenApiReference>
 
+<OpenApiReference operationId="assets.post.tags-apply">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/assets/tags/apply'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets.post.tags-remove">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/assets/tags/remove'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets.post.tags-rename">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/assets/tags/rename'
+```
+</OpenApiReference>
+
 <OpenApiReference operationId="assets.get.trash">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
@@ -570,6 +611,14 @@ curl -sS \
 curl -sS \
   -X POST \
   'http://localhost:3737/api/plugins/assets/versioned/<assetId>/export'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets.patch.versioned-asset-id-metadata">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PATCH \
+  'http://localhost:3737/api/plugins/assets/versioned/<assetId>/metadata'
 ```
 </OpenApiReference>
 
@@ -694,7 +743,7 @@ curl -sS \
   -X POST \
   'http://localhost:3737/api/plugins/health/doctor/repair/apply' \
   -H 'Content-Type: application/json' \
-  --data '{"accepted":true,"itemIds":["value"]}'
+  --data '{"accepted":true,"itemIds":["value"],"allowDestructive":true}'
 ```
 </OpenApiReference>
 
@@ -927,6 +976,23 @@ curl -sS \
 ```
 </OpenApiReference>
 
+<OpenApiReference operationId="models.get.budget">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/models/budget'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="models.put.budget">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PUT \
+  'http://localhost:3737/api/plugins/models/budget' \
+  -H 'Content-Type: application/json' \
+  --data '{"global":{"dailyUsd":1,"monthlyUsd":1,"warnPct":1}}'
+```
+</OpenApiReference>
+
 <OpenApiReference operationId="models.get.config">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
@@ -954,28 +1020,28 @@ curl -sS \
 ```
 </OpenApiReference>
 
-<OpenApiReference operationId="models.get.profiles">
-```sh frame="terminal" showLineNumbers
-curl -sS \
-  'http://localhost:3737/api/plugins/models/profiles'
-```
-</OpenApiReference>
-
-<OpenApiReference operationId="models.put.profiles">
-```sh frame="terminal" showLineNumbers
-curl -sS \
-  -X PUT \
-  'http://localhost:3737/api/plugins/models/profiles' \
-  -H 'Content-Type: application/json' \
-  --data '{"profiles":[{"taskType":"value","recommendedModel":"value","notes":"value"}]}'
-```
-</OpenApiReference>
-
 <OpenApiReference operationId="models.post.refresh">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   -X POST \
   'http://localhost:3737/api/plugins/models/refresh'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="models.get.routing">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/models/routing'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="models.put.routing">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PUT \
+  'http://localhost:3737/api/plugins/models/routing' \
+  -H 'Content-Type: application/json' \
+  --data '{"policies":[{"origin":"scheduled","model":"value","thinking":"off"}],"tagOverrides":[{"tag":"value","model":"value","thinking":"off"}]}'
 ```
 </OpenApiReference>
 
@@ -991,6 +1057,13 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   'http://localhost:3737/api/plugins/models/runtime/status'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="models.get.spend">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/models/spend'
 ```
 </OpenApiReference>
 
@@ -1089,16 +1162,6 @@ curl -sS \
 ```
 </OpenApiReference>
 
-<OpenApiReference operationId="schedule.post.bridge">
-```sh frame="terminal" showLineNumbers
-curl -sS \
-  -X POST \
-  'http://localhost:3737/api/plugins/schedule/bridge?secret=<secret>' \
-  -H 'Content-Type: application/json' \
-  --data '{"jobId":"value","runId":"value"}'
-```
-</OpenApiReference>
-
 <OpenApiReference operationId="schedule.post.parse">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
@@ -1150,7 +1213,7 @@ curl -sS \
   -X PUT \
   'http://localhost:3737/api/plugins/tasks/<taskId>' \
   -H 'Content-Type: application/json' \
-  --data '{"id":"value","originalTitle":"value","title":"value","description":"value","agent":"value","column":"value","workflowId":"value","availableAt":"value","dueAt":"value","source":"value"}'
+  --data '{"id":"value","originalTitle":"value","title":"value","description":"value","agent":"value","column":"value","workflowId":"value","availableAt":"value","dueAt":"value","source":"value","expectedVersion":1}'
 ```
 </OpenApiReference>
 
@@ -1221,6 +1284,13 @@ curl -sS \
   'http://localhost:3737/api/plugins/tasks/<taskId>/move' \
   -H 'Content-Type: application/json' \
   --data '{"id":"value","title":"value","from":"value","to":"value","agent":"value","reason":"value","channel":"value"}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="tasks.get.task-id-runs">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/tasks/<taskId>/runs?limit=<limit>'
 ```
 </OpenApiReference>
 
@@ -1415,6 +1485,28 @@ curl -sS \
 ```
 </OpenApiReference>
 
+<OpenApiReference operationId="team.get.context">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/team/context'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="team.get.context-scope">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/team/context/<scope>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="team.put.context-scope">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PUT \
+  'http://localhost:3737/api/plugins/team/context/<scope>'
+```
+</OpenApiReference>
+
 <OpenApiReference operationId="team.get.settings">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
@@ -1465,6 +1557,14 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   'http://localhost:3737/api/plugins/team/teams/<teamId>/members'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="team.post.teams-team-id-sync">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/team/teams/<teamId>/sync'
 ```
 </OpenApiReference>
 
@@ -1625,5 +1725,5 @@ curl -sS \
 </OpenApiReference>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jun 5, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jun 13, 2026 · Bakin 0.0.0-dev</span>
 </aside>

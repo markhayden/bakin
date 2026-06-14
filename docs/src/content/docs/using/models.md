@@ -72,7 +72,6 @@ The runtime owns the actual model assignment (it's what gets sent to the gateway
 
 | Setting | Type | Default | What it does |
 | --- | --- | --- | --- |
-| Show usage metrics | `boolean` | `true` | Display token usage and cost estimates |
 | Default model | `select` | `openai-codex/gpt-5.4` | Default model for new agents |
 
 </div>
