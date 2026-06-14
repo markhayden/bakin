@@ -23,9 +23,6 @@ export function useSSE() {
   const appendAuditEntry = useContentStore((s) => s.appendAuditEntry)
   const appendActivityEvent = useContentStore((s) => s.appendActivityEvent)
   const setSseConnected = useContentStore((s) => s.setSseConnected)
-  const bumpTaskboard = useContentStore((s) => s.bumpTaskboard)
-  const bumpDoctor = useContentStore((s) => s.bumpDoctor)
-  const setReindexProgress = useContentStore((s) => s.setReindexProgress)
   const esRef = useRef<EventSource | null>(null)
   const retryRef = useRef(0)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -59,9 +56,10 @@ export function useSSE() {
           if (data.type === 'plugin-event') {
             emitPluginEvent(data)
           }
-          // Taskboard changed (SQLite mutation) — notify subscribers
+          // Taskboard changed (SQLite mutation) — notify subscribers via the
+          // same fan-out (the tasks board + nav badge subscribe to 'taskboard').
           if (data.type === 'taskboard') {
-            bumpTaskboard()
+            emitPluginEvent({ event: 'taskboard' })
             return
           }
 
@@ -93,9 +91,9 @@ export function useSSE() {
             const entry = data.entry
             const entryData = entry.data || {}
             appendAuditEntry(entry)
-            // A doctor run just refreshed the health-check cache — bump a
-            // reactive signal the Health nav badge refetches on.
-            if (entry.event === 'doctor.run') bumpDoctor()
+            // A doctor run just refreshed the health-check cache — notify the
+            // Health nav badge / summary (they subscribe to 'doctor.run').
+            if (entry.event === 'doctor.run') emitPluginEvent({ event: 'doctor.run' })
             appendActivityEvent({
               id: `${entry.ts}-${entry.event}-${entry.agent}`,
               ts: entry.ts,
@@ -159,13 +157,13 @@ export function useSSE() {
           // below give the activity feed a single start/pulse/complete
           // pair instead.
           if (data.type === 'reindex.start') {
-            setReindexProgress(data.table, 0, false)
+            emitPluginEvent({ event: 'reindex.start', table: data.table })
           }
           if (data.type === 'reindex.progress') {
-            setReindexProgress(data.table, data.indexed ?? 0, false)
+            emitPluginEvent({ event: 'reindex.progress', table: data.table, indexed: data.indexed ?? 0 })
           }
           if (data.type === 'reindex.complete') {
-            setReindexProgress(data.table, data.indexed ?? 0, true)
+            emitPluginEvent({ event: 'reindex.complete', table: data.table, indexed: data.indexed ?? 0 })
           }
 
           // Aggregate reindex events for the activity feed — one entry
@@ -244,5 +242,5 @@ export function useSSE() {
       esRef.current?.close()
       esRef.current = null
     }
-  }, [updateFile, setConnected, setHeartbeats, initialize, appendAuditEntry, appendActivityEvent, setSseConnected, bumpTaskboard, bumpDoctor, setReindexProgress])
+  }, [updateFile, setConnected, setHeartbeats, initialize, appendAuditEntry, appendActivityEvent, setSseConnected])
 }

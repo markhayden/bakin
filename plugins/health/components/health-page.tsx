@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
-import { useContentStore } from "@makinbakin/sdk/hooks"
+import { usePluginEvent } from "@makinbakin/sdk/hooks"
 import { useQueryState } from "@makinbakin/sdk/hooks"
 import { Card, CardHeader, CardTitle, CardContent } from "@makinbakin/sdk/ui"
 import { Badge } from "@makinbakin/sdk/ui"
@@ -449,8 +449,12 @@ export function HealthPage() {
     }>
   } | null>(null)
   const [reindexing, setReindexing] = useState(false)
-  const reindexProgress = useContentStore((s) => s.reindexProgress)
-  const clearReindexProgress = useContentStore((s) => s.clearReindexProgress)
+  // Per-table reindex progress, fed by the shell's single SSE connection.
+  const [reindexProgress, setReindexProgress] = useState<Record<string, { indexed: number; done: boolean }>>({})
+  const clearReindexProgress = useCallback(() => setReindexProgress({}), [])
+  usePluginEvent('reindex.start', (d) => setReindexProgress((p) => ({ ...p, [d.table as string]: { indexed: 0, done: false } })))
+  usePluginEvent('reindex.progress', (d) => setReindexProgress((p) => ({ ...p, [d.table as string]: { indexed: (d.indexed as number) ?? 0, done: false } })))
+  usePluginEvent('reindex.complete', (d) => setReindexProgress((p) => ({ ...p, [d.table as string]: { indexed: (d.indexed as number) ?? 0, done: true } })))
 
   // Search state
   const [pluginSearch, setPluginSearch] = useState('')
