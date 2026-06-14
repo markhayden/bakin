@@ -7,7 +7,7 @@ Client/browser work — PR gate REQUIRES the dockerized-rig E2E + Playwright pag
 (not just bun test). Respect the WS1 two-tier type contract.
 
 ## Primitives + migrations (independent; lowest-risk-first)
-- [ ] A1 — usePluginEvent: shell SSE fan-out + migrate 3 assets EventSources + refactor taskboard/doctor/reindex counters
+- [x] A1 — usePluginEvent: shell SSE fan-out + 3 assets EventSources migrated + taskboard/doctor/reindex counters refactored ✅ (2 commits)
 - [ ] A2 — useJsonFetch: hook + migrate the team plugin's `let cancelled` cluster (11 sites total)
 - [ ] A3 — ConfirmDialog: SDK component + migrate 6 hand-rolled delete dialogs
 - [ ] A4 — formatDuration/formatDateTime in core/format + SDK utils; migrate 7 reimpls; delete health's dup
