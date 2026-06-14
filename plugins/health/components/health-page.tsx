@@ -481,6 +481,7 @@ export function HealthPage() {
   const [usageWindow, setUsageWindow] = useQueryState('usage_window', '1h')
   const kindForTab: UsageKind = usageTab === 'endpoints' ? 'rest' : usageTab === 'agents' ? 'agent' : 'mcp'
   const [usageFeed, setUsageFeed] = useState<UsageFeedData | null>(null)
+  const [meteredSpend, setMeteredSpend] = useState<{ totalUsdMicros: number; byAgent: Array<{ agent: string; costUsdMicros: number; runs: number }> } | null>(null)
   const lastPluginCheckRef = useRef(0)
 
   const fetchPluginManifest = useCallback(async (force = false) => {
@@ -504,12 +505,13 @@ export function HealthPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [summaryRes, registryRes, usageRes, searchRes, feedRes] = await Promise.all([
+      const [summaryRes, registryRes, usageRes, searchRes, feedRes, spendRes] = await Promise.all([
         fetch('/api/plugins/health/summary'),
         fetch('/api/plugins/health/registry'),
         fetch('/api/plugins/health/usage'),
         fetch('/api/plugins/health/search-status'),
         fetch(`/api/plugins/health/usage-feed?kind=${kindForTab}&window=${usageWindow}`),
+        fetch('/api/plugins/models/spend?window=24h'),
       ])
       const json = await summaryRes.json()
       setData(json)
@@ -529,6 +531,10 @@ export function HealthPage() {
         const searchJson = await searchRes.json()
         setSearchHealth(searchJson)
       } catch { /* search endpoint optional */ }
+      try {
+        const spendJson = await spendRes.json()
+        if (spendJson && typeof spendJson.totalUsdMicros === 'number') setMeteredSpend(spendJson)
+      } catch { /* models spend optional (plugin may be disabled) */ }
       await fetchPluginManifest(false)
       setLastRefresh(new Date())
     } catch (err) {
@@ -912,6 +918,44 @@ export function HealthPage() {
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* Bakin metered spend (run_costs) — distinct from the runtime-reported
+          card above: this is Bakin's own per-turn estimate over the last 24h,
+          the same number budget caps gate on. */}
+      {meteredSpend && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span>Bakin Metered Spend (24h, estimated)</span>
+              <Badge variant="secondary" className="font-mono text-xs">
+                ~{formatRuntimeCost(meteredSpend.totalUsdMicros / 1_000_000)}
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {meteredSpend.byAgent.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No metered turns in the last 24h.</p>
+            ) : (
+              <div className="space-y-1.5">
+                <div className="flex items-center text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-white/5">
+                  <span className="flex-1">Agent</span>
+                  <span className="w-16 text-right">Runs</span>
+                  <span className="w-20 text-right">Est. cost</span>
+                </div>
+                {[...meteredSpend.byAgent].sort((a, b) => b.costUsdMicros - a.costUsdMicros).map((r) => (
+                  <div key={r.agent} className="flex items-center text-sm">
+                    <span className="flex-1 font-medium">{r.agent}</span>
+                    <span className="w-16 text-right font-mono text-xs text-muted-foreground">{r.runs}</span>
+                    <span className={`w-20 text-right font-mono text-xs font-medium ${r.costUsdMicros === 0 ? 'text-muted-foreground' : ''}`}>
+                      {r.costUsdMicros === 0 ? '$ n/a' : formatRuntimeCost(r.costUsdMicros / 1_000_000)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* Active Plugins */}
