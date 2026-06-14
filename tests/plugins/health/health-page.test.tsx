@@ -117,8 +117,8 @@ describe('HealthPage search stats', () => {
   })
 })
 
-describe('HealthPage runtime cost display', () => {
-  it('separates runtime-reported cost from unavailable cost', async () => {
+describe('HealthPage runtime usage display', () => {
+  it('shows the Runtime Usage token table without a dollar cost (cost lives in Bakin Spend)', async () => {
     setupHealthFetch({
       usage: [
         {
@@ -144,9 +144,14 @@ describe('HealthPage runtime cost display', () => {
 
     render(<HealthPage />)
 
-    expect(await screen.findByText('Runtime Cost Estimate')).toBeDefined()
-    expect(screen.getByText('~$0.03 reported')).toBeDefined()
-    expect(screen.getByText('unavailable')).toBeDefined()
+    // The runtime card is now usage-only (tokens), no dollar figure — cost
+    // moved to the separate "Bakin Spend" card to avoid two competing
+    // "cost" numbers.
+    expect(await screen.findByText('Runtime Usage')).toBeDefined()
+    expect(screen.getAllByText('patch').length).toBeGreaterThan(0)
+    // No runtime-reported dollar cost rendered on this card anymore.
+    expect(screen.queryByText(/reported/)).toBeNull()
+    expect(screen.queryByText(/\$0\.03/)).toBeNull()
   })
 })
 

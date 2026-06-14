@@ -849,113 +849,105 @@ export function HealthPage() {
         </CardContent>
       </Card>
 
-      {/* Agent Context Usage */}
+      {/* Context Usage — full width: per-agent token totals (latest session). */}
       {usage.length > 0 && (
-        <div className="grid md:grid-cols-2 gap-6">
-          {/* Token usage bar chart */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>Context Usage</span>
-                <span className="text-xs font-normal text-muted-foreground">latest session per agent</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <HorizontalBars
-                items={usage.map((u) => ({
-                  label: u.agent,
-                  value: u.tokens.total,
-                  sublabel: u.sessionStarted ? formatAge(u.sessionStarted) : `${u.messages} msg`,
-                }))}
-                unit=" tokens"
-              />
-            </CardContent>
-          </Card>
-
-          {/* Cost breakdown table */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>Runtime Cost Estimate</span>
-                <Badge variant="secondary" className="font-mono text-xs">
-                  {usage.some((u) => u.cost.total !== null)
-                    ? `~${formatRuntimeCost(usage.reduce((sum, u) => sum + (u.cost.total ?? 0), 0))} reported`
-                    : 'cost unavailable'}
-                </Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-1.5">
-                <div className="flex items-center text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-white/5">
-                  <span className="flex-1">Agent</span>
-                  <span className="w-14 text-right">In</span>
-                  <span className="w-14 text-right">Out</span>
-                  <span className="w-16 text-right">Cache R</span>
-                  <span className="w-16 text-right">Cache W</span>
-                  <span className="w-16 text-right">Cost</span>
-                </div>
-                {usage.map((u) => (
-                  <div key={u.agent} className="flex items-center text-sm">
-                    <span className="flex-1 font-medium">{u.agent}</span>
-                    <span className="w-14 text-right font-mono text-xs text-muted-foreground">
-                      {formatTokenCount(u.tokens.input)}
-                    </span>
-                    <span className="w-14 text-right font-mono text-xs text-muted-foreground">
-                      {formatTokenCount(u.tokens.output)}
-                    </span>
-                    <span className="w-16 text-right font-mono text-xs text-muted-foreground">
-                      {formatTokenCount(u.tokens.cacheRead)}
-                    </span>
-                    <span className="w-16 text-right font-mono text-xs text-muted-foreground">
-                      {formatTokenCount(u.tokens.cacheWrite)}
-                    </span>
-                    <span className={`w-16 text-right font-mono text-xs font-medium ${u.cost.total === null ? 'text-muted-foreground' : ''}`}>
-                      {formatRuntimeCost(u.cost.total)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Bakin metered spend (run_costs) — distinct from the runtime-reported
-          card above: this is Bakin's own per-turn estimate over the last 24h,
-          the same number budget caps gate on. */}
-      {meteredSpend && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
-              <span>Bakin Metered Spend (24h, estimated)</span>
-              <Badge variant="secondary" className="font-mono text-xs">
-                ~{formatRuntimeCost(meteredSpend.totalUsdMicros / 1_000_000)}
-              </Badge>
+              <span>Context Usage</span>
+              <span className="text-xs font-normal text-muted-foreground">latest session per agent</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {meteredSpend.byAgent.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No metered turns in the last 24h.</p>
-            ) : (
-              <div className="space-y-1.5">
-                <div className="flex items-center text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-white/5">
-                  <span className="flex-1">Agent</span>
-                  <span className="w-16 text-right">Runs</span>
-                  <span className="w-20 text-right">Est. cost</span>
-                </div>
-                {[...meteredSpend.byAgent].sort((a, b) => b.costUsdMicros - a.costUsdMicros).map((r) => (
-                  <div key={r.agent} className="flex items-center text-sm">
-                    <span className="flex-1 font-medium">{r.agent}</span>
-                    <span className="w-16 text-right font-mono text-xs text-muted-foreground">{r.runs}</span>
-                    <span className={`w-20 text-right font-mono text-xs font-medium ${r.costUsdMicros === 0 ? 'text-muted-foreground' : ''}`}>
-                      {r.costUsdMicros === 0 ? '$ n/a' : formatRuntimeCost(r.costUsdMicros / 1_000_000)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
+            <HorizontalBars
+              items={usage.map((u) => ({
+                label: u.agent,
+                value: u.tokens.total,
+                sublabel: u.sessionStarted ? formatAge(u.sessionStarted) : `${u.messages} msg`,
+              }))}
+              unit=" tokens"
+            />
           </CardContent>
         </Card>
+      )}
+
+      {/* The two detail tables, side by side: runtime-reported token usage
+          (left) and Bakin's estimated spend that the budget cap gates on
+          (right). One is about tokens, the other about dollars — no longer
+          two competing "cost" numbers. */}
+      {(usage.length > 0 || meteredSpend) && (
+        <div className="grid md:grid-cols-2 gap-6">
+          {/* Runtime Usage — token breakdown the runtime reports (no $). */}
+          {usage.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span>Runtime Usage</span>
+                  <Badge variant="secondary" className="font-mono text-xs">
+                    {formatTokenCount(usage.reduce((sum, u) => sum + (u.tokens.total ?? 0), 0))} tokens
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-1.5">
+                  <div className="flex items-center text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-white/5">
+                    <span className="flex-1">Agent</span>
+                    <span className="w-14 text-right">In</span>
+                    <span className="w-14 text-right">Out</span>
+                    <span className="w-16 text-right">Cache R</span>
+                    <span className="w-16 text-right">Cache W</span>
+                  </div>
+                  {usage.map((u) => (
+                    <div key={u.agent} className="flex items-center text-sm">
+                      <span className="flex-1 font-medium">{u.agent}</span>
+                      <span className="w-14 text-right font-mono text-xs text-muted-foreground">{formatTokenCount(u.tokens.input)}</span>
+                      <span className="w-14 text-right font-mono text-xs text-muted-foreground">{formatTokenCount(u.tokens.output)}</span>
+                      <span className="w-16 text-right font-mono text-xs text-muted-foreground">{formatTokenCount(u.tokens.cacheRead)}</span>
+                      <span className="w-16 text-right font-mono text-xs text-muted-foreground">{formatTokenCount(u.tokens.cacheWrite)}</span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Bakin Spend — the estimated dollars the budget cap enforces. */}
+          {meteredSpend && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span>Bakin Spend</span>
+                  <Badge variant="secondary" className="font-mono text-xs">
+                    ~{formatRuntimeCost(meteredSpend.totalUsdMicros / 1_000_000)} / 24h
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-[11px] text-muted-foreground mb-2">Bakin&apos;s estimate (the figure budget caps gate on).</p>
+                {meteredSpend.byAgent.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No metered turns in the last 24h.</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-white/5">
+                      <span className="flex-1">Agent</span>
+                      <span className="w-16 text-right">Runs</span>
+                      <span className="w-20 text-right">Est. cost</span>
+                    </div>
+                    {[...meteredSpend.byAgent].sort((a, b) => b.costUsdMicros - a.costUsdMicros).map((r) => (
+                      <div key={r.agent} className="flex items-center text-sm">
+                        <span className="flex-1 font-medium">{r.agent}</span>
+                        <span className="w-16 text-right font-mono text-xs text-muted-foreground">{r.runs}</span>
+                        <span className={`w-20 text-right font-mono text-xs font-medium ${r.costUsdMicros === 0 ? 'text-muted-foreground' : ''}`}>
+                          {r.costUsdMicros === 0 ? '$ n/a' : formatRuntimeCost(r.costUsdMicros / 1_000_000)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
       )}
 
       {/* Active Plugins */}
