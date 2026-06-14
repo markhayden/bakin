@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import { useContentStore } from './use-content-store'
+import { emitPluginEvent } from './use-plugin-event'
 import type { Heartbeat } from '@/types'
 import { mapAuditMessage } from '@/lib/map-audit-message'
 import { sendBrowserNotification } from '@/lib/browser-notify'
@@ -53,6 +54,11 @@ export function useSSE() {
       es.onmessage = (e) => {
         try {
           const data = JSON.parse(e.data)
+          // Fan every plugin-event payload out to usePluginEvent subscribers
+          // over this single connection (plugins no longer open their own).
+          if (data.type === 'plugin-event') {
+            emitPluginEvent(data)
+          }
           // Taskboard changed (SQLite mutation) — notify subscribers
           if (data.type === 'taskboard') {
             bumpTaskboard()
