@@ -173,6 +173,18 @@ describe('structured pricing', () => {
     expect(computeCostUsdMicros({}, { inputPer1M: 3, outputPer1M: 15, updatedAt: '2026-06' })).toBeNull()
   })
 
+  it('computeCostUsdMicros prices a cache-only turn (no fresh input/output)', () => {
+    // input=output=0 but 1M cacheRead @ 0.1x$3 = $0.30 → must NOT be dropped.
+    expect(computeCostUsdMicros({ input: 0, output: 0, cacheRead: 1_000_000 }, { inputPer1M: 3, outputPer1M: 15, updatedAt: '2026-06' }))
+      .toBe(300_000)
+  })
+
+  it('computeCostUsdMicros prices cache writes (default 1.25x input)', () => {
+    // input 1M @ $3 + cacheWrite 1M @ 1.25x$3 ($3.75) = $6.75 → 6_750_000.
+    expect(computeCostUsdMicros({ input: 1_000_000, output: 0, cacheWrite: 1_000_000 }, { inputPer1M: 3, outputPer1M: 15, updatedAt: '2026-06' }))
+      .toBe(6_750_000)
+  })
+
   it('computeImageCostUsdMicros multiplies count by the per-image rate', () => {
     expect(computeImageCostUsdMicros(3, 0.055)).toBe(165_000) // 3 × $0.055
   })

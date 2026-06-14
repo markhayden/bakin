@@ -22,12 +22,23 @@
 export interface ModelPricing {
   inputPer1M: number
   outputPer1M: number
-  /** Cached-input read price, when the provider discounts it. Display-only
-   *  for now — trajectory usage doesn't break out cached tokens (#464). */
+  /** Cached-input read price; defaults to DEFAULT_CACHE_READ_MULTIPLIER×input. */
   cachedReadPer1M?: number
+  /** Cache-creation (write) price; defaults to DEFAULT_CACHE_WRITE_MULTIPLIER×input. */
+  cacheWritePer1M?: number
   /** When this price was last verified (YYYY-MM), surfaced for staleness. */
   updatedAt: string
 }
+
+/**
+ * Default cache multipliers vs. fresh input, used when a model doesn't declare
+ * explicit rates. ESTIMATE-GRADE: 0.1× read / 1.25× write are exact for
+ * Anthropic; OpenAI/Google cached reads run higher (~0.25–0.5×), so the
+ * estimate can under-count cache-heavy non-Anthropic turns. Override per model
+ * via cachedReadPer1M / cacheWritePer1M when an exact rate is known.
+ */
+export const DEFAULT_CACHE_READ_MULTIPLIER = 0.1
+export const DEFAULT_CACHE_WRITE_MULTIPLIER = 1.25
 
 export interface KnownModel {
   /** Match against the runtime-sourced id. Use the canonical base id; the
@@ -402,28 +413,25 @@ export function formatCostRange(pricing: ModelPricing): string {
  * when prompt caching is active — it's an estimate, not an invoice.
  */
 export function computeCostUsdMicros(
-  usage: { input?: number; output?: number; total?: number; cacheRead?: number },
+  usage: { input?: number; output?: number; total?: number; cacheRead?: number; cacheWrite?: number },
   pricing: ModelPricing | undefined,
 ): number | null {
   if (!pricing) return null
   const input = usage.input ?? 0
   const output = usage.output ?? 0
   const cacheRead = usage.cacheRead ?? 0
-  // Pricing needs the input/output split (different per-1M rates). A usage
-  // block carrying only a combined `total` can't be priced accurately, so we
-  // return null (unmetered) rather than guess — input/output is always
-  // present in practice; this is the honest fallback for the degenerate case.
-  if (input === 0 && output === 0) return null
-  // Cached-input reads are billed far below fresh input. Use the model's
-  // declared cachedReadPer1M, else approximate at 0.1x input — the common
-  // cross-provider default. Estimate-grade (the whole feature is), but far
-  // better than pricing cache reads at $0 (large cache reads otherwise make
-  // cost read way low — e.g. a turn with 34k cache reads).
-  const cacheReadRate = pricing.cachedReadPer1M ?? pricing.inputPer1M * 0.1
+  const cacheWrite = usage.cacheWrite ?? 0
+  // Nothing to price → unmetered (a `total`-only block can't be split across
+  // the different per-1M rates, so we don't guess). A cache-only turn (e.g. a
+  // fully-cached continuation) IS priceable, so it must NOT be dropped here.
+  if (input === 0 && output === 0 && cacheRead === 0 && cacheWrite === 0) return null
+  const cacheReadRate = pricing.cachedReadPer1M ?? pricing.inputPer1M * DEFAULT_CACHE_READ_MULTIPLIER
+  const cacheWriteRate = pricing.cacheWritePer1M ?? pricing.inputPer1M * DEFAULT_CACHE_WRITE_MULTIPLIER
   const dollars =
     (input / 1_000_000) * pricing.inputPer1M +
     (output / 1_000_000) * pricing.outputPer1M +
-    (cacheRead / 1_000_000) * cacheReadRate
+    (cacheRead / 1_000_000) * cacheReadRate +
+    (cacheWrite / 1_000_000) * cacheWriteRate
   return Math.round(dollars * 1_000_000)
 }
 

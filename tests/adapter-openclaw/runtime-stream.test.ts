@@ -205,6 +205,35 @@ describe('OpenClaw runtime Gateway chat', () => {
     expect(result.usage).toEqual({ input: 537, output: 73, total: 610, cacheRead: 34200 })
   })
 
+  it('falls back to the trajectory when the payload usage is total-only (unpriceable)', async () => {
+    // Payload carries only a combined total (no input/output split) → must NOT
+    // mask the trajectory, which has the priceable input/output breakdown.
+    FakeWebSocket.onRequest = (frame, ws) => {
+      if (frame.method !== 'agent') return
+      const sessionId = frame.params.sessionId as string
+      const dir = join(testDir, 'agents', 'pixel', 'sessions')
+      mkdirSync(dir, { recursive: true })
+      const lines = [
+        { type: 'session.started', data: {} },
+        { type: 'model.completed', data: { timedOut: false, aborted: false, usage: { input: 4200, output: 800, total: 5000 }, assistantTexts: ['done'] } },
+        { type: 'session.ended', data: { status: 'success', timedOut: false } },
+      ].map((e, i) => JSON.stringify({
+        traceSchema: 'openclaw-trajectory', schemaVersion: 1, traceId: sessionId,
+        type: e.type, ts: new Date(0).toISOString(), seq: i + 1, sessionId, runId: 'run-1', data: e.data,
+      }))
+      writeFileSync(join(dir, `${sessionId}.trajectory.jsonl`), lines.join('\n') + '\n')
+      // Payload usage is total-only — not priceable on its own.
+      ws.emitMessage({ type: 'res', id: frame.id, ok: true, payload: gatewayAgentPayload('done', { total: 5000 }) })
+    }
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    const result = await runtime.messaging.send({ agentId: 'pixel', content: 'go', threadId: 'task:t-tot:d1' })
+
+    // Trajectory's input/output split wins over the total-only payload.
+    expect(result.usage).toEqual({ input: 4200, output: 800, total: 5000 })
+  })
+
   it('omits model/thinking from the gateway params when not set (inherit)', async () => {
     const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
     const runtime = createOpenClawRuntimeAdapter()

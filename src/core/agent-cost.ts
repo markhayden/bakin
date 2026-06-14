@@ -23,6 +23,60 @@ const log = createLogger('agent-cost')
 // verbs) from breaking at load; a missing export simply no-ops inside the
 // try/catch below. Modules are cached after first import — negligible cost.
 
+/** Dynamically load the hook registry (see note above on why it's dynamic). */
+async function loadHooks() {
+  return (await import('../lib/plugin-registry')).getHookRegistry()
+}
+
+/**
+ * Single writer for both meter paths: persist one durable run_costs row + one
+ * live usage-recorder entry. Single-sourced so the two callers can't drift on
+ * the budget-cap's spend contract. Never throws.
+ */
+async function recordSpend(e: {
+  runId: string
+  taskId?: string | null
+  agent: string
+  model?: string | null
+  costUsdMicros: number | null
+  /** Usage-recorder entry name (e.g. 'turn', 'image'). */
+  name: string
+  tokens?: { input?: number; output?: number; total?: number }
+  /** Extra recorder meta (e.g. image count). */
+  meta?: Record<string, unknown>
+}): Promise<void> {
+  try {
+    const [{ recordRunCost }, { recordUsage }] = await Promise.all([
+      import('./execution-ledger'),
+      import('./usage'),
+    ])
+    recordRunCost({
+      runId: e.runId,
+      taskId: e.taskId ?? null,
+      agent: e.agent,
+      model: e.model ?? undefined,
+      inputTokens: e.tokens?.input ?? null,
+      outputTokens: e.tokens?.output ?? null,
+      totalTokens: e.tokens?.total ?? null,
+      costUsdMicros: e.costUsdMicros,
+      occurredAt: Date.now(),
+    })
+    recordUsage({
+      kind: 'agent',
+      name: e.name,
+      agent: e.agent,
+      durationMs: null,
+      status: 'ok',
+      ...(e.tokens?.input !== undefined ? { tokensIn: e.tokens.input } : {}),
+      ...(e.tokens?.output !== undefined ? { tokensOut: e.tokens.output } : {}),
+      ...(e.costUsdMicros !== null ? { costUsdMicros: e.costUsdMicros } : {}),
+      meta: { ...(e.taskId ? { taskId: e.taskId } : {}), ...(e.model ? { model: e.model } : {}), ...(e.meta ?? {}) },
+    })
+  } catch (err) {
+    log.error('Failed to record spend event', err, { agent: e.agent, runId: e.runId })
+  }
+}
+
 export async function meterAgentTurn(opts: {
   /** Ledger run id for dispatched turns (== threadId); omit for non-dispatch
    *  sends, which get a synthetic id (they aren't retried at this layer). */
@@ -38,43 +92,23 @@ export async function meterAgentTurn(opts: {
   name?: string
 }): Promise<void> {
   try {
-    const [{ recordRunCost }, { recordUsage }, { getHookRegistry }] = await Promise.all([
-      import('./execution-ledger'),
-      import('./usage'),
-      import('../lib/plugin-registry'),
-    ])
     const usage = opts.result.usage
     // Prefer the model the runtime ACTUALLY ran (from usage) over the one we
     // requested — a per-turn override the provider rejected/fell back from
     // must be priced against what ran, not what we asked for (review #3).
     const ranModel = usage?.model ?? opts.resolvedModel
-    const priced = await getHookRegistry().invoke<{ model: string | null; costUsdMicros: number | null }>(
+    const priced = await (await loadHooks()).invoke<{ model: string | null; costUsdMicros: number | null }>(
       'models.priceTurn',
-      { agentId: opts.agent, model: ranModel, input: usage?.input, output: usage?.output, cacheRead: usage?.cacheRead },
+      { agentId: opts.agent, model: ranModel, input: usage?.input, output: usage?.output, cacheRead: usage?.cacheRead, cacheWrite: usage?.cacheWrite },
     )
-    const model = ranModel ?? priced?.model ?? null
-    const costUsdMicros = priced?.costUsdMicros ?? null
-    recordRunCost({
+    await recordSpend({
       runId: opts.runId ?? `turn:${randomUUID()}`,
-      taskId: opts.taskId ?? null,
+      taskId: opts.taskId,
       agent: opts.agent,
-      model: model ?? undefined,
-      inputTokens: usage?.input ?? null,
-      outputTokens: usage?.output ?? null,
-      totalTokens: usage?.total ?? null,
-      costUsdMicros,
-      occurredAt: Date.now(),
-    })
-    recordUsage({
-      kind: 'agent',
+      model: ranModel ?? priced?.model ?? null,
+      costUsdMicros: priced?.costUsdMicros ?? null,
       name: opts.name ?? 'turn',
-      agent: opts.agent,
-      durationMs: null,
-      status: 'ok',
-      ...(usage?.input !== undefined ? { tokensIn: usage.input } : {}),
-      ...(usage?.output !== undefined ? { tokensOut: usage.output } : {}),
-      ...(costUsdMicros !== null ? { costUsdMicros } : {}),
-      meta: { ...(opts.taskId ? { taskId: opts.taskId } : {}), ...(model ? { model } : {}) },
+      tokens: { input: usage?.input, output: usage?.output, total: usage?.total },
     })
   } catch (err) {
     log.error('Failed to meter agent turn', err, { agent: opts.agent, runId: opts.runId })
@@ -96,32 +130,18 @@ export async function meterImageTurn(opts: {
   taskId?: string | null
 }): Promise<void> {
   try {
-    const [{ recordRunCost }, { recordUsage }, { getHookRegistry }] = await Promise.all([
-      import('./execution-ledger'),
-      import('./usage'),
-      import('../lib/plugin-registry'),
-    ])
-    const priced = await getHookRegistry().invoke<{ model: string | null; costUsdMicros: number | null }>(
+    const priced = await (await loadHooks()).invoke<{ model: string | null; costUsdMicros: number | null }>(
       'models.priceImage',
       { model: opts.model, count: opts.count },
     )
-    const costUsdMicros = priced?.costUsdMicros ?? null
-    recordRunCost({
+    await recordSpend({
       runId: `image:${randomUUID()}`,
-      taskId: opts.taskId ?? null,
+      taskId: opts.taskId,
       agent: opts.agent,
       model: opts.model,
-      costUsdMicros,
-      occurredAt: Date.now(),
-    })
-    recordUsage({
-      kind: 'agent',
+      costUsdMicros: priced?.costUsdMicros ?? null,
       name: 'image',
-      agent: opts.agent,
-      durationMs: null,
-      status: 'ok',
-      ...(costUsdMicros !== null ? { costUsdMicros } : {}),
-      meta: { ...(opts.taskId ? { taskId: opts.taskId } : {}), model: opts.model, count: opts.count },
+      meta: { count: opts.count },
     })
   } catch (err) {
     log.error('Failed to meter image turn', err, { agent: opts.agent, model: opts.model })

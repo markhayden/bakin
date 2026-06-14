@@ -1581,7 +1581,10 @@ function extractOpenClawAgentUsage(value: unknown): MessageUsage | undefined {
   const total = num(usage.total); if (total !== undefined) out.total = total
   const cacheRead = num(usage.cacheRead); if (cacheRead !== undefined) out.cacheRead = cacheRead
   const cacheWrite = num(usage.cacheWrite); if (cacheWrite !== undefined) out.cacheWrite = cacheWrite
-  return out.input !== undefined || out.output !== undefined || out.total !== undefined ? out : undefined
+  // Require the input/output split for the result to be priceable. A
+  // total-only block isn't — returning it would short-circuit the trajectory
+  // fallback (which may carry the split), leaving the turn unmetered.
+  return out.input !== undefined || out.output !== undefined ? out : undefined
 }
 
 function getJsonPath(value: unknown, path: string[]): unknown {

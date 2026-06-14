@@ -694,7 +694,7 @@ const routes = [
     path: '/spend',
     method: 'GET',
     summary: 'Estimated agent spend over a window',
-    description: 'Windowed token/cost rollups from the execution ledger (total, by agent, by model). Costs are estimates — cached-token discounts are not modeled.',
+    description: 'Windowed token/cost rollups from the execution ledger (total, by agent, by model). Costs are estimates — cache-token rates default to a fixed multiple of input where a model does not declare exact rates.',
     responses: { 200: passthrough, 500: errorResponse },
     handler: async (req) => {
       try {
@@ -808,6 +808,7 @@ const modelsPlugin: BakinPlugin = definePlugin({
       const input = typeof data.input === 'number' ? data.input : undefined
       const output = typeof data.output === 'number' ? data.output : undefined
       const cacheRead = typeof data.cacheRead === 'number' ? data.cacheRead : undefined
+      const cacheWrite = typeof data.cacheWrite === 'number' ? data.cacheWrite : undefined
 
       let model = explicit ? normalizeModelId(explicit) : null
       if (!model && agentId) {
@@ -815,7 +816,7 @@ const modelsPlugin: BakinPlugin = definePlugin({
         model = agents.find((a) => a.agentId === agentId)?.effectiveModel ?? null
       }
       const pricing = model ? getKnownModel(model)?.pricing : undefined
-      const costUsdMicros = computeCostUsdMicros({ input, output, cacheRead }, pricing)
+      const costUsdMicros = computeCostUsdMicros({ input, output, cacheRead, cacheWrite }, pricing)
       return { model, costUsdMicros }
     }, { label: 'Price a turn.', summary: 'Resolves the model an agent turn ran on and returns an estimated cost in micro-dollars from the catalog pricing. Use it to attribute spend to a completed turn. Cost is null when the model is unpriced.', hookKind: 'rpc' })
 

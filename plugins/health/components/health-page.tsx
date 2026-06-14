@@ -511,7 +511,9 @@ export function HealthPage() {
         fetch('/api/plugins/health/usage'),
         fetch('/api/plugins/health/search-status'),
         fetch(`/api/plugins/health/usage-feed?kind=${kindForTab}&window=${usageWindow}`),
-        fetch('/api/plugins/models/spend?window=24h'),
+        // Cross-plugin + optional: a transport error must not reject the batch
+        // and blank the core panels, so swallow it to a null response here.
+        fetch('/api/plugins/models/spend?window=24h').catch(() => null),
       ])
       const json = await summaryRes.json()
       setData(json)
@@ -532,8 +534,12 @@ export function HealthPage() {
         setSearchHealth(searchJson)
       } catch { /* search endpoint optional */ }
       try {
-        const spendJson = await spendRes.json()
-        if (spendJson && typeof spendJson.totalUsdMicros === 'number') setMeteredSpend(spendJson)
+        // Only trust a 2xx body — the /spend error path returns 500 with a
+        // {totalUsdMicros:0} shape, which must NOT render as a real $0 card.
+        if (spendRes?.ok) {
+          const spendJson = await spendRes.json()
+          if (spendJson && typeof spendJson.totalUsdMicros === 'number') setMeteredSpend(spendJson)
+        }
       } catch { /* models spend optional (plugin may be disabled) */ }
       await fetchPluginManifest(false)
       setLastRefresh(new Date())
@@ -725,7 +731,7 @@ export function HealthPage() {
           figure, what the budget cap gates on), side by side. One is tokens,
           the other dollars — not two competing "cost" numbers. */}
       {(usage.length > 0 || meteredSpend) && (
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className={`grid gap-6 ${usage.length > 0 && meteredSpend ? 'md:grid-cols-2' : 'grid-cols-1'}`}>
           {/* Estimated Token Usage — runtime-reported token breakdown (no $). */}
           {usage.length > 0 && (
             <Card>
