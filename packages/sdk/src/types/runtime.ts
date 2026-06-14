@@ -46,13 +46,32 @@ export interface RuntimeMessageArgs extends RuntimeMessageToolPolicy {
    * same agentId + threadId pair to the same provider/runtime session.
    */
   threadId?: string
+  /** Per-turn model override (`provider/model` id); omit for the agent default. */
+  model?: string
+  /** Per-turn thinking level; omit for the runtime/agent default. */
+  thinking?: string
   metadata?: Record<string, unknown>
+}
+
+/** Per-turn token usage, when the runtime reports it. */
+export interface RuntimeMessageUsage {
+  input?: number
+  output?: number
+  total?: number
+  /** Cached-input tokens read (priced far below fresh input when known). */
+  cacheRead?: number
+  /** Cached-input tokens written (cache creation). */
+  cacheWrite?: number
+  /** Resolved model the runtime ran, when known. */
+  model?: string
 }
 
 /** Result returned by a non-streaming runtime message. */
 export interface RuntimeMessageResult {
   id: string
   content?: string
+  /** Per-turn token usage, omitted when the runtime reported none. */
+  usage?: RuntimeMessageUsage
   metadata?: Record<string, unknown>
 }
 

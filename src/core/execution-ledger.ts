@@ -27,6 +27,10 @@ export {
   getIdempotent,
   putIdempotent,
   purgeTaskRows,
+  recordRunCost,
+  spendTotal,
+  spendByAgent,
+  spendByModel,
   LedgerUnavailableError,
 } from '../../packages/core/src/execution/ledger'
 export type {
@@ -40,4 +44,7 @@ export type {
   CompletionRow,
   RecordCompletionResult,
   IdempotentResult,
+  RunCostInput,
+  SpendByAgentRow,
+  SpendByModelRow,
 } from '../../packages/core/src/execution/ledger'

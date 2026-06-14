@@ -142,6 +142,15 @@ show the generic provider-unavailable label; task detail drawers and debug
 activity views may show the specific cause and raw bounded error. Do not make
 raw provider text the primary UI message.
 
+## Model routing + budget gating (cost, #464)
+
+Two Bakin-owned policy checks wrap every turn fire. Both read their policy from the models plugin via hooks (absent plugin → no-op) and degrade gracefully. Deep reference: `.claude/knowledge/models-plugin.md`.
+
+- **Budget gate** (`deferForBudget`/`budgetGate`, before each `claimDispatchRun`): reads `models.getBudgetPolicy` + ledger spend (day/month, global/agent) and decides allow/warn/defer (`src/core/budget.ts`). **defer** → don't claim, leave the task in todo (resumes when the window rolls over or the cap is raised — never pauses the agent). **Fail-closed**: an unreadable spend ledger defers. warn/defer audits debounce per window. The cycle passes a per-cycle spend cache so global totals aren't recomputed per task. Spend counts ALL agent sends (dispatch + watchdog/doctor/orchestrator), metered via `src/core/agent-cost.ts`.
+- **Model routing** (`resolveDispatchRouting`, inside `fireDispatchTurn`): reads `models.getRoutingConfig` and resolves `{model?, thinking?}` from the turn's origin + tag overrides (`src/core/model-routing.ts`). Passed onto the gateway via `MessageArgs.model/thinking`; nothing resolved = inherit (agent's configured model). The resolved model is recorded on the `run_costs` row and audited (`task.routed`).
+
+Origin is derived from the task shape + dispatch context: `scheduleJobId`→scheduled, `workflowId`→workflow, recovery-ladder re-dispatch (source `recovery`)→recovery, `parentId`→decomposition, else adhoc.
+
 ## Settle-time reconciliation
 
 Dispatch moves a task to `inProgress` before firing the send so a fast agent

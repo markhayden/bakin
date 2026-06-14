@@ -96,6 +96,16 @@ mock.module('../../../src/core/logger', () => ({
   }),
 }))
 
+// Spend route reads the ledger facade; mock it with canned rollups so the
+// route test doesn't need a real db.
+class FakeLedgerUnavailable extends Error {}
+mock.module('../../../src/core/execution-ledger', () => ({
+  spendTotal: mock(() => 150_000),
+  spendByAgent: mock(() => [{ agent: 'pixel', costUsdMicros: 100_000, runs: 4 }, { agent: 'patch', costUsdMicros: 0, runs: 2 }]),
+  spendByModel: mock(() => [{ model: 'anthropic/claude-sonnet-4-6', costUsdMicros: 100_000, runs: 4 }, { model: '', costUsdMicros: 0, runs: 2 }]),
+  LedgerUnavailableError: FakeLedgerUnavailable,
+}))
+
 // ---------------------------------------------------------------------------
 // Import after mocks
 // ---------------------------------------------------------------------------
@@ -142,15 +152,18 @@ describe('Models Plugin Activation', () => {
     expect(routePaths).toEqual([
       'GET /aliases',
       'GET /available',
+      'GET /budget',
       'GET /config',
-      'GET /profiles',
+      'GET /routing',
       'GET /runtime/status',
+      'GET /spend',
       'POST /aliases',
       'POST /config',
       'POST /defaults',
       'POST /refresh',
       'POST /runtime/restart',
-      'PUT /profiles',
+      'PUT /budget',
+      'PUT /routing',
     ])
   })
 
@@ -162,25 +175,75 @@ describe('Models Plugin Activation', () => {
     ])
   })
 
-  it('registers 5 hooks', () => {
-    expect(activated.ctx.hooks.register).toHaveBeenCalledTimes(5)
+  it('registers 9 hooks', () => {
+    expect(activated.ctx.hooks.register).toHaveBeenCalledTimes(9)
     const hookNames = (activated.ctx.hooks.register as ReturnType<typeof mock>).mock.calls.map(
       (c: unknown[]) => c[0]
     )
     expect(hookNames.sort()).toEqual([
       'models.configChanged',
       'models.getAvailableModels',
+      'models.getBudgetPolicy',
       'models.getEffectiveModel',
+      'models.getRoutingConfig',
       'models.markConfigDirty',
       'models.markRuntimeRestarted',
+      'models.priceImage',
+      'models.priceTurn',
     ])
+  })
+
+  describe('models.priceTurn hook', () => {
+    function priceTurnHandler(): (data: Record<string, unknown>) => Promise<{ model: string | null; costUsdMicros: number | null }> {
+      const call = (activated.ctx.hooks.register as ReturnType<typeof mock>).mock.calls.find(
+        (c: unknown[]) => c[0] === 'models.priceTurn'
+      )!
+      return call[1] as (data: Record<string, unknown>) => Promise<{ model: string | null; costUsdMicros: number | null }>
+    }
+
+    it('prices a turn from an explicit catalog model', async () => {
+      const result = await priceTurnHandler()({ model: 'anthropic/claude-sonnet-4-6', input: 1_000_000, output: 1_000_000 })
+      expect(result.model).toBe('anthropic/claude-sonnet-4-6')
+      // 1M in @ $3 + 1M out @ $15 = $18 → 18_000_000 micro-$
+      expect(result.costUsdMicros).toBe(18_000_000)
+    })
+
+    it('returns null cost for an unpriced model but still resolves the model id', async () => {
+      const result = await priceTurnHandler()({ model: 'mystery/unknown', input: 1000, output: 500 })
+      expect(result.model).toBe('mystery/unknown')
+      expect(result.costUsdMicros).toBeNull()
+    })
+
+    it('returns null cost when token counts are absent', async () => {
+      const result = await priceTurnHandler()({ model: 'anthropic/claude-sonnet-4-6' })
+      expect(result.costUsdMicros).toBeNull()
+    })
+  })
+
+  describe('models.priceImage hook', () => {
+    function priceImageHandler(): (data: Record<string, unknown>) => { model: string | null; costUsdMicros: number | null } {
+      const call = (activated.ctx.hooks.register as ReturnType<typeof mock>).mock.calls.find(
+        (c: unknown[]) => c[0] === 'models.priceImage'
+      )!
+      return call[1] as (data: Record<string, unknown>) => { model: string | null; costUsdMicros: number | null }
+    }
+
+    it('prices an image at the flat per-image rate × count', () => {
+      expect(priceImageHandler()({ model: 'black-forest-labs/flux-pro', count: 2 }).costUsdMicros).toBe(110_000)
+    })
+
+    it('returns null cost for a provider-priced image model', () => {
+      const r = priceImageHandler()({ model: 'openai/gpt-image-2', count: 1 })
+      expect(r.model).toBe('openai/gpt-image-2')
+      expect(r.costUsdMicros).toBeNull()
+    })
   })
 
   it('has valid settings schema', () => {
     expect(modelsPlugin.settingsSchema).toBeDefined()
     const fields = modelsPlugin.settingsSchema!.fields
-    expect(fields.length).toBe(2)
-    expect(fields.map((f) => f.key).sort()).toEqual(['defaultModel', 'showUsageMetrics'])
+    expect(fields.length).toBe(1)
+    expect(fields.map((f) => f.key).sort()).toEqual(['defaultModel'])
   })
 })
 
@@ -525,38 +588,82 @@ describe('POST /aliases', () => {
   })
 })
 
-describe('GET /profiles', () => {
-  it('returns default profiles when none saved', async () => {
-    const route = findRoute(activated.routes, 'GET', '/profiles')!
+describe('routing config', () => {
+  it('GET /routing returns an empty config by default', async () => {
+    const route = findRoute(activated.routes, 'GET', '/routing')!
     const { status, body } = await callRoute(route, activated.ctx)
     expect(status).toBe(200)
-
-    const profiles = body.profiles as Array<Record<string, unknown>>
-    expect(profiles.length).toBeGreaterThan(0)
-    expect(profiles[0].taskType).toBeDefined()
-    expect(profiles[0].recommendedModel).toBeDefined()
+    expect(body).toEqual({ policies: [], tagOverrides: [] })
   })
-})
 
-describe('PUT /profiles', () => {
-  it('validates profile structure', async () => {
-    const route = findRoute(activated.routes, 'PUT', '/profiles')!
+  it('PUT /routing validates and persists policies + tag overrides', async () => {
+    const route = findRoute(activated.routes, 'PUT', '/routing')!
+    const config = {
+      policies: [{ origin: 'scheduled', model: 'anthropic/claude-haiku-4-5', thinking: 'low' }],
+      tagOverrides: [{ tag: 'heavy', model: 'anthropic/claude-opus-4-6' }],
+    }
+    const { status, body } = await callRoute(route, activated.ctx, { body: config })
+    expect(status).toBe(200)
+    expect(body.ok).toBe(true)
+    expect(activated.ctx.updateSettings).toHaveBeenCalledWith({ routing: config })
+  })
+
+  it('PUT /routing rejects an unknown origin', async () => {
+    const route = findRoute(activated.routes, 'PUT', '/routing')!
     const { status } = await callRoute(route, activated.ctx, {
-      body: { profiles: [{ taskType: '', recommendedModel: 'test', notes: 'x' }] },
+      body: { policies: [{ origin: 'bogus', model: 'm' }], tagOverrides: [] },
     })
     expect(status).toBe(400)
   })
+})
 
-  it('saves valid profiles', async () => {
-    const route = findRoute(activated.routes, 'PUT', '/profiles')!
-    const newProfiles = [
-      { taskType: 'Testing', recommendedModel: 'claude-haiku-4-5', notes: 'Quick iteration' },
-    ]
-    const { body: data } = await callRoute(route, activated.ctx, {
-      body: { profiles: newProfiles },
-    })
-    expect(data.ok).toBe(true)
-    expect(activated.ctx.updateSettings).toHaveBeenCalledWith({ taskProfiles: newProfiles })
+describe('budget policy', () => {
+  it('GET /budget returns an empty policy by default', async () => {
+    const route = findRoute(activated.routes, 'GET', '/budget')!
+    const { status, body } = await callRoute(route, activated.ctx)
+    expect(status).toBe(200)
+    expect(body).toEqual({})
+  })
+
+  it('PUT /budget validates and persists caps', async () => {
+    const route = findRoute(activated.routes, 'PUT', '/budget')!
+    const policy = { global: { dailyUsd: 25, monthlyUsd: 500, warnPct: 0.8 }, perAgent: { pixel: { dailyUsd: 5 } } }
+    const { status, body } = await callRoute(route, activated.ctx, { body: policy })
+    expect(status).toBe(200)
+    expect(body.ok).toBe(true)
+    expect(activated.ctx.updateSettings).toHaveBeenCalledWith({ budget: policy })
+  })
+
+  it('PUT /budget rejects a negative cap', async () => {
+    const route = findRoute(activated.routes, 'PUT', '/budget')!
+    const { status } = await callRoute(route, activated.ctx, { body: { global: { dailyUsd: -5 } } })
+    expect(status).toBe(400)
+  })
+})
+
+describe('GET /spend', () => {
+  it('returns windowed spend rollups (total, byAgent, byModel)', async () => {
+    const route = findRoute(activated.routes, 'GET', '/spend')!
+    const { status, body } = await callRoute(route, activated.ctx, { searchParams: { window: '24h' } })
+    expect(status).toBe(200)
+    expect(body.window).toBe('24h')
+    expect(body.totalUsdMicros).toBe(150_000)
+    expect(body.byAgent).toEqual([
+      { agent: 'pixel', costUsdMicros: 100_000, runs: 4 },
+      { agent: 'patch', costUsdMicros: 0, runs: 2 },
+    ])
+    // Unmodeled '' model id surfaces as a recognizable "unknown" label.
+    expect(body.byModel).toEqual(expect.arrayContaining([
+      { model: 'anthropic/claude-sonnet-4-6', costUsdMicros: 100_000, runs: 4 },
+      { model: 'unknown', costUsdMicros: 0, runs: 2 },
+    ]))
+  })
+
+  it('defaults to a 24h window when none is given', async () => {
+    const route = findRoute(activated.routes, 'GET', '/spend')!
+    const { status, body } = await callRoute(route, activated.ctx)
+    expect(status).toBe(200)
+    expect(body.window).toBe('24h')
   })
 })
 

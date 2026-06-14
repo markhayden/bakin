@@ -391,5 +391,5 @@ description: Generated reference for Bakin core settings defaults.
 
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jun 5, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jun 13, 2026 · Bakin 0.0.0-dev</span>
 </aside>

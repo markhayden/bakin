@@ -109,6 +109,39 @@ describe('OpenClaw runtime Gateway chat', () => {
     expect(agentRequest?.params).not.toHaveProperty('timeoutMs')
     expect(agentRequest?.params.sessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
     expect(result.metadata?.sessionId).toBe(agentRequest?.params.sessionId)
+    // No trajectory written for this turn → usage is honestly absent, never zero-filled.
+    expect(result.usage).toBeUndefined()
+  })
+
+  it('surfaces token usage on a successful turn from the trajectory', async () => {
+    FakeWebSocket.onRequest = (frame, ws) => {
+      if (frame.method !== 'agent') return
+      const sessionId = frame.params.sessionId as string
+      const dir = join(testDir, 'agents', 'pixel', 'sessions')
+      mkdirSync(dir, { recursive: true })
+      const lines = [
+        { type: 'session.started', data: { toolCount: 3 } },
+        { type: 'model.completed', data: { timedOut: false, aborted: false, usage: { input: 1500, output: 320, total: 1820 }, assistantTexts: ['done'] } },
+        { type: 'session.ended', data: { status: 'success', timedOut: false } },
+      ].map((e, i) => JSON.stringify({
+        traceSchema: 'openclaw-trajectory', schemaVersion: 1, traceId: sessionId,
+        type: e.type, ts: new Date(0).toISOString(), seq: i + 1, sessionId, runId: 'run-1', data: e.data,
+      }))
+      writeFileSync(join(dir, `${sessionId}.trajectory.jsonl`), lines.join('\n') + '\n')
+      ws.emitMessage({ type: 'res', id: frame.id, ok: true, payload: gatewayAgentPayload('done') })
+    }
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    const result = await runtime.messaging.send({
+      agentId: 'pixel',
+      content: 'Say done.',
+      threadId: 'task:t-usage:d1',
+    })
+
+    expect(result.content).toBe('done')
+    expect(result.usage).toEqual({ input: 1500, output: 320, total: 1820 })
   })
 
   it('unthreaded sends keep a random idempotency key and expose no session id', async () => {
@@ -134,6 +167,83 @@ describe('OpenClaw runtime Gateway chat', () => {
     expect(first.metadata?.sessionId).toBeDefined()
     expect(second.metadata?.sessionId).toBeDefined()
     expect(first.metadata?.sessionId).not.toBe(second.metadata?.sessionId)
+  })
+
+  it('forwards per-turn model + thinking to the gateway agent params', async () => {
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    await runtime.messaging.send({
+      agentId: 'pixel',
+      content: 'Route me.',
+      threadId: 'task:t-route:d1',
+      model: 'anthropic/claude-haiku-4-5',
+      thinking: 'low',
+    })
+
+    const ws = FakeWebSocket.instances[0]!
+    const agentRequest = ws.sentFrames.find(frame => frame.method === 'agent')
+    expect(agentRequest?.params).toMatchObject({
+      model: 'anthropic/claude-haiku-4-5',
+      thinking: 'low',
+    })
+  })
+
+  it('prefers usage from the gateway payload (incl. cache tokens), no trajectory needed', async () => {
+    // The gap-1 case: an UNTHREADED send has no trajectory, yet usage still
+    // flows from the response payload — and carries cacheRead the trajectory
+    // model.completed event omits.
+    FakeWebSocket.onRequest = (frame, ws) => {
+      if (frame.method !== 'agent') return
+      ws.emitMessage({ type: 'res', id: frame.id, ok: true, payload: gatewayAgentPayload('done', { input: 537, output: 73, total: 610, cacheRead: 34200 }) })
+    }
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    const result = await runtime.messaging.send({ agentId: 'pixel', content: 'no thread' })
+
+    expect(result.usage).toEqual({ input: 537, output: 73, total: 610, cacheRead: 34200 })
+  })
+
+  it('falls back to the trajectory when the payload usage is total-only (unpriceable)', async () => {
+    // Payload carries only a combined total (no input/output split) → must NOT
+    // mask the trajectory, which has the priceable input/output breakdown.
+    FakeWebSocket.onRequest = (frame, ws) => {
+      if (frame.method !== 'agent') return
+      const sessionId = frame.params.sessionId as string
+      const dir = join(testDir, 'agents', 'pixel', 'sessions')
+      mkdirSync(dir, { recursive: true })
+      const lines = [
+        { type: 'session.started', data: {} },
+        { type: 'model.completed', data: { timedOut: false, aborted: false, usage: { input: 4200, output: 800, total: 5000 }, assistantTexts: ['done'] } },
+        { type: 'session.ended', data: { status: 'success', timedOut: false } },
+      ].map((e, i) => JSON.stringify({
+        traceSchema: 'openclaw-trajectory', schemaVersion: 1, traceId: sessionId,
+        type: e.type, ts: new Date(0).toISOString(), seq: i + 1, sessionId, runId: 'run-1', data: e.data,
+      }))
+      writeFileSync(join(dir, `${sessionId}.trajectory.jsonl`), lines.join('\n') + '\n')
+      // Payload usage is total-only — not priceable on its own.
+      ws.emitMessage({ type: 'res', id: frame.id, ok: true, payload: gatewayAgentPayload('done', { total: 5000 }) })
+    }
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    const result = await runtime.messaging.send({ agentId: 'pixel', content: 'go', threadId: 'task:t-tot:d1' })
+
+    // Trajectory's input/output split wins over the total-only payload.
+    expect(result.usage).toEqual({ input: 4200, output: 800, total: 5000 })
+  })
+
+  it('omits model/thinking from the gateway params when not set (inherit)', async () => {
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    await runtime.messaging.send({ agentId: 'pixel', content: 'Default.', threadId: 'task:t-default:d1' })
+
+    const ws = FakeWebSocket.instances[0]!
+    const agentRequest = ws.sentFrames.find(frame => frame.method === 'agent')
+    expect(agentRequest?.params).not.toHaveProperty('model')
+    expect(agentRequest?.params).not.toHaveProperty('thinking')
   })
 
   it('forwards per-turn tool policy on messaging sends', async () => {
@@ -791,7 +901,7 @@ function gatewayAgentAcceptedAck(): Record<string, unknown> {
   return { runId: 'run-1', status: 'accepted', acceptedAt: Date.now() }
 }
 
-function gatewayAgentPayload(text: string): Record<string, unknown> {
+function gatewayAgentPayload(text: string, usage?: Record<string, number>): Record<string, unknown> {
   return {
     runId: 'run-1',
     status: 'ok',
@@ -801,6 +911,7 @@ function gatewayAgentPayload(text: string): Record<string, unknown> {
       meta: {
         finalAssistantVisibleText: text,
         finalAssistantRawText: text,
+        ...(usage ? { agentMeta: { provider: 'openai', model: 'gpt-5.4', usage } } : {}),
       },
     },
   }
