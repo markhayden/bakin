@@ -721,6 +721,151 @@ export function HealthPage() {
         </Card>
       </div>
 
+      {/* Estimated token usage (runtime-reported) + estimated cost (Bakin's
+          figure, what the budget cap gates on), side by side. One is tokens,
+          the other dollars — not two competing "cost" numbers. */}
+      {(usage.length > 0 || meteredSpend) && (
+        <div className="grid md:grid-cols-2 gap-6">
+          {/* Estimated Token Usage — runtime-reported token breakdown (no $). */}
+          {usage.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span>Estimated Token Usage</span>
+                  <Badge variant="secondary" className="font-mono text-xs">
+                    {formatTokenCount(usage.reduce((sum, u) => sum + (u.tokens.total ?? 0), 0))} tokens
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-1.5">
+                  <div className="flex items-center text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-white/5">
+                    <span className="flex-1">Agent</span>
+                    <span className="w-14 text-right">In</span>
+                    <span className="w-14 text-right">Out</span>
+                    <span className="w-16 text-right">Cache R</span>
+                    <span className="w-16 text-right">Cache W</span>
+                  </div>
+                  {usage.map((u) => (
+                    <div key={u.agent} className="flex items-center text-sm">
+                      <span className="flex-1 font-medium">{u.agent}</span>
+                      <span className="w-14 text-right font-mono text-xs text-muted-foreground">{formatTokenCount(u.tokens.input)}</span>
+                      <span className="w-14 text-right font-mono text-xs text-muted-foreground">{formatTokenCount(u.tokens.output)}</span>
+                      <span className="w-16 text-right font-mono text-xs text-muted-foreground">{formatTokenCount(u.tokens.cacheRead)}</span>
+                      <span className="w-16 text-right font-mono text-xs text-muted-foreground">{formatTokenCount(u.tokens.cacheWrite)}</span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Estimated Cost — Bakin's estimated dollars the budget cap enforces. */}
+          {meteredSpend && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span>Estimated Cost</span>
+                  <Badge variant="secondary" className="font-mono text-xs">
+                    ~{formatRuntimeCost(meteredSpend.totalUsdMicros / 1_000_000)} / 24h
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-[11px] text-muted-foreground mb-2">Bakin&apos;s estimate (the figure budget caps gate on).</p>
+                {meteredSpend.byAgent.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No metered turns in the last 24h.</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-white/5">
+                      <span className="flex-1">Agent</span>
+                      <span className="w-16 text-right">Runs</span>
+                      <span className="w-20 text-right">Est. cost</span>
+                    </div>
+                    {[...meteredSpend.byAgent].sort((a, b) => b.costUsdMicros - a.costUsdMicros).map((r) => (
+                      <div key={r.agent} className="flex items-center text-sm">
+                        <span className="flex-1 font-medium">{r.agent}</span>
+                        <span className="w-16 text-right font-mono text-xs text-muted-foreground">{r.runs}</span>
+                        <span className={`w-20 text-right font-mono text-xs font-medium ${r.costUsdMicros === 0 ? 'text-muted-foreground' : ''}`}>
+                          {r.costUsdMicros === 0 ? '$ n/a' : formatRuntimeCost(r.costUsdMicros / 1_000_000)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* Usage — unified tabbed section backed by /api/plugins/health/usage-feed */}
+      <Card>
+        <CardContent className="pt-4 space-y-4">
+          <UnderlineTabs
+            tabs={USAGE_TABS}
+            value={usageTab}
+            onValueChange={setUsageTab}
+            rightSlot={
+              <div className="flex items-center gap-1 rounded-md border border-border p-0.5">
+                {(['5m', '1h', '24h'] as const).map((w) => (
+                  <button
+                    key={w}
+                    onClick={() => setUsageWindow(w)}
+                    className={`px-2 py-0.5 text-[11px] font-mono rounded transition-colors ${
+                      usageWindow === w
+                        ? 'bg-foreground/10 text-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {w}
+                  </button>
+                ))}
+              </div>
+            }
+          />
+
+          {usageTab === 'tools' && (
+            <UsageBarsPanel
+              feed={usageFeed}
+              kind="mcp"
+              emptyLabel="No MCP calls in this window"
+              labelTransform={(name) => name.replace('bakin_exec_', '')}
+            />
+          )}
+          {usageTab === 'endpoints' && (
+            <UsageBarsPanel
+              feed={usageFeed}
+              kind="rest"
+              emptyLabel="No REST requests in this window"
+            />
+          )}
+          {usageTab === 'agents' && <AgentUsagePanel feed={usageFeed} />}
+        </CardContent>
+      </Card>
+
+      {/* Context Usage — full width: per-agent token totals (latest session). */}
+      {usage.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span>Context Usage</span>
+              <span className="text-xs font-normal text-muted-foreground">latest session per agent</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <HorizontalBars
+              items={usage.map((u) => ({
+                label: u.agent,
+                value: u.tokens.total,
+                sublabel: u.sessionStarted ? formatAge(u.sessionStarted) : `${u.messages} msg`,
+              }))}
+              unit=" tokens"
+            />
+          </CardContent>
+        </Card>
+      )}
+
       {/* Search Section */}
       {searchHealth && (
         <Card>
@@ -802,152 +947,6 @@ export function HealthPage() {
             )}
           </CardContent>
         </Card>
-      )}
-
-      {/* Usage — unified tabbed section backed by /api/plugins/health/usage-feed */}
-      <Card>
-        <CardContent className="pt-4 space-y-4">
-          <UnderlineTabs
-            tabs={USAGE_TABS}
-            value={usageTab}
-            onValueChange={setUsageTab}
-            rightSlot={
-              <div className="flex items-center gap-1 rounded-md border border-border p-0.5">
-                {(['5m', '1h', '24h'] as const).map((w) => (
-                  <button
-                    key={w}
-                    onClick={() => setUsageWindow(w)}
-                    className={`px-2 py-0.5 text-[11px] font-mono rounded transition-colors ${
-                      usageWindow === w
-                        ? 'bg-foreground/10 text-foreground'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    {w}
-                  </button>
-                ))}
-              </div>
-            }
-          />
-
-          {usageTab === 'tools' && (
-            <UsageBarsPanel
-              feed={usageFeed}
-              kind="mcp"
-              emptyLabel="No MCP calls in this window"
-              labelTransform={(name) => name.replace('bakin_exec_', '')}
-            />
-          )}
-          {usageTab === 'endpoints' && (
-            <UsageBarsPanel
-              feed={usageFeed}
-              kind="rest"
-              emptyLabel="No REST requests in this window"
-            />
-          )}
-          {usageTab === 'agents' && <AgentUsagePanel feed={usageFeed} />}
-        </CardContent>
-      </Card>
-
-      {/* Context Usage — full width: per-agent token totals (latest session). */}
-      {usage.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span>Context Usage</span>
-              <span className="text-xs font-normal text-muted-foreground">latest session per agent</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <HorizontalBars
-              items={usage.map((u) => ({
-                label: u.agent,
-                value: u.tokens.total,
-                sublabel: u.sessionStarted ? formatAge(u.sessionStarted) : `${u.messages} msg`,
-              }))}
-              unit=" tokens"
-            />
-          </CardContent>
-        </Card>
-      )}
-
-      {/* The two detail tables, side by side: runtime-reported token usage
-          (left) and Bakin's estimated spend that the budget cap gates on
-          (right). One is about tokens, the other about dollars — no longer
-          two competing "cost" numbers. */}
-      {(usage.length > 0 || meteredSpend) && (
-        <div className="grid md:grid-cols-2 gap-6">
-          {/* Runtime Usage — token breakdown the runtime reports (no $). */}
-          {usage.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <span>Runtime Usage</span>
-                  <Badge variant="secondary" className="font-mono text-xs">
-                    {formatTokenCount(usage.reduce((sum, u) => sum + (u.tokens.total ?? 0), 0))} tokens
-                  </Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-1.5">
-                  <div className="flex items-center text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-white/5">
-                    <span className="flex-1">Agent</span>
-                    <span className="w-14 text-right">In</span>
-                    <span className="w-14 text-right">Out</span>
-                    <span className="w-16 text-right">Cache R</span>
-                    <span className="w-16 text-right">Cache W</span>
-                  </div>
-                  {usage.map((u) => (
-                    <div key={u.agent} className="flex items-center text-sm">
-                      <span className="flex-1 font-medium">{u.agent}</span>
-                      <span className="w-14 text-right font-mono text-xs text-muted-foreground">{formatTokenCount(u.tokens.input)}</span>
-                      <span className="w-14 text-right font-mono text-xs text-muted-foreground">{formatTokenCount(u.tokens.output)}</span>
-                      <span className="w-16 text-right font-mono text-xs text-muted-foreground">{formatTokenCount(u.tokens.cacheRead)}</span>
-                      <span className="w-16 text-right font-mono text-xs text-muted-foreground">{formatTokenCount(u.tokens.cacheWrite)}</span>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Bakin Spend — the estimated dollars the budget cap enforces. */}
-          {meteredSpend && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <span>Bakin Spend</span>
-                  <Badge variant="secondary" className="font-mono text-xs">
-                    ~{formatRuntimeCost(meteredSpend.totalUsdMicros / 1_000_000)} / 24h
-                  </Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-[11px] text-muted-foreground mb-2">Bakin&apos;s estimate (the figure budget caps gate on).</p>
-                {meteredSpend.byAgent.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No metered turns in the last 24h.</p>
-                ) : (
-                  <div className="space-y-1.5">
-                    <div className="flex items-center text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-white/5">
-                      <span className="flex-1">Agent</span>
-                      <span className="w-16 text-right">Runs</span>
-                      <span className="w-20 text-right">Est. cost</span>
-                    </div>
-                    {[...meteredSpend.byAgent].sort((a, b) => b.costUsdMicros - a.costUsdMicros).map((r) => (
-                      <div key={r.agent} className="flex items-center text-sm">
-                        <span className="flex-1 font-medium">{r.agent}</span>
-                        <span className="w-16 text-right font-mono text-xs text-muted-foreground">{r.runs}</span>
-                        <span className={`w-20 text-right font-mono text-xs font-medium ${r.costUsdMicros === 0 ? 'text-muted-foreground' : ''}`}>
-                          {r.costUsdMicros === 0 ? '$ n/a' : formatRuntimeCost(r.costUsdMicros / 1_000_000)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-        </div>
       )}
 
       {/* Active Plugins */}

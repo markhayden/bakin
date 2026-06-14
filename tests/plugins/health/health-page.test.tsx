@@ -147,7 +147,7 @@ describe('HealthPage runtime usage display', () => {
     // The runtime card is now usage-only (tokens), no dollar figure — cost
     // moved to the separate "Bakin Spend" card to avoid two competing
     // "cost" numbers.
-    expect(await screen.findByText('Runtime Usage')).toBeDefined()
+    expect(await screen.findByText('Estimated Token Usage')).toBeDefined()
     expect(screen.getAllByText('patch').length).toBeGreaterThan(0)
     // No runtime-reported dollar cost rendered on this card anymore.
     expect(screen.queryByText(/reported/)).toBeNull()
