@@ -53,10 +53,11 @@ cron_fires    (job_id, run_id) PK ← THE cron lock; fired_at (logical run
 completions   task_id PK ← first completion wins; run_id, agent, channel
 idempotency   key PK (e.g. the image 9-tuple signature), kind, result_json
               — durable, NO TTL, INSERT OR IGNORE (first write wins)
-run_costs     run_id PK ← per-turn cost attribution (#464, migration v3);
+run_costs     run_id PK ← per-turn/-op cost attribution (#464, migration v3);
               task_id (NULL for non-dispatch sends — watchdog/doctor/
-              orchestrator — which get a synthetic run_id), agent, model,
-              input/output/total_tokens,
+              orchestrator — and image ops, which get synthetic run_ids
+              `turn:<uuid>` / `image:<uuid>`), agent, model,
+              input/output/total_tokens (NULL for image ops),
               cost_usd_micros (NULL = unmetered), occurred_at. A billing
               fact, not content: written once on settle via recordRunCost
               (INSERT OR IGNORE → first write wins, so a transport retry of
