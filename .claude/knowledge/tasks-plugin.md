@@ -163,7 +163,7 @@ archived   → done, todo
 | File | Purpose |
 |------|---------|
 | `plugins/tasks/client.tsx` | Client entry — calls `registerPlugin({ id: 'tasks', navItems, slots: { 'page:/tasks': KanbanBoard } })` |
-| `plugins/tasks/components/kanban-board.tsx` | Main kanban view — fetches from `/api/plugins/tasks/`, subscribes to SSE via `taskboardVersion` |
+| `plugins/tasks/components/kanban-board.tsx` | Main kanban view — fetches from `/api/plugins/tasks/`, re-fetches on `usePluginEvent('taskboard', …)` |
 | `plugins/tasks/components/kanban-column.tsx` | Single column rendering with task cards and footer |
 | `plugins/tasks/components/task-card.tsx` | Individual task card (avatar, title, status badge, log count) |
 | `plugins/tasks/components/task-detail-dialog.tsx` | Slide-out drawer for viewing/editing task details |
@@ -204,8 +204,8 @@ state. Once `availableAt <= now`, the task naturally renders in the normal group
 
 1. Every write operation in `task-store.ts` updates the Bakin task store, whose subscription calls `broadcastChange()` and fires `globalThis.__bakinBroadcast({ type: 'taskboard' })`
 2. The SSE server sends this as a `type: 'taskboard'` event to all connected clients
-3. The global `use-sse.ts` hook receives the event and calls `bumpTaskboard()` on the Zustand store
-4. `kanban-board.tsx` subscribes to `taskboardVersion` and re-fetches from `/api/plugins/tasks/` on change
+3. The global `use-sse.ts` hook receives the `type: 'taskboard'` frame and re-emits it through the client fan-out as `emitPluginEvent({ event: 'taskboard' })` (see plugin-system.md § Client SSE fan-out)
+4. `kanban-board.tsx` (and the nav-badge `use-task-summary` hook) subscribe via `usePluginEvent('taskboard', …)` and re-fetch from `/api/plugins/tasks/` on each event
 5. No file watcher involved — the content watcher explicitly ignores `tasks/` (#434); task-store writes trigger SSE broadcasts directly and are the single broadcast source. The store keeps an in-memory id→path + column-bucket index (self-healing, no content cached) so `getSync`/`appendLogSync`/column counts don't walk the monthly shards.
 
 ### Store Access Pattern

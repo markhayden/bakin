@@ -8,6 +8,18 @@ One revertable commit per finding; every commit green on `bun run test` + `bun r
 PR gate: `bun run build` + lint + **dockerized-rig E2E + browser page sweep** + docs. No shims.
 Respect the WS1 two-tier type contract (`.claude/knowledge/repo-architecture.md` § two-tier).
 
+## SCOPE DECISION (2026-06-13, Mark) — ship A1 alone; A2–A8 become WS3b
+
+A1 (the SSE consolidation) is **complete, tested, E2E-verified, and shipping as PR `feat/sdk-gaps`
+now** so it can be reviewed and merged independently. It's the load-bearing, highest-risk item
+(touches the live-update path app-wide) and stands alone cleanly. A2–A8 are independent additive
+SDK primitives (fetch hook, confirm dialog, formatters, empty-state, models hook, workflow types,
+tone badge) with no dependency on each other or on A1's internals — they're carved into a
+follow-up workstream **WS3b** (`tasks/plan-ws3b-sdk-gaps-remainder.md`, written after this PR
+merges) and picked up next. Rationale: keep the high-risk SSE change reviewable in isolation;
+don't block it behind seven mechanical extractions. The A2–A8 task specs below are preserved
+verbatim as the WS3b backlog.
+
 ## Goal
 
 Add the client-side SDK primitives core plugins keep reinventing, then migrate the duplicated
@@ -61,7 +73,10 @@ A8 toneBadge (P2)      — flag; likely defer
 
 ## Tasks
 
-### A1 — usePluginEvent (multiplex the singleton SSE)
+> **Status (2026-06-13):** A1 = **DONE & SHIPPING** (this PR). A2–A8 = **WS3b backlog** (deferred,
+> specs preserved below).
+
+### A1 — usePluginEvent (multiplex the singleton SSE) — ✅ DONE
 Add a tiny browser-global subscriber emitter; the shell `useSSE.onmessage` publishes `plugin-event`
 payloads into it. `usePluginEvent(eventName, handler)` (in `src/hooks/use-plugin-event.ts`,
 re-exported from `@makinbakin/sdk/hooks`) registers/unregisters a handler for an event name. Migrate
@@ -70,7 +85,21 @@ their assetId filtering. No new connections; reconnect handled once by the shell
 - **Accept:** typecheck + suite green; grep shows zero `new EventSource` in plugins/assets; E2E shows
   asset pages still live-update (a generate/edit reflects without reload) over the single connection;
   exactly one `/api/events` connection in the browser network panel.
-- Commit: `feat(sdk): usePluginEvent hook multiplexing the shell SSE; migrate assets off raw EventSource`
+- **DONE — shipped in 2 commits** (`feat(sdk): usePluginEvent multiplexing the shell SSE; migrate
+  assets off raw EventSource` + `refactor(sdk): move taskboard/doctor/reindex SSE routing onto
+  usePluginEvent`). Scope per the 2026-06-13 decision: migrated the 3 assets EventSources **and**
+  refactored the shell's hardcoded taskboard/doctor/reindex routing onto the fan-out, deleting the
+  `taskboardVersion`/`doctorVersion`/`reindexProgress` content-store counters. 4999 tests green.
+  **Dockerized-rig isolated E2E (real OpenClaw, all 12 plugins loaded):** Playwright sweep of all 10
+  routes = 0 console/page/network errors; a stack-classified EventSource probe on `/assets` confirms
+  the assets plugin now opens **0** `/api/events` connections (was 3 pre-A1) and the shell opens
+  exactly **1** singleton (the one remaining `messaging` connection is an out-of-repo user plugin in
+  the test home, not repo scope). Emit/subscribe wiring covered by the rewritten use-sse-doctor /
+  use-health-summary / use-plugin-event unit tests. Knowledge docs updated
+  (`plugin-system.md` § Client SSE fan-out + nav-badge bullets, `search-system.md`, `tasks-plugin.md`).
+
+---
+## WS3b backlog (deferred 2026-06-13 — NOT in this PR)
 
 ### A2 — useJsonFetch (cancellable JSON fetch lifecycle)
 `useJsonFetch<T>(url, opts?)` → `{ data, loading, error, refresh }`, AbortController-based, in
