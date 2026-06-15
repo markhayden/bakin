@@ -3,23 +3,23 @@
 import { useState } from 'react'
 import { useTaskRunHistory, type TaskOutcome, type TaskRunEntry } from "@makinbakin/sdk/hooks"
 import { Badge, Separator } from "@makinbakin/sdk/ui"
-import { formatDateTime, formatDuration } from "@makinbakin/sdk/utils"
+import { formatDateTime, formatDuration, toneBadgeClass } from "@makinbakin/sdk/utils"
 import { ChevronRight } from 'lucide-react'
 
-// `settled` is blue, not green — a settled turn is not a succeeded task (#476);
-// green is reserved for the task-done outcome badge.
+// `settled` is blue (info), not green — a settled turn is not a succeeded task (#476);
+// green (success) is reserved for the task-done outcome badge.
 const STATUS_CLASS: Record<TaskRunEntry['status'], string> = {
-  settled: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-  superseded: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20',
-  lost: 'bg-red-500/10 text-red-400 border-red-500/20',
-  running: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+  settled: toneBadgeClass('info'),
+  superseded: toneBadgeClass('muted'),
+  lost: toneBadgeClass('error'),
+  running: toneBadgeClass('pending'),
 }
 
 const OUTCOME_CLASS: Record<TaskOutcome['state'], string> = {
-  done: 'bg-green-500/10 text-green-400 border-green-500/20',
-  blocked: 'bg-red-500/10 text-red-400 border-red-500/20',
-  in_progress: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-  archived: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20',
+  done: toneBadgeClass('success'),
+  blocked: toneBadgeClass('error'),
+  in_progress: toneBadgeClass('pending'),
+  archived: toneBadgeClass('muted'),
 }
 
 const OUTCOME_LABEL: Record<TaskOutcome['state'], string> = {

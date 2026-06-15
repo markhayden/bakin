@@ -3,6 +3,7 @@
 import { useRunHistory } from "@makinbakin/sdk/hooks"
 import { Badge } from "@makinbakin/sdk/ui"
 import { Skeleton } from "@makinbakin/sdk/ui"
+import { toneBadgeClass } from "@makinbakin/sdk/utils"
 
 function formatTime(ts: string): string {
   const d = new Date(ts)
@@ -44,12 +45,12 @@ export function RunHistory({ jobId }: { jobId: string }) {
             variant="outline"
             className={
               run.status === 'success'
-                ? 'bg-green-500/10 text-green-400 border-green-500/20'
+                ? toneBadgeClass('success')
                 : run.status === 'skipped'
-                ? 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
+                ? toneBadgeClass('muted')
                 : run.status === 'pending'
-                ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                : 'bg-red-500/10 text-red-400 border-red-500/20'
+                ? toneBadgeClass('pending')
+                : toneBadgeClass('error')
             }
           >
             {run.status}
