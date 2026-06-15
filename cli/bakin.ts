@@ -17,6 +17,19 @@ import {
   cmdScheduleList, cmdScheduleAdd, cmdSchedulePause,
   cmdScheduleResume, cmdScheduleRemove, cmdScheduleRun, cmdScheduleRuns,
 } from '../src/cli/schedule'
+import {
+  BASE_URL,
+  api,
+  apiGet,
+  apiPost,
+  apiPostJson,
+  apiDelete,
+  jsonObject,
+  isServerConnectionError,
+  getCliAgent,
+  getCliRoster,
+  type CliRoster,
+} from '../src/cli/http'
 import { getSettings, updateSettings } from '../src/core/settings'
 import { getCliUsageGroups, renderCliUsage } from '../src/core/cli/registry'
 import { parsePluginInstallArgs, PLUGIN_INSTALL_USAGE } from '../src/core/cli/plugin-install-args'
@@ -28,7 +41,6 @@ import {
   type PluginImportInstallRequest,
 } from '../src/core/plugins/import-export'
 import type { Permission } from '@bakin/core/plugins/permissions'
-import { extractApiErrorMessage, formatApiError } from '../src/core/cli/api-error'
 import { renderInkReport } from '../src/core/cli/ui/render-report'
 import type {
   CommandFailureData,
@@ -50,120 +62,6 @@ import type {
   WorkflowActionData,
 } from '../src/core/cli/ui/readonly'
 import type { CheckResult, InstallResult } from '../src/core/onboarding/types'
-
-const BASE_URL = process.env.BAKIN_URL || `http://localhost:${process.env.PORT || 3737}`
-
-// Lazy so importing this module (e.g. from src/core/cli.ts when the
-// compiled binary delegates unknown commands here) does not initialize
-// runtime services at binary startup. Resolved once on first use.
-let __cliAgent: string | undefined
-async function getCliAgent(): Promise<string> {
-  if (__cliAgent === undefined) {
-    const roster = await getCliRoster()
-    __cliAgent = roster.mainAgentId ?? roster.agentIds[0] ?? 'main'
-  }
-  return __cliAgent
-}
-
-interface CliRoster {
-  agentIds: string[]
-  mainAgentId?: string | null
-}
-
-// ---------------------------------------------------------------------------
-// HTTP helpers
-// ---------------------------------------------------------------------------
-async function api(path: string, options?: RequestInit): Promise<unknown> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
-  })
-  if (!res.ok) {
-    const body = await res.text()
-    throw new Error(formatApiError(res.status, body))
-  }
-  return res.json()
-}
-
-async function apiGet(path: string): Promise<unknown> {
-  return api(path)
-}
-
-async function getCliRoster(): Promise<CliRoster> {
-  const result = await apiGet('/api/plugins/team/') as {
-    agents?: Array<{ id?: unknown }>
-    mainAgentId?: string | null
-  }
-  return {
-    agentIds: (result.agents ?? [])
-      .map((agent) => agent.id)
-      .filter((id): id is string => typeof id === 'string' && id.length > 0),
-    mainAgentId: result.mainAgentId,
-  }
-}
-
-async function apiPost(path: string, body?: unknown): Promise<unknown> {
-  return api(path, {
-    method: 'POST',
-    body: body ? JSON.stringify(body) : undefined,
-  })
-}
-
-function jsonObject(value: unknown): Record<string, unknown> | null {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null
-}
-
-function parseJsonText(text: string): unknown {
-  if (!text.trim()) return null
-  try {
-    return JSON.parse(text)
-  } catch {
-    return null
-  }
-}
-
-function apiErrorPayload(status: number, body: string): Record<string, unknown> {
-  const parsed = jsonObject(parseJsonText(body))
-  const message = extractApiErrorMessage(body) || `HTTP ${status}`
-  return {
-    ...(parsed ?? {}),
-    ok: false,
-    status,
-    error: typeof parsed?.error === 'string' && parsed.error.trim() ? parsed.error : message,
-  }
-}
-
-function isServerConnectionError(err: unknown): boolean {
-  const message = err instanceof Error ? err.message : String(err)
-  return message.includes('ECONNREFUSED') ||
-    message.includes('Unable to connect') ||
-    message.includes('fetch failed')
-}
-
-async function apiPostJson(path: string, body?: unknown): Promise<{ ok: true; data: unknown } | { ok: false; data: Record<string, unknown> }> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: body ? JSON.stringify(body) : undefined,
-  })
-  const text = await res.text()
-  if (!res.ok) {
-    return { ok: false, data: apiErrorPayload(res.status, text) }
-  }
-  return { ok: true, data: parseJsonText(text) }
-}
-
-async function apiDelete(path: string, body?: unknown): Promise<unknown> {
-  return api(path, {
-    method: 'DELETE',
-    body: body ? JSON.stringify(body) : undefined,
-  })
-}
 
 function print(data: unknown): void {
   if (typeof data === 'string') {
