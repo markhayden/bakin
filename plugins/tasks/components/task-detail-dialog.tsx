@@ -17,6 +17,7 @@ import { useAgent } from "@makinbakin/sdk/hooks"
 import { COLUMN_CONFIG, STATUS_DOT_COLORS } from '../constants'
 import { toast } from "@makinbakin/sdk/hooks"
 import type { Task, ColumnId, TaskLogEntry } from '../types'
+import type { WorkflowInstance as SdkWorkflowInstance, WorkflowDefinition as SdkWorkflowDefinition } from '@makinbakin/sdk/types'
 import { compactDispatchFailureLabel, getDispatchFailureDetail, specificDispatchFailureLabel, type DispatchFailureDetail } from '../lib/dispatch-failure'
 import { isRenderableAssetRef } from '../lib/output-assets'
 import { TaskRunHistory } from './task-run-history'
@@ -144,8 +145,10 @@ interface Workflow {
   stepCount: number
 }
 
-interface WorkflowInstance {
-  instanceId: string
+// Derived from the SDK wire types so the base shape (instanceId — NOT id — plus
+// workflowId/taskId/status/etc.) is single-sourced (WS1). The SDK leaves steps and
+// stepStates intentionally open; this component narrows them to the fields it reads.
+interface WorkflowInstance extends SdkWorkflowInstance {
   workflowId: string
   taskId: string
   currentStepId: string
@@ -153,8 +156,7 @@ interface WorkflowInstance {
   stepStates: Record<string, { status: string; output?: Record<string, unknown>; childTaskId?: string }>
 }
 
-interface WorkflowDefinition {
-  name: string
+interface WorkflowDefinition extends SdkWorkflowDefinition {
   steps: Array<{ id: string; label?: string; type: string }>
 }
 
