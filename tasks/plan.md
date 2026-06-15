@@ -99,4 +99,19 @@ Each commit is independent (suite + typecheck green) and touches distinct files;
 finding cleanly.
 
 ## Status
-- A4 — ☐  A8 — ☐  A5 — ☐  A3 — ☐  A2 — ☐  A6 — ☐  A7 — ☐
+- A4 — ☑ formatDuration/formatDateTime in core/format; migrated task-run-history + deleted
+  health's dup. Stale "7 reimpls" reconciled: 3 assets sites already on formatAge; 2 relative-age
+  variants (models/team) left (distinct behavior). Supplemental: schedule run-history formatTime.
+- A8 — ☑ toneBadgeClass in SDK utils; migrated task-run-history + schedule run-history maps.
+  health/models badge maps left (border-less, off-palette idiom).
+- A5 — ☑ team's EmptyState variant folded into SDK behind variant='panel'; fork deleted.
+  Dead fillHeight prop dropped rather than promoted to the SDK surface.
+- A3 — ☑ ConfirmDialog in SDK; all 6 delete dialogs migrated. New unit test + rewired
+  delete-schedule-dialog test.
+- A2 — ☑ useJsonFetch hook + unit test; migrated 3 clean-fit sites (memory tier-overview-cards,
+  team heartbeat-tab + active-context-tab). Non-fits noted (team-grid, lesson-toggle-list,
+  overview-tab Promise.all, node-type-palette, AssetPreview, PluginHost, use-notification-channels).
+- A6 — ☑ useAvailableModels (module-cached, mirrors useNotificationChannels); migrated agent-form
+  + agent-detail pickers. models-page left (owns the live /refresh mutation flow).
+- A7 — ☑ task-detail-dialog WorkflowInstance/WorkflowDefinition re-based on SDK types via extension.
+  Local Workflow summary + imperative instance fetches left (no SDK equiv / optional per plan).
