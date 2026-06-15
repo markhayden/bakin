@@ -108,4 +108,19 @@ materially); note the consolidated client + the fixed divergences.
   import the SAME modules (only relative specifiers change).
 
 ## Status
-- B1 — ☐  B2 — ☐  B3 — ☐  B4 — ☐  B5 — ☐  B6 — ☐  B7 — ☐  docs — ☐
+- B1 — ☑ readonly.tsx (2,809) → 11 reports/* modules + barrel. Verified (typecheck/252-isolated/binary).
+- B2 — ☑ renderInkReport helper; collapsed 41 printXxxTui wrappers (−204 net). 4 inline renders left.
+- B3 — ☑ shared src/cli/http.ts client; **fixed schedule BAKIN_URL bug**. isServerConnectionError
+  typed-error improvement deferred (moved verbatim).
+- B4 — ☑ extracted 8 pure output helpers → src/cli/output.ts. Exit helpers + emit() + confirm
+  unification deferred (entangled / behavior-sensitive).
+- B5 — ☐ **(next focused unit — large + fragile)** command modules + slim router + emit() dispatcher
+  + confirm unification + no-arg/update/help-registry divergence fixes. Touches exit-code plumbing,
+  dynamic-import contracts; behavior-changing parts want the dockerized-rig E2E before merge.
+- B6 — ☐ wire/retire the stalled runner/parser/options/result framework.
+- B7 — ☐ test splits (tty-cli-harness + readonly-commands.test split).
+- docs — ☐
+
+### Checkpoint (2026-06-15): B1–B4 are a coherent, low-risk, fully-verified chunk (pure
+extractions + dedup + the BAKIN_URL bug fix). B5+ are higher-risk. Suggested split: ship B1–B4 as
+"WS4 part 1" and tackle B5 as a fresh focused effort (mirrors the WS3 → WS3b split).
