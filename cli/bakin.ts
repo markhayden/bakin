@@ -29,6 +29,7 @@ import {
 } from '../src/core/plugins/import-export'
 import type { Permission } from '@bakin/core/plugins/permissions'
 import { extractApiErrorMessage, formatApiError } from '../src/core/cli/api-error'
+import { renderInkReport } from '../src/core/cli/ui/render-report'
 import type {
   CommandFailureData,
   CommandIssueData,
@@ -203,35 +204,20 @@ function printTable(rows: Record<string, unknown>[], columns?: string[]): void {
 }
 
 async function printStatusTui(dispatch: Record<string, unknown>, roster: CliRoster): Promise<void> {
-  const [{ StatusReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(StatusReport, { dispatch, roster })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.StatusReport, { dispatch, roster })
 }
 
 async function printRuntimeActionTui(action: RuntimeActionData): Promise<void> {
-  const [{ RuntimeActionReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(RuntimeActionReport, { action })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.RuntimeActionReport, { action })
 }
 
 async function printHelpReportTui(groups: HelpGroupData[], error?: string, errorDetail?: string): Promise<void> {
-  const [{ HelpReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(HelpReport, {
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.HelpReport, {
     groups,
     env: { bakinUrl: BASE_URL },
     error,
     errorDetail,
-  })))
+  })
 }
 
 async function printHelpTui(error?: string, errorDetail?: string): Promise<void> {
@@ -239,30 +225,15 @@ async function printHelpTui(error?: string, errorDetail?: string): Promise<void>
 }
 
 async function printCommandIssueTui(issue: CommandIssueData): Promise<void> {
-  const [{ CommandIssueReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(CommandIssueReport, { issue })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.CommandIssueReport, { issue })
 }
 
 async function printCommandFailureTui(failure: CommandFailureData): Promise<void> {
-  const [{ CommandFailureReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(CommandFailureReport, { failure })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.CommandFailureReport, { failure })
 }
 
 async function printVersionTui(data: VersionData): Promise<void> {
-  const [{ VersionReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(VersionReport, { data })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.VersionReport, { data })
 }
 
 function invocationCommand(args: string[]): string {
@@ -352,157 +323,72 @@ async function exitCommandFailure(
 }
 
 async function printSettingsTui(settings: Record<string, unknown>): Promise<void> {
-  const [{ SettingsReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(SettingsReport, { settings })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.SettingsReport, { settings })
 }
 
 async function printSettingsActionTui(action: SettingsActionData): Promise<void> {
-  const [{ SettingsActionReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(SettingsActionReport, { action })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.SettingsActionReport, { action })
 }
 
 async function printPathsTui(paths: Record<string, unknown>, isBakinHome: unknown): Promise<void> {
-  const [{ PathsReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(PathsReport, { paths, isBakinHome })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.PathsReport, { paths, isBakinHome })
 }
 
 async function printTasksListTui(columns: Record<string, Array<Record<string, unknown>>>, column?: string): Promise<void> {
-  const [{ TasksListReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(TasksListReport, { columns, column })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.TasksListReport, { columns, column })
 }
 
 async function printTaskActionTui(action: TaskActionData): Promise<void> {
-  const [{ TaskActionReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(TaskActionReport, { action })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.TaskActionReport, { action })
 }
 
 async function printTaskDetailTui(taskId: string, column: string, task: Record<string, unknown>): Promise<void> {
-  const [{ TaskDetailReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(TaskDetailReport, { taskId, column, task })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.TaskDetailReport, { taskId, column, task })
 }
 
 async function printAgentsListTui(agents: Array<{ id: string; name: string; status: string; model: string }>): Promise<void> {
-  const [{ AgentsListReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(AgentsListReport, { agents })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.AgentsListReport, { agents })
 }
 
 async function printAgentStatusTui(agentId: string, profile: Record<string, unknown>): Promise<void> {
-  const [{ AgentStatusReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(AgentStatusReport, { agentId, profile })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.AgentStatusReport, { agentId, profile })
 }
 
 async function printAgentTasksTui(agentId: string, tasks: Array<Record<string, unknown>>): Promise<void> {
-  const [{ AgentTasksReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(AgentTasksReport, { agentId, tasks })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.AgentTasksReport, { agentId, tasks })
 }
 
 async function printPluginsListTui(plugins: Array<Record<string, unknown>>): Promise<void> {
-  const [{ PluginsListReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(PluginsListReport, { plugins })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.PluginsListReport, { plugins })
 }
 
 async function printPluginActionTui(actions: PluginActionData | PluginActionData[]): Promise<void> {
-  const [{ PluginActionReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(PluginActionReport, {
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.PluginActionReport, {
     actions: Array.isArray(actions) ? actions : [actions],
-  })))
+  })
 }
 
 async function printPluginRestoreSnapshotsTui(pluginId: string, snapshots: PluginRestoreSnapshotData[]): Promise<void> {
-  const [{ PluginRestoreSnapshotsReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(PluginRestoreSnapshotsReport, { pluginId, snapshots })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.PluginRestoreSnapshotsReport, { pluginId, snapshots })
 }
 
 async function printPluginRestoreResultTui(pluginId: string, result: PluginRestoreResultData): Promise<void> {
-  const [{ PluginRestoreResultReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(PluginRestoreResultReport, { pluginId, result })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.PluginRestoreResultReport, { pluginId, result })
 }
 
 async function printDocsTui(routes: Array<Record<string, unknown>>): Promise<void> {
-  const [{ DocsReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(DocsReport, { routes })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.DocsReport, { routes })
 }
 
 async function printWorkflowsListTui(templates: Array<Record<string, unknown>>): Promise<void> {
-  const [{ WorkflowsListReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(WorkflowsListReport, { templates })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.WorkflowsListReport, { templates })
 }
 
 async function printWorkflowActionTui(action: WorkflowActionData): Promise<void> {
-  const [{ WorkflowActionReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(WorkflowActionReport, { action })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.WorkflowActionReport, { action })
 }
 
 async function printSearchResultsTui(query: string, result: Record<string, unknown>): Promise<void> {
-  const [{ SearchResultsReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
   const results = Array.isArray(result.results) ? result.results as SearchResultData[] : []
   const aggregations = result.aggregations && typeof result.aggregations === 'object' && !Array.isArray(result.aggregations)
     ? result.aggregations as SearchAggregationsData
@@ -510,57 +396,32 @@ async function printSearchResultsTui(query: string, result: Record<string, unkno
   const meta = result.meta && typeof result.meta === 'object' && !Array.isArray(result.meta)
     ? result.meta as SearchMetaData
     : undefined
-  console.log(renderToString(createElement(SearchResultsReport, {
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.SearchResultsReport, {
     query,
     results,
     aggregations,
     meta,
-  })))
+  })
 }
 
 async function printSearchStatsTui(enabled: boolean, tables: Array<Record<string, unknown>>): Promise<void> {
-  const [{ SearchStatsReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(SearchStatsReport, { enabled, tables })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.SearchStatsReport, { enabled, tables })
 }
 
 async function printReindexTui(result: ReindexResultData, options: { target: string; rebuild: boolean }): Promise<void> {
-  const [{ ReindexReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(ReindexReport, { result, ...options })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.ReindexReport, { result, ...options })
 }
 
 async function printTrashListTui(assets: Array<Record<string, unknown>>): Promise<void> {
-  const [{ TrashListReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(TrashListReport, { assets })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.TrashListReport, { assets })
 }
 
 async function printTrashActionTui(action: TrashActionData): Promise<void> {
-  const [{ TrashActionReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(TrashActionReport, { action })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.TrashActionReport, { action })
 }
 
 async function printAgentPackagesListTui(agents: Array<Record<string, unknown>>): Promise<void> {
-  const [{ AgentPackagesListReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(AgentPackagesListReport, { agents })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.AgentPackagesListReport, { agents })
 }
 
 async function printAgentLessonsListTui(
@@ -568,59 +429,29 @@ async function printAgentLessonsListTui(
   packageId: string,
   lessons: Array<Record<string, unknown>>,
 ): Promise<void> {
-  const [{ AgentLessonsListReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(AgentLessonsListReport, { agentId, packageId, lessons })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.AgentLessonsListReport, { agentId, packageId, lessons })
 }
 
 async function printPackagesListTui(packages: Array<Record<string, unknown>>): Promise<void> {
-  const [{ PackagesListReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(PackagesListReport, { packages })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.PackagesListReport, { packages })
 }
 
 async function printPackageActionTui(actions: PackageActionData | PackageActionData[]): Promise<void> {
-  const [{ PackageActionReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(PackageActionReport, {
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.PackageActionReport, {
     actions: Array.isArray(actions) ? actions : [actions],
-  })))
+  })
 }
 
 async function printOnboardingCheckTui(result: CheckResult): Promise<void> {
-  const [{ OnboardingCheckReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/onboarding'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(OnboardingCheckReport, { result })))
+  return renderInkReport(() => import('../src/core/cli/ui/onboarding'), (m) => m.OnboardingCheckReport, { result })
 }
 
 async function printOnboardingCheckAllTui(results: CheckResult[]): Promise<void> {
-  const [{ OnboardingCheckAllReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/onboarding'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(OnboardingCheckAllReport, { results })))
+  return renderInkReport(() => import('../src/core/cli/ui/onboarding'), (m) => m.OnboardingCheckAllReport, { results })
 }
 
 async function printOnboardingInstallTui(result: InstallResult): Promise<void> {
-  const [{ OnboardingInstallReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/onboarding'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(OnboardingInstallReport, { result })))
+  return renderInkReport(() => import('../src/core/cli/ui/onboarding'), (m) => m.OnboardingInstallReport, { result })
 }
 
 // ---------------------------------------------------------------------------
@@ -2154,66 +1985,31 @@ function printDoctorDelegateResult(report: CliDoctorDelegateReport): void {
 }
 
 async function printDoctorRepairPlanTui(plan: CliDoctorRepairPlan): Promise<void> {
-  const [{ DoctorRepairPlan }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/doctor-repair'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(DoctorRepairPlan, { plan })))
+  return renderInkReport(() => import('../src/core/cli/ui/doctor-repair'), (m) => m.DoctorRepairPlan, { plan })
 }
 
 async function printDoctorRepairApplyTui(report: CliDoctorRepairApply, opts: { showBrand?: boolean } = {}): Promise<void> {
-  const [{ DoctorRepairApplyReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/doctor-repair'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(DoctorRepairApplyReport, { report, showBrand: opts.showBrand })))
+  return renderInkReport(() => import('../src/core/cli/ui/doctor-repair'), (m) => m.DoctorRepairApplyReport, { report, showBrand: opts.showBrand })
 }
 
 async function printDoctorDelegatePreviewTui(unresolved: CliDoctorRepairPlan['diagnostics']): Promise<void> {
-  const [{ DoctorDelegatePreview }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/doctor-repair'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(DoctorDelegatePreview, { unresolved })))
+  return renderInkReport(() => import('../src/core/cli/ui/doctor-repair'), (m) => m.DoctorDelegatePreview, { unresolved })
 }
 
 async function printDoctorDelegateResultTui(report: CliDoctorDelegateReport, opts: { showBrand?: boolean } = {}): Promise<void> {
-  const [{ DoctorDelegateResult }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/doctor-repair'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(DoctorDelegateResult, { report, showBrand: opts.showBrand })))
+  return renderInkReport(() => import('../src/core/cli/ui/doctor-repair'), (m) => m.DoctorDelegateResult, { report, showBrand: opts.showBrand })
 }
 
 async function printDoctorRepairRequestsTui(requests: Array<Record<string, unknown>>): Promise<void> {
-  const [{ DoctorRepairRequestsReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/doctor-repair'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(DoctorRepairRequestsReport, { requests })))
+  return renderInkReport(() => import('../src/core/cli/ui/doctor-repair'), (m) => m.DoctorRepairRequestsReport, { requests })
 }
 
 async function printDoctorRepairRequestTui(request: Record<string, unknown>): Promise<void> {
-  const [{ DoctorRepairRequestReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/doctor-repair'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(DoctorRepairRequestReport, { request })))
+  return renderInkReport(() => import('../src/core/cli/ui/doctor-repair'), (m) => m.DoctorRepairRequestReport, { request })
 }
 
 async function printDoctorRepairVerifyTui(requestId: string, result: Record<string, unknown>): Promise<void> {
-  const [{ DoctorRepairVerifyReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/doctor-repair'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(DoctorRepairVerifyReport, { requestId, result })))
+  return renderInkReport(() => import('../src/core/cli/ui/doctor-repair'), (m) => m.DoctorRepairVerifyReport, { requestId, result })
 }
 
 async function confirmPrompt(message: string): Promise<boolean> {
