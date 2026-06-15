@@ -11,6 +11,7 @@ import {
   type SummaryItem,
   type TableColumn,
 } from './tui'
+import { plural } from './reports/format'
 
 export interface DoctorRepairDiagnostic {
   check: string
@@ -102,10 +103,8 @@ export interface DoctorRepairVerificationData {
   verified?: unknown
 }
 
-function plural(count: number, singular: string, pluralLabel = `${singular}s`): string {
-  return count === 1 ? singular : pluralLabel
-}
-
+// Note: this valueText is intentionally NOT the shared reports/format one — it
+// returns the fallback for objects/arrays rather than String(value). Local by design.
 function valueText(value: unknown, fallback = '-'): string {
   if (typeof value === 'string') return value.length > 0 ? value : fallback
   if (typeof value === 'number' || typeof value === 'boolean') return String(value)
