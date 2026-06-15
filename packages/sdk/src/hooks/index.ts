@@ -82,6 +82,11 @@ export { getChannelLabel } from '@bakin/workflows/hooks/use-notification-channel
 /** Get initials for a channel (e.g. "Discord" → "D"). */
 export { getChannelInitials } from '@bakin/workflows/hooks/use-notification-channels'
 
+// Group 3b: Model catalog (from models plugin)
+
+/** The available-models catalog (cached, read-only); empty until loaded. */
+export { useAvailableModels } from '@bakin/models/hooks/use-available-models'
+
 // Group 4: Router hooks (TanStack Router wrappers; Next.js-shape compatible)
 
 /** Access the TanStack Router instance for imperative navigation. */

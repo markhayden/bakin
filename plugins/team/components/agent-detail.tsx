@@ -5,8 +5,7 @@ import { useRouter } from '@makinbakin/sdk/hooks'
 import { ArrowLeft, Camera, Trash2, BookOpen, Sparkles, Calendar } from 'lucide-react'
 import { Button } from "@makinbakin/sdk/ui"
 import { Skeleton } from "@makinbakin/sdk/ui"
-import { useRuntimeStatus } from "@makinbakin/sdk/hooks"
-import type { AvailableModel } from "@makinbakin/sdk/types"
+import { useRuntimeStatus, useAvailableModels } from "@makinbakin/sdk/hooks"
 import { useAgentStore, useAgentColor, useMainAgentId, usePackageState } from '@makinbakin/sdk/hooks'
 import { useQueryState } from "@makinbakin/sdk/hooks"
 import { LessonToggleList } from './lesson-toggle-list'
@@ -45,7 +44,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
   const [loading, setLoading] = useState(true)
   const [avatarKey, setAvatarKey] = useState(0)
   const avatarInputRef = useRef<HTMLInputElement>(null)
-  const [availableModels, setAvailableModels] = useState<AvailableModel[]>([])
+  const availableModels = useAvailableModels()
   const [savingModel, setSavingModel] = useState(false)
   const runtimeStatus = useRuntimeStatus()
 
@@ -56,10 +55,6 @@ export function AgentDetail({ agentId }: { agentId: string }) {
       .then((data) => setProfile(data))
       .catch(() => setProfile(null))
       .finally(() => setLoading(false))
-    fetch('/api/plugins/models/available')
-      .then((r) => r.json())
-      .then((data) => { if (data.models) setAvailableModels(data.models) })
-      .catch((e) => console.error('Failed to fetch available models:', e))
   }, [agentId])
 
   const handleModelChange = async (modelId: string) => {
