@@ -9,11 +9,11 @@
  * the response surface as zero rather than absent cards — the card-grid
  * geometry stays stable even on partial responses.
  */
-import { useEffect, useState } from 'react'
 import { Microscope } from 'lucide-react'
 import { Card } from "@makinbakin/sdk/ui"
 import { Skeleton } from "@makinbakin/sdk/ui"
 import { ErrorBanner } from "@makinbakin/sdk/components"
+import { useJsonFetch } from "@makinbakin/sdk/hooks"
 import { tierStyle } from './tier-colors'
 
 // Tiers that only surface under the page-local "System Logs" toggle. The
@@ -39,25 +39,7 @@ interface StatusResponse {
 }
 
 export function TierOverviewCards() {
-  const [data, setData] = useState<StatusResponse | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      try {
-        const res = await fetch('/api/plugins/memory/status')
-        if (!res.ok) throw new Error(`status ${res.status}`)
-        const body = (await res.json()) as StatusResponse
-        if (!cancelled) setData(body)
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err))
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  const { data, error } = useJsonFetch<StatusResponse>('/api/plugins/memory/status')
 
   if (error) {
     return <ErrorBanner message={`Failed to load memory status: ${error}`} />

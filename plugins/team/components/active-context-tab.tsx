@@ -12,10 +12,10 @@
  * Truncation banner appears when the underlying transcript was capped
  * (default 200 messages on the server).
  */
-import { useEffect, useState } from 'react'
 import { Loader2, MessageCircle } from 'lucide-react'
 import { Badge } from '@makinbakin/sdk/ui'
 import { MarkdownContent, EmptyState } from '@makinbakin/sdk/components'
+import { useJsonFetch } from '@makinbakin/sdk/hooks'
 import type { SessionMessage, SessionTranscript } from '../types'
 
 export interface ActiveContextTabProps {
@@ -67,33 +67,11 @@ function MessageRow({ message }: { message: SessionMessage }) {
 }
 
 export function ActiveContextTab({ agentId }: ActiveContextTabProps) {
-  const [transcript, setTranscript] = useState<SessionTranscript | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-    fetch(`/api/plugins/team/${agentId}/active-context`)
-      .then((r) => r.json() as Promise<{ ok: boolean; transcript: SessionTranscript | null; error?: string }>)
-      .then((body) => {
-        if (cancelled) return
-        if (!body.ok) {
-          setError(body.error ?? 'Failed to load active context')
-          return
-        }
-        setTranscript(body.transcript)
-      })
-      .catch((err) => {
-        if (cancelled) return
-        setError(err instanceof Error ? err.message : String(err))
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => { cancelled = true }
-  }, [agentId])
+  const { data, loading, error: fetchError } = useJsonFetch<{ ok: boolean; transcript: SessionTranscript | null; error?: string }>(
+    `/api/plugins/team/${agentId}/active-context`,
+  )
+  const transcript = data?.ok ? data.transcript : null
+  const error = fetchError ?? (data && !data.ok ? (data.error ?? 'Failed to load active context') : null)
 
   if (loading) {
     return (
