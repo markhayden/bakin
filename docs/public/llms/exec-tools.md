@@ -100,19 +100,23 @@ mcporter call bakin-<agent>.bakin_exec_assets_link --args '{
 ### bakin_exec_assets_list
 
 Label: Listed assets
-Purpose: List managed assets (one entry per asset, current-version view). Optional type and task filters.
+Purpose: List managed assets (one entry per asset, current-version view). Optional type, task, and tag filters. Tags are the UI "folders" — pass tags to list a folder, e.g. ["brand"].
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
 | `type` | choice | no | Filter by asset type |
 | `taskId` | string | no | Filter to assets linked to this task id |
+| `tags` | array | no | Filter to assets carrying ALL of these tags (the UI "folders"). |
 
 Example:
 
 ```sh
 mcporter call bakin-<agent>.bakin_exec_assets_list --args '{
   "type": "value",
-  "taskId": "value"
+  "taskId": "value",
+  "tags": [
+    "value"
+  ]
 }'
 ```
 
@@ -388,7 +392,7 @@ mcporter call bakin-<agent>.bakin_exec_heartbeat --args '{
 ### bakin_exec_images_edit
 
 Label: Edited an image
-Purpose: Edit a managed image asset (by assetId) through the runtime image provider — edits the current version, appends a new version, and returns the assetId.
+Purpose: Edit a managed image asset (by assetId) through the runtime image provider — edits the current version, appends a NEW VERSION to that same asset, and returns the assetId. Pass referenceImages to supply extra context images alongside the edited asset.
 
 Arguments: none.
 
@@ -414,7 +418,7 @@ mcporter call bakin-<agent>.bakin_exec_images_export
 ### bakin_exec_images_generate
 
 Label: Generated an image
-Purpose: Generate an image through a configured runtime image provider, save it as a new managed asset (v1), and return its assetId.
+Purpose: Generate an image through a configured runtime image provider, save it as a NEW managed asset (v1), and return its assetId. Pass referenceImages to create a new image conditioned on existing assets/files (e.g. "in the style of these"); to revise an existing asset in place use bakin_exec_images_edit instead.
 
 Arguments: none.
 
@@ -1145,6 +1149,7 @@ Purpose: Post a message through the active runtime channel adapter. Supports ima
 | `videoAssetId` | string | no | Asset id of a video to attach (current version is sent). |
 | `embed` | record | no | Optional rich metadata for adapters that support it |
 | `taskId` | string | no | Task ID for audit trail |
+| `repost` | boolean | no | An attached asset is delivered to a channel once per task; set true ONLY when a second copy is genuinely intended. |
 
 Example:
 
@@ -1157,7 +1162,8 @@ mcporter call bakin-<agent>.bakin_exec_post_channel --args '{
   "embed": {
     "key": "value"
   },
-  "taskId": "value"
+  "taskId": "value",
+  "repost": true
 }'
 ```
 
@@ -2235,7 +2241,7 @@ Purpose: Send a message to an agent via the active runtime.
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
 | `agentId` | string | yes | Agent ID |
-| `message` | string | yes | Message to send |
+| `message` | string | yes | Message to send. Do NOT use this to brief an agent about a task they were just assigned — dispatch already notified them, and a second message starts a duplicate worker in their main session. |
 
 Example:
 

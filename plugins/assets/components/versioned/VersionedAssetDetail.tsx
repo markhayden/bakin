@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate, Link } from '@tanstack/react-router'
+import { usePluginEvent } from '@makinbakin/sdk/hooks'
 import { Badge, Button } from '@makinbakin/sdk/ui'
 import { ArrowLeft, Download, Pencil, Trash2, Upload, Loader2, X } from 'lucide-react'
 import { AssetMetaSummary, AssetThumb } from './atoms'
@@ -37,19 +38,8 @@ export function VersionedAssetDetail() {
 
   useEffect(() => { fetchManifest() }, [fetchManifest])
 
-  useEffect(() => {
-    const es = new EventSource('/api/events')
-    es.onmessage = (e) => {
-      try {
-        const data = JSON.parse(e.data)
-        if (data.type === 'plugin-event' && data.assetId === assetId) {
-          if (data.event === 'asset.removed') navigate({ to: '/assets' })
-          else if (data.event === 'asset.changed') fetchManifest()
-        }
-      } catch { /* ignore */ }
-    }
-    return () => es.close()
-  }, [assetId, fetchManifest, navigate])
+  usePluginEvent('asset.removed', (d) => { if (d.assetId === assetId) navigate({ to: '/assets' }) })
+  usePluginEvent('asset.changed', (d) => { if (d.assetId === assetId) fetchManifest() })
 
   const promote = (version: number) => fetch(`${VERSIONED_API}/${encodeURIComponent(assetId)}/promote`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version }),

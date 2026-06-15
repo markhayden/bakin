@@ -68,12 +68,36 @@ export interface MessageArgs extends RuntimeMessageToolPolicy {
    * same agentId + threadId pair to the same provider/runtime session.
    */
   threadId?: string
+  /**
+   * Per-turn model override (`provider/model` id). Omit to use the agent's
+   * configured model. The caller (Bakin's routing policy) resolves it.
+   */
+  model?: string
+  /**
+   * Per-turn thinking level. Omit to use the runtime/agent default.
+   */
+  thinking?: string
   metadata?: RuntimeMetadata
+}
+
+/** Token usage for one agent turn, when the runtime reports it. */
+export interface MessageUsage {
+  input?: number
+  output?: number
+  total?: number
+  /** Cached-input tokens read (priced far below fresh input when known). */
+  cacheRead?: number
+  /** Cached-input tokens written (cache creation). */
+  cacheWrite?: number
+  /** Resolved model the runtime ran, when known. */
+  model?: string
 }
 
 export interface MessageResult {
   id: string
   content?: string
+  /** Per-turn token usage, omitted when the runtime reported none. */
+  usage?: MessageUsage
   metadata?: RuntimeMetadata
 }
 

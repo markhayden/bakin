@@ -1,6 +1,6 @@
 /**
  * Models plugin — server entry point.
- * API routes for model config, available models, aliases, task profiles, and defaults.
+ * API routes for model config, available models, aliases, and defaults.
  */
 // External
 import { z } from 'zod'
@@ -8,13 +8,15 @@ import { z } from 'zod'
 import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { definePlugin, defineRoute } from '@bakin/core/routing'
 // Relative
-import type { AgentModelConfig, AvailableModel, TaskProfile, ModelsPluginSettings } from './types'
+import type { AgentModelConfig, AvailableModel, ModelsPluginSettings } from './types'
 import {
   readPersistedCache,
   writePersistedCache,
   clearPersistedCache,
 } from './lib/models-cache'
-import { getKnownModel, getKnownProvider } from './data/known-models'
+import { getKnownModel, getKnownProvider, formatCostRange, computeCostUsdMicros, computeImageCostUsdMicros } from './data/known-models'
+import { spendTotal, spendByAgent, spendByModel, LedgerUnavailableError } from '../../src/core/execution-ledger'
+import { ORIGINS } from '../../src/core/model-routing'
 
 // ---------------------------------------------------------------------------
 // Runtime restart sync tracking (globalThis-backed so every reach into this module
@@ -214,7 +216,9 @@ async function loadConfiguredModelsFromRuntime(ctx: PluginContext): Promise<Avai
         // Unknown models get none of these and render plain in the UI.
         description: known?.description,
         bestFor: known?.bestFor,
-        costRange: known?.costRange,
+        // Display cost: literal for non-token-priced models, derived from
+        // structured pricing for LLMs. Unknown models get neither.
+        costRange: known?.costRange ?? (known?.pricing ? formatCostRange(known.pricing) : undefined),
         contextWindowDisplay: known?.contextWindow,
         kind: known?.kind,
         brandIconSlug: known?.brandIconSlug,
@@ -320,18 +324,6 @@ function readAliases(config: RuntimeModelConfig): Record<string, string> {
 }
 
 // ---------------------------------------------------------------------------
-// Task profiles defaults
-// ---------------------------------------------------------------------------
-const DEFAULT_TASK_PROFILES: TaskProfile[] = [
-  { taskType: 'Heartbeat check', recommendedModel: 'claude-haiku-4-5-20251001', notes: 'Fast, cheap' },
-  { taskType: 'Content writing', recommendedModel: 'claude-sonnet-4-6-20250514', notes: 'Quality output' },
-  { taskType: 'Image brief', recommendedModel: 'claude-sonnet-4-6-20250514', notes: 'Creative' },
-  { taskType: 'Video production', recommendedModel: 'claude-sonnet-4-6-20250514', notes: 'Creative' },
-  { taskType: 'Code/development', recommendedModel: 'claude-opus-4-6-20250514', notes: 'Complex reasoning' },
-  { taskType: 'Orchestration', recommendedModel: 'claude-sonnet-4-6-20250514', notes: 'Multi-step planning' },
-]
-
-// ---------------------------------------------------------------------------
 // Zod schemas for request validation
 // ---------------------------------------------------------------------------
 const ConfigUpdateSchema = z.object({
@@ -352,15 +344,6 @@ const AliasActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('prepopulate') }),
 ]).or(z.object({ aliases: z.record(z.string(), z.string()) }))
 
-const TaskProfileSchema = z.object({
-  taskType: z.string().min(1),
-  recommendedModel: z.string().min(1),
-  notes: z.string(),
-})
-
-const TaskProfilesUpdateSchema = z.object({
-  profiles: z.array(TaskProfileSchema),
-})
 
 // ---------------------------------------------------------------------------
 // Response shapes
@@ -368,6 +351,43 @@ const TaskProfilesUpdateSchema = z.object({
 const okResponse = z.object({ ok: z.literal(true) }).passthrough()
 const errorResponse = z.object({ error: z.string() }).passthrough()
 const passthrough = z.object({}).passthrough()
+
+const ThinkingSettingSchema = z.enum(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive', 'max', 'inherit'])
+const RoutingPolicySchema = z.object({
+  origin: z.enum(ORIGINS as unknown as [string, ...string[]]),
+  model: z.string().optional(),
+  thinking: ThinkingSettingSchema.optional(),
+})
+const TagOverrideSchema = z.object({
+  tag: z.string().min(1),
+  model: z.string().optional(),
+  thinking: ThinkingSettingSchema.optional(),
+})
+const RoutingConfigSchema = z.object({
+  policies: z.array(RoutingPolicySchema),
+  tagOverrides: z.array(TagOverrideSchema),
+})
+
+const BudgetCapsSchema = z.object({
+  dailyUsd: z.number().positive().optional(),
+  monthlyUsd: z.number().positive().optional(),
+})
+const BudgetPolicySchema = z.object({
+  global: BudgetCapsSchema.extend({ warnPct: z.number().gt(0).lte(1).optional() }).optional(),
+  perAgent: z.record(z.string(), BudgetCapsSchema).optional(),
+})
+
+// Spend reporting windows. Coarser than the live-usage 5m/1h windows —
+// spend is a daily/monthly story. 'all' = since the beginning of time.
+type SpendWindow = '24h' | '7d' | '30d' | 'all'
+const SPEND_WINDOW_MS: Record<Exclude<SpendWindow, 'all'>, number> = {
+  '24h': 86_400_000,
+  '7d': 604_800_000,
+  '30d': 2_592_000_000,
+}
+function parseSpendWindow(raw: string | null): SpendWindow {
+  return raw === '7d' || raw === '30d' || raw === 'all' ? raw : '24h'
+}
 
 // ---------------------------------------------------------------------------
 // Routes (declarative)
@@ -606,15 +626,14 @@ const routes = [
   }),
 
   defineRoute({
-    path: '/profiles',
+    path: '/routing',
     method: 'GET',
-    summary: 'List task profiles',
+    summary: 'Per-turn model/thinking routing policy',
     responses: { 200: passthrough, 500: errorResponse },
     handler: async (_req, ctx) => {
       try {
         const settings = ctx.getSettings<ModelsPluginSettings>()
-        const profiles = settings.taskProfiles ?? DEFAULT_TASK_PROFILES
-        return Response.json({ profiles })
+        return Response.json(settings.routing ?? { policies: [], tagOverrides: [] })
       } catch (err) {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
       }
@@ -622,18 +641,78 @@ const routes = [
   }),
 
   defineRoute({
-    path: '/profiles',
+    path: '/routing',
     method: 'PUT',
-    summary: 'Replace task profiles',
-    body: TaskProfilesUpdateSchema,
+    summary: 'Replace the routing policy',
+    body: RoutingConfigSchema,
     responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
     handler: async (_req, ctx, { body }) => {
       try {
-        (ctx as unknown as PluginContext).updateSettings({ taskProfiles: body.profiles })
-        ctx.activity.audit('profiles.updated', 'system', { count: body.profiles.length })
-        ctx.activity.log('system', `Updated ${body.profiles.length} task profiles`, { category: 'models' })
+        (ctx as unknown as PluginContext).updateSettings({ routing: body })
+        ctx.activity.audit('routing.updated', 'system', { policies: body.policies.length, tagOverrides: body.tagOverrides.length })
+        ctx.activity.log('system', `Updated routing policy (${body.policies.length} origins, ${body.tagOverrides.length} tag overrides)`, { category: 'models' })
         return Response.json({ ok: true })
       } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/budget',
+    method: 'GET',
+    summary: 'Spend-cap policy',
+    responses: { 200: passthrough, 500: errorResponse },
+    handler: async (_req, ctx) => {
+      try {
+        return Response.json(ctx.getSettings<ModelsPluginSettings>().budget ?? {})
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/budget',
+    method: 'PUT',
+    summary: 'Replace the budget policy',
+    body: BudgetPolicySchema,
+    responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
+    handler: async (_req, ctx, { body }) => {
+      try {
+        (ctx as unknown as PluginContext).updateSettings({ budget: body })
+        ctx.activity.audit('budget.updated', 'system', { hasGlobal: !!body.global, perAgent: Object.keys(body.perAgent ?? {}).length })
+        ctx.activity.log('system', 'Updated budget policy', { category: 'models' })
+        return Response.json({ ok: true })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/spend',
+    method: 'GET',
+    summary: 'Estimated agent spend over a window',
+    description: 'Windowed token/cost rollups from the execution ledger (total, by agent, by model). Costs are estimates — cache-token rates default to a fixed multiple of input where a model does not declare exact rates.',
+    responses: { 200: passthrough, 500: errorResponse },
+    handler: async (req) => {
+      try {
+        const window = parseSpendWindow(new URL(req.url).searchParams.get('window'))
+        const sinceMs = window === 'all' ? 0 : Date.now() - SPEND_WINDOW_MS[window]
+        const byModel = spendByModel(sinceMs).map((r) => ({ ...r, model: r.model || 'unknown' }))
+        return Response.json({
+          window,
+          estimated: true,
+          totalUsdMicros: spendTotal({ sinceMs }),
+          byAgent: spendByAgent(sinceMs),
+          byModel,
+        })
+      } catch (err) {
+        // A reporting read must not crash the page when the ledger is down.
+        if (err instanceof LedgerUnavailableError) {
+          return Response.json({ error: 'Spend ledger unavailable', totalUsdMicros: 0, byAgent: [], byModel: [] }, { status: 500 })
+        }
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
       }
     },
@@ -686,7 +765,6 @@ const modelsPlugin: BakinPlugin = definePlugin({
 
   settingsSchema: {
     fields: [
-      { key: 'showUsageMetrics', type: 'boolean', label: 'Show usage metrics', description: 'Display token usage and cost estimates', default: true },
       { key: 'defaultModel', type: 'select', label: 'Default model', description: 'Default model for new agents', options: [{ value: 'openai-codex/gpt-5.4', label: 'GPT-5.4' }, { value: 'anthropic/claude-sonnet-4-6', label: 'Claude Sonnet 4.6' }, { value: 'anthropic/claude-opus-4-6', label: 'Claude Opus 4.6' }], default: 'openai-codex/gpt-5.4' },
     ],
   },
@@ -717,6 +795,55 @@ const modelsPlugin: BakinPlugin = definePlugin({
       const result = await fetchAvailableModels(ctx as unknown as PluginContext)
       return result.models
     }, { label: 'List available models.', summary: 'Returns the model catalog available from the currently configured providers. Use it to populate pickers, validate assignments, or compare model options before saving config.', hookKind: 'rpc' })
+
+    // Price one completed agent turn: resolve the model that ran (explicit
+    // override → agent's effective model), look up catalog pricing, and
+    // return an estimated micro-dollar cost. Cost is null when the model has
+    // no catalog pricing (unmetered) — never fabricated. Core dispatch calls
+    // this on settle so it stays pricing-agnostic (the models plugin owns
+    // both per-agent model config and pricing).
+    ctx.hooks.register('models.priceTurn', async (data: Record<string, unknown>) => {
+      const agentId = data.agentId as string | undefined
+      const explicit = data.model as string | undefined
+      const input = typeof data.input === 'number' ? data.input : undefined
+      const output = typeof data.output === 'number' ? data.output : undefined
+      const cacheRead = typeof data.cacheRead === 'number' ? data.cacheRead : undefined
+      const cacheWrite = typeof data.cacheWrite === 'number' ? data.cacheWrite : undefined
+
+      let model = explicit ? normalizeModelId(explicit) : null
+      if (!model && agentId) {
+        const agents = await resolveAgents(ctx as unknown as PluginContext)
+        model = agents.find((a) => a.agentId === agentId)?.effectiveModel ?? null
+      }
+      const pricing = model ? getKnownModel(model)?.pricing : undefined
+      const costUsdMicros = computeCostUsdMicros({ input, output, cacheRead, cacheWrite }, pricing)
+      return { model, costUsdMicros }
+    }, { label: 'Price a turn.', summary: 'Resolves the model an agent turn ran on and returns an estimated cost in micro-dollars from the catalog pricing. Use it to attribute spend to a completed turn. Cost is null when the model is unpriced.', hookKind: 'rpc' })
+
+    // Price an image generation by flat per-image rate (count × imagePerUsd).
+    // Null when the model has no flat rate (provider-priced/ranged) — the run
+    // is still recorded, just unpriced.
+    ctx.hooks.register('models.priceImage', (data: Record<string, unknown>) => {
+      const model = typeof data.model === 'string' ? normalizeModelId(data.model) : undefined
+      const count = typeof data.count === 'number' ? data.count : 1
+      const imagePerUsd = model ? getKnownModel(model)?.imagePerUsd : undefined
+      return { model: model ?? null, costUsdMicros: computeImageCostUsdMicros(count, imagePerUsd) }
+    }, { label: 'Price an image.', summary: 'Returns an estimated cost in micro-dollars for an image generation (count × the model’s flat per-image rate), or null when the model is provider-priced. Use it to attribute image-generation spend.', hookKind: 'rpc' })
+
+    // Expose the per-turn routing policy to core dispatch, which resolves the
+    // model/thinking for each turn before sending. Returns an empty config
+    // when none is set → dispatch inherits the agent's configured model.
+    ctx.hooks.register('models.getRoutingConfig', () => {
+      const settings = ctx.getSettings<ModelsPluginSettings>()
+      return settings.routing ?? { policies: [], tagOverrides: [] }
+    }, { label: 'Get routing config.', summary: 'Returns the per-turn model/thinking routing policy (origins + tag overrides) that dispatch applies before each agent turn. Use it to read the current routing rules.', hookKind: 'rpc' })
+
+    // Expose the budget policy to core dispatch, which consults it before
+    // claiming a run. Empty when none is set → no gating.
+    ctx.hooks.register('models.getBudgetPolicy', () => {
+      const settings = ctx.getSettings<ModelsPluginSettings>()
+      return settings.budget ?? {}
+    }, { label: 'Get budget policy.', summary: 'Returns the spend-cap policy (global + per-agent daily/monthly limits) that dispatch consults before each turn. Use it to read the current budget limits.', hookKind: 'rpc' })
 
 
     // -------------------------------------------------------------------

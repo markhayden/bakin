@@ -1,7 +1,10 @@
+import type { RoutingConfig } from '../../src/core/model-routing'
+import type { BudgetPolicy } from '../../src/core/budget'
 // AvailableModel is single-homed in the SDK (the wire shape this plugin's
 // /available route produces and the team plugin consumes).
 import type { AvailableModel } from '@makinbakin/sdk/types'
-export type { AvailableModel }
+
+export type { RoutingConfig, BudgetPolicy, AvailableModel }
 
 export interface AgentModelConfig {
   agentId: string
@@ -37,16 +40,11 @@ export interface AliasesResponse {
   aliases: Record<string, string>
 }
 
-/** Editable task-to-model mapping (stored in plugin settings) */
-export interface TaskProfile {
-  taskType: string
-  recommendedModel: string
-  notes: string
-}
-
 /** Shape of models plugin settings */
 export interface ModelsPluginSettings {
-  showUsageMetrics?: boolean
   defaultModel?: string
-  taskProfiles?: TaskProfile[]
+  /** Per-turn model/thinking routing policy (origins + tag overrides). */
+  routing?: RoutingConfig
+  /** Spend-cap policy (global + per-agent daily/monthly limits). */
+  budget?: BudgetPolicy
 }

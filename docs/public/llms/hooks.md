@@ -23,7 +23,7 @@ Asset hooks expose file, sidecar, variant, and trash helpers for plugins that ne
 Label: List asset types.
 Purpose: Returns the asset type definitions known to the assets plugin. Use it to build filters, upload forms, or validation messages that match Bakin asset categories.
 Kind: rpc
-Source: plugins/assets/index.ts:359
+Source: plugins/assets/index.ts:415
 
 Example:
 
@@ -39,7 +39,7 @@ const result = await ctx.hooks.invoke(
 Label: List assets linked to a task.
 Purpose: Returns {assetId, description, type} for every versioned asset whose manifest taskId matches. Backed by an in-memory index — the sanctioned way for core (dispatch) to resolve a task’s attached assets without scanning plugin storage.
 Kind: rpc
-Source: plugins/assets/index.ts:351
+Source: plugins/assets/index.ts:407
 
 Example:
 
@@ -55,7 +55,7 @@ const result = await ctx.hooks.invoke(
 Label: Purge task clipboard assets.
 Purpose: Deletes clipboard-sourced assets associated with a completed task when that cleanup setting is enabled. Use it from task completion flows that want asset cleanup to stay centralized.
 Kind: rpc
-Source: plugins/assets/index.ts:392
+Source: plugins/assets/index.ts:448
 
 Example:
 
@@ -73,7 +73,7 @@ const result = await ctx.hooks.invoke(
 Label: Resolve versioned asset serve request.
 Purpose: Resolves an /api/assets/<assetId> path (current, /v/<n>, /thumb, /export/<name>) to a file on disk for serving.
 Kind: rpc
-Source: plugins/assets/index.ts:360
+Source: plugins/assets/index.ts:416
 
 Example:
 
@@ -94,7 +94,7 @@ const result = await ctx.hooks.invoke(
 Label: Save a file as a managed asset.
 Purpose: Upserts a file into the versioned asset store by source path (new asset, version bump, or no-op when unchanged). The sanctioned cross-plugin/core save path; mirrors bakin_exec_assets_save.
 Kind: rpc
-Source: plugins/assets/index.ts:366
+Source: plugins/assets/index.ts:422
 
 Example:
 
@@ -114,7 +114,7 @@ Health hooks expose registered readiness and diagnostic checks so other surfaces
 Label: Get a health check.
 Purpose: Returns metadata for one registered health check by id, without running the check. Use it when a plugin needs the check name, owner, and autofix capability before deciding what to show or run.
 Kind: rpc
-Source: plugins/health/index.ts:477
+Source: plugins/health/index.ts:433
 
 Example:
 
@@ -132,7 +132,7 @@ const result = await ctx.hooks.invoke(
 Label: List health checks.
 Purpose: Returns the health checks registered by core and plugins without executing them. Use it when another surface needs to show the available diagnostics or autofix support.
 Kind: rpc
-Source: plugins/health/index.ts:476
+Source: plugins/health/index.ts:432
 
 Example:
 
@@ -152,7 +152,7 @@ Model hooks expose the effective model configuration and notify dependent surfac
 Label: Model config changed.
 Purpose: Notifies listeners after an agent model assignment changes. Use it to refresh dependent state, update UI, or invalidate plugin caches that depend on model routing.
 Kind: event
-Source: plugins/models/index.ts:700
+Source: plugins/models/index.ts:778
 
 Example:
 
@@ -172,7 +172,7 @@ await ctx.hooks.callAll(
 Label: List available models.
 Purpose: Returns the model catalog available from the currently configured providers. Use it to populate pickers, validate assignments, or compare model options before saving config.
 Kind: rpc
-Source: plugins/models/index.ts:716
+Source: plugins/models/index.ts:794
 
 Example:
 
@@ -183,12 +183,28 @@ const result = await ctx.hooks.invoke(
 )
 ```
 
+### models.getBudgetPolicy
+
+Label: Get budget policy.
+Purpose: Returns the spend-cap policy (global + per-agent daily/monthly limits) that dispatch consults before each turn. Use it to read the current budget limits.
+Kind: rpc
+Source: plugins/models/index.ts:843
+
+Example:
+
+```ts
+const result = await ctx.hooks.invoke(
+  'models.getBudgetPolicy',
+  {},
+)
+```
+
 ### models.getEffectiveModel
 
 Label: Get effective model.
 Purpose: Resolves the model an agent will actually use after defaults, overrides, and provider settings are applied. Use it when a plugin needs runtime-ready model information for one agent.
 Kind: rpc
-Source: plugins/models/index.ts:704
+Source: plugins/models/index.ts:782
 
 Example:
 
@@ -201,12 +217,28 @@ const result = await ctx.hooks.invoke(
 )
 ```
 
+### models.getRoutingConfig
+
+Label: Get routing config.
+Purpose: Returns the per-turn model/thinking routing policy (origins + tag overrides) that dispatch applies before each agent turn. Use it to read the current routing rules.
+Kind: rpc
+Source: plugins/models/index.ts:836
+
+Example:
+
+```ts
+const result = await ctx.hooks.invoke(
+  'models.getRoutingConfig',
+  {},
+)
+```
+
 ### models.markConfigDirty
 
 Label: Mark config dirty.
 Purpose: Marks model configuration as changed so the runtime knows a refresh is needed. Use it after writing model settings that should not be treated as live yet.
 Kind: event
-Source: plugins/models/index.ts:712
+Source: plugins/models/index.ts:790
 
 Example:
 
@@ -222,13 +254,45 @@ await ctx.hooks.callAll(
 Label: Mark runtime refreshed.
 Purpose: Records that the runtime has picked up the latest model configuration. Use it after restart or reload flows so stale dirty-state warnings can clear.
 Kind: event
-Source: plugins/models/index.ts:714
+Source: plugins/models/index.ts:792
 
 Example:
 
 ```ts
 await ctx.hooks.callAll(
   'models.markRuntimeRestarted',
+  {},
+)
+```
+
+### models.priceImage
+
+Label: Price an image.
+Purpose: Returns an estimated cost in micro-dollars for an image generation (count × the model’s flat per-image rate), or null when the model is provider-priced. Use it to attribute image-generation spend.
+Kind: rpc
+Source: plugins/models/index.ts:826
+
+Example:
+
+```ts
+const result = await ctx.hooks.invoke(
+  'models.priceImage',
+  {},
+)
+```
+
+### models.priceTurn
+
+Label: Price a turn.
+Purpose: Resolves the model an agent turn ran on and returns an estimated cost in micro-dollars from the catalog pricing. Use it to attribute spend to a completed turn. Cost is null when the model is unpriced.
+Kind: rpc
+Source: plugins/models/index.ts:805
+
+Example:
+
+```ts
+const result = await ctx.hooks.invoke(
+  'models.priceTurn',
   {},
 )
 ```
@@ -240,7 +304,7 @@ await ctx.hooks.callAll(
 Label: Ensure Bakin schedule
 Purpose: Create or update a Bakin-managed runtime cron job and return the provider job id.
 Kind: rpc
-Source: plugins/schedule/index.ts:1243
+Source: plugins/schedule/index.ts:1019
 
 Example:
 
@@ -305,7 +369,7 @@ Team hooks expose runtime agent and team metadata for plugins that need agent-aw
 Label: Get an agent.
 Purpose: Returns one runtime agent by id, including team-aware metadata when available. Use it when a plugin already has an agent id and needs the full display record.
 Kind: rpc
-Source: plugins/team/index.ts:1748
+Source: plugins/team/index.ts:1879
 
 Example:
 
@@ -323,7 +387,7 @@ const result = await ctx.hooks.invoke(
 Label: List agent ids.
 Purpose: Returns the ids of agents currently known to the runtime. Use it for lightweight validation, assignment pickers, or loops that do not need full agent metadata.
 Kind: rpc
-Source: plugins/team/index.ts:1753
+Source: plugins/team/index.ts:1884
 
 Example:
 
@@ -339,7 +403,7 @@ const result = await ctx.hooks.invoke(
 Label: Get agent team.
 Purpose: Returns the team currently assigned to an agent, or null when the agent is unassigned. Use it to add team context to task, workflow, or activity views.
 Kind: rpc
-Source: plugins/team/index.ts:1760
+Source: plugins/team/index.ts:1891
 
 Example:
 
@@ -357,7 +421,7 @@ const result = await ctx.hooks.invoke(
 Label: Get org structure.
 Purpose: Returns the current organization structure for teams and agents. Use it when a plugin needs the full hierarchy instead of individual team or agent records.
 Kind: rpc
-Source: plugins/team/index.ts:1766
+Source: plugins/team/index.ts:1897
 
 Example:
 
@@ -373,7 +437,7 @@ const result = await ctx.hooks.invoke(
 Label: List team members.
 Purpose: Returns the agents assigned to one team. Use it for team dashboards, routing rules, or workflow logic that needs team membership.
 Kind: rpc
-Source: plugins/team/index.ts:1757
+Source: plugins/team/index.ts:1888
 
 Example:
 
@@ -391,7 +455,7 @@ const result = await ctx.hooks.invoke(
 Label: List agents.
 Purpose: Returns runtime agents with their display and team metadata attached. Use it when another plugin needs the agent roster as Bakin presents it.
 Kind: rpc
-Source: plugins/team/index.ts:1747
+Source: plugins/team/index.ts:1878
 
 Example:
 
@@ -407,7 +471,7 @@ const result = await ctx.hooks.invoke(
 Label: Resolve agent profile.
 Purpose: Returns the runtime profile for an agent id. Use it when a plugin needs the lower-level profile data behind an agent display record.
 Kind: rpc
-Source: plugins/team/index.ts:1754
+Source: plugins/team/index.ts:1885
 
 Example:
 

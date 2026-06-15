@@ -928,7 +928,7 @@ Plugin authors import from `@bakin/sdk/*`. Full sub-path map:
 |------|-----------------|
 | `@bakin/sdk` | `registerPlugin`, `getAllNavItems`, `NavItem` type |
 | `@bakin/sdk/ui` | shadcn primitives (Button, Card, Dialog, Input, Select, Table, Tabs, Tooltip, ...) |
-| `@bakin/sdk/hooks` | React hooks (`useAgent`, `useAgentList`, `useSSE`, `useSearch`, `useQueryState`, `useQueryArrayState`, `useDebug`, `useNotificationChannels`, ...) |
+| `@bakin/sdk/hooks` | React hooks (`useAgent`, `useAgentList`, `useSSE`, `usePluginEvent`, `useSearch`, `useQueryState`, `useQueryArrayState`, `useDebug`, `useNotificationChannels`, ...) |
 | `@bakin/sdk/components` | Shared components (`PluginHeader`, `FacetFilter`, `AgentAvatar`, `AgentSelect`, `ChannelIcon`, `BakinDrawer`, ...) |
 | `@bakin/sdk/slots` | `Slot`, `registerSlot`, `__clearSlot` |
 | `@bakin/sdk/types` | Canonical, self-contained contract types (`PluginContext`, `BakinPlugin`, `Task`, `WorkflowDefinition`, ...), split into primitives/manifest/runtime/services/registration/context behind a barrel. The single source of truth — `packages/core/src/plugin-types.ts` re-exports the identical leaf types from here and keeps its own fuller internal tier (see repo-architecture.md § two-tier type contract). |
@@ -938,6 +938,44 @@ Published to npm as `@bakin/sdk`. `scripts/publish-sdk.ts` pushes on the
 release workflow. Lint rules block direct imports from `@/components/*`,
 `@/hooks/*`, `@/lib/*`, and other plugins — the SDK is the only
 surface plugin authors should see.
+
+## Client SSE fan-out — `usePluginEvent`
+
+The shell owns exactly ONE browser `EventSource('/api/events')`
+(`src/hooks/use-sse.ts`). Plugins must NOT open their own — a per-plugin
+`EventSource` is a second connection with no shared reconnect/backoff and
+its own teardown bugs. Instead they subscribe to named server events
+through `usePluginEvent`:
+
+```ts
+import { usePluginEvent } from '@bakin/sdk/hooks'
+
+usePluginEvent('asset.changed', (payload) => { /* refetch, etc. */ })
+```
+
+Mechanics (`src/hooks/use-plugin-event.ts`, SDK-re-exported like `useSSE`):
+- A dependency-free `globalThis`-backed `Map<eventName, Set<handler>>`
+  (`__bakinPluginEventSubs`) holds subscribers. `emitPluginEvent(payload)`
+  dispatches to the set for `payload.event`; a throwing handler is
+  isolated (caught) so one bad subscriber can't break the others.
+- `usePluginEvent(event, handler)` is stable across `handler` identity
+  changes — it stores the latest handler in a ref and only re-subscribes
+  when `event` changes, so callers don't need to memoize the handler.
+- The shell's single `useSSE.onmessage` is the sole publisher. It maps
+  raw server frames to event names and calls `emitPluginEvent`:
+  `{type:'plugin-event', event, …}` frames pass through verbatim
+  (`asset.changed`, `asset.removed`, `workflow.*`, …); the shell also
+  synthesizes `taskboard` (on `{type:'taskboard'}`), `doctor.run` (on a
+  `doctor.run` audit entry), and `reindex.start|progress|complete` (from
+  the per-table reindex frames). Adding a new event name = one `emit`
+  line here; no content-store change.
+
+This replaced two older patterns: the assets plugin's 3 raw
+`EventSource`s and the content store's hardcoded per-plugin counters
+(`taskboardVersion`/`doctorVersion`/`reindexProgress`). Consumers now
+hold their own local state and subscribe to the relevant event. The
+content store is back to file/audit/activity/heartbeat state only —
+it no longer knows which plugin cares about which event.
 
 ## Slot System
 
@@ -1035,18 +1073,19 @@ refresh signal) per plugin; the hook is deliberately refresh-agnostic.
 a no-op (no snapshot rebuild, no subscriber notification).
 
 The refresh signal is per-plugin — the hook doesn't prescribe one. The
-three adopters show the range:
-- **messaging** (Plans, `attention`) — its own `EventSource` filtering
-  `messaging/plans/` file events.
+adopters subscribe to named server events via `usePluginEvent` (see
+§ Client SSE fan-out below) — no per-plugin `EventSource`, no
+content-store counters:
 - **tasks** (blocked→`error` / review→`attention`, winning-severity) —
-  the SSE content-store's `taskboardVersion`.
-- **health** (failing checks, `error`-only) — the content-store's
-  `doctorVersion`, a counter bumped in `use-sse` when a `doctor.run`
-  audit event arrives (every doctor run already emits one). This rides
-  the existing audit SSE — no new broadcast, no poll — and is the clean
-  pattern for any cron/cache-backed source. (Health is errors-only on
-  purpose: many `warn` checks are steady-state, so an amber badge would
-  be permanent noise.)
+  `usePluginEvent('taskboard', refresh)`, the same signal the Kanban
+  board uses.
+- **health** (failing checks, `error`-only) —
+  `usePluginEvent('doctor.run', refresh)`. The shell emits `doctor.run`
+  whenever a `doctor.run` audit event arrives (every doctor run already
+  emits one). This rides the existing audit SSE — no new broadcast, no
+  poll — and is the clean pattern for any cron/cache-backed source.
+  (Health is errors-only on purpose: many `warn` checks are steady-state,
+  so an amber badge would be permanent noise.)
 
 ### Sidebar rendering
 

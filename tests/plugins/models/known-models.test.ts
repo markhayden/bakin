@@ -39,6 +39,9 @@ import {
   KNOWN_PROVIDERS,
   getKnownModel,
   getKnownProvider,
+  formatCostRange,
+  computeCostUsdMicros,
+  computeImageCostUsdMicros,
 } from '../../../plugins/models/data/known-models'
 
 describe('known-models — seed shape', () => {
@@ -102,6 +105,98 @@ describe('getKnownModel', () => {
 
   it('does not accidentally match on partial prefix', () => {
     expect(getKnownModel('anthropic/claude-sonnet')).toBeUndefined()
+  })
+})
+
+describe('structured pricing', () => {
+  it('cloud LLM entries carry structured pricing (numbers, not a string)', () => {
+    const sonnet = getKnownModel('anthropic/claude-sonnet-4-6')!
+    expect(sonnet.pricing).toBeDefined()
+    expect(sonnet.pricing!.inputPer1M).toBe(3)
+    expect(sonnet.pricing!.outputPer1M).toBe(15)
+    expect(sonnet.pricing!.updatedAt).toBeTruthy()
+    // LLMs with pricing don't carry a redundant literal costRange string.
+    expect(sonnet.costRange).toBeUndefined()
+  })
+
+  it('local LLM entries keep a literal costRange and have no token pricing', () => {
+    const llama = getKnownModel('ollama/llama-3.3')!
+    expect(llama.pricing).toBeUndefined()
+    expect(llama.costRange).toBe('Local (no API cost)')
+  })
+
+  it('image/video entries keep their literal costRange', () => {
+    const img = KNOWN_MODELS.find(m => m.kind === 'image' && m.costRange)!
+    expect(img.costRange).toBeTruthy()
+    expect(img.pricing).toBeUndefined()
+  })
+
+  it('formatCostRange renders a display string from structured pricing', () => {
+    expect(formatCostRange({ inputPer1M: 3, outputPer1M: 15, updatedAt: '2026-06' }))
+      .toBe('$3 in / $15 out per 1M')
+    expect(formatCostRange({ inputPer1M: 0.3, outputPer1M: 2.5, updatedAt: '2026-06' }))
+      .toBe('$0.30 in / $2.50 out per 1M')
+  })
+
+  it('computeCostUsdMicros multiplies tokens by per-1M pricing', () => {
+    // 1.5M input @ $3 = $4.50; 0.32M output @ $15 = $4.80 → $9.30 → 9_300_000 micro-$
+    const micros = computeCostUsdMicros(
+      { input: 1_500_000, output: 320_000 },
+      { inputPer1M: 3, outputPer1M: 15, updatedAt: '2026-06' },
+    )
+    expect(micros).toBe(9_300_000)
+  })
+
+  it('computeCostUsdMicros prices cache reads at the default 0.1x input when unspecified', () => {
+    // 1M input @ $3 = $3.00; 1M cacheRead @ 0.1x = $0.30 → $3.30 → 3_300_000.
+    const micros = computeCostUsdMicros(
+      { input: 1_000_000, output: 0, cacheRead: 1_000_000 },
+      { inputPer1M: 3, outputPer1M: 15, updatedAt: '2026-06' },
+    )
+    expect(micros).toBe(3_300_000)
+  })
+
+  it('computeCostUsdMicros honors an explicit cachedReadPer1M over the default', () => {
+    // output 1M @ $15 = $15; cacheRead 1M @ explicit $0.5 = $0.50 → $15.50.
+    const micros = computeCostUsdMicros(
+      { input: 0, output: 1_000_000, cacheRead: 1_000_000 },
+      { inputPer1M: 3, outputPer1M: 15, cachedReadPer1M: 0.5, updatedAt: '2026-06' },
+    )
+    expect(micros).toBe(15_500_000)
+  })
+
+  it('computeCostUsdMicros returns null when pricing is absent', () => {
+    expect(computeCostUsdMicros({ input: 1000, output: 500 }, undefined)).toBeNull()
+  })
+
+  it('computeCostUsdMicros returns null when usage has no token counts', () => {
+    expect(computeCostUsdMicros({}, { inputPer1M: 3, outputPer1M: 15, updatedAt: '2026-06' })).toBeNull()
+  })
+
+  it('computeCostUsdMicros prices a cache-only turn (no fresh input/output)', () => {
+    // input=output=0 but 1M cacheRead @ 0.1x$3 = $0.30 → must NOT be dropped.
+    expect(computeCostUsdMicros({ input: 0, output: 0, cacheRead: 1_000_000 }, { inputPer1M: 3, outputPer1M: 15, updatedAt: '2026-06' }))
+      .toBe(300_000)
+  })
+
+  it('computeCostUsdMicros prices cache writes (default 1.25x input)', () => {
+    // input 1M @ $3 + cacheWrite 1M @ 1.25x$3 ($3.75) = $6.75 → 6_750_000.
+    expect(computeCostUsdMicros({ input: 1_000_000, output: 0, cacheWrite: 1_000_000 }, { inputPer1M: 3, outputPer1M: 15, updatedAt: '2026-06' }))
+      .toBe(6_750_000)
+  })
+
+  it('computeImageCostUsdMicros multiplies count by the per-image rate', () => {
+    expect(computeImageCostUsdMicros(3, 0.055)).toBe(165_000) // 3 × $0.055
+  })
+
+  it('computeImageCostUsdMicros returns null for provider-priced / zero count', () => {
+    expect(computeImageCostUsdMicros(2, undefined)).toBeNull()
+    expect(computeImageCostUsdMicros(0, 0.055)).toBeNull()
+  })
+
+  it('flux-pro has a structured per-image rate; provider-priced models do not', () => {
+    expect(getKnownModel('black-forest-labs/flux-pro')!.imagePerUsd).toBe(0.055)
+    expect(getKnownModel('openai/gpt-image-2')!.imagePerUsd).toBeUndefined()
   })
 })
 

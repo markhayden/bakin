@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { useContentStore } from '@makinbakin/sdk/hooks'
+import { usePluginEvent } from '@makinbakin/sdk/hooks'
 
 interface HealthSummaryResponse {
   doctor: { summary?: { errors?: number; warnings?: number; total?: number } } | null
@@ -14,13 +14,12 @@ interface UseHealthSummaryResult {
 /**
  * Count of failing (`status: 'error'`) doctor checks for the Health nav
  * badge. Reads the existing `/summary` aggregate (cheap, in-memory) and
- * refetches whenever the SSE-driven `doctorVersion` bumps — i.e. on every
+ * refetches on each SSE 'doctor.run' event — i.e. on every
  * `doctor.run` (startup / watchdog interval / on-demand). No new EventSource,
  * no poll. `errors` is null until the first load.
  */
 export function useHealthSummary(): UseHealthSummaryResult {
   const [errors, setErrors] = useState<number | null>(null)
-  const doctorVersion = useContentStore((s) => s.doctorVersion)
 
   const refresh = useCallback(async () => {
     try {
@@ -35,7 +34,8 @@ export function useHealthSummary(): UseHealthSummaryResult {
     }
   }, [])
 
-  useEffect(() => { void refresh() }, [refresh, doctorVersion])
+  useEffect(() => { void refresh() }, [refresh])
+  usePluginEvent('doctor.run', refresh)
 
   return { errors }
 }

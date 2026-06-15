@@ -439,7 +439,7 @@ SSE events broadcast during reindex:
 - `reindex.batch_pulse` — coarse heartbeat for the whole run, useful for keeping a UI spinner alive
 - `reindex.batch_complete` — once at the end of the whole run
 
-The health page consumes these via the global SSE connection (`useSSE` → `useContentStore.reindexProgress`), so per-card live counts work without opening a second `EventSource`.
+The health page consumes these via the global SSE connection — it subscribes with `usePluginEvent('reindex.start'|'reindex.progress'|'reindex.complete', …)` (the shell fans the per-table reindex frames out from its singleton connection) and keeps the per-card live counts in local component state, so per-card live counts work without opening a second `EventSource`.
 
 **Counter accuracy:** `count += await antfly.batchIndex(...)` — the actual inserted count from Antfly's response, not the batch size. If a batch fails after retries, `batchIndex` returns 0 and the counter doesn't advance for that batch, so the reported `indexed: N` matches what's actually in the table.
 

@@ -12,6 +12,7 @@ import { createLogger } from './logger'
 import { getSettings } from './settings'
 import { appendAudit } from './audit'
 import { getAppServices } from './app-services'
+import { meterAgentTurn } from './agent-cost'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { isOnboarded } from './onboarding/state'
 import { listHealthChecks } from './health-check-registry'
@@ -99,7 +100,8 @@ async function notifyUnfixableIssues(results: HealthCheckResult[]): Promise<void
   try {
     const runtime = getAppServices().runtime
     const mainAgentId = await getRuntimeMainAgentId(runtime)
-    await runtime.messaging.send({ agentId: mainAgentId, content: message })
+    const result = await runtime.messaging.send({ agentId: mainAgentId, content: message })
+    await meterAgentTurn({ agent: mainAgentId, result, name: 'doctor-notify' })
     log.info('Notified main agent of unfixable issues', { count: issues.length })
   } catch (err) {
     // Runtime might be the issue — can't notify about that

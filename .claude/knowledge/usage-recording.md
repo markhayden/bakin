@@ -7,7 +7,7 @@ All MCP tool calls, REST requests, and agent lifecycle events flow through **one
 ## Writing
 
 ```ts
-recordUsage({ kind, name, agent, durationMs, status, meta })
+recordUsage({ kind, name, agent, durationMs, status, meta, tokensIn?, tokensOut?, costUsdMicros? })
 ```
 
 | Field | Values |
@@ -17,7 +17,11 @@ recordUsage({ kind, name, agent, durationMs, status, meta })
 | `agent` | optional agent id |
 | `durationMs` | numeric |
 | `status` | `'ok' \| 'error'` |
+| `tokensIn` / `tokensOut` | per-turn token counts (completed agent turns; #464) |
+| `costUsdMicros` | estimated turn cost in micro-dollars; omitted when unmetered |
 | `meta` | free-form record for extra context |
+
+The token/cost fields are the **live** half of cost metering (the durable half is the ledger `run_costs` table — see `.claude/knowledge/execution-ledger.md`). Dispatch's settle path emits a `kind:'agent', name:'turn'` entry carrying them. This stays the single live stat feed — **never** add a parallel cost tracker.
 
 The ring buffer holds 10 000 entries, FIFO-evicted.
 

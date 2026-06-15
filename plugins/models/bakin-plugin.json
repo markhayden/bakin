@@ -3,7 +3,7 @@
   "name": "Models",
   "version": "2.1.0",
   "bakin": ">=1.0.0",
-  "description": "Agent model configuration — per-agent models, aliases, task profiles, available models from Anthropic API",
+  "description": "Agent model configuration — per-agent models, aliases, available models, per-turn model/thinking routing, and spend/budget tracking",
   "entry": {
     "server": "index.ts"
   },
@@ -65,13 +65,28 @@
       },
       {
         "method": "GET",
-        "path": "/profiles",
-        "summary": "List model task profiles"
+        "path": "/routing",
+        "summary": "Get the per-turn model/thinking routing policy"
       },
       {
         "method": "PUT",
-        "path": "/profiles",
-        "summary": "Check if runtime config is out of sync (needs restart)"
+        "path": "/routing",
+        "summary": "Replace the per-turn routing policy"
+      },
+      {
+        "method": "GET",
+        "path": "/budget",
+        "summary": "Get the spend-cap (budget) policy"
+      },
+      {
+        "method": "PUT",
+        "path": "/budget",
+        "summary": "Replace the spend-cap (budget) policy"
+      },
+      {
+        "method": "GET",
+        "path": "/spend",
+        "summary": "Estimated agent spend rollups over a window"
       },
       {
         "method": "POST",

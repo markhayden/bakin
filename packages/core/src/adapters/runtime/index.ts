@@ -47,6 +47,7 @@ export type {
   EditApprovalArgs,
   MessageArgs,
   MessageResult,
+  MessageUsage,
   NotificationArgs,
   ResolveApprovalArgs,
   RuntimeAgent,

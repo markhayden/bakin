@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { usePluginEvent } from '@makinbakin/sdk/hooks'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { FolderOpen, Plus, X } from 'lucide-react'
 import { AssetThumb } from './versioned/atoms'
@@ -16,7 +17,6 @@ export function TaskAssets({ taskId, readOnly }: TaskAssetsProps) {
   const navigate = useNavigate()
   const [assets, setAssets] = useState<VersionedAssetSummary[]>([])
   const [loading, setLoading] = useState(true)
-  const esRef = useRef<EventSource | null>(null)
 
   const fetchAssets = useCallback(() => {
     fetch(`${VERSIONED_API}?taskId=${encodeURIComponent(taskId)}&includeChildren=true`)
@@ -28,20 +28,14 @@ export function TaskAssets({ taskId, readOnly }: TaskAssetsProps) {
 
   useEffect(() => { fetchAssets() }, [fetchAssets])
 
-  // Auto-refresh on asset + workflow events for this task.
-  useEffect(() => {
-    const es = new EventSource('/api/events')
-    esRef.current = es
-    es.onmessage = (e) => {
-      try {
-        const data = JSON.parse(e.data)
-        if (data.type === 'plugin-event' && (data.event === 'asset.changed' || data.event === 'asset.removed')) fetchAssets()
-        else if (data.type === 'plugin-event' && data.event === 'workflow.step_complete'
-          && (data.taskId === taskId || data.taskId?.startsWith(taskId + '--'))) fetchAssets()
-      } catch { /* ignore */ }
-    }
-    return () => { es.close(); esRef.current = null }
-  }, [taskId, fetchAssets])
+  // Auto-refresh on asset + workflow events for this task (over the shell's
+  // single SSE connection).
+  usePluginEvent('asset.changed', fetchAssets)
+  usePluginEvent('asset.removed', fetchAssets)
+  usePluginEvent('workflow.step_complete', (d) => {
+    const t = d.taskId as string | undefined
+    if (t === taskId || t?.startsWith(taskId + '--')) fetchAssets()
+  })
 
   // Local upload events (e.g. clipboard paste in the same dialog).
   useEffect(() => {

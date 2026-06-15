@@ -1,31 +1,23 @@
-# TODO — WS2 refactor/core-extractions
+# TODO — WS3 feat/sdk-gaps
 
-Branch `refactor/core-extractions` off `main`. One commit per task; each green on
+Branch `feat/sdk-gaps` off `main`. One commit per finding; each green on
 `bun run test` + `bun run typecheck`. Detail + decisions: `tasks/plan.md`.
 
-Respect the WS1 two-tier type contract. `madge --circular` is the cycle-break gate.
+Client/browser work — PR gate REQUIRES the dockerized-rig E2E + Playwright page sweep
+(not just bun test). Respect the WS1 two-tier type contract.
 
-## Phase K — structural (break the cycle)
-- [x] K1 — extract hook-registry singleton to a leaf module ✅
-- [x] K2 — move scripts/lib/registry.ts → src/core/exec-tools/ ✅ (18→6 cycles; scripts/lib cluster gone)
-- [x] K3 — unify the PluginContext factory (converged updateSettings notify) ✅
-- [x] K4 — madge gate: scripts/lib cluster gone ✅
-- [x] K5′ — extract plugin-skill registry to a leaf (breaks the workflow cycle) ✅ 18→4 cycles
-- [~] K5-boundary — DEFERRED to WS6: move workflow registries → packages/core (intertwined with the workflows-plugin split; node-type-registry mixes machinery + 280 lines of domain schemas)
-- [~] K6 — DEFERRED to WS6: images→assets boundary. Same cross-plugin class; routing via hooks forces a sync→async ripple across ~6 image fns; the alt (promote 835-line asset-service to core) is a WS5/6 move. Fits the workflows/assets restructure.
+## Primitives + migrations (independent; lowest-risk-first)
+- [x] A1 — usePluginEvent: shell SSE fan-out + 3 assets EventSources migrated + taskboard/doctor/reindex counters refactored ✅ (2 commits)
+- [ ] A2 — useJsonFetch: hook + migrate the team plugin's `let cancelled` cluster (11 sites total)
+- [ ] A3 — ConfirmDialog: SDK component + migrate 6 hand-rolled delete dialogs
+- [ ] A4 — formatDuration/formatDateTime in core/format + SDK utils; migrate 7 reimpls; delete health's dup
+- [ ] A5 — EmptyState: fold team's variant into the SDK, repoint 3 importers, delete the fork
+- [ ] A6 — useAvailableModels hook + migrate 3 ModelSelect call sites
+- [ ] A7 — tasks drawer: migrate hand-rolled workflow types → SDK types (WS1 A8 deferral)
+- [ ] A8 — toneBadgeClass + migrate 4 badge-idiom plugins
 
-## Phase D — dedup extractions (independent, low-risk)
-- [x] D1 — settings-store (5 sites) ✅ (caught+fixed a latent factory persist bug)
-- [x] D2 — promote atomicWriteJson → storage/ (4 JSON sites) ✅
-- [x] D3 — frontmatter/skill/lesson parser module ✅
-- [x] D4 — shared healthOk/warn/error/fixed constructors (13 sites) ✅
+## PR gate
+- [ ] test + typecheck + lint + build + dockerized-rig E2E (1 SSE conn, 0 page errors) + docs → open PR
 
-## Phase G — lock it in
-- [x] G1 — architecture guard: packages/sdk in SCAN_ROOTS ✅
-
-## PR gate — PART 1 (cycle break + settings-store + atomic-write)
-- [x] test + typecheck + lint + build + madge (18→4, runtime clusters gone) + boot smoke + docs → PR opened
-
-## Deferred to follow-up PRs
-- (8) gate runtime.config.get/replace — adapter-API design; its own PR (+ its guard)
-- WS6: K5-boundary (workflow registries → core) + K6 (images→assets) + the cross-plugin/core→plugin import guards
+## Not in WS3 (deferred elsewhere)
+- WS2 #499 (awaiting merge); its K5-boundary/K6 → WS6; finding-8 config-gating → own PR

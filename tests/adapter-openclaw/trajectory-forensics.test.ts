@@ -112,7 +112,45 @@ describe('inspectTrajectoryRun', () => {
   it('returns success with the recovered content for a clean run', () => {
     writeRun(trajectoryFile, { status: 'success', assistantTexts: ['All six assets saved: a1..a6'] })
     const outcome = inspectTrajectoryRun({ trajectoryFile })
-    expect(outcome).toEqual({ kind: 'success', content: 'All six assets saved: a1..a6', sessionId: SESSION_ID })
+    expect(outcome).toEqual({
+      kind: 'success',
+      content: 'All six assets saved: a1..a6',
+      sessionId: SESSION_ID,
+      usage: { input: 42000, output: 12000, total: 54000 },
+    })
+  })
+
+  it('surfaces token usage on a successful run', () => {
+    writeRun(trajectoryFile, {
+      status: 'success',
+      assistantTexts: ['done'],
+      usage: { input: 1234, output: 567, total: 1801 },
+    })
+    const outcome = inspectTrajectoryRun({ trajectoryFile })
+    expect(outcome?.kind).toBe('success')
+    if (outcome?.kind !== 'success') return
+    expect(outcome.usage).toEqual({ input: 1234, output: 567, total: 1801 })
+  })
+
+  it('omits usage on a successful run that recorded none', () => {
+    // No model.completed usage block → honest absence, never zero-filled.
+    const dir = join(testDir, 'openclaw', 'agents', 'jessica', 'sessions')
+    mkdirSync(dir, { recursive: true })
+    const file = join(dir, `${randomUUID()}.trajectory.jsonl`)
+    const lines = [
+      event('session.started', {}, 1),
+      JSON.stringify({
+        traceSchema: 'openclaw-trajectory', schemaVersion: 1, traceId: SESSION_ID,
+        source: 'runtime', type: 'model.completed', ts: '2026-06-04T21:04:29.000Z',
+        seq: 90, sessionId: SESSION_ID, data: { timedOut: false, aborted: false, assistantTexts: ['ok'] },
+      }),
+      event('session.ended', { status: 'success', timedOut: false }, 91),
+    ]
+    writeFileSync(file, lines.join('\n') + '\n')
+    const outcome = inspectTrajectoryRun({ trajectoryFile: file })
+    expect(outcome?.kind).toBe('success')
+    if (outcome?.kind !== 'success') return
+    expect(outcome.usage).toBeUndefined()
   })
 
   it('flags oversized-but-not-truncated completions (between threshold and trajectory limit)', () => {

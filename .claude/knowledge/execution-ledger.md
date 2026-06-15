@@ -57,6 +57,18 @@ idempotency   key PK (e.g. the image 9-tuple signature), kind, result_json
               identity + promptHash; prompt text / providerText are stripped
               before write (the caller's first-run result keeps them — only
               the dedup row is content-free)
+run_costs     run_id PK ← per-turn/-op cost attribution (#464, migration v3);
+              task_id (NULL for non-dispatch sends — watchdog/doctor/
+              orchestrator — and image ops, which get synthetic run_ids
+              `turn:<uuid>` / `image:<uuid>`), agent, model,
+              input/output/total_tokens (NULL for image ops),
+              cost_usd_micros (NULL = unmetered), occurred_at. A billing
+              fact, not content: written once on settle via recordRunCost
+              (INSERT OR IGNORE → first write wins, so a transport retry of
+              the same run can't double-count). Verbs: spendTotal({agent?,
+              sinceMs, untilMs?}), spendByAgent(sinceMs), spendByModel(sinceMs)
+              — null costs coalesce to 0 (counted as runs, never dropped).
+              Consumed by the models Spend view + dispatch budget gating.
 ```
 
 `exec_key` is the live-run lock scope: the task id for regular tasks,

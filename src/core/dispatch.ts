@@ -9,8 +9,11 @@ import { getSettings } from './settings'
 import { appendAudit } from './audit'
 import { recordUsage } from './usage'
 import { getAppServices } from './app-services'
-import { getRuntimeMainAgentId, RuntimeError, RuntimeTurnError } from '@bakin/core/adapters/runtime'
-import { claimNextRun, currentSeq, loseRun, settleRun, type ClaimNextRunResult } from './execution-ledger'
+import { getRuntimeMainAgentId, RuntimeError, RuntimeTurnError, type MessageResult } from '@bakin/core/adapters/runtime'
+import { claimNextRun, currentSeq, loseRun, settleRun, spendTotal, type ClaimNextRunResult } from './execution-ledger'
+import { meterAgentTurn } from './agent-cost'
+import { resolveTurnModel, type ResolvedTurn, type RoutingConfig } from './model-routing'
+import { evaluateBudget, dayStartMs, monthStartMs, type BudgetPolicy, type BudgetSpend, type BudgetDecision } from './budget'
 import { getBootId } from './boot-id'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import {
@@ -38,13 +41,124 @@ const IMAGE_MCPORTER_TIMEOUT_MS = 600000
  * sends (orchestrator/watchdog/doctor) deliberately stay in the agent's
  * default session and don't go through here.
  */
-async function sendDispatchMessage(agentId: string, content: string, threadId: string): Promise<void> {
-  await getAppServices().runtime.messaging.send({
+async function sendDispatchMessage(agentId: string, content: string, threadId: string, routing?: ResolvedTurn): Promise<MessageResult> {
+  return getAppServices().runtime.messaging.send({
     agentId,
     content,
     threadId,
+    ...(routing?.model ? { model: routing.model } : {}),
+    ...(routing?.thinking ? { thinking: routing.thinking } : {}),
     metadata: { oversizedOutputBytes: getSettings().dispatch.oversizedOutputBytes },
   })
+}
+
+// Budget warn/defer audits fire once per (event, scope, window, window-start)
+// so a cap sitting at 85% — or a deferred task re-evaluated every cycle —
+// doesn't spam the audit log. Keyed by window start, so it auto-rolls when
+// the day/month turns over. In-memory; resets on restart (acceptable).
+const budgetAuditedWindows = new Set<string>()
+
+function auditBudgetOnce(contentDir: string, event: 'budget.warn' | 'budget.deferred', agent: string, detail: Record<string, unknown>, windowStartMs: number): void {
+  const key = `${event}:${detail.scope}:${detail.window}:${windowStartMs}`
+  if (budgetAuditedWindows.has(key)) return
+  budgetAuditedWindows.add(key)
+  appendAudit(contentDir, event, agent, detail)
+}
+
+/**
+ * Consult the budget policy before a dispatch claims a run. allow / warn /
+ * defer; warn and defer are audited (debounced per window). FAIL-CLOSED: if
+ * the spend ledger can't be read, defer — consistent with the ledger's
+ * existing fail-closed posture. No policy (plugin absent / empty) → allow.
+ */
+export async function budgetGate(agentId: string, contentDir: string, spendCache?: Map<string, number>): Promise<BudgetDecision> {
+  let policy: BudgetPolicy | undefined
+  try {
+    policy = (await hooks().invoke<BudgetPolicy>('models.getBudgetPolicy', {})) ?? undefined
+  } catch (err) {
+    log.error('Budget policy read failed; allowing (no policy)', err, { agentId })
+    return { action: 'allow' }
+  }
+  if (!policy || (!policy.global && !policy.perAgent)) return { action: 'allow' }
+
+  const now = Date.now()
+  const dayStart = dayStartMs(now)
+  const monthStart = monthStartMs(now)
+  // Memoize spend reads within a dispatch cycle: the two GLOBAL totals are
+  // identical for every task in the cycle, and costs are only recorded on
+  // settle (after the loop), so a per-cycle cache is safe and saves ~2 SQL
+  // aggregates per task. Cache key includes the window start so it can't
+  // bleed across a day/month boundary.
+  const spendAt = (agent: string | undefined, sinceMs: number): number => {
+    const key = `${agent ?? '*'}:${sinceMs}`
+    const hit = spendCache?.get(key)
+    if (hit !== undefined) return hit
+    const v = spendTotal(agent ? { agent, sinceMs } : { sinceMs })
+    spendCache?.set(key, v)
+    return v
+  }
+  let spend: BudgetSpend
+  try {
+    spend = {
+      globalDayMicros: spendAt(undefined, dayStart),
+      globalMonthMicros: spendAt(undefined, monthStart),
+      agentDayMicros: spendAt(agentId, dayStart),
+      agentMonthMicros: spendAt(agentId, monthStart),
+    }
+  } catch (err) {
+    log.error('Budget spend read failed; deferring (fail-closed)', err, { agentId })
+    auditBudgetOnce(contentDir, 'budget.deferred', agentId, { scope: 'global', window: 'daily', reason: 'ledger-unavailable' }, dayStart)
+    return { action: 'defer', scope: 'global', window: 'daily', spentUsdMicros: 0, capUsdMicros: 0 }
+  }
+
+  const decision = evaluateBudget({ policy, agent: agentId, spend })
+  if (decision.action !== 'allow') {
+    const windowStart = decision.window === 'monthly' ? monthStart : dayStart
+    const event = decision.action === 'defer' ? 'budget.deferred' : 'budget.warn'
+    auditBudgetOnce(contentDir, event, agentId, {
+      scope: decision.scope, window: decision.window,
+      spentUsdMicros: decision.spentUsdMicros, capUsdMicros: decision.capUsdMicros,
+    }, windowStart)
+  }
+  return decision
+}
+
+/** True when budget says defer — the shared shape all three dispatch paths use. */
+async function deferForBudget(agentId: string, contentDir: string, spendCache?: Map<string, number>): Promise<boolean> {
+  return (await budgetGate(agentId, contentDir, spendCache)).action === 'defer'
+}
+
+/**
+ * Resolve the per-turn model/thinking for a dispatch from the Bakin-owned
+ * routing policy (stored in the models plugin; read via hook). Returns {} —
+ * inherit, unchanged dispatch — when no plugin/config/match applies or the
+ * read fails. Never throws into the dispatch path.
+ */
+async function resolveDispatchRouting(task: DispatchTask, isRecovery: boolean): Promise<ResolvedTurn> {
+  try {
+    const config = await hooks().invoke<RoutingConfig>('models.getRoutingConfig', {})
+    if (!config) return {}
+    return resolveTurnModel({
+      task: { tags: task.tags, scheduleJobId: task.scheduleJobId, workflowId: task.workflowId, parentId: task.parentId },
+      isRecovery,
+      config,
+    })
+  } catch (err) {
+    log.error('Routing resolve failed; using agent default', err, { id: task.id })
+    return {}
+  }
+}
+
+/**
+ * Record the cost of a settled turn. The threadId IS the ledger run id, so
+ * the row is first-write-wins idempotent. Pricing is delegated to the models
+ * plugin via the `models.priceTurn` hook (core stays pricing-agnostic);
+ * absent plugin → null model/cost, tokens still recorded ("unmetered"). The
+ * same data also feeds the live usage recorder. Never throws into the settle
+ * path — a metering failure must not fail a successful turn.
+ */
+function recordTurnCost(runId: string, taskId: string, agent: string, result: MessageResult, resolvedModel?: string): Promise<void> {
+  return meterAgentTurn({ runId, taskId, agent, result, resolvedModel })
 }
 
 /**
@@ -242,6 +356,10 @@ type DispatchTask = {
   projectId?: string
   availableAt?: string
   dependsOn?: string
+  // Origin signals for per-turn model routing (present on the stored task).
+  scheduleJobId?: string
+  parentId?: string | null
+  tags?: string[]
   log?: Array<{ timestamp: string; message?: string }>
 }
 
@@ -909,13 +1027,24 @@ function fireDispatchTurn(opts: {
   initialLogCount: number
   logPrefix: string
   dispatchKind: 'regular' | 'workflow'
+  /** True when this is a recovery-ladder re-dispatch (routes to the
+   *  'recovery' origin policy regardless of the task's shape). */
+  isRecovery?: boolean
   onSettled?: (outcome: 'ok' | 'error', err?: unknown) => void
 }): void {
   // The registry entry is released only AFTER settle reconciliation
   // completes — awaitDispatchIdle() must mean "all bookkeeping done", and a
   // turn's slot shouldn't free until its outcome has been recorded.
-  const settled = sendDispatchMessage(opts.targetAgent, opts.message, opts.threadId)
-    .then(async () => {
+  const settled = resolveDispatchRouting(opts.task, opts.isRecovery ?? false)
+    .then(async (routing) => {
+      if (routing.model || routing.thinking) {
+        appendAudit(opts.contentDir, 'task.routed', opts.targetAgent, {
+          id: opts.task.id,
+          ...(routing.model ? { model: routing.model } : {}),
+          ...(routing.thinking ? { thinking: routing.thinking } : {}),
+        })
+      }
+      const result = await sendDispatchMessage(opts.targetAgent, opts.message, opts.threadId, routing)
       // Free the live-run slot FIRST — the settle reconciliation below (and
       // any ladder re-dispatch it schedules) must be able to claim anew.
       try {
@@ -923,6 +1052,9 @@ function fireDispatchTurn(opts: {
       } catch (err) {
         log.error('Failed to settle run in ledger', err, { threadId: opts.threadId })
       }
+      // Attribute the turn's token/dollar cost (run_id == threadId). The
+      // resolved routing model is what actually ran — price against it.
+      await recordTurnCost(opts.threadId, opts.task.id, opts.targetAgent, result, routing.model)
       let completedDecomposition = false
       await withStateLock(() => {
         const state = loadDispatchState(opts.contentDir)
@@ -1114,6 +1246,9 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
     // not fired yet, and unfired seqs re-mint identically next cycle.
     const pendingTurns: Array<Parameters<typeof fireDispatchTurn>[0]> = []
     const pendingByAgent = new Map<string, number>()
+    // Per-cycle memo for budget spend reads (global totals are identical for
+    // every task in this cycle; costs only land on settle, after the loop).
+    const budgetSpendCache = new Map<string, number>()
 
     for (const task of todoTasks) {
       if (dispatchedSet.has(task.id)) continue
@@ -1176,6 +1311,14 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
         continue
       }
 
+      // Spend ceiling: defer (leave in todo) when a budget cap is hit. Runs
+      // before the claim so we don't reserve a run we won't fire. The
+      // per-cycle cache collapses the redundant global spend reads.
+      if (await deferForBudget(targetAgent, contentDir, budgetSpendCache)) {
+        log.debug('Dispatch deferred by budget gate', { id: task.id, agent: targetAgent })
+        continue
+      }
+
       // Per-task guard: one bad task (store hiccup, hook failure) must not
       // abort the cycle — collected intents and other tasks still dispatch.
       let claim: ClaimNextRunResult | null = null
@@ -1224,6 +1367,11 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
           initialLogCount,
           logPrefix: 'Dispatch failed',
           dispatchKind: 'regular',
+          // A task carrying a sessionDeath record is a recovery re-dispatch
+          // even on the main cycle (e.g. the ladder's immediate re-dispatch
+          // was lost to a restart or budget-deferred). Route it to the
+          // 'recovery' origin just like dispatchSingleTask(...,'recovery').
+          isRecovery: !!recovery,
         })
         pendingByAgent.set(targetAgent, (pendingByAgent.get(targetAgent) ?? 0) + 1)
       } catch (err) {
@@ -1419,6 +1567,12 @@ export async function dispatchSingleTask(
     const dispatchStart = Date.now()
     const initialLogCount = task.log?.length ?? 0
 
+    // Spend ceiling — defer (leave in todo) when a budget cap is hit.
+    if (await deferForBudget(targetAgent, contentDir)) {
+      log.debug('Single-task dispatch deferred by budget gate', { id: task.id, agent: targetAgent, source })
+      return
+    }
+
     // Claim first — the ledger row is the lock (a kick racing the cycle or
     // another process fails here, before any side effect).
     const claim = claimDispatchRun(task.id, targetAgent)
@@ -1464,6 +1618,7 @@ export async function dispatchSingleTask(
       initialLogCount,
       logPrefix: 'Immediate dispatch failed',
       dispatchKind: 'regular',
+      isRecovery: source === 'recovery',
       onSettled: (outcome, err) => {
         recordUsage({
           kind: 'agent',
@@ -1813,6 +1968,12 @@ async function dispatchWorkflowTask(
     const gate = concurrencyGate(targetAgent, getSettings())
     if (gate) {
       log.debug('Workflow step dispatch deferred by concurrency gate', { taskId: task.id, stepId, agent: targetAgent, gate })
+      continue
+    }
+
+    // Spend ceiling — defer the step when a budget cap is hit.
+    if (await deferForBudget(targetAgent, contentDir)) {
+      log.debug('Workflow step dispatch deferred by budget gate', { taskId: task.id, stepId, agent: targetAgent })
       continue
     }
 

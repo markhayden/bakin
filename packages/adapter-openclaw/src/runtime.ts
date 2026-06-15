@@ -14,6 +14,7 @@ import type {
   CreateCronJobInput,
   CreateRuntimeAgentInput,
   MessageArgs,
+  MessageUsage,
   RuntimeAgent,
   RuntimeAvailableModel,
   RuntimeImageEditInput,
@@ -30,7 +31,7 @@ import type {
 import type { AdapterHealthCheckDefinition, AdapterInitOpts, AdapterLogger } from '@bakin/core/adapters/shared'
 import { RuntimeError, RuntimeTurnError } from '@bakin/core/adapters/runtime'
 import { readFileFrom, safeFileSize } from './file-utils'
-import { inspectTrajectoryRun, trajectoryFilePathFor, watchTrajectoryForDeath, TrajectoryRecoveredTurn } from './trajectory-forensics'
+import { inspectTrajectoryRun, trajectoryFilePathFor, watchTrajectoryForDeath, TrajectoryRecoveredTurn, type TrajectoryUsage } from './trajectory-forensics'
 import { generateDirectImage, isDirectImageProvider, resolveProviderApiKeySource } from '@bakin/core/media'
 import { isUserEdited } from '@bakin/core/agent-packages/markers'
 import {
@@ -123,8 +124,21 @@ interface OpenClawAgentTurnOptions {
   toolsMode?: MessageArgs['toolsMode']
   toolsAllow?: string[]
   toolsDeny?: string[]
+  /** Per-turn model override (`provider/model`); omit to use the agent default. */
+  model?: string
+  /** Per-turn thinking level; omit to use the runtime default. */
+  thinking?: string
   /** Oversized-output threshold for session-death diagnoses (core policy). */
   oversizedOutputBytes?: number
+}
+
+/** Result of one OpenClaw agent turn: the assistant text plus token usage
+ *  (preferred from the gateway payload, which carries cache tokens and works
+ *  for unthreaded sends; falls back to the trajectory `model.completed`
+ *  event). Absent when the runtime reported none. */
+interface OpenClawTurnResult {
+  content: string
+  usage?: MessageUsage
 }
 
 class OpenClawCommandError extends RuntimeError {
@@ -495,13 +509,15 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
   messaging = {
     send: async (args: MessageArgs) => {
-      const content = await this.chatCompletion({
+      const { content, usage } = await this.chatCompletion({
         agentId: args.agentId,
         messages: [{ role: 'user', content: args.content }],
         sessionKey: args.threadId,
         toolsMode: args.toolsMode,
         toolsAllow: args.toolsAllow,
         toolsDeny: args.toolsDeny,
+        model: args.model,
+        thinking: args.thinking,
         oversizedOutputBytes: oversizedOutputBytesFrom(args.metadata),
       })
       // Threaded sends expose the real (deterministic) provider session id
@@ -510,6 +526,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       return {
         id: `msg-${Date.now()}`,
         content,
+        ...(usage ? { usage } : {}),
         ...(sessionId ? { metadata: { sessionId } } : {}),
       }
     },
@@ -520,6 +537,8 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       toolsMode: args.toolsMode,
       toolsAllow: args.toolsAllow,
       toolsDeny: args.toolsDeny,
+      model: args.model,
+      thinking: args.thinking,
       oversizedOutputBytes: oversizedOutputBytesFrom(args.metadata),
     }),
   }
@@ -1186,7 +1205,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     return headers
   }
 
-  private async chatCompletion(opts: OpenClawAgentTurnOptions): Promise<string> {
+  private async chatCompletion(opts: OpenClawAgentTurnOptions): Promise<OpenClawTurnResult> {
     return this.runOpenClawAgentGateway(opts)
   }
 
@@ -1211,12 +1230,36 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   private async *runOpenClawAgentGatewayStream(opts: OpenClawAgentTurnOptions): AsyncIterable<ChatChunk> {
-    const content = await this.runOpenClawAgentGateway(opts)
+    const { content } = await this.runOpenClawAgentGateway(opts)
     if (content) yield { type: 'text', content }
     yield { type: 'done' }
   }
 
-  private async runOpenClawAgentGateway(opts: OpenClawAgentTurnOptions): Promise<string> {
+  /**
+   * Best-effort token usage for the just-finished turn, read from the
+   * trajectory's success `model.completed` event. Threaded sends only (no
+   * trajectory file → no usage). Returns undefined when the runtime recorded
+   * none — never fabricated.
+   *
+   * Relies on OpenClaw's write ordering: `model.completed` (carrying usage)
+   * is written to the trajectory before `session.ended`, and the gateway
+   * success frame is delivered after the run ends — so by the time we read
+   * here the usage line is already on disk. (The fail-fast death watch relies
+   * on the same ordering to read `session.ended`.) If a future runtime broke
+   * that ordering, the only effect is a silently unmetered turn — never a
+   * crash or a wrong cost.
+   */
+  private readTurnUsage(trajectoryFile: string | null, trajectoryOffset: number, opts: OpenClawAgentTurnOptions): TrajectoryUsage | undefined {
+    if (!trajectoryFile) return undefined
+    const outcome = inspectTrajectoryRun({
+      trajectoryFile,
+      sinceByteOffset: trajectoryOffset,
+      oversizedOutputBytes: opts.oversizedOutputBytes,
+    })
+    return outcome?.kind === 'success' ? outcome.usage : undefined
+  }
+
+  private async runOpenClawAgentGateway(opts: OpenClawAgentTurnOptions): Promise<OpenClawTurnResult> {
     const cliSessionId = opts.sessionKey ? openClawCliSessionId(opts.agentId, opts.sessionKey) : null
     const params: Record<string, unknown> = {
       agentId: opts.agentId,
@@ -1230,6 +1273,10 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     }
     applyRuntimeMessageToolPolicy(params, opts)
     if (cliSessionId) params.sessionId = cliSessionId
+    // Per-turn routing overrides (Bakin's policy → gateway agent RPC). Omit
+    // when unset so the runtime uses the agent's configured model/default.
+    if (opts.model) params.model = opts.model
+    if (opts.thinking) params.thinking = opts.thinking
 
     // Capture where the trajectory ends BEFORE the turn starts so any
     // post-mortem only sees events from this attempt (the file accrues one
@@ -1265,7 +1312,13 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         ? await Promise.race([request, deathWatch.promise])
         : await request
       const content = extractOpenClawAgentText(payload)
-      if (content) return content
+      if (content) {
+        // Prefer usage from the gateway payload (carries cache tokens, works
+        // for unthreaded sends, no extra disk read). Fall back to the
+        // trajectory only when the payload omitted it.
+        const usage = extractOpenClawAgentUsage(payload) ?? this.readTurnUsage(trajectoryFile, trajectoryOffset, opts)
+        return { content, ...(usage ? { usage } : {}) }
+      }
       // A SUCCESS frame whose payload yields no extractable text (payload
       // shape drift) is still recoverable when the trajectory recorded the
       // completion — don't fail a turn whose content exists on disk.
@@ -1280,7 +1333,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
             agentId: opts.agentId,
             sessionId: outcome.sessionId,
           })
-          return outcome.content
+          return { content: outcome.content, usage: outcome.usage }
         }
       }
       throw new RuntimeError('OpenClaw chat failed: agent response did not include assistant text', { kind: 'runtime_failed' })
@@ -1294,7 +1347,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
           agentId: opts.agentId,
           sessionId: err.sessionId,
         })
-        return err.content
+        return { content: err.content, usage: err.usage }
       }
       if (err instanceof RuntimeTurnError) {
         // Fail-fast verdict — the diagnosis is already complete. Cancel the
@@ -1319,7 +1372,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
             { kind: 'runtime_failed', cause: err },
           )
       const verdict = this.postMortemAgentTurn(typed, trajectoryFile, trajectoryOffset, opts)
-      if (verdict?.kind === 'recovered') return verdict.content
+      if (verdict?.kind === 'recovered') return { content: verdict.content, usage: verdict.usage }
       if (verdict?.kind === 'death') throw verdict.error
       throw typed
     } finally {
@@ -1341,7 +1394,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     trajectoryFile: string | null,
     trajectoryOffset: number,
     opts: OpenClawAgentTurnOptions,
-  ): { kind: 'recovered'; content: string } | { kind: 'death'; error: RuntimeTurnError } | null {
+  ): { kind: 'recovered'; content: string; usage?: TrajectoryUsage } | { kind: 'death'; error: RuntimeTurnError } | null {
     if (!trajectoryFile) return null
     // timeout/transport: the frame never arrived. runtime_failed: an error
     // FRAME arrived — but a graceful gateway shutdown mid-turn sends one
@@ -1368,7 +1421,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         sessionId: outcome.sessionId,
         error: err.message,
       })
-      return { kind: 'recovered', content: outcome.content }
+      return { kind: 'recovered', content: outcome.content, usage: outcome.usage }
     }
 
     this.logger.warn('OpenClaw agent turn died; trajectory post-mortem attached', {
@@ -1506,6 +1559,32 @@ function extractOpenClawAgentText(value: unknown): string {
   }
   const summary = getJsonPath(parsed, ['summary'])
   return typeof summary === 'string' ? summary : ''
+}
+
+/**
+ * Token usage from the gateway agent response payload (`result.meta.agentMeta
+ * .usage`). Returned for every send — threaded or not — and carries cache
+ * tokens the trajectory `model.completed` event omits. Tokens only: the model
+ * is resolved Bakin-side (agent config / routing), not from the payload, to
+ * avoid provider-id-string mismatches against the pricing catalog. Returns
+ * undefined when no token counts are present (never fabricated).
+ */
+function extractOpenClawAgentUsage(value: unknown): MessageUsage | undefined {
+  const parsed = typeof value === 'string' ? parseJsonObject(value.trim()) : value
+  if (!parsed) return undefined
+  const usage = getJsonPath(parsed, ['result', 'meta', 'agentMeta', 'usage'])
+  if (!isPlainObject(usage)) return undefined
+  const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
+  const out: MessageUsage = {}
+  const input = num(usage.input); if (input !== undefined) out.input = input
+  const output = num(usage.output); if (output !== undefined) out.output = output
+  const total = num(usage.total); if (total !== undefined) out.total = total
+  const cacheRead = num(usage.cacheRead); if (cacheRead !== undefined) out.cacheRead = cacheRead
+  const cacheWrite = num(usage.cacheWrite); if (cacheWrite !== undefined) out.cacheWrite = cacheWrite
+  // Require the input/output split for the result to be priceable. A
+  // total-only block isn't — returning it would short-circuit the trajectory
+  // fallback (which may carry the split), leaving the turn unmetered.
+  return out.input !== undefined || out.output !== undefined ? out : undefined
 }
 
 function getJsonPath(value: unknown, path: string[]): unknown {

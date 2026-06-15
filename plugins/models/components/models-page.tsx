@@ -21,7 +21,7 @@ import { AgentAvatar } from "@makinbakin/sdk/components"
 import { ModelSelect } from "@makinbakin/sdk/components"
 import { useRuntimeStatus } from "@makinbakin/sdk/hooks"
 // Relative
-import type { AgentModelConfig, AvailableModel, ModelsConfigResponse, TaskProfile } from '../types'
+import type { AgentModelConfig, AvailableModel, ModelsConfigResponse } from '../types'
 import { BrandIcon } from './brand-icon'
 
 // ---------------------------------------------------------------------------
@@ -52,8 +52,49 @@ const TABS = [
   { id: 'agents', label: 'Agent Config' },
   { id: 'available', label: 'Available Models' },
   { id: 'aliases', label: 'Aliases' },
-  { id: 'profiles', label: 'Task Profiles' },
+  { id: 'routing', label: 'Routing' },
+  { id: 'spend', label: 'Spend' },
 ] as const
+
+// Dispatch origins routing can target, with a short hint of what each is.
+const ROUTING_ORIGINS = [
+  { id: 'scheduled', label: 'Scheduled', hint: 'Cron-fired tasks' },
+  { id: 'workflow', label: 'Workflow', hint: 'Workflow step turns' },
+  { id: 'adhoc', label: 'Ad-hoc', hint: 'Manually kicked tasks' },
+  { id: 'recovery', label: 'Recovery', hint: 'Session-death re-dispatch' },
+  { id: 'decomposition', label: 'Decomposition', hint: 'Subtask breakdown' },
+] as const
+
+const THINKING_LEVELS = ['inherit', 'off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive', 'max'] as const
+
+interface RoutingPolicyRow { origin: string; model?: string; thinking?: string }
+interface TagOverrideRow { tag: string; model?: string; thinking?: string }
+interface RoutingConfigShape { policies: RoutingPolicyRow[]; tagOverrides: TagOverrideRow[] }
+interface BudgetShape { global?: { dailyUsd?: number; monthlyUsd?: number; warnPct?: number }; perAgent?: Record<string, { dailyUsd?: number; monthlyUsd?: number }> }
+
+const SPEND_WINDOWS = [
+  { id: '24h', label: '24h' },
+  { id: '7d', label: '7 days' },
+  { id: '30d', label: '30 days' },
+  { id: 'all', label: 'All time' },
+] as const
+
+/** Render micro-dollars as a dollar amount. Returns null for an unmetered
+ *  (zero-cost) row so the UI can show "$ unavailable" instead of "$0.00". */
+function formatUsdMicros(micros: number): string | null {
+  if (!micros) return null
+  return `$${(micros / 1_000_000).toFixed(micros < 10_000 ? 4 : 2)}`
+}
+
+interface SpendRowAgent { agent: string; costUsdMicros: number; runs: number }
+interface SpendRowModel { model: string; costUsdMicros: number; runs: number }
+interface SpendResponse {
+  window: string
+  estimated: boolean
+  totalUsdMicros: number
+  byAgent: SpendRowAgent[]
+  byModel: SpendRowModel[]
+}
 
 // ---------------------------------------------------------------------------
 // Loading skeleton
@@ -103,7 +144,6 @@ export function ModelsPage() {
   const [modelsLoaded, setModelsLoaded] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [aliases, setAliases] = useState<Record<string, string>>({})
-  const [profiles, setProfiles] = useState<TaskProfile[]>([])
   const [pendingOwn, setPendingOwn] = useState<Record<string, string>>({})
   const [pendingSub, setPendingSub] = useState<Record<string, string>>({})
   const [defaultModel, setDefaultModel] = useState('')
@@ -112,13 +152,19 @@ export function ModelsPage() {
   const [pendingDefaultModel, setPendingDefaultModel] = useState<string | null>(null)
   const [pendingDefaultSubagentModel, setPendingDefaultSubagentModel] = useState<string | null | undefined>(undefined)
   const [pendingFallbackModels, setPendingFallbackModels] = useState<string[] | null>(null)
-  const [pendingProfiles, setPendingProfiles] = useState<TaskProfile[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<string | null>(null)
   const runtimeStatus = useRuntimeStatus()
   const [newAliasName, setNewAliasName] = useState('')
   const [newAliasTarget, setNewAliasTarget] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [spendWindow, setSpendWindow] = useQueryState('window', '24h')
+  const [spend, setSpend] = useState<SpendResponse | null>(null)
+  const [spendLoading, setSpendLoading] = useState(false)
+  const [routing, setRouting] = useState<RoutingConfigShape>({ policies: [], tagOverrides: [] })
+  const [pendingRouting, setPendingRouting] = useState<RoutingConfigShape | null>(null)
+  const [budget, setBudget] = useState<BudgetShape>({})
+  const [pendingBudget, setPendingBudget] = useState<BudgetShape | null>(null)
 
   // -------------------------------------------------------------------------
   // Data fetching
@@ -192,14 +238,17 @@ export function ModelsPage() {
     }
   }, [])
 
-  const fetchProfiles = useCallback(async () => {
+  const fetchSpend = useCallback(async (window: string) => {
+    setSpendLoading(true)
     try {
-      const res = await fetch('/api/plugins/models/profiles')
-      if (!res.ok) throw new Error(`Profiles fetch failed (${res.status})`)
-      const data = await res.json()
-      if (data.profiles) setProfiles(data.profiles)
+      const res = await fetch(`/api/plugins/models/spend?window=${encodeURIComponent(window)}`)
+      if (!res.ok) throw new Error(`Spend fetch failed (${res.status})`)
+      setSpend(await res.json() as SpendResponse)
     } catch (err) {
-      console.error('Failed to fetch profiles:', err)
+      console.error('Failed to fetch spend:', err)
+      setSpend(null)
+    } finally {
+      setSpendLoading(false)
     }
   }, [])
 
@@ -207,8 +256,60 @@ export function ModelsPage() {
     fetchConfig()
     fetchAvailable()
     fetchAliases()
-    fetchProfiles()
-  }, [fetchConfig, fetchAvailable, fetchAliases, fetchProfiles])
+  }, [fetchConfig, fetchAvailable, fetchAliases])
+
+  const fetchBudget = useCallback(async () => {
+    try {
+      const res = await fetch('/api/plugins/models/budget')
+      if (!res.ok) throw new Error(`Budget fetch failed (${res.status})`)
+      setBudget(await res.json() as BudgetShape)
+    } catch (err) {
+      console.error('Failed to fetch budget:', err)
+    }
+  }, [])
+
+  const saveBudget = async () => {
+    if (!pendingBudget) return
+    setSaving('budget')
+    try {
+      // Drop blank/zero caps so an empty field clears the limit.
+      const g = pendingBudget.global ?? {}
+      const global: BudgetShape['global'] = {
+        ...(g.dailyUsd ? { dailyUsd: g.dailyUsd } : {}),
+        ...(g.monthlyUsd ? { monthlyUsd: g.monthlyUsd } : {}),
+        ...(g.warnPct ? { warnPct: g.warnPct } : {}),
+      }
+      const clean: BudgetShape = Object.keys(global).length ? { global } : {}
+      const res = await fetch('/api/plugins/models/budget', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(clean),
+      })
+      const data = await res.json()
+      if (data.ok) { setBudget(clean); setPendingBudget(null) }
+    } catch (err) {
+      console.error('Failed to save budget:', err)
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  useEffect(() => {
+    if (tab === 'spend') { fetchSpend(spendWindow); fetchBudget() }
+  }, [tab, spendWindow, fetchSpend, fetchBudget])
+
+  const fetchRouting = useCallback(async () => {
+    try {
+      const res = await fetch('/api/plugins/models/routing')
+      if (!res.ok) throw new Error(`Routing fetch failed (${res.status})`)
+      const data = await res.json() as RoutingConfigShape
+      setRouting({ policies: data.policies ?? [], tagOverrides: data.tagOverrides ?? [] })
+    } catch (err) {
+      console.error('Failed to fetch routing:', err)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (tab === 'routing') fetchRouting()
+  }, [tab, fetchRouting])
 
   // Auto-refresh in the background when the served cache was stale.
   // We surface the cached data immediately; the refresh swaps rows
@@ -357,41 +458,58 @@ export function ModelsPage() {
   }
 
   // -------------------------------------------------------------------------
-  // Profile actions
+  // Routing actions
   // -------------------------------------------------------------------------
-  const updateProfile = (index: number, field: keyof TaskProfile, value: string) => {
-    const current = pendingProfiles ?? [...profiles]
-    const updated = [...current]
-    updated[index] = { ...updated[index], [field]: value }
-    setPendingProfiles(updated)
+  const displayRouting = pendingRouting ?? routing
+
+  const setOriginField = (origin: string, field: 'model' | 'thinking', value: string) => {
+    const base = pendingRouting ?? { policies: [...routing.policies], tagOverrides: [...routing.tagOverrides] }
+    const policies = base.policies.filter((p) => p.origin !== origin)
+    const existing = base.policies.find((p) => p.origin === origin) ?? { origin }
+    const next: RoutingPolicyRow = { ...existing, [field]: value || undefined }
+    // Drop the row entirely when it carries no override (keeps storage clean).
+    if (next.model || (next.thinking && next.thinking !== 'inherit')) policies.push(next)
+    setPendingRouting({ ...base, policies })
   }
 
-  const addProfile = () => {
-    const current = pendingProfiles ?? [...profiles]
-    setPendingProfiles([...current, { taskType: '', recommendedModel: '', notes: '' }])
+  const addTagOverride = () => {
+    const base = pendingRouting ?? { policies: [...routing.policies], tagOverrides: [...routing.tagOverrides] }
+    setPendingRouting({ ...base, tagOverrides: [...base.tagOverrides, { tag: '' }] })
   }
 
-  const removeProfile = (index: number) => {
-    const current = pendingProfiles ?? [...profiles]
-    setPendingProfiles(current.filter((_, i) => i !== index))
+  const updateTagOverride = (index: number, field: 'tag' | 'model' | 'thinking', value: string) => {
+    const base = pendingRouting ?? { policies: [...routing.policies], tagOverrides: [...routing.tagOverrides] }
+    const tagOverrides = [...base.tagOverrides]
+    tagOverrides[index] = { ...tagOverrides[index], [field]: field === 'tag' ? value : (value || undefined) }
+    setPendingRouting({ ...base, tagOverrides })
   }
 
-  const saveProfiles = async () => {
-    if (!pendingProfiles) return
-    setSaving('profiles')
+  const removeTagOverride = (index: number) => {
+    const base = pendingRouting ?? { policies: [...routing.policies], tagOverrides: [...routing.tagOverrides] }
+    setPendingRouting({ ...base, tagOverrides: base.tagOverrides.filter((_, i) => i !== index) })
+  }
+
+  const saveRouting = async () => {
+    if (!pendingRouting) return
+    setSaving('routing')
     try {
-      const res = await fetch('/api/plugins/models/profiles', {
+      // Drop blank tag rows; normalize 'inherit' thinking to unset.
+      const clean: RoutingConfigShape = {
+        policies: pendingRouting.policies.map((p) => ({ origin: p.origin, ...(p.model ? { model: p.model } : {}), ...(p.thinking && p.thinking !== 'inherit' ? { thinking: p.thinking } : {}) })),
+        tagOverrides: pendingRouting.tagOverrides.filter((t) => t.tag.trim()).map((t) => ({ tag: t.tag.trim(), ...(t.model ? { model: t.model } : {}), ...(t.thinking && t.thinking !== 'inherit' ? { thinking: t.thinking } : {}) })),
+      }
+      const res = await fetch('/api/plugins/models/routing', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ profiles: pendingProfiles }),
+        body: JSON.stringify(clean),
       })
       const data = await res.json()
       if (data.ok) {
-        setProfiles(pendingProfiles)
-        setPendingProfiles(null)
+        setRouting(clean)
+        setPendingRouting(null)
       }
     } catch (err) {
-      console.error('Failed to save profiles:', err)
+      console.error('Failed to save routing:', err)
     } finally {
       setSaving(null)
     }
@@ -415,14 +533,12 @@ export function ModelsPage() {
   const effectiveFallbackModels = pendingFallbackModels ?? fallbackModels
   const fallbackCandidates = modelOptions.filter((model) => model.id !== effectiveDefaultModel)
 
-  const displayProfiles = pendingProfiles ?? profiles
-
   return (
     <div className="p-6 flex flex-col flex-1 gap-6">
       <PluginHeader
         title="Models"
         count={modelOptions.length}
-        subtitle="Agent model config, aliases, and task profiles"
+        subtitle="Agent model config and aliases"
       />
 
       {/* Error banner */}
@@ -862,86 +978,228 @@ export function ModelsPage() {
         </div>
       )}
 
-      {tab === 'profiles' && (
+      {tab === 'routing' && (
         <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">
-                Map task types to recommended models. Not yet wired to dispatch — used as configuration reference.
-              </p>
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Route each dispatch origin to a model and thinking level. Leave a row blank to inherit the agent&apos;s configured model. Tag overrides win over origin policies.
+            </p>
+            {pendingRouting && (
               <div className="flex items-center gap-2">
-                {pendingProfiles && (
-                  <>
-                    <Button variant="outline" size="xs" onClick={() => setPendingProfiles(null)}>
-                      Discard
-                    </Button>
-                    <Button size="xs" onClick={saveProfiles} disabled={saving === 'profiles'}>
-                      {saving === 'profiles' ? 'Saving...' : 'Save Profiles'}
-                    </Button>
-                  </>
-                )}
-                <Button variant="outline" size="xs" onClick={addProfile}>
-                  Add Profile
+                <Button variant="outline" size="xs" onClick={() => setPendingRouting(null)}>Discard</Button>
+                <Button size="xs" onClick={saveRouting} disabled={saving === 'routing'}>
+                  {saving === 'routing' ? 'Saving...' : 'Save Routing'}
                 </Button>
               </div>
-            </div>
-
-            {displayProfiles.length === 0 ? (
-              <EmptyState icon={Layers} title="No task profiles configured" />
-            ) : (
-              <div className="overflow-hidden rounded-xl border border-border">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-card">
-                      <TableHead>Task Type</TableHead>
-                      <TableHead>Recommended Model</TableHead>
-                      <TableHead>Notes</TableHead>
-                      <TableHead className="w-[60px]" />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {displayProfiles.map((row, i) => (
-                      <TableRow key={i}>
-                        <TableCell>
-                          <Input
-                            value={row.taskType}
-                            onChange={(e) => updateProfile(i, 'taskType', e.target.value)}
-                            className="h-8 text-sm"
-                            placeholder="e.g. Heartbeat check"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <ModelSelect
-                            value={row.recommendedModel}
-                            onChange={(v) => updateProfile(i, 'recommendedModel', v)}
-                            models={modelOptions}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            value={row.notes}
-                            onChange={(e) => updateProfile(i, 'notes', e.target.value)}
-                            className="h-8 text-sm"
-                            placeholder="e.g. Fast, cheap"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="xs"
-                            onClick={() => removeProfile(i)}
-                            className="text-muted-foreground hover:text-destructive"
-                          >
-                            Remove
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
             )}
+          </div>
+
+          <div className="overflow-hidden rounded-xl border border-border">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-card">
+                  <TableHead>Origin</TableHead>
+                  <TableHead>Model</TableHead>
+                  <TableHead className="w-[160px]">Thinking</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {ROUTING_ORIGINS.map((o) => {
+                  const policy = displayRouting.policies.find((p) => p.origin === o.id)
+                  return (
+                    <TableRow key={o.id}>
+                      <TableCell>
+                        <div className="font-medium">{o.label}</div>
+                        <div className="text-[11px] text-muted-foreground">{o.hint}</div>
+                      </TableCell>
+                      <TableCell>
+                        <ModelSelect
+                          value={policy?.model ?? ''}
+                          onChange={(v) => setOriginField(o.id, 'model', v)}
+                          models={modelOptions}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <select
+                          className="h-8 w-full rounded-md border border-border bg-background px-2 text-sm"
+                          value={policy?.thinking ?? 'inherit'}
+                          onChange={(e) => setOriginField(o.id, 'thinking', e.target.value)}
+                        >
+                          {THINKING_LEVELS.map((t) => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium">Tag overrides</h3>
+            <Button variant="outline" size="xs" onClick={addTagOverride}><Plus className="h-3 w-3" /> Add override</Button>
+          </div>
+          {displayRouting.tagOverrides.length === 0 ? (
+            <EmptyState icon={Layers} title="No tag overrides" />
+          ) : (
+            <div className="overflow-hidden rounded-xl border border-border">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-card">
+                    <TableHead>Tag</TableHead>
+                    <TableHead>Model</TableHead>
+                    <TableHead className="w-[160px]">Thinking</TableHead>
+                    <TableHead className="w-[60px]" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {displayRouting.tagOverrides.map((row, i) => (
+                    <TableRow key={i}>
+                      <TableCell>
+                        <Input value={row.tag} onChange={(e) => updateTagOverride(i, 'tag', e.target.value)} className="h-8 text-sm" placeholder="e.g. heavy" />
+                      </TableCell>
+                      <TableCell>
+                        <ModelSelect value={row.model ?? ''} onChange={(v) => updateTagOverride(i, 'model', v)} models={modelOptions} />
+                      </TableCell>
+                      <TableCell>
+                        <select
+                          className="h-8 w-full rounded-md border border-border bg-background px-2 text-sm"
+                          value={row.thinking ?? 'inherit'}
+                          onChange={(e) => updateTagOverride(i, 'thinking', e.target.value)}
+                        >
+                          {THINKING_LEVELS.map((t) => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </TableCell>
+                      <TableCell>
+                        <Button variant="ghost" size="xs" onClick={() => removeTagOverride(i)} className="text-muted-foreground hover:text-destructive">Remove</Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </div>
       )}
+
+      {tab === 'spend' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Estimated spend from recorded token usage. Cached-token discounts aren&apos;t modeled, so totals read slightly high — treat as estimates, not an invoice.
+            </p>
+            <div className="flex items-center gap-1">
+              {SPEND_WINDOWS.map((w) => (
+                <Button
+                  key={w.id}
+                  variant={spendWindow === w.id ? 'default' : 'outline'}
+                  size="xs"
+                  onClick={() => setSpendWindow(w.id)}
+                >
+                  {w.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          {spendLoading && !spend ? (
+            <Skeleton className="h-32 w-full" />
+          ) : !spend ? (
+            <EmptyState icon={AlertTriangle} title="Spend data unavailable" />
+          ) : (
+            <>
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <div className="rounded-xl border border-border bg-card p-4">
+                  <div className="text-xs text-muted-foreground">Estimated total ({spend.window})</div>
+                  <div className="text-2xl font-semibold tabular-nums">
+                    {formatUsdMicros(spend.totalUsdMicros) ?? '$ unavailable'}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-border bg-card p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs text-muted-foreground">Budget caps (global)</div>
+                    {pendingBudget ? (
+                      <div className="flex items-center gap-2">
+                        <Button variant="outline" size="xs" onClick={() => setPendingBudget(null)}>Discard</Button>
+                        <Button size="xs" onClick={saveBudget} disabled={saving === 'budget'}>{saving === 'budget' ? 'Saving...' : 'Save'}</Button>
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <label className="flex-1 text-xs text-muted-foreground">
+                      Daily $
+                      <Input
+                        type="number" min="0" className="mt-1 h-8 text-sm"
+                        value={(pendingBudget ?? budget).global?.dailyUsd ?? ''}
+                        onChange={(e) => setPendingBudget({ ...(pendingBudget ?? budget), global: { ...(pendingBudget ?? budget).global, dailyUsd: e.target.value ? Number(e.target.value) : undefined } })}
+                      />
+                    </label>
+                    <label className="flex-1 text-xs text-muted-foreground">
+                      Monthly $
+                      <Input
+                        type="number" min="0" className="mt-1 h-8 text-sm"
+                        value={(pendingBudget ?? budget).global?.monthlyUsd ?? ''}
+                        onChange={(e) => setPendingBudget({ ...(pendingBudget ?? budget), global: { ...(pendingBudget ?? budget).global, monthlyUsd: e.target.value ? Number(e.target.value) : undefined } })}
+                      />
+                    </label>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">At 100% of a cap, dispatch defers new turns until the window resets. Leave blank for no limit.</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <div className="overflow-hidden rounded-xl border border-border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-card">
+                        <TableHead>Agent</TableHead>
+                        <TableHead className="text-right">Runs</TableHead>
+                        <TableHead className="text-right">Est. cost</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {spend.byAgent.length === 0 ? (
+                        <TableRow><TableCell colSpan={3} className="text-muted-foreground">No spend in this window</TableCell></TableRow>
+                      ) : spend.byAgent.map((r) => (
+                        <TableRow key={r.agent}>
+                          <TableCell className="font-medium">{r.agent}</TableCell>
+                          <TableCell className="text-right tabular-nums">{r.runs}</TableCell>
+                          <TableCell className="text-right tabular-nums">{formatUsdMicros(r.costUsdMicros) ?? <span className="text-muted-foreground">$ unavailable</span>}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                <div className="overflow-hidden rounded-xl border border-border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-card">
+                        <TableHead>Model</TableHead>
+                        <TableHead className="text-right">Runs</TableHead>
+                        <TableHead className="text-right">Est. cost</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {spend.byModel.length === 0 ? (
+                        <TableRow><TableCell colSpan={3} className="text-muted-foreground">No spend in this window</TableCell></TableRow>
+                      ) : spend.byModel.map((r) => (
+                        <TableRow key={r.model}>
+                          <TableCell className="font-medium">{r.model}</TableCell>
+                          <TableCell className="text-right tabular-nums">{r.runs}</TableCell>
+                          <TableCell className="text-right tabular-nums">{formatUsdMicros(r.costUsdMicros) ?? <span className="text-muted-foreground">$ unavailable</span>}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
     </div>
   )
 }
