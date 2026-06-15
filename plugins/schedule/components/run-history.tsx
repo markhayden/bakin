@@ -3,21 +3,7 @@
 import { useRunHistory } from "@makinbakin/sdk/hooks"
 import { Badge } from "@makinbakin/sdk/ui"
 import { Skeleton } from "@makinbakin/sdk/ui"
-import { toneBadgeClass } from "@makinbakin/sdk/utils"
-
-function formatTime(ts: string): string {
-  const d = new Date(ts)
-  if (isNaN(d.getTime())) return ts
-  const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const target = new Date(d.getFullYear(), d.getMonth(), d.getDate())
-  const diffDays = Math.round((today.getTime() - target.getTime()) / 86400000)
-
-  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-  if (diffDays === 0) return `Today ${time}`
-  if (diffDays === 1) return `Yesterday ${time}`
-  return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} ${time}`
-}
+import { toneBadgeClass, formatDateTime } from "@makinbakin/sdk/utils"
 
 export function RunHistory({ jobId }: { jobId: string }) {
   const { runs, loading } = useRunHistory(jobId)
@@ -40,7 +26,7 @@ export function RunHistory({ jobId }: { jobId: string }) {
     <div className="space-y-2">
       {runs.map(run => (
         <div key={run.runId} className="flex items-center gap-3 text-sm py-1.5 border-b border-border/50 last:border-0">
-          <span className="text-muted-foreground w-[140px] shrink-0 text-xs">{formatTime(run.timestamp)}</span>
+          <span className="text-muted-foreground w-[140px] shrink-0 text-xs">{formatDateTime(run.timestamp)}</span>
           <Badge
             variant="outline"
             className={
