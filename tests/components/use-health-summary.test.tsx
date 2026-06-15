@@ -15,14 +15,12 @@ mock.module('../../packages/core/src/content-dir', () => ({
   getBakinPaths: () => ({ root: testDir }),
 }))
 
-// Controllable doctorVersion via a stubbed useContentStore selector.
-let mockDoctorVersion = 0
-mock.module('@makinbakin/sdk/hooks', () => ({
-  useContentStore: (selector: (s: { doctorVersion: number }) => unknown) =>
-    selector({ doctorVersion: mockDoctorVersion }),
-}))
+// The hook refetches on each 'doctor.run' plugin event. Expose the real
+// usePluginEvent through the SDK barrel so the test can drive it via emit.
+import { usePluginEvent, emitPluginEvent } from '@/hooks/use-plugin-event'
+mock.module('@makinbakin/sdk/hooks', () => ({ usePluginEvent }))
 
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import { useHealthSummary } from '../../plugins/health/hooks/use-health-summary'
 
 function Probe() {
@@ -33,7 +31,6 @@ function Probe() {
 const fetchMock = mock()
 
 beforeEach(() => {
-  mockDoctorVersion = 0
   fetchMock.mockReset()
   ;(globalThis as { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch
 })
@@ -65,27 +62,25 @@ describe('useHealthSummary', () => {
     await waitFor(() => expect(screen.getByTestId('errors').textContent).toBe('0'))
   })
 
-  it('refetches when doctorVersion bumps', async () => {
+  it('refetches on a doctor.run event', async () => {
     fetchMock.mockResolvedValue(summaryResponse({ doctor: { summary: { errors: 1 } } }))
-    const { rerender } = render(<Probe />)
+    render(<Probe />)
     await waitFor(() => expect(screen.getByTestId('errors').textContent).toBe('1'))
 
     fetchMock.mockClear()
     fetchMock.mockResolvedValue(summaryResponse({ doctor: { summary: { errors: 4 } } }))
-    mockDoctorVersion = 1
-    rerender(<Probe />)
+    act(() => { emitPluginEvent({ event: 'doctor.run' }) })
     await waitFor(() => expect(screen.getByTestId('errors').textContent).toBe('4'))
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('keeps the last good value on a failed fetch', async () => {
     fetchMock.mockResolvedValue(summaryResponse({ doctor: { summary: { errors: 2 } } }))
-    const { rerender } = render(<Probe />)
+    render(<Probe />)
     await waitFor(() => expect(screen.getByTestId('errors').textContent).toBe('2'))
 
     fetchMock.mockRejectedValue(new Error('network down'))
-    mockDoctorVersion = 1
-    rerender(<Probe />)
+    act(() => { emitPluginEvent({ event: 'doctor.run' }) })
     // Value is retained (no throw, no reset to null).
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
     expect(screen.getByTestId('errors').textContent).toBe('2')

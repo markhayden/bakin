@@ -9,20 +9,12 @@ interface AuditEntry {
   data: Record<string, unknown>
 }
 
-interface ReindexProgressEntry {
-  indexed: number
-  done: boolean
-}
-
 interface ContentStore extends ContentState {
   loading: boolean
   auditEntries: AuditEntry[]
   activityEvents: ActivityEvent[]
   sseConnected: boolean
-  taskboardVersion: number
-  doctorVersion: number
   debug: boolean
-  reindexProgress: Record<string, ReindexProgressEntry>
   setFiles: (files: Record<string, string>) => void
   updateFile: (key: string, content: string) => void
   setHeartbeats: (heartbeats: Record<string, Heartbeat>) => void
@@ -31,12 +23,8 @@ interface ContentStore extends ContentState {
   appendActivityEvent: (event: ActivityEvent) => void
   setActivityEvents: (events: ActivityEvent[]) => void
   setSseConnected: (connected: boolean) => void
-  bumpTaskboard: () => void
-  bumpDoctor: () => void
   setDebug: (debug: boolean) => void
   toggleDebug: () => void
-  setReindexProgress: (table: string, indexed: number, done: boolean) => void
-  clearReindexProgress: () => void
   initialize: () => Promise<void>
 }
 
@@ -48,10 +36,7 @@ export const useContentStore = create<ContentStore>((set, get) => ({
   auditEntries: [],
   activityEvents: [],
   sseConnected: false,
-  taskboardVersion: 0,
-  doctorVersion: 0,
   debug: false,
-  reindexProgress: {},
 
   setFiles: (files) => set({ files }),
   updateFile: (key, content) =>
@@ -69,8 +54,6 @@ export const useContentStore = create<ContentStore>((set, get) => ({
   setActivityEvents: (events) =>
     set({ activityEvents: events.filter((e) => !isNoisyEvent(e)).slice(0, 100) }),
   setSseConnected: (connected) => set({ sseConnected: connected }),
-  bumpTaskboard: () => set((state) => ({ taskboardVersion: state.taskboardVersion + 1 })),
-  bumpDoctor: () => set((state) => ({ doctorVersion: state.doctorVersion + 1 })),
   setDebug: (debug) => {
     set({ debug })
     try { localStorage.setItem('bakin-debug', String(debug)) } catch {}
@@ -80,12 +63,6 @@ export const useContentStore = create<ContentStore>((set, get) => ({
     set({ debug: next })
     try { localStorage.setItem('bakin-debug', String(next)) } catch {}
   },
-  setReindexProgress: (table, indexed, done) =>
-    set((state) => ({
-      reindexProgress: { ...state.reindexProgress, [table]: { indexed, done } },
-    })),
-  clearReindexProgress: () => set({ reindexProgress: {} }),
-
   initialize: async () => {
     try { if (localStorage.getItem('bakin-debug') === 'true') set({ debug: true }) } catch {}
     try {

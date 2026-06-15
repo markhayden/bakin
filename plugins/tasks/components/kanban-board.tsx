@@ -16,6 +16,7 @@ import { TaskLogTable } from './task-log-table'
 import { filterBoardColumns, useTaskFilters } from '../hooks/use-task-filters'
 import { countVisibleTasks } from '../lib/scheduled'
 import { useContentStore } from "@makinbakin/sdk/hooks"
+import { usePluginEvent } from "@makinbakin/sdk/hooks"
 import { useDebug } from "@makinbakin/sdk/hooks"
 import { useQueryState, useQueryArrayState } from "@makinbakin/sdk/hooks"
 import { toast } from "@makinbakin/sdk/hooks"
@@ -133,7 +134,6 @@ export function KanbanBoard() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const [boardData, setBoardData] = useState<{ columns: TaskColumns; timestamp?: string }>({ columns: emptyBoard })
-  const taskboardVersion = useContentStore((s) => s.taskboardVersion)
   const loading = useContentStore((s) => s.loading)
 
   const fetchBoard = useCallback(async () => {
@@ -146,7 +146,8 @@ export function KanbanBoard() {
     } catch { /* SSE will eventually re-trigger */ }
   }, [])
 
-  useEffect(() => { fetchBoard() }, [fetchBoard, taskboardVersion])
+  useEffect(() => { fetchBoard() }, [fetchBoard])
+  usePluginEvent('taskboard', fetchBoard)
 
   const refreshTaskboard = useCallback(async () => {
     await fetchBoard()

@@ -1,216 +1,184 @@
-# Plan: WS1 — refactor/contract-types
+# Plan: WS3 — feat/sdk-gaps
 
 Spec: `SPEC.md` + `.claude/specs/audit-2026-06/REPORT.md` (triage-approved 2026-06-11).
-Branch: `refactor/contract-types` off `main`. One revertable commit per finding/file; every
-commit green on `bun run test` + `bun run typecheck`. PR gate: `bun run build` + lint + boot
-smoke + doc sweep. No shims, no compat re-export layers — dead declarations are deleted in the
-commit that obsoletes them.
+Branch: `feat/sdk-gaps` off `main`. (Independent of the still-open WS2 #499 — client-side
+SDK + plugin code; minimal overlap. Merge order: WS2 then WS3 ideally; the one shared file,
+`packages/sdk/src/utils`, takes non-conflicting additions.)
+One revertable commit per finding; every commit green on `bun run test` + `bun run typecheck`.
+PR gate: `bun run build` + lint + **dockerized-rig E2E + browser page sweep** + docs. No shims.
+Respect the WS1 two-tier type contract (`.claude/knowledge/repo-architecture.md` § two-tier).
 
-## The crux decision — RESOLVED BY HARD CONSTRAINT (not a judgment call)
+## SCOPE DECISION (2026-06-13, Mark) — ship A1 alone; A2–A8 become WS3b
 
-The report is internally contradictory on source-of-truth direction: the **contract-types
-finding** says *SDK is home, core re-exports*; the **Task finding** says *core is home, SDK
-re-exports*. This is settled by a documented, publish-enforced constraint:
+A1 (the SSE consolidation) is **complete, tested, E2E-verified, and shipping as PR `feat/sdk-gaps`
+now** so it can be reviewed and merged independently. It's the load-bearing, highest-risk item
+(touches the live-update path app-wide) and stands alone cleanly. A2–A8 are independent additive
+SDK primitives (fetch hook, confirm dialog, formatters, empty-state, models hook, workflow types,
+tone badge) with no dependency on each other or on A1's internals — they're carved into a
+follow-up workstream **WS3b** (`tasks/plan-ws3b-sdk-gaps-remainder.md`, written after this PR
+merges) and picked up next. Rationale: keep the high-risk SSE change reviewable in isolation;
+don't block it behind seven mechanical extractions. The A2–A8 task specs below are preserved
+verbatim as the WS3b backlog.
 
-> `packages/sdk/src/types/index.ts` header: *"This module is intentionally self-contained.
-> External plugins must be able to typecheck against `@makinbakin/sdk/types` without resolving
-> `@bakin/core`, Bakin source aliases, adapter packages, or another plugin's internals."*
+## Goal
 
-Enforced by `scripts/build-sdk-package.ts` → `assertNoForbiddenImports`, which fails the publish
-if any emitted `.js`/`.d.ts` references `@bakin/core` or `/src/`. Therefore the SDK types module
-**physically cannot** re-export from core. Since plugins reach `Task` (and every contract type)
-through `ctx` typed against the self-contained SDK, those types **must** be declared in the SDK.
+Add the client-side SDK primitives core plugins keep reinventing, then migrate the duplicated
+consumers. Extraction bar: 2+ real consumers with congruent behavior. This is CLIENT/BROWSER work —
+the payoff is runtime UI behavior (one SSE connection instead of N, consistent fetch lifecycle,
+one confirm dialog), so verification is the dockerized-rig E2E + a Playwright page sweep, not just
+`bun test`.
 
-**Decision (forced): the SDK types module is the single canonical home for every shared plugin
-contract type. `packages/core/src/plugin-types.ts` re-exports them from `@makinbakin/sdk/types`;
-plugin-local copies are deleted in favor of the SDK declaration.** This matches what core
-*already* does (`plugins/manifest.ts`, `plugins/signatures.ts` import types from the SDK) and the
-zero-dep DAG (`plugins → sdk`, `core → sdk`). Drifted SDK declarations are reconciled UP to the
-real runtime/wire shape (add `updatedAt`/`version` to `Task`, fix `instanceId` on
-`WorkflowInstance`, reconcile `AvailableModel` required-ness) — the SDK type becomes the superset,
-never a downgrade.
+## Confirmed state (recon, 2026-06-13)
 
-`@bakin/core/plugin-types` stays as core's API surface (it re-exports the SDK contract + keeps
-core-internal-only types) — that is the layered public surface, **not** a compat shim. The 38
-in-repo plugin files importing from `@bakin/core/plugin-types` are **not** mass-migrated this
-workstream (no correctness benefit once the declaration is single-homed; opportunistic later).
+- The shell owns ONE EventSource (`src/hooks/use-sse.ts`), but it only routes events into the
+  content store — it has **no subscriber fan-out**, and it drops `{type:'plugin-event', event, …}`
+  payloads entirely. That's exactly why the assets plugin opens its own connections.
+- Assets opens **3 raw `new EventSource('/api/events')`** (no reconnect): `task-assets.tsx`
+  (asset.changed/removed + workflow.step_complete), `versioned/VersionedAssetGrid.tsx`
+  (asset.changed/removed), `versioned/VersionedAssetDetail.tsx` (asset.changed/removed for one
+  assetId). All filter on `data.type === 'plugin-event'` + `data.event`.
+- SDK re-export precedent for shell/plugin hooks is established: `export { useSSE } from '@/hooks/use-sse'`,
+  `export { useAgentStore } from '@bakin/team/hooks/...'` (`packages/sdk/src/hooks/index.ts`).
+- `let cancelled = false` fetch boilerplate: **11** component files. Relative-time/format reimpls:
+  **7** files. ConfirmDialog shape: **6** sites / 5 plugins. EmptyState fork in team. AvailableModel
+  hand-fetch: 3 sites.
 
-The one pre-existing inverted edge (`sdk/utils` → `@bakin/core/format`, the P2 package cycle) is
-**out of scope** here — WS1 adds no new inverted edges; the formatter relocation is WS3.
+## Decisions to resolve before building (see questions)
+
+1. **usePluginEvent home + the existing hardcoded routing — RESOLVED (Mark, 2026-06-13).** The hook's
+   impl lives in the shell (`src/hooks/use-plugin-event.ts`, SDK-re-exported like `useSSE`) since it
+   hangs off the shell's singleton connection. **Decision: ALSO refactor the existing
+   taskboard/doctor/reindex routing onto the new fan-out** (not just the assets EventSources) —
+   removing the per-plugin bump counters from the content store. Bigger blast radius (touches the
+   tasks/health/reindex live-update paths), so A1's E2E acceptance must exercise all of them.
+2. **PR shape.** All findings are independent (different files). **Recommendation:** one PR,
+   commit-per-finding.
+3. **A8-deferred tasks workflow work + P2 tone-badge** — include or defer (see tasks A7/A8 below).
 
 ## Dependency graph & sequencing
 
-```
-Phase A  unify each type family (SDK canonical → core re-exports → drop plugin dups)
-  A0 dead files            ── independent, lands first (noise reduction)
-  A1 health family         ── verbatim-identical, lowest risk
-  A2 exec-tool types       ──┐ verbatim / near-verbatim
-  A3 search API types      ──┤  each: reconcile in SDK, core re-exports, typecheck gate
-  A4 manifest types        ──┤  (core's PluginManifest is STALE — SDK is superset)
-  A5 PluginContext+BakinPlugin ─ RISKY: pulls in runtime-adapter surface; dedicated commit
-  A6 Task / TaskLogEntry   ──┤  add updatedAt/version to SDK; core/task-store + plugins re-export
-  A7 AvailableModel        ──┤
-  A8 WorkflowInstance/Def  ──┤  fix instanceId
-  A9 AgentUsage            ──┘  + fix the plugin-dir-escaping import
-  A10 src/types residue    ── delete 12 dead, keep 3 live (Heartbeat/ActivityEvent/ContentState)
-        │
-        ▼  (single source of truth now established — drift killed)
-Phase B  split the two now-canonical god-files (pure reorg, types-only, zero runtime risk)
-  B1 split packages/sdk/src/types/index.ts → primitives/manifest/runtime/services/registration/context (+ barrel)
-  B2 split packages/core/src/plugin-types.ts → plugin-contract/{search-api,services,registrations} (+ slimmed core)
-```
+All tasks are independent (distinct files); order is lowest-risk-first. A1 is the only one that
+touches the shell SSE pathway.
 
-Phase A lands the correctness win (drift eliminated) and is independently valuable; Phase B is
-organization. If we stop after A, the workstream's primary goal is already met.
+```
+A1 usePluginEvent      — shell fan-out + migrate 3 assets EventSources   (load-bearing; browser runtime)
+A2 useJsonFetch        — hook + migrate team's cluster                   (11 sites; migrate densest, rest opportunistic)
+A3 ConfirmDialog       — SDK component + migrate 6 sites
+A4 formatDuration/DateTime — core/format + SDK utils + migrate 7 sites + delete health's dup
+A5 EmptyState          — fold team's variant into SDK, delete the fork
+A6 useAvailableModels  — hook + migrate 3 ModelSelect call sites
+A7 tasks workflow types — migrate hand-rolled types to SDK (A8 deferral from WS1)
+A8 toneBadge (P2)      — flag; likely defer
+```
 
 ## Tasks
 
-> Each Phase-A unify commit follows the same recipe: (1) ensure the SDK declaration is the correct
-> superset (reconcile any drift), (2) delete the duplicate declaration(s) in core/plugins and
-> replace with `export type { X } from '@makinbakin/sdk/types'` (core) or direct SDK import
-> (plugins), (3) `bun run typecheck` is the proof — a shape mismatch fails compilation. No new
-> tests needed for pure type re-homing; typecheck IS the test. Where a runtime shape changes
-> (Task gaining fields is additive/safe), the existing suite is the guard.
+> **Status (2026-06-13):** A1 = **DONE & SHIPPING** (this PR). A2–A8 = **WS3b backlog** (deferred,
+> specs preserved below).
 
-### A0 — Delete verified-dead files
-`plugins/tasks/components/new-task-dialog.tsx`, `plugins/team/components/curated-browser.tsx`,
-`src/components/calendar/calendar-view.tsx`, `src/lib/parsers/calendar.ts`,
-`src/components/plugin-slot.tsx`, `src/core/cli/ui/panel.tsx`,
-`packages/host/src/components/layout/skeleton-loader.tsx`.
-- Re-verify deadness at HEAD before deleting (grep every alias/dynamic-import form; new-task-dialog
-  only referenced by a docs screenshot id, which captures by route — safe).
-- **Accept:** `bun run test` + `bun run typecheck` + `bun run build:plugins` green; grep finds no
-  importers.
-- Commit: `chore: delete seven verified-dead files (~620 LOC)`
+### A1 — usePluginEvent (multiplex the singleton SSE) — ✅ DONE
+Add a tiny browser-global subscriber emitter; the shell `useSSE.onmessage` publishes `plugin-event`
+payloads into it. `usePluginEvent(eventName, handler)` (in `src/hooks/use-plugin-event.ts`,
+re-exported from `@makinbakin/sdk/hooks`) registers/unregisters a handler for an event name. Migrate
+the 3 assets EventSources to it (asset.changed / asset.removed / workflow.step_complete), keeping
+their assetId filtering. No new connections; reconnect handled once by the shell.
+- **Accept:** typecheck + suite green; grep shows zero `new EventSource` in plugins/assets; E2E shows
+  asset pages still live-update (a generate/edit reflects without reload) over the single connection;
+  exactly one `/api/events` connection in the browser network panel.
+- **DONE — shipped in 2 commits** (`feat(sdk): usePluginEvent multiplexing the shell SSE; migrate
+  assets off raw EventSource` + `refactor(sdk): move taskboard/doctor/reindex SSE routing onto
+  usePluginEvent`). Scope per the 2026-06-13 decision: migrated the 3 assets EventSources **and**
+  refactored the shell's hardcoded taskboard/doctor/reindex routing onto the fan-out, deleting the
+  `taskboardVersion`/`doctorVersion`/`reindexProgress` content-store counters. 4999 tests green.
+  **Dockerized-rig isolated E2E (real OpenClaw, all 12 plugins loaded):** Playwright sweep of all 10
+  routes = 0 console/page/network errors; a stack-classified EventSource probe on `/assets` confirms
+  the assets plugin now opens **0** `/api/events` connections (was 3 pre-A1) and the shell opens
+  exactly **1** singleton (the one remaining `messaging` connection is an out-of-repo user plugin in
+  the test home, not repo scope). Emit/subscribe wiring covered by the rewritten use-sse-doctor /
+  use-health-summary / use-plugin-event unit tests. Knowledge docs updated
+  (`plugin-system.md` § Client SSE fan-out + nav-badge bullets, `search-system.md`, `tasks-plugin.md`).
 
-### A1 — Health check contract family
-`HealthCheckResult`, `HealthRepairSafety/Change/PlanItem/ApplyResult/Handler`,
-`PluginHealthCheckInput`. Verbatim-identical (SDK adds doc comments only).
-- SDK keeps canonical; `packages/core/src/plugin-types.ts` re-exports from `@makinbakin/sdk/types`.
-- **Accept:** typecheck green; 17 health-check consumers compile unchanged.
-- Commit: `refactor(types): single-home the health-check contract in the SDK`
+---
+## WS3b backlog (deferred 2026-06-13 — NOT in this PR)
 
-### A2 — Exec-tool types
-`ExecToolDefinition`, `ExecToolResult` (+ context types). SDK canonical, core re-exports.
-- Commit: `refactor(types): single-home exec-tool contract types in the SDK`
+### A2 — useJsonFetch (cancellable JSON fetch lifecycle)
+`useJsonFetch<T>(url, opts?)` → `{ data, loading, error, refresh }`, AbortController-based, in
+`src/hooks/use-json-fetch.ts`, re-exported from `@makinbakin/sdk/hooks`. Migrate the team plugin's
+sites (densest: heartbeat-tab, overview-tab, active-context-tab, lesson-toggle-list, team-grid);
+migrate the rest of the 11 opportunistically (note any left).
+- **Accept:** typecheck + suite green; migrated tabs load/error/refresh correctly in the E2E; no
+  setState-after-unmount warnings in the console sweep.
+- Commit: `feat(sdk): useJsonFetch hook; migrate the team plugin's fetch boilerplate`
 
-### A3 — Search API contract
-`SearchAPI`, `SearchQueryParams`, `SearchIndexDefinition`, `SearchContentTypeDefinition`,
-`SearchSchemaField`, result/aggregation shapes. Reconcile, SDK canonical, core re-exports.
-- Commit: `refactor(types): single-home the search API contract in the SDK`
+### A3 — ConfirmDialog
+`ConfirmDialog` in `src/components/confirm-dialog.tsx`, re-exported from `@makinbakin/sdk/components`.
+Props `{ open|target, title, description, confirmLabel, busy, error, onConfirm, onCancel }`. Migrate
+all 6 sites (schedule/delete-schedule-dialog, tasks/delete-task-dialog, workflows/workflow-delete-action,
+assets/versioned/TagFolderGrid, team/team-manager, team/agent-detail).
+- **Accept:** typecheck + suite green; each delete flow still confirms + shows busy/error in the E2E.
+- Commit: `feat(sdk): ConfirmDialog component; migrate 6 hand-rolled delete dialogs`
 
-### A4 — Manifest contract
-`PluginManifest`, `PluginManifestSignature`, `SecretDeclaration`, `PluginPermission`,
-`RuntimeCapability`, `PluginEntry…`. **Core's `PluginManifest` is STALE** (missing
-`runtimeCapabilities`/`contributes`/`devWatch`) — the SDK copy is the superset; core's manifest
-parser already imports from the SDK. Delete core's stale declaration, re-export from SDK.
-- **Accept:** typecheck green; `manifest.ts`/`signatures.ts` already-SDK imports unaffected.
-- Commit: `refactor(types): drop stale core PluginManifest, re-export the SDK manifest contract`
+### A4 — formatDuration + formatDateTime
+Add `formatDuration(ms)` and `formatDateTime(ts)` to `packages/core/src/format.ts` (re-exported via
+`@makinbakin/sdk/utils` next to `formatAge`); use the task-run-history calendar variant (Today/
+Yesterday + short-date + year disambiguation) as the strictly-better source. Migrate the 7 reimpls;
+delete the health plugin's byte-identical local `formatAge`.
+- **Accept:** typecheck + suite green; format tests for the new fns; the 7 sites render identically.
+- Commit: `refactor(sdk): formatDuration/formatDateTime in core/format; migrate 7 reimplementations`
 
-### A5 — REVISED: two-tier types are deliberate, not drift (decision 2026-06-12)
-**Finding that overturned the original A5:** the audit called `PluginContext`/`BakinPlugin`
-"duplicated verbatim," but core and the SDK are an *intentional two-tier contract*, not a fork:
-- core's `PluginContext.runtime` is the **full** `AgentRuntimeAdapter` (`adapters/runtime/concepts.ts`
-  — agents×11, tools, sessions, memory, config, images, media, restart). 6 core plugins use 15+
-  full-only methods (`memory.statEntry`, `agents.writeWorkspaceFile`, `config.replace`,
-  `images.generate`, `cron.getRaw`…). The SDK's adapter is a deliberate narrow published subset.
-- core's `ctx.tasks` returns its `PluginTask` projection (`PluginTaskService`); the SDK returns
-  `Task` (`TaskService`). core's `BakinPlugin` is a superset (`routes?: DeclarativeAPIRoute[]`).
-  `StorageAdapter`/`NavItem`/`APIRoute`/`HookAPI`/`SkillDefinition` are all core-fuller.
+### A5 — EmptyState consolidation
+Port team's larger icon-chip + `fillHeight` variant into the SDK `src/components/empty-state.tsx`
+(keep it backward compatible for the 6 existing SDK consumers), repoint team's 3 local importers to
+`@makinbakin/sdk/components`, delete `plugins/team/components/empty-state.tsx`.
+- **Accept:** typecheck + suite green; team's empty states render with the ported variant in the E2E;
+  the SDK EmptyState's 6 prior consumers unchanged.
+- Commit: `refactor(sdk): fold team's EmptyState variant into the SDK; delete the fork`
 
-A blind re-export would break the 6 plugins (narrowing) or leak `concepts.ts` into the
-self-contained SDK (impossible). **Decision (Mark, approved):** accept the split; do NOT force-unify.
-Collapsing the boundary (making core plugins use the narrow surface) is WS2 (adapter-boundary) work.
+### A6 — useAvailableModels
+`useAvailableModels()` in `plugins/models/hooks/use-available-models.ts`, re-exported from
+`@makinbakin/sdk/hooks` (mirrors the `useAgentStore`/`useNotificationChannels` re-export precedent).
+Returns the `/api/plugins/models/available` payload typed as `AvailableModel[]` (WS1 single-homed the
+type). Migrate the 3 call sites (team agent-form, team agent-detail, models models-page).
+- **Accept:** typecheck + suite green; the model pickers populate in the E2E.
+- Commit: `feat(sdk): useAvailableModels hook; migrate 3 hand-fetch call sites`
 
-A5 deliverable: (1) a clear header comment in BOTH type files documenting the two-tier design so
-nobody "fixes" it later; (2) single-home the genuinely-identical, non-two-tier leaf services that
-`PluginContext` composes — `EventBus`, `ActivityAPI`, `PluginLogger` (primitives, verified identical),
-and `AssetsAPI` if its dependency types are SDK-resident + identical. The two-tier types
-(`PluginContext`, `PluginToolContext`, `ExecToolDefinition`'s ctx, `BakinPlugin`, the full adapter,
-`PluginTask*`, `StorageAdapter`, `NavItem`, `APIRoute`, `HookAPI`, `SkillDefinition`,
-`UISlotRegistration`) stay core-local by design.
-- **Accept:** typecheck green; comment present; no behavior change.
-- Commit: `refactor(types): single-home identical leaf services; document the two-tier split`
+### A7 — tasks-plugin workflow types (WS1 A8 deferral)
+Migrate `plugins/tasks/components/task-detail-dialog.tsx`'s hand-rolled `Workflow`/`WorkflowInstance`/
+`WorkflowDefinition` interfaces to the SDK types (WS1 fixed the SDK `WorkflowInstance` wire shape →
+`instanceId`). The two raw `/api/plugins/workflows/instances/:taskId` fetches can adopt `useJsonFetch`
+(A2) rather than a bespoke hook unless a `useWorkflowInstance` proves cleaner.
+- **Accept:** typecheck + suite green; the task drawer's workflow/gate panel works in the E2E.
+- Commit: `refactor(tasks): use SDK workflow types + useJsonFetch in the task drawer`
 
-### A6 — REVISED: TaskLogEntry single-homed; internal Task deduped (two-tier respected)
-`TaskLogEntry` is byte-identical in 6 places → single-home in the SDK; core (`task-store`,
-`tasks/store`, `plugin-types`'s `PluginTask.log`) and `plugins/tasks/types` re-export it.
-For `Task`: respect the two-tier split — the SDK keeps its published `Task` projection; the
-**internal storage `Task`** duplicated across `src/core/task-store.ts` and
-`packages/core/src/tasks/store.ts` collapses to one internal home (the `src/types` copy is deleted in
-A10). Do NOT merge the SDK's published `Task` with the internal storage shape. Reconcile the SDK
-`Task`/`PluginTask` only for genuine published-contract bugs (e.g. missing fields a plugin needs).
-- **Accept:** typecheck + task-store/tasks-route tests green; TaskLogEntry single-declared.
-- Commit: `refactor(types): single-home TaskLogEntry in the SDK; dedupe the internal storage Task`
+### A8 — toneBadge (INCLUDED per Mark)
+Add `toneBadgeClass(tone: 'success'|'pending'|'error'|'muted'|'info')` (or a `StatusBadge` component)
+to the SDK for the `bg-X-500/10 text-X-400 border-X-500/20` idiom; migrate the 4 plugins that
+hand-roll it (task-run-history, schedule run-history, health-page, models-page status maps).
+- **Accept:** typecheck + suite green; badges render with identical colors in the E2E.
+- Commit: `feat(sdk): toneBadgeClass for status badges; migrate 4 plugins`
 
-### A7 — AvailableModel
-`plugins/models/types.ts` vs SDK, drifted (required-ness, `source?`). Reconcile to the real route
-payload; SDK canonical; `plugins/models/types.ts` re-exports.
-- Commit: `refactor(types): single-home AvailableModel in the SDK`
-
-### A8 — WorkflowInstance / WorkflowDefinition
-SDK shape uses `id`; the wire shape is `instanceId` (`plugins/workflows/types.ts:240`). Fix the SDK
-declaration to the real wire shape; reconcile `plugins/tasks` consumers and the workflows plugin.
-- **Accept:** typecheck green; tasks-plugin workflow dialogs compile against the corrected type.
-- Commit: `refactor(types): fix WorkflowInstance wire shape and single-home it in the SDK`
-
-### A9 — AgentUsage
-`src/core/agent-usage.ts` + verbatim copy in `plugins/health/components/health-page.tsx` + a
-plugin-dir-escaping relative import in `plugins/team/components/overview-tab.tsx`. Export
-type-only `AgentUsage` from the SDK; import it in health + team; delete the copies and the escaping
-import.
-- Commit: `refactor(types): single-home AgentUsage in the SDK, drop the plugin-dir-escaping import`
-
-### A10 — src/types residue
-Shrink `src/types/index.ts` to the 3 live exports (`Heartbeat`, `ActivityEvent`, `ContentState`);
-delete the 12 dead (Calendar*, Memory*, ProjectMeta, OfficeData, TaskBoard, ColumnId, the now-moved
-Task/TaskLogEntry/TaskColumns). Verify the 6 importers only use the live 3.
-- **Accept:** typecheck + test green; grep confirms no importer references a deleted export.
-- Commit: `refactor(types): strip the Next.js-era src/types residue to its 3 live types`
-
-### B1 — Split the SDK types file
-`packages/sdk/src/types/index.ts` (1401) → `primitives.ts` / `manifest.ts` / `runtime.ts` /
-`services.ts` / `registration.ts` / `context.ts`, per the cohesion plan; `index.ts` becomes a
-barrel (`export *`). The barrel path is the vendor-bundle entrypoint
-(`scripts/build-sdk-package.ts` `SDK_EXPORTS`) and `@makinbakin/sdk/types` — **must stay**.
-- **Accept:** typecheck + `bun run build:vendors` + full `bun run build` green; SDK publish dry-run
-  (`assertNoForbiddenImports`) clean — no module references `@bakin/core`/`/src/`.
-- Commit: `refactor(sdk): split types/index.ts into focused contract modules`
-
-### B2 — Split the core plugin-types file
-`packages/core/src/plugin-types.ts` (1129) → `plugin-contract/{search-api,services,registrations}.ts`
-+ slimmed `plugin-types.ts` (PluginContext/BakinPlugin/manifest + the re-exports). Pure types, zero
-runtime side effects (cohesion plan: lowest-risk split in the repo).
-- **Accept:** typecheck + full build green; all 38 `@bakin/core/plugin-types` importers compile.
-- Commit: `refactor(core): split plugin-types.ts into plugin-contract modules`
-
-### PR gate (checkpoint)
-- `bun run test` + `bun run typecheck` + `bun run lint` green.
-- `bun run build` succeeds (all binaries) — **no `git add -A`** after (build-stamp trap: revert
-  `packages/core/src/generated-version.ts` + `packages/host/src/api/_embedded-assets-static.ts`).
-- SDK publish guard: run the publish build (or `findForbiddenPackageImports`) to prove the split
-  SDK still has no forbidden imports.
-- Boot smoke in an isolated `BAKIN_HOME` (BAKIN_SKIP_ONBOARDING_CHECK=1) — server serves 200.
-- Doc sweep: `.claude/knowledge/{plugin-system,repo-architecture,adapter-architecture}.md`,
-  `docs/plugin-authoring.md`, CLAUDE.md (the plugin-contract/SDK descriptions). Update the
-  `repo-architecture.md` type-ownership note + `plugin-system.md` if either names the old layout.
-- Open PR `refactor/contract-types` → main; Mark reviews/merges.
+### PR gate
+- `bun run test` + `typecheck` + `lint` green; `bun run build` (3 binaries; build-stamp trap —
+  revert `generated-version.ts` + `_embedded-assets-static.ts`).
+- **Dockerized-rig E2E (isolated):** all plugins activate; Playwright sweep of all 10 pages = 0
+  console/page/network errors; **one** `/api/events` connection; asset live-update, a delete-confirm
+  flow, a model picker, and a team tab exercised.
+- Docs: `.claude/knowledge/{plugin-system,url-state-deep-linking}.md` + `docs/plugin-authoring.md`
+  (new SDK hooks/components); CLAUDE.md SDK surface table if it enumerates hooks.
+- Open PR `feat/sdk-gaps`; Mark reviews/merges.
 
 ## Risks & mitigations
-
-- **A5 PluginContext blast radius** — the broadest type; a wrong reconciliation breaks all 10
-  plugins + host at compile. Mitigation: do it as its own commit, typecheck is exhaustive, revert
-  is clean. If the SDK runtime surface ≠ core's full adapter, keep the internal split (public
-  shape in SDK, internal `PluginContextLite`/adapter local to core).
-- **SDK self-containment** — any accidental `@bakin/core`/`/src/` import in an SDK types module
-  fails publish. Mitigation: the publish guard runs in the PR gate; B1's acceptance includes it.
-- **Hidden runtime coupling on Task fields** — `version`/`updatedAt` feed optimistic concurrency.
-  Mitigation: additive only (SDK gains the fields it lacked); existing task tests are the guard.
-- **Dead-file staleness** — audit ran a few commits back. Mitigation: A0 re-verifies at HEAD.
+- **A1 SSE fan-out** — a bug here breaks live updates app-wide. Mitigation: the shell keeps its
+  existing routing untouched; the emitter is additive (publish-only); E2E verifies single connection
+  + live update. Revert is clean (assets fall back to... nothing — so verify before merge).
+- **Vendor-bundle weight** (#422) — new SDK hooks/components add to the bundle. Mitigation: they're
+  small; they live in the existing hooks/components sub-paths (no new import-map entries).
+- **Browser-only behavior** — `bun test` can't catch SSE/fetch-lifecycle/dialog regressions.
+  Mitigation: the E2E + page sweep is a hard PR-gate item, not optional.
+- **Two-tier contract** — new hooks/components are client primitives (correct for the SDK); they
+  must not pull server-only modules into the SDK client bundle.
 
 ## Rollback
-
-Every commit is an independent checkpoint (typecheck + suite green). Phase B reverts cleanly to the
-unified-but-unsplit state; Phase A commits revert per type family. A0 and A10 are independent of the
-unification chain. If review prefers smaller units, Phase A and Phase B can split into two PRs
-(`refactor/contract-types-unify`, `-split`) — B depends on A, not vice-versa.
+Each commit is independent (suite + typecheck green) and touches distinct files; revert any single
+finding cleanly. A1 is the only one that must be E2E-verified before merge (no test-only safety net
+for SSE behavior).

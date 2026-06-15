@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { useContentStore } from '@makinbakin/sdk/hooks'
+import { usePluginEvent } from '@makinbakin/sdk/hooks'
 
 export interface TaskSummary {
   blocked: number
@@ -15,12 +15,11 @@ interface UseTaskSummaryResult {
 /**
  * Cheap blocked/review counts for the Tasks nav badge. Hits the dedicated
  * `/summary` endpoint (numbers only) and refetches whenever the existing
- * SSE-driven `taskboardVersion` bumps — the same signal the Kanban board
+ * SSE 'taskboard' events — the same signal the Kanban board
  * uses — so the badge stays current with no new EventSource.
  */
 export function useTaskSummary(): UseTaskSummaryResult {
   const [summary, setSummary] = useState<TaskSummary | null>(null)
-  const taskboardVersion = useContentStore((s) => s.taskboardVersion)
 
   const refresh = useCallback(async () => {
     try {
@@ -38,7 +37,8 @@ export function useTaskSummary(): UseTaskSummaryResult {
     }
   }, [])
 
-  useEffect(() => { void refresh() }, [refresh, taskboardVersion])
+  useEffect(() => { void refresh() }, [refresh])
+  usePluginEvent('taskboard', refresh)
 
   return { summary }
 }

@@ -1,27 +1,23 @@
-# TODO — WS1 refactor/contract-types
+# TODO — WS3 feat/sdk-gaps
 
-Branch `refactor/contract-types` off `main`. One commit per task; each green on
-`bun run test` + `bun run typecheck`. Detail + crux decision: `tasks/plan.md`.
+Branch `feat/sdk-gaps` off `main`. One commit per finding; each green on
+`bun run test` + `bun run typecheck`. Detail + decisions: `tasks/plan.md`.
 
-Decision (forced by the SDK's self-contained publish constraint): **SDK types module is the
-single canonical home for all shared contract types; core re-exports from it.**
+Client/browser work — PR gate REQUIRES the dockerized-rig E2E + Playwright page sweep
+(not just bun test). Respect the WS1 two-tier type contract.
 
-## Phase A — unify (kills the drift)
-- [x] A0 — delete 7 verified-dead files (~620 LOC); re-verify deadness at HEAD
-- [x] A1 — health-check contract family → SDK canonical, core re-exports
-- [x] A2 — exec-tool types → SDK canonical
-- [x] A3 — search API contract → SDK canonical
-- [x] A4 — manifest contract (core's PluginManifest is stale) → drop core copy, re-export SDK
-- [x] A5 — PluginContext + BakinPlugin (RISKY: runtime-adapter surface) → SDK canonical
-- [x] A6 — Task / TaskLogEntry (add updatedAt/version to SDK) → single-home in SDK
-- [x] A7 — AvailableModel (reconcile required-ness) → SDK canonical
-- [x] A8 — WorkflowInstance/Def (fix id→instanceId wire shape) → SDK canonical
-- [x] A9 — AgentUsage → SDK type-only + drop plugin-dir-escaping import
-- [x] A10 — strip src/types residue to its 3 live types
-
-## Phase B — split (pure reorg)
-- [x] B1 — split sdk/types/index.ts → primitives/manifest/runtime/services/registration/context (+ barrel) + dropped 8 dead misc types
-- [~] B2 — MOOT: unification shrank core/plugin-types.ts 1129→738 lines (under the 800 threshold); split no longer warranted
+## Primitives + migrations (independent; lowest-risk-first)
+- [x] A1 — usePluginEvent: shell SSE fan-out + 3 assets EventSources migrated + taskboard/doctor/reindex counters refactored ✅ (2 commits)
+- [ ] A2 — useJsonFetch: hook + migrate the team plugin's `let cancelled` cluster (11 sites total)
+- [ ] A3 — ConfirmDialog: SDK component + migrate 6 hand-rolled delete dialogs
+- [ ] A4 — formatDuration/formatDateTime in core/format + SDK utils; migrate 7 reimpls; delete health's dup
+- [ ] A5 — EmptyState: fold team's variant into the SDK, repoint 3 importers, delete the fork
+- [ ] A6 — useAvailableModels hook + migrate 3 ModelSelect call sites
+- [ ] A7 — tasks drawer: migrate hand-rolled workflow types → SDK types (WS1 A8 deferral)
+- [ ] A8 — toneBadgeClass + migrate 4 badge-idiom plugins
 
 ## PR gate
-- [x] gate green: typecheck + 4996 tests + lint + full build + build:vendors + boot smoke (10 plugins); SDK self-containment verified; docs updated → PR
+- [ ] test + typecheck + lint + build + dockerized-rig E2E (1 SSE conn, 0 page errors) + docs → open PR
+
+## Not in WS3 (deferred elsewhere)
+- WS2 #499 (awaiting merge); its K5-boundary/K6 → WS6; finding-8 config-gating → own PR
