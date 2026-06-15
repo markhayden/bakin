@@ -3,31 +3,8 @@
 import { useState } from 'react'
 import { useTaskRunHistory, type TaskOutcome, type TaskRunEntry } from "@makinbakin/sdk/hooks"
 import { Badge, Separator } from "@makinbakin/sdk/ui"
+import { formatDateTime, formatDuration } from "@makinbakin/sdk/utils"
 import { ChevronRight } from 'lucide-react'
-
-function relativeTime(ts: string): string {
-  const d = new Date(ts)
-  if (isNaN(d.getTime())) return ts
-  const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const target = new Date(d.getFullYear(), d.getMonth(), d.getDate())
-  const diffDays = Math.round((today.getTime() - target.getTime()) / 86400000)
-  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-  if (diffDays === 0) return `Today ${time}`
-  if (diffDays === 1) return `Yesterday ${time}`
-  // Prior-year timestamps carry the year — "Jan 5" alone is ambiguous once
-  // runs and completions live longer than the calendar.
-  const sameYear = d.getFullYear() === now.getFullYear()
-  return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(sameYear ? {} : { year: 'numeric' }) })} ${time}`
-}
-
-function formatDuration(ms?: number): string | null {
-  if (ms == null) return null
-  if (ms < 1000) return `${ms}ms`
-  const s = Math.round(ms / 1000)
-  if (s < 60) return `${s}s`
-  return `${Math.floor(s / 60)}m ${s % 60}s`
-}
 
 // `settled` is blue, not green — a settled turn is not a succeeded task (#476);
 // green is reserved for the task-done outcome badge.
@@ -82,7 +59,7 @@ export function TaskRunHistory({ taskId }: { taskId: string }) {
             <>
               <Badge variant="outline" className={OUTCOME_CLASS[outcome.state]}>{OUTCOME_LABEL[outcome.state]}</Badge>
               {outcome.completedAt && (
-                <span className="text-[11px] text-muted-foreground/70">{relativeTime(outcome.completedAt)}</span>
+                <span className="text-[11px] text-muted-foreground/70">{formatDateTime(outcome.completedAt)}</span>
               )}
             </>
           )}
@@ -95,7 +72,7 @@ export function TaskRunHistory({ taskId }: { taskId: string }) {
               return (
                 <div key={run.runId} className="flex items-center gap-3 text-sm py-1.5 border-b border-border/50 last:border-0">
                   <span className="text-muted-foreground w-6 shrink-0 text-xs font-mono">#{run.seq}</span>
-                  <span className="text-muted-foreground w-[130px] shrink-0 text-xs">{relativeTime(run.startedAt)}</span>
+                  <span className="text-muted-foreground w-[130px] shrink-0 text-xs">{formatDateTime(run.startedAt)}</span>
                   <Badge variant="outline" className={STATUS_CLASS[run.status]}>{run.status}</Badge>
                   <span className="text-xs text-muted-foreground">{run.agent}</span>
                   {dur && <span className="text-xs text-muted-foreground">{dur}</span>}

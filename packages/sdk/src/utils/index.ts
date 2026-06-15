@@ -30,6 +30,10 @@ export { cn } from '../../../../src/lib/utils'
 
 /** Format a Date or ISO string as a relative age (e.g. "5m ago"). */
 export { formatAge } from '@bakin/core/format'
+/** Format an ISO timestamp as a calendar-aware absolute date+time (e.g. "Today 3:45 PM", "Jan 5 9:02 AM"). */
+export { formatDateTime } from '@bakin/core/format'
+/** Format a millisecond count as an elapsed duration (e.g. "42s", "3m 5s"); null when undefined. */
+export { formatDuration } from '@bakin/core/format'
 /** Format a byte count as a human-readable size string (e.g. "1.2 MB"). */
 export { formatSize } from '@bakin/core/format'
 /** Returns true if a timestamp is older than a configurable staleness threshold. */
