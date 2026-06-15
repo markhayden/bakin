@@ -15,9 +15,8 @@
 import { useEffect, useState } from 'react'
 import { Loader2, MessageCircle } from 'lucide-react'
 import { Badge } from '@makinbakin/sdk/ui'
-import { MarkdownContent } from '@makinbakin/sdk/components'
+import { MarkdownContent, EmptyState } from '@makinbakin/sdk/components'
 import type { SessionMessage, SessionTranscript } from '../types'
-import { EmptyState } from './empty-state'
 
 export interface ActiveContextTabProps {
   agentId: string
@@ -114,6 +113,7 @@ export function ActiveContextTab({ agentId }: ActiveContextTabProps) {
   if (!transcript || transcript.messages.length === 0) {
     return (
       <EmptyState
+        variant="panel"
         icon={MessageCircle}
         title="No session context yet"
         description="The most recent dispatch's full message stream appears here — the system prompt, every user/assistant turn, and every tool call. Run a task with this agent to populate it."

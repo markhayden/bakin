@@ -20,7 +20,7 @@ import { MarkdownEditTab } from './markdown-edit-tab'
 import { HeartbeatTab } from './heartbeat-tab'
 import { ActiveContextTab } from './active-context-tab'
 import { OverviewTab } from './overview-tab'
-import { EmptyState } from './empty-state'
+import { EmptyState } from '@makinbakin/sdk/components'
 import type { AgentProfile, SkillSummary, PackageStateRow } from '../types'
 
 type Tab = 'overview' | 'identity' | 'soul' | 'memory' | 'heartbeat' | 'rules' | 'tools' | 'skills' | 'lessons' | 'active-context'
@@ -305,6 +305,7 @@ function LessonsTab({ agentId, packageState }: { agentId: string; packageState: 
   }
   return (
     <EmptyState
+      variant="panel"
       icon={BookOpen}
       title="Lessons require a package"
       description="Lessons let you toggle individual pieces of curriculum on or off per agent — useful for narrowing the persona to a task. Adopt this agent into a package on the Overview tab to unlock per-lesson toggles."
@@ -352,6 +353,7 @@ function SkillsTab({ agentId }: { agentId: string }) {
   if (skills.length === 0) {
     return (
       <EmptyState
+        variant="panel"
         icon={Sparkles}
         title="No skills installed"
         description="Skills are reusable runtime capabilities the agent can invoke. Install a skill-pack via the CLI to add some — `bakin packages install <source>`."
@@ -428,6 +430,7 @@ function MemoryTab({ agentId }: { agentId: string }) {
   if (files.length === 0) {
     return (
       <EmptyState
+        variant="panel"
         icon={Calendar}
         title="No memory yet"
         description="Per-day memory files appear here once this agent writes its first lesson via `bakin_exec_log_memory`. Memory accumulates as the agent works through tasks."

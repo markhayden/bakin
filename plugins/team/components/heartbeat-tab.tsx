@@ -10,9 +10,8 @@
  */
 import { useEffect, useState } from 'react'
 import { Loader2, Heart, Pencil } from 'lucide-react'
-import { MarkdownContent } from '@makinbakin/sdk/components'
+import { MarkdownContent, EmptyState } from '@makinbakin/sdk/components'
 import type { HeartbeatRaw } from '../types'
-import { EmptyState } from './empty-state'
 
 const HEARTBEAT_DISABLED_REASON = 'HEARTBEAT.md is an agent-maintained narrative — the agent updates it itself as it works. Editing from the UI would conflict with what the agent next writes.'
 
@@ -81,6 +80,7 @@ export function HeartbeatTab({ agentId }: HeartbeatTabProps) {
   if (!heartbeat) {
     return (
       <EmptyState
+        variant="panel"
         icon={Heart}
         title="No heartbeat yet"
         description={
