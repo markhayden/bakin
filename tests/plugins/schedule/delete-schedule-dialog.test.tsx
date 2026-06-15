@@ -1,23 +1,40 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { join } from 'path'
+import { tmpdir } from 'os'
 
-mock.module('@makinbakin/sdk/ui', () => ({
-  Dialog: ({ open, children }: { open: boolean; children?: React.ReactNode }) => open ? <div>{children}</div> : null,
-  DialogContent: ({ children }: { children?: React.ReactNode }) => <div role="dialog">{children}</div>,
-  DialogHeader: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
-  DialogTitle: ({ children }: { children?: React.ReactNode }) => <h2>{children}</h2>,
-  DialogDescription: ({ children }: { children?: React.ReactNode }) => <p>{children}</p>,
-  DialogFooter: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
-  Button: ({
-    children,
-    onClick,
-    disabled,
+// Pure jsdom component test — no storage access. Defensive content-dir mocks per convention.
+const testDir = join(tmpdir(), 'bakin-test-delete-schedule-dialog')
+mock.module('../../../src/core/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir }) }))
+mock.module('../../../packages/core/src/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir }) }))
+
+// DeleteScheduleDialog now delegates to the shared ConfirmDialog (WS3b A3); mock it to a
+// minimal renderer so this test verifies the title/description/labels the component contributes.
+mock.module('@makinbakin/sdk/components', () => ({
+  ConfirmDialog: ({
+    open,
+    title,
+    description,
+    confirmLabel = 'Delete',
+    onConfirm,
+    onCancel,
   }: {
-    children?: React.ReactNode
-    onClick?: () => void
-    disabled?: boolean
-  }) => <button onClick={onClick} disabled={disabled}>{children}</button>,
+    open: boolean
+    title?: React.ReactNode
+    description?: React.ReactNode
+    confirmLabel?: string
+    onConfirm?: () => void
+    onCancel?: () => void
+  }) =>
+    open ? (
+      <div role="dialog">
+        <h2>{title}</h2>
+        <div>{description}</div>
+        <button onClick={onCancel}>Cancel</button>
+        <button onClick={onConfirm}>{confirmLabel}</button>
+      </div>
+    ) : null,
 }))
 
 import { DeleteScheduleDialog } from '../../../plugins/schedule/components/delete-schedule-dialog'

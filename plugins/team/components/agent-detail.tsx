@@ -2,14 +2,8 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { useRouter } from '@makinbakin/sdk/hooks'
-import { ArrowLeft, Loader2, Camera, Trash2, BookOpen, Sparkles, Calendar } from 'lucide-react'
+import { ArrowLeft, Camera, Trash2, BookOpen, Sparkles, Calendar } from 'lucide-react'
 import { Button } from "@makinbakin/sdk/ui"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@makinbakin/sdk/ui"
 import { Skeleton } from "@makinbakin/sdk/ui"
 import { useRuntimeStatus } from "@makinbakin/sdk/hooks"
 import type { AvailableModel } from "@makinbakin/sdk/types"
@@ -20,7 +14,7 @@ import { MarkdownEditTab } from './markdown-edit-tab'
 import { HeartbeatTab } from './heartbeat-tab'
 import { ActiveContextTab } from './active-context-tab'
 import { OverviewTab } from './overview-tab'
-import { EmptyState } from '@makinbakin/sdk/components'
+import { EmptyState, ConfirmDialog } from '@makinbakin/sdk/components'
 import type { AgentProfile, SkillSummary, PackageStateRow } from '../types'
 
 type Tab = 'overview' | 'identity' | 'soul' | 'memory' | 'heartbeat' | 'rules' | 'tools' | 'skills' | 'lessons' | 'active-context'
@@ -262,31 +256,23 @@ export function AgentDetail({ agentId }: { agentId: string }) {
       </div>
 
       {/* Delete confirmation */}
-      <Dialog open={deleteOpen} onOpenChange={(v) => { if (!v && !deleting) { setDeleteOpen(false); setDeleteError(null) } }}>
-        <DialogContent className="bg-card border-border max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Delete agent?</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">
+      <ConfirmDialog
+        open={deleteOpen}
+        busy={deleting}
+        busyLabel="Deleting..."
+        title="Delete agent?"
+        description={
+          <>
             This will remove <span className="text-foreground font-medium">{profile.name}</span> from
             the agent roster and restart the active runtime. The workspace will be moved to trash.
-          </p>
-          <p className="text-xs text-muted-foreground/70 mt-1">
-            This cannot be undone from the UI.
-          </p>
-          {deleteError && (
-            <p className="text-sm text-destructive">{deleteError}</p>
-          )}
-          <div className="flex justify-end gap-2 mt-2">
-            <Button variant="outline" onClick={() => { setDeleteOpen(false); setDeleteError(null) }} disabled={deleting}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-              {deleting ? <><Loader2 className="size-3.5 animate-spin mr-1.5" />Deleting...</> : 'Delete Agent'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+            <span className="block text-xs text-muted-foreground/70 mt-1">This cannot be undone from the UI.</span>
+          </>
+        }
+        error={deleteError}
+        confirmLabel="Delete Agent"
+        onConfirm={handleDelete}
+        onCancel={() => { setDeleteOpen(false); setDeleteError(null) }}
+      />
     </div>
   )
 }

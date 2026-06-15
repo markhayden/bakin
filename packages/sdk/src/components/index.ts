@@ -21,6 +21,9 @@ export { AgentStatus } from '@/components/agent-status'
 export { BakinDrawer } from '@/components/bakin-drawer'
 /** Color picker swatch grid for tag/agent color assignment. */
 export { ColorPicker } from '@/components/color-picker'
+/** Controlled confirmation dialog for destructive actions (busy/error aware). */
+export { ConfirmDialog } from '@/components/confirm-dialog'
+export type { ConfirmDialogProps } from '@/components/confirm-dialog'
 /** Centered empty-state component with icon, title, and CTA. */
 export { EmptyState } from '@/components/empty-state'
 /** Inline error banner with dismiss + retry actions. */
