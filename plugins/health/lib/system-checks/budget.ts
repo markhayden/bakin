@@ -11,7 +11,7 @@ import { queryAuditEvents } from '../../../../src/core/audit'
 import { getContentDir } from '../../../../src/core/content-dir'
 import { spendTotal, LedgerUnavailableError } from '../../../../src/core/execution-ledger'
 import { evaluateBudget, dayStartMs, monthStartMs, type BudgetPolicy } from '../../../../src/core/budget'
-import { getHookRegistry } from '../../../../src/lib/plugin-registry'
+import { getHookRegistry } from '../../../../packages/core/src/hooks/hook-registry-singleton'
 import type { HealthCheckResult } from '../../../../packages/core/src/plugin-types'
 
 const CHECK = 'budget'

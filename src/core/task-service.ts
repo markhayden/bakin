@@ -17,7 +17,7 @@ import { getAppServices } from './app-services'
 import { meterAgentTurn } from './agent-cost'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import type { TaskSource } from '@bakin/core/tasks/store'
-import { getHookRegistry } from '../lib/plugin-registry'
+import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { assertWorkflowToolAllowed } from './workflow-tool-authorization'
 import { bumpHeartbeatByTask, deleteCompletion, getLiveRun, hasCompletion, recordCompletion } from './execution-ledger'
 import {

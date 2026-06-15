@@ -83,7 +83,7 @@ describe('MCP server tool registration', () => {
     // 1. Importing mcp-server pulls in all six self-registering script tools.
     //    The export also gives us registerTools() so we can drive an in-process server.
     const { registerTools } = require('../../src/core/mcp-server') as typeof import('../../src/core/mcp-server')
-    const { addExecTool, getAllExecTools } = require('../../scripts/lib/registry') as typeof import('../../scripts/lib/registry')
+    const { addExecTool, getAllExecTools } = require('@/core/exec-tools/registry') as typeof import('@/core/exec-tools/registry')
 
     // 2. Activate every plugin from bakin.config.ts using a context that
     //    forwards registerExecTool to the global addExecTool — exactly like

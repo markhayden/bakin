@@ -15,21 +15,13 @@ import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'fs'
 import { join } from 'path'
 
 import type { HealthCheckResult, HealthRepairHandler } from '../../../packages/core/src/plugin-types'
+import { healthOk as ok, healthWarn as warn, healthFixed as fixed } from '@makinbakin/sdk/utils'
 
 import { isValidAssetId } from './asset-id'
 import { readManifest } from './manifest'
 
 // ─── Result constructors (inlined; matches workflows precedent) ─────────────
 
-function ok(check: string, message: string): HealthCheckResult {
-  return { check, status: 'ok', message, autoFixable: false }
-}
-function warn(check: string, message: string, autoFixable = false): HealthCheckResult {
-  return { check, status: 'warn', message, autoFixable }
-}
-function fixed(check: string, message: string): HealthCheckResult {
-  return { check, status: 'fixed', message, autoFixable: true }
-}
 
 // ─── Asset health: store shape, disk usage, trash, manifest integrity ──────
 

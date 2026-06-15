@@ -64,7 +64,7 @@ import {
   unregisterPluginNodeTypes,
 } from '@bakin/workflows/lib/node-type-registry'
 import { workflowDefinitionSchema } from '@bakin/workflows/lib/node-type-registry'
-import { getHookRegistry } from '../../../src/lib/plugin-registry'
+import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 
 /**
  * End-to-end integration test for plugin-registered workflow node types.

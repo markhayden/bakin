@@ -120,6 +120,9 @@ mock.module('@bakin/workflows/lib/runtime', () => ({
 mock.module('@bakin/workflows/lib/matcher', () => ({
   matchWorkflow: mock(() => null),
 }))
+mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
+  getHookRegistry: () => mockHookRegistry,
+}))
 
 const mockLoadDefinition = mock((_data: any): Record<string, unknown> | null => ({ name: 'image-social-post', steps: [] }))
 const mockListDefinitions = mock((): Array<{ name: string }> => [

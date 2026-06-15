@@ -89,6 +89,9 @@ const mockHookRegistry = {
 mock.module('../../../src/lib/plugin-registry', () => ({
   getHookRegistry: () => mockHookRegistry,
 }))
+mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
+  getHookRegistry: () => mockHookRegistry,
+}))
 
 import { upsertJob, getJob } from '@bakin/schedule/lib/sidecar'
 import { __scheduleTestInternals, MISSED_WINDOW_REASON } from '@bakin/schedule/index'

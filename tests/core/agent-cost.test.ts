@@ -21,13 +21,17 @@ mock.module('../../src/core/usage', () => ({ recordUsage: (e: Record<string, unk
 
 let priceTurnImpl: (data: Record<string, unknown>) => unknown = () => ({ model: null, costUsdMicros: null })
 let priceImageImpl: (data: Record<string, unknown>) => unknown = () => ({ model: null, costUsdMicros: null })
-mock.module('../../src/lib/plugin-registry', () => ({
+const hookRegistryMock = () => ({
   getHookRegistry: () => ({ invoke: async (name: string, data: Record<string, unknown>) => {
     if (name === 'models.priceTurn') return priceTurnImpl(data)
     if (name === 'models.priceImage') return priceImageImpl(data)
     return undefined
   } }),
-}))
+})
+// getHookRegistry now lives in the leaf module (WS2 K1); mock the leaf (the
+// real import site post-K1) plus the legacy facade for belt-and-suspenders.
+mock.module('@bakin/core/hooks/hook-registry-singleton', hookRegistryMock)
+mock.module('../../src/lib/plugin-registry', hookRegistryMock)
 
 import { meterAgentTurn, meterImageTurn } from '../../src/core/agent-cost'
 

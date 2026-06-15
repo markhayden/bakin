@@ -35,7 +35,7 @@ import { validateStepOutput, detectRejectionRepeat } from './schema-validator'
 import { notifyGateReached, notifyGateApproved, notifyGateRejected, notifyWorkflowComplete, notifyWorkflowReopened, notifyStepDispatched, notifyStepComplete, sendGateApprovalRequest, getGateNotificationSettings } from './notifications'
 import { getContentDir } from './content-dir'
 import { isPluginKind } from './node-type-registry'
-import { getHookRegistry } from '../../../src/lib/plugin-registry'
+import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { createLogger } from '@bakin/core/logger'
 import {
   addTaskLog,

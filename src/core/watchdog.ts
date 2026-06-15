@@ -12,7 +12,7 @@ import { isStale } from '../lib/format'
 import { getAppServices } from './app-services'
 import { meterAgentTurn } from './agent-cost'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
-import { getHookRegistry } from '../lib/plugin-registry'
+import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { getStatsByMs } from './usage'
 import {
   addTaskLog,

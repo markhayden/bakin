@@ -153,7 +153,7 @@ Populated during `pluginRegistry.initialize()` by walking `corePluginTable` entr
 | Module | New API | Behavior |
 |--------|---------|----------|
 | `packages/core/src/hooks/hook-registry.ts` | `unregisterByPlugin(pluginId: string): number` | Each handler stored alongside `pluginId` (added at register time via per-plugin `ctx.hooks.register` wrapper). Returns count removed. |
-| `scripts/lib/registry.ts` | `removeExecToolsByPlugin(pluginId: string): number` | Filter by name prefix `bakin_exec_<pluginId>_`. |
+| `src/core/exec-tools/registry.ts` | `removeExecToolsByPlugin(pluginId: string): number` | Filter by name prefix `bakin_exec_<pluginId>_`. |
 | `src/core/search-registry.ts` | `purgeContentType(name: string): Promise<number>` | Atomic delete of all rows for a Bakin search content type through the active search adapter. No-op + return 0 if search is disabled. |
 | `plugins/workflows/lib/node-type-registry.ts` | (existing) `unregisterPluginNodeTypes(pluginId)` | Now called from remove flow, not just override. |
 | `src/core/notification-channels.ts` | (existing) `unregisterPluginNotificationChannels(pluginId)` | Same. |
@@ -361,7 +361,7 @@ tests/fixtures/plugins/
 packages/core/src/plugin-types.ts          — Add onUninstall? to BakinPlugin
 packages/core/src/hooks/hook-registry.ts   — unregisterByPlugin + per-handler pluginId tracking
 src/lib/plugin-registry.ts                 — isCorePlugin, populate corePluginIds, wire activation log
-scripts/lib/registry.ts                    — removeExecToolsByPlugin
+src/core/exec-tools/registry.ts            — removeExecToolsByPlugin
 src/core/search-registry.ts                — purgeContentType
 src/core/onboarding/plugin-assets.ts       — removePluginAssets
 src/core/cli.ts                            — wire cmdPluginsUpgrade, --yes flags

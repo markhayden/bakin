@@ -14,31 +14,12 @@
  */
 import { existsSync, readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
-import yaml from 'js-yaml'
+import { parseFrontmatter } from '@bakin/core/format/frontmatter'
 import type { PluginContext, SkillDefinition } from '@bakin/core/plugin-types'
 
 export interface LoadPluginSkillsResult {
   registered: string[]
   skipped: { file: string; error: string }[]
-}
-
-interface ParsedSkill {
-  frontmatter: Record<string, unknown>
-  body: string
-}
-
-function parseSkillFile(content: string): ParsedSkill {
-  const match = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/)
-  if (!match) {
-    return { frontmatter: {}, body: content.trim() }
-  }
-  let frontmatter: Record<string, unknown> = {}
-  try {
-    frontmatter = (yaml.load(match[1]) as Record<string, unknown>) || {}
-  } catch {
-    return { frontmatter: {}, body: content.trim() }
-  }
-  return { frontmatter, body: match[2].trim() }
 }
 
 export function loadPluginSkills(
@@ -57,7 +38,7 @@ export function loadPluginSkills(
     try {
       const sourcePath = join(skillsDir, file)
       const raw = readFileSync(sourcePath, 'utf-8')
-      const { frontmatter, body } = parseSkillFile(raw)
+      const { frontmatter, body } = parseFrontmatter(raw)
 
       const skill: SkillDefinition = {
         name: (frontmatter.name as string) || filenameId,

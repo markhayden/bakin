@@ -25,7 +25,7 @@ const log = createLogger('agent-cost')
 
 /** Dynamically load the hook registry (see note above on why it's dynamic). */
 async function loadHooks() {
-  return (await import('../lib/plugin-registry')).getHookRegistry()
+  return (await import('@bakin/core/hooks/hook-registry-singleton')).getHookRegistry()
 }
 
 /**

@@ -40,6 +40,9 @@ mock.module('../../../src/lib/plugin-registry', () => ({
   pluginRegistry: { getPlugin: () => undefined, getPluginContext: () => undefined, deletePlugin: () => false },
   getHookRegistry: () => ({ unregisterByPlugin: () => 0 }),
 }))
+mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
+  getHookRegistry: () => ({ unregisterByPlugin: () => 0 }),
+}))
 
 import { post as removePOST } from '../../../packages/host/src/api/plugins/remove'
 import { post as upgradePOST } from '../../../packages/host/src/api/plugins/upgrade'

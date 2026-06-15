@@ -4,13 +4,14 @@
  * auto-installs — points the user at `bakin install plugin-assets`.
  */
 import { pluginAssetsComponent } from '../../../../src/core/onboarding/plugin-assets'
+import { healthOk, healthWarn } from '@makinbakin/sdk/utils'
 import type { HealthCheckResult } from '../../../../packages/core/src/plugin-types'
 
 function ok(message: string): HealthCheckResult {
-  return { check: 'plugin-assets', status: 'ok', message, autoFixable: false }
+  return healthOk('plugin-assets', message)
 }
 function warn(message: string): HealthCheckResult {
-  return { check: 'plugin-assets', status: 'warn', message, autoFixable: false }
+  return healthWarn('plugin-assets', message)
 }
 
 export async function checkPluginAssets(): Promise<HealthCheckResult[]> {

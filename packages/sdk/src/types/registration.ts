@@ -5,7 +5,7 @@ import type { ZodRawShape } from 'zod'
 import type { ActivityAPI, EventBus, HookAPI, PluginContext, StorageAdapter } from './context'
 import type { ContractStability, ContractVisibility, DocsExample, HttpMethod, SchemaLike, SourceLocation } from './primitives'
 import type { AgentRuntimeAdapter } from './runtime'
-import type { AssetsAPI, SearchAPI, Task, TaskService } from './services'
+import type { AssetsAPI, SearchAPI, TaskService } from './services'
 
 /** Visual tone for a {@link NavBadge}. Maps to a fixed palette in the sidebar.
  *  Ordered by severity: `error` (red) is the most urgent and wins rollups. */

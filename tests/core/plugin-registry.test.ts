@@ -123,13 +123,25 @@ mock.module('@/core/audit', () => ({
   appendAudit: mock(),
 }))
 
+// One shared getContentDir mock so the @/ facade AND the packages/core
+// resolver (used by the settings-store) return the same dir.
+const sharedGetContentDir = mock()
 mock.module('@/core/content-dir', () => ({
-  getContentDir: mock(),
+  getContentDir: sharedGetContentDir,
   getBakinPaths: mock(() => ({})),
   isUsingBakinHome: () => true,
   resetContentDir: () => {},
   initBakinHome: () => {},
 }))
+const coreContentDirMock = () => ({
+  getContentDir: sharedGetContentDir,
+  getBakinPaths: mock(() => ({})),
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+  initBakinHome: () => {},
+})
+mock.module('../../packages/core/src/content-dir', coreContentDirMock)
+mock.module('@bakin/core/content-dir', coreContentDirMock)
 
 mock.module('@/core/migrations', () => ({
   runMigrations: mock().mockResolvedValue(0),
@@ -155,7 +167,7 @@ const mockedRemoveExecToolsByPlugin = mock((pluginId: string) => {
   return removed
 })
 
-mock.module('../../scripts/lib/registry', () => ({
+mock.module('@/core/exec-tools/registry', () => ({
   addExecTool: mockedAddExecTool,
   getExecTool: (name: string) => mockedExecTools.get(name),
   getAllExecTools: () => [...mockedExecTools.values()],
@@ -209,7 +221,7 @@ describe('PluginRegistryImpl', () => {
     const audit = await import('@/core/audit')
     mockAppendAudit = vi.mocked(audit.appendAudit)
 
-    const scriptReg = await import('../../scripts/lib/registry')
+    const scriptReg = await import('@/core/exec-tools/registry')
     mockAddExecTool = vi.mocked(scriptReg.addExecTool)
 
     const apiDocs = await import('@/core/api-docs')
@@ -217,7 +229,7 @@ describe('PluginRegistryImpl', () => {
 
     const mod = await import('@/lib/plugin-registry')
     pluginRegistry = mod.pluginRegistry
-    getHookRegistry = mod.getHookRegistry
+    getHookRegistry = (await import('@bakin/core/hooks/hook-registry-singleton')).getHookRegistry
     getPluginSkills = mod.getPluginSkills
     registerCorePlugins = mod.registerCorePlugins
     // bun:test has no vi.resetModules; reset the singleton via its own API

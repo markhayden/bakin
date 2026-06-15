@@ -20,7 +20,7 @@ import {
   getAllExecTools,
   getExecTool,
   removeExecToolsByPlugin,
-} from '../../scripts/lib/registry'
+} from '@/core/exec-tools/registry'
 
 // Per-tool call counting now lives in the unified usage recorder
 // (src/core/usage.ts). The registry is just a Map lookup; any test that

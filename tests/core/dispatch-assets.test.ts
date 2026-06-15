@@ -51,6 +51,13 @@ mock.module('../../src/lib/plugin-registry', () => ({
     register: mock(),
   }),
 }))
+mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
+  getHookRegistry: mock().mockReturnValue({
+    invoke: hookInvoke,
+    has: mock().mockReturnValue(true),
+    register: mock(),
+  }),
+}))
 mock.module('../../src/lib/format', () => ({ isStale: mock().mockReturnValue(true) }))
 
 import { buildDispatchMessage, buildDispatchAssetBlock } from '../../src/core/dispatch'

@@ -26,6 +26,11 @@ import type { PluginContextLite } from '@bakin/core/routing'
 import { createLogger } from '../../src/core/logger'
 import { readHeartbeats } from '../../src/lib/content-files'
 import { getContentDir, getBakinPaths } from '../../packages/core/src/content-dir'
+import {
+  readPluginSettings as readStoredPluginSettings,
+  writePluginSettings as writeStoredPluginSettings,
+} from '@bakin/core/plugins/settings-store'
+import { parseLessonFrontmatter as parseLessonFm } from '@bakin/core/format/frontmatter'
 import { startAgent, stopAgent } from '../../src/lib/agents'
 import { getSettings, resetSettingsCache } from '../../src/core/settings'
 import { syncConfig as syncMcporter } from '../../src/core/mcporter'
@@ -67,33 +72,20 @@ const DEFAULT_COLORS: Record<string, string> = {
   coach: '#fbbf24',
 }
 
-function getSettingsPath(): string {
-  return join(getContentDir(), 'plugin-settings', 'team.json')
-}
-
 function readPluginSettings(): TeamPluginSettings {
-  const path = getSettingsPath()
-  try {
-    if (existsSync(path)) {
-      const raw = JSON.parse(readFileSync(path, 'utf-8'))
-      // Migrate: old format was just AgentDisplaySettingsMap at root
-      if (raw && !raw.displaySettings && !raw.teams) {
-        return { displaySettings: raw as AgentDisplaySettingsMap, teams: [] }
-      }
-      return {
-        displaySettings: raw.displaySettings ?? {},
-        teams: raw.teams ?? [],
-      }
-    }
-  } catch { /* ignore */ }
-  return { displaySettings: {}, teams: [] }
+  const raw = readStoredPluginSettings<Record<string, unknown>>('team')
+  // Migrate: old format was just AgentDisplaySettingsMap at root.
+  if (raw && Object.keys(raw).length > 0 && !raw.displaySettings && !raw.teams) {
+    return { displaySettings: raw as AgentDisplaySettingsMap, teams: [] }
+  }
+  return {
+    displaySettings: (raw.displaySettings as AgentDisplaySettingsMap) ?? {},
+    teams: (raw.teams as TeamPluginSettings['teams']) ?? [],
+  }
 }
 
 function writePluginSettings(settings: TeamPluginSettings): void {
-  const path = getSettingsPath()
-  const dir = join(getContentDir(), 'plugin-settings')
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-  writeFileSync(path, JSON.stringify(settings, null, 2))
+  writeStoredPluginSettings('team', settings)
 }
 
 function readDisplaySettings(): AgentDisplaySettingsMap {
@@ -643,30 +635,8 @@ function parseLessonFrontmatter(raw: string): {
   tags: string[]
   defaultEnabled: boolean
 } {
-  const match = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/)
-  if (!match) return { title: '', body: raw.trim(), tags: [], defaultEnabled: false }
-  const body = match[2].trim()
-  let title = ''
-  let defaultEnabled = false
-  let tags: string[] = []
-  for (const line of match[1].split('\n')) {
-    const trimmed = line.trim()
-    if (trimmed.startsWith('title:')) {
-      title = trimmed.slice('title:'.length).trim().replace(/^['"]|['"]$/g, '')
-    } else if (trimmed.startsWith('defaultEnabled:')) {
-      defaultEnabled = trimmed.slice('defaultEnabled:'.length).trim() === 'true'
-    } else if (trimmed.startsWith('tags:')) {
-      const rest = trimmed.slice('tags:'.length).trim()
-      if (rest.startsWith('[') && rest.endsWith(']')) {
-        tags = rest
-          .slice(1, -1)
-          .split(',')
-          .map((t) => t.trim().replace(/^['"]|['"]$/g, ''))
-          .filter((t) => t.length > 0)
-      }
-    }
-  }
-  return { title, body, tags, defaultEnabled }
+  const { title, body, tags, defaultEnabled } = parseLessonFm(raw)
+  return { title: title ?? '', body, tags, defaultEnabled }
 }
 
 async function agentLessonFileToDoc(rel: string): Promise<LessonDoc | null> {

@@ -111,6 +111,13 @@ mock.module('../../src/lib/plugin-registry', () => ({
     register: mock(),
   }),
 }))
+mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
+  getHookRegistry: mock().mockReturnValue({
+    invoke: mock(async (hook: string) => (hook === 'workflows.getActiveAgents' ? [] : undefined)),
+    has: mock().mockReturnValue(false),
+    register: mock(),
+  }),
+}))
 
 mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => sentinelContentDir,

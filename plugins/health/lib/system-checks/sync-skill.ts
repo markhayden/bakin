@@ -8,17 +8,18 @@
  * because it creates/overwrites only Bakin's own skill file.
  */
 import { checkBakinRuntimeSkill, renderBakinRuntimeSkill } from '../../../../src/core/bakin-skill'
+import { healthOk, healthWarn, healthError } from '@makinbakin/sdk/utils'
 import type { AgentRuntimeAdapter } from '../../../../packages/core/src/adapters/runtime'
 import type { HealthCheckResult, HealthRepairHandler } from '../../../../packages/core/src/plugin-types'
 
 function ok(message: string): HealthCheckResult {
-  return { check: 'skill', status: 'ok', message, autoFixable: false }
+  return healthOk('skill', message)
 }
 function warn(message: string, autoFixable = false): HealthCheckResult {
-  return { check: 'skill', status: 'warn', message, autoFixable }
+  return healthWarn('skill', message, autoFixable)
 }
 function error(message: string): HealthCheckResult {
-  return { check: 'skill', status: 'error', message, autoFixable: false }
+  return healthError('skill', message)
 }
 function fixed(message: string): HealthCheckResult {
   return { check: 'skill', status: 'fixed', message, autoFixable: true }

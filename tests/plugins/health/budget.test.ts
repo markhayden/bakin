@@ -24,9 +24,12 @@ mock.module('../../../src/core/logger', loggerMock)
 mock.module('../../../packages/core/src/logger', loggerMock)
 
 let budgetPolicy: unknown = {}
-mock.module('../../../src/lib/plugin-registry', () => ({
+const hookRegistryMock = () => ({
   getHookRegistry: () => ({ invoke: async (name: string) => (name === 'models.getBudgetPolicy' ? budgetPolicy : undefined) }),
-}))
+})
+// getHookRegistry lives in the leaf module post-WS2 K1; mock the leaf + legacy facade.
+mock.module('@bakin/core/hooks/hook-registry-singleton', hookRegistryMock)
+mock.module('../../../src/lib/plugin-registry', hookRegistryMock)
 
 import { checkBudget } from '@bakin/health/lib/system-checks/budget'
 import { recordRunCost } from '../../../src/core/execution-ledger'

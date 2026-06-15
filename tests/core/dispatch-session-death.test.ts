@@ -128,6 +128,13 @@ mock.module('../../src/lib/plugin-registry', () => ({
     register: mock(),
   }),
 }))
+mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
+  getHookRegistry: mock().mockReturnValue({
+    invoke: mockHookInvoke,
+    has: mock().mockReturnValue(false),
+    register: mock(),
+  }),
+}))
 
 mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => sentinelContentDir,

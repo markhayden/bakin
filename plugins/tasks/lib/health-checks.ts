@@ -14,21 +14,13 @@ import { join } from 'path'
 import { selectRuntimeMainAgent, type AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 
 import type { HealthCheckResult, HealthRepairHandler } from '../../../packages/core/src/plugin-types'
+import { healthOk as ok, healthWarn as warn, healthError as error } from '@makinbakin/sdk/utils'
 import { maybeGetAppServices } from '../../../src/core/app-services'
 import { clearDependency, readTaskboard, reorderTasks } from '../../../src/core/task-store'
 import type { ColumnId, Task } from '../types'
 
 // ─── Result constructors (inlined; matches workflows precedent) ─────────────
 
-function ok(check: string, message: string): HealthCheckResult {
-  return { check, status: 'ok', message, autoFixable: false }
-}
-function warn(check: string, message: string, autoFixable = false): HealthCheckResult {
-  return { check, status: 'warn', message, autoFixable }
-}
-function error(check: string, message: string): HealthCheckResult {
-  return { check, status: 'error', message, autoFixable: false }
-}
 
 type RuntimeAgentReader = Pick<AgentRuntimeAdapter['agents'], 'list'>
 

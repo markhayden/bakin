@@ -37,6 +37,9 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 mock.module('../../src/lib/plugin-registry', () => ({
   getHookRegistry: () => ({ invoke: async () => undefined }),
 }))
+mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
+  getHookRegistry: () => ({ invoke: async () => undefined }),
+}))
 
 let openClawAgents: Array<{ id: string; identity?: { name?: string } }> = []
 

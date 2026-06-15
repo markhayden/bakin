@@ -14,23 +14,14 @@
  * plugins are activated once at boot, routes are already registered, ctx
  * lookups go through the real globals. ~170 lines of duplication removed.
  */
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
-import { join } from 'path'
 import { MarkdownStorageAdapter } from '@/lib/storage/markdown-adapter'
-import { ScopedPluginStorageAdapter } from '@bakin/core/storage/scoped-plugin-storage'
+import { buildPluginContext, noopRegistrars } from '@/lib/plugin-context-factory'
 import { BakinEventBus } from '@/lib/events/event-bus'
 import { getContentDir } from '@/core/content-dir'
 import { getAppServices } from '@/core/app-services'
 import { createLogger } from '@/core/logger'
-import { buildSearchAPI } from '@/core/search-registry'
 import { appendAudit } from '@/core/audit'
 import { pluginRegistry } from '@/lib/plugin-registry'
-import {
-  createPluginAssetsAPI,
-  createPluginRuntimeFacade,
-  createPluginTaskService,
-} from '@/lib/plugin-context-services'
-import { wrapPluginContextPermissions } from '@/lib/plugin-permissions'
 import { stampPluginResponse } from '@/core/plugin-host/version-stamp'
 import type { PluginContext, APIRoute } from '@bakin/core/plugin-types'
 import { dispatchRoute } from '@bakin/core/routing'
@@ -46,106 +37,27 @@ const log = createLogger('plugin-route')
 function buildCtx(pluginId: string): PluginContext {
   const services = getAppServices()
   const state = pluginRegistry.getPluginState(pluginId)
-  const storage = state?.source === 'user'
-    ? new ScopedPluginStorageAdapter(getContentDir(), pluginId)
-    : new MarkdownStorageAdapter()
+  const source = state?.source ?? 'user'
   const events = new BakinEventBus((data) => {
     const broadcastFn = (globalThis as Record<string, unknown>).__bakinBroadcast as
       | ((data: Record<string, unknown>) => void)
       | undefined
     if (broadcastFn) broadcastFn(data as Record<string, unknown>)
   })
-  const noopRegisterRoute = () => {}
-  const assets = createPluginAssetsAPI()
-  const ctx: PluginContext = {
-    storage,
+  return buildPluginContext({
+    pluginId,
+    source,
+    services,
+    // Core plugins read through the markdown adapter on the per-request path;
+    // the factory swaps in a scoped adapter for user plugins.
+    storage: new MarkdownStorageAdapter(),
     events,
-    pluginId,
-    runtime: state?.source === 'user' ? createPluginRuntimeFacade(services.runtime) : services.runtime,
-    tasks: createPluginTaskService(services.tasks),
-    assets,
-    registerNav: () => {},
-    registerRoute: noopRegisterRoute,
-    registerSlot: () => {},
-    registerExecTool: () => {},
-    registerSkill: () => {},
-    registerWorkflow: () => {},
-    registerNodeType: (def) => `${pluginId}.${def.kind}`,
-    registerNotificationChannel: (def) => `${pluginId}.${def.id}`,
-    registerHealthCheck: (def) => `${pluginId}.${def.id}`,
-    watchFiles: () => {},
-    getSettings: <T = Record<string, unknown>>(): T => {
-      const p = join(getContentDir(), 'plugin-settings', `${pluginId}.json`)
-      try { if (existsSync(p)) return JSON.parse(readFileSync(p, 'utf-8')) as T } catch {}
-      return {} as T
-    },
-    updateSettings: (patch: Record<string, unknown>) => {
-      const dir = join(getContentDir(), 'plugin-settings')
-      const p = join(dir, `${pluginId}.json`)
-      let cur: Record<string, unknown> = {}
-      try { if (existsSync(p)) cur = JSON.parse(readFileSync(p, 'utf-8')) } catch {}
-      if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-      writeFileSync(p, JSON.stringify({ ...cur, ...patch }, null, 2))
-    },
-    activity: {
-      log: (agent, message, opts) => {
-        const broadcastFn = (globalThis as Record<string, unknown>).__bakinBroadcast as
-          | ((data: Record<string, unknown>) => void)
-          | undefined
-        if (broadcastFn) {
-          broadcastFn({
-            type: 'activity',
-            agent,
-            message,
-            ts: new Date().toISOString(),
-            pluginId,
-            ...(opts?.taskId ? { taskId: opts.taskId } : {}),
-            ...(opts?.category ? { category: opts.category } : {}),
-          })
-        }
-      },
-      audit: (event, agent, data) => {
-        appendAudit(getContentDir(), `${pluginId}.${event}`, agent, data || {}, 'rest')
-      },
-    },
-    search: buildSearchAPI(pluginId, { registerRoute: noopRegisterRoute, skipFileBackedWiring: true }),
-    hooks: {
-      register: (name, handler, metadata) => {
-        const registry = (globalThis as Record<string, unknown>).__bakinHookRegistry as
-          | { register: (n: string, h: (data: unknown) => unknown, options?: unknown) => () => void }
-          | undefined
-        if (registry) return registry.register(name, handler as (data: unknown) => unknown, { pluginId, metadata })
-        return () => {}
-      },
-      call: async <T>(name: string, data: T) => {
-        const registry = (globalThis as Record<string, unknown>).__bakinHookRegistry as
-          | { call: <T>(n: string, d: T) => Promise<T> }
-          | undefined
-        return registry ? registry.call<T>(name, data) : data
-      },
-      callAll: async (name: string, data: Record<string, unknown>) => {
-        const registry = (globalThis as Record<string, unknown>).__bakinHookRegistry as
-          | { callAll: (n: string, d: Record<string, unknown>) => Promise<void> }
-          | undefined
-        if (registry) await registry.callAll(name, data)
-      },
-      has: (name) => {
-        const registry = (globalThis as Record<string, unknown>).__bakinHookRegistry as
-          | { has: (n: string) => boolean }
-          | undefined
-        return registry ? registry.has(name) : false
-      },
-      invoke: async <R>(name: string, data: unknown) => {
-        const registry = (globalThis as Record<string, unknown>).__bakinHookRegistry as
-          | { invoke: <R>(n: string, d: unknown) => Promise<R | undefined> }
-          | undefined
-        return registry ? registry.invoke<R>(name, data) : undefined
-      },
-    },
-  }
-  return wrapPluginContextPermissions(ctx, {
-    pluginId,
-    source: state?.source ?? 'user',
+    registrars: noopRegistrars(pluginId),
+    skipFileBackedWiring: true,
+    auditSource: 'rest',
+    // Convergence fix: the per-request path now fires onSettingsChange too
+    // (the old buildCtx silently skipped it).
+    onSettingsChange: (merged) => state?.plugin.onSettingsChange?.(merged),
     manifestPermissions: state?.manifest?.permissions ?? [],
   })
 }

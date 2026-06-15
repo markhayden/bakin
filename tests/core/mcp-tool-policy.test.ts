@@ -192,7 +192,7 @@ describe('MCP tool policy', () => {
 })
 
 function registerDummyTool(name: string): void {
-  const { addExecTool } = require('../../scripts/lib/registry') as typeof import('../../scripts/lib/registry')
+  const { addExecTool } = require('@/core/exec-tools/registry') as typeof import('@/core/exec-tools/registry')
   addExecTool({
     name,
     label: `Dummy ${name}`,

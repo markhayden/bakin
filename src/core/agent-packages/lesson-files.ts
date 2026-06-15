@@ -10,6 +10,7 @@ import { existsSync, readFileSync } from 'fs'
 import { basename, join } from 'path'
 import type { AgentManifest } from '../../../packages/core/src/agent-packages/manifest'
 import type { LessonEntry } from '../../../packages/core/src/agent-packages/composer'
+import { parseLessonFrontmatter } from '@bakin/core/format/frontmatter'
 import { createLogger } from '../logger'
 
 const log = createLogger('agent-pkg:lessons')
@@ -24,25 +25,9 @@ export interface LessonFileMeta {
 
 export function parseLessonFile(absPath: string, packageRel: string): LessonFileMeta {
   const raw = readFileSync(absPath, 'utf-8')
-  const match = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/)
-  let title = basename(absPath).replace(/\.md$/i, '')
-  let defaultEnabled = false
-  let body = raw.trim()
-
-  if (match) {
-    body = match[2].trim()
-    for (const line of match[1].split('\n')) {
-      const trimmed = line.trim()
-      if (trimmed.startsWith('title:')) {
-        title = trimmed.slice('title:'.length).trim().replace(/^['"]|['"]$/g, '')
-      } else if (trimmed.startsWith('defaultEnabled:')) {
-        defaultEnabled = trimmed.slice('defaultEnabled:'.length).trim() === 'true'
-      }
-    }
-  }
-
   const lessonId = basename(absPath).replace(/\.md$/i, '')
-  return { lessonId, title, body, defaultEnabled, packageRel }
+  const { title, defaultEnabled, body } = parseLessonFrontmatter(raw)
+  return { lessonId, title: title || lessonId, body, defaultEnabled, packageRel }
 }
 
 /** Read every lesson the manifest declares from the package source dir. */

@@ -15,7 +15,7 @@ import { meterAgentTurn } from './agent-cost'
 import { resolveTurnModel, type ResolvedTurn, type RoutingConfig } from './model-routing'
 import { evaluateBudget, dayStartMs, monthStartMs, type BudgetPolicy, type BudgetSpend, type BudgetDecision } from './budget'
 import { getBootId } from './boot-id'
-import { getHookRegistry } from '../lib/plugin-registry'
+import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import {
   buildTaskLessonQuery,
   formatLessonsForDispatch,

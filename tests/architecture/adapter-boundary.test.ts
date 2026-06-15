@@ -10,6 +10,7 @@ const SCAN_ROOTS = [
   'plugins',
   'packages/core/src',
   'packages/host/src',
+  'packages/sdk/src',
   'cli',
   'scripts',
   'server.ts',

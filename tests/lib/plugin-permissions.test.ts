@@ -8,7 +8,7 @@ import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 import { createMockSearchAdapter } from '@bakin/core/adapters/search/testing'
 import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
 import { PermissionDenied } from '../../packages/core/src/plugins/permissions'
-import { addExecTool, getToolContext, removeExecToolsByPlugin } from '../../scripts/lib/registry'
+import { addExecTool, getToolContext, removeExecToolsByPlugin } from '@/core/exec-tools/registry'
 import { resetContentDir } from '../../src/core/content-dir'
 import {
   resetPluginPermissionReportsForTests,

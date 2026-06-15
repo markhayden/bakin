@@ -8,20 +8,20 @@
 import { join } from 'path'
 import { existsSync, readFileSync } from 'fs'
 import type { ExecToolDefinition, PluginToolContext } from '@bakin/core/plugin-types'
-import { getHookRegistry } from '../../src/lib/plugin-registry'
-import { getContentDir } from '../../src/core/content-dir'
-import { appendAudit } from '../../src/core/audit'
-import { MarkdownStorageAdapter } from '../../src/lib/storage/markdown-adapter'
+import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
+import { getContentDir } from '../content-dir'
+import { appendAudit } from '../audit'
+import { MarkdownStorageAdapter } from '../../lib/storage/markdown-adapter'
 import { ScopedPluginStorageAdapter } from '@bakin/core/storage/scoped-plugin-storage'
-import { BakinEventBus } from '../../src/lib/events/event-bus'
-import { getAppServices } from '../../src/core/app-services'
-import { buildSearchAPI } from '../../src/core/search-registry'
+import { BakinEventBus } from '../../lib/events/event-bus'
+import { getAppServices } from '../app-services'
+import { buildSearchAPI } from '../search-registry'
 import {
   createPluginAssetsAPI,
   createPluginRuntimeFacade,
   createPluginTaskService,
-} from '../../src/lib/plugin-context-services'
-import { wrapPluginContextPermissions } from '../../src/lib/plugin-permissions'
+} from '../../lib/plugin-context-services'
+import { wrapPluginContextPermissions } from '../../lib/plugin-permissions'
 
 // ---------------------------------------------------------------------------
 // Registry state

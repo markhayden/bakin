@@ -89,6 +89,13 @@ mock.module('../../src/lib/plugin-registry', () => ({
     register: () => () => {},
   }),
 }))
+mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
+  getHookRegistry: () => ({
+    invoke: async () => undefined,
+    has: () => false,
+    register: () => () => {},
+  }),
+}))
 
 describe('lifecycle', () => {
   let processListeners: Record<string, Function>

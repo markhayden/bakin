@@ -24,10 +24,10 @@
  */
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
-import yaml from 'js-yaml'
+import { parseFrontmatter } from '@bakin/core/format/frontmatter'
 import type { SkillDefinition } from '../types'
 import { getContentDir } from './content-dir'
-import { getPluginSkills } from '../../../src/lib/plugin-registry'
+import { getPluginSkills } from '@bakin/core/skills/plugin-skill-registry'
 import { getAgentPackageSkills } from './agent-package-skill-registry'
 
 const skillCache = new Map<string, SkillDefinition | null>()
@@ -45,23 +45,6 @@ const SCOPE_FENCE = '\n\n---\n**SCOPE BOUNDARY:** Your scope is LIMITED to the i
 /**
  * Parse a skill markdown file into frontmatter + body.
  */
-function parseSkillFile(content: string): { frontmatter: Record<string, unknown>; body: string } {
-  const match = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/)
-  if (!match) {
-    return { frontmatter: {}, body: content.trim() }
-  }
-
-  let frontmatter: Record<string, unknown> = {}
-  try {
-    frontmatter = (yaml.load(match[1]) as Record<string, unknown>) || {}
-  } catch {
-    // If frontmatter parsing fails, treat entire content as body
-    return { frontmatter: {}, body: content.trim() }
-  }
-
-  return { frontmatter, body: match[2].trim() }
-}
-
 /**
  * Load a skill from a markdown file on disk.
  */
@@ -71,7 +54,7 @@ function loadSkillFromFile(name: string, dir: string): SkillDefinition | null {
   if (!existsSync(filePath)) return null
 
   const content = readFileSync(filePath, 'utf-8')
-  const { frontmatter, body } = parseSkillFile(content)
+  const { frontmatter, body } = parseFrontmatter(content)
 
   const skill: SkillDefinition = {
     name: (frontmatter.name as string) || name,
