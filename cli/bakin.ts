@@ -30,6 +30,16 @@ import {
   getCliRoster,
   type CliRoster,
 } from '../src/cli/http'
+import {
+  print,
+  printTable,
+  invocationCommand,
+  normalizeUsage,
+  usageLine,
+  statusIcon,
+  formatBytes,
+  daysUntil,
+} from '../src/cli/output'
 import { getSettings, updateSettings } from '../src/core/settings'
 import { getCliUsageGroups, renderCliUsage } from '../src/core/cli/registry'
 import { parsePluginInstallArgs, PLUGIN_INSTALL_USAGE } from '../src/core/cli/plugin-install-args'
@@ -63,14 +73,6 @@ import type {
 } from '../src/core/cli/ui/readonly'
 import type { CheckResult, InstallResult } from '../src/core/onboarding/types'
 
-function print(data: unknown): void {
-  if (typeof data === 'string') {
-    console.log(data)
-  } else {
-    console.log(JSON.stringify(data, null, 2))
-  }
-}
-
 async function printGenericCommandResultTui(command: string, data: unknown): Promise<void> {
   const [{ renderCliResult }, { okResult }] = await Promise.all([
     import('../src/core/cli/render'),
@@ -82,23 +84,6 @@ async function printGenericCommandResultTui(command: string, data: unknown): Pro
 async function printPluginCliCommandResult(command: string, args: string[], data: unknown): Promise<void> {
   if (process.stdout.isTTY && !args.includes('--json')) await printGenericCommandResultTui(command, data)
   else print(data)
-}
-
-function printTable(rows: Record<string, unknown>[], columns?: string[]): void {
-  if (rows.length === 0) {
-    console.log('(none)')
-    return
-  }
-  const cols = columns || Object.keys(rows[0])
-  const widths = cols.map(c => Math.max(c.length, ...rows.map(r => String(r[c] ?? '').length)))
-
-  const header = cols.map((c, i) => c.padEnd(widths[i])).join('  ')
-  const sep = cols.map((_, i) => '-'.repeat(widths[i])).join('  ')
-  console.log(header)
-  console.log(sep)
-  for (const row of rows) {
-    console.log(cols.map((c, i) => String(row[c] ?? '').padEnd(widths[i])).join('  '))
-  }
 }
 
 async function printStatusTui(dispatch: Record<string, unknown>, roster: CliRoster): Promise<void> {
@@ -132,18 +117,6 @@ async function printCommandFailureTui(failure: CommandFailureData): Promise<void
 
 async function printVersionTui(data: VersionData): Promise<void> {
   return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.VersionReport, { data })
-}
-
-function invocationCommand(args: string[]): string {
-  return args.length > 0 ? `bakin ${args.join(' ')}` : 'bakin'
-}
-
-function normalizeUsage(usage: string): string {
-  return usage.replace(/^Usage:\s*/, '')
-}
-
-function usageLine(usage: string): string {
-  return usage.startsWith('Usage:') ? usage : `Usage: ${usage}`
 }
 
 async function exitCommandIssue(
@@ -3263,19 +3236,6 @@ async function cmdWorkflowsSubmit(taskId: string, stepId: string, outputJson: st
 // Trash commands
 // ---------------------------------------------------------------------------
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-function daysUntil(dateStr: string): string {
-  const diff = new Date(dateStr).getTime() - Date.now()
-  const days = Math.ceil(diff / (24 * 60 * 60 * 1000))
-  if (days <= 0) return 'expiring'
-  return `${days}d`
-}
-
 async function cmdTrashList(): Promise<void> {
   const data = await apiGet('/api/plugins/assets/trash') as { assets: Array<{ filename: string; originalFilename: string; type: string; size: number; deletedAt: string; expiresAt: string; metadata: { agent?: string } | null }>; count: number }
   if (process.stdout.isTTY) {
@@ -3486,18 +3446,6 @@ const USAGE = renderCliUsage({ bakinUrl: BASE_URL }, { excludeNames: BINARY_ONLY
 // ---------------------------------------------------------------------------
 // Onboarding CLI handlers
 // ---------------------------------------------------------------------------
-
-function statusIcon(status: string): string {
-  switch (status) {
-    case 'ok': return '[OK]'
-    case 'warn': return '[WARN]'
-    case 'error': return '[FAIL]'
-    case 'missing': return '[MISS]'
-    case 'broken': return '[FAIL]'
-    case 'skipped': return '[SKIP]'
-    default: return `[${status.toUpperCase()}]`
-  }
-}
 
 async function withTtyRuntimeLogsSilenced<T>(
   options: { isTTY: boolean; verbose?: boolean },
