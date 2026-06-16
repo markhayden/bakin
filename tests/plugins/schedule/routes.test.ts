@@ -1397,6 +1397,17 @@ describe('schedule exec tools', () => {
       expect(meta!.pauseUntil).toBe('2026-05-01T00:00:00Z')
     })
 
+    it('clears a stale pauseUntil when re-paused without a date (parity with the REST route)', async () => {
+      upsertJob(makeMeta({ jobId: 'job-stale', paused: true, pauseUntil: '2026-05-01T00:00:00Z' }))
+
+      const tool = findTool(plugin.execTools, 'bakin_exec_schedule_pause')!
+      await callTool(tool, { jobId: 'job-stale', action: 'pause' })
+
+      const meta = getJob('job-stale')
+      expect(meta!.paused).toBe(true)
+      expect(meta!.pauseUntil).toBeUndefined()
+    })
+
     it('resumes a job and clears all state', async () => {
       upsertJob(makeMeta({
         jobId: 'job-r',
