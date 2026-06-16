@@ -1,184 +1,126 @@
-# Plan: WS3 — feat/sdk-gaps
+# Plan: WS4 — refactor/cli (consolidate three CLIs into one)
 
-Spec: `SPEC.md` + `.claude/specs/audit-2026-06/REPORT.md` (triage-approved 2026-06-11).
-Branch: `feat/sdk-gaps` off `main`. (Independent of the still-open WS2 #499 — client-side
-SDK + plugin code; minimal overlap. Merge order: WS2 then WS3 ideally; the one shared file,
-`packages/sdk/src/utils`, takes non-conflicting additions.)
-One revertable commit per finding; every commit green on `bun run test` + `bun run typecheck`.
-PR gate: `bun run build` + lint + **dockerized-rig E2E + browser page sweep** + docs. No shims.
-Respect the WS1 two-tier type contract (`.claude/knowledge/repo-architecture.md` § two-tier).
+Spec: `.claude/specs/audit-2026-06/REPORT.md` + `APPENDIX-cohesion.md` (the authoritative
+per-file split plan with verified line ranges). Branch: `refactor/cli` off `main`.
+The audit's biggest single win (~1,500+ lines die). One revertable commit per phase; every
+commit green on `bun run test` + `bun run typecheck`. PR gate adds `bun run build` (the binary
+compiles readonly.tsx via src/core/cli.ts — a full build is mandatory) + lint + docs.
 
-## SCOPE DECISION (2026-06-13, Mark) — ship A1 alone; A2–A8 become WS3b
+## Current state (recon 2026-06-15, confirmed)
 
-A1 (the SSE consolidation) is **complete, tested, E2E-verified, and shipping as PR `feat/sdk-gaps`
-now** so it can be reviewed and merged independently. It's the load-bearing, highest-risk item
-(touches the live-update path app-wide) and stands alone cleanly. A2–A8 are independent additive
-SDK primitives (fetch hook, confirm dialog, formatters, empty-state, models hook, workflow types,
-tone badge) with no dependency on each other or on A1's internals — they're carved into a
-follow-up workstream **WS3b** (`tasks/plan-ws3b-sdk-gaps-remainder.md`, written after this PR
-merges) and picked up next. Rationale: keep the high-risk SSE change reviewable in isolation;
-don't block it behind seven mechanical extractions. The A2–A8 task specs below are preserved
-verbatim as the WS3b backlog.
+Three CLIs:
+- `src/core/cli.ts` (330) — binary dispatcher. Handles version/update/dev/start/serve directly;
+  delegates the rest to `cli/bakin.ts` by **monkey-patching process.argv + process.exit**
+  (`process.exit(code)` throws `DelegatedCliExit`, caught → exit code). no-arg → `start`.
+- `cli/bakin.ts` (4,632) — npm `bakin` bin (package.json:10) + the delegated source CLI. Owns
+  30+ command groups. `BASE_URL = process.env.BAKIN_URL || http://localhost:${PORT||3737}` (line 53).
+  ~44 byte-identical `printXxxTui` wrappers (lazy `Promise.all([import(ui), import(render-to-string),
+  import(react)])` + console.log), ~95 inline `isTTY` branches. no-arg → help. **No `update` case.**
+- `src/cli/schedule.ts` (237) — 7 schedule command fns, called from cli/bakin.ts. **BUG:**
+  `BASE_URL = http://localhost:${PORT||3737}` (line 7) — ignores `BAKIN_URL`.
 
-## Goal
+Stalled framework (`src/core/cli/{runner,parser,options,result}.ts`, 37/128/96/71 lines) — complete,
+tested, **zero production callers**.
 
-Add the client-side SDK primitives core plugins keep reinventing, then migrate the duplicated
-consumers. Extraction bar: 2+ real consumers with congruent behavior. This is CLIENT/BROWSER work —
-the payoff is runtime UI behavior (one SSE connection instead of N, consistent fetch lifecycle,
-one confirm dialog), so verification is the dockerized-rig E2E + a Playwright page sweep, not just
-`bun test`.
+Render layer `src/core/cli/ui/readonly.tsx` (2,808): ~35 all-`unknown` DTO interfaces (14-316),
+~80 helpers (318-1638), 38 exported `*Report` ink components (1639-2808). No module-load side
+effects; one-directional imports (readonly → ./tui → ./style-tokens); ALL consumers load it via
+`import('.../cli/ui/readonly')` (~30 sites in bakin.ts, src/core/cli.ts, src/cli/schedule.ts) +
+`tests/cli/readonly-ui.test.tsx` (imports all 34 components by name).
 
-## Confirmed state (recon, 2026-06-13)
+Load-bearing contracts the split MUST preserve:
+- package.json bin → `./cli/bakin.ts`; binary dispatcher dynamic-imports `'../../cli/bakin'` and
+  destructures `{ main }`; `scripts/instance*.ts` shell out to `bun run cli/bakin.ts`. So cli/bakin.ts
+  stays a file exporting `main()` with its `import.meta.main` guard.
+- Extracted command modules MUST keep calling `process.exit` (not return codes) or the binary's
+  exit-code plumbing + tests (`rejects.toThrow('exit:1')`) break.
+- Heavy deps (react/ink/ui/onboarding/whiskit) are dynamically imported on purpose for cheap binary
+  startup — no new module may statically pull them into the entry import graph.
+- Mutual lazy dep: bakin.ts ↔ src/core/cli.ts — both sides stay dynamic (no static cycle).
 
-- The shell owns ONE EventSource (`src/hooks/use-sse.ts`), but it only routes events into the
-  content store — it has **no subscriber fan-out**, and it drops `{type:'plugin-event', event, …}`
-  payloads entirely. That's exactly why the assets plugin opens its own connections.
-- Assets opens **3 raw `new EventSource('/api/events')`** (no reconnect): `task-assets.tsx`
-  (asset.changed/removed + workflow.step_complete), `versioned/VersionedAssetGrid.tsx`
-  (asset.changed/removed), `versioned/VersionedAssetDetail.tsx` (asset.changed/removed for one
-  assetId). All filter on `data.type === 'plugin-event'` + `data.event`.
-- SDK re-export precedent for shell/plugin hooks is established: `export { useSSE } from '@/hooks/use-sse'`,
-  `export { useAgentStore } from '@bakin/team/hooks/...'` (`packages/sdk/src/hooks/index.ts`).
-- `let cancelled = false` fetch boilerplate: **11** component files. Relative-time/format reimpls:
-  **7** files. ConfirmDialog shape: **6** sites / 5 plugins. EmptyState fork in team. AvailableModel
-  hand-fetch: 3 sites.
+## Phases (appendix order; lowest-risk first)
 
-## Decisions to resolve before building (see questions)
+### B1 — split `src/core/cli/ui/readonly.tsx` (2,808 → 11 reports/* + barrel)  ⟵ start here
+Low-risk: no side effects; a barrel at the old path keeps every dynamic-import + readonly-ui.test.tsx
+working unchanged. Move by the appendix line-ranges into `src/core/cli/ui/reports/`:
+`format.ts` (pure formatters+DetailFieldRow), `command-meta.tsx`, `runtime.tsx` (status/dispatch/agents/
+version), `settings.tsx` (+paths +docs), `tasks.tsx`, `workflows.tsx`, `plugins.tsx`, `packages.tsx`,
+`search.tsx` (+reindex), `schedule.tsx`, `trash.tsx`. Replace readonly.tsx with `readonly.ts`
+(`export * from './reports/*'`, types included). All reports import shared formatters from format.ts;
+doctor.tsx/doctor-repair.tsx adopt format.ts's plural/valueText in the same pass (verified dups).
+- **Accept:** typecheck + `tests/cli/readonly-ui.test.tsx` green; **full `bun run build`** (binary
+  compiles it). No DTO retyping yet (keep behavior identical; Zod redesign is a later, optional pass).
+- Commit: `refactor(cli): split readonly.tsx into per-domain report modules + barrel`
 
-1. **usePluginEvent home + the existing hardcoded routing — RESOLVED (Mark, 2026-06-13).** The hook's
-   impl lives in the shell (`src/hooks/use-plugin-event.ts`, SDK-re-exported like `useSSE`) since it
-   hangs off the shell's singleton connection. **Decision: ALSO refactor the existing
-   taskboard/doctor/reindex routing onto the new fan-out** (not just the assets EventSources) —
-   removing the per-plugin bump counters from the content store. Bigger blast radius (touches the
-   tasks/health/reindex live-update paths), so A1's E2E acceptance must exercise all of them.
-2. **PR shape.** All findings are independent (different files). **Recommendation:** one PR,
-   commit-per-finding.
-3. **A8-deferred tasks workflow work + P2 tone-badge** — include or defer (see tasks A7/A8 below).
+### B2 — `renderInkReport` helper; collapse the 45 printXxxTui wrappers
+Add one generic lazy `renderInkReport(load, props)` (in `src/core/cli/ui/`, next to render-to-string)
+preserving lazy loading; replace the ~44 copy-paste wrappers in cli/bakin.ts. Make the eager
+`const USAGE = renderCliUsage(...)` (bakin.ts:3790) lazy. Prerequisite for clean bakin.ts seams.
+- **Accept:** typecheck + tests/cli green; grep shows ≤1 `renderToString(createElement` in bakin.ts.
+- Commit: `refactor(cli): one renderInkReport helper replacing 45 printXxxTui wrappers`
 
-## Dependency graph & sequencing
+### B3 — extract `src/cli/http.ts` (one BAKIN_URL-aware client)
+BASE_URL + api/apiGet/apiPost/apiPostJson/apiDelete + apiErrorPayload/jsonObject/parseJsonText +
+getCliAgent/getCliRoster. Adopt in cli/bakin.ts AND src/cli/schedule.ts — **fixes the BAKIN_URL bug.**
+Replace `isServerConnectionError` message-text classification with a typed connection error.
+- **Accept:** typecheck + tests/cli + schedule.test green; `BAKIN_URL=... bakin schedule list` hits the override.
+- Commit: `refactor(cli): shared BAKIN_URL-aware http client; fix schedule BAKIN_URL bug`
 
-All tasks are independent (distinct files); order is lowest-risk-first. A1 is the only one that
-touches the shell SSE pathway.
+### B4 — extract `src/cli/output.ts`
+print/printTable, renderInkReport re-home, exit helpers (exitCommandIssue/Usage/UnknownSubcommand/
+CommandFailure), one `confirmPrompt` (collapse the 3 readline copies), statusIcon/formatBytes/daysUntil,
+and an `emit({tui,plain,json})` dispatcher to kill the inline isTTY/plain/json branching.
+- **Accept:** typecheck + tests/cli green.
+- Commit: `refactor(cli): shared output module + emit() dispatcher; collapse isTTY branching`
 
-```
-A1 usePluginEvent      — shell fan-out + migrate 3 assets EventSources   (load-bearing; browser runtime)
-A2 useJsonFetch        — hook + migrate team's cluster                   (11 sites; migrate densest, rest opportunistic)
-A3 ConfirmDialog       — SDK component + migrate 6 sites
-A4 formatDuration/DateTime — core/format + SDK utils + migrate 7 sites + delete health's dup
-A5 EmptyState          — fold team's variant into SDK, delete the fork
-A6 useAvailableModels  — hook + migrate 3 ModelSelect call sites
-A7 tasks workflow types — migrate hand-rolled types to SDK (A8 deferral from WS1)
-A8 toneBadge (P2)      — flag; likely defer
-```
+### B5 — `src/cli/lifecycle.ts` + command modules; slim cli/bakin.ts to a ~200-line router
+Extract lifecycle (waitForServerVersion/cmdStartServer/cmdReboot/cmdStop) + per-scope command modules
+(one file per group); each `case` becomes one line. Move the top-of-file static server-core imports
+(whiskit/settings/import-export) into their command modules. Keep bakin.ts ↔ src/core/cli.ts dynamic.
+Fix divergences: no-arg parity, add `update` to bakin.ts, help-registry-driven dispatch.
+- **Accept:** typecheck + full tests/cli green; `bun run build`; behavioral parity verified.
+- Commits: one per extracted module + one for the divergence fixes.
 
-## Tasks
+### B6 — wire or retire the stalled framework (`runner/parser/options/result`)
+Decide during B5: if the slimmed router adopts parser/options/runner, wire them (delete dead bits);
+else delete the framework + its tests as superseded. Document the call.
+- Commit: `refactor(cli): {adopt|retire} the cli command framework`
 
-> **Status (2026-06-13):** A1 = **DONE & SHIPPING** (this PR). A2–A8 = **WS3b backlog** (deferred,
-> specs preserved below).
+### B7 — test splits
+Extract `tests/cli/helpers/tty-cli-harness.ts` (the ×10 copy-pasted TTY harness + withTempBakinHome);
+split `readonly-commands.test.ts` (1,432) into `readonly-help-errors.test.ts`, `readonly-logs.test.ts`,
+and per-domain command test files along the source seams; de-chain mega-`it()`s.
+- **Accept:** full suite green; harness shared.
+- Commits: one per split file group.
 
-### A1 — usePluginEvent (multiplex the singleton SSE) — ✅ DONE
-Add a tiny browser-global subscriber emitter; the shell `useSSE.onmessage` publishes `plugin-event`
-payloads into it. `usePluginEvent(eventName, handler)` (in `src/hooks/use-plugin-event.ts`,
-re-exported from `@makinbakin/sdk/hooks`) registers/unregisters a handler for an event name. Migrate
-the 3 assets EventSources to it (asset.changed / asset.removed / workflow.step_complete), keeping
-their assetId filtering. No new connections; reconnect handled once by the shell.
-- **Accept:** typecheck + suite green; grep shows zero `new EventSource` in plugins/assets; E2E shows
-  asset pages still live-update (a generate/edit reflects without reload) over the single connection;
-  exactly one `/api/events` connection in the browser network panel.
-- **DONE — shipped in 2 commits** (`feat(sdk): usePluginEvent multiplexing the shell SSE; migrate
-  assets off raw EventSource` + `refactor(sdk): move taskboard/doctor/reindex SSE routing onto
-  usePluginEvent`). Scope per the 2026-06-13 decision: migrated the 3 assets EventSources **and**
-  refactored the shell's hardcoded taskboard/doctor/reindex routing onto the fan-out, deleting the
-  `taskboardVersion`/`doctorVersion`/`reindexProgress` content-store counters. 4999 tests green.
-  **Dockerized-rig isolated E2E (real OpenClaw, all 12 plugins loaded):** Playwright sweep of all 10
-  routes = 0 console/page/network errors; a stack-classified EventSource probe on `/assets` confirms
-  the assets plugin now opens **0** `/api/events` connections (was 3 pre-A1) and the shell opens
-  exactly **1** singleton (the one remaining `messaging` connection is an out-of-repo user plugin in
-  the test home, not repo scope). Emit/subscribe wiring covered by the rewritten use-sse-doctor /
-  use-health-summary / use-plugin-event unit tests. Knowledge docs updated
-  (`plugin-system.md` § Client SSE fan-out + nav-badge bullets, `search-system.md`, `tasks-plugin.md`).
-
----
-## WS3b backlog (deferred 2026-06-13 — NOT in this PR)
-
-### A2 — useJsonFetch (cancellable JSON fetch lifecycle)
-`useJsonFetch<T>(url, opts?)` → `{ data, loading, error, refresh }`, AbortController-based, in
-`src/hooks/use-json-fetch.ts`, re-exported from `@makinbakin/sdk/hooks`. Migrate the team plugin's
-sites (densest: heartbeat-tab, overview-tab, active-context-tab, lesson-toggle-list, team-grid);
-migrate the rest of the 11 opportunistically (note any left).
-- **Accept:** typecheck + suite green; migrated tabs load/error/refresh correctly in the E2E; no
-  setState-after-unmount warnings in the console sweep.
-- Commit: `feat(sdk): useJsonFetch hook; migrate the team plugin's fetch boilerplate`
-
-### A3 — ConfirmDialog
-`ConfirmDialog` in `src/components/confirm-dialog.tsx`, re-exported from `@makinbakin/sdk/components`.
-Props `{ open|target, title, description, confirmLabel, busy, error, onConfirm, onCancel }`. Migrate
-all 6 sites (schedule/delete-schedule-dialog, tasks/delete-task-dialog, workflows/workflow-delete-action,
-assets/versioned/TagFolderGrid, team/team-manager, team/agent-detail).
-- **Accept:** typecheck + suite green; each delete flow still confirms + shows busy/error in the E2E.
-- Commit: `feat(sdk): ConfirmDialog component; migrate 6 hand-rolled delete dialogs`
-
-### A4 — formatDuration + formatDateTime
-Add `formatDuration(ms)` and `formatDateTime(ts)` to `packages/core/src/format.ts` (re-exported via
-`@makinbakin/sdk/utils` next to `formatAge`); use the task-run-history calendar variant (Today/
-Yesterday + short-date + year disambiguation) as the strictly-better source. Migrate the 7 reimpls;
-delete the health plugin's byte-identical local `formatAge`.
-- **Accept:** typecheck + suite green; format tests for the new fns; the 7 sites render identically.
-- Commit: `refactor(sdk): formatDuration/formatDateTime in core/format; migrate 7 reimplementations`
-
-### A5 — EmptyState consolidation
-Port team's larger icon-chip + `fillHeight` variant into the SDK `src/components/empty-state.tsx`
-(keep it backward compatible for the 6 existing SDK consumers), repoint team's 3 local importers to
-`@makinbakin/sdk/components`, delete `plugins/team/components/empty-state.tsx`.
-- **Accept:** typecheck + suite green; team's empty states render with the ported variant in the E2E;
-  the SDK EmptyState's 6 prior consumers unchanged.
-- Commit: `refactor(sdk): fold team's EmptyState variant into the SDK; delete the fork`
-
-### A6 — useAvailableModels
-`useAvailableModels()` in `plugins/models/hooks/use-available-models.ts`, re-exported from
-`@makinbakin/sdk/hooks` (mirrors the `useAgentStore`/`useNotificationChannels` re-export precedent).
-Returns the `/api/plugins/models/available` payload typed as `AvailableModel[]` (WS1 single-homed the
-type). Migrate the 3 call sites (team agent-form, team agent-detail, models models-page).
-- **Accept:** typecheck + suite green; the model pickers populate in the E2E.
-- Commit: `feat(sdk): useAvailableModels hook; migrate 3 hand-fetch call sites`
-
-### A7 — tasks-plugin workflow types (WS1 A8 deferral)
-Migrate `plugins/tasks/components/task-detail-dialog.tsx`'s hand-rolled `Workflow`/`WorkflowInstance`/
-`WorkflowDefinition` interfaces to the SDK types (WS1 fixed the SDK `WorkflowInstance` wire shape →
-`instanceId`). The two raw `/api/plugins/workflows/instances/:taskId` fetches can adopt `useJsonFetch`
-(A2) rather than a bespoke hook unless a `useWorkflowInstance` proves cleaner.
-- **Accept:** typecheck + suite green; the task drawer's workflow/gate panel works in the E2E.
-- Commit: `refactor(tasks): use SDK workflow types + useJsonFetch in the task drawer`
-
-### A8 — toneBadge (INCLUDED per Mark)
-Add `toneBadgeClass(tone: 'success'|'pending'|'error'|'muted'|'info')` (or a `StatusBadge` component)
-to the SDK for the `bg-X-500/10 text-X-400 border-X-500/20` idiom; migrate the 4 plugins that
-hand-roll it (task-run-history, schedule run-history, health-page, models-page status maps).
-- **Accept:** typecheck + suite green; badges render with identical colors in the E2E.
-- Commit: `feat(sdk): toneBadgeClass for status badges; migrate 4 plugins`
-
-### PR gate
-- `bun run test` + `typecheck` + `lint` green; `bun run build` (3 binaries; build-stamp trap —
-  revert `generated-version.ts` + `_embedded-assets-static.ts`).
-- **Dockerized-rig E2E (isolated):** all plugins activate; Playwright sweep of all 10 pages = 0
-  console/page/network errors; **one** `/api/events` connection; asset live-update, a delete-confirm
-  flow, a model picker, and a team tab exercised.
-- Docs: `.claude/knowledge/{plugin-system,url-state-deep-linking}.md` + `docs/plugin-authoring.md`
-  (new SDK hooks/components); CLAUDE.md SDK surface table if it enumerates hooks.
-- Open PR `feat/sdk-gaps`; Mark reviews/merges.
+### Docs
+`.claude/knowledge/repo-architecture.md` + CLAUDE.md "Build, Dev, CLI" section (CLI structure changes
+materially); note the consolidated client + the fixed divergences.
 
 ## Risks & mitigations
-- **A1 SSE fan-out** — a bug here breaks live updates app-wide. Mitigation: the shell keeps its
-  existing routing untouched; the emitter is additive (publish-only); E2E verifies single connection
-  + live update. Revert is clean (assets fall back to... nothing — so verify before merge).
-- **Vendor-bundle weight** (#422) — new SDK hooks/components add to the bundle. Mitigation: they're
-  small; they live in the existing hooks/components sub-paths (no new import-map entries).
-- **Browser-only behavior** — `bun test` can't catch SSE/fetch-lifecycle/dialog regressions.
-  Mitigation: the E2E + page sweep is a hard PR-gate item, not optional.
-- **Two-tier contract** — new hooks/components are client primitives (correct for the SDK); they
-  must not pull server-only modules into the SDK client bundle.
+- **Binary build** — readonly.tsx compiles into the single-file binary via src/core/cli.ts; every
+  phase touching cli/* runs a full `bun run build` before commit (+ build-stamp trap: revert
+  generated-version.ts + _embedded-assets-static.ts).
+- **Exit-code plumbing** — command modules keep calling `process.exit`; don't convert to return codes.
+- **Dynamic-import graph** — never statically import react/ink/ui/whiskit into the entry; keep the
+  bakin.ts ↔ src/core/cli.ts mutual dep dynamic.
+- **Test mocks** — tests/cli/* mock modules by resolved path + import `{ main }`; extracted code must
+  import the SAME modules (only relative specifiers change).
 
-## Rollback
-Each commit is independent (suite + typecheck green) and touches distinct files; revert any single
-finding cleanly. A1 is the only one that must be E2E-verified before merge (no test-only safety net
-for SSE behavior).
+## Status
+- B1 — ☑ readonly.tsx (2,809) → 11 reports/* modules + barrel. Verified (typecheck/252-isolated/binary).
+- B2 — ☑ renderInkReport helper; collapsed 41 printXxxTui wrappers (−204 net). 4 inline renders left.
+- B3 — ☑ shared src/cli/http.ts client; **fixed schedule BAKIN_URL bug**. isServerConnectionError
+  typed-error improvement deferred (moved verbatim).
+- B4 — ☑ extracted 8 pure output helpers → src/cli/output.ts. Exit helpers + emit() + confirm
+  unification deferred (entangled / behavior-sensitive).
+- B5 — ☐ **(next focused unit — large + fragile)** command modules + slim router + emit() dispatcher
+  + confirm unification + no-arg/update/help-registry divergence fixes. Touches exit-code plumbing,
+  dynamic-import contracts; behavior-changing parts want the dockerized-rig E2E before merge.
+- B6 — ☐ wire/retire the stalled runner/parser/options/result framework.
+- B7 — ☐ test splits (tty-cli-harness + readonly-commands.test split).
+- docs — ☐
+
+### Checkpoint (2026-06-15): B1–B4 are a coherent, low-risk, fully-verified chunk (pure
+extractions + dedup + the BAKIN_URL bug fix). B5+ are higher-risk. Suggested split: ship B1–B4 as
+"WS4 part 1" and tackle B5 as a fresh focused effort (mirrors the WS3 → WS3b split).
