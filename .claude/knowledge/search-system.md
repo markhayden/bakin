@@ -66,12 +66,15 @@ plugin dispatch path uses `BuildSearchAPIOptions.skipFileBackedWiring`
 to avoid double-wiring file-backed hooks when the API is constructed
 outside the plugin activation phase.
 
-`getTableForPlugin(pluginId)` (formerly `getPluginTable`) returns the
-single registered table name for that plugin and **throws** when one
-plugin has registered more than one content type, so the auto-wired
-`/search` route can't ambiguously resolve a table. Plugins that need
-multiple content types must register a custom route and call
-`ctx.search.query({ table: '...' })` explicitly.
+`getTableForPlugin(pluginId)` (formerly `getPluginTable`) returns the plugin's
+**primary** content-type table — the one a plugin registers via
+`registerContentType` and targets with bare `ctx.search.index/remove/transform/query`,
+and what the auto-wired `/search` route + MCP plugin-param routing resolve to. A plugin
+has exactly one primary (a second *direct* registration throws early); **file-backed
+content types register as secondary** and are indexed into their own table directly, so a
+plugin like `team` can register a direct primary (`agents`) plus a file-backed secondary
+(`agent-lessons`) without the resolver misrouting. `getTableForPlugin` returns the primary
+(or null) and no longer throws on multi-content plugins.
 
 ### Three consistency paths
 
