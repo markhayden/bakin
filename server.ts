@@ -744,10 +744,6 @@ const eventBus = new BakinEventBus(broadcast)
   // Register graceful shutdown
   registerShutdownHandlers(server, CONTENT_DIR)
 
-  // Write initial dispatch state
-  const dispatchState = dispatch.loadDispatchState(CONTENT_DIR)
-  dispatchState.serverStart = Date.now()
-
   // A bind failure (another generation or process squatting the port) used
   // to throw uncaught AFTER the watcher/antfly side effects started,
   // orphaning children (#459). Route it through the graceful-shutdown chain
