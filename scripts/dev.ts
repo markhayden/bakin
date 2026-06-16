@@ -69,7 +69,7 @@ const DEV_CLIENT_OUTDIR = join(REPO_ROOT, 'packages/host/public/__bakin-dev')
 const TAILWIND_BIN = join(REPO_ROOT, 'node_modules/.bin/tailwindcss')
 
 const CORE_PLUGINS = [
-  'tasks', 'team', 'workflows', 'assets',
+  'tasks', 'team', 'workflows', 'assets', 'images',
   'schedule', 'memory', 'models', 'health',
   'git',
 ]
