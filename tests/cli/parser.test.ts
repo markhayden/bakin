@@ -3,9 +3,9 @@ import { describe, expect, it } from 'bun:test'
 import { parseCliInvocation } from '../../src/core/cli/parser'
 
 describe('parseCliInvocation', () => {
-  it('defaults no-arg invocation to start', () => {
+  it('defaults no-arg invocation to help', () => {
     expect(parseCliInvocation(['node', 'bakin'])).toMatchObject({
-      commandName: 'start',
+      commandName: 'help',
       commandArgs: [],
       commandFound: true,
     })

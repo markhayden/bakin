@@ -3756,6 +3756,18 @@ export async function main(): Promise<void> {
         else console.log(APP_VERSION)
         break
 
+      case 'update':
+        // Self-update is implemented only in the compiled binary (handled in
+        // src/core/cli.ts before delegation reaches here). This source/npm entry
+        // can't replace its own executable — guide the user instead of erroring.
+        console.log(
+          'Self-update is only available in the compiled `bakin` binary (run `bakin update`).\n' +
+          'This source/npm invocation does not self-update — update via your install method:\n' +
+          '  • Homebrew:        brew upgrade bakin\n' +
+          '  • Source checkout: git pull',
+        )
+        break
+
       case 'status':
         await cmdStatus()
         break

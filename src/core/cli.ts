@@ -274,8 +274,9 @@ export async function dispatchCli(argv: string[]): Promise<CliResult> {
   }
 
   const args = argv.slice(2)
-  // No-arg invocation is `start` — the compiled binary's primary job.
-  const cmd = args[0] ?? 'start'
+  // No-arg invocation shows help — parity with the source CLI (cli/bakin.ts).
+  // Starting the server is the explicit `bakin start`.
+  const cmd = args[0] ?? 'help'
 
   if (cmd === '--help' || cmd === '-h' || cmd === 'help') {
     return { startServer: false, exitCode: await cmdHelp() }

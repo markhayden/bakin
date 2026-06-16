@@ -78,10 +78,12 @@ export function parseCliInvocation(argv: string[]): ParsedCliInvocation {
   }
 
   if (args.length === 0) {
+    // No-arg invocation shows help (parity with the live dispatchers in
+    // src/core/cli.ts and cli/bakin.ts); starting the server is explicit `start`.
     return {
       global: parsed.options,
       args,
-      commandName: 'start',
+      commandName: 'help',
       commandArgs: [],
       commandFound: true,
       passthrough: parsed.passthrough,
