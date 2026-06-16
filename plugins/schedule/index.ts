@@ -1201,7 +1201,10 @@ const schedulePlugin: BakinPlugin = definePlugin({
           case 'pause':
             meta.paused = true
             meta.pauseReason = 'manual'
-            if (params.pauseUntil) meta.pauseUntil = params.pauseUntil as string
+            // Unconditional, matching the REST pause route: a fresh pause without a
+            // date clears any stale auto-resume from a prior pause (was a conditional
+            // assignment here that left the old pauseUntil in place).
+            meta.pauseUntil = params.pauseUntil as string | undefined
             meta.enabled = false
             break
           case 'resume':
