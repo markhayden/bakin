@@ -24,10 +24,12 @@ and `filters` to `ctx.search.query()`. The MCP search exec tools (`search_query`
 same backend, so registering a content type also makes the plugin's data
 agent-searchable.
 
-`getTableForPlugin(pluginId)` (formerly `getPluginTable`) throws if a single
-plugin registers more than one content type, since the auto-wired `/search`
-route can't disambiguate. Plugins with multiple content types must register
-their own custom route.
+`getTableForPlugin(pluginId)` (formerly `getPluginTable`) returns the plugin's
+**primary** content-type table (the one registered via `registerContentType`).
+A plugin gets one primary — a second *direct* registration throws early — while
+file-backed content types register as secondary and index into their own table,
+so the auto-wired `/search` route resolves the primary unambiguously even for a
+multi-content plugin (e.g. `team`'s `agents` primary + `agent-lessons` file-backed).
 
 ## Step-by-Step (file-backed plugins)
 

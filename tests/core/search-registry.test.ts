@@ -127,11 +127,14 @@ describe('search-registry', () => {
     expect(getTableForPlugin('nonexistent')).toBeNull()
   })
 
-  it('getTableForPlugin throws if a plugin has multiple content types', () => {
+  it('rejects a second DIRECT (primary) content type for one plugin', () => {
     const api = buildSearchAPI('multi')
     api.registerContentType(makeDef('one'))
-    api.registerContentType(makeDef('two'))
-    expect(() => getTableForPlugin('multi')).toThrow(/multi.*2 registered/)
+    // A plugin gets exactly one primary content type; the second direct
+    // registration fails early rather than silently overwriting the resolver.
+    expect(() => api.registerContentType(makeDef('two'))).toThrow(/already has a primary/)
+    // The first one is still the resolvable table.
+    expect(getTableForPlugin('multi')).toBe('bakin_one')
   })
 
   it('getTableForPlugin returns null when the registry is completely empty', () => {
@@ -141,14 +144,11 @@ describe('search-registry', () => {
     expect(getTableForPlugin('anything')).toBeNull()
   })
 
-  it('getTableForPlugin error message names the conflicting tables', () => {
+  it('the primary-conflict error names the existing primary and the rejected table', () => {
     const api = buildSearchAPI('multi')
     api.registerContentType(makeDef('alpha'))
-    api.registerContentType(makeDef('beta'))
-    // The error must list both bakin_alpha and bakin_beta so an operator
-    // tracking down a misconfiguration can find them without code-diving.
-    expect(() => getTableForPlugin('multi')).toThrow(/bakin_alpha/)
-    expect(() => getTableForPlugin('multi')).toThrow(/bakin_beta/)
+    expect(() => api.registerContentType(makeDef('beta'))).toThrow(/bakin_alpha/)
+    expect(() => api.registerContentType(makeDef('beta'))).toThrow(/bakin_beta/)
   })
 
   it('registerContentType preserves pluginId', () => {

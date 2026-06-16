@@ -124,6 +124,36 @@ describe('registerFileBackedContentType', () => {
     expect((doc as Record<string, unknown>).title).toBe('projects/foo.md')
   })
 
+  it('routes a primary + file-backed secondary to the right tables (team regression)', async () => {
+    // Reproduces the pluginTables 1:1 bug: a plugin (like team) with a direct
+    // primary content type registered FIRST and a file-backed secondary SECOND.
+    // The old last-write-wins resolver sent the primary's direct index() calls
+    // into the secondary's table.
+    const api = buildSearchAPI('team-like')
+    api.registerContentType({
+      table: 'agents',
+      schema: { name: { type: 'text' } },
+      searchableFields: ['name'],
+      embeddingTemplate: '{{name}}',
+      reindex: async function* () {},
+      verifyExists: async () => true,
+    })
+    api.registerFileBackedContentType(makeDef({ table: 'agent-lessons' }))
+
+    // Direct index() resolves to the PRIMARY table, not the last-registered one.
+    await api.index('a1', { name: 'Agent One' })
+    expect(searchHarness.calls.documentsIndex).toHaveBeenCalledWith(
+      'bakin_agents',
+      'a1',
+      expect.objectContaining({ name: 'Agent One' }),
+    )
+
+    // The file-backed sync hook indexes into ITS OWN table (the secondary).
+    searchHarness.calls.documentsIndex.mockClear()
+    await syncHooks[syncHooks.length - 1]('projects/foo.md', 'foo body')
+    expect(searchHarness.calls.documentsIndex.mock.calls[0][0]).toBe('bakin_agent-lessons')
+  })
+
   it('sync hook ignores files outside the pattern scope', async () => {
     const api = buildSearchAPI('projects')
     api.registerFileBackedContentType(makeDef())

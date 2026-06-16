@@ -344,25 +344,15 @@ export function unregisterContentTypesByPlugin(pluginId: string): number {
 }
 
 /**
- * Get the full table name for a plugin. Returns null when the plugin has
- * no registered content type. Throws when a plugin has registered multiple
- * content types — the API/MCP layers assume 1:1 plugin→table, and the spec
- * §5.1d decision reinforces that. This is a defensive guard; no plugin
- * ships more than one content type today.
+ * Get the full table name a plugin's `/search` route and MCP plugin-param
+ * routing resolve to — the plugin's PRIMARY content type. Returns null when the
+ * plugin has registered no content type. A plugin with multiple content types
+ * (one direct primary + secondary file-backed types, e.g. team) resolves to its
+ * primary; it no longer throws (the dispatch layers route to one table per plugin,
+ * and secondary file-backed types are indexed directly, not via this path).
  */
 export function getTableForPlugin(pluginId: string): string | null {
-  const matches: string[] = []
-  for (const [tableName, def] of getRegistry().contentTypes) {
-    if (def.pluginId === pluginId) matches.push(tableName)
-  }
-  if (matches.length === 0) return null
-  if (matches.length > 1) {
-    throw new Error(
-      `Plugin "${pluginId}" has ${matches.length} registered content types (${matches.join(', ')}); expected 1. ` +
-        `The /search and MCP plugin-param routing assumes a single table per plugin.`,
-    )
-  }
-  return matches[0]
+  return getRegistry().pluginTables.get(pluginId) ?? null
 }
 
 /**
@@ -446,20 +436,43 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
     })
   }
 
-  const api: SearchAPI = {
-    registerContentType(def: SearchContentTypeDefinition): void {
-      const tableName = fullTableName(def.table)
-      const existing = registry.contentTypes.get(tableName)
-      if (existing && existing.pluginId !== pluginId) {
+  // Register a content type, recording its table as the plugin's PRIMARY when
+  // `primary` is true. The primary table is what bare ctx.search.index/remove/
+  // transform/query target and what getTableForPlugin (and the /search + MCP
+  // routing) resolve to. A plugin has exactly one primary; a second DIRECT
+  // registration is an error. File-backed content types register as secondary
+  // (primary=false) — they index into their own table explicitly (see the wiring
+  // below) and only become the primary as a fallback when a plugin has no direct
+  // content type at all (e.g. a purely file-backed plugin).
+  const registerContentTypeInternal = (def: SearchContentTypeDefinition, primary: boolean): void => {
+    const tableName = fullTableName(def.table)
+    const existing = registry.contentTypes.get(tableName)
+    if (existing && existing.pluginId !== pluginId) {
+      throw new Error(
+        `Search content type table "${tableName}" is already registered by plugin "${existing.pluginId}"; ` +
+        `plugin "${pluginId}" cannot take ownership.`,
+      )
+    }
+    registry.contentTypes.set(tableName, { ...def, pluginId })
+    const currentPrimary = registry.pluginTables.get(pluginId)
+    if (primary) {
+      if (currentPrimary && currentPrimary !== tableName) {
         throw new Error(
-          `Search content type table "${tableName}" is already registered by plugin "${existing.pluginId}"; ` +
-          `plugin "${pluginId}" cannot take ownership.`,
+          `Plugin "${pluginId}" already has a primary search content type "${currentPrimary}"; ` +
+          `"${tableName}" cannot also be primary. Only file-backed content types may be secondary.`,
         )
       }
-      registry.contentTypes.set(tableName, { ...def, pluginId })
       registry.pluginTables.set(pluginId, tableName)
-      log.info(`Content type registered: ${tableName} (plugin: ${pluginId})`)
-      maybeAutoRegisterSearchRoute()
+    } else if (!currentPrimary) {
+      registry.pluginTables.set(pluginId, tableName)
+    }
+    log.info(`Content type registered: ${tableName} (plugin: ${pluginId}${primary ? '' : ', secondary'})`)
+    maybeAutoRegisterSearchRoute()
+  }
+
+  const api: SearchAPI = {
+    registerContentType(def: SearchContentTypeDefinition): void {
+      registerContentTypeInternal(def, true)
     },
 
     registerFileBackedContentType(def: FileBackedContentTypeDefinition): void {
@@ -472,8 +485,9 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
       removePendingReconciles(pluginId, tableName)
 
       // Standard registration first — gives us the table, schema, and reindex
-      // generator. Everything below layers watcher hooks + reconcile on top.
-      api.registerContentType(def)
+      // generator. Registered as SECONDARY: file-backed types index into their
+      // own table (below), never via the plugin's primary resolver.
+      registerContentTypeInternal(def, false)
       if (opts?.skipFileBackedWiring) return
 
       const includePatterns = def.filePatterns.map(p => p.pattern)
@@ -504,7 +518,10 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
             // file may have been removed between watcher emit and our stat;
             // fall back to "now" so the index entry is at least monotonic.
           }
-          await api.index(key, { ...doc, [MTIME_FIELD]: mtimeMs })
+          // Index into THIS content type's table directly — not via api.index,
+          // which resolves the plugin's primary table (wrong for a secondary
+          // file-backed type on a multi-content plugin like team).
+          await getSearchAdapter().documents.index(tableName, key, { ...doc, [MTIME_FIELD]: mtimeMs })
         } catch (err) {
           log.warn('File-backed sync hook failed', err, { table: tableName, rel })
         }
@@ -521,7 +538,7 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
           if (!mapper) return
           const key = mapper.fileToId(rel)
           if (key === null) return
-          await api.remove(key)
+          await getSearchAdapter().documents.remove(tableName, key)
         } catch (err) {
           log.warn('File-backed unlink hook failed', err, { table: tableName, rel })
         }
@@ -688,10 +705,13 @@ async function runPendingReconcilesMatching(predicate: (item: RegistryState['pen
   registry.pendingReconciles.push(...keep)
   for (const { pluginId, def } of items) {
     try {
-      const api = buildSearchAPI(pluginId)
+      // Reconcile into THIS content type's own table directly (a file-backed
+      // type may be a secondary on a multi-content plugin; api.index would
+      // resolve the plugin's primary table instead).
+      const reconcileTable = fullTableName(def.table)
       await performStartupReconcile(def, contentDir, {
-        index: (key, doc) => api.index(key, doc),
-        remove: (key) => api.remove(key),
+        index: (key, doc) => getSearchAdapter().documents.index(reconcileTable, key, doc),
+        remove: (key) => getSearchAdapter().documents.remove(reconcileTable, key),
         scanIndex: async function* (tableName) {
           for await (const { key, document } of getSearchAdapter().scan(tableName)) {
             const mtime = typeof document[MTIME_FIELD] === 'number'
