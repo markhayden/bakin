@@ -114,13 +114,24 @@ materially); note the consolidated client + the fixed divergences.
   typed-error improvement deferred (moved verbatim).
 - B4 — ☑ extracted 8 pure output helpers → src/cli/output.ts. Exit helpers + emit() + confirm
   unification deferred (entangled / behavior-sensitive).
-- B5 — ☐ **(next focused unit — large + fragile)** command modules + slim router + emit() dispatcher
-  + confirm unification + no-arg/update/help-registry divergence fixes. Touches exit-code plumbing,
-  dynamic-import contracts; behavior-changing parts want the dockerized-rig E2E before merge.
+- B5.1 — ☑ behavioral divergence fixes: no-arg → help (binary + parser, parity with source CLI);
+  `update` → no-op guidance message on the source CLI (was an unknown-command error). User-chosen
+  behavior (Mark, 2026-06-15: "default to help and no-op with message").
+- B5.2 — ☑ collapsed the 3 confirm-prompt copies onto one promptYesNo readline core (each caller
+  keeps its own guard; behavior-identical).
+- B5.3 — ☐ **(next focused unit — fragile, wants E2E)** the command-module split (extract per-scope
+  cmd modules, move the top static server-core imports into them, slim cli/bakin.ts to a router) +
+  the emit() isTTY/plain/json dispatcher (~95 sites) + help-registry-driven dispatch. Touches the
+  binary entry's exit-code plumbing + dynamic-import contracts; the behavior-changing parts want the
+  dockerized-rig E2E before merge.
 - B6 — ☐ wire/retire the stalled runner/parser/options/result framework.
 - B7 — ☐ test splits (tty-cli-harness + readonly-commands.test split).
 - docs — ☐
 
-### Checkpoint (2026-06-15): B1–B4 are a coherent, low-risk, fully-verified chunk (pure
-extractions + dedup + the BAKIN_URL bug fix). B5+ are higher-risk. Suggested split: ship B1–B4 as
-"WS4 part 1" and tackle B5 as a fresh focused effort (mirrors the WS3 → WS3b split).
+### Checkpoints (2026-06-15)
+- Part 1 (B1–B4): shipped + merged (PR #503) — readonly split, renderInkReport, http client +
+  BAKIN_URL fix, output helpers.
+- Part 2 (B5.1–B5.2): the safe, fully-verified slice of B5 — the user-chosen divergence fixes + the
+  confirm-prompt dedup. Shipping as its own PR.
+- Part 3 (B5.3 + B6 + B7 + docs): the command-module split / emit() dispatcher / framework / test
+  splits — the fragile, E2E-wanting remainder. Next focused effort.

@@ -1883,8 +1883,9 @@ async function printDoctorRepairVerifyTui(requestId: string, result: Record<stri
   return renderInkReport(() => import('../src/core/cli/ui/doctor-repair'), (m) => m.DoctorRepairVerifyReport, { requestId, result })
 }
 
-async function confirmPrompt(message: string): Promise<boolean> {
-  if (!process.stdin.isTTY) return false
+// Shared readline y/N core. Callers own their own pre-guards (isTTY / count
+// checks) so each keeps its exact behavior; only the readline boilerplate is shared.
+async function promptYesNo(message: string): Promise<boolean> {
   const readline = await import('node:readline/promises')
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
   try {
@@ -1895,28 +1896,19 @@ async function confirmPrompt(message: string): Promise<boolean> {
   }
 }
 
+async function confirmPrompt(message: string): Promise<boolean> {
+  if (!process.stdin.isTTY) return false
+  return promptYesNo(message)
+}
+
 async function confirmDoctorRepair(plan: CliDoctorRepairPlan): Promise<boolean> {
   if (plan.summary.safeItems === 0) return false
-  const readline = await import('node:readline/promises')
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-  try {
-    const answer = await rl.question(`\nApply ${plan.summary.safeItems} safe repair item${plan.summary.safeItems === 1 ? '' : 's'}? [y/N] `)
-    return /^(y|yes)$/i.test(answer.trim())
-  } finally {
-    rl.close()
-  }
+  return promptYesNo(`Apply ${plan.summary.safeItems} safe repair item${plan.summary.safeItems === 1 ? '' : 's'}?`)
 }
 
 async function confirmDoctorDelegate(unresolved: CliDoctorRepairPlan['diagnostics']): Promise<boolean> {
   if (unresolved.length === 0) return false
-  const readline = await import('node:readline/promises')
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-  try {
-    const answer = await rl.question(`\nCreate a delegated repair task for ${unresolved.length} finding${unresolved.length === 1 ? '' : 's'}? [y/N] `)
-    return /^(y|yes)$/i.test(answer.trim())
-  } finally {
-    rl.close()
-  }
+  return promptYesNo(`Create a delegated repair task for ${unresolved.length} finding${unresolved.length === 1 ? '' : 's'}?`)
 }
 
 async function cmdDoctorFix(options: { json: boolean; yes: boolean; isTTY: boolean }): Promise<void> {
@@ -3754,6 +3746,18 @@ export async function main(): Promise<void> {
       case '-v':
         if (process.stdout.isTTY) await printVersionTui({ version: APP_VERSION })
         else console.log(APP_VERSION)
+        break
+
+      case 'update':
+        // Self-update is implemented only in the compiled binary (handled in
+        // src/core/cli.ts before delegation reaches here). This source/npm entry
+        // can't replace its own executable — guide the user instead of erroring.
+        console.log(
+          'Self-update is only available in the compiled `bakin` binary (run `bakin update`).\n' +
+          'This source/npm invocation does not self-update — update via your install method:\n' +
+          '  • Homebrew:        brew upgrade bakin\n' +
+          '  • Source checkout: git pull',
+        )
         break
 
       case 'status':

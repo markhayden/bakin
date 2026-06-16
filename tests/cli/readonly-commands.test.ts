@@ -79,6 +79,17 @@ describe('read-only CLI TTY commands', () => {
     expect(errorOutput()).toBe('')
   })
 
+  it('prints a no-op guidance message for `update` on the source CLI', async () => {
+    process.argv = ['bun', 'cli/bakin.ts', 'update']
+
+    const { main } = await import('../../cli/bakin')
+    await main()
+
+    expect(output()).toContain('Self-update is only available in the compiled')
+    expect(output()).toContain('brew upgrade bakin')
+    expect(errorOutput()).toBe('')
+  })
+
   it('accepts help as a source CLI alias for the shared TUI help', async () => {
     process.exit = ((code?: number) => {
       throw new Error(`exit:${code ?? 0}`)
