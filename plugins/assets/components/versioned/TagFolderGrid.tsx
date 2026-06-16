@@ -6,6 +6,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from '@makinbakin/sdk/ui'
+import { ConfirmDialog } from '@makinbakin/sdk/components'
 import { FolderOpen, MoreVertical, Pencil, Trash2, Loader2 } from 'lucide-react'
 import { AssetThumb } from './atoms'
 import { TAGS_API } from './asset-urls'
@@ -190,26 +191,18 @@ export function TagFolderGrid({ assets, filter = '', onOpenFolder, onChanged }: 
       </Dialog>
 
       {/* Delete dialog */}
-      <Dialog open={deleting !== null} onOpenChange={(open) => { if (!open) setDeleting(null) }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete tag</DialogTitle>
-            <DialogDescription>Removes “{deleting}” from every asset that carries it. The assets themselves are untouched.</DialogDescription>
-          </DialogHeader>
-          {error && deleting !== null && <p className="text-xs text-destructive">{error}</p>}
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setDeleting(null)}>Cancel</Button>
-            <Button
-              variant="destructive"
-              onClick={() => deleting && run('/remove', { tag: deleting }, () => setDeleting(null))}
-              disabled={busy}
-              data-testid="folder-delete-confirm"
-            >
-              {busy ? <Loader2 className="size-4 animate-spin" /> : null} Delete tag
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={deleting !== null}
+        busy={busy}
+        title="Delete tag"
+        description={<>Removes “{deleting}” from every asset that carries it. The assets themselves are untouched.</>}
+        error={error}
+        confirmLabel="Delete tag"
+        cancelVariant="ghost"
+        confirmTestId="folder-delete-confirm"
+        onConfirm={() => deleting && run('/remove', { tag: deleting }, () => setDeleting(null))}
+        onCancel={() => setDeleting(null)}
+      />
     </>
   )
 }

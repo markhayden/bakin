@@ -3,15 +3,9 @@
 import { useState } from 'react'
 import { Plus, Trash2, Users } from 'lucide-react'
 import { Button } from "@makinbakin/sdk/ui"
-import { EmptyState } from "@makinbakin/sdk/components"
+import { EmptyState, ConfirmDialog } from "@makinbakin/sdk/components"
 import { Input } from "@makinbakin/sdk/ui"
 import { Label } from "@makinbakin/sdk/ui"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@makinbakin/sdk/ui"
 import { useAgentStore, useRouter } from '@makinbakin/sdk/hooks'
 import type { OrgTeam } from '../types'
 
@@ -206,25 +200,19 @@ export function TeamManager() {
       )}
 
       {/* Delete team confirmation */}
-      <Dialog open={!!deleteTarget} onOpenChange={(v) => { if (!v) setDeleteTarget(null) }}>
-        <DialogContent className="bg-card border-border max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Delete team?</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Delete team?"
+        description={
+          <>
             This will delete <span className="text-foreground font-medium">{deleteTarget}</span> and
             unassign all agents from it.
-          </p>
-          <div className="flex justify-end gap-2 mt-2">
-            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={() => deleteTarget && handleDelete(deleteTarget)}>
-              Delete Team
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+        confirmLabel="Delete Team"
+        onConfirm={() => deleteTarget && handleDelete(deleteTarget)}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }

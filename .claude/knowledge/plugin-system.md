@@ -928,11 +928,22 @@ Plugin authors import from `@bakin/sdk/*`. Full sub-path map:
 |------|-----------------|
 | `@bakin/sdk` | `registerPlugin`, `getAllNavItems`, `NavItem` type |
 | `@bakin/sdk/ui` | shadcn primitives (Button, Card, Dialog, Input, Select, Table, Tabs, Tooltip, ...) |
-| `@bakin/sdk/hooks` | React hooks (`useAgent`, `useAgentList`, `useSSE`, `usePluginEvent`, `useSearch`, `useQueryState`, `useQueryArrayState`, `useDebug`, `useNotificationChannels`, ...) |
-| `@bakin/sdk/components` | Shared components (`PluginHeader`, `FacetFilter`, `AgentAvatar`, `AgentSelect`, `ChannelIcon`, `BakinDrawer`, ...) |
+| `@bakin/sdk/hooks` | React hooks (`useAgent`, `useAgentList`, `useSSE`, `usePluginEvent`, `useJsonFetch`, `useAvailableModels`, `useSearch`, `useQueryState`, `useQueryArrayState`, `useDebug`, `useNotificationChannels`, ...) |
+| `@bakin/sdk/components` | Shared components (`PluginHeader`, `FacetFilter`, `AgentAvatar`, `AgentSelect`, `ConfirmDialog`, `EmptyState`, `ChannelIcon`, `BakinDrawer`, ...) |
 | `@bakin/sdk/slots` | `Slot`, `registerSlot`, `__clearSlot` |
 | `@bakin/sdk/types` | Canonical, self-contained contract types (`PluginContext`, `BakinPlugin`, `Task`, `WorkflowDefinition`, ...), split into primitives/manifest/runtime/services/registration/context behind a barrel. The single source of truth — `packages/core/src/plugin-types.ts` re-exports the identical leaf types from here and keeps its own fuller internal tier (see repo-architecture.md § two-tier type contract). |
-| `@bakin/sdk/utils` | `cn`, `formatAge`, `formatSize`, `isStale` |
+| `@bakin/sdk/utils` | `cn`, `formatAge`, `formatDateTime`, `formatDuration`, `formatSize`, `isStale`, `toneBadgeClass` |
+
+### Shared client primitives (WS3/WS3b)
+
+The audit consolidated copy-pasted client patterns into the SDK; reach for these instead of re-rolling:
+- `usePluginEvent(event, handler)` — subscribe to a named server SSE event over the single shell connection (never open a raw `EventSource`).
+- `useJsonFetch<T>(url, opts?)` → `{ data, loading, error, refresh }` — cancellable JSON GET; pass `url=null` to skip. Replaces the `let cancelled = false` fetch-in-`useEffect` boilerplate.
+- `useAvailableModels()` → `AvailableModel[]` — module-cached, read-only model catalog (mirrors `useNotificationChannels`; the models page owns the live refresh flow).
+- `ConfirmDialog` — controlled, busy/error-aware confirmation dialog for destructive actions.
+- `EmptyState` — `variant='panel'` for the larger-chip full-tab empty surface (default stays compact).
+- `toneBadgeClass(tone)` — the `bg-X-500/10 text-X-400 border-X-500/20` outline-badge idiom across `success|pending|error|muted|info`.
+- `formatDateTime(ts)` / `formatDuration(ms)` — calendar-aware absolute time and elapsed-duration formatters next to `formatAge`.
 
 Published to npm as `@bakin/sdk`. `scripts/publish-sdk.ts` pushes on the
 release workflow. Lint rules block direct imports from `@/components/*`,

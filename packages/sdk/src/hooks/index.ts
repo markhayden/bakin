@@ -17,6 +17,9 @@ export { useNavBadge } from '@/hooks/use-nav-badge'
 export { useDebug } from '@/hooks/use-debug'
 /** Guard a form against unmounting while submission is in flight. */
 export { useFormGuard } from '@/hooks/use-form-guard'
+/** Cancellable JSON GET with a `{ data, loading, error, refresh }` lifecycle. */
+export { useJsonFetch } from '@/hooks/use-json-fetch'
+export type { UseJsonFetchResult } from '@/hooks/use-json-fetch'
 /** Subscribe to runtime connection status (online/offline, last heartbeat). */
 export { useRuntimeStatus } from '@/hooks/use-runtime-status'
 /** Bind a single component-state value to a URL query param. */
@@ -78,6 +81,11 @@ export { useNotificationChannels } from '@bakin/workflows/hooks/use-notification
 export { getChannelLabel } from '@bakin/workflows/hooks/use-notification-channels'
 /** Get initials for a channel (e.g. "Discord" → "D"). */
 export { getChannelInitials } from '@bakin/workflows/hooks/use-notification-channels'
+
+// Group 3b: Model catalog (from models plugin)
+
+/** The available-models catalog (cached, read-only); empty until loaded. */
+export { useAvailableModels } from '@bakin/models/hooks/use-available-models'
 
 // Group 4: Router hooks (TanStack Router wrappers; Next.js-shape compatible)
 

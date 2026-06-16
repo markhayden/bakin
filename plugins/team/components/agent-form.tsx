@@ -7,7 +7,7 @@ import { Input } from "@makinbakin/sdk/ui"
 import { Label } from "@makinbakin/sdk/ui"
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@makinbakin/sdk/ui"
 import { ModelSelect } from "@makinbakin/sdk/components"
-import type { AvailableModel } from "@makinbakin/sdk/types"
+import { useAvailableModels } from "@makinbakin/sdk/hooks"
 
 export interface AgentFormData {
   id: string
@@ -36,7 +36,7 @@ export function AgentForm({
   const [idManual, setIdManual] = useState(false)
   const [emoji, setEmoji] = useState('')
   const [model, setModel] = useState('')
-  const [availableModels, setAvailableModels] = useState<AvailableModel[]>([])
+  const availableModels = useAvailableModels()
   const [soul, setSoul] = useState('')
   const [role, setRole] = useState('')
   const [vibe, setVibe] = useState('')
@@ -48,25 +48,22 @@ export function AgentForm({
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
+  // Default the model picker to the preferred model once the catalog loads,
+  // but only while the user hasn't chosen one (functional set-if-empty).
   useEffect(() => {
-    fetch('/api/plugins/models/available')
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.models) {
-          setAvailableModels(data.models)
-          const preferred = data.models.find((m: AvailableModel) => m.isDefault)
-            ?? data.models.find((m: AvailableModel) => m.configured)
-            ?? data.models[0]
-          if (preferred && !model) setModel(preferred.id)
-        }
-      })
-      .catch((e) => console.error('Failed to fetch available models:', e))
+    if (!availableModels.length) return
+    const preferred = availableModels.find((m) => m.isDefault)
+      ?? availableModels.find((m) => m.configured)
+      ?? availableModels[0]
+    if (preferred) setModel((prev) => prev || preferred.id)
+  }, [availableModels])
 
+  useEffect(() => {
     fetch('/api/plugins/team/teams')
       .then((r) => r.json())
       .then((data) => { if (Array.isArray(data)) setTeams(data) })
       .catch(() => {})
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   // Auto-derive ID from name unless user manually edited it
   const handleNameChange = (v: string) => {
