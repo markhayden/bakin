@@ -40,7 +40,7 @@ import { getBootId } from './src/core/boot-id'
 import { acquireServerLock, formatBindFailureHelp } from './src/core/server-lock'
 import { registerShutdownHandlers, triggerShutdown } from './src/core/lifecycle'
 import { checkAndContinueDependents } from './src/core/continuation'
-import { getAllRoutes, generateDocs } from './src/core/api-docs'
+import { generateDocs } from './src/core/api-docs'
 import { getCachedOrBuild } from './packages/host/src/api/docs-runtime'
 import type { buildOpenApiDocument } from './packages/host/src/api/docs-runtime'
 import { collectOpenApiSources as collectTypedOpenApiSources } from './packages/host/src/api/openapi-sources'
@@ -81,6 +81,8 @@ import * as assetsRoute from './packages/host/src/api/assets/[...path]'
 import * as pluginCatchAllRoute from './packages/host/src/api/plugins/[pluginId]/[[...path]]'
 import * as pluginsManifestRoute from './packages/host/src/api/plugins/manifest'
 import * as pluginsAssetsRoute from './packages/host/src/api/plugins/assets'
+import * as versionRoute from './packages/host/src/api/version'
+import * as docsRoute from './packages/host/src/api/docs'
 import * as updateStatusRoute from './packages/host/src/api/update/status'
 import * as updateApplyRoute from './packages/host/src/api/update/apply'
 import { handleDevSse } from './packages/host/src/api/dev/events'
@@ -97,10 +99,6 @@ import { EMBEDDED_ASSETS_STATIC } from './packages/host/src/api/_embedded-assets
 setEmbeddedAssets(EMBEDDED_ASSETS_STATIC)
 
 const log = createLogger('server')
-
-import { APP_VERSION } from './packages/core/src/constants'
-
-const BAKIN_VERSION = APP_VERSION
 
 // Parse argv and run one-shot subcommands (`version`, `stop`, `status`,
 // `plugins ...`, `update`, `--help`) before touching the filesystem.
@@ -252,7 +250,7 @@ const eventBus = new BakinEventBus(broadcast)
 
     // Version endpoint
     if (url.pathname === '/api/version' && req.method === 'GET') {
-      jsonResponse(res, 200, { version: BAKIN_VERSION })
+      dispatchWebHandler(req, res, versionRoute.get)
       return
     }
 
@@ -270,7 +268,7 @@ const eventBus = new BakinEventBus(broadcast)
     // the new OpenAPI surface becomes the canonical endpoint and the
     // CLI migrates over.
     if (url.pathname === '/api/docs' && req.method === 'GET') {
-      jsonResponse(res, 200, { routes: getAllRoutes() })
+      dispatchWebHandler(req, res, docsRoute.get)
       return
     }
 
