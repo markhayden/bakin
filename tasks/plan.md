@@ -46,4 +46,12 @@ rig to E2E-verify behavior — they're sequenced after the search work and may b
   import cycles, logger allowlist names, 12 test-file import paths, server.ts dynamic-import strings).
   Also fold in the smaller cleanups: transform() $inc/$push type-narrow, pendingReconciles swap idiom (×3),
   crossTableSearch self-recursion, dead getSearchAdapter export.
-- dispatch.split — ☐   plugin-registry.split — ☐   server.split — ☐   upgrade.split — ☐   runtime.split — ☐
+- upgrade.cleanup — ☑ deleted dead `checkUpgradeAvailable` (zero callers; superseded by `runChecks`;
+  stale doc claimed `--check` used it). **Hasher consolidation DEFERRED (behavior-sensitive):** the
+  "two directory hashers" — `computeSourceTreeSha` (upgrade.ts: skips node_modules/dist/.git, hashes
+  concatenated rel+bytes) and `hashSourceTree` (whiskit/source-hash.ts: skips NON_RUNTIME_DIRS+dotfiles,
+  hashes joined rel+filehash lines) — have DIFFERENT skip-sets and formulas, so they produce different
+  hashes. Consolidating changes output for one caller and invalidates stored sourceTreeSha values
+  (spurious "source changed" on existing installs); needs a deliberate canonical-pick + one-time reset,
+  best done with the full upgrade.ts split + a migration step.
+- dispatch.split — ☐   plugin-registry.split — ☐   server.split — ☐   upgrade.split (remaining) — ☐   runtime.split — ☐

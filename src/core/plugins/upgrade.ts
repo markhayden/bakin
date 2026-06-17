@@ -353,37 +353,6 @@ async function probeOne(entry: PluginLockEntry, id: string): Promise<UpgradeAvai
 }
 
 /**
- * Check whether an upgrade is available for an installed plugin and persist
- * the freshness markers (`lastChecked` + `remoteHeadSha`/`sourceTreeSha`)
- * into the lockfile. Used by `bakin plugins list --check` for single-plugin
- * checks. Concurrent callers should prefer `runChecks` to avoid races.
- *
- * Network/fs errors are caught and returned in the `error` field so one
- * plugin's failure doesn't blank the whole list.
- */
-export async function checkUpgradeAvailable(id: string): Promise<UpgradeAvailability> {
-  const entry = readPluginLockfile().plugins[id]
-  if (!entry) {
-    return {
-      id,
-      upgradeAvailable: false,
-      lastChecked: new Date().toISOString(),
-      error: 'no lockfile entry',
-    }
-  }
-  const result = await probeOne(entry, id)
-  // Single-plugin path still serializes via one read-modify-write call —
-  // safe because there's no parallelism here.
-  if (!result.error) {
-    const patch: Partial<PluginLockEntry> = { lastChecked: result.lastChecked }
-    if (result.remoteHeadSha) patch.remoteHeadSha = result.remoteHeadSha
-    if (result.sourceTreeSha) patch.lastSourceTreeSha = result.sourceTreeSha
-    writePluginLockfile(updatePlugin(readPluginLockfile(), id, patch))
-  }
-  return result
-}
-
-/**
  * Run the `--check` probe for many plugins in parallel and write the
  * lockfile ONCE with all updates. The previous shape (each probe
  * read-modify-writes the lockfile) raced under Promise.all and silently
