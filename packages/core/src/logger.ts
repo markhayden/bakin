@@ -178,6 +178,10 @@ function suppressPrettyInfo(entry: LogEntry): boolean {
   }
   return [
     'search-registry',
+    'search-registry-core',
+    'search-plugin-api',
+    'search-reindex',
+    'search-query',
     'search-reconcile',
     'search-cleanup',
     'hot-reload-coordinator',
