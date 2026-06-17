@@ -259,6 +259,14 @@ async function getRuntimeAgentNames(): Promise<Set<string>> {
   return names
 }
 
+function collectNestedWorkflowIds(def: WorkflowDefinition, out: Set<string>): void {
+  for (const step of def.steps) {
+    if (step.type === 'workflow') {
+      out.add((step as NestedWorkflowStep).workflow_id)
+    }
+  }
+}
+
 async function validateWorkflowForStart(
   workflowId: string,
   assignee: string | undefined,
@@ -266,27 +274,50 @@ async function validateWorkflowForStart(
   runtimeAgents?: Set<string>,
 ): Promise<string[]> {
   const errors: string[] = []
-  const workflowIdError = validateWorkflowId(workflowId)
-  if (workflowIdError) {
-    errors.push(workflowIdError)
-    return errors
-  }
-  const def = loadDefinition(workflowId, contentDir)
-  if (!def) {
-    errors.push(`Unknown workflow id: ${workflowId}`)
-    return errors
-  }
   const knownAgents = runtimeAgents ?? await getRuntimeAgentNames()
   const knownWorkflowIds = new Set(listDefinitions(contentDir).map((entry) => entry.name))
-  errors.push(...validateDefinition(def, {
-    definitionId: workflowId,
-    source: def.source,
-    contentDir,
-    knownWorkflowIds,
-    runtimeAgents: knownAgents,
-    assignee,
-    requireResolvedAgents: true,
-  }))
+  const visited = new Set<string>()
+
+  // Recurse through nested workflows, validating each definition and detecting
+  // nesting cycles. The REST /instances/start path previously skipped this —
+  // only the hook/exec-tool paths recursed — so a cyclic or invalid nested
+  // workflow could be started via REST. This matches the strong validator.
+  const visit = (id: string, path: string[]): void => {
+    const workflowIdError = validateWorkflowId(id)
+    if (workflowIdError) {
+      errors.push(`Workflow "${id}": ${workflowIdError}`)
+      return
+    }
+    if (path.includes(id)) {
+      errors.push(`Workflow nesting cycle detected: ${[...path, id].join(' -> ')}`)
+      return
+    }
+    if (visited.has(id)) return
+    visited.add(id)
+
+    const def = loadDefinition(id, contentDir)
+    if (!def) {
+      errors.push(`Workflow definition not found: ${id}`)
+      return
+    }
+
+    errors.push(...validateDefinition(def, {
+      definitionId: id,
+      source: def.source,
+      contentDir,
+      knownWorkflowIds,
+      runtimeAgents: knownAgents,
+      assignee,
+      requireResolvedAgents: true,
+    }).map((message) => `Workflow "${id}": ${message}`))
+
+    const nestedIds = new Set<string>()
+    collectNestedWorkflowIds(def, nestedIds)
+    for (const nestedId of nestedIds) visit(nestedId, [...path, id])
+  }
+
+  visit(workflowId, [])
+
   if (assignee && !knownAgents.has(assignee)) {
     errors.push(`Assignee "${assignee}" is not a known runtime agent`)
   }

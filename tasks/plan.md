@@ -25,6 +25,16 @@ The big splits (dispatch singleton, plugin-registry, runtime) are fragile and se
 rig to E2E-verify behavior — they're sequenced after the search work and may be split into focused PRs
 (mirroring WS4's part-1/part-2 cadence).
 
+## Incidental correctness bug #3 (workflow start-validation) — ☑
+
+The REST `POST /instances/start` path used a weak `validateWorkflowForStart` that only validated the
+top-level definition — no nested-workflow recursion or cycle detection — while the hook + exec-tool
+paths used a strong recursive validator. So a cyclic/invalid nested workflow could be started via REST.
+Upgraded the module-level validator to the strong recursive form (per-def validation + path-tracking
+cycle detection) while keeping its explicit assignee-param check (a true superset). Regression test:
+REST start with a mutually-nested cycle → 400 "cycle detected". (The local strong copy remains a
+pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
+
 ## Status
 
 - **search.fix — ☑ pluginTables wrong-table bug.** Team registers a direct primary (`agents`, indexed
