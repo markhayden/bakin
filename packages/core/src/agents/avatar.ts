@@ -95,7 +95,7 @@ export function detectImageExtension(buffer: Uint8Array): AvatarExt | null {
  */
 export function serveAvatar(req: Request, agentId: string): Response {
   const resolved = resolveAgentAvatar(agentId)
-  if (!resolved) return new Response(null, { status: 404 })
+  if (!resolved) return Response.json({ error: 'Avatar not found' }, { status: 404 })
 
   // Truncate mtime to whole seconds so it agrees with the second-precision
   // Last-Modified header during If-Modified-Since comparisons.
