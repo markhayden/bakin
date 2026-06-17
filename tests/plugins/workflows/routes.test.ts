@@ -345,4 +345,39 @@ describe('Workflows Plugin — workflow skill drift routes', () => {
       rmSync(collidingTempPath, { recursive: true, force: true })
     }
   })
+
+  describe('POST /instances/start validation', () => {
+    it('rejects starting a workflow with a nested-workflow cycle (REST parity with the hook path)', async () => {
+      const defsDir = join(testDir, 'workflows', 'definitions')
+      mkdirSync(defsDir, { recursive: true })
+      writeFileSync(join(defsDir, 'cycle-a.yaml'), `
+name: Cycle A
+description: cyclic A
+version: 1
+steps:
+  - id: run-b
+    type: workflow
+    label: Run B
+    workflow_id: cycle-b
+`)
+      writeFileSync(join(defsDir, 'cycle-b.yaml'), `
+name: Cycle B
+description: cyclic B
+version: 1
+steps:
+  - id: run-a
+    type: workflow
+    label: Run A
+    workflow_id: cycle-a
+`)
+
+      const route = findRoute(activated.routes, 'POST', '/instances/start')!
+      const { status, body } = await callRoute(route, activated.ctx, {
+        body: { taskId: 'task-cycle', workflowId: 'cycle-a' },
+      })
+
+      expect(status).toBeGreaterThanOrEqual(400)
+      expect(JSON.stringify(body)).toContain('cycle detected')
+    })
+  })
 })
