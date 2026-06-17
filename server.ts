@@ -35,10 +35,7 @@ import { handleJsonPost, jsonResponse } from './src/core/middleware'
 import { writeCrossPluginSearchResponse } from './src/core/api-search-handler'
 import * as watcher from './src/core/watcher'
 import * as dispatch from './src/core/dispatch'
-import * as watchdog from './src/core/watchdog'
-import { runRestartRecovery } from './src/core/restart-recovery'
-import { markPriorBootRunsLost } from './src/core/execution-ledger'
-import { backfillMissingCompletionRows } from './src/core/task-service'
+import { runStartupRecovery } from './src/core/server/startup-recovery'
 import { getBootId } from './src/core/boot-id'
 import { acquireServerLock, formatBindFailureHelp } from './src/core/server-lock'
 import { registerShutdownHandlers, triggerShutdown } from './src/core/lifecycle'
@@ -50,7 +47,6 @@ import { collectOpenApiSources as collectTypedOpenApiSources } from './packages/
 import { migrateIfNeeded } from './src/core/search-migration'
 import { bootSearch } from './src/core/search-startup'
 import * as agents from './src/core/agents'
-import * as doctor from './src/core/doctor'
 import { handleMcpRequest } from './src/core/mcp-server'
 import * as mcporter from './src/core/mcporter'
 import { trackResponse } from './src/core/rest-tracking'
@@ -709,55 +705,7 @@ const eventBus = new BakinEventBus(broadcast)
       log.info(`Full logs: ${logPath}`, { path: logPath })
     }
 
-    void (async () => {
-      // Startup sweep BEFORE restart recovery: runs left 'running' by a
-      // crashed/previous process are marked lost, or their stale claims
-      // would suppress every legitimate re-dispatch below.
-      try {
-        const swept = markPriorBootRunsLost(getBootId())
-        if (swept > 0) log.info('Startup sweep: marked prior-boot runs lost', { swept })
-      } catch (err) {
-        log.error('Startup run sweep failed — stale claims may suppress dispatch until resolved', err)
-      }
-
-      // Ledger heal: done tasks without a completions row (pre-ledger
-      // history, or rows lost to since-fixed leak paths) get synthetic rows
-      // so "row ⟺ done" holds for every reader. Idempotent — a failure
-      // must not block boot, it just retries next start.
-      try {
-        const healed = backfillMissingCompletionRows()
-        if (healed > 0) log.info('Completion backfill: synthetic rows recorded for done tasks', { healed })
-      } catch (err) {
-        log.error('Completion backfill failed', err)
-      }
-
-      let recovered = 0
-      try {
-        const result = await runRestartRecovery(CONTENT_DIR)
-        recovered = result.recovered
-      } catch (err) {
-        log.error('Restart recovery failed', err)
-      } finally {
-        dispatch.start(CONTENT_DIR, port)
-        watchdog.start(CONTENT_DIR)
-      }
-
-      try {
-        if (recovered > 0) {
-          await dispatch.dispatchTasks(CONTENT_DIR, port)
-        }
-      } catch (err) {
-        log.error('Post-recovery dispatch failed', err)
-      } finally {
-        doctor.start(CONTENT_DIR, process.cwd())
-      }
-
-      if (process.env.BAKIN_SEED_USAGE === '1') {
-        import('./dev/imitation-crab/usage-seed')
-          .then(m => m.seedMockUsage())
-          .catch(err => log.warn('Mock usage seed failed', err))
-      }
-    })()
+    void runStartupRecovery(CONTENT_DIR, port)
   })
 
   // Hot-reload coordinator (Phase 2 P2.C8). Enabled by `bakin dev`
