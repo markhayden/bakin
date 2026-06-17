@@ -41,11 +41,14 @@ rig to E2E-verify behavior — they're sequenced after the search work and may b
     `bakin_agent-lessons` (and missing from `bakin_agent`). After deploying, run a one-time
     `bakin reindex` (re-runs generators into the correct tables) and purge the mis-routed rows from
     `bakin_agent-lessons`. The code fix prevents recurrence; it can't retro-move already-written rows.
-- search.split — ☐ search-registry.ts → 4 modules (search-registry / search-plugin-api / search-reindex /
-  search-query) + barrel. Mechanical relocation; hazards in APPENDIX (globalThis HMR state in one module,
-  import cycles, logger allowlist names, 12 test-file import paths, server.ts dynamic-import strings).
-  Also fold in the smaller cleanups: transform() $inc/$push type-narrow, pendingReconciles swap idiom (×3),
-  crossTableSearch self-recursion, dead getSearchAdapter export.
+- search.split — ☑ search-registry.ts (1,154) → 16-line barrel + 4 modules (search-registry-core 444 /
+  search-plugin-api 413 / search-reindex 268 / search-query 102). Barrel strategy = every consumer
+  import, all 11 test files (incl. the 7 that mock.module the path), and server.ts dynamic-imports
+  unchanged; feature modules import core only (no cycle); logger allowlist extended. Verified: 149/0
+  across the 11 search test files, full binary build, and an isolated-home boot smoke against real
+  Antfly (tables register, team /search resolves the primary table with no throw). The smaller cleanups
+  (transform() $inc/$push narrow, pendingReconciles swap idiom, crossTableSearch recursion, getSearchAdapter
+  export) remain as follow-ups inside the now-smaller modules.
 - upgrade.cleanup — ☑ deleted dead `checkUpgradeAvailable` (zero callers; superseded by `runChecks`;
   stale doc claimed `--check` used it). **Hasher consolidation DEFERRED (behavior-sensitive):** the
   "two directory hashers" — `computeSourceTreeSha` (upgrade.ts: skips node_modules/dist/.git, hashes
