@@ -25,6 +25,11 @@ type AvatarExt = (typeof AVATAR_EXT_PRIORITY)[number]
  */
 const AGENT_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
 
+/** True when `agentId` is a safe slug (no separators, no `.`/`..`). */
+export function isValidAgentId(agentId: string): boolean {
+  return AGENT_ID_RE.test(agentId)
+}
+
 const CACHE_CONTROL = 'public, max-age=3600, stale-while-revalidate=86400'
 
 export interface ResolvedAvatar {
@@ -40,7 +45,7 @@ export interface ResolvedAvatar {
  * format; no file contents are read.
  */
 export function resolveAgentAvatar(agentId: string): ResolvedAvatar | null {
-  if (!AGENT_ID_RE.test(agentId)) return null
+  if (!isValidAgentId(agentId)) return null
   const { agents } = getBakinPaths()
   for (const ext of AVATAR_EXT_PRIORITY) {
     const path = join(agents, agentId, `avatar.${ext}`)
@@ -94,6 +99,10 @@ export function detectImageExtension(buffer: Uint8Array): AvatarExt | null {
  * reading the file. Returns a bodyless `404` when no avatar exists.
  */
 export function serveAvatar(req: Request, agentId: string): Response {
+  // Malformed (traversal-shaped) ids are a client error — reject before any
+  // filesystem touch — distinct from a valid id that simply has no avatar.
+  if (!isValidAgentId(agentId)) return Response.json({ error: 'Invalid agent id' }, { status: 400 })
+
   const resolved = resolveAgentAvatar(agentId)
   if (!resolved) return Response.json({ error: 'Avatar not found' }, { status: 404 })
 
