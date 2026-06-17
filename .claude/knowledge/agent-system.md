@@ -33,7 +33,7 @@ Single Zustand store loaded on app init. All components use `useAgent(id)`, `use
 
 ### Bakin-owned display data (not in provider state)
 - Display settings (accent colors, display name overrides, team assignments) — `~/.bakin/plugin-settings/team.json`
-- Avatars — `~/.bakin/agents/{id}/avatar.jpg`
+- Avatars — `~/.bakin/agents/{id}/avatar.{webp,png,jpg}` (resolved webp→png→jpg by the shared resolver; prefer WebP)
 - Heartbeats — `~/.bakin/heartbeats/{id}.json`
 
 ### Organizational teams

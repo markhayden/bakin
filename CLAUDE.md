@@ -42,7 +42,7 @@ Created by `bakin onboard` / `initBakinHome()`. Per-installation state, NOT in t
   plugin-settings/         — Per-plugin configuration (id.json)
   plugins/<id>/            — Installed addon plugins (source + generated dist/)
   plugin-data/<id>/        — Installed plugin runtime data
-  agents/                  — Per-agent UI data ({id}/avatar.jpg, avatar-full.png + .installedBy)
+  agents/                  — Per-agent UI data ({id}/avatar.{webp,png,jpg}, avatar-full.png + .installedBy)
   packages/                — Agent-package install state (lock.json + per-kind dirs)
   assets/                  — Versioned assets: store/<YYYY-MM>/<assetId>/ (manifest.json + vN files + exports/); see .claude/knowledge/assets-versioning.md
   heartbeats/              — Agent status heartbeats (JSON)
