@@ -48,6 +48,7 @@ import { getCachedOrBuild } from './packages/host/src/api/docs-runtime'
 import type { buildOpenApiDocument } from './packages/host/src/api/docs-runtime'
 import { collectOpenApiSources as collectTypedOpenApiSources } from './packages/host/src/api/openapi-sources'
 import { migrateIfNeeded } from './src/core/search-migration'
+import { bootSearch } from './src/core/search-startup'
 import * as agents from './src/core/agents'
 import * as doctor from './src/core/doctor'
 import { handleMcpRequest } from './src/core/mcp-server'
@@ -118,7 +119,6 @@ const BAKIN_VERSION = APP_VERSION
 
 const port = Number(process.env.PORT || 3737)
 const CONTENT_DIR = getContentDir()
-const SEARCH_STARTUP_RETRY_MS = 5000
 
 // Singleton lock BEFORE any side effect (dirs, plugins, watcher, antfly,
 // dispatch). Two server processes against one content dir each ran their
@@ -142,55 +142,6 @@ const SEARCH_STARTUP_RETRY_MS = 5000
  */
 function collectOpenApiSources(): Parameters<typeof buildOpenApiDocument>[0] {
   return collectTypedOpenApiSources(pluginRegistry.getAllPluginRoutes())
-}
-
-type SearchMigrationResult = Awaited<ReturnType<typeof migrateIfNeeded>>
-
-async function runSearchStartupBootstrap(
-  migration: SearchMigrationResult,
-  opts: { retry?: boolean } = {},
-): Promise<boolean> {
-  const {
-    createRegisteredTables,
-    reindexContentTypes,
-    runPendingReconciles,
-  } = await import('./src/core/search-registry')
-
-  const tableSetup = await createRegisteredTables()
-  if (tableSetup.failures.length > 0) {
-    const message = opts.retry
-      ? 'Deferred search table setup still failing; startup reconcile and reindex remain paused'
-      : 'Search table setup incomplete; pausing startup reconcile and reindex until tables are ready'
-    log.warn(message, { failures: tableSetup.failures })
-    return false
-  }
-
-  // Drain any startup reconciles enqueued by registerFileBackedContentType.
-  // Tables exist by this point so reconcile scans hit real data. Failures
-  // are logged inside the helper and do not block startup.
-  await runPendingReconciles()
-
-  // If the schema migration dropped tables, kick off a full background
-  // reindex so the freshly-recreated tables get populated with content.
-  // Fire-and-forget: Bakin is usable immediately with empty tables;
-  // indexing completes in the background and streams progress over SSE.
-  if (migration.migrated) {
-    const message = opts.retry
-      ? 'Running deferred full reindex after schema migration'
-      : 'Running full reindex after schema migration'
-    log.info(message, {
-      from: migration.from,
-      to: migration.to,
-    })
-    reindexContentTypes().then((results) => {
-      const total = results.reduce((sum: number, r) => sum + (r.indexed || 0), 0)
-      log.info('Schema migration reindex complete', { tables: results.length, total })
-    }).catch((err) => {
-      log.error('Schema migration reindex failed', err)
-    })
-  }
-
-  return true
 }
 
 // Ensure required directories exist
@@ -237,14 +188,7 @@ const eventBus = new BakinEventBus(broadcast)
   // and we trigger a full reindex after plugins are ready.
   const migration = await migrateIfNeeded()
 
-  const searchBootstrapReady = await runSearchStartupBootstrap(migration)
-  if (!searchBootstrapReady) {
-    setTimeout(() => {
-      runSearchStartupBootstrap(migration, { retry: true }).catch((err) => {
-        log.warn('Deferred search startup retry failed', err)
-      })
-    }, SEARCH_STARTUP_RETRY_MS)
-  }
+  await bootSearch(migration)
 
   // Start periodic orphan cleanup for search indexes
   const { startCleanupTimer } = await import('./src/core/search-cleanup')
