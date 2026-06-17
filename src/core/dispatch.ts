@@ -2,7 +2,7 @@
  * Task dispatch system for Bakin.
  * Periodically checks for TODO tasks and dispatches them to agents via the runtime adapter.
  */
-import { readFileSync, writeFileSync, existsSync } from 'fs'
+import { writeFileSync } from 'fs'
 import { join } from 'path'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
@@ -42,7 +42,6 @@ import type {
   DispatchIneligibleReason,
   SessionDeathDiagnosisLite,
   SessionDeathState,
-  FailureRecord,
   DispatchState,
   DispatchContinuationContext,
   DispatchRosterAgent,
@@ -72,6 +71,17 @@ import {
   buildDecompositionMessage,
   buildDispatchMessage,
 } from './dispatch-prompts'
+import {
+  withStateLock,
+  getFailureRecord,
+  cooldownForFailure,
+  getDispatchMarkerTaskId,
+  removeDispatchMarkersForTask,
+  trimDispatched,
+  loadDispatchState,
+  saveDispatchState,
+  clearDispatchMarker,
+} from './dispatch-state'
 
 // Re-export the moved public surface so `@/core/dispatch` consumers + tests
 // keep their import paths.
@@ -87,6 +97,8 @@ export {
   buildDispatchLessonBlock,
   __resetLessonBlockCache,
   buildDispatchMessage,
+  loadDispatchState,
+  clearDispatchMarker,
 }
 
 const log = createLogger('dispatch')
@@ -263,49 +275,6 @@ let dispatchTimer: NodeJS.Timeout | null = null
 const DISPATCH_TIMEOUT_MS = 3 * 60 * 1000 // 3 minutes max per dispatch cycle
 
 // Async mutex for .dispatch-state.json — serializes all reads/writes
-let stateQueue = Promise.resolve() as Promise<unknown>
-function withStateLock<T>(fn: () => T | Promise<T>): Promise<T> {
-  const next = stateQueue.then(fn, fn) as Promise<T>
-  stateQueue = next.then(() => {}, () => {})
-  return next
-}
-
-function getStateFile(contentDir: string): string {
-  return join(contentDir, '.dispatch-state.json')
-}
-
-function getFailureRecord(entry: FailureRecord | undefined): FailureRecord | null {
-  if (!entry) return null
-  return { ...entry, kind: entry.kind ?? 'structural' }
-}
-
-function cooldownForFailure(
-  failure: FailureRecord,
-  settings: { dispatch: { transientCooldownMs: number; failureCooldownMs: number } },
-): number {
-  return failure.kind === 'transient'
-    ? settings.dispatch.transientCooldownMs
-    : settings.dispatch.failureCooldownMs
-}
-
-function getDispatchMarkerTaskId(marker: string): string {
-  const separator = marker.indexOf(':')
-  return separator === -1 ? marker : marker.slice(0, separator)
-}
-
-function removeDispatchMarkersForTask(
-  state: DispatchState,
-  dispatchedSet: Set<string> | null,
-  taskId: string,
-): void {
-  state.dispatched = state.dispatched.filter(marker => getDispatchMarkerTaskId(marker) !== taskId)
-  if (dispatchedSet) {
-    for (const marker of Array.from(dispatchedSet)) {
-      if (getDispatchMarkerTaskId(marker) === taskId) dispatchedSet.delete(marker)
-    }
-  }
-}
-
 // How long after a session death before the automatic ladder re-dispatch
 // fires. Just enough to let the state lock release; deliberately NOT a
 // cooldown — retrying a deterministic failure later doesn't make it pass,
@@ -767,31 +736,6 @@ function fireDispatchTurn(opts: {
 }
 
 /** Shared dispatched[] cap — both dispatch paths must honor the setting. */
-function trimDispatched(state: DispatchState, maxDispatched: number): void {
-  if (state.dispatched.length > maxDispatched) {
-    state.dispatched = state.dispatched.slice(-maxDispatched)
-  }
-}
-
-export function loadDispatchState(contentDir: string): DispatchState {
-  const stateFile = getStateFile(contentDir)
-  try {
-    if (existsSync(stateFile)) {
-      const parsed = JSON.parse(readFileSync(stateFile, 'utf-8'))
-      if (!Array.isArray(parsed.dispatched)) parsed.dispatched = []
-      if (!parsed.failedDispatches || typeof parsed.failedDispatches !== 'object') parsed.failedDispatches = {}
-      return parsed
-    }
-  } catch (err) {
-    log.warn('Failed to read dispatch state', err)
-  }
-  return { lastRun: null, serverStart: Date.now(), dispatched: [], failedDispatches: {} }
-}
-
-function saveDispatchState(contentDir: string, state: DispatchState): void {
-  writeFileSync(getStateFile(contentDir), JSON.stringify(state, null, 2), 'utf-8')
-}
-
 export async function dispatchTasks(contentDir: string, port: number): Promise<void> {
   // If a previous dispatch is stuck (>3min), force-release the mutex
   if (dispatching && dispatchStartedAt > 0 && (Date.now() - dispatchStartedAt) > DISPATCH_TIMEOUT_MS) {
@@ -1057,14 +1001,6 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
  * dependency continuation) isn't skipped as "already dispatched" before the
  * next cycle reconciles markers against the board.
  */
-export async function clearDispatchMarker(contentDir: string, taskId: string): Promise<void> {
-  await withStateLock(() => {
-    const state = loadDispatchState(contentDir)
-    removeDispatchMarkersForTask(state, null, taskId)
-    saveDispatchState(contentDir, state)
-  })
-}
-
 export async function dispatchSingleTask(
   taskId: string,
   contentDir: string,
