@@ -80,9 +80,17 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
     2,096 → 1,652; re-exports the public surface so consumers + the 3 mock-the-path tests are unchanged;
     no cycles (modules → dispatch-types only). typecheck/lint/96-tests/full-suite/binary + boot-smoke
     (Dispatch started clean) green. Fire-path/singleton/cycle core untouched.
-  - ☐ **DANGEROUS modules Phase B (dedicated effort, heavy rig dispatch-E2E):** state.ts (the stateQueue mutex),
-    turns.ts (inFlightTurns/pendingLadderRedispatches/fireDispatchTurn), session-death.ts (the cycle),
-    cycle.ts (dispatching/timer + dispatchTasks fire loop), single.ts (dispatchSingleTask). Plus the
-    behavior-touching dedup (prepareAndFireRegularDispatch) — separate from the relocation.
+  - ☑ Phase B fire-core: `dispatch-state.ts` (sole `stateQueue` mutex owner), `dispatch-turns.ts`
+    (inFlightTurns/pendingLadderRedispatches/fireDispatchTurn/concurrencyGate/budget), `dispatch-session-death.ts`
+    (the recovery ladder; re-dispatches via a LAZY `import('./dispatch-single')` — no barrel-wiring footgun),
+    `dispatch-cycle.ts` (dispatching/timer + dispatchTasks), `dispatch-single.ts`, `dispatch-workflow.ts`.
+    dispatch.ts → 29-line barrel. Single mutex confirmed (stateQueue only in dispatch-state); each singleton
+    in one module; turns↔session-death is a runtime-only cycle. typecheck/lint/full-suite 5106/0/binary +
+    docker create-task smoke (fire-core runs, no wiring crash). **LIVE exactly-once gate:** the bare-metal
+    OpenClaw stress plan in `tasks/dispatch-phase-b-handoff.md` (burst concurrency / session-death ladder /
+    restart recovery / soak, all checked for exactly-once via ledger+audit) is the authoritative sign-off.
+  - ☐ **Behavior-touching dedup (separate):** `prepareAndFireRegularDispatch` (the ~120-line
+    dispatchTasks/dispatchSingleTask copy-paste) + the `saveDispatchState` atomic-write — own commit,
+    re-run the full live hammer after.
 - plugin-registry.split — ☐ (high-value sub-item: extract the hook-registry-singleton — breaks a live
   import cycle; the APPENDIX's "highest-value seam")   server.split — ☐   upgrade.split (remaining) — ☐   runtime.split — ☐
