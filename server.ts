@@ -35,10 +35,7 @@ import { handleJsonPost, jsonResponse } from './src/core/middleware'
 import { writeCrossPluginSearchResponse } from './src/core/api-search-handler'
 import * as watcher from './src/core/watcher'
 import * as dispatch from './src/core/dispatch'
-import * as watchdog from './src/core/watchdog'
-import { runRestartRecovery } from './src/core/restart-recovery'
-import { markPriorBootRunsLost } from './src/core/execution-ledger'
-import { backfillMissingCompletionRows } from './src/core/task-service'
+import { runStartupRecovery } from './src/core/server/startup-recovery'
 import { getBootId } from './src/core/boot-id'
 import { acquireServerLock, formatBindFailureHelp } from './src/core/server-lock'
 import { registerShutdownHandlers, triggerShutdown } from './src/core/lifecycle'
@@ -48,8 +45,8 @@ import { getCachedOrBuild } from './packages/host/src/api/docs-runtime'
 import type { buildOpenApiDocument } from './packages/host/src/api/docs-runtime'
 import { collectOpenApiSources as collectTypedOpenApiSources } from './packages/host/src/api/openapi-sources'
 import { migrateIfNeeded } from './src/core/search-migration'
+import { bootSearch } from './src/core/search-startup'
 import * as agents from './src/core/agents'
-import * as doctor from './src/core/doctor'
 import { handleMcpRequest } from './src/core/mcp-server'
 import * as mcporter from './src/core/mcporter'
 import { trackResponse } from './src/core/rest-tracking'
@@ -118,7 +115,6 @@ const BAKIN_VERSION = APP_VERSION
 
 const port = Number(process.env.PORT || 3737)
 const CONTENT_DIR = getContentDir()
-const SEARCH_STARTUP_RETRY_MS = 5000
 
 // Singleton lock BEFORE any side effect (dirs, plugins, watcher, antfly,
 // dispatch). Two server processes against one content dir each ran their
@@ -142,55 +138,6 @@ const SEARCH_STARTUP_RETRY_MS = 5000
  */
 function collectOpenApiSources(): Parameters<typeof buildOpenApiDocument>[0] {
   return collectTypedOpenApiSources(pluginRegistry.getAllPluginRoutes())
-}
-
-type SearchMigrationResult = Awaited<ReturnType<typeof migrateIfNeeded>>
-
-async function runSearchStartupBootstrap(
-  migration: SearchMigrationResult,
-  opts: { retry?: boolean } = {},
-): Promise<boolean> {
-  const {
-    createRegisteredTables,
-    reindexContentTypes,
-    runPendingReconciles,
-  } = await import('./src/core/search-registry')
-
-  const tableSetup = await createRegisteredTables()
-  if (tableSetup.failures.length > 0) {
-    const message = opts.retry
-      ? 'Deferred search table setup still failing; startup reconcile and reindex remain paused'
-      : 'Search table setup incomplete; pausing startup reconcile and reindex until tables are ready'
-    log.warn(message, { failures: tableSetup.failures })
-    return false
-  }
-
-  // Drain any startup reconciles enqueued by registerFileBackedContentType.
-  // Tables exist by this point so reconcile scans hit real data. Failures
-  // are logged inside the helper and do not block startup.
-  await runPendingReconciles()
-
-  // If the schema migration dropped tables, kick off a full background
-  // reindex so the freshly-recreated tables get populated with content.
-  // Fire-and-forget: Bakin is usable immediately with empty tables;
-  // indexing completes in the background and streams progress over SSE.
-  if (migration.migrated) {
-    const message = opts.retry
-      ? 'Running deferred full reindex after schema migration'
-      : 'Running full reindex after schema migration'
-    log.info(message, {
-      from: migration.from,
-      to: migration.to,
-    })
-    reindexContentTypes().then((results) => {
-      const total = results.reduce((sum: number, r) => sum + (r.indexed || 0), 0)
-      log.info('Schema migration reindex complete', { tables: results.length, total })
-    }).catch((err) => {
-      log.error('Schema migration reindex failed', err)
-    })
-  }
-
-  return true
 }
 
 // Ensure required directories exist
@@ -237,14 +184,7 @@ const eventBus = new BakinEventBus(broadcast)
   // and we trigger a full reindex after plugins are ready.
   const migration = await migrateIfNeeded()
 
-  const searchBootstrapReady = await runSearchStartupBootstrap(migration)
-  if (!searchBootstrapReady) {
-    setTimeout(() => {
-      runSearchStartupBootstrap(migration, { retry: true }).catch((err) => {
-        log.warn('Deferred search startup retry failed', err)
-      })
-    }, SEARCH_STARTUP_RETRY_MS)
-  }
+  await bootSearch(migration)
 
   // Start periodic orphan cleanup for search indexes
   const { startCleanupTimer } = await import('./src/core/search-cleanup')
@@ -765,55 +705,7 @@ const eventBus = new BakinEventBus(broadcast)
       log.info(`Full logs: ${logPath}`, { path: logPath })
     }
 
-    void (async () => {
-      // Startup sweep BEFORE restart recovery: runs left 'running' by a
-      // crashed/previous process are marked lost, or their stale claims
-      // would suppress every legitimate re-dispatch below.
-      try {
-        const swept = markPriorBootRunsLost(getBootId())
-        if (swept > 0) log.info('Startup sweep: marked prior-boot runs lost', { swept })
-      } catch (err) {
-        log.error('Startup run sweep failed — stale claims may suppress dispatch until resolved', err)
-      }
-
-      // Ledger heal: done tasks without a completions row (pre-ledger
-      // history, or rows lost to since-fixed leak paths) get synthetic rows
-      // so "row ⟺ done" holds for every reader. Idempotent — a failure
-      // must not block boot, it just retries next start.
-      try {
-        const healed = backfillMissingCompletionRows()
-        if (healed > 0) log.info('Completion backfill: synthetic rows recorded for done tasks', { healed })
-      } catch (err) {
-        log.error('Completion backfill failed', err)
-      }
-
-      let recovered = 0
-      try {
-        const result = await runRestartRecovery(CONTENT_DIR)
-        recovered = result.recovered
-      } catch (err) {
-        log.error('Restart recovery failed', err)
-      } finally {
-        dispatch.start(CONTENT_DIR, port)
-        watchdog.start(CONTENT_DIR)
-      }
-
-      try {
-        if (recovered > 0) {
-          await dispatch.dispatchTasks(CONTENT_DIR, port)
-        }
-      } catch (err) {
-        log.error('Post-recovery dispatch failed', err)
-      } finally {
-        doctor.start(CONTENT_DIR, process.cwd())
-      }
-
-      if (process.env.BAKIN_SEED_USAGE === '1') {
-        import('./dev/imitation-crab/usage-seed')
-          .then(m => m.seedMockUsage())
-          .catch(err => log.warn('Mock usage seed failed', err))
-      }
-    })()
+    void runStartupRecovery(CONTENT_DIR, port)
   })
 
   // Hot-reload coordinator (Phase 2 P2.C8). Enabled by `bakin dev`
