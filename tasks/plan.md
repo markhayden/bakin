@@ -57,4 +57,18 @@ rig to E2E-verify behavior — they're sequenced after the search work and may b
   hashes. Consolidating changes output for one caller and invalidates stored sourceTreeSha values
   (spurious "source changed" on existing installs); needs a deliberate canonical-pick + one-time reset,
   best done with the full upgrade.ts split + a migration step.
-- dispatch.split — ☐   plugin-registry.split — ☐   server.split — ☐   upgrade.split (remaining) — ☐   runtime.split — ☐
+- dispatch.split — ◧ **split by RISK, not all at once** (dispatch is the audit's most dangerous file:
+  6 module-level singletons where a misplaced one silently breaks the .dispatch-state.json mutex →
+  duplicate fires; an import cycle (handleSessionDeath ⇄ dispatchSingleTask) needing DI surgery; a
+  cross-package ledger contract on the state file).
+  - ☑ Pure module #1: `dispatch-failures.ts` (error classification over RuntimeError/RuntimeTurnError —
+    zero state, zero fire-path). dispatch.ts 2,240 → 2,096, re-exports the public classify* surface so
+    `@/core/dispatch` consumers + the test are unchanged. typecheck/lint/61-dispatch-tests/full-suite/binary green.
+  - ☐ Pure module #2/#3: prompts (entangled — buildCorrectiveSection needs SessionDeathState; sharedExecutionToolDocs
+    is shared with the workflow builder) and board reads. Doable after the state types are extracted.
+  - ☐ **DANGEROUS modules (dedicated effort, heavy rig dispatch-E2E):** state.ts (the stateQueue mutex),
+    turns.ts (inFlightTurns/pendingLadderRedispatches/fireDispatchTurn), session-death.ts (the cycle),
+    cycle.ts (dispatching/timer + dispatchTasks fire loop), single.ts (dispatchSingleTask). Plus the
+    behavior-touching dedup (prepareAndFireRegularDispatch) — separate from the relocation.
+- plugin-registry.split — ☐ (high-value sub-item: extract the hook-registry-singleton — breaks a live
+  import cycle; the APPENDIX's "highest-value seam")   server.split — ☐   upgrade.split (remaining) — ☐   runtime.split — ☐
