@@ -383,6 +383,21 @@ describe('projectPackage — skills + assets', () => {
     expect(readInstalledBy(avatar)?.package).toBe('pixel')
   })
 
+  it('projects a webp avatar asset (format-agnostic) — #339', async () => {
+    // The projector copies by basename, so any image format projects the same
+    // way; this guards the dual-format avatar path end to end.
+    const stagingDir = seedPackageStaging()
+    writeFileSync(join(stagingDir, 'assets', 'avatar.webp'), 'fake-webp-bytes')
+    const manifest = pixelManifest()
+    manifest.contributions.assets = ['assets/avatar.webp']
+
+    await projectPackage({ manifest, stagingDir, agentId: 'pixel', installedBy: fixedInstalledBy() })
+
+    const avatar = join(testDir, 'agents', 'pixel', 'avatar.webp')
+    expect(existsSync(avatar)).toBe(true)
+    expect(readInstalledBy(avatar)?.package).toBe('pixel')
+  })
+
   it('skips an asset marked userEdited and records it', async () => {
     await projectPackage(pixelOptions())
     const avatar = join(testDir, 'agents', 'pixel', 'avatar.jpg')
