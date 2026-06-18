@@ -1,0 +1,388 @@
+/**
+ * The concurrent-dispatch engine: budget gating, run claiming, the in-flight
+ * turn registry + concurrency caps, the ladder-redispatch counter, and
+ * fireDispatchTurn (fire a send + reconcile on settle). Extracted from
+ * dispatch.ts.
+ *
+ * Owns the `inFlightTurns` registry and the `pendingLadderRedispatches`
+ * counter — the counter is mutated ONLY here, via scheduleLadderRedispatch().
+ * fireDispatchTurn's settle handlers serialize on the single withStateLock from
+ * dispatch-state. turns ↔ session-death is an intentional runtime-only cycle
+ * (fireDispatchTurn calls reconcileRejectedDispatch; handleSessionDeath calls
+ * scheduleLadderRedispatch) — all accesses are inside function bodies.
+ */
+import { createLogger } from './logger'
+import { getSettings } from './settings'
+import { appendAudit } from './audit'
+import { getAppServices } from './app-services'
+import { RuntimeTurnError, type MessageResult } from '@bakin/core/adapters/runtime'
+import { claimNextRun, loseRun, settleRun, spendTotal, type ClaimNextRunResult } from './execution-ledger'
+import { meterAgentTurn } from './agent-cost'
+import { resolveTurnModel, type ResolvedTurn, type RoutingConfig } from './model-routing'
+import { evaluateBudget, dayStartMs, monthStartMs, type BudgetPolicy, type BudgetSpend, type BudgetDecision } from './budget'
+import { getBootId } from './boot-id'
+import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
+import { moveTask as moveStoredTask } from './task-store'
+import { formatDispatchError } from './dispatch-failures'
+import type { DispatchTask, InFlightTurn, ConcurrencyGate } from './dispatch-types'
+import { withStateLock, loadDispatchState, saveDispatchState } from './dispatch-state'
+import { findDispatchTaskSnapshot, tryAddTaskLog } from './dispatch-board'
+import { reconcileRejectedDispatch } from './dispatch-session-death'
+
+const log = createLogger('dispatch-turns')
+const hooks = () => getHookRegistry()
+
+/**
+ * Task-work sends get a per-dispatch session: a fresh, deterministic
+ * threadId per attempt so context can't accumulate across tasks, forensics
+ * knows exactly which provider session to inspect, and a corrective
+ * re-dispatch never replays a dead session's bloated context. Notification
+ * sends (orchestrator/watchdog/doctor) deliberately stay in the agent's
+ * default session and don't go through here.
+ */
+async function sendDispatchMessage(agentId: string, content: string, threadId: string, routing?: ResolvedTurn): Promise<MessageResult> {
+  return getAppServices().runtime.messaging.send({
+    agentId,
+    content,
+    threadId,
+    ...(routing?.model ? { model: routing.model } : {}),
+    ...(routing?.thinking ? { thinking: routing.thinking } : {}),
+    metadata: { oversizedOutputBytes: getSettings().dispatch.oversizedOutputBytes },
+  })
+}
+
+// Budget warn/defer audits fire once per (event, scope, window, window-start)
+// so a cap sitting at 85% — or a deferred task re-evaluated every cycle —
+// doesn't spam the audit log. Keyed by window start, so it auto-rolls when
+// the day/month turns over. In-memory; resets on restart (acceptable).
+const budgetAuditedWindows = new Set<string>()
+
+function auditBudgetOnce(contentDir: string, event: 'budget.warn' | 'budget.deferred', agent: string, detail: Record<string, unknown>, windowStartMs: number): void {
+  const key = `${event}:${detail.scope}:${detail.window}:${windowStartMs}`
+  if (budgetAuditedWindows.has(key)) return
+  budgetAuditedWindows.add(key)
+  appendAudit(contentDir, event, agent, detail)
+}
+
+/**
+ * Consult the budget policy before a dispatch claims a run. allow / warn /
+ * defer; warn and defer are audited (debounced per window). FAIL-CLOSED: if
+ * the spend ledger can't be read, defer — consistent with the ledger's
+ * existing fail-closed posture. No policy (plugin absent / empty) → allow.
+ */
+export async function budgetGate(agentId: string, contentDir: string, spendCache?: Map<string, number>): Promise<BudgetDecision> {
+  let policy: BudgetPolicy | undefined
+  try {
+    policy = (await hooks().invoke<BudgetPolicy>('models.getBudgetPolicy', {})) ?? undefined
+  } catch (err) {
+    log.error('Budget policy read failed; allowing (no policy)', err, { agentId })
+    return { action: 'allow' }
+  }
+  if (!policy || (!policy.global && !policy.perAgent)) return { action: 'allow' }
+
+  const now = Date.now()
+  const dayStart = dayStartMs(now)
+  const monthStart = monthStartMs(now)
+  // Memoize spend reads within a dispatch cycle: the two GLOBAL totals are
+  // identical for every task in the cycle, and costs are only recorded on
+  // settle (after the loop), so a per-cycle cache is safe and saves ~2 SQL
+  // aggregates per task. Cache key includes the window start so it can't
+  // bleed across a day/month boundary.
+  const spendAt = (agent: string | undefined, sinceMs: number): number => {
+    const key = `${agent ?? '*'}:${sinceMs}`
+    const hit = spendCache?.get(key)
+    if (hit !== undefined) return hit
+    const v = spendTotal(agent ? { agent, sinceMs } : { sinceMs })
+    spendCache?.set(key, v)
+    return v
+  }
+  let spend: BudgetSpend
+  try {
+    spend = {
+      globalDayMicros: spendAt(undefined, dayStart),
+      globalMonthMicros: spendAt(undefined, monthStart),
+      agentDayMicros: spendAt(agentId, dayStart),
+      agentMonthMicros: spendAt(agentId, monthStart),
+    }
+  } catch (err) {
+    log.error('Budget spend read failed; deferring (fail-closed)', err, { agentId })
+    auditBudgetOnce(contentDir, 'budget.deferred', agentId, { scope: 'global', window: 'daily', reason: 'ledger-unavailable' }, dayStart)
+    return { action: 'defer', scope: 'global', window: 'daily', spentUsdMicros: 0, capUsdMicros: 0 }
+  }
+
+  const decision = evaluateBudget({ policy, agent: agentId, spend })
+  if (decision.action !== 'allow') {
+    const windowStart = decision.window === 'monthly' ? monthStart : dayStart
+    const event = decision.action === 'defer' ? 'budget.deferred' : 'budget.warn'
+    auditBudgetOnce(contentDir, event, agentId, {
+      scope: decision.scope, window: decision.window,
+      spentUsdMicros: decision.spentUsdMicros, capUsdMicros: decision.capUsdMicros,
+    }, windowStart)
+  }
+  return decision
+}
+
+/** True when budget says defer — the shared shape all three dispatch paths use. */
+export async function deferForBudget(agentId: string, contentDir: string, spendCache?: Map<string, number>): Promise<boolean> {
+  return (await budgetGate(agentId, contentDir, spendCache)).action === 'defer'
+}
+
+/**
+ * Resolve the per-turn model/thinking for a dispatch from the Bakin-owned
+ * routing policy (stored in the models plugin; read via hook). Returns {} —
+ * inherit, unchanged dispatch — when no plugin/config/match applies or the
+ * read fails. Never throws into the dispatch path.
+ */
+async function resolveDispatchRouting(task: DispatchTask, isRecovery: boolean): Promise<ResolvedTurn> {
+  try {
+    const config = await hooks().invoke<RoutingConfig>('models.getRoutingConfig', {})
+    if (!config) return {}
+    return resolveTurnModel({
+      task: { tags: task.tags, scheduleJobId: task.scheduleJobId, workflowId: task.workflowId, parentId: task.parentId },
+      isRecovery,
+      config,
+    })
+  } catch (err) {
+    log.error('Routing resolve failed; using agent default', err, { id: task.id })
+    return {}
+  }
+}
+
+/**
+ * Record the cost of a settled turn. The threadId IS the ledger run id, so
+ * the row is first-write-wins idempotent. Pricing is delegated to the models
+ * plugin via the `models.priceTurn` hook (core stays pricing-agnostic);
+ * absent plugin → null model/cost, tokens still recorded ("unmetered"). The
+ * same data also feeds the live usage recorder. Never throws into the settle
+ * path — a metering failure must not fail a successful turn.
+ */
+function recordTurnCost(runId: string, taskId: string, agent: string, result: MessageResult, resolvedModel?: string): Promise<void> {
+  return meterAgentTurn({ runId, taskId, agent, result, resolvedModel })
+}
+
+/**
+ * Atomically mint the next per-attempt session key AND claim the live-run
+ * slot in the execution ledger. The runs table's partial unique index (one
+ * running row per exec key) is the correctness mechanism: a duplicate
+ * dispatch (overlapping cycle, manual kick racing the cycle, second server
+ * process) fails the INSERT instead of racing in-memory markers.
+ *
+ * `seq` stays a monotonic per-task counter (now ledger-owned, seeded from
+ * the legacy .dispatch-state.json watermarks) — it must never be derived
+ * from the failure count and reusing one could re-enter a live provider
+ * session. Workflow steps carry the stepId so parallel step agents can't
+ * collide: their exec key is `${taskId}:${stepId}`.
+ *
+ * Callers MUST settle the claim on every outcome (fireDispatchTurn's settle
+ * handlers do) or release it via loseRun when the turn never fires.
+ */
+export function claimDispatchRun(taskId: string, targetAgent: string, stepId?: string): ClaimNextRunResult {
+  return claimNextRun({
+    taskId,
+    execKey: stepId ? `${taskId}:${stepId}` : taskId,
+    agent: targetAgent,
+    bootId: getBootId(),
+    runIdFor: (seq) => (stepId ? `task:${taskId}:step:${stepId}:d${seq}` : `task:${taskId}:d${seq}`),
+  })
+}
+
+/** Suppressed-duplicate bookkeeping shared by all three dispatch paths. */
+export function auditDispatchSuppressed(contentDir: string, task: { id: string; title: string }, targetAgent: string, liveRunId: string | undefined, path: 'cycle' | 'single' | 'workflow'): void {
+  appendAudit(contentDir, 'task.dispatch_suppressed', targetAgent, {
+    id: task.id,
+    title: task.title,
+    liveRunId: liveRunId ?? null,
+    path,
+  })
+  log.warn('Dispatch suppressed — live run already exists', { id: task.id, liveRunId, path })
+}
+
+// ─── In-flight turn registry (concurrent dispatch) ─────────────────────────
+//
+// Sends are fired and tracked, never awaited inside the dispatch cycle: one
+// 10-minute turn must not stall dispatching to every other agent (the
+// serial-await loop was why parallel task fan-out made no independent
+// progress). Reconciliation happens in per-turn settle handlers that take
+// the state lock themselves. The registry is advisory — caps + settle
+// bookkeeping — never a source of truth for task state; restart safety is
+// unchanged (in-flight promises die with the process, restart-recovery
+// handles orphaned inProgress tasks via heartbeats).
+
+const inFlightTurns = new Map<string, InFlightTurn>()
+
+export function getInFlightTurnCount(agentId?: string): number {
+  if (!agentId) return inFlightTurns.size
+  let count = 0
+  for (const turn of inFlightTurns.values()) {
+    if (turn.agentId === agentId) count += 1
+  }
+  return count
+}
+
+/** Why a dispatch can't fire right now, or null when a slot is free. */
+export function concurrencyGate(
+  agentId: string,
+  settings: { dispatch: { maxConcurrentTurns: number; maxTurnsPerAgent: number } },
+  // Slots reserved by collected-but-not-yet-fired turns in the current
+  // two-phase cycle — invisible to the in-flight registry until phase 2.
+  reserved?: { total: number; forAgent: number },
+): ConcurrencyGate {
+  if (inFlightTurns.size + (reserved?.total ?? 0) >= settings.dispatch.maxConcurrentTurns) return 'concurrency_cap'
+  if (getInFlightTurnCount(agentId) + (reserved?.forAgent ?? 0) >= settings.dispatch.maxTurnsPerAgent) return 'agent_busy'
+  return null
+}
+
+// Ladder re-dispatches scheduled via the post-lock timer but not yet fired —
+// without counting these, awaitDispatchIdle() would report idle during the
+// window between a dying turn settling and its recovery turn firing.
+let pendingLadderRedispatches = 0
+
+/**
+ * Schedule a ladder re-dispatch after `delayMs`, tracking it in the idle
+ * counter until it settles. The counter is mutated ONLY here so awaitDispatchIdle
+ * has a single source of truth (session-death calls this rather than touching
+ * the counter directly). `run` owns its own error handling.
+ */
+export function scheduleLadderRedispatch(run: () => Promise<unknown>, delayMs: number): void {
+  pendingLadderRedispatches += 1
+  const timer = setTimeout(() => {
+    void Promise.resolve()
+      .then(run)
+      .finally(() => {
+        pendingLadderRedispatches -= 1
+      })
+  }, delayMs)
+  timer.unref?.()
+}
+
+/**
+ * Wait until every tracked turn (including its settle-time reconciliation)
+ * and every scheduled ladder re-dispatch has finished. Deterministic
+ * synchronization point for tests and shutdown.
+ */
+export async function awaitDispatchIdle(): Promise<void> {
+  while (inFlightTurns.size > 0 || pendingLadderRedispatches > 0) {
+    if (inFlightTurns.size > 0) {
+      await Promise.allSettled([...inFlightTurns.values()].map((turn) => turn.settled))
+    } else {
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+  }
+}
+
+/**
+ * Fire a dispatch send and reconcile on settle. Returns immediately. The
+ * settle handlers re-load state under the lock — the firing cycle's state
+ * object must not be touched after the cycle's own save.
+ */
+export function fireDispatchTurn(opts: {
+  marker: string
+  task: DispatchTask
+  targetAgent: string
+  threadId: string
+  message: string
+  contentDir: string
+  port: number
+  initialLogCount: number
+  logPrefix: string
+  dispatchKind: 'regular' | 'workflow'
+  /** True when this is a recovery-ladder re-dispatch (routes to the
+   *  'recovery' origin policy regardless of the task's shape). */
+  isRecovery?: boolean
+  onSettled?: (outcome: 'ok' | 'error', err?: unknown) => void
+}): void {
+  // The registry entry is released only AFTER settle reconciliation
+  // completes — awaitDispatchIdle() must mean "all bookkeeping done", and a
+  // turn's slot shouldn't free until its outcome has been recorded.
+  const settled = resolveDispatchRouting(opts.task, opts.isRecovery ?? false)
+    .then(async (routing) => {
+      if (routing.model || routing.thinking) {
+        appendAudit(opts.contentDir, 'task.routed', opts.targetAgent, {
+          id: opts.task.id,
+          ...(routing.model ? { model: routing.model } : {}),
+          ...(routing.thinking ? { thinking: routing.thinking } : {}),
+        })
+      }
+      const result = await sendDispatchMessage(opts.targetAgent, opts.message, opts.threadId, routing)
+      // Free the live-run slot FIRST — the settle reconciliation below (and
+      // any ladder re-dispatch it schedules) must be able to claim anew.
+      try {
+        settleRun(opts.threadId, 'ok')
+      } catch (err) {
+        log.error('Failed to settle run in ledger', err, { threadId: opts.threadId })
+      }
+      // Attribute the turn's token/dollar cost (run_id == threadId). The
+      // resolved routing model is what actually ran — price against it.
+      await recordTurnCost(opts.threadId, opts.task.id, opts.targetAgent, result, routing.model)
+      let completedDecomposition = false
+      await withStateLock(() => {
+        const state = loadDispatchState(opts.contentDir)
+        const record = state.failedDispatches?.[opts.task.id]
+        if (record) {
+          completedDecomposition = record.sessionDeath?.stage === 'decomposition'
+          delete state.failedDispatches![opts.task.id]
+          saveDispatchState(opts.contentDir, state)
+        }
+      })
+      // A successful DECOMPOSITION turn ends with the agent creating the
+      // subtask chain and STOPPING (no tasks_complete, by design) — which
+      // leaves the parent inProgress, where continuation skips it when the
+      // chain finishes (found live on the rig: the parent idled until
+      // watchdog recovery). Park it in todo; the dependsOn gate the agent
+      // set holds it there until the chain completes, then continuation
+      // re-dispatches it for final assembly.
+      if (completedDecomposition && findDispatchTaskSnapshot(opts.task.id)?.column === 'inProgress') {
+        try {
+          await moveStoredTask(opts.task.id, 'todo', 'inProgress')
+          await tryAddTaskLog(opts.task.id, 'system', 'Decomposition complete — parked in Todo until the subtask chain finishes (dependency gate), then re-dispatched for final assembly.')
+        } catch (err) {
+          log.warn('Failed to park decomposed parent in todo', err, { id: opts.task.id })
+        }
+      }
+      opts.onSettled?.('ok')
+    })
+    .catch(async (err) => {
+      log.error(`${opts.logPrefix}: turn failed for "${opts.task.title}" → ${opts.targetAgent}`, err)
+      // Free the slot before reconciliation — the recovery ladder's
+      // re-dispatch claims a fresh run and must not be suppressed by the
+      // dead one. Session deaths are 'lost'; other failures 'settled'.
+      try {
+        if (err instanceof RuntimeTurnError) loseRun(opts.threadId, 'session-death')
+        else settleRun(opts.threadId, `failed: ${formatDispatchError(err).slice(0, 120)}`)
+      } catch (ledgerErr) {
+        log.error('Failed to settle failed run in ledger', ledgerErr, { threadId: opts.threadId })
+      }
+      try {
+        await withStateLock(async () => {
+          const state = loadDispatchState(opts.contentDir)
+          await reconcileRejectedDispatch({
+            contentDir: opts.contentDir,
+            port: opts.port,
+            state,
+            dispatchedSet: null,
+            task: opts.task,
+            targetAgent: opts.targetAgent,
+            err,
+            initialLogCount: opts.initialLogCount,
+            logPrefix: opts.logPrefix,
+            dispatchKind: opts.dispatchKind,
+          })
+          saveDispatchState(opts.contentDir, state)
+        })
+      } catch (reconcileErr) {
+        log.error('Dispatch settle reconciliation failed', reconcileErr, { id: opts.task.id })
+      }
+      opts.onSettled?.('error', err)
+    })
+    .finally(() => {
+      inFlightTurns.delete(opts.marker)
+    })
+
+  inFlightTurns.set(opts.marker, {
+    agentId: opts.targetAgent,
+    taskId: opts.task.id,
+    threadId: opts.threadId,
+    startedAt: Date.now(),
+    settled,
+  })
+}
