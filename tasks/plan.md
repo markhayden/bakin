@@ -92,9 +92,25 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
   - ☑ Behavior-touching dedup: `prepareRegularDispatch` (the dispatchTasks/dispatchSingleTask
     copy-paste) — done by Mark (#516), live-verified. dispatch.ts split is now COMPLETE end-to-end
     (Phase A #513 + Phase B fire-core #514 + dedup #516).
-- plugin-registry.split — ☐ (the hook-registry-singleton seam is ALREADY done — WS2/#499; remaining =
-  topo-sort/activation-pipeline dedup + move out of src/lib)   server.split — ☐ (router-table + boot.ts;
-  search-startup/recovery already extracted)   runtime.split — ☐ (adapter, 3,188 lines)
+- plugin-registry.split — ◧ **split by RISK** (boot-critical; the hook-registry-singleton seam was already
+  done — WS2/#499). Barrel-preserving: `src/lib/plugin-registry.ts` stays the public module (55 importers +
+  ~40 test `mock.module` overlays target that path), pulling extracted helpers from siblings.
+  - ☑ Phase A: extracted `plugin-registry-types.ts` (PluginState/FailureState/LoadEntry/CorePluginRegistration),
+    `plugin-console-capture.ts` (withCapturedPluginConsole + createPluginScopedLogger), `plugin-activation-audit.ts`
+    (logPluginActivation), and **unified the two duplicate topo-sorts** into `plugin-topo-sort.ts` — one Kahn's
+    impl parameterized by `{source, failOnMissingDep, logCycle}` (the only 3 ways the core/user copies differed);
+    always-filter is a no-op for the user pass (cycle entries already excluded), preserving its behavior exactly.
+    plugin-registry.ts 1,512 → ~1,000. Public surface unchanged (re-exports CorePluginRegistration). Verified:
+    typecheck/lint/registry-test 52-0/full-suite 5115-0/binary build + isolated-home boot smoke (9 plugins activate
+    in correct topo order through the refactored loadPlugin→buildContext path; the 1 failure is schedule's
+    openclaw-cron ENOENT, environmental). New direct unit test for the unified sort (6-0).
+  - ☐ Phase B (DEFERRED, behavior-touching): unify the two activation pipelines (`loadPlugin` /
+    `activateUserPluginEntry` share a ~60-line tail but diverge on import mechanism, console-capture wrapping,
+    migrations, core/user id bookkeeping, and logPluginActivation ordering — merging normalizes boot-path
+    ordering, so it gets its own commit + boot smoke, mirroring the dispatch dedup cadence). Plus the physical
+    **move out of src/lib** (churns 55 importers + 40 mock paths — mechanical, separate).
+- server.split — ☐ (router-table + boot.ts; search-startup/recovery already extracted; HOLD until the dispatch
+  live-test passes — it stresses the same boot/router surface)   runtime.split — ☐ (adapter, 3,188 lines)
 
 ## WS7 — tooling
 

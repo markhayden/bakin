@@ -2,7 +2,6 @@
  * Server-side plugin registry singleton.
  * Loads plugins, stores their registrations, and provides lookups.
  */
-import { AsyncLocalStorage } from 'async_hooks'
 import {
   existsSync,
   readFileSync,
@@ -10,7 +9,6 @@ import {
   statSync,
 } from 'fs'
 import { join } from 'path'
-import { inspect } from 'util'
 import type {
   BakinConfig,
   BakinPlugin,
@@ -47,13 +45,11 @@ import { addExecTool, removeExecToolsByPlugin } from '../core/exec-tools/registr
 import { runMigrations } from '../core/migrations'
 import { getContentDir } from '../core/content-dir'
 import { createLogger } from '../core/logger'
-import { appendAudit } from '../core/audit'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { getPluginSkills as skillRegistry, clearPluginSkills, removePluginSkillsByPlugin } from '@bakin/core/skills/plugin-skill-registry'
 import { getContentTypes, purgeContentType } from '../core/search-registry'
 import { loadPluginSkills } from './plugin-skill-loader'
 import { setCorePluginCheck, readPluginLockfile } from '../../packages/core/src/plugins/lockfile'
-import { parseManifestPermissions } from '../../packages/core/src/plugins/permissions'
 import {
   PluginManifestError,
   readPluginManifestJson,
@@ -62,6 +58,19 @@ import { getAppServices } from '../core/app-services'
 import type { PluginManifest as PublicPluginManifest } from '@makinbakin/sdk/types'
 import { buildPluginContext, type PluginContextRegistrars } from './plugin-context-factory'
 import { startStartupSpan } from '../core/startup-diagnostics'
+import type {
+  CorePluginRegistration,
+  PluginState,
+  PluginFailureState,
+  PluginLoadEntry,
+} from './plugin-registry-types'
+import { withCapturedPluginConsole, createPluginScopedLogger } from './plugin-console-capture'
+import { logPluginActivation } from './plugin-activation-audit'
+import { topologicalSortPlugins } from './plugin-topo-sort'
+
+// Re-exported so `@/lib/plugin-registry` consumers (server.ts) keep their
+// import path for the static core-plugin table's element type.
+export type { CorePluginRegistration } from './plugin-registry-types'
 
 /**
  * Optional static core-plugin table. Set from server.ts on startup so
@@ -72,11 +81,6 @@ import { startStartupSpan } from '../core/startup-diagnostics'
  *
  * Shape: { 'plugins/team': { plugin: BakinPluginInstance, manifest }, ... }
  */
-export interface CorePluginRegistration {
-  plugin: BakinPlugin
-  manifest: PublicPluginManifest
-}
-
 let corePluginTable: Readonly<Record<string, CorePluginRegistration>> = {}
 export function registerCorePlugins(table: Readonly<Record<string, CorePluginRegistration>>): void {
   for (const { plugin } of Object.values(corePluginTable)) {
@@ -96,124 +100,9 @@ export function registerCorePlugins(table: Readonly<Record<string, CorePluginReg
 }
 
 const log = createLogger('plugin-registry')
-type CapturedConsoleLevel = 'debug' | 'error' | 'info' | 'warn'
-type CapturedConsoleMethod = CapturedConsoleLevel | 'log'
-interface CapturedConsoleContext {
-  pluginId: string
-}
 
-const capturedConsoleContext = new AsyncLocalStorage<CapturedConsoleContext | undefined>()
-
-function withoutCapturedPluginConsole<T>(action: () => T): T {
-  return capturedConsoleContext.run(undefined, action)
-}
-
-function stripPluginConsolePrefix(pluginId: string, message: string): string {
-  const escaped = pluginId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  return message.replace(new RegExp(`^\\[${escaped}\\]\\s*`), '')
-}
-
-function formatPluginConsoleArgs(pluginId: string, args: unknown[]): string {
-  return stripPluginConsolePrefix(
-    pluginId,
-    args.map((arg) => {
-      if (typeof arg === 'string') return arg
-      return inspect(arg, { breakLength: Infinity, colors: false, compact: true, depth: 5 })
-    }).join(' '),
-  ).trim()
-}
-
-async function withCapturedPluginConsole<T>(pluginId: string, action: () => Promise<T> | T): Promise<T> {
-  const original: Record<CapturedConsoleMethod, (...args: unknown[]) => void> = {
-    debug: console.debug.bind(console),
-    error: console.error.bind(console),
-    info: console.info.bind(console),
-    log: console.log.bind(console),
-    warn: console.warn.bind(console),
-  }
-
-  const restore = () => {
-    console.debug = original.debug as typeof console.debug
-    console.error = original.error as typeof console.error
-    console.info = original.info as typeof console.info
-    console.log = original.log as typeof console.log
-    console.warn = original.warn as typeof console.warn
-  }
-
-  const install = () => {
-    console.debug = ((...args: unknown[]) => emit('debug', 'debug', args)) as typeof console.debug
-    console.error = ((...args: unknown[]) => emit('error', 'error', args)) as typeof console.error
-    console.info = ((...args: unknown[]) => emit('info', 'info', args)) as typeof console.info
-    console.log = ((...args: unknown[]) => emit('info', 'log', args)) as typeof console.log
-    console.warn = ((...args: unknown[]) => emit('warn', 'warn', args)) as typeof console.warn
-  }
-
-  const emit = (level: CapturedConsoleLevel, method: CapturedConsoleMethod, args: unknown[]) => {
-    const context = capturedConsoleContext.getStore()
-    if (!context) {
-      original[method](...args)
-      return
-    }
-
-    const message = formatPluginConsoleArgs(context.pluginId, args)
-    if (!message) return
-
-    // createLogger writes through console.*. Clear the plugin context while
-    // forwarding so the rendered logger line is not captured recursively.
-    withoutCapturedPluginConsole(() => {
-      const data = { source: 'plugin', pluginId: context.pluginId, console: true }
-      if (level === 'debug') log.debug(message, data)
-      else if (level === 'error') log.error(message, data)
-      else if (level === 'warn') log.warn(message, data)
-      else log.info(message, data)
-    })
-  }
-
-  install()
-  try {
-    return await capturedConsoleContext.run({ pluginId }, action)
-  } finally {
-    restore()
-  }
-}
-
-function withPluginLogData(pluginId: string, data?: unknown): Record<string, unknown> {
-  return {
-    ...(data && typeof data === 'object' && !Array.isArray(data) ? data as Record<string, unknown> : {}),
-    source: 'plugin',
-    pluginId,
-  }
-}
-
-function createPluginScopedLogger(pluginId: string) {
-  const pluginLog = createLogger(`plugin:${pluginId}`)
-  return {
-    debug: (message: string, data?: Record<string, unknown>) => {
-      withoutCapturedPluginConsole(() => pluginLog.debug(message, withPluginLogData(pluginId, data)))
-    },
-    info: (message: string, data?: Record<string, unknown>) => {
-      withoutCapturedPluginConsole(() => pluginLog.info(message, withPluginLogData(pluginId, data)))
-    },
-    warn: (message: string, errorOrData?: unknown, data?: Record<string, unknown>) => {
-      withoutCapturedPluginConsole(() => {
-        if (errorOrData instanceof Error || typeof errorOrData === 'string') {
-          pluginLog.warn(message, errorOrData, withPluginLogData(pluginId, data))
-        } else {
-          pluginLog.warn(message, withPluginLogData(pluginId, errorOrData))
-        }
-      })
-    },
-    error: (message: string, errorOrData?: unknown, data?: Record<string, unknown>) => {
-      withoutCapturedPluginConsole(() => {
-        if (errorOrData instanceof Error || typeof errorOrData === 'string') {
-          pluginLog.error(message, errorOrData, withPluginLogData(pluginId, data))
-        } else {
-          pluginLog.error(message, withPluginLogData(pluginId, errorOrData))
-        }
-      })
-    },
-  }
-}
+// Plugin console capture + plugin-scoped logging now live in
+// ./plugin-console-capture (withCapturedPluginConsole / createPluginScopedLogger).
 
 function resolveAppServices(services?: AppServices): AppServices {
   return services ?? getAppServices()
@@ -256,95 +145,10 @@ export function isCorePlugin(pluginId: string): boolean {
 // setter at boot.
 setCorePluginCheck(isCorePlugin)
 
-/**
- * #142 layer 1 — log a plugin's requested permissions on activation.
- * Appends to ~/.bakin/audit.jsonl AND emits an info-level log line.
- *
- * Permission failures are tolerated here (returns []) — install/upgrade
- * already validate; a malformed manifest at boot shouldn't block the
- * server. The audit entry just records `(requests: ?)` in that case.
- */
-function logPluginActivation(args: {
-  plugin: BakinPlugin
-  source: 'core' | 'user'
-  manifestPath?: string
-  manifest?: PublicPluginManifest
-}): void {
-  const { plugin, source, manifestPath, manifest: embeddedManifest } = args
-  let permissions: string[] = []
-  let resolvedSource: 'core' | 'github' | 'local' = source === 'core' ? 'core' : 'local'
-
-  if (embeddedManifest) {
-    permissions = parseManifestPermissions(embeddedManifest.permissions)
-  } else if (manifestPath && existsSync(manifestPath)) {
-    try {
-      const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8')) as Record<string, unknown>
-      permissions = parseManifestPermissions(manifest.permissions)
-    } catch {
-      // Already validated at install/upgrade — silently keep permissions empty.
-    }
-  }
-
-  if (source === 'user') {
-    try {
-      const entry = readPluginLockfile().plugins[plugin.id]
-      if (entry?.type === 'github') resolvedSource = 'github'
-      else if (entry?.type === 'local') resolvedSource = 'local'
-    } catch {
-      // lockfile read failure — leave as 'local'
-    }
-  }
-
-  log.info('plugin activated', {
-    pluginId: plugin.id,
-    version: plugin.version,
-    permissions,
-    source: resolvedSource,
-  })
-  appendAudit(getContentDir(), 'plugin.activate', 'system', {
-    pluginId: plugin.id,
-    version: plugin.version,
-    permissions,
-    source: resolvedSource,
-  }, 'system')
-}
-
-interface PluginState {
-  plugin: BakinPlugin
-  manifest?: PublicPluginManifest
-  source: 'core' | 'user'
-  description: string
-  navItems: NavItem[]
-  routes: APIRoute[]
-  slots: UISlotRegistration[]
-  watchPatterns: string[]
-  /** Namespaced workflow node kinds registered via ctx.registerNodeType. */
-  nodeKinds: string[]
-  /** Namespaced notification channel ids registered via ctx.registerNotificationChannel. */
-  channelIds: string[]
-  /** Namespaced health check ids registered via ctx.registerHealthCheck. */
-  healthCheckIds: string[]
-  /** Cached PluginContext — handed to onUninstall during plugin remove (#119). */
-  ctx?: PluginContext
-}
-
-interface PluginFailureState {
-  id: string
-  name: string
-  version: string
-  description: string
-  source: 'built-in' | 'user'
-  errorCode: 'manifest_invalid' | 'missing_dependency' | 'dependency_cycle' | 'dependency_failed' | 'activation_failed'
-  errorMessage: string
-  missingDependencies?: string[]
-}
-
-interface PluginLoadEntry {
-  path: string
-  id: string
-  deps: string[]
-  manifest?: PublicPluginManifest
-}
+// logPluginActivation (#142 layer 1 — audit a plugin's requested permissions on
+// activation) now lives in ./plugin-activation-audit.
+// PluginState / PluginFailureState / PluginLoadEntry now live in
+// ./plugin-registry-types.
 
 /** Slug a workflow definition `name` into a stable id when no `id` is supplied. */
 function slugifyWorkflowId(name: string): string {
@@ -459,117 +263,35 @@ class PluginRegistryImpl {
     }
   }
 
+  /**
+   * Core-plugin activation order. A missing dependency FAILS the dependent
+   * (core deps must all be present), and a detected cycle is logged.
+   */
   private topologicalSort(entries: PluginLoadEntry[]): PluginLoadEntry[] {
-    const byId = new Map(entries.map(e => [e.id, e]))
-    const inDegree = new Map<string, number>()
-    const dependents = new Map<string, string[]>()
-
-    for (const e of entries) {
-      inDegree.set(e.id, 0)
-      dependents.set(e.id, [])
-    }
-
-    for (const e of entries) {
-      for (const dep of e.deps) {
-        if (!byId.has(dep)) {
-          this.markPluginFailed({
-            id: e.id,
-            name: e.manifest?.name ?? e.id,
-            version: e.manifest?.version ?? '0.0.0',
-            description: e.manifest?.description ?? '',
-            source: 'built-in',
-            errorCode: 'missing_dependency',
-            errorMessage: `Missing dependency: ${dep}`,
-            missingDependencies: [dep],
-          })
-          continue
-        }
-        inDegree.set(e.id, (inDegree.get(e.id) || 0) + 1)
-        dependents.get(dep)!.push(e.id)
-      }
-    }
-
-    // Start with nodes that have no dependencies
-    const queue = entries.filter(e => inDegree.get(e.id) === 0).map(e => e.id)
-    const result: PluginLoadEntry[] = []
-
-    while (queue.length > 0) {
-      const id = queue.shift()!
-      result.push(byId.get(id)!)
-      for (const dep of dependents.get(id) || []) {
-        const deg = (inDegree.get(dep) || 1) - 1
-        inDegree.set(dep, deg)
-        if (deg === 0) queue.push(dep)
-      }
-    }
-
-    // Detect cycles — any entries not in result have circular deps
-    if (result.length < entries.length) {
-      const missing = entries.filter(e => !result.find(r => r.id === e.id))
-      const cycle = missing.map(e => e.id).join(' ↔ ')
-      log.error(`Circular plugin dependencies detected: ${cycle}`)
-      for (const entry of missing) {
-        this.markPluginFailed({
-          id: entry.id,
-          name: entry.manifest?.name ?? entry.id,
-          version: entry.manifest?.version ?? '0.0.0',
-          description: entry.manifest?.description ?? '',
-          source: 'built-in',
-          errorCode: 'dependency_cycle',
-          errorMessage: `Circular plugin dependency detected: ${cycle}`,
-        })
-      }
-    }
-
-    return result.filter(entry => !this.failedPlugins.has(entry.id))
+    return topologicalSortPlugins(
+      entries,
+      { source: 'built-in', failOnMissingDep: true, logCycle: true },
+      {
+        markFailed: (failure) => this.markPluginFailed(failure),
+        isFailed: (id) => this.failedPlugins.has(id),
+      },
+    )
   }
 
+  /**
+   * User-plugin activation order. loadUserPlugins has already pruned missing
+   * dependencies (passing only intra-user deps), so a missing edge is skipped
+   * silently here; only cycles fail.
+   */
   private topologicalSortUserPlugins(entries: PluginLoadEntry[]): PluginLoadEntry[] {
-    const byId = new Map(entries.map(e => [e.id, e]))
-    const inDegree = new Map<string, number>()
-    const dependents = new Map<string, string[]>()
-
-    for (const entry of entries) {
-      inDegree.set(entry.id, 0)
-      dependents.set(entry.id, [])
-    }
-    for (const entry of entries) {
-      for (const dep of entry.deps) {
-        if (!byId.has(dep)) continue
-        inDegree.set(entry.id, (inDegree.get(entry.id) ?? 0) + 1)
-        dependents.get(dep)!.push(entry.id)
-      }
-    }
-
-    const queue = entries.filter(entry => inDegree.get(entry.id) === 0).map(entry => entry.id)
-    const result: PluginLoadEntry[] = []
-    while (queue.length > 0) {
-      const id = queue.shift()!
-      result.push(byId.get(id)!)
-      for (const dependent of dependents.get(id) ?? []) {
-        const next = (inDegree.get(dependent) ?? 1) - 1
-        inDegree.set(dependent, next)
-        if (next === 0) queue.push(dependent)
-      }
-    }
-
-    if (result.length < entries.length) {
-      const cycleEntries = entries.filter(entry => !result.some(sorted => sorted.id === entry.id))
-      const cycle = cycleEntries.map(entry => entry.id).join(' ↔ ')
-      for (const entry of cycleEntries) {
-        this.markPluginFailed({
-          id: entry.id,
-          name: entry.manifest?.name ?? entry.id,
-          version: entry.manifest?.version ?? '0.0.0',
-          description: entry.manifest?.description ?? '',
-          source: 'user',
-          errorCode: 'dependency_cycle',
-          errorMessage: `Circular plugin dependency detected: ${cycle}`,
-        })
-      }
-    }
-
-    return result
+    return topologicalSortPlugins(
+      entries,
+      { source: 'user', failOnMissingDep: false, logCycle: false },
+      {
+        markFailed: (failure) => this.markPluginFailed(failure),
+        isFailed: (id) => this.failedPlugins.has(id),
+      },
+    )
   }
 
   private markPluginFailed(failure: PluginFailureState): void {
