@@ -102,8 +102,15 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
   invocation-only entry; delete the dead legacy OpenAPI generator (~215 lines). Pure relocation, byte-for-byte
   output preserved (gate: `docs:check` + the post-`docs:generate` diff is date-stamp-only). Escaper-consolidation
   / plugin-list-derivation / CLI-metadata redesigns DEFERRED (output-risk).
-- Remaining WS7: externals contract (build.ts/dev.ts import PLUGIN_CLIENT_EXTERNALS), single CORE_PLUGINS list
-  consolidation (images already added to dev.ts), shared dir-walker.
+- externals + CORE_PLUGINS consolidation — ☑ New `src/lib/core-plugin-ids.ts` is the single canonical
+  core-plugin id list; `scripts/build-plugins.ts` + `scripts/dev.ts` import it (the two hand-maintained,
+  differently-ordered copies — the source of the dropped-`images` class of bug — are gone). `scripts/dev.ts`
+  + `packages/host/build.ts` now import `PLUGIN_CLIENT_EXTERNALS` instead of inlining byte-identical externals
+  arrays. A pure-scanner architecture test (`tests/architecture/core-plugin-ids.test.ts`) pins the canonical
+  list to BOTH the on-disk `plugins/` dirs AND the `CORE_PLUGIN_IMPORTS` embed-map keys, so the single source
+  can't silently drift from the real set. Verified: typecheck/lint/new-test green + full `build-plugins.ts`
+  (10 plugins) + host `build.ts` smoke.
+- Remaining WS7: shared dir-walker.
 
 ## WS6 — plugin god-files (not started)
 
