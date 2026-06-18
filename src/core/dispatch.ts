@@ -18,31 +18,79 @@ import { getBootId } from './boot-id'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import {
   buildTaskLessonQuery,
-  formatLessonsForDispatch,
-  retrieveAgentPackageLessons,
 } from './agent-packages/lesson-retrieval'
 import {
-  addTaskLog as appendTaskLog,
   blockTask as blockStoredTask,
   moveTask as moveStoredTask,
   readTaskboard,
-  updateTask as updateStoredTask,
 } from './task-store'
 import {
   formatDispatchError,
   classifyDispatchError,
   classifyDispatchFailureDetail,
   formatSanitizedRuntimeFailure,
-  type DispatchFailureKind,
 } from './dispatch-failures'
 
 // Re-export the pure failure-classification surface so `@/core/dispatch`
 // consumers (and the dispatch-error-classification test) keep their import path.
 export { classifyDispatchError, classifyDispatchFailureDetail, formatSanitizedRuntimeFailure }
 
+import type {
+  DispatchTask,
+  DispatchColumns,
+  DispatchEligibility,
+  DispatchIneligibleReason,
+  SessionDeathDiagnosisLite,
+  SessionDeathState,
+  FailureRecord,
+  DispatchState,
+  DispatchContinuationContext,
+  DispatchRosterAgent,
+  InFlightTurn,
+  ConcurrencyGate,
+} from './dispatch-types'
+import {
+  readDispatchColumns,
+  isTaskDispatchEligible,
+  findDispatchTaskSnapshot,
+  taskAlreadyLeftActiveWork,
+  shouldBlockAfterDispatchFailure,
+  addTaskLog,
+  moveTaskToInProgress,
+  tryAddTaskLog,
+} from './dispatch-board'
+import {
+  __resetLessonBlockCache,
+  buildDispatchLessonBlock,
+  buildDispatchAssetBlock,
+} from './dispatch-context-blocks'
+import {
+  mcporterHelpers,
+  sharedExecutionToolDocs,
+  outputDisciplineSection,
+  buildCorrectiveSection,
+  buildDecompositionMessage,
+  buildDispatchMessage,
+} from './dispatch-prompts'
+
+// Re-export the moved public surface so `@/core/dispatch` consumers + tests
+// keep their import paths.
+export type {
+  DispatchEligibility,
+  DispatchIneligibleReason,
+  DispatchContinuationContext,
+  DispatchRosterAgent,
+}
+export {
+  isTaskDispatchEligible,
+  buildDispatchAssetBlock,
+  buildDispatchLessonBlock,
+  __resetLessonBlockCache,
+  buildDispatchMessage,
+}
+
 const log = createLogger('dispatch')
 const hooks = () => getHookRegistry()
-const IMAGE_MCPORTER_TIMEOUT_MS = 600000
 
 /**
  * Task-work sends get a per-dispatch session: a fresh, deterministic
@@ -209,231 +257,6 @@ function auditDispatchSuppressed(contentDir: string, task: { id: string; title: 
   log.warn('Dispatch suppressed — live run already exists', { id: task.id, liveRunId, path })
 }
 
-// Upstream runtime error bodies land in task logs and audit JSONL via
-// the dispatch catch handlers. Bound the blast radius — a runaway adapter
-// response (HTML error page, stack trace, accidental secret echo) should
-// not balloon the audit file or the task drawer.
-
-// Formatted lesson blocks cached per (agentId, query). The query embeds
-// title/description/step instructions, so a workflow step change naturally
-// misses while inProgress re-dispatches of the same step hit — no separate
-// stepId bookkeeping needed. Bounded + TTL'd; empty blocks are cached too so
-// lesson-less agents don't re-query every dispatch.
-const LESSON_BLOCK_CACHE_TTL_MS = 5 * 60_000
-const LESSON_BLOCK_CACHE_MAX = 200
-const lessonBlockCache = new Map<string, { block: string; expires: number }>()
-
-/** @internal Test-only. */
-export function __resetLessonBlockCache(): void {
-  lessonBlockCache.clear()
-}
-
-/** @internal Exported for testing. */
-export async function buildDispatchLessonBlock(input: {
-  contentDir: string
-  taskId: string
-  title: string
-  agentId: string
-  query: string
-}): Promise<string> {
-  const cacheKey = JSON.stringify([input.agentId, input.query])
-  const hit = lessonBlockCache.get(cacheKey)
-  if (hit && hit.expires > Date.now()) return hit.block
-
-  try {
-    const settings = getSettings().agentPackages?.lessonsRetrieval
-    const result = await retrieveAgentPackageLessons({
-      contentDir: input.contentDir,
-      agentId: input.agentId,
-      query: input.query,
-      settings,
-      requireDispatchInjection: true,
-    })
-    const block = formatLessonsForDispatch(
-      result.lessons,
-      settings?.maxCharacters,
-    )
-    lessonBlockCache.set(cacheKey, { block, expires: Date.now() + LESSON_BLOCK_CACHE_TTL_MS })
-    while (lessonBlockCache.size > LESSON_BLOCK_CACHE_MAX) {
-      const oldest = lessonBlockCache.keys().next().value
-      if (oldest === undefined) break
-      lessonBlockCache.delete(oldest)
-    }
-    if (result.lessons.length > 0) {
-      appendAudit(input.contentDir, 'agent_pkg.lessons_retrieved', input.agentId, {
-        taskId: input.taskId,
-        title: input.title,
-        packageId: result.packageId,
-        lessons: result.lessons.map((lesson) => ({
-          lessonId: lesson.lessonId,
-          title: lesson.title,
-          score: lesson.score,
-        })),
-      })
-    }
-    return block
-  } catch (err) {
-    const error = formatDispatchError(err)
-    log.warn('Dispatch lesson retrieval failed', { taskId: input.taskId, agentId: input.agentId, error })
-    appendAudit(input.contentDir, 'agent_pkg.lessons_retrieval_failed', input.agentId, {
-      taskId: input.taskId,
-      title: input.title,
-      error,
-    })
-    return ''
-  }
-}
-
-/** Diagnosis evidence persisted across ladder rungs (salvagedText stripped). */
-interface SessionDeathDiagnosisLite {
-  reason: string
-  sessionId?: string
-  sessionStatus?: string
-  completionBytes?: number
-  outputTruncated?: boolean
-  oversizedOutput?: boolean
-  lastToolCall?: string
-  detail?: string
-}
-
-/**
- * Recovery-ladder state for a task whose runtime session died. `stage` is
- * what the NEXT dispatch of this task must do: 'corrective' injects the
- * PREVIOUS ATTEMPT FAILED guidance, 'decomposition' replaces the work prompt
- * with split-into-subtasks instructions. Session deaths are deterministic —
- * they never enter the generic cooldown/retry loop.
- */
-interface SessionDeathState {
-  stage: 'corrective' | 'decomposition'
-  deaths: number
-  lastDiagnosis: SessionDeathDiagnosisLite
-  salvagedAssetIds: string[]
-}
-
-interface FailureRecord {
-  lastAttempt: number
-  count: number
-  kind: DispatchFailureKind
-  sessionDeath?: SessionDeathState
-}
-
-interface DispatchState {
-  lastRun: number | null
-  serverStart: number
-  dispatched: string[]
-  failedDispatches: Record<string, FailureRecord>
-  /**
-   * Legacy monotonic per-task dispatch counter. Seq minting moved to the
-   * execution ledger (seq_watermarks seeded from this field once, by the
-   * ledger's v1 migration). Kept read-only in the type so old state files
-   * parse; never written again.
-   */
-  dispatchSeq?: Record<string, number>
-}
-
-type DispatchTask = {
-  id: string
-  title: string
-  agent?: string
-  workflowId?: string
-  description?: string
-  projectId?: string
-  availableAt?: string
-  dependsOn?: string
-  // Origin signals for per-turn model routing (present on the stored task).
-  scheduleJobId?: string
-  parentId?: string | null
-  tags?: string[]
-  log?: Array<{ timestamp: string; message?: string }>
-}
-
-type DispatchTaskSnapshot = {
-  column: keyof DispatchColumns
-  task: DispatchTask
-}
-
-type DispatchEligibilityContext = {
-  nowMs: number
-  runtimeAgentIds: Set<string>
-  completedTaskIds: Set<string>
-  /**
-   * Every task id present on the board, any column. When provided, a
-   * dependsOn pointing at an id that exists nowhere (hard-deleted by
-   * archiveOldTasks) is treated as satisfied instead of stranding the
-   * dependent forever — surfaced via `danglingDependency` so callers log it.
-   */
-  knownTaskIds?: Set<string>
-}
-
-export type DispatchIneligibleReason = 'scheduled' | 'dependency' | 'agent'
-
-export type DispatchEligibility =
-  | { eligible: true; danglingDependency?: string }
-  | { eligible: false; reason: DispatchIneligibleReason }
-
-type DispatchColumns = {
-  backlog: DispatchTask[]
-  todo: DispatchTask[]
-  inProgress: DispatchTask[]
-  review: DispatchTask[]
-  done: DispatchTask[]
-  blocked: DispatchTask[]
-  archived: DispatchTask[]
-}
-
-function emptyDispatchColumns(): DispatchColumns {
-  return {
-    backlog: [],
-    todo: [],
-    inProgress: [],
-    review: [],
-    done: [],
-    blocked: [],
-    archived: [],
-  }
-}
-
-async function readDispatchColumns(): Promise<DispatchColumns> {
-  const board = readTaskboard() as unknown as { columns: Partial<DispatchColumns> }
-  return { ...emptyDispatchColumns(), ...(board?.columns ?? {}) }
-}
-
-export function isTaskDispatchEligible(
-  task: DispatchTask,
-  context: DispatchEligibilityContext,
-): DispatchEligibility {
-  if (task.availableAt) {
-    const availableMs = Date.parse(task.availableAt)
-    if (!Number.isNaN(availableMs) && availableMs > context.nowMs) {
-      return { eligible: false, reason: 'scheduled' }
-    }
-  }
-
-  let danglingDependency: string | undefined
-  if (task.dependsOn && !context.completedTaskIds.has(task.dependsOn)) {
-    const targetExists = context.knownTaskIds ? context.knownTaskIds.has(task.dependsOn) : true
-    if (targetExists) {
-      return { eligible: false, reason: 'dependency' }
-    }
-    danglingDependency = task.dependsOn
-  }
-
-  if (task.agent && !context.runtimeAgentIds.has(task.agent)) {
-    return { eligible: false, reason: 'agent' }
-  }
-
-  return { eligible: true, ...(danglingDependency ? { danglingDependency } : {}) }
-}
-
-async function addTaskLog(taskId: string, author: string, message: string, data?: Record<string, unknown>): Promise<void> {
-  if (data) await appendTaskLog(taskId, author, message, data)
-  else await appendTaskLog(taskId, author, message)
-}
-
-async function moveTaskToInProgress(taskId: string, agent: string): Promise<void> {
-  await updateStoredTask(taskId, { column: 'inProgress', agent })
-}
-
 let dispatching = false
 let dispatchStartedAt = 0
 let dispatchTimer: NodeJS.Timeout | null = null
@@ -481,35 +304,6 @@ function removeDispatchMarkersForTask(
       if (getDispatchMarkerTaskId(marker) === taskId) dispatchedSet.delete(marker)
     }
   }
-}
-
-function findDispatchTaskSnapshot(taskId: string): DispatchTaskSnapshot | null {
-  const { columns } = readTaskboard() as unknown as { columns: DispatchColumns }
-  for (const column of Object.keys(emptyDispatchColumns()) as Array<keyof DispatchColumns>) {
-    const task = columns[column]?.find(t => t.id === taskId)
-    if (task) return { column, task }
-  }
-  return null
-}
-
-function taskAlreadyLeftActiveWork(column: keyof DispatchColumns): boolean {
-  return column === 'done' || column === 'blocked' || column === 'review' || column === 'archived'
-}
-
-async function tryAddTaskLog(taskId: string, author: string, message: string, data?: Record<string, unknown>): Promise<void> {
-  try {
-    if (data) await addTaskLog(taskId, author, message, data)
-    else await addTaskLog(taskId, author, message)
-  } catch (err) {
-    log.warn('Failed to append dispatch reconciliation task log', err, { id: taskId })
-  }
-}
-
-function shouldBlockAfterDispatchFailure(
-  snapshot: DispatchTaskSnapshot,
-  initialLogCount: number,
-): boolean {
-  return (snapshot.task.log?.length ?? 0) > initialLogCount
 }
 
 // How long after a session death before the automatic ladder re-dispatch
@@ -811,15 +605,6 @@ async function reconcileRejectedDispatch(input: {
 // unchanged (in-flight promises die with the process, restart-recovery
 // handles orphaned inProgress tasks via heartbeats).
 
-interface InFlightTurn {
-  agentId: string
-  taskId: string
-  threadId: string
-  startedAt: number
-  /** Full send + settle chain; resolves when reconciliation has finished. */
-  settled: Promise<void>
-}
-
 const inFlightTurns = new Map<string, InFlightTurn>()
 
 export function getInFlightTurnCount(agentId?: string): number {
@@ -830,8 +615,6 @@ export function getInFlightTurnCount(agentId?: string): number {
   }
   return count
 }
-
-export type ConcurrencyGate = 'concurrency_cap' | 'agent_busy' | null
 
 /** Why a dispatch can't fire right now, or null when a slot is free. */
 function concurrencyGate(
@@ -1282,10 +1065,6 @@ export async function clearDispatchMarker(contentDir: string, taskId: string): P
   })
 }
 
-export interface DispatchContinuationContext {
-  completedDependency?: { id: string; title: string }
-}
-
 export async function dispatchSingleTask(
   taskId: string,
   contentDir: string,
@@ -1491,228 +1270,6 @@ export async function dispatchSingleTask(
       },
     })
   })
-}
-
-function mcporterHelpers(agentName: string) {
-  const server = `bakin-${agentName}`
-  return {
-    server,
-    mc: (tool: string, args: string) => `mcporter call ${server}.${tool} ${args}`,
-    mcImage: (tool: string, args: string) => `mcporter call ${server}.${tool} --timeout ${IMAGE_MCPORTER_TIMEOUT_MS} ${args}`,
-  }
-}
-
-/**
- * Shared execution-tool documentation — single source so the regular and
- * workflow prompt builders cannot drift. Intentional differences (e.g.
- * channel posting only for output steps) are explicit parameters.
- */
-function sharedExecutionToolDocs(agentName: string, taskId: string, opts: { allowChannelPost: boolean }): string[] {
-  const { mc, mcImage } = mcporterHelpers(agentName)
-  const lines = [
-    '# Save any file as a managed asset (handles naming + sidecar metadata)',
-    mc('bakin_exec_assets_save', `taskId=${taskId} type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what it is>"`),
-    '',
-    '# Recommend and generate an image through the core images plugin',
-    mc('bakin_exec_images_recommend', 'surface=instagram-feed-portrait objective="<goal>"'),
-    mcImage('bakin_exec_images_generate', `taskId=${taskId} prompt="<text>" surface=instagram-feed-portrait provider=auto`),
-    '',
-    '# Check workflow gate statuses',
-    mc('bakin_exec_check_gates', `taskId=${taskId}`),
-  ]
-  if (opts.allowChannelPost) {
-    lines.push(
-      '',
-      '# Post to a runtime channel (with optional image/video attachment)',
-      mc('bakin_exec_post_channel', `channel="<name>" content="<message>" taskId=${taskId}`),
-    )
-  }
-  return lines
-}
-
-/**
- * The prevention half of session-death hardening: a short artifact-first
- * reminder injected into EVERY dispatch prompt, carrying the taskId-templated
- * save command. The full rule prose lives in the subagent role-context layer
- * composed into each agent's AGENTS.md managed block (maintained by
- * `bakin agents sync` / doctor) — this inline reminder keeps the
- * safety-critical presence per-dispatch without re-shipping the static
- * catalog every turn.
- */
-function outputDisciplineSection(agentName: string, taskId: string, opts: { subtasksAllowed: boolean }): string[] {
-  const { mc } = mcporterHelpers(agentName)
-  return [
-    '## OUTPUT DISCIPLINE — MANDATORY',
-    '',
-    `Oversized chat output KILLS your runtime session. Deliverables larger than ~8KB go to workspace files, saved as assets ONE AT A TIME: \`${mc('bakin_exec_assets_save', `taskId=${taskId} type=<type> filePath="<path>" description="<what it is>"`)}\``,
-    opts.subtasksAllowed
-      ? 'Keep chat short — status + asset ids only. Numerous independent deliverables → split into subtasks. Full rules: "Bakin Execution Tools" in your AGENTS.md.'
-      : 'Keep chat short — status + asset ids only. Large step output → save as asset, reference the asset id in your submitted output. Full rules: "Bakin Execution Tools" in your AGENTS.md.',
-  ]
-}
-
-/**
- * Corrective guidance injected at the TOP of a re-dispatch prompt after a
- * session death (position primacy — the agent must read this before the
- * task). Explains WHY the previous attempt died and how this one differs.
- */
-function buildCorrectiveSection(taskId: string, recovery: SessionDeathState): string {
-  const d = recovery.lastDiagnosis
-  const sizeLabel = d.completionBytes !== undefined
-    ? `~${Math.round(d.completionBytes / 1024)}KB`
-    : 'too much'
-  const salvageLine = recovery.salvagedAssetIds.length > 0
-    ? `\nA partial copy of that output was salvaged as asset ${recovery.salvagedAssetIds.join(', ')} — open it with bakin_exec_assets_open and REUSE it instead of regenerating from scratch.`
-    : ''
-  return `## PREVIOUS ATTEMPT FAILED — READ FIRST
-Your previous attempt on this task died before completion: ${d.detail ?? `the runtime session ended (${d.sessionStatus ?? d.reason})`}. The session was killed because ${sizeLabel} of output was emitted as chat text instead of being written to files — the runtime cannot deliver responses that large.${salvageLine}
-
-Do this attempt differently:
-- Produce deliverables ONE AT A TIME: write each to a workspace file, then immediately save it: bakin_exec_assets_save taskId=${taskId} type=<type> filePath="<path>" description="<what it is>"
-- Log progress after each save, then move to the next deliverable.
-- Keep every chat/completion message SHORT: status + asset ids only. NEVER put deliverable content in chat output.
-
-`
-}
-
-/**
- * Decomposition dispatch (recovery-ladder rung 2): the agent must NOT do the
- * work — only split it into chained single-deliverable subtasks. Emitting a
- * handful of tool calls is a tiny output, the structural opposite of the
- * failure being recovered from.
- */
-function buildDecompositionMessage(
-  task: { id: string; title: string; description?: string },
-  agentName: string,
-  recovery: SessionDeathState,
-): string {
-  const server = `bakin-${agentName}`
-  const mc = (tool: string, args: string) => `mcporter call ${server}.${tool} ${args}`
-  const d = recovery.lastDiagnosis
-  const detailsBlock = task.description ? `\n\nOriginal task details:\n${task.description}` : ''
-  const salvageBlock = recovery.salvagedAssetIds.length > 0
-    ? `\n\nSalvaged partial output from the failed attempts is saved as asset ${recovery.salvagedAssetIds.join(', ')} (open with bakin_exec_assets_open). Use it to determine which deliverables are already partially done and reference it in the subtask descriptions.`
-    : ''
-
-  return `## DECOMPOSITION REQUIRED — DO NOT DO THE WORK
-
-Task "${task.title}" (ID: ${task.id}) has failed ${recovery.deaths} times because the runtime session died mid-attempt${d.oversizedOutput ? ' from oversized chat output' : ''}. Producing everything in one turn does not work. Your ONLY job right now is to split it into subtasks — do NOT produce any deliverable content in this turn.${detailsBlock}${salvageBlock}
-
-Steps:
-1. Identify the distinct deliverables this task requires (a checklist).
-2. Create one subtask per deliverable, in order:
-   \`${mc('bakin_exec_tasks_create', `title="<deliverable>" parentId=${task.id} agent=${agentName} description="Produce <deliverable>. Write it to a file and save it with bakin_exec_assets_save taskId=${task.id} (link assets to the PARENT task so the final review sees them). Keep chat output short."`)}\`
-3. Chain them so they run one at a time: for every subtask after the first, \`${mc('bakin_exec_tasks_set_dependency', 'taskId=<subtask> dependsOn=<previous subtask>')}\`. Then make THIS task wait for the chain: \`${mc('bakin_exec_tasks_set_dependency', `taskId=${task.id} dependsOn=<last subtask>`)}\` — it will re-dispatch automatically for final assembly when the chain completes.
-4. Log what you created: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="Decomposed into N subtasks: <ids>"`)}\`
-5. STOP. Do not start any subtask, do not draft content, do not call tasks_complete.`
-}
-
-export interface DispatchRosterAgent {
-  id: string
-  role?: string
-}
-
-/**
- * Resolve a task's attached assets via the assets.listByTask hook and render
- * the dispatch block. Async (hook invoke), so call sites compute it before
- * the synchronous message builders and pass the result in. Returns '' when
- * the task has no assets or the assets plugin is unavailable.
- */
-export async function buildDispatchAssetBlock(taskId: string): Promise<string> {
-  try {
-    const assets = await hooks().invoke<Array<{ assetId: string; description?: string; type: string }>>(
-      'assets.listByTask',
-      { taskId },
-    ) ?? []
-    if (assets.length === 0) return ''
-    const lines = assets.map((a) => `- ${a.assetId}${a.description ? ` — ${a.description}` : ''}`)
-    return `\n\n## Attached Assets\nThis task has ${assets.length} linked asset(s). Review them for context before starting:\n${lines.join('\n')}\nOpen with bakin_exec_assets_open using the assetId to read the current content + metadata. AssetIds are stable identity — do not store raw disk paths.`
-  } catch {
-    // Assets plugin not activated (tests, minimal installs) — no block.
-    return ''
-  }
-}
-
-/** @internal Exported for testing. */
-export function buildDispatchMessage(
-  task: { id: string; title: string; description?: string; agent?: string; projectId?: string },
-  agentName: string,
-  contentDir: string,
-  mainAgentId = 'main',
-  lessonBlock = '',
-  continuation: DispatchContinuationContext = {},
-  recovery?: SessionDeathState,
-  roster: DispatchRosterAgent[] = [],
-  assetsBlock = '',
-): string {
-  const correctivePrefix = recovery?.stage === 'corrective' ? buildCorrectiveSection(task.id, recovery) : ''
-  const detailsBlock = task.description ? `\n\nDetails:\n${task.description}` : ''
-  const lessonSection = lessonBlock ? `\n\n${lessonBlock}` : ''
-  // Dependency continuations run in a fresh session — the prompt must carry
-  // the completion context the old shared-session resume nudge relied on.
-  const continuationBlock = continuation.completedDependency
-    ? `\n\n## Completed Dependency\nYour dependency task "${continuation.completedDependency.title}" (task ${continuation.completedDependency.id}) is now done. Review its outcome before resuming: \`bakin_exec_tasks_get taskId=${continuation.completedDependency.id}\` shows its log and completion summary, and its saved assets are linked to that task. Continue this task from where it left off.`
-    : ''
-
-  // Project context — lightweight mention if task has a projectId
-  let projectBlock = ''
-  if (task.projectId) {
-    projectBlock = `\n\n**Project:** id ${task.projectId}\nThe project spec may contain detailed requirements. Call bakin_exec_projects_get to read it before starting work.`
-  }
-  const contactsRef = `Reference info is in ${join(contentDir, 'team/CONTACTS.md')}.`
-
-  const { server, mc } = mcporterHelpers(agentName)
-
-  if (!task.agent) {
-    // Roster comes from the live runtime — never a hardcoded agent list
-    // (custom-agent installs broke against baked-in names).
-    const rosterAgents = roster.filter((a) => a.id !== mainAgentId)
-    const rosterText = rosterAgents.length > 0
-      ? ` (${rosterAgents.map((a) => (a.role ? `${a.id}=${a.role}` : a.id)).join(', ')})`
-      : ''
-    return `${correctivePrefix}Triage this task: "${task.title}".${detailsBlock}${continuationBlock}${assetsBlock}${lessonSection}\n\nEither handle it yourself or assign it to the right agent${rosterText} via \`${mc('bakin_exec_tasks_assign', `taskId=${task.id} agent="<agent>"`)}\`. ${contactsRef}\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``
-  }
-
-  if (task.agent === mainAgentId) {
-    return `${correctivePrefix}Work on this task: "${task.title}".${detailsBlock}${continuationBlock}${assetsBlock}${lessonSection}\n\n${contactsRef} When done: \`${mc('bakin_exec_tasks_complete', `taskId=${task.id} summary="<what you did>"`)}\`\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``
-  }
-
-  return `${correctivePrefix}Work on this task: "${task.title}".${detailsBlock}${continuationBlock}${assetsBlock}${projectBlock}${lessonSection}
-
-## PROGRESS LOGGING — MANDATORY
-
-Log progress at EVERY major step (start, each step, decisions, blockers, completion; at least every 2 minutes). Full logging rules: "Bakin Execution Tools" in your AGENTS.md.
-
-${outputDisciplineSection(agentName, task.id, { subtasksAllowed: true }).join('\n')}
-
-## TASK COMMANDS — via mcporter (server \`${server}\`)
-
-\`\`\`bash
-# Log progress (mandatory, every major step)
-${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<what you did or are doing>"`)}
-
-# Report complete (when finished — includes summary + notifies orchestrator)
-${mc('bakin_exec_tasks_complete', `taskId=${task.id} summary="<what you accomplished>"`)}
-
-# Block task (if stuck or cannot proceed)
-${mc('bakin_exec_tasks_block', `taskId=${task.id} reason="<what went wrong>"`)}
-
-# Create subtask + register dependency (then stop — you'll be re-dispatched)
-${mc('bakin_exec_tasks_create', `title="<subtask>" assignee="<agent>" description="<brief>" parentId=${task.id}`)}
-${mc('bakin_exec_tasks_set_dependency', `taskId=${task.id} dependsOn="<other-task-id>"`)}
-
-# Check your task details
-${mc('bakin_exec_tasks_get', `taskId=${task.id}`)}
-
-${sharedExecutionToolDocs(agentName, task.id, { allowChannelPost: true }).join('\n')}${task.projectId ? `
-
-# Project tools (this task is part of a project)
-${mc('bakin_exec_projects_get', `projectId="${task.projectId}"`)}
-${mc('bakin_exec_projects_mark_item', `projectId="${task.projectId}" taskItemId="<itemId>" checked=true`)}
-${mc('bakin_exec_projects_add_item', `projectId="${task.projectId}" title="<item title>"`)}` : ''}
-\`\`\`
-
-Tool reference + dependency pattern: "Bakin Execution Tools" in your AGENTS.md.`
 }
 
 export function start(contentDir: string, port: number): void {

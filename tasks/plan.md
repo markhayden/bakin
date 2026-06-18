@@ -74,9 +74,13 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
   - ☑ Pure module #1: `dispatch-failures.ts` (error classification over RuntimeError/RuntimeTurnError —
     zero state, zero fire-path). dispatch.ts 2,240 → 2,096, re-exports the public classify* surface so
     `@/core/dispatch` consumers + the test are unchanged. typecheck/lint/61-dispatch-tests/full-suite/binary green.
-  - ☐ Pure module #2/#3: prompts (entangled — buildCorrectiveSection needs SessionDeathState; sharedExecutionToolDocs
-    is shared with the workflow builder) and board reads. Doable after the state types are extracted.
-  - ☐ **DANGEROUS modules (dedicated effort, heavy rig dispatch-E2E):** state.ts (the stateQueue mutex),
+  - ☑ Phase A safe modules: `dispatch-types.ts` (14 shared types — the leaf that unblocks the rest),
+    `dispatch-prompts.ts` (pure builders), `dispatch-board.ts` (reads + task-store wrappers),
+    `dispatch-context-blocks.ts` (lessonBlockCache sole owner + lesson/asset blocks). dispatch.ts
+    2,096 → 1,652; re-exports the public surface so consumers + the 3 mock-the-path tests are unchanged;
+    no cycles (modules → dispatch-types only). typecheck/lint/96-tests/full-suite/binary + boot-smoke
+    (Dispatch started clean) green. Fire-path/singleton/cycle core untouched.
+  - ☐ **DANGEROUS modules Phase B (dedicated effort, heavy rig dispatch-E2E):** state.ts (the stateQueue mutex),
     turns.ts (inFlightTurns/pendingLadderRedispatches/fireDispatchTurn), session-death.ts (the cycle),
     cycle.ts (dispatching/timer + dispatchTasks fire loop), single.ts (dispatchSingleTask). Plus the
     behavior-touching dedup (prepareAndFireRegularDispatch) — separate from the relocation.
