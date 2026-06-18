@@ -89,8 +89,24 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
     docker create-task smoke (fire-core runs, no wiring crash). **LIVE exactly-once gate:** the bare-metal
     OpenClaw stress plan in `tasks/dispatch-phase-b-handoff.md` (burst concurrency / session-death ladder /
     restart recovery / soak, all checked for exactly-once via ledger+audit) is the authoritative sign-off.
-  - ☐ **Behavior-touching dedup (separate):** `prepareAndFireRegularDispatch` (the ~120-line
-    dispatchTasks/dispatchSingleTask copy-paste) + the `saveDispatchState` atomic-write — own commit,
-    re-run the full live hammer after.
-- plugin-registry.split — ☐ (high-value sub-item: extract the hook-registry-singleton — breaks a live
-  import cycle; the APPENDIX's "highest-value seam")   server.split — ☐   upgrade.split (remaining) — ☐   runtime.split — ☐
+  - ☑ Behavior-touching dedup: `prepareRegularDispatch` (the dispatchTasks/dispatchSingleTask
+    copy-paste) — done by Mark (#516), live-verified. dispatch.ts split is now COMPLETE end-to-end
+    (Phase A #513 + Phase B fire-core #514 + dedup #516).
+- plugin-registry.split — ☐ (the hook-registry-singleton seam is ALREADY done — WS2/#499; remaining =
+  topo-sort/activation-pipeline dedup + move out of src/lib)   server.split — ☐ (router-table + boot.ts;
+  search-startup/recovery already extracted)   runtime.split — ☐ (adapter, 3,188 lines)
+
+## WS7 — tooling
+
+- docs-generate.split — ◧ IN PROGRESS: `scripts/docs/generate.ts` (2,585) → ~12 lib/ modules + a thin
+  invocation-only entry; delete the dead legacy OpenAPI generator (~215 lines). Pure relocation, byte-for-byte
+  output preserved (gate: `docs:check` + the post-`docs:generate` diff is date-stamp-only). Escaper-consolidation
+  / plugin-list-derivation / CLI-metadata redesigns DEFERRED (output-risk).
+- Remaining WS7: externals contract (build.ts/dev.ts import PLUGIN_CLIENT_EXTERNALS), single CORE_PLUGINS list
+  consolidation (images already added to dev.ts), shared dir-walker.
+
+## WS6 — plugin god-files (not started)
+
+team/index (2,312), workflows/index (2,146) + lib/runtime (1,633), workflow-canvas-editor (1,803),
+models-page (1,205), health-page (1,155), schedule/index (1,443), tasks/index (1,089), asset-service (835)
++ test splits. Includes the workflows validator dedup flagged in #510.
