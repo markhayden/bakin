@@ -87,7 +87,7 @@ The Bakin logo (`public/bakin-logo.svg`) is `bakin-hop.svg` — a leaping bison 
 
 ## Agent Avatars
 
-Avatars are **per-installation content** stored in `~/.bakin/agents/{id}/avatar.jpg` (128px thumbnails). Served via `GET /api/agents/avatar?id={agentId}`, NOT as static files. Full-res originals at `avatar-full.png` in the same directory.
+Avatars are **per-installation content** stored as `~/.bakin/agents/{id}/avatar.{webp,png,jpg}` (128px thumbnails). The shared resolver in `packages/core/src/agents/avatar.ts` is the single source of truth: it resolves the file by priority **webp → png → jpg**, sets the matching `Content-Type` (from `IMAGE_EXTENSION_TO_MIME`), and emits `ETag`/`Last-Modified` so re-uploads invalidate the cache. Served via `GET /api/agents/avatar?id={agentId}` and `GET /api/plugins/team/{agentId}/avatar`, NOT as static files. Uploads preserve the uploaded format (detected by magic bytes; non-images rejected) and drop any stale other-format sibling. **Prefer WebP** for new avatars — ~40–50% smaller than equivalent-quality JPEG. Full-res originals at `avatar-full.png` in the same directory.
 
 ## Version
 

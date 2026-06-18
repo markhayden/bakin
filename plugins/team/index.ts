@@ -17,6 +17,7 @@ import {
   readSync,
   readdirSync,
   statSync,
+  unlinkSync,
   writeFileSync,
 } from 'fs'
 import { basename, dirname, join, relative } from 'path'
@@ -26,6 +27,8 @@ import type { PluginContextLite } from '@bakin/core/routing'
 import { createLogger } from '../../src/core/logger'
 import { readHeartbeats } from '../../src/lib/content-files'
 import { getContentDir, getBakinPaths } from '../../packages/core/src/content-dir'
+import { resolveAgentAvatar, serveAvatar, detectImageExtension } from '@bakin/core/agents/avatar'
+import { removeInstalledBy } from '@bakin/core/agent-packages/markers'
 import {
   readPluginSettings as readStoredPluginSettings,
   writePluginSettings as writeStoredPluginSettings,
@@ -182,9 +185,7 @@ function metadataStringArray(agent: RuntimeAgent, key: string): string[] | null 
 }
 
 function agentToMeta(agent: RuntimeAgent): AgentMeta {
-  const { agents } = getBakinPaths()
-  const avatarPath = join(agents, agent.id, 'avatar.jpg')
-  const headshot = existsSync(avatarPath) ? `/api/plugins/team/${agent.id}/avatar` : ''
+  const headshot = resolveAgentAvatar(agent.id) ? `/api/plugins/team/${agent.id}/avatar` : ''
 
   return {
     id: agent.id,
@@ -1027,10 +1028,26 @@ function populateTeamRoutes(arr: any[]): void {
           return Response.json({ error: 'Empty file' }, { status: 400 })
         }
 
+        const ext = detectImageExtension(imageBuffer)
+        if (!ext) {
+          return Response.json({ error: 'Unsupported image format' }, { status: 400 })
+        }
+
         const { agents } = getBakinPaths()
         const agentDir = join(agents, agentId)
         if (!existsSync(agentDir)) mkdirSync(agentDir, { recursive: true })
-        writeFileSync(join(agentDir, 'avatar.jpg'), imageBuffer)
+        writeFileSync(join(agentDir, `avatar.${ext}`), imageBuffer)
+
+        // Keep exactly one canonical avatar: drop any other-format siblings
+        // (and their package `.installedBy` sidecars) so a new upload always wins.
+        for (const other of ['webp', 'png', 'jpg']) {
+          if (other === ext) continue
+          const sibling = join(agentDir, `avatar.${other}`)
+          if (existsSync(sibling)) {
+            unlinkSync(sibling)
+            removeInstalledBy(sibling)
+          }
+        }
 
         ctx.activity.audit('agent.avatar.updated', 'system', { agent: agentId })
         return Response.json({ ok: true })
@@ -1305,33 +1322,20 @@ function populateTeamRoutes(arr: any[]): void {
     },
   }))
 
-  // GET /:agentId/avatar — Serve avatar JPEG
+  // GET /:agentId/avatar — Serve agent avatar (webp/png/jpg, via shared resolver)
   arr.push(defineRoute({
     path: '/:agentId/avatar',
     method: 'GET',
     description: 'Serve agent avatar image',
     summary: 'Serve agent avatar image',
     params: z.object({ agentId: z.string() }),
-    responses: { 200: { contentType: 'image/jpeg' }, 400: errorResponseTeam, 404: errorResponseTeam, 500: errorResponseTeam },
+    responses: { 200: { contentType: 'application/octet-stream' }, 400: errorResponseTeam, 404: errorResponseTeam, 500: errorResponseTeam },
     handler: async (req: Request, _ctx: PluginContextLite) => {
       const url = new URL(req.url)
       const agentId = url.searchParams.get('agentId')
       if (!agentId) return Response.json({ error: 'agentId required' }, { status: 400 })
 
-      const { agents } = getBakinPaths()
-      const avatarPath = join(agents, agentId, 'avatar.jpg')
-
-      if (!existsSync(avatarPath)) {
-        return Response.json({ error: 'Avatar not found' }, { status: 404 })
-      }
-
-      const data = readFileSync(avatarPath)
-      return new Response(data, {
-        headers: {
-          'Content-Type': 'image/jpeg',
-          'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400',
-        },
-      })
+      return serveAvatar(req, agentId)
     },
   }))
 
