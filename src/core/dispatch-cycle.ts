@@ -9,10 +9,9 @@ import { appendAudit } from './audit'
 import { getSettings } from './settings'
 import { getAppServices } from './app-services'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
-import { loseRun, type ClaimNextRunResult } from './execution-ledger'
+import { loseRun } from './execution-ledger'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { blockTask as blockStoredTask } from './task-store'
-import { buildTaskLessonQuery } from './agent-packages/lesson-retrieval'
 import type { DispatchRosterAgent } from './dispatch-types'
 import {
   withStateLock,
@@ -24,9 +23,8 @@ import {
   trimDispatched,
 } from './dispatch-state'
 import { readDispatchColumns, isTaskDispatchEligible, addTaskLog, moveTaskToInProgress, tryAddTaskLog } from './dispatch-board'
-import { buildDispatchLessonBlock, buildDispatchAssetBlock } from './dispatch-context-blocks'
-import { buildDispatchMessage, buildDecompositionMessage } from './dispatch-prompts'
-import { concurrencyGate, deferForBudget, claimDispatchRun, auditDispatchSuppressed, fireDispatchTurn } from './dispatch-turns'
+import { concurrencyGate, deferForBudget, fireDispatchTurn } from './dispatch-turns'
+import { prepareRegularDispatch } from './dispatch-prepare'
 import { dispatchWorkflowTask } from './dispatch-workflow'
 
 const log = createLogger('dispatch-cycle')
@@ -203,67 +201,37 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
         continue
       }
 
-      // Per-task guard: one bad task (store hiccup, hook failure) must not
-      // abort the cycle — collected intents and other tasks still dispatch.
-      let claim: ClaimNextRunResult | null = null
-      try {
-        // Claim FIRST — the ledger run row is the lock; everything after it
-        // is a side effect. A duplicate (overlapping cycle, racing kick,
-        // second process) fails here before any move or send.
-        claim = claimDispatchRun(task.id, targetAgent)
-        if (!claim.claimed) {
-          auditDispatchSuppressed(contentDir, task, targetAgent, claim.liveRunId, 'cycle')
-          continue
-        }
-
-        const lessonBlock = await buildDispatchLessonBlock({
-          contentDir,
-          taskId: task.id,
-          title: task.title,
-          agentId: targetAgent,
-          query: buildTaskLessonQuery(task),
-        })
-        const assetsBlock = await buildDispatchAssetBlock(task.id)
-        const recovery = failure?.sessionDeath
-        const message = recovery?.stage === 'decomposition'
-          ? buildDecompositionMessage(task, targetAgent, recovery)
-          : buildDispatchMessage(task, targetAgent, contentDir, mainAgentId, lessonBlock, {}, recovery, runtimeRoster, assetsBlock)
-        const initialLogCount = task.log?.length ?? 0
-
-        // Move to inProgress BEFORE sending message to eliminate race condition
-        // where fast agents complete before dispatch moves the task
-        await moveTaskToInProgress(task.id, targetAgent)
-
-        const threadId = claim.runId
-        dispatchedSet.add(task.id)
-        // The internal todo→inProgress move is folded into task.dispatched —
-        // one audit row per dispatch, carrying the transition.
-        appendAudit(contentDir, 'task.dispatched', targetAgent, { id: task.id, title: task.title, threadId, from: 'todo', to: 'inProgress' })
-        log.info('Task dispatched', { id: task.id, title: task.title, agent: targetAgent, threadId })
-        pendingTurns.push({
-          marker: task.id,
-          task,
-          targetAgent,
-          threadId,
-          message,
-          contentDir,
-          port,
-          initialLogCount,
-          logPrefix: 'Dispatch failed',
-          dispatchKind: 'regular',
-          // A task carrying a sessionDeath record is a recovery re-dispatch
-          // even on the main cycle (e.g. the ladder's immediate re-dispatch
-          // was lost to a restart or budget-deferred). Route it to the
-          // 'recovery' origin just like dispatchSingleTask(...,'recovery').
-          isRecovery: !!recovery,
-        })
-        pendingByAgent.set(targetAgent, (pendingByAgent.get(targetAgent) ?? 0) + 1)
-      } catch (err) {
-        log.error(`Failed to prepare dispatch for task "${task.title}"`, err, { id: task.id })
-        // A claim whose turn will never fire must be released, or the task
-        // is locked until the watchdog/boot sweep notices.
-        if (claim?.claimed) loseRun(claim.runId, 'dispatch-prep-failed')
+      // Shared prepare: claim → build → move → audit (see prepareRegularDispatch).
+      // A prep failure here must not abort the cycle — collected intents and
+      // other tasks still dispatch. The two-phase fire (collect now, save
+      // once, fire all) is the cycle's own concern, so we COLLECT the returned
+      // turn rather than firing it — and record no per-turn onSettled usage
+      // (deliberate; see dispatch-prepare's header).
+      const prepared = await prepareRegularDispatch({
+        task,
+        targetAgent,
+        contentDir,
+        port,
+        mainAgentId,
+        runtimeRoster,
+        recovery: failure?.sessionDeath,
+        continuation: {},
+        logPrefix: 'Dispatch failed',
+        // A task carrying a sessionDeath record is a recovery re-dispatch even
+        // on the main cycle (e.g. the ladder's immediate re-dispatch was lost
+        // to a restart or budget-deferred). Route it to the 'recovery' origin
+        // just like dispatchSingleTask(...,'recovery').
+        isRecovery: !!failure?.sessionDeath,
+        path: 'cycle',
+      })
+      if (prepared.status === 'suppressed') continue
+      if (prepared.status === 'prep-failed') {
+        log.error(`Failed to prepare dispatch for task "${task.title}"`, prepared.error, { id: task.id })
+        continue
       }
+      dispatchedSet.add(task.id)
+      pendingTurns.push(prepared.turn)
+      pendingByAgent.set(targetAgent, (pendingByAgent.get(targetAgent) ?? 0) + 1)
     }
 
     state.lastRun = Date.now()

@@ -10,7 +10,6 @@ import { getSettings } from './settings'
 import { getAppServices } from './app-services'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { loseRun } from './execution-ledger'
-import { buildTaskLessonQuery } from './agent-packages/lesson-retrieval'
 import type { DispatchContinuationContext, DispatchRosterAgent } from './dispatch-types'
 import {
   withStateLock,
@@ -21,10 +20,9 @@ import {
   trimDispatched,
 } from './dispatch-state'
 import { readDispatchColumns, isTaskDispatchEligible, addTaskLog, moveTaskToInProgress, tryAddTaskLog } from './dispatch-board'
-import { buildDispatchLessonBlock, buildDispatchAssetBlock } from './dispatch-context-blocks'
-import { buildDispatchMessage, buildDecompositionMessage } from './dispatch-prompts'
 import { formatDispatchError } from './dispatch-failures'
-import { concurrencyGate, deferForBudget, claimDispatchRun, auditDispatchSuppressed, fireDispatchTurn } from './dispatch-turns'
+import { concurrencyGate, deferForBudget, fireDispatchTurn } from './dispatch-turns'
+import { prepareRegularDispatch } from './dispatch-prepare'
 import { dispatchWorkflowTask } from './dispatch-workflow'
 
 const log = createLogger('dispatch-single')
@@ -155,73 +153,57 @@ export async function dispatchSingleTask(
       return
     }
 
-    const lessonBlock = await buildDispatchLessonBlock({
-      contentDir,
-      taskId: task.id,
-      title: task.title,
-      agentId: targetAgent,
-      query: buildTaskLessonQuery(task),
-    })
-    const assetsBlock = await buildDispatchAssetBlock(task.id)
-    const recovery = failure?.sessionDeath
-    const message = recovery?.stage === 'decomposition'
-      ? buildDecompositionMessage(task, targetAgent, recovery)
-      : buildDispatchMessage(task, targetAgent, contentDir, mainAgentId, lessonBlock, continuation, recovery, runtimeRoster, assetsBlock)
-    const dispatchStart = Date.now()
-    const initialLogCount = task.log?.length ?? 0
-
     // Spend ceiling — defer (leave in todo) when a budget cap is hit.
     if (await deferForBudget(targetAgent, contentDir)) {
       log.debug('Single-task dispatch deferred by budget gate', { id: task.id, agent: targetAgent, source })
       return
     }
 
-    // Claim first — the ledger row is the lock (a kick racing the cycle or
-    // another process fails here, before any side effect).
-    const claim = claimDispatchRun(task.id, targetAgent)
-    if (!claim.claimed) {
-      auditDispatchSuppressed(contentDir, task, targetAgent, claim.liveRunId, 'single')
-      return
-    }
+    // Shared prepare: claim → build → move → audit (see prepareRegularDispatch).
+    const dispatchStart = Date.now()
+    const prepared = await prepareRegularDispatch({
+      task,
+      targetAgent,
+      contentDir,
+      port,
+      mainAgentId,
+      runtimeRoster,
+      recovery: failure?.sessionDeath,
+      continuation,
+      logPrefix: 'Immediate dispatch failed',
+      isRecovery: source === 'recovery',
+      path: 'single',
+    })
+    if (prepared.status === 'suppressed') return
+    // A prep failure propagates out of dispatchSingleTask (its callers — kick,
+    // continuation, ladder — handle/log it); the claim was already released.
+    if (prepared.status === 'prep-failed') throw prepared.error
 
-    const threadId = claim.runId
+    const turn = prepared.turn
     try {
-      // Move to inProgress BEFORE sending message to eliminate race condition
-      await moveTaskToInProgress(task.id, targetAgent)
-
+      // Single dispatch persists its dispatched marker per call (the cycle
+      // batches one save for its whole collection). The claim + move are
+      // already durable; this records the advisory bookkeeping.
       state.dispatched.push(task.id)
       trimDispatched(state, settings.dispatch.maxDispatched)
       saveDispatchState(contentDir, state)
     } catch (err) {
       // A claim whose turn will never fire must be released, or the task is
-      // locked until the watchdog/boot sweep notices (mirrors the cycle's
-      // per-task guard).
+      // locked until the watchdog/boot sweep notices.
       try {
-        loseRun(threadId, 'dispatch-prep-failed')
+        loseRun(turn.threadId, 'dispatch-prep-failed')
       } catch (releaseErr) {
-        log.error('Failed to release claim after prep failure', releaseErr, { threadId })
+        log.error('Failed to release claim after state-save failure', releaseErr, { threadId: turn.threadId })
       }
       throw err
     }
 
-    // Internal move folded into task.dispatched — one audit row per dispatch.
-    appendAudit(contentDir, 'task.dispatched', targetAgent, { id: task.id, title: task.title, threadId, from: 'todo', to: 'inProgress' })
     if (source !== 'continuation') {
       appendAudit(contentDir, 'task.kicked', source, { id: task.id, title: task.title })
     }
-    log.info('Single-task dispatch', { id: task.id, title: task.title, agent: targetAgent, source, threadId })
+    log.info('Single-task dispatch', { id: task.id, title: task.title, agent: targetAgent, source, threadId: turn.threadId })
     fireDispatchTurn({
-      marker: task.id,
-      task,
-      targetAgent,
-      threadId,
-      message,
-      contentDir,
-      port,
-      initialLogCount,
-      logPrefix: 'Immediate dispatch failed',
-      dispatchKind: 'regular',
-      isRecovery: source === 'recovery',
+      ...turn,
       onSettled: (outcome, err) => {
         recordUsage({
           kind: 'agent',
