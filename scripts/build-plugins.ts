@@ -15,12 +15,10 @@
  */
 import { buildOnePlugin } from './dev-build-one-plugin'
 import { PLUGIN_CLIENT_EXTERNALS } from '../src/core/whiskit/externals'
+import { CORE_PLUGIN_IDS } from '../src/lib/core-plugin-ids'
 
-const CORE_PLUGINS = [
-  'tasks', 'team', 'memory', 'models',
-  'assets', 'images', 'workflows', 'schedule',
-  'health', 'git',
-]
+// Single source for the core plugin set — see src/lib/core-plugin-ids.ts.
+const CORE_PLUGINS = CORE_PLUGIN_IDS
 
 // Single source for the externals contract — see src/core/whiskit/externals.ts.
 const EXTERNAL = PLUGIN_CLIENT_EXTERNALS

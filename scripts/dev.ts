@@ -58,6 +58,8 @@ import { join, resolve } from 'node:path'
 import chokidar from 'chokidar'
 
 import { broadcastDev, type DevEvent, type DevScope } from '../packages/host/src/api/dev/events'
+import { PLUGIN_CLIENT_EXTERNALS } from '../src/core/whiskit/externals'
+import { CORE_PLUGIN_IDS } from '../src/lib/core-plugin-ids'
 import { buildOnePlugin } from './dev-build-one-plugin'
 import { isBenignTailwindLine } from './dev-log-classifier'
 import { registerDevShutdown } from './dev-shutdown'
@@ -68,21 +70,11 @@ const DEV_CLIENT_ENTRY = join(REPO_ROOT, 'packages/host/src/dev-client/client.ts
 const DEV_CLIENT_OUTDIR = join(REPO_ROOT, 'packages/host/public/__bakin-dev')
 const TAILWIND_BIN = join(REPO_ROOT, 'node_modules/.bin/tailwindcss')
 
-const CORE_PLUGINS = [
-  'tasks', 'team', 'workflows', 'assets', 'images',
-  'schedule', 'memory', 'models', 'health',
-  'git',
-]
+// Single source for the core plugin set — see src/lib/core-plugin-ids.ts.
+const CORE_PLUGINS = CORE_PLUGIN_IDS
 
-const EXTERNAL = [
-  'react', 'react-dom', 'react-dom/client',
-  'react/jsx-runtime', 'react/jsx-dev-runtime',
-  '@tanstack/react-router',
-  '@makinbakin/sdk', '@makinbakin/sdk/ui', '@makinbakin/sdk/hooks',
-  '@makinbakin/sdk/components', '@makinbakin/sdk/slots',
-  '@makinbakin/sdk/types', '@makinbakin/sdk/utils',
-  '@makinbakin/sdk/metadata', '@makinbakin/sdk/routing',
-]
+// Single source for the externals contract — see src/core/whiskit/externals.ts.
+const EXTERNAL = PLUGIN_CLIENT_EXTERNALS
 
 const DEFAULT_PLUGIN_DEV_WATCH = [
   'client.tsx', 'components/**', 'lib/**', '*.ts',
