@@ -6,18 +6,15 @@ import {
   getApiRoutes,
   getCliCommands,
   externalSourceRoots,
-  listPluginManifests,
   relativeSource,
   renderExecToolsSnippet,
   sourceFiles,
 } from './source-scan'
-import type { ApiRouteContribution } from './source-scan'
 import { dirname, join } from 'node:path'
 import { APP_VERSION } from '../../packages/core/src/constants'
 import { DEFAULT_SETTINGS } from '../../packages/core/src/settings'
 import { CLI_COMMANDS } from '../../src/core/cli/registry'
 import { getAllRoutes } from '../../src/core/api-docs'
-import type { RouteDoc } from '../../src/core/api-docs'
 import { PERMISSION_DESCRIPTIONS, PermissionSchema } from '../../packages/core/src/plugins/permissions'
 
 const repoRoot = new URL('../..', import.meta.url).pathname
@@ -1176,97 +1173,10 @@ function renderCliReference(): string {
 	  return lines.join('\n')
 	}
 
-type OpenApiSchema = Record<string, unknown>
 type OpenApiOperation = Record<string, unknown>
-
-function methodOrder(method: string): number {
-  return ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'].indexOf(method)
-}
 
 function tagOrder(tag: string): string {
   return tag === 'Core' ? '00 Core' : `10 ${tag}`
-}
-
-function openApiPath(path: string): string {
-  return path.replace(/:([A-Za-z0-9_]+)/g, '{$1}')
-}
-
-function operationIdFor(scope: string, method: string, path: string): string {
-  const slug = path
-    .replace(/^\/+/, '')
-    .replace(/:([A-Za-z0-9_]+)/g, 'by-$1')
-    .replace(/[^A-Za-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-  return [scope, method.toLowerCase(), slug || 'root']
-    .join('-')
-    .replace(/-+/g, '-')
-}
-
-function pathParameters(path: string, declared: ApiRouteContribution['parameters'] = []): NonNullable<ApiRouteContribution['parameters']> {
-  const declaredByName = new Map(declared.map(param => [`${param.in}:${param.name}`, param]))
-  const params: NonNullable<ApiRouteContribution['parameters']> = []
-  for (const match of path.matchAll(/:([A-Za-z0-9_]+)/g)) {
-    const name = match[1]
-    params.push({
-      name,
-      in: 'path',
-      required: true,
-      schema: { type: 'string' },
-      ...declaredByName.get(`path:${name}`),
-    })
-  }
-  for (const param of declared) {
-    if (param.in !== 'path' || !params.some(existing => existing.name === param.name)) {
-      params.push(param)
-    }
-  }
-  return params
-}
-
-function schemaOrObject(schema: unknown): OpenApiSchema {
-  if (schema && typeof schema === 'object' && !Array.isArray(schema)) return schema as OpenApiSchema
-  return { type: 'object', additionalProperties: true }
-}
-
-function schemaForParamHint(hint: string): OpenApiSchema {
-  const optional = hint.endsWith('?')
-  const normalized = optional ? hint.slice(0, -1) : hint
-  if (normalized.includes('|')) {
-    return { type: 'string', enum: normalized.split('|').filter(Boolean) }
-  }
-  if (normalized === 'boolean') return { type: 'boolean' }
-  if (normalized === 'number') return { type: 'number' }
-  if (normalized === 'integer') return { type: 'integer' }
-  if (normalized === 'object') return { type: 'object', additionalProperties: true }
-  return { type: 'string' }
-}
-
-function schemaFromParamsHint(params?: string): OpenApiSchema | undefined {
-  const trimmed = params?.trim()
-  if (!trimmed || !trimmed.startsWith('{') || !trimmed.endsWith('}')) return undefined
-
-  const properties: Record<string, OpenApiSchema> = {}
-  const required: string[] = []
-  for (const match of trimmed.matchAll(/"([^"]+)"\s*:\s*"([^"]+)"/g)) {
-    const [, name, hint] = match
-    properties[name] = schemaForParamHint(hint)
-    if (!hint.endsWith('?')) required.push(name)
-  }
-  if (Object.keys(properties).length === 0) return undefined
-  return {
-    type: 'object',
-    properties,
-    ...(required.length ? { required } : {}),
-    additionalProperties: false,
-  }
-}
-
-function openApiContent(contentType: string, schema: unknown, example?: unknown): Record<string, unknown> {
-  const content: Record<string, unknown> = {
-    schema: schemaOrObject(schema),
-  }
-  if (example !== undefined) content.example = example
-  return { [contentType]: content }
 }
 
 function isGenericObjectSchema(schema: unknown): boolean {
@@ -1329,143 +1239,6 @@ function curlForOperation(method: string, path: string, operation: OpenApiOperat
     lines.push(`  --data '${JSON.stringify(sample)}'`)
   }
   return lines.join(' \\\n')
-}
-
-function openApiResponses(route: ApiRouteContribution | RouteDoc): Record<string, unknown> {
-  const declared = 'responses' in route ? route.responses : undefined
-  if (declared && Object.keys(declared).length > 0) {
-    return Object.fromEntries(Object.entries(declared).map(([status, response]) => {
-      const out: Record<string, unknown> = { description: response.description }
-      if (response.schema || response.example !== undefined) {
-        out.content = openApiContent(response.contentType ?? 'application/json', response.schema, response.example)
-      }
-      return [status, out]
-    }))
-  }
-  return {
-    200: {
-      description: 'Successful response.',
-      content: openApiContent('application/json', { type: 'object', additionalProperties: true }),
-    },
-    default: {
-      description: 'Error response.',
-      content: openApiContent('application/json', {
-        type: 'object',
-        properties: {
-          error: { type: 'string' },
-        },
-        additionalProperties: true,
-      }),
-    },
-  }
-}
-
-function defaultRequestBody(route: ApiRouteContribution | RouteDoc): Record<string, unknown> | undefined {
-  if (['GET', 'DELETE'].includes(route.method)) return undefined
-  return {
-    description: 'JSON request body. See route handler and examples for accepted fields until this route declares a specific request schema.',
-    required: true,
-    content: openApiContent('application/json', { type: 'object', additionalProperties: true }),
-  }
-}
-
-function routeOperation(route: ApiRouteContribution | RouteDoc, scope: string, fullPath: string, tag: string): OpenApiOperation {
-  const parameters = pathParameters(route.path, 'parameters' in route ? route.parameters : undefined).map(param => {
-    const out: Record<string, unknown> = {
-      name: param.name,
-      in: param.in,
-      required: param.in === 'path' ? true : param.required ?? false,
-      schema: schemaOrObject(param.schema ?? { type: 'string' }),
-    }
-    if (param.description) out.description = param.description
-    if (param.example !== undefined) out.example = param.example
-    return out
-  })
-  const operation: OpenApiOperation = {
-    operationId: ('operationId' in route && route.operationId) ? route.operationId : operationIdFor(scope, route.method, route.path),
-    tags: ('tags' in route && route.tags?.length) ? route.tags : [tag],
-    summary: route.summary,
-    responses: openApiResponses(route),
-    'x-bakin-visibility': route.visibility ?? 'public',
-    'x-bakin-stability': route.stability ?? 'stable',
-  }
-  if (route.description) operation.description = route.description
-  if (parameters.length) operation.parameters = parameters
-  const requestBody = 'requestBody' in route ? route.requestBody : undefined
-  if (requestBody) {
-    operation.requestBody = {
-      description: requestBody.description,
-      required: requestBody.required ?? !['GET', 'DELETE'].includes(route.method),
-      content: openApiContent(requestBody.contentType ?? 'application/json', requestBody.schema, requestBody.example),
-    }
-  } else if ('params' in route && route.params && !route.params.startsWith('?')) {
-    const paramsSchema = schemaFromParamsHint(route.params)
-    operation.requestBody = {
-      description: route.params,
-      required: !['GET', 'DELETE'].includes(route.method),
-      content: openApiContent('application/json', paramsSchema ?? { type: 'object', additionalProperties: true }),
-    }
-  } else {
-    const body = defaultRequestBody(route)
-    if (body) operation.requestBody = body
-  }
-  if (route.permissions?.length) operation.security = [{ pluginPermissions: route.permissions }]
-  operation['x-bakin-full-path'] = fullPath
-  return operation
-}
-
-function allApiDocRoutes(): Array<{ scope: string; tag: string; fullPath: string; route: ApiRouteContribution | RouteDoc; manifestDescription?: string }> {
-  const coreRoutes = getAllRoutes()
-    .filter(r => r.pluginId === 'core')
-    .map(route => ({ scope: 'core', tag: 'Core', fullPath: route.fullPath, route }))
-  const pluginRoutes = listPluginManifests()
-    .sort((a, b) => a.id.localeCompare(b.id))
-    .flatMap(manifest => getApiRoutes(manifest.id).map(route => ({
-      scope: manifest.id,
-      tag: manifest.name,
-      fullPath: `/api/plugins/${manifest.id}${route.path}`,
-      route,
-      manifestDescription: manifest.description,
-    })))
-  return [...coreRoutes, ...pluginRoutes].sort((a, b) =>
-    tagOrder(a.tag).localeCompare(tagOrder(b.tag)) ||
-    a.fullPath.localeCompare(b.fullPath) ||
-    methodOrder(a.route.method) - methodOrder(b.route.method),
-  )
-}
-
-function _buildOpenApiDocument(): Record<string, unknown> {
-  const paths: Record<string, Record<string, unknown>> = {}
-  const tags = new Map<string, string | undefined>()
-  for (const entry of allApiDocRoutes()) {
-    tags.set(entry.tag, entry.manifestDescription)
-    const path = openApiPath(entry.fullPath)
-    paths[path] ??= {}
-    paths[path][entry.route.method.toLowerCase()] = routeOperation(entry.route, entry.scope, entry.fullPath, entry.tag)
-  }
-  return {
-    openapi: '3.1.0',
-    info: {
-      title: 'Bakin API',
-      version: APP_VERSION,
-      description: 'Generated OpenAPI contract for Bakin core and official plugin HTTP routes.',
-    },
-    servers: [
-      { url: 'http://localhost:3737', description: 'Local Bakin server' },
-    ],
-    tags: [...tags.entries()].map(([name, description]) => ({ name, ...(description ? { description } : {}) })),
-    paths,
-    components: {
-      securitySchemes: {
-        pluginPermissions: {
-          type: 'apiKey',
-          in: 'header',
-          name: 'X-Bakin-Plugin-Permission',
-          description: 'Documents plugin permission requirements. The local runtime currently enforces route access through Bakin plugin registration and runtime policy.',
-        },
-      },
-    },
-  }
 }
 
 function renderApiReference(groups: Map<string, Array<{ operationId: string; curl: string }>>): string {
