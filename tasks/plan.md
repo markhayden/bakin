@@ -144,6 +144,14 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
     turned out to be activate-only, not route-used. index 1,685 → 693. Verified: typecheck/lint/team suite
     183-0/full-suite/binary build/boot smoke (GET /api/plugins/team/ + /teams return 200 through the moved
     handlers). index.ts is now just activate()/onReady/onShutdown + the search-indexing wiring + exec tools.
+- tasks/index — ◧ **routes extracted** (1,089 → 539). `lib/routes.ts` (the full declarative route array),
+  `lib/task-schemas.ts` (COLUMNS + zod schemas), `lib/edit-guard.ts` (taskEditGuard/guardResponse, optimistic
+  versioning + freeze-on-complete), `lib/search-doc.ts` (taskToSearchDoc/indexTask) — the shared helpers now
+  imported by both the routes and the still-in-activate exec tools. Behavior-preserving; the optional behavioral
+  "redesign opportunities" (REST/MCP guard inconsistency, identifier-fallback dedup, dead .catch noise) are NOT
+  taken here — noted for follow-up. Verified: typecheck/lint/tasks suite 206-0/full-suite/binary build/boot smoke.
+  DEFERRED: the ~370-line exec-tools block → `lib/exec-tools.ts` (registerTaskExecTools) + `lib/maintenance.ts`,
+  which slims activate() to the thin-index shape.
 - Remaining: workflows/index (2,146) + lib/runtime (1,633), workflow-canvas-editor (1,803), models-page
-  (1,205), health-page (1,155), schedule/index (1,443), tasks/index (1,089), asset-service (835) + test
-  splits. Includes the workflows validator dedup flagged in #510.
+  (1,205), health-page (1,155), schedule/index (1,443), asset-service (835) + test splits. Includes the
+  workflows validator dedup flagged in #510.
