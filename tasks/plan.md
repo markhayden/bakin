@@ -144,14 +144,16 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
     turned out to be activate-only, not route-used. index 1,685 → 693. Verified: typecheck/lint/team suite
     183-0/full-suite/binary build/boot smoke (GET /api/plugins/team/ + /teams return 200 through the moved
     handlers). index.ts is now just activate()/onReady/onShutdown + the search-indexing wiring + exec tools.
-- tasks/index — ◧ **routes extracted** (1,089 → 539). `lib/routes.ts` (the full declarative route array),
-  `lib/task-schemas.ts` (COLUMNS + zod schemas), `lib/edit-guard.ts` (taskEditGuard/guardResponse, optimistic
-  versioning + freeze-on-complete), `lib/search-doc.ts` (taskToSearchDoc/indexTask) — the shared helpers now
-  imported by both the routes and the still-in-activate exec tools. Behavior-preserving; the optional behavioral
-  "redesign opportunities" (REST/MCP guard inconsistency, identifier-fallback dedup, dead .catch noise) are NOT
-  taken here — noted for follow-up. Verified: typecheck/lint/tasks suite 206-0/full-suite/binary build/boot smoke.
-  DEFERRED: the ~370-line exec-tools block → `lib/exec-tools.ts` (registerTaskExecTools) + `lib/maintenance.ts`,
-  which slims activate() to the thin-index shape.
+- tasks/index — ☑ **DONE** (1,089 → 138, the memory-plugin thin-index shape, across 2 PRs).
+  - ☑ Routes (#523): `lib/routes.ts` (full declarative route array) + `lib/task-schemas.ts` (COLUMNS + zod
+    schemas) + `lib/edit-guard.ts` (taskEditGuard/guardResponse) + `lib/search-doc.ts` (taskToSearchDoc/indexTask).
+    1,089 → 539.
+  - ☑ Exec-tools + maintenance: `lib/exec-tools.ts` (registerTaskExecTools — all 11 MCP tools + buildChecklistNudge)
+    + `lib/maintenance.ts` (startMaintenance/stopMaintenance, clear-before-start re-entrancy preserved). activate()
+    now just registers the search content type, calls registerTaskExecTools + startMaintenance, and the 4 health
+    checks. 539 → 138. Behavior-preserving; the optional behavioral "redesign opportunities" (REST/MCP guard
+    inconsistency, identifier-fallback dedup, dead .catch noise, postJson helper) are NOT taken — noted for follow-up.
+    Verified: typecheck/lint/tasks suite 206-0/full-suite/binary build/boot smoke.
 - asset-service — ◧ **media + trash extracted** (835 → 682). `lib/asset-media.ts` (lazy sharp loader +
   imageDimensions + generateThumbnail — the only module-level mutable state, the sharpModule cache) and
   `lib/asset-trash.ts` (soft-delete/list/restore/purge — self-contained, deliberately bypasses the
