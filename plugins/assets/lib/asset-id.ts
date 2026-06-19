@@ -6,6 +6,9 @@
  * storage shard key, derived by construction — no resolver, no map. The slug is
  * frozen at creation (it is an id, not a title; the manifest carries live meaning).
  */
+import { join } from 'node:path'
+
+import { getContentDir } from '../../../src/core/content-dir'
 import { slugify, generateId8 } from './filename-id'
 
 const ASSET_ID_RE = /^(\d{4})(\d{2})(\d{2})-.+-[0-9a-f]{8}$/i
@@ -54,4 +57,10 @@ export function assetDirRelPath(assetId: string): string | null {
   if (!isValidAssetId(assetId)) return null
   const ym = yearMonthFromAssetId(assetId)
   return ym ? `assets/store/${ym}/${assetId}` : null
+}
+
+/** Absolute directory path for an assetId under the content dir, or null if invalid. */
+export function assetDirAbs(assetId: string): string | null {
+  const rel = assetDirRelPath(assetId)
+  return rel ? join(getContentDir(), rel) : null
 }

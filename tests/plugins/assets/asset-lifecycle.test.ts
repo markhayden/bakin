@@ -17,8 +17,9 @@ import sharp from 'sharp'
 import { assetDirRelPath } from '../../../plugins/assets/lib/asset-id'
 import {
   createAsset, getAsset, addVersion, promoteVersion, deleteVersion,
-  addExport, relink, retype, deleteAsset, restoreAsset,
+  addExport, relink, retype,
 } from '../../../plugins/assets/lib/asset-service'
+import { deleteAsset, restoreAsset } from '../../../plugins/assets/lib/asset-trash'
 
 const srcDir = join(testDir, 'src')
 const png = (name: string, r: number) =>

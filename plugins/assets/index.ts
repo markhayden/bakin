@@ -19,10 +19,13 @@ import { handleTagsRename, handleTagsRemove, handleTagsApply } from './routes/ta
 import { isValidAssetId } from './lib/asset-id'
 import {
   getAsset, upsertFromSource, resolveFile as resolveVersionedFile,
-  listAssets as listVersionedAssets, deleteAsset as deleteVersionedAsset,
+  listAssets as listVersionedAssets,
   relink as relinkVersioned, retype as retypeVersioned,
-  listTrashedAssets, emptyAssetTrash, permanentlyDeleteTrashed, restoreAsset as restoreVersionedAsset,
 } from './lib/asset-service'
+import {
+  deleteAsset as deleteVersionedAsset,
+  listTrashedAssets, emptyAssetTrash, permanentlyDeleteTrashed, restoreAsset as restoreVersionedAsset,
+} from './lib/asset-trash'
 import { listAssetIdsByTask, taskAssetIndexRemove, taskAssetIndexUpsert } from './lib/task-asset-index'
 import { versionedAssetPath, buildVersionedAssetSearchDoc } from './lib/search-doc'
 import { ASSET_TYPES, type AssetType } from './lib/constants'

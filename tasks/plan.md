@@ -152,6 +152,15 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
   taken here — noted for follow-up. Verified: typecheck/lint/tasks suite 206-0/full-suite/binary build/boot smoke.
   DEFERRED: the ~370-line exec-tools block → `lib/exec-tools.ts` (registerTaskExecTools) + `lib/maintenance.ts`,
   which slims activate() to the thin-index shape.
+- asset-service — ◧ **media + trash extracted** (835 → 682). `lib/asset-media.ts` (lazy sharp loader +
+  imageDimensions + generateThumbnail — the only module-level mutable state, the sharpModule cache) and
+  `lib/asset-trash.ts` (soft-delete/list/restore/purge — self-contained, deliberately bypasses the
+  manifest-write choke point so it evicts/relinks the task-asset index explicitly). `assetDirAbs` moved to
+  its natural home `asset-id.ts` (both service + trash import it — no cycle). The 2 route/index consumers +
+  4 test files repointed to `asset-trash`; the two fragile importers (plugin-context-services dynamic import,
+  post-channel path-alias) use only create/read fns and are untouched. Verified: typecheck/lint/assets suite
+  242-0/full-suite/binary build. DEFERRED: asset-mutations + asset-upsert split + the optional redesigns
+  (mutateManifest combinator, iterateStoreManifests walker, images-plugin sharp-dedup).
 - Remaining: workflows/index (2,146) + lib/runtime (1,633), workflow-canvas-editor (1,803), models-page
-  (1,205), health-page (1,155), schedule/index (1,443), asset-service (835) + test splits. Includes the
-  workflows validator dedup flagged in #510.
+  (1,205), health-page (1,155), schedule/index (1,443) + test splits. Includes the workflows validator
+  dedup flagged in #510.

@@ -10,18 +10,17 @@
  * Type-agnostic: images are the first consumer, but any asset type uses the
  * same spine.
  */
-import { mkdirSync, copyFileSync, existsSync, readdirSync, statSync, renameSync, rmSync, readFileSync } from 'node:fs'
+import { mkdirSync, copyFileSync, existsSync, readdirSync, statSync, rmSync, readFileSync } from 'node:fs'
 import { join, extname, resolve, sep } from 'node:path'
-import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { getContentDir } from '../../../src/core/content-dir'
 import { createLogger } from '../../../src/core/logger'
 import { getMimeType, type AssetType } from './constants'
-import { generateAssetId, assetDirRelPath, yearMonthFromAssetId, isValidAssetId } from './asset-id'
+import { generateAssetId, assetDirRelPath, assetDirAbs, yearMonthFromAssetId, isValidAssetId } from './asset-id'
 import { normalizeTags } from './tags'
 import { withAssetLock } from './asset-lock'
 import { getManifestCached } from './manifest-cache'
-import { taskAssetIndexRemove, taskAssetIndexUpsert } from './task-asset-index'
+import { loadSharp, imageDimensions, generateThumbnail } from './asset-media'
 import {
   readManifest,
   writeManifestAtomic,
@@ -33,8 +32,6 @@ import {
 } from './manifest'
 
 const log = createLogger('asset-service')
-type Sharp = typeof import('sharp')
-let sharpModule: Promise<Sharp | null> | null = null
 
 export interface AssetCreateInput {
   /** Absolute path to the source file to copy in as v1. */
@@ -84,55 +81,6 @@ function extOf(filePath: string): string {
 
 function nowIso(): string {
   return new Date().toISOString()
-}
-
-async function loadSharp(): Promise<Sharp | null> {
-  sharpModule ??= import('sharp')
-    .then((mod): Sharp => (mod as unknown as { default?: Sharp }).default ?? (mod as unknown as Sharp))
-    .catch((err) => {
-      log.warn('sharp unavailable; image metadata/export support disabled', { error: err instanceof Error ? err.message : String(err) })
-      return null
-    })
-  return sharpModule
-}
-
-async function imageDimensions(filePath: string): Promise<{ width: number | null; height: number | null }> {
-  try {
-    const sharp = await loadSharp()
-    if (!sharp) return { width: null, height: null }
-    const meta = await sharp(filePath).metadata()
-    return { width: meta.width ?? null, height: meta.height ?? null }
-  } catch {
-    return { width: null, height: null }
-  }
-}
-
-async function generateThumbnail(inputPath: string, outputPath: string, widthPx = 400): Promise<boolean> {
-  const sharp = await loadSharp()
-  if (sharp) {
-    try {
-      await sharp(inputPath)
-        .resize({ width: widthPx, withoutEnlargement: true })
-        .jpeg({ quality: 82 })
-        .toFile(outputPath)
-      return existsSync(outputPath)
-    } catch (err) {
-      log.warn('sharp thumbnail generation failed; trying ffmpeg fallback', { error: err instanceof Error ? err.message : String(err) })
-    }
-  }
-
-  try {
-    // argv form (no shell) — paths/extensions are derived from client filenames,
-    // so a shell string would expand $(...)/backticks in a crafted name.
-    const r = spawnSync(
-      'ffmpeg',
-      ['-i', inputPath, '-vf', `scale=${widthPx}:-1`, '-q:v', '5', '-y', outputPath],
-      { stdio: 'pipe', timeout: 30_000 },
-    )
-    return r.status === 0 && existsSync(outputPath)
-  } catch {
-    return false
-  }
 }
 
 /** Allocate a fresh, collision-free assetId directory. */
@@ -299,11 +247,6 @@ export function listAssets(filter?: { type?: AssetType; taskId?: string | null; 
 // ---------------------------------------------------------------------------
 // Mutations — all serialized behind the per-asset lock + atomic manifest write.
 // ---------------------------------------------------------------------------
-
-function assetDirAbs(assetId: string): string | null {
-  const rel = assetDirRelPath(assetId)
-  return rel ? join(getContentDir(), rel) : null
-}
 
 /**
  * Asset-level description mirrors the current version's. Tags deliberately do
@@ -598,103 +541,6 @@ export async function retype(assetId: string, type: AssetType): Promise<AssetMan
     manifest.updated = nowIso()
     writeManifestAtomic(dirAbs, manifest)
     return manifest
-  })
-}
-
-const TRASH_SEPARATOR = '__deleted-'
-
-/** Trash the whole asset directory (recoverable via restoreAsset). */
-export async function deleteAsset(assetId: string): Promise<{ trashName: string }> {
-  return withAssetLock(assetId, async () => {
-    const dirAbs = assetDirAbs(assetId)
-    if (!dirAbs || !existsSync(dirAbs)) throw new Error(`Asset not found: ${assetId}`)
-    const trashRoot = join(getContentDir(), 'assets', '.trash')
-    mkdirSync(trashRoot, { recursive: true })
-    const trashName = `${assetId}${TRASH_SEPARATOR}${Date.now()}`
-    renameSync(dirAbs, join(trashRoot, trashName))
-    // Trash bypasses the manifest-write choke point — evict explicitly.
-    taskAssetIndexRemove(assetId)
-    return { trashName }
-  })
-}
-
-export interface TrashedAssetInfo {
-  trashName: string
-  assetId: string
-  type: string
-  agent: string
-  deletedAt: number
-  versionCount: number
-  description: string
-}
-
-const TRASH_SUFFIX_RE = new RegExp(`(.+)${TRASH_SEPARATOR.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\d+)$`)
-
-/** List trashed versioned assets (directories under .trash/). */
-export function listTrashedAssets(): TrashedAssetInfo[] {
-  const trashRoot = join(getContentDir(), 'assets', '.trash')
-  if (!existsSync(trashRoot)) return []
-  const out: TrashedAssetInfo[] = []
-  for (const entry of readdirSync(trashRoot)) {
-    const m = TRASH_SUFFIX_RE.exec(entry)
-    if (!m) continue
-    const dir = join(trashRoot, entry)
-    try { if (!statSync(dir).isDirectory()) continue } catch { continue }
-    const manifest = readManifest(dir)
-    out.push({
-      trashName: entry,
-      assetId: m[1],
-      type: manifest?.type ?? 'other',
-      agent: manifest?.agent ?? 'unknown',
-      deletedAt: Number(m[2]),
-      versionCount: manifest?.versions.length ?? 0,
-      description: manifest?.description ?? '',
-    })
-  }
-  return out.sort((a, b) => b.deletedAt - a.deletedAt)
-}
-
-/** Permanently delete one trashed asset directory. */
-export function permanentlyDeleteTrashed(trashName: string): boolean {
-  if (!trashName || trashName.includes('/') || trashName.includes('..')) return false
-  const dir = join(getContentDir(), 'assets', '.trash', trashName)
-  if (!existsSync(dir)) return false
-  rmSync(dir, { recursive: true, force: true })
-  return true
-}
-
-/** Empty the whole asset trash. Returns the count removed. */
-export function emptyAssetTrash(): number {
-  const trashRoot = join(getContentDir(), 'assets', '.trash')
-  if (!existsSync(trashRoot)) return 0
-  const entries = readdirSync(trashRoot)
-  let n = 0
-  for (const entry of entries) {
-    try { rmSync(join(trashRoot, entry), { recursive: true, force: true }); n++ } catch { /* skip */ }
-  }
-  return n
-}
-
-/** Restore a trashed asset directory back into the store. */
-export async function restoreAsset(trashName: string): Promise<{ assetId: string }> {
-  // Reject path-traversal in the trash entry name (matches permanentlyDeleteTrashed).
-  if (!trashName || trashName.includes('/') || trashName.includes('\\') || trashName.includes('..')) {
-    throw new Error(`Invalid trash name: ${trashName}`)
-  }
-  const assetId = trashName.split(TRASH_SEPARATOR)[0]
-  const rel = assetDirRelPath(assetId)
-  if (!rel) throw new Error(`Cannot restore — invalid assetId in: ${trashName}`)
-  return withAssetLock(assetId, async () => {
-    const trashPath = join(getContentDir(), 'assets', '.trash', trashName)
-    if (!existsSync(trashPath)) throw new Error(`Trashed asset not found: ${trashName}`)
-    const destAbs = join(getContentDir(), rel)
-    if (existsSync(destAbs)) throw new Error(`Cannot restore — an asset already exists at ${assetId}`)
-    mkdirSync(join(destAbs, '..'), { recursive: true })
-    renameSync(trashPath, destAbs)
-    // Restore bypasses the manifest-write choke point — relink explicitly.
-    const restored = readManifest(destAbs)
-    if (restored) taskAssetIndexUpsert(restored.assetId, restored.taskId ?? null)
-    return { assetId }
   })
 }
 
