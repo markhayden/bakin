@@ -130,7 +130,7 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
 
 ## WS6 — plugin god-files
 
-- team/index — ◧ **Phases A + B(helpers) done** (2,312 → 1,685).
+- team/index — ☑ **DONE** (2,312 → 693, a 70% reduction across 5 lib modules over 3 PRs).
   - ☑ Phase A (#520): `lib/runtime-agents.ts` (~270-line runtime-adapter agent wrapper layer, every fn takes
     the adapter explicitly) + `lib/agent-lessons.ts` (agent-package lesson path-parse + fs-read helpers for the
     `bakin_agent-lessons` content type). index 2,312 → 1,914.
@@ -139,10 +139,11 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
     `lib/agent-status.ts` (status resolution + org structure; `staleSettingsCtx` is now a `setStaleSettingsContext`
     setter called from activate). index 1,914 → 1,685. Both are pure/param/store-backed — no plugin-registry
     coupling. Verified: typecheck/lint/team suite 183-0/full-suite/binary build/boot smoke.
-  - ☐ DEFERRED (Phase B-routes): extract the ~970-line `populateTeamRoutes` into `lib/routes/*`. Now tractable
-    — handlers take ctx as a param and the helper groups they leaned on (settings/status) are importable libs;
-    the residual module-scope deps are just `pluginCtx`/`indexAgentStatic`/`batchIndexAgents` (the live search
-    indexing wiring).
+  - ☑ Phase B-routes: extracted the ~970-line `populateTeamRoutes` into `lib/team-routes.ts`. Single injected
+    dep (`indexAgentStatic`) — the routes' only residual module-scope coupling; `pluginCtx`/`batchIndexAgents`
+    turned out to be activate-only, not route-used. index 1,685 → 693. Verified: typecheck/lint/team suite
+    183-0/full-suite/binary build/boot smoke (GET /api/plugins/team/ + /teams return 200 through the moved
+    handlers). index.ts is now just activate()/onReady/onShutdown + the search-indexing wiring + exec tools.
 - Remaining: workflows/index (2,146) + lib/runtime (1,633), workflow-canvas-editor (1,803), models-page
   (1,205), health-page (1,155), schedule/index (1,443), tasks/index (1,089), asset-service (835) + test
   splits. Includes the workflows validator dedup flagged in #510.
