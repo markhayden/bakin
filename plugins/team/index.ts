@@ -8,13 +8,9 @@
  */
 import { z } from 'zod'
 import {
-  closeSync,
   existsSync,
-  fstatSync,
   mkdirSync,
-  openSync,
   readFileSync,
-  readSync,
   unlinkSync,
   writeFileSync,
 } from 'fs'
@@ -27,10 +23,6 @@ import { readHeartbeats } from '../../src/lib/content-files'
 import { getContentDir, getBakinPaths } from '../../packages/core/src/content-dir'
 import { serveAvatar, detectImageExtension } from '@bakin/core/agents/avatar'
 import { removeInstalledBy } from '@bakin/core/agent-packages/markers'
-import {
-  readPluginSettings as readStoredPluginSettings,
-  writePluginSettings as writeStoredPluginSettings,
-} from '@bakin/core/plugins/settings-store'
 import { startAgent, stopAgent } from '../../src/lib/agents'
 import { getSettings, resetSettingsCache } from '../../src/core/settings'
 import { syncConfig as syncMcporter } from '../../src/core/mcporter'
@@ -40,7 +32,7 @@ import { appendAudit } from '../../src/core/audit'
 import { getAllAgentUsage } from '../../src/core/agent-usage'
 import { getStatsByMs } from '../../src/core/usage'
 import { retrieveAgentPackageLessons } from '../../src/core/agent-packages/lesson-retrieval'
-import { getRuntimeMainAgentId, type AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
+import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { readLatestSessionTranscript } from './lib/session-reader'
 import { agentSyncRepair, checkAgentRoster, checkPersonas, checkAgentSync, personaRepair } from './lib/health-checks'
 import {
@@ -67,245 +59,30 @@ import {
   agentLessonFileToDoc,
   agentLessonReindexAll,
 } from './lib/agent-lessons'
+import {
+  readDisplaySettings,
+  writeDisplaySettings,
+  readTeams,
+  writeTeams,
+  normalizeReportsTo,
+  degradeUnknownReportsTo,
+  mergeDisplayDefaults,
+} from './lib/team-settings'
+import {
+  setStaleSettingsContext,
+  getLastAuditActivity,
+  resolveAgentStatus,
+  getTeamMembers,
+  getOrgStructure,
+} from './lib/agent-status'
 import type {
   AgentWithStatus,
   AgentDisplaySettingsMap,
-  HeartbeatData,
   OrgTeam,
-  TeamPluginSettings,
 } from './types'
 
 const log = createLogger('team')
 const BAKIN_PORT = Number(process.env.PORT || 3737)
-const DEFAULT_STALE_THRESHOLD_MS = 15 * 60 * 1000
-
-// ─── Display Settings (Bakin-owned) ──────────────────────────────────────────
-
-const DEFAULT_COLORS: Record<string, string> = {
-  main: '#60a5fa',
-  chef: '#4ade80',
-  pixel: '#a78bfa',
-  rolo: '#fb923c',
-  patch: '#a1a1aa',
-  explorer: '#34d399',
-  trainer: '#22d3ee',
-  coach: '#fbbf24',
-}
-
-function readPluginSettings(): TeamPluginSettings {
-  const raw = readStoredPluginSettings<Record<string, unknown>>('team')
-  // Migrate: old format was just AgentDisplaySettingsMap at root.
-  if (raw && Object.keys(raw).length > 0 && !raw.displaySettings && !raw.teams) {
-    return { displaySettings: raw as AgentDisplaySettingsMap, teams: [] }
-  }
-  return {
-    displaySettings: (raw.displaySettings as AgentDisplaySettingsMap) ?? {},
-    teams: (raw.teams as TeamPluginSettings['teams']) ?? [],
-  }
-}
-
-function writePluginSettings(settings: TeamPluginSettings): void {
-  writeStoredPluginSettings('team', settings)
-}
-
-function readDisplaySettings(): AgentDisplaySettingsMap {
-  return readPluginSettings().displaySettings
-}
-
-function writeDisplaySettings(settings: AgentDisplaySettingsMap): void {
-  const current = readPluginSettings()
-  writePluginSettings({ ...current, displaySettings: settings })
-}
-
-function readTeams(): OrgTeam[] {
-  return readPluginSettings().teams
-}
-
-function writeTeams(teams: OrgTeam[]): void {
-  const current = readPluginSettings()
-  writePluginSettings({ ...current, teams })
-}
-
-/**
- * Normalize a `reportsTo` value for persistence in team.json.
- *
- * Stores `null` when the incoming value is undefined/null or equals the
- * current main agent id. This decouples team.json from the specific
- * orchestrator name so installs sharing the file don't get pinned to
- * "main" (or whatever id the local main agent happens to use).
- */
-function normalizeReportsTo(value: unknown, mainAgentId: string): string | null {
-  if (value === undefined || value === null) return null
-  if (typeof value !== 'string') return null
-  if (value === mainAgentId) return null
-  return value
-}
-
-/**
- * Degrade teams whose `reportsTo` points at an agent that no longer
- * exists in the roster. The render-time resolver treats `null` as
- * "report to main", so this keeps legacy team.json files rendering
- * cleanly after a rename or removal. Read-only — never rewrites the
- * file from the read path.
- */
-function degradeUnknownReportsTo(teams: OrgTeam[], knownIds: Set<string>): OrgTeam[] {
-  return teams.map((team) => {
-    const reportsTo = team.reportsTo
-    if (typeof reportsTo === 'string' && !knownIds.has(reportsTo)) {
-      log.warn('team.json has a team reporting to unknown agent id — treating as null', {
-        teamId: team.id,
-        reportsTo,
-      })
-      return { ...team, reportsTo: null }
-    }
-    return team
-  })
-}
-
-async function mergeDisplayDefaults(runtime: AgentRuntimeAdapter, overrides: AgentDisplaySettingsMap): Promise<AgentDisplaySettingsMap> {
-  const result: AgentDisplaySettingsMap = {}
-  const ids = (await runtime.agents.list()).map((agent) => agent.id)
-  for (const id of ids) {
-    result[id] = {
-      ...overrides[id],
-      accentColor: overrides[id]?.accentColor ?? DEFAULT_COLORS[id] ?? '#a1a1aa',
-    }
-  }
-  return result
-}
-
-
-// ─── Status Resolution ───────────────────────────────────────────────────────
-
-let staleSettingsCtx: PluginContext | null = null
-
-function getStaleThresholdMs(): number {
-  if (staleSettingsCtx) {
-    const settings = staleSettingsCtx.getSettings<{ staleThresholdMinutes?: number }>()
-    if (settings.staleThresholdMinutes && settings.staleThresholdMinutes > 0) {
-      return settings.staleThresholdMinutes * 60 * 1000
-    }
-  }
-  return DEFAULT_STALE_THRESHOLD_MS
-}
-
-/**
- * Read the tail of audit.jsonl and return the most recent timestamp per agent.
- * Only scans the last ~64KB to stay fast on large files.
- */
-function getLastAuditActivity(): Record<string, number> {
-  const auditPath = join(getContentDir(), 'audit.jsonl')
-  const result: Record<string, number> = {}
-  try {
-    if (!existsSync(auditPath)) return result
-    const fd = openSync(auditPath, 'r')
-    const stat = fstatSync(fd)
-    const TAIL_BYTES = 64 * 1024
-    const start = Math.max(0, stat.size - TAIL_BYTES)
-    const buf = Buffer.alloc(Math.min(TAIL_BYTES, stat.size))
-    readSync(fd, buf, 0, buf.length, start)
-    closeSync(fd)
-
-    const text = buf.toString('utf-8')
-    // If we started mid-line, skip the first partial line
-    const lines = text.split('\n')
-    if (start > 0) lines.shift()
-
-    for (const line of lines) {
-      if (!line.trim()) continue
-      try {
-        const entry = JSON.parse(line) as { ts?: string; agent?: string }
-        if (entry.ts && entry.agent) {
-          const t = new Date(entry.ts).getTime()
-          if (!isNaN(t) && (!result[entry.agent] || t > result[entry.agent])) {
-            result[entry.agent] = t
-          }
-        }
-      } catch { /* skip malformed lines */ }
-    }
-  } catch (err) {
-    log.warn('Failed to read audit.jsonl for activity detection', { error: err instanceof Error ? err.message : String(err) })
-  }
-  return result
-}
-
-function resolveAgentStatus(
-  bakinId: string,
-  heartbeats: Record<string, unknown>,
-  lastAuditActivity: Record<string, number>,
-): {
-  status: 'online' | 'working' | 'available' | 'offline'
-  heartbeat: HeartbeatData | null
-  heartbeatAge: number | null
-} {
-  const now = Date.now()
-  const threshold = getStaleThresholdMs()
-
-  // ── Heartbeat signal ──
-  const hb = heartbeats[bakinId] as Record<string, unknown> | undefined
-  const hbTs = (hb?.timestamp ?? hb?.ts) as string | undefined
-  const hbTime = hbTs ? new Date(hbTs).getTime() : 0
-  const hbAge = hbTs ? now - hbTime : null
-
-  const heartbeat: HeartbeatData | null = hbTs
-    ? { timestamp: hbTs, status: (hb!.status as string) ?? 'unknown', currentTask: hb!.currentTask as string | undefined }
-    : null
-
-  // ── Audit activity signal (fallback) ──
-  const auditTime = lastAuditActivity[bakinId] ?? 0
-
-  // Use whichever is more recent
-  const lastSeen = Math.max(hbTime, auditTime)
-  if (lastSeen === 0) {
-    return { status: 'offline', heartbeat: null, heartbeatAge: null }
-  }
-
-  const age = now - lastSeen
-  const effectiveAge = hbAge !== null ? Math.min(hbAge, age) : age
-
-  if (age > threshold) {
-    return { status: 'offline', heartbeat, heartbeatAge: effectiveAge }
-  }
-
-  // Within threshold — determine working vs online
-  if (hb?.status === 'working' || hb?.currentTask) {
-    return { status: 'working', heartbeat, heartbeatAge: effectiveAge }
-  }
-
-  // Has recent audit activity but no "working" heartbeat — mark as online
-  return { status: 'online', heartbeat, heartbeatAge: effectiveAge }
-}
-
-// ─── Org Helpers ────────────────────────────────────────────────────────────
-
-/** Get agent IDs that belong to a given team */
-async function getTeamMembers(runtime: AgentRuntimeAdapter, teamId: string): Promise<string[]> {
-  const ds = await mergeDisplayDefaults(runtime, readDisplaySettings())
-  return Object.entries(ds)
-    .filter(([, s]) => s.teamId === teamId)
-    .map(([id]) => id)
-}
-
-/** Get the full org structure: teams with their members */
-async function getOrgStructure(runtime: AgentRuntimeAdapter) {
-  const teams = readTeams()
-  const ds = await mergeDisplayDefaults(runtime, readDisplaySettings())
-  const agents = await listRuntimeAgentMetas(runtime)
-  const agentMap = new Map(agents.map((a) => [a.id, a]))
-
-  return teams.map((team) => {
-    const memberIds = Object.entries(ds)
-      .filter(([, s]) => s.teamId === team.id)
-      .map(([id]) => id)
-    return {
-      ...team,
-      members: memberIds.map((id) => ({
-        id,
-        name: agentMap.get(id)?.name ?? id,
-      })),
-    }
-  })
-}
 
 /** Module-level hook for batch-indexing agents — set during activate() */
 let batchIndexAgents: () => Promise<void> = async () => {}
@@ -1340,7 +1117,7 @@ const teamPlugin: BakinPlugin = definePlugin({
   activate(ctx: PluginContext) {
     // Reset routes on every activate (hot-reload safety).
     // teamRoutes is populated at module load now (T20+); reset would wipe the static array
-    staleSettingsCtx = ctx
+    setStaleSettingsContext(ctx)
     pluginCtx = ctx
 
     // ─── Search Content Type Registration ─────────────────────────────
