@@ -163,6 +163,12 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
   post-channel path-alias) use only create/read fns and are untouched. Verified: typecheck/lint/assets suite
   242-0/full-suite/binary build. DEFERRED: asset-mutations + asset-upsert split + the optional redesigns
   (mutateManifest combinator, iterateStoreManifests walker, images-plugin sharp-dedup).
+- health-page — ◧ **types + formatters extracted** (1,155 → 996). `plugins/health/types.ts` (the 14 wire-format
+  interfaces + UsageKind — fixes the missing-types.ts convention violation; health/index.ts can now type its
+  route payloads against them) and `plugins/health/lib/format.ts` (formatUptime/formatTokenCount/formatRuntimeCost/
+  formatDateShort/searchStatsDocumentCount/extractErrorMessage/formatActivity). formatAge was already on the SDK.
+  Pure relocation (types erased at build; formatters pure). Verified: typecheck/lint/health suite 98-0/full-suite/
+  binary build/boot smoke. DEFERRED: the section-component split (usage/plugins/search/agent-usage sections) +
+  the per-section-fetch redesign + SearchHealthData promotion — the involved React-state work.
 - Remaining: workflows/index (2,146) + lib/runtime (1,633), workflow-canvas-editor (1,803), models-page
-  (1,205), health-page (1,155), schedule/index (1,443) + test splits. Includes the workflows validator
-  dedup flagged in #510.
+  (1,205), schedule/index (1,443) + test splits. Includes the workflows validator dedup flagged in #510.
