@@ -43,7 +43,8 @@ mock.module('../../../src/core/watcher', () => ({
 }))
 
 import assetsPlugin from '@bakin/assets'
-import { createAsset, relink, deleteAsset } from '@bakin/assets/lib/asset-service'
+import { createAsset, relink } from '@bakin/assets/lib/asset-service'
+import { deleteAsset } from '@bakin/assets/lib/asset-trash'
 
 type ListHandler = (data: Record<string, unknown>) => Array<{ assetId: string; description: string; type: string }> | Promise<Array<{ assetId: string; description: string; type: string }>>
 

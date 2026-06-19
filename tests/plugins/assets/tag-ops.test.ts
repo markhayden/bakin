@@ -14,8 +14,9 @@ process.env.OPENCLAW_HOME = join(testDir, 'openclaw')
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
 import sharp from 'sharp'
 import {
-  createAsset, getAsset, deleteAsset, renameTagGlobal, removeTagGlobal, applyTags,
+  createAsset, getAsset, renameTagGlobal, removeTagGlobal, applyTags,
 } from '../../../plugins/assets/lib/asset-service'
+import { deleteAsset } from '../../../plugins/assets/lib/asset-trash'
 import { assetDirRelPath } from '../../../plugins/assets/lib/asset-id'
 import { handleTagsRename, handleTagsRemove, handleTagsApply } from '../../../plugins/assets/routes/tags'
 
