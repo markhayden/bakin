@@ -130,14 +130,19 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
 
 ## WS6 — plugin god-files
 
-- team/index — ◧ **Phase A done.** Extracted two cohesive lib modules from the 2,312-line index:
-  `lib/runtime-agents.ts` (the ~270-line runtime-adapter agent wrapper layer — every fn takes the adapter
-  explicitly, zero module-ctx coupling) and `lib/agent-lessons.ts` (the agent-package lesson path-parse +
-  fs-read helpers for the `bakin_agent-lessons` content type). index.ts 2,312 → 1,914; no behavior change
-  (pure relocation of param-based/pure helpers; routes + activate untouched). Verified: typecheck/lint/team
-  suite 183-0/full-suite/binary build. DEFERRED (Phase B): extract the ~970-line `populateTeamRoutes` into
-  `lib/routes/*` (the bulk; route handlers take ctx as a param so it's tractable) + the status-resolution
-  group (`staleSettingsCtx`/`resolveAgentStatus`/`getOrgStructure`).
+- team/index — ◧ **Phases A + B(helpers) done** (2,312 → 1,685).
+  - ☑ Phase A (#520): `lib/runtime-agents.ts` (~270-line runtime-adapter agent wrapper layer, every fn takes
+    the adapter explicitly) + `lib/agent-lessons.ts` (agent-package lesson path-parse + fs-read helpers for the
+    `bakin_agent-lessons` content type). index 2,312 → 1,914.
+  - ☑ Phase B-helpers: `lib/team-settings.ts` (display/teams settings I/O + reportsTo normalize/degrade +
+    mergeDisplayDefaults — the most route-referenced group: readTeams ×13, readDisplaySettings ×8) and
+    `lib/agent-status.ts` (status resolution + org structure; `staleSettingsCtx` is now a `setStaleSettingsContext`
+    setter called from activate). index 1,914 → 1,685. Both are pure/param/store-backed — no plugin-registry
+    coupling. Verified: typecheck/lint/team suite 183-0/full-suite/binary build/boot smoke.
+  - ☐ DEFERRED (Phase B-routes): extract the ~970-line `populateTeamRoutes` into `lib/routes/*`. Now tractable
+    — handlers take ctx as a param and the helper groups they leaned on (settings/status) are importable libs;
+    the residual module-scope deps are just `pluginCtx`/`indexAgentStatic`/`batchIndexAgents` (the live search
+    indexing wiring).
 - Remaining: workflows/index (2,146) + lib/runtime (1,633), workflow-canvas-editor (1,803), models-page
   (1,205), health-page (1,155), schedule/index (1,443), tasks/index (1,089), asset-service (835) + test
   splits. Includes the workflows validator dedup flagged in #510.
