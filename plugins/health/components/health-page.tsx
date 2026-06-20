@@ -21,8 +21,24 @@ import { UnderlineTabs } from "@makinbakin/sdk/components"
 import { formatAge } from "@makinbakin/sdk/utils"
 import { Search, CircleCheck, Clock, AlertCircle, Wrench } from 'lucide-react'
 import { RepairDialog } from './repair-dialog'
-import type { HealthCheckResult } from '@makinbakin/sdk'
 import type { AgentUsage } from '@makinbakin/sdk/types'
+import type {
+  PluginInfo,
+  RegistryData,
+  PluginManifestData,
+  UsageKind,
+  UsageFeedData,
+  HealthSummary,
+} from '../types'
+import {
+  formatUptime,
+  formatTokenCount,
+  formatRuntimeCost,
+  formatDateShort,
+  searchStatsDocumentCount,
+  extractErrorMessage,
+  formatActivity,
+} from '../lib/format'
 
 const PLUGIN_CHECK_INTERVAL_MS = 60 * 60 * 1000
 
@@ -32,146 +48,6 @@ const USAGE_TABS = [
   { id: 'agents', label: 'Agent Usage' },
 ] as const
 
-interface McpSessionInfo {
-  agent: string
-  sessions: number
-  connectedAt: string
-}
-
-interface DoctorData {
-  results: HealthCheckResult[]
-  summary: { total: number; errors: number; warnings: number }
-  cachedAt?: string
-}
-
-interface ServerData {
-  port: number
-  pid: number
-  nodeVersion: string
-  memoryMB: number
-  totalMemoryMB: number
-}
-
-interface PluginInfo {
-  id: string
-  name: string
-  version: string
-  latestVersion?: string | null
-  description: string
-  source: 'built-in' | 'user'
-  routes: number
-  installed?: {
-    version?: string
-    commitSha?: string
-    remoteHeadSha?: string
-    lastChecked?: string
-    newPermissions?: string[]
-  } | null
-  upgradeAvailable?: boolean
-  staleHintDays?: number | null
-}
-
-interface RegistryData {
-  plugins: PluginInfo[]
-}
-
-interface PluginManifestEntry {
-  id: string
-  name: string
-  version: string
-  latestVersion?: string | null
-  source: 'core' | 'github' | 'local'
-  installed: PluginInfo['installed']
-  upgradeAvailable: boolean
-  staleHintDays: number | null
-}
-
-interface PluginManifestData {
-  plugins: PluginManifestEntry[]
-}
-
-
-interface ErrorsByKind {
-  total: number
-  byKind: { mcp: number; rest: number; agent: number }
-}
-
-type UsageKind = 'mcp' | 'rest' | 'agent'
-
-interface UsageEntry {
-  ts: string
-  kind: UsageKind
-  name: string
-  agent: string | null
-  durationMs: number | null
-  status: 'ok' | 'error'
-  meta?: Record<string, unknown>
-}
-
-interface TopByNameRow {
-  name: string
-  count: number
-  errors: number
-  medianDurationMs: number | null
-}
-
-interface ByAgentRow {
-  agent: string
-  count: number
-  errors: number
-  lastActivity: UsageEntry | null
-}
-
-interface UsageFeedData {
-  totals: { count: number; errors: number; errorRate: number }
-  topByName: TopByNameRow[]
-  byAgent: ByAgentRow[]
-  recent: UsageEntry[]
-}
-
-interface HealthSummary {
-  doctor: DoctorData | null
-  errors1h: ErrorsByKind | null
-  activeSessions: McpSessionInfo[] | null
-  upSince: string | null
-  server: ServerData | null
-}
-
-function formatUptime(since: string): string {
-  const ms = Date.now() - new Date(since).getTime()
-  const secs = Math.floor(ms / 1000)
-  if (secs < 60) return `${secs}s`
-  const mins = Math.floor(secs / 60)
-  if (mins < 60) return `${mins}m ${secs % 60}s`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ${mins % 60}m`
-  const days = Math.floor(hrs / 24)
-  return `${days}d ${hrs % 24}h`
-}
-
-function formatTokenCount(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
-  return String(n)
-}
-
-function formatRuntimeCost(value: number | null): string {
-  if (value === null) return 'unavailable'
-  if (value === 0) return '$0.00'
-  if (value < 0.01) return `$${value.toFixed(4)}`
-  return `$${value.toFixed(2)}`
-}
-
-function formatDateShort(date: Date): string {
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-}
-
-function searchStatsDocumentCount(stats: Record<string, unknown> | null | undefined): number {
-  if (!stats) return 0
-  const value = stats.documents ?? stats.num_docs ?? stats.documentCount
-  const count = typeof value === 'number' ? value : Number(value)
-  return Number.isFinite(count) ? count : 0
-}
 
 // ---------------------------------------------------------------------------
 // Horizontal bar chart component (pure CSS, no dependencies)
@@ -252,16 +128,6 @@ const STATUS_STYLES: Record<string, string> = {
 // ---------------------------------------------------------------------------
 // Usage tab panels
 // ---------------------------------------------------------------------------
-
-function extractErrorMessage(entry: UsageEntry): string {
-  const meta = entry.meta ?? {}
-  if (typeof meta.error === 'string' && meta.error.length > 0) return meta.error
-  if (typeof meta.httpStatus === 'number') {
-    const method = typeof meta.method === 'string' ? `${meta.method} ` : ''
-    return `${method}HTTP ${meta.httpStatus}`
-  }
-  return 'Error (no detail)'
-}
 
 function UsageBarsPanel({
   feed,
@@ -365,15 +231,6 @@ function UsageBarsPanel({
       </div>
     </div>
   )
-}
-
-function formatActivity(entry: UsageEntry | null): string {
-  if (!entry) return 'no activity'
-  const ageSec = Math.max(0, Math.round((Date.now() - new Date(entry.ts).getTime()) / 1000))
-  if (ageSec >= 30) return `idle ${ageSec}s`
-  if (entry.kind === 'mcp') return `calling ${entry.name.replace('bakin_exec_', '')} · ${ageSec}s ago`
-  if (entry.kind === 'rest') return `handling ${entry.name} · ${ageSec}s ago`
-  return `${entry.name} · ${ageSec}s ago`
 }
 
 function AgentUsagePanel({ feed }: { feed: UsageFeedData | null }) {
