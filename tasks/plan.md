@@ -186,5 +186,22 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
   contentDir-param drop, require→import, discriminated getCurrentStep union) NOT taken — noted for follow-up.
   Verified: typecheck/lint/workflows suite 419-0/full-suite 5123-0/binary build/isolated-home boot smoke (workflows
   activates + Ready; GET /definitions + /instances → 200; schedule ENOENT is the environmental openclaw-cron miss).
-- Remaining: workflows/index (2,146), workflow-canvas-editor (1,803), models-page
-  (1,205), schedule/index (1,443) + test splits. Includes the workflows validator dedup flagged in #510.
+- workflows/index — ◧ **split by RISK** (2,146; the cluster's most entangled plugin file: module-load side
+  effects — populateWorkflowRoutes runs at import; a mutable `pluginCtx` module global written in activate and
+  read by route closures; and the triple-scope duplicate-helper pattern — module-scope copies feed the route
+  closures while activate-scope copies feed hooks/exec-tools). The meaningful route/search/validation/gate
+  extractions are inseparable from deduping those copies + replacing the pluginCtx global with ctx injection
+  (behavior-touching, per the appendix), so it's tiered like dispatch/plugin-registry rather than one mega-PR.
+  - ☑ Phase A (pure, zero behavior change): `lib/step-format.ts` (formatSchema/formatStepContext — pure
+    presentation-for-agents) + `lib/template-list.ts` (resolveSubWorkflows/buildTemplateList/workflowSkillDrift*/
+    collectWorkflowSkillRefs/countSteps — pure definition+drift aggregation). 2,146 → ~1,950. No pluginCtx
+    coupling, no module-load concerns. Verified: typecheck/lint/workflows suite 419-0/full-suite 5123-0/binary
+    build/isolated-home boot smoke (Workflows Ready; GET /definitions [buildTemplateList path] + /node-types → 200).
+  - ☐ Phase B (DEFERRED, behavior-touching): `lib/start-validation.ts` — dedupe the two
+    validateWorkflowForStart/createValidatedInstance/getRuntimeAgentNames/collectNestedWorkflowIds copies into one
+    ctx-injected module (the #510 dedup; both copies are already the strong recursive form so it's a true dedup,
+    net behavior identical — keep the REST cycle-rejection regression test green). Then `lib/search-sync.ts` +
+    the pluginCtx→ctx-accessor surgery + route extraction (`routes/{definitions,gates,instances}.ts`), exec-tools,
+    register-hooks, channel-approvals — each its own focused PR with a boot smoke. The decideGate 6-block collapse
+    + stdJsonResponses const + typed defineRoute[] arrays stay deferred redesigns (not required for the split).
+- Remaining: workflow-canvas-editor (1,803), models-page (1,205), schedule/index (1,443) + test splits.
