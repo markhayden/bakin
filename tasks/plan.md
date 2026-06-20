@@ -170,5 +170,21 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
   Pure relocation (types erased at build; formatters pure). Verified: typecheck/lint/health suite 98-0/full-suite/
   binary build/boot smoke. DEFERRED: the section-component split (usage/plugins/search/agent-usage sections) +
   the per-section-fetch redesign + SearchHealthData promotion — the involved React-state work.
-- Remaining: workflows/index (2,146) + lib/runtime (1,633), workflow-canvas-editor (1,803), models-page
+- workflows/lib/runtime — ☑ **DONE** (1,634 → 45-line barrel + 6 seam modules). Barrel-preserving split of the
+  runtime engine into `instance-store.ts` (JSON-on-disk persistence + gate-notified tracking), `task-bridge.ts`
+  (the single task-store/task-service crossing: moves/logs/completion/child-board-tasks), `step-context.ts`
+  (read-only info-gating query surface: resolveAgent/getCurrentStep/authorizeWorkflowToolUse/getActiveAgents),
+  `node-dispatch.ts` (system/plugin node execution + reopened-step re-dispatch), `engine.ts` (the deliberately-kept-
+  together mutual-recursion knot: createInstance↔advanceWorkflow↔propagateChildCompletion↔completeStep + cancelInstance),
+  and `gates.ts` (approve/reject/reopen). The three pure traversal helpers (flattenSteps/findStep/getTopLevelIndex)
+  moved into the existing `parser.ts`. runtime.ts is now a pure re-export barrel of the exact 26-name public surface,
+  so index.ts/approval-rehydration.ts/health-checks.ts + the 6+ test files that mock.module `…/lib/runtime` are
+  untouched. Only static back-edge avoided: node-dispatch→engine.completeStep stays a dynamic `import('./engine')`
+  inside dispatchCreateTaskNode's async IIFE (DAG: gates→engine→node-dispatch→{step-context,task-bridge,instance-store};
+  engine exports advanceWorkflow/propagateChildCompletion for gates but they're NOT in the barrel — public surface
+  byte-identical). Pure relocation; redesign opportunities (decideGate-style dedup, atomic withInstance writes,
+  contentDir-param drop, require→import, discriminated getCurrentStep union) NOT taken — noted for follow-up.
+  Verified: typecheck/lint/workflows suite 419-0/full-suite 5123-0/binary build/isolated-home boot smoke (workflows
+  activates + Ready; GET /definitions + /instances → 200; schedule ENOENT is the environmental openclaw-cron miss).
+- Remaining: workflows/index (2,146), workflow-canvas-editor (1,803), models-page
   (1,205), schedule/index (1,443) + test splits. Includes the workflows validator dedup flagged in #510.
