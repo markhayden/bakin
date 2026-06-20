@@ -90,6 +90,58 @@ function getTopLevelStepIndex(steps: WorkflowStep[], stepId: string): number {
   return steps.findIndex((step) => step.id === stepId)
 }
 
+// ─── Definition traversal helpers ───────────────────────────────────────────
+// Pure WorkflowDefinition walkers (including parallel children) used by the
+// runtime engine, gates, step-context, and node-dispatch. They carry zero
+// instance knowledge, so they live beside loadDefinition for reuse.
+
+/**
+ * Flatten all step IDs from a workflow definition (including parallel children).
+ */
+export function flattenSteps(steps: WorkflowStep[]): { id: string; step: WorkflowStep; parentId?: string }[] {
+  const result: { id: string; step: WorkflowStep; parentId?: string }[] = []
+  for (const step of steps) {
+    result.push({ id: step.id, step })
+    if (step.type === 'parallel') {
+      for (const child of (step as ParallelStep).steps) {
+        result.push({ id: child.id, step: child, parentId: step.id })
+      }
+    }
+  }
+  return result
+}
+
+/**
+ * Find a step by ID in a workflow definition.
+ */
+export function findStep(def: WorkflowDefinition, stepId: string): WorkflowStep | null {
+  for (const step of def.steps) {
+    if (step.id === stepId) return step
+    if (step.type === 'parallel') {
+      for (const child of (step as ParallelStep).steps) {
+        if (child.id === stepId) return child
+      }
+    }
+  }
+  return null
+}
+
+/**
+ * Get the top-level step index (in definition.steps array) for a step ID.
+ */
+export function getTopLevelIndex(def: WorkflowDefinition, stepId: string): number {
+  for (let i = 0; i < def.steps.length; i++) {
+    const step = def.steps[i]
+    if (step.id === stepId) return i
+    if (step.type === 'parallel') {
+      for (const child of (step as ParallelStep).steps) {
+        if (child.id === stepId) return i
+      }
+    }
+  }
+  return -1
+}
+
 function isSymbolicAgent(agent: string): boolean {
   return agent.startsWith('$')
 }
