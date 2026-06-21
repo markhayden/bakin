@@ -39,7 +39,6 @@ import {
 } from './lib/source-registry'
 import { isWorkflowDisabled, setWorkflowDisabled } from './lib/availability'
 import {
-  createInstance,
   loadInstance,
   saveInstance,
   getCurrentStep,
@@ -65,6 +64,7 @@ import {
   workflowSkillDriftForDefinition,
 } from './lib/template-list'
 import { formatStepContext } from './lib/step-format'
+import { createValidatedInstance } from './lib/start-validation'
 import { createLogger } from '../../src/core/logger'
 import { getContentDir } from '../../src/core/content-dir'
 import { getTask, updateTask } from '../../src/core/task-store'
@@ -80,7 +80,7 @@ import {
 } from './lib/notifications'
 import { approvalRefFromRecord, findPendingApprovalForGate, getApprovalRecord } from './lib/approval-store'
 import { rehydratePendingApprovals } from './lib/approval-rehydration'
-import type { WorkflowDefinition, WorkflowInstance, NestedWorkflowStep } from './types'
+import type { WorkflowDefinition, WorkflowInstance } from './types'
 
 const log = createLogger('workflows')
 let unsubscribeApprovalResponses: (() => void) | null = null
@@ -152,97 +152,6 @@ function buildGateAuditPayload(
     durationMs: decision?.durationMs,
     ...(reason !== undefined ? { reason } : {}),
   }
-}
-
-async function getRuntimeAgentNames(): Promise<Set<string>> {
-  if (!pluginCtx) return new Set()
-  const agents = await pluginCtx.runtime.agents.list()
-  const names = new Set<string>()
-  for (const agent of agents) {
-    names.add(agent.id)
-    names.add(agent.name)
-  }
-  return names
-}
-
-function collectNestedWorkflowIds(def: WorkflowDefinition, out: Set<string>): void {
-  for (const step of def.steps) {
-    if (step.type === 'workflow') {
-      out.add((step as NestedWorkflowStep).workflow_id)
-    }
-  }
-}
-
-async function validateWorkflowForStart(
-  workflowId: string,
-  assignee: string | undefined,
-  contentDir?: string,
-  runtimeAgents?: Set<string>,
-): Promise<string[]> {
-  const errors: string[] = []
-  const knownAgents = runtimeAgents ?? await getRuntimeAgentNames()
-  const knownWorkflowIds = new Set(listDefinitions(contentDir).map((entry) => entry.name))
-  const visited = new Set<string>()
-
-  // Recurse through nested workflows, validating each definition and detecting
-  // nesting cycles. The REST /instances/start path previously skipped this —
-  // only the hook/exec-tool paths recursed — so a cyclic or invalid nested
-  // workflow could be started via REST. This matches the strong validator.
-  const visit = (id: string, path: string[]): void => {
-    const workflowIdError = validateWorkflowId(id)
-    if (workflowIdError) {
-      errors.push(`Workflow "${id}": ${workflowIdError}`)
-      return
-    }
-    if (path.includes(id)) {
-      errors.push(`Workflow nesting cycle detected: ${[...path, id].join(' -> ')}`)
-      return
-    }
-    if (visited.has(id)) return
-    visited.add(id)
-
-    const def = loadDefinition(id, contentDir)
-    if (!def) {
-      errors.push(`Workflow definition not found: ${id}`)
-      return
-    }
-
-    errors.push(...validateDefinition(def, {
-      definitionId: id,
-      source: def.source,
-      contentDir,
-      knownWorkflowIds,
-      runtimeAgents: knownAgents,
-      assignee,
-      requireResolvedAgents: true,
-    }).map((message) => `Workflow "${id}": ${message}`))
-
-    const nestedIds = new Set<string>()
-    collectNestedWorkflowIds(def, nestedIds)
-    for (const nestedId of nestedIds) visit(nestedId, [...path, id])
-  }
-
-  visit(workflowId, [])
-
-  if (assignee && !knownAgents.has(assignee)) {
-    errors.push(`Assignee "${assignee}" is not a known runtime agent`)
-  }
-  return errors
-}
-
-async function createValidatedInstance(
-  taskId: string,
-  workflowId: string,
-  assignee: string | undefined,
-  contentDir?: string,
-  parentContext?: Record<string, unknown>,
-) {
-  const knownAgents = await getRuntimeAgentNames()
-  const errors = await validateWorkflowForStart(workflowId, assignee, contentDir, knownAgents)
-  if (errors.length > 0) {
-    throw new Error(errors.join('; '))
-  }
-  return createInstance(taskId, workflowId, contentDir, assignee, parentContext, knownAgents)
 }
 
 // ---------------------------------------------------------------------------
@@ -1086,7 +995,7 @@ function populateWorkflowRoutes(arr: any[]): void {
         assignee = getTask(taskId)?.agent
       } catch { /* best effort */ }
 
-      const instance = await createValidatedInstance(taskId, workflowId, assignee)
+      const instance = await createValidatedInstance(pluginCtx, taskId, workflowId, assignee)
 
       // Ensure the task's workflowId is persisted in Bakin task metadata
       try {
@@ -1308,89 +1217,6 @@ const workflowsPlugin: BakinPlugin = definePlugin({
     setGateNotificationSettings(gateNotificationSettings)
     const activeGateSettings = () => getGateNotificationSettings() ?? gateNotificationSettings
 
-    const getRuntimeAgentNames = async (): Promise<Set<string>> => {
-      const agents = await ctx.runtime.agents.list()
-      const names = new Set<string>()
-      for (const agent of agents) {
-        names.add(agent.id)
-        names.add(agent.name)
-      }
-      return names
-    }
-
-    const collectNestedWorkflowIds = (def: WorkflowDefinition, out: Set<string>): void => {
-      for (const step of def.steps) {
-        if (step.type === 'workflow') {
-          out.add((step as NestedWorkflowStep).workflow_id)
-        }
-      }
-    }
-
-    const validateWorkflowForStart = async (
-      workflowId: string,
-      assignee: string | undefined,
-      contentDir?: string,
-      runtimeAgents?: Set<string>,
-    ): Promise<string[]> => {
-      const errors: string[] = []
-      const knownAgents = runtimeAgents ?? await getRuntimeAgentNames()
-      const knownWorkflowIds = new Set(listDefinitions(contentDir).map((entry) => entry.name))
-      const visited = new Set<string>()
-
-      const visit = (id: string, path: string[]): void => {
-        const workflowIdError = validateWorkflowId(id)
-        if (workflowIdError) {
-          errors.push(`Workflow "${id}": ${workflowIdError}`)
-          return
-        }
-        if (path.includes(id)) {
-          errors.push(`Workflow nesting cycle detected: ${[...path, id].join(' -> ')}`)
-          return
-        }
-        if (visited.has(id)) return
-        visited.add(id)
-
-        const def = loadDefinition(id, contentDir)
-        if (!def) {
-          errors.push(`Workflow definition not found: ${id}`)
-          return
-        }
-
-        errors.push(...validateDefinition(def, {
-          definitionId: id,
-          source: def.source,
-          contentDir,
-          knownWorkflowIds,
-          runtimeAgents: knownAgents,
-          assignee,
-          requireResolvedAgents: true,
-        }).map((message) => `Workflow "${id}": ${message}`))
-
-        const nestedIds = new Set<string>()
-        collectNestedWorkflowIds(def, nestedIds)
-        for (const nestedId of nestedIds) visit(nestedId, [...path, id])
-      }
-
-      visit(workflowId, [])
-
-      return errors
-    }
-
-    const createValidatedInstance = async (
-      taskId: string,
-      workflowId: string,
-      assignee: string | undefined,
-      contentDir?: string,
-      parentContext?: Record<string, unknown>,
-    ) => {
-      const knownAgents = await getRuntimeAgentNames()
-      const errors = await validateWorkflowForStart(workflowId, assignee, contentDir, knownAgents)
-      if (errors.length > 0) {
-        throw new Error(errors.join('; '))
-      }
-      return createInstance(taskId, workflowId, contentDir, assignee, parentContext, knownAgents)
-    }
-
     const approvalRehydration = await rehydratePendingApprovals({
       runtime: ctx.runtime,
       channel: activeGateSettings().approvalChannel || 'general',
@@ -1507,7 +1333,7 @@ const workflowsPlugin: BakinPlugin = definePlugin({
 
     ctx.hooks.register('workflows.loadInstance', (d: Record<string, unknown>) => loadInstance(d.taskId as string, d.contentDir as string | undefined), { label: 'Load workflow instance.', summary: 'Loads the workflow instance attached to a task. Use it when a plugin needs current workflow state without reading workflow files directly.', hookKind: 'rpc' })
     ctx.hooks.register('workflows.saveInstance', (d: Record<string, unknown>) => saveInstance(d.instance as Parameters<typeof saveInstance>[0], d.contentDir as string | undefined), { label: 'Save workflow instance.', summary: 'Persists a workflow instance after a plugin has changed its state. Use it to keep workflow updates routed through the workflow plugin storage layer.', hookKind: 'rpc' })
-    ctx.hooks.register('workflows.createInstance', (d: Record<string, unknown>) => createValidatedInstance(d.taskId as string, d.workflowId as string, d.assignee as string | undefined, d.contentDir as string | undefined, d.parentContext as Record<string, unknown> | undefined), { label: 'Create workflow instance.', summary: 'Creates a workflow instance for a task and optional assignee context. Use it when task creation or routing should immediately attach a workflow.', hookKind: 'rpc' })
+    ctx.hooks.register('workflows.createInstance', (d: Record<string, unknown>) => createValidatedInstance(ctx, d.taskId as string, d.workflowId as string, d.assignee as string | undefined, d.contentDir as string | undefined, d.parentContext as Record<string, unknown> | undefined), { label: 'Create workflow instance.', summary: 'Creates a workflow instance for a task and optional assignee context. Use it when task creation or routing should immediately attach a workflow.', hookKind: 'rpc' })
     ctx.hooks.register('workflows.approveGate', (d: Record<string, unknown>) => approveGate(d.taskId as string, d.stepId as string, {
       approver: d.approver as ApprovalActor | undefined,
       contentDir: d.contentDir as string | undefined,
@@ -1628,7 +1454,7 @@ const workflowsPlugin: BakinPlugin = definePlugin({
             assignee = getTask(taskId)?.agent
           } catch { /* best effort */ }
 
-          const instance = await createValidatedInstance(taskId, workflowId, assignee)
+          const instance = await createValidatedInstance(ctx, taskId, workflowId, assignee)
 
           try {
             await updateTask(taskId, { workflowId })
