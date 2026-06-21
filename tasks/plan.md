@@ -197,11 +197,22 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
     collectWorkflowSkillRefs/countSteps — pure definition+drift aggregation). 2,146 → ~1,950. No pluginCtx
     coupling, no module-load concerns. Verified: typecheck/lint/workflows suite 419-0/full-suite 5123-0/binary
     build/isolated-home boot smoke (Workflows Ready; GET /definitions [buildTemplateList path] + /node-types → 200).
-  - ☐ Phase B (DEFERRED, behavior-touching): `lib/start-validation.ts` — dedupe the two
-    validateWorkflowForStart/createValidatedInstance/getRuntimeAgentNames/collectNestedWorkflowIds copies into one
-    ctx-injected module (the #510 dedup; both copies are already the strong recursive form so it's a true dedup,
-    net behavior identical — keep the REST cycle-rejection regression test green). Then `lib/search-sync.ts` +
-    the pluginCtx→ctx-accessor surgery + route extraction (`routes/{definitions,gates,instances}.ts`), exec-tools,
-    register-hooks, channel-approvals — each its own focused PR with a boot smoke. The decideGate 6-block collapse
-    + stdJsonResponses const + typed defineRoute[] arrays stay deferred redesigns (not required for the split).
+  - ☑ Phase B — the #510 validator dedup: `lib/start-validation.ts` collapses the two copies of
+    getRuntimeAgentNames/collectNestedWorkflowIds/validateWorkflowForStart/createValidatedInstance (a module-scope
+    set reading the `pluginCtx` global for routes + an activate-scope set closing over `ctx` for hooks/exec-tools)
+    into ONE ctx-injected module. The two copies had DIVERGED — only the route copy carried the trailing
+    `assignee not a known runtime agent` superset check — so the unified validator keeps the superset (REST already
+    enforced it; hooks/exec-tools now do too, the intentional tightening toward one strong validator). The runtime-
+    agent dep is injected as a `PluginContext | null` (null → empty agent set, matching the old module-scope guard);
+    routes pass the `pluginCtx` global, hooks/exec-tools pass `ctx`. index.ts now imports only `createValidatedInstance`
+    and dropped its now-unused `createInstance` import. Regression: new gate-hooks test proves the createInstance
+    HOOK rejects a nested-workflow cycle (parity with the existing REST cycle test) — i.e. all three start paths
+    share the recursive validator. 2,146(pre-A) → ~1,760. Verified: typecheck/lint/workflows suite 420-0/full-suite
+    5124-0/binary build/boot smoke (POST /instances/start → 400 from createValidatedInstance, not 5xx).
+  - ☐ Phase C (DEFERRED, behavior-touching): `lib/search-sync.ts` + the pluginCtx→ctx-accessor surgery + route
+    extraction (`routes/{definitions,gates,instances}.ts`), exec-tools, register-hooks, channel-approvals — each its
+    own focused PR with a boot smoke. **OPEN DECISION for Mark:** route extraction REQUIRES replacing the mutable
+    `pluginCtx` module global (still read by indexInstance + one route at index.ts ~120/520) with the appendix's
+    shared-ctx-accessor design — confirm before taking it, or stop the split here. The decideGate 6-block collapse +
+    stdJsonResponses const + typed defineRoute[] arrays stay deferred redesigns (not required for the split).
 - Remaining: workflow-canvas-editor (1,803), models-page (1,205), schedule/index (1,443) + test splits.

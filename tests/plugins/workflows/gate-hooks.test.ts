@@ -249,6 +249,40 @@ describe('workflows gate hooks', () => {
     expect((missingStep.errors as string[])[0]).toContain('not a gate')
   })
 
+  it('workflows.createInstance routes through the unified recursive start validator (#510)', async () => {
+    // #510 dedup: REST, the createInstance hook, and the start exec tool now
+    // share ONE strong recursive validator. Proven here on the hook path by
+    // rejecting a nested-workflow cycle (parity with the REST cycle test in
+    // routes.test.ts) — cycle detection is agent-independent, so it isolates
+    // the wiring rather than the empty-mock agent set.
+    writeFileSync(join(defsDir, 'cycle-a.yaml'), `name: Cycle A
+description: A
+version: 1
+steps:
+  - id: nest-b
+    type: workflow
+    label: Run B
+    workflow_id: cycle-b
+`)
+    writeFileSync(join(defsDir, 'cycle-b.yaml'), `name: Cycle B
+description: B
+version: 1
+steps:
+  - id: nest-a
+    type: workflow
+    label: Run A
+    workflow_id: cycle-a
+`)
+    const hooks = await activateWithHooks()
+    await expect(
+      hooks.get('workflows.createInstance')!({
+        taskId: 'task-cycle-hook',
+        workflowId: 'cycle-a',
+        contentDir: testDir,
+      }),
+    ).rejects.toThrow('cycle detected')
+  })
+
   it('workflows.reopenFromStep reopens the same workflow instance', async () => {
     const hooks = await activateWithHooks()
     createPendingGate('task-reopen-hook')
