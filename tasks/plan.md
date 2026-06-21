@@ -218,8 +218,16 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
       activate calls setWorkflowPluginContext(ctx), the registerFileBackedContentType block imports the search docs.
       ~1,770 → ~1,700. Verified: typecheck/lint/workflows 420-0/full-suite 5124-0/binary build/boot smoke (bakin_workflows
       content type registers; GET /definitions + /search → 200).
-    - ☐ C2 — route extraction (`routes/{definitions,gates,instances}.ts`) as typed defineRoute[] builders now that
-      handlers reach ctx via the accessor; then C3 — exec-tools + register-hooks + channel-approvals activate-body
-      extractions. The decideGate 6-block collapse + getGateDescription/buildGateAuditPayload dedup + stdJsonResponses
-      const + typed-route casts stay deferred redesigns (not required for the split).
+    - ☑ C2a — definition routes: `lib/route-schemas.ts` (the shared passthroughWf/errorResponseWf/htmlResponseWf/
+      repairSkillBodyWf zod consts) + `lib/routes/definitions.ts` exporting a typed `defineRoute[]` (notification-channels,
+      /definitions GET/POST/PUT/DELETE/:name GET, /skills/:name/repair, availability PATCH, /node-types) with the
+      user-YAML CRUD helpers (getDefinitionsDir/writeUserDefinition/findExistingUserDefinitionPath) folded in. definePlugin
+      now spreads `[...definitionRoutes, ...workflowRoutes]`; populateWorkflowRoutes shrank to instances+gates. index.ts
+      shed ~10 now-unused imports. 2,146(pre-A) → ~1,400. Verified: typecheck/lint/workflows 420-0/full-suite 5124-0/binary
+      build/boot smoke (GET /definitions + /node-types + /notification-channels → 200, POST /definitions bad body → 400).
+    - ☐ C2b — `routes/instances.ts` (steps/instances/start), ☐ C2c — `routes/gates.ts` (approve/reject/decision-page/
+      pending/status; needs lib/gate-audit.ts [getGateDescription+buildGateAuditPayload dedup] + lib/gate-html.ts
+      [formValue/gateDecisionHtmlResponse/escapeHtml] + a gate-settings accessor for activeGateSettings). Then C3 —
+      exec-tools + register-hooks + channel-approvals activate-body extractions. The decideGate 6-block collapse +
+      stdJsonResponses const + typed-route casts stay deferred redesigns (not required for the split).
 - Remaining: workflow-canvas-editor (1,803), models-page (1,205), schedule/index (1,443) + test splits.
