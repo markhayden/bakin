@@ -29,8 +29,6 @@ import {
 } from './lib/health-checks'
 import {
   repairWorkflowSkillDrift,
-  scanWorkflowSkillDrift,
-  type WorkflowSkillDriftReport,
 } from './lib/workflow-skill-drift'
 import {
   isReadOnly,
@@ -39,7 +37,7 @@ import {
   getShadowedSource,
   type DefinitionSource,
 } from './lib/source-registry'
-import { isWorkflowDisabled, readDisabledWorkflowIds, setWorkflowDisabled } from './lib/availability'
+import { isWorkflowDisabled, setWorkflowDisabled } from './lib/availability'
 import {
   createInstance,
   loadInstance,
@@ -60,6 +58,13 @@ import {
   type WorkflowToolUseAction,
 } from './lib/runtime'
 import { matchWorkflow } from './lib/matcher'
+import {
+  buildTemplateList,
+  resolveSubWorkflows,
+  workflowSkillDriftBySkill,
+  workflowSkillDriftForDefinition,
+} from './lib/template-list'
+import { formatStepContext } from './lib/step-format'
 import { createLogger } from '../../src/core/logger'
 import { getContentDir } from '../../src/core/content-dir'
 import { getTask, updateTask } from '../../src/core/task-store'
@@ -75,7 +80,7 @@ import {
 } from './lib/notifications'
 import { approvalRefFromRecord, findPendingApprovalForGate, getApprovalRecord } from './lib/approval-store'
 import { rehydratePendingApprovals } from './lib/approval-rehydration'
-import type { WorkflowTemplate, WorkflowDefinition, WorkflowInstance, NestedWorkflowStep, WorkflowSkillDriftSummary } from './types'
+import type { WorkflowDefinition, WorkflowInstance, NestedWorkflowStep } from './types'
 
 const log = createLogger('workflows')
 let unsubscribeApprovalResponses: (() => void) | null = null
@@ -97,105 +102,6 @@ function activeGateSettings(): GateNotificationSettings {
 }
 
 // ─── Module-scope helpers ────────────────────────────────────────────────
-
-function resolveSubWorkflows(steps: WorkflowDefinition['steps'], subWorkflows: Record<string, WorkflowDefinition>): void {
-  for (const step of steps) {
-    if (step.type === 'workflow') {
-      const nested = step as NestedWorkflowStep
-      if (nested.workflow_id && !subWorkflows[nested.workflow_id]) {
-        const subDef = loadDefinition(nested.workflow_id)
-        if (subDef) {
-          subWorkflows[nested.workflow_id] = subDef
-          resolveSubWorkflows(subDef.steps, subWorkflows)
-        }
-      }
-    }
-  }
-}
-
-function buildTemplateList(options: { includeDisabled?: boolean } = {}): { templates: WorkflowTemplate[]; subWorkflows: Record<string, WorkflowDefinition> } {
-  const defs = listDefinitions()
-  const disabledWorkflowIds = readDisabledWorkflowIds()
-  const subWorkflows: Record<string, WorkflowDefinition> = {}
-  const driftBySkill = workflowSkillDriftBySkill()
-  const templates: WorkflowTemplate[] = defs.flatMap(d => {
-    const disabled = d.source !== 'user' && disabledWorkflowIds.has(d.name)
-    const shadowedSource = d.source === 'user' ? getShadowedSource(d.name) : undefined
-    if (disabled && !options.includeDisabled) return []
-    resolveSubWorkflows(d.definition.steps, subWorkflows)
-    return [{
-      name: d.definition.name,
-      filename: d.name,
-      description: d.definition.description,
-      stepCount: countSteps(d.definition.steps),
-      definition: d.definition,
-      source: d.source,
-      pluginId: d.pluginId,
-      packageId: d.packageId,
-      disabled,
-      shadowedSource,
-      skillDrift: workflowSkillDriftForDefinition(d.definition, driftBySkill, subWorkflows),
-    }]
-  })
-  return { templates, subWorkflows }
-}
-
-function workflowSkillDriftBySkill(): Map<string, WorkflowSkillDriftReport> {
-  return new Map(scanWorkflowSkillDrift(getContentDir()).map(report => [report.skillName, report]))
-}
-
-function workflowSkillDriftForDefinition(
-  definition: WorkflowDefinition,
-  driftBySkill: Map<string, WorkflowSkillDriftReport>,
-  subWorkflows: Record<string, WorkflowDefinition> = {},
-): WorkflowSkillDriftSummary | undefined {
-  const byStep: Record<string, string[]> = {}
-  const reports = new Map<string, WorkflowSkillDriftReport>()
-  for (const ref of collectWorkflowSkillRefs(definition.steps, subWorkflows)) {
-    const report = driftBySkill.get(ref.skill)
-    if (!report) continue
-    reports.set(report.skillName, report)
-    byStep[ref.stepId] = [...(byStep[ref.stepId] ?? []), ref.skill]
-  }
-  const uniqueReports = Array.from(reports.values())
-  if (uniqueReports.length === 0) return undefined
-  return {
-    count: uniqueReports.length,
-    repairableCount: uniqueReports.filter(report => report.repairable).length,
-    skills: uniqueReports.map(report => report.skillName),
-    reports: uniqueReports,
-    byStep,
-  }
-}
-
-function collectWorkflowSkillRefs(
-  steps: WorkflowDefinition['steps'],
-  subWorkflows: Record<string, WorkflowDefinition> = {},
-  idPrefix = '',
-  workflowStack = new Set<string>(),
-): Array<{ stepId: string; skill: string }> {
-  const refs: Array<{ stepId: string; skill: string }> = []
-  for (const step of steps) {
-    const stepId = idPrefix ? `${idPrefix}__${step.id}` : step.id
-    const skill = (step as { skill?: unknown }).skill
-    if (typeof skill === 'string' && skill.length > 0) {
-      refs.push({ stepId, skill })
-    }
-    if (step.type === 'parallel') {
-      refs.push(...collectWorkflowSkillRefs(step.steps, subWorkflows, idPrefix, workflowStack))
-    }
-    if (step.type === 'workflow') {
-      const workflowId = (step as NestedWorkflowStep).workflow_id
-      const nested = workflowId ? subWorkflows[workflowId] : undefined
-      if (nested && !workflowStack.has(workflowId)) {
-        const nextStack = new Set(workflowStack)
-        nextStack.add(workflowId)
-        refs.push(...collectWorkflowSkillRefs(nested.steps, subWorkflows, stepId, nextStack))
-      }
-    }
-  }
-  return refs
-}
 
 function instanceToSearchDoc(inst: WorkflowInstance): Record<string, unknown> {
   const def = loadDefinition(inst.workflowId)
@@ -343,118 +249,10 @@ async function createValidatedInstance(
 // Human-readable step context formatter (migrated from scripts/lib/get-step.ts)
 // ---------------------------------------------------------------------------
 
-function formatSchema(schema: Record<string, unknown>, indent = 0): string {
-  const prefix = '  '.repeat(indent)
-  const lines: string[] = []
-  const properties = (schema.properties || schema.fields || schema) as Record<string, Record<string, unknown>>
-  const required = new Set<string>((schema.required as string[]) || [])
-
-  for (const [key, def] of Object.entries(properties)) {
-    if (key === 'type' || key === 'required' || key === 'properties' || key === 'fields') continue
-    const type = (def?.type as string) || 'unknown'
-    const desc = (def?.description as string) || ''
-    const req = required.has(key) ? ', required' : ''
-    lines.push(`${prefix}- ${key} (${type}${req})${desc ? ': ' + desc : ''}`)
-    if (type === 'object' && (def.properties || def.fields)) {
-      lines.push(formatSchema(def as Record<string, unknown>, indent + 1))
-    }
-  }
-  return lines.join('\n')
-}
-
-function formatStepContext(step: Record<string, unknown>): string {
-  if (step.status === 'pending_approval') {
-    const sections: string[] = []
-    sections.push(`STEP: ${step.stepId ?? '(gate)'}`)
-    sections.push('STATUS: pending_approval')
-    if (step.label) sections.push(`LABEL: ${step.label}`)
-    sections.push('')
-    sections.push('WAITING FOR HUMAN APPROVAL')
-    sections.push('No agent action is required until this gate is approved or rejected.')
-    sections.push('Use bakin_exec_check_gates for the current approval status.')
-    return sections.join('\n')
-  }
-
-  if (step.status === 'complete') {
-    return [
-      'STATUS: complete',
-      'WORKFLOW COMPLETE',
-      'No further workflow step is active for this task.',
-    ].join('\n')
-  }
-
-  const sections: string[] = []
-  sections.push(`STEP: ${step.stepId}`)
-  sections.push(`STATUS: ${step.status}`)
-  if (step.label) sections.push(`LABEL: ${step.label}`)
-  if (step.agent) sections.push(`AGENT: ${step.agent}`)
-
-  if (step.instructions) {
-    sections.push('')
-    sections.push('INSTRUCTIONS:')
-    sections.push(step.instructions as string)
-  }
-
-  if (step.priorStepOutput) {
-    sections.push('')
-    sections.push('PRIOR STEP OUTPUT:')
-    sections.push(typeof step.priorStepOutput === 'string' ? step.priorStepOutput : JSON.stringify(step.priorStepOutput, null, 2))
-  } else if (!step.stepOutputs || Object.keys(step.stepOutputs as Record<string, unknown>).length === 0) {
-    sections.push('')
-    sections.push('PRIOR STEP OUTPUT:')
-    sections.push('(none — this is the first step)')
-  }
-
-  const stepOutputs = step.stepOutputs as Record<string, unknown> | undefined
-  if (stepOutputs && Object.keys(stepOutputs).length > 0) {
-    sections.push('')
-    sections.push('ALL PRIOR STEP OUTPUTS:')
-    for (const [stepId, output] of Object.entries(stepOutputs)) {
-      sections.push(`  [${stepId}]:`)
-      sections.push('  ' + JSON.stringify(output, null, 2).replace(/\n/g, '\n  '))
-    }
-  }
-
-  if (step.output_schema) {
-    sections.push('')
-    sections.push('REQUIRED OUTPUT SCHEMA:')
-    sections.push(formatSchema(step.output_schema as Record<string, unknown>))
-  }
-
-  if (step.rejectionReason) {
-    sections.push('')
-    sections.push('REJECTION CONTEXT:')
-    sections.push(step.rejectionReason as string)
-    if (step.previousOutput) {
-      sections.push('')
-      sections.push('YOUR PREVIOUS OUTPUT (needs revision):')
-      sections.push(JSON.stringify(step.previousOutput, null, 2))
-    }
-  } else {
-    sections.push('')
-    sections.push('REJECTION CONTEXT:')
-    sections.push('(none — first attempt)')
-  }
-
-  return sections.join('\n')
-}
-
 /** Fire-and-forget dispatch trigger so the next workflow step's agent starts immediately. */
 function triggerDispatch() {
   const port = Number(process.env.PORT || 3737)
   fetch(`http://localhost:${port}/api/dispatch`, { method: 'POST' }).catch(() => {})
-}
-
-function countSteps(steps: { type: string; steps?: unknown[] }[]): number {
-  let count = 0
-  for (const step of steps) {
-    if (step.type === 'parallel' && Array.isArray(step.steps)) {
-      count += step.steps.length
-    } else {
-      count++
-    }
-  }
-  return count
 }
 
 /** Convert a workflow definition to a search document. */
