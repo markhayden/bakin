@@ -209,10 +209,17 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
     HOOK rejects a nested-workflow cycle (parity with the existing REST cycle test) — i.e. all three start paths
     share the recursive validator. 2,146(pre-A) → ~1,760. Verified: typecheck/lint/workflows suite 420-0/full-suite
     5124-0/binary build/boot smoke (POST /instances/start → 400 from createValidatedInstance, not 5xx).
-  - ☐ Phase C (DEFERRED, behavior-touching): `lib/search-sync.ts` + the pluginCtx→ctx-accessor surgery + route
-    extraction (`routes/{definitions,gates,instances}.ts`), exec-tools, register-hooks, channel-approvals — each its
-    own focused PR with a boot smoke. **OPEN DECISION for Mark:** route extraction REQUIRES replacing the mutable
-    `pluginCtx` module global (still read by indexInstance + one route at index.ts ~120/520) with the appendix's
-    shared-ctx-accessor design — confirm before taking it, or stop the split here. The decideGate 6-block collapse +
-    stdJsonResponses const + typed defineRoute[] arrays stay deferred redesigns (not required for the split).
+  - Phase C (Mark approved the pluginCtx→ctx-accessor design) — focused PRs, each with a boot smoke:
+    - ☑ C1 — accessor + search-sync dedup: new `lib/plugin-context.ts` (setWorkflowPluginContext/getWorkflowPluginContext)
+      REPLACES the mutable `pluginCtx` module global outright, and new `lib/search-sync.ts` collapses the module-scope
+      vs activate-scope copies of instanceToSearchDoc/definitionToSearchDoc/indexInstance into one ctx-injected set
+      (reads the accessor; null-before-activate → no-op, matching the old guard) + adds indexDefinition for the
+      availability route. index.ts no longer declares `pluginCtx` at all: the start route reads getWorkflowPluginContext(),
+      activate calls setWorkflowPluginContext(ctx), the registerFileBackedContentType block imports the search docs.
+      ~1,770 → ~1,700. Verified: typecheck/lint/workflows 420-0/full-suite 5124-0/binary build/boot smoke (bakin_workflows
+      content type registers; GET /definitions + /search → 200).
+    - ☐ C2 — route extraction (`routes/{definitions,gates,instances}.ts`) as typed defineRoute[] builders now that
+      handlers reach ctx via the accessor; then C3 — exec-tools + register-hooks + channel-approvals activate-body
+      extractions. The decideGate 6-block collapse + getGateDescription/buildGateAuditPayload dedup + stdJsonResponses
+      const + typed-route casts stay deferred redesigns (not required for the split).
 - Remaining: workflow-canvas-editor (1,803), models-page (1,205), schedule/index (1,443) + test splits.

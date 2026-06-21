@@ -35,7 +35,6 @@ import {
   getDefinition as getRegistryDefinition,
   getManagedDefinition,
   getShadowedSource,
-  type DefinitionSource,
 } from './lib/source-registry'
 import { isWorkflowDisabled, setWorkflowDisabled } from './lib/availability'
 import {
@@ -65,6 +64,8 @@ import {
 } from './lib/template-list'
 import { formatStepContext } from './lib/step-format'
 import { createValidatedInstance } from './lib/start-validation'
+import { getWorkflowPluginContext, setWorkflowPluginContext } from './lib/plugin-context'
+import { instanceToSearchDoc, definitionToSearchDoc, indexInstance, indexDefinition } from './lib/search-sync'
 import { createLogger } from '../../src/core/logger'
 import { getContentDir } from '../../src/core/content-dir'
 import { getTask, updateTask } from '../../src/core/task-store'
@@ -85,9 +86,6 @@ import type { WorkflowDefinition, WorkflowInstance } from './types'
 const log = createLogger('workflows')
 let unsubscribeApprovalResponses: (() => void) | null = null
 
-// ─── Module-scope state populated during activate() ──────────────────────
-let pluginCtx: PluginContext | null = null
-
 const passthroughWf = z.object({}).passthrough()
 const errorResponseWf = z.object({ error: z.string() }).passthrough()
 const htmlResponseWf = { contentType: 'text/html' as const }
@@ -102,32 +100,6 @@ function activeGateSettings(): GateNotificationSettings {
 }
 
 // ─── Module-scope helpers ────────────────────────────────────────────────
-
-function instanceToSearchDoc(inst: WorkflowInstance): Record<string, unknown> {
-  const def = loadDefinition(inst.workflowId)
-  const stepsText = def?.steps.map(s => `${s.id}: ${s.label || ''}`).join(', ') || ''
-  return {
-    name: def?.name || inst.workflowId,
-    description: def?.description || '',
-    type: 'instance',
-    status: inst.status,
-    task_id: inst.taskId,
-    steps: stepsText,
-    updated_at: inst.updatedAt || new Date().toISOString(),
-  }
-}
-
-async function indexInstance(taskId: string): Promise<void> {
-  if (!pluginCtx) return
-  try {
-    const inst = loadInstance(taskId)
-    if (inst) {
-      await pluginCtx.search.index(`inst:${taskId}`, instanceToSearchDoc(inst))
-    }
-  } catch (err) {
-    log.warn('Failed to index workflow instance', { taskId, error: err instanceof Error ? err.message : String(err) })
-  }
-}
 
 function getGateDescription(workflowId: string, stepId: string): string | undefined {
   const def = loadDefinition(workflowId)
@@ -162,21 +134,6 @@ function buildGateAuditPayload(
 function triggerDispatch() {
   const port = Number(process.env.PORT || 3737)
   fetch(`http://localhost:${port}/api/dispatch`, { method: 'POST' }).catch(() => {})
-}
-
-/** Convert a workflow definition to a search document. */
-function definitionToSearchDoc(name: string, def: WorkflowDefinition, source?: DefinitionSource): Record<string, unknown> {
-  const stepsText = def.steps.map(s => `${s.id}: ${s.label || ''}`).join(', ')
-  const definitionSource = source ?? (def as WorkflowDefinition & { source?: DefinitionSource }).source
-  return {
-    name: def.name,
-    description: def.description || '',
-    type: 'definition',
-    status: definitionSource !== 'user' && isWorkflowDisabled(name) ? 'disabled' : 'active',
-    task_id: '',
-    steps: stepsText,
-    updated_at: new Date().toISOString(),
-  }
 }
 
 function populateWorkflowRoutes(arr: any[]): void {
@@ -426,10 +383,7 @@ function populateWorkflowRoutes(arr: any[]): void {
 
     setWorkflowDisabled(name, body.disabled)
     try {
-      await pluginCtx?.search.index(
-        `def:${name}`,
-        definitionToSearchDoc(name, effectiveDefinition, effectiveDefinition.source),
-      )
+      await indexDefinition(name, effectiveDefinition, effectiveDefinition.source)
     } catch (err) {
       log.warn('Failed to reindex workflow availability change', { name, error: err instanceof Error ? err.message : String(err) })
     }
@@ -995,7 +949,7 @@ function populateWorkflowRoutes(arr: any[]): void {
         assignee = getTask(taskId)?.agent
       } catch { /* best effort */ }
 
-      const instance = await createValidatedInstance(pluginCtx, taskId, workflowId, assignee)
+      const instance = await createValidatedInstance(getWorkflowPluginContext(), taskId, workflowId, assignee)
 
       // Ensure the task's workflowId is persisted in Bakin task metadata
       try {
@@ -1045,24 +999,9 @@ const workflowsPlugin: BakinPlugin = definePlugin({
   contentFiles: [],
 
   async activate(ctx: PluginContext) {
-    pluginCtx = ctx
+    setWorkflowPluginContext(ctx)
 
     // ─── Search Content Type Registration ─────────────────────────────
-
-    /** Convert a workflow instance to a search document */
-    function instanceToSearchDoc(inst: WorkflowInstance): Record<string, unknown> {
-      const def = loadDefinition(inst.workflowId)
-      const stepsText = def?.steps.map(s => `${s.id}: ${s.label || ''}`).join(', ') || ''
-      return {
-        name: def?.name || inst.workflowId,
-        description: def?.description || '',
-        type: 'instance',
-        status: inst.status,
-        task_id: inst.taskId,
-        steps: stepsText,
-        updated_at: inst.updatedAt || new Date().toISOString(),
-      }
-    }
 
     ctx.search.registerFileBackedContentType({
       table: 'workflows',
@@ -1179,18 +1118,6 @@ const workflowsPlugin: BakinPlugin = definePlugin({
         return false
       },
     })
-
-    /** Index a workflow instance in search */
-    async function indexInstance(taskId: string): Promise<void> {
-      try {
-        const inst = loadInstance(taskId)
-        if (inst) {
-          await ctx.search.index(`inst:${taskId}`, instanceToSearchDoc(inst))
-        }
-      } catch (err) {
-        log.warn('Failed to index workflow instance', { taskId, error: err instanceof Error ? err.message : String(err) })
-      }
-    }
 
     // ─── Plugin-shipped workflow defaults ─────────────────────────────
     // Load every YAML in defaults/workflows/ and register through
