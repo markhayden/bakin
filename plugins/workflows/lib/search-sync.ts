@@ -9,12 +9,18 @@
  * accessor — null ctx before activate degrades to a no-op, matching the old
  * `if (!pluginCtx) return` guard.
  */
+import { existsSync, readFileSync, readdirSync } from 'fs'
+import { join } from 'path'
+import yaml from 'js-yaml'
+import type { PluginContext } from '@bakin/core/plugin-types'
 import type { WorkflowDefinition, WorkflowInstance } from '../types'
 import type { DefinitionSource } from './source-registry'
-import { loadDefinition } from './parser'
+import { getManagedDefinition } from './source-registry'
+import { loadDefinition, listDefinitions } from './parser'
 import { loadInstance } from './runtime'
 import { isWorkflowDisabled } from './availability'
 import { getWorkflowPluginContext } from './plugin-context'
+import { getContentDir } from './content-dir'
 import { createLogger } from '@bakin/core/logger'
 
 const log = createLogger('workflows')
@@ -72,4 +78,127 @@ export async function indexDefinition(name: string, def: WorkflowDefinition, sou
   const ctx = getWorkflowPluginContext()
   if (!ctx) return
   await ctx.search.index(`def:${name}`, definitionToSearchDoc(name, def, source))
+}
+
+/**
+ * Register the file-backed `workflows` search content type: definitions
+ * (yaml/yml) and instances (json) under the content dir, with the onUnlink
+ * shadow-fallback, full reindex generator, and existence verifier.
+ */
+export function registerWorkflowSearch(ctx: PluginContext): void {
+  ctx.search.registerFileBackedContentType({
+    table: 'workflows',
+    schema: {
+      name: { type: 'text' },
+      description: { type: 'text' },
+      type: { type: 'keyword' },
+      status: { type: 'keyword' },
+      task_id: { type: 'keyword' },
+      steps: { type: 'text' },
+      updated_at: { type: 'datetime' },
+    },
+    searchableFields: ['name', 'description', 'steps'],
+    rerankField: 'description',
+    embeddingTemplate: '{{name}} {{description}} {{steps}}',
+    facets: ['type', 'status'],
+    filePatterns: [
+      {
+        pattern: 'workflows/definitions/*.{yaml,yml}',
+        fileToId: (rel) => {
+          const name = rel.replace(/^workflows\/definitions\//, '').replace(/\.(yaml|yml)$/, '')
+          return `def:${name}`
+        },
+        fileToDoc: async (rel) => {
+          const name = rel.replace(/^workflows\/definitions\//, '').replace(/\.(yaml|yml)$/, '')
+          const def = loadDefinition(name)
+          return def ? definitionToSearchDoc(name, def, def.source) : null
+        },
+      },
+      {
+        pattern: 'workflows/instances/*.json',
+        fileToId: (rel) => {
+          const taskId = rel.replace(/^workflows\/instances\//, '').replace(/\.json$/, '')
+          return `inst:${taskId}`
+        },
+        fileToDoc: async (rel, content) => {
+          try {
+            const data = JSON.parse(content) as WorkflowInstance
+            return instanceToSearchDoc(data)
+          } catch {
+            return null
+          }
+        },
+      },
+    ],
+    preserveVirtualDocuments: true,
+    onUnlink: async (rel) => {
+      if (rel.startsWith('workflows/definitions/')) {
+        const name = rel.replace(/^workflows\/definitions\//, '').replace(/\.(yaml|yml)$/, '')
+        const defsDir = join(getContentDir(), 'workflows', 'definitions')
+        const alternateUserPath = rel.endsWith('.yaml')
+          ? join(defsDir, `${name}.yml`)
+          : join(defsDir, `${name}.yaml`)
+
+        if (existsSync(alternateUserPath)) {
+          const alternateDefinition = yaml.load(readFileSync(alternateUserPath, 'utf-8')) as WorkflowDefinition
+          await ctx.search.index(
+            `def:${name}`,
+            definitionToSearchDoc(name, { ...alternateDefinition, source: 'user' }, 'user'),
+          )
+          return
+        }
+
+        const fallbackEntry = getManagedDefinition(name)
+        if (fallbackEntry) {
+          await ctx.search.index(
+            `def:${name}`,
+            definitionToSearchDoc(
+              name,
+              { ...fallbackEntry.definition, source: fallbackEntry.source },
+              fallbackEntry.source,
+            ),
+          )
+        } else {
+          await ctx.search.remove(`def:${name}`)
+        }
+        return
+      }
+      if (rel.startsWith('workflows/instances/')) {
+        const taskId = rel.replace(/^workflows\/instances\//, '').replace(/\.json$/, '')
+        await ctx.search.remove(`inst:${taskId}`)
+      }
+    },
+    reindex: async function* () {
+      const contentDir = getContentDir()
+
+      // Yield effective definitions from every source: plugin defaults,
+      // agent-package definitions, and user YAML shadows.
+      for (const entry of listDefinitions(contentDir)) {
+        yield { key: `def:${entry.name}`, doc: definitionToSearchDoc(entry.name, entry.definition, entry.source) }
+      }
+
+      // Yield instances
+      const instancesDir = join(contentDir, 'workflows', 'instances')
+      if (existsSync(instancesDir)) {
+        for (const file of readdirSync(instancesDir).filter(f => f.endsWith('.json'))) {
+          try {
+            const data = JSON.parse(readFileSync(join(instancesDir, file), 'utf-8')) as WorkflowInstance
+            yield { key: `inst:${data.taskId}`, doc: instanceToSearchDoc(data) }
+          } catch { /* skip corrupt instances */ }
+        }
+      }
+    },
+    verifyExists: async (key: string) => {
+      const contentDir = getContentDir()
+      if (key.startsWith('def:')) {
+        const name = key.slice(4)
+        return loadDefinition(name, contentDir) !== null
+      }
+      if (key.startsWith('inst:')) {
+        const taskId = key.slice(5)
+        return existsSync(join(contentDir, 'workflows', 'instances', `${taskId}.json`))
+      }
+      return false
+    },
+  })
 }
