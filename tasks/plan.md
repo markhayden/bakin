@@ -248,9 +248,16 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
       index.ts shed buildTemplateList/resolveSubWorkflows/formatStepContext/getTask/updateTask/z imports. ~755 → 472.
       Verified: typecheck/lint/workflows 420-0 (incl. exec-tools.test.ts callTool coverage)/full-suite 5124-0/binary
       build/boot smoke (plugin Ready; /definitions + /instances + /gates/pending → 200).
-    - ☐ C3b — register-hooks (`lib/register-hooks.ts`, the ~19 ctx.hooks.register calls) + channel-approvals
-      (`lib/channel-approvals.ts` — rehydratePendingApprovals + the subscribeApprovalResponses handler that uses
-      gate-audit/gate-settings) + optionally registerWorkflowSearch (the registerFileBackedContentType block) into
-      search-sync. After that index.ts is activate-orchestration-only (~220-line target). The decideGate 6-block collapse
-      + stdJsonResponses const + typed-route casts + the submit_step error-message classification stay deferred redesigns.
+    - ☑ C3b — register-hooks + channel-approvals: `lib/register-hooks.ts` (registerWorkflowHooks(ctx) — all 21
+      ctx.hooks.register RPC/event registrations) + `lib/channel-approvals.ts` (wireChannelApprovals(ctx) →
+      rehydratePendingApprovals + the subscribeApprovalResponses handler driving approve/rejectGate from a channel,
+      returns the unsubscribe handle for onShutdown). activate() now reads as orchestration: setWorkflowPluginContext →
+      registerFileBackedContentType → loadDefaultWorkflows → notification wiring → wireChannelApprovals →
+      registerWorkflowHooks → health checks → registerWorkflowExecTools. index.ts shed ~28 now-unused imports.
+      472 → 288. Verified: typecheck/lint/workflows 420-0/full-suite 5124-0/binary build/boot smoke (plugin Ready,
+      hooks+channel wiring active, all route groups 200).
+    - ☐ C3c (OPTIONAL, final tidy) — fold the inline registerFileBackedContentType block (~115 lines) into
+      search-sync as registerWorkflowSearch(ctx); would take index.ts to ~175. The remaining 288 is already
+      activate-orchestration-only (beats the appendix's ~220 remainder target). The decideGate 6-block collapse +
+      stdJsonResponses const + typed-route casts + the submit_step error-message classification stay deferred redesigns.
 - Remaining: workflow-canvas-editor (1,803), models-page (1,205), schedule/index (1,443) + test splits.
