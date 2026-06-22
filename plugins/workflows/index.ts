@@ -54,10 +54,12 @@ import {
 } from './lib/template-list'
 import { formatStepContext } from './lib/step-format'
 import { createValidatedInstance } from './lib/start-validation'
-import { getWorkflowPluginContext, setWorkflowPluginContext } from './lib/plugin-context'
+import { setWorkflowPluginContext } from './lib/plugin-context'
 import { instanceToSearchDoc, definitionToSearchDoc, indexInstance } from './lib/search-sync'
 import { passthroughWf, errorResponseWf, htmlResponseWf } from './lib/route-schemas'
 import { definitionRoutes } from './lib/routes/definitions'
+import { instanceRoutes } from './lib/routes/instances'
+import { triggerDispatch } from './lib/trigger-dispatch'
 import { createLogger } from '../../src/core/logger'
 import { getContentDir } from '../../src/core/content-dir'
 import { getTask, updateTask } from '../../src/core/task-store'
@@ -114,77 +116,8 @@ function buildGateAuditPayload(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Human-readable step context formatter (migrated from scripts/lib/get-step.ts)
-// ---------------------------------------------------------------------------
-
-/** Fire-and-forget dispatch trigger so the next workflow step's agent starts immediately. */
-function triggerDispatch() {
-  const port = Number(process.env.PORT || 3737)
-  fetch(`http://localhost:${port}/api/dispatch`, { method: 'POST' }).catch(() => {})
-}
-
 function populateWorkflowRoutes(arr: any[]): void {
-  // ─── Runtime Routes ───────────────────────────────────────────────
-
-  // GET /steps/:taskId — get current step for a task
-  const getStepHandler = async (req: Request, _ctx: PluginContextLite) => {
-    const url = new URL(req.url)
-    const taskId = url.searchParams.get('taskId')
-    const agentId = url.searchParams.get('agentId') || undefined
-
-    if (!taskId) {
-      return Response.json({ error: 'taskId param required' }, { status: 400 })
-    }
-
-    const step = getCurrentStep(taskId, agentId)
-    if (!step) {
-      return Response.json({ error: 'No workflow instance found for task' }, { status: 404 })
-    }
-
-    return Response.json(step)
-  }
-  arr.push(defineRoute({ path: '/steps/:taskId', method: 'GET', description: 'Get current workflow step for a task', summary: 'Get current workflow step for a task', params: z.object({ taskId: z.string() }), responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: getStepHandler }))
-
-  // POST /steps/:taskId/complete — submit step output
-  const completeStepHandler = async (req: Request, ctx: PluginContextLite) => {
-    const url = new URL(req.url)
-    let body: { taskId?: string; stepId?: string; agentId?: string; output?: Record<string, unknown> }
-    try {
-      body = await req.json()
-    } catch {
-      return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
-    }
-
-    // Path param takes precedence over body
-    const taskId = url.searchParams.get('taskId') || body.taskId
-    const { stepId, agentId, output } = body
-    if (!taskId || !stepId || !output) {
-      return Response.json({ error: 'taskId, stepId, and output are required' }, { status: 400 })
-    }
-    if (!agentId) {
-      return Response.json({ error: 'agentId required — which agent is submitting this output?' }, { status: 400 })
-    }
-
-    const result = completeStep(taskId, stepId, output, agentId)
-
-    if (!result.success) {
-      return Response.json({ error: 'Step completion failed', errors: result.errors }, { status: 400 })
-    }
-
-    ctx.activity.audit('step.completed', agentId, { taskId, stepId, workflowComplete: result.workflowComplete })
-    ctx.activity.log(agentId, `Completed step "${stepId}"${result.workflowComplete ? ' — workflow complete' : ''}`, { taskId })
-    indexInstance(taskId).catch(() => {})
-
-    // Kick dispatch so the next step's agent starts immediately
-    if (!result.workflowComplete) {
-      triggerDispatch()
-    }
-
-    return Response.json(result)
-  }
-  arr.push(defineRoute({ path: '/steps/:taskId/complete', method: 'POST', description: 'Submit step output, validates against schema, advances workflow', summary: 'Submit step output, validates against schema, advances workflow', params: z.object({ taskId: z.string() }), responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: completeStepHandler }))
-
+  // ─── Gate Routes ──────────────────────────────────────────────────
 
   // Web-source approver: REST endpoints come from the Bakin UI, which is
   // single-user behind Tailscale. Use the OS username so audit trails can
@@ -495,39 +428,6 @@ function populateWorkflowRoutes(arr: any[]): void {
   arr.push(defineRoute({ path: '/gates/:taskId/decision', method: 'POST', description: 'Approve or reject a gate through the durable Bakin approval fallback page', summary: 'Approve or reject a gate through the durable Bakin approval fallback page', params: z.object({ taskId: z.string() }), responses: { 200: htmlResponseWf, 400: htmlResponseWf, 404: htmlResponseWf }, handler: gateDecisionActionHandler }))
 
 
-  // GET /instances — list active workflow instances
-  arr.push(defineRoute({
-    path: '/instances',
-    method: 'GET',
-    description: 'List active workflow instances. Optional status filter.',
-    summary: 'List active workflow instances. Optional status filter.',
-    responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf },
-    handler: async (req: Request, _ctx: PluginContextLite) => {
-      const url = new URL(req.url)
-      const status = url.searchParams.get('status') || undefined
-      const instances = listInstances(status)
-      return Response.json({ instances })
-    },
-  }))
-
-  // GET /instances/:taskId - get full instance state
-  const getInstanceHandler = async (req: Request, _ctx: PluginContextLite) => {
-    const url = new URL(req.url)
-    const taskId = url.searchParams.get('taskId')
-
-    if (!taskId) {
-      return Response.json({ error: 'taskId param required' }, { status: 400 })
-    }
-
-    const instance = loadInstance(taskId)
-    if (!instance) {
-      return Response.json({ error: 'No workflow instance found for task' }, { status: 404 })
-    }
-
-    return Response.json({ instance })
-  }
-  arr.push(defineRoute({ path: '/instances/:taskId', method: 'GET', description: 'Get full workflow instance state for a task', summary: 'Get full workflow instance state for a task', params: z.object({ taskId: z.string() }), responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: getInstanceHandler }))
-
 
   // GET /gates/pending — list all gates awaiting approval
   const pendingGatesHandler = async (_req: Request, _ctx: PluginContextLite) => {
@@ -615,47 +515,6 @@ function populateWorkflowRoutes(arr: any[]): void {
   arr.push(defineRoute({ path: '/gates/status', method: 'GET', description: 'Batch check gate status for tasks', summary: 'Batch check gate status for tasks', responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: gateStatusHandler }))
 
 
-  // POST /instances/start — start a workflow for a task
-  const startHandler = async (req: Request, ctx: PluginContextLite) => {
-    let body: { taskId?: string; workflowId?: string }
-    try {
-      body = await req.json()
-    } catch {
-      return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
-    }
-
-    const { taskId, workflowId } = body
-    if (!taskId || !workflowId) {
-      return Response.json({ error: 'taskId and workflowId are required' }, { status: 400 })
-    }
-
-    try {
-      // Look up task assignee so $assigned steps resolve correctly
-      let assignee: string | undefined
-      try {
-        assignee = getTask(taskId)?.agent
-      } catch { /* best effort */ }
-
-      const instance = await createValidatedInstance(getWorkflowPluginContext(), taskId, workflowId, assignee)
-
-      // Ensure the task's workflowId is persisted in Bakin task metadata
-      try {
-        await updateTask(taskId, { workflowId })
-      } catch {
-        // Non-fatal — instance is created regardless
-      }
-
-      ctx.activity.audit('started', 'system', { taskId, workflowId })
-      ctx.activity.log('system', `Started workflow "${workflowId}"`, { taskId })
-      indexInstance(taskId).catch(() => {})
-
-      return Response.json({ instance })
-    } catch (err) {
-      return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 })
-    }
-  }
-  arr.push(defineRoute({ path: '/instances/start', method: 'POST', description: 'Start a workflow instance for a task', summary: 'Start a workflow instance for a task', responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: startHandler }))
-
 }
 
 // Static array — populated by populateWorkflowRoutes() at module load.
@@ -665,7 +524,7 @@ const workflowRoutes: any[] = []
 populateWorkflowRoutes(workflowRoutes)
 
 const workflowsPlugin: BakinPlugin = definePlugin({
-  routes: [...definitionRoutes, ...workflowRoutes] as unknown as Parameters<typeof definePlugin>[0]['routes'],
+  routes: [...definitionRoutes, ...instanceRoutes, ...workflowRoutes] as unknown as Parameters<typeof definePlugin>[0]['routes'],
   id: 'workflows',
   name: 'Workflows',
   version: '2.0.0',
