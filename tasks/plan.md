@@ -256,8 +256,17 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
       registerWorkflowHooks → health checks → registerWorkflowExecTools. index.ts shed ~28 now-unused imports.
       472 → 288. Verified: typecheck/lint/workflows 420-0/full-suite 5124-0/binary build/boot smoke (plugin Ready,
       hooks+channel wiring active, all route groups 200).
-    - ☐ C3c (OPTIONAL, final tidy) — fold the inline registerFileBackedContentType block (~115 lines) into
-      search-sync as registerWorkflowSearch(ctx); would take index.ts to ~175. The remaining 288 is already
-      activate-orchestration-only (beats the appendix's ~220 remainder target). The decideGate 6-block collapse +
-      stdJsonResponses const + typed-route casts + the submit_step error-message classification stay deferred redesigns.
+    - ☑ C3c — search registration: folded the inline registerFileBackedContentType block into
+      `search-sync.ts` as `registerWorkflowSearch(ctx)` (definitions+instances file patterns, onUnlink shadow-fallback,
+      reindex generator, verifyExists). index.ts shed the fs/yaml/path/getManagedDefinition/loadDefinition/type imports
+      the block solely used. 288 → **169 — pure activate-orchestration + lifecycle**. Verified: typecheck/lint/workflows
+      420-0/full-suite 5124-0/binary build/boot smoke (bakin_workflows content type registers; /definitions + /instances
+      + /gates/pending + /search → 200).
+  - **WS6 workflows cluster — ☑ DONE.** runtime.ts (1,634) + index.ts (2,146) ≈ 3,780 lines of god-file decomposed into
+    ~22 cohesive lib modules across 10 sequential PRs (#527 runtime split; #528 step-format+template-list; #529 #510
+    validator dedup; #530 ctx-accessor+search-sync; #531 routes/definitions; #532 routes/instances; #533 routes/gates;
+    #534 exec-tools; #535 hooks+channel-approvals; C3c search-reg) — every PR green on full suite + binary build + boot
+    smoke. index.ts: 2,146 → 169 (92% reduction). Deferred redesigns (decideGate 6-block collapse, stdJsonResponses
+    const, typed-route casts, submit_step error-message classification, gate-settings dual-source-of-truth) noted as
+    follow-ups, not taken.
 - Remaining: workflow-canvas-editor (1,803), models-page (1,205), schedule/index (1,443) + test splits.
