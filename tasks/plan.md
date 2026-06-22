@@ -288,6 +288,14 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
     to `const m = useModelsData()` + slimmer destructure for the still-inline tabs, renders `<RoutingTab m={m}/>` /
     `<SpendTab m={m}/>`. models-page.tsx 804 → 561. Verified: typecheck/lint/models-page.test 10-0/full-suite 5124-0/
     binary build/boot smoke (Models loads, client.js → 200).
-  - ☐ Phase 2b — agents + available + aliases tabs + shared render helpers (TableSkeleton/InlineEmpty/TIER_STYLES/
-    formatRelativeTime). Lands models-page.tsx near the ~130-line shell target.
-- Remaining: workflow-canvas-editor (1,803), models-page phase 2b, schedule/index (1,443) + test splits.
+  - ☑ Phase 2b — agents + available + aliases tabs + shared helpers: `agents-tab.tsx` (AgentsTab — global defaults +
+    fallback editor + per-agent table), `available-models-tab.tsx` (AvailableModelsTab — owns TIER_STYLES +
+    formatRelativeTime), `aliases-tab.tsx` (AliasesTab), and `models-page-shared.tsx` (TableSkeleton + InlineEmpty,
+    shared by agents + aliases). models-page.tsx is now a **76-line shell**: header, error/restart banners, tab bar, and
+    the five `<XTab m={m}/>` renders. Verified: typecheck/lint/models-page.test 10-0/full-suite 5124-0/binary build/boot
+    smoke (Models loads, client.js → 200).
+  - **models-page — ☑ DONE.** 1,205 → 76-line shell across 8 cohesive files (use-models-data hook + 5 tab components +
+    shared helpers), 4 PRs (#537 hook, #538 routing+spend, 2b agents+available+aliases). 94% reduction. Deferred
+    redesigns (3-way sentinel cleanup, postJson, batch saveAll, formatAge/RuntimeRestartBanner/TableSkeleton SDK
+    extractions) noted as follow-ups, not taken.
+- Remaining: workflow-canvas-editor (1,803), schedule/index (1,443) + test splits.
