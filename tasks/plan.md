@@ -269,4 +269,17 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
     smoke. index.ts: 2,146 → 169 (92% reduction). Deferred redesigns (decideGate 6-block collapse, stdJsonResponses
     const, typed-route casts, submit_step error-message classification, gate-settings dual-source-of-truth) noted as
     follow-ups, not taken.
-- Remaining: workflow-canvas-editor (1,803), models-page (1,205), schedule/index (1,443) + test splits.
+- models-page — ◧ **data hook extracted** (1,205 → 804 shell + 458-line hook). Phase 1 of the React split: the
+  canonical extract-custom-hook refactor. `use-models-data.ts` exports `useModelsData()` holding ALL state (the ~60
+  interlocking pieces), every fetcher (config/available/refresh/aliases/spend/budget/routing), the 4 effects (mount +
+  spend-tab + routing-tab + the stale-auto-refresh whose deliberate partial dep-array + eslint-disable are preserved),
+  every action handler (saveAgent/saveAll/saveDefaults/setAsDefault, alias CRUD, routing editors, saveBudget), and all
+  derived values (modelOptions/modelsReady/availableProviders/effective*/fallbackCandidates/displayRouting/hasPending/
+  defaultsDirty). The local interfaces (Routing*/Budget*/Spend*) moved with it. models-page.tsx shell destructures the
+  one object so the entire return(...) JSX is byte-identical; behavior-preserving (same hook-call order). The ModelsPage
+  export stays put (client.tsx slot + the 416-line test unchanged). Verified: typecheck/lint/models-page.test 10-0/
+  models+components suites 341-0/full-suite 5124-0/binary build/boot smoke (Models plugin loads, rebuilt client.js → 200;
+  /config 500 is environmental — runtime adapter absent in isolated home, not a regression). DEFERRED to phase 2+: the
+  per-tab component extraction (agents/available/aliases/routing/spend each consume the hook) + the redesigns (3-way
+  sentinel cleanup, postJson, batch saveAll, formatAge/RuntimeRestartBanner/TableSkeleton SDK extractions).
+- Remaining: workflow-canvas-editor (1,803), models-page tab components (phase 2), schedule/index (1,443) + test splits.
