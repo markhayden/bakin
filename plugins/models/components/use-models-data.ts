@@ -456,3 +456,6 @@ export function useModelsData() {
     spend, spendLoading, budget, pendingBudget, setPendingBudget, saveBudget,
   }
 }
+
+/** The object returned by useModelsData(), passed to the per-tab components. */
+export type ModelsData = ReturnType<typeof useModelsData>

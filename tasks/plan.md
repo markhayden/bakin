@@ -282,4 +282,12 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
   /config 500 is environmental — runtime adapter absent in isolated home, not a regression). DEFERRED to phase 2+: the
   per-tab component extraction (agents/available/aliases/routing/spend each consume the hook) + the redesigns (3-way
   sentinel cleanup, postJson, batch saveAll, formatAge/RuntimeRestartBanner/TableSkeleton SDK extractions).
-- Remaining: workflow-canvas-editor (1,803), models-page tab components (phase 2), schedule/index (1,443) + test splits.
+  - ☑ Phase 2a — routing + spend tabs: `routing-tab.tsx` (RoutingTab) + `spend-tab.tsx` (SpendTab), each
+    `({ m }: { m: ModelsData })` destructuring from the hook (new `ModelsData = ReturnType<typeof useModelsData>` export).
+    ROUTING_ORIGINS/THINKING_LEVELS moved into routing-tab; SPEND_WINDOWS + formatUsdMicros into spend-tab. Shell switched
+    to `const m = useModelsData()` + slimmer destructure for the still-inline tabs, renders `<RoutingTab m={m}/>` /
+    `<SpendTab m={m}/>`. models-page.tsx 804 → 561. Verified: typecheck/lint/models-page.test 10-0/full-suite 5124-0/
+    binary build/boot smoke (Models loads, client.js → 200).
+  - ☐ Phase 2b — agents + available + aliases tabs + shared render helpers (TableSkeleton/InlineEmpty/TIER_STYLES/
+    formatRelativeTime). Lands models-page.tsx near the ~130-line shell target.
+- Remaining: workflow-canvas-editor (1,803), models-page phase 2b, schedule/index (1,443) + test splits.
