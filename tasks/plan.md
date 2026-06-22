@@ -298,4 +298,16 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
     shared helpers), 4 PRs (#537 hook, #538 routing+spend, 2b agents+available+aliases). 94% reduction. Deferred
     redesigns (3-way sentinel cleanup, postJson, batch saveAll, formatAge/RuntimeRestartBanner/TableSkeleton SDK
     extractions) noted as follow-ups, not taken.
-- Remaining: workflow-canvas-editor (1,803), schedule/index (1,443) + test splits.
+- workflow-canvas-editor — ◧ **pure state model extracted** (1,803 → 1,564 + 264-line lib). Phase 1: the safest cut —
+  `lib/canvas-editor-state.ts` holds the pure graph/state model (layout constants NODE_WIDTH/HEIGHT/Y_SPACING/
+  STANDARD_NODE_STYLE/TRIGGER+APPEND_NODE_ID/RESERVED_STEP_IDS, BUILTIN_STEP_LABELS, EditorState, stepNodeData/nextStepId/
+  defaultStepBody/cloneStep, the legacy-layout heuristics, seedEdges/seedState/deriveNodes/autoArrangeState, samePosition/
+  sameMeasurement). All pure over EditorState + WorkflowDefinition + xyflow types + lib/dagre-layout; zero JSX — now
+  unit-testable without jsdom (follows the lib/dagre-layout precedent). The component imports them back; shed the
+  now-component-unused Edge/layoutNodes/NodePosition imports. RESERVED_STEP_IDS (a test-asserted contract passed to
+  NodeConfigDrawer) preserved. Verified: typecheck/lint/canvas-editor.test 29-0/workflows 420-0/full-suite 5124-0/binary
+  build/boot smoke (Workflows loads, client.js → 200). DEFERRED: the dead-renderer deletion (Editor*Node shadowed by the
+  registry — behavior-touching, its OWN step) + canvas-editor-nodes.tsx, workflow-details-drawer.tsx, use-workflow-copy-form,
+  use-unsaved-changes-guard, and the redesigns (slugify consolidation, setIsDirty-in-updater fix, WorkflowStepPatch typing,
+  postOrPut helper, key-remount reset). 
+- Remaining: workflow-canvas-editor phases 2+, schedule/index (1,443) + test splits.
