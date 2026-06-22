@@ -6,12 +6,10 @@
 import { existsSync, readdirSync, readFileSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
-import { userInfo } from 'os'
 import yaml from 'js-yaml'
 import { z } from 'zod'
 import type { ApprovalActor, BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
-import { defineRoute, definePlugin } from '@bakin/core/routing'
-import type { PluginContextLite } from '@bakin/core/routing'
+import { definePlugin } from '@bakin/core/routing'
 import { listDefinitions, loadDefinition } from './lib/parser'
 import { workflowDefinitionNameFromHookInput } from './lib/hook-input'
 import { loadDefaultWorkflows } from './lib/load-defaults'
@@ -44,7 +42,6 @@ import {
   isGateNotified,
   markGateNotified,
   cancelInstance,
-  type GateDecisionRecord,
   type WorkflowToolUseAction,
 } from './lib/runtime'
 import { matchWorkflow } from './lib/matcher'
@@ -56,16 +53,17 @@ import { formatStepContext } from './lib/step-format'
 import { createValidatedInstance } from './lib/start-validation'
 import { setWorkflowPluginContext } from './lib/plugin-context'
 import { instanceToSearchDoc, definitionToSearchDoc, indexInstance } from './lib/search-sync'
-import { passthroughWf, errorResponseWf, htmlResponseWf } from './lib/route-schemas'
 import { definitionRoutes } from './lib/routes/definitions'
 import { instanceRoutes } from './lib/routes/instances'
+import { gateRoutes } from './lib/routes/gates'
 import { triggerDispatch } from './lib/trigger-dispatch'
+import { setGateSettings, activeGateSettings } from './lib/gate-settings'
+import { getGateDescription, buildGateAuditPayload } from './lib/gate-audit'
 import { createLogger } from '../../src/core/logger'
 import { getContentDir } from '../../src/core/content-dir'
 import { getTask, updateTask } from '../../src/core/task-store'
 import { validateStepOutput } from './lib/schema-validator'
 import {
-  getGateNotificationSettings,
   resolveGateApproval,
   sendGateDecisionSummary,
   setEventBus,
@@ -73,458 +71,15 @@ import {
   setNotificationRuntime,
   type GateNotificationSettings,
 } from './lib/notifications'
-import { approvalRefFromRecord, findPendingApprovalForGate, getApprovalRecord } from './lib/approval-store'
+import { approvalRefFromRecord, getApprovalRecord } from './lib/approval-store'
 import { rehydratePendingApprovals } from './lib/approval-rehydration'
 import type { WorkflowDefinition, WorkflowInstance } from './types'
 
 const log = createLogger('workflows')
 let unsubscribeApprovalResponses: (() => void) | null = null
 
-let gateNotificationSettings: GateNotificationSettings = {
-  approvalChannelAlerts: false,
-  approvalChannel: 'general',
-  requireRejectReason: true,
-}
-function activeGateSettings(): GateNotificationSettings {
-  return getGateNotificationSettings() ?? gateNotificationSettings
-}
-
-// ─── Module-scope helpers ────────────────────────────────────────────────
-
-function getGateDescription(workflowId: string, stepId: string): string | undefined {
-  const def = loadDefinition(workflowId)
-  if (!def) return undefined
-  const step = def.steps.find(s => s.id === stepId)
-  return (step as { description?: string } | undefined)?.description
-}
-
-function buildGateAuditPayload(
-  taskId: string,
-  stepId: string,
-  decision: GateDecisionRecord | undefined,
-  reason?: string,
-): Record<string, unknown> {
-  return {
-    taskId,
-    stepId,
-    gateLabel: decision?.gateLabel,
-    approver: decision?.approver,
-    requestedAt: decision?.requestedAt,
-    decidedAt: decision?.decidedAt,
-    durationMs: decision?.durationMs,
-    ...(reason !== undefined ? { reason } : {}),
-  }
-}
-
-function populateWorkflowRoutes(arr: any[]): void {
-  // ─── Gate Routes ──────────────────────────────────────────────────
-
-  // Web-source approver: REST endpoints come from the Bakin UI, which is
-  // single-user behind Tailscale. Use the OS username so audit trails can
-  // identify who clicked the button with at least machine-level granularity.
-  const webApprover = (): ApprovalActor => {
-    const { username } = userInfo()
-    return { source: 'web', id: username, displayName: username }
-  }
-
-  // Resolve a gate's description from its workflow definition for the
-  // decision summary. Returns undefined if the workflow or step can't be
-  // loaded; the summary will simply omit the description.
-  const getGateDescription = (workflowId: string, stepId: string): string | undefined => {
-    const def = loadDefinition(workflowId)
-    if (!def) return undefined
-    const step = def.steps.find(s => s.id === stepId)
-    return (step as { description?: string } | undefined)?.description
-  }
-
-  // Build the structured audit payload for gate.approved / gate.rejected.
-  // The decision record is the source of truth — approver, gateLabel,
-  // timestamps, durationMs all flow through it.
-  const buildGateAuditPayload = (
-    taskId: string,
-    stepId: string,
-    decision: GateDecisionRecord | undefined,
-    reason?: string,
-  ): Record<string, unknown> => ({
-    taskId,
-    stepId,
-    gateLabel: decision?.gateLabel,
-    approver: decision?.approver,
-    requestedAt: decision?.requestedAt,
-    decidedAt: decision?.decidedAt,
-    durationMs: decision?.durationMs,
-    ...(reason !== undefined ? { reason } : {}),
-  })
-
-  // POST /gates/:taskId/approve — approve a gate step
-  const approveHandler = async (req: Request, ctx: PluginContextLite) => {
-    const url = new URL(req.url)
-    let body: { taskId?: string; stepId?: string }
-    try {
-      body = await req.json()
-    } catch {
-      return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
-    }
-
-    const taskId = url.searchParams.get('taskId') || body.taskId
-    const { stepId } = body
-    if (!taskId || !stepId) {
-      return Response.json({ error: 'taskId and stepId are required' }, { status: 400 })
-    }
-
-    // Capture rendered approval reference before approval changes state.
-    const preInstance = loadInstance(taskId)
-    const approvalRef = approvalRefFromRecord(findPendingApprovalForGate(taskId, stepId))
-      ?? preInstance?.stepStates[stepId]?.approvalRef
-
-    const approver = webApprover()
-    const result = approveGate(taskId, stepId, { approver })
-
-    if (!result.success) {
-      return Response.json({ error: result.errors?.[0], errors: result.errors }, { status: 400 })
-    }
-
-    ctx.activity.audit('gate.approved', 'web', buildGateAuditPayload(taskId, stepId, result.decision))
-    ctx.activity.log('web', `Gate "${stepId}" approved`, { taskId })
-    indexInstance(taskId).catch(() => {})
-
-    // Kick dispatch so the next step's agent starts immediately
-    triggerDispatch()
-
-    // Sync rendered approval + summary when channel alerts are enabled.
-    const settings = activeGateSettings()
-    if (settings.approvalChannelAlerts && result.decision) {
-      const instance = loadInstance(taskId)
-      resolveGateApproval(
-        approvalRef,
-        'approved',
-        approver,
-        result.decision.decidedAt,
-      ).catch(() => {})
-      if (instance) {
-        sendGateDecisionSummary(
-          instance,
-          stepId,
-          result.decision.gateLabel,
-          getGateDescription(instance.workflowId, stepId),
-          'approved',
-          approver,
-          result.decision.requestedAt,
-          result.decision.decidedAt,
-          undefined,
-          settings,
-        ).catch(() => {})
-      }
-    }
-
-    return Response.json(result)
-  }
-  arr.push(defineRoute({ path: '/gates/:taskId/approve', method: 'POST', description: 'Approve a human gate step', summary: 'Approve a human gate step', params: z.object({ taskId: z.string() }), responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: approveHandler }))
-
-
-  // POST /gates/:taskId/reject — reject a gate step
-  const rejectHandler = async (req: Request, ctx: PluginContextLite) => {
-    const url = new URL(req.url)
-    let body: { taskId?: string; stepId?: string; reason?: string; rewindTo?: string }
-    try {
-      body = await req.json()
-    } catch {
-      return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
-    }
-
-    const taskId = url.searchParams.get('taskId') || body.taskId
-    const { stepId, reason, rewindTo } = body
-    if (!taskId || !stepId || !reason) {
-      return Response.json({ error: 'taskId, stepId, and reason are required' }, { status: 400 })
-    }
-
-    // Capture rendered approval reference before rejection changes state.
-    const preInstance = loadInstance(taskId)
-    const approvalRef = approvalRefFromRecord(findPendingApprovalForGate(taskId, stepId))
-      ?? preInstance?.stepStates[stepId]?.approvalRef
-
-    const approver = webApprover()
-    const result = rejectGate(taskId, stepId, reason, { rewindTo, approver })
-
-    if (!result.success) {
-      return Response.json({ error: result.errors?.[0], errors: result.errors }, { status: 400 })
-    }
-
-    ctx.activity.audit('gate.rejected', 'web', buildGateAuditPayload(taskId, stepId, result.decision, reason))
-    ctx.activity.log('web', `Gate "${stepId}" rejected: ${reason}`, { taskId })
-    indexInstance(taskId).catch(() => {})
-
-    // Sync rendered approval + summary when channel alerts are enabled.
-    const settings = activeGateSettings()
-    if (settings.approvalChannelAlerts && result.decision) {
-      const instance = loadInstance(taskId)
-      resolveGateApproval(
-        approvalRef,
-        'rejected',
-        approver,
-        result.decision.decidedAt,
-        reason,
-      ).catch(() => {})
-      if (instance) {
-        sendGateDecisionSummary(
-          instance,
-          stepId,
-          result.decision.gateLabel,
-          getGateDescription(instance.workflowId, stepId),
-          'rejected',
-          approver,
-          result.decision.requestedAt,
-          result.decision.decidedAt,
-          reason,
-          settings,
-        ).catch(() => {})
-      }
-    }
-
-    return Response.json(result)
-  }
-  arr.push(defineRoute({ path: '/gates/:taskId/reject', method: 'POST', description: 'Reject a gate step, rewinds workflow', summary: 'Reject a gate step, rewinds workflow', params: z.object({ taskId: z.string() }), responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: rejectHandler }))
-
-  const gateDecisionPageHandler = async (req: Request, _ctx: PluginContextLite) => {
-    const url = new URL(req.url)
-    const taskId = url.searchParams.get('taskId')
-    const stepId = url.searchParams.get('stepId')
-    const approvalId = url.searchParams.get('approvalId')
-    if (!taskId || !stepId || !approvalId) {
-      return gateDecisionHtmlResponse('Approval Link Error', '<p>taskId, stepId, and approvalId are required.</p>', 400)
-    }
-
-    const approvalRecord = getApprovalRecord(approvalId)
-    if (!approvalRecord || approvalRecord.owner.taskId !== taskId || approvalRecord.owner.stepId !== stepId) {
-      return gateDecisionHtmlResponse('Approval Not Found', '<p>This approval link no longer matches a pending workflow gate.</p>', 404)
-    }
-
-    const escapedTitle = escapeHtml(approvalRecord.request.title)
-    const escapedBody = escapeHtml(approvalRecord.request.body)
-    const statusText = approvalRecord.status === 'pending'
-      ? ''
-      : `<p class="notice">This approval has already been marked ${escapeHtml(approvalRecord.status)}.</p>`
-    const disabled = approvalRecord.status === 'pending' ? '' : ' disabled'
-    return gateDecisionHtmlResponse(approvalRecord.request.title, `
-      <p class="eyebrow">Workflow Approval</p>
-      <h1>${escapedTitle}</h1>
-      <pre>${escapedBody}</pre>
-      ${statusText}
-      <form method="POST">
-        <input type="hidden" name="approvalId" value="${escapeHtml(approvalId)}" />
-        <input type="hidden" name="taskId" value="${escapeHtml(taskId)}" />
-        <input type="hidden" name="stepId" value="${escapeHtml(stepId)}" />
-        <button name="decision" value="approve"${disabled}>Approve</button>
-      </form>
-      <form method="POST">
-        <input type="hidden" name="approvalId" value="${escapeHtml(approvalId)}" />
-        <input type="hidden" name="taskId" value="${escapeHtml(taskId)}" />
-        <input type="hidden" name="stepId" value="${escapeHtml(stepId)}" />
-        <label for="reason">Reject reason</label>
-        <textarea id="reason" name="reason" rows="4"${disabled}></textarea>
-        <button class="danger" name="decision" value="reject"${disabled}>Reject</button>
-      </form>
-    `)
-  }
-  arr.push(defineRoute({ path: '/gates/:taskId/decision', method: 'GET', description: 'Render a durable Bakin gate approval fallback page', summary: 'Render a durable Bakin gate approval fallback page', params: z.object({ taskId: z.string() }), responses: { 200: htmlResponseWf, 400: htmlResponseWf, 404: htmlResponseWf }, handler: gateDecisionPageHandler }))
-
-  const gateDecisionActionHandler = async (req: Request, ctx: PluginContextLite) => {
-    const url = new URL(req.url)
-    let form: FormData
-    try {
-      form = await req.formData()
-    } catch {
-      return gateDecisionHtmlResponse('Approval Link Error', '<p>Invalid form submission.</p>', 400)
-    }
-
-    const taskId = url.searchParams.get('taskId') || formValue(form, 'taskId')
-    const stepId = url.searchParams.get('stepId') || formValue(form, 'stepId')
-    const approvalId = url.searchParams.get('approvalId') || formValue(form, 'approvalId')
-    const decision = formValue(form, 'decision')
-    if (!taskId || !stepId || !approvalId || !decision) {
-      return gateDecisionHtmlResponse('Approval Link Error', '<p>taskId, stepId, approvalId, and decision are required.</p>', 400)
-    }
-
-    const approvalRecord = getApprovalRecord(approvalId)
-    if (!approvalRecord || approvalRecord.owner.taskId !== taskId || approvalRecord.owner.stepId !== stepId) {
-      return gateDecisionHtmlResponse('Approval Not Found', '<p>This approval link no longer matches a pending workflow gate.</p>', 404)
-    }
-    if (approvalRecord.status !== 'pending') {
-      return gateDecisionHtmlResponse('Approval Already Decided', `<p>This approval is already ${escapeHtml(approvalRecord.status)}.</p>`)
-    }
-
-    const approvalRef = approvalRefFromRecord(approvalRecord)
-    const approver = webApprover()
-    if (decision === 'approve') {
-      const result = approveGate(taskId, stepId, { approver })
-      if (!result.success) {
-        return gateDecisionHtmlResponse('Approval Failed', `<p>${escapeHtml(result.errors?.[0] || 'Unknown approval failure')}</p>`, 400)
-      }
-
-      ctx.activity.audit('gate.approved', 'web', buildGateAuditPayload(taskId, stepId, result.decision))
-      ctx.activity.log('web', `Gate "${stepId}" approved from approval link`, { taskId })
-      indexInstance(taskId).catch(() => {})
-      triggerDispatch()
-
-      const settings = activeGateSettings()
-      const instance = loadInstance(taskId)
-      if (settings.approvalChannelAlerts && result.decision && instance) {
-        resolveGateApproval(approvalRef, 'approved', approver, result.decision.decidedAt).catch(() => {})
-        sendGateDecisionSummary(
-          instance,
-          stepId,
-          result.decision.gateLabel,
-          getGateDescription(instance.workflowId, stepId),
-          'approved',
-          approver,
-          result.decision.requestedAt,
-          result.decision.decidedAt,
-          undefined,
-          settings,
-        ).catch(() => {})
-      }
-
-      return gateDecisionHtmlResponse('Gate Approved', '<p>The workflow gate was approved. You can close this tab.</p>')
-    }
-
-    if (decision === 'reject') {
-      const reason = formValue(form, 'reason')?.trim()
-      if (!reason) {
-        return gateDecisionHtmlResponse('Reject Reason Required', '<p>A reject reason is required.</p>', 400)
-      }
-
-      const result = rejectGate(taskId, stepId, reason, { approver })
-      if (!result.success) {
-        return gateDecisionHtmlResponse('Reject Failed', `<p>${escapeHtml(result.errors?.[0] || 'Unknown rejection failure')}</p>`, 400)
-      }
-
-      ctx.activity.audit('gate.rejected', 'web', buildGateAuditPayload(taskId, stepId, result.decision, reason))
-      ctx.activity.log('web', `Gate "${stepId}" rejected from approval link: ${reason}`, { taskId })
-      indexInstance(taskId).catch(() => {})
-
-      const settings = activeGateSettings()
-      const instance = loadInstance(taskId)
-      if (settings.approvalChannelAlerts && result.decision && instance) {
-        resolveGateApproval(approvalRef, 'rejected', approver, result.decision.decidedAt, reason).catch(() => {})
-        sendGateDecisionSummary(
-          instance,
-          stepId,
-          result.decision.gateLabel,
-          getGateDescription(instance.workflowId, stepId),
-          'rejected',
-          approver,
-          result.decision.requestedAt,
-          result.decision.decidedAt,
-          reason,
-          settings,
-        ).catch(() => {})
-      }
-
-      return gateDecisionHtmlResponse('Gate Rejected', '<p>The workflow gate was rejected. You can close this tab.</p>')
-    }
-
-    return gateDecisionHtmlResponse('Approval Link Error', '<p>decision must be approve or reject.</p>', 400)
-  }
-  arr.push(defineRoute({ path: '/gates/:taskId/decision', method: 'POST', description: 'Approve or reject a gate through the durable Bakin approval fallback page', summary: 'Approve or reject a gate through the durable Bakin approval fallback page', params: z.object({ taskId: z.string() }), responses: { 200: htmlResponseWf, 400: htmlResponseWf, 404: htmlResponseWf }, handler: gateDecisionActionHandler }))
-
-
-
-  // GET /gates/pending — list all gates awaiting approval
-  const pendingGatesHandler = async (_req: Request, _ctx: PluginContextLite) => {
-    const instances = listInstances('pending_approval')
-    const gates = instances.map((inst) => {
-      const def = loadDefinition(inst.workflowId)
-      const gateStep = def?.steps.find(s => s.id === inst.currentStepId)
-
-      // Gather prior step outputs for review
-      const priorStepOutputs: Record<string, unknown> = {}
-      if (def && gateStep) {
-        const gateIdx = def.steps.findIndex(s => s.id === gateStep.id)
-        const preview = (gateStep as { preview?: string[] }).preview
-        if (preview && preview.length > 0) {
-          for (const pid of preview) {
-            if (inst.stepStates[pid]?.output) {
-              priorStepOutputs[pid] = inst.stepStates[pid].output
-            }
-          }
-        } else if (gateIdx > 0) {
-          const priorStep = def.steps[gateIdx - 1]
-          if (inst.stepStates[priorStep.id]?.output) {
-            priorStepOutputs[priorStep.id] = inst.stepStates[priorStep.id].output
-          }
-        }
-      }
-
-      return {
-        taskId: inst.taskId,
-        workflowId: inst.workflowId,
-        stepId: inst.currentStepId,
-        label: gateStep?.label || inst.currentStepId,
-        description: (gateStep as { description?: string })?.description,
-        priorStepOutputs,
-        gateDefinition: gateStep ? {
-          on_approve: (gateStep as { on_approve?: string }).on_approve,
-          on_reject: (gateStep as { on_reject?: { goto: string; note_to_agent?: boolean } }).on_reject,
-        } : undefined,
-      }
-    })
-
-    return Response.json({ gates })
-  }
-  arr.push(defineRoute({ path: '/gates/pending', method: 'GET', description: 'List all gates awaiting approval', summary: 'List all gates awaiting approval', responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: pendingGatesHandler }))
-
-
-  // GET /gates/status — batch check gate status for tasks
-  const gateStatusHandler = async (req: Request, _ctx: PluginContextLite) => {
-    const url = new URL(req.url)
-    const taskIds = (url.searchParams.get('taskIds') || '').split(',').filter(Boolean)
-
-    const result: Record<string, { stepId: string; label: string; description?: string; childTaskId?: string } | null> = {}
-    for (const taskId of taskIds) {
-      const instance = loadInstance(taskId)
-      if (instance && instance.status === 'pending_approval') {
-        const def = loadDefinition(instance.workflowId)
-        const gateStep = def?.steps.find(s => s.id === instance.currentStepId)
-        result[taskId] = {
-          stepId: instance.currentStepId,
-          label: gateStep?.label || instance.currentStepId,
-          description: (gateStep as { description?: string })?.description,
-        }
-      } else if (instance && instance.status === 'in_progress') {
-        const childEntry = Object.entries(instance.stepStates).find(
-          ([, state]) => state.status === 'in_progress' && state.childTaskId
-        )
-        if (childEntry) {
-          const def = loadDefinition(instance.workflowId)
-          const step = def?.steps.find(s => s.id === childEntry[0])
-          result[taskId] = {
-            stepId: childEntry[0],
-            label: step?.label || childEntry[0],
-            childTaskId: childEntry[1].childTaskId,
-          }
-        } else {
-          result[taskId] = null
-        }
-      } else {
-        result[taskId] = null
-      }
-    }
-
-    return Response.json({ gates: result })
-  }
-  arr.push(defineRoute({ path: '/gates/status', method: 'GET', description: 'Batch check gate status for tasks', summary: 'Batch check gate status for tasks', responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: gateStatusHandler }))
-
-
-}
-
-// Static array — populated by populateWorkflowRoutes() at module load.
-// (Definition routes already live as typed defineRoute[] in lib/routes/definitions.ts;
-// the remaining instance + gate routes are still assembled here pending C2b/C2c.)
-const workflowRoutes: any[] = []
-populateWorkflowRoutes(workflowRoutes)
-
 const workflowsPlugin: BakinPlugin = definePlugin({
-  routes: [...definitionRoutes, ...instanceRoutes, ...workflowRoutes] as unknown as Parameters<typeof definePlugin>[0]['routes'],
+  routes: [...definitionRoutes, ...instanceRoutes, ...gateRoutes] as unknown as Parameters<typeof definePlugin>[0]['routes'],
   id: 'workflows',
   name: 'Workflows',
   version: '2.0.0',
@@ -684,13 +239,13 @@ const workflowsPlugin: BakinPlugin = definePlugin({
     setNotificationRuntime(ctx.runtime)
 
     const pluginSettings = ctx.getSettings<Record<string, unknown>>()
-    gateNotificationSettings = {
+    const initialGateSettings: GateNotificationSettings = {
       approvalChannelAlerts: pluginSettings.approvalChannelAlerts as boolean ?? false,
       approvalChannel: pluginSettings.approvalChannel as string ?? 'general',
       requireRejectReason: pluginSettings.requireRejectReason as boolean ?? true,
     }
-    setGateNotificationSettings(gateNotificationSettings)
-    const activeGateSettings = () => getGateNotificationSettings() ?? gateNotificationSettings
+    setGateSettings(initialGateSettings)
+    setGateNotificationSettings(initialGateSettings)
 
     const approvalRehydration = await rehydratePendingApprovals({
       runtime: ctx.runtime,
@@ -1196,50 +751,5 @@ const workflowsPlugin: BakinPlugin = definePlugin({
     }
   },
 }) as unknown as BakinPlugin
-
-function formValue(form: FormData, key: string): string | undefined {
-  const value = form.get(key)
-  return typeof value === 'string' && value.length > 0 ? value : undefined
-}
-
-function gateDecisionHtmlResponse(title: string, body: string, status = 200): Response {
-  return new Response(`<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${escapeHtml(title)}</title>
-  <style>
-    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0f0f10; color: #f2f2f3; }
-    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; }
-    main { width: min(720px, 100%); border: 1px solid #2b2b2f; border-radius: 8px; background: #151517; padding: 24px; }
-    h1 { margin: 0 0 16px; font-size: 24px; line-height: 1.2; }
-    pre { white-space: pre-wrap; word-break: break-word; color: #c6c6cc; background: #101012; border: 1px solid #29292d; border-radius: 6px; padding: 16px; }
-    form { margin-top: 16px; display: grid; gap: 10px; }
-    label, .eyebrow { color: #8f8f98; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0; }
-    textarea { resize: vertical; border-radius: 6px; border: 1px solid #35353a; background: #101012; color: #f2f2f3; padding: 10px; font: inherit; }
-    button { width: fit-content; border: 0; border-radius: 6px; background: #2f6fed; color: white; padding: 10px 14px; font: inherit; font-weight: 700; cursor: pointer; }
-    button.danger { background: #b42318; }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
-    .notice { color: #f6c343; }
-  </style>
-</head>
-<body>
-  <main>${body}</main>
-</body>
-</html>`, {
-    status,
-    headers: { 'Content-Type': 'text/html; charset=utf-8' },
-  })
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;')
-}
 
 export default workflowsPlugin
