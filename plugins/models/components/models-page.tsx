@@ -1,7 +1,7 @@
 'use client'
 
 // External
-import { ArrowDown, ArrowUp, Plus, X, Users, Layers, RefreshCw, AlertTriangle } from 'lucide-react'
+import { ArrowDown, ArrowUp, Plus, X, Users, RefreshCw, AlertTriangle } from 'lucide-react'
 // Internal
 import { Button } from "@makinbakin/sdk/ui"
 import { PluginHeader } from "@makinbakin/sdk/components"
@@ -19,6 +19,8 @@ import { ModelSelect } from "@makinbakin/sdk/components"
 // Relative
 import { BrandIcon } from './brand-icon'
 import { useModelsData } from './use-models-data'
+import { RoutingTab } from './routing-tab'
+import { SpendTab } from './spend-tab'
 
 // ---------------------------------------------------------------------------
 // Relative-time formatter — under 1h: minutes, under 24h: hours, else date.
@@ -51,31 +53,6 @@ const TABS = [
   { id: 'routing', label: 'Routing' },
   { id: 'spend', label: 'Spend' },
 ] as const
-
-// Dispatch origins routing can target, with a short hint of what each is.
-const ROUTING_ORIGINS = [
-  { id: 'scheduled', label: 'Scheduled', hint: 'Cron-fired tasks' },
-  { id: 'workflow', label: 'Workflow', hint: 'Workflow step turns' },
-  { id: 'adhoc', label: 'Ad-hoc', hint: 'Manually kicked tasks' },
-  { id: 'recovery', label: 'Recovery', hint: 'Session-death re-dispatch' },
-  { id: 'decomposition', label: 'Decomposition', hint: 'Subtask breakdown' },
-] as const
-
-const THINKING_LEVELS = ['inherit', 'off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive', 'max'] as const
-
-const SPEND_WINDOWS = [
-  { id: '24h', label: '24h' },
-  { id: '7d', label: '7 days' },
-  { id: '30d', label: '30 days' },
-  { id: 'all', label: 'All time' },
-] as const
-
-/** Render micro-dollars as a dollar amount. Returns null for an unmetered
- *  (zero-cost) row so the UI can show "$ unavailable" instead of "$0.00". */
-function formatUsdMicros(micros: number): string | null {
-  if (!micros) return null
-  return `$${(micros / 1_000_000).toFixed(micros < 10_000 ? 4 : 2)}`
-}
 
 // ---------------------------------------------------------------------------
 // Loading skeleton
@@ -115,8 +92,9 @@ function InlineEmpty({ message }: { message: string }) {
 // Main component
 // ---------------------------------------------------------------------------
 export function ModelsPage() {
+  const m = useModelsData()
   const {
-    tab, setTab, spendWindow, setSpendWindow,
+    tab, setTab,
     agents, loading, error, saving, runtimeStatus, fetchConfig,
     availableModels, modelOptions, modelsReady, availableProviders,
     modelsCached, modelsCachedAt, modelsStale, modelsError, modelsLoaded, refreshing, handleRefresh,
@@ -127,10 +105,7 @@ export function ModelsPage() {
     pendingFallbackModels, setPendingFallbackModels, fallbackModels,
     saveAgent, saveAll, saveDefaults, setAsDefault, hasPending, defaultsDirty,
     effectiveDefaultModel, effectiveDefaultSubagentModel, effectiveFallbackModels, fallbackCandidates,
-    pendingRouting, setPendingRouting, displayRouting,
-    setOriginField, addTagOverride, updateTagOverride, removeTagOverride, saveRouting,
-    spend, spendLoading, budget, pendingBudget, setPendingBudget, saveBudget,
-  } = useModelsData()
+  } = m
 
   return (
     <div className="p-6 flex flex-col flex-1 gap-6">
@@ -577,227 +552,9 @@ export function ModelsPage() {
         </div>
       )}
 
-      {tab === 'routing' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
-              Route each dispatch origin to a model and thinking level. Leave a row blank to inherit the agent&apos;s configured model. Tag overrides win over origin policies.
-            </p>
-            {pendingRouting && (
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="xs" onClick={() => setPendingRouting(null)}>Discard</Button>
-                <Button size="xs" onClick={saveRouting} disabled={saving === 'routing'}>
-                  {saving === 'routing' ? 'Saving...' : 'Save Routing'}
-                </Button>
-              </div>
-            )}
-          </div>
+      {tab === 'routing' && <RoutingTab m={m} />}
 
-          <div className="overflow-hidden rounded-xl border border-border">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-card">
-                  <TableHead>Origin</TableHead>
-                  <TableHead>Model</TableHead>
-                  <TableHead className="w-[160px]">Thinking</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {ROUTING_ORIGINS.map((o) => {
-                  const policy = displayRouting.policies.find((p) => p.origin === o.id)
-                  return (
-                    <TableRow key={o.id}>
-                      <TableCell>
-                        <div className="font-medium">{o.label}</div>
-                        <div className="text-[11px] text-muted-foreground">{o.hint}</div>
-                      </TableCell>
-                      <TableCell>
-                        <ModelSelect
-                          value={policy?.model ?? ''}
-                          onChange={(v) => setOriginField(o.id, 'model', v)}
-                          models={modelOptions}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <select
-                          className="h-8 w-full rounded-md border border-border bg-background px-2 text-sm"
-                          value={policy?.thinking ?? 'inherit'}
-                          onChange={(e) => setOriginField(o.id, 'thinking', e.target.value)}
-                        >
-                          {THINKING_LEVELS.map((t) => <option key={t} value={t}>{t}</option>)}
-                        </select>
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-medium">Tag overrides</h3>
-            <Button variant="outline" size="xs" onClick={addTagOverride}><Plus className="h-3 w-3" /> Add override</Button>
-          </div>
-          {displayRouting.tagOverrides.length === 0 ? (
-            <EmptyState icon={Layers} title="No tag overrides" />
-          ) : (
-            <div className="overflow-hidden rounded-xl border border-border">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-card">
-                    <TableHead>Tag</TableHead>
-                    <TableHead>Model</TableHead>
-                    <TableHead className="w-[160px]">Thinking</TableHead>
-                    <TableHead className="w-[60px]" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {displayRouting.tagOverrides.map((row, i) => (
-                    <TableRow key={i}>
-                      <TableCell>
-                        <Input value={row.tag} onChange={(e) => updateTagOverride(i, 'tag', e.target.value)} className="h-8 text-sm" placeholder="e.g. heavy" />
-                      </TableCell>
-                      <TableCell>
-                        <ModelSelect value={row.model ?? ''} onChange={(v) => updateTagOverride(i, 'model', v)} models={modelOptions} />
-                      </TableCell>
-                      <TableCell>
-                        <select
-                          className="h-8 w-full rounded-md border border-border bg-background px-2 text-sm"
-                          value={row.thinking ?? 'inherit'}
-                          onChange={(e) => updateTagOverride(i, 'thinking', e.target.value)}
-                        >
-                          {THINKING_LEVELS.map((t) => <option key={t} value={t}>{t}</option>)}
-                        </select>
-                      </TableCell>
-                      <TableCell>
-                        <Button variant="ghost" size="xs" onClick={() => removeTagOverride(i)} className="text-muted-foreground hover:text-destructive">Remove</Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </div>
-      )}
-
-      {tab === 'spend' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
-              Estimated spend from recorded token usage. Cached-token discounts aren&apos;t modeled, so totals read slightly high — treat as estimates, not an invoice.
-            </p>
-            <div className="flex items-center gap-1">
-              {SPEND_WINDOWS.map((w) => (
-                <Button
-                  key={w.id}
-                  variant={spendWindow === w.id ? 'default' : 'outline'}
-                  size="xs"
-                  onClick={() => setSpendWindow(w.id)}
-                >
-                  {w.label}
-                </Button>
-              ))}
-            </div>
-          </div>
-
-          {spendLoading && !spend ? (
-            <Skeleton className="h-32 w-full" />
-          ) : !spend ? (
-            <EmptyState icon={AlertTriangle} title="Spend data unavailable" />
-          ) : (
-            <>
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                <div className="rounded-xl border border-border bg-card p-4">
-                  <div className="text-xs text-muted-foreground">Estimated total ({spend.window})</div>
-                  <div className="text-2xl font-semibold tabular-nums">
-                    {formatUsdMicros(spend.totalUsdMicros) ?? '$ unavailable'}
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-border bg-card p-4 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="text-xs text-muted-foreground">Budget caps (global)</div>
-                    {pendingBudget ? (
-                      <div className="flex items-center gap-2">
-                        <Button variant="outline" size="xs" onClick={() => setPendingBudget(null)}>Discard</Button>
-                        <Button size="xs" onClick={saveBudget} disabled={saving === 'budget'}>{saving === 'budget' ? 'Saving...' : 'Save'}</Button>
-                      </div>
-                    ) : null}
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <label className="flex-1 text-xs text-muted-foreground">
-                      Daily $
-                      <Input
-                        type="number" min="0" className="mt-1 h-8 text-sm"
-                        value={(pendingBudget ?? budget).global?.dailyUsd ?? ''}
-                        onChange={(e) => setPendingBudget({ ...(pendingBudget ?? budget), global: { ...(pendingBudget ?? budget).global, dailyUsd: e.target.value ? Number(e.target.value) : undefined } })}
-                      />
-                    </label>
-                    <label className="flex-1 text-xs text-muted-foreground">
-                      Monthly $
-                      <Input
-                        type="number" min="0" className="mt-1 h-8 text-sm"
-                        value={(pendingBudget ?? budget).global?.monthlyUsd ?? ''}
-                        onChange={(e) => setPendingBudget({ ...(pendingBudget ?? budget), global: { ...(pendingBudget ?? budget).global, monthlyUsd: e.target.value ? Number(e.target.value) : undefined } })}
-                      />
-                    </label>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground">At 100% of a cap, dispatch defers new turns until the window resets. Leave blank for no limit.</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                <div className="overflow-hidden rounded-xl border border-border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-card">
-                        <TableHead>Agent</TableHead>
-                        <TableHead className="text-right">Runs</TableHead>
-                        <TableHead className="text-right">Est. cost</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {spend.byAgent.length === 0 ? (
-                        <TableRow><TableCell colSpan={3} className="text-muted-foreground">No spend in this window</TableCell></TableRow>
-                      ) : spend.byAgent.map((r) => (
-                        <TableRow key={r.agent}>
-                          <TableCell className="font-medium">{r.agent}</TableCell>
-                          <TableCell className="text-right tabular-nums">{r.runs}</TableCell>
-                          <TableCell className="text-right tabular-nums">{formatUsdMicros(r.costUsdMicros) ?? <span className="text-muted-foreground">$ unavailable</span>}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-
-                <div className="overflow-hidden rounded-xl border border-border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-card">
-                        <TableHead>Model</TableHead>
-                        <TableHead className="text-right">Runs</TableHead>
-                        <TableHead className="text-right">Est. cost</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {spend.byModel.length === 0 ? (
-                        <TableRow><TableCell colSpan={3} className="text-muted-foreground">No spend in this window</TableCell></TableRow>
-                      ) : spend.byModel.map((r) => (
-                        <TableRow key={r.model}>
-                          <TableCell className="font-medium">{r.model}</TableCell>
-                          <TableCell className="text-right tabular-nums">{r.runs}</TableCell>
-                          <TableCell className="text-right tabular-nums">{formatUsdMicros(r.costUsdMicros) ?? <span className="text-muted-foreground">$ unavailable</span>}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      )}
+      {tab === 'spend' && <SpendTab m={m} />}
 
     </div>
   )
