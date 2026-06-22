@@ -232,9 +232,18 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
       dropped the now-unused getWorkflowPluginContext import (its only reader, startHandler, moved). ~1,386 → ~940.
       Verified: typecheck/lint/workflows 420-0/full-suite 5124-0/binary build/boot smoke (GET /instances → 200,
       GET /steps/x → 404, POST /instances/start bad workflow → 400, /definitions still 200).
-    - ☐ C2c — `routes/gates.ts` (approve/reject/decision-page/
-      pending/status; needs lib/gate-audit.ts [getGateDescription+buildGateAuditPayload dedup] + lib/gate-html.ts
-      [formValue/gateDecisionHtmlResponse/escapeHtml] + a gate-settings accessor for activeGateSettings). Then C3 —
-      exec-tools + register-hooks + channel-approvals activate-body extractions. The decideGate 6-block collapse +
-      stdJsonResponses const + typed-route casts stay deferred redesigns (not required for the split).
+    - ☑ C2c — gate routes + their helpers: `lib/gate-audit.ts` (getGateDescription + buildGateAuditPayload, deduped
+      from the module/route/activate triple-scope), `lib/gate-html.ts` (formValue/gateDecisionHtmlResponse/escapeHtml —
+      the durable approval fallback page), `lib/gate-settings.ts` (the gateNotificationSettings seed/fallback accessor:
+      setGateSettings/getGateSettings/activeGateSettings — activeGateSettings still prefers the live notifications store,
+      onSettingsChange still updates the store only, so behavior is identical), and `lib/routes/gates.ts` exporting
+      `gateRoutes` (approve/reject/decision GET+POST/pending/status + webApprover). populateWorkflowRoutes is DELETED;
+      definePlugin spreads `[...definitionRoutes, ...instanceRoutes, ...gateRoutes]` — every route now lives in a
+      lib/routes/ module. index.ts shed ~9 now-unused imports. ~1,245 → 755. Verified: typecheck/lint/workflows 420-0/
+      full-suite 5124-0/binary build/boot smoke (GET /gates/pending + /gates/status → 200; /gates/x/decision missing
+      params + POST /gates/x/approve bad body → 400; /instances + /definitions still 200).
+    - ☐ C3 — the remaining activate-body extractions: exec-tools (`lib/exec-tools.ts`), register-hooks
+      (`lib/register-hooks.ts`), channel-approvals (`lib/channel-approvals.ts` — the subscribeApprovalResponses handler
+      that still uses gate-audit/gate-settings). The decideGate 6-block collapse + stdJsonResponses const + typed-route
+      casts stay deferred redesigns (not required for the split).
 - Remaining: workflow-canvas-editor (1,803), models-page (1,205), schedule/index (1,443) + test splits.
