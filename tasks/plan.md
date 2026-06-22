@@ -310,4 +310,9 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
   registry — behavior-touching, its OWN step) + canvas-editor-nodes.tsx, workflow-details-drawer.tsx, use-workflow-copy-form,
   use-unsaved-changes-guard, and the redesigns (slugify consolidation, setIsDirty-in-updater fix, WorkflowStepPatch typing,
   postOrPut helper, key-remount reset). 
-- Remaining: workflow-canvas-editor phases 2+, schedule/index (1,443) + test splits.
+  - ☑ Phase 2 — details drawer: `workflow-details-drawer.tsx` (WorkflowDetailsDrawer) — the self-contained controlled
+    name/description drawer (own draft state, props-only, no editor-state closure). Component sheds the now-unused
+    Input/Label/Textarea/X imports. 1,564 → 1,469. Verified: typecheck/lint/canvas-editor.test 29-0/full-suite 5124-0/
+    binary build/boot smoke (Workflows loads, client.js → 200).
+- Remaining: workflow-canvas-editor phases 3+ (use-workflow-copy-form, use-unsaved-changes-guard hooks; then the
+  behavior-touching dead-renderer deletion + canvas-editor-nodes), schedule/index (1,443) + test splits.
