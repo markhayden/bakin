@@ -242,8 +242,15 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
       lib/routes/ module. index.ts shed ~9 now-unused imports. ~1,245 → 755. Verified: typecheck/lint/workflows 420-0/
       full-suite 5124-0/binary build/boot smoke (GET /gates/pending + /gates/status → 200; /gates/x/decision missing
       params + POST /gates/x/approve bad body → 400; /instances + /definitions still 200).
-    - ☐ C3 — the remaining activate-body extractions: exec-tools (`lib/exec-tools.ts`), register-hooks
-      (`lib/register-hooks.ts`), channel-approvals (`lib/channel-approvals.ts` — the subscribeApprovalResponses handler
-      that still uses gate-audit/gate-settings). The decideGate 6-block collapse + stdJsonResponses const + typed-route
-      casts stay deferred redesigns (not required for the split).
+    - ☑ C3a — exec-tools: `lib/exec-tools.ts` exporting `registerWorkflowExecTools(ctx)` — all 10 workflow exec tools
+      (list/get_definition/start/list_instances/get_instance/get_step/complete_step + the migrated get_step/submit_step/
+      check_gates formatters). activate() now calls registerWorkflowExecTools(ctx) instead of inlining ~280 lines.
+      index.ts shed buildTemplateList/resolveSubWorkflows/formatStepContext/getTask/updateTask/z imports. ~755 → 472.
+      Verified: typecheck/lint/workflows 420-0 (incl. exec-tools.test.ts callTool coverage)/full-suite 5124-0/binary
+      build/boot smoke (plugin Ready; /definitions + /instances + /gates/pending → 200).
+    - ☐ C3b — register-hooks (`lib/register-hooks.ts`, the ~19 ctx.hooks.register calls) + channel-approvals
+      (`lib/channel-approvals.ts` — rehydratePendingApprovals + the subscribeApprovalResponses handler that uses
+      gate-audit/gate-settings) + optionally registerWorkflowSearch (the registerFileBackedContentType block) into
+      search-sync. After that index.ts is activate-orchestration-only (~220-line target). The decideGate 6-block collapse
+      + stdJsonResponses const + typed-route casts + the submit_step error-message classification stay deferred redesigns.
 - Remaining: workflow-canvas-editor (1,803), models-page (1,205), schedule/index (1,443) + test splits.
