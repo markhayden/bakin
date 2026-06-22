@@ -225,7 +225,14 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
       now spreads `[...definitionRoutes, ...workflowRoutes]`; populateWorkflowRoutes shrank to instances+gates. index.ts
       shed ~10 now-unused imports. 2,146(pre-A) → ~1,400. Verified: typecheck/lint/workflows 420-0/full-suite 5124-0/binary
       build/boot smoke (GET /definitions + /node-types + /notification-channels → 200, POST /definitions bad body → 400).
-    - ☐ C2b — `routes/instances.ts` (steps/instances/start), ☐ C2c — `routes/gates.ts` (approve/reject/decision-page/
+    - ☑ C2b — instance/step routes: `lib/trigger-dispatch.ts` (triggerDispatch extracted — shared by step/gate routes
+      + activate exec-tools) + `lib/routes/instances.ts` exporting `instanceRoutes` (/steps/:taskId GET, /steps/:taskId/
+      complete POST, /instances GET, /instances/:taskId GET, /instances/start POST). populateWorkflowRoutes is now
+      gate-routes-only; definePlugin spreads `[...definitionRoutes, ...instanceRoutes, ...workflowRoutes]`. index.ts
+      dropped the now-unused getWorkflowPluginContext import (its only reader, startHandler, moved). ~1,386 → ~940.
+      Verified: typecheck/lint/workflows 420-0/full-suite 5124-0/binary build/boot smoke (GET /instances → 200,
+      GET /steps/x → 404, POST /instances/start bad workflow → 400, /definitions still 200).
+    - ☐ C2c — `routes/gates.ts` (approve/reject/decision-page/
       pending/status; needs lib/gate-audit.ts [getGateDescription+buildGateAuditPayload dedup] + lib/gate-html.ts
       [formValue/gateDecisionHtmlResponse/escapeHtml] + a gate-settings accessor for activeGateSettings). Then C3 —
       exec-tools + register-hooks + channel-approvals activate-body extractions. The decideGate 6-block collapse +
