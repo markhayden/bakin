@@ -387,7 +387,16 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
     binary build + **DOCKERIZED-RIG E2E** (real OpenClaw): an every-minute schedule fired AUTOMATICALLY via the
     scheduler tick — occurrence runId `sch_…:…T15:31:00Z` (not manual-), status success, task created — proving
     startScheduler→cycle→runSchedulerTick→schedulerDeps.fire→runClaimedFire end to end on the live stack.
-  - ☐ Phase 5+ : job-service.ts (CRUD verbs + the route/exec-tool dedup), routes/jobs.ts, exec-tools.ts. The redesigns
-    (pause-drift fix, dead update-handler code, dead settings keys maxConcurrentJobs/failureCooldownMs, ctx-threading,
-    zod for ensureBakinJob) are behavior-touching — listed, not bundled.
+  - ☑ Phase 5 — job-service (shared CRUD helpers): `lib/job-service.ts` — the EXISTING shared verbs/helpers
+    (guardBakinMutation + READ_ONLY_ERROR + BakinMutationGuard, ensureBakinJob [the hook handler], getJobByLogicalJobId,
+    isCronAlreadyGoneError + deleteScheduleJob + ScheduleDeleteContext, readMergedRuntimeJobs, jobToSearchDoc, indexJob,
+    EnsureBakinJobResult). PURE RELOCATION — explicitly did NOT take the route/exec dedup (createScheduleJob/
+    applyPauseAction/updateScheduleJob/projectJobDetail) because that folds in the pause-`pauseUntil` BEHAVIORAL DRIFT;
+    left as a deliberate behavior-touching follow-up. index imports the public surface back; shed removeJob/MergedJob/
+    getJobByLogicalJobId imports. 1,060 → 919. Verified: typecheck/lint/schedule 280-0/full-suite 5124-0/binary build +
+    **DOCKERIZED-RIG E2E** (real OpenClaw): full CRUD round-trip — create (indexJob) → PUT/pause (guardBakinMutation 200)
+    → bogus-id guard (404) → delete (deleteScheduleJob 200) → gone from list. All moved helpers behave on the live stack.
+  - ☐ Phase 6 : routes/jobs.ts (the 12-route array + zod schemas) + exec-tools.ts (the 10 ctx.registerExecTool calls),
+    leaving index a ~200-line definePlugin shell. The redesigns (pause-drift fix, dead update-handler code, dead settings
+    keys maxConcurrentJobs/failureCooldownMs, ctx-threading, zod for ensureBakinJob) are behavior-touching — not bundled.
 - Remaining: schedule fire-path phases 2+ + test splits; deferred canvas-editor copy-form (cross-file dedup) + redesigns.
