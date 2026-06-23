@@ -104,11 +104,19 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
     typecheck/lint/registry-test 52-0/full-suite 5115-0/binary build + isolated-home boot smoke (9 plugins activate
     in correct topo order through the refactored loadPlugin→buildContext path; the 1 failure is schedule's
     openclaw-cron ENOENT, environmental). New direct unit test for the unified sort (6-0).
-  - ☐ Phase B (DEFERRED, behavior-touching): unify the two activation pipelines (`loadPlugin` /
+  - ☑ Phase B-move (#572): physical **move out of src/lib → src/core** (boot-critical loader is server-only).
+    git-mv plugin-registry + the 4 Phase-A siblings (plugin-registry-types/plugin-console-capture/
+    plugin-activation-audit/plugin-topo-sort); repointed the moved files' own imports (../core/X → ./X;
+    ./plugin-skill-loader + ./plugin-context-factory → ../lib/X) and rewrote every consumer — 14 non-test
+    importers (incl. server.ts's boot import + the packages/host plugin APIs), src/lib/plugin-static-imports.ts,
+    ~45 test import + mock.module overlays (lib/plugin-* → core/plugin-*), and a stale lockfile.ts doc-comment.
+    Clean move, no shim; byte-for-byte function bodies. Verified typecheck/eslint/full-suite 5124-0/binary build
+    (stamps reverted)/isolated boot smoke (9 plugins ready through the moved registry; schedule openclaw-cron
+    ENOENT environmental).
+  - ☐ Phase B-unify (DEFERRED, behavior-touching): unify the two activation pipelines (`loadPlugin` /
     `activateUserPluginEntry` share a ~60-line tail but diverge on import mechanism, console-capture wrapping,
     migrations, core/user id bookkeeping, and logPluginActivation ordering — merging normalizes boot-path
-    ordering, so it gets its own commit + boot smoke, mirroring the dispatch dedup cadence). Plus the physical
-    **move out of src/lib** (churns 55 importers + 40 mock paths — mechanical, separate).
+    ordering, so it gets its own commit + boot smoke, mirroring the dispatch dedup cadence).
 - server.split — ☐ (router-table + boot.ts; search-startup/recovery already extracted; HOLD until the dispatch
   live-test passes — it stresses the same boot/router surface)
 - runtime.split — ☑ **DONE** (adapter, 3,188 → 1,560, 51%, across 10 stacked PRs #551–#560). Barrel-preserving:
@@ -132,10 +140,17 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
 
 ## WS7 — tooling
 
-- docs-generate.split — ◧ IN PROGRESS: `scripts/docs/generate.ts` (2,585) → ~12 lib/ modules + a thin
-  invocation-only entry; delete the dead legacy OpenAPI generator (~215 lines). Pure relocation, byte-for-byte
-  output preserved (gate: `docs:check` + the post-`docs:generate` diff is date-stamp-only). Escaper-consolidation
-  / plugin-list-derivation / CLI-metadata redesigns DEFERRED (output-risk).
+- docs-generate.split — ☑ **DONE** (`scripts/docs/generate.ts` 2,585 → 310-line invocation-only entry across 8
+  lib/ modules, the last 5 in PRs #564–#568). Earlier PRs: doc-utils/cli-reference/api-reference. This session:
+  `lib/source-extraction.ts` (hook/slot scanners + plugin-manifest readers), `lib/sdk-reference.ts` (TS-compiler
+  SDK extraction + sdk.md renderers + CORE_TYPES/HOOKS_GROUPS/TYPE_DOMAIN_GROUPS + validateSdkCoverage),
+  `lib/hooks-reference.ts` + `lib/mcp-reference.ts` (the two audit-reference clusters), `lib/snippets.ts`
+  (`<!-- docs:* -->` marker renderers + updateGeneratedContentBlocks), `lib/reference-pages.ts`
+  (catalog/settings/runtime-paths renderers + buildCoverageReport). Pure relocation; nothing imports generate.ts
+  so no re-export needed. GATE per PR: docs:generate output **byte-identical** to the on-main baseline
+  (hooks.md/openapi.json/reference-generated, generated-to-generated since committed docs are pre-existing-stale) +
+  eslint; #567/#568 also diffed the FULL docs output (incl. the 10 marker-block pages) vs parent. Escaper-
+  consolidation / plugin-list-derivation / CLI-metadata redesigns NOT taken (output-risk) — noted as follow-ups.
 - externals + CORE_PLUGINS consolidation — ☑ New `src/lib/core-plugin-ids.ts` is the single canonical
   core-plugin id list; `scripts/build-plugins.ts` + `scripts/dev.ts` import it (the two hand-maintained,
   differently-ordered copies — the source of the dropped-`images` class of bug — are gone). `scripts/dev.ts`
@@ -172,15 +187,21 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
     checks. 539 → 138. Behavior-preserving; the optional behavioral "redesign opportunities" (REST/MCP guard
     inconsistency, identifier-fallback dedup, dead .catch noise, postJson helper) are NOT taken — noted for follow-up.
     Verified: typecheck/lint/tasks suite 206-0/full-suite/binary build/boot smoke.
-- asset-service — ◧ **media + trash extracted** (835 → 682). `lib/asset-media.ts` (lazy sharp loader +
-  imageDimensions + generateThumbnail — the only module-level mutable state, the sharpModule cache) and
-  `lib/asset-trash.ts` (soft-delete/list/restore/purge — self-contained, deliberately bypasses the
-  manifest-write choke point so it evicts/relinks the task-asset index explicitly). `assetDirAbs` moved to
-  its natural home `asset-id.ts` (both service + trash import it — no cycle). The 2 route/index consumers +
-  4 test files repointed to `asset-trash`; the two fragile importers (plugin-context-services dynamic import,
-  post-channel path-alias) use only create/read fns and are untouched. Verified: typecheck/lint/assets suite
-  242-0/full-suite/binary build. DEFERRED: asset-mutations + asset-upsert split + the optional redesigns
-  (mutateManifest combinator, iterateStoreManifests walker, images-plugin sharp-dedup).
+- asset-service — ☑ **DONE** (835 → media+trash extracted → 681, then 681 → 50-line barrel + 3 cohesive modules
+  across PRs #569–#571). Earlier: `lib/asset-media.ts` (lazy sharp loader + imageDimensions + generateThumbnail)
+  + `lib/asset-trash.ts` (soft-delete/list/restore/purge). This session, the create/read + mutations + upsert split:
+  `lib/asset-core.ts` (createAsset/getAsset/listAssets/resolveFile/getAssetSummary + the shared leaves extOf/nowIso —
+  the cycle-free base), `lib/asset-mutations.ts` (addVersion/updateMetadata/tag ops/promote/deleteVersion/addExport/
+  relink/retype + mirrorDisplay/removeFileQuietly, all behind the per-asset lock), `lib/asset-upsert.ts`
+  (findBySourcePath/upsertFromSource/resolveStoreFile + sha256File/findSameTaskContentMatch/upsertFromSourceInner).
+  **Design note:** the plan envisioned create/read staying in asset-service.ts, but external importers pull mutation
+  AND upsert fns from it (so it MUST be a barrel) and upsert needs create/read — so siblings would import the barrel
+  (a cycle the kickoff forbids). Resolved by moving create/read into asset-core, making asset-service.ts a pure
+  re-export barrel. Clean DAG: asset-core ← asset-mutations ← asset-upsert ← asset-service; no module imports the
+  barrel; no mock.module('…/asset-service') seams exist so nothing depended on barrel cross-calls. Byte-for-byte
+  bodies. GATE per PR: typecheck/eslint/assets 242-0/full-suite 5124-0/binary build (stamps reverted)/isolated boot
+  smoke (assets activates; bakin_assets reindex runs listAssets clean). DEFERRED redesigns (mutateManifest combinator,
+  iterateStoreManifests walker, images-plugin sharp-dedup) NOT taken — noted as follow-ups.
 - health-page — ◧ **types + formatters extracted** (1,155 → 996). `plugins/health/types.ts` (the 14 wire-format
   interfaces + UsageKind — fixes the missing-types.ts convention violation; health/index.ts can now type its
   route payloads against them) and `plugins/health/lib/format.ts` (formatUptime/formatTokenCount/formatRuntimeCost/
