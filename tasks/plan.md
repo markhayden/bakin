@@ -327,5 +327,18 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
     renderer for swept kinds (same as the viewer already), re-populated on plugin re-activate. 1,469 → 1,306. Verified:
     typecheck/lint/canvas-editor.test 29-0/workflows 420-0/full-suite 5124-0/binary build/boot smoke (Workflows loads,
     client.js + /definitions → 200).
-- Remaining: workflow-canvas-editor phases 4+ (use-workflow-copy-form, use-unsaved-changes-guard hooks — both need the
-  key-remount redesign first to decouple from the props-change reset effect; flagged), schedule/index (1,443) + test splits.
+  - ☑ Phase 4 — unsaved-changes guard: `use-unsaved-changes-guard.tsx` (useUnsavedChangesGuard) — the generic
+    navigation guard (beforeunload + TanStack history.block + the capture-phase anchor-click interceptor), the
+    exit-confirmation dialog, and `requestExit()`. The key-remount "prerequisite" turned out unnecessary: instead of
+    deleting the props-change reset effect, the hook exposes `reset()` and the editor's reset effect calls it — pure
+    behavior-preserving relocation, no page-wrapper change. The Save/Discard paths cross back via `onSaveAndExit`
+    (async→bool: nodeDrawerDirty guard + save + dirty-reset) / `onDiscardAndExit` callbacks; `canSaveInPlace` +
+    `isManagedSource` moved up so the hook can be constructed before the reset effect. index.ts shed the Dialog* +
+    useTanStackRouter imports + the RouteNavigationBlocker type. 1,306 → 1,169. Verified: typecheck/lint/canvas-editor.test
+    29-0 (incl. the stubbed history.block flow)/workflows 420-0/full-suite 5124-0/binary build/boot smoke.
+  - ☐ DEFERRED — use-workflow-copy-form: NOT taken as an in-file lift. The two copy handlers mutate ~8 pieces of editor
+    state on success (definition/editingId/effectiveSource/isDirty/nodeDrawerDirty/dialog-open/error) + call buildDefinition/
+    onSaved/onCopied, so an in-file hook needs ~12 injected deps for modest gain; its real value is the CROSS-FILE dedup
+    (the third copy in workflow-detail.tsx + the slugify consolidation). Best done as a deliberate cross-file dedup, not a
+    forced single-file move. canvas-editor: 1,803 → 1,169 across 5 PRs (state model, drawer, dead-renderers, guard).
+- Remaining: schedule/index (1,443) + test splits; deferred canvas-editor copy-form (cross-file dedup) + redesigns.
