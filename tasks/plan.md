@@ -341,7 +341,7 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
     onSaved/onCopied, so an in-file hook needs ~12 injected deps for modest gain; its real value is the CROSS-FILE dedup
     (the third copy in workflow-detail.tsx + the slugify consolidation). Best done as a deliberate cross-file dedup, not a
     forced single-file move. canvas-editor: 1,803 → 1,169 across 5 PRs (state model, drawer, dead-renderers, guard).
-- schedule/index — ◧ **split by RISK** (1,443; the live fire path for ALL schedules — most operationally sensitive
+- schedule/index — ☑ **DONE, split by RISK** (1,443 → 183; the live fire path for ALL schedules — most operationally sensitive
   file in the audit). Landmines (kickoff + appendix risk notes): two module cells `pluginCtx` (read ~15 ways on the
   fire path) + `schedulerTimer` must each stay in EXACTLY one module; the test public surface `__scheduleTestInternals`
   + `MISSED_WINDOW_REASON` must re-export from index; default export stays in index (binary static import); the
@@ -402,8 +402,15 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
     registerScheduleExecTools(ctx). 919 → 609. Verified: typecheck/lint/schedule 280-0 (routes.test.ts has the exec-tool
     callTool coverage)/full-suite 5124-0/binary build + rig: schedule activates against real OpenClaw (the 10
     registrations run without throwing — activation_failed would otherwise surface).
-  - ☐ Phase 6b (FINAL) : routes/jobs.ts (the 12 defineRoute/searchRoute entries + the zod schemas), leaving index a
-    ~250-line definePlugin shell (imports + activate orchestration + onReady/onShutdown). The redesigns (pause-drift fix,
-    dead update-handler code, dead settings keys maxConcurrentJobs/failureCooldownMs, ctx-threading, zod for
-    ensureBakinJob) are behavior-touching — not bundled.
-- Remaining: schedule fire-path phases 2+ + test splits; deferred canvas-editor copy-form (cross-file dedup) + redesigns.
+  - ☑ Phase 6b (FINAL) — `lib/routes/jobs.ts`: the 12 defineRoute/searchRoute entries + their zod schemas, exported as
+    `scheduleRoutes` and spread into definePlugin (`routes: scheduleRoutes`). index.ts shed 18 now-unused imports
+    (z, defineRoute/searchRoute, getLastRun/readRuns, parseSchedule, checkSchedulePrompt, getSystemTimezone/json,
+    fireManualRun, guardBakinMutation/deleteScheduleJob/indexJob, getJob/upsertJob/withDefaults/newScheduleId,
+    BakinJobMeta) and is now a 183-line definePlugin shell (imports + activate orchestration + onReady/onShutdown +
+    __scheduleTestInternals). 609 → 183 (1,443 → 183 overall, 87% reduction). Verified: typecheck/lint/schedule 280-0
+    (--isolate)/full-suite 5124-0/binary build (stamps reverted) + boot smoke with an openclaw PATH stub: schedule
+    ACTIVATES and GET `/` + POST `/parse` both 200 (parse "every day at 9am" → `0 9 * * *`). The redesigns (pause-drift
+    fix, dead update-handler code, dead settings keys maxConcurrentJobs/failureCooldownMs, ctx-threading, zod for
+    ensureBakinJob) are behavior-touching — NOT bundled.
+- **schedule/index — ☑ DONE. The last audit god-file is resolved.**
+- Remaining: deferred behavior-touching redesigns (catalogued above) + the tests/** god-file splits.
