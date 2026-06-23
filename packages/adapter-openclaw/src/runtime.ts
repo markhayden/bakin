@@ -62,6 +62,12 @@ import {
   resolveOpenClawMemoryPath,
   statOpenClawMemoryEntry,
 } from './memory'
+import {
+  stripAnsi, firstString, firstStringAtPaths, getJsonPath,
+  isPlainObject, isRecord, readPath, deepMerge, cloneJson, parseJsonValue,
+  parseJsonLines, readJsonFile, truncate, redactSensitiveText, slug, sleep,
+  metadataValue, metadataFiles,
+} from './runtime-utils'
 
 interface OpenClawSettings {
   binaryPath: string
@@ -115,7 +121,6 @@ const NATIVE_APPROVAL_NOTICE = [
 ].join(' ')
 const NATIVE_APPROVAL_PROVIDERS = new Set(['discord', 'telegram', 'slack', 'matrix', 'qqbot'])
 const OPENCLAW_PLUGIN_ALLOWLIST_WARNING = 'plugins.allow is empty'
-const ANSI_RE = /\x1b\[[0-?]*[ -/]*[@-~]/g
 
 interface OpenClawAgentTurnOptions {
   agentId: string
@@ -189,10 +194,6 @@ function openClawErrorOutput(err: unknown): string {
     typeof record.stdout === 'string' ? record.stdout : '',
     typeof record.message === 'string' ? record.message : '',
   ].filter(Boolean).join('\n')
-}
-
-function stripAnsi(value: string): string {
-  return value.replace(ANSI_RE, '')
 }
 
 function isPluginAllowlistOpenFailure(err: unknown): boolean {
@@ -1587,15 +1588,6 @@ function extractOpenClawAgentUsage(value: unknown): MessageUsage | undefined {
   return out.input !== undefined || out.output !== undefined ? out : undefined
 }
 
-function getJsonPath(value: unknown, path: string[]): unknown {
-  let current = value
-  for (const part of path) {
-    if (!isPlainObject(current)) return undefined
-    current = current[part]
-  }
-  return current
-}
-
 function mergeSettings(raw: Record<string, unknown> | undefined): OpenClawSettings {
   const input = (raw ?? {}) as Partial<OpenClawSettings>
   const requestedBinary = typeof input.binaryPath === 'string'
@@ -1828,23 +1820,6 @@ function parseOpenClawDeliveryOutput(stdout: string): Record<string, unknown> | 
     ?? parseJsonObject(text.split('\n').reverse().find(part => part.trim().startsWith('{') && part.trim().endsWith('}')) ?? '')
 }
 
-function firstStringAtPaths(value: unknown, paths: string[][]): string | null {
-  for (const path of paths) {
-    const found = stringAtPath(value, path)
-    if (found) return found
-  }
-  return null
-}
-
-function stringAtPath(value: unknown, path: string[]): string | null {
-  let current = value
-  for (const key of path) {
-    if (!current || typeof current !== 'object' || Array.isArray(current)) return null
-    current = (current as Record<string, unknown>)[key]
-  }
-  return typeof current === 'string' && current.trim() ? current.trim() : null
-}
-
 function readChannelInfos(): ChannelInfo[] {
   const config = readOpenClawConfig() as { channels?: unknown } | null
   const channels = config?.channels
@@ -1996,44 +1971,12 @@ function isExpectedNativeApprovalResolveMiss(message: string): boolean {
   return /expired|not found|unknown/i.test(message)
 }
 
-function truncate(value: string, maxLength: number): string {
-  if (value.length <= maxLength) return value
-  if (maxLength <= 1) return value.slice(0, maxLength)
-  return `${value.slice(0, Math.max(0, maxLength - 3))}...`
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value)
-}
-
 function humanizeChannelId(id: string): string {
   return id
     .split(/[-_]/)
     .filter(Boolean)
     .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
     .join(' ') || id
-}
-
-function metadataValue(metadata: RuntimeMetadata | undefined, key: string): string | undefined {
-  const value = metadata?.[key]
-  return typeof value === 'string' && value.length > 0 ? value : undefined
-}
-
-function metadataFiles(metadata: RuntimeMetadata | undefined): Array<{ name: string; path: string; contentType?: string }> {
-  const value = metadata?.files
-  if (!Array.isArray(value)) return []
-  const files: Array<{ name: string; path: string; contentType?: string }> = []
-  for (const entry of value) {
-    if (!entry || typeof entry !== 'object') continue
-    const file = entry as Record<string, unknown>
-    if (typeof file.name !== 'string' || typeof file.path !== 'string') continue
-    files.push({
-      name: file.name,
-      path: file.path,
-      ...(typeof file.contentType === 'string' ? { contentType: file.contentType } : {}),
-    })
-  }
-  return files
 }
 
 function readCronStore(): OpenClawCronStore {
@@ -2210,10 +2153,6 @@ function cronScheduleToString(schedule: OpenClawCronStoreJob['schedule']): strin
   return schedule?.expr ?? schedule?.value ?? '* * * * *'
 }
 
-function cloneJson<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T
-}
-
 function extractCronStoreJobs(raw: string | unknown): OpenClawCronStoreJob[] {
   const parsed = typeof raw === 'string' ? parseJsonValue(raw) : raw
   const candidates = cronJobCandidates(parsed)
@@ -2340,15 +2279,6 @@ function cronRunCandidates(value: unknown): unknown[] {
   return typeof value.runId === 'string' || typeof value.id === 'string' ? [value] : []
 }
 
-function parseJsonLines(raw: string): unknown[] {
-  const entries: unknown[] = []
-  for (const line of raw.split('\n')) {
-    const parsed = parseJsonValue(line)
-    if (parsed !== null) entries.push(parsed)
-  }
-  return entries
-}
-
 function normalizeOpenClawCronRun(value: unknown, requestedJobId: string): CronRun | null {
   if (!isPlainObject(value)) return null
   const runJobId = firstString(value.jobId, value.cronJobId) ?? requestedJobId
@@ -2405,30 +2335,6 @@ function normalizeCronRunStatus(status: string | undefined): CronRun['status'] {
     default:
       return 'succeeded'
   }
-}
-
-function deepMerge(base: Record<string, unknown>, patch: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...base }
-  for (const [key, value] of Object.entries(patch)) {
-    const existing = out[key]
-    out[key] = isPlainObject(existing) && isPlainObject(value)
-      ? deepMerge(existing, value)
-      : value
-  }
-  return out
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function readPath(source: Record<string, unknown>, key: string): unknown {
-  let current: unknown = source
-  for (const part of key.split('.')) {
-    if (!isPlainObject(current) || !(part in current)) return undefined
-    current = current[part]
-  }
-  return current
 }
 
 // Exported for tests — pure stream-merging helper with no adapter state.
@@ -2869,21 +2775,6 @@ function truncateMiddle(value: string, maxChars: number): string {
   return `${value.slice(0, head)}...${value.slice(-tail)}`
 }
 
-function redactSensitiveText(value: string): string {
-  return value
-    .replace(/(authorization:\s*bearer\s+)[^\s"'`]+/gi, '$1[redacted]')
-    .replace(/(x-access-token:)[^\s"'`@]+/gi, '$1[redacted]')
-    .replace(/([?&][^=\s"'`]*(?:token|password|secret|api[_-]?key)[^=\s"'`]*=)[^&\s"'`]+/gi, '$1[redacted]')
-    .replace(/\b([A-Za-z0-9_]*(?:token|password|secret|api[_-]?key)[A-Za-z0-9_]*\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,"'`}]+)/gi, '$1[redacted]')
-}
-
-function firstString(...values: unknown[]): string | undefined {
-  for (const value of values) {
-    if (typeof value === 'string' && value.length > 0) return value
-  }
-  return undefined
-}
-
 function defaultOpenClawImageOutputPath(format?: string): string {
   const normalized = normalizeOpenClawOutputFormat(format)
   const ext = normalized === 'jpeg' ? 'jpg' : normalized
@@ -3045,16 +2936,6 @@ function parseJsonObject(raw: string): Record<string, unknown> | null {
   return isPlainObject(parsed) ? parsed : null
 }
 
-function parseJsonValue(raw: string): unknown | null {
-  const trimmed = raw.trim()
-  if (!trimmed) return null
-  try {
-    return JSON.parse(trimmed)
-  } catch {
-    return null
-  }
-}
-
 function agentToRuntime(agent: NonNullable<ReturnType<typeof findAgentById>>): RuntimeAgent {
   return {
     id: agent.id,
@@ -3095,14 +2976,6 @@ function isSafeSkillFilePath(path: string): boolean {
     && !path.startsWith('/')
     && !path.includes('\\')
     && !path.split('/').some((part) => part === '..' || part === '')
-}
-
-function readJsonFile<T = unknown>(path: string): T | null {
-  try {
-    return JSON.parse(readFileSync(path, 'utf-8')) as T
-  } catch {
-    return null
-  }
 }
 
 function readSkillTree(root: string): Record<string, string> {
@@ -3177,12 +3050,4 @@ function resolveRole(agentId: string): string {
   }
 
   return agentId === tryGetMainAgentId() ? 'Orchestrator' : ''
-}
-
-function slug(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `agent-${Date.now()}`
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
 }
