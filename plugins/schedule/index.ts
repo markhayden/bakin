@@ -16,6 +16,7 @@ import { migrateBakinSchedulesOffOpenClawCron } from './lib/cutover'
 import { checkScheduleCutover, scheduleCutoverRepair } from './lib/health-checks'
 import { checkSchedulePrompt } from './lib/prompt-guard'
 import { getSystemTimezone, json, expandTemplate } from './lib/schedule-util'
+import { setPluginCtx, getPluginCtx } from './lib/plugin-context'
 import { createTaskWithEffects } from '../../src/core/task-service'
 import { createLogger } from '../../src/core/logger'
 import { readTaskboard } from '../../src/core/task-store'
@@ -39,7 +40,8 @@ const READ_ONLY_ERROR = 'Runtime cron jobs are read-only in Bakin — adopt it f
 async function guardBakinMutation(jobId: string): Promise<BakinMutationGuard> {
   const meta = getJob(jobId)
   if (meta?.isBakinJob) return { ok: true, meta }
-  const runtime = pluginCtx ? await pluginCtx.runtime.cron.get(jobId).catch(() => null) : null
+  const ctx = getPluginCtx()
+  const runtime = ctx ? await ctx.runtime.cron.get(jobId).catch(() => null) : null
   return runtime
     ? { ok: false, status: 403, error: READ_ONLY_ERROR }
     : { ok: false, status: 404, error: 'Schedule not found' }
@@ -68,7 +70,7 @@ export const MISSED_WINDOW_REASON = 'missed schedule window'
 
 /** Resolved tick interval in ms, clamped to a safe floor. */
 function tickIntervalMs(): number {
-  const raw = pluginCtx?.getSettings<ScheduleSettings>()?.tickIntervalSeconds
+  const raw = getPluginCtx()?.getSettings<ScheduleSettings>()?.tickIntervalSeconds
   const seconds = typeof raw === 'number' && raw >= MIN_TICK_INTERVAL_SECONDS ? raw : DEFAULT_TICK_INTERVAL_SECONDS
   return seconds * 1000
 }
@@ -76,7 +78,7 @@ function tickIntervalMs(): number {
 /** Resolved catch-up safety window in ms. A missed occurrence fires into `todo`
  *  if within this window, else into `blocked` for the user to triage. */
 function catchUpWindowMs(): number {
-  const raw = pluginCtx?.getSettings<ScheduleSettings>()?.catchUpWindowMinutes
+  const raw = getPluginCtx()?.getSettings<ScheduleSettings>()?.catchUpWindowMinutes
   const minutes = typeof raw === 'number' && raw >= 0 ? raw : DEFAULT_CATCH_UP_WINDOW_MINUTES
   return minutes * 60_000
 }
@@ -92,7 +94,8 @@ interface EnsureBakinJobResult {
 type ScheduleDeleteContext = Pick<PluginContext, 'runtime' | 'search'>
 
 async function getScheduleDefaultOwner(): Promise<string> {
-  return pluginCtx?.runtime ? getRuntimeMainAgentId(pluginCtx.runtime) : 'main'
+  const ctx = getPluginCtx()
+  return ctx?.runtime ? getRuntimeMainAgentId(ctx.runtime) : 'main'
 }
 
 async function ensureBakinJob(ctx: PluginContext, input: Record<string, unknown>): Promise<EnsureBakinJobResult> {
@@ -181,14 +184,12 @@ async function deleteScheduleJob(ctx: ScheduleDeleteContext, jobId: string): Pro
 // Bridge logic (cron → task)
 // ---------------------------------------------------------------------------
 
-/** Module-level ctx set during activate(), used by routes + the scheduler. */
-let pluginCtx: PluginContext | null = null
-
-// ─── Module-scope helpers (use pluginCtx for runtime access) ─────────────
+// ─── Module-scope helpers (read ctx via getPluginCtx for runtime access) ──
 
 async function readMergedRuntimeJobs(): Promise<MergedJob[]> {
-  if (!pluginCtx) throw new Error('schedule plugin not activated')
-  return readMergedJobs(pluginCtx.runtime.cron, await getRuntimeMainAgentId(pluginCtx.runtime))
+  const ctx = getPluginCtx()
+  if (!ctx) throw new Error('schedule plugin not activated')
+  return readMergedJobs(ctx.runtime.cron, await getRuntimeMainAgentId(ctx.runtime))
 }
 
 function jobToSearchDoc(job: MergedJob): Record<string, unknown> {
@@ -203,8 +204,8 @@ function jobToSearchDoc(job: MergedJob): Record<string, unknown> {
 }
 
 function indexJob(jobId: string): void {
-  if (!pluginCtx) return
-  const ctx = pluginCtx
+  const ctx = getPluginCtx()
+  if (!ctx) return
   readMergedRuntimeJobs().then((jobs) => {
     const job = jobs.find(j => j.id === jobId)
     if (!job) return
@@ -292,7 +293,7 @@ interface ProcessRunResult {
 async function fireScheduledRun(meta: BakinJobMeta, jobId: string, runId: string, firedAtMs: number): Promise<ProcessRunResult> {
   const claim = claimCronFire(jobId, runId, firedAtMs)
   if (!claim.claimed) {
-    pluginCtx?.activity.audit('fire_suppressed', 'system', {
+    getPluginCtx()?.activity.audit('fire_suppressed', 'system', {
       jobId,
       runId,
       existingTaskId: claim.existing?.taskId ?? null,
@@ -337,7 +338,7 @@ function skipFire(jobId: string, runId: string, reason: SkipReason): ProcessRunR
   markCronFireSkipped(jobId, runId, reason)
   // activity.audit prepends the plugin id → observable event is `schedule.fire_skipped`
   // (matches fire_suppressed/fire_healed/task_created — bare operation, no manual prefix).
-  pluginCtx?.activity.audit('fire_skipped', 'system', { jobId, runId, reason })
+  getPluginCtx()?.activity.audit('fire_skipped', 'system', { jobId, runId, reason })
   return { status: 200, body: { ok: true, skipped: reason } }
 }
 
@@ -484,13 +485,14 @@ async function runClaimedFire(
   upsertJob(meta)
 
   // Audit + activity feed
-  if (pluginCtx) {
-    pluginCtx.activity.audit('task_created', 'system', {
+  const auditCtx = getPluginCtx()
+  if (auditCtx) {
+    auditCtx.activity.audit('task_created', 'system', {
       jobId, runId, taskId, agent: meta.agentId, owner: defaults.owner,
       ...(column !== 'todo' ? { column, blockedReason: opts.blockedReason } : {}),
     })
     const where = column === 'blocked' ? ` (blocked — ${opts.blockedReason ?? MISSED_WINDOW_REASON})` : ''
-    pluginCtx.activity.log('system', `Schedule "${meta.displayName ?? jobId}" created task ${taskId}${meta.agentId ? ` for ${meta.agentId}` : ''}${where}`, { taskId })
+    auditCtx.activity.log('system', `Schedule "${meta.displayName ?? jobId}" created task ${taskId}${meta.agentId ? ` for ${meta.agentId}` : ''}${where}`, { taskId })
   }
 
   return { status: 200, body: { ok: true, taskId } }
@@ -525,7 +527,7 @@ async function healPendingCronClaims(): Promise<void> {
       continue
     }
     const result = await runClaimedFire(meta, claim.jobId, claim.runId, { firedAtMs: claim.firedAt })
-    pluginCtx?.activity.audit('fire_healed', 'system', {
+    getPluginCtx()?.activity.audit('fire_healed', 'system', {
       jobId: claim.jobId,
       runId: claim.runId,
       taskId: (result.body as { taskId?: string }).taskId ?? null,
@@ -565,7 +567,7 @@ function schedulerDeps(): SchedulerDeps {
 /** Run the idempotent cutover using the live runtime adapter. Shared by
  *  activate() (automatic) and the doctor repair (manual). */
 function runScheduleCutover(): ReturnType<typeof migrateBakinSchedulesOffOpenClawCron> {
-  const cron = pluginCtx!.runtime.cron
+  const cron = getPluginCtx()!.runtime.cron
   return migrateBakinSchedulesOffOpenClawCron({
     cronGet: async (jobId) => {
       const job = await cron.get(jobId)
@@ -987,7 +989,7 @@ const schedulePlugin: BakinPlugin = definePlugin({
   contentFiles: [],
 
   async activate(ctx: PluginContext) {
-    pluginCtx = ctx
+    setPluginCtx(ctx)
 
     ctx.hooks.register('schedule.ensureBakinJob', (data: Record<string, unknown>) => ensureBakinJob(ctx, data), {
       hookKind: 'rpc',
@@ -1386,7 +1388,7 @@ const schedulePlugin: BakinPlugin = definePlugin({
   },
 
   async onReady() {
-    const runtime = pluginCtx?.runtime
+    const runtime = getPluginCtx()?.runtime
     if (!runtime) return
     const jobs = await readMergedJobs(runtime.cron, await getRuntimeMainAgentId(runtime))
     const bakin = jobs.filter(j => j.isBakinJob)
@@ -1411,6 +1413,6 @@ export const __scheduleTestInternals = {
   fireScheduledRunFromPayload,
   healPendingCronClaims,
   setPluginCtxForTests: (ctx: unknown) => {
-    pluginCtx = ctx as PluginContext | null
+    setPluginCtx(ctx as PluginContext | null)
   },
 }
