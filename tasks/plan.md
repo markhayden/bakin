@@ -361,8 +361,20 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
     cell. Behavior-preserving (the cell is the same, just relocated). 1,416 → 1,418 (local binds). Verified: typecheck/
     lint/the fire-path tests cron-dedup + blocked-fire-routing 24-0 (prove setPluginCtxForTests routes to the right
     cell)/full schedule suite 280-0/full-suite 5124-0/binary build (9 plugins load; schedule env ENOENT non-regression).
-  - ☐ Phase 3+ (FIRE PATH, needs Mark's eyes): fire-engine.ts (claim→fire→heal: runClaimedFire/healPendingCronClaims/
-    skipFire + MISSED_WINDOW_REASON), scheduler-loop.ts (schedulerTimer cell + start/stop + cutover ordering),
+  - ☑ Phase 3 — fire-engine (FIRE PATH): `lib/fire-engine.ts` — the claim→fire→heal core: MISSED_WINDOW_REASON +
+    ProcessRunResult, getScheduleDefaultOwner, fireScheduledRun, fireScheduledRunFromPayload, storedTaskExists, SkipReason
+    + skipFire, runClaimedFire (the 150-line gate→create→attach→audit body), HEAL_AFTER_MS + healPendingCronClaims,
+    fireManualRun. All read ctx via getPluginCtx (the one cell from phase 2). ProcessRunResult.body kept as BridgeResult
+    (NOT Record — preserved exact type). index imports back {MISSED_WINDOW_REASON, runClaimedFire, healPendingCronClaims,
+    fireManualRun, fireScheduledRunFromPayload} for the scheduler-loop + run-now routes/exec + test-internals, and
+    re-exports MISSED_WINDOW_REASON for the `@bakin/schedule/index` test surface. index shed ~12 fire-only imports
+    (createTaskWithEffects/readTaskboard/the ledger claim+heal fns/sidecar gates/randomUUID/expandTemplate/BridgeResult).
+    1,418 → 1,153. Verified: typecheck/lint/cron-dedup + blocked-fire-routing 24-0/full schedule suite 280-0/full-suite
+    5124-0/binary build + **DOCKERIZED-RIG E2E** (real OpenClaw, isolated mode): schedule plugin ACTIVATES (200 +
+    live jobs — the activation the env-ENOENT boot smoke can't show); run-now fired the moved path end-to-end →
+    `success` + task created + matching task_created audit row; a second run-now correctly `skipped: overlap` (the moved
+    board-read + skipFire). The exactly-once claim, gate logic, board IO, and audit all behave against the live stack.
+  - ☐ Phase 4+ : scheduler-loop.ts (schedulerTimer cell + schedulerDeps/start/stop + cutover→catch-up→tick ordering),
     job-service.ts (CRUD verbs + the route/exec-tool dedup), routes/jobs.ts, exec-tools.ts. The redesigns (pause-drift
     fix, dead update-handler code, dead settings keys maxConcurrentJobs/failureCooldownMs, ctx-threading, zod for
     ensureBakinJob) are behavior-touching — listed, not bundled.
