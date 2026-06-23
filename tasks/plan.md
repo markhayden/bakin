@@ -110,7 +110,25 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
     ordering, so it gets its own commit + boot smoke, mirroring the dispatch dedup cadence). Plus the physical
     **move out of src/lib** (churns 55 importers + 40 mock paths — mechanical, separate).
 - server.split — ☐ (router-table + boot.ts; search-startup/recovery already extracted; HOLD until the dispatch
-  live-test passes — it stresses the same boot/router surface)   runtime.split — ☐ (adapter, 3,188 lines)
+  live-test passes — it stresses the same boot/router surface)
+- runtime.split — ☑ **DONE** (adapter, 3,188 → 1,560, 51%, across 10 stacked PRs #551–#560). Barrel-preserving:
+  the class `OpenClawRuntimeAdapter` + the test seams (`mergeChatStreams`, the `__*ForTest` session-cache exports +
+  `SESSION_STORE_CACHE_MAX`) stay exported from runtime.ts; every sibling imports the shared leaf module, never the
+  barrel, so no cycle. Extracted modules (in dependency order): `runtime-utils.ts` (shared JSON/object/string leaves
+  — the foundation), `errors.ts` (CLI command-failure helpers, folded into the existing error module), `cron-store.ts`
+  (the `.cron` persistence/parse layer — rig-E2E'd against real OpenClaw: native cron created via CLI → parsed through
+  Bakin's list → removed → re-parse confirmed), `activity-summary.ts` (transcript→ChatChunk + tool-call summarizers;
+  also relocated the `parseJsonObject` leaf into runtime-utils), `image-inference.ts` (image arg/parse helpers),
+  `approval-helpers.ts` (pure approval converters + their constants), `session-activity.ts` (session transcript reader +
+  the `sessionStoreCache` LRU cell + re-exported test seams), `agent-config.ts` (openclaw.json agent/workspace mutators +
+  config writer + identity parsers), `channel-helpers.ts` (channel registry + messaging + delivery parsing + the
+  channel-coupled approval notice), `agent-turn.ts` (prompt build + tool-list + turn-result extraction). Each PR: pure
+  byte-for-byte relocation, verified typecheck/eslint/adapter-suite 115-0 (--isolate)/full-suite 5124-0/binary build
+  (stamps reverted)/boot smoke; cron additionally dockerized-rig E2E'd. Two type-coupled glue fns stay on the adapter
+  (`gatewayWebSocketUrl` ← OpenClawSettings, `applyRuntimeMessageToolPolicy` ← OpenClawAgentTurnOptions). DEFERRED
+  (behavior-touching, NOT taken): the cross-package `deepMerge` dedup with core/settings.ts; the settings/binary
+  resolver extraction (would relocate the class-central OpenClawSettings type); the Tier-3 capability-subclass refactor
+  of the facade itself. What remains in runtime.ts is the irreducible capability facade + class-central types.
 
 ## WS7 — tooling
 
