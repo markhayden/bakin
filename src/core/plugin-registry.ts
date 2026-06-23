@@ -597,6 +597,94 @@ class PluginRegistryImpl {
     })
   }
 
+  /**
+   * Shared activation tail for both the core (loadPlugin) and user
+   * (activateUserPluginEntry) paths. The two callers differ only in how they
+   * ACQUIRE the module (static table + migrations vs dist import + teardown) and
+   * in their error contract (core swallows → markPluginFailed; user rethrows);
+   * everything from build-context onward is identical modulo the `source`
+   * discriminator (span tag, console-capture wrapping, id bookkeeping, log
+   * wording, audit manifest arg). Returns the skill-load result so each caller
+   * can close its own loadSpan with its own field set.
+   *
+   * NOTE: logPluginActivation now runs AFTER the plugin state is registered for
+   * BOTH paths — the user path previously audited before skills loaded. This is
+   * the deliberate boot-path ordering normalization; only the audit/log emission
+   * order changes (nothing functional depends on it).
+   */
+  private async finalizeActivation(
+    plugin: BakinPlugin,
+    state: PluginState,
+    pluginPath: string,
+    storage: StorageAdapter,
+    events: EventBus,
+    services: AppServices,
+    opts: { source: 'core' | 'user'; manifestPath: string; manifest?: PublicPluginManifest; captureConsole: boolean },
+  ): Promise<ReturnType<typeof loadPluginSkills>> {
+    const { source, manifestPath, manifest, captureConsole } = opts
+    const ctx = this.buildContext(plugin.id, state, storage, events, services)
+    this.registerDeclarativeRoutes(plugin, state)
+    const activateSpan = startStartupSpan(log, 'plugin.activate', {
+      phase: 'plugin',
+      pluginId: plugin.id,
+      pluginSource: source,
+    })
+    try {
+      if (captureConsole) {
+        await withCapturedPluginConsole(plugin.id, () => plugin.activate(ctx))
+      } else {
+        await plugin.activate(ctx)
+      }
+      activateSpan.end({ status: 'ok' })
+    } catch (err) {
+      activateSpan.end({ status: 'error', error: err instanceof Error ? err.message : String(err) })
+      throw err
+    }
+    state.ctx = ctx
+    const skillSpan = startStartupSpan(log, 'plugin.skills', {
+      phase: 'plugin',
+      pluginId: plugin.id,
+      pluginSource: source,
+    })
+    let skillResult: ReturnType<typeof loadPluginSkills>
+    try {
+      skillResult = loadPluginSkills(pluginPath, ctx, log)
+    } catch (err) {
+      skillSpan.end({ status: 'error', error: err instanceof Error ? err.message : String(err) })
+      throw err
+    }
+    skillSpan.end({
+      status: skillResult.skipped.length > 0 ? 'error' : 'ok',
+      count: skillResult.registered.length,
+      skippedCount: skillResult.skipped.length,
+    })
+    if (skillResult.registered.length > 0) {
+      const target = source === 'user' ? `user plugin "${plugin.id}"` : `"${plugin.id}"`
+      log.info(`Auto-registered ${skillResult.registered.length} workflow skill(s) for ${target}`, {
+        skills: skillResult.registered,
+      })
+    }
+    this.plugins.set(plugin.id, state)
+    this.failedPlugins.delete(plugin.id)
+    if (source === 'core') {
+      corePluginIds.add(plugin.id)
+    } else {
+      corePluginIds.delete(plugin.id)
+    }
+    // #142 layer 1 — log requested permissions on every activation so
+    // `cat ~/.bakin/audit.jsonl | jq 'select(.event=="plugin.activate")'`
+    // shows the full surface the user authorized. For core, the resolved
+    // manifest is passed; for user, the helper reads source from the lockfile.
+    logPluginActivation({ plugin, source, manifestPath, manifest })
+    log.info(`${source === 'user' ? 'User plugin' : 'Plugin'} loaded: ${plugin.name} v${plugin.version}`, {
+      source: 'plugin',
+      pluginId: plugin.id,
+      version: plugin.version,
+      pluginSource: source,
+    })
+    return skillResult
+  }
+
   private async loadPlugin(
     pluginPath: string,
     storage: StorageAdapter,
@@ -693,63 +781,11 @@ class PluginRegistryImpl {
         healthCheckIds: [],
       }
 
-      const ctx = this.buildContext(plugin.id, state, storage, events, services)
-      // T20: declarative routes register BEFORE activate() runs (the spec
-      // invariant restored). Every plugin now has its routes array
-      // populated at module load — team and workflows use a
-      // populateXRoutes() helper called at module scope. Handlers receive
-      // ctx via the dispatcher at request time and never close over
-      // activate-internal state.
-      this.registerDeclarativeRoutes(plugin, state)
-      const activateSpan = startStartupSpan(log, 'plugin.activate', {
-        phase: 'plugin',
-        pluginId: plugin.id,
-        pluginSource: 'core',
-      })
-      try {
-        await plugin.activate(ctx)
-        activateSpan.end({ status: 'ok' })
-      } catch (err) {
-        activateSpan.end({ status: 'error', error: err instanceof Error ? err.message : String(err) })
-        throw err
-      }
-      state.ctx = ctx
-      const skillSpan = startStartupSpan(log, 'plugin.skills', {
-        phase: 'plugin',
-        pluginId: plugin.id,
-        pluginSource: 'core',
-      })
-      let skillResult: ReturnType<typeof loadPluginSkills>
-      try {
-        skillResult = loadPluginSkills(pluginPath, ctx, log)
-      } catch (err) {
-        skillSpan.end({ status: 'error', error: err instanceof Error ? err.message : String(err) })
-        throw err
-      }
-      skillSpan.end({
-        status: skillResult.skipped.length > 0 ? 'error' : 'ok',
-        count: skillResult.registered.length,
-        skippedCount: skillResult.skipped.length,
-      })
-      if (skillResult.registered.length > 0) {
-        log.info(`Auto-registered ${skillResult.registered.length} workflow skill(s) for "${plugin.id}"`, {
-          skills: skillResult.registered,
-        })
-      }
-      this.plugins.set(plugin.id, state)
-      this.failedPlugins.delete(plugin.id)
-      // Mark this id as core — `loadPlugin` is the core-only entry; user
-      // plugins go through `loadUserPlugins` and never land here.
-      corePluginIds.add(plugin.id)
-      // #142 layer 1 — log requested permissions on every activation so
-      // `cat ~/.bakin/audit.jsonl | jq 'select(.event=="plugin.activate")'`
-      // shows the full surface the user authorized.
-      logPluginActivation({ plugin, source: 'core', manifestPath, manifest: resolvedManifest })
-      log.info(`Plugin loaded: ${plugin.name} v${plugin.version}`, {
-        source: 'plugin',
-        pluginId: plugin.id,
-        version: plugin.version,
-        pluginSource: 'core',
+      const skillResult = await this.finalizeActivation(plugin, state, pluginPath, storage, events, services, {
+        source: 'core',
+        manifestPath,
+        manifest: resolvedManifest,
+        captureConsole: false,
       })
       loadSpan.end({
         status: 'ok',
@@ -848,57 +884,17 @@ class PluginRegistryImpl {
       healthCheckIds: [],
     }
 
-    const ctx = this.buildContext(plugin.id, state, storage, events, services)
-    this.registerDeclarativeRoutes(plugin, state)
-    const activateSpan = startStartupSpan(log, 'plugin.activate', {
-      phase: 'plugin',
-      pluginId: plugin.id,
-      pluginSource: 'user',
-    })
-    try {
-      await withCapturedPluginConsole(plugin.id, () => plugin.activate(ctx))
-      activateSpan.end({ status: 'ok' })
-    } catch (err) {
-      activateSpan.end({ status: 'error', error: err instanceof Error ? err.message : String(err) })
-      loadSpan.end({ status: 'error', error: err instanceof Error ? err.message : String(err) })
-      throw err
-    }
-    state.ctx = ctx
-    // #142 layer 1 — surface user-plugin permissions to the audit log.
-    // Source is read from the lockfile (github vs local) by the helper.
-    logPluginActivation({ plugin, source: 'user', manifestPath })
-    const skillSpan = startStartupSpan(log, 'plugin.skills', {
-      phase: 'plugin',
-      pluginId: plugin.id,
-      pluginSource: 'user',
-    })
     let skillResult: ReturnType<typeof loadPluginSkills>
     try {
-      skillResult = loadPluginSkills(entry.path, ctx, log)
+      skillResult = await this.finalizeActivation(plugin, state, entry.path, storage, events, services, {
+        source: 'user',
+        manifestPath,
+        captureConsole: true,
+      })
     } catch (err) {
-      skillSpan.end({ status: 'error', error: err instanceof Error ? err.message : String(err) })
       loadSpan.end({ status: 'error', error: err instanceof Error ? err.message : String(err) })
       throw err
     }
-    skillSpan.end({
-      status: skillResult.skipped.length > 0 ? 'error' : 'ok',
-      count: skillResult.registered.length,
-      skippedCount: skillResult.skipped.length,
-    })
-    if (skillResult.registered.length > 0) {
-      log.info(`Auto-registered ${skillResult.registered.length} workflow skill(s) for user plugin "${plugin.id}"`, {
-        skills: skillResult.registered,
-      })
-    }
-    this.plugins.set(plugin.id, state)
-    this.failedPlugins.delete(plugin.id)
-    corePluginIds.delete(plugin.id)
-    log.info(`User plugin loaded: ${plugin.name} v${plugin.version}`, {
-      source: 'plugin',
-      pluginId: plugin.id,
-      version: plugin.version,
-      pluginSource: 'user',
-    })
     loadSpan.end({
       status: 'ok',
       pluginId: plugin.id,
