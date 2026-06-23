@@ -8,17 +8,14 @@ import { definePlugin, defineRoute, searchRoute } from '@bakin/core/routing'
 import { readMergedJobs } from './lib/jobs-reader'
 import { getLastRun, readRuns } from './lib/runs-reader'
 import { upsertJob, removeJob, getJob, readSidecar, withDefaults, newScheduleId, resumeDuePauses } from './lib/sidecar'
-import { claimCronFire, getCronFire } from '../../src/core/execution-ledger'
 import { parseSchedule } from './lib/cron-parser'
-import { runSchedulerTick, runStartupCatchUp, DEFAULT_TICK_WINDOW_MS, type SchedulerDeps } from './lib/scheduler'
-import { migrateBakinSchedulesOffOpenClawCron } from './lib/cutover'
+import { runStartupCatchUp } from './lib/scheduler'
 import { checkScheduleCutover, scheduleCutoverRepair } from './lib/health-checks'
 import { checkSchedulePrompt } from './lib/prompt-guard'
 import { getSystemTimezone, json } from './lib/schedule-util'
 import { setPluginCtx, getPluginCtx } from './lib/plugin-context'
 import {
   MISSED_WINDOW_REASON,
-  runClaimedFire,
   healPendingCronClaims,
   fireManualRun,
   fireScheduledRunFromPayload,
@@ -27,6 +24,13 @@ import {
 // Re-exported so the `@bakin/schedule/index` test surface stays stable
 // (cron-dedup.test.ts / blocked-fire-routing.test.ts import it from here).
 export { MISSED_WINDOW_REASON }
+import {
+  schedulerDeps,
+  runScheduleCutover,
+  startScheduler,
+  stopScheduler,
+  catchUpWindowMs,
+} from './lib/scheduler-loop'
 import { createLogger } from '../../src/core/logger'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import type { BakinJobMeta, MergedJob } from './types'
@@ -53,34 +57,6 @@ async function guardBakinMutation(jobId: string): Promise<BakinMutationGuard> {
   return runtime
     ? { ok: false, status: 403, error: READ_ONLY_ERROR }
     : { ok: false, status: 404, error: 'Schedule not found' }
-}
-
-/** Schedule plugin settings. */
-interface ScheduleSettings {
-  /** Scheduler tick cadence in seconds (floor-clamped). Default 30. */
-  tickIntervalSeconds?: number
-  /** Catch-up safety window in minutes: a missed occurrence fires into `todo`
-   *  if within this window of now, else lands in `blocked`. Default 60. */
-  catchUpWindowMinutes?: number
-}
-
-const DEFAULT_TICK_INTERVAL_SECONDS = 30
-const MIN_TICK_INTERVAL_SECONDS = 5
-const DEFAULT_CATCH_UP_WINDOW_MINUTES = 60
-
-/** Resolved tick interval in ms, clamped to a safe floor. */
-function tickIntervalMs(): number {
-  const raw = getPluginCtx()?.getSettings<ScheduleSettings>()?.tickIntervalSeconds
-  const seconds = typeof raw === 'number' && raw >= MIN_TICK_INTERVAL_SECONDS ? raw : DEFAULT_TICK_INTERVAL_SECONDS
-  return seconds * 1000
-}
-
-/** Resolved catch-up safety window in ms. A missed occurrence fires into `todo`
- *  if within this window, else into `blocked` for the user to triage. */
-function catchUpWindowMs(): number {
-  const raw = getPluginCtx()?.getSettings<ScheduleSettings>()?.catchUpWindowMinutes
-  const minutes = typeof raw === 'number' && raw >= 0 ? raw : DEFAULT_CATCH_UP_WINDOW_MINUTES
-  return minutes * 60_000
 }
 
 interface EnsureBakinJobResult {
@@ -276,75 +252,6 @@ const adoptJobBody = z.object({
 const restoreNativeBody = z.object({
   jobId: z.string().optional(),
 }).passthrough().optional()
-
-// ─── Bakin-owned scheduler ───────────────────────────────────────────────
-// Bakin fires its own schedules directly from the store; each tick computes
-// due occurrences, claims each in the ledger, and runs the shared post-claim
-// fire path. healPendingCronClaims() then recovers any claim stranded by a
-// crash between claim and task creation.
-
-let schedulerTimer: ReturnType<typeof setTimeout> | null = null
-
-function schedulerDeps(): SchedulerDeps {
-  return {
-    now: () => Date.now(),
-    // Window must exceed the tick interval so no occurrence slips between ticks.
-    tickWindowMs: Math.max(DEFAULT_TICK_WINDOW_MS, tickIntervalMs() * 2),
-    listJobs: () => Object.values(readSidecar().jobs).filter(job => job.isBakinJob),
-    getCronFire: (jobId, runId) => getCronFire(jobId, runId),
-    claimCronFire: (jobId, runId, firedAt) => claimCronFire(jobId, runId, firedAt),
-    fire: async (meta, jobId, runId, occurrence, opts) => {
-      await runClaimedFire(
-        meta, jobId, runId,
-        opts?.blocked
-          ? { column: 'blocked', blockedReason: MISSED_WINDOW_REASON, firedAtMs: occurrence.getTime() }
-          : { firedAtMs: occurrence.getTime() },
-      )
-    },
-    log,
-  }
-}
-
-/** Run the idempotent cutover using the live runtime adapter. Shared by
- *  activate() (automatic) and the doctor repair (manual). */
-function runScheduleCutover(): ReturnType<typeof migrateBakinSchedulesOffOpenClawCron> {
-  const cron = getPluginCtx()!.runtime.cron
-  return migrateBakinSchedulesOffOpenClawCron({
-    cronGet: async (jobId) => {
-      const job = await cron.get(jobId)
-      return job ? { schedule: job.schedule, enabled: job.enabled, metadata: job.metadata } : null
-    },
-    cronRemove: (jobId) => cron.remove(jobId),
-    systemTz: getSystemTimezone,
-  })
-}
-
-function startScheduler(): void {
-  stopScheduler()
-  // Self-rescheduling loop (not setInterval) so each cycle re-reads the tick
-  // interval — a settings change takes effect without a restart, and the next
-  // cycle is only armed after the previous finishes (no overlap). Each cycle:
-  // resume expired timed-pauses → fire due occurrences → heal stranded claims.
-  const cycle = () => {
-    Promise.resolve()
-      .then(() => { resumeDuePauses() })
-      .then(() => runSchedulerTick(schedulerDeps()))
-      .then(() => healPendingCronClaims())
-      .catch(err => log.warn('Scheduler cycle failed', err))
-      .finally(() => {
-        schedulerTimer = setTimeout(cycle, tickIntervalMs())
-        schedulerTimer.unref?.()
-      })
-  }
-  schedulerTimer = setTimeout(cycle, tickIntervalMs())
-  schedulerTimer.unref?.()
-}
-
-function stopScheduler(): void {
-  if (!schedulerTimer) return
-  clearTimeout(schedulerTimer)
-  schedulerTimer = null
-}
 
 // ---------------------------------------------------------------------------
 // Plugin

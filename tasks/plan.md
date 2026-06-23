@@ -374,8 +374,20 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
     live jobs — the activation the env-ENOENT boot smoke can't show); run-now fired the moved path end-to-end →
     `success` + task created + matching task_created audit row; a second run-now correctly `skipped: overlap` (the moved
     board-read + skipFire). The exactly-once claim, gate logic, board IO, and audit all behave against the live stack.
-  - ☐ Phase 4+ : scheduler-loop.ts (schedulerTimer cell + schedulerDeps/start/stop + cutover→catch-up→tick ordering),
-    job-service.ts (CRUD verbs + the route/exec-tool dedup), routes/jobs.ts, exec-tools.ts. The redesigns (pause-drift
-    fix, dead update-handler code, dead settings keys maxConcurrentJobs/failureCooldownMs, ctx-threading, zod for
-    ensureBakinJob) are behavior-touching — listed, not bundled.
+  - ☑ Phase 4 — scheduler-loop (FIRE PATH, second cell): `lib/scheduler-loop.ts` — the schedulerTimer cell + the
+    settings-derived tick/catch-up accessors (ScheduleSettings + DEFAULT/MIN consts + tickIntervalMs/catchUpWindowMs),
+    schedulerDeps (bound to the live ledger + fire engine), runScheduleCutover, and startScheduler/stopScheduler with
+    the verbatim self-rescheduling cycle (resume-pauses → tick → heal). The schedulerTimer cell now lives in exactly
+    one module. CRITICAL ordering preserved: the activate() sequence stays IN index unchanged (cutover → … →
+    resumeDuePauses → runStartupCatchUp(schedulerDeps(), catchUpWindowMs()) → startScheduler) — I only moved the
+    functions and import them back; onShutdown still calls stopScheduler. index imports {schedulerDeps,
+    runScheduleCutover, startScheduler, stopScheduler, catchUpWindowMs}; shed the ledger claim/getCronFire +
+    runSchedulerTick/DEFAULT_TICK_WINDOW_MS/SchedulerDeps + migrateBakinSchedulesOffOpenClawCron + runClaimedFire imports
+    (all now scheduler-loop-internal). 1,153 → 1,060. Verified: typecheck/lint/schedule suite 280-0/full-suite 5124-0/
+    binary build + **DOCKERIZED-RIG E2E** (real OpenClaw): an every-minute schedule fired AUTOMATICALLY via the
+    scheduler tick — occurrence runId `sch_…:…T15:31:00Z` (not manual-), status success, task created — proving
+    startScheduler→cycle→runSchedulerTick→schedulerDeps.fire→runClaimedFire end to end on the live stack.
+  - ☐ Phase 5+ : job-service.ts (CRUD verbs + the route/exec-tool dedup), routes/jobs.ts, exec-tools.ts. The redesigns
+    (pause-drift fix, dead update-handler code, dead settings keys maxConcurrentJobs/failureCooldownMs, ctx-threading,
+    zod for ensureBakinJob) are behavior-touching — listed, not bundled.
 - Remaining: schedule fire-path phases 2+ + test splits; deferred canvas-editor copy-form (cross-file dedup) + redesigns.
