@@ -1,20 +1,12 @@
-import { readdirSync, readFileSync } from 'node:fs'
-import {
-  extractExecTools,
-  extractPluginSettings,
-  getApiRoutes,
-  getCliCommands,
-  renderExecToolsSnippet,
-} from './source-scan'
+import { extractExecTools } from './source-scan'
 import { join } from 'node:path'
 import { APP_VERSION } from '../../packages/core/src/constants'
 import { DEFAULT_SETTINGS } from '../../packages/core/src/settings'
 import { CLI_COMMANDS } from '../../src/core/cli/registry'
 import { getAllRoutes } from '../../src/core/api-docs'
-import { PERMISSION_DESCRIPTIONS, PermissionSchema } from '../../packages/core/src/plugins/permissions'
 import {
   docsBasePath, writeStableFile, docsPath, escapeHtml,
-  escapeTableCell, generatedPageNote, flattenObject,
+  generatedPageNote, flattenObject,
 } from './lib/doc-utils'
 import { renderCliReference } from './lib/cli-reference'
 import { OpenApiOperation, curlForOperation, renderApiReference } from './lib/api-reference'
@@ -27,6 +19,7 @@ import {
 import { readSdkExports, renderSdkReference } from './lib/sdk-reference'
 import { renderHookLlmReference, renderHookReference } from './lib/hooks-reference'
 import { renderExecToolReference, renderMcpLlmReference } from './lib/mcp-reference'
+import { updateGeneratedContentBlocks } from './lib/snippets'
 
 const repoRoot = new URL('../..', import.meta.url).pathname
 const docsRoot = join(repoRoot, 'docs')
@@ -60,176 +53,7 @@ const publicSlotNames = [
   'home-widget',
   'page:/<route>',
 ]
-const commandSnippets = {
-  tasks: ['tasks list', 'tasks create', 'tasks move', 'tasks log', 'tasks block', 'tasks depend', 'tasks complete'],
-  workflows: ['workflows list', 'workflows start', 'workflows step', 'workflows submit'],
-  health: ['doctor', 'status'],
-  schedule: ['schedule'],
-}
-const docsSnippetBlocks = {
-  'plugin-basic-manifest': {
-    file: 'snippets/plugin-basic/bakin-plugin.json',
-    language: 'json',
-  },
-  'plugin-basic-server': {
-    file: 'snippets/plugin-basic/index.ts',
-    language: 'ts',
-  },
-  'plugin-basic-client': {
-    file: 'snippets/plugin-basic/client.tsx',
-    language: 'tsx',
-  },
-  'agent-package-basic-manifest': {
-    file: 'snippets/agent-package-basic/bakin-package.json',
-    language: 'json',
-  },
-} satisfies Record<string, { file: string; language: string }>
-
-function renderCommandSnippet(marker: string): string {
-  // 1. Manifest-first: plugins that declare contributes.cliCommands win.
-  const manifestCommands = getCliCommands(marker)
-  if (manifestCommands.length) {
-    const lines = [
-      `<!-- docs:cli-commands ${marker} -->`,
-      '| Command | Purpose |',
-      '| --- | --- |',
-    ]
-    for (const command of manifestCommands) {
-      lines.push(`| \`${command.usage.replace(/\|/g, '\\|')}\` | ${command.summary} |`)
-    }
-    lines.push('<!-- /docs:cli-commands -->')
-    return lines.join('\n')
-  }
-
-  // 2. Legacy hardcoded grouping for in-repo plugins that haven't backfilled.
-  const names = commandSnippets[marker as keyof typeof commandSnippets]
-  if (!names) throw new Error(`Unknown CLI command snippet: ${marker}`)
-
-  const byName = new Map(CLI_COMMANDS.map(command => [command.name, command]))
-  const lines = [
-    `<!-- docs:cli-commands ${marker} -->`,
-    '| Command | Purpose |',
-    '| --- | --- |',
-  ]
-
-  for (const name of names) {
-    const command = byName.get(name)
-    if (!command) throw new Error(`Missing CLI command for docs snippet "${marker}": ${name}`)
-    lines.push(`| \`${command.usage.replace(/\|/g, '\\|')}\` | ${command.summary} |`)
-  }
-
-  lines.push('<!-- /docs:cli-commands -->')
-  return lines.join('\n')
-}
-
-function renderApiRoutesSnippet(marker: string): string {
-  const routes = getApiRoutes(marker)
-  if (!routes.length) throw new Error(`No api-routes for marker: ${marker}`)
-  const lines = [
-    `<!-- docs:api-routes ${marker} -->`,
-    '| Method | Path | Purpose |',
-    '| --- | --- | --- |',
-  ]
-  for (const route of routes) {
-    lines.push(`| \`${route.method}\` | \`${route.path}\` | ${route.summary} |`)
-  }
-  lines.push('<!-- /docs:api-routes -->')
-  return lines.join('\n')
-}
-
-function renderSettingsSnippet(marker: string): string {
-  const fields = extractPluginSettings(marker)
-  if (!fields.length) throw new Error(`No settings for marker: ${marker}`)
-  const lines = [
-    `<!-- docs:settings ${marker} -->`,
-    '<div class="settings-table">',
-    '',
-    '| Setting | Type | Default | What it does |',
-    '| --- | --- | --- | --- |',
-  ]
-  for (const field of fields) {
-    const name = escapeTableCell(field.label || field.key)
-    const type = `\`${field.type}\``
-    const def = field.default ? `\`${escapeTableCell(field.default)}\`` : ''
-    const desc = escapeTableCell(field.description || '')
-    lines.push(`| ${name} | ${type} | ${def} | ${desc} |`)
-  }
-  lines.push('')
-  lines.push('</div>')
-  lines.push('<!-- /docs:settings -->')
-  return lines.join('\n')
-}
-
-function renderPluginPermissionsSnippet(): string {
-  const lines = [
-    '<!-- docs:plugin-permissions -->',
-    '<div class="table-light-full table-label-wrap permissions-table">',
-    '',
-    '| Permission | Typical use |',
-    '| --- | --- |',
-  ]
-  for (const permission of PermissionSchema.options) {
-    lines.push(`| \`${permission}\` | ${escapeTableCell(PERMISSION_DESCRIPTIONS[permission])} |`)
-  }
-  lines.push('')
-  lines.push('</div>')
-  lines.push('<!-- /docs:plugin-permissions -->')
-  return lines.join('\n')
-}
-
-function renderDocsSnippetBlock(marker: string): string {
-  const snippet = docsSnippetBlocks[marker as keyof typeof docsSnippetBlocks]
-  if (!snippet) throw new Error(`Unknown docs snippet block: ${marker}`)
-
-  const sourcePath = join(docsRoot, snippet.file)
-  const contents = readFileSync(sourcePath, 'utf8').trimEnd()
-  return [
-    `<!-- docs:snippet ${marker} -->`,
-    `Source: \`docs/${snippet.file}\``,
-    '',
-    `\`\`\`${snippet.language}`,
-    contents,
-    '```',
-    '<!-- /docs:snippet -->',
-  ].join('\n')
-}
-
-function updateGeneratedContentBlocks(): void {
-  const docsContentRoot = join(docsRoot, 'src/content/docs')
-  const markdownFiles: string[] = []
-  const walk = (dir: string) => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const path = join(dir, entry.name)
-      if (entry.isDirectory()) walk(path)
-      else if (entry.name.endsWith('.md') || entry.name.endsWith('.mdx')) markdownFiles.push(path)
-    }
-  }
-  walk(docsContentRoot)
-
-  const commandMarkerPattern = /<!-- docs:cli-commands ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:cli-commands -->/g
-  const snippetMarkerPattern = /<!-- docs:snippet ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:snippet -->/g
-  const execToolsMarkerPattern = /<!-- docs:exec-tools ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:exec-tools -->/g
-  const apiRoutesMarkerPattern = /<!-- docs:api-routes ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:api-routes -->/g
-  const settingsMarkerPattern = /<!-- docs:settings ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:settings -->/g
-  const pluginPermissionsMarkerPattern = /<!-- docs:plugin-permissions -->[\s\S]*?<!-- \/docs:plugin-permissions -->/g
-  for (const file of markdownFiles) {
-    const text = readFileSync(file, 'utf8')
-    const next = text
-      .replace(commandMarkerPattern, (_match, marker: string) => renderCommandSnippet(marker))
-      .replace(snippetMarkerPattern, (_match, marker: string) => renderDocsSnippetBlock(marker))
-      .replace(execToolsMarkerPattern, (_match, marker: string) => renderExecToolsSnippet(marker))
-      .replace(apiRoutesMarkerPattern, (_match, marker: string) => renderApiRoutesSnippet(marker))
-      .replace(settingsMarkerPattern, (_match, marker: string) => renderSettingsSnippet(marker))
-      .replace(pluginPermissionsMarkerPattern, renderPluginPermissionsSnippet())
-    if (next !== text) writeStableFile(file, next)
-  }
-}
-
 const versionLine = `Docs version: Bakin ${APP_VERSION}`
-
-
-
-
 function buildCoverageReport(): Record<string, unknown> {
   const routes = getAllRoutes()
   return {
