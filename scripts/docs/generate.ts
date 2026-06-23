@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import * as ts from 'typescript'
 import {
   extractExecTools,
@@ -10,18 +10,21 @@ import {
   renderExecToolsSnippet,
   sourceFiles,
 } from './source-scan'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { APP_VERSION } from '../../packages/core/src/constants'
 import { DEFAULT_SETTINGS } from '../../packages/core/src/settings'
 import { CLI_COMMANDS } from '../../src/core/cli/registry'
 import { getAllRoutes } from '../../src/core/api-docs'
 import { PERMISSION_DESCRIPTIONS, PermissionSchema } from '../../packages/core/src/plugins/permissions'
+import {
+  docsBasePath, writeStableFile, docsPath, escapeHtml, escapeMd,
+  escapeTableCell, escapeMarkdownTableCell, generatedPageNote, flattenObject,
+} from './lib/doc-utils'
 
 const repoRoot = new URL('../..', import.meta.url).pathname
 const docsRoot = join(repoRoot, 'docs')
 const generatedRoot = join(docsRoot, '.generated')
 const docsOrigin = 'https://makinbakin.com'
-const docsBasePath = '/docs'
 const docsUrl = `${docsOrigin}${docsBasePath}`
 const llmBundleFiles = [
   'llms.txt',
@@ -84,18 +87,6 @@ const docsSnippetBlocks = {
   },
 } satisfies Record<string, { file: string; language: string }>
 
-function writeStableFile(path: string, contents: string): void {
-  mkdirSync(dirname(path), { recursive: true })
-  const stableContents = path.includes('/docs/src/content/docs/')
-    ? contents.replace(/^(---\n[\s\S]*?\n---\n\n)# [^\n]+\n\n/, '$1')
-    : contents
-  writeFileSync(path, stableContents.trimEnd() + '\n', 'utf8')
-}
-
-function docsPath(path: string): string {
-  return `${docsBasePath}${path.startsWith('/') ? path : `/${path}`}`
-}
-
 function renderCommandSnippet(marker: string): string {
   // 1. Manifest-first: plugins that declare contributes.cliCommands win.
   const manifestCommands = getCliCommands(marker)
@@ -146,10 +137,6 @@ function renderApiRoutesSnippet(marker: string): string {
   }
   lines.push('<!-- /docs:api-routes -->')
   return lines.join('\n')
-}
-
-function escapeTableCell(value: string): string {
-  return value.replace(/\|/g, '\\|').replace(/\n+/g, ' ').trim()
 }
 
 function renderSettingsSnippet(marker: string): string {
@@ -777,40 +764,7 @@ function extractInterfaceMembers(node: ts.InterfaceDeclaration): SdkMember[] {
   return members
 }
 
-function flattenObject(value: unknown, prefix = ''): Array<{ key: string; value: unknown }> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return [{ key: prefix, value }]
-  return Object.entries(value as Record<string, unknown>).flatMap(([key, child]) => {
-    const next = prefix ? `${prefix}.${key}` : key
-    if (child && typeof child === 'object' && !Array.isArray(child)) return flattenObject(child, next)
-    return [{ key: next, value: child }]
-  })
-}
-
 const versionLine = `Docs version: Bakin ${APP_VERSION}`
-function generatedPageNote(): string {
-  const generatedDate = new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  }).format(new Date())
-  return [
-    '<aside class="generated-page-note" aria-label="Generated page metadata">',
-    `  <span>Generated ${generatedDate} · Bakin ${APP_VERSION}</span>`,
-    '</aside>',
-  ].filter(Boolean).join('\n')
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
-
-function escapeMarkdownTableCell(value: string): string {
-  return value.replace(/\|/g, '\\|').replace(/\n/g, ' ')
-}
 
 function parseCliUsage(command: CliCommand): Array<{ token: string; displayToken: string; choices: string[]; kind: 'argument' | 'option' | 'choice'; required: boolean; description: string }> {
   const usageParts = command.usage.match(/\[[^\]]+\]|<[^>]+>|\S+/g) ?? []
@@ -1792,10 +1746,6 @@ function renderRuntimePathsReference(): string {
   }
   lines.push('  </tbody>', '</table>', '', generatedPageNote(), '')
   return lines.join('\n')
-}
-
-function escapeMd(s: string): string {
-  return s.replace(/\|/g, '\\|').replace(/</g, '&lt;')
 }
 
 function renderSdkReference(): string {
