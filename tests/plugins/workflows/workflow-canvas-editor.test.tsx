@@ -256,6 +256,13 @@ mock.module('../../../plugins/workflows/components/node-config-drawer', () => ({
 // Imported AFTER mocks.
 import { WorkflowCanvasEditor } from '../../../plugins/workflows/components/workflow-canvas-editor'
 import type { WorkflowDefinition } from '../../../plugins/workflows/types'
+import { registerNodeRenderer, unregisterNodeRenderer } from '../../../plugins/workflows/lib/node-renderer-registry'
+
+// The editor consumes node renderers from the registry (populated by client.tsx
+// in the running app); only 'appendStep' is a builtin fallback. Mirror that
+// registration here so nodeTypes carries the real kinds.
+const REGISTERED_NODE_KINDS = ['trigger', 'agent', 'gate', 'parallel', 'output', 'workflow', 'createTask', 'subflowGroup'] as const
+const StubNodeRenderer = () => null
 
 const sampleDefinition: WorkflowDefinition = {
   name: 'Video Script',
@@ -287,11 +294,13 @@ beforeEach(() => {
     ),
   )
   vi.stubGlobal('fetch', fetchMock)
+  for (const kind of REGISTERED_NODE_KINDS) registerNodeRenderer(kind, StubNodeRenderer)
 })
 
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  for (const kind of REGISTERED_NODE_KINDS) unregisterNodeRenderer(kind)
 })
 
 function closeNodeDrawer() {

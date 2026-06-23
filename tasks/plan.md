@@ -314,5 +314,18 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
     name/description drawer (own draft state, props-only, no editor-state closure). Component sheds the now-unused
     Input/Label/Textarea/X imports. 1,564 → 1,469. Verified: typecheck/lint/canvas-editor.test 29-0/full-suite 5124-0/
     binary build/boot smoke (Workflows loads, client.js → 200).
-- Remaining: workflow-canvas-editor phases 3+ (use-workflow-copy-form, use-unsaved-changes-guard hooks; then the
-  behavior-touching dead-renderer deletion + canvas-editor-nodes), schedule/index (1,443) + test splits.
+  - ☑ Phase 3 — dead-renderer deletion (BEHAVIOR-TOUCHING, isolated): deleted EditorNodeShell + the 8 shadowed
+    Editor*Node renderers (agent/gate/output/parallel/workflow/createTask/trigger/subflowGroup) + EditorNodeData/
+    EditorNodeShellProps. They never rendered in the running app — nodeTypes = {...BUILTIN_NODE_TYPES, ...registry} and
+    the registry (populated by client.tsx) won for every kind; only 'appendStep' (registry never provides it) is live.
+    BUILTIN_NODE_TYPES is now just { appendStep: EditorAppendStepNode } — the editor consumes the registry exclusively
+    like the workflow-canvas.tsx viewer already does. Shed AgentAssignmentLabel/UserRound/CheckCircle2/Radio/GitBranch?-no/
+    ClipboardPlus/NodeProps imports + the dead `export type { ReactNode }` strict-build hack. TEST UPDATED: the smoke test
+    used the real (empty-in-test) registry and relied on BUILTIN for the 'agent' nodeTypes key; now it registers stub
+    renderers for the 8 client.tsx kinds in beforeEach/unregisters in afterEach, so data-node-types carries 'agent'
+    (registry) + 'appendStep' (builtin) — mirroring reality. HMR note: during a registry sweep the canvas briefly has no
+    renderer for swept kinds (same as the viewer already), re-populated on plugin re-activate. 1,469 → 1,306. Verified:
+    typecheck/lint/canvas-editor.test 29-0/workflows 420-0/full-suite 5124-0/binary build/boot smoke (Workflows loads,
+    client.js + /definitions → 200).
+- Remaining: workflow-canvas-editor phases 4+ (use-workflow-copy-form, use-unsaved-changes-guard hooks — both need the
+  key-remount redesign first to decouple from the props-change reset effect; flagged), schedule/index (1,443) + test splits.
