@@ -15,6 +15,7 @@ import { runSchedulerTick, runStartupCatchUp, DEFAULT_TICK_WINDOW_MS, type Sched
 import { migrateBakinSchedulesOffOpenClawCron } from './lib/cutover'
 import { checkScheduleCutover, scheduleCutoverRepair } from './lib/health-checks'
 import { checkSchedulePrompt } from './lib/prompt-guard'
+import { getSystemTimezone, json, expandTemplate } from './lib/schedule-util'
 import { createTaskWithEffects } from '../../src/core/task-service'
 import { createLogger } from '../../src/core/logger'
 import { readTaskboard } from '../../src/core/task-store'
@@ -22,34 +23,6 @@ import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import type { BakinJobMeta, BridgeResult, MergedJob } from './types'
 
 const log = createLogger('schedule')
-
-/** Detect system IANA timezone. Falls back to UTC. */
-function getSystemTimezone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone
-  } catch {
-    return 'UTC'
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function json(data: unknown, status = 200): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
-}
-
-function expandTemplate(template: string, vars: Record<string, string>): string {
-  let result = template
-  for (const [key, value] of Object.entries(vars)) {
-    result = result.replace(new RegExp(`\\{${key}\\}`, 'g'), value)
-  }
-  return result
-}
 
 type BakinMutationGuard =
   | { ok: true; meta: BakinJobMeta }
