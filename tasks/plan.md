@@ -341,4 +341,25 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
     onSaved/onCopied, so an in-file hook needs ~12 injected deps for modest gain; its real value is the CROSS-FILE dedup
     (the third copy in workflow-detail.tsx + the slugify consolidation). Best done as a deliberate cross-file dedup, not a
     forced single-file move. canvas-editor: 1,803 → 1,169 across 5 PRs (state model, drawer, dead-renderers, guard).
-- Remaining: schedule/index (1,443) + test splits; deferred canvas-editor copy-form (cross-file dedup) + redesigns.
+- schedule/index — ◧ **split by RISK** (1,443; the live fire path for ALL schedules — most operationally sensitive
+  file in the audit). Landmines (kickoff + appendix risk notes): two module cells `pluginCtx` (read ~15 ways on the
+  fire path) + `schedulerTimer` must each stay in EXACTLY one module; the test public surface `__scheduleTestInternals`
+  + `MISSED_WINDOW_REASON` must re-export from index; default export stays in index (binary static import); the
+  cutover→catch-up→tick + resumeDuePauses-before-catch-up + start/stop ordering preserved EXACTLY. Tiered safest-first;
+  pause for Mark's eyes before the fire-path PRs (fire-engine, scheduler-loop). Dockerized-rig E2E for the fire-path
+  cuts (the bare-binary boot smoke can't fully activate schedule — `activation_failed: openclaw cron list ENOENT` is
+  environmental, openclaw not on PATH; the runtime-mocking schedule test suite is the authoritative gate).
+  - ☑ Phase 1 (pure, zero-risk): `lib/schedule-util.ts` — the zero-coupling leaf helpers getSystemTimezone (Intl tz
+    detection), json (Response shorthand), expandTemplate ({var} title/prompt expansion). No pluginCtx, no state, no
+    fire logic. index.ts imports them back. 1,443 → 1,416. Verified: typecheck/lint/schedule suite 280-0 (incl.
+    cron-dedup + blocked-fire-routing fire-path tests)/full-suite 5124-0/binary build (other 9 plugins load; schedule's
+    env ENOENT is the documented non-regression).
+  - ☐ Phase 2 (foundational cell): `lib/plugin-context.ts` — setPluginCtx/getPluginCtx as ONE cell replacing the
+    module-level `let pluginCtx`; __scheduleTestInternals.setPluginCtxForTests delegates to it. Mechanical but touches
+    every fire-path pluginCtx read → verify cron-dedup + blocked-fire-routing explicitly.
+  - ☐ Phase 3+ (FIRE PATH, needs Mark's eyes): fire-engine.ts (claim→fire→heal: runClaimedFire/healPendingCronClaims/
+    skipFire + MISSED_WINDOW_REASON), scheduler-loop.ts (schedulerTimer cell + start/stop + cutover ordering),
+    job-service.ts (CRUD verbs + the route/exec-tool dedup), routes/jobs.ts, exec-tools.ts. The redesigns (pause-drift
+    fix, dead update-handler code, dead settings keys maxConcurrentJobs/failureCooldownMs, ctx-threading, zod for
+    ensureBakinJob) are behavior-touching — listed, not bundled.
+- Remaining: schedule fire-path phases 2+ + test splits; deferred canvas-editor copy-form (cross-file dedup) + redesigns.
