@@ -396,7 +396,14 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
     getJobByLogicalJobId imports. 1,060 → 919. Verified: typecheck/lint/schedule 280-0/full-suite 5124-0/binary build +
     **DOCKERIZED-RIG E2E** (real OpenClaw): full CRUD round-trip — create (indexJob) → PUT/pause (guardBakinMutation 200)
     → bogus-id guard (404) → delete (deleteScheduleJob 200) → gone from list. All moved helpers behave on the live stack.
-  - ☐ Phase 6 : routes/jobs.ts (the 12-route array + zod schemas) + exec-tools.ts (the 10 ctx.registerExecTool calls),
-    leaving index a ~200-line definePlugin shell. The redesigns (pause-drift fix, dead update-handler code, dead settings
-    keys maxConcurrentJobs/failureCooldownMs, ctx-threading, zod for ensureBakinJob) are behavior-touching — not bundled.
+  - ☑ Phase 6a — exec-tools: `lib/exec-tools.ts` exporting `registerScheduleExecTools(ctx)` — the 10
+    ctx.registerExecTool calls (list/create/update/pause/delete/get/run_now/runs/parse/briefing), extracted verbatim
+    from the activate() body (handlers delegate to job-service verbs + fire engine + cron parser). activate() now calls
+    registerScheduleExecTools(ctx). 919 → 609. Verified: typecheck/lint/schedule 280-0 (routes.test.ts has the exec-tool
+    callTool coverage)/full-suite 5124-0/binary build + rig: schedule activates against real OpenClaw (the 10
+    registrations run without throwing — activation_failed would otherwise surface).
+  - ☐ Phase 6b (FINAL) : routes/jobs.ts (the 12 defineRoute/searchRoute entries + the zod schemas), leaving index a
+    ~250-line definePlugin shell (imports + activate orchestration + onReady/onShutdown). The redesigns (pause-drift fix,
+    dead update-handler code, dead settings keys maxConcurrentJobs/failureCooldownMs, ctx-threading, zod for
+    ensureBakinJob) are behavior-touching — not bundled.
 - Remaining: schedule fire-path phases 2+ + test splits; deferred canvas-editor copy-form (cross-file dedup) + redesigns.
