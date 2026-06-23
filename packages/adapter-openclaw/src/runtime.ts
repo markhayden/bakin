@@ -63,11 +63,12 @@ import {
   statOpenClawMemoryEntry,
 } from './memory'
 import {
-  stripAnsi, firstString, firstStringAtPaths, getJsonPath,
+  firstString, firstStringAtPaths, getJsonPath,
   isPlainObject, isRecord, readPath, deepMerge, cloneJson, parseJsonValue,
   parseJsonLines, readJsonFile, truncate, redactSensitiveText, slug, sleep,
   metadataValue, metadataFiles,
 } from './runtime-utils'
+import { OpenClawCommandError, isPluginAllowlistOpenFailure } from './errors'
 
 interface OpenClawSettings {
   binaryPath: string
@@ -120,7 +121,6 @@ const NATIVE_APPROVAL_NOTICE = [
   'The durable Bakin approval record remains canonical.',
 ].join(' ')
 const NATIVE_APPROVAL_PROVIDERS = new Set(['discord', 'telegram', 'slack', 'matrix', 'qqbot'])
-const OPENCLAW_PLUGIN_ALLOWLIST_WARNING = 'plugins.allow is empty'
 
 interface OpenClawAgentTurnOptions {
   agentId: string
@@ -144,70 +144,6 @@ interface OpenClawAgentTurnOptions {
 interface OpenClawTurnResult {
   content: string
   usage?: MessageUsage
-}
-
-class OpenClawCommandError extends RuntimeError {
-  readonly args: string[]
-  readonly stdout: string
-  readonly stderr: string
-  readonly exitCode: number | string | undefined
-
-  constructor(args: string[], cause: unknown) {
-    const stdout = processOutput(cause, 'stdout')
-    const stderr = processOutput(cause, 'stderr')
-    const exitCode = processExitCode(cause)
-    const details = [stderr, stdout].filter((part) => part.trim().length > 0).join('\n')
-    super([
-      `OpenClaw command failed${exitCode === undefined ? '' : ` (${exitCode})`}: openclaw ${args.join(' ')}`,
-      details,
-    ].filter(Boolean).join('\n'), { kind: 'runtime_failed', cause })
-    this.name = 'OpenClawCommandError'
-    this.args = args
-    this.stdout = stdout
-    this.stderr = stderr
-    this.exitCode = exitCode
-  }
-}
-
-function processOutput(cause: unknown, field: 'stdout' | 'stderr'): string {
-  if (!cause || typeof cause !== 'object') return ''
-  const value = (cause as Record<string, unknown>)[field]
-  if (typeof value === 'string') return value
-  if (Buffer.isBuffer(value)) return value.toString('utf-8')
-  return ''
-}
-
-function processExitCode(cause: unknown): number | string | undefined {
-  if (!cause || typeof cause !== 'object') return undefined
-  const value = (cause as Record<string, unknown>).code
-  return typeof value === 'number' || typeof value === 'string' ? value : undefined
-}
-
-function openClawErrorOutput(err: unknown): string {
-  if (err instanceof OpenClawCommandError) {
-    return [err.stderr, err.stdout, err.message].filter(Boolean).join('\n')
-  }
-  if (!err || typeof err !== 'object') return String(err ?? '')
-  const record = err as Record<string, unknown>
-  return [
-    typeof record.stderr === 'string' ? record.stderr : '',
-    typeof record.stdout === 'string' ? record.stdout : '',
-    typeof record.message === 'string' ? record.message : '',
-  ].filter(Boolean).join('\n')
-}
-
-function isPluginAllowlistOpenFailure(err: unknown): boolean {
-  if (err instanceof OpenClawCommandError) {
-    const stderr = stripAnsi(err.stderr).trim()
-    const stdout = stripAnsi(err.stdout).trim()
-    const nonWarningStderr = stderr
-      .split('\n')
-      .filter((line) => !line.includes(OPENCLAW_PLUGIN_ALLOWLIST_WARNING))
-      .join('\n')
-      .trim()
-    return stdout.length === 0 && stderr.includes(OPENCLAW_PLUGIN_ALLOWLIST_WARNING) && nonWarningStderr.length === 0
-  }
-  return stripAnsi(openClawErrorOutput(err)).includes(OPENCLAW_PLUGIN_ALLOWLIST_WARNING)
 }
 
 interface OpenClawCronStore {
