@@ -102,7 +102,7 @@ const taskStoreMock = () => ({
 mock.module('@/core/task-store', taskStoreMock)
 mock.module('../../src/core/task-store', taskStoreMock)
 
-mock.module('../../src/lib/plugin-registry', () => ({
+mock.module('../../src/core/plugin-registry', () => ({
   getHookRegistry: () => ({
     invoke: mock(async () => undefined),
     callAll: mock(async () => undefined),

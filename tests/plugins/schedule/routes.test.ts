@@ -68,7 +68,7 @@ mock.module('../../../src/core/task-service', () => ({
 }))
 
 // Mock plugin-registry (hook registry used by bridge — not under test here but must be present)
-mock.module('../../../src/lib/plugin-registry', () => ({
+mock.module('../../../src/core/plugin-registry', () => ({
   getHookRegistry: () => ({
     invoke: mock(async () => undefined),
     register: mock(() => () => {}),

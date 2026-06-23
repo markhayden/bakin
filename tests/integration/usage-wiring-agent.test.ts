@@ -73,7 +73,7 @@ mock.module('../../src/core/watcher', () => ({
 // Shared by both the plugin-registry mock and the hook-registry-singleton mock
 // (getHookRegistry now lives in the leaf), so hook handlers are one map.
 const handlers = new Map<string, (data: unknown) => unknown>()
-mock.module('../../src/lib/plugin-registry', () => {
+mock.module('../../src/core/plugin-registry', () => {
   return {
     getHookRegistry: () => ({
       register: (name: string, handler: (data: unknown) => unknown) => {

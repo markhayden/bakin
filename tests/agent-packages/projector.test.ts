@@ -45,7 +45,7 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawPath: (...parts: string[]) => join(openClawDir, ...parts),
   resetOpenClawHome: () => {},
 }))
-mock.module('../../src/lib/plugin-registry', () => ({
+mock.module('../../src/core/plugin-registry', () => ({
   getHookRegistry: () => ({ invoke: async () => undefined }),
 }))
 mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({

@@ -60,7 +60,7 @@ import {
   runReloadPipeline,
   __resetReloadPipelineForTest,
 } from '../../../src/core/plugin-host/reload-pipeline'
-import { pluginRegistry } from '../../../src/lib/plugin-registry'
+import { pluginRegistry } from '../../../src/core/plugin-registry'
 import { __resetVersionsForTest, getVersion } from '../../../src/core/plugin-host/version-stamp'
 
 // Each test gets its own pluginRoot under a random subdir so Bun's

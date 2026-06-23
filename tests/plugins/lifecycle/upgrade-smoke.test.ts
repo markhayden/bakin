@@ -48,7 +48,7 @@ mock.module(
   () => ({ buildUserPlugin: async () => {} }),
 )
 // Core-plugin guard isn't relevant to these smokes; explicitly nope.
-mock.module('@/lib/plugin-registry', () => ({
+mock.module('@/core/plugin-registry', () => ({
   isCorePlugin: () => false,
 }))
 

@@ -35,7 +35,7 @@
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { createLogger } from '@/core/logger'
-import { pluginRegistry } from '@/lib/plugin-registry'
+import { pluginRegistry } from '@/core/plugin-registry'
 import { removePluginSkillsByPlugin } from '@bakin/core/skills/plugin-skill-registry'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { removeExecToolsByPlugin } from '../exec-tools/registry'

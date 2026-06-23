@@ -45,7 +45,7 @@ mock.module('../../../src/core/plugins/uninstall-snapshot', () => ({
     throw new Error('simulated tarball failure (test fixture)')
   },
 }))
-mock.module('../../../src/lib/plugin-registry', () => ({
+mock.module('../../../src/core/plugin-registry', () => ({
   isCorePlugin: () => false,
   pluginRegistry: {
     getPlugin: () => undefined,

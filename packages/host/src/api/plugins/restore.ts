@@ -5,7 +5,7 @@
 import { getContentDir } from '@/core/content-dir'
 import { appendAudit } from '@/core/audit'
 import { createLogger } from '@/core/logger'
-import { isCorePlugin, pluginRegistry } from '@/lib/plugin-registry'
+import { isCorePlugin, pluginRegistry } from '@/core/plugin-registry'
 import {
   listUninstallSnapshots,
   PluginRestoreError,

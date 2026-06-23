@@ -7,7 +7,7 @@
 import { PLUGIN_ID_RE } from '@bakin/core/plugins/manifest'
 import { readPluginSettings, writePluginSettings } from '@bakin/core/plugins/settings-store'
 import { broadcastPluginSettingsChanged } from '@/core/sse'
-import { pluginRegistry } from '@/lib/plugin-registry'
+import { pluginRegistry } from '@/core/plugin-registry'
 
 function extractPluginId(url: URL): string {
   // /api/plugin-settings/{pluginId}

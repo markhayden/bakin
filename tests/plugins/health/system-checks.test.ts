@@ -122,7 +122,7 @@ mock.module('@bakin/core/main-agent', () => ({
   getMainAgentName: () => 'Main',
 }))
 
-mock.module('../../../src/lib/plugin-registry', () => ({
+mock.module('../../../src/core/plugin-registry', () => ({
   getHookRegistry: () => ({
     invoke: async () => undefined,
     has: () => false,

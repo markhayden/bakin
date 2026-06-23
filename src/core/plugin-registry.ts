@@ -34,30 +34,30 @@ import {
 import {
   registerPluginHealthCheck,
   unregisterPluginHealthChecks,
-} from '../core/health-check-registry'
+} from './health-check-registry'
 import type {
   PluginNotificationChannelInput,
   PluginHealthCheckInput,
 } from '@bakin/core/plugin-types'
 import type { AppServices } from '@bakin/core/app-services'
-import { registerRouteDoc } from '../core/api-docs'
-import { addExecTool, removeExecToolsByPlugin } from '../core/exec-tools/registry'
-import { runMigrations } from '../core/migrations'
-import { getContentDir } from '../core/content-dir'
-import { createLogger } from '../core/logger'
+import { registerRouteDoc } from './api-docs'
+import { addExecTool, removeExecToolsByPlugin } from './exec-tools/registry'
+import { runMigrations } from './migrations'
+import { getContentDir } from './content-dir'
+import { createLogger } from './logger'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { getPluginSkills as skillRegistry, clearPluginSkills, removePluginSkillsByPlugin } from '@bakin/core/skills/plugin-skill-registry'
-import { getContentTypes, purgeContentType } from '../core/search-registry'
-import { loadPluginSkills } from './plugin-skill-loader'
+import { getContentTypes, purgeContentType } from './search-registry'
+import { loadPluginSkills } from '../lib/plugin-skill-loader'
 import { setCorePluginCheck, readPluginLockfile } from '../../packages/core/src/plugins/lockfile'
 import {
   PluginManifestError,
   readPluginManifestJson,
 } from '../../packages/core/src/plugins/manifest'
-import { getAppServices } from '../core/app-services'
+import { getAppServices } from './app-services'
 import type { PluginManifest as PublicPluginManifest } from '@makinbakin/sdk/types'
-import { buildPluginContext, type PluginContextRegistrars } from './plugin-context-factory'
-import { startStartupSpan } from '../core/startup-diagnostics'
+import { buildPluginContext, type PluginContextRegistrars } from '../lib/plugin-context-factory'
+import { startStartupSpan } from './startup-diagnostics'
 import type {
   CorePluginRegistration,
   PluginState,

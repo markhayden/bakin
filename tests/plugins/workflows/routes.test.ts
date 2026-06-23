@@ -75,7 +75,7 @@ mock.module('@/core/task-store', () => ({
 // ─── Plugin import (after mocks) ───────────────────────────────────────────
 
 import workflowsPlugin from '../../../plugins/workflows'
-import { getPluginSkills } from '../../../src/lib/plugin-registry'
+import { getPluginSkills } from '../../../src/core/plugin-registry'
 import {
   hashWorkflowSkillContent,
   writeWorkflowSkillInstallMarker,

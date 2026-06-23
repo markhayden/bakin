@@ -14,7 +14,7 @@
 import { AsyncLocalStorage } from 'async_hooks'
 import { inspect } from 'util'
 
-import { createLogger } from '../core/logger'
+import { createLogger } from './logger'
 
 const log = createLogger('plugin-registry')
 

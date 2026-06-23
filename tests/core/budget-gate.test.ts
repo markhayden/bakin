@@ -38,7 +38,7 @@ const hookRegistryMock = () => ({
 })
 // getHookRegistry lives in the leaf module post-WS2 K1; mock the leaf + legacy facade.
 mock.module('@bakin/core/hooks/hook-registry-singleton', hookRegistryMock)
-mock.module('../../src/lib/plugin-registry', hookRegistryMock)
+mock.module('../../src/core/plugin-registry', hookRegistryMock)
 
 let spendThrows = false
 mock.module('../../src/core/execution-ledger', () => ({

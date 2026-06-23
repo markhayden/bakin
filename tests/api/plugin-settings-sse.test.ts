@@ -29,13 +29,13 @@ mock.module('@bakin/core/content-dir', () => ({
   getContentDir: () => testDir,
 }))
 
-mock.module('../../src/lib/plugin-registry', () => ({
+mock.module('../../src/core/plugin-registry', () => ({
   pluginRegistry: {
     notifySettingsChange,
   },
 }))
 
-mock.module('@/lib/plugin-registry', () => ({
+mock.module('@/core/plugin-registry', () => ({
   pluginRegistry: {
     notifySettingsChange,
   },

@@ -31,7 +31,7 @@ const hookRegistryMock = () => ({
 // getHookRegistry now lives in the leaf module (WS2 K1); mock the leaf (the
 // real import site post-K1) plus the legacy facade for belt-and-suspenders.
 mock.module('@bakin/core/hooks/hook-registry-singleton', hookRegistryMock)
-mock.module('../../src/lib/plugin-registry', hookRegistryMock)
+mock.module('../../src/core/plugin-registry', hookRegistryMock)
 
 import { meterAgentTurn, meterImageTurn } from '../../src/core/agent-cost'
 

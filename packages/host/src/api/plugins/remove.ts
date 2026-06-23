@@ -20,7 +20,7 @@ import { appendAudit } from '@/core/audit'
 import {
   isCorePlugin,
   pluginRegistry,
-} from '@/lib/plugin-registry'
+} from '@/core/plugin-registry'
 import {
   planPluginAssetsRemoval,
   removePluginAssets,

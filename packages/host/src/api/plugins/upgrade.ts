@@ -14,7 +14,7 @@
  */
 import { createLogger } from '@/core/logger'
 import { upgradePlugin, UpgradeRefusedError } from '@/core/plugins/upgrade'
-import { isCorePlugin } from '@/lib/plugin-registry'
+import { isCorePlugin } from '@/core/plugin-registry'
 import { appendAudit } from '@/core/audit'
 import { getContentDir } from '@/core/content-dir'
 import { activateUserPluginDir } from '@/core/plugins/live-lifecycle'

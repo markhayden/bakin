@@ -12,7 +12,7 @@ import * as doctor from './doctor'
 import { maybeGetAppServices } from './app-services'
 import { closeDb } from '../../packages/core/src/storage/db'
 import { releaseServerLock } from './server-lock'
-import { pluginRegistry } from '../lib/plugin-registry'
+import { pluginRegistry } from './plugin-registry'
 
 const log = createLogger('lifecycle')
 

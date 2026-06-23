@@ -58,7 +58,7 @@ mock.module(
 // `isCorePlugin` is wired against a setter at boot time. For tests we
 // stub it directly so we can control which ids count as core.
 let coreIds = new Set<string>()
-mock.module('@/lib/plugin-registry', () => ({
+mock.module('@/core/plugin-registry', () => ({
   isCorePlugin: (id: string) => coreIds.has(id),
 }))
 

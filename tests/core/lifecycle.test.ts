@@ -79,7 +79,7 @@ mock.module('../../src/core/server-lock', () => ({
 }))
 
 const mockShutdownAll = mock().mockResolvedValue(undefined)
-mock.module('../../src/lib/plugin-registry', () => ({
+mock.module('../../src/core/plugin-registry', () => ({
   pluginRegistry: {
     shutdownAll: mockShutdownAll,
   },

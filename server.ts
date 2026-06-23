@@ -13,7 +13,7 @@ import { existsSync, mkdirSync } from 'fs'
 
 import { MarkdownStorageAdapter } from './src/lib/storage/markdown-adapter'
 import { BakinEventBus } from './src/lib/events/event-bus'
-import { pluginRegistry, registerCorePlugins } from './src/lib/plugin-registry'
+import { pluginRegistry, registerCorePlugins } from './src/core/plugin-registry'
 import { CORE_PLUGIN_IMPORTS } from './src/lib/plugin-static-imports'
 import config from './bakin.config'
 

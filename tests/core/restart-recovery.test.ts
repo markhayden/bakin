@@ -81,7 +81,7 @@ mock.module('../../src/core/task-store', () => ({
 }))
 
 const mockHookInvoke = mock(async (..._args: unknown[]): Promise<unknown> => undefined)
-mock.module('../../src/lib/plugin-registry', () => ({
+mock.module('../../src/core/plugin-registry', () => ({
   getHookRegistry: mock(() => ({
     invoke: (...args: unknown[]) => mockHookInvoke(...args),
   })),

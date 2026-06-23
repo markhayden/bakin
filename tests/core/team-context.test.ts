@@ -41,7 +41,7 @@ mock.module('@/core/logger', () => silentLogger)
 
 // Hook registry mock — per-test handler for team.getAgentTeam.
 let agentTeamHandler: ((data: unknown) => unknown) | null = null
-mock.module('../../src/lib/plugin-registry', () => ({
+mock.module('../../src/core/plugin-registry', () => ({
   getHookRegistry: () => ({
     invoke: async <R,>(name: string, data: unknown): Promise<R | undefined> => {
       if (name === 'team.getAgentTeam' && agentTeamHandler) {

@@ -16,7 +16,7 @@
  * it into the result (Kahn's leaves them out), so the filter is a no-op for the
  * user pass — preserving its original behavior exactly.
  */
-import { createLogger } from '../core/logger'
+import { createLogger } from './logger'
 import type { PluginFailureState, PluginLoadEntry } from './plugin-registry-types'
 
 const log = createLogger('plugin-registry')

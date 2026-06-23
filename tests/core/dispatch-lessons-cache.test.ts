@@ -30,7 +30,7 @@ mock.module('../../src/core/settings', () => ({
   }),
 }))
 mock.module('../../src/core/audit', () => ({ appendAudit: mock() }))
-mock.module('../../src/lib/plugin-registry', () => ({
+mock.module('../../src/core/plugin-registry', () => ({
   getHookRegistry: mock().mockReturnValue({
     invoke: mock().mockResolvedValue(undefined),
     has: mock().mockReturnValue(false),
