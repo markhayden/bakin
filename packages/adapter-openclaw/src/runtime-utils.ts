@@ -90,6 +90,11 @@ export function parseJsonValue(raw: string): unknown | null {
   }
 }
 
+export function parseJsonObject(raw: string): Record<string, unknown> | null {
+  const parsed = parseJsonValue(raw)
+  return isPlainObject(parsed) ? parsed : null
+}
+
 export function parseJsonLines(raw: string): unknown[] {
   const entries: unknown[] = []
   for (const line of raw.split('\n')) {
