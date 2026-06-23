@@ -1,7 +1,7 @@
 import { accessSync, constants, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
 import { dirname, join, resolve, sep } from 'path'
 import { execFile } from 'child_process'
-import { createHash, randomUUID } from 'crypto'
+import { randomUUID } from 'crypto'
 import { promisify } from 'util'
 import type {
   AgentRuntimeAdapter,
@@ -29,7 +29,7 @@ import type {
 } from '@bakin/core/adapters/runtime'
 import type { AdapterHealthCheckDefinition, AdapterInitOpts, AdapterLogger } from '@bakin/core/adapters/shared'
 import { RuntimeError, RuntimeTurnError } from '@bakin/core/adapters/runtime'
-import { readFileFrom, safeFileSize } from './file-utils'
+import { safeFileSize } from './file-utils'
 import { inspectTrajectoryRun, trajectoryFilePathFor, watchTrajectoryForDeath, TrajectoryRecoveredTurn, type TrajectoryUsage } from './trajectory-forensics'
 import { generateDirectImage, isDirectImageProvider, resolveProviderApiKeySource } from '@bakin/core/media'
 import { isUserEdited } from '@bakin/core/agent-packages/markers'
@@ -60,12 +60,11 @@ import {
 import {
   firstStringAtPaths, getJsonPath,
   isPlainObject, isRecord, readPath, deepMerge, cloneJson, parseJsonValue,
-  parseJsonObject, readJsonFile, truncate, slug, sleep,
+  parseJsonObject, readJsonFile, truncate, slug,
   metadataValue, metadataFiles,
 } from './runtime-utils'
 import { OpenClawCommandError, isPluginAllowlistOpenFailure } from './errors'
 import type { OpenClawCronStoreJob } from './cron-store'
-import { activityChunksFromOpenClawTranscriptRecord } from './activity-summary'
 import {
   defaultOpenClawImageOutputPath, normalizeOpenClawOutputFormat, openClawImageModelArg,
   providerFromImageModel, parseOpenClawImageProviders,
@@ -77,6 +76,15 @@ import {
   approvalEventFromOpenClawPayload, openClawDecisionFromBakinOption,
   parseNativeApprovalRef, isExpectedNativeApprovalResolveMiss,
 } from './approval-helpers'
+import {
+  OPENCLAW_SESSION_ACTIVITY_POLL_MS,
+  watchOpenClawSessionActivity, createOpenClawSessionActivityCursor, openClawCliSessionId,
+} from './session-activity'
+// Re-exported so the session-store-cache test's `from '.../runtime'` path stays stable.
+export {
+  SESSION_STORE_CACHE_MAX, __readSessionStoreCachedForTest,
+  __sessionStoreCacheKeysForTest, __resetSessionStoreCacheForTest,
+} from './session-activity'
 import {
   OPENCLAW_CRON_TIMEOUT_MS,
   readCronStore, writeCronStore, readCronJobs, cronStoreJobToRuntime, cronCreateArgs,
@@ -110,7 +118,6 @@ const OPENCLAW_AGENT_TIMEOUT_MS = 600000
 const OPENCLAW_AGENT_TIMEOUT_SECONDS = Math.ceil(OPENCLAW_AGENT_TIMEOUT_MS / 1000)
 // Transport must outlast the server-side agent budget so the Gateway can deliver its own timeout.
 const OPENCLAW_AGENT_TRANSPORT_TIMEOUT_MS = OPENCLAW_AGENT_TIMEOUT_MS + 30_000
-const OPENCLAW_SESSION_ACTIVITY_POLL_MS = 200
 const OPENCLAW_PLUGIN_APPROVAL_TIMEOUT_MS = 600000
 const OPENCLAW_CRON_PROCESS_TIMEOUT_MS = OPENCLAW_CRON_TIMEOUT_MS + 5000
 const OPENCLAW_IMAGE_PROCESS_TIMEOUT_MS = 600000
@@ -164,17 +171,6 @@ interface OpenClawModelListJson {
     tags?: string[]
     missing?: boolean
   }>
-}
-
-interface OpenClawSessionStoreEntry {
-  sessionId?: string
-  sessionFile?: string
-}
-
-interface OpenClawSessionActivityCursor {
-  sessionFile?: string
-  offset: number
-  partial: string
 }
 
 export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
@@ -1877,166 +1873,6 @@ export async function* mergeChatStreams(
   } finally {
     stopSecondary()
   }
-}
-
-async function* watchOpenClawSessionActivity(
-  agentId: string,
-  sessionKey: string,
-  cursor: OpenClawSessionActivityCursor,
-  signal: AbortSignal,
-): AsyncIterable<ChatChunk> {
-  while (true) {
-    for (const chunk of readOpenClawSessionActivity(agentId, sessionKey, cursor)) {
-      yield chunk
-    }
-    if (signal.aborted) break
-    await sleep(OPENCLAW_SESSION_ACTIVITY_POLL_MS)
-  }
-
-  for (const chunk of readOpenClawSessionActivity(agentId, sessionKey, cursor)) {
-    yield chunk
-  }
-}
-
-function createOpenClawSessionActivityCursor(agentId: string, sessionKey: string): OpenClawSessionActivityCursor {
-  const sessionFile = resolveOpenClawSessionFile(agentId, sessionKey)
-  return {
-    sessionFile,
-    offset: sessionFile ? safeFileSize(sessionFile) : 0,
-    partial: '',
-  }
-}
-
-function readOpenClawSessionActivity(
-  agentId: string,
-  sessionKey: string,
-  cursor: OpenClawSessionActivityCursor,
-): ChatChunk[] {
-  if (!cursor.sessionFile) {
-    cursor.sessionFile = resolveOpenClawSessionFile(agentId, sessionKey)
-    cursor.offset = 0
-    cursor.partial = ''
-  }
-  if (!cursor.sessionFile) return []
-
-  const next = readFileTail(cursor.sessionFile, cursor.offset)
-  if (!next) return []
-  cursor.offset = next.offset
-
-  const text = cursor.partial + next.text
-  const lines = text.split('\n')
-  cursor.partial = lines.pop() ?? ''
-
-  const chunks: ChatChunk[] = []
-  for (const line of lines) {
-    const trimmed = line.trim()
-    if (!trimmed) continue
-    const parsed = parseJsonObject(trimmed)
-    if (parsed) chunks.push(...activityChunksFromOpenClawTranscriptRecord(parsed))
-  }
-  return chunks
-}
-
-// sessions.json grows one entry (with a full skillsSnapshot) per session and
-// per-dispatch sessions accumulate steadily — cache the parsed store behind
-// an mtime guard so resolution stays O(1) between writes. LRU-capped: each
-// entry holds a fully-parsed store, and the Map previously grew without
-// bound (one entry per store path, never evicted).
-export const SESSION_STORE_CACHE_MAX = 64
-const sessionStoreCache = new Map<string, { mtimeMs: number; store: Record<string, OpenClawSessionStoreEntry> | null }>()
-
-function readSessionStoreCached(storePath: string): Record<string, OpenClawSessionStoreEntry> | null {
-  let mtimeMs: number
-  try {
-    mtimeMs = statSync(storePath).mtimeMs
-  } catch {
-    sessionStoreCache.delete(storePath)
-    return null
-  }
-  const hit = sessionStoreCache.get(storePath)
-  if (hit && hit.mtimeMs === mtimeMs) {
-    // Map preserves insertion order — delete + re-set marks recency.
-    sessionStoreCache.delete(storePath)
-    sessionStoreCache.set(storePath, hit)
-    return hit.store
-  }
-  const store = readJsonFile<Record<string, OpenClawSessionStoreEntry>>(storePath)
-  sessionStoreCache.delete(storePath)
-  sessionStoreCache.set(storePath, { mtimeMs, store })
-  while (sessionStoreCache.size > SESSION_STORE_CACHE_MAX) {
-    const oldest = sessionStoreCache.keys().next().value
-    if (oldest === undefined) break
-    sessionStoreCache.delete(oldest)
-  }
-  return store
-}
-
-/** @internal Test-only. */
-export function __readSessionStoreCachedForTest(storePath: string): Record<string, OpenClawSessionStoreEntry> | null {
-  return readSessionStoreCached(storePath)
-}
-
-/** @internal Test-only. */
-export function __sessionStoreCacheKeysForTest(): string[] {
-  return [...sessionStoreCache.keys()]
-}
-
-/** @internal Test-only. */
-export function __resetSessionStoreCacheForTest(): void {
-  sessionStoreCache.clear()
-}
-
-function resolveOpenClawSessionFile(agentId: string, sessionKey: string): string | undefined {
-  const storePath = join(getOpenClawHome(), 'agents', agentId, 'sessions', 'sessions.json')
-  const store = readSessionStoreCached(storePath)
-  const entry = findOpenClawSessionStoreEntry(store, agentId, sessionKey)
-  if (!entry) return undefined
-  if (typeof entry.sessionFile === 'string' && entry.sessionFile.length > 0) return entry.sessionFile
-  if (typeof entry.sessionId === 'string' && entry.sessionId.length > 0) {
-    return join(getOpenClawHome(), 'agents', agentId, 'sessions', `${entry.sessionId}.jsonl`)
-  }
-  return undefined
-}
-
-function findOpenClawSessionStoreEntry(
-  store: Record<string, OpenClawSessionStoreEntry> | null,
-  agentId: string,
-  sessionKey: string,
-): OpenClawSessionStoreEntry | undefined {
-  if (!store) return undefined
-  const cliSessionId = openClawCliSessionId(agentId, sessionKey)
-  return store[sessionKey]
-    ?? store[cliSessionId]
-    ?? store[`agent:${agentId}:explicit:${cliSessionId}`]
-    ?? store[`agent:${agentId}:${cliSessionId}`]
-}
-
-function openClawCliSessionId(agentId: string, sessionKey: string): string {
-  if (isOpenClawCliSessionId(sessionKey)) return sessionKey
-  return deterministicUuid(`bakin:${agentId}:${sessionKey}`)
-}
-
-function isOpenClawCliSessionId(value: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
-}
-
-function deterministicUuid(value: string): string {
-  const hex = createHash('sha256').update(value).digest('hex').slice(0, 32).split('')
-  hex[12] = '5'
-  const variant = Number.parseInt(hex[16] ?? '0', 16)
-  hex[16] = ((variant & 0x3) | 0x8).toString(16)
-  const id = hex.join('')
-  return `${id.slice(0, 8)}-${id.slice(8, 12)}-${id.slice(12, 16)}-${id.slice(16, 20)}-${id.slice(20)}`
-}
-
-/**
- * Session-activity tail semantics over the shared readFileFrom:
- * rewind-to-0 on truncation/rotation; null when there are no new bytes.
- */
-function readFileTail(path: string, offset: number): { text: string; offset: number } | null {
-  const read = readFileFrom(path, offset, { rewindOnTruncate: true })
-  if (!read || read.text === '') return null
-  return { text: read.text, offset: read.nextOffset }
 }
 
 function agentToRuntime(agent: NonNullable<ReturnType<typeof findAgentById>>): RuntimeAgent {
