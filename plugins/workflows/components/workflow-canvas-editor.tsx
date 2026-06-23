@@ -14,7 +14,7 @@
  * without special-casing.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import {
   ReactFlow,
   Background,
@@ -32,7 +32,6 @@ import {
   type EdgeProps,
   type EdgeTypes,
   type NodeChange,
-  type NodeProps,
   type NodeTypes,
   type ReactFlowInstance,
 } from '@xyflow/react'
@@ -42,18 +41,14 @@ import {
   ArrowLeft,
   ArrowDown,
   ArrowUp,
-  CheckCircle2,
-  ClipboardPlus,
   Copy,
   GitBranch,
   Info,
   LayoutGrid,
   Pencil,
-  Radio,
   Save,
   ShieldAlert,
   Trash2,
-  UserRound,
   Workflow as WorkflowIcon,
 } from 'lucide-react'
 import { Button } from "@makinbakin/sdk/ui"
@@ -71,7 +66,6 @@ import { NodeTypePalette, PALETTE_DRAG_MIME_TYPE } from './node-type-palette'
 import { NodeConfigDrawer } from './node-config-drawer'
 import { WorkflowDetailsDrawer } from './workflow-details-drawer'
 import { ManagedWorkflowCopyDialog } from './managed-workflow-copy-dialog'
-import { AgentAssignmentLabel } from './nodes/agent-assignment-label'
 import {
   clearWorkflowDialogFieldError,
   hasWorkflowDialogFieldErrors,
@@ -123,156 +117,11 @@ function hasPaletteDragType(dataTransfer: DataTransfer): boolean {
   return Array.from(dataTransfer.types ?? []).includes(PALETTE_DRAG_MIME_TYPE)
 }
 
-interface EditorNodeData extends Record<string, unknown> {
-  label?: string
-  agent?: string
-  title?: string
-  task?: string
-  description?: string
-  workflow_id?: string
-  channels?: string[]
-  column?: string
-}
-
-interface EditorNodeShellProps {
-  data: EditorNodeData
-  tone: 'blue' | 'amber' | 'violet' | 'emerald' | 'zinc'
-  title: string
-  icon: ReactNode
-  sourceHandle?: boolean
-}
-
-function EditorNodeShell({ data, tone, title, icon, sourceHandle = true }: EditorNodeShellProps) {
-  const toneClass = {
-    blue: 'border-blue-500/50 text-blue-300 bg-blue-500/10',
-    amber: 'border-amber-400/60 text-amber-300 bg-amber-500/10',
-    violet: 'border-violet-500/50 text-violet-300 bg-violet-500/10',
-    emerald: 'border-emerald-500/50 text-emerald-300 bg-emerald-500/10',
-    zinc: 'border-zinc-600 text-zinc-300 bg-zinc-800/60',
-  }[tone]
-  const detail = data.task || data.title || data.description || data.workflow_id || data.column
-
-  return (
-    <div className={`flex h-full w-full flex-col justify-center rounded-lg border bg-zinc-950 px-4 py-3 shadow-lg ${toneClass}`}>
-      <div className="flex items-center gap-2">
-        <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-md bg-black/25">
-          {icon}
-        </span>
-        <div className="min-w-0">
-          <div className="text-xs font-semibold uppercase leading-none tracking-wide opacity-80">
-            {title}
-          </div>
-          <div className="mt-1 truncate text-sm font-medium text-zinc-100">
-            {data.label || title}
-          </div>
-        </div>
-      </div>
-      {data.agent && (
-        <AgentAssignmentLabel agent={data.agent} className="mt-2" />
-      )}
-      {typeof detail === 'string' && detail.length > 0 && (
-        <p className={`${data.agent ? 'mt-1' : 'mt-2'} line-clamp-2 text-xs leading-snug text-zinc-400`}>
-          {detail}
-        </p>
-      )}
-      <Handle type="target" position={Position.Top} className="!bg-zinc-500" />
-      {sourceHandle && <Handle type="source" position={Position.Bottom} className="!bg-zinc-500" />}
-    </div>
-  )
-}
-
-function EditorAgentNode({ data }: NodeProps) {
-  return (
-    <EditorNodeShell
-      data={data as EditorNodeData}
-      tone="emerald"
-      title="Agent Task"
-      icon={<UserRound className="size-3.5" />}
-    />
-  )
-}
-
-function EditorGateNode({ data }: NodeProps) {
-  return (
-    <EditorNodeShell
-      data={data as EditorNodeData}
-      tone="amber"
-      title="Approval Gate"
-      icon={<CheckCircle2 className="size-3.5" />}
-    />
-  )
-}
-
-function EditorOutputNode({ data }: NodeProps) {
-  const nodeData = data as EditorNodeData
-  return (
-    <EditorNodeShell
-      data={{
-        ...nodeData,
-        description: Array.isArray(nodeData.channels) ? nodeData.channels.join(', ') : nodeData.description,
-      }}
-      tone="violet"
-      title="Completion"
-      icon={<Radio className="size-3.5" />}
-    />
-  )
-}
-
-function EditorParallelNode({ data }: NodeProps) {
-  return (
-    <EditorNodeShell
-      data={data as EditorNodeData}
-      tone="blue"
-      title="Parallel Group"
-      icon={<GitBranch className="size-3.5" />}
-    />
-  )
-}
-
-function EditorWorkflowNode({ data }: NodeProps) {
-  return (
-    <EditorNodeShell
-      data={data as EditorNodeData}
-      tone="zinc"
-      title="Nested Workflow"
-      icon={<WorkflowIcon className="size-3.5" />}
-    />
-  )
-}
-
-function EditorCreateTaskNode({ data }: NodeProps) {
-  return (
-    <EditorNodeShell
-      data={data as EditorNodeData}
-      tone="blue"
-      title="Create Task"
-      icon={<ClipboardPlus className="size-3.5" />}
-    />
-  )
-}
-
-function EditorTriggerNode({ data }: NodeProps) {
-  return (
-    <EditorNodeShell
-      data={data as EditorNodeData}
-      tone="blue"
-      title="Trigger"
-      icon={<Radio className="size-3.5" />}
-    />
-  )
-}
-
-function EditorSubflowGroupNode({ data }: NodeProps) {
-  return (
-    <EditorNodeShell
-      data={data as EditorNodeData}
-      tone="zinc"
-      title="Subflow Group"
-      icon={<WorkflowIcon className="size-3.5" />}
-    />
-  )
-}
-
+// The real node renderers (agent/gate/parallel/output/workflow/createTask/
+// trigger/subflowGroup) come from the node-renderer registry, populated by
+// client.tsx — exactly like the read-only workflow-canvas.tsx viewer. Only
+// 'appendStep' is editor-private (an invisible drop target the registry never
+// provides), so it's the sole builtin fallback here.
 function EditorAppendStepNode() {
   return (
     <div aria-hidden="true" className="h-px w-px opacity-0">
@@ -282,14 +131,6 @@ function EditorAppendStepNode() {
 }
 
 const BUILTIN_NODE_TYPES: NodeTypes = {
-  agent: EditorAgentNode,
-  gate: EditorGateNode,
-  output: EditorOutputNode,
-  parallel: EditorParallelNode,
-  workflow: EditorWorkflowNode,
-  createTask: EditorCreateTaskNode,
-  trigger: EditorTriggerNode,
-  subflowGroup: EditorSubflowGroupNode,
   appendStep: EditorAppendStepNode,
 }
 
@@ -1463,7 +1304,3 @@ export function WorkflowCanvasEditor({
     </div>
   )
 }
-
-// Explicitly re-export the ReactNode type to keep TS happy in strict builds
-// where React types are only imported transitively.
-export type { ReactNode }
