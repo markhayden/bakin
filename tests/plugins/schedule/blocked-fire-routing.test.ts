@@ -86,7 +86,7 @@ const mockHookRegistry = {
   register: mock(),
   has: mock(() => false),
 }
-mock.module('../../../src/lib/plugin-registry', () => ({
+mock.module('../../../src/core/plugin-registry', () => ({
   getHookRegistry: () => mockHookRegistry,
 }))
 mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({

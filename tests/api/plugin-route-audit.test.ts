@@ -59,7 +59,7 @@ mock.module('@/core/plugin-host/version-stamp', () => ({
   stampPluginResponse: (_pluginId: string, res: Response) => res,
 }))
 
-mock.module('@/lib/plugin-registry', () => ({
+mock.module('@/core/plugin-registry', () => ({
   pluginRegistry: {
     getPluginState: () => ({
       source: 'user',

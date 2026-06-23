@@ -20,8 +20,8 @@ import { mock } from 'bun:test'
 mock.module('../../src/core/content-dir', () => ({ getContentDir: () => '/tmp/bakin-topo-test' }))
 mock.module('../../packages/core/src/content-dir', () => ({ getContentDir: () => '/tmp/bakin-topo-test' }))
 
-import { topologicalSortPlugins } from '../../src/lib/plugin-topo-sort'
-import type { PluginFailureState, PluginLoadEntry } from '../../src/lib/plugin-registry-types'
+import { topologicalSortPlugins } from '../../src/core/plugin-topo-sort'
+import type { PluginFailureState, PluginLoadEntry } from '../../src/core/plugin-registry-types'
 
 function entry(id: string, deps: string[] = []): PluginLoadEntry {
   return { id, path: `plugins/${id}`, deps }

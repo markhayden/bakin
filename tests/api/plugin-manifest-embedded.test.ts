@@ -47,7 +47,7 @@ mock.module('@/core/plugins/upgrade', () => ({
   runChecks: async () => [],
 }))
 
-mock.module('@/lib/plugin-registry', () => ({
+mock.module('@/core/plugin-registry', () => ({
   isCorePlugin: (id: string) => id === 'tasks',
   pluginRegistry: {
     getRegistrySnapshot: () => [{

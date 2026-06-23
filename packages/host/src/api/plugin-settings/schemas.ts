@@ -5,7 +5,7 @@
  * Migrated from src/app/api/plugin-settings/schemas/route.ts for Phase B
  * of #147.
  */
-import { pluginRegistry } from '@/lib/plugin-registry'
+import { pluginRegistry } from '@/core/plugin-registry'
 
 export async function get(_req: Request, _url: URL): Promise<Response> {
   const schemas = pluginRegistry.getSettingsSchemas()

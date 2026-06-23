@@ -46,7 +46,7 @@ const silentLogger = {
 }
 mock.module('../../src/core/logger', () => silentLogger)
 mock.module('@/core/logger', () => silentLogger)
-mock.module('../../src/lib/plugin-registry', () => ({
+mock.module('../../src/core/plugin-registry', () => ({
   getHookRegistry: () => ({ invoke: async () => undefined }),
 }))
 mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({

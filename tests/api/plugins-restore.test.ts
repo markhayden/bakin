@@ -34,7 +34,7 @@ mock.module('@/core/logger', () => ({
 mock.module('../../src/core/logger', () => ({
   createLogger: () => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }),
 }))
-mock.module('@/lib/plugin-registry', () => ({
+mock.module('@/core/plugin-registry', () => ({
   isCorePlugin: () => false,
   pluginRegistry: {
     deactivatePlugin: async () => ({ hooks: 0, execTools: 0, contentTypes: 0, skills: 0 }),

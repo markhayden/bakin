@@ -13,7 +13,7 @@
  */
 import { existsSync, statSync } from 'fs'
 import { join } from 'path'
-import { isCorePlugin, pluginRegistry } from '@/lib/plugin-registry'
+import { isCorePlugin, pluginRegistry } from '@/core/plugin-registry'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
 import { readPluginLockfile, type PluginLockEntry } from '@bakin/core/plugins/lockfile'

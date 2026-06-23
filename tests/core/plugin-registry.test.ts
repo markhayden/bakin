@@ -227,7 +227,7 @@ describe('PluginRegistryImpl', () => {
     const apiDocs = await import('@/core/api-docs')
     mockRegisterRouteDoc = vi.mocked(apiDocs.registerRouteDoc)
 
-    const mod = await import('@/lib/plugin-registry')
+    const mod = await import('@/core/plugin-registry')
     pluginRegistry = mod.pluginRegistry
     getHookRegistry = (await import('@bakin/core/hooks/hook-registry-singleton')).getHookRegistry
     getPluginSkills = mod.getPluginSkills

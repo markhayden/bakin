@@ -17,9 +17,9 @@ import type { PluginManifest as PublicPluginManifest } from '@makinbakin/sdk/typ
 
 import { parseManifestPermissions } from '../../packages/core/src/plugins/permissions'
 import { readPluginLockfile } from '../../packages/core/src/plugins/lockfile'
-import { getContentDir } from '../core/content-dir'
-import { createLogger } from '../core/logger'
-import { appendAudit } from '../core/audit'
+import { getContentDir } from './content-dir'
+import { createLogger } from './logger'
+import { appendAudit } from './audit'
 
 const log = createLogger('plugin-registry')
 

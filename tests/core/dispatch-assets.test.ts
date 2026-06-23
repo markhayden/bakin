@@ -44,7 +44,7 @@ mock.module('../../src/core/settings', () => ({
 mock.module('../../src/core/audit', () => ({ appendAudit: mock() }))
 
 const hookInvoke = mock(async (..._args: unknown[]): Promise<unknown> => undefined)
-mock.module('../../src/lib/plugin-registry', () => ({
+mock.module('../../src/core/plugin-registry', () => ({
   getHookRegistry: mock().mockReturnValue({
     invoke: hookInvoke,
     has: mock().mockReturnValue(true),

@@ -90,7 +90,7 @@ import {
 import {
   __resetReloadPipelineForTest,
 } from '../../../src/core/plugin-host/reload-pipeline'
-import { pluginRegistry } from '../../../src/lib/plugin-registry'
+import { pluginRegistry } from '../../../src/core/plugin-registry'
 import { __resetVersionsForTest, getVersion } from '../../../src/core/plugin-host/version-stamp'
 
 let pluginRoot: string

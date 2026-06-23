@@ -19,7 +19,7 @@ import { execFileSync, type ExecFileSyncOptions } from 'child_process'
 import { createHash } from 'crypto'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
-import { isCorePlugin } from '@/lib/plugin-registry'
+import { isCorePlugin } from '@/core/plugin-registry'
 import { appendAudit } from '@/core/audit'
 import { getSettings } from '@bakin/core/settings'
 import {

@@ -156,8 +156,8 @@ const pluginRegistryMock = {
   getHookRegistry: () => mockHookRegistry,
   getPluginSkills: () => new Map(),
 }
-mock.module('@/lib/plugin-registry', () => pluginRegistryMock)
-mock.module('../../src/lib/plugin-registry', () => pluginRegistryMock)
+mock.module('@/core/plugin-registry', () => pluginRegistryMock)
+mock.module('../../src/core/plugin-registry', () => pluginRegistryMock)
 
 describe('task-service', () => {
   let service: typeof import('@/core/task-service')

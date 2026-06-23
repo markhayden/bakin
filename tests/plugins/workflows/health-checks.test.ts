@@ -58,7 +58,7 @@ mock.module('@/core/task-store', () => ({
 }))
 
 // Hook registry remains available for plugin activation paths.
-mock.module('../../../src/lib/plugin-registry', () => ({
+mock.module('../../../src/core/plugin-registry', () => ({
   getPluginSkills: () => mockWorkflowPluginSkills,
   getHookRegistry: () => ({
     invoke: async (_name: string) => {
