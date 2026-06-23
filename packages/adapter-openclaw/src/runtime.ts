@@ -46,11 +46,7 @@ import {
 import { getOpenClawHome, getOpenClawPath } from './home'
 import { tryGetMainAgentId } from './main-agent'
 import type { OpenClawRuntimeAdapterOptions } from './index'
-import {
-  OpenClawApprovalGatewayClient,
-  type OpenClawPluginApprovalDecision,
-  type OpenClawPluginApprovalResolvedPayload,
-} from './approval-gateway'
+import { OpenClawApprovalGatewayClient } from './approval-gateway'
 import { OpenClawGatewayRpcClient } from './gateway-rpc'
 import {
   getOpenClawMemoryEntry,
@@ -75,6 +71,12 @@ import {
   providerFromImageModel, parseOpenClawImageProviders,
   imageQualityFromMetadata, tagRuntimeServed, parseOpenClawImageResult,
 } from './image-inference'
+import {
+  OPENCLAW_PLUGIN_ID, OPENCLAW_WORKFLOW_GATE_TOOL, OPENCLAW_PLUGIN_APPROVAL_REF_PREFIX,
+  renderNativeApprovalDescription, supportsNativeApprovalOptions, requiresRejectReason,
+  approvalEventFromOpenClawPayload, openClawDecisionFromBakinOption,
+  parseNativeApprovalRef, isExpectedNativeApprovalResolveMiss,
+} from './approval-helpers'
 import {
   OPENCLAW_CRON_TIMEOUT_MS,
   readCronStore, writeCronStore, readCronJobs, cronStoreJobToRuntime, cronCreateArgs,
@@ -115,9 +117,6 @@ const OPENCLAW_IMAGE_PROCESS_TIMEOUT_MS = 600000
 const BAKIN_MCPORTER_CALL_TIMEOUT_MS = 600000
 const OPENCLAW_IMAGE_OUTPUT_MAX_BUFFER = 16 * 1024 * 1024
 const OPENCLAW_IMAGE_PROVIDERS_TTL_MS = 5000
-const OPENCLAW_PLUGIN_APPROVAL_REF_PREFIX = 'openclaw-plugin-approval:'
-const OPENCLAW_PLUGIN_ID = 'bakin'
-const OPENCLAW_WORKFLOW_GATE_TOOL = 'workflow.gate'
 const OPENCLAW_MODELS_LIST_MAX_BUFFER = 16 * 1024 * 1024
 const RENDER_ONLY_APPROVAL_NOTICE = [
   'This channel cannot return approval decisions to Bakin.',
@@ -126,10 +125,6 @@ const RENDER_ONLY_APPROVAL_NOTICE = [
 const REJECT_REASON_APPROVAL_NOTICE = [
   'This gate requires a reject reason.',
   'Use the Bakin approval link so reject decisions include the required reason.',
-].join(' ')
-const NATIVE_APPROVAL_NOTICE = [
-  'Channel buttons are a convenience path and may expire before the Bakin gate does.',
-  'The durable Bakin approval record remains canonical.',
 ].join(' ')
 const NATIVE_APPROVAL_PROVIDERS = new Set(['discord', 'telegram', 'slack', 'matrix', 'qqbot'])
 
@@ -1793,90 +1788,10 @@ function gatewayWebSocketUrl(settings: OpenClawSettings): string {
   return url.toString().replace(/\/$/, '')
 }
 
-function renderNativeApprovalDescription(body: string, approvalUrl: string | undefined): string {
-  const compactBody = body.replace(/\s+/g, ' ').trim()
-  const footer = [
-    approvalUrl ? `Bakin fallback: ${approvalUrl}` : undefined,
-    NATIVE_APPROVAL_NOTICE,
-  ].filter(Boolean).join('\n\n')
-  if (!footer) return truncate(compactBody, 256)
-  const bodyLimit = 256 - footer.length - 2
-  const bodyPart = bodyLimit > 20 ? truncate(compactBody, bodyLimit) : undefined
-  return [bodyPart, footer].filter(Boolean).join('\n\n').slice(0, 256)
-}
-
 function approvalNoticeForMessage(channelId: string, context: RuntimeMetadata): string {
   return channelHasInteractiveApproval(channelId) && requiresRejectReason(context)
     ? REJECT_REASON_APPROVAL_NOTICE
     : RENDER_ONLY_APPROVAL_NOTICE
-}
-
-function supportsNativeApprovalOptions(options: Array<{ id: string }>): boolean {
-  const ids = new Set(options.map(option => option.id))
-  return ids.size === 2 && ids.has('approve') && ids.has('reject')
-}
-
-function requiresRejectReason(context: RuntimeMetadata | undefined): boolean {
-  return context?.requireRejectReason === true
-}
-
-function approvalEventFromOpenClawPayload(payload: OpenClawPluginApprovalResolvedPayload): ApprovalResolveEvent | null {
-  const request = payload.request
-  if (!request) return null
-  if (request.pluginId !== OPENCLAW_PLUGIN_ID) return null
-  if (request.toolName !== OPENCLAW_WORKFLOW_GATE_TOOL) return null
-  const approvalId = typeof request.toolCallId === 'string' ? request.toolCallId : ''
-  if (!approvalId) return null
-
-  const selectedOption = bakinOptionFromOpenClawDecision(payload.decision)
-  if (!selectedOption) return null
-
-  const actorId = payload.resolvedBy?.trim() || 'openclaw-channel'
-  return {
-    approvalId,
-    channelId: channelIdFromOpenClawRequest(request),
-    response: {
-      selectedOption,
-      respondedAt: typeof payload.ts === 'number' ? new Date(payload.ts).toISOString() : new Date().toISOString(),
-      actor: {
-        type: 'human',
-        id: actorId,
-        displayName: actorId,
-      },
-    },
-  }
-}
-
-function channelIdFromOpenClawRequest(request: Record<string, unknown>): string {
-  const channel = typeof request.turnSourceChannel === 'string' && request.turnSourceChannel.length > 0
-    ? request.turnSourceChannel
-    : 'runtime-channel'
-  const target = typeof request.turnSourceTo === 'string' && request.turnSourceTo.length > 0
-    ? request.turnSourceTo
-    : undefined
-  return target ? `${channel}:${target}` : channel
-}
-
-function openClawDecisionFromBakinOption(option: string): OpenClawPluginApprovalDecision | null {
-  if (option === 'approve') return 'allow-once'
-  if (option === 'reject') return 'deny'
-  return null
-}
-
-function bakinOptionFromOpenClawDecision(decision: string | undefined): 'approve' | 'reject' | null {
-  if (decision === 'allow-once' || decision === 'allow-always') return 'approve'
-  if (decision === 'deny') return 'reject'
-  return null
-}
-
-function parseNativeApprovalRef(ref: string): string | null {
-  return ref.startsWith(OPENCLAW_PLUGIN_APPROVAL_REF_PREFIX)
-    ? ref.slice(OPENCLAW_PLUGIN_APPROVAL_REF_PREFIX.length)
-    : null
-}
-
-function isExpectedNativeApprovalResolveMiss(message: string): boolean {
-  return /expired|not found|unknown/i.test(message)
 }
 
 function humanizeChannelId(id: string): string {
