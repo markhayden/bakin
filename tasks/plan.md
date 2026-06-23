@@ -354,9 +354,13 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
     fire logic. index.ts imports them back. 1,443 → 1,416. Verified: typecheck/lint/schedule suite 280-0 (incl.
     cron-dedup + blocked-fire-routing fire-path tests)/full-suite 5124-0/binary build (other 9 plugins load; schedule's
     env ENOENT is the documented non-regression).
-  - ☐ Phase 2 (foundational cell): `lib/plugin-context.ts` — setPluginCtx/getPluginCtx as ONE cell replacing the
-    module-level `let pluginCtx`; __scheduleTestInternals.setPluginCtxForTests delegates to it. Mechanical but touches
-    every fire-path pluginCtx read → verify cron-dedup + blocked-fire-routing explicitly.
+  - ☑ Phase 2 (foundational cell): `lib/plugin-context.ts` — setPluginCtx/getPluginCtx as ONE cell replacing the
+    module-level `let pluginCtx`. All ~13 fire-path reads now go through getPluginCtx() (guarded patterns bind a local
+    `const ctx = getPluginCtx()`; optional-chain/non-null sites swap to getPluginCtx()?./!); activate calls
+    setPluginCtx(ctx); __scheduleTestInternals.setPluginCtxForTests delegates to setPluginCtx so it still drives the one
+    cell. Behavior-preserving (the cell is the same, just relocated). 1,416 → 1,418 (local binds). Verified: typecheck/
+    lint/the fire-path tests cron-dedup + blocked-fire-routing 24-0 (prove setPluginCtxForTests routes to the right
+    cell)/full schedule suite 280-0/full-suite 5124-0/binary build (9 plugins load; schedule env ENOENT non-regression).
   - ☐ Phase 3+ (FIRE PATH, needs Mark's eyes): fire-engine.ts (claim→fire→heal: runClaimedFire/healPendingCronClaims/
     skipFire + MISSED_WINDOW_REASON), scheduler-loop.ts (schedulerTimer cell + start/stop + cutover ordering),
     job-service.ts (CRUD verbs + the route/exec-tool dedup), routes/jobs.ts, exec-tools.ts. The redesigns (pause-drift
