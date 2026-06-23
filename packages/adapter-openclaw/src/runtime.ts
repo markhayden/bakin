@@ -54,8 +54,7 @@ import {
   statOpenClawMemoryEntry,
 } from './memory'
 import {
-  getJsonPath,
-  isPlainObject, readPath, deepMerge, cloneJson, parseJsonValue,
+  readPath, deepMerge, cloneJson, parseJsonValue,
   parseJsonObject, readJsonFile, truncate, slug,
   metadataValue, metadataFiles,
 } from './runtime-utils'
@@ -89,6 +88,10 @@ import {
   readChannelInfos, hasAnyInteractiveApprovalChannel,
   channelHasInteractiveApproval, approvalNoticeForMessage,
 } from './channel-helpers'
+import {
+  oversizedOutputBytesFrom, messagesToOpenClawPrompt, normalizeToolList,
+  extractOpenClawAgentText, extractOpenClawAgentUsage,
+} from './agent-turn'
 // Re-exported so the session-store-cache test's `from '.../runtime'` path stays stable.
 export {
   SESSION_STORE_CACHE_MAX, __readSessionStoreCachedForTest,
@@ -1408,56 +1411,12 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   }
 }
 
-function oversizedOutputBytesFrom(metadata: RuntimeMetadata | undefined): number | undefined {
-  const value = metadata?.oversizedOutputBytes
-  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined
-}
-
-function messagesToOpenClawPrompt(messages: Array<{ role: string; content: string }>): string {
-  const lastUser = [...messages].reverse().find((message) => message.role === 'user' && message.content.trim())
-  if (lastUser) return lastUser.content
-  return messages.map((message) => message.content).filter(Boolean).join('\n\n')
-}
-
-function normalizeToolList(value: string[] | undefined): string[] | undefined {
-  if (!Array.isArray(value)) return undefined
-  const seen = new Set<string>()
-  const tools: string[] = []
-  for (const entry of value) {
-    const tool = typeof entry === 'string' ? entry.trim() : ''
-    if (!tool || seen.has(tool)) continue
-    seen.add(tool)
-    tools.push(tool)
-  }
-  return tools.length > 0 ? tools : undefined
-}
-
 function applyRuntimeMessageToolPolicy(params: Record<string, unknown>, opts: OpenClawAgentTurnOptions): void {
   if (opts.toolsMode === 'none' || opts.toolsMode === 'auto') params.toolsMode = opts.toolsMode
   const toolsAllow = normalizeToolList(opts.toolsAllow)
   const toolsDeny = normalizeToolList(opts.toolsDeny)
   if (toolsAllow) params.toolsAllow = toolsAllow
   if (toolsDeny) params.toolsDeny = toolsDeny
-}
-
-function extractOpenClawAgentText(value: unknown): string {
-  const parsed = typeof value === 'string' ? parseJsonObject(value.trim()) ?? value.trim() : value
-  if (!parsed) return ''
-  if (typeof parsed === 'string') return parsed
-
-  const finalVisible = getJsonPath(parsed, ['result', 'meta', 'finalAssistantVisibleText'])
-  if (typeof finalVisible === 'string') return finalVisible
-  const finalRaw = getJsonPath(parsed, ['result', 'meta', 'finalAssistantRawText'])
-  if (typeof finalRaw === 'string') return finalRaw
-  const payloads = getJsonPath(parsed, ['result', 'payloads'])
-  if (Array.isArray(payloads)) {
-    return payloads
-      .map((payload) => isPlainObject(payload) && typeof payload.text === 'string' ? payload.text : '')
-      .filter(Boolean)
-      .join('\n\n')
-  }
-  const summary = getJsonPath(parsed, ['summary'])
-  return typeof summary === 'string' ? summary : ''
 }
 
 /**
@@ -1468,23 +1427,6 @@ function extractOpenClawAgentText(value: unknown): string {
  * avoid provider-id-string mismatches against the pricing catalog. Returns
  * undefined when no token counts are present (never fabricated).
  */
-function extractOpenClawAgentUsage(value: unknown): MessageUsage | undefined {
-  const parsed = typeof value === 'string' ? parseJsonObject(value.trim()) : value
-  if (!parsed) return undefined
-  const usage = getJsonPath(parsed, ['result', 'meta', 'agentMeta', 'usage'])
-  if (!isPlainObject(usage)) return undefined
-  const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
-  const out: MessageUsage = {}
-  const input = num(usage.input); if (input !== undefined) out.input = input
-  const output = num(usage.output); if (output !== undefined) out.output = output
-  const total = num(usage.total); if (total !== undefined) out.total = total
-  const cacheRead = num(usage.cacheRead); if (cacheRead !== undefined) out.cacheRead = cacheRead
-  const cacheWrite = num(usage.cacheWrite); if (cacheWrite !== undefined) out.cacheWrite = cacheWrite
-  // Require the input/output split for the result to be priceable. A
-  // total-only block isn't — returning it would short-circuit the trajectory
-  // fallback (which may carry the split), leaving the turn unmetered.
-  return out.input !== undefined || out.output !== undefined ? out : undefined
-}
 
 function mergeSettings(raw: Record<string, unknown> | undefined): OpenClawSettings {
   const input = (raw ?? {}) as Partial<OpenClawSettings>
