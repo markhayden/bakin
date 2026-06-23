@@ -35,7 +35,6 @@ import {
   type NodeTypes,
   type ReactFlowInstance,
 } from '@xyflow/react'
-import { useRouter as useTanStackRouter } from '@tanstack/react-router'
 import '@xyflow/react/dist/style.css'
 import {
   ArrowLeft,
@@ -52,19 +51,12 @@ import {
   Workflow as WorkflowIcon,
 } from 'lucide-react'
 import { Button } from "@makinbakin/sdk/ui"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@makinbakin/sdk/ui"
 
 import { getNodeRendererSnapshot, subscribeNodeRenderers } from '../lib/node-renderer-registry'
 import { NodeTypePalette, PALETTE_DRAG_MIME_TYPE } from './node-type-palette'
 import { NodeConfigDrawer } from './node-config-drawer'
 import { WorkflowDetailsDrawer } from './workflow-details-drawer'
+import { useUnsavedChangesGuard } from './use-unsaved-changes-guard'
 import { ManagedWorkflowCopyDialog } from './managed-workflow-copy-dialog'
 import {
   clearWorkflowDialogFieldError,
@@ -165,9 +157,6 @@ function slugify(name: string): string {
     .slice(0, 60)
 }
 
-type RouteNavigationBlocker =
-  | { status: 'idle' }
-  | { status: 'blocked'; proceed: () => void; reset: () => void }
 
 interface InsertEdgeData extends Record<string, unknown> {
   insertIndex: number
@@ -276,10 +265,8 @@ export function WorkflowCanvasEditor({
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [confirmingExit, setConfirmingExit] = useState(false)
   const [isDirty, setIsDirty] = useState(false)
   const [nodeDrawerDirty, setNodeDrawerDirty] = useState(false)
-  const [pendingNavigationHref, setPendingNavigationHref] = useState<string | null>(null)
   const [workflowDetailsOpen, setWorkflowDetailsOpen] = useState(false)
   const [effectiveSource, setEffectiveSource] = useState(source)
   const [managedCopyOpen, setManagedCopyOpen] = useState(false)
@@ -293,12 +280,37 @@ export function WorkflowCanvasEditor({
   const [disableOriginal, setDisableOriginal] = useState(true)
   const [paletteCollapsed, setPaletteCollapsed] = useState(false)
   const [createSetupOpen, setCreateSetupOpen] = useState(mode === 'create' && !initialDefinition?.id)
-  const [routeBlocker, setRouteBlocker] = useState<RouteNavigationBlocker>({ status: 'idle' })
-  const tanStackRouter = useTanStackRouter()
 
   const rfInstanceRef = useRef<ReactFlowInstance | null>(null)
   const lastFitViewKeyRef = useRef<string | null>(null)
   const hasUnsavedChanges = isDirty || nodeDrawerDirty
+  const isManagedSource = effectiveSource === 'plugin' || effectiveSource === 'agent-package'
+  const canSaveInPlace = mode === 'create' || !isManagedSource
+
+  // Navigation guard: owns the exit-confirmation flow (beforeunload + TanStack
+  // history block + anchor interception) and the unsaved-changes dialog.
+  const unsavedChangesGuard = useUnsavedChangesGuard({
+    hasUnsavedChanges,
+    saving,
+    canSaveInPlace,
+    saveDisabled: nodeDrawerDirty,
+    onCancel,
+    onSaveAndExit: async () => {
+      if (nodeDrawerDirty) {
+        setError(NODE_DRAWER_DIRTY_MESSAGE)
+        return false
+      }
+      const saved = await saveDefinition(buildDefinition(), { notifySaved: false })
+      if (!saved) return false
+      setIsDirty(false)
+      setNodeDrawerDirty(false)
+      return true
+    },
+    onDiscardAndExit: () => {
+      setIsDirty(false)
+      setNodeDrawerDirty(false)
+    },
+  })
 
   // Subscribe to registry mutations — see note in workflow-canvas.tsx.
   const registeredNodeTypes = useSyncExternalStore(subscribeNodeRenderers, getNodeRendererSnapshot, getNodeRendererSnapshot) as NodeTypes
@@ -365,10 +377,9 @@ export function WorkflowCanvasEditor({
     setState(seedState(nextDefinition))
     setEditingId(initialId)
     setSelectedId(null)
-    setConfirmingExit(false)
+    unsavedChangesGuard.reset()
     setIsDirty(false)
     setNodeDrawerDirty(false)
-    setPendingNavigationHref(null)
     setWorkflowDetailsOpen(false)
     setError(null)
     setEffectiveSource(source)
@@ -381,61 +392,6 @@ export function WorkflowCanvasEditor({
     setDisableOriginal(true)
     setCreateSetupOpen(mode === 'create' && !nextDefinition.id)
   }, [mode, source, initialId, initialDefinition])
-
-  useEffect(() => {
-    if (!hasUnsavedChanges) return
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      event.preventDefault()
-      event.returnValue = ''
-    }
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [hasUnsavedChanges])
-
-  useEffect(() => {
-    if (!hasUnsavedChanges) return
-    return tanStackRouter.history.block({
-      enableBeforeUnload: false,
-      blockerFn: async ({ currentLocation, nextLocation }) => {
-        const current = tanStackRouter.parseLocation(currentLocation)
-        const next = tanStackRouter.parseLocation(nextLocation)
-        if (current.pathname === next.pathname) return false
-
-        const shouldBlock = await new Promise<boolean>((resolve) => {
-          setRouteBlocker({
-            status: 'blocked',
-            proceed: () => resolve(false),
-            reset: () => resolve(true),
-          })
-        })
-        setRouteBlocker({ status: 'idle' })
-        return shouldBlock
-      },
-    })
-  }, [hasUnsavedChanges, tanStackRouter])
-
-  useEffect(() => {
-    if (!hasUnsavedChanges) return
-    const handleDocumentClick = (event: MouseEvent) => {
-      if (event.defaultPrevented) return
-      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
-      const target = event.target as Element | null
-      const anchor = target?.closest('a[href]') as HTMLAnchorElement | null
-      if (!anchor) return
-      if (anchor.target && anchor.target !== '_self') return
-      if (anchor.hasAttribute('download')) return
-      if (anchor.origin !== window.location.origin) return
-      if (anchor.href === window.location.href) return
-
-      event.preventDefault()
-      event.stopPropagation()
-      setPendingNavigationHref(anchor.href)
-      setConfirmingExit(true)
-    }
-
-    document.addEventListener('click', handleDocumentClick, true)
-    return () => document.removeEventListener('click', handleDocumentClick, true)
-  }, [hasUnsavedChanges])
 
   useEffect(() => {
     if (mode !== 'edit') return
@@ -672,8 +628,6 @@ export function WorkflowCanvasEditor({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [deleteSelectedStep, selectedId])
 
-  const isManagedSource = effectiveSource === 'plugin' || effectiveSource === 'agent-package'
-  const canSaveInPlace = mode === 'create' || !isManagedSource
   const canDelete = mode === 'edit' && effectiveSource === 'user'
 
   function buildDefinition(definitionOverride = definition): WorkflowDefinition {
@@ -890,57 +844,6 @@ export function WorkflowCanvasEditor({
     }
   }
 
-  function handleCancelRequest() {
-    if (!onCancel) return
-    if (hasUnsavedChanges) {
-      setPendingNavigationHref(null)
-      setConfirmingExit(true)
-      return
-    }
-    onCancel()
-  }
-
-  function completeExit() {
-    if (routeBlocker.status === 'blocked') {
-      routeBlocker.proceed()
-      return
-    }
-    const href = pendingNavigationHref
-    setPendingNavigationHref(null)
-    if (href) {
-      window.location.assign(href)
-      return
-    }
-    onCancel?.()
-  }
-
-  async function handleSaveAndExit() {
-    if (nodeDrawerDirty) {
-      setError(NODE_DRAWER_DIRTY_MESSAGE)
-      return
-    }
-    const saved = await saveDefinition(buildDefinition(), { notifySaved: false })
-    if (!saved) return
-    setIsDirty(false)
-    setNodeDrawerDirty(false)
-    setConfirmingExit(false)
-    completeExit()
-  }
-
-  function handleDiscardAndExit() {
-    setIsDirty(false)
-    setNodeDrawerDirty(false)
-    setConfirmingExit(false)
-    completeExit()
-  }
-
-  function cancelExitPrompt() {
-    if (routeBlocker.status === 'blocked') {
-      routeBlocker.reset()
-    }
-    setPendingNavigationHref(null)
-    setConfirmingExit(false)
-  }
 
   const selectedStep = selectedId ? (state.steps[selectedId] as {
     id: string
@@ -970,7 +873,7 @@ export function WorkflowCanvasEditor({
               className="self-center"
               aria-label="Back to workflows"
               title="Back to workflows"
-              onClick={handleCancelRequest}
+              onClick={unsavedChangesGuard.requestExit}
             >
               <ArrowLeft className="size-4" />
             </Button>
@@ -1260,47 +1163,7 @@ export function WorkflowCanvasEditor({
         onCreate={handleCreateLocalCopy}
       />
 
-      <Dialog
-        open={confirmingExit || routeBlocker.status === 'blocked'}
-        onOpenChange={(open) => {
-          if (!open && !saving) cancelExitPrompt()
-        }}
-      >
-        <DialogContent className="bg-card border-border sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Unsaved workflow changes</DialogTitle>
-            <DialogDescription>
-              You have unsaved changes on this workflow. Save them before leaving, discard them, or stay on the canvas.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2 sm:justify-between">
-            <Button
-              variant="destructive"
-              onClick={handleDiscardAndExit}
-              disabled={saving}
-            >
-              Discard changes
-            </Button>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={cancelExitPrompt}
-                disabled={saving}
-              >
-                Cancel
-              </Button>
-              {canSaveInPlace && (
-                <Button
-                  onClick={handleSaveAndExit}
-                  disabled={saving || nodeDrawerDirty}
-                >
-                  {saving ? 'Saving...' : 'Save and exit'}
-                </Button>
-              )}
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {unsavedChangesGuard.dialog}
     </div>
   )
 }
