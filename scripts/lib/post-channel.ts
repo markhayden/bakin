@@ -3,14 +3,14 @@
  */
 import { z } from 'zod'
 import { createHash } from 'crypto'
-import { existsSync } from 'fs'
-import { basename, extname } from 'path'
+import { existsSync, statSync } from 'fs'
+import { basename, dirname, extname, join } from 'path'
 import { getAppServices } from '@/core/app-services'
 import { getIdempotent, putIdempotent, LedgerUnavailableError } from '@/core/execution-ledger'
 import { createLogger } from '@/core/logger'
 import { resolveRuntimeChannelRef } from '@/core/channel-aliases'
 import { assertWorkflowToolAllowed } from '@/core/workflow-tool-authorization'
-import { resolveFile } from '@bakin/assets/lib/asset-service'
+import { addExport, getAsset, resolveFile } from '@bakin/assets/lib/asset-service'
 import { succeed, fail } from './common'
 import { addExecTool } from '../../src/core/exec-tools/registry'
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
@@ -36,6 +36,67 @@ function resolveAssetAbsPath(assetId: string | undefined): string | null {
   if (!assetId) return null
   const ref = resolveFile(assetId)
   return ref && existsSync(ref.absPath) ? ref.absPath : null
+}
+
+// A channel attachment over this size is delivered as a downscaled export
+// rather than the raw version, so agents never need to hand-roll a second,
+// smaller asset (which clutters the asset list). Conservative vs Discord's
+// per-upload limit; the export is derived (lives in the asset's exports/),
+// never a new top-level asset.
+const CHANNEL_ATTACHMENT_LIMIT_BYTES = 8 * 1024 * 1024
+const DELIVERY_EXPORT_SURFACE = 'channel-delivery'
+const DELIVERY_EXPORT_MAX_DIM = 2048
+const RESIZABLE_IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp'])
+
+/**
+ * Resolve the file to actually attach for an image asset. Small images and
+ * non-image assets are sent as-is; an oversized image is delivered as a
+ * derived, aspect-preserving export (idempotent per surface) instead of the
+ * raw version — so a channel-friendly copy is an export of the original, not a
+ * separate asset.
+ */
+async function resolveImageDeliveryFile(assetId: string | undefined): Promise<string | null> {
+  if (!assetId) return null
+  const ref = resolveFile(assetId)
+  if (!ref || !existsSync(ref.absPath)) return null
+  if (!RESIZABLE_IMAGE_EXTS.has(extname(ref.absPath).toLowerCase())) return ref.absPath
+
+  let size = 0
+  try {
+    size = statSync(ref.absPath).size
+  } catch {
+    return ref.absPath
+  }
+  if (size <= CHANNEL_ATTACHMENT_LIMIT_BYTES) return ref.absPath
+
+  try {
+    const manifest = getAsset(assetId)
+    const assetDir = dirname(ref.absPath)
+    // Reuse a fresh export for the current version if one is already small enough.
+    const fresh = manifest?.exports.find(
+      (e) => e.name === DELIVERY_EXPORT_SURFACE && e.fromVersion === manifest.currentVersion,
+    )
+    if (fresh) {
+      const freshAbs = join(assetDir, fresh.file)
+      if (existsSync(freshAbs) && statSync(freshAbs).size <= CHANNEL_ATTACHMENT_LIMIT_BYTES) return freshAbs
+    }
+    const { file } = await addExport(assetId, {
+      surface: DELIVERY_EXPORT_SURFACE,
+      format: 'jpg',
+      width: DELIVERY_EXPORT_MAX_DIM,
+      height: DELIVERY_EXPORT_MAX_DIM,
+      fit: 'inside',
+      quality: 82,
+    })
+    const exportAbs = join(assetDir, file)
+    return existsSync(exportAbs) ? exportAbs : ref.absPath
+  } catch (err) {
+    log.warn('Failed to derive channel-delivery export; sending original', {
+      assetId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return ref.absPath
+  }
 }
 
 // When BAKIN_CHANNEL_TEST_MODE=1 (or "true"), all posts are routed to
@@ -75,7 +136,7 @@ export async function postChannel(
   const { content, imageAssetId, videoAssetId, embed, taskId } = params
 
   const files = [
-    filePayload(imageAssetId, resolveAssetAbsPath(imageAssetId)),
+    filePayload(imageAssetId, await resolveImageDeliveryFile(imageAssetId)),
     filePayload(videoAssetId, resolveAssetAbsPath(videoAssetId)),
   ].filter((file): file is { name: string; path: string } => Boolean(file))
 
@@ -305,12 +366,12 @@ function filePayload(assetId: string | undefined, path: string | null): { name: 
 addExecTool({
   name: 'bakin_exec_post_channel',
   label: 'Posted to channel',
-  description: 'Post a message through the active runtime channel adapter. Supports image/video attachments when the adapter supports rich content.',
+  description: 'Post a message through the active runtime channel adapter. Supports image/video attachments when the adapter supports rich content. Oversized images are downscaled automatically for the channel (as a derived export of the same asset) — pass the original asset id; do NOT create a separate, smaller asset just to post it.',
   source: 'core',
   parameters: {
     channel: z.string().describe('Channel name or runtime channel target'),
     content: z.string().describe('Message text / caption'),
-    imageAssetId: z.string().optional().describe('Asset id of an image to attach (current version is sent).'),
+    imageAssetId: z.string().optional().describe('Asset id of an image to attach. The current version is sent, or an auto-downscaled export if it exceeds the channel attachment limit (no separate asset is created).'),
     videoAssetId: z.string().optional().describe('Asset id of a video to attach (current version is sent).'),
     embed: z.record(z.string(), z.unknown()).optional().describe('Optional rich metadata for adapters that support it'),
     taskId: z.string().optional().describe('Task ID for audit trail'),
