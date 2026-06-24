@@ -18,7 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@makinbakin/sdk/ui'
-import { useAgentStore, useMainAgentId, useRouter } from '@makinbakin/sdk/hooks'
+import { toast, useAgentStore, useMainAgentId, useRouter } from '@makinbakin/sdk/hooks'
 import { PackageStateBadge } from './package-state-badge'
 import { AdoptDialog } from './adopt-dialog'
 import type { PackageStateRow } from '../types'
@@ -159,8 +159,11 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
         skipped.length > 0 ? `${skipped.length} user-edited file(s) preserved (reclaim to overwrite).` : null,
         `Verification: ${receipt.verification?.status ?? 'unknown'}.`,
       ].filter(Boolean)
-      setActionMessage(parts.join(' '))
       await refreshPackageStates()
+      // Sync succeeded: surface the receipt as a toast and auto-close the
+      // dialog. Errors keep the dialog open (actionError is shown inline).
+      toast(parts.join(' '), 'success')
+      setUpdateOpen(false)
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -363,8 +366,9 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
             <Button variant="outline" onClick={() => setUpdateOpen(false)}>
               Close
             </Button>
-            <Button variant="info" disabled={actionBusy || Boolean(actionMessage)} onClick={() => syncPackage()}>
-              Sync agent
+            <Button variant="info" disabled={actionBusy || Boolean(actionMessage)} onClick={() => syncPackage()} className="gap-1.5">
+              {actionBusy && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
+              {actionBusy ? 'Syncing…' : 'Sync agent'}
             </Button>
           </DialogFooter>
         </DialogContent>
