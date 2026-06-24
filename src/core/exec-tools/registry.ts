@@ -22,6 +22,7 @@ import {
   createPluginTaskService,
 } from '../../lib/plugin-context-services'
 import { wrapPluginContextPermissions } from '../../lib/plugin-permissions'
+import { PermissionSchema } from '@bakin/core/plugins/permissions'
 
 // ---------------------------------------------------------------------------
 // Registry state
@@ -148,7 +149,14 @@ export function getToolContext(toolName: string): PluginToolContext | undefined 
   return wrapPluginContextPermissions(ctx, {
     pluginId,
     source: state?.source ?? (pluginId === 'core' ? 'core' : 'user'),
-    manifestPermissions: state?.manifest?.permissions ?? [],
+    // The bare `core` exec-tool context (post-channel, etc.) is trusted
+    // first-party code with no manifest. Grant it the full permission set so
+    // core tools using runtime.channels and friends don't trip the
+    // permission_missing warning on every call. The 10 core PLUGINS keep their
+    // own declared (and gated) manifest permissions.
+    manifestPermissions: pluginId === 'core'
+      ? [...PermissionSchema.options]
+      : state?.manifest?.permissions ?? [],
   })
 }
 

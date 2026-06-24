@@ -238,6 +238,13 @@ export interface AssetExportInput {
   width: number
   height: number
   quality?: number
+  /**
+   * Resize strategy. 'cover' (default) crops to exactly width×height — right for
+   * fixed-aspect surface profiles. 'inside' scales down to fit within the
+   * width×height box preserving aspect ratio and never upscaling — right for a
+   * delivery-friendly copy that must stay recognizable (e.g. channel uploads).
+   */
+  fit?: 'cover' | 'inside'
 }
 
 const EXPORT_FORMATS = new Set(['jpg', 'png', 'webp'])
@@ -279,7 +286,10 @@ export async function addExport(assetId: string, input: AssetExportInput): Promi
 
     const sharp = await loadSharp()
     if (!sharp) throw new Error('Image export requires sharp, but the native sharp package is unavailable for this runtime')
-    let pipeline = sharp(join(dirAbs, src.file)).resize(input.width, input.height, { fit: 'cover' })
+    const resizeOpts = input.fit === 'inside'
+      ? { fit: 'inside' as const, withoutEnlargement: true }
+      : { fit: 'cover' as const }
+    let pipeline = sharp(join(dirAbs, src.file)).resize(input.width, input.height, resizeOpts)
     if (input.format === 'jpg') pipeline = pipeline.jpeg({ quality: input.quality ?? 82 })
     else if (input.format === 'png') pipeline = pipeline.png()
     else pipeline = pipeline.webp({ quality: input.quality ?? 82 })

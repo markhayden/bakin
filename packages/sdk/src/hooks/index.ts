@@ -51,6 +51,8 @@ export { toast } from '@/hooks/use-toast'
 export { useToastStore } from '@/hooks/use-toast'
 /** Imperatively resize a vertical pane via mouse drag handle. */
 export { useVerticalResize } from '@/hooks/use-vertical-resize'
+/** Resize a side-by-side split pane by dragging the divider between columns. */
+export { useHorizontalResize } from '@/hooks/use-horizontal-resize'
 
 // Group 2: Agent data (from team plugin)
 

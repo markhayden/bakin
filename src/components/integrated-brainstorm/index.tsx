@@ -140,8 +140,6 @@ export function IntegratedBrainstorm({
       {isOpen && !fitParent && (
         <div
           {...handleProps}
-          role="separator"
-          aria-orientation="horizontal"
           aria-label="Resize brainstorm panel"
           className="absolute inset-x-0 top-0 h-1.5 -translate-y-1/2 cursor-row-resize hover:bg-accent/50 active:bg-accent transition-colors z-10"
           data-testid="resize-handle"
