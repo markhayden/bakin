@@ -6,6 +6,40 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.19] - 2026-06-24
+
+This is primarily an architecture release: ~380 commits, the bulk of them a behavior-preserving, codebase-wide module-splitting refactor (the "great refactor"). Alongside it ship metered spend + budgets, layered team context, reference images, and a batch of audit-driven fixes.
+
+### Added
+- **Metered spend and budgets.** Per-run cost is now recorded on settle and fed into the single usage recorder; image generation is metered as a spend event. A budget policy + evaluator (window boundaries, warn → defer-with-audit, fail-closed) gates dispatch, with a budget config UI and a spend-vs-budget health check. The health dashboard splits its cost cards into **usage** vs **spend** and adds full-width Context Usage; the models page gains a **Spend** view (`/spend` route) and a routing config UI (origins + tag overrides).
+- **Layered team context + agent-sync UI (#401).** Team context is composed from layers — `global.md` (all agents) + role layer (`orchestrator`/`subagent`) + per-team file — projected through `bakin agents sync`. New team detail pages, a global pseudo-team, graph badges, and a health-repair path surface and drive sync from the UI.
+- **Reference / context images for image generation (#418, #379, #380).** `generate` and `edit` accept reference/context images; runtime `media://` URIs resolve as references; attachments auto-import (tagged) into the asset store; iteration lands as a new **version** rather than a sibling asset. Channel delivery is deduped — an asset is delivered to a channel once per task, and oversized images are delivered as derived exports instead of duplicates.
+- **Real task-outcome run history (#481).** The task run history reflects the actual task outcome (block / reopen / archive), not just the last dispatch outcome, with pre-ledger completions backfilled.
+- **Dual-format avatar support (#339)** — WebP / PNG / JPEG agent avatars.
+- **Session-store retention health check (#435).**
+- **SDK client primitives.** `usePluginEvent` collapses every plugin onto one shared shell SSE connection; plus `useJsonFetch`, `useAvailableModels`, `useHorizontalResize` (+ a shared resizable-pane core), `ConfirmDialog`, `EmptyState`, formatters, and `toneBadge` for outline status badges.
+
+### Changed
+- **Codebase-wide module split (behavior-preserving).** The core monoliths were decomposed into focused, single-responsibility modules with thin barrels, run as parallel workstreams (WS2 core extractions + dependency-cycle break, WS3 SDK primitives, WS4 CLI, WS5 search) plus phased per-subsystem splits. Highlights: `runtime.ts` 3,188 → 1,560 lines across 10 PRs; `server.ts` split into a request-handler router, search-startup, startup-recovery, and Web-handler migrations; the OpenClaw adapter broken into ~10 helper modules (agent-turn, channels, config, session-activity, approvals, image-inference, cron-store, errors); the schedule plugin split across 7 phases (util → context → fire-engine → loop → job-service → exec-tools → routes); workflows split into runtime seams, routes, exec-tools, and hooks; `asset-service` reduced to a barrel over `asset-core` / `asset-mutations` / `asset-upsert` / `asset-media` / `asset-trash`; the docs-generate pipeline, models page, canvas editor, and the health / team / tasks plugins all thinned the same way; `plugin-registry` moved `src/lib` → `src/core`; the CLI gained a readonly split + shared HTTP client.
+- **SDK vendor bundles consolidated via code splitting (#422)**, plus a binary-size audit with `size:report` tooling, dependency hygiene, and a decision doc (#424).
+- **Subagent role defaults** gained an invoker-reporting rule, and agent content was put on a diet to trim dispatch-prompt weight.
+- **Asset duplicates are now structurally impossible** — store-path reflection + same-task content dedupe replace after-the-fact cleanup.
+- Deleted the dead legacy OpenAPI generator (−227 lines).
+
+### Fixed
+- **Security audit** — path-traversal, secret-handling, and supply-chain findings closed (#497); a full-system audit swept incidental correctness bugs — dev images watcher, a dead server write, schedule pause drift (#505).
+- Workflows: nested workflows are cycle-detected on the REST start path so a cyclic graph can't be started.
+- Schedule: a blocked task no longer suppresses that schedule's fire (#479).
+- Tasks: the completion-row invariant holds across block / reopen paths, which could previously strand the row (#485).
+- Search: multi-content plugins route by a primary table instead of writing to the wrong one.
+- Dev loop: signal handlers no longer preempt lifecycle shutdown (#459); the pinned local Tailwind binary is spawned directly instead of `bunx @latest`; the images plugin is now watched.
+- Team: client-side routing + page polish so navigation doesn't full-reload.
+- CLI: sync-migration prompt handles a 409, and the agent-sync check runs off-server.
+- Health/workflows: plugin-assets init and the skill check both work off-server / registry-aware.
+- Core: the bare core exec-tool context is granted full permissions.
+- Dockerized rig: cron-CLI operator scopes + a stale host `agentDir` on reused state (#487).
+- Manual-test batch (#577): dev start, team sync UX, resizable split panes, and channel delivery + permissions.
+
 ## [0.0.1-rc.18] - 2026-06-08
 
 ### Added
@@ -277,5 +311,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 [0.0.1-rc.17]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.17
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.18...HEAD
 [0.0.1-rc.18]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.18
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.19...HEAD
+[0.0.1-rc.19]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.19
