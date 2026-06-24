@@ -158,6 +158,9 @@ jobs:
       - name: Build host shell
         run: bun run build:host-shell
 
+      - name: Regenerate embedded-asset manifest
+        run: bun run build:assets-manifest
+
       - name: Assert production browser assets
         run: bun run build:assert-production-assets
 
