@@ -36,9 +36,11 @@ function parseDevOptions(args: string[]): DevOptions {
 }
 
 const DEV_OPTIONS = parseDevOptions(process.argv.slice(2))
-// scripts/dev.ts runs server.ts in-process. Consume dev-only flags here so
-// server.ts's CLI dispatcher sees the same argv shape as plain `bakin start`.
-process.argv.splice(2)
+// scripts/dev.ts runs server.ts in-process. Consume dev-only flags here and
+// hand the CLI dispatcher an explicit `serve` command so it boots the server
+// in the foreground. A bare argv now defaults to `help` (cli.ts), which would
+// print the command reference and exit instead of starting the dev server.
+process.argv.splice(2, Infinity, 'serve')
 const DEV_VERBOSE = DEV_OPTIONS.verbose
   || process.env.BAKIN_DEV_VERBOSE === '1'
   || process.env.BAKIN_CONSOLE_FORMAT === 'verbose'
