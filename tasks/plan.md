@@ -113,12 +113,26 @@ pre-existing duplicate — WS6 workflows-split dedup territory; noted there.)
     Clean move, no shim; byte-for-byte function bodies. Verified typecheck/eslint/full-suite 5124-0/binary build
     (stamps reverted)/isolated boot smoke (9 plugins ready through the moved registry; schedule openclaw-cron
     ENOENT environmental).
-  - ☐ Phase B-unify (DEFERRED, behavior-touching): unify the two activation pipelines (`loadPlugin` /
-    `activateUserPluginEntry` share a ~60-line tail but diverge on import mechanism, console-capture wrapping,
-    migrations, core/user id bookkeeping, and logPluginActivation ordering — merging normalizes boot-path
-    ordering, so it gets its own commit + boot smoke, mirroring the dispatch dedup cadence).
-- server.split — ☐ (router-table + boot.ts; search-startup/recovery already extracted; HOLD until the dispatch
-  live-test passes — it stresses the same boot/router surface)
+  - ☑ Phase B-unify (#575): extracted the shared ~50-line activation tail of `loadPlugin` (core) +
+    `activateUserPluginEntry` (user) into one `finalizeActivation(plugin, state, path, …, {source, manifestPath,
+    manifest?, captureConsole})` helper (build ctx → register routes → activate [optionally console-captured] →
+    skills → register state + corePluginIds bookkeeping → logPluginActivation → "loaded" log). The callers keep
+    their divergent HEADS (core: static-table + migrations + swallow→markPluginFailed; user: dist import +
+    console-capture + reload teardown + rethrow) and close their own loadSpan. One deliberate normalization:
+    logPluginActivation now runs AFTER state-registration for BOTH paths (user previously audited before skills) —
+    emission order only. Verified typecheck/eslint/full-suite 5124-0/binary build + **DOCKERIZED-RIG** (real
+    OpenClaw, isolated): all 10 core (`Plugin loaded`) + both user plugins (`User plugin loaded: Projects/Messaging`)
+    activate through the helper, `All plugins ready (12 loaded)`, audit.jsonl shows exactly 12 plugin.activate events.
+- server.split — ☑ **DONE** (#574). Behavior-preserving relocation of the 455-line createServer callback into a
+  `createRequestHandler(deps)` factory at `src/core/server/request-handler.ts`; the ordered if/else dispatch is
+  byte-for-byte unchanged, only the boot-time closure vars (port/CONTENT_DIR/collectOpenApiSources) are injected and
+  the two inline require() paths repointed. server.ts 723 → 221 (CLI dispatch + singleton lock + boot orchestration +
+  listen). search-startup/recovery were already extracted. The declarative-route-table conversion is behavior-touching
+  — NOT taken (follow-up). Verified typecheck/eslint/full-suite 5124-0/binary build + **DOCKERIZED-RIG** (real
+  OpenClaw, isolated): server bound clean; 24+ route types through the extracted handler all correct (core endpoints,
+  plugin catch-all, shadow routes, dispatch POST/GET, 400/404 negatives, /mcp, SPA fallthrough); 200-request 32-way
+  concurrency burst → 200/200; real write path (create task → list). The audit's dispatch-live-test HOLD was lifted
+  by Mark — this rig stress IS that boot/router-surface verification.
 - runtime.split — ☑ **DONE** (adapter, 3,188 → 1,560, 51%, across 10 stacked PRs #551–#560). Barrel-preserving:
   the class `OpenClawRuntimeAdapter` + the test seams (`mergeChatStreams`, the `__*ForTest` session-cache exports +
   `SESSION_STORE_CACHE_MAX`) stay exported from runtime.ts; every sibling imports the shared leaf module, never the
