@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.20] - 2026-06-24
+
+A hotfix for rc.19: the production binary shipped a stale embedded-asset manifest, so vendor-chunk imports 404'd and every SDK-hooks-consuming plugin failed to load.
+
+### Fixed
+- **Stale embedded-asset manifest in release builds (#579).** `_embedded-assets-static.ts` lists which content-hashed vendor bundles get compiled into the binary, but only `bun run dev` regenerated it — `bun run build` and `release.yml` never did. So the resize work in #577 changed the SDK shared-chunk hashes while rc.19 embedded the old set, 404'ing `sdk-hooks.js`'s chunk imports in the binary (`module '@makinbakin/sdk/hooks' does not provide an export named 'usePluginEvent'`). The manifest is regenerated, and `build:assets-manifest` is now part of the `build` chain and `release.yml` (after host-shell, before assert + binary) so it can't go stale in a release again.
+
 ## [0.0.1-rc.19] - 2026-06-24
 
 This is primarily an architecture release: ~380 commits, the bulk of them a behavior-preserving, codebase-wide module-splitting refactor (the "great refactor"). Alongside it ship metered spend + budgets, layered team context, reference images, and a batch of audit-driven fixes.
@@ -313,5 +320,7 @@ This is primarily an architecture release: ~380 commits, the bulk of them a beha
 
 [0.0.1-rc.18]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.18
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.19...HEAD
 [0.0.1-rc.19]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.19
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.20...HEAD
+[0.0.1-rc.20]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.20
