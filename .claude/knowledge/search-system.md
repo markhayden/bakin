@@ -9,7 +9,7 @@ and agent queries. It is **optional**: Bakin runs fully without it. When
 search silently degrades — indexing calls are no-ops, queries return empty
 results.
 
-**Install & runtime (antfly v0.2, zig):** `bakin install search` direct-downloads the pinned release tarball from releases.antfly.io (SHA256-verified against `packages/adapter-antfly/src/pin.ts` — no brew/npm/python/sudo) into `~/.antfly/bin/antfly`. Bakin runs a **private instance**: `antfly swarm` bound to `127.0.0.1:3738` (health `3739`) with `--data-dir ~/.bakin/antfly` — never the shared `~/.antfly/data`. Readiness via `GET /readyz`. Embedded inference is pinned to the CPU/ONNX backend (`TERMITE_PREFERRED_BACKEND=onnx`) because the Metal backend crashes at v0.2.0-rc.2. A non-default `settings.url` means an externally managed server (guest mode: connect only, never spawn, never touch its disk). Known upstream limitations at this pin are tracked in [#456](https://github.com/markhayden/bakin/issues/456).
+**Install & runtime (antfly v0.2, zig):** `bakin install search` direct-downloads the pinned release tarball from releases.antfly.io (SHA256-verified against `packages/adapter-antfly/src/pin.ts` — no brew/npm/python/sudo) into `~/.antfly/bin/antfly`. Bakin runs a **private instance**: `antfly swarm` bound to `127.0.0.1:3738` (health `3739`) with `--data-dir ~/.bakin/antfly` — never the shared `~/.antfly/data`. Readiness via `GET /readyz`. Embedded inference uses antfly's auto-selected backend (Metal on Apple Silicon, CPU/ONNX on Linux); the rc.2 onnx pin was dropped at v0.2.0-rc.9, where Metal embeddings survive a full reindex + concurrent load (live-verified). An explicit `TERMITE_PREFERRED_BACKEND` still wins. A non-default `settings.url` means an externally managed server (guest mode: connect only, never spawn, never touch its disk). Remaining upstream caveats are tracked in [#456](https://github.com/markhayden/bakin/issues/456).
 
 Bakin's search pipeline supports multimodal content: text embeddings via BGE, image embeddings via CLIP (running through antfly's embedded inference runtime), hybrid BM25 + semantic fusion via RRF, and optional cross-encoder reranking on single-modality tables. File content for PDFs and text formats is extracted **server-side in Bakin** (via pdf-parse and `fs.readFileSync`) and passed to Antfly as a pre-resolved `content` field rather than dereferenced via Antfly's `{{remotePDF}}` / `{{remoteText}}` template helpers. See **Multimodal Architecture** below and `.claude/knowledge/multimodal-search.md` for the full rationale.
 
@@ -228,7 +228,7 @@ Queries combine full-text (BM25) and semantic (vector) results via Reciprocal Ra
 
 Global default: `settings.search.settings.search.strategy`.
 
-> **Upstream limitation (v0.2.0-rc.2):** the `_all` field — the default target for bare-term full-text queries — is never populated in swarm mode ([#456](https://github.com/markhayden/bakin/issues/456); root cause is `_all` population, not term extraction: **field-qualified** queries like `title:foo` work fine, and `term_count: 0` is a separate cosmetic stats gap). Bare-term FTS returns nothing, so `rrf` rides the semantic leg and `full_text_only` is effectively empty. Bakin keeps sending the bare `full_text_search` leg; when upstream fixes `_all` population a reindex will likely be needed to backfill it. Potential interim follow-up: field-qualify the FTS leg across each content type's `searchableFields` to restore exact-token matching today.
+> **Fixed at v0.2.0-rc.9 (was an rc.2 limitation):** bare-term full-text queries return results again — the `_all` population bug ([#456](https://github.com/markhayden/bakin/issues/456)) is resolved (live-verified: bare terms return hits across reindexed tables). Bakin always sent the bare `full_text_search` leg, so no adapter change was needed; rc.2 just returned nothing and `rrf` rode the semantic leg alone. No interim field-qualification is needed anymore.
 
 **v0.2 protocol notes:** there is no strategy field on the wire — Bakin's strategy setting maps to which fields are populated (`semantic_search`, `full_text_search`, or both; RRF is implied when both are present). The vector `indexes` array is only sent alongside `semantic_search`. Tables are created **without a `schema`** (a create-time schema permanently breaks query parsing at this RC) and without a full-text index entry (the server always creates its own `full_text_index_v0`). Dense embeddings indexes carry an explicit `dimension`. `multiQuery` fans out as sequential single global queries — the NDJSON multiquery endpoint rejects its own framing, and request concurrency aggravates inference crashes.
 
@@ -240,7 +240,7 @@ The BM25 index key in `_index_scores` is a full filesystem path (e.g. `/path/to/
 
 ### Reranker
 
-> **Disabled by default at v0.2.0-rc.2:** invoking the mxbai reranker SIGABRTs the antfly server on both the Metal and ONNX inference backends ([#456](https://github.com/markhayden/bakin/issues/456)). All plumbing below stays wired — re-enable with one settings flip (`search.reranker.enabled: true`) once upstream stabilizes.
+> **Still disabled by default at v0.2.0-rc.9 — but for performance, not crashes.** The rc.2 mxbai SIGABRT ([#456](https://github.com/markhayden/bakin/issues/456)) is fixed: the reranker no longer crashes the server and returns correct scores on Metal (live-verified). It stays off because (a) it's slow — ~3s per reranked query vs ~1ms plain, and concurrent reranked queries serialize and back up to 30s+; and (b) it only loads on an explicit `TERMITE_PREFERRED_BACKEND=metal` (the auto-selected onnx mxbai variant fails `MissingWeight`). All plumbing stays wired — opt in per query (`rerankField`) on a Metal-pinned host; revisit default-on if upstream speeds it up.
 
 Optional cross-encoder reranking after initial retrieval. Configured globally via `settings.search.settings.search.reranker` (provider, model, enabled flag — the v0.2 RerankerConfig has no `threshold`), and **opted into per content type** via `SearchContentTypeDefinition.rerankField`.
 
@@ -560,7 +560,7 @@ All under `settings.search.settings`:
 | `auth` | `object?` | Optional basic auth `{ username }` — the password lives in the secret store (`providers.antfly` in `~/.bakin/secrets.json`; env `ANTFLY_PASSWORD` overrides) and is injected into `auth.password` at adapter init by `createAppServices`, never stored or served from settings.json |
 | `search.strategy` | `string` | Default search strategy (`rrf` \| `semantic_only` \| `full_text_only`) |
 | `search.defaultLimit` | `number` | Default result count |
-| `search.reranker.enabled` | `boolean` | Master switch for cross-encoder reranking. **Default `false`** — reranking crashes the server at v0.2.0-rc.2 ([#456](https://github.com/markhayden/bakin/issues/456)) |
+| `search.reranker.enabled` | `boolean` | Master switch for cross-encoder reranking. **Default `false`** — at v0.2.0-rc.9 the rc.2 crash is fixed but reranking is slow (~3s/query) and needs an explicit Metal backend ([#456](https://github.com/markhayden/bakin/issues/456)); opt in per query |
 | `search.reranker.provider` | `string` | Reranker provider (`antfly`) |
 | `search.reranker.model` | `string` | Qualified model name (e.g. `mixedbread-ai/mxbai-rerank-base-v1`) |
 | `embedders.default.provider` | `string` | Text embedder provider (`antfly`) |
@@ -582,5 +582,5 @@ All under `settings.search.settings`:
 
 - `.claude/knowledge/multimodal-search.md` — multimodal architecture, PDF/text extraction, CLIP visual path, how to add a new modality
 - `.claude/knowledge/search-api-reference.md` — REST/MCP surface for agent-facing search
-- [Bakin issue #456](https://github.com/markhayden/bakin/issues/456) — antfly v0.2.0-rc.2 upstream bugs (schema-at-create breaks queries, FTS dead in swarm, no index-time lazy model download, NDJSON multiquery broken, inference crashes) with workarounds + revisit checklist
+- [Bakin issue #456](https://github.com/markhayden/bakin/issues/456) — antfly upstream bugs + workarounds. Status at the v0.2.0-rc.9 pin (live-verified): bare-term FTS **fixed**, NDJSON multiquery **fixed**, Metal-backend instability **fixed** (onnx pin dropped), reranker SIGABRT **fixed** (now slow, not crashing — kept off). Still open/unretested: schema-at-create (adapter creates schemaless anyway), index-time lazy model download
 - [Bakin issue #72](https://github.com/markhayden/bakin/issues/72) — Antfly v0.1-era upstream bugs documented during T6 (dead `content_security` config, broken PDF library, no loopback HTTP path)

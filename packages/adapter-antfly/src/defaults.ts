@@ -48,9 +48,15 @@ export const DEFAULT_SETTINGS: AntflySettings = {
     strategy: 'rrf',
     defaultLimit: 20,
     reranker: {
-      // Disabled at v0.2.0-rc.2: invoking the mxbai reranker SIGABRTs the
-      // server on both the Metal AND onnx backends (bakin#456). All rerank
-      // plumbing stays wired — flip to true when upstream stabilizes.
+      // Still disabled at v0.2.0-rc.9, but for a NEW reason. The rc.2 mxbai
+      // SIGABRT (bakin#456) IS fixed — the reranker no longer crashes the
+      // server and returns correct scores on Metal (live-verified). It stays
+      // off because (a) it's slow: ~3s per reranked query vs ~1ms plain, and
+      // concurrent reranked queries serialize and back up to 30s+; and (b) it
+      // only loads on an explicit TERMITE_PREFERRED_BACKEND=metal (the
+      // auto-selected onnx variant fails MissingWeight). Plumbing stays wired —
+      // opt in per-query (rerankField) on a Metal-pinned host when the latency
+      // is acceptable; revisit default-on if upstream speeds it up.
       enabled: false,
       provider: 'antfly',
       model: 'mixedbread-ai/mxbai-rerank-base-v1',

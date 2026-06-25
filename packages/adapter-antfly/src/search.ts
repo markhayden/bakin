@@ -481,12 +481,15 @@ export class AntflySearchAdapter implements SearchAdapter {
     if (!client || !this.settings.enabled) return queries.map(({ query }) => emptyQueryResult(query))
     if (queries.length === 0) return []
 
-    // Fan out as SEQUENTIAL single queries. Two v0.2.0-rc.2 constraints
-    // (bakin#456): the NDJSON multiquery endpoint rejects its own framing,
-    // and concurrent reranked queries crash the embedded Metal inference
-    // backend with a command-encoder assertion (SIGABRT, server gone).
-    // Sequential single queries are the shape that works; per-query failure
-    // isolation comes free.
+    // Fan out as SEQUENTIAL single queries. The two rc.2 constraints that
+    // forced this (bakin#456) are both fixed at v0.2.0-rc.9 — the NDJSON
+    // multiquery endpoint (global `/db/v1/query`) now works cross-table, and
+    // concurrent reranked queries no longer SIGABRT the Metal backend — but
+    // sequential is retained deliberately: reranking on Metal serializes
+    // (~3s/reranked query) and a parallel fan-out of reranked queries backs up
+    // to 30s+. Sequential keeps that bounded and gives per-query failure
+    // isolation for free. Revisit (switch to client.multiquery) if reranking
+    // stays off-by-default and cross-table latency becomes the bottleneck.
     const timeoutMs = queryTimeoutMs()
     const results: QueryResult[] = []
     for (const { table, query } of queries) {

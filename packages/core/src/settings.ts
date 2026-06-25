@@ -216,9 +216,13 @@ export const DEFAULT_SETTINGS: BakinSettings = {
         strategy: 'rrf',
         defaultLimit: 20,
         reranker: {
-          // Disabled at v0.2.0-rc.2: invoking the mxbai reranker SIGABRTs
-          // the antfly server on both Metal and onnx backends (bakin#456).
-          // Plumbing stays wired — flip to true when upstream stabilizes.
+          // Still disabled at v0.2.0-rc.9, for a new reason. The rc.2 mxbai
+          // SIGABRT (bakin#456) is fixed — reranking no longer crashes the
+          // server and scores correctly on Metal — but it stays off because
+          // it's slow (~3s/reranked query vs ~1ms plain; concurrent reranked
+          // queries back up to 30s+) and needs an explicit
+          // TERMITE_PREFERRED_BACKEND=metal to load (auto-select hits the
+          // onnx mxbai variant -> MissingWeight). Opt in per-query instead.
           enabled: false,
           provider: 'antfly',
           model: 'mixedbread-ai/mxbai-rerank-base-v1',

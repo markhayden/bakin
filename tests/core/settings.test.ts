@@ -59,7 +59,9 @@ describe('Settings', () => {
     const settings = getSettings()
     expect(settings.search.settings.search.strategy).toBe('rrf')
     expect(settings.search.settings.search.defaultLimit).toBe(20)
-    // Default-off at v0.2.0-rc.2 — reranking crashes the server (bakin#456).
+    // Still default-off at v0.2.0-rc.9: the rc.2 mxbai SIGABRT (bakin#456) is
+    // fixed, but reranking is slow (~3s/query) and needs an explicit Metal
+    // backend, so it stays off and is opt-in per query.
     expect(settings.search.settings.search.reranker.enabled).toBe(false)
     expect(settings.search.settings.search.reranker.provider).toBe('antfly')
     expect(settings.search.settings.search.reranker.model).toBe('mixedbread-ai/mxbai-rerank-base-v1')

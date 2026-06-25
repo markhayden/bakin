@@ -263,8 +263,11 @@ describe('Antfly server supervision', () => {
     expect(spawnMock).toHaveBeenCalledTimes(1)
     const [binary, args, opts] = (spawnMock.mock.calls as unknown as Array<[string, string[], { env?: Record<string, string> }]>)[0]
     expect(binary).toBe(fakeBinary)
-    // CPU inference pin — the Metal backend crashes at this RC (bakin#456).
-    expect(opts.env?.TERMITE_PREFERRED_BACKEND).toBe('onnx')
+    // v0.2.0-rc.9 (bakin#456): the rc.2 Metal instability is fixed, so the
+    // adapter no longer pins onnx — antfly auto-selects the backend (Metal on
+    // Apple Silicon, CPU/onnx on Linux). The key is only forwarded when set in
+    // the environment; this test runs without it, so it must be absent.
+    expect(opts.env?.TERMITE_PREFERRED_BACKEND).toBeUndefined()
     expect(args).toEqual([
       'swarm',
       '--host', '127.0.0.1',

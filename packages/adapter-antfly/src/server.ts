@@ -216,6 +216,16 @@ export async function startAntflyServer(
 
   logger.info('Starting Antfly server...', { binary, url, dataDir })
 
+  // Inference backend (bakin#456). The rc.2 onnx pin worked around a Metal
+  // instability (concurrent reranked queries SIGABRTed on a command-encoder
+  // assertion; single embeds could die with MTLCommandBufferError). v0.2.0-rc.9
+  // fixes that: a Metal instance survives a full reindex and concurrent embeds
+  // (live-verified), so the pin is dropped — antfly auto-selects Metal on Apple
+  // Silicon (faster embeddings) and CPU/onnx on Linux. NOTE: reranking is NOT
+  // re-enabled (see defaults.ts) — it's slow on Metal (~3s/query, serializes
+  // under concurrency) and the auto-selected backend loads the onnx mxbai
+  // variant, which fails (MissingWeight); enabling it needs an explicit
+  // TERMITE_PREFERRED_BACKEND=metal, which still wins here when set.
   try {
     antflyProcess = spawn(binary, [
       'swarm',
@@ -229,13 +239,9 @@ export async function startAntflyServer(
       detached: false,
       env: {
         ...process.env,
-        // The Metal inference backend is unstable at v0.2.0-rc.2
-        // (bakin#456): concurrent reranked queries hit a command-encoder
-        // assertion (SIGABRT) and even single embeds can die with
-        // MTLCommandBufferError Invalid Resource. Pin the embedded
-        // inference to the ONNX/CPU backend — plenty fast for Bakin's
-        // model sizes — until upstream stabilizes. Env override wins.
-        TERMITE_PREFERRED_BACKEND: process.env.TERMITE_PREFERRED_BACKEND ?? 'onnx',
+        ...(process.env.TERMITE_PREFERRED_BACKEND
+          ? { TERMITE_PREFERRED_BACKEND: process.env.TERMITE_PREFERRED_BACKEND }
+          : {}),
       },
     })
     registerExitHook()
