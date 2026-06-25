@@ -39,7 +39,7 @@ import {
 } from '../../../packages/adapter-antfly/src/installer'
 import { antflyPlatformKey, type AntflyPin } from '../../../packages/adapter-antfly/src/pin'
 
-const PIN_VERSION = '0.2.0-rc.2'
+const PIN_VERSION = '0.2.0-rc.9'
 const platformKey = antflyPlatformKey()
 if (!platformKey) throw new Error('tests must run on a supported platform')
 

@@ -18,12 +18,12 @@ export interface AntflyPin {
 }
 
 export const ANTFLY_PIN: AntflyPin = {
-  version: '0.2.0-rc.2',
+  version: '0.2.0-rc.9',
   baseUrl: 'https://releases.antfly.io/antfly',
   checksums: {
-    'darwin-arm64': '1eb09c565b36f885f3a2ccc949f14a488c0d1c5e4f9dda2925228e2bc7313ea1',
-    'linux-arm64': 'cfed5c2c97f75acbfd8c3d597f30d36a0155ec5221e2b6bef80ace5fd238a239',
-    'linux-x64': 'f9c6710bc9bac2f7689f3f6f5850d432f7f2af482f4253f587be3180abc2809e',
+    'darwin-arm64': '1c7a418516a67ffaf46142ceda41ba49f16c6956316e1fe9a430bdea14617c26',
+    'linux-arm64': 'b5697a4e54aff07902ae0b888477d50104d0454cde7553bd079a530cd1d15a7b',
+    'linux-x64': 'fe0631b476342c37277c561499d826a6870e14e2ef3edb5ceedc7e5327e8bf51',
   },
 }
 
