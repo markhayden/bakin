@@ -49,14 +49,16 @@ export const DEFAULT_SETTINGS: AntflySettings = {
     defaultLimit: 20,
     reranker: {
       // Still disabled at v0.2.0-rc.9, but for a NEW reason. The rc.2 mxbai
-      // SIGABRT (bakin#456) IS fixed — the reranker no longer crashes the
-      // server and returns correct scores on Metal (live-verified). It stays
-      // off because (a) it's slow: ~3s per reranked query vs ~1ms plain, and
-      // concurrent reranked queries serialize and back up to 30s+; and (b) it
-      // only loads on an explicit TERMITE_PREFERRED_BACKEND=metal (the
-      // auto-selected onnx variant fails MissingWeight). Plumbing stays wired —
-      // opt in per-query (rerankField) on a Metal-pinned host when the latency
-      // is acceptable; revisit default-on if upstream speeds it up.
+      // SIGABRT (bakin#456) IS fixed — the reranker no longer crashes the server
+      // and ranks correctly (live-verified: relevant doc 0.998 vs 0.0006). It
+      // stays OFF because it's throughput-bound: ~200ms per candidate on Metal
+      // (linear — 5 docs ~1.3s, 20 ~4s, 100 ~28s), it serializes (one Metal
+      // queue, so concurrent reranked queries back up), and it only loads on an
+      // explicit TERMITE_PREFERRED_BACKEND=metal (auto-select picks the onnx
+      // variant -> MissingWeight). Default-on across Bakin's multi-table fan-out
+      // is too slow, but a bounded top-K rerank (5-10 candidates ~1-2s) is a fine
+      // per-query opt-in (rerankField) on a Metal host. Revisit default-on if
+      // upstream gets the reranker onto a faster path.
       enabled: false,
       provider: 'antfly',
       model: 'mixedbread-ai/mxbai-rerank-base-v1',

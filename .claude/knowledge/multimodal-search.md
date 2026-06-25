@@ -226,7 +226,7 @@ The **`indexScores`** field on each result is the proof of life. A hit with `ble
 
 ## Known upstream issues
 
-**v0.2.0-rc.9 (zig, current pin):** tracked in [Bakin issue #456](https://github.com/markhayden/bakin/issues/456). Fixed since rc.2 (live-verified): bare-term FTS, NDJSON multiquery, Metal-backend stability (onnx pin dropped), reranker SIGABRT (reranking now scores correctly on Metal but is slow ~3s/query, so it stays disabled by default). Still open: schema-at-create (adapter creates schemaless anyway), no index-time lazy model download.
+**v0.2.0-rc.9 (zig, current pin):** tracked in [Bakin issue #456](https://github.com/markhayden/bakin/issues/456). Fixed since rc.2 (all live-verified): bare-term FTS, NDJSON multiquery, Metal-backend stability (onnx pin dropped), schema-at-create (a schema'd table now queries identically to schemaless), and the reranker SIGABRT (reranking now ranks correctly on Metal but is throughput-bound at ~200ms/candidate, so it stays disabled by default — opt-in per query). Still open: no index-time lazy model download.
 
 **v0.1-era (Go, historical — these described the pre-0.2 world):** tracked in [Bakin issue #72](https://github.com/markhayden/bakin/issues/72):
 

@@ -322,7 +322,11 @@ export class AntflySearchAdapter implements SearchAdapter {
       if (tables.some((table) => table.name === name)) return
 
       const antflyConfig = buildTableConfig(name, config, this.settings)
-      // No `schema` here — see buildTableConfig / markhayden/bakin#456.
+      // No `schema` here — schemaless by choice (see buildTableConfig). The rc.2
+      // bug that forced it (markhayden/bakin#456 item 1) is FIXED at v0.2.0-rc.9:
+      // a table created WITH a client schema answers FTS + semantic queries
+      // identically to a schemaless one (live-verified). We stay schemaless
+      // anyway — type inference covers Bakin's needs and it's one less moving part.
       await client.tables.create(name, {
         num_shards: readNumber(config.adapterOptions?.numShards, 1),
         description: readString(config.adapterOptions?.description),

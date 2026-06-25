@@ -45,12 +45,13 @@ export function buildQueryRequest(table: string, q: Query, settings: AntflySetti
 }
 
 /**
- * NOTE: no `schema` is sent at table create. At antfly v0.2.0-rc.2 a
- * create-time schema permanently breaks query parsing on the table
- * (markhayden/bakin#456 item 1); semantic search, filters, and facets all
- * work schemaless. When the upstream fix lands, schema (and with it
- * x-antfly-include-in-all field control) can return — likely via
- * PUT /schema, which does not trigger the bug.
+ * NOTE: no `schema` is sent at table create. The rc.2 bug that required this
+ * (a create-time schema permanently broke query parsing — markhayden/bakin#456
+ * item 1) is FIXED at v0.2.0-rc.9: live testing confirmed a table created with
+ * a client schema answers FTS + semantic queries identically to a schemaless
+ * one. We keep creating schemaless because type inference covers Bakin's needs;
+ * if field-level x-antfly-include-in-all control is ever wanted, a schema can
+ * now be sent here (or via PUT /schema) without breaking queries.
  */
 export function buildTableConfig(table: string, config: TableConfig, settings: AntflySettings): {
   indexes: Record<string, unknown>

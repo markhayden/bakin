@@ -218,11 +218,11 @@ export const DEFAULT_SETTINGS: BakinSettings = {
         reranker: {
           // Still disabled at v0.2.0-rc.9, for a new reason. The rc.2 mxbai
           // SIGABRT (bakin#456) is fixed — reranking no longer crashes the
-          // server and scores correctly on Metal — but it stays off because
-          // it's slow (~3s/reranked query vs ~1ms plain; concurrent reranked
-          // queries back up to 30s+) and needs an explicit
-          // TERMITE_PREFERRED_BACKEND=metal to load (auto-select hits the
-          // onnx mxbai variant -> MissingWeight). Opt in per-query instead.
+          // server and ranks correctly on Metal — but it's throughput-bound:
+          // ~200ms/candidate (linear; 20 docs ~4s), it serializes, and it needs
+          // an explicit TERMITE_PREFERRED_BACKEND=metal (auto-select hits the
+          // onnx variant -> MissingWeight). Default-on across the multi-table
+          // fan-out is too slow; opt in per-query with a bounded top-K instead.
           enabled: false,
           provider: 'antfly',
           model: 'mixedbread-ai/mxbai-rerank-base-v1',
