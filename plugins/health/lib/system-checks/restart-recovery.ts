@@ -6,15 +6,16 @@
  * safely infer the right active agent.
  */
 import { findRestartRecoveryCandidates } from '../../../../src/core/restart-recovery'
+import { healthOk, healthWarn } from '@makinbakin/sdk/utils'
 import { getContentDir } from '../../../../src/core/content-dir'
 import type { HealthCheckResult } from '../../../../packages/core/src/plugin-types'
 
 function ok(message: string): HealthCheckResult {
-  return { check: 'restart-recovery', status: 'ok', message, autoFixable: false }
+  return healthOk('restart-recovery', message)
 }
 
 function warn(message: string): HealthCheckResult {
-  return { check: 'restart-recovery', status: 'warn', message, autoFixable: false }
+  return healthWarn('restart-recovery', message)
 }
 
 export async function checkRestartRecovery(): Promise<HealthCheckResult[]> {

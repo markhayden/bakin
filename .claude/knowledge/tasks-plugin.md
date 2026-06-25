@@ -163,7 +163,7 @@ archived   → done, todo
 | File | Purpose |
 |------|---------|
 | `plugins/tasks/client.tsx` | Client entry — calls `registerPlugin({ id: 'tasks', navItems, slots: { 'page:/tasks': KanbanBoard } })` |
-| `plugins/tasks/components/kanban-board.tsx` | Main kanban view — fetches from `/api/plugins/tasks/`, subscribes to SSE via `taskboardVersion` |
+| `plugins/tasks/components/kanban-board.tsx` | Main kanban view — fetches from `/api/plugins/tasks/`, re-fetches on `usePluginEvent('taskboard', …)` |
 | `plugins/tasks/components/kanban-column.tsx` | Single column rendering with task cards and footer |
 | `plugins/tasks/components/task-card.tsx` | Individual task card (avatar, title, status badge, log count) |
 | `plugins/tasks/components/task-detail-dialog.tsx` | Slide-out drawer for viewing/editing task details |
@@ -204,8 +204,8 @@ state. Once `availableAt <= now`, the task naturally renders in the normal group
 
 1. Every write operation in `task-store.ts` updates the Bakin task store, whose subscription calls `broadcastChange()` and fires `globalThis.__bakinBroadcast({ type: 'taskboard' })`
 2. The SSE server sends this as a `type: 'taskboard'` event to all connected clients
-3. The global `use-sse.ts` hook receives the event and calls `bumpTaskboard()` on the Zustand store
-4. `kanban-board.tsx` subscribes to `taskboardVersion` and re-fetches from `/api/plugins/tasks/` on change
+3. The global `use-sse.ts` hook receives the `type: 'taskboard'` frame and re-emits it through the client fan-out as `emitPluginEvent({ event: 'taskboard' })` (see plugin-system.md § Client SSE fan-out)
+4. `kanban-board.tsx` (and the nav-badge `use-task-summary` hook) subscribe via `usePluginEvent('taskboard', …)` and re-fetch from `/api/plugins/tasks/` on each event
 5. No file watcher involved — the content watcher explicitly ignores `tasks/` (#434); task-store writes trigger SSE broadcasts directly and are the single broadcast source. The store keeps an in-memory id→path + column-bucket index (self-healing, no content cached) so `getSync`/`appendLogSync`/column counts don't walk the monthly shards.
 
 ### Store Access Pattern
@@ -277,8 +277,10 @@ documents that fallback; ID is preferred.
 | Function | Side effects |
 |----------|-------------|
 | `logProgress` | Workflow owner authorization → SSE broadcast → persist log entry |
-| `moveTaskWithEffects` | Workflow done-guard → move → audit → Antfly index → continuation trigger → project auto-check → parent unblock |
-| `blockTaskWithEffects` | Workflow owner authorization → block task → audit → propagate to parent (for child workflow tasks) |
+| `moveTaskWithEffects` | Workflow done-guard → reopen-delete when leaving done (`reopenIfLeavingDone`) → move → completion gate → audit → Antfly index → continuation trigger → project auto-check → parent unblock |
+| `blockTaskWithEffects` | Workflow owner authorization → completion guard (completed task ⇒ `{ alreadyComplete: true }`, no effects; move route maps to 409, MCP block to soft payload, #482) → block task → audit → propagate to parent (system-strict — never human-bypassed, so a done parent is skipped) |
+| `syncLedgerForStoreMove` | The workflow engine's ledger-aware store move: reopen-delete on leaving done → store move → insert-if-missing completion row on landing on done |
+| `backfillMissingCompletionRows` | Boot heal: synthetic completion rows for done-column tasks without one; idempotent, audited `task.completion_backfilled` |
 | `createTaskWithEffects` | Auto-match workflow → create → start workflow instance → audit |
 | `reportComplete` | Workflow active-task authorization → log → move to done → notify orchestrator |
 | `setDependencyWithEffects` | Set dependency → audit |

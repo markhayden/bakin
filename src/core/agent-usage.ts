@@ -4,33 +4,14 @@
  */
 import { createLogger } from './logger'
 import type { AgentRuntimeAdapter, RuntimeMemoryEntry } from '@bakin/core/adapters/runtime'
+// AgentUsage is single-homed in the SDK (the usage-panel wire shape);
+// re-exported here so server callers keep importing it from one place.
+import type { AgentUsage } from '@makinbakin/sdk/types'
+export type { AgentUsage }
 
 const log = createLogger('agent-usage')
 
 const SESSION_JSONL_SOURCE_KIND = 'session_jsonl'
-
-export interface AgentUsage {
-  agent: string
-  sessionId: string
-  sessionStarted: string
-  model: string
-  messages: number
-  tokens: {
-    input: number
-    output: number
-    cacheRead: number
-    cacheWrite: number
-    total: number
-  }
-  cost: {
-    input: number | null
-    output: number | null
-    cacheRead: number | null
-    cacheWrite: number | null
-    total: number | null
-    source: 'runtime' | 'unavailable'
-  }
-}
 
 interface SessionUsageCost {
   input?: number

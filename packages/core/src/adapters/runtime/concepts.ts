@@ -68,12 +68,36 @@ export interface MessageArgs extends RuntimeMessageToolPolicy {
    * same agentId + threadId pair to the same provider/runtime session.
    */
   threadId?: string
+  /**
+   * Per-turn model override (`provider/model` id). Omit to use the agent's
+   * configured model. The caller (Bakin's routing policy) resolves it.
+   */
+  model?: string
+  /**
+   * Per-turn thinking level. Omit to use the runtime/agent default.
+   */
+  thinking?: string
   metadata?: RuntimeMetadata
+}
+
+/** Token usage for one agent turn, when the runtime reports it. */
+export interface MessageUsage {
+  input?: number
+  output?: number
+  total?: number
+  /** Cached-input tokens read (priced far below fresh input when known). */
+  cacheRead?: number
+  /** Cached-input tokens written (cache creation). */
+  cacheWrite?: number
+  /** Resolved model the runtime ran, when known. */
+  model?: string
 }
 
 export interface MessageResult {
   id: string
   content?: string
+  /** Per-turn token usage, omitted when the runtime reported none. */
+  usage?: MessageUsage
   metadata?: RuntimeMetadata
 }
 
@@ -245,6 +269,20 @@ export interface RuntimeSession {
   metadata?: RuntimeMetadata
 }
 
+export interface RuntimeSessionStoreStats {
+  agentId: string
+  /** Live entries in the runtime's session store for this agent. */
+  storeEntries: number
+  /**
+   * Top-level files in the agent's sessions directory (session artifacts,
+   * including the store itself) — cache subtrees are excluded so the
+   * orphaned-artifact ratio stays meaningful.
+   */
+  fileCount: number
+  /** Total bytes of the agent's sessions directory, subtrees included. */
+  diskBytes: number
+}
+
 export interface RuntimeMemoryTier {
   id: string
   label: string
@@ -364,6 +402,13 @@ export interface RuntimeImageGenerateInput {
   resolution?: string
   outputFormat?: RuntimeImageOutputFormat
   background?: RuntimeImageBackground
+  /**
+   * Reference/context image file paths conditioning the generation. The caller
+   * (Bakin) resolves managed asset ids to concrete paths before the adapter
+   * sees them. Native generation has no file input, so a generate carrying
+   * references is routed through the edit-style invocation (#418).
+   */
+  referenceImages?: string[]
   timeoutMs?: number
   metadata?: RuntimeMetadata
 }
@@ -500,6 +545,12 @@ export interface AgentRuntimeAdapter {
   sessions: {
     list(agentId?: string): Promise<RuntimeSession[]>
     get(sessionId: string): Promise<RuntimeSession | null>
+    /**
+     * Per-agent session-store disk stats. Optional: runtimes without a
+     * file-backed session store omit it, and callers must treat absence
+     * as "stats unavailable" — skip, never error.
+     */
+    storeStats?(): Promise<RuntimeSessionStoreStats[]>
   }
 
   memory: {
@@ -522,6 +573,17 @@ export interface AgentRuntimeAdapter {
   }
 
   images?: RuntimeImagesAccess
+
+  /**
+   * Access to the runtime's private media store (e.g. channel attachments).
+   * `resolveUri` maps a runtime-private URI (OpenClaw's `media://…`) to an
+   * absolute local file path; null for unknown schemes or missing files —
+   * never throws for not-found. Optional: runtimes without a media store
+   * omit it, and callers must treat absence as "cannot resolve".
+   */
+  media?: {
+    resolveUri(uri: string): Promise<string | null>
+  }
 
   cron: {
     list(): Promise<CronJob[]>

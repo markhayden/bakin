@@ -18,7 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@makinbakin/sdk/ui'
-import { useAgentStore, useMainAgentId, useRouter } from '@makinbakin/sdk/hooks'
+import { toast, useAgentStore, useMainAgentId, useRouter } from '@makinbakin/sdk/hooks'
 import { PackageStateBadge } from './package-state-badge'
 import { AdoptDialog } from './adopt-dialog'
 import type { PackageStateRow } from '../types'
@@ -127,26 +127,43 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
   const [actionBusy, setActionBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
-  const hasPackage = Boolean(packageState?.entry && (state === 'managed' || state === 'adopted' || state === 'update-available'))
+  const hasPackage = Boolean(packageState?.entry && (state === 'managed' || state === 'update-available'))
   const updateAvailable = Boolean(packageState?.updateStatus?.upgradeAvailable || state === 'update-available')
   const displayState = updateAvailable ? 'update-available' : state
 
-  async function updatePackage(refreshTemplate: boolean) {
+  async function syncPackage() {
     setActionBusy(true)
     setActionError(null)
     setActionMessage(null)
     try {
-      const res = await fetch(`/api/agent-packages/${encodeURIComponent(agentId)}/update`, {
+      const res = await fetch(`/api/agent-packages/${encodeURIComponent(agentId)}/sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshTemplate }),
+        body: JSON.stringify({}),
       })
       const body = await res.json().catch(() => ({}))
-      if (!res.ok || body?.ok === false) {
-        throw new Error(typeof body?.error === 'string' ? body.error : 'Agent package update failed.')
+      if (res.status === 409 && body?.migrationRequired) {
+        throw new Error('One-time block migration required — run `bakin agents sync` and confirm, or use the Health page Repair flow.')
       }
-      setActionMessage(refreshTemplate ? 'Package templates reseeded.' : 'Package updated while preserving workspace changes.')
+      if (!res.ok || body?.ok === false) {
+        throw new Error(typeof body?.error === 'string' ? body.error : 'Agent sync failed.')
+      }
+      const receipt = body.receipt ?? {}
+      const recomposed = (receipt.blocks ?? []).filter((b: { action: string }) => b.action === 'recomposed').map((b: { file: string }) => b.file)
+      const skipped = receipt.skipped ?? []
+      const parts = [
+        receipt.package?.changed
+          ? `Updated ${receipt.package.versionBefore} → ${receipt.package.versionAfter}.`
+          : 'Already at the latest source.',
+        recomposed.length > 0 ? `Recomposed: ${recomposed.join(', ')}.` : 'All blocks current.',
+        skipped.length > 0 ? `${skipped.length} user-edited file(s) preserved (reclaim to overwrite).` : null,
+        `Verification: ${receipt.verification?.status ?? 'unknown'}.`,
+      ].filter(Boolean)
       await refreshPackageStates()
+      // Sync succeeded: surface the receipt as a toast and auto-close the
+      // dialog. Errors keep the dialog open (actionError is shown inline).
+      toast(parts.join(' '), 'success')
+      setUpdateOpen(false)
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -214,19 +231,19 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <PackageStateBadge state={displayState} packageId={packageState?.packageId} />
         <div className="flex items-center gap-1.5">
-          {hasPackage && updateAvailable && (
+          {hasPackage && (
             <Button
               size="sm"
-              variant="info"
+              variant={updateAvailable ? 'info' : 'outline'}
               onClick={() => {
                 setActionError(null)
                 setActionMessage(null)
                 setUpdateOpen(true)
               }}
-              aria-label="Upgrade agent package"
+              aria-label={updateAvailable ? 'Upgrade agent package' : 'Sync agent package'}
             >
               <RefreshCw className="size-3 mr-1.5" />
-              Upgrade
+              {updateAvailable ? 'Upgrade' : 'Sync'}
             </Button>
           )}
           {hasPackage && (
@@ -294,7 +311,7 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
           <p className="text-xs text-muted-foreground">
             A newer version of the source package is available. Update from the CLI:
           </p>
-          <CliHint command={`bakin agents update ${agentId}`} />
+          <CliHint command={`bakin agents sync ${agentId}`} />
         </div>
       )}
       <AdoptDialog
@@ -306,9 +323,9 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
       <Dialog open={updateOpen} onOpenChange={setUpdateOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Upgrade {packageState?.packageId ?? agentId}</DialogTitle>
+            <DialogTitle>Sync {packageState?.packageId ?? agentId}</DialogTitle>
             <DialogDescription>
-              Bakin will pull the latest package source for {agentId}. Update keeps workspace files and user edits in place. Full rewrite reseeds package template files; files protected by `.userEdited` stay protected.
+              Bakin pulls the latest package source for {agentId}, recomposes the managed blocks (context layers + template + lessons), re-projects skills and assets, verifies the result, and writes a receipt. Content outside the managed blocks is never touched; `.userEdited` skills/assets are skipped with a reclaim hint.
             </DialogDescription>
           </DialogHeader>
           {packageState?.updateStatus && (
@@ -349,11 +366,9 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
             <Button variant="outline" onClick={() => setUpdateOpen(false)}>
               Close
             </Button>
-            <Button variant="info" disabled={actionBusy || Boolean(actionMessage)} onClick={() => updatePackage(false)}>
-              Update package
-            </Button>
-            <Button variant="warning" disabled={actionBusy || Boolean(actionMessage)} onClick={() => updatePackage(true)}>
-              Full rewrite
+            <Button variant="info" disabled={actionBusy || Boolean(actionMessage)} onClick={() => syncPackage()} className="gap-1.5">
+              {actionBusy && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
+              {actionBusy ? 'Syncing…' : 'Sync agent'}
             </Button>
           </DialogFooter>
         </DialogContent>

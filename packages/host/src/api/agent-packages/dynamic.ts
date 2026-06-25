@@ -2,10 +2,12 @@
  * Dispatcher for /api/agent-packages/{agentId}/* routes.
  *
  * Routes covered:
- *   DELETE /api/agent-packages/{agentId}                       remove the package
- *   POST   /api/agent-packages/{agentId}/update                update the package
- *   GET    /api/agent-packages/{agentId}/lessons             list lessons + state
- *   POST   /api/agent-packages/{agentId}/lessons/{lessonId}  toggle lesson
+ *   DELETE /api/agent-packages/{agentId}                      remove the package
+ *   POST   /api/agent-packages/{agentId}/sync                 sync the agent (fetch + recompose + verify)
+ *   GET    /api/agent-packages/{agentId}/receipt              latest sync receipt
+ *   POST   /api/agent-packages/migrate                        one-time block migration (confirmed upstream)
+ *   GET    /api/agent-packages/{agentId}/lessons              list lessons + state
+ *   POST   /api/agent-packages/{agentId}/lessons/{lessonId}   toggle lesson
  *
  * The path family is `/api/agent-packages/...` rather than `/api/agents/...`
  * to avoid collision with the existing runtime surface (`/api/agents/{id}/
@@ -16,7 +18,10 @@
  */
 import { z } from 'zod'
 import { removePackageById } from '@/core/agent-packages/uninstaller'
-import { updatePackageById } from '@/core/agent-packages/updater'
+import { MigrationRequiredError, syncAgent } from '@/core/agent-packages/sync'
+import { migrateToManagedBlocks } from '@/core/agent-packages/migration'
+import { readReceipt } from '@/core/agent-packages/receipts'
+import { reloadAgentPackageRegistries } from '@/core/agent-packages/post-sync-reload'
 import {
   listLessons,
   setLessonEnabled,
@@ -35,9 +40,10 @@ const RemoveBodySchema = z
   .optional()
   .default({})
 
-const UpdateBodySchema = z
+const SyncBodySchema = z
   .object({
-    refreshTemplate: z.boolean().optional(),
+    check: z.boolean().optional(),
+    reclaim: z.union([z.literal('all'), z.array(z.string())]).optional(),
   })
   .optional()
   .default({})
@@ -64,14 +70,29 @@ export async function handler(req: Request, url: URL): Promise<Response> {
     return Response.json({ ok: false, error: 'Missing agent id' }, { status: 404 })
   }
 
+  // /api/agent-packages/migrate <- POST (one-time block migration; the
+  // caller — CLI prompt or doctor repair confirm — owns user consent)
+  if (segments.length === 3 && agentId === 'migrate' && req.method === 'POST') {
+    return handleMigrate()
+  }
+
   // /api/agent-packages/{agentId} <- DELETE = remove
   if (segments.length === 3 && req.method === 'DELETE') {
     return handleRemove(req, agentId)
   }
 
-  // /api/agent-packages/{agentId}/update <- POST
-  if (segments.length === 4 && segments[3] === 'update' && req.method === 'POST') {
-    return handleUpdate(req, agentId)
+  // /api/agent-packages/{agentId}/sync <- POST
+  if (segments.length === 4 && segments[3] === 'sync' && req.method === 'POST') {
+    return handleSync(req, agentId)
+  }
+
+  // /api/agent-packages/{agentId}/receipt <- GET
+  if (segments.length === 4 && segments[3] === 'receipt' && req.method === 'GET') {
+    const receipt = readReceipt(agentId)
+    if (!receipt) {
+      return Response.json({ ok: false, error: `No sync receipt for "${agentId}" yet.` }, { status: 404 })
+    }
+    return Response.json({ ok: true, receipt })
   }
 
   // /api/agent-packages/{agentId}/lessons <- GET
@@ -129,22 +150,14 @@ async function handleRemove(req: Request, agentId: string): Promise<Response> {
   }
 }
 
-async function handleUpdate(req: Request, agentId: string): Promise<Response> {
-  const packageId = resolvePackageIdForAgent(agentId)
-  if (!packageId) {
-    return Response.json(
-      { ok: false, error: `No package installed for agent "${agentId}".` },
-      { status: 404 },
-    )
-  }
-
+async function handleSync(req: Request, agentId: string): Promise<Response> {
   let raw: unknown = {}
   try {
     raw = await req.json()
   } catch {
     // empty body OK
   }
-  const parsed = UpdateBodySchema.safeParse(raw)
+  const parsed = SyncBodySchema.safeParse(raw)
   if (!parsed.success) {
     return Response.json(
       {
@@ -156,14 +169,38 @@ async function handleUpdate(req: Request, agentId: string): Promise<Response> {
   }
 
   try {
-    const result = await updatePackageById({
-      packageId,
-      refreshTemplate: parsed.data?.refreshTemplate,
+    const receipt = await syncAgent(agentId, {
+      check: parsed.data?.check,
+      reclaim: parsed.data?.reclaim,
+      trigger: 'rest',
     })
+    if (!parsed.data?.check) {
+      await reloadAgentPackageRegistries({ kind: 'synced', agentId })
+    }
+    return Response.json({ ok: true, receipt })
+  } catch (err) {
+    if (err instanceof MigrationRequiredError) {
+      return Response.json(
+        { ok: false, migrationRequired: true, error: err.message },
+        { status: 409 },
+      )
+    }
+    const message = err instanceof Error ? err.message : String(err)
+    log.error('agents/sync failed', err as Error, { agentId })
+    return Response.json({ ok: false, error: message }, { status: 500 })
+  }
+}
+
+async function handleMigrate(): Promise<Response> {
+  try {
+    const result = await migrateToManagedBlocks({ trigger: 'rest' })
+    if (!result.alreadyMigrated) {
+      await reloadAgentPackageRegistries({ kind: 'migrated' })
+    }
     return Response.json({ ok: true, result })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    log.error('agents/update failed', err as Error, { packageId })
+    log.error('agents/migrate failed', err as Error)
     return Response.json({ ok: false, error: message }, { status: 500 })
   }
 }

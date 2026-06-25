@@ -39,7 +39,7 @@ mock.module('@/core/logger', () => ({
     debug: () => {},
   }),
 }))
-mock.module('@/lib/plugin-registry', () => ({
+mock.module('@/core/plugin-registry', () => ({
   isCorePlugin: () => false,
 }))
 mock.module(

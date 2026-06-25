@@ -9,6 +9,7 @@ import { Textarea } from "@makinbakin/sdk/ui"
 import { AgentSelect } from "@makinbakin/sdk/components"
 import { useMainAgentId } from "@makinbakin/sdk/hooks"
 import { ScheduleInput } from './schedule-input'
+import { checkSchedulePrompt } from '../lib/prompt-guard'
 
 export interface JobFormData {
   name: string
@@ -146,6 +147,9 @@ export function JobForm({
           rows={3}
           className="text-sm resize-none"
         />
+        {checkSchedulePrompt(prompt).map(w => (
+          <p key={w.code} className="text-xs text-amber-600 dark:text-amber-500">⚠ {w.message}</p>
+        ))}
       </div>
 
       {/* Advanced toggle */}

@@ -6,16 +6,17 @@
  * binary or unreachable daemon surfaces as an error.
  */
 import { getSettings } from '../../../../src/core/settings'
+import { healthOk, healthWarn, healthError } from '@makinbakin/sdk/utils'
 import type { HealthCheckResult } from '../../../../packages/core/src/plugin-types'
 
 function ok(message: string): HealthCheckResult {
-  return { check: 'search', status: 'ok', message, autoFixable: false }
+  return healthOk('search', message)
 }
 function warn(message: string): HealthCheckResult {
-  return { check: 'search', status: 'warn', message, autoFixable: false }
+  return healthWarn('search', message)
 }
 function error(message: string): HealthCheckResult {
-  return { check: 'search', status: 'error', message, autoFixable: false }
+  return healthError('search', message)
 }
 
 export async function checkSearchAdapter(): Promise<HealthCheckResult[]> {

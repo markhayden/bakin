@@ -514,6 +514,86 @@
         "x-bakin-full-path": "/api/plugins/assets/versioned/:assetId/export"
       }
     },
+    "/api/plugins/assets/versioned/{assetId}/metadata": {
+      "patch": {
+        "operationId": "assets.patch.versioned-asset-id-metadata",
+        "summary": "Edit asset description and/or tags",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Assets"
+        ],
+        "parameters": [
+          {
+            "name": "assetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "x-bakin-full-path": "/api/plugins/assets/versioned/:assetId/metadata"
+      }
+    },
     "/api/plugins/assets/versioned/{assetId}/relink": {
       "post": {
         "operationId": "assets.post.versioned-asset-id-relink",
@@ -687,6 +767,156 @@
           }
         },
         "x-bakin-full-path": "/api/plugins/assets/versioned/:assetId/version"
+      }
+    },
+    "/api/plugins/assets/tags/rename": {
+      "post": {
+        "operationId": "assets.post.tags-rename",
+        "summary": "Rename a tag across all assets",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Assets"
+        ],
+        "x-bakin-full-path": "/api/plugins/assets/tags/rename"
+      }
+    },
+    "/api/plugins/assets/tags/remove": {
+      "post": {
+        "operationId": "assets.post.tags-remove",
+        "summary": "Remove a tag from all assets",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Assets"
+        ],
+        "x-bakin-full-path": "/api/plugins/assets/tags/remove"
+      }
+    },
+    "/api/plugins/assets/tags/apply": {
+      "post": {
+        "operationId": "assets.post.tags-apply",
+        "summary": "Bulk add/remove tags on a set of assets",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Assets"
+        ],
+        "x-bakin-full-path": "/api/plugins/assets/tags/apply"
       }
     },
     "/api/plugins/assets/trash": {
@@ -1979,6 +2209,9 @@
                     "items": {
                       "type": "string"
                     }
+                  },
+                  "allowDestructive": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -4113,10 +4346,10 @@
         "x-bakin-full-path": "/api/plugins/models/aliases"
       }
     },
-    "/api/plugins/models/profiles": {
+    "/api/plugins/models/routing": {
       "get": {
-        "operationId": "models.get.profiles",
-        "summary": "List task profiles",
+        "operationId": "models.get.routing",
+        "summary": "Per-turn model/thinking routing policy",
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -4153,11 +4386,11 @@
         "tags": [
           "Models"
         ],
-        "x-bakin-full-path": "/api/plugins/models/profiles"
+        "x-bakin-full-path": "/api/plugins/models/routing"
       },
       "put": {
-        "operationId": "models.put.profiles",
-        "summary": "Replace task profiles",
+        "operationId": "models.put.routing",
+        "summary": "Replace the routing policy",
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -4251,41 +4484,316 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "profiles": {
+                  "policies": {
                     "type": "array",
                     "items": {
                       "type": "object",
                       "properties": {
-                        "taskType": {
+                        "origin": {
                           "type": "string",
-                          "minLength": 1
+                          "enum": [
+                            "scheduled",
+                            "workflow",
+                            "adhoc",
+                            "recovery",
+                            "decomposition"
+                          ]
                         },
-                        "recommendedModel": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "notes": {
+                        "model": {
                           "type": "string"
+                        },
+                        "thinking": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "minimal",
+                            "low",
+                            "medium",
+                            "high",
+                            "xhigh",
+                            "adaptive",
+                            "max",
+                            "inherit"
+                          ]
                         }
                       },
                       "required": [
-                        "taskType",
-                        "recommendedModel",
-                        "notes"
+                        "origin"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "tagOverrides": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "tag": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "model": {
+                          "type": "string"
+                        },
+                        "thinking": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "minimal",
+                            "low",
+                            "medium",
+                            "high",
+                            "xhigh",
+                            "adaptive",
+                            "max",
+                            "inherit"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "tag"
                       ],
                       "additionalProperties": false
                     }
                   }
                 },
                 "required": [
-                  "profiles"
+                  "policies",
+                  "tagOverrides"
                 ],
                 "additionalProperties": false
               }
             }
           }
         },
-        "x-bakin-full-path": "/api/plugins/models/profiles"
+        "x-bakin-full-path": "/api/plugins/models/routing"
+      }
+    },
+    "/api/plugins/models/budget": {
+      "get": {
+        "operationId": "models.get.budget",
+        "summary": "Spend-cap policy",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Models"
+        ],
+        "x-bakin-full-path": "/api/plugins/models/budget"
+      },
+      "put": {
+        "operationId": "models.put.budget",
+        "summary": "Replace the budget policy",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported Media Type — body content type does not match the declared content type.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Models"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "global": {
+                    "type": "object",
+                    "properties": {
+                      "dailyUsd": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "monthlyUsd": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "warnPct": {
+                        "type": "number",
+                        "exclusiveMinimum": 0,
+                        "maximum": 1
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "perAgent": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "dailyUsd": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
+                        "monthlyUsd": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-bakin-full-path": "/api/plugins/models/budget"
+      }
+    },
+    "/api/plugins/models/spend": {
+      "get": {
+        "operationId": "models.get.spend",
+        "summary": "Estimated agent spend over a window",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Models"
+        ],
+        "description": "Windowed token/cost rollups from the execution ledger (total, by agent, by model). Costs are estimates — cache-token rates default to a fixed multiple of input where a model does not declare exact rates.",
+        "x-bakin-full-path": "/api/plugins/models/spend"
       }
     },
     "/api/plugins/models/runtime/status": {
@@ -4610,6 +5118,25 @@
               }
             }
           },
+          "403": {
+            "description": "Forbidden.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
           "404": {
             "description": "Not found.",
             "content": {
@@ -4805,6 +5332,25 @@
           },
           "400": {
             "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden.",
             "content": {
               "application/json": {
                 "schema": {
@@ -5272,6 +5818,25 @@
               }
             }
           },
+          "403": {
+            "description": "Forbidden.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
           "404": {
             "description": "Not found.",
             "content": {
@@ -5638,167 +6203,6 @@
           }
         },
         "x-bakin-full-path": "/api/plugins/schedule/parse"
-      }
-    },
-    "/api/plugins/schedule/bridge": {
-      "post": {
-        "operationId": "schedule.post.bridge",
-        "summary": "Cron bridge webhook",
-        "responses": {
-          "200": {
-            "description": "Successful response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {},
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input — params, query, or body did not match the declared schema.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    },
-                    "issues": {
-                      "type": "array",
-                      "items": {}
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "415": {
-            "description": "Unsupported Media Type — body content type does not match the declared content type.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    },
-                    "issues": {
-                      "type": "array",
-                      "items": {}
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Service unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Schedule"
-        ],
-        "description": "Internal webhook the runtime cron POSTs to when a job fires. Auth via shared secret.",
-        "parameters": [
-          {
-            "name": "secret",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "jobId": {
-                    "type": "string"
-                  },
-                  "runId": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "jobId"
-                ],
-                "additionalProperties": {}
-              }
-            }
-          }
-        },
-        "x-bakin-visibility": "internal",
-        "x-bakin-full-path": "/api/plugins/schedule/bridge"
       }
     },
     "/api/plugins/schedule/search": {
@@ -6358,6 +6762,25 @@
               }
             }
           },
+          "409": {
+            "description": "Conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
           "415": {
             "description": "Unsupported Media Type — body content type does not match the declared content type.",
             "content": {
@@ -6486,6 +6909,9 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "expectedVersion": {
+                    "type": "number"
                   }
                 },
                 "additionalProperties": false
@@ -6616,6 +7042,73 @@
         "x-bakin-full-path": "/api/plugins/tasks/:taskId"
       }
     },
+    "/api/plugins/tasks/{taskId}/runs": {
+      "get": {
+        "operationId": "tasks.get.task-id-runs",
+        "summary": "Get dispatch run history for a task",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input — params, query, or body did not match the declared schema.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Tasks"
+        ],
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            }
+          }
+        ],
+        "x-bakin-full-path": "/api/plugins/tasks/:taskId/runs"
+      }
+    },
     "/api/plugins/tasks/{taskId}/move": {
       "post": {
         "operationId": "tasks.post.task-id-move",
@@ -6662,6 +7155,25 @@
           },
           "403": {
             "description": "Forbidden.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6803,6 +7315,25 @@
           },
           "400": {
             "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict.",
             "content": {
               "application/json": {
                 "schema": {
@@ -7080,6 +7611,25 @@
               }
             }
           },
+          "409": {
+            "description": "Conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
           "415": {
             "description": "Unsupported Media Type — body content type does not match the declared content type.",
             "content": {
@@ -7195,6 +7745,25 @@
           },
           "400": {
             "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict.",
             "content": {
               "application/json": {
                 "schema": {
@@ -11557,6 +12126,562 @@
         "x-bakin-full-path": "/api/plugins/team/teams/:teamId/members"
       }
     },
+    "/api/plugins/team/context": {
+      "get": {
+        "operationId": "team.get.context",
+        "summary": "List layered context files",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Team"
+        ],
+        "description": "List layered context files (global, roles, teams)",
+        "x-bakin-full-path": "/api/plugins/team/context"
+      }
+    },
+    "/api/plugins/team/context/{scope}": {
+      "get": {
+        "operationId": "team.get.context-scope",
+        "summary": "Read a layered context file",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Team"
+        ],
+        "description": "Read a layered context file (scope: global, or role/team via ?id=)",
+        "parameters": [
+          {
+            "name": "scope",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-bakin-full-path": "/api/plugins/team/context/:scope"
+      },
+      "put": {
+        "operationId": "team.put.context-scope",
+        "summary": "Write a layered context file",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Team"
+        ],
+        "description": "Write a layered context file (scope: global, or role/team via ?id=)",
+        "parameters": [
+          {
+            "name": "scope",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-bakin-full-path": "/api/plugins/team/context/:scope"
+      }
+    },
+    "/api/plugins/team/teams/{teamId}/sync": {
+      "post": {
+        "operationId": "team.post.teams-team-id-sync",
+        "summary": "Sync every member agent of a team",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Team"
+        ],
+        "description": "Sync every member agent of a team (recompose blocks, re-project, verify)",
+        "parameters": [
+          {
+            "name": "teamId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-bakin-full-path": "/api/plugins/team/teams/:teamId/sync"
+      }
+    },
     "/api/plugins/team/{agentId}/team": {
       "put": {
         "operationId": "team.put.agent-id-team",
@@ -15689,10 +16814,10 @@
         "x-bakin-full-path": "/api/agent-packages/:agentId"
       }
     },
-    "/api/agent-packages/{agentId}/update": {
+    "/api/agent-packages/{agentId}/sync": {
       "post": {
-        "operationId": "core.post.api-agent-packages-agent-id-update",
-        "summary": "Update agent package",
+        "operationId": "core.post.api-agent-packages-agent-id-sync",
+        "summary": "Sync agent (fetch, recompose blocks, verify, receipt)",
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -15731,6 +16856,25 @@
           },
           "404": {
             "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict.",
             "content": {
               "application/json": {
                 "schema": {
@@ -15811,8 +16955,22 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "refreshTemplate": {
+                  "check": {
                     "type": "boolean"
+                  },
+                  "reclaim": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "const": "all"
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    ]
                   }
                 },
                 "additionalProperties": {}
@@ -15820,7 +16978,149 @@
             }
           }
         },
-        "x-bakin-full-path": "/api/agent-packages/:agentId/update"
+        "x-bakin-full-path": "/api/agent-packages/:agentId/sync"
+      }
+    },
+    "/api/agent-packages/{agentId}/receipt": {
+      "get": {
+        "operationId": "core.get.api-agent-packages-agent-id-receipt",
+        "summary": "Latest sync receipt for an agent",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input — params, query, or body did not match the declared schema.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Core"
+        ],
+        "parameters": [
+          {
+            "name": "agentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-bakin-full-path": "/api/agent-packages/:agentId/receipt"
+      }
+    },
+    "/api/agent-packages/migrate": {
+      "post": {
+        "operationId": "core.post.api-agent-packages-migrate",
+        "summary": "One-time block migration (caller owns consent)",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input — params, query, or body did not match the declared schema.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Core"
+        ],
+        "x-bakin-full-path": "/api/agent-packages/migrate"
       }
     },
     "/api/agent-packages/{agentId}/lessons": {
@@ -16264,10 +17564,10 @@
         "x-bakin-full-path": "/api/packages/:packageId"
       }
     },
-    "/api/packages/{packageId}/update": {
+    "/api/packages/{packageId}/sync": {
       "post": {
-        "operationId": "core.post.api-packages-package-id-update",
-        "summary": "Update reusable package",
+        "operationId": "core.post.api-packages-package-id-sync",
+        "summary": "Sync reusable package",
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -16322,6 +17622,29 @@
                 }
               }
             }
+          },
+          "415": {
+            "description": "Unsupported Media Type — body content type does not match the declared content type.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -16337,7 +17660,23 @@
             }
           }
         ],
-        "x-bakin-full-path": "/api/packages/:packageId/update"
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "check": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": {}
+              }
+            }
+          }
+        },
+        "x-bakin-full-path": "/api/packages/:packageId/sync"
       }
     },
     "/api/curated": {

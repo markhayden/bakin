@@ -138,6 +138,8 @@ Agent packages can contribute:
 
 `skill-pack` packages must contribute at least one skill. `workflow-pack` packages must contribute at least one workflow or workflow skill. `lesson-pack` packages must contribute at least one lesson file.
 
+Avatar assets (`avatar.webp` / `avatar.png` / `avatar.jpg`, projected to `~/.bakin/agents/<id>/`) may ship in any of the supported formats. **Prefer WebP** — it is ~40–50% smaller than equivalent-quality JPEG for illustrated avatars. Bakin resolves and serves whichever format you ship (priority webp → png → jpg); you do not need to ship more than one.
+
 Declared contributions are preflighted during install and update before Bakin writes the lockfile or projects files. Workspace files, assets, workflows, and workflow skills must point at real files inside the package. Skills must point at directories with a non-empty `SKILL.md`. Workflows must be valid YAML workflow definitions, and workflow skills must be Markdown files with a non-empty instruction body.
 
 Lesson files must be real, non-empty Markdown files at `lessons/<lesson-id>.md`; the basename is the lesson ID. `enableLessons` can only name lessons contributed by the package.

@@ -25,7 +25,7 @@ import {
   readdirSync,
 } from 'fs'
 import { join } from 'path'
-import { getAppServices } from '../app-services'
+import { createAppServices, getAppServices, maybeGetAppServices } from '../app-services'
 import { createLogger } from '../logger'
 import type { RuntimeSkill } from '@bakin/core/adapters/runtime'
 import {
@@ -264,7 +264,20 @@ function discoverPlugins(): PluginEntry[] {
   return plugins
 }
 
+
+/**
+ * The scanner talks to the runtime adapter. In the server process AppServices
+ * already exist; the CLI's `bakin check/install plugin-assets` path runs in
+ * its own process and must create them first (same pattern as agent-sync +
+ * credentials components).
+ */
+async function ensureAppServices(): Promise<void> {
+  if (maybeGetAppServices()) return
+  await createAppServices()
+}
+
 async function check(): Promise<CheckResult> {
+  await ensureAppServices()
   const plugins = discoverPlugins()
   const report = await scanPluginAssets(plugins)
   const pending = report.missing.length + report.drifted.length
@@ -300,6 +313,7 @@ async function check(): Promise<CheckResult> {
 }
 
 async function install(_opts: OnboardingOptions): Promise<InstallResult> {
+  await ensureAppServices()
   const start = Date.now()
   const plugins = discoverPlugins()
   const report = await installPluginAssets(plugins)

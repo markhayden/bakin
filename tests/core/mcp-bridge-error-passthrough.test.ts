@@ -84,7 +84,7 @@ const UNIQUE_ERROR_MARKER = 'BRIDGE_TEST_UNIQUE_8d3f1c0a_should_pass_through'
 describe('MCP bridge error passthrough', () => {
   it('forwards thrown handler error text to the client unchanged', async () => {
     const { registerTools } = require('../../src/core/mcp-server') as typeof import('../../src/core/mcp-server')
-    const registry = await import('../../scripts/lib/registry')
+    const registry = await import('@/core/exec-tools/registry')
     const { addExecTool } = registry
 
     // Stub getToolContext — this test only cares about handler-error

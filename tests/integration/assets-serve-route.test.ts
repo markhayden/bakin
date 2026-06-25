@@ -14,7 +14,7 @@ process.env.OPENCLAW_HOME = join(testDir, 'openclaw')
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
 import sharp from 'sharp'
 import { mkdirSync, writeFileSync } from 'node:fs'
-import { getHookRegistry } from '../../src/lib/plugin-registry'
+import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { resolveAssetServe } from '../../plugins/assets/lib/serve'
 import { createAsset } from '../../plugins/assets/lib/asset-service'
 import { get } from '../../packages/host/src/api/assets/[...path]'

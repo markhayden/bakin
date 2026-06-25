@@ -38,7 +38,7 @@ The orchestrator is intentionally trivial — it has no opinion about what's bei
 
 | Plugin | File | Registered ids |
 |---|---|---|
-| `team` | `plugins/team/lib/health-checks.ts` | `agent-roster`, `personas`, `agent-assets` |
+| `team` | `plugins/team/lib/health-checks.ts` | `agent-roster`, `personas`, `agent-sync` |
 | `tasks` | `plugins/tasks/lib/health-checks.ts` | `taskboard`, `task-consistency`, `order-integrity` |
 | `assets` | `plugins/assets/lib/health-checks.ts` | `assets` |
 | `schedule` | `plugins/schedule/lib/health-checks.ts` | `schedule-sync` |
@@ -54,6 +54,7 @@ The orchestrator is intentionally trivial — it has no opinion about what's bei
 | `plugins/health/lib/system-checks/service.ts` | `service` |
 | `plugins/health/lib/system-checks/mcporter.ts` | `mcporter` |
 | `plugins/health/lib/system-checks/runtime.ts` | `runtime` |
+| `plugins/health/lib/system-checks/session-store.ts` | `session-store` |
 | `plugins/health/lib/system-checks/channel-aliases.ts` | `channel-aliases` |
 | `plugins/health/lib/system-checks/restart-recovery.ts` | `restart-recovery` |
 | `plugins/health/lib/system-checks/channel-approvals.ts` | `channel-approvals` |
@@ -61,8 +62,6 @@ The orchestrator is intentionally trivial — it has no opinion about what's bei
 | `plugins/health/lib/system-checks/sync-skill.ts` | `skill` |
 | `plugins/health/lib/system-checks/plugin-assets.ts` | `plugin-assets` |
 | `plugins/health/index.ts` | `plugin-registry` |
-| `src/core/agent-rules/managed-blocks.ts` | `orchestrator-rules` |
-| `src/core/agent-rules/managed-blocks.ts` | `managed-blocks` |
 
 Health plugin is the natural home for system-level checks because it already orchestrates the doctor UI (`/api/plugins/health/doctor` route + `bakin_exec_health_doctor` MCP tool) and imports `runDiagnostics` / `getLastResults`. The inversion is complete: health plugin both produces and consumes the doctor results.
 
@@ -109,21 +108,24 @@ Same pattern, lives at `plugins/health/lib/system-checks/{your-check}.ts`. Regis
 
 ## Managed-block infrastructure
 
-`src/core/agent-rules/managed-blocks.ts` holds:
-- `MANAGED_BLOCKS` — logical rule-section definitions: orchestrator-rules plus the 7 subagent sections (mission-control, hard-rules, dependency-pattern, media-delegation, workflow-rules, scheduling-rules, asset-rules)
-- `applyManagedBlocks(autoFix, { scope })` — renders/checks those logical sections inside one physical `<!-- bakin:managed-context:start/end -->` block per targeted agent
-- `applyAllManagedBlocks(autoFix)` — compatibility wrapper for all scopes
-- `MANAGED_CONTEXT_BLOCK_START/END` + `ORCHESTRATOR_RULES_CONTENT` + `resolveOrchestratorRules` — the compact projection marker plus the main-agent orchestrator section content
+The old `src/core/agent-rules/` managed-context system (orchestrator rules +
+7 subagent sections injected by doctor) was deleted by the layered-context
+work. Its successor: Bakin-shipped default rules live in the ROLE CONTEXT
+FILES (`~/.bakin/team/context/roles/{orchestrator,subagent}.md`, defaults in
+`src/core/team-context-defaults.ts`), composed into each agent's single
+`bakin:managed` AGENTS.md block alongside global/team context and the package
+template. The `team.agent-sync` check covers staleness end-to-end (with
+per-layer attribution) and its repair handler runs a local sync; the old
+`orchestrator-rules` / `managed-blocks` / `agent-assets` checks and the
+`bakin agent-rules` CLI are gone.
 
-The marker primitives (`extractBlock`, `getBlockState`, `injectBlock`, `removeBlock`) live in `packages/core/src/agent-packages/managed-blocks.ts` and are shared with the agent-package installer/projector. Don't reimplement them.
+The marker primitives (`extractBlock`, `getBlockState`, `injectBlock`,
+`removeBlock`) live in `packages/core/src/agent-packages/managed-blocks.ts`
+and are shared with the projector/composer. Don't reimplement them.
+Malformed marker pairs are never repaired silently — the scanner reports
+`block-broken` and refuses auto-fix until the pair is fixed by hand.
 
-The CLI's `bakin agent-rules --apply / --apply-all / --check / --check-all` imports directly from `src/core/agent-rules/managed-blocks.ts` (not via HTTP — works when the server is down). `--apply` / `--check` run the `orchestrator` scope; `--apply-all` / `--check-all` run the `all` scope.
-
-Projection shape after #208:
-- Each targeted `AGENTS.md` gets one physical Bakin-owned block: `<!-- bakin:managed-context:start --> ... <!-- bakin:managed-context:end -->`.
-- Logical sections are anchored inside that block with `<!-- bakin:managed-context:section {blockId} -->` comments so doctor can report stale/missing sections by logical check id.
-- Legacy physical blocks like `<!-- bakin:mission-control:start -->` and `<!-- bakin:orchestrator-rules:start -->` are converted and removed during auto-fix when well-formed.
-- Malformed compact or legacy markers are not repaired silently. The checker returns an error and refuses to rewrite that agent file until the marker pair is fixed by hand.
+Deep reference: `.claude/knowledge/layered-context.md`.
 
 ## Settings
 

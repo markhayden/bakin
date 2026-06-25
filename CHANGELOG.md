@@ -6,6 +6,92 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.20] - 2026-06-24
+
+A hotfix for rc.19: the production binary shipped a stale embedded-asset manifest, so vendor-chunk imports 404'd and every SDK-hooks-consuming plugin failed to load.
+
+### Fixed
+- **Stale embedded-asset manifest in release builds (#579).** `_embedded-assets-static.ts` lists which content-hashed vendor bundles get compiled into the binary, but only `bun run dev` regenerated it — `bun run build` and `release.yml` never did. So the resize work in #577 changed the SDK shared-chunk hashes while rc.19 embedded the old set, 404'ing `sdk-hooks.js`'s chunk imports in the binary (`module '@makinbakin/sdk/hooks' does not provide an export named 'usePluginEvent'`). The manifest is regenerated, and `build:assets-manifest` is now part of the `build` chain and `release.yml` (after host-shell, before assert + binary) so it can't go stale in a release again.
+
+## [0.0.1-rc.19] - 2026-06-24
+
+This is primarily an architecture release: ~380 commits, the bulk of them a behavior-preserving, codebase-wide module-splitting refactor (the "great refactor"). Alongside it ship metered spend + budgets, layered team context, reference images, and a batch of audit-driven fixes.
+
+### Added
+- **Metered spend and budgets.** Per-run cost is now recorded on settle and fed into the single usage recorder; image generation is metered as a spend event. A budget policy + evaluator (window boundaries, warn → defer-with-audit, fail-closed) gates dispatch, with a budget config UI and a spend-vs-budget health check. The health dashboard splits its cost cards into **usage** vs **spend** and adds full-width Context Usage; the models page gains a **Spend** view (`/spend` route) and a routing config UI (origins + tag overrides).
+- **Layered team context + agent-sync UI (#401).** Team context is composed from layers — `global.md` (all agents) + role layer (`orchestrator`/`subagent`) + per-team file — projected through `bakin agents sync`. New team detail pages, a global pseudo-team, graph badges, and a health-repair path surface and drive sync from the UI.
+- **Reference / context images for image generation (#418, #379, #380).** `generate` and `edit` accept reference/context images; runtime `media://` URIs resolve as references; attachments auto-import (tagged) into the asset store; iteration lands as a new **version** rather than a sibling asset. Channel delivery is deduped — an asset is delivered to a channel once per task, and oversized images are delivered as derived exports instead of duplicates.
+- **Real task-outcome run history (#481).** The task run history reflects the actual task outcome (block / reopen / archive), not just the last dispatch outcome, with pre-ledger completions backfilled.
+- **Dual-format avatar support (#339)** — WebP / PNG / JPEG agent avatars.
+- **Session-store retention health check (#435).**
+- **SDK client primitives.** `usePluginEvent` collapses every plugin onto one shared shell SSE connection; plus `useJsonFetch`, `useAvailableModels`, `useHorizontalResize` (+ a shared resizable-pane core), `ConfirmDialog`, `EmptyState`, formatters, and `toneBadge` for outline status badges.
+
+### Changed
+- **Codebase-wide module split (behavior-preserving).** The core monoliths were decomposed into focused, single-responsibility modules with thin barrels, run as parallel workstreams (WS2 core extractions + dependency-cycle break, WS3 SDK primitives, WS4 CLI, WS5 search) plus phased per-subsystem splits. Highlights: `runtime.ts` 3,188 → 1,560 lines across 10 PRs; `server.ts` split into a request-handler router, search-startup, startup-recovery, and Web-handler migrations; the OpenClaw adapter broken into ~10 helper modules (agent-turn, channels, config, session-activity, approvals, image-inference, cron-store, errors); the schedule plugin split across 7 phases (util → context → fire-engine → loop → job-service → exec-tools → routes); workflows split into runtime seams, routes, exec-tools, and hooks; `asset-service` reduced to a barrel over `asset-core` / `asset-mutations` / `asset-upsert` / `asset-media` / `asset-trash`; the docs-generate pipeline, models page, canvas editor, and the health / team / tasks plugins all thinned the same way; `plugin-registry` moved `src/lib` → `src/core`; the CLI gained a readonly split + shared HTTP client.
+- **SDK vendor bundles consolidated via code splitting (#422)**, plus a binary-size audit with `size:report` tooling, dependency hygiene, and a decision doc (#424).
+- **Subagent role defaults** gained an invoker-reporting rule, and agent content was put on a diet to trim dispatch-prompt weight.
+- **Asset duplicates are now structurally impossible** — store-path reflection + same-task content dedupe replace after-the-fact cleanup.
+- Deleted the dead legacy OpenAPI generator (−227 lines).
+
+### Fixed
+- **Security audit** — path-traversal, secret-handling, and supply-chain findings closed (#497); a full-system audit swept incidental correctness bugs — dev images watcher, a dead server write, schedule pause drift (#505).
+- Workflows: nested workflows are cycle-detected on the REST start path so a cyclic graph can't be started.
+- Schedule: a blocked task no longer suppresses that schedule's fire (#479).
+- Tasks: the completion-row invariant holds across block / reopen paths, which could previously strand the row (#485).
+- Search: multi-content plugins route by a primary table instead of writing to the wrong one.
+- Dev loop: signal handlers no longer preempt lifecycle shutdown (#459); the pinned local Tailwind binary is spawned directly instead of `bunx @latest`; the images plugin is now watched.
+- Team: client-side routing + page polish so navigation doesn't full-reload.
+- CLI: sync-migration prompt handles a 409, and the agent-sync check runs off-server.
+- Health/workflows: plugin-assets init and the skill check both work off-server / registry-aware.
+- Core: the bare core exec-tool context is granted full permissions.
+- Dockerized rig: cron-CLI operator scopes + a stale host `agentDir` on reused state (#487).
+- Manual-test batch (#577): dev start, team sync UX, resizable split panes, and channel delivery + permissions.
+
+## [0.0.1-rc.18] - 2026-06-08
+
+### Added
+- **Bakin-owned scheduler — ends the scheduled-task double-fire.** Bakin now owns the firing of its own schedules instead of delegating to OpenClaw cron (which used to fire a rogue agent turn *and* a Bakin task for the same job). A dependency-injected, fake-clock-testable tick computes due occurrences, claims a deterministic per-occurrence run id in the execution ledger (exactly-once via the `(job_id, run_id)` key), and creates the task directly. Startup catch-up coalesces a downtime gap to the single most-recent missed occurrence and lands it in **Todo** within a configurable safety window or **Blocked** when stale. An idempotent cutover migrates existing schedules off OpenClaw cron automatically on startup, with `bakin doctor --full` to verify (the `schedule-cutover` check) and `bakin doctor --fix` to complete it if the runtime was unreachable at boot.
+- Native (runtime-owned) crons are surfaced **read-only** with adopt / restore-native actions, a next-run column, and 403/404 mutation guards — Bakin owns Bakin schedules; the runtime owns the crons agents create for themselves.
+- A prompt **danger-zone guard** that warns when a schedule prompt tells the agent to keep one large message and not split near the channel transport limit (the shape that caused the "Invalid Form Body" split/repair loop).
+- **Schedule run visibility.** Each schedule's job drawer now shows a real run history read from the execution ledger (`cron_fires`) — fired / skipped / blocked per occurrence — replacing the post-cutover-empty runtime-cron history. Skipped fires (overlap / paused / skip-count / auto-paused) emit a `schedule.fire_skipped` activity-audit event and persist their reason (new `cron_fires.skip_reason` column) instead of silently dropping beats.
+- **Per-task run history.** The task detail drawer gains a collapsible **Run History** section listing every dispatch attempt for the task (seq, agent, time, status — settled / superseded / lost — settle reason, duration) from the `runs` ledger, via `GET /api/plugins/tasks/:taskId/runs` and a `listRunsByTask` read verb.
+
+### Changed
+- The scheduling of Bakin tasks is now Bakin-owned end to end; OpenClaw cron is no longer involved in firing them. Removed the cron→task bridge webhook + shared secret, the reconcile-poll, the legacy main-session-wake repair cluster, the sidecar `processedRunIds` seeding, and the adapter's Bakin-specific cron payload shaping (~500 lines of wrangling).
+- Mock (`dev:mock`) seeds Bakin schedules, `cron_fires`, and `runs` history so the new run-history surfaces are exercisable; native-cron fixtures trimmed so the list isn't a wall of "missing cron tools" warnings.
+
+### Fixed
+- The 9am scheduled-task double-post (one cron fire → two executions → duplicate Discord post + delivery-repair loop) — eliminated structurally by the Bakin-owned scheduler.
+- Schedule fire no longer duplicates a task when a post-create effect fails after the task row is written — the existing task is attached to the claim instead of left for the healer to re-create (#472).
+- A timed pause whose window elapsed no longer leaves a schedule permanently disabled; a newly created schedule no longer phantom-fires its pre-creation occurrence on the first tick.
+- The schedule list-row actions menu sizes to its content instead of clipping / wrapping "Adopt into Bakin".
+
+## [0.0.1-rc.17] - 2026-06-06
+
+### Added
+- **Execution safety ledger — exactly-once task firing and completion.** A SQLite coordination ledger at `~/.bakin/bakin.db` (WAL) where UNIQUE constraints are the locks: cron fires are claimed before task creation, every dispatch path claims its run before sending (the ledger mints the dispatch sequence), completions are first-write-wins (retries report `alreadyComplete` instead of erroring), and billed image results are durable idempotency rows with no TTL so client-timeout retries cannot double-bill. Duplicates are suppressed and audited; a ledger that cannot be opened fails closed.
+- Server singleton lock (`~/.bakin/server.lock`) taken before any side effect, with graceful shutdown on `EADDRINUSE` so a second instance can never double-fire scheduled work.
+- An `execution-safety` doctor check surfacing suppressed duplicates, claim leaks, and ledger health.
+- Optimistic task versioning with freeze-on-complete edit safety, so concurrent edits cannot silently clobber a task that has finished.
+- **Asset tags and folders.** Tags are now first-class asset-level metadata (decoupled from the version mirror) with normalization, a metadata edit drawer with tag input, bulk multi-select tagging, global tag rename/remove and bulk-apply APIs, a tags facet filter, and a folders view that groups assets by tag with breadcrumb navigation and URL-backed state. Generation provenance is indexed for search, and the asset grid uses a content-driven tile layout.
+- **Lazy plugin loading.** Plugin manifests can declare `contributes.nav/routes/slots/eager`; the host boots navigation from the manifest and lazy-loads noncritical plugin clients on demand instead of importing every plugin at startup.
+- Whiskit shared build backend: user-plugin builds run on the system Bun through one hardened runner, `bakin plugins publish` gains `--build`, plugin `check`/`upgrade` route through the Whiskit artifact lane, and dev hot-reload surfaces Whiskit rebuild diagnostics.
+
+### Changed
+- Dispatch I/O efficiency pass: an in-memory task-store index (id→path + column buckets, self-healing), a single SSE broadcast per task write, an mtime-validated asset manifest cache behind asset-service reads with debounced grid refetch, a lesson-retrieval cache, reverse tail reads for audit time-window queries, incremental trajectory forensics scans, an LRU cap on the session store cache, and dispatch threadId sequence mints folded into one persist-before-send state save.
+- Dispatch prompts slimmed: the static tool catalog moved out of every dispatch prompt into a managed execution-tools block in agent workspaces (`bakin agent-rules --apply-all` covers subagent blocks).
+- Core plugin builds skip the server entry; release binaries embed only browser assets (`client.js`/`client.css`) and the server refuses to serve plugin server bundles over HTTP. Whiskit publish fails server builds that retain host-provided browser externals.
+- Watchdog recovery is supersede-first and uses ledger heartbeats for liveness instead of racing the original turn.
+- Shell bundle moved to `/_app/*` so client routes like `/assets` survive a hard refresh.
+
+### Fixed
+- Deterministic Discord digest delivery.
+- Completion retries on an already-done task no longer trip the task store's transition guard.
+- Watchdog respects a manual restart-recovery classification instead of re-diagnosing the turn.
+- Silent lesson drops: lesson retrieval now carries an omission marker when lessons are truncated.
+- `assets.listByTask` hook backed by a taskId index, repairing the broken asset block in dispatch prompts.
+- SDK root barrel is server-safe — the slots registry split from the `<Slot>` rendering layer so server code can import the barrel without pulling in React DOM.
+
 ## [0.0.1-rc.16] - 2026-06-05
 
 ### Added
@@ -228,5 +314,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 [0.0.1-rc.15]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.15
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.16...HEAD
 [0.0.1-rc.16]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.16
+
+[0.0.1-rc.17]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.17
+
+[0.0.1-rc.18]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.18
+
+[0.0.1-rc.19]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.19
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.20...HEAD
+[0.0.1-rc.20]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.20

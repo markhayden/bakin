@@ -68,12 +68,15 @@ plugin dispatch path uses `BuildSearchAPIOptions.skipFileBackedWiring`
 to avoid double-wiring file-backed hooks when the API is constructed
 outside the plugin activation phase.
 
-`getTableForPlugin(pluginId)` (formerly `getPluginTable`) returns the
-single registered table name for that plugin and **throws** when one
-plugin has registered more than one content type, so the auto-wired
-`/search` route can't ambiguously resolve a table. Plugins that need
-multiple content types must register a custom route and call
-`ctx.search.query({ table: '...' })` explicitly.
+`getTableForPlugin(pluginId)` (formerly `getPluginTable`) returns the plugin's
+**primary** content-type table — the one a plugin registers via
+`registerContentType` and targets with bare `ctx.search.index/remove/transform/query`,
+and what the auto-wired `/search` route + MCP plugin-param routing resolve to. A plugin
+has exactly one primary (a second *direct* registration throws early); **file-backed
+content types register as secondary** and are indexed into their own table directly, so a
+plugin like `team` can register a direct primary (`agents`) plus a file-backed secondary
+(`agent-lessons`) without the resolver misrouting. `getTableForPlugin` returns the primary
+(or null) and no longer throws on multi-content plugins.
 
 ### Three consistency paths
 
@@ -456,7 +459,7 @@ SSE events broadcast during reindex:
 - `reindex.batch_pulse` — coarse heartbeat for the whole run, useful for keeping a UI spinner alive
 - `reindex.batch_complete` — once at the end of the whole run
 
-The health page consumes these via the global SSE connection (`useSSE` → `useContentStore.reindexProgress`), so per-card live counts work without opening a second `EventSource`.
+The health page consumes these via the global SSE connection — it subscribes with `usePluginEvent('reindex.start'|'reindex.progress'|'reindex.complete', …)` (the shell fans the per-table reindex frames out from its singleton connection) and keeps the per-card live counts in local component state, so per-card live counts work without opening a second `EventSource`.
 
 **Counter accuracy:** `count += await antfly.batchIndex(...)` — the actual inserted count from Antfly's response, not the batch size. If a batch fails after retries, `batchIndex` returns 0 and the counter doesn't advance for that batch, so the reported `indexed: N` matches what's actually in the table.
 
@@ -554,7 +557,7 @@ All under `settings.search.settings`:
 |---|---|---|
 | `enabled` | `boolean` | Enable/disable Antfly integration |
 | `url` | `string` | Antfly base URL, **no path suffix** (default `http://127.0.0.1:3738` — Bakin's private instance; the SDK owns the `/db/v1` prefix). A non-default URL = externally managed server (guest mode). |
-| `auth` | `object?` | Optional basic auth `{ username, password }` |
+| `auth` | `object?` | Optional basic auth `{ username }` — the password lives in the secret store (`providers.antfly` in `~/.bakin/secrets.json`; env `ANTFLY_PASSWORD` overrides) and is injected into `auth.password` at adapter init by `createAppServices`, never stored or served from settings.json |
 | `search.strategy` | `string` | Default search strategy (`rrf` \| `semantic_only` \| `full_text_only`) |
 | `search.defaultLimit` | `number` | Default result count |
 | `search.reranker.enabled` | `boolean` | Master switch for cross-encoder reranking. **Default `false`** — reranking crashes the server at v0.2.0-rc.2 ([#456](https://github.com/markhayden/bakin/issues/456)) |

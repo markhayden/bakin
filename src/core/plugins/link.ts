@@ -36,7 +36,7 @@ import { z } from 'zod'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
 import { appendAudit } from '@/core/audit'
-import { isCorePlugin } from '@/lib/plugin-registry'
+import { isCorePlugin } from '@/core/plugin-registry'
 import { getSettings } from '@bakin/core/settings'
 import {
   addLinkedPlugin,

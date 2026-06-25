@@ -221,10 +221,13 @@ message. For backwards compatibility, a legacy
 Cron adapter policy fields should be normalized at the runtime boundary. For
 OpenClaw, native isolated agent-turn cron tool allowlists live on
 `payload.toolsAllow`; the adapter exposes that as `CronJob.toolsAllow`. Schedule
-can display or audit that policy, but Bakin-owned schedules still use runtime
-cron as a timer and create Bakin tasks through the schedule reconciler. Hard
-scoping of `bakin_exec_*` MCP tools is a separate MCP routing-layer concern, not
-a runtime cron concern.
+can display that policy on the native crons it surfaces read-only. **Bakin-owned
+schedules no longer use runtime cron at all** — Bakin runs its own tick
+scheduler and fires tasks directly (see `.claude/knowledge/bakin-owned-scheduler.md`).
+The boundary is now: the runtime owns the cron jobs it/agents create for
+themselves; Bakin owns the scheduling of Bakin tasks. Hard scoping of
+`bakin_exec_*` MCP tools is a separate MCP routing-layer concern, not a runtime
+cron concern.
 
 ## Boundary Enforcement
 

@@ -40,9 +40,10 @@ export interface ScheduleJob {
 export interface RunEntry {
   runId: string
   timestamp: string
-  status: 'success' | 'failure' | 'skipped'
+  status: 'success' | 'failure' | 'skipped' | 'pending'
   taskId?: string
   error?: string
+  skippedReason?: string // why a 'skipped' fire was skipped (overlap/paused/skip-count/auto-paused)
 }
 
 interface UseScheduleOptions {

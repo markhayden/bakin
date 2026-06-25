@@ -143,7 +143,16 @@ mock.module('../../../src/core/app-services', () => ({
 
 // Hook registry remains available for plugin activation tests, but task
 // metadata checks read the shared task-store service directly.
-mock.module('../../../src/lib/plugin-registry', () => ({
+mock.module('../../../src/core/plugin-registry', () => ({
+  getHookRegistry: () => ({
+    invoke: async (_name: string, _data: Record<string, unknown>) => {
+      return undefined
+    },
+    has: () => false,
+    register: () => () => {},
+  }),
+}))
+mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
   getHookRegistry: () => ({
     invoke: async (_name: string, _data: Record<string, unknown>) => {
       return undefined

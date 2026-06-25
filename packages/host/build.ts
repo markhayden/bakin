@@ -11,6 +11,8 @@
  */
 import { rmSync } from 'node:fs'
 
+import { PLUGIN_CLIENT_EXTERNALS } from '../../src/core/whiskit/externals'
+
 const production = process.env.BAKIN_DEV !== '1'
 
 // Always start from a clean dist so stale TC1 outputs don't linger.
@@ -33,24 +35,9 @@ await Bun.build({
   },
   // TD1: externalize React + SDK package aliases so plugins and shell share instances
   // at runtime via the browser import map emitted in TD3. TD2 produces the
-  // vendor bundles that the import map points at.
-  external: [
-    'react',
-    'react-dom',
-    'react-dom/client',
-    'react/jsx-runtime',
-    'react/jsx-dev-runtime',
-    '@tanstack/react-router',
-    '@makinbakin/sdk',
-    '@makinbakin/sdk/ui',
-    '@makinbakin/sdk/hooks',
-    '@makinbakin/sdk/components',
-    '@makinbakin/sdk/slots',
-    '@makinbakin/sdk/types',
-    '@makinbakin/sdk/utils',
-    '@makinbakin/sdk/metadata',
-    '@makinbakin/sdk/routing',
-  ],
+  // vendor bundles that the import map points at. Single source for the contract —
+  // see src/core/whiskit/externals.ts (matches the plugin client bundles exactly).
+  external: [...PLUGIN_CLIENT_EXTERNALS],
 })
 
 console.log('packages/host: built')

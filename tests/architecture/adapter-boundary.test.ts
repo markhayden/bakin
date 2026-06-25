@@ -10,6 +10,7 @@ const SCAN_ROOTS = [
   'plugins',
   'packages/core/src',
   'packages/host/src',
+  'packages/sdk/src',
   'cli',
   'scripts',
   'server.ts',
@@ -61,6 +62,10 @@ const DENYLIST = [
   {
     label: 'raw SQLite access outside adapter packages',
     regex: /(?:bun:sqlite|new\s+Database\b|Database\()/,
+    // The shared storage core is the SOLE bun:sqlite importer — domain
+    // modules (execution ledger, future non-file stores) consume its
+    // opaque Db handle and never touch sqlite directly.
+    allow: (rel: string) => rel === 'packages/core/src/storage/db.ts',
   },
   {
     label: 'raw OpenClaw CLI command outside runtime adapter',

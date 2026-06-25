@@ -4,7 +4,7 @@
  */
 import { totalmem } from 'os'
 import { z } from 'zod'
-import type { BakinPlugin, HealthRepairHandler, PluginContext } from '@bakin/core/plugin-types'
+import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { definePlugin, defineRoute } from '@bakin/core/routing'
 import { getLastResults, runDiagnostics } from '../../src/core/doctor'
 import { createLogger } from '../../src/core/logger'
@@ -23,14 +23,16 @@ import { checkContentDir } from './lib/system-checks/content-dir'
 import { checkService } from './lib/system-checks/service'
 import { checkMcporter, mcporterRepair } from './lib/system-checks/mcporter'
 import { checkRuntime } from './lib/system-checks/runtime'
+import { checkSessionStore } from './lib/system-checks/session-store'
 import { checkChannelApprovals } from './lib/system-checks/channel-approvals'
 import { checkChannelAliases } from './lib/system-checks/channel-aliases'
 import { checkRestartRecovery } from './lib/system-checks/restart-recovery'
+import { checkExecutionSafety } from './lib/system-checks/execution-safety'
+import { checkBudget } from './lib/system-checks/budget'
 import { checkSearchAdapter } from './lib/system-checks/search'
 import { checkAndSyncSkill, syncSkillRepair } from './lib/system-checks/sync-skill'
 import { checkPluginAssets } from './lib/system-checks/plugin-assets'
 import { checkPluginArtifacts } from './lib/system-checks/plugin-artifacts'
-import { applyManagedBlocksForRuntime } from '../../src/core/agent-rules/managed-blocks'
 
 type RegistryAccessor = () => Array<Record<string, unknown>>
 type McpSessionsAccessor = () => { activeSessions: Array<{ agent: string; sessions: number; connectedAt: string }>; upSince: string }
@@ -53,54 +55,6 @@ const stripRun = (def: HealthCheckDef) => ({
   pluginId: def.pluginId,
   autoFix: !!def.repair || !!def.autoFix,
 })
-
-function managedBlockRepair(
-  runtime: PluginContext['runtime'],
-  scope: 'orchestrator' | 'subagents',
-  checkId: string,
-): HealthRepairHandler {
-  return {
-    async plan(rows) {
-      const matching = rows.filter(row => row.autoFixable)
-      if (matching.length === 0) return []
-      return [{
-        id: `health.${checkId}.managed-blocks`,
-        checkId,
-        title: scope === 'orchestrator'
-          ? 'Repair main agent managed context'
-          : 'Repair subagent managed context',
-        reason: matching.map(row => row.message).join('; '),
-        safety: 'safe',
-        requiresConfirmation: true,
-        changes: [{
-          kind: 'runtime',
-          target: scope === 'orchestrator' ? 'main AGENTS.md' : 'subagent AGENTS.md files',
-          action: 'update',
-          description: 'Apply Bakin managed-context blocks through the runtime adapter.',
-        }],
-      }]
-    },
-    async apply(items) {
-      if (items.length === 0) return []
-      const rows = await applyManagedBlocksForRuntime(runtime, true, { scope })
-      const failures = rows.filter(row => row.status === 'error')
-      return [{
-        id: `health.${checkId}.managed-blocks`,
-        checkId,
-        status: failures.length > 0 ? 'failed' : 'applied',
-        message: rows.map(row => row.message).join('; '),
-        changes: rows
-          .filter(row => row.status === 'fixed')
-          .map(row => ({
-            kind: 'runtime' as const,
-            target: scope === 'orchestrator' ? 'main AGENTS.md' : 'subagent AGENTS.md files',
-            action: 'update' as const,
-            description: row.message,
-          })),
-      }]
-    },
-  }
-}
 
 function buildDoctorResponse(results: Array<{ status: string }> & unknown[]) {
   const errors = results.filter(r => r.status === 'error').length
@@ -186,6 +140,7 @@ const doctorResponse = z.object({
 const doctorRepairApplyBody = z.object({
   accepted: z.boolean(),
   itemIds: z.array(z.string()).optional(),
+  allowDestructive: z.boolean().optional(),
 })
 
 const acceptedBody = z.object({
@@ -371,6 +326,7 @@ const routes = [
           projectRoot: process.cwd(),
           accepted: body.accepted,
           itemIds: body.itemIds,
+          allowDestructive: body.allowDestructive,
         })
         return Response.json(report, {
           status: report.status === 'confirmation_required' ? 409 : 200,
@@ -563,6 +519,11 @@ const healthPlugin: BakinPlugin = definePlugin({
       run: () => checkRuntime(ctx.runtime),
     })
     ctx.registerHealthCheck({
+      id: 'session-store',
+      name: 'Runtime session-store growth',
+      run: () => checkSessionStore(ctx.runtime),
+    })
+    ctx.registerHealthCheck({
       id: 'channel-approvals',
       name: 'Runtime channel approval responses',
       run: () => checkChannelApprovals(ctx.runtime),
@@ -578,15 +539,19 @@ const healthPlugin: BakinPlugin = definePlugin({
       run: () => checkRestartRecovery(),
     })
     ctx.registerHealthCheck({
+      id: 'execution-safety',
+      name: 'Duplicate-execution suppression + ledger health',
+      run: () => checkExecutionSafety(),
+    })
+    ctx.registerHealthCheck({
+      id: 'budget',
+      name: 'Spend vs budget caps',
+      run: () => checkBudget(),
+    })
+    ctx.registerHealthCheck({
       id: 'search',
       name: 'Search adapter binary + daemon connection',
       run: () => checkSearchAdapter(),
-    })
-    ctx.registerHealthCheck({
-      id: 'orchestrator-rules',
-      name: 'Main agent AGENTS.md managed context',
-      run: () => applyManagedBlocksForRuntime(ctx.runtime, false, { scope: 'orchestrator' }),
-      repair: managedBlockRepair(ctx.runtime, 'orchestrator', 'orchestrator-rules'),
     })
     ctx.registerHealthCheck({
       id: 'skill',
@@ -608,12 +573,6 @@ const healthPlugin: BakinPlugin = definePlugin({
       id: 'plugin-registry',
       name: 'Plugin activation state',
       run: () => Promise.resolve(checkPluginRegistry()),
-    })
-    ctx.registerHealthCheck({
-      id: 'managed-blocks',
-      name: 'Per-agent AGENTS.md managed context',
-      run: () => applyManagedBlocksForRuntime(ctx.runtime, false, { scope: 'subagents' }),
-      repair: managedBlockRepair(ctx.runtime, 'subagents', 'managed-blocks'),
     })
   },
 

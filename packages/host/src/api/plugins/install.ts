@@ -28,7 +28,7 @@ import { createHash } from 'crypto'
 import { getContentDir } from '@/core/content-dir'
 import { materializeCachedGithubSource } from '@/core/github-source-cache'
 import { createLogger } from '@/core/logger'
-import { isCorePlugin } from '@/lib/plugin-registry'
+import { isCorePlugin } from '@/core/plugin-registry'
 import { buildUserPlugin } from '../../plugin-host/user-plugin-builder'
 import { githubArtifactSource } from '@/core/whiskit/github-resolver'
 import type { WhiskitArtifactLocation } from '@/core/whiskit/resolver'
@@ -715,7 +715,7 @@ export async function post(req: Request, _url: URL): Promise<Response> {
       // so the build step is skipped entirely.
       if (!installedFromArtifact) {
         try {
-          await buildUserPlugin(targetDir, { trustExistingDist: body.type === 'github' })
+          await buildUserPlugin(targetDir)
         } catch (buildErr) {
           // Build failed — clean up the installed files so the install
           // appears atomic from the user's perspective.

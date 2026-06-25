@@ -1,18 +1,18 @@
 /**
  * Projector — writes a package's contributions onto disk.
  *
- * This is the side-effecting half of an install. The pure halves —
- * manifest validation, lockfile mutators, marker primitives — already
- * landed in earlier phases. The projector consumes a parsed manifest
- * plus a staging directory and produces:
+ * This is the side-effecting half of an install/sync. The pure halves —
+ * manifest validation, lockfile mutators, marker primitives, the
+ * composer — live elsewhere. The projector consumes a parsed manifest
+ * plus a source directory and produces:
  *
- *   - workspace files through the runtime adapter
- *     (fresh mode only; update mode honors --refresh-template; adopt
- *      mode skips entirely)
+ *   - ONE composed managed block per workspace file through the runtime
+ *     adapter (layered-context spec): global/role/team context + package
+ *     template + lessons, written via injectBlock so agent content
+ *     outside the block is never touched. Same path for every install
+ *     mode — blocks made the fresh/adopt/update distinction moot.
  *   - skills in the runtime's agent-scoped or global skill store
  *   - assets at ~/.bakin/agents/<agentId>/<file>
- *   - lesson markers injected into the agent's SOUL.md (catalog +
- *     per-enabled-lesson blocks)
  *
  * Each successful write goes into an in-memory `writeLog` so any later
  * failure can roll back. Rollback restores the file's prior contents
@@ -20,10 +20,10 @@
  * (.installedBy) are part of the same atomic group — if the projection
  * fails, the sidecars come back too.
  *
- * `.userEdited` sentinels are honored unconditionally — if a target file
- * has one, the projector skips it (records a SkippedEntry) and never
- * rolls it back to a different content. The user opted into local
- * ownership; Bakin steps back.
+ * `.userEdited` sentinels apply to skills + assets only (workspace files
+ * are shared territory; the block is always Bakin-owned). A sentineled
+ * skill/asset is skipped (recorded as a SkippedEntry) — the sync engine
+ * owns the confirmed reclaim path.
  */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, unlinkSync } from 'fs'
 import { dirname, join, basename } from 'path'
@@ -50,28 +50,31 @@ import {
   writeInstalledBy,
 } from '../../../packages/core/src/agent-packages/markers'
 import {
-  injectBlock,
   removeBlock,
 } from '../../../packages/core/src/agent-packages/managed-blocks'
+import {
+  MANAGED_BLOCK_ID,
+  composeFileContent,
+} from '../../../packages/core/src/agent-packages/composer'
 import { validatePackageContributionIntegrity } from './package-integrity'
+import {
+  deriveExpectedBlocks,
+  mainAgentOf,
+  sha256OfString,
+} from './sync-scanner'
+import { seedContextFiles } from '../team-context'
 
 const log = createLogger('agent-pkg:project')
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
-export type ProjectionMode = 'fresh' | 'adopt' | 'update'
-
 export interface ProjectorOptions {
   /** Parsed manifest — already zod-validated by the caller. */
   manifest: Manifest
-  /** Where the package source lives on disk (from source-fetcher). */
+  /** Where the package source lives on disk (staging or installed dir). */
   stagingDir: string
   /** Required for kind:"agent". For other kinds, leave undefined. */
   agentId?: string
-  /** Install mode — see top-of-file doc. */
-  mode: ProjectionMode
-  /** When true, update mode rewrites workspace files even if they exist. */
-  refreshTemplate?: boolean
   /** Lesson ids to enable on this projection. Defaults to manifest.install.enableLessons. */
   enabledLessons?: string[]
   /** Provenance metadata stamped onto every .installedBy sidecar. */
@@ -262,62 +265,68 @@ function runtimeInstalledBy(skill: RuntimeSkill | null): InstalledByMarker | nul
 
 // ─── Workspace files ─────────────────────────────────────────────────────────
 
-async function projectWorkspaceFiles(
+/**
+ * Compose + write the managed block for every workspace file the layers
+ * contribute to. One path for every install mode: blocks are rewritten in
+ * place via injectBlock, agent content outside the markers is preserved,
+ * and a missing file is created with just the block.
+ */
+async function projectComposedBlocks(
   manifest: AgentManifest,
   agentId: string,
   options: ProjectorOptions,
   result: ProjectorResult,
   writeLog: WriteLog,
 ): Promise<void> {
-  const files = manifest.contributions.workspaceFiles ?? []
-  if (files.length === 0) return
-
   const runtime = getAppServices().runtime
+  // Context layers must exist before expected-state derivation, or a fresh
+  // machine's first install composes without role context and immediately
+  // reports drift. Create-if-missing; never overwrites.
+  seedContextFiles()
 
-  for (const rel of files) {
-    const src = join(options.stagingDir, rel)
-    if (!existsSync(src)) {
-      log.warn('Workspace-file source missing — skipping', { rel })
-      continue
-    }
-    // Workspace files land at the workspace root with the file's basename,
-    // ignoring intermediate directories in the package source. The package
-    // ships them under workspace/SOUL.md but they project as just SOUL.md.
-    const filename = basename(rel)
-    const target = runtimeWorkspaceTarget(agentId, filename)
-    const existing = await runtime.agents.readWorkspaceFile(agentId, filename)
+  let agentName = manifest.agent?.identity?.name ?? agentId
+  let main = { id: 'main', name: 'Main' }
+  try {
+    const agents = await runtime.agents.list()
+    main = mainAgentOf(agents)
+    agentName = agents.find((a) => a.id === agentId)?.name ?? agentName
+  } catch {
+    // Roster unavailable (e.g. fresh install before runtime knows the
+    // agent) — placeholder main resolution is acceptable; the doctor scan
+    // recomposes once the roster settles.
+  }
 
-    if (existing?.metadata?.userEdited === true) {
-      result.skipped.push({ target, reason: 'userEdited' })
-      continue
-    }
+  const expected = await deriveExpectedBlocks(
+    { agentId, agentName, mainAgentId: main.id, mainAgentName: main.name },
+    {
+      packageId: manifest.id,
+      manifest,
+      sourceDir: options.stagingDir,
+      lessonsEnabled: options.enabledLessons,
+    },
+  )
 
-    // Adopt/update should preserve existing workspace files unless the user
-    // explicitly refreshes templates, but a missing template is repairable and
-    // should be restored. Otherwise adopting a runtime agent with a partial
-    // workspace leaves it permanently half-installed.
-    if (options.mode === 'adopt' && existing) continue
-    if (options.mode === 'update' && existing && !options.refreshTemplate) continue
+  for (const exp of expected) {
+    if (exp.body === null) continue
+    const target = runtimeWorkspaceTarget(agentId, exp.file)
+    const existing = await runtime.agents.readWorkspaceFile(agentId, exp.file)
+    const nextContent = composeFileContent(existing?.content ?? '', exp.body)
 
     if (existing) {
-      writeLog.recordModifiedWorkspaceFile(agentId, existing)
+      if (nextContent !== existing.content) {
+        writeLog.recordModifiedWorkspaceFile(agentId, existing)
+        await runtime.agents.writeWorkspaceFile(agentId, { ...existing, content: nextContent })
+      }
     } else {
-      writeLog.recordCreatedWorkspaceFile(agentId, filename)
+      writeLog.recordCreatedWorkspaceFile(agentId, exp.file)
+      await runtime.agents.writeWorkspaceFile(agentId, { path: exp.file, content: nextContent })
     }
 
-    const body = readFileSync(src, 'utf-8')
-    const sha256 = computeFileSha(src)
-    const marker: InstalledByMarker = { ...options.installedBy, sha256 }
-    await runtime.agents.writeWorkspaceFile(agentId, {
-      path: filename,
-      content: body,
-      metadata: { installedBy: marker },
-    })
     result.projections.push({
       kind: 'workspace-file',
       target,
-      sha256,
-      templateOnly: true,
+      composedSha: sha256OfString(exp.body.trim()),
+      inputs: exp.inputs,
     })
   }
 }
@@ -462,161 +471,6 @@ function projectAssets(
   }
 }
 
-// ─── Lesson markers (SOUL.md catalog + per-lesson blocks) ────────────────────
-
-interface LessonFileMeta {
-  lessonId: string
-  title: string
-  body: string
-  defaultEnabled: boolean
-  packageRel: string
-}
-
-function parseLessonFile(absPath: string, packageRel: string): LessonFileMeta {
-  const raw = readFileSync(absPath, 'utf-8')
-  const match = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/)
-  let title = basename(absPath).replace(/\.md$/i, '')
-  let defaultEnabled = false
-  let body = raw.trim()
-
-  if (match) {
-    body = match[2].trim()
-    // Light frontmatter parse — we only need title + defaultEnabled, and
-    // bringing in js-yaml here pulls a heavy dep into the projector. The
-    // installer is the right place for full frontmatter access.
-    for (const line of match[1].split('\n')) {
-      const trimmed = line.trim()
-      if (trimmed.startsWith('title:')) {
-        title = trimmed.slice('title:'.length).trim().replace(/^['"]|['"]$/g, '')
-      } else if (trimmed.startsWith('defaultEnabled:')) {
-        defaultEnabled = trimmed.slice('defaultEnabled:'.length).trim() === 'true'
-      }
-    }
-  }
-
-  const lessonId = basename(absPath).replace(/\.md$/i, '')
-  return { lessonId, title, body, defaultEnabled, packageRel }
-}
-
-function readLessonFiles(
-  manifest: AgentManifest,
-  options: ProjectorOptions,
-): LessonFileMeta[] {
-  const rels = manifest.contributions.lessons ?? []
-  const out: LessonFileMeta[] = []
-  for (const rel of rels) {
-    const abs = join(options.stagingDir, rel)
-    if (!existsSync(abs)) {
-      log.warn('Lesson source missing — skipping', { rel })
-      continue
-    }
-    out.push(parseLessonFile(abs, rel))
-  }
-  return out
-}
-
-function lessonBlockId(packageId: string, lessonId: string): string {
-  return `lesson:${packageId}:${lessonId}`
-}
-
-const CATALOG_BLOCK_ID = 'lesson-catalog'
-
-function buildCatalogBody(
-  packageId: string,
-  lessons: LessonFileMeta[],
-  enabled: Set<string>,
-): string {
-  if (lessons.length === 0) {
-    return `> No lessons available from ${packageId}.`
-  }
-  const lines = [
-    `> Lessons available from agent-package \`${packageId}\`. ` +
-      `Toggle individual lessons via \`bakin agents lessons enable|disable\`.`,
-    '',
-  ]
-  for (const k of lessons) {
-    const mark = enabled.has(k.lessonId) ? '[x]' : '[ ]'
-    lines.push(`- ${mark} **${k.title}** (\`${k.lessonId}\`)`)
-  }
-  return lines.join('\n')
-}
-
-async function projectLessonMarkers(
-  manifest: AgentManifest,
-  agentId: string,
-  options: ProjectorOptions,
-  result: ProjectorResult,
-  writeLog: WriteLog,
-): Promise<void> {
-  const runtime = getAppServices().runtime
-  const soulPath = runtimeWorkspaceTarget(agentId, 'SOUL.md')
-  const soulFile = await runtime.agents.readWorkspaceFile(agentId, 'SOUL.md')
-  if (!soulFile) {
-    // Adopt mode without an existing SOUL.md is unusual but possible if
-    // the user pre-created the agent and never wrote SOUL.md. Skip with
-    // a warning — the doctor will surface it.
-    log.warn('SOUL.md missing — lesson markers skipped', { soulPath })
-    return
-  }
-
-  if (soulFile.metadata?.userEdited === true) {
-    result.skipped.push({ target: soulPath, reason: 'userEdited' })
-    return
-  }
-
-  const lessons = readLessonFiles(manifest, options)
-  const enabledList = options.enabledLessons
-    ?? manifest.install.enableLessons
-    ?? lessons.filter((k) => k.defaultEnabled).map((k) => k.lessonId)
-  const enabled = new Set(enabledList)
-
-  const before = soulFile.content
-  let updated = before
-
-  // 1. Catalog block — always written, lists every available lesson with
-  //    its enabled state.
-  updated = injectBlock(
-    updated,
-    CATALOG_BLOCK_ID,
-    buildCatalogBody(manifest.id, lessons, enabled),
-  )
-
-  // 2. Per-lesson blocks — present only for enabled lessons. Disabled
-  //    lessons get their block removed (handles the toggle-off path).
-  for (const k of lessons) {
-    const blockId = lessonBlockId(manifest.id, k.lessonId)
-    if (enabled.has(k.lessonId)) {
-      updated = injectBlock(updated, blockId, k.body)
-    } else {
-      updated = removeBlock(updated, blockId)
-    }
-  }
-
-  if (updated !== before) {
-    writeLog.recordModifiedWorkspaceFile(agentId, soulFile)
-    await runtime.agents.writeWorkspaceFile(agentId, {
-      path: 'SOUL.md',
-      content: updated,
-      metadata: soulFile.metadata,
-    })
-  }
-
-  // Record one projection entry for the catalog plus one per enabled lesson.
-  result.projections.push({
-    kind: 'lesson-marker',
-    target: soulPath,
-    blockId: CATALOG_BLOCK_ID,
-  })
-  for (const k of lessons) {
-    if (!enabled.has(k.lessonId)) continue
-    result.projections.push({
-      kind: 'lesson-marker',
-      target: soulPath,
-      blockId: lessonBlockId(manifest.id, k.lessonId),
-    })
-  }
-}
-
 // ─── Public entry point ──────────────────────────────────────────────────────
 
 /**
@@ -639,10 +493,9 @@ export async function projectPackage(options: ProjectorOptions): Promise<Project
       if (!options.agentId) {
         throw new Error('agentId required for kind:"agent" projection')
       }
-      await projectWorkspaceFiles(options.manifest, options.agentId, options, result, writeLog)
+      await projectComposedBlocks(options.manifest, options.agentId, options, result, writeLog)
       await projectSkills(options.manifest, options, result, writeLog)
       projectAssets(options.manifest, options.agentId, options, result, writeLog)
-      await projectLessonMarkers(options.manifest, options.agentId, options, result, writeLog)
     } else if (options.manifest.kind === 'skill-pack') {
       await projectSkills(options.manifest, options, result, writeLog)
     }
@@ -659,9 +512,11 @@ export async function projectPackage(options: ProjectorOptions): Promise<Project
 }
 
 /**
- * Reverse a projection — used by the uninstaller (Phase E-6). Removes
- * every projected file (skipping `.userEdited` ones), removes sidecars,
- * and strips lesson markers from SOUL.md.
+ * Reverse a projection — used by the uninstaller. Removes projected skills
+ * and asset files (skipping `.userEdited` ones, removing sidecars). For
+ * workspace files only the managed BLOCK is removed — the file is shared
+ * territory with the agent and is never deleted. Legacy lesson-marker
+ * entries (pre-migration lockfiles) get their blocks removed too.
  */
 export async function unprojectPackage(
   projections: ProjectionEntry[],
@@ -686,9 +541,20 @@ export async function unprojectPackage(
       continue
     }
     if (runtimeTarget?.kind === 'workspace-file') {
+      if (options.keepBlocks) continue
       const file = await runtime.agents.readWorkspaceFile(runtimeTarget.agentId, runtimeTarget.path)
-      if (!file || file.metadata?.userEdited === true) continue
-      await runtime.agents.removeWorkspaceFile(runtimeTarget.agentId, runtimeTarget.path)
+      if (!file) continue
+      // Legacy whole-file template projections (templateOnly) predate the
+      // block model — leave the file alone entirely; the agent owns it.
+      if (p.templateOnly) continue
+      const after = removeBlock(file.content, MANAGED_BLOCK_ID)
+      if (after === file.content) continue
+      if (after.trim() === '') {
+        // The block was all the file ever held — remove the husk.
+        await runtime.agents.removeWorkspaceFile(runtimeTarget.agentId, runtimeTarget.path)
+      } else {
+        await runtime.agents.writeWorkspaceFile(runtimeTarget.agentId, { ...file, content: after })
+      }
       continue
     }
     if (runtimeTarget?.kind === 'agent-skill') {

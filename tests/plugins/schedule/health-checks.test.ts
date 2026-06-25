@@ -53,7 +53,7 @@ mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
-import { checkScheduleSync, scheduleSyncRepair } from '../../../plugins/schedule/lib/health-checks'
+import { checkScheduleSync, scheduleSyncRepair, checkScheduleCutover } from '../../../plugins/schedule/lib/health-checks'
 
 const sidecarPath = join(testDir, 'schedule', 'sidecar.json')
 let runtimeJobs: CronJob[] = []
@@ -193,7 +193,11 @@ describe('checkScheduleSync - runtime failures', () => {
 })
 
 describe('plugin registration', () => {
-  it('registers the schedule-sync health check on activate', async () => {
+  it('no longer registers the legacy schedule-sync / cron-wake health checks', async () => {
+    // Bakin owns scheduling now: a sync check whose repair re-created OpenClaw
+    // crons would reintroduce the double-fire, and the legacy main-session-wake
+    // repair is obsolete. Both registrations were removed (orphan-cron check
+    // arrives separately). This guards against either creeping back in.
     const schedulePlugin = (await import('../../../plugins/schedule')).default
     const registeredIds: string[] = []
     const noop = mock()
@@ -202,7 +206,7 @@ describe('plugin registration', () => {
       pluginId: 'schedule',
       runtime: {
         agents: { list: mock(async () => [{ id: 'main', name: 'Main', role: 'Orchestrator' }]) },
-        cron: { list: mock(async () => []) },
+        cron: { list: mock(async () => []), get: mock(async () => null), remove: noopAsync },
       },
       registerRoute: noop, registerExecTool: noop, registerNav: noop,
       registerSlot: noop, registerSkill: noop, registerWorkflow: noop,
@@ -222,7 +226,35 @@ describe('plugin registration', () => {
       events: { on: noop, emit: noop, off: noop },
     }
     await schedulePlugin.activate(ctx as unknown as Parameters<typeof schedulePlugin.activate>[0])
+    schedulePlugin.onShutdown?.() // stop the scheduler interval started by activate
 
-    expect(registeredIds).toContain('schedule-sync')
+    expect(registeredIds).not.toContain('schedule-sync')
+    expect(registeredIds).not.toContain('schedule-legacy-cron-wake')
+    // The cutover/migration check replaces them.
+    expect(registeredIds).toContain('schedule-cutover')
+  })
+})
+
+describe('schedule/checkScheduleCutover', () => {
+  const cron = (ids: string[]) => ({ list: async () => ids.map(id => ({ id, name: id, schedule: '0 9 * * *', command: 'x', enabled: true })) as unknown as CronJob[] })
+
+  it('is ok when no Bakin schedule has a backing runtime cron', async () => {
+    const rows = await checkScheduleCutover(cron(['native-1']), () => ['sch_a', 'sch_b'])
+    expect(rows).toHaveLength(1)
+    expect(rows[0].status).toBe('ok')
+  })
+
+  it('warns (auto-fixable) for a Bakin schedule still backed by a runtime cron', async () => {
+    const rows = await checkScheduleCutover(cron(['sch_a', 'native-1']), () => ['sch_a', 'sch_b'])
+    expect(rows).toHaveLength(1)
+    expect(rows[0].status).toBe('warn')
+    expect(rows[0].autoFixable).toBe(true)
+    expect(rows[0].message).toContain('sch_a')
+  })
+
+  it('reports a warning when the runtime cannot be read', async () => {
+    const failing = { list: async () => { throw new Error('runtime down') } }
+    const rows = await checkScheduleCutover(failing, () => ['sch_a'])
+    expect(rows[0].status).toBe('warn')
   })
 })

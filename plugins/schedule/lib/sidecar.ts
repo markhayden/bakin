@@ -4,19 +4,49 @@
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
 import { dirname } from 'path'
+import { randomUUID } from 'crypto'
+import { z } from 'zod'
 import { createLogger } from '../../../src/core/logger'
 import { getContentDir } from '../../../src/core/content-dir'
 import type { ScheduleSidecar, BakinJobMeta } from '../types'
 
 const log = createLogger('schedule:sidecar')
 
+/** Mint a Bakin-owned schedule id (no longer derived from the runtime cron id). */
+export function newScheduleId(): string {
+  return `sch_${randomUUID()}`
+}
+
+// Validated on read. The envelope is strict (a bad version/shape means an
+// unreadable file → empty, never a half-parsed store); individual jobs are
+// validated leniently and a single malformed entry is dropped rather than
+// nuking every other valid schedule.
+const scheduleDefSchema = z.object({
+  kind: z.enum(['cron', 'every', 'at']),
+  expr: z.string(),
+})
+
+const bakinJobMetaSchema = z
+  .object({
+    jobId: z.string(),
+    isBakinJob: z.boolean(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+    schedule: scheduleDefSchema.optional(),
+    enabled: z.boolean().optional(),
+  })
+  .passthrough()
+
+const sidecarEnvelopeSchema = z.object({
+  version: z.literal(1),
+  jobs: z.record(z.string(), z.unknown()),
+})
+
 const DEFAULTS = {
   maxFailures: 3,
   allowOverlap: false,
   requireTriage: false,
 } as const
-
-const MAX_PROCESSED_RUN_IDS = 100
 
 function getSidecarPath(): string {
   return `${getContentDir()}/schedule/sidecar.json`
@@ -29,12 +59,21 @@ export function readSidecar(): ScheduleSidecar {
   }
   try {
     const raw = readFileSync(path, 'utf-8')
-    const data = JSON.parse(raw)
-    if (data.version !== 1 || typeof data.jobs !== 'object') {
+    const envelope = sidecarEnvelopeSchema.safeParse(JSON.parse(raw))
+    if (!envelope.success) {
       log.warn('Invalid sidecar format, returning empty')
       return { version: 1, jobs: {} }
     }
-    return data as ScheduleSidecar
+    const jobs: Record<string, BakinJobMeta> = {}
+    for (const [id, rawJob] of Object.entries(envelope.data.jobs)) {
+      const parsed = bakinJobMetaSchema.safeParse(rawJob)
+      if (parsed.success) {
+        jobs[id] = parsed.data as unknown as BakinJobMeta
+      } else {
+        log.warn('Skipping structurally-invalid schedule job', { jobId: id })
+      }
+    }
+    return { version: 1, jobs }
   } catch (err) {
     log.warn('Failed to read sidecar', err)
     return { version: 1, jobs: {} }
@@ -69,15 +108,10 @@ export function removeJob(jobId: string): boolean {
   return true
 }
 
-export function hasProcessedRun(meta: BakinJobMeta, runId: string): boolean {
-  return (meta.processedRunIds ?? []).includes(runId)
-}
-
-export function recordProcessedRun(meta: BakinJobMeta, runId: string, processedAt = new Date().toISOString()): void {
-  const ids = meta.processedRunIds ?? []
-  meta.processedRunIds = [...ids.filter(id => id !== runId), runId].slice(-MAX_PROCESSED_RUN_IDS)
-  meta.lastProcessedRunAt = processedAt
-}
+// Run-level dedup lives in the execution ledger (cron_fires table) — the
+// legacy processedRunIds sidecar machinery was a TOCTOU race (state persisted
+// AFTER slow task creation) and is seeded into the ledger once on upgrade by
+// seedCronFireLedgerFromSidecar() in the plugin entry.
 
 /** Apply defaults to a sidecar entry for display. */
 export function withDefaults(
@@ -103,15 +137,41 @@ export function isPaused(meta: BakinJobMeta): { paused: boolean; reason?: string
   if (meta.pauseUntil) {
     const until = new Date(meta.pauseUntil)
     if (until <= new Date()) {
-      // Auto-resume: clear pause state
+      // Auto-resume: clear pause state AND re-enable. Pause sets enabled=false
+      // (so the scheduler's enabled-gate cheaply skips paused jobs); resume must
+      // restore it or the job stays dormant forever.
       meta.paused = false
       meta.pauseUntil = undefined
       meta.pauseReason = undefined
+      meta.enabled = true
       return { paused: false }
     }
   }
 
   return { paused: true, reason: meta.pauseReason ?? 'manual' }
+}
+
+/**
+ * Auto-resume any job whose timed pause (`pauseUntil`) has elapsed: clears the
+ * pause and re-enables it so the scheduler's enabled-gate lets it fire again.
+ * Run before the scheduler tick / startup catch-up — the enabled-gate means a
+ * dormant paused job otherwise never reaches the runClaimedFire auto-resume.
+ * Returns the number of jobs resumed.
+ */
+export function resumeDuePauses(now: number = Date.now()): number {
+  const sidecar = readSidecar()
+  let resumed = 0
+  for (const meta of Object.values(sidecar.jobs)) {
+    if (meta.paused && meta.pauseUntil && Date.parse(meta.pauseUntil) <= now) {
+      meta.paused = false
+      meta.pauseUntil = undefined
+      meta.pauseReason = undefined
+      meta.enabled = true
+      resumed += 1
+    }
+  }
+  if (resumed > 0) writeSidecar(sidecar)
+  return resumed
 }
 
 /** Check and handle skip-next-N logic. Returns true if this run should be skipped. */
@@ -135,6 +195,7 @@ export function recordFailure(meta: BakinJobMeta): boolean {
   if (meta.consecutiveFailures >= max) {
     meta.paused = true
     meta.pauseReason = 'auto-failures'
+    meta.enabled = false // mirror manual pause: skip at the scheduler gate, no claim churn
     log.warn('Auto-paused schedule after consecutive failures', {
       jobId: meta.jobId,
       failures: meta.consecutiveFailures,

@@ -66,6 +66,7 @@ Use these current tool names for the common paths:
 - Workflows: `bakin_exec_workflows_list`, `bakin_exec_workflows_get_definition`, `bakin_exec_workflows_start`, `bakin_exec_get_step`, `bakin_exec_submit_step`, `bakin_exec_check_gates`
 - Team: `bakin_exec_team_list`, `bakin_exec_team_profile`, `bakin_exec_team_status`, `bakin_exec_team_message`
 - Assets: `bakin_exec_assets_save`, `bakin_exec_assets_list`, `bakin_exec_assets_get`
+- Images: `bakin_exec_images_generate`, `bakin_exec_images_edit` (both accept `referenceImages`), `bakin_exec_images_import`, `bakin_exec_images_recommend`
 - Channels: `bakin_exec_post_channel`
 - Paths: `bakin_exec_get_paths`
 - Health: `bakin_exec_health_status`, `bakin_exec_health_doctor`
@@ -81,6 +82,19 @@ Before `bakin_exec_tasks_create`:
 2. Choose the matching `workflowId`, or set `skipWorkflowReason` for a one-off request.
 3. Include `parentId` when this is a subtask of an existing task.
 4. Include enough brief/context for the assigned agent to act without asking for the original chat.
+5. If the request carries an attached image, import it against the new task (`bakin_exec_images_import`) and put the returned assetId in the description — the assignee can pass it straight to `referenceImages`. The attachment's `media://` URI also works as a `referenceImages` entry directly.
+
+After `bakin_exec_tasks_create`: STOP. Dispatch delivers the full task to the assignee — do NOT also `bakin_exec_team_message` them about it. That message lands in their main session and starts a duplicate worker (Bakin refuses it when the task's run is detectable). Use `bakin_exec_log` for follow-up context.
+
+When a brief says "like this image" / "based on the attached reference", the generating agent should pass the image itself via `referenceImages` on `bakin_exec_images_generate` (assetIds, local paths, or `media://` URIs, max 4, native runtime models only) — not describe it in prose.
+
+Iterating on your own output appends a VERSION, never a new asset: revise with `bakin_exec_images_edit`, or re-roll fresh with `bakin_exec_images_generate` + `versionOf=<assetId>`. One assetId per deliverable, n versions.
+
+Image tool results are already managed assets — never copy one to a workspace file and re-save it via `bakin_exec_assets_save`; report the assetId you already hold. Pass references by assetId once imported, never by file path.
+
+## Channel Delivery Discipline
+
+A finished asset goes to a channel EXACTLY ONCE, via `bakin_exec_post_channel` with `imageAssetId`/`videoAssetId` + `taskId` — never pasted natively into a channel reply (native posts bypass the audit trail and the once-per-channel guard). Post it only as the reply/handoff for the originating request; progress updates never attach the deliverable, and spotting a finished asset while monitoring a task is not a trigger to post it. The tool refuses a second delivery of the same asset to the same channel for the same task; `repost=true` exists only for a genuinely intended second copy.
 
 Example shape:
 

@@ -12,8 +12,9 @@
  * missing, or schema-drifted files return `null` so callers treat them
  * as no cache.
  */
-import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs'
-import { dirname, join } from 'path'
+import { existsSync, readFileSync, unlinkSync } from 'fs'
+import { join } from 'path'
+import { atomicWriteJson } from '@bakin/core/storage/atomic-write'
 
 import { z } from 'zod'
 
@@ -69,13 +70,8 @@ export function readPersistedCache(): PersistedCache | null {
 }
 
 export function writePersistedCache(cache: PersistedCache): void {
-  const path = cachePath()
-  const parent = dirname(path)
   try {
-    if (!existsSync(parent)) mkdirSync(parent, { recursive: true })
-    const tmp = `${path}.tmp`
-    writeFileSync(tmp, JSON.stringify(cache, null, 2))
-    renameSync(tmp, path)
+    atomicWriteJson(cachePath(), cache, { trailingNewline: false })
   } catch (err) {
     log.error('Failed to write persisted models cache', err as Error)
   }

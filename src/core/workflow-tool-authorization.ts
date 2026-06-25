@@ -1,4 +1,4 @@
-import { getHookRegistry } from '../lib/plugin-registry'
+import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 
 export type WorkflowToolUseAction = 'progress-log' | 'task-complete' | 'task-block' | 'channel-post'
 

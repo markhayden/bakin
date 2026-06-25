@@ -16,7 +16,10 @@ mock.module('../../packages/core/src/content-dir', () => ({
 
 import { render, waitFor } from '@testing-library/react'
 import { useSSE } from '@/hooks/use-sse'
+import { usePluginEvent } from '@/hooks/use-plugin-event'
 import { useContentStore } from '@/hooks/use-content-store'
+
+let doctorRuns = 0
 
 // Controllable EventSource — captures the instance so the test can drive
 // onmessage directly (no real network). A factory (constructor returning an
@@ -37,6 +40,7 @@ function createMockEventSource(url: string): MockEventSource {
 
 function Probe() {
   useSSE()
+  usePluginEvent('doctor.run', () => { doctorRuns += 1 })
   return null
 }
 
@@ -48,36 +52,31 @@ function emitAudit(event: string, data: Record<string, unknown> = {}, agent = 's
 
 beforeEach(() => {
   lastES = null
-  useContentStore.setState({ doctorVersion: 0 })
+  doctorRuns = 0
   ;(globalThis as { EventSource: unknown }).EventSource = createMockEventSource as unknown
   // initialize() fetches a few endpoints on mount — stub them to empty.
   ;(globalThis as { fetch: typeof fetch }).fetch = (mock(async () => new Response('{}', { status: 200 }))) as unknown as typeof fetch
 })
 
-afterEach(() => {
-  // Reset doctorVersion for isolation.
-  useContentStore.setState({ doctorVersion: 0 })
-})
-
-describe('useSSE — doctorVersion wiring', () => {
-  it('bumps doctorVersion on a doctor.run audit event', async () => {
+describe('useSSE — doctor.run event wiring', () => {
+  it('emits a doctor.run plugin event on a doctor.run audit event', async () => {
     render(<Probe />)
     await waitFor(() => expect(lastES).not.toBeNull())
 
-    expect(useContentStore.getState().doctorVersion).toBe(0)
+    expect(doctorRuns).toBe(0)
     emitAudit('doctor.run')
-    expect(useContentStore.getState().doctorVersion).toBe(1)
+    expect(doctorRuns).toBe(1)
     emitAudit('doctor.run')
-    expect(useContentStore.getState().doctorVersion).toBe(2)
+    expect(doctorRuns).toBe(2)
   })
 
-  it('does NOT bump doctorVersion on a non-doctor audit event', async () => {
+  it('does NOT emit doctor.run on a non-doctor audit event', async () => {
     render(<Probe />)
     await waitFor(() => expect(lastES).not.toBeNull())
 
     emitAudit('task.created')
     emitAudit('plan.updated')
-    expect(useContentStore.getState().doctorVersion).toBe(0)
+    expect(doctorRuns).toBe(0)
   })
 
   it('preserves structured audit data on activity events', async () => {

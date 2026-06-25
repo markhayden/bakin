@@ -29,6 +29,7 @@
 import { existsSync, readFileSync, statSync } from 'fs'
 import { join, basename } from 'path'
 import yaml from 'js-yaml'
+import { parseFrontmatter } from '@bakin/core/format/frontmatter'
 import { createLogger } from '../logger'
 import { getContentDir } from '../content-dir'
 import {
@@ -97,23 +98,6 @@ function deriveWorkflowId(definition: WorkflowDefinition, fallbackBase: string):
       .replace(/-$/, '')
   }
   return fallbackBase
-}
-
-interface ParsedSkill {
-  frontmatter: Record<string, unknown>
-  body: string
-}
-
-function parseSkillFile(content: string): ParsedSkill {
-  const match = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/)
-  if (!match) return { frontmatter: {}, body: content.trim() }
-  let frontmatter: Record<string, unknown> = {}
-  try {
-    frontmatter = (yaml.load(match[1]) as Record<string, unknown>) || {}
-  } catch {
-    return { frontmatter: {}, body: content.trim() }
-  }
-  return { frontmatter, body: match[2].trim() }
 }
 
 function loadWorkflowsForPackage(
@@ -189,7 +173,7 @@ function loadWorkflowSkillsForPackage(
       result.warnings.push({ packageId, message: `read ${rel}: ${message}` })
       continue
     }
-    const { frontmatter, body } = parseSkillFile(raw)
+    const { frontmatter, body } = parseFrontmatter(raw)
     const filenameId = basename(rel).replace(/\.md$/i, '')
     const skill: SkillDefinition = {
       name: (frontmatter.name as string) || filenameId,

@@ -3,7 +3,7 @@
   "name": "Team",
   "version": "1.0.0",
   "bakin": ">=1.0.0",
-  "description": "Agent team management — adapter layer over runtime agent workspaces",
+  "description": "Agent team management \u2014 adapter layer over runtime agent workspaces",
   "entry": {
     "server": "index.ts"
   },
@@ -167,6 +167,26 @@
         "method": "GET",
         "path": "/teams/:teamId/members",
         "summary": "List agents belonging to a team"
+      },
+      {
+        "method": "GET",
+        "path": "/context",
+        "summary": "List layered context files (global, roles, teams)"
+      },
+      {
+        "method": "GET",
+        "path": "/context/:scope",
+        "summary": "Read a layered context file"
+      },
+      {
+        "method": "PUT",
+        "path": "/context/:scope",
+        "summary": "Write a layered context file (role files re-assert the managed block)"
+      },
+      {
+        "method": "POST",
+        "path": "/teams/:teamId/sync",
+        "summary": "Sync every member agent of a team"
       }
     ],
     "execTools": [
@@ -222,8 +242,8 @@
       },
       {
         "name": "bakin_exec_team_set_permissions",
-        "summary": "Update dispatch permissions — which agents a given agent can dispatch tasks to (subagents",
-        "description": "Update dispatch permissions — which agents a given agent can dispatch tasks to (subagents.allowAgents)."
+        "summary": "Update dispatch permissions \u2014 which agents a given agent can dispatch tasks to (subagents",
+        "description": "Update dispatch permissions \u2014 which agents a given agent can dispatch tasks to (subagents.allowAgents)."
       },
       {
         "name": "bakin_exec_team_status",
@@ -302,7 +322,8 @@
     ],
     "slots": [
       "page:/team",
-      "page:/team/[id]"
+      "page:/team/[id]",
+      "page:/team/teams/[teamId]"
     ]
   }
 }

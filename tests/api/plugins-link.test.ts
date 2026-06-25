@@ -34,7 +34,7 @@ mock.module('@/core/logger', () => ({
 mock.module('../../packages/host/src/plugin-host/user-plugin-builder', () => ({
   buildUserPlugin: async () => {},
 }))
-mock.module('@/lib/plugin-registry', () => ({
+mock.module('@/core/plugin-registry', () => ({
   isCorePlugin: () => false,
 }))
 mock.module('@/core/plugins/live-lifecycle', () => ({

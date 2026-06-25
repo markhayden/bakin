@@ -11,18 +11,19 @@ import {
   type BakinTask,
   type BakinTaskPatch,
   type SyncBakinTaskStore,
+  type TaskLogEntry,
   type TaskSource,
 } from '@bakin/core/tasks/store'
 import { generateTaskId } from '@bakin/core/ids'
 import { join } from 'path'
 import { getBakinPaths, getContentDir } from './content-dir'
+import { purgeTaskRows } from './execution-ledger'
+import { createLogger } from './logger'
 
-export interface TaskLogEntry {
-  timestamp: string
-  author: string
-  message: string
-  data?: Record<string, unknown>
-}
+const log = createLogger('task-store')
+
+// TaskLogEntry is single-homed in the SDK; re-exported via @bakin/core/tasks/store.
+export type { TaskLogEntry } from '@bakin/core/tasks/store'
 
 export interface Task {
   id: string
@@ -44,6 +45,8 @@ export interface Task {
   source?: TaskSource
   order?: number
   updatedAt?: number
+  /** Optimistic concurrency counter (absent = 0 on pre-upgrade tasks). */
+  version?: number
 }
 
 export interface TaskColumns {
@@ -143,6 +146,7 @@ function taskToView(task: BakinTask): Task {
     source: task.source,
     order: task.order,
     updatedAt: Date.parse(task.updatedAt),
+    version: task.version ?? 0,
   }
 }
 
@@ -190,7 +194,7 @@ function assertTransitionAllowed(task: BakinTask, toCol: ColumnId, isHuman: bool
 
 async function cancelWorkflowInstance(taskId: string): Promise<void> {
   try {
-    const { getHookRegistry } = await import('../lib/plugin-registry')
+    const { getHookRegistry } = await import('@bakin/core/hooks/hook-registry-singleton')
     await getHookRegistry().invoke('workflows.cancelInstance', { taskId })
   } catch {
     // Best effort: workflows may not be activated in tests or early boot.
@@ -330,6 +334,14 @@ export function deleteTask(identifier: string): Promise<void> {
     const task = requireTask(identifier)
     getSharedBakinTaskStore().removeSync(task.id)
     void cancelWorkflowInstance(task.id)
+    // Cascade the execution ledger: frees any live run claim and drops the
+    // task's runs/completions/watermarks. Advisory — a ledger hiccup must
+    // not block deletion (the boot sweep reaps stragglers).
+    try {
+      purgeTaskRows(task.id)
+    } catch (err) {
+      log.warn('Ledger purge failed for deleted task; boot sweep will reap', { taskId: task.id, err: err instanceof Error ? err.message : String(err) })
+    }
     return Promise.resolve()
   } catch (err) {
     return Promise.reject(err)
@@ -346,10 +358,17 @@ export function addTaskLog(identifier: string, author: string, message: string, 
   }
 }
 
-export function blockTask(identifier: string, reason: string, agent?: string): Promise<void> {
+export function blockTask(identifier: string, reason: string, agent?: string, channel?: string): Promise<void> {
   try {
     void agent
     const task = requireTask(identifier)
+    // Re-blocking an already-blocked task is an idempotent reason update —
+    // retries must never error. Every other source column goes through the
+    // same transition table as moveTask, so done → blocked is rejected for
+    // non-human callers instead of silently un-doneing a completed task.
+    if (asColumnId(task) !== 'blocked') {
+      assertTransitionAllowed(task, 'blocked', channel === 'human')
+    }
     getSharedBakinTaskStore().updateSync(task.id, {
       ...columnPatch('blocked'),
       blockedReason: reason,
@@ -377,6 +396,7 @@ export function updateTask(
     dependsOn?: string | null
     date?: string | null
     channel?: string
+    blockedReason?: string
   },
 ): Promise<void> {
   try {
@@ -395,6 +415,7 @@ export function updateTask(
     if ('scheduleJobId' in updates) patch.scheduleJobId = updates.scheduleJobId || undefined
     if ('dependsOn' in updates) patch.dependsOn = updates.dependsOn || undefined
     if ('date' in updates) patch.date = updates.date || undefined
+    if ('blockedReason' in updates) patch.blockedReason = updates.blockedReason || undefined
 
     if (updates.column !== undefined && updates.column !== asColumnId(task)) {
       assertTransitionAllowed(task, updates.column, isHuman)
@@ -470,6 +491,13 @@ export function archiveOldTasks(olderThanDays: number): number {
     const col = asColumnId(task)
     if ((col === 'done' || col === 'archived') && Date.parse(task.updatedAt) < cutoff) {
       store.removeSync(task.id)
+      // Same ledger cascade as deleteTask — without it, deleted tasks
+      // orphan their completions/runs rows forever. Advisory.
+      try {
+        purgeTaskRows(task.id)
+      } catch (err) {
+        log.warn('Ledger purge failed for archived-away task', { taskId: task.id, err: err instanceof Error ? err.message : String(err) })
+      }
       removed++
     }
   }

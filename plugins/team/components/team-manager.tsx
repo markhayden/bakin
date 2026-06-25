@@ -3,19 +3,14 @@
 import { useState } from 'react'
 import { Plus, Trash2, Users } from 'lucide-react'
 import { Button } from "@makinbakin/sdk/ui"
-import { EmptyState } from "@makinbakin/sdk/components"
+import { EmptyState, ConfirmDialog } from "@makinbakin/sdk/components"
 import { Input } from "@makinbakin/sdk/ui"
 import { Label } from "@makinbakin/sdk/ui"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@makinbakin/sdk/ui"
-import { useAgentStore } from '@makinbakin/sdk/hooks'
+import { useAgentStore, useRouter } from '@makinbakin/sdk/hooks'
 import type { OrgTeam } from '../types'
 
 export function TeamManager() {
+  const router = useRouter()
   const teams = useAgentStore((s) => s.teams)
   const agents = useAgentStore((s) => s.agents)
   const reload = useAgentStore((s) => s.load)
@@ -101,6 +96,13 @@ export function TeamManager() {
         />
       ) : (
         <div className="space-y-3">
+          <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-3">
+            <div className="flex-1 min-w-0">
+              <button type="button" onClick={() => router.push('/team/teams/global')} className="text-sm font-semibold hover:underline text-left">Global</button>
+              <div className="text-xs text-muted-foreground">Shared context for every agent</div>
+            </div>
+            <code className="text-[10px] text-muted-foreground font-mono">global</code>
+          </div>
           {teams.map((team) => {
             return (
               <div
@@ -108,7 +110,9 @@ export function TeamManager() {
                 className="flex items-center gap-3 rounded-lg border border-border bg-card p-3"
               >
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold">{team.label}</div>
+                  <button type="button" onClick={() => router.push(`/team/teams/${encodeURIComponent(team.id)}`)} className="text-sm font-semibold hover:underline text-left">
+                    {team.label}
+                  </button>
                   <div className="text-xs text-muted-foreground">
                     Reports to{' '}
                     <select
@@ -196,25 +200,19 @@ export function TeamManager() {
       )}
 
       {/* Delete team confirmation */}
-      <Dialog open={!!deleteTarget} onOpenChange={(v) => { if (!v) setDeleteTarget(null) }}>
-        <DialogContent className="bg-card border-border max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Delete team?</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Delete team?"
+        description={
+          <>
             This will delete <span className="text-foreground font-medium">{deleteTarget}</span> and
             unassign all agents from it.
-          </p>
-          <div className="flex justify-end gap-2 mt-2">
-            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={() => deleteTarget && handleDelete(deleteTarget)}>
-              Delete Team
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+        confirmLabel="Delete Team"
+        onConfirm={() => deleteTarget && handleDelete(deleteTarget)}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }

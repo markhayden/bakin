@@ -49,7 +49,7 @@ scripts/dev.ts (process.env.BAKIN_DEV = '1', BAKIN_DEV_HOTRELOAD = '1')
     │     • `bakin dev --no-color` sets NO_COLOR=1
     ├── Initial prestart build (css, vendors, plugins, host-shell)
     ├── Bun.build(dev-client.ts → public/__bakin-dev/client.js)
-    ├── Spawn bunx @tailwindcss/cli --watch=always   (child process)
+    ├── Spawn bun node_modules/.bin/tailwindcss --watch=always   (child process)
     ├── chokidar watchers:
     │     • packages/host/src/**         → rebuild shell → dev:reload
     │     • plugins/<id>/<devWatch>       → rebuildOnePlugin(id) → dev:hot-swap
@@ -92,6 +92,19 @@ Three env-checks ensure `BAKIN_DEV` never leaks into the compiled binary:
 3. **`_static.ts`'s `transformIndexHtmlForDev`** is a no-op (returns the input `Buffer` by reference) when `BAKIN_DEV !== '1'`. No dev-client script tag. Verified by `tests/api/host-static.test.ts`.
 
 The dev-client bundle itself is disk-only — written to `packages/host/public/__bakin-dev/client.js`, gitignored, naturally excluded from `scripts/generate-embedded-assets.ts` (which only descends into explicitly-walked subdirectories under `public/`). It can never ship in a compiled binary.
+
+## Shutdown ordering (#459)
+
+`scripts/dev.ts` registers SIGINT/SIGTERM handlers **before** `await import('../server')`, and signal listeners run in registration order — so the dev handler always fires first. The rules live in `scripts/dev-shutdown.ts` (`registerDevShutdown`, DI-tested in `tests/scripts/dev-shutdown.test.ts`):
+
+- **Build phase (sole listener):** the dev handler kills the tailwind child and owns `process.exit(0)` — Ctrl+C during the prestart builds exits promptly.
+- **After server boot:** `lifecycle.registerShutdownHandlers()` has added its own listener on the same signals. The dev handler detects this via `process.listenerCount(signal) > 1`, kills tailwind, and falls through — the lifecycle listener then runs the full graceful chain (plugins → dispatch/watchdog/doctor → watcher → `search.shutdown()` which stops the antfly child → SSE → HTTP → audit → ledger → server lock) and owns the exit. The dev handler must NEVER call `process.exit` here: that preempts the chain and orphans antfly on its port (#459 defect 1).
+- **Second signal (escape hatch):** a repeated SIGINT/SIGTERM while a graceful shutdown is hung logs a warning and force-exits (130 for SIGINT, 143 for SIGTERM).
+- A `process.on('exit')` hook kills tailwind on every JS-level exit path regardless of who calls `process.exit`.
+
+Known gap: a signal landing after antfly is spawned but before `registerShutdownHandlers()` (end of `server.ts` `main()`) exits via the dev path and can orphan antfly — accepted in the spec; the adapter-side sync exit hook on the antfly-zig branch (PR #457) covers it.
+
+The tailwind child is spawned as the lockfile-pinned `node_modules/.bin/tailwindcss` directly under bun — the child pid IS the tailwind process, so `kill('SIGTERM')` reaches it. It was previously spawned via `bunx`, which inserted a wrapper chain (volta-shim → bunx → node) that ate the signal and orphaned the node `--watch` grandchild, and downloaded floating `@tailwindcss/cli@latest` instead of the pinned devDependency. Comment-only CSS edits may not rewrite the output file (identical result, mtime unchanged) — use an output-changing rule when verifying the watch pipeline.
 
 ## Imitation Crab
 
@@ -142,6 +155,7 @@ The shell and every plugin share React via the import map:
 /vendor/react.js           ← single React instance, loaded once per page
 /vendor/react-dom.js       ← single react-dom instance, uses /vendor/react.js
 /vendor/sdk-*.js           ← @bakin/sdk bundles, externalize react
+/vendor/sdk-shared-*.js    ← code-split chunks shared by the SDK bundles (relative imports, no map entries)
 ```
 
 The dev watcher preserves this:

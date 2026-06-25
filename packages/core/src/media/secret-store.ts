@@ -19,7 +19,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, renameSync, rmSync } from 'fs'
 import { dirname, join } from 'path'
 import { getContentDir } from '../content-dir'
-import { resolveDirectImageKey, type DirectImageProviderId } from './direct-image-provider'
+import { resolveDirectImageKey } from './direct-image-provider'
+import { type DirectImageProviderId } from './image-format'
 
 interface ProviderSecret {
   apiKey?: string
@@ -120,5 +121,53 @@ export function resolveProviderApiKeySource(
   const stored = getStoredProviderKey(provider)
   if (stored) return { apiKey: stored, source: 'store' }
   return null
+}
+
+/**
+ * Antfly basic-auth password. Not an API key, but it occupies the store's
+ * one-secret-per-provider slot (`providers.antfly.apiKey`) so it rides the
+ * same 0600 file, masked /api/secrets surface, and env-first precedence as
+ * every other provider credential. settings.json keeps only the username.
+ */
+export function resolveAntflyPassword(): { password: string; source: 'env' | 'store' } | null {
+  const env = nonEmpty(process.env.ANTFLY_PASSWORD)
+  if (env) return { password: env, source: 'env' }
+  const stored = getStoredProviderKey('antfly')
+  if (stored) return { password: stored, source: 'store' }
+  return null
+}
+
+/**
+ * One-time relocation of a legacy `search.settings.auth.password` out of
+ * settings.json into the secret store. Reads/writes settings.json raw
+ * (overrides only, never merged defaults) so it composes with the settings
+ * cache: run it BEFORE the first getSettings() of the process, or reset the
+ * cache after. An already-stored secret wins — the legacy value is then
+ * simply dropped from settings.json. Returns true when settings.json changed.
+ */
+export function migrateAntflyPasswordToSecretStore(): boolean {
+  const settingsPath = join(getContentDir(), 'settings.json')
+  if (!existsSync(settingsPath)) return false
+
+  let raw: Record<string, unknown>
+  try {
+    raw = JSON.parse(readFileSync(settingsPath, 'utf-8')) as Record<string, unknown>
+  } catch {
+    return false // corrupt settings.json is the settings loader's problem, not ours
+  }
+
+  const search = raw.search as { settings?: { auth?: Record<string, unknown> } } | undefined
+  const auth = search?.settings?.auth
+  const password = nonEmpty(auth?.password)
+  if (!auth || !password) return false
+
+  if (!getStoredProviderKey('antfly')) {
+    setStoredProviderKey('antfly', password)
+  }
+
+  delete auth.password
+  if (Object.keys(auth).length === 0) delete search!.settings!.auth
+  writeFileSync(settingsPath, JSON.stringify(raw, null, 2))
+  return true
 }
 

@@ -14,7 +14,7 @@
  * without special-casing.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import {
   ReactFlow,
   Background,
@@ -29,53 +29,35 @@ import {
   getSmoothStepPath,
   Position,
   type Node,
-  type Edge,
   type EdgeProps,
   type EdgeTypes,
   type NodeChange,
-  type NodeProps,
   type NodeTypes,
   type ReactFlowInstance,
 } from '@xyflow/react'
-import { useRouter as useTanStackRouter } from '@tanstack/react-router'
 import '@xyflow/react/dist/style.css'
 import {
   ArrowLeft,
   ArrowDown,
   ArrowUp,
-  CheckCircle2,
-  ClipboardPlus,
   Copy,
   GitBranch,
   Info,
   LayoutGrid,
   Pencil,
-  Radio,
   Save,
   ShieldAlert,
   Trash2,
-  UserRound,
   Workflow as WorkflowIcon,
-  X,
 } from 'lucide-react'
 import { Button } from "@makinbakin/sdk/ui"
-import { Input } from "@makinbakin/sdk/ui"
-import { Label } from "@makinbakin/sdk/ui"
-import { Textarea } from "@makinbakin/sdk/ui"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@makinbakin/sdk/ui"
 
 import { getNodeRendererSnapshot, subscribeNodeRenderers } from '../lib/node-renderer-registry'
 import { NodeTypePalette, PALETTE_DRAG_MIME_TYPE } from './node-type-palette'
 import { NodeConfigDrawer } from './node-config-drawer'
+import { WorkflowDetailsDrawer } from './workflow-details-drawer'
+import { useUnsavedChangesGuard } from './use-unsaved-changes-guard'
 import { ManagedWorkflowCopyDialog } from './managed-workflow-copy-dialog'
-import { AgentAssignmentLabel } from './nodes/agent-assignment-label'
 import {
   clearWorkflowDialogFieldError,
   hasWorkflowDialogFieldErrors,
@@ -84,11 +66,24 @@ import {
   type WorkflowDialogFieldErrors,
 } from './workflow-dialog-validation'
 import { WorkflowDeleteAction } from './workflow-delete-action'
-import { layoutNodes } from '../lib/dagre-layout'
+import {
+  TRIGGER_NODE_ID,
+  APPEND_NODE_ID,
+  RESERVED_STEP_IDS,
+  nextStepId,
+  defaultStepBody,
+  cloneStep,
+  seedEdges,
+  seedState,
+  deriveNodes,
+  autoArrangeState,
+  samePosition,
+  sameMeasurement,
+  type EditorState,
+} from '../lib/canvas-editor-state'
 import type {
   WorkflowDefinition,
   WorkflowStep,
-  NodePosition,
   WorkflowShadowedSource,
 } from '../types'
 
@@ -108,179 +103,17 @@ const RESET_NODE_STYLES = `
   }
 `
 
-const NODE_WIDTH = 280
-const NODE_HEIGHT = 120
-const Y_SPACING = 164
-const LEGACY_COMPACT_Y_SPACING = 130
-const STANDARD_NODE_STYLE = { width: NODE_WIDTH, height: NODE_HEIGHT }
-const TRIGGER_NODE_ID = '__trigger'
-const APPEND_NODE_ID = '__append'
-const RESERVED_STEP_IDS = [TRIGGER_NODE_ID, APPEND_NODE_ID]
 const NODE_DRAWER_DIRTY_MESSAGE = 'Apply or cancel the open step changes before selecting another step.'
 
 function hasPaletteDragType(dataTransfer: DataTransfer): boolean {
   return Array.from(dataTransfer.types ?? []).includes(PALETTE_DRAG_MIME_TYPE)
 }
 
-const BUILTIN_STEP_LABELS: Record<string, string> = {
-  agent: 'Agent Task',
-  gate: 'Approval Gate',
-  parallel: 'Parallel Group',
-  output: 'Completion',
-  workflow: 'Nested Workflow',
-  createTask: 'Create Task',
-}
-
-interface EditorNodeData extends Record<string, unknown> {
-  label?: string
-  agent?: string
-  title?: string
-  task?: string
-  description?: string
-  workflow_id?: string
-  channels?: string[]
-  column?: string
-}
-
-interface EditorNodeShellProps {
-  data: EditorNodeData
-  tone: 'blue' | 'amber' | 'violet' | 'emerald' | 'zinc'
-  title: string
-  icon: ReactNode
-  sourceHandle?: boolean
-}
-
-function EditorNodeShell({ data, tone, title, icon, sourceHandle = true }: EditorNodeShellProps) {
-  const toneClass = {
-    blue: 'border-blue-500/50 text-blue-300 bg-blue-500/10',
-    amber: 'border-amber-400/60 text-amber-300 bg-amber-500/10',
-    violet: 'border-violet-500/50 text-violet-300 bg-violet-500/10',
-    emerald: 'border-emerald-500/50 text-emerald-300 bg-emerald-500/10',
-    zinc: 'border-zinc-600 text-zinc-300 bg-zinc-800/60',
-  }[tone]
-  const detail = data.task || data.title || data.description || data.workflow_id || data.column
-
-  return (
-    <div className={`flex h-full w-full flex-col justify-center rounded-lg border bg-zinc-950 px-4 py-3 shadow-lg ${toneClass}`}>
-      <div className="flex items-center gap-2">
-        <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-md bg-black/25">
-          {icon}
-        </span>
-        <div className="min-w-0">
-          <div className="text-xs font-semibold uppercase leading-none tracking-wide opacity-80">
-            {title}
-          </div>
-          <div className="mt-1 truncate text-sm font-medium text-zinc-100">
-            {data.label || title}
-          </div>
-        </div>
-      </div>
-      {data.agent && (
-        <AgentAssignmentLabel agent={data.agent} className="mt-2" />
-      )}
-      {typeof detail === 'string' && detail.length > 0 && (
-        <p className={`${data.agent ? 'mt-1' : 'mt-2'} line-clamp-2 text-xs leading-snug text-zinc-400`}>
-          {detail}
-        </p>
-      )}
-      <Handle type="target" position={Position.Top} className="!bg-zinc-500" />
-      {sourceHandle && <Handle type="source" position={Position.Bottom} className="!bg-zinc-500" />}
-    </div>
-  )
-}
-
-function EditorAgentNode({ data }: NodeProps) {
-  return (
-    <EditorNodeShell
-      data={data as EditorNodeData}
-      tone="emerald"
-      title="Agent Task"
-      icon={<UserRound className="size-3.5" />}
-    />
-  )
-}
-
-function EditorGateNode({ data }: NodeProps) {
-  return (
-    <EditorNodeShell
-      data={data as EditorNodeData}
-      tone="amber"
-      title="Approval Gate"
-      icon={<CheckCircle2 className="size-3.5" />}
-    />
-  )
-}
-
-function EditorOutputNode({ data }: NodeProps) {
-  const nodeData = data as EditorNodeData
-  return (
-    <EditorNodeShell
-      data={{
-        ...nodeData,
-        description: Array.isArray(nodeData.channels) ? nodeData.channels.join(', ') : nodeData.description,
-      }}
-      tone="violet"
-      title="Completion"
-      icon={<Radio className="size-3.5" />}
-    />
-  )
-}
-
-function EditorParallelNode({ data }: NodeProps) {
-  return (
-    <EditorNodeShell
-      data={data as EditorNodeData}
-      tone="blue"
-      title="Parallel Group"
-      icon={<GitBranch className="size-3.5" />}
-    />
-  )
-}
-
-function EditorWorkflowNode({ data }: NodeProps) {
-  return (
-    <EditorNodeShell
-      data={data as EditorNodeData}
-      tone="zinc"
-      title="Nested Workflow"
-      icon={<WorkflowIcon className="size-3.5" />}
-    />
-  )
-}
-
-function EditorCreateTaskNode({ data }: NodeProps) {
-  return (
-    <EditorNodeShell
-      data={data as EditorNodeData}
-      tone="blue"
-      title="Create Task"
-      icon={<ClipboardPlus className="size-3.5" />}
-    />
-  )
-}
-
-function EditorTriggerNode({ data }: NodeProps) {
-  return (
-    <EditorNodeShell
-      data={data as EditorNodeData}
-      tone="blue"
-      title="Trigger"
-      icon={<Radio className="size-3.5" />}
-    />
-  )
-}
-
-function EditorSubflowGroupNode({ data }: NodeProps) {
-  return (
-    <EditorNodeShell
-      data={data as EditorNodeData}
-      tone="zinc"
-      title="Subflow Group"
-      icon={<WorkflowIcon className="size-3.5" />}
-    />
-  )
-}
-
+// The real node renderers (agent/gate/parallel/output/workflow/createTask/
+// trigger/subflowGroup) come from the node-renderer registry, populated by
+// client.tsx — exactly like the read-only workflow-canvas.tsx viewer. Only
+// 'appendStep' is editor-private (an invisible drop target the registry never
+// provides), so it's the sole builtin fallback here.
 function EditorAppendStepNode() {
   return (
     <div aria-hidden="true" className="h-px w-px opacity-0">
@@ -290,107 +123,7 @@ function EditorAppendStepNode() {
 }
 
 const BUILTIN_NODE_TYPES: NodeTypes = {
-  agent: EditorAgentNode,
-  gate: EditorGateNode,
-  output: EditorOutputNode,
-  parallel: EditorParallelNode,
-  workflow: EditorWorkflowNode,
-  createTask: EditorCreateTaskNode,
-  trigger: EditorTriggerNode,
-  subflowGroup: EditorSubflowGroupNode,
   appendStep: EditorAppendStepNode,
-}
-
-function WorkflowDetailsDrawer({
-  definition,
-  onApply,
-  onClose,
-  applyLabel = 'Apply',
-  applying = false,
-}: {
-  definition: WorkflowDefinition
-  onApply: (patch: Pick<WorkflowDefinition, 'name' | 'description'>) => void | Promise<void>
-  onClose: () => void
-  applyLabel?: string
-  applying?: boolean
-}) {
-  const [name, setName] = useState(definition.name)
-  const [description, setDescription] = useState(definition.description ?? '')
-  const canApply = name.trim().length > 0
-
-  useEffect(() => {
-    setName(definition.name)
-    setDescription(definition.description ?? '')
-  }, [definition.description, definition.name])
-
-  return (
-    <aside className="flex w-[25rem] flex-col border-l border-border bg-card">
-      <div className="flex items-start justify-between gap-3 border-b border-border p-3">
-        <div className="min-w-0">
-          <h2 className="truncate text-sm font-medium">Workflow details</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Edit the workflow name and description.
-          </p>
-        </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Close workflow details"
-          onClick={onClose}
-        >
-          <X className="size-3.5" />
-        </Button>
-      </div>
-      <div className="flex-1 overflow-y-auto p-3">
-        <div className="mb-3">
-          <Label className="text-xs" htmlFor="workflow-details-name">
-            Name <span className="text-red-400">*</span>
-          </Label>
-          <Input
-            id="workflow-details-name"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="Workflow name"
-            aria-invalid={!canApply || undefined}
-          />
-          {!canApply && (
-            <p className="mt-1 text-[11px] font-medium text-red-300">Enter a workflow name.</p>
-          )}
-        </div>
-        <div className="mb-3">
-          <Label className="text-xs" htmlFor="workflow-details-description">
-            Description
-          </Label>
-          <Textarea
-            id="workflow-details-description"
-            rows={5}
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-            placeholder="Describe when this workflow should be used"
-          />
-        </div>
-      </div>
-      <div className="flex items-center justify-between gap-2 border-t border-border p-3">
-        <Button size="sm" variant="ghost" onClick={onClose} disabled={applying}>
-          Cancel
-        </Button>
-        <Button
-          size="sm"
-          onClick={async () => {
-            if (!canApply) return
-            await onApply({
-              name: name.trim(),
-              description: description.trim(),
-            })
-          }}
-          disabled={!canApply || applying}
-        >
-          {applying ? 'Saving...' : applyLabel}
-        </Button>
-      </div>
-    </aside>
-  )
 }
 
 interface WorkflowCanvasEditorProps {
@@ -424,96 +157,6 @@ function slugify(name: string): string {
     .slice(0, 60)
 }
 
-/** Build node data shown on the canvas from a step body. */
-function stepNodeData(step: WorkflowStep): Record<string, unknown> {
-  const data: Record<string, unknown> = { label: step.label }
-  if (step.type === 'agent') {
-    data.agent = step.agent
-    data.task = step.task
-  } else if (step.type === 'gate') {
-    data.description = step.description
-  } else if (step.type === 'output') {
-    data.agent = step.agent
-    data.channels = step.channels
-    data.description = step.description
-  } else if (step.type === 'workflow') {
-    data.description = step.description
-    data.workflow_id = step.workflow_id
-  } else if (step.type === 'createTask') {
-    data.agent = step.agent
-    data.title = step.title
-    data.column = step.column
-    data.description = step.description
-  }
-  return data
-}
-
-/** Generate a unique step id for a dropped kind. */
-function nextStepId(kind: string, existing: Set<string>): string {
-  const base = kind.includes('.') ? kind.split('.').slice(1).join('-') : kind
-  for (let i = 1; i < 1000; i++) {
-    const candidate = i === 1 ? base : `${base}-${i}`
-    if (!existing.has(candidate)) return candidate
-  }
-  return `${base}-${Date.now()}`
-}
-
-/** Build a default body for a newly-dropped step of the given kind. */
-function defaultStepBody(id: string, kind: string): WorkflowStep {
-  const label = BUILTIN_STEP_LABELS[kind] ?? id
-  // Builtins have known required fields; plugin kinds get a minimal shell.
-  if (kind === 'agent') return { id, type: 'agent', label, agent: '$assigned' }
-  if (kind === 'gate') return { id, type: 'gate', label, on_approve: '' }
-  if (kind === 'output') return { id, type: 'output', label }
-  if (kind === 'workflow') return { id, type: 'workflow', label, workflow_id: '' }
-  if (kind === 'parallel') return { id, type: 'parallel', label, steps: [] }
-  if (kind === 'createTask') return { id, type: 'createTask', label, title: '' }
-  // Plugin kind — preserve `type` as-is; the drawer will validate against the
-  // plugin's zodSchema when the user edits the node.
-  return { id, type: kind, label: id } as unknown as WorkflowStep
-}
-
-function cloneStep(step: WorkflowStep): WorkflowStep {
-  if (typeof structuredClone === 'function') {
-    return structuredClone(step)
-  }
-  return JSON.parse(JSON.stringify(step)) as WorkflowStep
-}
-
-function looksLikeLegacyHorizontalLayout(order: string[], positions: Record<string, NodePosition>): boolean {
-  if (order.length < 2) return false
-  const coords = order.map((id) => positions[id])
-  if (coords.some((pos) => !pos)) return false
-  const xs = coords.map((pos) => pos.x)
-  const ys = coords.map((pos) => pos.y)
-  const xRange = Math.max(...xs) - Math.min(...xs)
-  const yRange = Math.max(...ys) - Math.min(...ys)
-  return xRange > NODE_WIDTH && yRange < 12
-}
-
-function looksLikeLegacyCompactVerticalLayout(order: string[], positions: Record<string, NodePosition>): boolean {
-  if (order.length < 2) return false
-  const coords = order.map((id) => positions[id])
-  if (coords.some((pos) => !pos)) return false
-
-  const xs = coords.map((pos) => pos.x)
-  const xRange = Math.max(...xs) - Math.min(...xs)
-  if (xRange > 12) return false
-
-  const yDeltas = coords.slice(1).map((pos, index) => pos.y - coords[index].y)
-  return yDeltas.every((delta) => delta > 0 && delta <= LEGACY_COMPACT_Y_SPACING + 16)
-}
-
-interface EditorState {
-  steps: Record<string, WorkflowStep>
-  order: string[]
-  positions: Record<string, NodePosition>
-  measurements: Record<string, { width?: number; height?: number }>
-}
-
-type RouteNavigationBlocker =
-  | { status: 'idle' }
-  | { status: 'blocked'; proceed: () => void; reset: () => void }
 
 interface InsertEdgeData extends Record<string, unknown> {
   insertIndex: number
@@ -604,153 +247,6 @@ function InsertableEdge({
   )
 }
 
-function seedEdges(
-  order: string[],
-  includeTrigger = false,
-  onInsert?: (kind: string, index: number) => void,
-  onOpenPalette?: () => void,
-  includeAppendTarget = false,
-): Edge[] {
-  const edges: Edge[] = []
-  const nodeOrder = includeTrigger
-    ? [TRIGGER_NODE_ID, ...order]
-    : order
-  if (includeAppendTarget) nodeOrder.push(APPEND_NODE_ID)
-  for (let i = 0; i < nodeOrder.length - 1; i++) {
-    const source = nodeOrder[i]
-    const target = nodeOrder[i + 1]
-    edges.push({
-      id: `${source}-${target}`,
-      source,
-      target,
-      type: onInsert ? 'insertable' : undefined,
-      data: onInsert && onOpenPalette
-        ? { insertIndex: i, onInsert, onOpenPalette }
-        : undefined,
-    })
-  }
-  return edges
-}
-
-function seedState(def: WorkflowDefinition): EditorState {
-  const steps: Record<string, WorkflowStep> = {}
-  const order: string[] = []
-  for (const step of def.steps) {
-    steps[step.id] = step
-    order.push(step.id)
-  }
-  const edges = seedEdges(order, true)
-  const seeded = def.layout?.positions
-
-  // If the definition carries explicit positions, use them; otherwise run
-  // dagre to give the canvas a sensible top-to-bottom layout instead of
-  // stacking every node at (0, 0).
-  let positions: Record<string, NodePosition>
-  if (
-    seeded &&
-    Object.keys(seeded).length > 0 &&
-    !looksLikeLegacyHorizontalLayout(order, seeded) &&
-    !looksLikeLegacyCompactVerticalLayout(order, seeded)
-  ) {
-    positions = { ...seeded }
-    for (let i = 0; i < order.length; i++) {
-      if (!positions[order[i]]) positions[order[i]] = { x: 0, y: i * Y_SPACING }
-    }
-  } else {
-    const bareNodes = [TRIGGER_NODE_ID, ...order].map((id) => ({
-      id,
-      position: { x: 0, y: 0 },
-      data: {},
-      style: STANDARD_NODE_STYLE,
-    }))
-    const arranged = layoutNodes(bareNodes, edges, {
-      rankdir: 'TB',
-      ranksep: Y_SPACING - NODE_HEIGHT,
-      nodeWidth: NODE_WIDTH,
-      nodeHeight: NODE_HEIGHT,
-    })
-    positions = {}
-    for (const n of arranged) {
-      if (n.id === TRIGGER_NODE_ID) continue
-      positions[n.id] = { x: n.position.x, y: n.position.y }
-    }
-  }
-  return { steps, order, positions, measurements: {} }
-}
-
-function deriveNodes(state: EditorState): Node[] {
-  const firstPosition = state.order.length > 0
-    ? state.positions[state.order[0]]
-    : undefined
-  const lastId = state.order[state.order.length - 1]
-  const lastPosition = lastId ? state.positions[lastId] : undefined
-  const triggerNode: Node = {
-    id: TRIGGER_NODE_ID,
-    type: 'trigger',
-    position: {
-      x: firstPosition?.x ?? 0,
-      y: (firstPosition?.y ?? Y_SPACING) - Y_SPACING,
-    },
-    data: {},
-    measured: state.measurements[TRIGGER_NODE_ID],
-    style: STANDARD_NODE_STYLE,
-    selectable: false,
-    draggable: false,
-  }
-  const stepNodes = state.order.map((id) => {
-    const step = state.steps[id]
-    const pos = state.positions[id] ?? { x: 0, y: 0 }
-    return {
-      id,
-      type: step.type,
-      position: { x: pos.x, y: pos.y },
-      data: stepNodeData(step),
-      measured: state.measurements[id],
-      style: STANDARD_NODE_STYLE,
-    }
-  })
-  const appendNode: Node = {
-    id: APPEND_NODE_ID,
-    type: 'appendStep',
-    position: {
-      x: lastPosition?.x ?? firstPosition?.x ?? 0,
-      y: (lastPosition?.y ?? triggerNode.position.y) + Y_SPACING,
-    },
-    data: {},
-    measured: state.measurements[APPEND_NODE_ID],
-    style: { width: NODE_WIDTH },
-    selectable: false,
-    draggable: false,
-  }
-  return [triggerNode, ...stepNodes, appendNode]
-}
-
-function autoArrangeState(state: EditorState): EditorState {
-  const arranged = layoutNodes(deriveNodes(state), seedEdges(state.order, true), {
-    rankdir: 'TB',
-    ranksep: Y_SPACING - NODE_HEIGHT,
-    nodeWidth: NODE_WIDTH,
-    nodeHeight: NODE_HEIGHT,
-  })
-  const nextPositions: Record<string, NodePosition> = {}
-  for (const n of arranged) {
-    if (!(n.id in state.steps)) continue
-    nextPositions[n.id] = { x: n.position.x, y: n.position.y }
-  }
-  return { ...state, positions: nextPositions }
-}
-
-function samePosition(a: NodePosition | undefined, b: NodePosition): boolean {
-  return a?.x === b.x && a?.y === b.y
-}
-
-function sameMeasurement(
-  a: { width?: number; height?: number } | undefined,
-  b: { width?: number; height?: number },
-): boolean {
-  return a?.width === b.width && a?.height === b.height
-}
-
 export function WorkflowCanvasEditor({
   mode,
   initialId,
@@ -769,10 +265,8 @@ export function WorkflowCanvasEditor({
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [confirmingExit, setConfirmingExit] = useState(false)
   const [isDirty, setIsDirty] = useState(false)
   const [nodeDrawerDirty, setNodeDrawerDirty] = useState(false)
-  const [pendingNavigationHref, setPendingNavigationHref] = useState<string | null>(null)
   const [workflowDetailsOpen, setWorkflowDetailsOpen] = useState(false)
   const [effectiveSource, setEffectiveSource] = useState(source)
   const [managedCopyOpen, setManagedCopyOpen] = useState(false)
@@ -786,12 +280,37 @@ export function WorkflowCanvasEditor({
   const [disableOriginal, setDisableOriginal] = useState(true)
   const [paletteCollapsed, setPaletteCollapsed] = useState(false)
   const [createSetupOpen, setCreateSetupOpen] = useState(mode === 'create' && !initialDefinition?.id)
-  const [routeBlocker, setRouteBlocker] = useState<RouteNavigationBlocker>({ status: 'idle' })
-  const tanStackRouter = useTanStackRouter()
 
   const rfInstanceRef = useRef<ReactFlowInstance | null>(null)
   const lastFitViewKeyRef = useRef<string | null>(null)
   const hasUnsavedChanges = isDirty || nodeDrawerDirty
+  const isManagedSource = effectiveSource === 'plugin' || effectiveSource === 'agent-package'
+  const canSaveInPlace = mode === 'create' || !isManagedSource
+
+  // Navigation guard: owns the exit-confirmation flow (beforeunload + TanStack
+  // history block + anchor interception) and the unsaved-changes dialog.
+  const unsavedChangesGuard = useUnsavedChangesGuard({
+    hasUnsavedChanges,
+    saving,
+    canSaveInPlace,
+    saveDisabled: nodeDrawerDirty,
+    onCancel,
+    onSaveAndExit: async () => {
+      if (nodeDrawerDirty) {
+        setError(NODE_DRAWER_DIRTY_MESSAGE)
+        return false
+      }
+      const saved = await saveDefinition(buildDefinition(), { notifySaved: false })
+      if (!saved) return false
+      setIsDirty(false)
+      setNodeDrawerDirty(false)
+      return true
+    },
+    onDiscardAndExit: () => {
+      setIsDirty(false)
+      setNodeDrawerDirty(false)
+    },
+  })
 
   // Subscribe to registry mutations — see note in workflow-canvas.tsx.
   const registeredNodeTypes = useSyncExternalStore(subscribeNodeRenderers, getNodeRendererSnapshot, getNodeRendererSnapshot) as NodeTypes
@@ -858,10 +377,9 @@ export function WorkflowCanvasEditor({
     setState(seedState(nextDefinition))
     setEditingId(initialId)
     setSelectedId(null)
-    setConfirmingExit(false)
+    unsavedChangesGuard.reset()
     setIsDirty(false)
     setNodeDrawerDirty(false)
-    setPendingNavigationHref(null)
     setWorkflowDetailsOpen(false)
     setError(null)
     setEffectiveSource(source)
@@ -874,61 +392,6 @@ export function WorkflowCanvasEditor({
     setDisableOriginal(true)
     setCreateSetupOpen(mode === 'create' && !nextDefinition.id)
   }, [mode, source, initialId, initialDefinition])
-
-  useEffect(() => {
-    if (!hasUnsavedChanges) return
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      event.preventDefault()
-      event.returnValue = ''
-    }
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [hasUnsavedChanges])
-
-  useEffect(() => {
-    if (!hasUnsavedChanges) return
-    return tanStackRouter.history.block({
-      enableBeforeUnload: false,
-      blockerFn: async ({ currentLocation, nextLocation }) => {
-        const current = tanStackRouter.parseLocation(currentLocation)
-        const next = tanStackRouter.parseLocation(nextLocation)
-        if (current.pathname === next.pathname) return false
-
-        const shouldBlock = await new Promise<boolean>((resolve) => {
-          setRouteBlocker({
-            status: 'blocked',
-            proceed: () => resolve(false),
-            reset: () => resolve(true),
-          })
-        })
-        setRouteBlocker({ status: 'idle' })
-        return shouldBlock
-      },
-    })
-  }, [hasUnsavedChanges, tanStackRouter])
-
-  useEffect(() => {
-    if (!hasUnsavedChanges) return
-    const handleDocumentClick = (event: MouseEvent) => {
-      if (event.defaultPrevented) return
-      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
-      const target = event.target as Element | null
-      const anchor = target?.closest('a[href]') as HTMLAnchorElement | null
-      if (!anchor) return
-      if (anchor.target && anchor.target !== '_self') return
-      if (anchor.hasAttribute('download')) return
-      if (anchor.origin !== window.location.origin) return
-      if (anchor.href === window.location.href) return
-
-      event.preventDefault()
-      event.stopPropagation()
-      setPendingNavigationHref(anchor.href)
-      setConfirmingExit(true)
-    }
-
-    document.addEventListener('click', handleDocumentClick, true)
-    return () => document.removeEventListener('click', handleDocumentClick, true)
-  }, [hasUnsavedChanges])
 
   useEffect(() => {
     if (mode !== 'edit') return
@@ -1165,8 +628,6 @@ export function WorkflowCanvasEditor({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [deleteSelectedStep, selectedId])
 
-  const isManagedSource = effectiveSource === 'plugin' || effectiveSource === 'agent-package'
-  const canSaveInPlace = mode === 'create' || !isManagedSource
   const canDelete = mode === 'edit' && effectiveSource === 'user'
 
   function buildDefinition(definitionOverride = definition): WorkflowDefinition {
@@ -1383,57 +844,6 @@ export function WorkflowCanvasEditor({
     }
   }
 
-  function handleCancelRequest() {
-    if (!onCancel) return
-    if (hasUnsavedChanges) {
-      setPendingNavigationHref(null)
-      setConfirmingExit(true)
-      return
-    }
-    onCancel()
-  }
-
-  function completeExit() {
-    if (routeBlocker.status === 'blocked') {
-      routeBlocker.proceed()
-      return
-    }
-    const href = pendingNavigationHref
-    setPendingNavigationHref(null)
-    if (href) {
-      window.location.assign(href)
-      return
-    }
-    onCancel?.()
-  }
-
-  async function handleSaveAndExit() {
-    if (nodeDrawerDirty) {
-      setError(NODE_DRAWER_DIRTY_MESSAGE)
-      return
-    }
-    const saved = await saveDefinition(buildDefinition(), { notifySaved: false })
-    if (!saved) return
-    setIsDirty(false)
-    setNodeDrawerDirty(false)
-    setConfirmingExit(false)
-    completeExit()
-  }
-
-  function handleDiscardAndExit() {
-    setIsDirty(false)
-    setNodeDrawerDirty(false)
-    setConfirmingExit(false)
-    completeExit()
-  }
-
-  function cancelExitPrompt() {
-    if (routeBlocker.status === 'blocked') {
-      routeBlocker.reset()
-    }
-    setPendingNavigationHref(null)
-    setConfirmingExit(false)
-  }
 
   const selectedStep = selectedId ? (state.steps[selectedId] as {
     id: string
@@ -1463,7 +873,7 @@ export function WorkflowCanvasEditor({
               className="self-center"
               aria-label="Back to workflows"
               title="Back to workflows"
-              onClick={handleCancelRequest}
+              onClick={unsavedChangesGuard.requestExit}
             >
               <ArrowLeft className="size-4" />
             </Button>
@@ -1753,51 +1163,7 @@ export function WorkflowCanvasEditor({
         onCreate={handleCreateLocalCopy}
       />
 
-      <Dialog
-        open={confirmingExit || routeBlocker.status === 'blocked'}
-        onOpenChange={(open) => {
-          if (!open && !saving) cancelExitPrompt()
-        }}
-      >
-        <DialogContent className="bg-card border-border sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Unsaved workflow changes</DialogTitle>
-            <DialogDescription>
-              You have unsaved changes on this workflow. Save them before leaving, discard them, or stay on the canvas.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2 sm:justify-between">
-            <Button
-              variant="destructive"
-              onClick={handleDiscardAndExit}
-              disabled={saving}
-            >
-              Discard changes
-            </Button>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={cancelExitPrompt}
-                disabled={saving}
-              >
-                Cancel
-              </Button>
-              {canSaveInPlace && (
-                <Button
-                  onClick={handleSaveAndExit}
-                  disabled={saving || nodeDrawerDirty}
-                >
-                  {saving ? 'Saving...' : 'Save and exit'}
-                </Button>
-              )}
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {unsavedChangesGuard.dialog}
     </div>
   )
 }
-
-// Explicitly re-export the ReactNode type to keep TS happy in strict builds
-// where React types are only imported transitively.
-export type { ReactNode }

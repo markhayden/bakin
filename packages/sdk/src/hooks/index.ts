@@ -17,6 +17,9 @@ export { useNavBadge } from '@/hooks/use-nav-badge'
 export { useDebug } from '@/hooks/use-debug'
 /** Guard a form against unmounting while submission is in flight. */
 export { useFormGuard } from '@/hooks/use-form-guard'
+/** Cancellable JSON GET with a `{ data, loading, error, refresh }` lifecycle. */
+export { useJsonFetch } from '@/hooks/use-json-fetch'
+export type { UseJsonFetchResult } from '@/hooks/use-json-fetch'
 /** Subscribe to runtime connection status (online/offline, last heartbeat). */
 export { useRuntimeStatus } from '@/hooks/use-runtime-status'
 /** Bind a single component-state value to a URL query param. */
@@ -28,6 +31,9 @@ export { useScheduleJobs } from '@/hooks/use-schedule'
 /** Fetch run history for a scheduled job. */
 export { useRunHistory } from '@/hooks/use-schedule'
 export type { ScheduleJob, RunEntry } from '@/hooks/use-schedule'
+/** Fetch dispatch run history for a task. */
+export { useTaskRunHistory } from '@/hooks/use-task-run-history'
+export type { TaskOutcome, TaskRunEntry } from '@/hooks/use-task-run-history'
 /** Hybrid full-text + semantic search across plugins with facet filtering. */
 export { useSearch } from '@/hooks/use-search'
 /** Re-rank a local list to match the order returned by a search query. */
@@ -37,12 +43,16 @@ export type { SearchResult, SearchResponse, UseSearchOptions, UseSearchReturn } 
 export { useSidebar } from '@/hooks/use-sidebar'
 /** Subscribe to a Server-Sent Events endpoint with auto-reconnect. */
 export { useSSE } from '@/hooks/use-sse'
+/** Subscribe to a server-pushed plugin event over the shell's single connection. */
+export { usePluginEvent, type PluginEventPayload } from '@/hooks/use-plugin-event'
 /** Fire a toast notification (success/error/info). */
 export { toast } from '@/hooks/use-toast'
 /** Subscribe to the toast store for custom toast UIs. */
 export { useToastStore } from '@/hooks/use-toast'
 /** Imperatively resize a vertical pane via mouse drag handle. */
 export { useVerticalResize } from '@/hooks/use-vertical-resize'
+/** Resize a side-by-side split pane by dragging the divider between columns. */
+export { useHorizontalResize } from '@/hooks/use-horizontal-resize'
 
 // Group 2: Agent data (from team plugin)
 
@@ -60,7 +70,7 @@ export { useAgentDisplayName } from '@bakin/team/hooks/use-agent-store'
 export { useAgentIds } from '@bakin/team/hooks/use-agent-store'
 /** Get the ID of the designated main/orchestrator agent. */
 export { useMainAgentId } from '@bakin/team/hooks/use-agent-store'
-/** Read agent-package install state (managed/adopted/unmanaged). */
+/** Read agent-package install state (managed/unmanaged). */
 export { usePackageState } from '@bakin/team/hooks/use-agent-store'
 /** Convert a hex color to a muted variant for backgrounds. */
 export { hexToMuted } from '@bakin/team/hooks/use-agent-store'
@@ -73,6 +83,11 @@ export { useNotificationChannels } from '@bakin/workflows/hooks/use-notification
 export { getChannelLabel } from '@bakin/workflows/hooks/use-notification-channels'
 /** Get initials for a channel (e.g. "Discord" → "D"). */
 export { getChannelInitials } from '@bakin/workflows/hooks/use-notification-channels'
+
+// Group 3b: Model catalog (from models plugin)
+
+/** The available-models catalog (cached, read-only); empty until loaded. */
+export { useAvailableModels } from '@bakin/models/hooks/use-available-models'
 
 // Group 4: Router hooks (TanStack Router wrappers; Next.js-shape compatible)
 

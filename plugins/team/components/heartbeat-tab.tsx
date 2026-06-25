@@ -8,11 +8,10 @@
  * Reads from /api/plugins/team/:agentId/heartbeat which returns
  * { content, lastUpdated } or null when the file doesn't exist yet.
  */
-import { useEffect, useState } from 'react'
 import { Loader2, Heart, Pencil } from 'lucide-react'
-import { MarkdownContent } from '@makinbakin/sdk/components'
+import { MarkdownContent, EmptyState } from '@makinbakin/sdk/components'
+import { useJsonFetch } from '@makinbakin/sdk/hooks'
 import type { HeartbeatRaw } from '../types'
-import { EmptyState } from './empty-state'
 
 const HEARTBEAT_DISABLED_REASON = 'HEARTBEAT.md is an agent-maintained narrative — the agent updates it itself as it works. Editing from the UI would conflict with what the agent next writes.'
 
@@ -35,33 +34,11 @@ function formatRelative(isoTimestamp: string | null): string {
 }
 
 export function HeartbeatTab({ agentId }: HeartbeatTabProps) {
-  const [heartbeat, setHeartbeat] = useState<HeartbeatRaw | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-    fetch(`/api/plugins/team/${agentId}/heartbeat`)
-      .then((r) => r.json() as Promise<{ ok: boolean; heartbeat: HeartbeatRaw | null; error?: string }>)
-      .then((body) => {
-        if (cancelled) return
-        if (!body.ok) {
-          setError(body.error ?? 'Failed to load heartbeat')
-          return
-        }
-        setHeartbeat(body.heartbeat)
-      })
-      .catch((err) => {
-        if (cancelled) return
-        setError(err instanceof Error ? err.message : String(err))
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => { cancelled = true }
-  }, [agentId])
+  const { data, loading, error: fetchError } = useJsonFetch<{ ok: boolean; heartbeat: HeartbeatRaw | null; error?: string }>(
+    `/api/plugins/team/${agentId}/heartbeat`,
+  )
+  const heartbeat = data?.ok ? data.heartbeat : null
+  const error = fetchError ?? (data && !data.ok ? (data.error ?? 'Failed to load heartbeat') : null)
 
   if (loading) {
     return (
@@ -81,6 +58,7 @@ export function HeartbeatTab({ agentId }: HeartbeatTabProps) {
   if (!heartbeat) {
     return (
       <EmptyState
+        variant="panel"
         icon={Heart}
         title="No heartbeat yet"
         description={

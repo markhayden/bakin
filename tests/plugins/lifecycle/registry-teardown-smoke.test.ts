@@ -44,7 +44,7 @@ mock.module('@/core/logger', () => ({
 }))
 
 import { HookRegistry } from '../../../packages/core/src/hooks/hook-registry'
-import { addExecTool, getAllExecTools, removeExecToolsByPlugin } from '../../../scripts/lib/registry'
+import { addExecTool, getAllExecTools, removeExecToolsByPlugin } from '@/core/exec-tools/registry'
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })

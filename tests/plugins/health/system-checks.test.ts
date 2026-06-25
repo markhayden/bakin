@@ -3,7 +3,7 @@
  *
  * Migrated out of src/core/doctor.ts (#139 C6+). This file grows over
  * commits C6-C8 to cover all 9 system-level checks plus the
- * managed-blocks check (C9). For C6 it covers content-dir, service,
+ * system checks. For C6 it covers content-dir, service,
  * and mcporter.
  */
 import { tmpdir } from 'os'
@@ -122,7 +122,14 @@ mock.module('@bakin/core/main-agent', () => ({
   getMainAgentName: () => 'Main',
 }))
 
-mock.module('../../../src/lib/plugin-registry', () => ({
+mock.module('../../../src/core/plugin-registry', () => ({
+  getHookRegistry: () => ({
+    invoke: async () => undefined,
+    has: () => false,
+    register: () => () => {},
+  }),
+}))
+mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
   getHookRegistry: () => ({
     invoke: async () => undefined,
     has: () => false,
@@ -203,7 +210,7 @@ mock.module('../../../src/core/onboarding/plugin-assets', () => ({
   },
 }))
 
-mock.module('../../../scripts/lib/registry', () => ({
+mock.module('@/core/exec-tools/registry', () => ({
   getAllExecTools: () => [],
 }))
 
@@ -719,7 +726,7 @@ describe('checkPluginAssets', () => {
 // ─── Registration smoke test ──────────────────────────────────────────────
 
 describe('plugin registration', () => {
-  it('registers all 13 system + managed-blocks health checks on activate', async () => {
+  it('registers all system health checks on activate', async () => {
     const healthPlugin = (await import('../../../plugins/health')).default
     const registeredIds: string[] = []
     const noop = mock()
@@ -755,10 +762,8 @@ describe('plugin registration', () => {
     expect(registeredIds).toContain('channel-aliases')
     expect(registeredIds).toContain('restart-recovery')
     expect(registeredIds).toContain('search')
-    expect(registeredIds).toContain('orchestrator-rules')
     expect(registeredIds).toContain('skill')
     expect(registeredIds).toContain('plugin-assets')
     expect(registeredIds).toContain('plugin-registry')
-    expect(registeredIds).toContain('managed-blocks')
   })
 })

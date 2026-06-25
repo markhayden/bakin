@@ -1,6 +1,13 @@
 /**
  * Asset type constants and MIME type mappings.
+ *
+ * The image rows of `EXTENSION_TO_MIME` compose from the canonical
+ * `IMAGE_EXTENSION_TO_MIME` in `@bakin/core/media/image-format` (#380) — a pure
+ * module (no node imports) so this file stays safe in the client bundle. Adding
+ * an image format is a one-place edit in core; audio/video/doc rows + asset-type
+ * classification stay here (not media-generation concerns).
  */
+import { IMAGE_EXTENSION_TO_MIME } from '@bakin/core/media/image-format'
 
 export const ASSET_TYPES = ['text', 'images', 'video', 'audio', 'plans', 'research', 'pdf', 'data', 'other'] as const
 export type AssetType = typeof ASSET_TYPES[number]
@@ -49,15 +56,8 @@ export const EXTENSION_TO_MIME: Record<string, string> = {
   '.md': 'text/markdown',
   '.txt': 'text/plain',
   '.rtf': 'application/rtf',
-  // Images
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.webp': 'image/webp',
-  '.svg': 'image/svg+xml',
-  '.bmp': 'image/bmp',
-  '.ico': 'image/x-icon',
+  // Images — single source of truth in @bakin/core/media/image-format (#380)
+  ...IMAGE_EXTENSION_TO_MIME,
   // Video
   '.mp4': 'video/mp4',
   '.mov': 'video/quicktime',

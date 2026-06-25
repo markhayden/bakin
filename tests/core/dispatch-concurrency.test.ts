@@ -12,18 +12,18 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 
 const sentinelContentDir = join(tmpdir(), `bakin-dispatch-conc-content-${Date.now()}`)
-mock.module('../../src/core/content-dir', () => ({
+const contentDirMock = () => ({
   getContentDir: () => sentinelContentDir,
-  getBakinPaths: () => ({ root: sentinelContentDir }),
-}))
-mock.module('../../packages/core/src/content-dir', () => ({
-  getContentDir: () => sentinelContentDir,
-  getBakinPaths: () => ({ root: sentinelContentDir }),
-}))
+  getBakinPaths: () => ({ root: sentinelContentDir, home: sentinelContentDir, db: join(sentinelContentDir, 'bakin.db') }),
+})
+mock.module('../../src/core/content-dir', contentDirMock)
+mock.module('../../packages/core/src/content-dir', contentDirMock)
 
-mock.module('../../src/core/logger', () => ({
+const loggerMock = () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
-}))
+})
+mock.module('../../src/core/logger', loggerMock)
+mock.module('../../packages/core/src/logger', loggerMock)
 
 const settingsValue = {
   dispatch: {
@@ -39,11 +39,16 @@ const settingsValue = {
   agentPackages: { lessonsRetrieval: { enabled: false } },
 }
 mock.module('../../src/core/settings', () => ({
+  resetSettingsCache: () => {},
   getSettings: mock(() => settingsValue),
 }))
 
-mock.module('../../src/core/audit', () => ({ appendAudit: mock() }))
-mock.module('@/core/audit', () => ({ appendAudit: mock() }))
+const auditEvents: Array<{ event: string; data: Record<string, unknown> }> = []
+const appendAuditMock = mock((_dir: string, event: string, _agent: string, data?: Record<string, unknown>) => {
+  auditEvents.push({ event, data: data ?? {} })
+})
+mock.module('../../src/core/audit', () => ({ appendAudit: appendAuditMock }))
+mock.module('@/core/audit', () => ({ appendAudit: appendAuditMock }))
 mock.module('../../src/core/usage', () => ({ recordUsage: mock() }))
 
 // Per-agent controllable send: resolves when the test releases it.
@@ -99,7 +104,14 @@ const taskStoreMock = {
 mock.module('../../src/core/task-store', () => taskStoreMock)
 mock.module('@/core/task-store', () => taskStoreMock)
 
-mock.module('../../src/lib/plugin-registry', () => ({
+mock.module('../../src/core/plugin-registry', () => ({
+  getHookRegistry: mock().mockReturnValue({
+    invoke: mock(async (hook: string) => (hook === 'workflows.getActiveAgents' ? [] : undefined)),
+    has: mock().mockReturnValue(false),
+    register: mock(),
+  }),
+}))
+mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
   getHookRegistry: mock().mockReturnValue({
     invoke: mock(async (hook: string) => (hook === 'workflows.getActiveAgents' ? [] : undefined)),
     has: mock().mockReturnValue(false),
@@ -113,6 +125,8 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 }))
 
 import { dispatchTasks, dispatchSingleTask, awaitDispatchIdle, getInFlightTurnCount } from '../../src/core/dispatch'
+import { getLiveRun } from '../../src/core/execution-ledger'
+import { closeDb } from '../../packages/core/src/storage/db'
 
 let tempDir: string
 
@@ -126,6 +140,7 @@ beforeEach(() => {
   tempDir = mkdtempSync(join(tmpdir(), 'bakin-dispatch-conc-'))
   pendingSends.clear()
   sendCalls.length = 0
+  auditEvents.length = 0
   mockRuntimeSend.mockClear()
   settingsValue.dispatch.maxConcurrentTurns = 3
   settingsValue.dispatch.maxTurnsPerAgent = 1
@@ -141,6 +156,7 @@ afterEach(async () => {
 })
 
 afterAll(() => {
+  closeDb()
   rmSync(sentinelContentDir, { recursive: true, force: true })
 })
 
@@ -265,6 +281,98 @@ describe('concurrent dispatch', () => {
 
     // Trimmed to exactly maxDispatched (5), not a hardcoded 200.
     expect(readState().dispatched.length).toBeLessThanOrEqual(settingsValue.dispatch.maxDispatched)
+  })
+
+  it('claim suppresses a re-dispatch even when the in-memory markers are GONE (second process / lost state)', async () => {
+    // SPEC §8 test #3 — the guarantee markers can't give. A live turn is in
+    // flight; the dispatch state file is wiped (simulating a second server
+    // process or lost markers). Before the ledger, this re-sent the task.
+    setColumns({ todo: [{ id: 't-claimed', title: 'Claimed task', agent: 'jessica' }] })
+    await dispatchTasks(tempDir, 3737)
+    expect(sendCalls.length).toBe(1)
+    expect(getLiveRun('t-claimed')?.runId).toBe('task:t-claimed:d1')
+
+    // Wipe every advisory marker — only the ledger claim remains.
+    const { writeFileSync } = await import('fs')
+    writeFileSync(join(tempDir, '.dispatch-state.json'), JSON.stringify({
+      lastRun: null, serverStart: Date.now(), dispatched: [], failedDispatches: {},
+    }))
+    setColumns({ todo: [{ id: 't-claimed', title: 'Claimed task', agent: 'pixel' }] })
+
+    await dispatchTasks(tempDir, 3737)
+    await dispatchSingleTask('t-claimed', tempDir, 3737, 'kick')
+
+    expect(sendCalls.length).toBe(1) // suppressed by the claim, not markers
+    const suppressions = auditEvents.filter((e) => e.event === 'task.dispatch_suppressed')
+    expect(suppressions.length).toBeGreaterThanOrEqual(2) // cycle + kick
+    expect(suppressions[0]?.data.liveRunId).toBe('task:t-claimed:d1')
+
+    releaseSend('jessica')
+    await awaitDispatchIdle()
+  })
+
+  it('settle frees the claim and the next dispatch mints the next seq', async () => {
+    setColumns({ todo: [{ id: 't-seq', title: 'Seq task', agent: 'jessica' }] })
+    await dispatchTasks(tempDir, 3737)
+    expect(sendCalls[0]?.threadId).toBe('task:t-seq:d1')
+    releaseSend('jessica')
+    await awaitDispatchIdle()
+    expect(getLiveRun('t-seq')).toBeNull()
+
+    // Task back in todo (e.g. watchdog recovery) — fresh claim, next seq.
+    const { writeFileSync } = await import('fs')
+    writeFileSync(join(tempDir, '.dispatch-state.json'), JSON.stringify({
+      lastRun: null, serverStart: Date.now(), dispatched: [], failedDispatches: {},
+    }))
+    setColumns({ todo: [{ id: 't-seq', title: 'Seq task', agent: 'jessica' }] })
+    await dispatchTasks(tempDir, 3737)
+
+    expect(sendCalls[1]?.threadId).toBe('task:t-seq:d2') // never reuses d1
+    releaseSend('jessica')
+    await awaitDispatchIdle()
+  })
+
+  it('a failed turn settles its claim as failed and a retry can claim anew', async () => {
+    setColumns({ todo: [{ id: 't-retry', title: 'Retry task', agent: 'jessica' }] })
+    await dispatchTasks(tempDir, 3737)
+    releaseSend('jessica', 'error')
+    await awaitDispatchIdle()
+    expect(getLiveRun('t-retry')).toBeNull() // slot freed for the retry path
+
+    // Clear cooldown bookkeeping and re-dispatch — claim succeeds with d2.
+    const { writeFileSync } = await import('fs')
+    writeFileSync(join(tempDir, '.dispatch-state.json'), JSON.stringify({
+      lastRun: null, serverStart: Date.now(), dispatched: [], failedDispatches: {},
+    }))
+    setColumns({ todo: [{ id: 't-retry', title: 'Retry task', agent: 'jessica' }] })
+    await dispatchTasks(tempDir, 3737)
+    expect(sendCalls[1]?.threadId).toBe('task:t-retry:d2')
+    releaseSend('jessica')
+    await awaitDispatchIdle()
+  })
+
+  it('a dispatch-prep failure releases the claim instead of wedging the task', async () => {
+    setColumns({ todo: [{ id: 't-prep', title: 'Prep fails', agent: 'jessica' }] })
+    // moveTaskToInProgress (via task-store.updateTask) blows up once.
+    taskStoreMock.updateTask.mockImplementationOnce(async () => {
+      throw new Error('store hiccup')
+    })
+
+    await dispatchTasks(tempDir, 3737)
+    expect(sendCalls.length).toBe(0)
+    expect(getLiveRun('t-prep')).toBeNull() // claim released (lost)
+
+    // Next cycle dispatches cleanly with the NEXT seq.
+    const { writeFileSync } = await import('fs')
+    writeFileSync(join(tempDir, '.dispatch-state.json'), JSON.stringify({
+      lastRun: null, serverStart: Date.now(), dispatched: [], failedDispatches: {},
+    }))
+    setColumns({ todo: [{ id: 't-prep', title: 'Prep fails', agent: 'jessica' }] })
+    await dispatchTasks(tempDir, 3737)
+    expect(sendCalls.length).toBe(1)
+    expect(sendCalls[0]?.threadId).toBe('task:t-prep:d2')
+    releaseSend('jessica')
+    await awaitDispatchIdle()
   })
 
   it('settle reconciliation records a failure without blocking other in-flight turns', async () => {

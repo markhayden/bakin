@@ -42,7 +42,7 @@ mcporter call bakin-main.bakin_exec_health_status
 
 function getRegisteredExecTools(): unknown[] {
   try {
-    const registry = require('../../scripts/lib/registry') as typeof import('../../scripts/lib/registry')
+    const registry = require('./exec-tools/registry') as typeof import('./exec-tools/registry')
     return registry.getAllExecTools()
   } catch {
     return []

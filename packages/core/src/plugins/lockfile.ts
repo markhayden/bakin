@@ -259,7 +259,7 @@ export function writePluginLockfile(
 // ─── Defense-in-depth: core-plugin guard ─────────────────────────────────────
 
 /**
- * Predicate registered at boot by `src/lib/plugin-registry.ts` via
+ * Predicate registered at boot by `src/core/plugin-registry.ts` via
  * `setCorePluginCheck` — returns `true` for plugin ids that ship with the
  * Bakin binary. Wired through a setter (rather than imported directly) to
  * avoid a circular dependency: `plugin-registry` imports this module's

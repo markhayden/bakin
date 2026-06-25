@@ -8,9 +8,12 @@ import { basename, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import {
-  listAssets, getAsset, promoteVersion, deleteVersion, deleteAsset, addExport, relink,
-  addVersion, updateMetadata, listTrashedAssets, restoreAsset, permanentlyDeleteTrashed, emptyAssetTrash,
+  listAssets, getAsset, promoteVersion, deleteVersion, addExport, relink,
+  addVersion, updateMetadata,
 } from '../lib/asset-service'
+import {
+  deleteAsset, listTrashedAssets, restoreAsset, permanentlyDeleteTrashed, emptyAssetTrash,
+} from '../lib/asset-trash'
 import type { AssetType } from '../lib/constants'
 
 function errMsg(err: unknown): string {

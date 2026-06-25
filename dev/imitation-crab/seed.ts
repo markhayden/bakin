@@ -5,7 +5,9 @@
 import { existsSync, mkdirSync, cpSync, readFileSync, writeFileSync, rmSync, symlinkSync, appendFileSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
-import { initBakinHome } from '../../packages/core/src/content-dir'
+import { initBakinHome, resetContentDir } from '../../packages/core/src/content-dir'
+import { claimCronFire, attachCronTask, markCronFireSkipped, claimRun, settleRun, loseRun, supersedeStaleRun } from '../../src/core/execution-ledger'
+import { closeDb } from '../../packages/core/src/storage/db'
 import { getMockHome } from './env'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -24,6 +26,11 @@ export function seed(force = false): void {
   if (force) {
     rmSync(mockHome, { recursive: true, force: true })
   }
+
+  // Resolve every Bakin path (and the execution ledger db) to the mock home for
+  // the rest of this seed — never to real ~/.bakin. Set BEFORE any ledger write.
+  process.env.BAKIN_HOME = mockHome
+  resetContentDir()
 
   console.log(`[seed] Creating ${mockHome}`)
 
@@ -70,6 +77,11 @@ export function seed(force = false): void {
   // Seed Bakin-owned task-store data.
   seedTasks(mockHome)
 
+  // Seed Bakin-owned schedules + their ledger fire history (run-history UI).
+  seedSchedules(mockHome)
+  seedScheduleFires()
+  seedTaskRuns()
+
   // Create a sample gateway log for today
   seedGatewayLog()
 
@@ -110,6 +122,141 @@ function seedTasks(mockHome: string): void {
   }
 
   console.log(`[seed] Bakin task store seeded (${tasks.length} tasks)`)
+}
+
+// IDs reused by seedScheduleFires so the run history is internally consistent.
+const SCHED = {
+  standup: 'sch_demo_standup',
+  hourly: 'sch_demo_hourly',
+  weekly: 'sch_demo_weekly',
+} as const
+
+function seedSchedules(mockHome: string): void {
+  const now = new Date().toISOString()
+  // createdAt = now so startup catch-up won't fire historical occurrences into
+  // `blocked` on every boot (it skips occurrences predating createdAt). The
+  // seeded cron_fires below provide the visible history; live ticks go forward.
+  const base = {
+    isBakinJob: true as const,
+    source: 'bakin' as const,
+    owner: 'main',
+    requireTriage: false,
+    maxFailures: 3,
+    consecutiveFailures: 0,
+    tz: 'America/Denver',
+    createdAt: now,
+    updatedAt: now,
+  }
+  const jobs = {
+    [SCHED.standup]: {
+      ...base,
+      jobId: SCHED.standup,
+      displayName: 'Morning Standup',
+      agentId: 'main',
+      taskPrompt: 'Summarize what each agent is working on today.',
+      taskTitle: 'Standup {date}',
+      schedule: { kind: 'cron', expr: '0 9 * * *' },
+      enabled: true,
+      allowOverlap: false,
+      lastTaskId: 'task-td-001',
+    },
+    [SCHED.hourly]: {
+      ...base,
+      jobId: SCHED.hourly,
+      displayName: 'Hourly Inbox Sync',
+      agentId: 'rolo',
+      taskPrompt: 'Pull new inbox items and triage them.',
+      taskTitle: 'Inbox sync {date}',
+      schedule: { kind: 'cron', expr: '0 * * * *' },
+      enabled: true,
+      allowOverlap: false, // overruns serialize → overlap skips (seeded below)
+      lastTaskId: 'task-ip-001',
+    },
+    [SCHED.weekly]: {
+      ...base,
+      jobId: SCHED.weekly,
+      displayName: 'Weekly Report (paused)',
+      agentId: 'rolo',
+      taskPrompt: 'Compile the weekly engagement report.',
+      taskTitle: 'Weekly report {date}',
+      schedule: { kind: 'cron', expr: '0 8 * * 1' },
+      enabled: false,
+      paused: true,
+      pauseReason: 'manual',
+      allowOverlap: false,
+    },
+  }
+  const dir = join(mockHome, 'schedule')
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'sidecar.json'), JSON.stringify({ version: 1, jobs }, null, 2) + '\n', 'utf-8')
+  console.log(`[seed] Bakin schedules seeded (${Object.keys(jobs).length} jobs)`)
+}
+
+/**
+ * Seed cron_fires history so the run-history UI shows real fires + skips with
+ * reasons. Targets the mock home's bakin.db (BAKIN_HOME was pinned above).
+ */
+function seedScheduleFires(): void {
+  const HOUR = 3_600_000
+  const now = Date.now()
+  // Each entry: minutes-ago → a created (with task) or skipped (with reason) fire.
+  type Fire = { job: string; agoH: number; task?: string; skip?: string }
+  const fires: Fire[] = [
+    { job: SCHED.standup, agoH: 49, task: 'task-td-001' },
+    { job: SCHED.standup, agoH: 25, task: 'task-td-002' },
+    { job: SCHED.standup, agoH: 1, task: 'task-td-003' },
+    { job: SCHED.hourly, agoH: 4, task: 'task-ip-001' },
+    { job: SCHED.hourly, agoH: 3, skip: 'overlap' }, // prior run still active
+    { job: SCHED.hourly, agoH: 2, task: 'task-ip-002' },
+    { job: SCHED.hourly, agoH: 1, skip: 'overlap' },
+    { job: SCHED.weekly, agoH: 168, task: 'task-bl-001' },
+    { job: SCHED.weekly, agoH: 0.5, skip: 'paused' }, // fired while paused
+  ]
+  for (const f of fires) {
+    const firedAt = now - f.agoH * HOUR
+    const occurrence = new Date(firedAt).toISOString()
+    const runId = `${f.job}:${occurrence}`
+    const claim = claimCronFire(f.job, runId, firedAt, 'pending', firedAt)
+    if (!claim.claimed) continue
+    if (f.skip) markCronFireSkipped(f.job, runId, f.skip)
+    else if (f.task) attachCronTask(f.job, runId, f.task)
+  }
+  closeDb() // release the handle; the spawned server opens its own connection
+  console.log(`[seed] Schedule run history seeded (${fires.length} fires)`)
+}
+
+/**
+ * Seed `runs` history so the per-task Run History UI shows real attempts.
+ * All rows are TERMINAL (settled/lost/superseded) — a seeded 'running' row
+ * would be flipped to 'lost' by the boot sweep, and faking "running" with
+ * nothing live is misleading. Targets the mock home (BAKIN_HOME pinned above).
+ */
+function seedTaskRuns(): void {
+  const MIN = 60_000
+  const now = Date.now()
+  const boot = 'seed-boot'
+  const rid = (task: string, seq: number) => `task:${task}:d${seq}`
+
+  // The common case: one clean attempt.
+  claimRun({ runId: rid('task-dn-001', 1), taskId: 'task-dn-001', seq: 1, agent: 'pixel', bootId: boot, now: now - 120 * MIN })
+  settleRun(rid('task-dn-001', 1), 'turn-ok', now - 118 * MIN)
+
+  // A single settled attempt on an in-progress task.
+  claimRun({ runId: rid('task-ip-001', 1), taskId: 'task-ip-001', seq: 1, agent: 'pixel', bootId: boot, now: now - 30 * MIN })
+  settleRun(rid('task-ip-001', 1), 'turn-ok', now - 26 * MIN)
+
+  // The "why did this dispatch 3×" story (matches its task.auto_recovered audit):
+  // #1 died mid-session → #2 went stale and was superseded → #3 finished.
+  const T = 'task-ip-003'
+  claimRun({ runId: rid(T, 1), taskId: T, seq: 1, agent: 'rolo', bootId: boot, now: now - 210 * MIN })
+  loseRun(rid(T, 1), 'session-death', now - 205 * MIN)
+  claimRun({ runId: rid(T, 2), taskId: T, seq: 2, agent: 'rolo', bootId: boot, now: now - 200 * MIN })
+  supersedeStaleRun(T, now - 200 * MIN + 1, now - 198 * MIN) // d2 heartbeat stale → superseded
+  claimRun({ runId: rid(T, 3), taskId: T, seq: 3, agent: 'rolo', bootId: boot, now: now - 50 * MIN })
+  settleRun(rid(T, 3), 'turn-ok', now - 47 * MIN)
+
+  closeDb()
+  console.log('[seed] Task run history seeded (3 tasks, 5 runs)')
 }
 
 function seedGatewayLog(): void {

@@ -1,8 +1,26 @@
 # Dispatch — Deep Reference
 
 Concurrent, session-scoped task dispatch with typed failure classification
-and a session-death recovery ladder. Companion deep dive:
-`.claude/knowledge/session-forensics.md`.
+and a session-death recovery ladder. Companion deep dives:
+`.claude/knowledge/session-forensics.md` and
+`.claude/knowledge/execution-ledger.md` (the claims/seq/completion layer).
+
+## Execution claims (the correctness mechanism)
+
+Every dispatch path — the cycle, `dispatchSingleTask`, and workflow steps —
+**claims its run in the execution ledger before any side effect** via
+`claimDispatchRun()` → `claimNextRun()` (atomic mint+claim; the runs
+table's partial unique index "one running row per exec_key" IS the lock). A
+duplicate dispatch (overlapping cycle, kick racing the cycle, second server
+process) fails the INSERT, audits `task.dispatch_suppressed`, and skips.
+Workflow steps claim exec_key `taskId:stepId` so parallel step agents stay
+legitimate. Settle handlers free the claim FIRST (success → `settleRun`,
+session death → `loseRun`) so the recovery ladder can claim anew; a
+dispatch-prep failure releases its claim (`dispatch-prep-failed`). The
+`dispatched[]` markers + in-flight registry remain advisory bookkeeping —
+the ledger is the source of truth. A startup sweep (`server.ts`) marks
+prior-boot running rows lost (keyed on `src/core/boot-id.ts`) before
+restart recovery, or stale claims would suppress legitimate re-dispatch.
 
 ## Concurrent dispatch model
 
@@ -21,13 +39,13 @@ the whole board behind one slow agent). Mechanics in `src/core/dispatch.ts`:
 - The state lock spans only the scan/fire phase, so manual kicks
   (`dispatchSingleTask`) interleave with in-flight cycles.
 - **Two-phase cycle (#434):** the regular loop *collects* dispatch intents
-  (move + mint seq in-memory via `deferSave` + build message), then ONE
-  `saveDispatchState` persists every minted seq, then all turns fire —
-  1 state write per cycle instead of N+1, with persist-before-send intact.
-  Collected-but-unfired turns reserve their concurrency slots explicitly
-  (`pendingByAgent` passed into `concurrencyGate`) since the in-flight
-  registry only sees them at fire time. `dispatchSingleTask` and workflow
-  steps keep the inline per-mint save (few per cycle, not the hotspot).
+  (claim + move + build message), then ONE `saveDispatchState` persists the
+  advisory bookkeeping, then all turns fire — 1 state write per cycle.
+  Persist-before-send is now a ledger property: a run row is durable in
+  SQLite before its turn is sent. Collected-but-unfired turns reserve their
+  concurrency slots explicitly (`pendingByAgent` passed into
+  `concurrencyGate`) since the in-flight registry only sees them at fire
+  time.
 - `awaitDispatchIdle()` — deterministic "all turns + bookkeeping settled"
   synchronization for tests and shutdown.
 
@@ -35,11 +53,14 @@ the whole board behind one slow agent). Mechanics in `src/core/dispatch.ts`:
 
 Every task send carries a fresh provider session via
 `threadId = task:<taskId>:d<seq>` (workflow steps:
-`task:<taskId>:step:<stepId>:d<seq>`). `seq` is a **monotonic per-task
-counter** in `.dispatch-state.json#dispatchSeq`, durable **before the turn
-fires** (the regular cycle batches all mints into its single pre-fire save;
-one-off paths save inline at mint) — never the failure count, which resets
-on success and would resume a stale session.
+`task:<taskId>:step:<stepId>:d<seq>`) — the threadId IS the ledger
+`run_id`. `seq` is a **monotonic per-task counter owned by the execution
+ledger** (`MAX(seq)` over runs + seeded watermarks, minted atomically with
+the claim), durable **before the turn fires** — never the failure count,
+which resets on success and would resume a stale session. The legacy
+`.dispatch-state.json#dispatchSeq` was read exactly once by the ledger's v1
+migration to seed seq watermarks (no threadId reuse across the upgrade) and
+is never written again.
 Consequences:
 
 - No cross-task context accumulation (a major contributor to oversized
@@ -121,6 +142,15 @@ show the generic provider-unavailable label; task detail drawers and debug
 activity views may show the specific cause and raw bounded error. Do not make
 raw provider text the primary UI message.
 
+## Model routing + budget gating (cost, #464)
+
+Two Bakin-owned policy checks wrap every turn fire. Both read their policy from the models plugin via hooks (absent plugin → no-op) and degrade gracefully. Deep reference: `.claude/knowledge/models-plugin.md`.
+
+- **Budget gate** (`deferForBudget`/`budgetGate`, before each `claimDispatchRun`): reads `models.getBudgetPolicy` + ledger spend (day/month, global/agent) and decides allow/warn/defer (`src/core/budget.ts`). **defer** → don't claim, leave the task in todo (resumes when the window rolls over or the cap is raised — never pauses the agent). **Fail-closed**: an unreadable spend ledger defers. warn/defer audits debounce per window. The cycle passes a per-cycle spend cache so global totals aren't recomputed per task. Spend counts ALL agent sends (dispatch + watchdog/doctor/orchestrator), metered via `src/core/agent-cost.ts`.
+- **Model routing** (`resolveDispatchRouting`, inside `fireDispatchTurn`): reads `models.getRoutingConfig` and resolves `{model?, thinking?}` from the turn's origin + tag overrides (`src/core/model-routing.ts`). Passed onto the gateway via `MessageArgs.model/thinking`; nothing resolved = inherit (agent's configured model). The resolved model is recorded on the `run_costs` row and audited (`task.routed`).
+
+Origin is derived from the task shape + dispatch context: `scheduleJobId`→scheduled, `workflowId`→workflow, recovery-ladder re-dispatch (source `recovery`)→recovery, `parentId`→decomposition, else adhoc.
+
 ## Settle-time reconciliation
 
 Dispatch moves a task to `inProgress` before firing the send so a fast agent
@@ -176,10 +206,11 @@ dispatch carrying the taskId-templated `assets_save` command) and
 `sharedExecutionToolDocs()` (taskId-templated invocations — intentional
 differences are parameters, so the builders can't drift). The static half of
 the old ~4KB catalog (logging rules, discipline rationale, dependency
-pattern, tool reference) lives in the `execution-tools` **managed block**
-projected into subagent AGENTS.md (`src/core/agent-rules/managed-blocks.ts`;
-run `bakin agent-rules --apply-all` after deploy — plain `--apply` writes the
-main-agent context only and will NOT project this subagent-target block). The
+pattern, tool reference) lives in the SUBAGENT ROLE CONTEXT layer
+(`~/.bakin/team/context/roles/subagent.md`, defaults in
+`src/core/team-context-defaults.ts`) composed into each subagent's AGENTS.md
+managed block — `bakin agents sync` (or the doctor's agent-sync repair)
+refreshes it after deploy. The
 triage roster is derived
 from `runtime.agents.list()`; core contains no hardcoded agent names.
 Recovery variants: corrective prompts open with `PREVIOUS ATTEMPT FAILED`;
@@ -210,16 +241,18 @@ The dispatcher heartbeat is the wakeup surface for task-backed work.
 
 ## Persistence
 
-`~/.bakin/.dispatch-state.json` holds:
+Correctness state (run claims, seqs, completions) lives in the execution
+ledger (`~/.bakin/bakin.db` — see `.claude/knowledge/execution-ledger.md`).
+`~/.bakin/.dispatch-state.json` holds the remaining advisory bookkeeping:
 
 - `failedDispatches`: `{ lastAttempt, count, kind, sessionDeath? }` —
   `sessionDeath` is `{ stage, deaths, lastDiagnosis, salvagedAssetIds }`
   (ladder state; diagnosis stored without salvage text).
-- `dispatchSeq`: monotonic per-task dispatch counter (per-attempt session
-  keys). Persisted at mint time so a crashed cycle can never reuse a seq
-  into a possibly-live session.
 - `dispatched`: in-flight/active markers, trimmed to
-  `settings.dispatch.maxDispatched`.
+  `settings.dispatch.maxDispatched`. Advisory only — the ledger claim is
+  what actually prevents a double dispatch.
+- `dispatchSeq` (legacy, read-once): seeded into the ledger's seq
+  watermarks by its v1 migration; never written again.
 
 Legacy plain-number `failedDispatches` entries are migrated to
 `{ kind: 'structural' }` by `getFailureRecord()` on read.
@@ -253,22 +286,15 @@ When recovery returns tasks to `todo`, `server.ts` starts the loops and then
 immediately triggers one dispatch cycle so recovered work does not wait for the
 next interval.
 
-## Plugin-Owned Cron Commands
+## Scheduled tasks
 
-The schedule plugin bridge recognizes runtime cron commands shaped like
-`bakin:<pluginId>:<action>`. The reserved `pluginId` value `schedule` keeps the
-legacy schedule-owned task path: the bridge looks up the schedule sidecar and
-creates a Bakin task as before.
-
-This bridge is for recurring cron integrations, not for plugin business logic
-that should be represented as board tasks. Prefer `availableAt` tasks for
+Scheduled tasks are fired by the schedule plugin's own tick scheduler — Bakin no
+longer delegates to OpenClaw cron, and the old cron→task bridge webhook (and its
+`bakin:<pluginId>:<action>` command routing) has been removed. The scheduler
+claims each occurrence in the execution ledger and creates a board task through
+the normal dispatch path. Deep reference:
+`.claude/knowledge/bakin-owned-scheduler.md`. Prefer `availableAt` tasks for
 one-time scheduled work.
-
-For any other plugin id, the bridge bypasses sidecar lookup and invokes
-`${pluginId}.${action}.run` through `ctx.hooks`. The hook owns the work and may
-return `{ ok: true, taskId? }` or `{ ok: false, error }`; no Bakin task is
-created by the schedule bridge itself. Missing hooks are recorded as bridge
-failures with a clear `hook plugin.action.run not registered` error.
 
 ## Where to look
 
@@ -279,6 +305,6 @@ failures with a clear `hook plugin.action.run not registered` error.
 - `src/core/dispatch.ts` — classification, recovery ladder, concurrency registry, prompt builders
 - `src/core/continuation.ts` — dependency continuation as full re-dispatch
 - `src/core/restart-recovery.ts` — post-boot recovery of orphaned `inProgress` tasks
-- `plugins/schedule/index.ts` — cron bridge, including `bakin:<pluginId>:<action>` hook dispatch
+- `plugins/schedule/index.ts` — Bakin-owned scheduler wiring (see `.claude/knowledge/bakin-owned-scheduler.md`)
 - `.claude/knowledge/session-forensics.md` — trajectory schema, diagnosis flow, ladder walkthroughs
 - `.claude/knowledge/adapter-architecture.md` — adapter boundaries and task/runtime ownership

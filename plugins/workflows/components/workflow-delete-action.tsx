@@ -3,14 +3,7 @@
 import { useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import { Button } from "@makinbakin/sdk/ui"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@makinbakin/sdk/ui"
+import { ConfirmDialog } from "@makinbakin/sdk/components"
 
 interface WorkflowDeleteActionProps {
   workflowName: string
@@ -62,35 +55,16 @@ export function WorkflowDeleteAction({
         <Trash2 className="size-3.5" />
       </Button>
 
-      <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="bg-card border-border sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Delete workflow?</DialogTitle>
-            <DialogDescription>
-              This will delete the custom workflow &ldquo;{workflowName}&rdquo;. This can&apos;t be undone.
-            </DialogDescription>
-          </DialogHeader>
-          {error && (
-            <p className="text-sm text-destructive">{error}</p>
-          )}
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => handleOpenChange(false)}
-              disabled={deleting}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => void handleDelete()}
-              disabled={deleting}
-            >
-              {deleting ? 'Deleting...' : 'Delete'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={open}
+        busy={deleting}
+        busyLabel="Deleting..."
+        title="Delete workflow?"
+        description={<>This will delete the custom workflow &ldquo;{workflowName}&rdquo;. This can&apos;t be undone.</>}
+        error={error}
+        onConfirm={() => void handleDelete()}
+        onCancel={() => handleOpenChange(false)}
+      />
     </>
   )
 }

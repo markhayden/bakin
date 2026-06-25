@@ -1,4 +1,4 @@
-import { pluginRegistry } from '@/lib/plugin-registry'
+import { pluginRegistry } from '@/core/plugin-registry'
 import { bumpVersion } from '@/core/plugin-host/version-stamp'
 import { createLogger } from '@/core/logger'
 import { broadcastPluginManifestChanged, broadcastPluginReload } from '@/core/sse'

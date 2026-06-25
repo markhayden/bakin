@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
-import { useContentStore } from "@makinbakin/sdk/hooks"
+import { usePluginEvent } from "@makinbakin/sdk/hooks"
 import { useQueryState } from "@makinbakin/sdk/hooks"
 import { Card, CardHeader, CardTitle, CardContent } from "@makinbakin/sdk/ui"
 import { Badge } from "@makinbakin/sdk/ui"
@@ -18,8 +18,27 @@ import {
 } from "@makinbakin/sdk/ui"
 import { PluginHeader } from "@makinbakin/sdk/components"
 import { UnderlineTabs } from "@makinbakin/sdk/components"
-import { Search, CircleCheck, Clock, AlertCircle } from 'lucide-react'
-import type { HealthCheckResult } from '@makinbakin/sdk'
+import { formatAge } from "@makinbakin/sdk/utils"
+import { Search, CircleCheck, Clock, AlertCircle, Wrench } from 'lucide-react'
+import { RepairDialog } from './repair-dialog'
+import type { AgentUsage } from '@makinbakin/sdk/types'
+import type {
+  PluginInfo,
+  RegistryData,
+  PluginManifestData,
+  UsageKind,
+  UsageFeedData,
+  HealthSummary,
+} from '../types'
+import {
+  formatUptime,
+  formatTokenCount,
+  formatRuntimeCost,
+  formatDateShort,
+  searchStatsDocumentCount,
+  extractErrorMessage,
+  formatActivity,
+} from '../lib/format'
 
 const PLUGIN_CHECK_INTERVAL_MS = 60 * 60 * 1000
 
@@ -29,179 +48,6 @@ const USAGE_TABS = [
   { id: 'agents', label: 'Agent Usage' },
 ] as const
 
-interface McpSessionInfo {
-  agent: string
-  sessions: number
-  connectedAt: string
-}
-
-interface DoctorData {
-  results: HealthCheckResult[]
-  summary: { total: number; errors: number; warnings: number }
-  cachedAt?: string
-}
-
-interface ServerData {
-  port: number
-  pid: number
-  nodeVersion: string
-  memoryMB: number
-  totalMemoryMB: number
-}
-
-interface PluginInfo {
-  id: string
-  name: string
-  version: string
-  latestVersion?: string | null
-  description: string
-  source: 'built-in' | 'user'
-  routes: number
-  installed?: {
-    version?: string
-    commitSha?: string
-    remoteHeadSha?: string
-    lastChecked?: string
-    newPermissions?: string[]
-  } | null
-  upgradeAvailable?: boolean
-  staleHintDays?: number | null
-}
-
-interface RegistryData {
-  plugins: PluginInfo[]
-}
-
-interface PluginManifestEntry {
-  id: string
-  name: string
-  version: string
-  latestVersion?: string | null
-  source: 'core' | 'github' | 'local'
-  installed: PluginInfo['installed']
-  upgradeAvailable: boolean
-  staleHintDays: number | null
-}
-
-interface PluginManifestData {
-  plugins: PluginManifestEntry[]
-}
-
-interface AgentUsage {
-  agent: string
-  sessionId: string
-  sessionStarted: string
-  model: string
-  messages: number
-  tokens: {
-    input: number
-    output: number
-    cacheRead: number
-    cacheWrite: number
-    total: number
-  }
-  cost: {
-    input: number | null
-    output: number | null
-    cacheRead: number | null
-    cacheWrite: number | null
-    total: number | null
-    source: 'runtime' | 'unavailable'
-  }
-}
-
-interface ErrorsByKind {
-  total: number
-  byKind: { mcp: number; rest: number; agent: number }
-}
-
-type UsageKind = 'mcp' | 'rest' | 'agent'
-
-interface UsageEntry {
-  ts: string
-  kind: UsageKind
-  name: string
-  agent: string | null
-  durationMs: number | null
-  status: 'ok' | 'error'
-  meta?: Record<string, unknown>
-}
-
-interface TopByNameRow {
-  name: string
-  count: number
-  errors: number
-  medianDurationMs: number | null
-}
-
-interface ByAgentRow {
-  agent: string
-  count: number
-  errors: number
-  lastActivity: UsageEntry | null
-}
-
-interface UsageFeedData {
-  totals: { count: number; errors: number; errorRate: number }
-  topByName: TopByNameRow[]
-  byAgent: ByAgentRow[]
-  recent: UsageEntry[]
-}
-
-interface HealthSummary {
-  doctor: DoctorData | null
-  errors1h: ErrorsByKind | null
-  activeSessions: McpSessionInfo[] | null
-  upSince: string | null
-  server: ServerData | null
-}
-
-function formatUptime(since: string): string {
-  const ms = Date.now() - new Date(since).getTime()
-  const secs = Math.floor(ms / 1000)
-  if (secs < 60) return `${secs}s`
-  const mins = Math.floor(secs / 60)
-  if (mins < 60) return `${mins}m ${secs % 60}s`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ${mins % 60}m`
-  const days = Math.floor(hrs / 24)
-  return `${days}d ${hrs % 24}h`
-}
-
-function formatAge(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime()
-  const mins = Math.floor(ms / 60_000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  const days = Math.floor(hrs / 24)
-  return `${days}d ago`
-}
-
-function formatTokenCount(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
-  return String(n)
-}
-
-function formatRuntimeCost(value: number | null): string {
-  if (value === null) return 'unavailable'
-  if (value === 0) return '$0.00'
-  if (value < 0.01) return `$${value.toFixed(4)}`
-  return `$${value.toFixed(2)}`
-}
-
-function formatDateShort(date: Date): string {
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-}
-
-function searchStatsDocumentCount(stats: Record<string, unknown> | null | undefined): number {
-  if (!stats) return 0
-  const value = stats.documents ?? stats.num_docs ?? stats.documentCount
-  const count = typeof value === 'number' ? value : Number(value)
-  return Number.isFinite(count) ? count : 0
-}
 
 // ---------------------------------------------------------------------------
 // Horizontal bar chart component (pure CSS, no dependencies)
@@ -282,16 +128,6 @@ const STATUS_STYLES: Record<string, string> = {
 // ---------------------------------------------------------------------------
 // Usage tab panels
 // ---------------------------------------------------------------------------
-
-function extractErrorMessage(entry: UsageEntry): string {
-  const meta = entry.meta ?? {}
-  if (typeof meta.error === 'string' && meta.error.length > 0) return meta.error
-  if (typeof meta.httpStatus === 'number') {
-    const method = typeof meta.method === 'string' ? `${meta.method} ` : ''
-    return `${method}HTTP ${meta.httpStatus}`
-  }
-  return 'Error (no detail)'
-}
 
 function UsageBarsPanel({
   feed,
@@ -397,15 +233,6 @@ function UsageBarsPanel({
   )
 }
 
-function formatActivity(entry: UsageEntry | null): string {
-  if (!entry) return 'no activity'
-  const ageSec = Math.max(0, Math.round((Date.now() - new Date(entry.ts).getTime()) / 1000))
-  if (ageSec >= 30) return `idle ${ageSec}s`
-  if (entry.kind === 'mcp') return `calling ${entry.name.replace('bakin_exec_', '')} · ${ageSec}s ago`
-  if (entry.kind === 'rest') return `handling ${entry.name} · ${ageSec}s ago`
-  return `${entry.name} · ${ageSec}s ago`
-}
-
 function AgentUsagePanel({ feed }: { feed: UsageFeedData | null }) {
   if (!feed || feed.byAgent.length === 0) {
     return <p className="text-sm text-muted-foreground">No agent activity in this window</p>
@@ -438,6 +265,7 @@ function AgentUsagePanel({ feed }: { feed: UsageFeedData | null }) {
 
 export function HealthPage() {
   const [data, setData] = useState<HealthSummary | null>(null)
+  const [repairOpen, setRepairOpen] = useState(false)
   const [registry, setRegistry] = useState<RegistryData | null>(null)
   const [pluginManifest, setPluginManifest] = useState<PluginManifestData | null>(null)
   const [pluginChecking, setPluginChecking] = useState(false)
@@ -468,8 +296,12 @@ export function HealthPage() {
     }>
   } | null>(null)
   const [reindexing, setReindexing] = useState(false)
-  const reindexProgress = useContentStore((s) => s.reindexProgress)
-  const clearReindexProgress = useContentStore((s) => s.clearReindexProgress)
+  // Per-table reindex progress, fed by the shell's single SSE connection.
+  const [reindexProgress, setReindexProgress] = useState<Record<string, { indexed: number; done: boolean }>>({})
+  const clearReindexProgress = useCallback(() => setReindexProgress({}), [])
+  usePluginEvent('reindex.start', (d) => setReindexProgress((p) => ({ ...p, [d.table as string]: { indexed: 0, done: false } })))
+  usePluginEvent('reindex.progress', (d) => setReindexProgress((p) => ({ ...p, [d.table as string]: { indexed: (d.indexed as number) ?? 0, done: false } })))
+  usePluginEvent('reindex.complete', (d) => setReindexProgress((p) => ({ ...p, [d.table as string]: { indexed: (d.indexed as number) ?? 0, done: true } })))
 
   // Search state
   const [pluginSearch, setPluginSearch] = useState('')
@@ -479,6 +311,7 @@ export function HealthPage() {
   const [usageWindow, setUsageWindow] = useQueryState('usage_window', '1h')
   const kindForTab: UsageKind = usageTab === 'endpoints' ? 'rest' : usageTab === 'agents' ? 'agent' : 'mcp'
   const [usageFeed, setUsageFeed] = useState<UsageFeedData | null>(null)
+  const [meteredSpend, setMeteredSpend] = useState<{ totalUsdMicros: number; byAgent: Array<{ agent: string; costUsdMicros: number; runs: number }> } | null>(null)
   const lastPluginCheckRef = useRef(0)
 
   const fetchPluginManifest = useCallback(async (force = false) => {
@@ -502,12 +335,15 @@ export function HealthPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [summaryRes, registryRes, usageRes, searchRes, feedRes] = await Promise.all([
+      const [summaryRes, registryRes, usageRes, searchRes, feedRes, spendRes] = await Promise.all([
         fetch('/api/plugins/health/summary'),
         fetch('/api/plugins/health/registry'),
         fetch('/api/plugins/health/usage'),
         fetch('/api/plugins/health/search-status'),
         fetch(`/api/plugins/health/usage-feed?kind=${kindForTab}&window=${usageWindow}`),
+        // Cross-plugin + optional: a transport error must not reject the batch
+        // and blank the core panels, so swallow it to a null response here.
+        fetch('/api/plugins/models/spend?window=24h').catch(() => null),
       ])
       const json = await summaryRes.json()
       setData(json)
@@ -527,6 +363,14 @@ export function HealthPage() {
         const searchJson = await searchRes.json()
         setSearchHealth(searchJson)
       } catch { /* search endpoint optional */ }
+      try {
+        // Only trust a 2xx body — the /spend error path returns 500 with a
+        // {totalUsdMicros:0} shape, which must NOT render as a real $0 card.
+        if (spendRes?.ok) {
+          const spendJson = await spendRes.json()
+          if (spendJson && typeof spendJson.totalUsdMicros === 'number') setMeteredSpend(spendJson)
+        }
+      } catch { /* models spend optional (plugin may be disabled) */ }
       await fetchPluginManifest(false)
       setLastRefresh(new Date())
     } catch (err) {
@@ -713,6 +557,151 @@ export function HealthPage() {
         </Card>
       </div>
 
+      {/* Estimated token usage (runtime-reported) + estimated cost (Bakin's
+          figure, what the budget cap gates on), side by side. One is tokens,
+          the other dollars — not two competing "cost" numbers. */}
+      {(usage.length > 0 || meteredSpend) && (
+        <div className={`grid gap-6 ${usage.length > 0 && meteredSpend ? 'md:grid-cols-2' : 'grid-cols-1'}`}>
+          {/* Estimated Token Usage — runtime-reported token breakdown (no $). */}
+          {usage.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span>Estimated Token Usage</span>
+                  <Badge variant="secondary" className="font-mono text-xs">
+                    {formatTokenCount(usage.reduce((sum, u) => sum + (u.tokens.total ?? 0), 0))} tokens
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-1.5">
+                  <div className="flex items-center text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-white/5">
+                    <span className="flex-1">Agent</span>
+                    <span className="w-14 text-right">In</span>
+                    <span className="w-14 text-right">Out</span>
+                    <span className="w-16 text-right">Cache R</span>
+                    <span className="w-16 text-right">Cache W</span>
+                  </div>
+                  {usage.map((u) => (
+                    <div key={u.agent} className="flex items-center text-sm">
+                      <span className="flex-1 font-medium">{u.agent}</span>
+                      <span className="w-14 text-right font-mono text-xs text-muted-foreground">{formatTokenCount(u.tokens.input)}</span>
+                      <span className="w-14 text-right font-mono text-xs text-muted-foreground">{formatTokenCount(u.tokens.output)}</span>
+                      <span className="w-16 text-right font-mono text-xs text-muted-foreground">{formatTokenCount(u.tokens.cacheRead)}</span>
+                      <span className="w-16 text-right font-mono text-xs text-muted-foreground">{formatTokenCount(u.tokens.cacheWrite)}</span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Estimated Cost — Bakin's estimated dollars the budget cap enforces. */}
+          {meteredSpend && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span>Estimated Cost</span>
+                  <Badge variant="secondary" className="font-mono text-xs">
+                    ~{formatRuntimeCost(meteredSpend.totalUsdMicros / 1_000_000)} / 24h
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-[11px] text-muted-foreground mb-2">Bakin&apos;s estimate (the figure budget caps gate on).</p>
+                {meteredSpend.byAgent.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No metered turns in the last 24h.</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-white/5">
+                      <span className="flex-1">Agent</span>
+                      <span className="w-16 text-right">Runs</span>
+                      <span className="w-20 text-right">Est. cost</span>
+                    </div>
+                    {[...meteredSpend.byAgent].sort((a, b) => b.costUsdMicros - a.costUsdMicros).map((r) => (
+                      <div key={r.agent} className="flex items-center text-sm">
+                        <span className="flex-1 font-medium">{r.agent}</span>
+                        <span className="w-16 text-right font-mono text-xs text-muted-foreground">{r.runs}</span>
+                        <span className={`w-20 text-right font-mono text-xs font-medium ${r.costUsdMicros === 0 ? 'text-muted-foreground' : ''}`}>
+                          {r.costUsdMicros === 0 ? '$ n/a' : formatRuntimeCost(r.costUsdMicros / 1_000_000)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* Usage — unified tabbed section backed by /api/plugins/health/usage-feed */}
+      <Card>
+        <CardContent className="pt-4 space-y-4">
+          <UnderlineTabs
+            tabs={USAGE_TABS}
+            value={usageTab}
+            onValueChange={setUsageTab}
+            rightSlot={
+              <div className="flex items-center gap-1 rounded-md border border-border p-0.5">
+                {(['5m', '1h', '24h'] as const).map((w) => (
+                  <button
+                    key={w}
+                    onClick={() => setUsageWindow(w)}
+                    className={`px-2 py-0.5 text-[11px] font-mono rounded transition-colors ${
+                      usageWindow === w
+                        ? 'bg-foreground/10 text-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {w}
+                  </button>
+                ))}
+              </div>
+            }
+          />
+
+          {usageTab === 'tools' && (
+            <UsageBarsPanel
+              feed={usageFeed}
+              kind="mcp"
+              emptyLabel="No MCP calls in this window"
+              labelTransform={(name) => name.replace('bakin_exec_', '')}
+            />
+          )}
+          {usageTab === 'endpoints' && (
+            <UsageBarsPanel
+              feed={usageFeed}
+              kind="rest"
+              emptyLabel="No REST requests in this window"
+            />
+          )}
+          {usageTab === 'agents' && <AgentUsagePanel feed={usageFeed} />}
+        </CardContent>
+      </Card>
+
+      {/* Context Usage — full width: per-agent token totals (latest session). */}
+      {usage.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span>Context Usage</span>
+              <span className="text-xs font-normal text-muted-foreground">latest session per agent</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <HorizontalBars
+              items={usage.map((u) => ({
+                label: u.agent,
+                value: u.tokens.total,
+                sublabel: u.sessionStarted ? formatAge(u.sessionStarted) : `${u.messages} msg`,
+              }))}
+              unit=" tokens"
+            />
+          </CardContent>
+        </Card>
+      )}
+
       {/* Search Section */}
       {searchHealth && (
         <Card>
@@ -794,122 +783,6 @@ export function HealthPage() {
             )}
           </CardContent>
         </Card>
-      )}
-
-      {/* Usage — unified tabbed section backed by /api/plugins/health/usage-feed */}
-      <Card>
-        <CardContent className="pt-4 space-y-4">
-          <UnderlineTabs
-            tabs={USAGE_TABS}
-            value={usageTab}
-            onValueChange={setUsageTab}
-            rightSlot={
-              <div className="flex items-center gap-1 rounded-md border border-border p-0.5">
-                {(['5m', '1h', '24h'] as const).map((w) => (
-                  <button
-                    key={w}
-                    onClick={() => setUsageWindow(w)}
-                    className={`px-2 py-0.5 text-[11px] font-mono rounded transition-colors ${
-                      usageWindow === w
-                        ? 'bg-foreground/10 text-foreground'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    {w}
-                  </button>
-                ))}
-              </div>
-            }
-          />
-
-          {usageTab === 'tools' && (
-            <UsageBarsPanel
-              feed={usageFeed}
-              kind="mcp"
-              emptyLabel="No MCP calls in this window"
-              labelTransform={(name) => name.replace('bakin_exec_', '')}
-            />
-          )}
-          {usageTab === 'endpoints' && (
-            <UsageBarsPanel
-              feed={usageFeed}
-              kind="rest"
-              emptyLabel="No REST requests in this window"
-            />
-          )}
-          {usageTab === 'agents' && <AgentUsagePanel feed={usageFeed} />}
-        </CardContent>
-      </Card>
-
-      {/* Agent Context Usage */}
-      {usage.length > 0 && (
-        <div className="grid md:grid-cols-2 gap-6">
-          {/* Token usage bar chart */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>Context Usage</span>
-                <span className="text-xs font-normal text-muted-foreground">latest session per agent</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <HorizontalBars
-                items={usage.map((u) => ({
-                  label: u.agent,
-                  value: u.tokens.total,
-                  sublabel: u.sessionStarted ? formatAge(u.sessionStarted) : `${u.messages} msg`,
-                }))}
-                unit=" tokens"
-              />
-            </CardContent>
-          </Card>
-
-          {/* Cost breakdown table */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>Runtime Cost Estimate</span>
-                <Badge variant="secondary" className="font-mono text-xs">
-                  {usage.some((u) => u.cost.total !== null)
-                    ? `~${formatRuntimeCost(usage.reduce((sum, u) => sum + (u.cost.total ?? 0), 0))} reported`
-                    : 'cost unavailable'}
-                </Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-1.5">
-                <div className="flex items-center text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-white/5">
-                  <span className="flex-1">Agent</span>
-                  <span className="w-14 text-right">In</span>
-                  <span className="w-14 text-right">Out</span>
-                  <span className="w-16 text-right">Cache R</span>
-                  <span className="w-16 text-right">Cache W</span>
-                  <span className="w-16 text-right">Cost</span>
-                </div>
-                {usage.map((u) => (
-                  <div key={u.agent} className="flex items-center text-sm">
-                    <span className="flex-1 font-medium">{u.agent}</span>
-                    <span className="w-14 text-right font-mono text-xs text-muted-foreground">
-                      {formatTokenCount(u.tokens.input)}
-                    </span>
-                    <span className="w-14 text-right font-mono text-xs text-muted-foreground">
-                      {formatTokenCount(u.tokens.output)}
-                    </span>
-                    <span className="w-16 text-right font-mono text-xs text-muted-foreground">
-                      {formatTokenCount(u.tokens.cacheRead)}
-                    </span>
-                    <span className="w-16 text-right font-mono text-xs text-muted-foreground">
-                      {formatTokenCount(u.tokens.cacheWrite)}
-                    </span>
-                    <span className={`w-16 text-right font-mono text-xs font-medium ${u.cost.total === null ? 'text-muted-foreground' : ''}`}>
-                      {formatRuntimeCost(u.cost.total)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
       )}
 
       {/* Active Plugins */}
@@ -1084,7 +957,7 @@ export function HealthPage() {
                   </span>
                 )}
               </span>
-              <div className="flex gap-2 text-xs">
+              <div className="flex items-center gap-2 text-xs">
                 <Badge className={STATUS_STYLES.ok}>
                   {doctor.summary.total - doctor.summary.errors - doctor.summary.warnings} ok
                 </Badge>
@@ -1093,6 +966,11 @@ export function HealthPage() {
                 )}
                 {doctor.summary.errors > 0 && (
                   <Badge className={STATUS_STYLES.error}>{doctor.summary.errors} error</Badge>
+                )}
+                {doctor.summary.warnings + doctor.summary.errors > 0 && (
+                  <Button size="sm" variant="outline" className="h-6 gap-1 px-2 text-xs" onClick={() => setRepairOpen(true)}>
+                    <Wrench className="size-3" /> Repair…
+                  </Button>
                 )}
               </div>
             </CardTitle>
@@ -1118,6 +996,8 @@ export function HealthPage() {
           </CardContent>
         </Card>
       )}
+
+      <RepairDialog open={repairOpen} onOpenChange={setRepairOpen} onApplied={() => { void fetchData() }} />
 
       {/* Server info footer */}
       {server && (

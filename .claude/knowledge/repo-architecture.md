@@ -93,9 +93,24 @@ packages/sdk/src/
 ├── hooks/                  ← useAgent, useSSE, useSearch, useQueryState, ...
 ├── components/             ← PluginHeader, FacetFilter, AgentAvatar, ...
 ├── slots/                  ← Slot, registerSlot primitive
-├── types/                  ← Full type re-exports
+├── types/                  ← CANONICAL contract types, self-contained, split into
+│                             primitives/manifest/runtime/services/registration/context
+│                             behind an index.ts barrel (see the two-tier note below)
 └── utils/                  ← cn, formatAge, formatSize, isStale
 ```
+
+**Two-tier type contract.** `packages/sdk/src/types` is the single source of
+truth for shared plugin-contract types and is *self-contained* (no
+`@bakin/core`/repo-source imports — enforced by the publish guard in
+`scripts/build-sdk-package.ts`). `packages/core/src/plugin-types.ts` re-exports
+the genuinely-identical leaf types from the SDK (health, exec-result, search,
+manifest, EventBus/ActivityAPI/PluginLogger, TaskLogEntry, AvailableModel,
+AgentUsage) rather than redeclaring them. It keeps its own *fuller, internal*
+tier for the surfaces in-process core plugins actually use — the full
+`AgentRuntimeAdapter`, the `PluginTask` projection, `BakinPlugin.routes`, and
+richer `StorageAdapter`/`NavItem`/`APIRoute`/`HookAPI`/`SkillDefinition`. Those
+divergences are intentional, not drift; don't collapse them (collapsing the
+runtime boundary is adapter-boundary work, not type cleanup).
 
 Sub-paths are declared via `exports` in `packages/sdk/package.json`:
 `@bakin/sdk/ui`, `@bakin/sdk/hooks`, `@bakin/sdk/components`,
@@ -131,7 +146,7 @@ packages/host/
 ├── public/
 │   ├── index.html          ← shell HTML with <script type="importmap">
 │   ├── globals.css
-│   └── vendor/             ← prebuilt react/sdk bundles (from build-vendors.ts)
+│   └── vendor/             ← prebuilt react/sdk bundles + sdk-shared-* chunks (from build-vendors.ts)
 ├── dist/                   ← generated (main.js, main.css); not checked in
 └── src/
     ├── main.tsx            ← client entry (ReactDOM.createRoot)
@@ -252,7 +267,11 @@ the detailed command reference; the summary:
    standalone ESM bundles of `react`, `react-dom`, `react/jsx-runtime`,
    and every `@bakin/sdk/*` sub-path to
    `packages/host/public/vendor/*.js`. The import map in
-   `packages/host/public/index.html` points at these files.
+   `packages/host/public/index.html` points at these files. The nine SDK
+   sub-paths are built in a single `bun build --splitting` invocation:
+   code shared between sub-paths lands once in content-hashed
+   `sdk-shared-<hash>.js` chunks instead of being inlined into every
+   bundle (#422); the entry filenames and the import map stay stable.
 2. **`bun run build:plugins`** — `scripts/build-plugins.ts` builds
    each `plugins/<id>/{index.ts, client.tsx}` to `plugins/<id>/dist/`
    with `react` + `@bakin/sdk/*` externalized.

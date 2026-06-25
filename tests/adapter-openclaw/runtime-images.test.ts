@@ -47,7 +47,7 @@ printf 'MCPORTER_CALL_TIMEOUT=%s\\n' "$MCPORTER_CALL_TIMEOUT" >> "${callsFile}"
 echo "{}"
 exit 0
 fi
-if [ "$1" = "infer" ] && [ "$2" = "image" ] && [ "$3" = "generate" ]; then
+if [ "$1" = "infer" ] && [ "$2" = "image" ] && { [ "$3" = "generate" ] || [ "$3" = "edit" ]; }; then
 out=""
 while [ "$#" -gt 0 ]; do
   if [ "$1" = "--output" ]; then
@@ -139,6 +139,35 @@ echo "{}"
     expect(existsSync(result.images[0]!.filePath)).toBe(true)
     expect(readFileSync(callsFile, 'utf-8')).toContain('openai/gpt-image-2')
     expect(readFileSync(callsFile, 'utf-8')).toContain('1024x1024')
+    // OpenClaw has no quality flag; the adapter must never emit one (#379).
+    expect(readFileSync(callsFile, 'utf-8')).not.toContain('--quality')
+  })
+
+  it('routes a reference-image generate through infer image edit with one --file per reference (#418)', async () => {
+    const refA = join(testDir, 'ref-a.png')
+    const refB = join(testDir, 'ref-b.png')
+    writeFileSync(refA, 'a')
+    writeFileSync(refB, 'b')
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: openclaw } })
+
+    const result = await runtime.images!.generate({
+      prompt: 'On-brand social image',
+      provider: 'openai',
+      model: 'gpt-image-2',
+      width: 1024,
+      height: 1024,
+      outputFormat: 'png',
+      referenceImages: [refA, refB],
+    })
+
+    const calls = readFileSync(callsFile, 'utf-8')
+    const argv = calls.split('\n')
+    // Generate has no --file; references force the edit-style invocation.
+    expect(argv.slice(0, 3)).toEqual(['infer', 'image', 'edit'])
+    expect(calls).toContain(`--file\n${refA}`)
+    expect(calls).toContain(`--file\n${refB}`)
+    expect(existsSync(result.images[0]!.filePath)).toBe(true)
   })
 
   it('falls back to the direct shim when OpenClaw cannot serve the model natively', async () => {
@@ -165,6 +194,36 @@ echo "{}"
     expect(result.images[0]?.provider).toBe('openai')
     // Native generate must NOT have run for the unsupported model.
     expect(readFileSync(callsFile, 'utf-8')).not.toContain('generate')
+  })
+
+  it.each([
+    ['count > 1', { count: 2 }],
+    ['aspectRatio', { aspectRatio: '16:9' }],
+    ['resolution', { resolution: '4K' }],
+    ['background', { background: 'transparent' as const }],
+    ['outputFormat webp', { outputFormat: 'webp' as const }],
+    ['size', { size: '1024x1536' }],
+  ])('shim fallback rejects %s before billing instead of silently dropping it (#379)', async (_label, extra) => {
+    process.env.OPENAI_API_KEY = 'shim-key'
+    // Mocked so a broken guard fails on the call count, never on real network.
+    const fetchSpy = spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: [{ b64_json: Buffer.from('img').toString('base64') }] }),
+    } as unknown as Response)
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: openclaw } })
+
+    // gpt-image-1.5 is not in the mock binary's advertised set → shim route.
+    await expect(runtime.images!.generate({
+      prompt: 'Premium hero',
+      provider: 'openai',
+      model: 'gpt-image-1.5',
+      width: 1024,
+      height: 1024,
+      ...extra,
+    })).rejects.toThrow(/shim cannot honor/)
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 
   it('labels the credential source as bakin-store when the key comes from the store', async () => {

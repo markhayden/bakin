@@ -8,7 +8,7 @@
  */
 import { z } from 'zod'
 import { getAppServices } from '../../src/core/app-services'
-import { addExecTool } from './registry'
+import { addExecTool } from '../../src/core/exec-tools/registry'
 import {
   crossTableSearch,
   reindexContentTypes,

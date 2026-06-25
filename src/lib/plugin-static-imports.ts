@@ -37,7 +37,7 @@ import healthManifestJson from '../../plugins/health/bakin-plugin.json'
 import gitManifestJson from '../../plugins/git/bakin-plugin.json'
 
 import { readPluginManifestJson } from '../../packages/core/src/plugins/manifest'
-import type { CorePluginRegistration } from './plugin-registry'
+import type { CorePluginRegistration } from '../core/plugin-registry'
 import type { BakinPlugin } from '@bakin/core/plugin-types'
 
 function corePlugin(plugin: BakinPlugin, manifestJson: unknown): CorePluginRegistration {

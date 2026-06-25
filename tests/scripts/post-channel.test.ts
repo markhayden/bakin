@@ -4,7 +4,7 @@ import { dirname, join } from 'path'
 import { tmpdir } from 'os'
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 
-mock.module('../../scripts/lib/registry', () => ({
+mock.module('@/core/exec-tools/registry', () => ({
   addExecTool: mock(),
 }))
 
@@ -23,6 +23,7 @@ let mockChannelAliases: Record<string, string> = {}
 let mockNotificationChannel = ''
 let mockNotificationTarget = ''
 const settingsMock = {
+  resetSettingsCache: () => {},
   getSettings: () => ({
     notifications: {
       channel: mockNotificationChannel,
@@ -34,6 +35,15 @@ const settingsMock = {
 }
 mock.module('@/core/settings', () => settingsMock)
 mock.module('../../src/core/settings', () => settingsMock)
+
+// In-memory durable delivery ledger (asset-level once-per-channel dedupe).
+const idempotencyRows = new Map<string, { result: unknown }>()
+const ledgerMock = {
+  getIdempotent: (key: string) => idempotencyRows.get(key) ?? null,
+  putIdempotent: (key: string, _kind: string, result: unknown) => { idempotencyRows.set(key, { result }) },
+}
+mock.module('@/core/execution-ledger', () => ledgerMock)
+mock.module('../../src/core/execution-ledger', () => ledgerMock)
 
 let mockWorkflowAuthorizationError: Error | null = null
 const mockAssertWorkflowToolAllowed = mock(async (..._args: unknown[]) => {
@@ -67,6 +77,7 @@ describe('postChannel', () => {
     mockNotificationTarget = ''
     mockChannelAliases = { general: 'discord:channel-123', 'testing-ground': 'discord:test-channel' }
     mockContentDir = tmpdir()
+    idempotencyRows.clear()
     resetPostChannelIdempotencyForTests()
   })
 
@@ -274,6 +285,96 @@ describe('postChannel', () => {
     expect(first.ok).toBe(true)
     expect(second.ok).toBe(true)
     expect(deliverContent).toHaveBeenCalledTimes(1)
+  })
+
+  it('refuses re-delivering the same asset to the same channel for the same task — even with a new caption', async () => {
+    // The live-test double-post: main posted the deliverable from its monitor
+    // loop, then again as the completion reply. Different captions, same asset.
+    const first = await postChannel({
+      channel: 'general', content: "Pixel's corrected side-view version:", agent: 'main',
+      taskId: 'task-horse', imageAssetId: '20260610-horse-947652b5',
+    }, runtime)
+    const second = await postChannel({
+      channel: 'general', content: 'One more option for #testing-ground: full side-view rear.', agent: 'main',
+      taskId: 'task-horse', imageAssetId: '20260610-horse-947652b5',
+    }, runtime)
+
+    expect(first.ok).toBe(true)
+    expect(second.ok).toBe(false)
+    expect(second.error).toMatch(/already delivered/i)
+    expect(second.error).toContain('repost=true')
+    expect(deliverContent).toHaveBeenCalledTimes(1)
+  })
+
+  it('an IDENTICAL retry of a successful asset post is deduped, not refused', async () => {
+    // The mcporter-timeout contract: the caller never saw the success and
+    // retries verbatim — that must return the cached result, not a refusal
+    // whose error text invites repost=true (and a real double-send).
+    const params = {
+      channel: 'general', content: 'final render attached', agent: 'main',
+      taskId: 'task-horse', imageAssetId: '20260610-horse-947652b5',
+    }
+    const first = await postChannel(params, runtime)
+    const second = await postChannel(params, runtime)
+
+    expect(first.ok).toBe(true)
+    expect(second.ok).toBe(true)
+    expect(second.deduped).toBe(true)
+    expect(deliverContent).toHaveBeenCalledTimes(1)
+  })
+
+  it('repost=true deliberately sends a second copy', async () => {
+    await postChannel({
+      channel: 'general', content: 'first', agent: 'main',
+      taskId: 'task-horse', imageAssetId: '20260610-horse-947652b5',
+    }, runtime)
+    const second = await postChannel({
+      channel: 'general', content: 'again, on request', agent: 'main',
+      taskId: 'task-horse', imageAssetId: '20260610-horse-947652b5', repost: true,
+    }, runtime)
+
+    expect(second.ok).toBe(true)
+    expect(deliverContent).toHaveBeenCalledTimes(2)
+  })
+
+  it('the same asset may go to a DIFFERENT channel without repost', async () => {
+    await postChannel({
+      channel: 'general', content: 'to general', agent: 'main',
+      taskId: 'task-horse', imageAssetId: '20260610-horse-947652b5',
+    }, runtime)
+    const second = await postChannel({
+      channel: 'testing-ground', content: 'to testing', agent: 'main',
+      taskId: 'task-horse', imageAssetId: '20260610-horse-947652b5',
+    }, runtime)
+
+    expect(second.ok).toBe(true)
+    expect(deliverContent).toHaveBeenCalledTimes(2)
+  })
+
+  it('text-only posts are never asset-deduped', async () => {
+    const first = await postChannel({ channel: 'general', content: 'status one', agent: 'main', taskId: 'task-horse' }, runtime)
+    const second = await postChannel({ channel: 'general', content: 'status two', agent: 'main', taskId: 'task-horse' }, runtime)
+
+    expect(first.ok).toBe(true)
+    expect(second.ok).toBe(true)
+    expect(deliverContent).toHaveBeenCalledTimes(2)
+  })
+
+  it('a failed delivery does not burn the once-per-channel slot', async () => {
+    deliverContent.mockRejectedValueOnce(new Error('channel offline'))
+
+    const first = await postChannel({
+      channel: 'general', content: 'attempt', agent: 'main',
+      taskId: 'task-horse', imageAssetId: '20260610-horse-947652b5',
+    }, runtime)
+    const second = await postChannel({
+      channel: 'general', content: 'retry after outage', agent: 'main',
+      taskId: 'task-horse', imageAssetId: '20260610-horse-947652b5',
+    }, runtime)
+
+    expect(first.ok).toBe(false)
+    expect(second.ok).toBe(true)
+    expect(deliverContent).toHaveBeenCalledTimes(2)
   })
 
   it('returns a failed exec result when workflow policy denies posting', async () => {

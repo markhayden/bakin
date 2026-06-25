@@ -169,6 +169,7 @@ function installRuntimeMock(): void {
 import { installPackage } from '../../src/core/agent-packages/installer'
 import { updatePackageById } from '../../src/core/agent-packages/updater'
 import { readLockfile } from '../../packages/core/src/agent-packages/lockfile'
+import { extractBlock } from '../../packages/core/src/agent-packages/managed-blocks'
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
@@ -256,29 +257,26 @@ describe('updatePackageById — happy paths', () => {
     expect(readLockfile().packages.pixel.installedAt).toBe(installedAt)
   })
 
-  it('with refreshTemplate=true, rewrites workspace files from source', async () => {
+  it('rewrites the managed block from a new template while preserving agent prose', async () => {
     const v1Src = seedAgentPackage({ version: '0.1.0' })
     await installPackage({ source: v1Src })
 
-    // Simulate the agent editing its own SOUL.md
+    // Agent adds prose OUTSIDE the managed block
     const soulPath = join(openClawDir, 'workspaces', 'pixel', 'SOUL.md')
-    writeFileSync(soulPath, '# agent rewrote everything\n')
+    writeFileSync(soulPath, readFileSync(soulPath, 'utf-8') + '\nAgent-added notes.\n')
 
     // Source bumps version with a new SOUL template
     const newManifest = JSON.parse(readFileSync(join(v1Src, 'bakin-package.json'), 'utf-8'))
     newManifest.version = '0.2.0'
     writeFileSync(join(v1Src, 'bakin-package.json'), JSON.stringify(newManifest))
-    writeFileSync(
-      join(v1Src, 'workspace', 'SOUL.md'),
-      `# Refreshed template\n\n<!-- bakin:lesson-catalog:start -->\n<!-- bakin:lesson-catalog:end -->\n`,
-    )
+    writeFileSync(join(v1Src, 'workspace', 'SOUL.md'), `# Refreshed template`)
 
-    await updatePackageById({ packageId: 'pixel', refreshTemplate: true })
+    await updatePackageById({ packageId: 'pixel' })
 
-    // Soul rewritten from new template
+    // Block carries the new template; agent prose outside survives
     const after = readFileSync(soulPath, 'utf-8')
-    expect(after).toContain('# Refreshed template')
-    expect(after).not.toContain('agent rewrote everything')
+    expect(extractBlock(after, 'managed')).toContain('# Refreshed template')
+    expect(after).toContain('Agent-added notes.')
   })
 })
 

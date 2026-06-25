@@ -3,8 +3,7 @@
  * Each function calls the Bakin schedule API and formats output.
  */
 import { formatApiError } from '../core/cli/api-error'
-
-const BASE_URL = `http://localhost:${process.env.PORT || 3737}`
+import { BASE_URL } from './http'
 
 type ScheduleActionData = import('../core/cli/ui/readonly').ScheduleActionData
 

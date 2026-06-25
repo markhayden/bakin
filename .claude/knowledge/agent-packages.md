@@ -92,7 +92,7 @@ Pure mutators in `lockfile.ts`: `addPackage / removePackage / incrementRefCount 
 Every projected file gets two sidecars (`packages/core/src/agent-packages/markers.ts`):
 
 - `<target>.installedBy` — JSON: `{package, version, ref, commitSha, sha256, installedAt}`. zod-validated on read; malformed sidecars return `null` so the doctor flags them as drift instead of throwing.
-- `<target>.userEdited` — empty sentinel. When present, the projector NEVER overwrites — even on `--fix` or `--refresh-template`.
+- `<target>.userEdited` — empty sentinel for SKILLS + ASSETS only (workspace files retired the concept under the block model). When present, sync skips the target loudly and the receipt carries a reclaim hint; the confirmed `--reclaim` path is the only way past it.
 
 For directory targets (skills): sidecars land **inside** the directory (`<target>/.installedBy`), matching the existing `plugin-assets.ts` convention.
 
@@ -101,8 +101,8 @@ For directory targets (skills): sidecars land **inside** the directory (`<target
 ## Managed blocks
 
 `packages/core/src/agent-packages/managed-blocks.ts` — primitive operations on `<!-- bakin:<blockId>:start --> ... <!-- bakin:<blockId>:end -->` regions in markdown files. Used by:
-- The agent-package projector (lesson-catalog + per-lesson blocks in SOUL.md)
-- The AGENTS.md managed-context projector (`src/core/agent-rules/managed-blocks.ts`), which uses one physical `managed-context` block per agent and tracks logical rule sections inside it
+- The agent-package projector — ONE composed `bakin:managed` block per workspace file (layered context + template + lessons; see `.claude/knowledge/layered-context.md`)
+- The role context files (`~/.bakin/team/context/roles/*.md`), whose Bakin-shipped defaults live inside their own managed block
 
 Functions: `injectBlock`, `extractBlock`, `removeBlock`, `listBlocks`, `hasBlock`, `getBlockState`, `isValidBlockId`. Pure — string-in, string-out, no fs.
 
@@ -117,14 +117,13 @@ Functions: `injectBlock`, `extractBlock`, `removeBlock`, `listBlocks`, `hasBlock
 3. **Parse + validate manifest** via the zod schema
 4. **Compute install mode** for `kind: "agent"`:
    - state=`absent` + no `--adopt`: `mode=fresh` (creates the runtime agent later)
-   - state=`unmanaged` + `--adopt`: `mode=adopt` (preserves existing workspace files, only writes markers)
-   - state=`managed`/`adopted`: refuse with "use update" message
+   - state=`unmanaged` + `--adopt`: `mode=adopt` (binds to the existing runtime agent; blocks inject non-destructively)
+   - state=`managed`: refuse with "use sync" message
 5. **Resolve dependencies** via `dependency-resolver.ts` — recursive walk, cycle detection, max-depth=8, leaves-first topological order
 6. **Project** via `projector.ts`:
-   - Workspace files (fresh + update --refresh-template only; never adopt; never .userEdited)
+   - Composed managed blocks — one per workspace file, every mode, written in place via `injectBlock` (agent content outside markers untouched; lessons compose into the SOUL.md block)
    - Skills (per-agent for kind:agent / global for kind:skill-pack; collision check refuses different-package targets unless `--replace`)
    - Assets (`~/.bakin/agents/<id>/<file>` with sidecars; collision check)
-   - Lesson markers (catalog block + per-lesson blocks per `enableLessons`)
    - Atomic at the package level via in-memory `WriteLog`; any error rolls back every prior write
 7. **Update lockfile** atomically. Builds two id→key maps (`idToLockKey` for `incrementRefCount`, `sourceToLockKey` for `listImmediateDeps`) so each transitive dep records its IMMEDIATE parent (not the top-level invocation root) as the dependent — critical for cascade-removal correctness.
 8. **For kind:"agent" + fresh:** call `getAppServices().runtime.agents.create()`
@@ -153,16 +152,17 @@ On failure: rollback every projection in reverse via `unprojectPackage()`; remov
 
 ## Update flow
 
-`updatePackageById(options)` in `updater.ts`:
+`updatePackageById(options)` in `updater.ts` (the fetch step inside `syncAgent`):
 
 1. Read lockfile entry
 2. Re-fetch source at the SAME `source` + `ref` (compares new commitSha/version to recorded; identical = no-op)
-3. Re-project in `mode: 'update'`:
-   - Workspace files: skipped unless `--refresh-template` (templateOnly carve-out — agent owns the file post-install)
-   - Skills + assets: re-projected (collision check still runs)
-   - Lesson markers: re-injected in-place via `injectBlock`
-4. Update lockfile entry's commitSha + projection shas (preserves original installedAt)
+3. Re-project: composed blocks rewritten in place; skills + assets re-projected (collision check still runs)
+4. Update lockfile entry's commitSha + projection records (`composedSha` + per-input shas; preserves original installedAt)
 5. Audit `agent_pkg.updated`
+
+`syncAgent(agentId, opts)` in `sync.ts` is the user-facing verb wrapping it:
+optional fetch → reclaim → ALWAYS local re-projection (context layers change
+without the source moving) → verify via the drift scanner → receipt + audit.
 
 `defaultModel` and `dispatchableBy` are NOT re-applied on update — they only propagate on fresh install per D5.
 
@@ -195,21 +195,20 @@ Current limitation: `enabled` is NOT indexed — the lockfile remains the source
 
 V1 limitation: lesson-pack lessons aren't indexed (glob targets `packages/agents/*` only). Adding a parallel lesson-pack content type or extending the glob is V1.5 work.
 
-## Three states for an agent
+## Agent states
 
 `src/core/agent-packages/agent-state.ts:getAgentState(agentId)` cross-references
 the runtime roster + lockfile:
 
 - `absent` — neither side knows the agent
-- `unmanaged` — in the runtime roster, no lockfile entry (the historical default for hand-built agents)
-- `adopted` — both sides know it; lockfile state="adopted"; Bakin only manages markers + assets, never workspace files
-- `managed` — both sides know it; lockfile state="managed"; Bakin owns the package + projected files
+- `unmanaged` — in the runtime roster, no lockfile entry (the historical default for hand-built agents). Still receives the global/role/team AGENTS.md block — unmanaged means no PACKAGE, not no Bakin context.
+- `managed` — both sides know it; Bakin owns the package, projected files, and composed blocks. (`adopted` collapsed into `managed`; legacy lockfiles normalize on read.)
 
 Critical correctness rule: a runtime agent without a lockfile entry MUST surface
 as `unmanaged` (NOT `absent`). Mis-classifying lets the installer create a
 fresh runtime agent with the same id, risking the user's existing setup.
 
-Version reporting rule: managed/adopted agent package state includes a top-level
+Version reporting rule: managed agent package state includes a top-level
 `version` copied from the lockfile entry. The team detail view and
 `bakin agents list --packages` must render that lockfile/API version (falling
 back to nested `entry.version` only for compatibility), not infer the version
@@ -224,11 +223,12 @@ upgrade modes.
 
 ## Doctor integration
 
-`plugins/team/lib/health-checks.ts:checkAgentAssets()` surfaces drift in the
-team-owned health checks. It delegates to
-`src/core/onboarding/agent-assets.ts`; explicit doctor repair flows trigger the
-standard install/update projection flow (workspace files stay
-templateOnly-protected; everything else re-projects through runtime adapters).
+`plugins/team/lib/health-checks.ts:checkAgentSync()` wraps the drift scanner
+(`src/core/agent-packages/sync-scanner.ts`) — block staleness with per-layer
+attribution, skill/asset drift, role-context freshness, user-edited locks,
+migration state. Local-only, every doctor cycle. The repair handler offers a
+safe local-sync item plus a destructive confirm-required migration item.
+CLI twins: `bakin check agent-sync` / `bakin install agent-sync`.
 
 ## CLI surface
 
@@ -239,10 +239,10 @@ Two-file pattern (`cli/bakin.ts` is HTTP-client; `src/core/cli.ts` is binary dis
 - `bakin agents orphan <id> [--keep-blocks] [--force]`
 - `bakin agents delete <id> [--keep-blocks] [--force]`
 - `bakin agents remove <id> [--keep-blocks] [--delete-agent|--delete|--orphan] [--force]` — compatibility spelling; default is orphan
-- `bakin agents update [<id>] [--refresh-template]` — no id = update all managed/adopted
-- `bakin agents lessons {list,enable,disable} <id> [<lesson-id>]`
-- `bakin packages {list,install,remove,update}` — for non-agent kinds; refuses remove on refCount > 0 unless `--force`
-- `bakin check agent-assets` / `bakin install agent-assets` — drift report + repair via the onboarding component
+- `bakin agents sync [<id>] [--check] [--reclaim <target>|--reclaim-all] [--yes]` — no id = sync every agent (managed: fetch + recompose + verify + receipt; unmanaged: context block only). Prompts once for the one-time block migration on legacy installs.
+- `bakin agents lessons {list,enable,disable} <id> [<lesson-id>]` — toggling = lockfile change + local sync (SOUL block recomposes)
+- `bakin packages {list,install,remove,sync}` — for non-agent kinds; refuses remove on refCount > 0 unless `--force`
+- `bakin check agent-sync` / `bakin install agent-sync` — drift report + local repair via the onboarding component
 
 Function-name collision avoided: package-management functions are prefixed `cmdAgentPackages*` to coexist with the existing runtime `cmdAgents*` family (status/tasks/send).
 

@@ -53,12 +53,26 @@ These cost real debugging; don't re-derive them.
      makes `agents add` look failed, and the adapter falls back to writing a **host**
      workspace path that breaks in-container dispatch (`EACCES mkdir /Users`).
   Reference clients: OpenClaw's own `packages/gateway-client` + `clippy/src/lib/device-identity.ts`.
+- **Operator scopes must include `operator.admin` + `operator.pairing`** — OpenClaw
+  2026.5.28's `cron add/list` CLI requests them on top of read/write; with only the
+  old read/write pair every cron command dies on "scope upgrade pending approval"
+  (the same pairing chicken-egg as above, #467). `OPERATOR_SCOPES` in
+  `device-approve.ts` carries all four, and `ensureApprovedDevice` reconciles
+  REUSED rig state in place (`widenDeviceScopes` unions into `scopes`,
+  `approvedScopes`, `tokens.operator.scopes`; keypair/token untouched) — no
+  `instance reset`, no lost Codex auth. Runs before the gateway starts.
 - **host ↔ container paths** — the `openclaw-shim` translates the host openclaw-home
   prefix → `/home/node/.openclaw` in CLI args, so path-passing commands (agents add)
-  target the container. Stored config paths (agent workspaces) are the gap the
-  `plugins.allow` fix closes.
+  target the container. Stored config paths are the other half: `plugins.allow`
+  prevents the bad host-path write at the source, and `instance up` normalizes any
+  already-stored host `agentDir`/`workspace` values back to the container home
+  (`agent-paths.ts`, runs pre-gateway; symptom of stale paths: dispatch fails with
+  `EACCES: mkdir '/Users'`, #467).
 - **`BAKIN_URL`** = the container's callback URL (`host.docker.internal:3737`); the
   host-run Bakin CLI uses `localhost:3737` instead (`instance run`/`shell` override it).
+  The per-agent mcporter `bakin-<agent>` configs **bake this URL in at `up` time** —
+  running Bakin on a non-default port for testing means rewiring those configs in the
+  container (and reverting after); a plain server restart on 3737 needs nothing.
 
 ## Secret handling
 

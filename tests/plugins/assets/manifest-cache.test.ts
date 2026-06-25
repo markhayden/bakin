@@ -43,8 +43,9 @@ import { writeManifestAtomic, type AssetManifest } from '../../../plugins/assets
 import { __resetManifestCache } from '../../../plugins/assets/lib/manifest-cache'
 import {
   createAsset, getAsset, listAssets, addVersion, promoteVersion, relink,
-  deleteAsset, restoreAsset, findBySourcePath,
+  findBySourcePath,
 } from '../../../plugins/assets/lib/asset-service'
+import { deleteAsset, restoreAsset } from '../../../plugins/assets/lib/asset-trash'
 import { resolveAssetServe } from '../../../plugins/assets/lib/serve'
 
 const srcDir = join(testDir, 'src')

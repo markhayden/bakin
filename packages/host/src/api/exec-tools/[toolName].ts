@@ -6,7 +6,7 @@
  * without Bakin hardcoding plugin-specific subcommands.
  */
 import { z } from 'zod'
-import { getExecTool, getToolContext } from '../../../../../scripts/lib/registry'
+import { getExecTool, getToolContext } from '@/core/exec-tools/registry'
 
 function parseToolName(url: URL): string | null {
   const match = url.pathname.match(/^\/api\/exec-tools\/([^/]+)$/)

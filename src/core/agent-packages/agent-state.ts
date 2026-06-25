@@ -1,19 +1,20 @@
 /**
  * Agent-package state detection.
  *
- * Bakin recognizes four states for a candidate agent id:
+ * Bakin recognizes three states for a candidate agent id:
  *
  *   - 'absent'      — no runtime agent AND no lockfile entry
  *   - 'unmanaged'   — exists in the runtime roster, no lockfile entry. The
  *                     historical default for agents the user hand-built
- *                     before agent-packages shipped.
- *   - 'adopted'     — exists in runtime AND has a lockfile entry
- *                     with state='adopted'. Bakin tracks managed-block
- *                     attachments + lesson toggles but does not own
- *                     the workspace files.
- *   - 'managed'     — exists in runtime AND has a lockfile entry
- *                     with state='managed'. Bakin owns the package +
- *                     projected files.
+ *                     before agent-packages shipped. Still receives the
+ *                     Bakin-owned global/team AGENTS.md block — "unmanaged"
+ *                     means no *package*, not no Bakin context.
+ *   - 'managed'     — exists in runtime AND has a lockfile entry. Bakin owns
+ *                     the package, its projected files, and the composed
+ *                     workspace-file blocks. (`adopted` was collapsed into
+ *                     this state by the layered-context spec; `--adopt` is
+ *                     now only the install-time "bind to existing runtime
+ *                     agent" action.)
  *
  * Pure read path — never mutates anything. The runtime adapter and lockfile
  * modules are mocked in tests; this module is just the cross-reference logic.
@@ -31,16 +32,16 @@ import {
 } from '../../../packages/core/src/agent-packages/lockfile'
 import { getAppServices } from '../app-services'
 
-export type AgentState = 'absent' | 'unmanaged' | 'adopted' | 'managed'
+export type AgentState = 'absent' | 'unmanaged' | 'managed'
 
 export interface AgentStateInfo {
   agentId: string
   state: AgentState
-  /** Installed package version from the lockfile entry, when managed/adopted. */
+  /** Installed package version from the lockfile entry, when managed. */
   version?: string
   /** Lockfile package id (typically === agentId for kind:'agent' entries). */
   packageId?: string
-  /** Lockfile entry — only populated when state is 'managed' or 'adopted'. */
+  /** Lockfile entry — only populated when state is 'managed'. */
   entry?: PackageEntry
 }
 

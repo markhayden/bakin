@@ -36,9 +36,11 @@ function parseDevOptions(args: string[]): DevOptions {
 }
 
 const DEV_OPTIONS = parseDevOptions(process.argv.slice(2))
-// scripts/dev.ts runs server.ts in-process. Consume dev-only flags here so
-// server.ts's CLI dispatcher sees the same argv shape as plain `bakin start`.
-process.argv.splice(2)
+// scripts/dev.ts runs server.ts in-process. Consume dev-only flags here and
+// hand the CLI dispatcher an explicit `serve` command so it boots the server
+// in the foreground. A bare argv now defaults to `help` (cli.ts), which would
+// print the command reference and exit instead of starting the dev server.
+process.argv.splice(2, Infinity, 'serve')
 const DEV_VERBOSE = DEV_OPTIONS.verbose
   || process.env.BAKIN_DEV_VERBOSE === '1'
   || process.env.BAKIN_CONSOLE_FORMAT === 'verbose'
@@ -58,29 +60,23 @@ import { join, resolve } from 'node:path'
 import chokidar from 'chokidar'
 
 import { broadcastDev, type DevEvent, type DevScope } from '../packages/host/src/api/dev/events'
+import { PLUGIN_CLIENT_EXTERNALS } from '../src/core/whiskit/externals'
+import { CORE_PLUGIN_IDS } from '../src/lib/core-plugin-ids'
 import { buildOnePlugin } from './dev-build-one-plugin'
 import { isBenignTailwindLine } from './dev-log-classifier'
+import { registerDevShutdown } from './dev-shutdown'
 
 const REPO_ROOT = resolve(import.meta.dir, '..')
 const PLUGINS_DIR = join(REPO_ROOT, 'plugins')
 const DEV_CLIENT_ENTRY = join(REPO_ROOT, 'packages/host/src/dev-client/client.ts')
 const DEV_CLIENT_OUTDIR = join(REPO_ROOT, 'packages/host/public/__bakin-dev')
+const TAILWIND_BIN = join(REPO_ROOT, 'node_modules/.bin/tailwindcss')
 
-const CORE_PLUGINS = [
-  'tasks', 'team', 'workflows', 'assets',
-  'schedule', 'memory', 'models', 'health',
-  'git',
-]
+// Single source for the core plugin set — see src/lib/core-plugin-ids.ts.
+const CORE_PLUGINS = CORE_PLUGIN_IDS
 
-const EXTERNAL = [
-  'react', 'react-dom', 'react-dom/client',
-  'react/jsx-runtime', 'react/jsx-dev-runtime',
-  '@tanstack/react-router',
-  '@makinbakin/sdk', '@makinbakin/sdk/ui', '@makinbakin/sdk/hooks',
-  '@makinbakin/sdk/components', '@makinbakin/sdk/slots',
-  '@makinbakin/sdk/types', '@makinbakin/sdk/utils',
-  '@makinbakin/sdk/metadata', '@makinbakin/sdk/routing',
-]
+// Single source for the externals contract — see src/core/whiskit/externals.ts.
+const EXTERNAL = PLUGIN_CLIENT_EXTERNALS
 
 const DEFAULT_PLUGIN_DEV_WATCH = [
   'client.tsx', 'components/**', 'lib/**', '*.ts',
@@ -217,10 +213,14 @@ function startTailwindWatch(): void {
   // --watch=always keeps the watcher alive when stdin is closed (we use
   // stdio:'ignore' for stdin). Plain --watch exits on stdin close and
   // silently stops emitting output.
+  // Spawn the lockfile-pinned local bin directly under bun: the child pid
+  // IS the tailwind process, so kill('SIGTERM') reaches it. bunx added a
+  // wrapper chain that ate the signal (orphaned node grandchild) and
+  // downloaded floating @tailwindcss/cli@latest instead of the devDep.
   tailwindChild = nodeSpawn(
-    'bunx',
+    'bun',
     [
-      '@tailwindcss/cli',
+      TAILWIND_BIN,
       '-i', './packages/host/src/globals.css',
       '-o', './packages/host/public/globals.css',
       '--watch=always',
@@ -487,27 +487,18 @@ function startCssWatcher(): void {
 
 // ---------- Shutdown ----------------------------------------------------
 
+// Signal handling lives in dev-shutdown.ts: we register before server.ts
+// imports, so we must NOT call process.exit once lifecycle.ts's handlers
+// exist on the same signals — that preempted the graceful chain and
+// orphaned the antfly child (#459 defect 1).
 function registerShutdown(): void {
-  const cleanup = () => {
-    if (tailwindChild && !tailwindChild.killed) tailwindChild.kill('SIGTERM')
-  }
-  // These handlers are registered BEFORE server.ts loads, so they run first
-  // on a signal. Once the server's lifecycle owns shutdown
-  // (src/core/lifecycle.ts sets the global below), calling process.exit here
-  // would preempt its async cleanup and orphan the antfly child on 3738
-  // (#459) — kill tailwind only and let the lifecycle handler (registered
-  // later on the same signal) finish the job and exit. Checked via
-  // globalThis, not an import: pulling in lifecycle.ts from here would load
-  // the whole server module graph on an early Ctrl-C during the build phase.
-  const lifecycleOwnsShutdown = () =>
-    (globalThis as Record<string, unknown>).__bakinLifecycleOwnsShutdown === true
-  const onSignal = () => {
-    cleanup()
-    if (!lifecycleOwnsShutdown()) process.exit(0)
-  }
-  process.on('SIGINT', onSignal)
-  process.on('SIGTERM', onSignal)
-  process.on('exit', cleanup)
+  registerDevShutdown({
+    proc: process,
+    killTailwind: () => {
+      if (tailwindChild && !tailwindChild.killed) tailwindChild.kill('SIGTERM')
+    },
+    warn: (message) => devLog('warn', 'dev', message),
+  })
 }
 
 // ---------- Main --------------------------------------------------------

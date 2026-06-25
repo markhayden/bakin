@@ -75,13 +75,13 @@ export interface SkillSummary {
  * the server-side `AgentStateInfo` shape but stays self-contained so the
  * client doesn't reach across the package boundary for types.
  *
- * The server today returns 4 states (`absent | unmanaged | adopted | managed`).
+ * The server today returns 3 states (`absent | unmanaged | managed`).
  * `drifted` and `update-available` are display states layered on top of the
  * server row when diagnostics or update checks report additional status.
  */
 export interface PackageStateRow {
   agentId: string
-  state: 'absent' | 'unmanaged' | 'adopted' | 'managed' | 'drifted' | 'update-available'
+  state: 'absent' | 'unmanaged' | 'managed' | 'drifted' | 'update-available'
   version?: string
   packageId?: string
   entry?: {

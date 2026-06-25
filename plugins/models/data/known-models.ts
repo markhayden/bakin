@@ -12,6 +12,34 @@
  * migration logic required — consumers read this on every request.
  */
 
+/**
+ * Structured token pricing for an LLM, in whole US dollars per 1M tokens.
+ * Hand-maintained — providers expose no pricing API and OpenClaw's model
+ * list carries only modality. Used to turn per-turn token usage into a
+ * dollar estimate; the display string is derived via `formatCostRange`.
+ * Models with no entry record tokens but no cost ("$ unavailable").
+ */
+export interface ModelPricing {
+  inputPer1M: number
+  outputPer1M: number
+  /** Cached-input read price; defaults to DEFAULT_CACHE_READ_MULTIPLIER×input. */
+  cachedReadPer1M?: number
+  /** Cache-creation (write) price; defaults to DEFAULT_CACHE_WRITE_MULTIPLIER×input. */
+  cacheWritePer1M?: number
+  /** When this price was last verified (YYYY-MM), surfaced for staleness. */
+  updatedAt: string
+}
+
+/**
+ * Default cache multipliers vs. fresh input, used when a model doesn't declare
+ * explicit rates. ESTIMATE-GRADE: 0.1× read / 1.25× write are exact for
+ * Anthropic; OpenAI/Google cached reads run higher (~0.25–0.5×), so the
+ * estimate can under-count cache-heavy non-Anthropic turns. Override per model
+ * via cachedReadPer1M / cacheWritePer1M when an exact rate is known.
+ */
+export const DEFAULT_CACHE_READ_MULTIPLIER = 0.1
+export const DEFAULT_CACHE_WRITE_MULTIPLIER = 1.25
+
 export interface KnownModel {
   /** Match against the runtime-sourced id. Use the canonical base id; the
    *  lookup helper also tries with any trailing date suffix stripped. */
@@ -24,8 +52,17 @@ export interface KnownModel {
   tier?: 'budget' | 'standard' | 'premium'
   /** Display-only, e.g. '200K', '1M'. */
   contextWindow?: string
-  /** Display-only, e.g. '$3 in / $15 out per 1M'. */
+  /** Structured token pricing for cloud LLMs — the cost source of truth; the
+   *  display string is derived from it. */
+  pricing?: ModelPricing
+  /** Literal display cost for non-token-priced models (image/video/local),
+   *  e.g. '$0.055 per image', 'Local (no API cost)'. For token-priced LLMs,
+   *  leave unset and let `pricing` drive the derived display. */
   costRange?: string
+  /** Structured per-image price (USD) for image models with a flat rate.
+   *  Omit for provider-priced / ranged / subscription models — those record
+   *  the run but stay unpriced ('$ unavailable'), never guessed. */
+  imagePerUsd?: number
   kind: 'llm' | 'image' | 'video'
   /** simple-icons slug (e.g. 'openai', 'anthropic'). Falls through to the
    *  provider's icon at render time when omitted. */
@@ -59,6 +96,9 @@ export const KNOWN_PROVIDERS: readonly KnownProvider[] = [
 
 // ─── Models ────────────────────────────────────────────────────────────────
 
+/** When the LLM token prices below were last verified. Bump on any edit. */
+const PRICING_AS_OF = '2026-06'
+
 export const KNOWN_MODELS: readonly KnownModel[] = [
   // ─── LLMs (Anthropic) ────────────────────────────────────────────────────
   {
@@ -68,7 +108,7 @@ export const KNOWN_MODELS: readonly KnownModel[] = [
     bestFor: 'Simple tasks, heartbeat, routing',
     tier: 'budget',
     contextWindow: '200K',
-    costRange: '$1 in / $5 out per 1M',
+    pricing: { inputPer1M: 1, outputPer1M: 5, updatedAt: PRICING_AS_OF },
     kind: 'llm',
     brandIconSlug: 'anthropic',
   },
@@ -79,7 +119,7 @@ export const KNOWN_MODELS: readonly KnownModel[] = [
     bestFor: 'Content creation, reasoning',
     tier: 'standard',
     contextWindow: '200K',
-    costRange: '$3 in / $15 out per 1M',
+    pricing: { inputPer1M: 3, outputPer1M: 15, updatedAt: PRICING_AS_OF },
     kind: 'llm',
     brandIconSlug: 'anthropic',
   },
@@ -90,7 +130,7 @@ export const KNOWN_MODELS: readonly KnownModel[] = [
     bestFor: 'General purpose, current default',
     tier: 'standard',
     contextWindow: '200K',
-    costRange: '$3 in / $15 out per 1M',
+    pricing: { inputPer1M: 3, outputPer1M: 15, updatedAt: PRICING_AS_OF },
     kind: 'llm',
     brandIconSlug: 'anthropic',
   },
@@ -101,7 +141,7 @@ export const KNOWN_MODELS: readonly KnownModel[] = [
     bestFor: 'Complex coding, planning, analysis',
     tier: 'premium',
     contextWindow: '200K',
-    costRange: '$15 in / $75 out per 1M',
+    pricing: { inputPer1M: 15, outputPer1M: 75, updatedAt: PRICING_AS_OF },
     kind: 'llm',
     brandIconSlug: 'anthropic',
   },
@@ -114,7 +154,7 @@ export const KNOWN_MODELS: readonly KnownModel[] = [
     bestFor: 'Reasoning, code',
     tier: 'premium',
     contextWindow: '200K',
-    costRange: '$5 in / $20 out per 1M',
+    pricing: { inputPer1M: 5, outputPer1M: 20, updatedAt: PRICING_AS_OF },
     kind: 'llm',
     brandIconSlug: 'openai',
   },
@@ -125,7 +165,7 @@ export const KNOWN_MODELS: readonly KnownModel[] = [
     bestFor: 'Frontier reasoning',
     tier: 'premium',
     contextWindow: '200K',
-    costRange: '$5 in / $15 out per 1M',
+    pricing: { inputPer1M: 5, outputPer1M: 15, updatedAt: PRICING_AS_OF },
     kind: 'llm',
     brandIconSlug: 'openai',
   },
@@ -136,7 +176,7 @@ export const KNOWN_MODELS: readonly KnownModel[] = [
     bestFor: 'Multimodal general-purpose',
     tier: 'standard',
     contextWindow: '128K',
-    costRange: '$2.50 in / $10 out per 1M',
+    pricing: { inputPer1M: 2.5, outputPer1M: 10, updatedAt: PRICING_AS_OF },
     kind: 'llm',
     brandIconSlug: 'openai',
   },
@@ -149,7 +189,7 @@ export const KNOWN_MODELS: readonly KnownModel[] = [
     bestFor: 'Long-context reasoning, code',
     tier: 'premium',
     contextWindow: '2M',
-    costRange: '$1.25 in / $10 out per 1M',
+    pricing: { inputPer1M: 1.25, outputPer1M: 10, updatedAt: PRICING_AS_OF },
     kind: 'llm',
     brandIconSlug: 'google',
   },
@@ -160,7 +200,7 @@ export const KNOWN_MODELS: readonly KnownModel[] = [
     bestFor: 'Fast multimodal tasks',
     tier: 'budget',
     contextWindow: '1M',
-    costRange: '$0.30 in / $2.50 out per 1M',
+    pricing: { inputPer1M: 0.3, outputPer1M: 2.5, updatedAt: PRICING_AS_OF },
     kind: 'llm',
     brandIconSlug: 'google',
   },
@@ -247,6 +287,7 @@ export const KNOWN_MODELS: readonly KnownModel[] = [
     bestFor: 'Detailed photographic output',
     tier: 'standard',
     costRange: '$0.055 per image',
+    imagePerUsd: 0.055,
     kind: 'image',
     brandIconSlug: 'blackforestlabs',
   },
@@ -350,4 +391,56 @@ export function getKnownModel(id: string): KnownModel | undefined {
 /** Look up a provider by id (first path segment of a model id). */
 export function getKnownProvider(id: string): KnownProvider | undefined {
   return providersById.get(id)
+}
+
+/** Format a per-1M dollar amount: whole numbers bare ($3), fractions to 2dp ($0.30). */
+function formatUsd(amount: number): string {
+  return Number.isInteger(amount) ? `$${amount}` : `$${amount.toFixed(2)}`
+}
+
+/** Render the human display string for structured pricing, matching the
+ *  legacy literal format ('$3 in / $15 out per 1M'). */
+export function formatCostRange(pricing: ModelPricing): string {
+  return `${formatUsd(pricing.inputPer1M)} in / ${formatUsd(pricing.outputPer1M)} out per 1M`
+}
+
+/**
+ * Estimated turn cost in micro-dollars (integer; avoids float drift in the
+ * ledger). Returns null when pricing is unknown or usage carries no token
+ * counts — callers record tokens-only and surface "$ unavailable" rather
+ * than fabricating a zero cost. Cached-token discounts aren't modeled
+ * (trajectory usage doesn't break them out), so this reads slightly high
+ * when prompt caching is active — it's an estimate, not an invoice.
+ */
+export function computeCostUsdMicros(
+  usage: { input?: number; output?: number; total?: number; cacheRead?: number; cacheWrite?: number },
+  pricing: ModelPricing | undefined,
+): number | null {
+  if (!pricing) return null
+  const input = usage.input ?? 0
+  const output = usage.output ?? 0
+  const cacheRead = usage.cacheRead ?? 0
+  const cacheWrite = usage.cacheWrite ?? 0
+  // Nothing to price → unmetered (a `total`-only block can't be split across
+  // the different per-1M rates, so we don't guess). A cache-only turn (e.g. a
+  // fully-cached continuation) IS priceable, so it must NOT be dropped here.
+  if (input === 0 && output === 0 && cacheRead === 0 && cacheWrite === 0) return null
+  const cacheReadRate = pricing.cachedReadPer1M ?? pricing.inputPer1M * DEFAULT_CACHE_READ_MULTIPLIER
+  const cacheWriteRate = pricing.cacheWritePer1M ?? pricing.inputPer1M * DEFAULT_CACHE_WRITE_MULTIPLIER
+  const dollars =
+    (input / 1_000_000) * pricing.inputPer1M +
+    (output / 1_000_000) * pricing.outputPer1M +
+    (cacheRead / 1_000_000) * cacheReadRate +
+    (cacheWrite / 1_000_000) * cacheWriteRate
+  return Math.round(dollars * 1_000_000)
+}
+
+/**
+ * Estimated cost (micro-dollars) for an image generation of `count` images.
+ * Returns null when the model has no flat per-image price (provider-priced,
+ * ranged, or subscription) — unmetered rather than guessed.
+ */
+export function computeImageCostUsdMicros(count: number, imagePerUsd: number | undefined): number | null {
+  if (!imagePerUsd || count <= 0) return null
+  return Math.round(imagePerUsd * count * 1_000_000)
 }

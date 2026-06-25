@@ -172,7 +172,7 @@ Agents create, version, link, and curate assets through MCP exec tools. The head
 - `bakin_exec_assets_empty_trash`: Permanently delete all trashed assets. This cannot be undone.
 - `bakin_exec_assets_get`: Retrieve an asset manifest (versions, current pointer, exports) by assetId.
 - `bakin_exec_assets_link`: Link an asset to a different task, or unlink it (set taskId to null).
-- `bakin_exec_assets_list`: List managed assets (one entry per asset, current-version view). Optional type and task filters.
+- `bakin_exec_assets_list`: List managed assets (one entry per asset, current-version view). Optional type, task, and tag filters. Tags are the UI "folders" — pass tags to list a folder, e.g. ["brand"].
 - `bakin_exec_assets_list_trash`: List trashed assets (whole-asset deletions) with deletion time and version count.
 - `bakin_exec_assets_open`: Open an asset by assetId: returns its manifest plus the current version’s extracted text for text-like assets.
 - `bakin_exec_assets_permanent_delete`: Permanently delete a specific trashed asset. This cannot be undone.

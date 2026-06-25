@@ -1,9 +1,6 @@
-export interface TaskLogEntry {
-  timestamp: string
-  author: string
-  message: string
-  data?: Record<string, unknown>
-}
+// TaskLogEntry is single-homed in the SDK (published TaskService contract).
+import type { TaskLogEntry } from '@makinbakin/sdk/types'
+export type { TaskLogEntry }
 
 export interface TaskSource {
   pluginId?: string
@@ -51,3 +48,27 @@ export interface TaskBoard {
 }
 
 export type ColumnId = keyof TaskColumns
+
+/** Task-level terminal outcome, derived from the completion ledger + task column.
+ *  Mirrored client-side in src/hooks/use-task-run-history.ts — keep in sync. */
+export interface TaskOutcome {
+  state: 'done' | 'blocked' | 'archived' | 'in_progress'
+  /** Set when state === 'done' and a completion row exists. */
+  completedAt?: string // ISO
+  /** Agent that recorded the completion, when known. */
+  agent?: string
+}
+
+/** One dispatch attempt for a task, from the execution ledger's `runs` table.
+ *  Mirrored client-side in src/hooks/use-task-run-history.ts — keep in sync. */
+export interface TaskRunEntry {
+  runId: string
+  taskId: string
+  seq: number
+  agent: string
+  status: 'running' | 'settled' | 'superseded' | 'lost'
+  startedAt: string // ISO
+  settledAt?: string // ISO
+  settleReason?: string
+  durationMs?: number
+}

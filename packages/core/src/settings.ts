@@ -16,7 +16,14 @@ export type RuntimeAdapterSettings = Record<string, unknown>
 export interface SearchAdapterSettings extends Record<string, unknown> {
   enabled: boolean
   url: string
-  auth?: { username: string; password: string }
+  /**
+   * Basic-auth username only. The password lives in the secret store
+   * (`providers.antfly` in ~/.bakin/secrets.json; env `ANTFLY_PASSWORD`
+   * overrides) — settings.json is broadcast by GET /api/settings and must
+   * stay secret-free. The app composition point injects the resolved
+   * password into the adapter's init settings.
+   */
+  auth?: { username: string }
   search: {
     strategy: 'rrf' | 'semantic_only' | 'full_text_only'
     defaultLimit: number

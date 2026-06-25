@@ -192,28 +192,6 @@ describe('PackageCard — read-only display per state', () => {
     expect(screen.queryByText('0.1.0')).toBeNull()
   })
 
-  it('renders an adopted badge + entry fields when state=adopted', async () => {
-    primeState({
-      pixel: {
-        agentId: 'pixel',
-        state: 'adopted',
-        packageId: 'examples/pixel@0.1.0',
-        entry: {
-          version: '0.1.0',
-          source: 'github:examples/pixel',
-          ref: 'main',
-          commitSha: 'feedface',
-          installedAt: '2026-04-20T00:00:00Z',
-        },
-      },
-    })
-    await renderDetail()
-    expect(screen.getByText('adopted')).toBeDefined()
-    expect(screen.getByText('0.1.0')).toBeDefined()
-    expect(screen.getByText('github:examples/pixel')).toBeDefined()
-    expect(screen.queryByRole('button', { name: 'Adopt' })).toBeNull()
-  })
-
   it('renders a CLI hint with Copy button for state=drifted', async () => {
     primeState({
       pixel: { agentId: 'pixel', state: 'drifted', packageId: 'examples/pixel@0.1.0' },
@@ -356,22 +334,21 @@ describe('PackageCard — update and remove actions', () => {
     return fetchMock
   }
 
-  it('opens update modal and sends update-package payload', async () => {
+  it('opens the sync modal and posts to the sync route', async () => {
     const fetchMock = setupActionFetch()
 
     render(<PackageCardBody agentId="pixel" packageState={UPDATE_ROW} />)
 
     expect(screen.getByText('update available')).toBeDefined()
     fireEvent.click(screen.getByRole('button', { name: 'Upgrade agent package' }))
-    expect(screen.getByRole('heading', { name: 'Upgrade pixel' })).toBeDefined()
+    expect(screen.getByRole('heading', { name: 'Sync pixel' })).toBeDefined()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Update package' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Sync agent' }))
 
     await waitFor(() => {
       expect(fetchMock.mock.calls.some((call) => (
-        call[0] === '/api/agent-packages/pixel/update'
+        call[0] === '/api/agent-packages/pixel/sync'
         && (call[1] as RequestInit | undefined)?.method === 'POST'
-        && String((call[1] as RequestInit | undefined)?.body).includes('"refreshTemplate":false')
       ))).toBe(true)
     })
   })

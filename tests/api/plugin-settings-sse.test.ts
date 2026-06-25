@@ -21,13 +21,21 @@ mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
 }))
 
-mock.module('../../src/lib/plugin-registry', () => ({
+// The settings-store (in packages/core) resolves via the core content-dir.
+mock.module('../../packages/core/src/content-dir', () => ({
+  getContentDir: () => testDir,
+}))
+mock.module('@bakin/core/content-dir', () => ({
+  getContentDir: () => testDir,
+}))
+
+mock.module('../../src/core/plugin-registry', () => ({
   pluginRegistry: {
     notifySettingsChange,
   },
 }))
 
-mock.module('@/lib/plugin-registry', () => ({
+mock.module('@/core/plugin-registry', () => ({
   pluginRegistry: {
     notifySettingsChange,
   },
@@ -43,7 +51,7 @@ mock.module('@/core/sse', () => ({
   broadcastPluginSettingsChanged,
 }))
 
-const { put } = await import('../../packages/host/src/api/plugin-settings/[pluginId]')
+const { get, put } = await import('../../packages/host/src/api/plugin-settings/[pluginId]')
 
 function readSettings(pluginId: string): Record<string, unknown> {
   return JSON.parse(readFileSync(join(testDir, 'plugin-settings', `${pluginId}.json`), 'utf-8'))
@@ -97,5 +105,31 @@ describe('plugin settings SSE', () => {
     expect(readSettings('plugin-settings')).toEqual(body)
     expect(notifySettingsChange).toHaveBeenCalledWith('plugin-settings', body)
     expect((broadcast.mock.calls[0]![0] as Record<string, unknown>).pluginId).toBe('plugin-settings')
+  })
+
+  it('rejects invalid plugin ids on PUT without writing or notifying', async () => {
+    // Note: a literal '..' segment never reaches the handler — the URL
+    // constructor (and Node's request-path normalization) collapses it.
+    for (const id of ['EVIL', 'a b', 'a..b', '.hidden', 'x'.repeat(41)]) {
+      const url = new URL(`http://localhost/api/plugin-settings/${encodeURIComponent(id)}`)
+      const response = await put(
+        new Request(url, {
+          method: 'PUT',
+          body: JSON.stringify({ enabled: true }),
+          headers: { 'Content-Type': 'application/json' },
+        }),
+        url,
+      )
+      expect(response.status).toBe(400)
+    }
+    expect(existsSync(join(testDir, 'plugin-settings'))).toBe(false)
+    expect(notifySettingsChange).not.toHaveBeenCalled()
+    expect(broadcast).not.toHaveBeenCalled()
+  })
+
+  it('rejects invalid plugin ids on GET', async () => {
+    const url = new URL('http://localhost/api/plugin-settings/EVIL')
+    const response = await get(new Request(url, { method: 'GET' }), url)
+    expect(response.status).toBe(400)
   })
 })

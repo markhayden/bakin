@@ -39,6 +39,8 @@ import {
   shouldSkip,
   recordFailure,
   recordSuccess,
+  newScheduleId,
+  resumeDuePauses,
 } from '@bakin/schedule/lib/sidecar'
 import type { BakinJobMeta, ScheduleSidecar } from '@bakin/schedule/types'
 
@@ -104,6 +106,43 @@ describe('schedule/sidecar', () => {
       const sidecar = readSidecar()
       expect(sidecar.version).toBe(1)
       expect(Object.keys(sidecar.jobs)).toHaveLength(0)
+    })
+  })
+
+  describe('Bakin-owned schedule fields', () => {
+    it('round-trips the schedule definition and enabled flag', () => {
+      upsertJob(makeMeta({
+        jobId: 'j1',
+        schedule: { kind: 'cron', expr: '0 9 * * *' },
+        enabled: true,
+      }))
+      const job = getJob('j1')
+      expect(job!.schedule).toEqual({ kind: 'cron', expr: '0 9 * * *' })
+      expect(job!.enabled).toBe(true)
+    })
+
+    it('skips a structurally-invalid job but keeps the valid ones', () => {
+      const path = join(testDir, 'schedule', 'sidecar.json')
+      writeFileSync(path, JSON.stringify({
+        version: 1,
+        jobs: {
+          good: makeMeta({ jobId: 'good', displayName: 'Keep me' }),
+          bad: { jobId: 'bad', isBakinJob: 'not-a-boolean' }, // wrong type → dropped
+        },
+      }))
+      const sidecar = readSidecar()
+      expect(sidecar.jobs.good).toBeDefined()
+      expect(sidecar.jobs.good.displayName).toBe('Keep me')
+      expect(sidecar.jobs.bad).toBeUndefined()
+    })
+  })
+
+  describe('newScheduleId', () => {
+    it('mints a Bakin-owned id with the sch_ prefix', () => {
+      expect(newScheduleId()).toMatch(/^sch_[0-9a-f-]{36}$/)
+    })
+    it('mints unique ids', () => {
+      expect(newScheduleId()).not.toBe(newScheduleId())
     })
   })
 
@@ -176,9 +215,10 @@ describe('schedule/sidecar', () => {
       expect(result.reason).toBe('manual')
     })
 
-    it('auto-resumes when pauseUntil has passed', () => {
+    it('auto-resumes when pauseUntil has passed, restoring enabled', () => {
       const meta = makeMeta({
         paused: true,
+        enabled: false, // pause sets enabled=false
         pauseUntil: '2020-01-01T00:00:00Z', // in the past
         pauseReason: 'manual',
       })
@@ -186,6 +226,7 @@ describe('schedule/sidecar', () => {
       expect(result.paused).toBe(false)
       expect(meta.paused).toBe(false)
       expect(meta.pauseUntil).toBeUndefined()
+      expect(meta.enabled).toBe(true) // must re-enable or the scheduler gate keeps it dormant
     })
 
     it('stays paused when pauseUntil is in the future', () => {
@@ -195,6 +236,27 @@ describe('schedule/sidecar', () => {
         pauseReason: 'manual',
       })
       expect(isPaused(meta).paused).toBe(true)
+    })
+  })
+
+  describe('resumeDuePauses', () => {
+    it('re-enables and clears a job whose pauseUntil has elapsed', () => {
+      upsertJob(makeMeta({ jobId: 'due', paused: true, enabled: false, pauseUntil: '2020-01-01T00:00:00Z', pauseReason: 'manual' }))
+      const resumed = resumeDuePauses()
+      expect(resumed).toBe(1)
+      const job = getJob('due')!
+      expect(job.paused).toBe(false)
+      expect(job.enabled).toBe(true)
+      expect(job.pauseUntil).toBeUndefined()
+    })
+
+    it('leaves a future timed pause and a manual (no-pauseUntil) pause untouched', () => {
+      upsertJob(makeMeta({ jobId: 'future', paused: true, enabled: false, pauseUntil: '2099-01-01T00:00:00Z' }))
+      upsertJob(makeMeta({ jobId: 'manual', paused: true, enabled: false })) // no pauseUntil
+      const resumed = resumeDuePauses()
+      expect(resumed).toBe(0)
+      expect(getJob('future')!.enabled).toBe(false)
+      expect(getJob('manual')!.paused).toBe(true)
     })
   })
 

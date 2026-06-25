@@ -22,6 +22,25 @@ mock.module('@/core/continuation', () => ({
   checkAndContinueDependents: mock(() => Promise.resolve()),
 }))
 
+// In-memory completion-gate fake — these unit tests exercise task-service
+// orchestration, not ledger semantics (covered by completion-gate.test.ts).
+const mockBumpHeartbeatByTask = mock((_taskId: string) => {})
+const completionsFake = new Map<string, { taskId: string; runId: string | null; agent: string; channel: string | null; completedAt: number }>()
+const ledgerMock = () => ({
+  recordCompletion: (taskId: string, input: { runId?: string; agent: string; channel?: string }) => {
+    const existing = completionsFake.get(taskId)
+    if (existing) return { recorded: false as const, existing }
+    completionsFake.set(taskId, { taskId, runId: input.runId ?? null, agent: input.agent, channel: input.channel ?? null, completedAt: Date.now() })
+    return { recorded: true as const }
+  },
+  hasCompletion: (taskId: string) => completionsFake.has(taskId),
+  deleteCompletion: (taskId: string) => completionsFake.delete(taskId),
+  getLiveRun: () => null,
+  bumpHeartbeatByTask: (taskId: string) => mockBumpHeartbeatByTask(taskId),
+})
+mock.module('@/core/execution-ledger', ledgerMock)
+mock.module('../../src/core/execution-ledger', ledgerMock)
+
 const mockRuntimeSend = mock((...args: unknown[]) => {
   void args
   return Promise.resolve({ id: 'runtime-msg' })
@@ -77,6 +96,7 @@ const taskStoreMock = {
   addTaskLog: mockAddTaskLog,
   blockTask: mockBlockTask,
   createTask: mockCreateTask,
+  getTasksByColumn: mock(() => []),
   getTaskWithColumn: mockGetTaskWithColumn,
   moveTask: mockMoveTask,
   readTaskboard: mockReadTaskboard,
@@ -99,6 +119,9 @@ mock.module('@bakin/workflows/lib/runtime', () => ({
 
 mock.module('@bakin/workflows/lib/matcher', () => ({
   matchWorkflow: mock(() => null),
+}))
+mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
+  getHookRegistry: () => mockHookRegistry,
 }))
 
 const mockLoadDefinition = mock((_data: any): Record<string, unknown> | null => ({ name: 'image-social-post', steps: [] }))
@@ -133,8 +156,8 @@ const pluginRegistryMock = {
   getHookRegistry: () => mockHookRegistry,
   getPluginSkills: () => new Map(),
 }
-mock.module('@/lib/plugin-registry', () => pluginRegistryMock)
-mock.module('../../src/lib/plugin-registry', () => pluginRegistryMock)
+mock.module('@/core/plugin-registry', () => pluginRegistryMock)
+mock.module('../../src/core/plugin-registry', () => pluginRegistryMock)
 
 describe('task-service', () => {
   let service: typeof import('@/core/task-service')
@@ -142,6 +165,7 @@ describe('task-service', () => {
 
   beforeEach(async () => {
     mock.clearAllMocks()
+    completionsFake.clear()
     mockBroadcast = mock()
     ;(globalThis as any).__bakinBroadcast = mockBroadcast
     service = await import('@/core/task-service')
@@ -170,6 +194,19 @@ describe('task-service', () => {
     it('should broadcast even if no SSE handler registered', async () => {
       delete (globalThis as any).__bakinBroadcast
       await service.logProgress('task-1', 'pixel', 'test')
+      expect(mockAddTaskLog).toHaveBeenCalledTimes(1)
+    })
+
+    it('bumps the run heartbeat — the watchdog liveness signal', async () => {
+      await service.logProgress('task-1', 'pixel', 'still working')
+      expect(mockBumpHeartbeatByTask).toHaveBeenCalledWith('task-1')
+    })
+
+    it('a heartbeat failure never breaks progress logging (advisory)', async () => {
+      mockBumpHeartbeatByTask.mockImplementationOnce(() => {
+        throw new Error('ledger hiccup')
+      })
+      await service.logProgress('task-1', 'pixel', 'still working')
       expect(mockAddTaskLog).toHaveBeenCalledTimes(1)
     })
 
@@ -260,7 +297,7 @@ describe('task-service', () => {
       const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
       await service.blockTaskWithEffects('task-1', 'API key expired', 'pixel')
 
-      expect(mockBlockTask).toHaveBeenCalledWith('task-1', 'API key expired', 'pixel')
+      expect(mockBlockTask).toHaveBeenCalledWith('task-1', 'API key expired', 'pixel', undefined)
       expect(appendAudit).toHaveBeenCalledWith(
         expect.any(String),
         'task.blocked',

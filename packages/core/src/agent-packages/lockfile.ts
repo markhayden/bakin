@@ -23,8 +23,25 @@ const ProjectionKindSchema = z.enum([
   'skill',
   'asset',
   'workspace-file',
+  // Legacy (pre-layered-context). New code never writes lesson-marker
+  // projections — lessons are composed into the workspace-file block. Kept in
+  // the enum only so pre-migration lockfiles parse; the one-time migration
+  // rewrites them away.
   'lesson-marker',
 ])
+
+/**
+ * Per-input shas recorded for composed workspace-file projections so drift
+ * findings can attribute staleness to the layer that changed
+ * (package template / global context / team context / lessons).
+ */
+const ProjectionInputsSchema = z.object({
+  packageSha: z.string().optional(),
+  globalSha: z.string().optional(),
+  roleSha: z.string().optional(),
+  teamSha: z.string().optional(),
+  lessonsSha: z.string().optional(),
+})
 
 const ProjectionEntrySchema = z.object({
   kind: ProjectionKindSchema,
@@ -33,16 +50,31 @@ const ProjectionEntrySchema = z.object({
   /** sha256 of file contents (or directory Merkle root for skills). Absent for marker entries. */
   sha256: z.string().optional(),
   /**
-   * Workspace-file entries set this true on fresh install — signals that the
-   * package owns this file as a one-shot template (agent owns it after) and
-   * doctor should NOT auto-overwrite on update unless --refresh-template.
+   * Workspace-file entries: sha256 of the composed managed-block body as last
+   * projected. Compared against the freshly derived expected composition to
+   * detect staleness.
+   */
+  composedSha: z.string().optional(),
+  /** Workspace-file entries: shas of the composition inputs at projection time. */
+  inputs: ProjectionInputsSchema.optional(),
+  /**
+   * Legacy (pre-layered-context) template-seeding flag. New code never writes
+   * it; tolerated on read until the migration rewrites the lockfile.
    */
   templateOnly: z.boolean().optional(),
-  /** For lesson-marker entries — the block id ("lesson:pixel:product-photography"). */
+  /**
+   * Legacy lesson-marker block id. Tolerated on read until migration.
+   */
   blockId: z.string().optional(),
 })
 
-const PackageStateSchema = z.enum(['managed', 'adopted'])
+// 'adopted' collapsed into 'managed' (layered-context spec): blocks made the
+// workspace-ownership distinction moot. Pre-migration lockfiles still say
+// 'adopted' on disk — normalize on read so no downstream code ever sees it;
+// the one-time migration persists the collapse.
+const PackageStateSchema = z
+  .enum(['managed', 'adopted'])
+  .transform((): 'managed' => 'managed')
 const PackageKindSchema = z.enum(['agent', 'skill-pack', 'workflow-pack', 'lesson-pack'])
 
 const PackageEntrySchema = z.object({
@@ -79,6 +111,7 @@ export const LockfileSchema = z.object({
 })
 
 export type ProjectionKind = z.infer<typeof ProjectionKindSchema>
+export type ProjectionInputs = z.infer<typeof ProjectionInputsSchema>
 export type ProjectionEntry = z.infer<typeof ProjectionEntrySchema>
 export type PackageEntry = z.infer<typeof PackageEntrySchema>
 export type PackageState = z.infer<typeof PackageStateSchema>

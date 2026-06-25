@@ -105,6 +105,11 @@ export function JobRow({
           {job.humanSchedule}
           {job.tz && <span className="ml-1 text-[10px] opacity-60">{job.tz.replace(/^.*\//, '')}</span>}
         </span>
+        {job.nextRun && !job.paused && (
+          <div className="text-[10px] text-muted-foreground/70">
+            next {new Date(job.nextRun).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+          </div>
+        )}
       </TableCell>
       <TableCell>
         <StatusBadge job={job} />
@@ -117,7 +122,7 @@ export function JobRow({
           >
             <MoreHorizontal className="size-4" />
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-36" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+          <DropdownMenuContent align="end" className="w-auto min-w-36 whitespace-nowrap" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
             <DropdownMenuItem onClick={onRunNow}>
               <Play className="size-3.5 mr-2" /> Run Now
             </DropdownMenuItem>

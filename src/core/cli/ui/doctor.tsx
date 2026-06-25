@@ -9,6 +9,7 @@ import {
   type FindingRow,
   type SummaryItem,
 } from './tui'
+import { plural } from './reports/format'
 
 export interface DoctorResultRow {
   check: string
@@ -43,10 +44,6 @@ function doctorStatus(result: DoctorResultRow): TuiStatus {
     default:
       return 'run'
   }
-}
-
-function plural(count: number, singular: string, pluralLabel = `${singular}s`): string {
-  return count === 1 ? singular : pluralLabel
 }
 
 function doctorCounts(results: DoctorResultRow[], summary: DoctorSummaryData): {

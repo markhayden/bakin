@@ -144,7 +144,7 @@ describe('AgentDetail — tab URL contract', () => {
   it('writes the tab back to the URL when a tab is clicked', async () => {
     queryState.tab = 'overview'
     render(<AgentDetail agentId="explorer" />)
-    const rulesBtn = await waitFor(() => screen.getByRole('button', { name: 'Rules' }))
+    const rulesBtn = await waitFor(() => screen.getByRole('button', { name: 'AGENTS.md' }))
     fireEvent.click(rulesBtn)
     expect(setTabSpy).toHaveBeenCalledWith('rules')
   })

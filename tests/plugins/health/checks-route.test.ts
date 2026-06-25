@@ -47,7 +47,7 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
-mock.module('../../../src/core/audit', () => ({ appendAudit: mock() }))
+mock.module('../../../src/core/audit', () => ({ appendAudit: mock(), queryAuditEvents: mock(() => []) }))
 mock.module('../../../src/core/watcher', () => ({
   watchFiles: mock(),
   registerSyncHook: mock(() => () => {}),
@@ -60,6 +60,7 @@ const taskStoreMock = {
   getAllTasks: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getTask: () => null,
   getTaskWithColumn: () => null,
+  getTasksByColumn: () => [],
   getTasksByAgent: () => [],
   getTodoTasks: () => ({ columns: { todo: [], 'in-progress': [], done: [] }, todoTasks: [] }),
   createTask: mock(async () => ({ id: 'task-1', title: 'Task', checked: false })),

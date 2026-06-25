@@ -37,7 +37,7 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }),
 }))
-mock.module('@/lib/plugin-registry', () => ({
+mock.module('@/core/plugin-registry', () => ({
   isCorePlugin: () => false,
 }))
 // Point the github resolver at the local artifact host. `currentBaseUrl` is

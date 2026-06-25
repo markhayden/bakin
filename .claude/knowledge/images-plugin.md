@@ -22,7 +22,12 @@ credential-ownership rules.
   model, surface profile, dimensions, and quality.
 - `bakin_exec_images_generate`: generates through a runtime image provider or
   native direct adapter and saves the result into Assets with generation
-  metadata.
+  metadata. Accepts `referenceImages` (#418) — managed assetIds and/or local
+  file paths (mix freely, max 4) that condition the generation. A
+  reference-bearing generate is a NEW asset (use `_edit` to revise an existing
+  one in place).
+- `bakin_exec_images_edit`: edits a managed asset (new version on the same
+  asset); `referenceImages` supplies extra context images alongside the base.
 - `bakin_exec_images_import`: imports a local image file into Assets.
 - `bakin_exec_images_export`: creates resized/cropped/format-converted variants
   for a target surface profile.
@@ -59,6 +64,30 @@ Serving-path diagnostics ("how"): generation results carry
 Provider support is adapter-based, not raw generic HTTP. Add new providers by
 adding a runtime adapter provider route, or (for the direct shim) a provider
 entry in the shared module plus route tests and generation metadata coverage.
+
+## Reference images, quality, and capability gating (#418 / #379)
+
+- **Reference images** are resolved at the Bakin layer: assetIds → current
+  version via `ctx.assets.resolveVersionFile`; raw paths are auto-imported into
+  Assets (source-path dedup) so every reference becomes a tracked asset. Cap is
+  `MAX_REFERENCE_IMAGES = 4`. Native `infer image generate` has no file input, so
+  reference generates are routed through `infer image edit --file …`; edit
+  appends references after the base. Lineage is stamped into
+  `generation.references` (`assetId@version`) and folds into the idempotency key
+  so same-prompt/different-refs is not a duplicate.
+- **Native-only**: references require the runtime path. If the route resolves to
+  the direct shim (`servedBy: 'shim'`), the call fails loudly **before billing** —
+  the shim has no image-input path.
+- **Capability gate**: the selected model must declare the `reference-images`
+  capability (read from the curated static descriptor, which is preferred over
+  runtime-synthesized capabilities — those would clobber the static flag; see
+  #381). A model without it fails loudly before billing.
+- **Quality** is a shim-only concept — OpenClaw's CLI has no quality flag. The
+  asset sidecar records `generation.quality` only on the shim path; native
+  generations omit it. The shim rejects (pre-billing) any option it can't honor
+  (`count>1`, `aspectRatio`, `resolution`, `background`, non-png format).
+- **Asset discovery**: `bakin_exec_assets_list` takes an optional `tags` filter
+  (AND semantics) — the agent's clean way to "look in a folder" (folders = tags).
 
 ## Workflows And Skills
 

@@ -1,31 +1,36 @@
 /**
- * Tests for the projector (Phase E-3).
+ * Tests for the projector (rewritten for the layered-context block model, C5).
  *
  * Coverage:
- *   - Fresh install of an agent package: workspace files, lesson markers,
- *     assets, sidecars all in place
- *   - Adopt mode: workspace files preserved, only markers + assets project
- *   - Update mode without --refresh-template: workspace files NOT rewritten
- *   - Update mode with --refresh-template: workspace files rewritten
- *   - .userEdited skip: target preserved, no .installedBy written, recorded
- *     in result.skipped
- *   - Mid-install failure rolls back every prior write
- *   - Lesson catalog block reflects enabled lessons
- *   - Disabled lessons get their per-lesson block removed
- *   - Symlinks in source are skipped (refused on copy)
- *   - skill-pack projects to global ~/.openclaw/skills/
- *   - workflow-pack and lesson-pack are no-op at filesystem level
- *   - unprojectPackage removes files + strips markers
+ *   - Agent projection writes ONE composed managed block per contributed
+ *     workspace file (template + lessons inside the block), creating files
+ *     that don't exist and preserving agent content in ones that do
+ *   - Re-projection rewrites the block in place (idempotent; agent prose
+ *     outside the markers survives)
+ *   - Lesson catalog checkboxes + enabled-lesson bodies live inside the
+ *     SOUL.md block; enabledLessons override + defaultEnabled fallback
+ *   - Skills + assets project with sidecars; .userEdited skips recorded
+ *     (workspace files NO LONGER honor .userEdited — blocks are Bakin-owned)
+ *   - Projection entries carry composedSha + inputs (no templateOnly /
+ *     lesson-marker kinds)
+ *   - Mid-projection failure rolls back workspace block writes
+ *   - skill-pack projects to global skills
+ *   - unprojectPackage removes skills/assets but only strips the BLOCK from
+ *     workspace files (never deletes them); legacy entries handled
  */
+import { tmpdir } from 'os'
+import { join as pathJoin } from 'path'
+import { randomUUID } from 'crypto'
+
+const testDir = pathJoin(tmpdir(), `bakin-test-projector-${Date.now()}-${randomUUID()}`)
+const openClawDir = pathJoin(testDir, 'openclaw')
+process.env.OPENCLAW_HOME = openClawDir
+process.env.BAKIN_HOME = testDir
+
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
-import { tmpdir } from 'os'
-import { randomUUID } from 'crypto'
 import type { AgentRuntimeAdapter, RuntimeSkill, WorkspaceFile } from '@bakin/core/adapters/runtime'
-
-const testDir = join(tmpdir(), `bakin-test-projector-${Date.now()}-${randomUUID()}`)
-const openClawDir = join(testDir, 'openclaw')
 
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
@@ -40,6 +45,12 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawPath: (...parts: string[]) => join(openClawDir, ...parts),
   resetOpenClawHome: () => {},
 }))
+mock.module('../../src/core/plugin-registry', () => ({
+  getHookRegistry: () => ({ invoke: async () => undefined }),
+}))
+mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
+  getHookRegistry: () => ({ invoke: async () => undefined }),
+}))
 
 import {
   projectPackage,
@@ -47,7 +58,6 @@ import {
   type ProjectorOptions,
 } from '../../src/core/agent-packages/projector'
 import {
-  installedByPath,
   markUserEdited,
   readInstalledBy,
   writeInstalledBy,
@@ -56,6 +66,7 @@ import {
   extractBlock,
   hasBlock,
 } from '../../packages/core/src/agent-packages/managed-blocks'
+import { MANAGED_BLOCK_ID } from '../../packages/core/src/agent-packages/composer'
 import type {
   AgentManifest,
   Manifest,
@@ -110,11 +121,8 @@ function seedPackageStaging(): string {
   mkdirSync(join(stagingDir, 'lessons'), { recursive: true })
   mkdirSync(join(stagingDir, 'assets'), { recursive: true })
 
-  writeFileSync(
-    join(stagingDir, 'workspace', 'SOUL.md'),
-    `# Soul\n\nYou are Pixel.\n\n<!-- bakin:lesson-catalog:start -->\n<!-- bakin:lesson-catalog:end -->\n`,
-  )
-  writeFileSync(join(stagingDir, 'workspace', 'IDENTITY.md'), `# IDENTITY\n\n- **Name:** Pixel\n`)
+  writeFileSync(join(stagingDir, 'workspace', 'SOUL.md'), `# Soul\n\nYou are Pixel.`)
+  writeFileSync(join(stagingDir, 'workspace', 'IDENTITY.md'), `# IDENTITY\n\n- **Name:** Pixel`)
   writeFileSync(join(stagingDir, 'skills', 'test-skill', 'SKILL.md'), '# Skill\n')
 
   writeFileSync(
@@ -141,12 +149,11 @@ function fixedInstalledBy(): ProjectorOptions['installedBy'] {
   }
 }
 
-function freshOptions(): ProjectorOptions {
+function pixelOptions(): ProjectorOptions {
   return {
     manifest: pixelManifest(),
     stagingDir: seedPackageStaging(),
     agentId: 'pixel',
-    mode: 'fresh',
     installedBy: fixedInstalledBy(),
   }
 }
@@ -185,9 +192,17 @@ function runtimeSkillDir(name: string, agentId?: string): string {
     : join(openClawDir, 'skills', name)
 }
 
+function readSoul(): string {
+  return readFileSync(runtimeWorkspaceFile('pixel', 'SOUL.md'), 'utf-8')
+}
+
 function installRuntimeMock(): void {
   const runtime = {
     agents: {
+      list: async () => [
+        { id: 'main', name: 'Roscoe', status: 'active' },
+        { id: 'pixel', name: 'Pixel', status: 'active' },
+      ],
       listWorkspaceFiles: async () => [],
       readWorkspaceFile: async (agentId: string, path: string): Promise<WorkspaceFile | null> => {
         const file = runtimeWorkspaceFile(agentId, path)
@@ -208,8 +223,6 @@ function installRuntimeMock(): void {
         writeFileSync(target, file.content, 'utf-8')
         if (file.metadata?.installedBy) {
           writeFileSync(`${target}.installedBy`, JSON.stringify(file.metadata.installedBy, null, 2), 'utf-8')
-        } else {
-          rmSync(`${target}.installedBy`, { force: true })
         }
       },
       removeWorkspaceFile: async (agentId: string, path: string) => {
@@ -244,8 +257,6 @@ function installRuntimeMock(): void {
         }
         if (skill.metadata?.installedBy) {
           writeFileSync(join(dir, '.installedBy'), JSON.stringify(skill.metadata.installedBy, null, 2), 'utf-8')
-        } else {
-          rmSync(join(dir, '.installedBy'), { force: true })
         }
       },
       remove: async (name: string, agentId?: string) => {
@@ -256,237 +267,182 @@ function installRuntimeMock(): void {
   ;(globalThis as TestGlobal).__bakinAppServices = { runtime }
 }
 
-// ─── Fresh install ───────────────────────────────────────────────────────────
+// ─── Composed-block projection ───────────────────────────────────────────────
 
-describe('projectPackage — fresh install (kind:"agent")', () => {
-  it('writes every workspace file with sidecar', async () => {
-    const result = await projectPackage(freshOptions())
+describe('projectPackage — composed managed blocks', () => {
+  it('creates each contributed workspace file with exactly one managed block', async () => {
+    const result = await projectPackage(pixelOptions())
 
-    const soul = join(openClawDir, 'workspaces', 'pixel', 'SOUL.md')
-    const identity = join(openClawDir, 'workspaces', 'pixel', 'IDENTITY.md')
-    expect(existsSync(soul)).toBe(true)
-    expect(existsSync(identity)).toBe(true)
-    expect(readInstalledBy(soul)?.package).toBe('pixel')
-    expect(readInstalledBy(identity)?.package).toBe('pixel')
+    const soul = readSoul()
+    expect(hasBlock(soul, MANAGED_BLOCK_ID)).toBe(true)
+    const body = extractBlock(soul, MANAGED_BLOCK_ID) ?? ''
+    expect(body).toContain('<!-- bakin-section: package -->')
+    expect(body).toContain('You are Pixel.')
 
-    const workspaceProjections = result.projections.filter((p) => p.kind === 'workspace-file')
-    expect(workspaceProjections).toHaveLength(2)
-    expect(workspaceProjections.every((p) => p.templateOnly === true)).toBe(true)
+    const identity = readFileSync(runtimeWorkspaceFile('pixel', 'IDENTITY.md'), 'utf-8')
+    expect(extractBlock(identity, MANAGED_BLOCK_ID)).toContain('- **Name:** Pixel')
+
+    // SOUL + IDENTITY from the package, plus AGENTS.md which always gets
+    // the context-layer block (role context is seeded by the projector).
+    const wsProjections = result.projections.filter((p) => p.kind === 'workspace-file')
+    expect(wsProjections).toHaveLength(3)
+    const agentsMd = readFileSync(runtimeWorkspaceFile('pixel', 'AGENTS.md'), 'utf-8')
+    expect(extractBlock(agentsMd, MANAGED_BLOCK_ID)).toContain('bakin-section: role:subagent')
+    expect(wsProjections.every((p) => typeof p.composedSha === 'string')).toBe(true)
+    expect(wsProjections.every((p) => p.templateOnly === undefined)).toBe(true)
+    expect(result.projections.some((p) => p.kind === 'lesson-marker')).toBe(false)
   })
 
+  it('preserves agent content outside the block in existing files', async () => {
+    const wsDir = join(openClawDir, 'workspaces', 'pixel')
+    mkdirSync(wsDir, { recursive: true })
+    writeFileSync(join(wsDir, 'SOUL.md'), `# Existing Pixel SOUL\n\nUser-written content.\n`)
+
+    await projectPackage(pixelOptions())
+
+    const soul = readSoul()
+    expect(soul).toContain('# Existing Pixel SOUL')
+    expect(soul).toContain('User-written content.')
+    expect(hasBlock(soul, MANAGED_BLOCK_ID)).toBe(true)
+  })
+
+  it('re-projection is idempotent and rewrites the block in place', async () => {
+    await projectPackage(pixelOptions())
+    const soulPath = runtimeWorkspaceFile('pixel', 'SOUL.md')
+    writeFileSync(soulPath, readFileSync(soulPath, 'utf-8') + '\nAgent-added new section.\n')
+
+    // Change the template, re-project — block updates, agent prose stays
+    const opts = pixelOptions()
+    writeFileSync(join(opts.stagingDir, 'workspace', 'SOUL.md'), `# Soul v2\n\nYou are Pixel, renewed.`)
+    await projectPackage(opts)
+
+    const after = readSoul()
+    expect(after).toContain('Agent-added new section.')
+    expect(extractBlock(after, MANAGED_BLOCK_ID)).toContain('You are Pixel, renewed.')
+    expect(after).not.toContain('You are Pixel.\n') // old template gone from block
+
+    // Identical re-projection: byte-stable
+    await projectPackage(opts)
+    expect(readSoul()).toBe(after)
+  })
+
+  it('composes the lesson catalog + enabled bodies inside the SOUL block', async () => {
+    await projectPackage(pixelOptions())
+    const body = extractBlock(readSoul(), MANAGED_BLOCK_ID) ?? ''
+    expect(body).toContain('<!-- bakin-section: lessons -->')
+    expect(body).toContain('[x] **Prompt Style System**')
+    expect(body).toContain('[ ] **Social Media**')
+    expect(body).toContain('Four ingredients...')
+    expect(body).not.toContain('Viral patterns...')
+  })
+
+  it('falls back to defaultEnabled frontmatter when install.enableLessons is undefined', async () => {
+    const opts = pixelOptions()
+    opts.manifest = { ...opts.manifest, install: { ...(opts.manifest as AgentManifest).install, enableLessons: undefined } } as Manifest
+    await projectPackage(opts)
+    const body = extractBlock(readSoul(), MANAGED_BLOCK_ID) ?? ''
+    expect(body).toContain('Four ingredients...') // defaultEnabled: true
+    expect(body).not.toContain('Viral patterns...') // defaultEnabled: false
+  })
+
+  it('honors enabledLessons override', async () => {
+    const opts = pixelOptions()
+    opts.enabledLessons = ['social-media']
+    await projectPackage(opts)
+    const body = extractBlock(readSoul(), MANAGED_BLOCK_ID) ?? ''
+    expect(body).toContain('Viral patterns...')
+    expect(body).not.toContain('Four ingredients...')
+  })
+
+  it('does NOT honor workspace .userEdited sentinels (blocks are Bakin-owned)', async () => {
+    await projectPackage(pixelOptions())
+    const soulPath = runtimeWorkspaceFile('pixel', 'SOUL.md')
+    writeFileSync(`${soulPath}.userEdited`, '')
+    const opts = pixelOptions()
+    writeFileSync(join(opts.stagingDir, 'workspace', 'SOUL.md'), `# Soul v3`)
+    const result = await projectPackage(opts)
+    expect(extractBlock(readSoul(), MANAGED_BLOCK_ID)).toContain('# Soul v3')
+    expect(result.skipped.some((s) => s.target.includes('SOUL.md'))).toBe(false)
+  })
+})
+
+// ─── Skills + assets (unchanged semantics) ───────────────────────────────────
+
+describe('projectPackage — skills + assets', () => {
   it('projects skills per-agent for kind:"agent"', async () => {
-    await projectPackage(freshOptions())
+    await projectPackage(pixelOptions())
     const skillDir = join(openClawDir, 'workspaces', 'pixel', 'skills', 'test-skill')
     expect(existsSync(join(skillDir, 'SKILL.md'))).toBe(true)
     expect(readInstalledBy(skillDir)?.package).toBe('pixel')
   })
 
   it('copies assets to ~/.bakin/agents/<id>/', async () => {
-    await projectPackage(freshOptions())
+    await projectPackage(pixelOptions())
     const avatar = join(testDir, 'agents', 'pixel', 'avatar.jpg')
     expect(existsSync(avatar)).toBe(true)
-    expect(readFileSync(avatar, 'utf-8')).toBe('fake-jpg-bytes')
     expect(readInstalledBy(avatar)?.package).toBe('pixel')
   })
 
-  it('injects lesson catalog + enabled-lesson blocks into SOUL.md', async () => {
-    await projectPackage(freshOptions())
-    const soul = readFileSync(join(openClawDir, 'workspaces', 'pixel', 'SOUL.md'), 'utf-8')
+  it('projects a webp avatar asset (format-agnostic) — #339', async () => {
+    // The projector copies by basename, so any image format projects the same
+    // way; this guards the dual-format avatar path end to end.
+    const stagingDir = seedPackageStaging()
+    writeFileSync(join(stagingDir, 'assets', 'avatar.webp'), 'fake-webp-bytes')
+    const manifest = pixelManifest()
+    manifest.contributions.assets = ['assets/avatar.webp']
 
-    expect(hasBlock(soul, 'lesson-catalog')).toBe(true)
-    const catalog = extractBlock(soul, 'lesson-catalog') ?? ''
-    expect(catalog).toContain('Prompt Style System')
-    expect(catalog).toContain('[x] **Prompt Style System**')
-    expect(catalog).toContain('[ ] **Social Media**')
+    await projectPackage({ manifest, stagingDir, agentId: 'pixel', installedBy: fixedInstalledBy() })
 
-    // Enabled lesson has a block; disabled lesson does not
-    expect(hasBlock(soul, 'lesson:pixel:prompt-style-system')).toBe(true)
-    expect(hasBlock(soul, 'lesson:pixel:social-media')).toBe(false)
+    const avatar = join(testDir, 'agents', 'pixel', 'avatar.webp')
+    expect(existsSync(avatar)).toBe(true)
+    expect(readInstalledBy(avatar)?.package).toBe('pixel')
   })
 
-  it('records lesson-marker projections for catalog + each enabled lesson', async () => {
-    const result = await projectPackage(freshOptions())
-    const markers = result.projections.filter((p) => p.kind === 'lesson-marker')
-    expect(markers).toHaveLength(2) // catalog + prompt-style-system
-    const blockIds = markers.map((m) => m.blockId)
-    expect(blockIds).toContain('lesson-catalog')
-    expect(blockIds).toContain('lesson:pixel:prompt-style-system')
-  })
-
-  it('falls back to defaultEnabled frontmatter when install.enableLessons is undefined', async () => {
-    const opts = freshOptions()
-    opts.manifest = { ...opts.manifest, install: { ...(opts.manifest as AgentManifest).install, enableLessons: undefined } } as Manifest
-    await projectPackage(opts)
-    const soul = readFileSync(join(openClawDir, 'workspaces', 'pixel', 'SOUL.md'), 'utf-8')
-    // prompt-style-system has defaultEnabled: true → block present
-    expect(hasBlock(soul, 'lesson:pixel:prompt-style-system')).toBe(true)
-    // social-media has defaultEnabled: false → block absent
-    expect(hasBlock(soul, 'lesson:pixel:social-media')).toBe(false)
-  })
-
-  it('honors enabledLessons override', async () => {
-    const opts = freshOptions()
-    opts.enabledLessons = ['social-media'] // only social-media enabled
-    await projectPackage(opts)
-    const soul = readFileSync(join(openClawDir, 'workspaces', 'pixel', 'SOUL.md'), 'utf-8')
-    expect(hasBlock(soul, 'lesson:pixel:social-media')).toBe(true)
-    expect(hasBlock(soul, 'lesson:pixel:prompt-style-system')).toBe(false)
-  })
-})
-
-// ─── Adopt mode ──────────────────────────────────────────────────────────────
-
-describe('projectPackage — adopt mode', () => {
-  it('preserves existing workspace files and only injects markers', async () => {
-    const wsDir = join(openClawDir, 'workspaces', 'pixel')
-    mkdirSync(wsDir, { recursive: true })
-    writeFileSync(join(wsDir, 'SOUL.md'), `# Existing Pixel SOUL\n\nUser-written content.\n`)
-    writeFileSync(join(wsDir, 'IDENTITY.md'), `# Existing Identity`)
-
-    const opts = freshOptions()
-    opts.mode = 'adopt'
-
-    const result = await projectPackage(opts)
-
-    // Existing IDENTITY.md is untouched
-    expect(readFileSync(join(wsDir, 'IDENTITY.md'), 'utf-8')).toBe('# Existing Identity')
-
-    // SOUL.md has new markers but the prose is preserved
-    const soul = readFileSync(join(wsDir, 'SOUL.md'), 'utf-8')
-    expect(soul).toContain('# Existing Pixel SOUL')
-    expect(soul).toContain('User-written content.')
-    expect(hasBlock(soul, 'lesson-catalog')).toBe(true)
-
-    // No workspace-file projections — adopt mode skips them
-    const wsProjections = result.projections.filter((p) => p.kind === 'workspace-file')
-    expect(wsProjections).toHaveLength(0)
-
-    // Skill + asset still project
-    expect(result.projections.some((p) => p.kind === 'skill')).toBe(true)
-    expect(result.projections.some((p) => p.kind === 'asset')).toBe(true)
-  })
-
-  it('restores missing workspace template files while preserving existing ones', async () => {
-    const wsDir = join(openClawDir, 'workspaces', 'pixel')
-    mkdirSync(wsDir, { recursive: true })
-    writeFileSync(join(wsDir, 'SOUL.md'), `# Existing Pixel SOUL\n\nUser-written content.\n`)
-
-    const opts = freshOptions()
-    opts.mode = 'adopt'
-
-    const result = await projectPackage(opts)
-
-    expect(readFileSync(join(wsDir, 'SOUL.md'), 'utf-8')).toContain('User-written content.')
-    expect(existsSync(join(wsDir, 'IDENTITY.md'))).toBe(true)
-
-    const wsProjections = result.projections.filter((p) => p.kind === 'workspace-file')
-    expect(wsProjections.map((p) => p.target).sort()).toEqual([
-      'runtime:workspace-file:pixel:IDENTITY.md',
-    ])
-  })
-})
-
-// ─── Update mode ─────────────────────────────────────────────────────────────
-
-describe('projectPackage — update mode', () => {
-  it('without refreshTemplate, does NOT rewrite workspace files', async () => {
-    // Pre-seed updated workspace via fresh install
-    await projectPackage(freshOptions())
-    const soulBefore = readFileSync(join(openClawDir, 'workspaces', 'pixel', 'SOUL.md'), 'utf-8')
-
-    // Now agent edits the SOUL.md
-    const soulPath = join(openClawDir, 'workspaces', 'pixel', 'SOUL.md')
-    writeFileSync(soulPath, `${soulBefore}\n\nAgent-added new section.\n`)
-
-    // Run an update — should re-inject markers but not rewrite the template
-    const opts = freshOptions()
-    opts.mode = 'update'
-    opts.refreshTemplate = false
-    await projectPackage(opts)
-
-    const after = readFileSync(soulPath, 'utf-8')
-    // Agent's added prose is preserved (markers were re-injected via injectBlock
-    // which preserves surrounding content)
-    expect(after).toContain('Agent-added new section.')
-  })
-
-  it('with refreshTemplate=true, rewrites workspace files', async () => {
-    await projectPackage(freshOptions())
-    const identityPath = join(openClawDir, 'workspaces', 'pixel', 'IDENTITY.md')
-    writeFileSync(identityPath, `# Drifted IDENTITY\n\nAgent overwrote this.\n`)
-
-    const opts = freshOptions()
-    opts.mode = 'update'
-    opts.refreshTemplate = true
-    await projectPackage(opts)
-
-    expect(readFileSync(identityPath, 'utf-8')).toBe('# IDENTITY\n\n- **Name:** Pixel\n')
-  })
-})
-
-// ─── .userEdited semantics ───────────────────────────────────────────────────
-
-describe('projectPackage — .userEdited honored', () => {
-  it('skips a workspace file marked userEdited and records it in result.skipped', async () => {
-    // First fresh install lays down SOUL.md
-    await projectPackage(freshOptions())
-    const soulPath = join(openClawDir, 'workspaces', 'pixel', 'SOUL.md')
-    writeFileSync(soulPath, '# user owns this now')
-    markUserEdited(soulPath)
-
-    const opts = freshOptions()
-    opts.mode = 'update'
-    opts.refreshTemplate = true // even with refresh-template, userEdited wins
-    const result = await projectPackage(opts)
-
-    // File untouched
-    expect(readFileSync(soulPath, 'utf-8')).toBe('# user owns this now')
-    // Recorded as skipped
-    expect(result.skipped.some((s) => s.target.includes('SOUL.md'))).toBe(true)
-  })
-
-  it('skips an asset marked userEdited', async () => {
-    await projectPackage(freshOptions())
+  it('skips an asset marked userEdited and records it', async () => {
+    await projectPackage(pixelOptions())
     const avatar = join(testDir, 'agents', 'pixel', 'avatar.jpg')
     writeFileSync(avatar, 'user-edited avatar')
     markUserEdited(avatar)
 
-    const opts = freshOptions()
-    opts.mode = 'update'
-    const result = await projectPackage(opts)
-
+    const result = await projectPackage(pixelOptions())
     expect(readFileSync(avatar, 'utf-8')).toBe('user-edited avatar')
     expect(result.skipped.some((s) => s.target === avatar)).toBe(true)
+  })
+
+  it('skips a skill marked userEdited and records it', async () => {
+    await projectPackage(pixelOptions())
+    const skillDir = runtimeSkillDir('test-skill', 'pixel')
+    writeFileSync(join(skillDir, 'SKILL.md'), '# my tweaked skill')
+    writeFileSync(join(skillDir, '.userEdited'), '')
+
+    const result = await projectPackage(pixelOptions())
+    expect(readFileSync(join(skillDir, 'SKILL.md'), 'utf-8')).toBe('# my tweaked skill')
+    expect(result.skipped.some((s) => s.target.includes('test-skill'))).toBe(true)
   })
 })
 
 // ─── Rollback on failure ─────────────────────────────────────────────────────
 
 describe('projectPackage — atomic rollback', () => {
-  it('rolls back runtime writes and stale sidecars when a later projection fails', async () => {
+  it('rolls back workspace block writes when a later projection fails', async () => {
     const wsDir = join(openClawDir, 'workspaces', 'pixel')
     mkdirSync(wsDir, { recursive: true })
     writeFileSync(join(wsDir, 'SOUL.md'), '# existing soul\n')
-    writeFileSync(join(wsDir, 'IDENTITY.md'), '# existing identity\n')
 
+    // Seed an avatar owned by a DIFFERENT package — asset projection collides
     const assetDir = join(testDir, 'agents', 'pixel')
     mkdirSync(assetDir, { recursive: true })
     const avatar = join(assetDir, 'avatar.jpg')
     writeFileSync(avatar, 'owned avatar')
     writeInstalledBy(avatar, { ...fixedInstalledBy(), package: 'other-package', sha256: 'owned' })
 
-    const opts = freshOptions()
-    opts.mode = 'update'
-    opts.refreshTemplate = true
+    await expect(projectPackage(pixelOptions())).rejects.toThrow(/Projection collision/)
 
-    await expect(projectPackage(opts)).rejects.toThrow(/Projection collision/)
-
-    const soul = join(wsDir, 'SOUL.md')
-    const identity = join(wsDir, 'IDENTITY.md')
-    expect(readFileSync(soul, 'utf-8')).toBe('# existing soul\n')
-    expect(readFileSync(identity, 'utf-8')).toBe('# existing identity\n')
-    expect(existsSync(`${soul}.installedBy`)).toBe(false)
-    expect(existsSync(`${identity}.installedBy`)).toBe(false)
+    // SOUL.md restored to pre-projection content (block write rolled back)
+    expect(readFileSync(join(wsDir, 'SOUL.md'), 'utf-8')).toBe('# existing soul\n')
+    // IDENTITY.md (created during the failed run) removed again
+    expect(existsSync(join(wsDir, 'IDENTITY.md'))).toBe(false)
+    // Skill rolled back; foreign avatar untouched
     expect(existsSync(join(wsDir, 'skills', 'test-skill'))).toBe(false)
     expect(readFileSync(avatar, 'utf-8')).toBe('owned avatar')
     expect(readInstalledBy(avatar)?.package).toBe('other-package')
@@ -512,13 +468,11 @@ describe('projectPackage — skill-pack', () => {
     const result = await projectPackage({
       manifest,
       stagingDir,
-      mode: 'fresh',
       installedBy: { ...fixedInstalledBy(), package: 'visual' },
     })
 
     const target = join(openClawDir, 'skills', 'image-gen')
     expect(existsSync(join(target, 'SKILL.md'))).toBe(true)
-    expect(readInstalledBy(target)?.package).toBe('visual')
     expect(result.projections.some((p) => p.kind === 'skill' && p.target === 'runtime:global-skill:image-gen')).toBe(true)
   })
 })
@@ -526,42 +480,52 @@ describe('projectPackage — skill-pack', () => {
 // ─── unprojectPackage ────────────────────────────────────────────────────────
 
 describe('unprojectPackage', () => {
-  it('removes every projected file + sidecar', async () => {
-    const result = await projectPackage(freshOptions())
-
-    const soul = join(openClawDir, 'workspaces', 'pixel', 'SOUL.md')
-    const avatar = join(testDir, 'agents', 'pixel', 'avatar.jpg')
+  it('removes skills/assets but only strips the block from workspace files', async () => {
+    const result = await projectPackage(pixelOptions())
+    const soulPath = runtimeWorkspaceFile('pixel', 'SOUL.md')
+    writeFileSync(soulPath, readFileSync(soulPath, 'utf-8') + '\nAgent prose to keep.\n')
 
     await unprojectPackage(result.projections)
 
-    expect(existsSync(soul)).toBe(false)
-    expect(existsSync(installedByPath(soul))).toBe(false)
-    expect(existsSync(avatar)).toBe(false)
+    // Workspace file survives, block is gone, agent prose kept
+    expect(existsSync(soulPath)).toBe(true)
+    const soul = readFileSync(soulPath, 'utf-8')
+    expect(hasBlock(soul, MANAGED_BLOCK_ID)).toBe(false)
+    expect(soul).toContain('Agent prose to keep.')
+
+    // Skill + asset removed
     expect(existsSync(join(openClawDir, 'workspaces', 'pixel', 'skills', 'test-skill'))).toBe(false)
+    expect(existsSync(join(testDir, 'agents', 'pixel', 'avatar.jpg'))).toBe(false)
   })
 
-  it('with keepBlocks=true, leaves lesson markers intact', async () => {
-    const result = await projectPackage(freshOptions())
-    const soul = join(openClawDir, 'workspaces', 'pixel', 'SOUL.md')
+  it('with keepBlocks=true, leaves workspace files fully intact', async () => {
+    const result = await projectPackage(pixelOptions())
+    const soulBefore = readSoul()
 
     await unprojectPackage(result.projections, { keepBlocks: true })
 
-    // workspace-file removed
-    expect(existsSync(soul)).toBe(false)
-    // (Without the SOUL.md file we can't verify markers stayed — keepBlocks
-    // only matters when the SOUL.md is preserved by being skipped due to
-    // userEdited or being excluded from projections; this is the normal
-    // case where unproject removes everything.)
+    expect(readSoul()).toBe(soulBefore)
+    expect(existsSync(join(testDir, 'agents', 'pixel', 'avatar.jpg'))).toBe(false)
   })
 
-  it('skips files marked userEdited even on uninstall', async () => {
-    const result = await projectPackage(freshOptions())
+  it('leaves legacy templateOnly workspace projections alone entirely', async () => {
+    const wsDir = join(openClawDir, 'workspaces', 'pixel')
+    mkdirSync(wsDir, { recursive: true })
+    writeFileSync(join(wsDir, 'SOUL.md'), '# legacy whole-file template')
+
+    await unprojectPackage([
+      { kind: 'workspace-file', target: 'runtime:workspace-file:pixel:SOUL.md', sha256: 'x', templateOnly: true },
+    ])
+
+    expect(readFileSync(join(wsDir, 'SOUL.md'), 'utf-8')).toBe('# legacy whole-file template')
+  })
+
+  it('skips assets marked userEdited even on uninstall', async () => {
+    const result = await projectPackage(pixelOptions())
     const avatar = join(testDir, 'agents', 'pixel', 'avatar.jpg')
     markUserEdited(avatar)
 
     await unprojectPackage(result.projections)
-
-    // userEdited asset survives uninstall
     expect(existsSync(avatar)).toBe(true)
   })
 })

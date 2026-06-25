@@ -47,6 +47,7 @@ mock.module('../../../src/core/logger', () => ({
 }))
 
 mock.module('../../../src/core/settings', () => ({
+  resetSettingsCache: () => {},
   getSettings: mock(() => ({
     runtime: {
       adapter: 'openclaw',

@@ -58,8 +58,21 @@ mock.module('@/core/task-store', () => ({
 }))
 
 // Hook registry remains available for plugin activation paths.
-mock.module('../../../src/lib/plugin-registry', () => ({
+mock.module('../../../src/core/plugin-registry', () => ({
   getPluginSkills: () => mockWorkflowPluginSkills,
+  getHookRegistry: () => ({
+    invoke: async (_name: string) => {
+      return undefined
+    },
+    has: () => false,
+    register: () => () => {},
+  }),
+}))
+// getPluginSkills now lives in the leaf; the source reads it from there.
+mock.module('@bakin/core/skills/plugin-skill-registry', () => ({
+  getPluginSkills: () => mockWorkflowPluginSkills,
+}))
+mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
   getHookRegistry: () => ({
     invoke: async (_name: string) => {
       return undefined
@@ -251,6 +264,34 @@ steps:
     )
     const results = await checkWorkflowDefinitions(testDir)
     expect(results.some(r => r.status === 'warn' && r.message.includes('missing-skill'))).toBe(true)
+  })
+
+  it('resolves skills registered by agent packages (no local file shadow needed)', async () => {
+    const { registerAgentPackageSkill, unregisterAgentPackageSkills } = await import('../../../plugins/workflows/lib/agent-package-skill-registry')
+    registerAgentPackageSkill('pixel', 'packaged-skill', {
+      name: 'packaged-skill',
+      description: 'from the pixel package',
+      instructions: 'body',
+    } as never)
+    try {
+      writeFileSync(
+        join(definitionsDir, 'packaged-flow.yaml'),
+        `name: Packaged flow
+description: test
+version: 1
+steps:
+  - id: s1
+    label: Step 1
+    type: agent
+    agent: main
+    skill: packaged-skill
+`,
+      )
+      const results = await checkWorkflowDefinitions(testDir)
+      expect(results.some(r => r.message.includes('packaged-skill'))).toBe(false)
+    } finally {
+      unregisterAgentPackageSkills('pixel')
+    }
   })
 })
 

@@ -69,8 +69,11 @@ function managedEntry(agentId = 'pixel'): PackageEntry {
   }
 }
 
+// 'adopted' collapsed into 'managed' (layered-context spec). In-memory
+// fixtures use 'managed' directly; on-disk legacy 'adopted' strings are
+// normalized by the lockfile schema (covered in lockfile.test.ts).
 function adoptedEntry(agentId = 'pixel'): PackageEntry {
-  return { ...managedEntry(agentId), state: 'adopted' }
+  return { ...managedEntry(agentId), state: 'managed' }
 }
 
 function lockOf(packages: Record<string, PackageEntry>): Lockfile {
@@ -92,12 +95,12 @@ describe('getAgentState — four discriminating cases', () => {
     expect(info.entry).toBeUndefined()
   })
 
-  it('returns adopted when runtime + lockfile state="adopted"', async () => {
+  it('returns managed for entries created via adopt-mode installs', async () => {
     runtimeAgents = [{ id: 'pixel' }]
     const info = await getAgentState('pixel', lockOf({ pixel: adoptedEntry() }))
-    expect(info.state).toBe('adopted')
+    expect(info.state).toBe('managed')
     expect(info.packageId).toBe('pixel')
-    expect(info.entry?.state).toBe('adopted')
+    expect(info.entry?.state).toBe('managed')
   })
 
   it('returns managed when runtime + lockfile state="managed"', async () => {
@@ -141,7 +144,7 @@ describe('listAllAgentStates', () => {
     expect(all.every((a) => a.state === 'unmanaged')).toBe(true)
   })
 
-  it('cross-references lockfile entries — managed and adopted states populate', async () => {
+  it('cross-references lockfile entries — every packaged agent reports managed', async () => {
     runtimeAgents = [{ id: 'pixel' }, { id: 'rolo' }, { id: 'main-operator' }]
     const lock = lockOf({
       pixel: managedEntry('pixel'),
@@ -152,7 +155,7 @@ describe('listAllAgentStates', () => {
     const all = await listAllAgentStates(lock)
     const byId = new Map(all.map((a) => [a.agentId, a]))
     expect(byId.get('pixel')?.state).toBe('managed')
-    expect(byId.get('rolo')?.state).toBe('adopted')
+    expect(byId.get('rolo')?.state).toBe('managed')
     expect(byId.get('main-operator')?.state).toBe('unmanaged')
   })
 

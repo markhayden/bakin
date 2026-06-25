@@ -24,8 +24,32 @@ Merged into each runtime-sourced `AvailableModel` server-side via `getKnownModel
 
 `<BrandIcon>` inlines SVG paths from simple-icons.org (CC0) for the 5 brands we have logos for. Unknown slugs render a first-letter chip in the provider's brand color.
 
+## Cost optimization (metering → routing → gating)
+
+Issue #464, widened from budget gating to the full cost story. Deep spec/plan: `.claude/specs/models-cost-optimization.md` (+ `-plan.md`).
+
+### Structured pricing
+
+`KnownModel.pricing` (`{ inputPer1M, outputPer1M, cachedReadPer1M?, updatedAt }`) is the cost source of truth for cloud LLMs; the display string is **derived** via `formatCostRange`. `costRange` survives only as a literal for non-token models (image/video/local). `computeCostUsdMicros(usage, pricing)` returns **null** when pricing or token counts are absent — never a fabricated zero. Cache tokens ARE priced (read + write); rates default to `DEFAULT_CACHE_READ_MULTIPLIER` (0.1×) / `DEFAULT_CACHE_WRITE_MULTIPLIER` (1.25×) of input — exact for Anthropic, approximate (typically low) for OpenAI/Google unless a model declares explicit `cachedReadPer1M`/`cacheWritePer1M`.
+
+### Metering
+
+The OpenClaw adapter surfaces per-turn `usage` from the **gateway response payload** (`result.meta.agentMeta.usage` — input/output/total **+ cacheRead/cacheWrite**), falling back to the trajectory `model.completed` event. Reading from the payload works for unthreaded sends too and carries cache tokens the trajectory omits. **Every** Bakin-side agent send is metered through the shared `meterAgentTurn` (`src/core/agent-cost.ts`) — dispatch task turns (keyed by the ledger `run_id`) AND non-dispatch sends (watchdog/doctor/orchestrator/agent-to-agent, synthetic id + null `task_id`), so a budget cap bounds true total spend. It writes a durable `run_costs` row and feeds the usage recorder. Pricing is delegated to `models.priceTurn` (core stays pricing-agnostic); cost = input + output + cacheRead + cacheWrite (cache rates default to a multiple of input — see above; a cache-only turn is still priced). `agent-cost` imports its ledger/usage/hook deps dynamically so metering doesn't drag the ledger into every caller's static graph.
+
+**Image generation** is a separate billed path (not chat tokens): `persistImageResult` meters each generate/edit via `meterImageTurn` → `models.priceImage` (flat `imagePerUsd` × count; provider-priced models record the run unpriced) → a `run_costs` image event (`image:` runId) that also counts toward the cap.
+
+**Surfacing:** Models → **Spend** tab (detail) + a **Bakin Metered Spend** card on the Health dashboard (distinct from the pre-existing runtime-reported "Runtime Cost Estimate" card, which reads `agent-usage.ts`/session JSONL — see `.claude/knowledge/usage-recording.md`). `GET /spend?window=24h|7d|30d|all` returns rollups (total/by-agent/by-model); the **Spend** tab renders them with an "estimated" caveat and "$ unavailable" for unmetered rows.
+
+### Routing (per-turn model + thinking)
+
+Bakin-owned policy resolved at dispatch (`src/core/model-routing.ts`); OpenClaw serves it (`model`/`thinking` on the gateway `agent` RPC). Routing key = dispatch **origin** (`scheduled|workflow|adhoc|recovery|decomposition`) + a per-task **tag override**. Cascade: tag → origin → inherit (nothing resolved = the agent's configured model, unchanged behavior). Stored in `settings.routing`, exposed via `models.getRoutingConfig`; the **Routing** tab edits it. Thinking levels include `inherit`.
+
+### Budget gating (#464)
+
+`settings.budget` (`BudgetPolicy`: global + per-agent daily/monthly USD caps + `warnPct`), exposed via `models.getBudgetPolicy`. `dispatch.budgetGate` consults it against ledger spend before claiming a run: **warn** at `warnPct` (default 0.8), **defer** at 100% (task stays in todo, resumes when the window rolls over — never pauses the agent, diverging from paperclip). **Fail-closed**: an unreadable ledger defers. Audits debounce per window. The health plugin's `budget` check surfaces utilization + deferred-run count; the Spend tab has a global-caps editor.
+
 ## How to extend
 
-- **Add a model:** PR an entry in `known-models.ts`.
+- **Add a model:** PR an entry in `known-models.ts` (include `pricing` for cloud LLMs; bump `PRICING_AS_OF` on price edits).
 - **Add a brand logo:** inline the SVG path in `brand-icon.tsx`.
-- **Never:** fabricate model metadata or invent providers — render plain instead.
+- **Never:** fabricate model metadata, pricing, or cost — render plain / "$ unavailable" instead.

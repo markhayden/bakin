@@ -14,6 +14,7 @@ import {
   callSearchRoute,
   type ActivatedPlugin,
 } from '../test-helpers'
+import type { TaskRunEntry } from '@bakin/tasks/types'
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 
@@ -50,6 +51,33 @@ mock.module('../../../src/lib/content-files', () => ({
   writeContentFile: mock(),
 }))
 
+// In-memory completion-gate fake — route tests exercise handler wiring, not
+// ledger semantics (covered by tests/core/completion-gate.test.ts).
+const completionsFake = new Map<string, { taskId: string; runId: string | null; agent: string; channel: string | null; completedAt: number }>()
+// Seedable per-task runs for the run-history route (the route maps these via runs-reader).
+let mockTaskRuns: Record<string, Array<Record<string, unknown>>> = {}
+// Seedable live runs for the tasks_get liveRun block.
+let mockLiveRuns: Record<string, { runId: string; agent: string; startedAt: number }> = {}
+const ledgerMock = () => ({
+  recordCompletion: (taskId: string, input: { runId?: string; agent: string; channel?: string }) => {
+    const existing = completionsFake.get(taskId)
+    if (existing) return { recorded: false as const, existing }
+    completionsFake.set(taskId, { taskId, runId: input.runId ?? null, agent: input.agent, channel: input.channel ?? null, completedAt: Date.now() })
+    return { recorded: true as const }
+  },
+  hasCompletion: (taskId: string) => completionsFake.has(taskId),
+  getCompletion: (taskId: string) => completionsFake.get(taskId) ?? null,
+  deleteCompletion: (taskId: string) => completionsFake.delete(taskId),
+  getLiveRun: (taskId: string) => {
+    const run = mockLiveRuns[taskId]
+    return run ? { ...run, taskId, status: 'running' } : null
+  },
+  bumpHeartbeatByTask: () => {},
+  listRunsByTask: (taskId: string, limit = 50) => (mockTaskRuns[taskId] ?? []).slice(0, limit),
+})
+mock.module('@/core/execution-ledger', ledgerMock)
+mock.module('../../../src/core/execution-ledger', ledgerMock)
+
 mock.module('../../../plugins/workflows/lib/runtime', () => ({
   cancelInstance: mock(),
 }))
@@ -67,8 +95,11 @@ const mockSetDependency = mock()
 const mockClearDependency = mock()
 const mockReorderTasks = mock()
 const mockGetTask = mock()
+const mockGetTaskWithColumn = mock(
+  (_id: string): { task: Record<string, unknown>; column: string } | null => null,
+)
 
-mock.module('@/core/task-store', () => ({
+const taskStoreMock = () => ({
   readTaskboard: (...args: unknown[]) => mockReadTaskboard(...args),
   createTask: (...args: unknown[]) => mockCreateTask(...args),
   deleteTask: (...args: unknown[]) => mockDeleteTask(...args),
@@ -81,9 +112,13 @@ mock.module('@/core/task-store', () => ({
   clearDependency: (...args: unknown[]) => mockClearDependency(...args),
   reorderTasks: (...args: unknown[]) => mockReorderTasks(...args),
   getTask: (...args: unknown[]) => mockGetTask(...args),
+  getTaskWithColumn: (...args: unknown[]) => mockGetTaskWithColumn(...(args as [string])),
   autoArchiveDoneTasks: mock().mockReturnValue(0),
   archiveOldTasks: mock().mockReturnValue(0),
-}))
+})
+// Both specifiers — runs-reader imports task-store relatively (same trap as the ledger mock).
+mock.module('@/core/task-store', taskStoreMock)
+mock.module('../../../src/core/task-store', taskStoreMock)
 
 // Mock task-service functions
 const mockMoveTaskWithEffects = mock()
@@ -126,6 +161,8 @@ afterAll(() => {
 
 beforeEach(() => {
   mock.clearAllMocks()
+  mockTaskRuns = {}
+  mockLiveRuns = {}
   // bun:test's clearAllMocks only clears call history; reset implementations
   // so a previous test's mockRejectedValue doesn't leak into the next.
   for (const m of [
@@ -134,8 +171,13 @@ beforeEach(() => {
     mockSetDependency, mockClearDependency, mockReorderTasks, mockGetTask,
     mockMoveTaskWithEffects, mockBlockTaskWithEffects, mockCreateTaskWithEffects,
     mockReportComplete, mockSetDependencyWithEffects, mockGetTaskDetails,
-    mockLogProgress, mockTriggerDispatch,
+    mockLogProgress, mockTriggerDispatch, mockGetTaskWithColumn,
   ]) m.mockReset()
+  mockGetTaskWithColumn.mockReturnValue(null)
+  completionsFake.clear()
+  // Handlers destructure the completion-gate result from these two.
+  mockMoveTaskWithEffects.mockResolvedValue({ alreadyComplete: false })
+  mockReportComplete.mockResolvedValue({ alreadyComplete: false })
 })
 
 // ─── Routing — :taskId requirement (replaces 6 legacy skipped cases) ───────
@@ -179,14 +221,15 @@ describe('Tasks Plugin — :taskId path-param routing', () => {
 // ─── Route Registration ────────────────────────────────────────────────────
 
 describe('Tasks Plugin — Route Registration', () => {
-  it('registers 14 routes', () => {
-    expect(activated.routes.length).toBe(14)
+  it('registers 15 routes', () => {
+    expect(activated.routes.length).toBe(15)
   })
 
   it.each([
     ['GET', '/'],
     ['GET', '/summary'],
     ['GET', '/:taskId'],
+    ['GET', '/:taskId/runs'],
     ['POST', '/'],
     ['PUT', '/:taskId'],
     ['DELETE', '/:taskId'],
@@ -304,6 +347,100 @@ describe('GET /:taskId — Get Task', () => {
 
     expect(status).toBe(404)
     expect(body.error).toBe('Task not found')
+  })
+})
+
+// ─── GET /:taskId/runs — run history ───────────────────────────────────────
+
+describe('GET /:taskId/runs — dispatch run history', () => {
+  it('maps ledger runs to entries newest-first with status, settle reason, and duration', async () => {
+    const t0 = 1_700_000_000_000
+    const row = (over: Record<string, unknown>) => ({
+      taskId: 'task-runs', execKey: 'task-runs', agent: 'pixel', bootId: 'b',
+      heartbeatAt: t0, settledAt: null, settleReason: null, ...over,
+    })
+    // Seeded newest-first (as the real listRunsByTask returns them).
+    mockTaskRuns['task-runs'] = [
+      row({ runId: 'task:task-runs:d3', seq: 3, status: 'running', startedAt: t0 + 2000 }),
+      row({ runId: 'task:task-runs:d2', seq: 2, status: 'settled', startedAt: t0 + 1000, settledAt: t0 + 1500, settleReason: 'turn-ok' }),
+      row({ runId: 'task:task-runs:d1', seq: 1, status: 'lost', startedAt: t0, settledAt: t0 + 200, settleReason: 'session-death' }),
+    ]
+
+    const route = findRoute(activated.routes, 'GET', '/:taskId/runs')!
+    expect(route).toBeDefined()
+    const { status, body } = await callRoute(route, activated.ctx, { searchParams: { taskId: 'task-runs' } })
+
+    expect(status).toBe(200)
+    const runs = body.runs as TaskRunEntry[]
+    expect(runs.map(r => r.seq)).toEqual([3, 2, 1])
+    expect(runs.map(r => r.status)).toEqual(['running', 'settled', 'lost'])
+    expect(runs.find(r => r.seq === 2)).toMatchObject({ settleReason: 'turn-ok', durationMs: 500, agent: 'pixel' })
+    expect(runs.find(r => r.seq === 3)?.durationMs).toBeUndefined() // still running, no duration
+    expect(runs[0].startedAt).toBe(new Date(t0 + 2000).toISOString())
+  })
+
+  it('returns an empty list for a task with no runs (never an error)', async () => {
+    const route = findRoute(activated.routes, 'GET', '/:taskId/runs')!
+    const { status, body } = await callRoute(route, activated.ctx, { searchParams: { taskId: 'no-runs' } })
+    expect(status).toBe(200)
+    expect(body.runs).toEqual([])
+  })
+
+  it('includes a done outcome from the completion ledger alongside the runs', async () => {
+    const completedAt = 1_700_000_500_000
+    completionsFake.set('task-done', { taskId: 'task-done', runId: 'task:task-done:d1', agent: 'pixel', channel: null, completedAt })
+    mockTaskRuns['task-done'] = [{
+      runId: 'task:task-done:d1', taskId: 'task-done', seq: 1, agent: 'pixel', status: 'settled',
+      startedAt: completedAt - 1000, settledAt: completedAt, settleReason: 'turn-ok',
+    }]
+
+    const route = findRoute(activated.routes, 'GET', '/:taskId/runs')!
+    const { status, body } = await callRoute(route, activated.ctx, { searchParams: { taskId: 'task-done' } })
+
+    expect(status).toBe(200)
+    expect(body.outcome).toEqual({
+      state: 'done',
+      completedAt: new Date(completedAt).toISOString(),
+      agent: 'pixel',
+    })
+  })
+
+  it('derives the outcome from the task column when no completion exists', async () => {
+    mockGetTaskWithColumn.mockReturnValue({ task: { id: 'task-blocked' }, column: 'blocked' })
+    mockTaskRuns['task-blocked'] = [{
+      runId: 'task:task-blocked:d1', taskId: 'task-blocked', seq: 1, agent: 'pixel', status: 'settled',
+      startedAt: 1_700_000_000_000, settledAt: 1_700_000_001_000, settleReason: 'turn-ok',
+    }]
+
+    const route = findRoute(activated.routes, 'GET', '/:taskId/runs')!
+    const { body } = await callRoute(route, activated.ctx, { searchParams: { taskId: 'task-blocked' } })
+
+    expect(body.outcome).toEqual({ state: 'blocked' })
+  })
+
+  it('omits the outcome key for an unknown task', async () => {
+    const route = findRoute(activated.routes, 'GET', '/:taskId/runs')!
+    const { status, body } = await callRoute(route, activated.ctx, { searchParams: { taskId: 'ghost' } })
+    expect(status).toBe(200)
+    expect(body.runs).toEqual([])
+    expect('outcome' in body).toBe(false)
+  })
+
+  it('never touches the task store for a task with no runs (unknown ids would trigger a full shard walk)', async () => {
+    const route = findRoute(activated.routes, 'GET', '/:taskId/runs')!
+    await callRoute(route, activated.ctx, { searchParams: { taskId: 'ghost' } })
+    expect(mockGetTaskWithColumn).not.toHaveBeenCalled()
+  })
+
+  it('still reports done for a completed task with no runs (completion lookup is cheap and ungated)', async () => {
+    const completedAt = 1_700_000_500_000
+    completionsFake.set('done-no-runs', { taskId: 'done-no-runs', runId: null, agent: 'pixel', channel: null, completedAt })
+
+    const route = findRoute(activated.routes, 'GET', '/:taskId/runs')!
+    const { body } = await callRoute(route, activated.ctx, { searchParams: { taskId: 'done-no-runs' } })
+
+    expect(body.outcome).toMatchObject({ state: 'done' })
+    expect(mockGetTaskWithColumn).not.toHaveBeenCalled()
   })
 })
 
@@ -491,7 +628,7 @@ describe('DELETE /:taskId — Delete Task', () => {
 
 describe('POST /:taskId/move — Move Task', () => {
   it('moves a task to a new column', async () => {
-    mockMoveTaskWithEffects.mockResolvedValue(undefined)
+    mockMoveTaskWithEffects.mockResolvedValue({ alreadyComplete: false })
 
     const route = findRoute(activated.routes, 'POST', '/:taskId/move')!
     const { status, body } = await callRoute(route, activated.ctx, {
@@ -555,7 +692,7 @@ describe('POST /:taskId/move — Move Task', () => {
   })
 
   it('passes human channel through to moveTaskWithEffects', async () => {
-    mockMoveTaskWithEffects.mockResolvedValue(undefined)
+    mockMoveTaskWithEffects.mockResolvedValue({ alreadyComplete: false })
 
     const route = findRoute(activated.routes, 'POST', '/:taskId/move')!
     const { status } = await callRoute(route, activated.ctx, {
@@ -581,7 +718,7 @@ describe('POST /:taskId/move — Move Task', () => {
   })
 
   it('calls blockTaskWithEffects with reason when moving to blocked', async () => {
-    mockBlockTaskWithEffects.mockResolvedValue(undefined)
+    mockBlockTaskWithEffects.mockResolvedValue({ alreadyComplete: false })
 
     const route = findRoute(activated.routes, 'POST', '/:taskId/move')!
     const { status, body } = await callRoute(route, activated.ctx, {
@@ -595,7 +732,7 @@ describe('POST /:taskId/move — Move Task', () => {
   })
 
   it('defaults channel to rest when not provided', async () => {
-    mockMoveTaskWithEffects.mockResolvedValue(undefined)
+    mockMoveTaskWithEffects.mockResolvedValue({ alreadyComplete: false })
 
     const route = findRoute(activated.routes, 'POST', '/:taskId/move')!
     await callRoute(route, activated.ctx, {
@@ -609,7 +746,7 @@ describe('POST /:taskId/move — Move Task', () => {
   })
 
   it('rejects channel=human when agent is not human (prevents agent impersonation)', async () => {
-    mockMoveTaskWithEffects.mockResolvedValue(undefined)
+    mockMoveTaskWithEffects.mockResolvedValue({ alreadyComplete: false })
 
     const route = findRoute(activated.routes, 'POST', '/:taskId/move')!
     await callRoute(route, activated.ctx, {
@@ -727,7 +864,7 @@ describe('POST /:taskId/log — Add Log Entry', () => {
 
 describe('POST /:taskId/block — Block Task', () => {
   it('blocks a task with reason', async () => {
-    mockBlockTaskWithEffects.mockResolvedValue(undefined)
+    mockBlockTaskWithEffects.mockResolvedValue({ alreadyComplete: false })
 
     const route = findRoute(activated.routes, 'POST', '/:taskId/block')!
     const { status, body } = await callRoute(route, activated.ctx, {
@@ -741,7 +878,7 @@ describe('POST /:taskId/block — Block Task', () => {
   })
 
   it('defaults agent to system', async () => {
-    mockBlockTaskWithEffects.mockResolvedValue(undefined)
+    mockBlockTaskWithEffects.mockResolvedValue({ alreadyComplete: false })
 
     const route = findRoute(activated.routes, 'POST', '/:taskId/block')!
     await callRoute(route, activated.ctx, {
@@ -1012,9 +1149,57 @@ describe('bakin_exec_tasks_get', () => {
   })
 })
 
+describe('bakin_exec_tasks_get liveRun visibility', () => {
+  it('includes the live run while one is in flight, so duplicate sessions can self-detect', async () => {
+    mockGetTaskDetails.mockResolvedValue({ task: { id: 'd1b213a5', title: 'Cat image' }, column: 'inProgress' })
+    mockLiveRuns['d1b213a5'] = { runId: 'task:d1b213a5:d1', agent: 'pixel', startedAt: 1781063794175 }
+
+    const tool = findTool(activated.execTools, 'bakin_exec_tasks_get')!
+    const result = await callTool(tool, { taskId: 'd1b213a5' })
+
+    expect(result.ok).toBe(true)
+    expect(result.liveRun).toEqual({
+      runId: 'task:d1b213a5:d1',
+      agent: 'pixel',
+      startedAt: new Date(1781063794175).toISOString(),
+    })
+  })
+
+  it('returns liveRun null when no run is in flight', async () => {
+    mockGetTaskDetails.mockResolvedValue({ task: { id: 'abc', title: 'Done thing' }, column: 'done' })
+
+    const tool = findTool(activated.execTools, 'bakin_exec_tasks_get')!
+    const result = await callTool(tool, { taskId: 'abc' })
+
+    expect(result.ok).toBe(true)
+    expect(result.liveRun).toBeNull()
+  })
+})
+
 // ─── bakin_exec_tasks_create ───────────────────────────────────────────────
 
 describe('bakin_exec_tasks_create', () => {
+  it('tells the creator that dispatch notifies the assignee — no separate message needed', async () => {
+    mockCreateTaskWithEffects.mockResolvedValue({ id: 'new-t', workflowId: 'wf-1' })
+
+    const tool = findTool(activated.execTools, 'bakin_exec_tasks_create')!
+    const result = await callTool(tool, { title: 'New Task', assignee: 'pixel', workflowId: 'wf-1' }, 'main')
+
+    expect(result.ok).toBe(true)
+    expect(result.notice).toContain('dispatch will notify pixel')
+    expect(result.notice).toContain('do NOT send them a separate message')
+  })
+
+  it('omits the dispatch copy when nothing was dispatched', async () => {
+    mockCreateTaskWithEffects.mockResolvedValue({ id: 'new-t3', workflowId: 'wf-1' })
+
+    const tool = findTool(activated.execTools, 'bakin_exec_tasks_create')!
+    const result = await callTool(tool, { title: 'Unassigned Task', workflowId: 'wf-1' }, 'main')
+
+    expect(result.ok).toBe(true)
+    expect(result.notice ?? '').not.toContain('separate message')
+  })
+
   it('creates a task with workflow', async () => {
     mockCreateTaskWithEffects.mockResolvedValue({ id: 'new-t', workflowId: 'wf-1' })
 
@@ -1212,7 +1397,7 @@ describe('bakin_exec_tasks_create', () => {
 
 describe('bakin_exec_tasks_move', () => {
   it('moves a task to a new column', async () => {
-    mockMoveTaskWithEffects.mockResolvedValue(undefined)
+    mockMoveTaskWithEffects.mockResolvedValue({ alreadyComplete: false })
 
     const tool = findTool(activated.execTools, 'bakin_exec_tasks_move')!
     const result = await callTool(tool, { taskId: 'task-m', to: 'review' }, 'pixel')
@@ -1244,7 +1429,7 @@ describe('bakin_exec_tasks_move', () => {
 
 describe('bakin_exec_tasks_block', () => {
   it('blocks a task', async () => {
-    mockBlockTaskWithEffects.mockResolvedValue(undefined)
+    mockBlockTaskWithEffects.mockResolvedValue({ alreadyComplete: false })
 
     const tool = findTool(activated.execTools, 'bakin_exec_tasks_block')!
     const result = await callTool(tool, { taskId: 'task-b', reason: 'need API key' }, 'trainer')
@@ -1268,7 +1453,7 @@ describe('bakin_exec_tasks_block', () => {
 
 describe('bakin_exec_tasks_complete', () => {
   it('completes a task', async () => {
-    mockReportComplete.mockResolvedValue(undefined)
+    mockReportComplete.mockResolvedValue({ alreadyComplete: false })
 
     const tool = findTool(activated.execTools, 'bakin_exec_tasks_complete')!
     const result = await callTool(tool, { taskId: 'task-c', summary: 'All done' }, 'pixel')

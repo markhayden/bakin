@@ -21,6 +21,7 @@ mock.module('../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 mock.module('../../src/core/settings', () => ({
+  resetSettingsCache: () => {},
   getSettings: mock().mockReturnValue({
     dispatch: { intervalMs: 1000, maxRetries: 3, failureCooldownMs: 60000, transientCooldownMs: 5000, maxDispatched: 500 },
     agents: ['main', 'pixel'],
@@ -29,7 +30,14 @@ mock.module('../../src/core/settings', () => ({
   }),
 }))
 mock.module('../../src/core/audit', () => ({ appendAudit: mock() }))
-mock.module('../../src/lib/plugin-registry', () => ({
+mock.module('../../src/core/plugin-registry', () => ({
+  getHookRegistry: mock().mockReturnValue({
+    invoke: mock().mockResolvedValue(undefined),
+    has: mock().mockReturnValue(false),
+    register: mock(),
+  }),
+}))
+mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
   getHookRegistry: mock().mockReturnValue({
     invoke: mock().mockResolvedValue(undefined),
     has: mock().mockReturnValue(false),

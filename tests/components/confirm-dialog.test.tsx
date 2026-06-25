@@ -1,0 +1,89 @@
+// @vitest-environment jsdom
+import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { join } from 'path'
+import { tmpdir } from 'os'
+
+// Pure jsdom component test — no storage access. Defensive content-dir mocks per
+// the repo's test-isolation convention.
+const testDir = join(tmpdir(), 'bakin-test-confirm-dialog')
+mock.module('../../src/core/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir }) }))
+mock.module('../../packages/core/src/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ root: testDir }) }))
+
+mock.module('@/components/ui/dialog', () => ({
+  Dialog: ({ open, children, onOpenChange }: { open: boolean; children?: React.ReactNode; onOpenChange?: (o: boolean) => void }) =>
+    open ? (
+      <div role="dialog">
+        <button data-testid="backdrop-close" onClick={() => onOpenChange?.(false)}>x</button>
+        {children}
+      </div>
+    ) : null,
+  DialogContent: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
+  DialogHeader: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
+  DialogTitle: ({ children }: { children?: React.ReactNode }) => <h2>{children}</h2>,
+  DialogDescription: ({ children }: { children?: React.ReactNode }) => <p>{children}</p>,
+  DialogFooter: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
+}))
+mock.module('@/components/ui/button', () => ({
+  Button: ({ children, onClick, disabled, ...rest }: { children?: React.ReactNode; onClick?: () => void; disabled?: boolean }) =>
+    <button onClick={onClick} disabled={disabled} data-testid={(rest as Record<string, string>)['data-testid']}>{children}</button>,
+}))
+
+import { ConfirmDialog } from '../../src/components/confirm-dialog'
+
+afterEach(() => cleanup())
+
+describe('ConfirmDialog', () => {
+  it('renders nothing when closed', () => {
+    render(<ConfirmDialog open={false} title="Delete thing" onConfirm={() => {}} onCancel={() => {}} />)
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('renders title, description, and default Delete/Cancel labels when open', () => {
+    render(
+      <ConfirmDialog open title="Delete thing" description="This cannot be undone." onConfirm={() => {}} onCancel={() => {}} />,
+    )
+    expect(screen.getByText('Delete thing')).toBeDefined()
+    expect(screen.getByText('This cannot be undone.')).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDefined()
+  })
+
+  it('honors a custom confirm label and fires the callbacks', () => {
+    const onConfirm = mock()
+    const onCancel = mock()
+    render(<ConfirmDialog open title="t" confirmLabel="Delete Agent" onConfirm={onConfirm} onCancel={onCancel} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Agent' }))
+    expect(onConfirm).toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(onCancel).toHaveBeenCalled()
+  })
+
+  it('disables both buttons and shows the busy label while busy', () => {
+    render(<ConfirmDialog open title="t" busy busyLabel="Deleting..." onConfirm={() => {}} onCancel={() => {}} />)
+    expect(screen.getByText('Deleting...')).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveProperty('disabled', true)
+    expect(screen.getByRole('button', { name: /Deleting/ })).toHaveProperty('disabled', true)
+  })
+
+  it('renders an inline error', () => {
+    render(<ConfirmDialog open title="t" error="Delete failed" onConfirm={() => {}} onCancel={() => {}} />)
+    expect(screen.getByText('Delete failed')).toBeDefined()
+  })
+
+  it('cancels on backdrop close when idle, but not while busy', () => {
+    const onCancel = mock()
+    const { rerender } = render(<ConfirmDialog open title="t" onConfirm={() => {}} onCancel={onCancel} />)
+    fireEvent.click(screen.getByTestId('backdrop-close'))
+    expect(onCancel).toHaveBeenCalledTimes(1)
+
+    rerender(<ConfirmDialog open busy title="t" onConfirm={() => {}} onCancel={onCancel} />)
+    fireEvent.click(screen.getByTestId('backdrop-close'))
+    expect(onCancel).toHaveBeenCalledTimes(1) // unchanged — busy blocks self-close
+  })
+
+  it('forwards a confirm test id', () => {
+    render(<ConfirmDialog open title="t" confirmTestId="my-confirm" onConfirm={() => {}} onCancel={() => {}} />)
+    expect(screen.getByTestId('my-confirm')).toBeDefined()
+  })
+})

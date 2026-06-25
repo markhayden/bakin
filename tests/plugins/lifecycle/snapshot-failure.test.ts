@@ -45,7 +45,7 @@ mock.module('../../../src/core/plugins/uninstall-snapshot', () => ({
     throw new Error('simulated tarball failure (test fixture)')
   },
 }))
-mock.module('../../../src/lib/plugin-registry', () => ({
+mock.module('../../../src/core/plugin-registry', () => ({
   isCorePlugin: () => false,
   pluginRegistry: {
     getPlugin: () => undefined,
@@ -53,6 +53,9 @@ mock.module('../../../src/lib/plugin-registry', () => ({
     deletePlugin: () => false,
     deactivatePlugin: async () => ({ hooks: 0, execTools: 0, contentTypes: 0, skills: 0 }),
   },
+  getHookRegistry: () => ({ unregisterByPlugin: () => 0 }),
+}))
+mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
   getHookRegistry: () => ({ unregisterByPlugin: () => 0 }),
 }))
 

@@ -95,8 +95,17 @@ gives every dispatch attempt a fresh, deterministic provider session:
 - the gateway idempotency key `bakin:<threadId>` is stable per logical turn.
 
 Session-store (`sessions.json`) reads are mtime-cached in the adapter since
-per-dispatch sessions accumulate entries. OpenClaw-side retention of old
-sessions is an upstream concern (rig validation item).
+per-dispatch sessions accumulate entries. OpenClaw-side retention exists as
+of 2026.6.5 (#435 close-out): `session.maintenance` defaults to
+`mode: enforce`, `pruneAfter: 30d`, `maxEntries: 500`, and maintenance runs
+on session-store **writes** and via `openclaw sessions cleanup --enforce` —
+never on gateway startup/reads. Unreferenced transcript/trajectory artifacts
+are only GC'd past a 30-day cutoff, and disk-budget eviction requires
+opting into `session.maintenance.maxDiskBytes`. The health plugin's
+`session-store` doctor check (`plugins/health/lib/system-checks/
+session-store.ts`, fed by the read-only `runtime.sessions.storeStats()`
+adapter capability) is the early warning when accumulation outruns
+maintenance.
 
 ## Observability
 

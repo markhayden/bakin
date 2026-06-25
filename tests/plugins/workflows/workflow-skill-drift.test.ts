@@ -42,7 +42,7 @@ import {
   clearAgentPackageSkillRegistry,
   registerAgentPackageSkill,
 } from '../../../plugins/workflows/lib/agent-package-skill-registry'
-import { getPluginSkills } from '../../../src/lib/plugin-registry'
+import { getPluginSkills } from '../../../src/core/plugin-registry'
 
 const skillsDir = join(testDir, 'workflows', 'skills')
 const managedDir = join(testDir, 'managed')

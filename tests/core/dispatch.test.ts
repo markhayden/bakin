@@ -13,11 +13,11 @@ import { RuntimeError } from '../../packages/core/src/adapters/runtime'
 const sentinelContentDir = join(tmpdir(), `bakin-dispatch-test-content-${Date.now()}`)
 mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => sentinelContentDir,
-  getBakinPaths: () => ({ root: sentinelContentDir }),
+  getBakinPaths: () => ({ root: sentinelContentDir, home: sentinelContentDir, db: join(sentinelContentDir, 'bakin.db') }),
 }))
 mock.module('../../packages/core/src/content-dir', () => ({
   getContentDir: () => sentinelContentDir,
-  getBakinPaths: () => ({ root: sentinelContentDir }),
+  getBakinPaths: () => ({ root: sentinelContentDir, home: sentinelContentDir, db: join(sentinelContentDir, 'bakin.db') }),
 }))
 
 mock.module('../../src/core/logger', () => ({
@@ -30,6 +30,7 @@ mock.module('../../src/core/logger', () => ({
 }))
 
 mock.module('../../src/core/settings', () => ({
+  resetSettingsCache: () => {},
   getSettings: mock().mockReturnValue({
     dispatch: {
       intervalMs: 1000,
@@ -120,7 +121,14 @@ mock.module('@/core/task-store', () => ({
   blockTask: (...args: unknown[]) => mockStoreBlockTask(...args),
 }))
 
-mock.module('../../src/lib/plugin-registry', () => ({
+mock.module('../../src/core/plugin-registry', () => ({
+  getHookRegistry: mock().mockReturnValue({
+    invoke: mock().mockResolvedValue(undefined),
+    has: mock().mockReturnValue(false),
+    register: mock(),
+  }),
+}))
+mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
   getHookRegistry: mock().mockReturnValue({
     invoke: mock().mockResolvedValue(undefined),
     has: mock().mockReturnValue(false),
@@ -139,7 +147,7 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 
 import { loadDispatchState, start, stop, getDispatchInfo, isTaskDispatchEligible } from '../../src/core/dispatch'
 import { dispatchTasks, awaitDispatchIdle } from '../../src/core/dispatch'
-import { getHookRegistry } from '../../src/lib/plugin-registry'
+import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import type { HookRegistry } from '../../packages/core/src/hooks/hook-registry'
 
 describe('dispatch', () => {
@@ -727,7 +735,9 @@ describe('dispatch', () => {
       const args = mockRuntimeSend.mock.calls[0]?.[0] as Record<string, unknown>
       expect(args.threadId).toBe('task:t-thread:d1')
       expect((args.metadata as Record<string, unknown>).oversizedOutputBytes).toBeGreaterThan(0)
-      expect(readState().dispatchSeq['t-thread']).toBe(1)
+      // Seq ownership moved to the execution ledger (run rows + watermarks).
+      const { currentSeq } = require('../../src/core/execution-ledger') as typeof import('../../src/core/execution-ledger')
+      expect(currentSeq('t-thread')).toBe(1)
     })
 
     it('seq survives success: a later re-dispatch of the same task gets a FRESH session key', async () => {
@@ -826,10 +836,11 @@ describe('dispatch', () => {
       // Persist-before-send: the save precedes every turn fire.
       expect(events.indexOf('save')).toBeLessThan(events.indexOf('send'))
 
-      // Both seqs were persisted by that single save.
-      const state = JSON.parse(readFileSync(join(tempDir, '.dispatch-state.json'), 'utf-8'))
-      expect(state.dispatchSeq['t-batch-1']).toBe(1)
-      expect(state.dispatchSeq['t-batch-2']).toBe(1)
+      // Seq durability moved to the ledger: both claims are on disk there
+      // (persist-before-send now means "run row inserted before send").
+      const { currentSeq } = require('../../src/core/execution-ledger') as typeof import('../../src/core/execution-ledger')
+      expect(currentSeq('t-batch-1')).toBe(1)
+      expect(currentSeq('t-batch-2')).toBe(1)
     })
 
     it('audits exactly one row per dispatch: task.dispatched with from/to, no task.moved', async () => {
@@ -847,6 +858,146 @@ describe('dispatch', () => {
       expect(dispatched).toHaveLength(1)
       // The fold preserves the transition info on the dispatched row.
       expect(dispatched[0]?.[3]).toMatchObject({ id: 't-audit-one', from: 'todo', to: 'inProgress' })
+    })
+
+    it('records a run_costs row from the turn usage + priceTurn hook on settle', async () => {
+      const { spendTotal } = require('../../src/core/execution-ledger') as typeof import('../../src/core/execution-ledger')
+      setDispatchColumns({ todo: [{ id: 't-cost', title: 'Costed task', agent: 'pixel' }] })
+      vi.mocked(getHookRegistry).mockReturnValue({
+        invoke: mock(async (hook: string) => {
+          if (hook === 'models.priceTurn') return { model: 'anthropic/claude-sonnet-4-6', costUsdMicros: 123_456 }
+          return undefined
+        }),
+        has: mock().mockReturnValue(false),
+        register: mock(),
+      } as unknown as HookRegistry)
+      mockRuntimeSend.mockResolvedValueOnce({ id: 'm', usage: { input: 1000, output: 200, total: 1200 } } as never)
+
+      const t0 = Date.now()
+      await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
+
+      // run_id == threadId; scoped by t0 so prior tests' rows don't bleed in.
+      expect(spendTotal({ agent: 'pixel', sinceMs: t0 })).toBe(123_456)
+    })
+
+    it('records an unmetered run_costs row (zero dollars) when the turn reports no usage', async () => {
+      const { spendByAgent } = require('../../src/core/execution-ledger') as typeof import('../../src/core/execution-ledger')
+      setDispatchColumns({ todo: [{ id: 't-unmetered', title: 'Unmetered task', agent: 'trainer' }] })
+      vi.mocked(getHookRegistry).mockReturnValue({
+        invoke: mock(async () => undefined), // no priceTurn handler → null model/cost
+        has: mock().mockReturnValue(false),
+        register: mock(),
+      } as unknown as HookRegistry)
+      mockRuntimeSend.mockResolvedValueOnce({ id: 'm' }) // no usage
+
+      const t0 = Date.now()
+      await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
+
+      const trainer = spendByAgent(t0).find((r) => r.agent === 'trainer')
+      expect(trainer).toEqual({ agent: 'trainer', costUsdMicros: 0, runs: 1 })
+    })
+
+    it('applies the resolved routing model/thinking to the turn (origin policy)', async () => {
+      setDispatchColumns({ todo: [{ id: 't-routed', title: 'Scheduled task', agent: 'pixel', scheduleJobId: 'job-1' }] })
+      vi.mocked(getHookRegistry).mockReturnValue({
+        invoke: mock(async (hook: string) => {
+          if (hook === 'models.getRoutingConfig') {
+            return { policies: [{ origin: 'scheduled', model: 'anthropic/claude-haiku-4-5', thinking: 'low' }], tagOverrides: [] }
+          }
+          return undefined
+        }),
+        has: mock().mockReturnValue(false),
+        register: mock(),
+      } as unknown as HookRegistry)
+
+      await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
+
+      const args = mockRuntimeSend.mock.calls[0]?.[0] as Record<string, unknown>
+      expect(args.model).toBe('anthropic/claude-haiku-4-5')
+      expect(args.thinking).toBe('low')
+    })
+
+    it('defers dispatch when a budget cap is exceeded (task stays in todo, no send)', async () => {
+      const { spendTotal } = require('../../src/core/execution-ledger') as typeof import('../../src/core/execution-ledger')
+      // Seed >$1 of spend "today" for the agent so a $1 daily cap is exceeded.
+      const { recordRunCost } = require('../../src/core/execution-ledger') as typeof import('../../src/core/execution-ledger')
+      recordRunCost({ runId: 'seed:budget:d1', taskId: 'seed-b', agent: 'pixel', model: 'm', inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsdMicros: 2_000_000, occurredAt: Date.now() })
+      void spendTotal
+      setDispatchColumns({ todo: [{ id: 't-budget', title: 'Over budget', agent: 'pixel' }] })
+      vi.mocked(getHookRegistry).mockReturnValue({
+        invoke: mock(async (hook: string) => {
+          if (hook === 'models.getBudgetPolicy') return { global: { dailyUsd: 1 } }
+          return undefined
+        }),
+        has: mock().mockReturnValue(false),
+        register: mock(),
+      } as unknown as HookRegistry)
+
+      await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
+
+      expect(mockRuntimeSend).not.toHaveBeenCalled()
+    })
+
+    it('regression: no budget policy → dispatch proceeds normally', async () => {
+      setDispatchColumns({ todo: [{ id: 't-nobudget', title: 'No cap', agent: 'pixel' }] })
+      vi.mocked(getHookRegistry).mockReturnValue({
+        invoke: mock(async (hook: string) => (hook === 'models.getBudgetPolicy' ? {} : undefined)),
+        has: mock().mockReturnValue(false),
+        register: mock(),
+      } as unknown as HookRegistry)
+
+      await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
+
+      expect(mockRuntimeSend).toHaveBeenCalledTimes(1)
+    })
+
+    it('routes a session-death recovery re-dispatch on the MAIN cycle to the recovery origin', async () => {
+      // A task with a persisted sessionDeath record re-dispatched via the
+      // normal cycle (ladder timer lost / budget-deferred) must still route
+      // to 'recovery' — not its task-shape origin.
+      setDispatchColumns({ todo: [{ id: 't-recover', title: 'Died once', agent: 'pixel' }] })
+      writeFileSync(join(tempDir, '.dispatch-state.json'), JSON.stringify({
+        lastRun: Date.now(),
+        dispatched: [],
+        failedDispatches: {
+          't-recover': { count: 1, lastAttempt: Date.now(), kind: 'structural', sessionDeath: { stage: 'corrective', deaths: 1, lastDiagnosis: { reason: 'session_interrupted' }, salvagedAssetIds: [] } },
+        },
+      }))
+      vi.mocked(getHookRegistry).mockReturnValue({
+        invoke: mock(async (hook: string) => {
+          if (hook === 'models.getRoutingConfig') return { policies: [{ origin: 'recovery', model: 'anthropic/claude-opus-4-6' }], tagOverrides: [] }
+          return undefined
+        }),
+        has: mock().mockReturnValue(false),
+        register: mock(),
+      } as unknown as HookRegistry)
+
+      await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
+
+      const args = mockRuntimeSend.mock.calls[0]?.[0] as Record<string, unknown>
+      expect(args?.model).toBe('anthropic/claude-opus-4-6')
+    })
+
+    it('regression: empty routing config leaves the turn with no model/thinking (inherit)', async () => {
+      setDispatchColumns({ todo: [{ id: 't-inherit', title: 'Adhoc task', agent: 'pixel' }] })
+      vi.mocked(getHookRegistry).mockReturnValue({
+        invoke: mock(async (hook: string) => (hook === 'models.getRoutingConfig' ? { policies: [], tagOverrides: [] } : undefined)),
+        has: mock().mockReturnValue(false),
+        register: mock(),
+      } as unknown as HookRegistry)
+
+      await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
+
+      const args = mockRuntimeSend.mock.calls[0]?.[0] as Record<string, unknown>
+      expect(args).not.toHaveProperty('model')
+      expect(args).not.toHaveProperty('thinking')
     })
   })
 

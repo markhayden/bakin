@@ -11,11 +11,25 @@ export interface ScheduleSidecar {
   jobs: Record<string, BakinJobMeta>
 }
 
+/**
+ * The schedule definition Bakin owns. Once a job is migrated off OpenClaw cron
+ * (see cutover), this is the canonical source of when the job fires — the Bakin
+ * scheduler reads `expr`/`tz` directly and never consults the runtime cron store.
+ */
+export interface ScheduleDef {
+  kind: 'cron' | 'every' | 'at'
+  expr: string
+}
+
 export interface BakinJobMeta {
   jobId: string
   /** Stable caller-owned id used when a runtime/provider generates a different job id. */
   logicalJobId?: string
   isBakinJob: boolean
+  /** Bakin-owned schedule definition. Canonical once cut over from OpenClaw cron. */
+  schedule?: ScheduleDef
+  /** Bakin-owned enabled flag. Replaces the OpenClaw cron `enabled` for Bakin jobs. */
+  enabled?: boolean
   source?: 'bakin' | 'runtime' | 'adopted'
   displayName?: string
   description?: string
@@ -37,8 +51,8 @@ export interface BakinJobMeta {
   createdAt: string
   updatedAt: string
   lastTaskId?: string
-  processedRunIds?: string[]
-  lastProcessedRunAt?: string
+  // Run-level dedup lives in the execution ledger (cron_fires) — the legacy
+  // processedRunIds/lastProcessedRunAt fields are seeded there once on boot.
   originalRuntimeCron?: {
     provider: string
     capturedAt: string
@@ -135,7 +149,7 @@ export interface RunEntry {
   runId: string
   jobId: string
   timestamp: string
-  status: 'success' | 'failure' | 'skipped'
+  status: 'success' | 'failure' | 'skipped' | 'pending'
   duration?: number
   error?: string
   taskId?: string // Bakin task created by this run
@@ -155,15 +169,8 @@ export interface ParseResult {
 }
 
 // ---------------------------------------------------------------------------
-// Bridge webhook payload
+// Fire result (shape returned by runClaimedFire / fireScheduledRun)
 // ---------------------------------------------------------------------------
-
-export interface BridgePayload {
-  jobId: string
-  runId: string
-  timestamp: string
-  [key: string]: unknown
-}
 
 export interface BridgeResult {
   ok: boolean

@@ -35,9 +35,12 @@ mock.module('../../../src/core/logger', () => ({
 }))
 // Pretend "tasks" is a core plugin. Both endpoints check this predicate
 // before any other work, so we don't need a real registry init.
-mock.module('../../../src/lib/plugin-registry', () => ({
+mock.module('../../../src/core/plugin-registry', () => ({
   isCorePlugin: (id: string) => id === 'tasks',
   pluginRegistry: { getPlugin: () => undefined, getPluginContext: () => undefined, deletePlugin: () => false },
+  getHookRegistry: () => ({ unregisterByPlugin: () => 0 }),
+}))
+mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
   getHookRegistry: () => ({ unregisterByPlugin: () => 0 }),
 }))
 

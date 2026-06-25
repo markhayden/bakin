@@ -1,6 +1,11 @@
+import type { TaskLogEntry } from '@makinbakin/sdk/types'
 import type { Unsubscribe } from '../adapters/shared'
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
+
+// TaskLogEntry is single-homed in the SDK (published TaskService contract);
+// re-exported here so the in-repo store stays the internal import source.
+export type { TaskLogEntry } from '@makinbakin/sdk/types'
 
 export interface BakinTask {
   id: string
@@ -28,6 +33,12 @@ export interface BakinTask {
   log: TaskLogEntry[]
   createdAt: string
   updatedAt: string
+  /**
+   * Optimistic concurrency counter — bumped on every write. Absent on
+   * pre-upgrade tasks (treated as 0; lazy-stamped on the next write).
+   * API mutations may send expectedVersion and get a 409 when stale.
+   */
+  version?: number
 }
 
 export interface TaskSource {
@@ -87,12 +98,6 @@ export interface TaskListOpts {
   includePendingDelete?: boolean
 }
 
-export interface TaskLogEntry {
-  timestamp: string
-  author: string
-  message: string
-  data?: Record<string, unknown>
-}
 
 export interface TaskComment {
   id: string
@@ -281,7 +286,9 @@ export function createFileBakinTaskStore(root: string): SyncBakinTaskStore {
   }
 
   function writeUpdated(task: BakinTask, eventType: BakinTaskStoreEvent['type'] = 'updated'): BakinTask {
-    const next = { ...task, updatedAt: new Date().toISOString() }
+    // Single write chokepoint — every mutation bumps the optimistic
+    // concurrency counter alongside updatedAt.
+    const next = { ...task, updatedAt: new Date().toISOString(), version: (task.version ?? 0) + 1 }
     writeTask(next)
     emit({ type: eventType, taskId: next.id, task: next })
     return next

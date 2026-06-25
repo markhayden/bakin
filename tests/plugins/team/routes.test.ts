@@ -239,6 +239,8 @@ mock.module('@bakin/core/adapters/runtime/testing', () => ({
 import { activatePlugin, findRoute, callSearchRoute, callRoute } from '../test-helpers'
 const teamPlugin = (await import('../../../plugins/team/index')).default as typeof import('../../../plugins/team/index').default
 import type { ActivatedPlugin } from '../test-helpers'
+import { installedByPath } from '@bakin/core/agent-packages/markers'
+import type { APIRoute, PluginContext } from '@bakin/core/plugin-types'
 
 // ---------------------------------------------------------------------------
 // Lifecycle
@@ -332,6 +334,78 @@ describe('team plugin — non-search routes', () => {
     const { status, body } = await callRoute(route, activated.ctx, { searchParams: { agentId: 'main' } })
     expect(status).toBe(404)
     expect(body).toEqual({ error: 'Avatar not found' })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Avatar upload + serve — dual-format (webp/png/jpg) behavior (#339)
+// ---------------------------------------------------------------------------
+
+const WEBP = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50])
+const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+const JPG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10])
+const JUNK = new Uint8Array([0x00, 0x01, 0x02, 0x03])
+
+// The upload route reads a raw binary body; callRoute JSON-encodes bodies, so
+// build the Request directly and invoke the handler (agentId comes via query,
+// matching how the dispatcher injects the path param).
+async function uploadAvatar(route: APIRoute, ctx: PluginContext, agentId: string, bytes: Uint8Array): Promise<Response> {
+  const req = new Request(`http://localhost/${agentId}/avatar?agentId=${agentId}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/octet-stream' },
+    // Runtime accepts a Uint8Array body; the cast satisfies the strict
+    // ArrayBufferLike-vs-ArrayBuffer BodyInit typing in test tsconfig.
+    body: bytes as unknown as BodyInit,
+  })
+  return route.handler(req, ctx)
+}
+
+describe('team plugin — avatar upload (dual-format)', () => {
+  it('preserves an uploaded webp and serves it as image/webp', async () => {
+    const activated = await activatePlugin(teamPlugin, testDir)
+    const upload = findRoute(activated.routes, 'POST', '/:agentId/avatar')!
+    const up = await uploadAvatar(upload, activated.ctx, 'pix-webp', WEBP)
+    expect(up.status).toBe(200)
+    expect(existsSync(join(testDir, 'agents', 'pix-webp', 'avatar.webp'))).toBe(true)
+
+    const serve = findRoute(activated.routes, 'GET', '/:agentId/avatar')!
+    const { response } = await callRoute(serve, activated.ctx, { searchParams: { agentId: 'pix-webp' }, rawResponse: true })
+    expect(response.status).toBe(200)
+    expect(response.headers.get('Content-Type')).toBe('image/webp')
+  })
+
+  it('preserves an uploaded png and serves it as image/png', async () => {
+    const activated = await activatePlugin(teamPlugin, testDir)
+    const upload = findRoute(activated.routes, 'POST', '/:agentId/avatar')!
+    await uploadAvatar(upload, activated.ctx, 'pix-png', PNG)
+    expect(existsSync(join(testDir, 'agents', 'pix-png', 'avatar.png'))).toBe(true)
+  })
+
+  it('rejects non-image bytes with 400', async () => {
+    const activated = await activatePlugin(teamPlugin, testDir)
+    const upload = findRoute(activated.routes, 'POST', '/:agentId/avatar')!
+    const res = await uploadAvatar(upload, activated.ctx, 'pix-junk', JUNK)
+    expect(res.status).toBe(400)
+    expect(existsSync(join(testDir, 'agents', 'pix-junk'))).toBe(false)
+  })
+
+  it('deletes a stale other-format sibling and its .installedBy sidecar', async () => {
+    const activated = await activatePlugin(teamPlugin, testDir)
+    const upload = findRoute(activated.routes, 'POST', '/:agentId/avatar')!
+
+    // Seed a package-projected webp avatar + sidecar.
+    const agentDir = join(testDir, 'agents', 'pix-swap')
+    mkdirSync(agentDir, { recursive: true })
+    const webp = join(agentDir, 'avatar.webp')
+    writeFileSync(webp, WEBP)
+    writeFileSync(installedByPath(webp), JSON.stringify({ package: 'pix', version: '1.0.0', sha256: 'x' }))
+
+    // Upload a jpg over it.
+    await uploadAvatar(upload, activated.ctx, 'pix-swap', JPG)
+
+    expect(existsSync(join(agentDir, 'avatar.jpg'))).toBe(true)
+    expect(existsSync(webp)).toBe(false)
+    expect(existsSync(installedByPath(webp))).toBe(false)
   })
 })
 

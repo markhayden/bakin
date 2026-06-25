@@ -899,11 +899,20 @@ Produces the bundles that the browser import map points at:
 
 ```
 packages/host/public/vendor/
-  react.js, react-dom.js, react-dom-client.js
-  jsx-runtime.js, jsx-dev-runtime.js
+  react.js, react-dom.js
+  jsx-runtime.js, jsx-dev-runtime.js, tanstack-router.js
   sdk-index.js, sdk-ui.js, sdk-hooks.js, sdk-components.js,
-  sdk-slots.js, sdk-types.js, sdk-utils.js
+  sdk-slots.js, sdk-types.js, sdk-utils.js, sdk-metadata.js,
+  sdk-routing.js
+  sdk-shared-<hash>.js   ← code-split chunks shared by the SDK bundles
 ```
+
+The nine SDK sub-paths are built in one `bun build --splitting`
+invocation, so code shared between sub-paths exists once in the
+`sdk-shared-*` chunks (loaded via relative imports — they need no
+import-map entries). Only the chunk names are content-hashed; the entry
+filenames are stable (#422, guarded by
+`tests/scripts/sdk-vendor-bundles.test.ts`).
 
 The `<script type="importmap">` in `packages/host/public/index.html`
 maps `react`, `react-dom`, `@bakin/sdk`, `@bakin/sdk/ui`, etc. to those
@@ -919,16 +928,65 @@ Plugin authors import from `@bakin/sdk/*`. Full sub-path map:
 |------|-----------------|
 | `@bakin/sdk` | `registerPlugin`, `getAllNavItems`, `NavItem` type |
 | `@bakin/sdk/ui` | shadcn primitives (Button, Card, Dialog, Input, Select, Table, Tabs, Tooltip, ...) |
-| `@bakin/sdk/hooks` | React hooks (`useAgent`, `useAgentList`, `useSSE`, `useSearch`, `useQueryState`, `useQueryArrayState`, `useDebug`, `useNotificationChannels`, ...) |
-| `@bakin/sdk/components` | Shared components (`PluginHeader`, `FacetFilter`, `AgentAvatar`, `AgentSelect`, `ChannelIcon`, `BakinDrawer`, ...) |
+| `@bakin/sdk/hooks` | React hooks (`useAgent`, `useAgentList`, `useSSE`, `usePluginEvent`, `useJsonFetch`, `useAvailableModels`, `useSearch`, `useQueryState`, `useQueryArrayState`, `useDebug`, `useNotificationChannels`, ...) |
+| `@bakin/sdk/components` | Shared components (`PluginHeader`, `FacetFilter`, `AgentAvatar`, `AgentSelect`, `ConfirmDialog`, `EmptyState`, `ChannelIcon`, `BakinDrawer`, ...) |
 | `@bakin/sdk/slots` | `Slot`, `registerSlot`, `__clearSlot` |
-| `@bakin/sdk/types` | Full type re-exports (`PluginContext`, `BakinPlugin`, `AssetMeta`, `Task`, `WorkflowDefinition`, ...) |
-| `@bakin/sdk/utils` | `cn`, `formatAge`, `formatSize`, `isStale` |
+| `@bakin/sdk/types` | Canonical, self-contained contract types (`PluginContext`, `BakinPlugin`, `Task`, `WorkflowDefinition`, ...), split into primitives/manifest/runtime/services/registration/context behind a barrel. The single source of truth — `packages/core/src/plugin-types.ts` re-exports the identical leaf types from here and keeps its own fuller internal tier (see repo-architecture.md § two-tier type contract). |
+| `@bakin/sdk/utils` | `cn`, `formatAge`, `formatDateTime`, `formatDuration`, `formatSize`, `isStale`, `toneBadgeClass` |
+
+### Shared client primitives (WS3/WS3b)
+
+The audit consolidated copy-pasted client patterns into the SDK; reach for these instead of re-rolling:
+- `usePluginEvent(event, handler)` — subscribe to a named server SSE event over the single shell connection (never open a raw `EventSource`).
+- `useJsonFetch<T>(url, opts?)` → `{ data, loading, error, refresh }` — cancellable JSON GET; pass `url=null` to skip. Replaces the `let cancelled = false` fetch-in-`useEffect` boilerplate.
+- `useAvailableModels()` → `AvailableModel[]` — module-cached, read-only model catalog (mirrors `useNotificationChannels`; the models page owns the live refresh flow).
+- `ConfirmDialog` — controlled, busy/error-aware confirmation dialog for destructive actions.
+- `EmptyState` — `variant='panel'` for the larger-chip full-tab empty surface (default stays compact).
+- `toneBadgeClass(tone)` — the `bg-X-500/10 text-X-400 border-X-500/20` outline-badge idiom across `success|pending|error|muted|info`.
+- `formatDateTime(ts)` / `formatDuration(ms)` — calendar-aware absolute time and elapsed-duration formatters next to `formatAge`.
 
 Published to npm as `@bakin/sdk`. `scripts/publish-sdk.ts` pushes on the
 release workflow. Lint rules block direct imports from `@/components/*`,
 `@/hooks/*`, `@/lib/*`, and other plugins — the SDK is the only
 surface plugin authors should see.
+
+## Client SSE fan-out — `usePluginEvent`
+
+The shell owns exactly ONE browser `EventSource('/api/events')`
+(`src/hooks/use-sse.ts`). Plugins must NOT open their own — a per-plugin
+`EventSource` is a second connection with no shared reconnect/backoff and
+its own teardown bugs. Instead they subscribe to named server events
+through `usePluginEvent`:
+
+```ts
+import { usePluginEvent } from '@bakin/sdk/hooks'
+
+usePluginEvent('asset.changed', (payload) => { /* refetch, etc. */ })
+```
+
+Mechanics (`src/hooks/use-plugin-event.ts`, SDK-re-exported like `useSSE`):
+- A dependency-free `globalThis`-backed `Map<eventName, Set<handler>>`
+  (`__bakinPluginEventSubs`) holds subscribers. `emitPluginEvent(payload)`
+  dispatches to the set for `payload.event`; a throwing handler is
+  isolated (caught) so one bad subscriber can't break the others.
+- `usePluginEvent(event, handler)` is stable across `handler` identity
+  changes — it stores the latest handler in a ref and only re-subscribes
+  when `event` changes, so callers don't need to memoize the handler.
+- The shell's single `useSSE.onmessage` is the sole publisher. It maps
+  raw server frames to event names and calls `emitPluginEvent`:
+  `{type:'plugin-event', event, …}` frames pass through verbatim
+  (`asset.changed`, `asset.removed`, `workflow.*`, …); the shell also
+  synthesizes `taskboard` (on `{type:'taskboard'}`), `doctor.run` (on a
+  `doctor.run` audit entry), and `reindex.start|progress|complete` (from
+  the per-table reindex frames). Adding a new event name = one `emit`
+  line here; no content-store change.
+
+This replaced two older patterns: the assets plugin's 3 raw
+`EventSource`s and the content store's hardcoded per-plugin counters
+(`taskboardVersion`/`doctorVersion`/`reindexProgress`). Consumers now
+hold their own local state and subscribe to the relevant event. The
+content store is back to file/audit/activity/heartbeat state only —
+it no longer knows which plugin cares about which event.
 
 ## Slot System
 
@@ -1026,18 +1084,19 @@ refresh signal) per plugin; the hook is deliberately refresh-agnostic.
 a no-op (no snapshot rebuild, no subscriber notification).
 
 The refresh signal is per-plugin — the hook doesn't prescribe one. The
-three adopters show the range:
-- **messaging** (Plans, `attention`) — its own `EventSource` filtering
-  `messaging/plans/` file events.
+adopters subscribe to named server events via `usePluginEvent` (see
+§ Client SSE fan-out below) — no per-plugin `EventSource`, no
+content-store counters:
 - **tasks** (blocked→`error` / review→`attention`, winning-severity) —
-  the SSE content-store's `taskboardVersion`.
-- **health** (failing checks, `error`-only) — the content-store's
-  `doctorVersion`, a counter bumped in `use-sse` when a `doctor.run`
-  audit event arrives (every doctor run already emits one). This rides
-  the existing audit SSE — no new broadcast, no poll — and is the clean
-  pattern for any cron/cache-backed source. (Health is errors-only on
-  purpose: many `warn` checks are steady-state, so an amber badge would
-  be permanent noise.)
+  `usePluginEvent('taskboard', refresh)`, the same signal the Kanban
+  board uses.
+- **health** (failing checks, `error`-only) —
+  `usePluginEvent('doctor.run', refresh)`. The shell emits `doctor.run`
+  whenever a `doctor.run` audit event arrives (every doctor run already
+  emits one). This rides the existing audit SSE — no new broadcast, no
+  poll — and is the clean pattern for any cron/cache-backed source.
+  (Health is errors-only on purpose: many `warn` checks are steady-state,
+  so an amber badge would be permanent noise.)
 
 ### Sidebar rendering
 
@@ -1070,8 +1129,11 @@ empty badge map.
 
 ## HookRegistry — Cross-Plugin Server Communication
 
-`packages/core/src/hooks/hook-registry.ts` — singleton shared across all
-plugins and core modules. Backed by `globalThis.__bakinHookRegistry` so
+`packages/core/src/hooks/hook-registry.ts` defines the `HookRegistry` class;
+the process singleton + `getHookRegistry()` live in the dependency-free leaf
+`packages/core/src/hooks/hook-registry-singleton.ts` (so the exec-tool
+registry, the plugin loader, and core modules import it without cycling back
+through the loader). Backed by `globalThis.__bakinHookRegistry` so
 hot reload + Bun's module re-evaluation don't lose handler references.
 Same pattern is used for the plugin registry
 (`globalThis.__bakinPluginRegistry`), SSE broadcast
@@ -1101,7 +1163,7 @@ Same pattern is used for the plugin registry
 
 ### Invoking hooks from core
 ```typescript
-import { getHookRegistry } from '@/lib/plugin-registry'
+import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 const hooks = getHookRegistry()
 const instance = await hooks.invoke<WorkflowInstance>('workflows.loadInstance', { taskId })
 ```

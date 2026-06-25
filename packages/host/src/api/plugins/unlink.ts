@@ -12,7 +12,7 @@
  */
 import { createLogger } from '@/core/logger'
 import { unlinkPlugin, LinkRefusedError } from '@/core/plugins/link'
-import { pluginRegistry } from '@/lib/plugin-registry'
+import { pluginRegistry } from '@/core/plugin-registry'
 import {
   notifyPluginRemoved,
   unwatchPluginIfEnabled,

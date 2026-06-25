@@ -17,6 +17,29 @@ import {
   cmdScheduleList, cmdScheduleAdd, cmdSchedulePause,
   cmdScheduleResume, cmdScheduleRemove, cmdScheduleRun, cmdScheduleRuns,
 } from '../src/cli/schedule'
+import {
+  BASE_URL,
+  api,
+  apiGet,
+  apiPost,
+  apiPostJson,
+  apiDelete,
+  jsonObject,
+  isServerConnectionError,
+  getCliAgent,
+  getCliRoster,
+  type CliRoster,
+} from '../src/cli/http'
+import {
+  print,
+  printTable,
+  invocationCommand,
+  normalizeUsage,
+  usageLine,
+  statusIcon,
+  formatBytes,
+  daysUntil,
+} from '../src/cli/output'
 import { getSettings, updateSettings } from '../src/core/settings'
 import { getCliUsageGroups, renderCliUsage } from '../src/core/cli/registry'
 import { parsePluginInstallArgs, PLUGIN_INSTALL_USAGE } from '../src/core/cli/plugin-install-args'
@@ -28,9 +51,8 @@ import {
   type PluginImportInstallRequest,
 } from '../src/core/plugins/import-export'
 import type { Permission } from '@bakin/core/plugins/permissions'
-import { extractApiErrorMessage, formatApiError } from '../src/core/cli/api-error'
+import { renderInkReport } from '../src/core/cli/ui/render-report'
 import type {
-  AgentRuleResultData,
   CommandFailureData,
   CommandIssueData,
   HelpGroupData,
@@ -51,128 +73,6 @@ import type {
 } from '../src/core/cli/ui/readonly'
 import type { CheckResult, InstallResult } from '../src/core/onboarding/types'
 
-const BASE_URL = process.env.BAKIN_URL || `http://localhost:${process.env.PORT || 3737}`
-
-// Lazy so importing this module (e.g. from src/core/cli.ts when the
-// compiled binary delegates unknown commands here) does not initialize
-// runtime services at binary startup. Resolved once on first use.
-let __cliAgent: string | undefined
-async function getCliAgent(): Promise<string> {
-  if (__cliAgent === undefined) {
-    const roster = await getCliRoster()
-    __cliAgent = roster.mainAgentId ?? roster.agentIds[0] ?? 'main'
-  }
-  return __cliAgent
-}
-
-interface CliRoster {
-  agentIds: string[]
-  mainAgentId?: string | null
-}
-
-// ---------------------------------------------------------------------------
-// HTTP helpers
-// ---------------------------------------------------------------------------
-async function api(path: string, options?: RequestInit): Promise<unknown> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
-  })
-  if (!res.ok) {
-    const body = await res.text()
-    throw new Error(formatApiError(res.status, body))
-  }
-  return res.json()
-}
-
-async function apiGet(path: string): Promise<unknown> {
-  return api(path)
-}
-
-async function getCliRoster(): Promise<CliRoster> {
-  const result = await apiGet('/api/plugins/team/') as {
-    agents?: Array<{ id?: unknown }>
-    mainAgentId?: string | null
-  }
-  return {
-    agentIds: (result.agents ?? [])
-      .map((agent) => agent.id)
-      .filter((id): id is string => typeof id === 'string' && id.length > 0),
-    mainAgentId: result.mainAgentId,
-  }
-}
-
-async function apiPost(path: string, body?: unknown): Promise<unknown> {
-  return api(path, {
-    method: 'POST',
-    body: body ? JSON.stringify(body) : undefined,
-  })
-}
-
-function jsonObject(value: unknown): Record<string, unknown> | null {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null
-}
-
-function parseJsonText(text: string): unknown {
-  if (!text.trim()) return null
-  try {
-    return JSON.parse(text)
-  } catch {
-    return null
-  }
-}
-
-function apiErrorPayload(status: number, body: string): Record<string, unknown> {
-  const parsed = jsonObject(parseJsonText(body))
-  const message = extractApiErrorMessage(body) || `HTTP ${status}`
-  return {
-    ...(parsed ?? {}),
-    ok: false,
-    status,
-    error: typeof parsed?.error === 'string' && parsed.error.trim() ? parsed.error : message,
-  }
-}
-
-function isServerConnectionError(err: unknown): boolean {
-  const message = err instanceof Error ? err.message : String(err)
-  return message.includes('ECONNREFUSED') ||
-    message.includes('Unable to connect') ||
-    message.includes('fetch failed')
-}
-
-async function apiPostJson(path: string, body?: unknown): Promise<{ ok: true; data: unknown } | { ok: false; data: Record<string, unknown> }> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: body ? JSON.stringify(body) : undefined,
-  })
-  const text = await res.text()
-  if (!res.ok) {
-    return { ok: false, data: apiErrorPayload(res.status, text) }
-  }
-  return { ok: true, data: parseJsonText(text) }
-}
-
-async function apiDelete(path: string, body?: unknown): Promise<unknown> {
-  return api(path, {
-    method: 'DELETE',
-    body: body ? JSON.stringify(body) : undefined,
-  })
-}
-
-function print(data: unknown): void {
-  if (typeof data === 'string') {
-    console.log(data)
-  } else {
-    console.log(JSON.stringify(data, null, 2))
-  }
-}
-
 async function printGenericCommandResultTui(command: string, data: unknown): Promise<void> {
   const [{ renderCliResult }, { okResult }] = await Promise.all([
     import('../src/core/cli/render'),
@@ -186,53 +86,21 @@ async function printPluginCliCommandResult(command: string, args: string[], data
   else print(data)
 }
 
-function printTable(rows: Record<string, unknown>[], columns?: string[]): void {
-  if (rows.length === 0) {
-    console.log('(none)')
-    return
-  }
-  const cols = columns || Object.keys(rows[0])
-  const widths = cols.map(c => Math.max(c.length, ...rows.map(r => String(r[c] ?? '').length)))
-
-  const header = cols.map((c, i) => c.padEnd(widths[i])).join('  ')
-  const sep = cols.map((_, i) => '-'.repeat(widths[i])).join('  ')
-  console.log(header)
-  console.log(sep)
-  for (const row of rows) {
-    console.log(cols.map((c, i) => String(row[c] ?? '').padEnd(widths[i])).join('  '))
-  }
-}
-
 async function printStatusTui(dispatch: Record<string, unknown>, roster: CliRoster): Promise<void> {
-  const [{ StatusReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(StatusReport, { dispatch, roster })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.StatusReport, { dispatch, roster })
 }
 
 async function printRuntimeActionTui(action: RuntimeActionData): Promise<void> {
-  const [{ RuntimeActionReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(RuntimeActionReport, { action })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.RuntimeActionReport, { action })
 }
 
 async function printHelpReportTui(groups: HelpGroupData[], error?: string, errorDetail?: string): Promise<void> {
-  const [{ HelpReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(HelpReport, {
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.HelpReport, {
     groups,
     env: { bakinUrl: BASE_URL },
     error,
     errorDetail,
-  })))
+  })
 }
 
 async function printHelpTui(error?: string, errorDetail?: string): Promise<void> {
@@ -240,42 +108,15 @@ async function printHelpTui(error?: string, errorDetail?: string): Promise<void>
 }
 
 async function printCommandIssueTui(issue: CommandIssueData): Promise<void> {
-  const [{ CommandIssueReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(CommandIssueReport, { issue })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.CommandIssueReport, { issue })
 }
 
 async function printCommandFailureTui(failure: CommandFailureData): Promise<void> {
-  const [{ CommandFailureReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(CommandFailureReport, { failure })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.CommandFailureReport, { failure })
 }
 
 async function printVersionTui(data: VersionData): Promise<void> {
-  const [{ VersionReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(VersionReport, { data })))
-}
-
-function invocationCommand(args: string[]): string {
-  return args.length > 0 ? `bakin ${args.join(' ')}` : 'bakin'
-}
-
-function normalizeUsage(usage: string): string {
-  return usage.replace(/^Usage:\s*/, '')
-}
-
-function usageLine(usage: string): string {
-  return usage.startsWith('Usage:') ? usage : `Usage: ${usage}`
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.VersionReport, { data })
 }
 
 async function exitCommandIssue(
@@ -353,169 +194,72 @@ async function exitCommandFailure(
 }
 
 async function printSettingsTui(settings: Record<string, unknown>): Promise<void> {
-  const [{ SettingsReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(SettingsReport, { settings })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.SettingsReport, { settings })
 }
 
 async function printSettingsActionTui(action: SettingsActionData): Promise<void> {
-  const [{ SettingsActionReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(SettingsActionReport, { action })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.SettingsActionReport, { action })
 }
 
 async function printPathsTui(paths: Record<string, unknown>, isBakinHome: unknown): Promise<void> {
-  const [{ PathsReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(PathsReport, { paths, isBakinHome })))
-}
-
-async function printAgentRulesTui(
-  results: AgentRuleResultData[],
-  options: { mode: 'check' | 'apply'; scope: 'orchestrator' | 'all' },
-): Promise<void> {
-  const [{ AgentRulesReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(AgentRulesReport, { results, ...options })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.PathsReport, { paths, isBakinHome })
 }
 
 async function printTasksListTui(columns: Record<string, Array<Record<string, unknown>>>, column?: string): Promise<void> {
-  const [{ TasksListReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(TasksListReport, { columns, column })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.TasksListReport, { columns, column })
 }
 
 async function printTaskActionTui(action: TaskActionData): Promise<void> {
-  const [{ TaskActionReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(TaskActionReport, { action })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.TaskActionReport, { action })
 }
 
 async function printTaskDetailTui(taskId: string, column: string, task: Record<string, unknown>): Promise<void> {
-  const [{ TaskDetailReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(TaskDetailReport, { taskId, column, task })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.TaskDetailReport, { taskId, column, task })
 }
 
 async function printAgentsListTui(agents: Array<{ id: string; name: string; status: string; model: string }>): Promise<void> {
-  const [{ AgentsListReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(AgentsListReport, { agents })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.AgentsListReport, { agents })
 }
 
 async function printAgentStatusTui(agentId: string, profile: Record<string, unknown>): Promise<void> {
-  const [{ AgentStatusReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(AgentStatusReport, { agentId, profile })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.AgentStatusReport, { agentId, profile })
 }
 
 async function printAgentTasksTui(agentId: string, tasks: Array<Record<string, unknown>>): Promise<void> {
-  const [{ AgentTasksReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(AgentTasksReport, { agentId, tasks })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.AgentTasksReport, { agentId, tasks })
 }
 
 async function printPluginsListTui(plugins: Array<Record<string, unknown>>): Promise<void> {
-  const [{ PluginsListReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(PluginsListReport, { plugins })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.PluginsListReport, { plugins })
 }
 
 async function printPluginActionTui(actions: PluginActionData | PluginActionData[]): Promise<void> {
-  const [{ PluginActionReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(PluginActionReport, {
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.PluginActionReport, {
     actions: Array.isArray(actions) ? actions : [actions],
-  })))
+  })
 }
 
 async function printPluginRestoreSnapshotsTui(pluginId: string, snapshots: PluginRestoreSnapshotData[]): Promise<void> {
-  const [{ PluginRestoreSnapshotsReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(PluginRestoreSnapshotsReport, { pluginId, snapshots })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.PluginRestoreSnapshotsReport, { pluginId, snapshots })
 }
 
 async function printPluginRestoreResultTui(pluginId: string, result: PluginRestoreResultData): Promise<void> {
-  const [{ PluginRestoreResultReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(PluginRestoreResultReport, { pluginId, result })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.PluginRestoreResultReport, { pluginId, result })
 }
 
 async function printDocsTui(routes: Array<Record<string, unknown>>): Promise<void> {
-  const [{ DocsReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(DocsReport, { routes })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.DocsReport, { routes })
 }
 
 async function printWorkflowsListTui(templates: Array<Record<string, unknown>>): Promise<void> {
-  const [{ WorkflowsListReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(WorkflowsListReport, { templates })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.WorkflowsListReport, { templates })
 }
 
 async function printWorkflowActionTui(action: WorkflowActionData): Promise<void> {
-  const [{ WorkflowActionReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(WorkflowActionReport, { action })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.WorkflowActionReport, { action })
 }
 
 async function printSearchResultsTui(query: string, result: Record<string, unknown>): Promise<void> {
-  const [{ SearchResultsReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
   const results = Array.isArray(result.results) ? result.results as SearchResultData[] : []
   const aggregations = result.aggregations && typeof result.aggregations === 'object' && !Array.isArray(result.aggregations)
     ? result.aggregations as SearchAggregationsData
@@ -523,57 +267,32 @@ async function printSearchResultsTui(query: string, result: Record<string, unkno
   const meta = result.meta && typeof result.meta === 'object' && !Array.isArray(result.meta)
     ? result.meta as SearchMetaData
     : undefined
-  console.log(renderToString(createElement(SearchResultsReport, {
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.SearchResultsReport, {
     query,
     results,
     aggregations,
     meta,
-  })))
+  })
 }
 
 async function printSearchStatsTui(enabled: boolean, tables: Array<Record<string, unknown>>): Promise<void> {
-  const [{ SearchStatsReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(SearchStatsReport, { enabled, tables })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.SearchStatsReport, { enabled, tables })
 }
 
 async function printReindexTui(result: ReindexResultData, options: { target: string; rebuild: boolean }): Promise<void> {
-  const [{ ReindexReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(ReindexReport, { result, ...options })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.ReindexReport, { result, ...options })
 }
 
 async function printTrashListTui(assets: Array<Record<string, unknown>>): Promise<void> {
-  const [{ TrashListReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(TrashListReport, { assets })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.TrashListReport, { assets })
 }
 
 async function printTrashActionTui(action: TrashActionData): Promise<void> {
-  const [{ TrashActionReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(TrashActionReport, { action })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.TrashActionReport, { action })
 }
 
 async function printAgentPackagesListTui(agents: Array<Record<string, unknown>>): Promise<void> {
-  const [{ AgentPackagesListReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(AgentPackagesListReport, { agents })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.AgentPackagesListReport, { agents })
 }
 
 async function printAgentLessonsListTui(
@@ -581,59 +300,29 @@ async function printAgentLessonsListTui(
   packageId: string,
   lessons: Array<Record<string, unknown>>,
 ): Promise<void> {
-  const [{ AgentLessonsListReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(AgentLessonsListReport, { agentId, packageId, lessons })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.AgentLessonsListReport, { agentId, packageId, lessons })
 }
 
 async function printPackagesListTui(packages: Array<Record<string, unknown>>): Promise<void> {
-  const [{ PackagesListReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(PackagesListReport, { packages })))
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.PackagesListReport, { packages })
 }
 
 async function printPackageActionTui(actions: PackageActionData | PackageActionData[]): Promise<void> {
-  const [{ PackageActionReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/readonly'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(PackageActionReport, {
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.PackageActionReport, {
     actions: Array.isArray(actions) ? actions : [actions],
-  })))
+  })
 }
 
 async function printOnboardingCheckTui(result: CheckResult): Promise<void> {
-  const [{ OnboardingCheckReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/onboarding'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(OnboardingCheckReport, { result })))
+  return renderInkReport(() => import('../src/core/cli/ui/onboarding'), (m) => m.OnboardingCheckReport, { result })
 }
 
 async function printOnboardingCheckAllTui(results: CheckResult[]): Promise<void> {
-  const [{ OnboardingCheckAllReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/onboarding'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(OnboardingCheckAllReport, { results })))
+  return renderInkReport(() => import('../src/core/cli/ui/onboarding'), (m) => m.OnboardingCheckAllReport, { results })
 }
 
 async function printOnboardingInstallTui(result: InstallResult): Promise<void> {
-  const [{ OnboardingInstallReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/onboarding'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(OnboardingInstallReport, { result })))
+  return renderInkReport(() => import('../src/core/cli/ui/onboarding'), (m) => m.OnboardingInstallReport, { result })
 }
 
 // ---------------------------------------------------------------------------
@@ -1531,7 +1220,10 @@ interface AgentsCmdFlags {
   replace?: boolean
   keepBlocks?: boolean
   deleteAgent?: boolean
-  refreshTemplate?: boolean
+  check?: boolean
+  reclaim?: string[]
+  reclaimAll?: boolean
+  yes?: boolean
   force?: boolean
   json?: boolean
 }
@@ -1607,41 +1299,58 @@ async function cmdAgentPackagesDelete(agentId: string, flags: AgentsCmdFlags): P
   await cmdAgentPackagesRemove(agentId, { ...flags, deleteAgent: true })
 }
 
-async function cmdAgentPackagesUpdate(agentId: string | undefined, flags: AgentsCmdFlags): Promise<void> {
+async function cmdAgentPackagesSync(agentId: string | undefined, flags: AgentsCmdFlags): Promise<void> {
   const body: Record<string, unknown> = {}
-  if (flags.refreshTemplate) body.refreshTemplate = true
+  if (flags.check) body.check = true
+  if (flags.reclaimAll) body.reclaim = 'all'
+  else if (flags.reclaim?.length) body.reclaim = flags.reclaim
+
+  const syncOne = async (id: string): Promise<unknown> => {
+    // apiPostJson (not apiPost) — the 409 migrationRequired response is a
+    // structured payload we branch on, not a transport error to throw.
+    const first = await apiPostJson(`/api/agent-packages/${encodeURIComponent(id)}/sync`, body)
+    let result = first.data as Record<string, unknown>
+    if (result.migrationRequired) {
+      const confirmed = flags.yes || await confirmPrompt(
+        `Package for "${id}" predates block-based projection. Run the one-time migration?\n` +
+        '  This FULLY OVERWRITES package-managed workspace files with freshly composed content\n' +
+        '  (a tarball backup is written to ~/.bakin/.backups/ first). Proceed?',
+      )
+      if (!confirmed) {
+        return { ok: false, error: 'Migration declined — agent left un-synced.' }
+      }
+      const migration = await apiPost('/api/agent-packages/migrate', {}) as Record<string, unknown>
+      if (!migration.ok) return migration
+      const second = await apiPostJson(`/api/agent-packages/${encodeURIComponent(id)}/sync`, body)
+      result = second.data as Record<string, unknown>
+    }
+    return result
+  }
+
+  const action = flags.check ? 'checked' : 'synced'
 
   if (agentId) {
-    const result = await apiPost(`/api/agent-packages/${encodeURIComponent(agentId)}/update`, body)
+    const result = await syncOne(agentId)
     if (!flags.json && process.stdout.isTTY) {
-      await printPackageActionTui({
-        action: 'updated',
-        scope: 'agent package',
-        target: agentId,
-        result,
-      })
+      await printPackageActionTui({ action, scope: 'agent', target: agentId, result })
       return
     }
     print(result)
     return
   }
 
-  // No agentId — update every managed agent package.
+  // No agentId — sync every runtime agent (managed agents get the full
+  // sequence; unmanaged agents get their context block maintained).
   const list = await apiGet('/api/agent-packages') as {
     agents: Array<{ agentId: string; state: string }>
   }
   const actions: PackageActionData[] = []
   for (const a of list.agents) {
-    if (a.state !== 'managed' && a.state !== 'adopted') continue
+    if (a.state === 'absent') continue
     try {
-      const result = await apiPost(`/api/agent-packages/${encodeURIComponent(a.agentId)}/update`, body)
+      const result = await syncOne(a.agentId)
       if (!flags.json && process.stdout.isTTY) {
-        actions.push({
-          action: 'updated',
-          scope: 'agent package',
-          target: a.agentId,
-          result,
-        })
+        actions.push({ action, scope: 'agent', target: a.agentId, result })
         continue
       }
       console.log(`${a.agentId}:`)
@@ -1649,8 +1358,8 @@ async function cmdAgentPackagesUpdate(agentId: string | undefined, flags: Agents
     } catch (err) {
       if (!flags.json && process.stdout.isTTY) {
         actions.push({
-          action: 'updated',
-          scope: 'agent package',
+          action,
+          scope: 'agent',
           target: a.agentId,
           result: { ok: false, error: err instanceof Error ? err.message : String(err) },
         })
@@ -1766,13 +1475,13 @@ async function cmdPackagesRemove(packageId: string, flags: AgentsCmdFlags): Prom
   print(result)
 }
 
-async function cmdPackagesUpdate(packageId: string, flags: AgentsCmdFlags): Promise<void> {
+async function cmdPackagesSync(packageId: string, flags: AgentsCmdFlags): Promise<void> {
   const body: Record<string, unknown> = {}
-  if (flags.refreshTemplate) body.refreshTemplate = true
-  const result = await apiPost(`/api/packages/${encodeURIComponent(packageId)}/update`, body)
+  if (flags.check) body.check = true
+  const result = await apiPost(`/api/packages/${encodeURIComponent(packageId)}/sync`, body)
   if (!flags.json && process.stdout.isTTY) {
     await printPackageActionTui({
-      action: 'updated',
+      action: flags.check ? 'checked' : 'synced',
       scope: 'package',
       target: packageId,
       result,
@@ -1807,8 +1516,17 @@ function parseAgentsFlags(args: string[]): AgentsCmdFlags {
       case '--orphan':
         flags.deleteAgent = false
         break
-      case '--refresh-template':
-        flags.refreshTemplate = true
+      case '--check':
+        flags.check = true
+        break
+      case '--reclaim':
+        flags.reclaim = [...(flags.reclaim ?? []), args[++i]]
+        break
+      case '--reclaim-all':
+        flags.reclaimAll = true
+        break
+      case '--yes':
+        flags.yes = true
         break
       case '--force':
         flags.force = true
@@ -1983,7 +1701,7 @@ async function runOfflineDoctor(): Promise<CliDoctorResult> {
     { searchComponent },
     { searchModelsComponent },
     { mcporterComponent },
-    { agentAssetsComponent },
+    { agentSyncComponent },
     { recommendedPluginsComponent },
   ] = await Promise.all([
     import('../src/core/onboarding/mkdir'),
@@ -1991,7 +1709,7 @@ async function runOfflineDoctor(): Promise<CliDoctorResult> {
     import('../src/core/onboarding/search'),
     import('../src/core/onboarding/search-models'),
     import('../src/core/onboarding/mcporter'),
-    import('../src/core/onboarding/agent-assets'),
+    import('../src/core/onboarding/agent-sync'),
     import('../src/core/onboarding/recommended-plugins'),
   ])
   const checks = []
@@ -2001,7 +1719,7 @@ async function runOfflineDoctor(): Promise<CliDoctorResult> {
     searchComponent,
     searchModelsComponent,
     mcporterComponent,
-    agentAssetsComponent,
+    agentSyncComponent,
     recommendedPluginsComponent,
   ]) {
     try {
@@ -2140,90 +1858,59 @@ function printDoctorDelegateResult(report: CliDoctorDelegateReport): void {
 }
 
 async function printDoctorRepairPlanTui(plan: CliDoctorRepairPlan): Promise<void> {
-  const [{ DoctorRepairPlan }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/doctor-repair'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(DoctorRepairPlan, { plan })))
+  return renderInkReport(() => import('../src/core/cli/ui/doctor-repair'), (m) => m.DoctorRepairPlan, { plan })
 }
 
 async function printDoctorRepairApplyTui(report: CliDoctorRepairApply, opts: { showBrand?: boolean } = {}): Promise<void> {
-  const [{ DoctorRepairApplyReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/doctor-repair'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(DoctorRepairApplyReport, { report, showBrand: opts.showBrand })))
+  return renderInkReport(() => import('../src/core/cli/ui/doctor-repair'), (m) => m.DoctorRepairApplyReport, { report, showBrand: opts.showBrand })
 }
 
 async function printDoctorDelegatePreviewTui(unresolved: CliDoctorRepairPlan['diagnostics']): Promise<void> {
-  const [{ DoctorDelegatePreview }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/doctor-repair'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(DoctorDelegatePreview, { unresolved })))
+  return renderInkReport(() => import('../src/core/cli/ui/doctor-repair'), (m) => m.DoctorDelegatePreview, { unresolved })
 }
 
 async function printDoctorDelegateResultTui(report: CliDoctorDelegateReport, opts: { showBrand?: boolean } = {}): Promise<void> {
-  const [{ DoctorDelegateResult }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/doctor-repair'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(DoctorDelegateResult, { report, showBrand: opts.showBrand })))
+  return renderInkReport(() => import('../src/core/cli/ui/doctor-repair'), (m) => m.DoctorDelegateResult, { report, showBrand: opts.showBrand })
 }
 
 async function printDoctorRepairRequestsTui(requests: Array<Record<string, unknown>>): Promise<void> {
-  const [{ DoctorRepairRequestsReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/doctor-repair'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(DoctorRepairRequestsReport, { requests })))
+  return renderInkReport(() => import('../src/core/cli/ui/doctor-repair'), (m) => m.DoctorRepairRequestsReport, { requests })
 }
 
 async function printDoctorRepairRequestTui(request: Record<string, unknown>): Promise<void> {
-  const [{ DoctorRepairRequestReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/doctor-repair'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(DoctorRepairRequestReport, { request })))
+  return renderInkReport(() => import('../src/core/cli/ui/doctor-repair'), (m) => m.DoctorRepairRequestReport, { request })
 }
 
 async function printDoctorRepairVerifyTui(requestId: string, result: Record<string, unknown>): Promise<void> {
-  const [{ DoctorRepairVerifyReport }, { renderToString }, { createElement }] = await Promise.all([
-    import('../src/core/cli/ui/doctor-repair'),
-    import('../src/core/cli/ui/render-to-string'),
-    import('react'),
-  ])
-  console.log(renderToString(createElement(DoctorRepairVerifyReport, { requestId, result })))
+  return renderInkReport(() => import('../src/core/cli/ui/doctor-repair'), (m) => m.DoctorRepairVerifyReport, { requestId, result })
+}
+
+// Shared readline y/N core. Callers own their own pre-guards (isTTY / count
+// checks) so each keeps its exact behavior; only the readline boilerplate is shared.
+async function promptYesNo(message: string): Promise<boolean> {
+  const readline = await import('node:readline/promises')
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+  try {
+    const answer = await rl.question(`\n${message} [y/N] `)
+    return /^(y|yes)$/i.test(answer.trim())
+  } finally {
+    rl.close()
+  }
+}
+
+async function confirmPrompt(message: string): Promise<boolean> {
+  if (!process.stdin.isTTY) return false
+  return promptYesNo(message)
 }
 
 async function confirmDoctorRepair(plan: CliDoctorRepairPlan): Promise<boolean> {
   if (plan.summary.safeItems === 0) return false
-  const readline = await import('node:readline/promises')
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-  try {
-    const answer = await rl.question(`\nApply ${plan.summary.safeItems} safe repair item${plan.summary.safeItems === 1 ? '' : 's'}? [y/N] `)
-    return /^(y|yes)$/i.test(answer.trim())
-  } finally {
-    rl.close()
-  }
+  return promptYesNo(`Apply ${plan.summary.safeItems} safe repair item${plan.summary.safeItems === 1 ? '' : 's'}?`)
 }
 
 async function confirmDoctorDelegate(unresolved: CliDoctorRepairPlan['diagnostics']): Promise<boolean> {
   if (unresolved.length === 0) return false
-  const readline = await import('node:readline/promises')
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-  try {
-    const answer = await rl.question(`\nCreate a delegated repair task for ${unresolved.length} finding${unresolved.length === 1 ? '' : 's'}? [y/N] `)
-    return /^(y|yes)$/i.test(answer.trim())
-  } finally {
-    rl.close()
-  }
+  return promptYesNo(`Create a delegated repair task for ${unresolved.length} finding${unresolved.length === 1 ? '' : 's'}?`)
 }
 
 async function cmdDoctorFix(options: { json: boolean; yes: boolean; isTTY: boolean }): Promise<void> {
@@ -2490,68 +2177,6 @@ async function cmdDoctor(args: string[] = process.argv.slice(2)): Promise<void> 
 // ---------------------------------------------------------------------------
 // Agent Rules
 // ---------------------------------------------------------------------------
-
-// Agent-rules context management is owned by src/core/agent-rules/managed-blocks.ts.
-// Imported lazily inside cmdAgentRules so the CLI stays a pure entry point.
-
-const AGENT_RULES_HELP_GROUPS: HelpGroupData[] = [{
-  group: 'Agent Rules',
-  commands: [
-    { usage: 'bakin agent-rules --apply', summary: 'Write main-agent managed context to AGENTS.md' },
-    { usage: 'bakin agent-rules --check', summary: 'Check if main-agent managed context is current' },
-    { usage: 'bakin agent-rules --apply-all', summary: 'Apply managed context to all agent AGENTS.md files' },
-    { usage: 'bakin agent-rules --check-all', summary: 'Check managed context across all agents' },
-  ],
-}]
-
-async function cmdAgentRules(options: { apply?: boolean; check?: boolean; applyAll?: boolean; checkAll?: boolean } = {}): Promise<void> {
-  if (!options.apply && !options.check && !options.applyAll && !options.checkAll) {
-    if (process.stdout.isTTY) {
-      await printHelpReportTui(AGENT_RULES_HELP_GROUPS)
-      return
-    }
-    console.log('Usage: bakin agent-rules --apply       # Write main-agent managed context to AGENTS.md')
-    console.log('       bakin agent-rules --check       # Check if main-agent managed context is current')
-    console.log('       bakin agent-rules --apply-all   # Apply managed context to all agent AGENTS.md files')
-    console.log('       bakin agent-rules --check-all   # Check managed context across all agents')
-    return
-  }
-
-  const scope = options.apply || options.check ? 'orchestrator' : 'all'
-  const autoFix = !!(options.apply || options.applyAll)
-
-  const previousConsoleFormat = process.env.BAKIN_CONSOLE_FORMAT
-  const shouldSilenceRuntimeLogs = process.stdout.isTTY && previousConsoleFormat === undefined
-  let results: Awaited<ReturnType<typeof import('../src/core/agent-rules/managed-blocks')['applyManagedBlocks']>>
-  try {
-    if (shouldSilenceRuntimeLogs) process.env.BAKIN_CONSOLE_FORMAT = 'silent'
-    const { applyManagedBlocks } = await import('../src/core/agent-rules/managed-blocks')
-    results = await applyManagedBlocks(autoFix, { scope })
-  } finally {
-    if (shouldSilenceRuntimeLogs) delete process.env.BAKIN_CONSOLE_FORMAT
-  }
-
-  const errors = results.filter(r => r.status === 'error')
-  const warnings = results.filter(r => r.status === 'warn')
-  const fixes = results.filter(r => r.status === 'fixed')
-  const oks = results.filter(r => r.status === 'ok')
-
-  if (process.stdout.isTTY) {
-    await printAgentRulesTui(results, {
-      mode: autoFix ? 'apply' : 'check',
-      scope,
-    })
-  } else {
-    for (const r of results) {
-      const icon = r.status === 'ok' ? '[OK]' : r.status === 'fixed' ? '[FIXED]' : r.status === 'warn' ? '[WARN]' : '[ERROR]'
-      console.log(`${icon} ${r.check}: ${r.message}`)
-    }
-
-    console.log(`\n${oks.length} up to date, ${fixes.length} fixed, ${warnings.length} warnings, ${errors.length} errors`)
-  }
-
-  if (errors.length > 0 || warnings.length > 0) process.exit(1)
-}
 
 async function cmdPaths(key?: string, opts: { json?: boolean } = {}): Promise<void> {
   const result = await apiGet(`/api/paths${key ? `?key=${encodeURIComponent(key)}` : ''}`) as Record<string, unknown>
@@ -3618,19 +3243,6 @@ async function cmdWorkflowsSubmit(taskId: string, stepId: string, outputJson: st
 // Trash commands
 // ---------------------------------------------------------------------------
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-function daysUntil(dateStr: string): string {
-  const diff = new Date(dateStr).getTime() - Date.now()
-  const days = Math.ceil(diff / (24 * 60 * 60 * 1000))
-  if (days <= 0) return 'expiring'
-  return `${days}d`
-}
-
 async function cmdTrashList(): Promise<void> {
   const data = await apiGet('/api/plugins/assets/trash') as { assets: Array<{ filename: string; originalFilename: string; type: string; size: number; deletedAt: string; expiresAt: string; metadata: { agent?: string } | null }>; count: number }
   if (process.stdout.isTTY) {
@@ -3842,18 +3454,6 @@ const USAGE = renderCliUsage({ bakinUrl: BASE_URL }, { excludeNames: BINARY_ONLY
 // Onboarding CLI handlers
 // ---------------------------------------------------------------------------
 
-function statusIcon(status: string): string {
-  switch (status) {
-    case 'ok': return '[OK]'
-    case 'warn': return '[WARN]'
-    case 'error': return '[FAIL]'
-    case 'missing': return '[MISS]'
-    case 'broken': return '[FAIL]'
-    case 'skipped': return '[SKIP]'
-    default: return `[${status.toUpperCase()}]`
-  }
-}
-
 async function withTtyRuntimeLogsSilenced<T>(
   options: { isTTY: boolean; verbose?: boolean },
   run: () => Promise<T>,
@@ -3917,7 +3517,7 @@ async function cmdOnboardingSettingsInit(options: { json?: boolean } = {}): Prom
 }
 
 async function cmdOnboardingCheckSingle(
-  target: 'runtime' | 'search' | 'search-models' | 'llm' | 'channels' | 'plugin-assets' | 'agent-assets' | 'recommended-plugins' | 'recommended-agents',
+  target: 'runtime' | 'search' | 'search-models' | 'llm' | 'channels' | 'plugin-assets' | 'agent-sync' | 'recommended-plugins' | 'recommended-agents',
   options: { verbose?: boolean } = {},
 ): Promise<void> {
   const componentMap: Record<string, () => Promise<{ check(): Promise<import('../src/core/onboarding/types').CheckResult> }>> = {
@@ -3927,7 +3527,7 @@ async function cmdOnboardingCheckSingle(
     llm: async () => (await import('../src/core/onboarding/credentials')).llmComponent,
     channels: async () => (await import('../src/core/onboarding/credentials')).channelsComponent,
     'plugin-assets': async () => (await import('../src/core/onboarding/plugin-assets')).pluginAssetsComponent,
-    'agent-assets': async () => (await import('../src/core/onboarding/agent-assets')).agentAssetsComponent,
+    'agent-sync': async () => (await import('../src/core/onboarding/agent-sync')).agentSyncComponent,
     'recommended-plugins': async () => (await import('../src/core/onboarding/recommended-plugins')).recommendedPluginsComponent,
     'recommended-agents': async () => (await import('../src/core/onboarding/recommended-agents')).recommendedAgentsComponent,
   }
@@ -3971,7 +3571,7 @@ async function cmdOnboardingInstallSingle(target: string, args: string[]): Promi
     'search-models': async () => (await import('../src/core/onboarding/search-models')).searchModelsComponent,
     mcporter: async () => (await import('../src/core/onboarding/mcporter')).mcporterComponent,
     'plugin-assets': async () => (await import('../src/core/onboarding/plugin-assets')).pluginAssetsComponent,
-    'agent-assets': async () => (await import('../src/core/onboarding/agent-assets')).agentAssetsComponent,
+    'agent-sync': async () => (await import('../src/core/onboarding/agent-sync')).agentSyncComponent,
     'recommended-plugins': async () => (await import('../src/core/onboarding/recommended-plugins')).recommendedPluginsComponent,
     'recommended-agents': async () => (await import('../src/core/onboarding/recommended-agents')).recommendedAgentsComponent,
   }
@@ -4163,6 +3763,18 @@ export async function main(): Promise<void> {
         else console.log(APP_VERSION)
         break
 
+      case 'update':
+        // Self-update is implemented only in the compiled binary (handled in
+        // src/core/cli.ts before delegation reaches here). This source/npm entry
+        // can't replace its own executable — guide the user instead of erroring.
+        console.log(
+          'Self-update is only available in the compiled `bakin` binary (run `bakin update`).\n' +
+          'This source/npm invocation does not self-update — update via your install method:\n' +
+          '  • Homebrew:        brew upgrade bakin\n' +
+          '  • Source checkout: git pull',
+        )
+        break
+
       case 'status':
         await cmdStatus()
         break
@@ -4258,11 +3870,11 @@ export async function main(): Promise<void> {
         } else if (sub === 'remove') {
           if (!args[2]) await exitUsage('bakin agents remove <agent-id> [--keep-blocks] [--delete-agent] [--delete] [--force]')
           await cmdAgentPackagesRemove(args[2], parseAgentsFlags(args.slice(3)))
-        } else if (sub === 'update') {
-          // `bakin agents update` (no id) updates everything; `bakin agents update <id>` is targeted
+        } else if (sub === 'sync') {
+          // `bakin agents sync` (no id) syncs every agent; `bakin agents sync <id>` is targeted
           const id = args[2] && !args[2].startsWith('--') ? args[2] : undefined
           const flagsStart = id ? 3 : 2
-          await cmdAgentPackagesUpdate(id, parseAgentsFlags(args.slice(flagsStart)))
+          await cmdAgentPackagesSync(id, parseAgentsFlags(args.slice(flagsStart)))
         } else if (sub === 'lessons') {
           const lessonSub = args[2]
           if (lessonSub === 'list') {
@@ -4427,11 +4039,11 @@ export async function main(): Promise<void> {
         } else if (sub === 'remove') {
           if (!args[2]) await exitUsage('bakin packages remove <package-id> [--force] [--keep-blocks]')
           await cmdPackagesRemove(args[2], parseAgentsFlags(args.slice(3)))
-        } else if (sub === 'update') {
-          if (!args[2]) await exitUsage('bakin packages update <package-id> [--refresh-template]')
-          await cmdPackagesUpdate(args[2], parseAgentsFlags(args.slice(3)))
+        } else if (sub === 'sync') {
+          if (!args[2]) await exitUsage('bakin packages sync <package-id> [--check]')
+          await cmdPackagesSync(args[2], parseAgentsFlags(args.slice(3)))
         } else {
-          await exitUnknownSubcommand('packages', sub, ['install', 'list', 'remove', 'update'])
+          await exitUnknownSubcommand('packages', sub, ['install', 'list', 'remove', 'sync'])
         }
         break
 
@@ -4470,34 +4082,25 @@ export async function main(): Promise<void> {
         }
         break
 
-      case 'agent-rules': {
-        const apply = args.includes('--apply')
-        const check = args.includes('--check')
-        const applyAll = args.includes('--apply-all')
-        const checkAll = args.includes('--check-all')
-        await cmdAgentRules({ apply, check, applyAll, checkAll })
-        break
-      }
-
       case 'mkdir':
         await cmdOnboardingMkdir({ json: args.includes('--json') })
         break
 
       case 'check':
-        if (sub === 'runtime' || sub === 'search' || sub === 'search-models' || sub === 'llm' || sub === 'channels' || sub === 'plugin-assets' || sub === 'agent-assets' || sub === 'recommended-plugins' || sub === 'recommended-agents') {
+        if (sub === 'runtime' || sub === 'search' || sub === 'search-models' || sub === 'llm' || sub === 'channels' || sub === 'plugin-assets' || sub === 'agent-sync' || sub === 'recommended-plugins' || sub === 'recommended-agents') {
           await cmdOnboardingCheckSingle(sub, { verbose: args.includes('--verbose') })
         } else if (sub === 'all') {
           await cmdOnboardingCheckAll({ verbose: args.includes('--verbose') })
         } else {
-          await exitUnknownSubcommand('check', sub, ['runtime', 'search', 'search-models', 'llm', 'channels', 'plugin-assets', 'agent-assets', 'recommended-plugins', 'recommended-agents', 'all'])
+          await exitUnknownSubcommand('check', sub, ['runtime', 'search', 'search-models', 'llm', 'channels', 'plugin-assets', 'agent-sync', 'recommended-plugins', 'recommended-agents', 'all'])
         }
         break
 
       case 'install':
-        if (sub === 'search' || sub === 'search-models' || sub === 'mcporter' || sub === 'plugin-assets' || sub === 'agent-assets' || sub === 'recommended-plugins' || sub === 'recommended-agents') {
+        if (sub === 'search' || sub === 'search-models' || sub === 'mcporter' || sub === 'plugin-assets' || sub === 'agent-sync' || sub === 'recommended-plugins' || sub === 'recommended-agents') {
           await cmdOnboardingInstallSingle(sub, args)
         } else {
-          await exitUnknownSubcommand('install', sub, ['search', 'search-models', 'mcporter', 'plugin-assets', 'agent-assets', 'recommended-plugins', 'recommended-agents'])
+          await exitUnknownSubcommand('install', sub, ['search', 'search-models', 'mcporter', 'plugin-assets', 'agent-sync', 'recommended-plugins', 'recommended-agents'])
         }
         break
 

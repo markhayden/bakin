@@ -17,8 +17,9 @@ import sharp from 'sharp'
 import { assetDirRelPath } from '../../../plugins/assets/lib/asset-id'
 import {
   createAsset, getAsset, addVersion, promoteVersion, deleteVersion,
-  addExport, relink, retype, deleteAsset, restoreAsset,
+  addExport, relink, retype,
 } from '../../../plugins/assets/lib/asset-service'
+import { deleteAsset, restoreAsset } from '../../../plugins/assets/lib/asset-trash'
 
 const srcDir = join(testDir, 'src')
 const png = (name: string, r: number) =>
@@ -32,6 +33,8 @@ beforeAll(async () => {
   mkdirSync(srcDir, { recursive: true })
   await png('a.png', 10)
   await png('b.png', 20)
+  // A wide 4:1 source for exercising export fit modes.
+  await sharp({ create: { width: 40, height: 10, channels: 3, background: { r: 0, g: 0, b: 255 } } }).png().toFile(join(srcDir, 'wide.png'))
 })
 
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
@@ -109,6 +112,24 @@ describe('addExport', () => {
     // Different surface → second export.
     await addExport(assetId, { surface: 'square', format: 'jpg', width: 60, height: 60 })
     expect(getAsset(assetId)!.exports).toHaveLength(2)
+  })
+
+  it("fit:'inside' preserves aspect ratio (no crop); default 'cover' fills the box", async () => {
+    const { assetId } = await createAsset({
+      sourceFilePath: join(srcDir, 'wide.png'), type: 'images', agent: 'pixel', taskId: 't1',
+      slug: 'wide', op: 'generate', description: 'wide',
+    })
+    const exportPath = (surface: string, fmt: string) => join(testDir, assetDirRelPath(assetId)!, 'exports', `${surface}.${fmt}`)
+
+    // Default 'cover' crops the 4:1 source to exactly the box.
+    await addExport(assetId, { surface: 'cover-box', format: 'png', width: 20, height: 20 })
+    const cover = await sharp(exportPath('cover-box', 'png')).metadata()
+    expect([cover.width, cover.height]).toEqual([20, 20])
+
+    // 'inside' scales the 4:1 source to fit within the box, preserving aspect (20x5), no crop.
+    await addExport(assetId, { surface: 'inside-box', format: 'png', width: 20, height: 20, fit: 'inside' })
+    const inside = await sharp(exportPath('inside-box', 'png')).metadata()
+    expect([inside.width, inside.height]).toEqual([20, 5])
   })
 
   it('rejects unsafe format/dimensions/quality before touching disk', async () => {

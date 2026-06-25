@@ -1,3 +1,11 @@
+import type { RoutingConfig } from '../../src/core/model-routing'
+import type { BudgetPolicy } from '../../src/core/budget'
+// AvailableModel is single-homed in the SDK (the wire shape this plugin's
+// /available route produces and the team plugin consumes).
+import type { AvailableModel } from '@makinbakin/sdk/types'
+
+export type { RoutingConfig, BudgetPolicy, AvailableModel }
+
 export interface AgentModelConfig {
   agentId: string
   name: string
@@ -17,40 +25,6 @@ export interface ModelsConfigResponse {
   fallbackModels: string[]
 }
 
-export interface AvailableModel {
-  id: string
-  name: string
-  tier: 'budget' | 'standard' | 'premium'
-  provider: string
-  input?: string
-  contextWindow?: number
-  local?: boolean
-  available?: boolean
-  tags?: string[]
-  configured?: boolean
-  isDefault?: boolean
-  fallbackIndex?: number | null
-  // ── Enrichment from the curated catalog (plugins/models/data/known-models.ts) ──
-  // All optional — unknown models render without them.
-  /** Display-ready description shown under the model name. */
-  description?: string
-  /** Short purpose hint rendered next to the tier badge. */
-  bestFor?: string
-  /** Display-only cost summary, e.g. '$3 in / $15 out per 1M'. */
-  costRange?: string
-  /** Display-only context-window string override (e.g. '200K', '1M'). Distinct
-   *  from the numeric `contextWindow` which is runtime-sourced. */
-  contextWindowDisplay?: string
-  /** 'llm' | 'image' | 'video' — gives the UI a reason to cluster differently. */
-  kind?: 'llm' | 'image' | 'video'
-  /** simple-icons slug for the model's primary brand (usually the provider's). */
-  brandIconSlug?: string
-  /** Resolved provider metadata — pre-joined server-side so the client doesn't
-   *  need a second registry lookup. */
-  providerLabel?: string
-  providerBrandIconSlug?: string
-  providerBrandColor?: string
-}
 
 export interface AvailableModelsResponse {
   models: AvailableModel[]
@@ -66,16 +40,11 @@ export interface AliasesResponse {
   aliases: Record<string, string>
 }
 
-/** Editable task-to-model mapping (stored in plugin settings) */
-export interface TaskProfile {
-  taskType: string
-  recommendedModel: string
-  notes: string
-}
-
 /** Shape of models plugin settings */
 export interface ModelsPluginSettings {
-  showUsageMetrics?: boolean
   defaultModel?: string
-  taskProfiles?: TaskProfile[]
+  /** Per-turn model/thinking routing policy (origins + tag overrides). */
+  routing?: RoutingConfig
+  /** Spend-cap policy (global + per-agent daily/monthly limits). */
+  budget?: BudgetPolicy
 }

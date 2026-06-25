@@ -16,11 +16,11 @@ import { tmpdir } from 'os'
 const sentinelContentDir = join(tmpdir(), `bakin-session-death-content-${Date.now()}`)
 mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => sentinelContentDir,
-  getBakinPaths: () => ({ root: sentinelContentDir }),
+  getBakinPaths: () => ({ root: sentinelContentDir, home: sentinelContentDir, db: join(sentinelContentDir, 'bakin.db') }),
 }))
 mock.module('../../packages/core/src/content-dir', () => ({
   getContentDir: () => sentinelContentDir,
-  getBakinPaths: () => ({ root: sentinelContentDir }),
+  getBakinPaths: () => ({ root: sentinelContentDir, home: sentinelContentDir, db: join(sentinelContentDir, 'bakin.db') }),
 }))
 
 mock.module('../../src/core/logger', () => ({
@@ -28,6 +28,7 @@ mock.module('../../src/core/logger', () => ({
 }))
 
 mock.module('../../src/core/settings', () => ({
+  resetSettingsCache: () => {},
   getSettings: mock().mockReturnValue({
     dispatch: {
       intervalMs: 1000,
@@ -120,7 +121,14 @@ const mockHookInvoke = mock(async (hook: string, _data?: Record<string, unknown>
   if (hook === 'workflows.getActiveAgents') return []
   return undefined
 })
-mock.module('../../src/lib/plugin-registry', () => ({
+mock.module('../../src/core/plugin-registry', () => ({
+  getHookRegistry: mock().mockReturnValue({
+    invoke: mockHookInvoke,
+    has: mock().mockReturnValue(false),
+    register: mock(),
+  }),
+}))
+mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
   getHookRegistry: mock().mockReturnValue({
     invoke: mockHookInvoke,
     has: mock().mockReturnValue(false),

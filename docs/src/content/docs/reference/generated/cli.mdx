@@ -102,18 +102,6 @@ bakin agents remove <agent-id> [--keep-blocks] [--delete-agent] [--delete] [--fo
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="agents-update" name="agents update" summary="Update agent packages." description="Updates one or all installed agent packages.">
-```sh frame="terminal"
-bakin agents update [agent-id] [--refresh-template]
-```
-  <table class="cli-command__args">
-    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
-    <tbody>
-      <tr><td><code>[agent-id]</code></td><td>argument</td><td>no</td><td>Agent id to install, update, remove, or inspect.</td></tr>
-      <tr><td><code>[--refresh-template]</code></td><td>option</td><td>no</td><td>Refresh generated package template files.</td></tr>
-    </tbody>
-  </table>
-</CliCommandCard>
 <CliCommandCard id="agents-lessons" name="agents lessons" summary="Manage agent lesson toggles." description="Lists or toggles lesson blocks for an agent package.">
 ```sh frame="terminal"
 bakin agents lessons <list|enable|disable> ...
@@ -162,15 +150,15 @@ bakin packages remove <package-id> [--force] [--keep-blocks]
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="packages-update" name="packages update" summary="Update a package." description="Updates an installed package.">
+<CliCommandCard id="packages-sync" name="packages sync" summary="Sync a standalone pack." description="Fetches and re-projects an installed skill/workflow/lesson pack.">
 ```sh frame="terminal"
-bakin packages update <package-id> [--refresh-template]
+bakin packages sync <package-id> [--check]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
       <tr><td><code>&lt;package-id&gt;</code></td><td>argument</td><td>yes</td><td>Package id.</td></tr>
-      <tr><td><code>[--refresh-template]</code></td><td>option</td><td>no</td><td>Refresh generated package template files.</td></tr>
+      <tr><td><code>[--check]</code></td><td>option</td><td>no</td><td>Dry-run; report what would change.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
@@ -277,20 +265,6 @@ bakin paths [key] [--json]
     <tbody>
       <tr><td><code>[key]</code></td><td>argument</td><td>no</td><td>Dot-notation settings key.</td></tr>
       <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
-    </tbody>
-  </table>
-</CliCommandCard>
-<CliCommandCard id="agent-rules" name="agent-rules" summary="Manage AGENTS.md context." description="Applies or checks Bakin-managed AGENTS.md context sections.">
-```sh frame="terminal"
-bakin agent-rules [--apply|--check|--apply-all|--check-all]
-```
-  <table class="cli-command__args">
-    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
-    <tbody>
-      <tr><td><code>[--apply]</code></td><td>option</td><td>no</td><td>Apply the managed block.</td></tr>
-      <tr><td><code>[--check]</code></td><td>option</td><td>no</td><td>Dry-run; report what would change.</td></tr>
-      <tr><td><code>[--apply-all]</code></td><td>option</td><td>no</td><td>Apply managed blocks for all agents.</td></tr>
-      <tr><td><code>[--check-all]</code></td><td>option</td><td>no</td><td>Check managed blocks for all agents.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
@@ -852,6 +826,21 @@ bakin workflows submit <taskId> <stepId> <json>
 bakin serve
 ```
 </CliCommandCard>
+<CliCommandCard id="agents-sync" name="agents sync" summary="Sync agents with their packages + context layers." description="Fetches package updates, recomposes managed blocks (global/role/team/package/lessons), re-projects skills and assets, verifies, and writes a receipt. --check reports without writing. --reclaim discards local edits on a sentineled skill/asset after confirmation.">
+```sh frame="terminal"
+bakin agents sync [agent-id] [--check] [--reclaim <target>] [--reclaim-all] [--yes]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[agent-id]</code></td><td>argument</td><td>no</td><td>Agent id to install, update, remove, or inspect.</td></tr>
+      <tr><td><code>[--check]</code></td><td>option</td><td>no</td><td>Dry-run; report what would change.</td></tr>
+      <tr><td><code>[--reclaim &lt;target&gt;]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
+      <tr><td><code>[--reclaim-all]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
+      <tr><td><code>[--yes]</code></td><td>option</td><td>no</td><td>Accept all defaults non-interactively.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
 <CliCommandCard id="diagnostics-startup" name="diagnostics startup" summary="Manage startup diagnostics." description="Reads or updates the local startup diagnostics setting in ~/.bakin/settings.json. This does not require the server to be running; changes apply on the next server start. Environment variables still override it for one-off runs.">
 ```sh frame="terminal"
 bakin diagnostics startup <status|on|off> [--slow-ms <ms>] [--json]
@@ -868,5 +857,5 @@ bakin diagnostics startup <status|on|off> [--slow-ms <ms>] [--json]
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jun 5, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jun 13, 2026 · Bakin 0.0.0-dev</span>
 </aside>

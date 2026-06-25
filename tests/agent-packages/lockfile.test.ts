@@ -107,6 +107,56 @@ describe('readLockfile', () => {
     expect(round).toEqual(lock)
   })
 
+  it("normalizes legacy state 'adopted' to 'managed' on read", () => {
+    mkdirSync(join(testDir, 'packages'), { recursive: true })
+    const legacy = {
+      version: 1,
+      packages: {
+        rolo: { ...pixelEntry(), state: 'adopted' },
+      },
+    }
+    writeFileSync(getLockfilePath(), JSON.stringify(legacy), 'utf-8')
+    const lock = readLockfile()
+    expect(lock.packages.rolo.state).toBe('managed')
+  })
+
+  it('parses legacy lesson-marker projections and templateOnly flags', () => {
+    mkdirSync(join(testDir, 'packages'), { recursive: true })
+    const legacy = {
+      version: 1,
+      packages: {
+        pixel: {
+          ...pixelEntry(),
+          projections: [
+            { kind: 'lesson-marker', target: '/x/SOUL.md', blockId: 'lesson:pixel:a' },
+            { kind: 'workspace-file', target: '/x/SOUL.md', templateOnly: true },
+          ],
+        },
+      },
+    }
+    writeFileSync(getLockfilePath(), JSON.stringify(legacy), 'utf-8')
+    const lock = readLockfile()
+    expect(lock.packages.pixel.projections).toHaveLength(2)
+  })
+
+  it('round-trips composedSha + inputs on workspace-file projections', () => {
+    const entry = {
+      ...pixelEntry(),
+      projections: [
+        {
+          kind: 'workspace-file' as const,
+          target: '/x/AGENTS.md',
+          composedSha: 'abc123',
+          inputs: { packageSha: 'p1', globalSha: 'g1', teamSha: 't1' },
+        },
+      ],
+    }
+    writeLockfile({ version: 1, packages: { pixel: entry } })
+    const round = readLockfile()
+    expect(round.packages.pixel.projections?.[0].composedSha).toBe('abc123')
+    expect(round.packages.pixel.projections?.[0].inputs?.globalSha).toBe('g1')
+  })
+
   it('throws on invalid JSON', () => {
     mkdirSync(join(testDir, 'packages'), { recursive: true })
     writeFileSync(getLockfilePath(), '{ this is not json', 'utf-8')

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { useQueryState, useQueryArrayState, useSearch, useDebug, useRouter, usePathname, useSearchParams } from '@makinbakin/sdk/hooks'
+import { useQueryState, useQueryArrayState, useSearch, useDebug, useRouter, usePathname, useSearchParams, usePluginEvent } from '@makinbakin/sdk/hooks'
 import { Button } from '@makinbakin/sdk/ui'
 import { PluginHeader, FacetFilter } from '@makinbakin/sdk/components'
 import { formatSize, formatAge } from '@makinbakin/sdk/utils'
@@ -240,22 +240,16 @@ export function VersionedAssetGrid() {
   // same box as a client-side folder-name filter — no Antfly round-trip.
   useEffect(() => { if (view !== 'tags') search.search(q) }, [q, view]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Coalesce event bursts (agent edit loops) into one refetch per window —
+  // direct user actions (upload/restore/trash ops) keep their immediate
+  // fetches elsewhere in this component.
+  const refetchRef = useRef<ReturnType<typeof createSseRefetchScheduler> | null>(null)
   useEffect(() => {
-    const es = new EventSource('/api/events')
-    // Coalesce event bursts (agent edit loops) into one refetch per window —
-    // direct user actions (upload/restore/trash ops) keep their immediate
-    // fetches elsewhere in this component.
-    const refetch = createSseRefetchScheduler(fetchAssets, fetchTrash)
-    es.onmessage = (e) => {
-      try {
-        const data = JSON.parse(e.data)
-        if (data.type !== 'plugin-event') return
-        if (data.event === 'asset.changed') refetch.schedule(false)
-        else if (data.event === 'asset.removed') refetch.schedule(true)
-      } catch { /* ignore non-JSON */ }
-    }
-    return () => { refetch.cancel(); es.close() }
+    refetchRef.current = createSseRefetchScheduler(fetchAssets, fetchTrash)
+    return () => { refetchRef.current?.cancel(); refetchRef.current = null }
   }, [fetchAssets, fetchTrash])
+  usePluginEvent('asset.changed', () => refetchRef.current?.schedule(false))
+  usePluginEvent('asset.removed', () => refetchRef.current?.schedule(true))
 
   // ─── Upload ──────────────────────────────────────────────────────────
   const handleFiles = useCallback(async (files: FileList | null) => {

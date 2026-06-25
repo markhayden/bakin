@@ -19,6 +19,7 @@ mock.module('../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 mock.module('../../src/core/settings', () => ({
+  resetSettingsCache: () => {},
   getSettings: mock().mockReturnValue({
     dispatch: {
       intervalMs: 1000, maxRetries: 3, failureCooldownMs: 1000, transientCooldownMs: 500,
@@ -34,7 +35,14 @@ mock.module('../../src/core/task-store', () => ({
   moveTask: mock(async () => undefined),
   blockTask: mock(async () => undefined),
 }))
-mock.module('../../src/lib/plugin-registry', () => ({
+mock.module('../../src/core/plugin-registry', () => ({
+  getHookRegistry: mock().mockReturnValue({
+    invoke: mock().mockResolvedValue(undefined),
+    has: mock().mockReturnValue(false),
+    register: mock(),
+  }),
+}))
+mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
   getHookRegistry: mock().mockReturnValue({
     invoke: mock().mockResolvedValue(undefined),
     has: mock().mockReturnValue(false),
@@ -76,7 +84,7 @@ describe('OUTPUT DISCIPLINE in dispatch prompts', () => {
   it('workflow step prompts carry the discipline with the step-output variant (no subtasks)', () => {
     // buildWorkflowDispatchMessage is module-private; assert via source that
     // it consumes the same shared section with subtasksAllowed: false.
-    const source = readFileSync(join(import.meta.dir, '../../src/core/dispatch.ts'), 'utf-8')
+    const source = readFileSync(join(import.meta.dir, '../../src/core/dispatch-workflow.ts'), 'utf-8')
     const wfBuilder = source.slice(source.indexOf('function buildWorkflowDispatchMessage'))
     expect(wfBuilder).toContain('outputDisciplineSection(agentName, task.id, { subtasksAllowed: false })')
     expect(wfBuilder).toContain('sharedExecutionToolDocs(agentName, task.id,')
@@ -109,8 +117,12 @@ describe('runtime-derived roster (no hardcoded agents in core)', () => {
     expect(msg).not.toContain('patch=execution')
   })
 
-  it('the dispatch module contains no hardcoded agent roster', () => {
-    const source = readFileSync(join(import.meta.dir, '../../src/core/dispatch.ts'), 'utf-8')
+  it('the dispatch prompt builders contain no hardcoded agent roster', () => {
+    // The prompt assembly lives in dispatch-prompts.ts + dispatch-workflow.ts now;
+    // scan both so the check still covers where a hardcoded roster could appear.
+    const source =
+      readFileSync(join(import.meta.dir, '../../src/core/dispatch-prompts.ts'), 'utf-8') +
+      readFileSync(join(import.meta.dir, '../../src/core/dispatch-workflow.ts'), 'utf-8')
     expect(source).not.toContain('patch=execution')
     expect(source).not.toContain('pixel=design')
   })

@@ -27,9 +27,16 @@ export const DEFAULT_OVERSIZED_OUTPUT_BYTES = 128 * 1024
 const SUPPORTED_TRACE_SCHEMA = 'openclaw-trajectory'
 const SUPPORTED_SCHEMA_VERSION = 1
 
+/** Token usage for one model turn, as recorded in `model.completed`. */
+export interface TrajectoryUsage {
+  input?: number
+  output?: number
+  total?: number
+}
+
 export type TrajectoryRunOutcome =
   /** The run completed successfully — `content` is the final assistant text. */
-  | { kind: 'success'; content: string; sessionId?: string }
+  | { kind: 'success'; content: string; sessionId?: string; usage?: TrajectoryUsage }
   /** The run died; `diagnosis` describes how. */
   | { kind: 'death'; diagnosis: RuntimeTurnDiagnosis }
 
@@ -123,6 +130,7 @@ function outcomeFromState(state: ScanState, sawSupportedSchema: boolean, oversiz
       kind: 'success',
       content,
       ...(state.sessionId ? { sessionId: state.sessionId } : {}),
+      ...(state.completed?.usage ? { usage: state.completed.usage } : {}),
     }
   }
 
@@ -231,12 +239,14 @@ export function inspectTrajectoryRun(opts: {
 export class TrajectoryRecoveredTurn extends Error {
   readonly content: string
   readonly sessionId?: string
+  readonly usage?: TrajectoryUsage
 
-  constructor(content: string, sessionId?: string) {
+  constructor(content: string, sessionId?: string, usage?: TrajectoryUsage) {
     super('Turn succeeded on disk; gateway frame not delivered within grace window')
     this.name = 'TrajectoryRecoveredTurn'
     this.content = content
     this.sessionId = sessionId
+    this.usage = usage
   }
 }
 
@@ -317,7 +327,7 @@ export function watchTrajectoryForDeath(opts: {
           timer = setTimeout(() => {
             if (stopped) return
             stop()
-            reject(new TrajectoryRecoveredTurn(outcome.content, outcome.sessionId))
+            reject(new TrajectoryRecoveredTurn(outcome.content, outcome.sessionId, outcome.usage))
           }, opts.successGraceMs ?? DEFAULT_SUCCESS_GRACE_MS)
           timer.unref?.()
           return

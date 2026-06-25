@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, statSync } from 'fs'
+import { splitFrontmatter } from '@bakin/core/format/frontmatter'
 import { basename, isAbsolute, normalize, relative, resolve } from 'path'
 import yaml from 'js-yaml'
 import type { Manifest } from '../../../packages/core/src/agent-packages/manifest'
@@ -180,9 +181,7 @@ function isPathInside(root: string, target: string): boolean {
 }
 
 function extractMarkdownBody(raw: string): string {
-  const normalized = raw.replace(/\r\n/g, '\n')
-  const match = normalized.match(/^---\n[\s\S]*?\n---\n?([\s\S]*)$/)
-  return match ? match[1].trim() : normalized.trim()
+  return splitFrontmatter(raw.replace(/\r\n/g, '\n')).body
 }
 
 function deriveWorkflowId(definition: WorkflowDefinition, fallbackBase: string): string {

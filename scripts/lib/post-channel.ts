@@ -3,14 +3,16 @@
  */
 import { z } from 'zod'
 import { createHash } from 'crypto'
-import { existsSync } from 'fs'
-import { basename, extname } from 'path'
+import { existsSync, statSync } from 'fs'
+import { basename, dirname, extname, join } from 'path'
 import { getAppServices } from '@/core/app-services'
+import { getIdempotent, putIdempotent, LedgerUnavailableError } from '@/core/execution-ledger'
+import { createLogger } from '@/core/logger'
 import { resolveRuntimeChannelRef } from '@/core/channel-aliases'
 import { assertWorkflowToolAllowed } from '@/core/workflow-tool-authorization'
-import { resolveFile } from '@bakin/assets/lib/asset-service'
+import { addExport, getAsset, resolveFile } from '@bakin/assets/lib/asset-service'
 import { succeed, fail } from './common'
-import { addExecTool } from './registry'
+import { addExecTool } from '../../src/core/exec-tools/registry'
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import type { ExecToolResult } from '@bakin/core/plugin-types'
 
@@ -22,6 +24,8 @@ export interface PostChannelParams {
   videoAssetId?: string
   embed?: Record<string, unknown>
   taskId?: string
+  /** Explicit intent to send a second copy of an already-delivered asset. */
+  repost?: boolean
 }
 
 /**
@@ -34,8 +38,70 @@ function resolveAssetAbsPath(assetId: string | undefined): string | null {
   return ref && existsSync(ref.absPath) ? ref.absPath : null
 }
 
+// A channel attachment over this size is delivered as a downscaled export
+// rather than the raw version, so agents never need to hand-roll a second,
+// smaller asset (which clutters the asset list). Conservative vs Discord's
+// per-upload limit; the export is derived (lives in the asset's exports/),
+// never a new top-level asset.
+const CHANNEL_ATTACHMENT_LIMIT_BYTES = 8 * 1024 * 1024
+const DELIVERY_EXPORT_SURFACE = 'channel-delivery'
+const DELIVERY_EXPORT_MAX_DIM = 2048
+const RESIZABLE_IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp'])
+
+/**
+ * Resolve the file to actually attach for an image asset. Small images and
+ * non-image assets are sent as-is; an oversized image is delivered as a
+ * derived, aspect-preserving export (idempotent per surface) instead of the
+ * raw version — so a channel-friendly copy is an export of the original, not a
+ * separate asset.
+ */
+async function resolveImageDeliveryFile(assetId: string | undefined): Promise<string | null> {
+  if (!assetId) return null
+  const ref = resolveFile(assetId)
+  if (!ref || !existsSync(ref.absPath)) return null
+  if (!RESIZABLE_IMAGE_EXTS.has(extname(ref.absPath).toLowerCase())) return ref.absPath
+
+  let size = 0
+  try {
+    size = statSync(ref.absPath).size
+  } catch {
+    return ref.absPath
+  }
+  if (size <= CHANNEL_ATTACHMENT_LIMIT_BYTES) return ref.absPath
+
+  try {
+    const manifest = getAsset(assetId)
+    const assetDir = dirname(ref.absPath)
+    // Reuse a fresh export for the current version if one is already small enough.
+    const fresh = manifest?.exports.find(
+      (e) => e.name === DELIVERY_EXPORT_SURFACE && e.fromVersion === manifest.currentVersion,
+    )
+    if (fresh) {
+      const freshAbs = join(assetDir, fresh.file)
+      if (existsSync(freshAbs) && statSync(freshAbs).size <= CHANNEL_ATTACHMENT_LIMIT_BYTES) return freshAbs
+    }
+    const { file } = await addExport(assetId, {
+      surface: DELIVERY_EXPORT_SURFACE,
+      format: 'jpg',
+      width: DELIVERY_EXPORT_MAX_DIM,
+      height: DELIVERY_EXPORT_MAX_DIM,
+      fit: 'inside',
+      quality: 82,
+    })
+    const exportAbs = join(assetDir, file)
+    return existsSync(exportAbs) ? exportAbs : ref.absPath
+  } catch (err) {
+    log.warn('Failed to derive channel-delivery export; sending original', {
+      assetId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return ref.absPath
+  }
+}
+
 // When BAKIN_CHANNEL_TEST_MODE=1 (or "true"), all posts are routed to
 // the testing-ground channel regardless of what the caller requested.
+const log = createLogger('post-channel')
 const TEST_CHANNEL = 'testing-ground'
 const POST_IDEMPOTENCY_TTL_MS = 5 * 60 * 1000
 export const CHANNEL_POST_CHUNK_LIMIT = 1900
@@ -70,10 +136,13 @@ export async function postChannel(
   const { content, imageAssetId, videoAssetId, embed, taskId } = params
 
   const files = [
-    filePayload(imageAssetId, resolveAssetAbsPath(imageAssetId)),
+    filePayload(imageAssetId, await resolveImageDeliveryFile(imageAssetId)),
     filePayload(videoAssetId, resolveAssetAbsPath(videoAssetId)),
   ].filter((file): file is { name: string; path: string } => Boolean(file))
 
+  // Identical-retry dedup runs FIRST: a verbatim retry of a post we already
+  // sent (mcporter timeout — the caller never saw the success) must return
+  // the cached result, never a refusal whose error text invites repost=true.
   const signature = postSignature({ ...params, channel, files })
   const existing = postInflight.get(signature)
   if (existing) return existing
@@ -81,6 +150,39 @@ export async function postChannel(
   if (cached) {
     if (cached.expiresAt > Date.now()) return { ...cached.result, deduped: true }
     postCompleted.delete(signature)
+  }
+
+  // A deliverable goes to a channel ONCE per task (live-test incident: the
+  // same asset posted twice with DIFFERENT captions — monitor post + completion
+  // reply, which the signature cache above cannot catch). Durable in the
+  // ledger so it survives restarts; the asset IS the deliverable. repost=true
+  // is the explicit escape hatch; only successful deliveries record a row.
+  // Best-effort against concurrent different-caption posts (check-then-act);
+  // the observed incident was sequential.
+  const deliveredAssetIds = [imageAssetId, videoAssetId].filter((id): id is string => Boolean(id))
+  const deliveryKeys = taskId
+    ? deliveredAssetIds.map(assetId => `channel-post:${taskId}:${channel}:${assetId}`)
+    : []
+  if (!params.repost) {
+    for (const key of deliveryKeys) {
+      let prior
+      try {
+        prior = getIdempotent(key)
+      } catch (err) {
+        // Fail closed with an explanation: without the ledger we cannot rule
+        // out a prior delivery, and external sends are non-idempotent.
+        if (err instanceof LedgerUnavailableError) {
+          return fail(`Cannot verify whether this asset was already delivered (execution ledger unavailable) — refusing to risk a duplicate post. Retry once the ledger is healthy.`)
+        }
+        throw err
+      }
+      if (prior) {
+        const at = (prior.result as { at?: string } | null)?.at
+        return fail(
+          `Asset already delivered to ${displayChannel(channel)} for task ${taskId}${at ? ` at ${at}` : ''}. A deliverable goes out once — if a second copy is genuinely intended, pass repost=true.`,
+        )
+      }
+    }
   }
 
   const promise = deliverChannelPost(runtime, {
@@ -99,6 +201,18 @@ export async function postChannel(
     // an agent retry caused by a client timeout or ambiguous adapter failure
     // does not emit a second copy of the same message.
     postCompleted.set(signature, { result, expiresAt: Date.now() + POST_IDEMPOTENCY_TTL_MS })
+    if (result.ok) {
+      for (const key of deliveryKeys) {
+        try {
+          putIdempotent(key, 'channel.post', { at: new Date().toISOString() })
+        } catch (err) {
+          // The message already went out — failing the call now would read as
+          // "post failed" and provoke a retry. Log; the TTL cache still
+          // covers verbatim retries for the next few minutes.
+          log.warn('Failed to record channel delivery in the ledger', { key, error: err instanceof Error ? err.message : String(err) })
+        }
+      }
+    }
     return result
   } finally {
     if (postInflight.get(signature) === promise) postInflight.delete(signature)
@@ -165,6 +279,7 @@ function postSignature(input: PostChannelParams & { channel: string; files: Arra
     embed: input.embed ?? null,
     files: input.files,
     imageAssetId: input.imageAssetId ?? null,
+    repost: input.repost ?? false,
     taskId: input.taskId ?? null,
     testMode: isTestMode(),
     videoAssetId: input.videoAssetId ?? null,
@@ -251,15 +366,16 @@ function filePayload(assetId: string | undefined, path: string | null): { name: 
 addExecTool({
   name: 'bakin_exec_post_channel',
   label: 'Posted to channel',
-  description: 'Post a message through the active runtime channel adapter. Supports image/video attachments when the adapter supports rich content.',
+  description: 'Post a message through the active runtime channel adapter. Supports image/video attachments when the adapter supports rich content. Oversized images are downscaled automatically for the channel (as a derived export of the same asset) — pass the original asset id; do NOT create a separate, smaller asset just to post it.',
   source: 'core',
   parameters: {
     channel: z.string().describe('Channel name or runtime channel target'),
     content: z.string().describe('Message text / caption'),
-    imageAssetId: z.string().optional().describe('Asset id of an image to attach (current version is sent).'),
+    imageAssetId: z.string().optional().describe('Asset id of an image to attach. The current version is sent, or an auto-downscaled export if it exceeds the channel attachment limit (no separate asset is created).'),
     videoAssetId: z.string().optional().describe('Asset id of a video to attach (current version is sent).'),
     embed: z.record(z.string(), z.unknown()).optional().describe('Optional rich metadata for adapters that support it'),
     taskId: z.string().optional().describe('Task ID for audit trail'),
+    repost: z.boolean().optional().describe('An attached asset is delivered to a channel once per task; set true ONLY when a second copy is genuinely intended.'),
   },
   handler: async (params: Record<string, unknown>, agent: string, ctx) => {
     return postChannel({ ...params, agent } as PostChannelParams, ctx?.runtime)

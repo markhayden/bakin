@@ -95,7 +95,7 @@ describe('buildUserPlugin', () => {
     expect(existsSync(join(targetDir, 'dist', 'client.js'))).toBe(true)
   }, 60_000)
 
-  it('trusts complete shipped dist artifacts when requested', async () => {
+  it('rebuilds a stale shipped dist from source — shipped artifacts are never trusted', async () => {
     const dir = join(testDir, 'plugins', 'prebuilt-dist')
     writeMinimalPlugin(dir, `export default { id: 'minimal', name: 'x', version: '0.1.0', activate() { return 'source build' } }`)
     mkdirSync(join(dir, 'dist'), { recursive: true })
@@ -108,24 +108,31 @@ describe('buildUserPlugin', () => {
     utimesSync(distServer, older, older)
     utimesSync(join(dir, 'index.ts'), newer, newer)
 
-    await expect(buildUserPlugin(dir, { trustExistingDist: true })).resolves.toBeUndefined()
-    expect(readFileSync(distServer, 'utf-8')).toBe(prebuilt)
+    await expect(buildUserPlugin(dir)).resolves.toBeUndefined()
+    // The shipped dist was replaced by a build of the import-validated source.
+    expect(readFileSync(distServer, 'utf-8')).not.toBe(prebuilt)
+    expect(readFileSync(distServer, 'utf-8')).toContain('source build')
   }, 60_000)
 
-  it('repairs stale trusted client dist without rebuilding trusted server dist', async () => {
+  it('rebuilds both server and client dist from source when sources are newer', async () => {
     const dir = join(testDir, 'plugins', 'prebuilt-dev-client')
-    writeMinimalPlugin(dir, `throw new Error('server source should not rebuild')`)
+    writeMinimalPlugin(dir, `export default { id: 'minimal', name: 'x', version: '0.1.0', activate() { return 'rebuilt server' } }`)
     writeFileSync(join(dir, 'client.tsx'), `import { jsx } from 'react/jsx-runtime'; export const navItems = []; export function Page() { return jsx('div', { children: 'ok' }) }\n`)
     mkdirSync(join(dir, 'dist'), { recursive: true })
     const distServer = join(dir, 'dist', 'index.js')
     const distClient = join(dir, 'dist', 'client.js')
-    const prebuiltServer = `export default { id: 'minimal', activate() { return 'trusted server' } }\n`
+    const prebuiltServer = `export default { id: 'minimal', activate() { return 'shipped server' } }\n`
     writeFileSync(distServer, prebuiltServer)
     writeFileSync(distClient, `import { jsxDEV } from 'react/jsx-dev-runtime'\nexport const stale = jsxDEV\n`)
+    // Deterministic staleness: dist strictly older than sources.
+    const older = new Date(Date.now() - 10_000)
+    utimesSync(distServer, older, older)
+    utimesSync(distClient, older, older)
 
-    await buildUserPlugin(dir, { trustExistingDist: true })
+    await buildUserPlugin(dir)
 
-    expect(readFileSync(distServer, 'utf-8')).toBe(prebuiltServer)
+    expect(readFileSync(distServer, 'utf-8')).not.toBe(prebuiltServer)
+    expect(readFileSync(distServer, 'utf-8')).toContain('rebuilt server')
     const client = readFileSync(distClient, 'utf-8')
     expect(client).not.toContain('jsxDEV')
     expect(client).not.toContain('react/jsx-dev-runtime')
@@ -270,7 +277,7 @@ describe('buildUserPlugin', () => {
 })
 
 describe('buildAllUserPlugins', () => {
-  it('trusts complete shipped dist artifacts for github-locked plugins', async () => {
+  it('rebuilds a github-locked plugin from source at boot — shipped dist is never trusted', async () => {
     const pluginsDir = join(testDir, 'startup-plugins')
     const dir = join(pluginsDir, 'github-prebuilt')
     writeMinimalPlugin(dir, `export default { id: 'github-prebuilt', name: 'x', version: '0.1.0', activate() { return 'source build' } }`)
@@ -298,7 +305,8 @@ describe('buildAllUserPlugins', () => {
     const log = { info: mock(), error: mock() }
     await buildAllUserPlugins(pluginsDir, log)
 
-    expect(readFileSync(distServer, 'utf-8')).toBe(prebuilt)
+    expect(readFileSync(distServer, 'utf-8')).not.toBe(prebuilt)
+    expect(readFileSync(distServer, 'utf-8')).toContain('source build')
     expect(log.error).not.toHaveBeenCalled()
   }, 60_000)
 })

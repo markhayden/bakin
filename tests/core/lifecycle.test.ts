@@ -1,23 +1,22 @@
 import { describe, it, expect, beforeEach, afterEach, mock, spyOn } from 'bun:test'
-import { join } from 'path'
-import { tmpdir } from 'os'
 import type { Server } from 'http'
-
-const testDir = join(tmpdir(), `bakin-test-lifecycle-${Date.now()}`)
-mock.module('../../src/core/content-dir', () => ({
-  getContentDir: () => testDir,
-  getBakinPaths: () => ({ home: testDir }),
-}))
-mock.module('../../packages/core/src/content-dir', () => ({
-  getContentDir: () => testDir,
-  getBakinPaths: () => ({ home: testDir }),
-}))
 
 mock.module('@bakin/core/main-agent', () => ({
   getMainAgentId: () => 'main',
   tryGetMainAgentId: () => 'main',
   getMainAgentName: () => 'Main',
 }))
+
+// Defensive content-dir mocks (CLAUDE.md test isolation rules) — lifecycle
+// transitively imports server-lock → content-dir; nothing here may ever
+// resolve to the real ~/.bakin/.
+const lifecycleTestDir = '/tmp/bakin-lifecycle-test-sentinel'
+const contentDirMock = () => ({
+  getContentDir: () => lifecycleTestDir,
+  getBakinPaths: () => ({ home: lifecycleTestDir, db: `${lifecycleTestDir}/bakin.db`, logs: `${lifecycleTestDir}/logs`, audit: `${lifecycleTestDir}/audit.jsonl` }),
+})
+mock.module('../../src/core/content-dir', contentDirMock)
+mock.module('../../packages/core/src/content-dir', contentDirMock)
 
 mock.module('../../src/core/logger', () => ({
   createLogger: () => ({
@@ -71,11 +70,26 @@ mock.module('../../src/core/app-services', () => ({
   createAppServices: async () => mockAppServices,
 }))
 
+const mockReleaseServerLock = mock()
+mock.module('../../src/core/server-lock', () => ({
+  releaseServerLock: mockReleaseServerLock,
+  acquireServerLock: mock(() => ({ acquired: true })),
+  readServerLock: mock(() => null),
+  formatBindFailureHelp: (port: number) => `port ${port}`,
+}))
+
 const mockShutdownAll = mock().mockResolvedValue(undefined)
-mock.module('../../src/lib/plugin-registry', () => ({
+mock.module('../../src/core/plugin-registry', () => ({
   pluginRegistry: {
     shutdownAll: mockShutdownAll,
   },
+  getHookRegistry: () => ({
+    invoke: async () => undefined,
+    has: () => false,
+    register: () => () => {},
+  }),
+}))
+mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
   getHookRegistry: () => ({
     invoke: async () => undefined,
     has: () => false,
@@ -151,7 +165,33 @@ describe('lifecycle', () => {
       '/tmp/test',
       'system.shutdown',
       'system',
-      { signal: 'SIGINT' },
+      { signal: 'SIGINT', exitCode: 0 },
+    )
+  })
+
+  it('shutdown releases the server singleton lock', async () => {
+    registerShutdownHandlers(mockServer(), '/tmp/test')
+    await processListeners['SIGTERM']()
+    expect(mockReleaseServerLock).toHaveBeenCalled()
+  })
+
+  it('triggerShutdown runs the full chain outside a signal (EADDRINUSE path, #459)', async () => {
+    const mod = await import('../../src/core/lifecycle')
+    const server = mockServer()
+    registerShutdownHandlers(server, '/tmp/test')
+
+    mod.triggerShutdown('EADDRINUSE', 1)
+    // Drain the async chain (the trigger is fire-and-forget by design).
+    await vi.advanceTimersByTimeAsync(10)
+
+    // The antfly child lives behind search.shutdown — it MUST be reached.
+    expect(mockSearchShutdown).toHaveBeenCalled()
+    expect(mockReleaseServerLock).toHaveBeenCalled()
+    expect(mockAppendAudit).toHaveBeenCalledWith(
+      '/tmp/test',
+      'system.shutdown',
+      'system',
+      { signal: 'EADDRINUSE', exitCode: 1 },
     )
   })
 
@@ -160,31 +200,5 @@ describe('lifecycle', () => {
     await processListeners['SIGTERM']()
     await processListeners['SIGTERM']()
     expect(mockShutdownAll).toHaveBeenCalledTimes(1)
-  })
-
-  it('marks shutdown ownership so dev.ts defers instead of preempting (#459)', async () => {
-    // scripts/dev.ts's earlier-registered signal handlers consult this flag;
-    // when set they must NOT call process.exit, or the async shutdown above
-    // never runs and the antfly child is orphaned.
-    const mod = await import('../../src/core/lifecycle')
-    expect(mod.lifecycleOwnsShutdown()).toBe(false)
-    registerShutdownHandlers(mockServer(), '/tmp/test')
-    expect(mod.lifecycleOwnsShutdown()).toBe(true)
-    expect((globalThis as Record<string, unknown>).__bakinLifecycleOwnsShutdown).toBe(true)
-  })
-
-  it('honors a pre-set failure exitCode instead of stamping success (#459)', async () => {
-    // EADDRINUSE handling sets process.exitCode = 1 before routing through
-    // the graceful shutdown — the final exit must carry it.
-    const previousExitCode = process.exitCode
-    process.exitCode = 1
-    try {
-      registerShutdownHandlers(mockServer(), '/tmp/test')
-      await processListeners['SIGTERM']()
-      vi.advanceTimersByTime(1100)
-      expect(process.exit).toHaveBeenCalledWith(1)
-    } finally {
-      process.exitCode = previousExitCode
-    }
   })
 })

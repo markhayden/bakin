@@ -19,10 +19,13 @@ import { handleTagsRename, handleTagsRemove, handleTagsApply } from './routes/ta
 import { isValidAssetId } from './lib/asset-id'
 import {
   getAsset, upsertFromSource, resolveFile as resolveVersionedFile,
-  listAssets as listVersionedAssets, deleteAsset as deleteVersionedAsset,
+  listAssets as listVersionedAssets,
   relink as relinkVersioned, retype as retypeVersioned,
-  listTrashedAssets, emptyAssetTrash, permanentlyDeleteTrashed, restoreAsset as restoreVersionedAsset,
 } from './lib/asset-service'
+import {
+  deleteAsset as deleteVersionedAsset,
+  listTrashedAssets, emptyAssetTrash, permanentlyDeleteTrashed, restoreAsset as restoreVersionedAsset,
+} from './lib/asset-trash'
 import { listAssetIdsByTask, taskAssetIndexRemove, taskAssetIndexUpsert } from './lib/task-asset-index'
 import { versionedAssetPath, buildVersionedAssetSearchDoc } from './lib/search-doc'
 import { ASSET_TYPES, type AssetType } from './lib/constants'
@@ -502,15 +505,17 @@ const assetsPlugin: BakinPlugin = definePlugin({
     ctx.registerExecTool({
       name: 'bakin_exec_assets_list',
       label: 'Listed assets',
-      description: 'List managed assets (one entry per asset, current-version view). Optional type and task filters.',
+      description: 'List managed assets (one entry per asset, current-version view). Optional type, task, and tag filters. Tags are the UI "folders" — pass tags to list a folder, e.g. ["brand"].',
       parameters: {
         type: z.enum(ASSET_TYPES).optional().describe('Filter by asset type'),
         taskId: z.string().optional().describe('Filter to assets linked to this task id'),
+        tags: z.array(z.string()).optional().describe('Filter to assets carrying ALL of these tags (the UI "folders").'),
       },
       handler: async (params: Record<string, unknown>) => {
-        const filter: { type?: AssetType; taskId?: string } = {}
+        const filter: { type?: AssetType; taskId?: string; tags?: string[] } = {}
         if (params.type) filter.type = params.type as AssetType
         if (typeof params.taskId === 'string' && params.taskId.length > 0) filter.taskId = params.taskId
+        if (Array.isArray(params.tags) && params.tags.length > 0) filter.tags = params.tags as string[]
         const assets = listVersionedAssets(Object.keys(filter).length ? filter : undefined)
         return { ok: true, count: assets.length, assets }
       },
