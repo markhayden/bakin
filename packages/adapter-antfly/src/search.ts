@@ -470,13 +470,15 @@ export class AntflySearchAdapter implements SearchAdapter {
   }
 
   /**
-   * Drop requested semantic indexes that don't currently exist or are still
-   * rebuilding. Naming a missing/rebuilding embeddings index makes antfly fail
-   * the WHOLE request (500), which silently drops the entire table out of
-   * search — a slow index (re)build then blacks out every healthy index on the
-   * table. Filter to ready indexes instead; if none are ready, remove the
-   * semantic leg so a full-text leg (if any) still runs. Cached briefly to
-   * avoid an indexes.list round-trip per query.
+   * Drop requested semantic indexes that aren't queryable — absent, or
+   * rebuilding with zero docs. Naming such an index makes antfly fail the WHOLE
+   * request (500), which silently drops the entire table out of search. A
+   * rebuilding index that already holds vectors (doc_count > 0) IS queryable
+   * and is kept — antfly serves it 200 even though its catch-up residual hasn't
+   * finalized, so dropping it would needlessly zero the semantic/visual leg.
+   * If nothing queryable remains, remove the semantic leg so a full-text leg
+   * (if any) still runs. Cached briefly to avoid an indexes.list round-trip per
+   * query.
    */
   private async filterRequestToReadyIndexes(
     table: string,
@@ -494,8 +496,20 @@ export class AntflySearchAdapter implements SearchAdapter {
         const statuses = normalizeIndexStatuses(await client.indexes.list(table))
         const names = new Set<string>()
         for (const s of statuses) {
-          const rebuilding = ((s.status as Record<string, unknown> | null)?.rebuilding as boolean) ?? false
-          if (!rebuilding) names.add(s.name)
+          const st = (s.status as Record<string, unknown> | null) ?? {}
+          const rebuilding = (st.rebuilding as boolean) ?? false
+          // "Queryable" is the real readiness signal, not the rebuilding flag.
+          // An embeddings index whose catch-up residual hasn't finalized stays
+          // rebuilding=true indefinitely (an open antfly convergence bug) yet
+          // already holds valid vectors and serves queries correctly (HTTP 200,
+          // ranked hits). Excluding it silently zeroes the semantic/visual leg —
+          // the user sees no scores. Only an index with ZERO queryable docs
+          // (genuinely empty / absent) 500s the whole request, so drop just
+          // those. The query path is try/caught + timeout-bounded as a backstop.
+          const docCount = typeof st.query_visible_doc_count === 'number'
+            ? st.query_visible_doc_count
+            : typeof st.doc_count === 'number' ? st.doc_count : 0
+          if (!rebuilding || docCount > 0) names.add(s.name)
         }
         entry = { names, at: now }
         this.readyIndexCache.set(table, entry)
