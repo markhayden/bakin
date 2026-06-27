@@ -348,6 +348,27 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
 }
 
 /**
+ * Upper bound on a single table's startup reconcile. Generous enough for a
+ * legitimately large table's scan + re-index, but finite so a wedged search
+ * table can't hang the boot forever. On timeout the reconcile is abandoned and
+ * the next watcher event / manual reindex retries it.
+ */
+const STARTUP_RECONCILE_TIMEOUT_MS = 60_000
+
+/**
+ * Resolve `promise`, or reject with a labeled timeout error after `ms`. The
+ * underlying work is not cancelled (the adapter call may still be in flight),
+ * but the caller stops awaiting it so startup can proceed.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer)) as Promise<T>
+}
+
+/**
  * Drain pending startup reconciles. Called from server.ts after
  * `createRegisteredTables()` so the underlying search tables exist
  * before the reconcile tries to scan them. Failures are logged and
@@ -377,18 +398,29 @@ async function runPendingReconcilesMatching(predicate: (item: RegistryState['pen
       // type may be a secondary on a multi-content plugin; api.index would
       // resolve the plugin's primary table instead).
       const reconcileTable = fullTableName(def.table)
-      await performStartupReconcile(def, contentDir, {
-        index: (key, doc) => getSearchAdapter().documents.index(reconcileTable, key, doc),
-        remove: (key) => getSearchAdapter().documents.remove(reconcileTable, key),
-        scanIndex: async function* (tableName) {
-          for await (const { key, document } of getSearchAdapter().scan(tableName)) {
-            const mtime = typeof document[MTIME_FIELD] === 'number'
-              ? document[MTIME_FIELD]
-              : Number(document[MTIME_FIELD] ?? 0)
-            yield { key, mtimeMs: Number.isFinite(mtime) ? mtime : 0 }
-          }
-        },
-      })
+      // Bound the per-table reconcile. The scan + re-index calls go through the
+      // search adapter to antfly, which has no internal timeout: a search table
+      // wedged at the engine level (e.g. a stuck index lock) makes those calls
+      // hang forever. Because this drain runs inline during server startup, one
+      // wedged table would otherwise brick the ENTIRE boot (server never opens
+      // its port). Race a timeout so a bad table degrades to "search stale for
+      // this type" instead — the watcher and manual reindex retry it later.
+      await withTimeout(
+        performStartupReconcile(def, contentDir, {
+          index: (key, doc) => getSearchAdapter().documents.index(reconcileTable, key, doc),
+          remove: (key) => getSearchAdapter().documents.remove(reconcileTable, key),
+          scanIndex: async function* (tableName) {
+            for await (const { key, document } of getSearchAdapter().scan(tableName)) {
+              const mtime = typeof document[MTIME_FIELD] === 'number'
+                ? document[MTIME_FIELD]
+                : Number(document[MTIME_FIELD] ?? 0)
+              yield { key, mtimeMs: Number.isFinite(mtime) ? mtime : 0 }
+            }
+          },
+        }),
+        STARTUP_RECONCILE_TIMEOUT_MS,
+        `startup reconcile for ${reconcileTable}`,
+      )
     } catch (err) {
       log.error('Startup reconcile failed', err, { pluginId, table: def.table })
     }

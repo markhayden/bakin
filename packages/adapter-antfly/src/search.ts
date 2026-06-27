@@ -109,6 +109,8 @@ async function raceQueryTimeout<T>(promise: Promise<T>, ms: number): Promise<T> 
   }
 }
 
+const READY_INDEX_CACHE_TTL_MS = 5_000
+
 export class AntflySearchAdapter implements SearchAdapter {
   readonly name = 'antfly'
   readonly version = '0.0.1-rc.1'
@@ -118,6 +120,10 @@ export class AntflySearchAdapter implements SearchAdapter {
   private settings: AntflySettings
   private logger: AdapterLogger = noopLogger
   private embedderHashAtInit = ''
+  // Short-lived cache of currently-ready (existing, not-rebuilding) embeddings
+  // index names per table, used to keep a slow/rebuilding index from failing
+  // the whole table's query (see filterRequestToReadyIndexes).
+  private readyIndexCache = new Map<string, { names: Set<string>; at: number }>()
 
   constructor(options: AntflySearchAdapterOptions = {}) {
     this.settings = mergeSettings(options.settings)
@@ -382,6 +388,14 @@ export class AntflySearchAdapter implements SearchAdapter {
       for (const entry of indexes) {
         const config = entry.config
         if (!config || typeof config !== 'object') continue
+        // The full-text index (full_text_index_v0) is server-managed: antfly
+        // auto-creates it on table create and the SDK cannot recreate it
+        // (`indexes.create` returns "Failed to create index: undefined"). A
+        // rebuild that drops it leaves the table with NO full-text leg and no
+        // way to restore it short of recreating the whole table. Skip it —
+        // rebuild only the caller-owned embeddings indexes; full-text needs no
+        // rebuild (it re-indexes every doc inline).
+        if (readIndexType(config) === 'full_text') continue
         try {
           await client.indexes.drop(name, entry.name)
           await client.indexes.create(name, config as Parameters<typeof client.indexes.create>[1])
@@ -455,11 +469,62 @@ export class AntflySearchAdapter implements SearchAdapter {
     },
   }
 
+  /**
+   * Drop requested semantic indexes that don't currently exist or are still
+   * rebuilding. Naming a missing/rebuilding embeddings index makes antfly fail
+   * the WHOLE request (500), which silently drops the entire table out of
+   * search — a slow index (re)build then blacks out every healthy index on the
+   * table. Filter to ready indexes instead; if none are ready, remove the
+   * semantic leg so a full-text leg (if any) still runs. Cached briefly to
+   * avoid an indexes.list round-trip per query.
+   */
+  private async filterRequestToReadyIndexes(
+    table: string,
+    request: { indexes?: string[]; semantic_search?: unknown },
+  ): Promise<void> {
+    const requested = request.indexes
+    if (!requested || requested.length === 0) return
+    const client = this.client
+    if (!client) return
+
+    const now = Date.now()
+    let entry = this.readyIndexCache.get(table)
+    if (!entry || now - entry.at > READY_INDEX_CACHE_TTL_MS) {
+      try {
+        const statuses = normalizeIndexStatuses(await client.indexes.list(table))
+        const names = new Set<string>()
+        for (const s of statuses) {
+          const rebuilding = ((s.status as Record<string, unknown> | null)?.rebuilding as boolean) ?? false
+          if (!rebuilding) names.add(s.name)
+        }
+        entry = { names, at: now }
+        this.readyIndexCache.set(table, entry)
+      } catch (err) {
+        // Can't determine readiness — leave the request unchanged rather than
+        // risk dropping a healthy index.
+        this.logger.warn('Antfly index readiness probe failed', { error: err, table })
+        return
+      }
+    }
+
+    const ready = requested.filter((name) => entry.names.has(name))
+    if (ready.length === requested.length) return
+    if (ready.length === 0) {
+      delete request.indexes
+      delete (request as { semantic_search?: unknown }).semantic_search
+      this.logger.warn('All requested semantic indexes are rebuilding/absent - serving full-text only', { table, requested })
+    } else {
+      request.indexes = ready
+      this.logger.info('Skipping rebuilding/absent semantic indexes for query', { table, served: ready, requested })
+    }
+  }
+
   async query(table: string, q: Query): Promise<QueryResult> {
     const client = this.client
     if (!client || !this.settings.enabled) return emptyQueryResult(q)
 
     const request = buildQueryRequest(table, q, this.settings)
+    await this.filterRequestToReadyIndexes(table, request)
 
     try {
       // Same no-infinite-patience ceiling as multiQuery: a query against a
@@ -498,6 +563,7 @@ export class AntflySearchAdapter implements SearchAdapter {
     const results: QueryResult[] = []
     for (const { table, query } of queries) {
       const request = buildQueryRequest(table, query, this.settings)
+      await this.filterRequestToReadyIndexes(table, request)
       try {
         const response = await raceQueryTimeout(client.query(request), timeoutMs)
         results.push(response ? mapResponse(response, table) : emptyQueryResult(query))
