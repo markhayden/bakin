@@ -10,6 +10,8 @@ import {
   filtersFromRecord,
   fullTableName,
   getIndexNames,
+  getSearchableFields,
+  getIndexWeights,
   getRegistry,
   getRerankField,
   getSearchAdapter,
@@ -57,6 +59,8 @@ export async function crossTableSearch(q: string, opts?: {
       adapterOptions: {
         indexes: getIndexNames(tableName),
         rerankField: getRerankField(tableName),
+        searchableFields: getSearchableFields(tableName),
+        indexWeights: getIndexWeights(tableName),
       },
     })
 
@@ -84,6 +88,8 @@ export async function crossTableSearch(q: string, opts?: {
       adapterOptions: {
         indexes: getIndexNames(table),
         rerankField: getRerankField(table),
+        searchableFields: getSearchableFields(table),
+        indexWeights: getIndexWeights(table),
       },
     },
   })))

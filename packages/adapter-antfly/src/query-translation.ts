@@ -24,13 +24,32 @@ export function buildQueryRequest(table: string, q: Query, settings: AntflySetti
   }
 
   if (q.text && strategy !== 'semantic_only') {
-    request.full_text_search = { query: q.text } as QueryRequest['full_text_search']
+    // The full-text leg MUST be field-scoped. A bare `{query: text}` resolves
+    // against a default/_all field that antfly does not populate, so it matches
+    // NOTHING (BM25 always 0, the keyword leg silently dead). Build a
+    // bool/should of per-field matches over the content type's searchable
+    // fields instead; fall back to the bare shape only when fields are unknown.
+    const searchableFields = readStringArray(q.adapterOptions?.searchableFields)
+    if (searchableFields && searchableFields.length > 0) {
+      request.full_text_search = {
+        bool: { should: searchableFields.map((field) => ({ match: { field, text: q.text } })) },
+      } as unknown as QueryRequest['full_text_search']
+    } else {
+      request.full_text_search = { query: q.text } as QueryRequest['full_text_search']
+    }
   }
   if (q.text && strategy !== 'full_text_only') {
     // v0.2: `indexes` is the list of vector indexes for semantic search and
     // is only meaningful alongside `semantic_search`.
     request.semantic_search = q.text
     request.indexes = resolveIndexNames(q)
+    // Per-index fusion weights (e.g. favor a multimodal table's visual index
+    // over its noisier text-embedding index). antfly fuses per-bucket by
+    // default; merge_config.weights keys each index by name in the RRF.
+    const indexWeights = readNumberRecord(q.adapterOptions?.indexWeights)
+    if (indexWeights) {
+      request.merge_config = { strategy: 'rrf', weights: indexWeights } as unknown as QueryRequest['merge_config']
+    }
   }
   const filterQuery = buildFilterQuery(q)
   if (filterQuery) request.filter_query = { query: filterQuery } as QueryRequest['filter_query']
@@ -63,8 +82,10 @@ export function buildTableConfig(table: string, config: TableConfig, settings: A
     if (idx.kind === 'text') continue
     const embedder = resolveEmbedder(idx.embedderRef ?? 'default', settings)
     const embedderConfig: Record<string, unknown> = { provider: embedder.provider, model: embedder.model }
-    // Optional EmbedderConfig pass-throughs (see AntflySettings.embedders).
-    if (embedder.api_url !== undefined) embedderConfig.api_url = embedder.api_url
+    // Never carry an inference `url`/`api_url`: Bakin always embeds in-process in
+    // the local antfly node (a URL would route over HTTP and wedge the backfill,
+    // bakin#456). `multimodal` is the one legit pass-through, for non-registry
+    // multimodal models (omitted for registry models like clipclap).
     if (embedder.multimodal !== undefined) embedderConfig.multimodal = embedder.multimodal
     const entry: Record<string, unknown> = {
       name: idx.name,
@@ -226,4 +247,13 @@ export function readNumber(value: unknown, fallback: number): number {
 
 export function readStringArray(value: unknown): string[] | undefined {
   return Array.isArray(value) && value.every((item) => typeof item === 'string') ? value : undefined
+}
+
+export function readNumberRecord(value: unknown): Record<string, number> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const out: Record<string, number> = {}
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof v === 'number' && Number.isFinite(v)) out[k] = v
+  }
+  return Object.keys(out).length > 0 ? out : undefined
 }

@@ -363,6 +363,30 @@ export function getRerankField(tableName: string): string | undefined {
   return getRegistry().contentTypes.get(tableName)?.rerankField
 }
 
+/**
+ * Get the full-text searchable fields for a table. The adapter builds the
+ * full-text leg as a per-field match over these (a default single-field/_all
+ * query matches nothing). Returns [] for unknown tables.
+ */
+export function getSearchableFields(tableName: string): string[] {
+  return getRegistry().contentTypes.get(tableName)?.searchableFields ?? []
+}
+
+/**
+ * Get per-index fusion weights for a table, keyed by index name, or undefined
+ * when no index declares a custom weight. Passed to the adapter as
+ * `merge_config.weights` so hybrid search can favor a reliable index leg.
+ */
+export function getIndexWeights(tableName: string): Record<string, number> | undefined {
+  const def = getRegistry().contentTypes.get(tableName)
+  if (!def) return undefined
+  const weights: Record<string, number> = {}
+  for (const idx of getEffectiveIndexes(def)) {
+    if (typeof idx.weight === 'number') weights[idx.name] = idx.weight
+  }
+  return Object.keys(weights).length > 0 ? weights : undefined
+}
+
 // ---------------------------------------------------------------------------
 // Shared query/result mappers (used by search-plugin-api + search-query)
 // ---------------------------------------------------------------------------

@@ -306,11 +306,20 @@ const assetsPlugin: BakinPlugin = definePlugin({
           embedderRef: 'default',
           embeddingTemplate: '{{description}} {{tags}} {{file_name}} {{surface}} {{content}}',
           chunker: { enabled: true, targetTokens: 200, overlapTokens: 25 },
+          // Down-weighted in fusion: the text-embedding of an image's
+          // auto-generated description/tags is the noisiest leg and was
+          // mis-ranking image queries (cross-class results creeping above
+          // on-target ones). Full-text (BM25) and the visual leg carry image
+          // search; this still contributes for text/PDF-body assets.
+          weight: 0.5,
         },
         {
           name: 'assets_visual',
           embedderRef: 'visual',
           mediaUrlField: 'image_url',
+          // Favored: pixel-level CLIP similarity is the reliable signal for
+          // image search, so it leads the RRF fusion.
+          weight: 2.0,
         },
       ],
       facets: ['asset_type', 'agent', 'tool', 'tags_facet', 'provider', 'model'],

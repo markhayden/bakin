@@ -33,6 +33,8 @@ import {
   filtersFromRecord,
   fullTableName,
   getIndexNames,
+  getSearchableFields,
+  getIndexWeights,
   getRegistry,
   getRerankField,
   getSearchAdapter,
@@ -287,6 +289,8 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
         adapterOptions: {
           indexes: getIndexNames(tableName),
           rerankField: getRerankField(tableName),
+          searchableFields: getSearchableFields(tableName),
+          indexWeights: getIndexWeights(tableName),
         },
       })
 

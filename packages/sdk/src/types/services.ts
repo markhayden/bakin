@@ -124,6 +124,14 @@ export interface SearchIndexDefinition {
   embedderRef: string
   embeddingTemplate?: string
   mediaUrlField?: string
+  /**
+   * Relative fusion weight for this index in hybrid (RRF) search. Defaults to
+   * 1.0 when unset. Used to favor a reliable leg over a noisy one — e.g. a
+   * multimodal table can weight its visual (image-embedding) index above a
+   * text-embedding index whose auto-generated descriptions add ranking noise.
+   * Surfaced to the search adapter as `merge_config.weights`.
+   */
+  weight?: number
   chunker?: {
     enabled: boolean
     targetTokens?: number
