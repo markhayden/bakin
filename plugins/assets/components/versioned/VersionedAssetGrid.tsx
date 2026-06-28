@@ -238,7 +238,14 @@ export function VersionedAssetGrid() {
 
   // Drive the search hook from the URL query. The folders view repurposes the
   // same box as a client-side folder-name filter — no Antfly round-trip.
-  useEffect(() => { if (view !== 'tags') search.search(q) }, [q, view]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Debounced: `q` updates on every keystroke, and each search is a backend
+  // round-trip, so fire only after typing settles (typing "frosting" was
+  // 8 queries → seconds of spinner).
+  useEffect(() => {
+    if (view === 'tags') return
+    const t = setTimeout(() => search.search(q), 250)
+    return () => clearTimeout(t)
+  }, [q, view]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Coalesce event bursts (agent edit loops) into one refetch per window —
   // direct user actions (upload/restore/trash ops) keep their immediate
