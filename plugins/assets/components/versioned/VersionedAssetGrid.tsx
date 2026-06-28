@@ -48,8 +48,13 @@ function ScoreOverlay({ info, className = '' }: { info: AssetScoreInfo; classNam
   const scores = info.indexScores ?? {}
   const bm25Key = Object.keys(scores).find(k => /bleve|full_text/.test(k))
   const bm25 = bm25Key ? scores[bm25Key] ?? 0 : 0
-  const txt = scores['assets_text'] ?? 0
-  const vis = scores['assets_visual'] ?? 0
+  // The embedding legs report -cosine_distance in indexScores (higher = better,
+  // but negative). Show them as cosine SIMILARITY (1 - distance = 1 + score) so
+  // they read as a normal 0..1 relevance score. A leg absent for this doc (no
+  // vector in that index) shows 0, not 1.0.
+  const toSimilarity = (v: number | undefined) => (typeof v === 'number' ? 1 + v : 0)
+  const txt = toSimilarity(scores['assets_text'])
+  const vis = toSimilarity(scores['assets_visual'])
   return (
     <div className={`flex flex-col gap-0.5 rounded bg-black/80 px-1.5 py-1 font-mono text-[9px] ${className}`} data-testid="score-overlay">
       <span className="text-amber-400">RRF {info.score.toFixed(4)}</span>
