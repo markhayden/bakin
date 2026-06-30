@@ -79,10 +79,6 @@ const SEARCH_HEALTH_POLL_MS = 5000
 export async function logSearchHealthSummary(): Promise<void> {
   const { getSearchHealth } = await import('./search-registry')
   const deadline = Date.now() + SEARCH_HEALTH_SETTLE_TIMEOUT_MS
-  // First-observed indexed count per still-building table, so we can tell a
-  // backfill that is PROGRESSING (just slow) from one that is STALLED (frozen
-  // — needs a reindex to finish embedding).
-  const firstIndexed = new Map<string, number>()
 
   while (true) {
     let health: Awaited<ReturnType<typeof getSearchHealth>>
@@ -97,62 +93,42 @@ export async function logSearchHealthSummary(): Promise<void> {
       return
     }
 
-    type Building = { table: string; indexed: number; expected: number; pct: number }
+    // Verdict on REAL signals only: genuine enrichment failures (embedder worker
+    // dead / fatal embed errors / dead backfill — surfaced as indexHealth.error)
+    // and docs still pending embedding (walBacklog). Deliberately NOT inferred by
+    // comparing index doc-counts — those legitimately differ (stale orphans,
+    // empty/partial templates, field projections) and produced false "stall"
+    // alarms that sent us chasing ghosts.
     const failed: string[] = []
-    const empty: string[] = []
-    const building: Building[] = []
-    let ready = 0
+    const pendingTables: string[] = []
     let totalDocs = 0
     for (const t of health.tables) {
       const idx = t.indexHealth ?? []
-      if (idx.length === 0) continue // no index status reported — can't classify
-      const indexed = Math.max(0, ...idx.map((i) => i.totalIndexed ?? 0))
-      totalDocs += indexed
+      if (idx.length === 0) continue
+      totalDocs += Math.max(0, ...idx.map((i) => i.totalIndexed ?? 0))
       const errored = idx.find((i) => i.error)
-      const dense = idx.filter((i) => i.type === 'embeddings')
-      const stillBuilding = idx.some((i) => i.rebuilding || (i.walBacklog ?? 0) > 0 || (i.backfillProgress ?? 1) < 1)
-      if (errored) {
-        failed.push(`${t.table} (${errored.error})`)
-      } else if (stillBuilding) {
-        const pct = Math.round(Math.min(1, Math.min(...dense.map((i) => i.backfillProgress ?? 1))) * 100)
-        building.push({ table: t.table, indexed, expected: indexed, pct })
-        if (!firstIndexed.has(t.table)) firstIndexed.set(t.table, indexed)
-      } else if (indexed === 0) {
-        empty.push(t.table)
-      } else {
-        ready++
-      }
+      if (errored) failed.push(`${t.table} (${errored.error})`)
+      else if (idx.some((i) => (i.walBacklog ?? 0) > 0)) pendingTables.push(t.table)
     }
 
-    // Keep waiting while indexes are still building, up to the ceiling.
-    if (building.length > 0 && Date.now() < deadline) {
+    // Let transient "still embedding" drain before the verdict, up to the ceiling.
+    if (failed.length === 0 && pendingTables.length > 0 && Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, SEARCH_HEALTH_POLL_MS))
       continue
     }
 
-    // Split still-building tables into progressing (slow, fine) vs stalled
-    // (no progress over the observation window — needs a reindex).
-    const stalled = building.filter((b) => b.indexed <= (firstIndexed.get(b.table) ?? 0))
-    const converging = building.filter((b) => b.indexed > (firstIndexed.get(b.table) ?? 0))
-
     const n = health.tables.length
-    if (failed.length === 0 && empty.length === 0 && building.length === 0) {
-      log.info(`✓ Search healthy — ${ready}/${n} tables ready, ${totalDocs.toLocaleString()} docs indexed. No reindex needed.`)
+    if (failed.length === 0 && pendingTables.length === 0) {
+      log.info(`✓ Search healthy — ${n} tables, ${totalDocs.toLocaleString()} docs indexed. No enrichment errors.`)
       return
     }
     if (failed.length > 0) {
-      log.warn(`⚠ Search: ${failed.length} table(s) FAILED enrichment — ${failed.join('; ')}. Reindex them (Health tab → ⟳, or 'bakin reindex --table <name>') and check the embedder/model.`)
+      log.warn(`⚠ Search: ${failed.length} table(s) have ENRICHMENT errors — semantic search is incomplete there (full-text still works): ${failed.join('; ')}. Rebuild the index (Health tab → ⟳) and check the embedder/model.`)
     }
-    if (empty.length > 0) {
-      log.warn(`⚠ Search: ${empty.length} table(s) indexed 0 docs and need a reindex — ${empty.join(', ')} (Health tab → ⟳ per table, or 'bakin reindex --table <name>').`)
+    if (pendingTables.length > 0) {
+      log.info(`Search still embedding (queryable now, no action): ${pendingTables.join(', ')}.`)
     }
-    if (stalled.length > 0) {
-      log.warn(`⚠ Search: ${stalled.length} table(s) have a STALLED embedding backfill (not progressing — semantic search is incomplete; full-text still works). Reindex to finish embedding: ${stalled.map((b) => `${b.table} (${b.pct}%)`).join(', ')}.`)
-    }
-    if (converging.length > 0) {
-      log.info(`Search still converging (progressing, queryable now, no action): ${converging.map((b) => `${b.table} (${b.pct}%)`).join(', ')}.`)
-    }
-    log.info(`Search status — ready ${ready}/${n}, ${totalDocs.toLocaleString()} docs indexed.`)
+    log.info(`Search status — ${n} tables, ${totalDocs.toLocaleString()} docs indexed.`)
     return
   }
 }

@@ -642,22 +642,29 @@ export class AntflySearchAdapter implements SearchAdapter {
       let healthy = true
       for (const { name: indexName, config, status } of indexStatuses) {
         const s = (status ?? {}) as Record<string, unknown>
+        const enrichment = (s.enrichment_runtime ?? {}) as Record<string, unknown>
+        // The engine reports docs pending enrichment as enrichment_runtime.pending_sequence_count;
+        // the older top-level `wal_backlog` is not emitted at this pin (reads undefined), so prefer
+        // the real field and fall back for forward/backward compat.
+        const pending = Number(enrichment.pending_sequence_count ?? s.wal_backlog ?? 0)
         const entry: AntflyIndexHealthEntry = {
           name: indexName,
           type: readIndexType(config) ?? 'unknown',
           totalIndexed: (s.total_indexed as number) ?? 0,
-          walBacklog: (s.wal_backlog as number) ?? 0,
+          walBacklog: Number.isFinite(pending) ? pending : 0,
           rebuilding: (s.rebuilding as boolean) ?? false,
         }
         if (s.error) {
           entry.error = String(s.error)
           healthy = false
-        }
-        // backfill_state 'failed' is a dead index that the server never
-        // surfaces via `error` — without naming it here, a table whose
-        // enrichment died (e.g. bakin#456 findings 8/9) shows green on the
-        // health page while every semantic query against it returns nothing.
-        if (s.backfill_state === 'failed' && !entry.error) {
+        } else if (enrichment.worker_failed === true || Number(enrichment.fatal_error_count ?? 0) > 0) {
+          // Real enrichment-failure signals the engine exposes. Without these, a table whose
+          // embedder is rejecting docs shows green while semantic search silently misses them.
+          entry.error = `enrichment failed (worker_failed=${enrichment.worker_failed === true}, fatal_errors=${Number(enrichment.fatal_error_count ?? 0)})`
+          healthy = false
+        } else if (s.backfill_state === 'failed') {
+          // A dead backfill the server doesn't surface via `error`: semantic
+          // search is empty for this index until a rebuild succeeds.
           entry.error = 'embeddings backfill failed - semantic search dead for this index until a rebuild succeeds'
           healthy = false
         }
