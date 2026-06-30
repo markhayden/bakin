@@ -564,37 +564,48 @@ export class AntflySearchAdapter implements SearchAdapter {
     if (!client || !this.settings.enabled) return queries.map(({ query }) => emptyQueryResult(query))
     if (queries.length === 0) return []
 
-    // Fan out as SEQUENTIAL single queries. The two rc.2 constraints that
-    // forced this (bakin#456) are both fixed at v0.2.0-rc.9 — the NDJSON
-    // multiquery endpoint (global `/db/v1/query`) now works cross-table, and
-    // concurrent reranked queries no longer SIGABRT the Metal backend — but
-    // sequential is retained deliberately: reranking on Metal serializes
-    // (~3s/reranked query) and a parallel fan-out of reranked queries backs up
-    // to 30s+. Sequential keeps that bounded and gives per-query failure
-    // isolation for free. Revisit (switch to client.multiquery) if reranking
-    // stays off-by-default and cross-table latency becomes the bottleneck.
+    // The two rc.2 constraints that forced a fully-sequential fan-out (bakin#456)
+    // are fixed at v0.2.0-rc.9 — the NDJSON multiquery endpoint works cross-table
+    // and concurrent reranked queries no longer SIGABRT the Metal backend. The
+    // ONLY remaining reason to serialize is reranking: it serializes on the Metal
+    // queue (~3s/query) and a parallel fan-out of reranked queries backs up to
+    // 30s+. So: parallelize when nothing reranks (the off-by-default case, where
+    // sequential made an N-table search take N× a single query — the actual
+    // cross-table latency bottleneck), and fall back to sequential when any query
+    // reranks. Per-query failure isolation is preserved either way.
     const timeoutMs = queryTimeoutMs()
-    const results: QueryResult[] = []
-    for (const { table, query } of queries) {
+
+    // Build + ready-filter every request up front so we can pick the strategy.
+    const prepared = await Promise.all(queries.map(async ({ table, query }) => {
       const request = buildQueryRequest(table, query, this.settings)
       await this.filterRequestToReadyIndexes(table, request)
+      return { table, query, request }
+    }))
+    const anyRerank = prepared.some((p) => p.request.reranker != null)
+
+    const runOne = async ({ table, query, request }: typeof prepared[number]): Promise<QueryResult> => {
       try {
         const response = await raceQueryTimeout(client.query(request), timeoutMs)
-        results.push(response ? mapResponse(response, table) : emptyQueryResult(query))
+        return response ? mapResponse(response, table) : emptyQueryResult(query)
       } catch (err) {
         if (err instanceof QueryTimeoutError) {
-          // A timed-out table must not stall the remaining tables — return
-          // empty for it and keep going. (The abandoned query may still be
-          // running server-side; mild overlap with the next query is the
-          // lesser evil vs. an indefinitely hung cross-table search.)
+          // A timed-out table must not stall the others — return empty and keep
+          // going. (The abandoned query may still run server-side; mild overlap
+          // is the lesser evil vs. an indefinitely hung cross-table search.)
           this.logger.warn('Antfly query timed out - returning empty result', { table, timeoutMs })
         } else {
           this.logger.error('Antfly query failed', { error: err, table })
         }
-        results.push(emptyQueryResult(query))
+        return emptyQueryResult(query)
       }
     }
-    return results
+
+    if (anyRerank) {
+      const results: QueryResult[] = []
+      for (const p of prepared) results.push(await runOne(p))
+      return results
+    }
+    return Promise.all(prepared.map(runOne))
   }
 
   async *scan(table: string): AsyncIterable<ScannedDocument> {
