@@ -78,7 +78,13 @@ export async function crossTableSearch(q: string, opts?: {
     return { results: [], meta: { query: q, total: 0, took_ms: 0, source: 'search' } }
   }
 
-  const perTableLimit = Math.ceil(limit / tables.length)
+  // Ask each table for up to the FULL limit, not limit/tables. The merge below
+  // already takes the global top-N by score, so a per-table cap of 1 (the old
+  // ceil(limit/tables)) forced "best hit from every table" instead of "best N
+  // overall" — diluting a query that's only relevant to one table with one weak
+  // hit from each of the others. A table can contribute at most `limit` to the
+  // global top-`limit`, so `limit` is the correct, sufficient candidate pool.
+  const perTableLimit = limit
   const results = await search.multiQuery(tables.map((table) => ({
     table,
     query: {
