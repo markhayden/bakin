@@ -235,7 +235,11 @@ const routes = [
     responses: { 200: searchStatusResponse },
     handler: async (_req, ctx) => {
       const health = ctx.search.health ? await ctx.search.health() : { enabled: false, tables: [] }
-      return Response.json(health)
+      // Definitive query-path warm signal ('cold' | 'warming' | 'warm') so the
+      // UI can show "search warming up" instead of users hitting cold-compile
+      // dead queries on boot.
+      const { getSearchWarmState } = await import('../../src/core/search-warmup')
+      return Response.json({ ...health, warm: getSearchWarmState() })
     },
   }),
 

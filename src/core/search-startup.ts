@@ -139,14 +139,21 @@ export async function logSearchHealthSummary(): Promise<void> {
  * into the boot path.
  */
 export async function bootSearch(migration: SearchMigrationResult): Promise<void> {
+  const { warmSearchQueryPath } = await import('./search-warmup')
   const ready = await runSearchStartupBootstrap(migration)
   if (ready) {
+    // Warm the query-embedding path up front so the first user search isn't a
+    // 15s cold-compile dead query; the warm state is surfaced via search-status.
+    void warmSearchQueryPath().catch((err) => log.warn('Search warm-up failed', err))
     void logSearchHealthSummary().catch((err) => log.warn('Search health summary failed', err))
     return
   }
   setTimeout(() => {
     runSearchStartupBootstrap(migration, { retry: true }).then((retried) => {
-      if (retried) void logSearchHealthSummary().catch((err) => log.warn('Search health summary failed', err))
+      if (retried) {
+        void warmSearchQueryPath().catch((err) => log.warn('Search warm-up failed', err))
+        void logSearchHealthSummary().catch((err) => log.warn('Search health summary failed', err))
+      }
     }).catch((err) => {
       log.warn('Deferred search startup retry failed', err)
     })
