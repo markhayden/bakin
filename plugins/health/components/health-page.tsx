@@ -19,7 +19,7 @@ import {
 import { PluginHeader } from "@makinbakin/sdk/components"
 import { UnderlineTabs } from "@makinbakin/sdk/components"
 import { formatAge } from "@makinbakin/sdk/utils"
-import { Search, CircleCheck, Clock, AlertCircle, Wrench } from 'lucide-react'
+import { Search, CircleCheck, Clock, AlertCircle, Wrench, RotateCw } from 'lucide-react'
 import { RepairDialog } from './repair-dialog'
 import type { AgentUsage } from '@makinbakin/sdk/types'
 import type {
@@ -41,6 +41,10 @@ import {
 } from '../lib/format'
 
 const PLUGIN_CHECK_INTERVAL_MS = 60 * 60 * 1000
+// Reindex convergence tracking (#582): poll real backend index state until the
+// embedding backfill + replay catch-up settle, rather than trusting the POST return.
+const REINDEX_POLL_MS = 2_500
+const REINDEX_CONVERGE_TIMEOUT_MS = 120_000
 
 const USAGE_TABS = [
   { id: 'tools', label: 'Tool Usage' },
@@ -295,7 +299,10 @@ export function HealthPage() {
       healthy?: boolean
     }>
   } | null>(null)
-  const [reindexing, setReindexing] = useState(false)
+  // Which reindex is currently running: null = none, 'all' = every table, or a
+  // specific table name. Stays set through the BACKEND embedding convergence, not
+  // just the HTTP round-trip (see triggerReindex / #582).
+  const [reindexScope, setReindexScope] = useState<string | null>(null)
   // Per-table reindex progress, fed by the shell's single SSE connection.
   const [reindexProgress, setReindexProgress] = useState<Record<string, { indexed: number; done: boolean }>>({})
   const clearReindexProgress = useCallback(() => setReindexProgress({}), [])
@@ -385,6 +392,47 @@ export function HealthPage() {
     const interval = setInterval(fetchData, 10_000)
     return () => clearInterval(interval)
   }, [fetchData])
+
+  // Lightweight poll of just the search-status endpoint — cheap enough to call
+  // every couple seconds while a reindex converges, unlike the 6-endpoint fetchData.
+  const fetchSearchStatus = useCallback(async () => {
+    const res = await fetch('/api/plugins/health/search-status')
+    return await res.json()
+  }, [])
+
+  // Trigger a reindex of one table (by name) or all tables, then keep tracking it
+  // until the BACKEND actually converges — documents are written when the POST
+  // returns, but the embedding backfill + replay catch-up continue afterward.
+  // Completion is driven by real per-index state (rebuilding/walBacklog/error),
+  // not the request round-trip (#582). Gives up the live spinner after a timeout
+  // and lets the index keep converging in the background (it stays queryable).
+  const triggerReindex = useCallback(async (table?: string) => {
+    const scope = table ?? 'all'
+    setReindexScope(scope)
+    clearReindexProgress()
+    try {
+      await fetch(`/api/reindex${table ? `?table=${encodeURIComponent(table)}` : ''}`, { method: 'POST' })
+      const deadline = Date.now() + REINDEX_CONVERGE_TIMEOUT_MS
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, REINDEX_POLL_MS))
+        let snap: { tables?: Array<{ table: string; indexHealth?: Array<{ rebuilding: boolean; walBacklog: number; error?: string }> }> } | null = null
+        try { snap = await fetchSearchStatus() } catch { continue }
+        if (!snap || !Array.isArray(snap.tables)) continue
+        setSearchHealth(snap as typeof searchHealth)
+        const targets = snap.tables.filter((t) => scope === 'all' || t.table === scope)
+        const converged = targets.length > 0 && targets.every((t) =>
+          (t.indexHealth ?? []).every((i) => !i.rebuilding && (i.walBacklog ?? 0) === 0 && !i.error))
+        if (converged) break
+      }
+    } finally {
+      setReindexScope(null)
+      fetchData()
+    }
+  }, [clearReindexProgress, fetchSearchStatus, fetchData])
+
+  // A table's embedding indexes have finished backfilling + catching up.
+  const tableConverged = useCallback((t: { indexHealth?: Array<{ rebuilding: boolean; walBacklog: number; error?: string }> }) =>
+    (t.indexHealth ?? []).every((i) => !i.rebuilding && (i.walBacklog ?? 0) === 0 && !i.error), [])
 
   // Filtered plugins
   const filteredPlugins = useMemo(() => {
@@ -721,19 +769,10 @@ export function HealthPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={!searchHealth.enabled || reindexing}
-                  onClick={async () => {
-                    clearReindexProgress()
-                    setReindexing(true)
-                    try {
-                      await fetch('/api/reindex', { method: 'POST' })
-                      await fetchData()
-                    } finally {
-                      setReindexing(false)
-                    }
-                  }}
+                  disabled={!searchHealth.enabled || reindexScope !== null}
+                  onClick={() => triggerReindex()}
                 >
-                  {reindexing ? 'Reindexing...' : 'Reindex All'}
+                  {reindexScope === 'all' ? 'Reindexing all…' : reindexScope ? 'Reindexing…' : 'Reindex All'}
                 </Button>
               </div>
             </CardTitle>
@@ -746,36 +785,55 @@ export function HealthPage() {
                 {searchHealth.tables.map(t => {
                   const docs = searchStatsDocumentCount(t.stats)
                   const progress = reindexProgress[t.table]
-                  const isActive = reindexing && progress && !progress.done
+                  const writing = progress && !progress.done
                   const hasEnrichmentError = t.indexHealth?.some(i => i.error)
                   const hasWalBacklog = t.indexHealth?.some(i => i.walBacklog > 0)
                   const enrichmentError = t.indexHealth?.find(i => i.error)?.error
+                  // Real backend convergence (#582): a table is "done" only once its
+                  // embedding indexes stop rebuilding / draining their WAL, not when
+                  // the reindex request returned.
+                  const converged = tableConverged(t)
+                  const isTarget = reindexScope !== null && (reindexScope === 'all' || reindexScope === t.table)
+                  const isConverging = isTarget && !converged
+                  const backfillVals = (t.indexHealth ?? []).filter(i => i.rebuilding && typeof i.backfillProgress === 'number').map(i => i.backfillProgress as number)
+                  const backfillPct = backfillVals.length ? Math.round(Math.min(...backfillVals) * 100) : null
                   return (
-                    <div key={t.table} className={`rounded-lg border p-3 transition-colors ${isActive ? 'border-amber-500/50 bg-amber-500/5' : progress?.done ? 'border-emerald-500/50 bg-emerald-500/5' : 'border-border'}`}>
+                    <div key={t.table} className={`rounded-lg border p-3 transition-colors ${isConverging ? 'border-amber-500/50 bg-amber-500/5' : (isTarget && converged) ? 'border-emerald-500/50 bg-emerald-500/5' : 'border-border'}`}>
                       <div className="flex items-center justify-between">
                         <p className="text-xs text-muted-foreground">{t.pluginId}</p>
-                        {t.indexHealth && (
-                          hasEnrichmentError ? (
-                            <span title={enrichmentError ?? 'Enrichment error'}>
-                              <AlertCircle className="h-3.5 w-3.5 text-red-400" />
-                            </span>
-                          ) : hasWalBacklog ? (
-                            <span title="Enrichment in progress">
-                              <Clock className="h-3.5 w-3.5 text-amber-400" />
-                            </span>
-                          ) : (
-                            <CircleCheck className="h-3.5 w-3.5 text-emerald-400" />
-                          )
-                        )}
+                        <div className="flex items-center gap-1">
+                          {t.indexHealth && (
+                            hasEnrichmentError ? (
+                              <span title={enrichmentError ?? 'Enrichment error'}>
+                                <AlertCircle className="h-3.5 w-3.5 text-red-400" />
+                              </span>
+                            ) : (isConverging || hasWalBacklog) ? (
+                              <span title="Embedding / catching up">
+                                <Clock className="h-3.5 w-3.5 text-amber-400" />
+                              </span>
+                            ) : (
+                              <CircleCheck className="h-3.5 w-3.5 text-emerald-400" />
+                            )
+                          )}
+                          <button
+                            type="button"
+                            title={`Reindex ${t.table}`}
+                            disabled={!searchHealth.enabled || reindexScope !== null}
+                            onClick={() => triggerReindex(t.table)}
+                            className="text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:hover:text-muted-foreground"
+                          >
+                            <RotateCw className={`h-3.5 w-3.5 ${isConverging ? 'animate-spin text-amber-400' : ''}`} />
+                          </button>
+                        </div>
                       </div>
-                      {isActive ? (
-                        <p className="text-lg font-semibold tabular-nums text-amber-400">{progress.indexed}...</p>
-                      ) : progress?.done ? (
-                        <p className="text-lg font-semibold tabular-nums text-emerald-400">{progress.indexed}</p>
-                      ) : (
-                        <p className="text-lg font-semibold tabular-nums">{docs}</p>
-                      )}
-                      <p className="text-[10px] text-muted-foreground">{t.table}</p>
+                      <p className={`text-lg font-semibold tabular-nums ${isConverging ? 'text-amber-400' : (isTarget && converged) ? 'text-emerald-400' : ''}`}>
+                        {writing ? `${progress.indexed}…` : docs}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {isConverging
+                          ? (backfillPct != null ? `embedding ${backfillPct}%` : writing ? 'writing…' : 'catching up…')
+                          : t.table}
+                      </p>
                     </div>
                   )
                 })}
