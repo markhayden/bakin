@@ -36,6 +36,46 @@ export interface CleanupStats {
 }
 
 /**
+ * Scan ONE table and remove documents whose source no longer exists
+ * (`def.verifyExists(key)` is false). Shared by the periodic backstop and the
+ * reindex path. No-op if the content type can't verify existence.
+ */
+export async function cleanupTableOrphans(
+  tableName: string,
+  def: { verifyExists?: (key: string) => Promise<boolean> },
+): Promise<CleanupStats> {
+  const stats: CleanupStats = { table: tableName, scanned: 0, orphans: 0, errors: 0 }
+  if (typeof def.verifyExists !== 'function') return stats
+  const verifyExists = def.verifyExists
+  const search = getAppServices().search
+  if (!await search.available()) return stats
+
+  const orphanKeys: string[] = []
+  for await (const { key } of search.scan(tableName)) {
+    stats.scanned++
+    try {
+      if (!await verifyExists(key)) {
+        orphanKeys.push(key)
+        stats.orphans++
+      }
+    } catch {
+      stats.errors++
+    }
+    // Batch remove every 100 orphans to avoid accumulating too much
+    if (orphanKeys.length >= 100) {
+      await search.documents.batchRemove(tableName, orphanKeys.splice(0))
+    }
+  }
+  if (orphanKeys.length > 0) {
+    await search.documents.batchRemove(tableName, orphanKeys)
+  }
+  if (stats.orphans > 0) {
+    log.info(`Orphan cleanup: ${tableName} — removed ${stats.orphans} orphan(s) of ${stats.scanned} scanned`)
+  }
+  return stats
+}
+
+/**
  * Run orphan cleanup across all registered content types.
  * Scans each table and checks verifyExists() for every document.
  */
@@ -54,44 +94,12 @@ export async function runCleanup(): Promise<CleanupStats[]> {
     if (!await search.available()) return []
 
     for (const [tableName, def] of contentTypes) {
-      const stats: CleanupStats = { table: tableName, scanned: 0, orphans: 0, errors: 0 }
-
       try {
-        const orphanKeys: string[] = []
-
-        for await (const { key } of search.scan(tableName)) {
-          stats.scanned++
-
-          try {
-            const exists = await def.verifyExists(key)
-            if (!exists) {
-              orphanKeys.push(key)
-              stats.orphans++
-            }
-          } catch {
-            stats.errors++
-          }
-
-          // Batch remove every 100 orphans to avoid accumulating too much
-          if (orphanKeys.length >= 100) {
-            await search.documents.batchRemove(tableName, orphanKeys.splice(0))
-          }
-        }
-
-        // Remove remaining orphans
-        if (orphanKeys.length > 0) {
-          await search.documents.batchRemove(tableName, orphanKeys)
-        }
-
-        if (stats.orphans > 0) {
-          log.info(`Backstop scan: ${tableName} — removed ${stats.orphans} orphans of ${stats.scanned} scanned`)
-        }
+        allStats.push(await cleanupTableOrphans(tableName, def))
       } catch (err) {
         log.error(`Cleanup failed for ${tableName}`, err)
-        stats.errors++
+        allStats.push({ table: tableName, scanned: 0, orphans: 0, errors: 1 })
       }
-
-      allStats.push(stats)
     }
 
     return allStats

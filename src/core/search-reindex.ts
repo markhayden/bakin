@@ -10,6 +10,7 @@ import type {
 import type { TableHealth } from '@bakin/core/adapters/search'
 import { broadcast } from './sse'
 import { createLogger } from './logger'
+import { cleanupTableOrphans } from './search-cleanup'
 import {
   ensureRegisteredTables,
   fullTableName,
@@ -164,6 +165,16 @@ export async function reindexContentTypes(opts?: {
         }
 
         broadcast({ type: 'reindex.complete', table: tableName, pluginId: def.pluginId, indexed: count })
+
+        // Remove docs whose source no longer exists, so a reindex leaves the
+        // index in sync with the source instead of accumulating stale orphans
+        // (the watcher unlink hook is the primary path; this closes the gap for
+        // deletes that the watcher missed — e.g. while the process was down).
+        try {
+          await cleanupTableOrphans(tableName, def)
+        } catch (err) {
+          log.warn(`Orphan cleanup during reindex failed for ${tableName}`, err)
+        }
 
         // Enrichment audit — poll index health after all batches complete.
         // Best-effort: never fails the reindex, just surfaces what the adapter reports.
