@@ -36,6 +36,8 @@ export { useTaskRunHistory } from '@/hooks/use-task-run-history'
 export type { TaskOutcome, TaskRunEntry } from '@/hooks/use-task-run-history'
 /** Hybrid full-text + semantic search across plugins with facet filtering. */
 export { useSearch } from '@/hooks/use-search'
+/** Query-path warm signal ('cold' | 'warming' | 'warm') for search-bar UI. */
+export { useSearchWarm, type SearchWarmState } from '@/hooks/use-search-warm'
 /** Re-rank a local list to match the order returned by a search query. */
 export { reorderBySearchResults } from '@/hooks/use-search'
 export type { SearchResult, SearchResponse, UseSearchOptions, UseSearchReturn } from '@/hooks/use-search'

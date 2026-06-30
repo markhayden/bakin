@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Search } from 'lucide-react'
+import { Search, Loader2 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { useSearchWarm } from '@/hooks/use-search-warm'
 
 interface PluginHeaderProps {
   title: string
@@ -30,6 +31,9 @@ function DebouncedSearchInput({ value, onChange, placeholder, debounce = 300 }: 
 }) {
   const [local, setLocal] = useState(value)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Semantic search cold-compiles its embedder on boot (~15-20s); show that
+  // instead of letting the bar silently return nothing. Full-text still works.
+  const warming = useSearchWarm() !== 'warm'
 
   // Sync external value changes (e.g. URL navigation) into local state
   useEffect(() => {
@@ -51,12 +55,19 @@ function DebouncedSearchInput({ value, onChange, placeholder, debounce = 300 }: 
   }, [])
 
   return (
-    <div className="relative w-80 focus-within:w-[32rem] transition-all duration-200">
-      <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+    <div
+      className="relative w-80 focus-within:w-[32rem] transition-all duration-200"
+      title={warming ? 'Semantic search is warming up — full-text works now, ranked results in a few seconds' : undefined}
+    >
+      {warming ? (
+        <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-amber-400 animate-spin" />
+      ) : (
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+      )}
       <Input
         value={local}
         onChange={handleChange}
-        placeholder={placeholder}
+        placeholder={warming ? 'Search warming up…' : placeholder}
         className="pl-9 h-8 text-xs bg-surface border-border"
       />
     </div>
