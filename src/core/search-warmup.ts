@@ -13,6 +13,7 @@ import {
   getRegistry,
   getSearchableFields,
   getSearchAdapter,
+  getTableEmbedderRefs,
 } from './search-registry-core'
 
 const log = createLogger('search-warmup')
@@ -65,7 +66,20 @@ export async function warmSearchQueryPath(): Promise<void> {
       warmState = 'warm'
       return
     }
-    const tables = Array.from(getRegistry().contentTypes.keys())
+    // Warming compiles each EMBEDDER MODEL's shaders, not each table — so probe
+    // a minimal set covering every distinct embedder ref (one table per model),
+    // rather than every table. This warms bge + clipclap via a small table like
+    // assets and avoids hammering big tables that are still rebuilding on boot
+    // (e.g. memory → error.TableReadChurn).
+    const covered = new Set<string>()
+    const tables: string[] = []
+    for (const table of getRegistry().contentTypes.keys()) {
+      const fresh = getTableEmbedderRefs(table).filter((ref) => !covered.has(ref))
+      if (fresh.length > 0) {
+        tables.push(table)
+        fresh.forEach((ref) => covered.add(ref))
+      }
+    }
     if (tables.length === 0) {
       warmState = 'warm'
       return

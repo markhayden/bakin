@@ -355,6 +355,20 @@ export function getIndexNames(tableName: string): string[] {
 }
 
 /**
+ * The distinct embedder refs a table's indexes use (e.g. 'default', 'visual').
+ * Used to warm one table per embedder model rather than probing every table.
+ */
+export function getTableEmbedderRefs(tableName: string): string[] {
+  const def = getRegistry().contentTypes.get(tableName)
+  if (!def) return []
+  const refs = new Set<string>()
+  for (const idx of getEffectiveIndexes(def)) {
+    if (idx.embedderRef) refs.add(idx.embedderRef)
+  }
+  return Array.from(refs)
+}
+
+/**
  * Get the rerank field for a table, or undefined if the content type did
  * not declare one. Callers that pass this to the search adapter will have the
  * cross-encoder reranker attached only when a field is set.
