@@ -275,6 +275,10 @@ describe('Antfly server supervision', () => {
       '--health-port', '3739',
       '--data-dir', join(testDir, 'antfly'),
       '--models-dir', expect.stringContaining(join('inference', 'models')),
+      // Local embedders are preloaded + warmed before serving so the enrichment
+      // backfill never races a cold model load into its 30s timeout (bakin#456).
+      '--preload-model', 'embedder:BAAI/bge-small-en-v1.5',
+      '--preload-model', 'embedder:antflydb/clipclap',
     ])
   })
 

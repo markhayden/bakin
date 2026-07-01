@@ -88,7 +88,7 @@ const baseSettings = {
   },
   embedders: {
     default: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5', dimension: 384 },
-    visual: { provider: 'antfly', model: 'clip-vit-base-patch32', dimension: 512 },
+    visual: { provider: 'antfly', model: 'antflydb/clipclap', dimension: 512 },
   },
   chunking: { defaultTargetTokens: 200, defaultOverlapTokens: 25 },
 }
@@ -354,6 +354,52 @@ describe('AntflySearchAdapter', () => {
     }
   })
 
+  it('does not require the reranker model when reranking is disabled', async () => {
+    // Phase 6: model health keys off the models the active settings actually
+    // require. A disabled reranker (the default) must NOT count as a missing
+    // dependency; enabling it makes the absent reranker model degrade health.
+    const previousAntflyHome = process.env.ANTFLY_HOME
+    const antflyHome = join(testDir, `health-reranker-${Date.now()}`)
+    process.env.ANTFLY_HOME = antflyHome
+    try {
+      // Seed ONLY the two embedder models — deliberately NOT the reranker.
+      for (const model of ['BAAI/bge-small-en-v1.5', 'antflydb/clipclap']) {
+        const dir = join(antflyHome, 'inference', 'models', model)
+        mkdirSync(dir, { recursive: true })
+        writeFileSync(join(dir, 'model_manifest.json'), '{"type":"embedder"}')
+        writeFileSync(join(dir, 'model.onnx'), 'weights')
+      }
+      // Reranker off: health is ok despite the reranker model being absent.
+      const off = await createInitializedAdapter({ search: { reranker: { enabled: false } } })
+      const [ok] = await off.getHealthChecks()[0].run()
+      expect(ok.status).toBe('ok')
+
+      // Turning it on makes the now-required, still-missing reranker degrade health.
+      const on = await createInitializedAdapter({ search: { reranker: { enabled: true } } })
+      const [warn] = await on.getHealthChecks()[0].run()
+      expect(warn.status).toBe('warn')
+      expect(warn.message).toContain('search models are missing')
+    } finally {
+      if (previousAntflyHome === undefined) delete process.env.ANTFLY_HOME
+      else process.env.ANTFLY_HOME = previousAntflyHome
+    }
+  })
+
+  it('returns empty for a vector-only query with no ready index, without calling antfly', async () => {
+    // Phase 3 empty-leg guard: when the readiness filter strips the only
+    // (semantic) leg, short-circuit to an empty result — never send a
+    // no-criteria request that antfly 500s or answers with a match-all.
+    const adapter = await createInitializedAdapter()
+    mockIndexesList.mockResolvedValue({}) // no ready embeddings index
+    mockTablesQuery.mockClear()
+
+    const result = await adapter.query('bakin_tasks', { text: 'build feature', strategy: 'vector' })
+
+    expect(result.hits).toEqual([])
+    expect(result.total).toBe(0)
+    expect(mockTablesQuery).not.toHaveBeenCalled()
+  })
+
   it('refuses to run on a pre-0.2 @antfly/sdk (stale node_modules guard)', async () => {
     // Field-verified failure mode: a checkout that skipped `bun install`
     // still loads the old npm SDK, whose calls 404 into "Failed to parse
@@ -373,6 +419,16 @@ describe('AntflySearchAdapter', () => {
 
   it('only sends vector indexes when semantic search is in play', async () => {
     const adapter = await createInitializedAdapter()
+
+    // The readiness filter probes indexes.list and strips the semantic leg when
+    // the embeddings index is empty/absent. Seed a ready index so this
+    // request-construction test exercises the full hybrid/vector shapes.
+    mockIndexesList.mockResolvedValue({
+      embeddings: {
+        config: { name: 'embeddings', type: 'embeddings' },
+        status: { total_indexed: 30, rebuilding: false },
+      },
+    })
 
     // rrf (default): both search modes + vector indexes
     await adapter.query('bakin_tasks', { text: 'build feature' })
@@ -447,11 +503,12 @@ describe('AntflySearchAdapter', () => {
     expect(created.schema).toBeUndefined()
   })
 
-  it('forwards optional api_url/multimodal embedder fields verbatim', async () => {
-    // Documented antfly EmbedderConfig pass-throughs: api_url routes the
-    // embedder over HTTP to a named inference endpoint, multimodal declares
-    // non-text support for models outside the built-in registry. Unset
-    // entries must omit the keys entirely.
+  it('forwards multimodal but never an inference url (always in-process)', async () => {
+    // Bakin always embeds in-process in the local antfly node: we never carry an
+    // inference url/api_url, because a non-empty value flips antfly onto an
+    // external HTTP path whose cold/dead-endpoint failures wedge the enrichment
+    // backfill (bakin#456). `multimodal` is the one legit pass-through, declaring
+    // non-text support for models outside antfly's built-in registry.
     const adapter = await createInitializedAdapter({
       embedders: {
         default: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5', dimension: 384 },
@@ -459,7 +516,6 @@ describe('AntflySearchAdapter', () => {
           provider: 'antfly',
           model: 'antflydb/clipclap',
           dimension: 512,
-          api_url: 'http://127.0.0.1:3738',
           multimodal: true,
         },
       },
@@ -478,7 +534,6 @@ describe('AntflySearchAdapter', () => {
     expect(indexes.assets_visual.embedder).toEqual({
       provider: 'antfly',
       model: 'antflydb/clipclap',
-      api_url: 'http://127.0.0.1:3738',
       multimodal: true,
     })
     // Default embedder carries no pass-through keys.
@@ -565,7 +620,9 @@ describe('AntflySearchAdapter', () => {
 
     await adapter.tables.rebuildIndexes('bakin_assets')
     const dropped = (mockIndexesDrop.mock.calls as unknown as Array<[string, string]>).map((c) => c[1])
-    expect(dropped).toEqual(['full_text_index_v0', 'assets_visual'])
+    // The server-managed full_text index is intentionally skipped (the SDK can't
+    // recreate it); rebuild only drops caller-owned embeddings indexes.
+    expect(dropped).toEqual(['assets_visual'])
     mockIndexesList.mockClear()
     mockIndexesList.mockImplementation(async () => ({}))
   })
@@ -599,7 +656,7 @@ describe('AntflySearchAdapter', () => {
     await createInitializedAdapter({
       embedders: {
         default: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5', dimension: 384 },
-        visual: { provider: 'antfly', model: 'Xenova/clip-vit-base-patch32', dimension: 512 },
+        visual: { provider: 'antfly', model: 'antflydb/clipclap', dimension: 512 },
         alias: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5', dimension: 384 },
         remote: { provider: 'openai', model: 'text-embedding-3-small', dimension: 1536 },
       },
@@ -607,7 +664,7 @@ describe('AntflySearchAdapter', () => {
     await sleepTick()
 
     const warmed = (mockInferenceEmbed.mock.calls as unknown as Array<[string, string]>).map((c) => c[0])
-    expect(warmed.sort()).toEqual(['BAAI/bge-small-en-v1.5', 'Xenova/clip-vit-base-patch32'])
+    expect(warmed.sort()).toEqual(['BAAI/bge-small-en-v1.5', 'antflydb/clipclap'])
   })
 
   it('logs warmup failures at debug, never error', async () => {

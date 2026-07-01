@@ -15,18 +15,18 @@ export interface AntflySettings {
    * `dimension` is required for dense embeddings indexes: the v0.2 server
    * demands declared dims at table-create time (no auto-probe at this RC).
    *
-   * `api_url` and `multimodal` are optional pass-throughs to antfly's
-   * EmbedderConfig: `api_url` routes that embedder's calls over HTTP to the
-   * named inference endpoint (e.g. the private instance's own /ai/v1)
-   * instead of the in-process runtime; `multimodal` declares non-text
-   * content support for models outside antfly's built-in registry. Both are
-   * documented antfly fields forwarded verbatim — unset entries omit them.
+   * Bakin's embedders always run IN-PROCESS in the local antfly node — we
+   * deliberately never carry an inference `url`/`api_url`, because a non-empty
+   * value flips antfly onto an external HTTP inference path whose cold/dead-
+   * endpoint failures (ConnectionRefused/Timeout) wedge the enrichment backfill
+   * (bakin#456). `multimodal` is the one optional pass-through, declaring
+   * non-text support for models OUTSIDE antfly's built-in registry; it stays
+   * unset for registry models like clipclap.
    */
   embedders: Record<string, {
     provider: string
     model: string
     dimension: number
-    api_url?: string
     multimodal?: boolean
   }>
   chunking: {
@@ -66,8 +66,9 @@ export const DEFAULT_SETTINGS: AntflySettings = {
   },
   embedders: {
     default: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5', dimension: 384 },
-    // Xenova mirror: the openai/ HF repo has no ONNX exports (bakin#456).
-    visual: { provider: 'antfly', model: 'Xenova/clip-vit-base-patch32', dimension: 512 },
+    // antfly's native multimodal CLIP (image+text shared space, Metal GGUF) and
+    // a built-in registry model. Replaces the Xenova ONNX mirror — same 512 dims.
+    visual: { provider: 'antfly', model: 'antflydb/clipclap', dimension: 512 },
   },
   chunking: {
     defaultTargetTokens: 200,

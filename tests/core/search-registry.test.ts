@@ -904,10 +904,12 @@ describe('search-registry', () => {
 
     const result = await crossTableSearch('hello')
 
+    // Each table now gets the full limit as its candidate pool; the global
+    // top-N is taken from the merged results (was ceil(limit/tables) = 10).
     expect(searchHarness.calls.multiQuery).toHaveBeenCalledWith(
       [
-        expect.objectContaining({ table: 'bakin_tasks', query: expect.objectContaining({ text: 'hello', limit: 10 }) }),
-        expect.objectContaining({ table: 'bakin_assets', query: expect.objectContaining({ text: 'hello', limit: 10 }) }),
+        expect.objectContaining({ table: 'bakin_tasks', query: expect.objectContaining({ text: 'hello', limit: 20 }) }),
+        expect.objectContaining({ table: 'bakin_assets', query: expect.objectContaining({ text: 'hello', limit: 20 }) }),
       ],
     )
     expect(result.results).toHaveLength(2)

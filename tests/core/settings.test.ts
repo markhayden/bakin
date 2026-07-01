@@ -69,7 +69,7 @@ describe('Settings', () => {
     expect(settings.search.settings.embedders.default.model).toBe('BAAI/bge-small-en-v1.5')
     expect(settings.search.settings.embedders.default.dimension).toBe(384)
     expect(settings.search.settings.embedders.visual.provider).toBe('antfly')
-    expect(settings.search.settings.embedders.visual.model).toBe('Xenova/clip-vit-base-patch32')
+    expect(settings.search.settings.embedders.visual.model).toBe('antflydb/clipclap')
     expect(settings.search.settings.embedders.visual.dimension).toBe(512)
     expect(settings.search.settings.chunking.defaultTargetTokens).toBe(200)
     expect(settings.search.settings.chunking.defaultOverlapTokens).toBe(25)

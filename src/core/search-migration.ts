@@ -24,6 +24,10 @@
  *       naming termite -> antfly.
  *   5 — schemaless table creation (create-time schema breaks queries at
  *       v0.2.0-rc.2, bakin#456); visual embedder -> Xenova ONNX mirror.
+ *   6 — visual embedder swapped Xenova/clip-vit-base-patch32 -> antfly's
+ *       native antflydb/clipclap (in-process Metal CLIP). Same 512 dims but a
+ *       different vector space, so existing assets_visual data is stale and the
+ *       table must be dropped + reindexed onto clipclap.
  *
  * Bump SCHEMA_VERSION whenever a change requires an existing table to
  * be dropped and recreated with new schema, indexes, or embedder config.
@@ -48,7 +52,10 @@ const log = createLogger('search-migration')
 //     v0.2.0-rc.2, bakin#456) and swap the visual embedder to the Xenova
 //     ONNX mirror. Tables created with a schema are unqueryable and must be
 //     dropped + recreated schemaless.
-export const SCHEMA_VERSION = 5
+// 6 — visual embedder Xenova/clip-vit-base-patch32 -> antfly's native
+//     antflydb/clipclap (in-process Metal CLIP). Same 512 dims, different
+//     vector space — assets_visual must be dropped + reindexed onto clipclap.
+export const SCHEMA_VERSION = 6
 
 const STATE_FILE_NAME = '.search-state.json'
 const TABLE_PREFIX = 'bakin_'
@@ -120,17 +127,34 @@ export async function migrateIfNeeded(): Promise<{
       .map(t => t.name)
       .filter(name => name.startsWith(TABLE_PREFIX))
 
+    const dropped: string[] = []
+    const failed: Array<{ table: string; error: string }> = []
     for (const tableName of bakinTables) {
       try {
         await search.tables.drop(tableName)
+        dropped.push(tableName)
         log.info(`Dropped table for schema migration: ${tableName}`)
       } catch (err) {
+        failed.push({ table: tableName, error: err instanceof Error ? err.message : String(err) })
         log.warn(`Failed to drop table during migration: ${tableName}`, err)
       }
     }
 
-    writeStoredVersion(SCHEMA_VERSION)
-    return { migrated: true, from: stored, to: SCHEMA_VERSION }
+    if (failed.length === 0) {
+      writeStoredVersion(SCHEMA_VERSION)
+    } else {
+      // Do NOT advance the stored schema version while a required drop failed —
+      // otherwise the migration is recorded complete and the stale,
+      // v0.2-invalid table is never retried. Leaving the version unchanged
+      // retries every drop on the next boot.
+      log.error('Search migration incomplete — schema version NOT advanced, will retry on next boot', {
+        failed: failed.map((f) => f.table),
+      })
+    }
+
+    // migrated:true if anything dropped, so startup still reindexes the
+    // recreated tables; migrated:false only if nothing dropped at all.
+    return { migrated: dropped.length > 0, from: stored, to: SCHEMA_VERSION }
   } catch (err) {
     log.error('Search migration failed — tables left in place', err)
     return { migrated: false, from: stored, to: SCHEMA_VERSION }

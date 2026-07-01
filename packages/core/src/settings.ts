@@ -240,11 +240,12 @@ export const DEFAULT_SETTINGS: BakinSettings = {
         // persisted version in `~/.bakin/.search-state.json`, forcing a
         // clean reindex onto the new embedder.
         // `dimension` is required: the v0.2 server demands declared dims for
-        // dense embeddings indexes (BGE-small = 384, CLIP ViT-B/32 = 512).
-        // Visual uses the Xenova ONNX mirror — the openai/ HF repo has no
-        // ONNX exports and cannot be pulled (bakin#456).
+        // dense embeddings indexes (BGE-small = 384, clipclap CLIP = 512).
+        // Visual uses antfly's native multimodal CLIP (antflydb/clipclap), a
+        // built-in registry model that runs in-process on Metal — it replaces
+        // the Xenova ONNX mirror we used while openai/ had no ONNX (bakin#456).
         default: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5', dimension: 384 },
-        visual: { provider: 'antfly', model: 'Xenova/clip-vit-base-patch32', dimension: 512 },
+        visual: { provider: 'antfly', model: 'antflydb/clipclap', dimension: 512 },
       },
       chunking: {
         defaultTargetTokens: 200,

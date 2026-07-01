@@ -21,7 +21,7 @@ import type {
 import type { AntflySettings } from './defaults'
 import { mergeSettings } from './defaults'
 import type { AntflySearchAdapterOptions } from './index'
-import { checkInferenceModels } from './models'
+import { checkInferenceModels, requiredModelsForSettings } from './models'
 import {
   buildQueryRequest,
   buildTableConfig,
@@ -267,7 +267,7 @@ export class AntflySearchAdapter implements SearchAdapter {
           // reindexing succeed while every semantic query dies at query-time
           // embedding — a state users hit by skipping the models step
           // mid-recovery. Keep this check amber until it's actually fixed.
-          const models = await checkInferenceModels()
+          const models = await checkInferenceModels(requiredModelsForSettings(this.settings))
           if (models.status !== 'ok') {
             return [{
               check: 'antfly.availability',
@@ -339,6 +339,7 @@ export class AntflySearchAdapter implements SearchAdapter {
         indexes: antflyConfig.indexes,
       } as Record<string, unknown>)
       this.logger.info(`Table created: ${name}`)
+      this.readyIndexCache.delete(name)
     },
 
     drop: async (name: string): Promise<void> => {
@@ -348,6 +349,8 @@ export class AntflySearchAdapter implements SearchAdapter {
         await client.tables.drop(name)
       } catch (err) {
         this.logger.warn(`Table drop failed for ${name}`, err)
+      } finally {
+        this.readyIndexCache.delete(name)
       }
     },
 
@@ -364,7 +367,9 @@ export class AntflySearchAdapter implements SearchAdapter {
         const indexes = normalizeIndexStatuses(await client.indexes.list(name))
         const fullText = indexes.find((entry) => readIndexType(entry.config) === 'full_text') ?? indexes[0]
         const status = (fullText?.status ?? {}) as Record<string, unknown>
-        const documents = typeof status.doc_count === 'number' ? status.doc_count : 0
+        // Full-text status exposes total_indexed, not doc_count — read both so
+        // health/stats don't report zero docs for a populated table.
+        const documents = readIndexedCount(status)
         return { table: name, documents }
       } catch {
         return null
@@ -404,6 +409,7 @@ export class AntflySearchAdapter implements SearchAdapter {
           this.logger.warn(`Failed to rebuild index ${entry.name} on ${name}`, err)
         }
       }
+      this.readyIndexCache.delete(name)
     },
   }
 
@@ -506,10 +512,9 @@ export class AntflySearchAdapter implements SearchAdapter {
           // the user sees no scores. Only an index with ZERO queryable docs
           // (genuinely empty / absent) 500s the whole request, so drop just
           // those. The query path is try/caught + timeout-bounded as a backstop.
-          const docCount = typeof st.query_visible_doc_count === 'number'
-            ? st.query_visible_doc_count
-            : typeof st.doc_count === 'number' ? st.doc_count : 0
-          if (!rebuilding || docCount > 0) names.add(s.name)
+          // Use the documented v0.2 field (total_indexed) so a rebuilding index
+          // that already holds vectors isn't read as empty and stripped.
+          if (!rebuilding || readIndexedCount(st) > 0) names.add(s.name)
         }
         entry = { names, at: now }
         this.readyIndexCache.set(table, entry)
@@ -539,6 +544,12 @@ export class AntflySearchAdapter implements SearchAdapter {
 
     const request = buildQueryRequest(table, q, this.settings)
     await this.filterRequestToReadyIndexes(table, request)
+    if (!hasSearchLeg(request)) {
+      // Vector-only query whose semantic indexes are all unready: nothing left
+      // to execute. Don't send a no-criteria request to antfly (it 500s or
+      // match-alls) — return empty deterministically instead.
+      return emptyQueryResult(q)
+    }
 
     try {
       // Same no-infinite-patience ceiling as multiQuery: a query against a
@@ -584,6 +595,10 @@ export class AntflySearchAdapter implements SearchAdapter {
     const anyRerank = prepared.some((p) => p.request.reranker != null)
 
     const runOne = async ({ table, query, request }: typeof prepared[number]): Promise<QueryResult> => {
+      // A vector-only request whose semantic indexes were all stripped as
+      // unready has no executable leg — return empty rather than sending a
+      // no-criteria request to antfly. Other tables in the batch still run.
+      if (!hasSearchLeg(request)) return emptyQueryResult(query)
       try {
         const response = await raceQueryTimeout(client.query(request), timeoutMs)
         return response ? mapResponse(response, table) : emptyQueryResult(query)
@@ -731,6 +746,30 @@ function normalizeIndexStatuses(indexStatuses: unknown): IndexStatusEntry[] {
 function readIndexType(config: unknown): string | undefined {
   const type = (config as Record<string, unknown> | null)?.type
   return typeof type === 'string' ? type : undefined
+}
+
+/**
+ * Document count from an index status, preferring documented v0.2 fields. The
+ * embeddings index status exposes `total_indexed` (NOT doc_count); a rebuilding
+ * index with total_indexed > 0 must not read as empty and get stripped from
+ * semantic search. query_visible_doc_count / doc_count are live-server extras
+ * we still honor first when present.
+ */
+function readIndexedCount(status: Record<string, unknown>): number {
+  for (const value of [status.query_visible_doc_count, status.doc_count, status.total_indexed]) {
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return value
+  }
+  return 0
+}
+
+/**
+ * True if the request still has at least one executable search leg after
+ * readiness filtering — a full-text leg, or a semantic leg WITH ready indexes.
+ * A request with neither must not be sent to antfly (it would 500 / match-all).
+ */
+function hasSearchLeg(request: { full_text_search?: unknown; semantic_search?: unknown; indexes?: unknown }): boolean {
+  if (request.full_text_search != null) return true
+  return request.semantic_search != null && Array.isArray(request.indexes) && request.indexes.length > 0
 }
 
 function isTransientBatchError(err: unknown): boolean {

@@ -3,6 +3,7 @@ import { existsSync, readdirSync, statSync } from 'fs'
 import { join } from 'path'
 import type { SearchAdapterSetupOptions } from '@bakin/core/adapters/search'
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
+import type { AntflySettings } from './defaults'
 import { inferenceModelsRoot } from './paths'
 import { findAntflyBinary } from './server'
 
@@ -33,13 +34,40 @@ export interface InferenceModel {
 
 export const REQUIRED_MODELS: InferenceModel[] = [
   { label: 'BGE text embedder', model: 'BAAI/bge-small-en-v1.5', kind: 'embedder' },
-  // Xenova mirror, not openai/: the upstream openai HF repo ships no ONNX
-  // exports and `inference pull` fails with NoModelFilesFound (bakin#456).
-  // Note: antfly's own e2e blesses antflydb/clipclap for multimodal —
-  // confirm upstream's committed ref before pinning this for stable.
-  { label: 'CLIP visual embedder', model: 'Xenova/clip-vit-base-patch32', kind: 'embedder' },
+  // antfly's native multimodal CLIP — a built-in registry model that runs
+  // in-process on Metal (GGUF), blessed by antfly's own e2e. Replaces the
+  // Xenova ONNX mirror we used while openai/ shipped no ONNX (bakin#456).
+  { label: 'CLIP visual embedder', model: 'antflydb/clipclap', kind: 'embedder' },
   { label: 'mxbai reranker', model: 'mixedbread-ai/mxbai-rerank-base-v1', kind: 'reranker' },
 ]
+
+/**
+ * The models actually REQUIRED for the live settings: every configured
+ * in-process antfly embedder, plus the reranker ONLY when reranking is enabled.
+ * Health/checks should use this rather than the static REQUIRED_MODELS so a
+ * default install doesn't report "semantic indexing degraded" over a reranker
+ * that is disabled by default.
+ */
+export function requiredModelsForSettings(settings: AntflySettings): InferenceModel[] {
+  const out: InferenceModel[] = []
+  const seen = new Set<string>()
+  const add = (m: InferenceModel) => {
+    if (m.model && !seen.has(m.model)) {
+      seen.add(m.model)
+      out.push(m)
+    }
+  }
+  for (const [ref, embedder] of Object.entries(settings.embedders ?? {})) {
+    if (embedder?.provider === 'antfly' && embedder.model) {
+      add({ label: `${ref} embedder`, model: embedder.model, kind: 'embedder' })
+    }
+  }
+  if (settings.search?.reranker?.enabled && settings.search.reranker.model) {
+    add({ label: 'reranker', model: settings.search.reranker.model, kind: 'reranker' })
+  }
+  // Fall back to the static list if settings somehow declared no embedders.
+  return out.length > 0 ? out : REQUIRED_MODELS.filter((m) => m.kind === 'embedder')
+}
 
 function modelPath(m: InferenceModel): string {
   // v0.2 layout is {root}/{owner}/{name} — no per-kind buckets.
@@ -91,33 +119,33 @@ interface MissingEntry {
   reason: string
 }
 
-function missingModelEntries(): MissingEntry[] {
+function missingModelEntries(models: InferenceModel[] = REQUIRED_MODELS): MissingEntry[] {
   const out: MissingEntry[] = []
-  for (const m of REQUIRED_MODELS) {
+  for (const m of models) {
     const result = modelComplete(m)
     if (!result.ok) out.push({ model: m, reason: result.reason })
   }
   return out
 }
 
-function missingModels(): InferenceModel[] {
-  return missingModelEntries().map((e) => e.model)
+function missingModels(models: InferenceModel[] = REQUIRED_MODELS): InferenceModel[] {
+  return missingModelEntries(models).map((e) => e.model)
 }
 
-export async function checkInferenceModels() {
-  const missing = missingModelEntries()
+export async function checkInferenceModels(models: InferenceModel[] = REQUIRED_MODELS) {
+  const missing = missingModelEntries(models)
   if (missing.length === 0) {
     return {
       name: 'models',
       status: 'ok' as const,
-      message: `All ${REQUIRED_MODELS.length} search models present at ${inferenceModelsRoot()}`,
-      details: { root: inferenceModelsRoot(), models: REQUIRED_MODELS.map((m) => m.model) },
+      message: `All ${models.length} search models present at ${inferenceModelsRoot()}`,
+      details: { root: inferenceModelsRoot(), models: models.map((m) => m.model) },
     }
   }
   return {
     name: 'models',
     status: 'missing' as const,
-    message: `${missing.length} of ${REQUIRED_MODELS.length} search model${missing.length === 1 ? '' : 's'} not downloaded - semantic indexing is degraded until they are (search itself keeps working)`,
+    message: `${missing.length} of ${models.length} search model${missing.length === 1 ? '' : 's'} not downloaded - semantic indexing is degraded until they are (search itself keeps working)`,
     remediation: 'Run `bakin install search-models`, then `bakin reindex` if content was indexed in the meantime.',
     details: {
       root: inferenceModelsRoot(),
@@ -151,7 +179,7 @@ function runPull(
   })
 }
 
-export async function installInferenceModels(opts: SearchAdapterSetupOptions, logger: AdapterLogger = noopLogger) {
+export async function installInferenceModels(opts: SearchAdapterSetupOptions, logger: AdapterLogger = noopLogger, models: InferenceModel[] = REQUIRED_MODELS) {
   const start = Date.now()
 
   const antfly = findAntflyBinary()
@@ -164,12 +192,12 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
     }
   }
 
-  const missing = missingModels()
+  const missing = missingModels(models)
   if (missing.length === 0) {
     return {
       name: 'models',
       status: 'noop' as const,
-      message: `All ${REQUIRED_MODELS.length} search models already present.`,
+      message: `All ${models.length} search models already present.`,
       durationMs: Date.now() - start,
     }
   }

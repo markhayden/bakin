@@ -126,8 +126,9 @@ describe('search-migration', () => {
       expect(readStoredVersion()).toBe(SCHEMA_VERSION)
     })
 
-    it('continues migration even when one drop fails', async () => {
+    it('attempts every drop but does NOT advance version when one drop fails (retries next boot)', async () => {
       searchHarness.setTables(['bakin_tasks', 'bakin_assets'])
+      const before = readStoredVersion()
       // Fail only on the first drop
       let calls = 0
       searchHarness.calls.tablesDrop.mockImplementation(async (name: string) => {
@@ -136,11 +137,14 @@ describe('search-migration', () => {
       })
 
       const result = await migrateIfNeeded()
+      // At least one table dropped, so startup still reindexes the recreated one.
       expect(result.migrated).toBe(true)
-      // Second drop still ran despite the first failing
+      // Both drops were attempted despite the first failing.
       expect(searchHarness.calls.tablesDrop.mock.calls.map(call => call[0])).toContain('bakin_assets')
-      // Version file still advances — the migration is best-effort
-      expect(readStoredVersion()).toBe(SCHEMA_VERSION)
+      // Version is NOT advanced while a required drop failed — so the failed
+      // table is retried on the next boot instead of being stranded forever.
+      expect(readStoredVersion()).toBe(before)
+      expect(readStoredVersion()).not.toBe(SCHEMA_VERSION)
     })
 
     it('leaves state file unchanged when listTables throws', async () => {

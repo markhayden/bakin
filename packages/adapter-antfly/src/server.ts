@@ -2,13 +2,17 @@ import { spawn, type ChildProcess } from 'child_process'
 import { existsSync, mkdirSync } from 'fs'
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
 import { getBakinPaths } from '@bakin/core/content-dir'
-import { DEFAULT_SETTINGS } from './defaults'
+import { DEFAULT_SETTINGS, type AntflySettings } from './defaults'
 import { antflyBinaryPath, inferenceModelsRoot } from './paths'
 import { createAntflyLogBuffer } from './server-logs'
 
 export interface AntflyServerSettings {
   enabled: boolean
   url: string
+  // Optional: production passes the full settings, so the spawn can preload the
+  // declared local embedders. Minimal callers (tests) omit it and fall back to
+  // DEFAULT_SETTINGS.embedders.
+  embedders?: AntflySettings['embedders']
 }
 
 const noopLogger: AdapterLogger = {
@@ -226,6 +230,23 @@ export async function startAntflyServer(
   // under concurrency) and the auto-selected backend loads the onnx mxbai
   // variant, which fails (MissingWeight); enabling it needs an explicit
   // TERMITE_PREFERRED_BACKEND=metal, which still wins here when set.
+  // Preload + warm the local embedder models before serving. antfly otherwise
+  // loads embed models lazily on first use, so the enrichment (embeddings
+  // backfill) worker races a cold model load against its non-configurable ~30s
+  // embed timeout; a cold miss surfaces as a *retryable* error the worker then
+  // loops on forever without advancing its cursor — a poison-pill wedge that
+  // freezes backfill and leaves semantic search empty (bakin#456). Each
+  // --preload-model makes antfly run a real warm embed pass up front, closing
+  // the race. Preload every in-process antfly embedder the settings declare
+  // (text 'default' + 'visual'), de-duped.
+  const preloadArgs = Array.from(
+    new Set(
+      Object.values(settings.embedders ?? DEFAULT_SETTINGS.embedders)
+        .filter((embedder) => embedder.provider === 'antfly')
+        .map((embedder) => embedder.model),
+    ),
+  ).flatMap((model) => ['--preload-model', `embedder:${model}`])
+
   try {
     antflyProcess = spawn(binary, [
       'swarm',
@@ -234,15 +255,14 @@ export async function startAntflyServer(
       '--health-port', String(healthPort),
       '--data-dir', dataDir,
       '--models-dir', inferenceModelsRoot(),
+      ...preloadArgs,
     ], {
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: false,
-      env: {
-        ...process.env,
-        ...(process.env.TERMITE_PREFERRED_BACKEND
-          ? { TERMITE_PREFERRED_BACKEND: process.env.TERMITE_PREFERRED_BACKEND }
-          : {}),
-      },
+      // antfly picks the inference backend from ANTFLY_INFERENCE_PREFERRED_BACKEND
+      // (legacy TERMITE_PREFERRED_BACKEND as a fallback); both are inherited via
+      // process.env. Unset => auto-select (Metal on Apple Silicon, CPU/onnx on Linux).
+      env: { ...process.env },
     })
     registerExitHook()
 

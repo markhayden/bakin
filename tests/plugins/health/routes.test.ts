@@ -314,7 +314,8 @@ describe('Health Plugin Routes', () => {
       expect(route).toBeDefined()
       const { status, body } = await callRoute(route, activated.ctx)
       expect(status).toBe(200)
-      expect(body).toEqual({ enabled: false, tables: [] })
+      // `warm` is the query-path warm signal surfaced alongside health.
+      expect(body).toEqual({ enabled: false, tables: [], warm: 'cold' })
     })
   })
 

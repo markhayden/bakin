@@ -20,23 +20,26 @@ export function buildQueryRequest(table: string, q: Query, settings: AntflySetti
   const request: QueryRequest = {
     table,
     limit: q.limit ?? settings.search.defaultLimit,
-    offset: q.offset,
+  }
+  // `offset` is full-text-only per the antfly v0.2 contract — "Not supported
+  // for semantic_search due to vector index limitations." Sending it on a
+  // hybrid/semantic request is an unsupported wire parameter, so only attach it
+  // when the resolved strategy is full-text-only.
+  if (q.offset != null && strategy === 'full_text_only') {
+    request.offset = q.offset
   }
 
   if (q.text && strategy !== 'semantic_only') {
     // The full-text leg MUST be field-scoped. A bare `{query: text}` resolves
     // against a default/_all field that antfly does not populate, so it matches
     // NOTHING (BM25 always 0, the keyword leg silently dead). Build a
-    // bool/should of per-field matches over the content type's searchable
-    // fields instead; fall back to the bare shape only when fields are unknown.
+    // disjunction of per-field MatchQuery clauses over the content type's
+    // searchable fields; fall back to the bare query-string shape only when
+    // fields are unknown.
     const searchableFields = readStringArray(q.adapterOptions?.searchableFields)
-    if (searchableFields && searchableFields.length > 0) {
-      request.full_text_search = {
-        bool: { should: searchableFields.map((field) => ({ match: { field, text: q.text } })) },
-      } as unknown as QueryRequest['full_text_search']
-    } else {
-      request.full_text_search = { query: q.text } as QueryRequest['full_text_search']
-    }
+    request.full_text_search = (searchableFields && searchableFields.length > 0)
+      ? buildFieldScopedFullTextSearch(q.text, searchableFields)
+      : { query: q.text } as QueryRequest['full_text_search']
   }
   if (q.text && strategy !== 'full_text_only') {
     // v0.2: `indexes` is the list of vector indexes for semantic search and
@@ -61,6 +64,23 @@ export function buildQueryRequest(table: string, q: Query, settings: AntflySetti
   if (reranker) request.reranker = reranker as QueryRequest['reranker']
 
   return request
+}
+
+/**
+ * Field-scoped full-text query in the antfly v0.2 Query AST:
+ *   single field  → MatchQuery        { match, field }
+ *   multiple      → BooleanQuery.should DisjunctionQuery { disjuncts: [...] }
+ * The previous `{ bool: { should: [{ match: { field, text } }] } }` shape was
+ * invalid on both counts — there is no `bool` wrapper, and `match` is the query
+ * STRING (with `field` as a sibling), not an object.
+ */
+function buildFieldScopedFullTextSearch(text: string, fields: string[]): QueryRequest['full_text_search'] {
+  if (fields.length === 1) {
+    return { match: text, field: fields[0] } as QueryRequest['full_text_search']
+  }
+  return {
+    should: { disjuncts: fields.map((field) => ({ match: text, field })) },
+  } as QueryRequest['full_text_search']
 }
 
 /**
