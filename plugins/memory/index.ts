@@ -196,6 +196,7 @@ const memoryPlugin: BakinPlugin = definePlugin({
         eventType: { type: 'keyword' },
         phase: { type: 'keyword' },
         date: { type: 'keyword' },
+        sessionId: { type: 'keyword' },
         title: { type: 'text' },
         snippet: { type: 'text' },
         content: { type: 'text' },

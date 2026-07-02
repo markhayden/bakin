@@ -42,9 +42,11 @@ export const checkpointsListRoute = defineRoute({
     const sessionId = url.searchParams.get('sessionId')
     const { limit, offset } = parseLimitOffset(url)
 
+    // Session membership is a FILTER on the indexed sessionId field — the id
+    // only exists inside the meta JSON otherwise, which is not searchable.
     const params: SearchQueryParams = {
-      q: sessionId ?? '*',
-      filters: { tier: 'checkpoint', agent },
+      q: '*',
+      filters: { tier: 'checkpoint', agent, ...(sessionId ? { sessionId } : {}) },
       limit,
       offset,
       rerank: false,

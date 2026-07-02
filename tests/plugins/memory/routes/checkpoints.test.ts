@@ -142,15 +142,15 @@ describe('checkpointsListRoute — handler', () => {
     expect(h.queryCalls[0].strategy).toBe('full_text_only')
   })
 
-  it('passes sessionId as q-string when provided', async () => {
+  it('filters by sessionId when provided — never a q-string', async () => {
     const h = makeCtx()
     await checkpointsListRoute.handler(
       req('/checkpoints', { agent: 'main', sessionId: 'sess-1' }),
       h.ctx,
       {} as any,
     )
-    expect(h.queryCalls[0].q).toBe('sess-1')
-    expect(h.queryCalls[0].filters).toEqual({ tier: 'checkpoint', agent: 'main' })
+    expect(h.queryCalls[0].q).toBe('*')
+    expect(h.queryCalls[0].filters).toEqual({ tier: 'checkpoint', agent: 'main', sessionId: 'sess-1' })
   })
 
   it('clamps excessive limits to the 100 default', async () => {

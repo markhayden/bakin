@@ -23,6 +23,10 @@
  *       gone from the store while offsets.json still claims those bytes
  *       were indexed. Without this bump the offset-based indexers would
  *       silently skip them forever. Reset table + offsets and backfill.
+ *   5 — promote sessionId out of the meta JSON blob into a real keyword
+ *       field on turn/checkpoint/session rows. "Turns for session X" can
+ *       only work as a filter (meta is not searchable); existing rows
+ *       don't carry the field, so re-derive everything.
  *
  * Bump `MEMORY_SCHEMA_VERSION` whenever a write-path change means existing
  * rows should be re-derived from source (new filters, new fields, changed
@@ -37,7 +41,7 @@ import { resetAllOffsets } from './offsets'
 
 const log = createLogger('memory:migration')
 
-export const MEMORY_SCHEMA_VERSION = 4
+export const MEMORY_SCHEMA_VERSION = 5
 
 function versionFilePath(): string {
   return join(getContentDir(), 'plugin-settings', 'memory', 'schema-version.json')

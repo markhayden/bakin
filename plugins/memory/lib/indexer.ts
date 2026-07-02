@@ -737,6 +737,11 @@ export class MemoryIndexer {
       created_at: row.createdAt,
     }
     if (row.kind !== undefined) doc.kind = row.kind
+    // Promote sessionId out of the meta JSON blob into a real filterable
+    // field: "turns/checkpoints for session X" can only work as a filter —
+    // meta is not a searchable field, so a q=sessionId full-text match over
+    // title/snippet/content never matched anything.
+    if (row.sourceRef.sessionId) doc.sessionId = row.sourceRef.sessionId
     await this.ctx.search.index(row.id, doc)
     indexedUpdatedAt.set(row.id, row.updatedAt)
   }
