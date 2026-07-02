@@ -99,8 +99,10 @@ async function shutdown(signal: string, exitCode = 0): Promise<void> {
     // Stop file watching
     await watcher.stop()
 
-    // Shut down adapter-owned resources (includes the antfly child — the
-    // EADDRINUSE path MUST reach here or the child is orphaned, #459).
+    // Release adapter-owned resources. The antfly child is deliberately LEFT
+    // RUNNING (keep-alive lifecycle): the next boot adopts the warm instance
+    // instead of repaying model load + startup convergence. Explicit kills:
+    // `bakin stop`, or a pin/settings change detected at adoption time.
     await maybeGetAppServices()?.search.shutdown()
 
     // Drain SSE clients

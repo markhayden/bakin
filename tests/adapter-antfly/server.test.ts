@@ -7,11 +7,11 @@ const testDir = join(tmpdir(), `bakin-test-antfly-server-${Date.now()}`)
 
 mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
-  getBakinPaths: () => ({ home: testDir, antfly: join(testDir, 'antfly') }),
+  getBakinPaths: () => ({ home: testDir, antfly: join(testDir, 'antfly'), logs: join(testDir, 'logs') }),
 }))
 mock.module('../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
-  getBakinPaths: () => ({ home: testDir, antfly: join(testDir, 'antfly') }),
+  getBakinPaths: () => ({ home: testDir, antfly: join(testDir, 'antfly'), logs: join(testDir, 'logs') }),
 }))
 
 const fakeChild = {
@@ -20,14 +20,16 @@ const fakeChild = {
   on: mock(),
   once: mock(),
   kill: mock(),
+  unref: mock(),
+  pid: 424242,
 }
 const spawnMock = mock(() => fakeChild)
 mock.module('child_process', () => ({ spawn: spawnMock }))
 
 import {
-  _resetExitHookForTests,
   checkExternalAntflyStability,
   getServerHealthDetail,
+  readInstanceSidecar,
   startAntflyServer,
   stopAntflyServer,
 } from '../../packages/adapter-antfly/src/server'
@@ -282,12 +284,12 @@ describe('Antfly server supervision', () => {
     ])
   })
 
-  it('registers a sync exit hook that kills the spawned child (orphan net)', async () => {
-    // process.exit paths that bypass the async lifecycle shutdown (dev.ts
-    // signal handlers, uncaught EADDRINUSE at listen time) must still take
-    // the antfly child down — orphans keep 3738 bound across generations.
-    _resetExitHookForTests()
-    const before = process.listeners('exit')
+  it('spawns detached with file stdio, writes the sidecar, and registers NO exit kill hook', async () => {
+    // Keep-alive lifecycle: the child must SURVIVE this process's exit so
+    // the next boot adopts it. The old orphan-net exit hook (which SIGTERM'd
+    // the child on every process exit) is gone by design; kill paths are
+    // explicit (`bakin stop` via sidecar, pin/settings change at adoption).
+    const before = process.listeners('exit').length
 
     let readyzCalls = 0
     ;(globalThis as { fetch: typeof fetch }).fetch = mock(async () => {
@@ -299,13 +301,19 @@ describe('Antfly server supervision', () => {
     const started = await startAntflyServer({ enabled: true, url: LOCAL_DEFAULT_URL }, logger)
     expect(started).toBe(true)
 
-    const added = process.listeners('exit').filter((l) => !before.includes(l))
-    expect(added).toHaveLength(1)
+    expect(process.listeners('exit').length).toBe(before) // no kill hook
+    expect(fakeChild.unref).toHaveBeenCalled()
+    const opts = (spawnMock.mock.calls as unknown as Array<[string, string[], { detached?: boolean; stdio?: unknown[] }]>)[0][2]
+    expect(opts.detached).toBe(true)
+    // stdio: ['ignore', fd, fd] — a FILE, never pipes (a detached child
+    // writing into dead pipe fds after parent exit would EPIPE-crash).
+    expect(opts.stdio?.[0]).toBe('ignore')
+    expect(typeof opts.stdio?.[1]).toBe('number')
 
-    fakeChild.kill.mockClear()
-    ;(added[0] as () => void)()
-    expect(fakeChild.kill).toHaveBeenCalledWith('SIGTERM')
-    _resetExitHookForTests()
+    const sidecar = readInstanceSidecar()
+    expect(sidecar?.pid).toBe(424242)
+    expect(sidecar?.pinVersion).toBeTruthy()
+    expect(sidecar?.settingsHash).toBeTruthy()
   })
 
   it('refuses to adopt a listener that 200s readyz but serves garbage on the status endpoint', async () => {
@@ -485,5 +493,84 @@ describe('child crash supervision', () => {
     const spawnsAtStop = children.length
     await drive(120_000, 2_000)
     expect(children).toHaveLength(spawnsAtStop) // restart ladder cancelled
+  })
+})
+
+describe('keep-alive adoption', () => {
+  it('adopts a healthy instance whose sidecar matches the current pin + settings', async () => {
+    const { antflySettingsFingerprint } = await import('../../packages/adapter-antfly/src/server')
+    const { ANTFLY_PIN } = await import('../../packages/adapter-antfly/src/pin')
+    const settings = { enabled: true, url: LOCAL_DEFAULT_URL }
+    mkdirSync(join(testDir, 'antfly'), { recursive: true })
+    writeFileSync(join(testDir, 'antfly', 'instance.json'), JSON.stringify({
+      pid: 55555,
+      port: 3738,
+      pinVersion: ANTFLY_PIN.version,
+      settingsHash: antflySettingsFingerprint(settings),
+      startedAt: new Date().toISOString(),
+    }))
+
+    // Healthy listener: readyz 200 + valid status JSON.
+    ;(globalThis as { fetch: typeof fetch }).fetch = mock(async (input: string | URL | Request) => {
+      const url = String(input)
+      if (url.endsWith('/readyz')) return new Response('ok', { status: 200 })
+      if (url.endsWith('/db/v1/status')) return new Response(JSON.stringify({ health: 'healthy' }), { status: 200 })
+      throw new Error(`unexpected fetch: ${url}`)
+    }) as unknown as typeof fetch
+
+    const started = await startAntflyServer(settings, logger)
+
+    expect(started).toBe(true)
+    expect(spawnMock).not.toHaveBeenCalled() // adopted, never respawned
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.stringContaining('Adopted the running Antfly instance'),
+      expect.anything(),
+    )
+  })
+
+  it('replaces a healthy instance whose sidecar pin does not match', async () => {
+    const { antflySettingsFingerprint } = await import('../../packages/adapter-antfly/src/server')
+    const settings = { enabled: true, url: LOCAL_DEFAULT_URL }
+    mkdirSync(join(testDir, 'antfly'), { recursive: true })
+    writeFileSync(join(testDir, 'antfly', 'instance.json'), JSON.stringify({
+      pid: 99999999, // dead pid — process.kill throws, caught
+      port: 3738,
+      pinVersion: '0.0.0-old',
+      settingsHash: antflySettingsFingerprint(settings),
+      startedAt: new Date().toISOString(),
+    }))
+
+    // Call-order-robust phased fetch: the old instance answers all adoption
+    // checks; once the replacement's stop-wait begins (readyz calls past the
+    // adoption budget, before any spawn) it reads DOWN; after the fresh
+    // spawn, readyz answers again. Observed via spawnMock so the mock never
+    // has to guess exactly how many probes adoption used.
+    process.env.BAKIN_ANTFLY_STOP_POLL_MS = '5'
+    let readyzCalls = 0
+    ;(globalThis as { fetch: typeof fetch }).fetch = mock(async (input: string | URL | Request) => {
+      const url = String(input)
+      if (url.endsWith('/db/v1/status')) {
+        return new Response(JSON.stringify({ health: 'healthy' }), { status: 200 })
+      }
+      if (url.endsWith('/readyz')) {
+        readyzCalls++
+        if (spawnMock.mock.calls.length > 0) return new Response('ok', { status: 200 }) // fresh child
+        if (readyzCalls > 8) throw new Error('connection refused') // stop-wait sees it down
+        return new Response('ok', { status: 200 }) // adoption checks
+      }
+      throw new Error(`unexpected fetch: ${url}`)
+    }) as unknown as typeof fetch
+
+    const started = await startAntflyServer(settings, logger)
+    delete process.env.BAKIN_ANTFLY_STOP_POLL_MS
+
+    expect(started).toBe(true)
+    expect(spawnMock).toHaveBeenCalledTimes(1) // replaced with a fresh spawn
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.stringContaining('Antfly config changed since the running instance started'),
+      expect.anything(),
+    )
+    const sidecar = readInstanceSidecar()
+    expect(sidecar?.pinVersion).not.toBe('0.0.0-old') // rewritten by the spawn
   })
 })

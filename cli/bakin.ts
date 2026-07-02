@@ -3013,6 +3013,11 @@ async function cmdStop(): Promise<void> {
   const { execFileSync } = await import('child_process')
 
   const printStopResult = async (result: Record<string, unknown>, detail?: string): Promise<void> => {
+    // Antfly dies ONLY after Bakin is down/absent: killing it while a Bakin
+    // server still runs would trip that server's takeover supervision, which
+    // exists precisely to resurrect a disappeared local instance.
+    const antflyPid = await stopAntflyInstance()
+    if (antflyPid && !process.stdout.isTTY) console.log(`[OK] Sent SIGTERM to Antfly instance (pid ${antflyPid})`)
     const message = typeof result.message === 'string' ? result.message : 'Bakin stop request completed.'
     if (process.stdout.isTTY) {
       await printRuntimeActionTui({
@@ -3029,6 +3034,32 @@ async function cmdStop(): Promise<void> {
     else if (result.status === 'warn') console.log(`[WARN] ${message}`)
     else console.log(message)
     if (detail) console.log(`  ${detail}`)
+  }
+
+  // `bakin stop` is one of the EXPLICIT antfly kill paths (the keep-alive
+  // lifecycle leaves the child running across routine Bakin restarts, so a
+  // routine server SIGTERM never stops it). Kill via the instance sidecar,
+  // best-effort — a missing/stale sidecar or dead pid is fine.
+  const stopAntflyInstance = async (): Promise<number | null> => {
+    try {
+      const { getBakinPaths } = await import('../packages/core/src/content-dir')
+      const { join } = await import('path')
+      const { readFileSync, existsSync, unlinkSync } = await import('fs')
+      const sidecarPath = join(getBakinPaths().antfly, 'instance.json')
+      if (!existsSync(sidecarPath)) return null
+      const sidecar = JSON.parse(readFileSync(sidecarPath, 'utf-8')) as { pid?: number | null }
+      if (sidecar?.pid) {
+        try {
+          process.kill(sidecar.pid, 'SIGTERM')
+        } catch { /* already gone */ }
+      }
+      try {
+        unlinkSync(sidecarPath)
+      } catch { /* best effort */ }
+      return sidecar?.pid ?? null
+    } catch {
+      return null
+    }
   }
 
   if (!process.stdout.isTTY) console.log('[..] Stopping Bakin server...')

@@ -1,9 +1,11 @@
 import { spawn, type ChildProcess } from 'child_process'
-import { existsSync, mkdirSync } from 'fs'
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, statSync, unlinkSync, writeFileSync } from 'fs'
+import { dirname, join } from 'path'
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
 import { getBakinPaths } from '@bakin/core/content-dir'
 import { DEFAULT_SETTINGS, type AntflySettings } from './defaults'
 import { antflyBinaryPath, inferenceModelsRoot } from './paths'
+import { ANTFLY_PIN } from './pin'
 import { createAntflyLogBuffer } from './server-logs'
 
 export interface AntflyServerSettings {
@@ -25,7 +27,6 @@ const noopLogger: AdapterLogger = {
 let antflyProcess: ChildProcess | null = null
 let isRunning = false
 let recheckTimer: NodeJS.Timeout | null = null
-let exitHookRegistered = false
 
 // Supervision for Bakin's own spawned child: a mid-session crash must flip
 // isRunning false (so available() stops lying) AND get a bounded restart —
@@ -46,29 +47,14 @@ const CHILD_RESTART_DELAYS_MS: readonly number[] = [1000, 5000, 30_000]
 // that crashes before ever becoming ready must burn budget, not reset it.
 const CHILD_STABLE_MS = 60_000
 
-/**
- * Belt-and-braces orphan net: any JS-level exit that bypasses the async
- * lifecycle shutdown — dev.ts's own signal handlers calling process.exit(0),
- * an uncaught EADDRINUSE thrown at listen time, a plain process.exit anywhere —
- * must still take the spawned antfly child down. Orphaned children keep 3738
- * bound and poison the next server generation. 'exit' handlers must be
- * synchronous; ChildProcess.kill() is.
- */
-function killChildOnExit(): void {
-  if (antflyProcess && !antflyProcess.killed) antflyProcess.kill('SIGTERM')
-}
-
-function registerExitHook(): void {
-  if (exitHookRegistered) return
-  exitHookRegistered = true
-  process.on('exit', killChildOnExit)
-}
-
-/** Tests use this between cases — the exit hook is once-per-process. */
-export function _resetExitHookForTests(): void {
-  process.removeListener('exit', killChildOnExit)
-  exitHookRegistered = false
-}
+// NOTE: there is deliberately NO process-exit kill hook anymore. The child
+// SURVIVING Bakin's exit is the design (see the keep-alive section below):
+// the next boot adopts it via the strict status probe + sidecar fingerprint,
+// converting every dev restart from "repay antfly's full model-load and
+// startup convergence" into a ~5s adoption. What the old orphan net treated
+// as a leak is now the warm instance we want. Explicit kill paths:
+// `bakin stop` (CLI kills via the sidecar pid), a binary pin bump, or a
+// spawn-relevant settings change (both detected at adoption time).
 
 /** Tests use this between cases — supervision state is module-global. */
 export function _resetChildSupervisionForTests(): void {
@@ -83,6 +69,125 @@ export function _resetChildSupervisionForTests(): void {
 
 const DEFAULT_EXTERNAL_RECHECK_DELAY_MS = 3000
 const DEFAULT_PORT = 3738
+
+// ─── Instance sidecar + keep-alive lifecycle ─────────────────────────────
+//
+// The antfly child deliberately SURVIVES Bakin restarts: killing it on every
+// app exit made each dev iteration repay antfly's full model-load + startup
+// convergence window for data that hadn't changed. On boot, a healthy local
+// listener is adopted (strict-verified) when the sidecar matches the current
+// binary pin + spawn-relevant settings; a mismatch stops the old instance and
+// spawns fresh. Kill paths are now EXPLICIT: `bakin stop`, a pin bump, or a
+// settings change — never a routine shutdown.
+
+export interface AntflyInstanceSidecar {
+  pid: number | null
+  port: number
+  pinVersion: string
+  settingsHash: string
+  startedAt: string
+}
+
+function instanceSidecarPath(): string {
+  return join(getBakinPaths().antfly, 'instance.json')
+}
+
+/** Stable fingerprint over the spawn-relevant settings (url + embedders). */
+export function antflySettingsFingerprint(settings: AntflyServerSettings): string {
+  const embedders = settings.embedders ?? DEFAULT_SETTINGS.embedders
+  const text = JSON.stringify({
+    url: settings.url,
+    embedders: Object.keys(embedders).sort().map((ref) => {
+      const e = embedders[ref]
+      return [ref, e?.provider, e?.model, e?.dimension, e?.multimodal]
+    }),
+  })
+  let hash = 2166136261
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i)
+    hash = Math.imul(hash, 16777619) >>> 0
+  }
+  return hash.toString(36)
+}
+
+export function readInstanceSidecar(): AntflyInstanceSidecar | null {
+  const file = instanceSidecarPath()
+  if (!existsSync(file)) return null
+  try {
+    const parsed = JSON.parse(readFileSync(file, 'utf-8')) as AntflyInstanceSidecar
+    return typeof parsed?.pinVersion === 'string' && typeof parsed?.settingsHash === 'string' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function writeInstanceSidecar(sidecar: AntflyInstanceSidecar, logger: AdapterLogger): void {
+  try {
+    const file = instanceSidecarPath()
+    mkdirSync(dirname(file), { recursive: true })
+    writeFileSync(file, JSON.stringify(sidecar, null, 2))
+  } catch (err) {
+    logger.warn('Failed to write antfly instance sidecar', err)
+  }
+}
+
+export function clearInstanceSidecar(): void {
+  const file = instanceSidecarPath()
+  try {
+    if (existsSync(file)) unlinkSync(file)
+  } catch { /* best effort */ }
+}
+
+// ─── Child log tail ──────────────────────────────────────────────────────
+//
+// The child's stdio goes to a FILE (not pipes): a child that outlives its
+// parent must never write into dead pipe fds. Bakin tails the file while it
+// runs so antfly lines keep flowing through the annotation pipeline
+// (parseAntflyLogLine demotions) into server.log — in both spawn and adopt
+// modes.
+
+let logTailTimer: NodeJS.Timeout | null = null
+let logTailOffset = 0
+
+export function antflyLogFilePath(): string {
+  return join(getBakinPaths().logs, 'antfly.log')
+}
+
+function startLogTail(logger: AdapterLogger): void {
+  stopLogTail()
+  const file = antflyLogFilePath()
+  const stdoutLogs = createAntflyLogBuffer(logger, 'info')
+  try {
+    logTailOffset = existsSync(file) ? statSync(file).size : 0
+  } catch {
+    logTailOffset = 0
+  }
+  logTailTimer = setInterval(() => {
+    try {
+      if (!existsSync(file)) return
+      const size = statSync(file).size
+      if (size < logTailOffset) logTailOffset = 0 // rotated/truncated
+      if (size === logTailOffset) return
+      const fd = openSync(file, 'r')
+      try {
+        const chunk = Buffer.alloc(Math.min(size - logTailOffset, 256 * 1024))
+        const read = readSync(fd, chunk, 0, chunk.length, logTailOffset)
+        logTailOffset += read
+        if (read > 0) stdoutLogs.push(chunk.subarray(0, read))
+      } finally {
+        closeSync(fd)
+      }
+    } catch { /* transient fs races are fine — next tick retries */ }
+  }, 1000)
+  logTailTimer.unref?.()
+}
+
+function stopLogTail(): void {
+  if (logTailTimer) {
+    clearInterval(logTailTimer)
+    logTailTimer = null
+  }
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
@@ -220,18 +325,37 @@ async function startAntflyServerInner(
 
     const stability = await checkExternalAntflyStability(url)
     if (stability === 'ready') {
-      logger.info('Antfly already running', { url })
-      isRunning = true
-      scheduleExternalRecheck(settings, logger)
-      return true
-    }
-
-    if (stability === 'unstable') {
+      // Keep-alive fingerprint check: a healthy local listener is adopted
+      // UNLESS the sidecar says it was started under a different binary pin
+      // or different spawn-relevant settings — then it must be replaced.
+      if (isLocalDefaultUrl(url)) {
+        const sidecar = readInstanceSidecar()
+        const fingerprint = antflySettingsFingerprint(settings)
+        if (sidecar && (sidecar.pinVersion !== ANTFLY_PIN.version || sidecar.settingsHash !== fingerprint)) {
+          logger.info('Antfly config changed since the running instance started - replacing it', {
+            runningPin: sidecar.pinVersion,
+            currentPin: ANTFLY_PIN.version,
+            settingsChanged: sidecar.settingsHash !== fingerprint,
+          })
+          await stopInstanceBySidecar(sidecar, url, logger)
+          // fall through to the spawn path below
+        } else {
+          logger.info('Adopted the running Antfly instance (survived the last Bakin restart)', { url })
+          isRunning = true
+          startLogTail(logger)
+          scheduleExternalRecheck(settings, logger)
+          return true
+        }
+      } else {
+        logger.info('Antfly already running', { url })
+        isRunning = true
+        scheduleExternalRecheck(settings, logger)
+        return true
+      }
+    } else if (stability === 'unstable') {
       logger.warn('Antfly readiness endpoint is responding but not stable yet', { url })
       return false
-    }
-
-    if (isLocalDefaultUrl(url)) {
+    } else if (isLocalDefaultUrl(url)) {
       logger.warn('Antfly disappeared during startup check, attempting takeover restart', { url })
     }
   }
@@ -294,6 +418,15 @@ async function startAntflyServerInner(
   try {
     childStopRequested = false
     const spawnedAtMs = Date.now()
+
+    // stdio goes to a FILE, never pipes: the child intentionally outlives
+    // this process (keep-alive lifecycle), and a detached child writing into
+    // dead pipe fds after parent exit would EPIPE-crash on its next log
+    // line. Bakin tails the file for the annotation pipeline instead.
+    const logFile = antflyLogFilePath()
+    mkdirSync(dirname(logFile), { recursive: true })
+    const logFd = openSync(logFile, 'a')
+
     antflyProcess = spawn(binary, [
       'swarm',
       '--host', '127.0.0.1',
@@ -303,29 +436,29 @@ async function startAntflyServerInner(
       '--models-dir', inferenceModelsRoot(),
       ...preloadArgs,
     ], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      detached: false,
+      stdio: ['ignore', logFd, logFd],
+      // Own process group + unref: the child must survive this process's
+      // exit (and any signal delivered to our group). Adopted next boot.
+      detached: true,
       // antfly picks the inference backend from ANTFLY_INFERENCE_PREFERRED_BACKEND
       // (legacy TERMITE_PREFERRED_BACKEND as a fallback); both are inherited via
       // process.env. Unset => auto-select (Metal on Apple Silicon, CPU/onnx on Linux).
       env: { ...process.env },
     })
-    registerExitHook()
+    closeSync(logFd)
+    antflyProcess.unref?.()
+    startLogTail(logger)
 
-    const stdoutLogs = createAntflyLogBuffer(logger, 'info')
-    const stderrLogs = createAntflyLogBuffer(logger, 'warn')
-    antflyProcess.stdout?.on('data', (data: Buffer) => {
-      stdoutLogs.push(data)
-    })
-
-    antflyProcess.stderr?.on('data', (data: Buffer) => {
-      stderrLogs.push(data)
-    })
+    writeInstanceSidecar({
+      pid: antflyProcess.pid ?? null,
+      port,
+      pinVersion: ANTFLY_PIN.version,
+      settingsHash: antflySettingsFingerprint(settings),
+      startedAt: new Date().toISOString(),
+    }, logger)
 
     const thisChild = antflyProcess
     antflyProcess.on('exit', (code, signal) => {
-      stdoutLogs.flush()
-      stderrLogs.flush()
       isRunning = false
       if (antflyProcess === thisChild) antflyProcess = null
       clearRecheckTimer()
@@ -387,8 +520,54 @@ function killChildScoped(child: ChildProcess, logger: AdapterLogger): void {
   }
 }
 
+/**
+ * RELEASE the instance without killing it — the routine shutdown path.
+ * Clears this process's supervision state (timers, tail, handle) and leaves
+ * the child running for the next boot to adopt. Explicit kills go through
+ * stopAntflyServer (pin/settings change) or `bakin stop` (CLI, via sidecar).
+ */
+export function releaseAntflyServer(logger: AdapterLogger = noopLogger): void {
+  clearRecheckTimer()
+  stopLogTail()
+  if (childRestartTimer) {
+    clearTimeout(childRestartTimer)
+    childRestartTimer = null
+  }
+  if (antflyProcess) {
+    // Mark intentional so a same-tick exit isn't treated as a crash, drop
+    // the handle (already unref'd) — the process itself keeps running.
+    childStopRequested = true
+    antflyProcess = null
+    logger.info('Antfly left running for the next boot to adopt')
+  }
+}
+
+/** Stop a (possibly adopted) instance via its sidecar pid. */
+async function stopInstanceBySidecar(sidecar: AntflyInstanceSidecar, url: string, logger: AdapterLogger): Promise<void> {
+  if (sidecar.pid) {
+    logger.info('Stopping previous Antfly instance', { pid: sidecar.pid })
+    try {
+      process.kill(sidecar.pid, 'SIGTERM')
+    } catch { /* already gone */ }
+  }
+  // Wait for the port to free (SIGKILL fallback), bounded. Poll interval is
+  // env-overridable so tests don't pay real half-second sleeps.
+  const pollMs = Number(process.env.BAKIN_ANTFLY_STOP_POLL_MS ?? '') || 500
+  for (let i = 0; i < 20; i++) {
+    if (!await isAlreadyRunning(url)) break
+    if (i === 14 && sidecar.pid) {
+      try {
+        process.kill(sidecar.pid, 'SIGKILL')
+      } catch { /* already gone */ }
+    }
+    await sleep(pollMs)
+  }
+  clearInstanceSidecar()
+}
+
 export function stopAntflyServer(logger: AdapterLogger = noopLogger): void {
   clearRecheckTimer()
+  stopLogTail()
   childStopRequested = true
   if (childRestartTimer) {
     clearTimeout(childRestartTimer)
@@ -396,6 +575,15 @@ export function stopAntflyServer(logger: AdapterLogger = noopLogger): void {
   }
 
   if (!antflyProcess) {
+    // Adopted (or already-detached) instance: kill via the sidecar pid.
+    const sidecar = readInstanceSidecar()
+    if (isRunning && sidecar?.pid) {
+      logger.info('Stopping adopted Antfly instance', { pid: sidecar.pid })
+      try {
+        process.kill(sidecar.pid, 'SIGTERM')
+      } catch { /* already gone */ }
+    }
+    clearInstanceSidecar()
     isRunning = false
     return
   }
@@ -413,6 +601,7 @@ export function stopAntflyServer(logger: AdapterLogger = noopLogger): void {
         child.kill('SIGKILL')
       }
     }, 5000)
+    forceTimer.unref?.()
 
     child.once('exit', () => {
       exited = true
@@ -422,6 +611,7 @@ export function stopAntflyServer(logger: AdapterLogger = noopLogger): void {
     logger.warn('Error stopping Antfly', err)
   }
 
+  clearInstanceSidecar()
   antflyProcess = null
   isRunning = false
 }

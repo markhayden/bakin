@@ -33,7 +33,7 @@ import {
   readNumber,
   readString,
 } from './query-translation'
-import { getServerHealthDetail, isAntflyRunning, isLocalDefaultUrl, startAntflyServer, stopAntflyServer } from './server'
+import { getServerHealthDetail, isAntflyRunning, isLocalDefaultUrl, releaseAntflyServer, startAntflyServer } from './server'
 
 interface AntflyIndexHealthEntry {
   name: string
@@ -292,7 +292,11 @@ export class AntflySearchAdapter implements SearchAdapter {
 
   async shutdown(): Promise<void> {
     this.client = null
-    stopAntflyServer(this.logger)
+    // Routine shutdown RELEASES the child instead of killing it: the next
+    // boot adopts the still-warm instance (~5s) instead of repaying antfly's
+    // full model-load + startup convergence. Explicit kill paths: `bakin
+    // stop` (CLI via sidecar), or a pin/settings change at adoption time.
+    releaseAntflyServer(this.logger)
   }
 
   async available(): Promise<boolean> {

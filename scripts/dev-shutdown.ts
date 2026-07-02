@@ -57,7 +57,8 @@ export function registerDevShutdown({ proc, killTailwind, warn, forceKill }: Dev
       return
     }
     // Immediate feedback so a multi-second graceful chain doesn't look hung.
-    warn('shutting down — stopping antfly, plugins, and watchers…')
+    // (antfly is deliberately LEFT RUNNING for the next boot to adopt.)
+    warn('shutting down — stopping plugins and watchers (antfly stays warm)…')
     killTailwind()
     // Sole listener → build phase, the server hasn't registered its lifecycle
     // handlers yet: we own the exit. Otherwise the lifecycle listener (later,
