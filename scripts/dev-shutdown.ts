@@ -73,7 +73,6 @@ export function registerDevShutdown({ proc, killTailwind, warn, forceKill }: Dev
       warn('graceful shutdown took too long — forcing exit')
       hardKill()
     }, DEV_SHUTDOWN_GRACE_MS)
-    backstop.unref?.()
   }
 
   proc.on('SIGINT', () => onSignal('SIGINT'))

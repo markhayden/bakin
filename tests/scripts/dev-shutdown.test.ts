@@ -8,7 +8,7 @@
  */
 import { EventEmitter } from 'node:events'
 
-import { describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { registerDevShutdown } from '../../scripts/dev-shutdown'
 
@@ -41,6 +41,14 @@ function setup(): Harness {
 }
 
 describe('registerDevShutdown', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   test('solo listener (build phase): kills tailwind and exits 0', () => {
     const h = setup()
     h.proc.emit('SIGTERM')
@@ -114,5 +122,18 @@ describe('registerDevShutdown', () => {
     const h = setup()
     h.proc.emit('exit')
     expect(h.tailwindKills).toBe(1)
+  })
+
+  test('first signal force-kills after the graceful shutdown backstop', async () => {
+    const h = setup()
+    h.proc.on('SIGINT', () => {})
+
+    h.proc.emit('SIGINT')
+    await vi.advanceTimersByTimeAsync(5999)
+    expect(h.forceKills).toBe(0)
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(h.forceKills).toBe(1)
+    expect(h.warnings[h.warnings.length - 1]).toContain('graceful shutdown took too long')
   })
 })

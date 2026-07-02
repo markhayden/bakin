@@ -20,14 +20,50 @@ const log = createLogger('lifecycle')
 // now, force it. Bounds the dev-loop Ctrl-C so a stuck step can't hang the
 // session until a second signal.
 const SHUTDOWN_FORCE_EXIT_MS = 4000
+// If process.exit() returns but the process is still alive, a spawned child or
+// native handle is wedged. Give stdout/stderr a beat, then use the same kind of
+// hard process termination the dev loop uses on a second Ctrl-C.
+const POST_EXIT_HARD_KILL_MS = 250
 
 let shutdownInProgress = false
 let registered: { server: Server; contentDir: string } | null = null
+let hardTerminateForTests: ((exitCode: number) => void) | null = null
+let postExitHardKillTimer: ReturnType<typeof setTimeout> | null = null
+
+function hardTerminate(exitCode: number): void {
+  process.exitCode = exitCode
+  if (hardTerminateForTests) {
+    hardTerminateForTests(exitCode)
+    return
+  }
+  try {
+    process.kill(process.pid, 'SIGKILL')
+  } catch {
+    process.exit(exitCode)
+  }
+}
+
+function exitWithHardFallback(exitCode: number): void {
+  if (postExitHardKillTimer) clearTimeout(postExitHardKillTimer)
+  postExitHardKillTimer = setTimeout(() => {
+    log.warn('Process exit did not terminate — forcing hard exit')
+    hardTerminate(exitCode)
+  }, POST_EXIT_HARD_KILL_MS)
+  postExitHardKillTimer.unref?.()
+  process.exit(exitCode)
+}
 
 /** Tests use this between cases — bun:test has no vi.resetModules equivalent. */
 export function _resetShutdownStateForTests(): void {
   shutdownInProgress = false
   registered = null
+  hardTerminateForTests = null
+  if (postExitHardKillTimer) clearTimeout(postExitHardKillTimer)
+  postExitHardKillTimer = null
+}
+
+export function _setHardTerminateForTests(fn: ((exitCode: number) => void) | null): void {
+  hardTerminateForTests = fn
 }
 
 async function shutdown(signal: string, exitCode = 0): Promise<void> {
@@ -44,7 +80,7 @@ async function shutdown(signal: string, exitCode = 0): Promise<void> {
   // never by itself keeps the loop alive.
   const forceExit = setTimeout(() => {
     log.warn('Graceful shutdown timed out — forcing exit')
-    process.exit(exitCode)
+    hardTerminate(exitCode)
   }, SHUTDOWN_FORCE_EXIT_MS)
   forceExit.unref?.()
 
@@ -91,7 +127,7 @@ async function shutdown(signal: string, exitCode = 0): Promise<void> {
   } finally {
     clearTimeout(forceExit)
     log.info('Shutdown complete')
-    process.exit(exitCode)
+    exitWithHardFallback(exitCode)
   }
 }
 
@@ -104,7 +140,7 @@ export function triggerShutdown(reason: string, exitCode = 1): void {
   void shutdown(reason, exitCode).catch((err) => {
     log.error('Forced shutdown failed — exiting hard', err)
     releaseServerLock()
-    process.exit(exitCode)
+    exitWithHardFallback(exitCode)
   })
 }
 

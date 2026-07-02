@@ -21,6 +21,93 @@ import { isOnboarded } from './onboarding/state'
 import { restartChildCommandName, waitForRestartParentExit } from './server-restart'
 
 const BAKIN_URL = process.env.BAKIN_URL || 'http://localhost:3737'
+const DEV_CHILD_SIGNAL_GRACE_MS = 8000
+
+interface DevChildProcess {
+  killed: boolean
+  kill(signal?: NodeJS.Signals | number): boolean
+  once(event: 'close', listener: (code: number | null, signal: NodeJS.Signals | null) => void): unknown
+  once(event: 'error', listener: (err: Error) => void): unknown
+}
+
+interface DevSignalProcess {
+  on(event: 'SIGINT' | 'SIGTERM', listener: () => void): unknown
+  off(event: 'SIGINT' | 'SIGTERM', listener: () => void): unknown
+}
+
+export function waitForDevChild(
+  proc: DevChildProcess,
+  onError: (err: Error) => Promise<void> | void = () => {},
+  signalProc: DevSignalProcess = process,
+): Promise<number> {
+  return new Promise<number>((resolvePromise) => {
+    let resolved = false
+    let sawError = false
+    let signalCount = 0
+    let forceTimer: ReturnType<typeof setTimeout> | null = null
+
+    const cleanup = () => {
+      signalProc.off('SIGINT', onSigint)
+      signalProc.off('SIGTERM', onSigterm)
+      if (forceTimer) clearTimeout(forceTimer)
+      forceTimer = null
+    }
+    const resolveOnce = (code: number) => {
+      if (resolved) return
+      resolved = true
+      cleanup()
+      resolvePromise(code)
+    }
+    const forceChildExit = () => {
+      if (!proc.killed) proc.kill('SIGKILL')
+    }
+    const onSignal = () => {
+      signalCount++
+      if (signalCount > 1) {
+        forceChildExit()
+        return
+      }
+      // The terminal delivers Ctrl-C to the whole foreground process group, so
+      // the child dev loop has already received this first signal. The parent
+      // handler exists to keep the wrapper alive until the child exits; sending
+      // the first signal again would look like a second Ctrl-C to scripts/dev.ts.
+      forceTimer = setTimeout(forceChildExit, DEV_CHILD_SIGNAL_GRACE_MS)
+      forceTimer.unref?.()
+    }
+    const onSigint = () => onSignal()
+    const onSigterm = () => onSignal()
+
+    signalProc.on('SIGINT', onSigint)
+    signalProc.on('SIGTERM', onSigterm)
+
+    proc.once('close', (code: number | null, signal: NodeJS.Signals | null) => {
+      if (typeof code === 'number') {
+        resolveOnce(code)
+        return
+      }
+      if (signal === 'SIGINT') {
+        resolveOnce(130)
+        return
+      }
+      if (signal === 'SIGTERM') {
+        resolveOnce(143)
+        return
+      }
+      // A spawn failure emits 'error' then 'close(null, null)'. Resolving 0
+      // here would race ahead of the error handler's async failure report and
+      // exit success — leave resolution to the error handler in that case.
+      if (signal) {
+        resolveOnce(1)
+      } else if (!sawError) {
+        resolveOnce(0)
+      }
+    })
+    proc.once('error', (err) => {
+      sawError = true
+      Promise.resolve(onError(err)).finally(() => resolveOnce(1))
+    })
+  })
+}
 
 function invocationCommand(args: string[]): string {
   return args.length > 0 ? `bakin ${args.join(' ')}` : 'bakin'
@@ -207,18 +294,14 @@ export async function cmdDev(devArgs: string[] = process.argv.slice(3)): Promise
 
   const { spawn } = await import('node:child_process')
   const proc = spawn('bun', ['run', devScript, ...devArgs], { stdio: 'inherit', cwd: repoRoot })
-  return await new Promise<number>((resolvePromise) => {
-    proc.once('close', (code: number | null) => resolvePromise(code ?? 0))
-    proc.once('error', async (err) => {
-      const detail = err instanceof Error ? err.message : String(err)
-      await printCommandFailure({
-        command: 'bakin dev',
-        message: 'Failed to spawn dev.',
-        detail,
-        code: 'DEV_SPAWN_FAILED',
-      }, [`Failed to spawn dev: ${detail}`])
-      resolvePromise(1)
-    })
+  return await waitForDevChild(proc, async (err) => {
+    const detail = err instanceof Error ? err.message : String(err)
+    await printCommandFailure({
+      command: 'bakin dev',
+      message: 'Failed to spawn dev.',
+      detail,
+      code: 'DEV_SPAWN_FAILED',
+    }, [`Failed to spawn dev: ${detail}`])
   })
 }
 
