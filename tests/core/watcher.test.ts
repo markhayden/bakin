@@ -121,6 +121,46 @@ describe('watcher', () => {
       // compose with an async resolves, so await directly and assert no throw.
       await stop()
     })
+
+    it('never replays the initial scan through the event pipeline (ignoreInitial)', async () => {
+      // Regression guard: without ignoreInitial, boot fired `add` for every
+      // existing file and the sync hooks REWROTE every indexed row into
+      // antfly — per-boot WAL/enrichment churn that grew the next boot's
+      // catch-up window. Boot state belongs to reconcile/backfill.
+      const chokidar = await import('chokidar')
+      const eventBus = new BakinEventBus(() => {})
+      start({ contentDir: tempDir, eventBus, onInboxFile: mock() })
+
+      const opts = vi.mocked(chokidar.watch).mock.calls[0][1] as { ignoreInitial?: boolean }
+      expect(opts.ignoreInitial).toBe(true)
+    })
+
+    it('sweeps offline drops at start: asset inbox + completion reports', async () => {
+      // The ONLY two paths that legitimately depended on initial-scan adds:
+      // files dropped while Bakin was down.
+      mkdirSync(join(tempDir, 'inbox'), { recursive: true })
+      mkdirSync(join(tempDir, 'assets', 'inbox'), { recursive: true })
+      // Pre-existing indexed content that must NOT fire hooks at boot:
+      mkdirSync(join(tempDir, 'assets', 'store', '2026-07', 'asset-1'), { recursive: true })
+      writeFileSync(join(tempDir, 'assets', 'store', '2026-07', 'asset-1', 'manifest.json'), '{}')
+      writeFileSync(join(tempDir, 'inbox', 'report.json'), JSON.stringify({ type: 'task-complete', title: 'T', agent: 'a' }))
+      writeFileSync(join(tempDir, 'assets', 'inbox', 'dropped.png'), 'binary')
+
+      const seen: string[] = []
+      const unregister = registerSyncHook((rel) => { seen.push(rel) })
+      const onInboxFile = mock()
+      const eventBus = new BakinEventBus(() => {})
+      start({ contentDir: tempDir, eventBus, onInboxFile })
+      // sweep fires hooks fire-and-forget — let them settle
+      await new Promise((r) => setTimeout(r, 20))
+
+      expect(seen).toContain(join('inbox', 'report.json'))
+      expect(seen).toContain(join('assets', 'inbox', 'dropped.png'))
+      // The stored manifest is reconcile territory — no boot hook.
+      expect(seen.some((p) => p.includes('manifest.json'))).toBe(false)
+      expect(onInboxFile).toHaveBeenCalledTimes(1)
+      unregister()
+    })
   })
 
   // -------------------------------------------------------------------------

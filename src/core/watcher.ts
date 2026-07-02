@@ -48,8 +48,8 @@
  * operations like unlink/hot-reload.
  */
 import { watch, type FSWatcher } from 'chokidar'
-import { readFileSync } from 'fs'
-import { relative } from 'path'
+import { readFileSync, readdirSync, statSync } from 'fs'
+import { join, relative } from 'path'
 import { createLogger } from './logger'
 import { broadcast } from './sse'
 import { appendAudit } from './audit'
@@ -211,12 +211,61 @@ function handleFileEvent(deps: WatcherDeps, fullPath: string, event: string): vo
   }
 }
 
+/**
+ * Boot sweep for the ONLY two paths that legitimately depended on chokidar's
+ * initial-scan `add` events: files dropped while Bakin was down.
+ *
+ *   - `assets/inbox/`  — offline asset drops awaiting ingestion
+ *   - `inbox/*.json`   — agent completion reports written while down
+ *
+ * Everything else on disk is covered at boot by the startup reconcile
+ * (file-backed content types) and the memory backfill, so replaying the
+ * initial scan through the sync hooks only produced no-op REWRITES of every
+ * indexed row — each one a WAL entry + enrichment-worker pass + replay/
+ * publish churn in antfly (embeds themselves are skipped by source-hash
+ * when artifacts are intact), inflating every subsequent boot's catch-up
+ * window. And whenever artifacts HAD been lost (the upstream durability
+ * bug), these rewrites re-embedded for real.
+ */
+function sweepOfflineDrops(deps: WatcherDeps): void {
+  for (const dir of ['inbox', join('assets', 'inbox')]) {
+    const full = join(deps.contentDir, dir)
+    let entries: string[]
+    try {
+      entries = readdirSync(full)
+    } catch {
+      continue // dir absent — nothing dropped
+    }
+    for (const name of entries) {
+      if (name.startsWith('.')) continue
+      const fullPath = join(full, name)
+      try {
+        if (!statSync(fullPath).isFile()) continue
+      } catch {
+        continue
+      }
+      handleFileEvent(deps, fullPath, 'add')
+    }
+  }
+}
+
 export function start(deps: WatcherDeps): void {
   watcher = watch(deps.contentDir, {
     ignored: (path: string) => shouldIgnoreContentWatcherPath(deps.contentDir, path),
     persistent: true,
+    // NEVER replay the initial scan through the event pipeline. Without this,
+    // boot emitted `add` for every existing file under ~/.bakin/ and the sync
+    // hooks rewrote every asset/workflow/lesson row into the search index —
+    // unconditionally — flooding antfly with per-boot WAL/enrichment/replay
+    // churn that lengthened its next startup catch-up (and re-embedding for
+    // real whenever stored artifacts had been lost). Boot-state coverage
+    // belongs to the startup reconcile + memory backfill; the two genuine
+    // offline-drop paths are swept explicitly below.
+    ignoreInitial: true,
     awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 50 },
   })
+
+  sweepOfflineDrops(deps)
 
   watcher.on('change', (fullPath: string) => handleFileEvent(deps, fullPath, 'change'))
   watcher.on('add', (fullPath: string) => handleFileEvent(deps, fullPath, 'add'))
