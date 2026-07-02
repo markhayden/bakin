@@ -1,8 +1,24 @@
 import type { Document, QueryResult, ScanOpts, ScannedDocument, TableConfig, TableInfo } from './concepts'
 import type { SearchAdapter } from './index'
 
-async function* scanDocuments(items: ScannedDocument[]): AsyncIterable<ScannedDocument> {
-  for (const item of items) yield item
+/**
+ * Mirrors live antfly scan semantics: WITHOUT a fields projection only keys
+ * come back (empty documents); WITH one, only the projected fields. A mock
+ * that returned full documents un-projected would green-light consumers that
+ * forget to project — the exact bug class this contract exists to prevent.
+ */
+async function* scanDocuments(items: ScannedDocument[], opts?: ScanOpts): AsyncIterable<ScannedDocument> {
+  for (const item of items) {
+    if (!opts?.fields?.length) {
+      yield { key: item.key, document: {} }
+      continue
+    }
+    const projected: Document = {}
+    for (const field of opts.fields) {
+      if (field in item.document) projected[field] = item.document[field]
+    }
+    yield { key: item.key, document: projected }
+  }
 }
 
 export function createMockSearchAdapter(
@@ -102,8 +118,9 @@ export function createMockSearchAdapter(
       }
     },
     multiQuery: async (queries) => Promise.all(queries.map((entry) => adapter.query(entry.table, entry.query))),
-    scan: (table, _opts?: ScanOpts) => scanDocuments(
-      Array.from(docs.get(table)?.entries() ?? []).map(([key, document]) => ({ key, document }))
+    scan: (table, opts?: ScanOpts) => scanDocuments(
+      Array.from(docs.get(table)?.entries() ?? []).map(([key, document]) => ({ key, document })),
+      opts,
     ),
 
     embedder: {

@@ -642,6 +642,11 @@ export class AntflySearchAdapter implements SearchAdapter {
     timeoutMs: number,
   ): Promise<QueryResult> {
     const isCountOnly = (request as Record<string, unknown>).count === true
+    // ACCEPTED TRADE: only faceted queries pay for the companion count.
+    // Plain paginated lists (no facets) keep the server's page-scoped total —
+    // running a count twin on every list/keystroke query would double load
+    // for a number most callers never display. Callers that need a true
+    // total on an un-faceted query can request a facet or count explicitly.
     const wantsCorpusAggregations = !isCountOnly && request.aggregations != null
 
     const companionPromise: Promise<AntflyQueryResponse | undefined> = wantsCorpusAggregations
@@ -742,6 +747,7 @@ export class AntflySearchAdapter implements SearchAdapter {
     }
     const scanRequest = Object.keys(request).length > 0 ? request : undefined
     const rows = scanRequest === undefined ? client.tables.scan(table) : client.tables.scan(table, scanRequest)
+    let keylessRows = 0
     for await (const doc of rows) {
       const record = doc as Record<string, unknown>
       const rowKey = typeof record.key === 'string'
@@ -749,7 +755,16 @@ export class AntflySearchAdapter implements SearchAdapter {
         : typeof record._key === 'string'
           ? record._key
           : ''
-      if (!rowKey) continue
+      if (!rowKey) {
+        // One warn per scan, not per row: silently dropping keyless rows
+        // would shrink dedupe/TTL scans invisibly if the server ever renames
+        // the key field again (live emits `key`; the SDK docs say `_key`).
+        keylessRows += 1
+        if (keylessRows === 1) {
+          this.logger.warn('Antfly scan returned rows without a key field - skipping them', { table })
+        }
+        continue
+      }
       const fields: Record<string, unknown> = { ...record }
       delete fields.key
       delete fields._key

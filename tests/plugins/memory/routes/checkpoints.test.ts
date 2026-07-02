@@ -232,7 +232,11 @@ describe('checkpointDetailRoute — handler', () => {
     expect(res.status).toBe(200)
     expect(body.id).toBe('checkpoint:right1')
     expect(body.title).toBe('hit')
-    expect(h.queryCalls[0].filters).toEqual({ tier: 'checkpoint', agent: 'main' })
+    // Session membership is a filter on the indexed sessionId field — the
+    // full ids only exist in meta (the searchable text carries 8-char
+    // prefixes), so a q-string can never match them.
+    expect(h.queryCalls[0].q).toBe('*')
+    expect(h.queryCalls[0].filters).toEqual({ tier: 'checkpoint', agent: 'main', sessionId: 'sess-1' })
   })
 
   it('returns 404 when no meta entry matches both ids', async () => {

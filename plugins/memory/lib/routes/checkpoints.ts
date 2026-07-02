@@ -79,12 +79,17 @@ export const checkpointDetailRoute = defineRoute({
       )
     }
 
+    // Same rule as the list route: the full ids exist only in the sessionId
+    // field / meta JSON — the searchable text carries 8-char prefixes, so a
+    // q="<sessionId> <checkpointId>" full-text match can never hit. Filter on
+    // the indexed sessionId; the meta post-filter below picks the checkpoint.
     const params: SearchQueryParams = {
-      q: `${sessionId} ${checkpointId}`,
-      filters: { tier: 'checkpoint', agent },
+      q: '*',
+      filters: { tier: 'checkpoint', agent, sessionId },
       limit: 20,
       offset: 0,
       rerank: false,
+      strategy: 'full_text_only',
     }
     const res = await ctx.search.query(params)
     const match = res.results.find((r) => {

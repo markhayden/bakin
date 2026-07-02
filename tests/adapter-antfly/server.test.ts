@@ -356,6 +356,26 @@ describe('Antfly server supervision', () => {
     )
   })
 
+  it('joins concurrent start calls into one spawn (single-flight)', async () => {
+    // A scheduled restart firing while a start is still inside its readiness
+    // window must JOIN it — two concurrent invocations previously let a stale
+    // one's failure path kill the fresh child and disable supervision.
+    let probes = 0
+    ;(globalThis as { fetch: typeof fetch }).fetch = mock(async () => {
+      probes++
+      if (probes === 1) throw new Error('connection refused')
+      return new Response('ok', { status: 200 })
+    }) as unknown as typeof fetch
+
+    const settings = { enabled: true, url: LOCAL_DEFAULT_URL }
+    const p1 = startAntflyServer(settings, logger)
+    const p2 = startAntflyServer(settings, logger)
+
+    expect(await p1).toBe(true)
+    expect(await p2).toBe(true)
+    expect(spawnMock).toHaveBeenCalledTimes(1)
+  })
+
   it('detects a pre-0.2 server via the legacy status signature', async () => {
     ;(globalThis as { fetch: typeof fetch }).fetch = mock(async (input: string | URL | Request) => {
       const url = String(input)
@@ -368,5 +388,102 @@ describe('Antfly server supervision', () => {
       reachable: false,
       legacyServer: true,
     })
+  })
+})
+
+describe('child crash supervision', () => {
+  const settings = { enabled: true, url: LOCAL_DEFAULT_URL }
+  let children: Array<ReturnType<typeof makeCrashableChild>> = []
+
+  // Bun's advanceTimersByTimeAsync only fires timers that exist when it is
+  // called — timers created by the awaited chain need stepped advancing.
+  async function drive(ms: number, step = 500): Promise<void> {
+    for (let t = 0; t < ms; t += step) {
+      await vi.advanceTimersByTimeAsync(step)
+    }
+  }
+
+  function makeCrashableChild() {
+    const { EventEmitter } = require('node:events') as typeof import('node:events')
+    const child = new EventEmitter() as InstanceType<typeof EventEmitter> & {
+      stdout: { on: () => void }
+      stderr: { on: () => void }
+      kill: ReturnType<typeof mock>
+      killed: boolean
+    }
+    child.stdout = { on: () => {} }
+    child.stderr = { on: () => {} }
+    child.killed = false
+    // A SIGTERM'd fake child "dies" one tick later, like a real process.
+    child.kill = mock(() => {
+      child.killed = true
+      setTimeout(() => child.emit('exit', null, 'SIGTERM'), 1)
+      return true
+    })
+    return child
+  }
+
+  beforeEach(async () => {
+    const { _resetChildSupervisionForTests } = await import('../../packages/adapter-antfly/src/server')
+    _resetChildSupervisionForTests()
+    children = []
+    spawnMock.mockImplementation(() => {
+      const child = makeCrashableChild()
+      children.push(child)
+      return child as unknown as typeof fakeChild
+    })
+    // Nothing ever answers: every start takes the spawn path and every
+    // readiness window expires — the crash-loop scenario.
+    ;(globalThis as { fetch: typeof fetch }).fetch = mock(async () => {
+      throw new Error('connection refused')
+    }) as unknown as typeof fetch
+    vi.useFakeTimers()
+  })
+
+  afterEach(async () => {
+    vi.useRealTimers()
+    spawnMock.mockImplementation(() => fakeChild)
+    const { _resetChildSupervisionForTests } = await import('../../packages/adapter-antfly/src/server')
+    _resetChildSupervisionForTests()
+  })
+
+  it('burns restart budget on never-ready children and gives up — no infinite respawn', async () => {
+    // Regression guard: the budget reset used to key off the LAST HEALTHY
+    // start time, so a child that crashed before ever becoming ready (bad
+    // data dir) reset the budget on every crash and respawned at 1s cadence
+    // forever. The reset must key off the dying child's own lifetime.
+    const p = startAntflyServer(settings, logger)
+    // Drive far past every window: initial attempt (~15s readiness) plus the
+    // whole 1s/5s/30s restart ladder, each with its own readiness window.
+    await drive(20_000)
+    expect(await p).toBe(false)
+    await drive(120_000, 1_000)
+
+    // Initial attempt + exactly 3 budgeted restarts. The old budget-reset bug
+    // (keyed off last HEALTHY start, so a never-ready child reset it every
+    // crash) made this grow forever at 1s cadence.
+    expect(children).toHaveLength(4)
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining('crash-looped through every restart attempt'),
+      expect.anything(),
+    )
+
+    await drive(120_000, 2_000)
+    expect(children).toHaveLength(4) // gave up — stays given up
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining('crash-looped through every restart attempt'),
+      expect.anything(),
+    )
+  })
+
+  it('a requested stop cancels any pending restart', async () => {
+    const p = startAntflyServer(settings, logger)
+    await drive(20_000)
+    expect(await p).toBe(false)
+
+    stopAntflyServer(logger)
+    const spawnsAtStop = children.length
+    await drive(120_000, 2_000)
+    expect(children).toHaveLength(spawnsAtStop) // restart ladder cancelled
   })
 })

@@ -63,17 +63,46 @@ export interface IndexerOptions {
 export class MemoryIndexer {
   private indexedUpdatedAt: Map<string, number> | null = null
   private indexedUpdatedAtLoad: Promise<void> | null = null
+  private backfillInFlight: Promise<void> | null = null
+  private rewriteAllActive = false
 
   constructor(
     private readonly ctx: PluginContext,
     private readonly opts: IndexerOptions = {},
   ) {}
 
-  async backfill(tiers: readonly MemoryTier[] = []): Promise<void> {
-    log.debug('backfill requested', { tiers, opts: this.opts })
+  /**
+   * Index the given tiers. Whole-corpus passes SERIALIZE: overlapping runs
+   * (boot backfill racing an explicit reindex) would interleave offset resets
+   * with in-flight offset advances and share the chunk-count maps.
+   *
+   * `rewriteAll` bypasses the indexed-updatedAt dedupe for this pass —
+   * reindex means "rewrite every row" (repairing drifted/corrupt row content),
+   * not just "fill in what's missing".
+   */
+  async backfill(tiers: readonly MemoryTier[] = [], opts?: { rewriteAll?: boolean }): Promise<void> {
+    while (this.backfillInFlight) {
+      await this.backfillInFlight.catch(() => {})
+    }
+    const run = this.runBackfill(tiers, opts?.rewriteAll === true)
+    this.backfillInFlight = run
+    try {
+      await run
+    } finally {
+      if (this.backfillInFlight === run) this.backfillInFlight = null
+    }
+  }
+
+  private async runBackfill(tiers: readonly MemoryTier[], rewriteAll: boolean): Promise<void> {
+    log.debug('backfill requested', { tiers, rewriteAll, opts: this.opts })
     await this.ensureIndexedUpdatedAt()
-    for (const tier of tiers) {
-      await this.indexTier(tier)
+    this.rewriteAllActive = rewriteAll
+    try {
+      for (const tier of tiers) {
+        await this.indexTier(tier)
+      }
+    } finally {
+      this.rewriteAllActive = false
     }
   }
 
@@ -723,7 +752,7 @@ export class MemoryIndexer {
     if (this.isExpired(row)) return
     const indexedUpdatedAt = await this.ensureIndexedUpdatedAt()
     const existingUpdatedAt = indexedUpdatedAt.get(row.id)
-    if (existingUpdatedAt !== undefined && existingUpdatedAt >= row.updatedAt) return
+    if (!this.rewriteAllActive && existingUpdatedAt !== undefined && existingUpdatedAt >= row.updatedAt) return
     const doc: Record<string, unknown> = {
       tier: row.tier,
       agent: row.agent,

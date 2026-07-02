@@ -237,6 +237,10 @@ function equalityMatches(raw: unknown, expected: unknown): boolean {
   if (raw === null || raw === undefined) return false
   if (Array.isArray(raw)) return raw.some((entry) => equalityMatches(entry, expected))
   if (typeof raw === 'number' || typeof expected === 'number') return Number(raw) === Number(expected)
+  // Case-insensitive to mirror the server: match_phrase analyzes BOTH sides
+  // (live-verified: 'main'/'Main'/'MAIN' all match a stored 'Main'), so the
+  // client check must agree or eq/neq results diverge between the filtered
+  // full-text lane and the post-filtered semantic lane.
   return String(raw).toLowerCase() === String(expected).toLowerCase()
 }
 

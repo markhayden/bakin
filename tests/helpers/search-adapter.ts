@@ -17,8 +17,23 @@ type AppServicesGlobal = typeof globalThis & {
   __bakinAppServices?: { search: SearchAdapter }
 }
 
-async function* scanDocuments(items: ScannedDocument[]): AsyncIterable<ScannedDocument> {
-  for (const item of items) yield item
+/**
+ * Mirrors live antfly scan semantics: keys-only without a fields projection,
+ * projected fields only with one — so a consumer that forgets to project
+ * fails here the same way it fails live.
+ */
+async function* scanDocuments(items: ScannedDocument[], opts?: ScanOpts): AsyncIterable<ScannedDocument> {
+  for (const item of items) {
+    if (!opts?.fields?.length) {
+      yield { key: item.key, document: {} }
+      continue
+    }
+    const projected: Document = {}
+    for (const field of opts.fields) {
+      if (field in item.document) projected[field] = item.document[field]
+    }
+    yield { key: item.key, document: projected }
+  }
 }
 
 export function installSearchAdapter(adapter: SearchAdapter): void {
@@ -127,8 +142,11 @@ export function createSearchAdapterHarness() {
   const multiQuery = mock(async (queries: Array<{ table: string; query: Query }>): Promise<QueryResult[]> => (
     Promise.all(queries.map((entry) => adapter.query(entry.table, entry.query)))
   ))
-  const scan = mock((table: string, _opts?: ScanOpts): AsyncIterable<ScannedDocument> => (
-    scanDocuments(scanItems.get(table) ?? Array.from(docs.get(table)?.entries() ?? []).map(([key, document]) => ({ key, document })))
+  const scan = mock((table: string, opts?: ScanOpts): AsyncIterable<ScannedDocument> => (
+    scanDocuments(
+      scanItems.get(table) ?? Array.from(docs.get(table)?.entries() ?? []).map(([key, document]) => ({ key, document })),
+      opts,
+    )
   ))
 
   const embedderHasChanged = mock(async () => false)

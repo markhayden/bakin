@@ -33,12 +33,17 @@ let exitHookRegistered = false
 // own-child stayed dead (queries fail-empty, writes dropped) until a manual
 // server restart.
 let childStopRequested = false
-let childStartedAtMs = 0
 let childRestartAttempts = 0
 let childRestartTimer: NodeJS.Timeout | null = null
+// Single-flight guard: a scheduled restart must JOIN an in-flight start, not
+// spawn a second child alongside it — two concurrent invocations previously
+// let a stale one's failure path kill the fresh child and disable supervision.
+let startInFlight: Promise<boolean> | null = null
 const CHILD_RESTART_DELAYS_MS: readonly number[] = [1000, 5000, 30_000]
-// A child that survived this long before dying gets a fresh restart budget —
-// only rapid crash-loops exhaust the attempts.
+// A child that ITSELF survived this long before dying gets a fresh restart
+// budget — only rapid crash-loops exhaust the attempts. Measured from the
+// dying child's own spawn time, never from the last healthy start: a child
+// that crashes before ever becoming ready must burn budget, not reset it.
 const CHILD_STABLE_MS = 60_000
 
 /**
@@ -68,8 +73,8 @@ export function _resetExitHookForTests(): void {
 /** Tests use this between cases — supervision state is module-global. */
 export function _resetChildSupervisionForTests(): void {
   childStopRequested = false
-  childStartedAtMs = 0
   childRestartAttempts = 0
+  startInFlight = null
   if (childRestartTimer) {
     clearTimeout(childRestartTimer)
     childRestartTimer = null
@@ -177,6 +182,20 @@ export async function startAntflyServer(
   settings: AntflyServerSettings,
   logger: AdapterLogger = noopLogger,
 ): Promise<boolean> {
+  // Single-flight: concurrent callers (adapter init, restart supervision,
+  // takeover recheck) join the in-flight attempt instead of racing spawns.
+  if (startInFlight) return startInFlight
+  const attempt = startAntflyServerInner(settings, logger).finally(() => {
+    startInFlight = null
+  })
+  startInFlight = attempt
+  return attempt
+}
+
+async function startAntflyServerInner(
+  settings: AntflyServerSettings,
+  logger: AdapterLogger = noopLogger,
+): Promise<boolean> {
   if (!settings.enabled) {
     logger.info('Antfly disabled - skipping server start')
     return false
@@ -274,6 +293,7 @@ export async function startAntflyServer(
 
   try {
     childStopRequested = false
+    const spawnedAtMs = Date.now()
     antflyProcess = spawn(binary, [
       'swarm',
       '--host', '127.0.0.1',
@@ -302,18 +322,22 @@ export async function startAntflyServer(
       stderrLogs.push(data)
     })
 
+    const thisChild = antflyProcess
     antflyProcess.on('exit', (code, signal) => {
       stdoutLogs.flush()
       stderrLogs.flush()
       isRunning = false
-      antflyProcess = null
+      if (antflyProcess === thisChild) antflyProcess = null
       clearRecheckTimer()
       if (childStopRequested) {
         logger.info('Antfly stopped', { code, signal })
         return
       }
       logger.error('Antfly exited unexpectedly', { code, signal })
-      scheduleChildRestart(settings, logger)
+      // Budget resets only when THIS child proved stable before dying — a
+      // child that never became ready must burn budget, or a bad data dir
+      // would respawn at 1s cadence forever.
+      scheduleChildRestart(settings, logger, Date.now() - spawnedAtMs)
     })
 
     antflyProcess.on('error', (err) => {
@@ -324,17 +348,42 @@ export async function startAntflyServer(
     const ready = await waitForReady(url)
     if (ready) {
       isRunning = true
-      childStartedAtMs = Date.now()
       logger.info('Antfly server started and healthy', { url })
       return true
     }
 
     logger.error('Antfly started but failed readiness check within timeout')
-    stopAntflyServer(logger)
+    // Kill ONLY the child this attempt spawned, and WITHOUT flipping
+    // childStopRequested — this is a failure, not a requested stop, so its
+    // exit handler still runs the bounded restart ladder. stopAntflyServer()
+    // here would mark the exit as intentional and permanently disable
+    // supervision (and under a racing restart it killed the fresh child).
+    killChildScoped(thisChild, logger)
     return false
   } catch (err) {
     logger.error('Failed to start Antfly server', err)
     return false
+  }
+}
+
+/** SIGTERM (then SIGKILL) exactly one child, leaving supervision state alone. */
+function killChildScoped(child: ChildProcess, logger: AdapterLogger): void {
+  let exited = false
+  try {
+    child.kill('SIGTERM')
+    const forceTimer = setTimeout(() => {
+      if (!exited) {
+        logger.warn('Force killing unready Antfly child')
+        child.kill('SIGKILL')
+      }
+    }, 5000)
+    forceTimer.unref?.()
+    child.once('exit', () => {
+      exited = true
+      clearTimeout(forceTimer)
+    })
+  } catch (err) {
+    logger.warn('Error killing unready Antfly child', err)
   }
 }
 
@@ -412,10 +461,15 @@ async function servesValidAntflyStatus(url: string): Promise<boolean> {
 }
 
 async function waitForReady(url: string, timeoutMs = 15000, stableChecks = 1): Promise<boolean> {
+  const pollMs = 500
+  // Bounded by BOTH wall clock and poll count: the wall clock caps slow-probe
+  // real time; the poll count keeps the loop finite under mocked timers
+  // (where Date.now barely advances while sleeps fire instantly).
+  const maxPolls = Math.max(1, Math.ceil(timeoutMs / pollMs))
   const start = Date.now()
   let consecutiveReadyChecks = 0
 
-  while (Date.now() - start < timeoutMs) {
+  for (let i = 0; i < maxPolls && Date.now() - start < timeoutMs * 2; i++) {
     if (await isAlreadyRunning(url)) {
       consecutiveReadyChecks += 1
       if (consecutiveReadyChecks >= stableChecks) return true
@@ -423,7 +477,7 @@ async function waitForReady(url: string, timeoutMs = 15000, stableChecks = 1): P
       consecutiveReadyChecks = 0
     }
 
-    await sleep(500)
+    await sleep(pollMs)
   }
 
   return false
@@ -436,9 +490,9 @@ function clearRecheckTimer(): void {
   }
 }
 
-function scheduleChildRestart(settings: AntflyServerSettings, logger: AdapterLogger): void {
+function scheduleChildRestart(settings: AntflyServerSettings, logger: AdapterLogger, childLifetimeMs: number): void {
   if (childRestartTimer) return
-  if (Date.now() - childStartedAtMs >= CHILD_STABLE_MS) childRestartAttempts = 0
+  if (childLifetimeMs >= CHILD_STABLE_MS) childRestartAttempts = 0
   if (childRestartAttempts >= CHILD_RESTART_DELAYS_MS.length) {
     logger.error(
       'Antfly crash-looped through every restart attempt - search stays unavailable until `bakin restart`. Check ~/.bakin/logs/server.log for the antfly crash output.',
@@ -454,10 +508,13 @@ function scheduleChildRestart(settings: AntflyServerSettings, logger: AdapterLog
     if (childStopRequested || antflyProcess) return
     try {
       const ok = await startAntflyServer(settings, logger)
-      if (!ok) scheduleChildRestart(settings, logger)
+      // A failed attempt burns budget (lifetime 0). If the attempt spawned a
+      // child that then died, its exit handler also tries to schedule — the
+      // childRestartTimer guard makes that a no-op.
+      if (!ok) scheduleChildRestart(settings, logger, 0)
     } catch (err) {
       logger.error('Antfly restart attempt failed', err)
-      scheduleChildRestart(settings, logger)
+      scheduleChildRestart(settings, logger, 0)
     }
   }, delayMs)
   childRestartTimer.unref?.()

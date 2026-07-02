@@ -214,13 +214,16 @@ const memoryPlugin: BakinPlugin = definePlugin({
         // Memory rows are derived from source files through the indexer
         // (per-tier parsers, TTL filters, persisted byte offsets) rather than
         // a stream of {key, doc} rows, so a reindex resets the incremental
-        // state and re-runs the full backfill; rows are written directly via
-        // ctx.search.index as a side effect and nothing is yielded. Without
+        // state and re-derives everything, REWRITING every row (rewriteAll
+        // bypasses the write dedupe — a reindex must repair drifted row
+        // content, not just fill gaps). Rows are written directly via
+        // ctx.search.index as a side effect and nothing is yielded, so the
+        // reindex progress UI reports 0 for this table by design. Without
         // this, `bakin reindex` could never repopulate bakin_memory after a
         // table loss.
         resetAllOffsets()
         indexer.invalidateIndexedCache()
-        await indexer.backfill(MEMORY_BACKFILL_TIERS)
+        await indexer.backfill(MEMORY_BACKFILL_TIERS, { rewriteAll: true })
       },
       verifyExists: async () => true,
     })

@@ -49,7 +49,10 @@ function exitWithHardFallback(exitCode: number): void {
     log.warn('Process exit did not terminate — forcing hard exit')
     hardTerminate(exitCode)
   }, POST_EXIT_HARD_KILL_MS)
-  postExitHardKillTimer.unref?.()
+  // Deliberately NOT unref'd — same reasoning as dev-shutdown's backstop:
+  // this timer's only job is to fire when Bun's process.exit() wedges on a
+  // live child/native handle, and an unref'd timer may never run in that
+  // state. In the normal path process.exit() terminates before it matters.
   process.exit(exitCode)
 }
 
