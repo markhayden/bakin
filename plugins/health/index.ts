@@ -234,12 +234,11 @@ const routes = [
     description: 'Returns search adapter readiness and per-table index stats.',
     responses: { 200: searchStatusResponse },
     handler: async (_req, ctx) => {
-      const health = ctx.search.health ? await ctx.search.health() : { enabled: false, tables: [] }
-      // Definitive query-path warm signal ('cold' | 'warming' | 'warm') so the
-      // UI can show "search warming up" instead of users hitting cold-compile
-      // dead queries on boot.
-      const { getSearchWarmState } = await import('../../src/core/search-warmup')
-      return Response.json({ ...health, warm: getSearchWarmState() })
+      // The snapshot carries the query-path warm signal ('cold' | 'warming' |
+      // 'warm') so the UI can show "search warming up" instead of users
+      // hitting cold-compile dead queries on boot.
+      const health = ctx.search.health ? await ctx.search.health() : { enabled: false, warm: 'cold' as const, tables: [] }
+      return Response.json(health)
     },
   }),
 

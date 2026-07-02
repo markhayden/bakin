@@ -248,6 +248,11 @@ export interface SearchHealthTable {
 /** Health snapshot reported by the search adapter (per-table state). */
 export interface SearchHealthSnapshot {
   enabled: boolean
+  /**
+   * Query-embedding warm state for the boot window ('cold' | 'warming' |
+   * 'warm'). Display-only UX signal — never gate query dispatch on it.
+   */
+  warm?: 'cold' | 'warming' | 'warm'
   tables: SearchHealthTable[]
 }
 

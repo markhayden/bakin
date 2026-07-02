@@ -6,7 +6,7 @@
 import { join } from 'node:path'
 import { statSync } from 'node:fs'
 import { getContentDir } from '../../../src/core/content-dir'
-import { MTIME_FIELD } from '../../../src/core/search-reconcile'
+import { MTIME_FIELD } from '@bakin/core/adapters/search'
 import { isValidAssetId, yearMonthFromAssetId } from './asset-id'
 import { extractAssetContent } from './content-extractor'
 import { buildAssetFileUrl } from './asset-url'

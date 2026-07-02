@@ -90,6 +90,8 @@ export interface SearchAdapterSetup {
   readonly models?: SearchAdapterSetupComponent
 }
 
+export { MTIME_FIELD } from './concepts'
+
 export type {
   AggregationRequest,
   BatchResult,

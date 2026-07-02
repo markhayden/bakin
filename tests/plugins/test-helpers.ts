@@ -188,7 +188,7 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
           source: 'fallback' as const,
         },
       })),
-      health: vi.fn(async () => ({ enabled: false, tables: [] })),
+      health: vi.fn(async () => ({ enabled: false, warm: 'cold' as const, tables: [] })),
     },
     hooks: {
       register: vi.fn(() => () => {}),

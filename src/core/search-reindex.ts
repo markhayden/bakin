@@ -243,9 +243,13 @@ export async function getSearchHealth(): Promise<SearchHealthSnapshot> {
   const registry = getRegistry()
   const search = getSearchAdapter()
   const isAvailable = await search.available()
+  // Query-path warm signal rides the snapshot so plugins (health page, search
+  // bars) read it via ctx.search.health() instead of deep-importing core.
+  const { getSearchWarmState } = await import('./search-warmup')
+  const warm = getSearchWarmState()
 
   if (!isAvailable) {
-    return { enabled: false, tables: [] }
+    return { enabled: false, warm, tables: [] }
   }
 
   const tables: Array<{
@@ -275,5 +279,5 @@ export async function getSearchHealth(): Promise<SearchHealthSnapshot> {
     tables.push({ table: tableName, pluginId: def.pluginId, stats, indexHealth, healthy })
   }
 
-  return { enabled: true, tables }
+  return { enabled: true, warm, tables }
 }

@@ -143,6 +143,13 @@ export interface ScanOpts {
   fields?: string[]
 }
 
+/**
+ * Reserved document field carrying the source freshness stamp (fs mtime or a
+ * stable content token) that startup reconcile compares to skip unchanged
+ * docs. Plugins that build search docs directly may stamp it themselves.
+ */
+export const MTIME_FIELD = '_mtime_ms'
+
 export interface ScannedDocument {
   key: string
   document: Document

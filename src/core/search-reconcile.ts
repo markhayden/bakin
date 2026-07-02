@@ -31,7 +31,8 @@ import { createLogger } from './logger'
 const log = createLogger('search-reconcile')
 
 /** Field name used to store filesystem mtime alongside indexed docs. */
-export const MTIME_FIELD = '_mtime_ms'
+import { MTIME_FIELD } from '../../packages/core/src/adapters/search/concepts'
+export { MTIME_FIELD }
 
 // ---------------------------------------------------------------------------
 // Glob matching — minimal subset sufficient for filePatterns

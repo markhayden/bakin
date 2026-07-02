@@ -916,6 +916,44 @@ describe('search-registry', () => {
     expect(result.meta.source).toBe('search')
   })
 
+  it('crossTableSearch paginates the merged ordering and merges facet buckets', async () => {
+    const api1 = buildSearchAPI('tasks')
+    api1.registerContentType(makeDef('tasks'))
+    const api2 = buildSearchAPI('assets')
+    api2.registerContentType(makeDef('assets'))
+
+    searchHarness.calls.multiQuery.mockResolvedValue([
+      {
+        hits: [
+          { key: 't1', document: {}, score: 0.9 },
+          { key: 't2', document: {}, score: 0.7 },
+        ],
+        total: 2,
+        facets: { kind: [{ value: 'doc', count: 2 }] },
+        diagnostics: { strategy: 'hybrid', durationMs: 5 },
+      },
+      {
+        hits: [{ key: 'a1', document: {}, score: 0.8 }],
+        total: 1,
+        facets: { kind: [{ value: 'doc', count: 1 }, { value: 'image', count: 1 }] },
+        diagnostics: { strategy: 'hybrid', durationMs: 4 },
+      },
+    ])
+
+    const result = await crossTableSearch('hello', { limit: 2, offset: 1, facets: ['kind'] })
+
+    // Candidate pool covers the page window (limit + offset) per table, and
+    // facets ride each per-table query.
+    expect(searchHarness.calls.multiQuery).toHaveBeenCalledWith([
+      expect.objectContaining({ query: expect.objectContaining({ limit: 3, facets: ['kind'] }) }),
+      expect.objectContaining({ query: expect.objectContaining({ limit: 3, facets: ['kind'] }) }),
+    ])
+    // Merged ordering: t1 (0.9), a1 (0.8), t2 (0.7) → offset 1, limit 2.
+    expect(result.results.map((r) => r.id)).toEqual(['a1', 't2'])
+    // Facet buckets sum across tables.
+    expect(result.aggregations).toEqual({ kind: [{ value: 'doc', count: 3 }, { value: 'image', count: 1 }] })
+  })
+
   // ── getSearchHealth with index health (#74) ────────────────────────
 
   it('getSearchHealth includes indexHealth when available', async () => {

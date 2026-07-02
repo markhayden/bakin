@@ -78,19 +78,24 @@ export async function crossTableSearch(q: string, opts?: {
     return { results: [], meta: { query: q, total: 0, took_ms: 0, source: 'search' } }
   }
 
-  // Ask each table for up to the FULL limit, not limit/tables. The merge below
-  // already takes the global top-N by score, so a per-table cap of 1 (the old
-  // ceil(limit/tables)) forced "best hit from every table" instead of "best N
-  // overall" — diluting a query that's only relevant to one table with one weak
-  // hit from each of the others. A table can contribute at most `limit` to the
-  // global top-`limit`, so `limit` is the correct, sufficient candidate pool.
-  const perTableLimit = limit
+  // Ask each table for up to the FULL page window (limit + offset), not
+  // limit/tables. The merge below already takes the global top-N by score, so
+  // a per-table cap of 1 (the old ceil(limit/tables)) forced "best hit from
+  // every table" instead of "best N overall" — diluting a query that's only
+  // relevant to one table with one weak hit from each of the others. A table
+  // can contribute at most the whole page window to the merged top, so
+  // limit + offset is the correct, sufficient candidate pool.
+  const offset = Math.max(0, opts?.offset ?? 0)
+  const perTableLimit = limit + offset
+  const facets = opts?.facets
   const results = await search.multiQuery(tables.map((table) => ({
     table,
     query: {
       text: q,
       limit: perTableLimit,
       filters: filtersFromRecord(opts?.filters),
+      // Facets merge across tables below; only request them when asked.
+      ...(facets && facets.length > 0 ? { facets } : {}),
       adapterOptions: {
         indexes: getIndexNames(table),
         rerankField: getRerankField(table),
@@ -99,11 +104,15 @@ export async function crossTableSearch(q: string, opts?: {
       },
     },
   })))
+  // NOTE: per-table scores come from each table's own fusion config, so this
+  // comparison is approximate — good enough for a global search box, not a
+  // calibrated ranking. Offset paginates the merged ordering.
   const hits = results.flatMap((result, index) => result.hits.map((hit) => adapterHitToPluginResult(hit, tables[index])))
     .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
+    .slice(offset, offset + limit)
   return {
     results: hits,
+    ...(facets && facets.length > 0 ? { aggregations: mapFacetCounts(mergeFacetCounts(results)) } : {}),
     meta: {
       query: q,
       total: results.reduce((sum, result) => sum + (result.total ?? result.hits.length), 0),
@@ -111,4 +120,28 @@ export async function crossTableSearch(q: string, opts?: {
       source: 'search',
     },
   }
+}
+
+type AdapterFacets = NonNullable<Awaited<ReturnType<ReturnType<typeof getSearchAdapter>['query']>>['facets']>
+
+/** Sum per-table facet buckets into one cross-table facet map. */
+function mergeFacetCounts(results: Array<{ facets?: AdapterFacets }>): AdapterFacets | undefined {
+  const merged = new Map<string, Map<string | number | boolean, number>>()
+  for (const result of results) {
+    for (const [field, counts] of Object.entries(result.facets ?? {})) {
+      const bucket = merged.get(field) ?? new Map<string | number | boolean, number>()
+      for (const { value, count } of counts) {
+        bucket.set(value, (bucket.get(value) ?? 0) + count)
+      }
+      merged.set(field, bucket)
+    }
+  }
+  if (merged.size === 0) return undefined
+  const out: AdapterFacets = {}
+  for (const [field, bucket] of merged) {
+    out[field] = Array.from(bucket.entries())
+      .map(([value, count]) => ({ value, count }))
+      .sort((a, b) => b.count - a.count)
+  }
+  return out
 }
