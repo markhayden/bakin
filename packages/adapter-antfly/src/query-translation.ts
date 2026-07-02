@@ -17,6 +17,13 @@ import type { AntflySettings } from './defaults'
 
 export function buildQueryRequest(table: string, q: Query, settings: AntflySettings): QueryRequest {
   const strategy = resolveStrategy(q.strategy, settings)
+  const text = typeof q.text === 'string' ? q.text : ''
+  const trimmedText = text.trim()
+  const filterQuery = buildFilterQuery(q)
+  const aggregations = buildAggregations(q)
+  const isMatchAllText = trimmedText === '*'
+  const shouldMatchAll = isMatchAllText || (trimmedText.length === 0 && (filterQuery != null || aggregations != null))
+  const effectiveStrategy = shouldMatchAll ? 'full_text_only' : strategy
   const request: QueryRequest = {
     table,
     limit: q.limit ?? settings.search.defaultLimit,
@@ -25,11 +32,16 @@ export function buildQueryRequest(table: string, q: Query, settings: AntflySetti
   // for semantic_search due to vector index limitations." Sending it on a
   // hybrid/semantic request is an unsupported wire parameter, so only attach it
   // when the resolved strategy is full-text-only.
-  if (q.offset != null && strategy === 'full_text_only') {
+  if (q.offset != null && effectiveStrategy === 'full_text_only') {
     request.offset = q.offset
   }
 
-  if (q.text && strategy !== 'semantic_only') {
+  if (shouldMatchAll) {
+    // Bakin uses `q: '*'` and blank filtered/faceted queries for list/count
+    // flows. Antfly's AST has an explicit MatchAllQuery; do not field-scope
+    // `*` into a literal MatchQuery, and do not ask semantic search to embed it.
+    request.full_text_search = { match_all: {} } as QueryRequest['full_text_search']
+  } else if (trimmedText.length > 0 && effectiveStrategy !== 'semantic_only') {
     // The full-text leg MUST be field-scoped. A bare `{query: text}` resolves
     // against a default/_all field that antfly does not populate, so it matches
     // NOTHING (BM25 always 0, the keyword leg silently dead). Build a
@@ -38,13 +50,13 @@ export function buildQueryRequest(table: string, q: Query, settings: AntflySetti
     // fields are unknown.
     const searchableFields = readStringArray(q.adapterOptions?.searchableFields)
     request.full_text_search = (searchableFields && searchableFields.length > 0)
-      ? buildFieldScopedFullTextSearch(q.text, searchableFields)
-      : { query: q.text } as QueryRequest['full_text_search']
+      ? buildFieldScopedFullTextSearch(text, searchableFields)
+      : { query: text } as QueryRequest['full_text_search']
   }
-  if (q.text && strategy !== 'full_text_only') {
+  if (trimmedText.length > 0 && !isMatchAllText && effectiveStrategy !== 'full_text_only') {
     // v0.2: `indexes` is the list of vector indexes for semantic search and
     // is only meaningful alongside `semantic_search`.
-    request.semantic_search = q.text
+    request.semantic_search = text
     request.indexes = resolveIndexNames(q)
     // Per-index fusion weights (e.g. favor a multimodal table's visual index
     // over its noisier text-embedding index). antfly fuses per-bucket by
@@ -54,10 +66,8 @@ export function buildQueryRequest(table: string, q: Query, settings: AntflySetti
       request.merge_config = { strategy: 'rrf', weights: indexWeights } as unknown as QueryRequest['merge_config']
     }
   }
-  const filterQuery = buildFilterQuery(q)
   if (filterQuery) request.filter_query = { query: filterQuery } as QueryRequest['filter_query']
 
-  const aggregations = buildAggregations(q)
   if (aggregations) request.aggregations = aggregations as QueryRequest['aggregations']
 
   const reranker = buildRerankerConfig(q, settings)

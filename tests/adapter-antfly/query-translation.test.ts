@@ -54,6 +54,37 @@ describe('buildQueryRequest — full-text AST shape (bakin#456 item 1)', () => {
     const req = buildQueryRequest('bakin_tasks', q, settings)
     expect((req.full_text_search as Record<string, unknown>).bool).toBeUndefined()
   })
+
+  it('maps q:* to explicit MatchAllQuery even when searchable fields are configured', () => {
+    const q: Query = { text: '*', strategy: 'fts', adapterOptions: { searchableFields: ['title', 'body'] } }
+    const req = buildQueryRequest('bakin_memory', q, settings)
+    expect(req.full_text_search).toEqual({ match_all: {} })
+  })
+
+  it('maps blank filter-only queries to MatchAllQuery plus filter_query', () => {
+    const q: Query = {
+      text: '',
+      strategy: 'fts',
+      filters: [{ field: 'tier', op: 'eq', value: 'turn' }],
+    }
+    const req = buildQueryRequest('bakin_memory', q, settings)
+    expect(req.full_text_search).toEqual({ match_all: {} })
+    expect(req.filter_query).toEqual({ query: '+tier:turn' })
+  })
+
+  it('maps blank facet-only queries to MatchAllQuery plus aggregations', () => {
+    const q: Query = { text: '', strategy: 'fts', facets: ['agent'] }
+    const req = buildQueryRequest('bakin_memory', q, settings)
+    expect(req.full_text_search).toEqual({ match_all: {} })
+    expect(req.aggregations).toEqual({ agent: { type: 'terms', field: 'agent', size: 50 } })
+  })
+
+  it('leaves a blank no-criteria query without a search leg', () => {
+    const q: Query = { text: '', strategy: 'fts' }
+    const req = buildQueryRequest('bakin_memory', q, settings)
+    expect(req.full_text_search).toBeUndefined()
+    expect(req.semantic_search).toBeUndefined()
+  })
 })
 
 describe('buildQueryRequest — offset is full-text-only (v0.2 contract)', () => {

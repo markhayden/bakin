@@ -400,6 +400,35 @@ describe('AntflySearchAdapter', () => {
     expect(mockTablesQuery).not.toHaveBeenCalled()
   })
 
+  it('sends filter-only empty text queries as match-all searches', async () => {
+    const adapter = await createInitializedAdapter()
+    mockTablesQuery.mockClear()
+
+    await adapter.query('bakin_memory', {
+      text: '',
+      strategy: 'fts',
+      filters: [{ field: 'tier', op: 'eq', value: 'turn' }],
+      facets: ['agent'],
+    })
+
+    expect(mockTablesQuery).toHaveBeenCalledTimes(1)
+    const request = tableQueryRequest() as Record<string, unknown>
+    expect(request.full_text_search).toEqual({ match_all: {} })
+    expect(request.filter_query).toEqual({ query: '+tier:turn' })
+    expect(request.aggregations).toEqual({ agent: { type: 'terms', field: 'agent', size: 50 } })
+  })
+
+  it('still returns empty for a blank no-criteria query without calling antfly', async () => {
+    const adapter = await createInitializedAdapter()
+    mockTablesQuery.mockClear()
+
+    const result = await adapter.query('bakin_memory', { text: '', strategy: 'fts' })
+
+    expect(result.hits).toEqual([])
+    expect(result.total).toBe(0)
+    expect(mockTablesQuery).not.toHaveBeenCalled()
+  })
+
   it('refuses to run on a pre-0.2 @antfly/sdk (stale node_modules guard)', async () => {
     // Field-verified failure mode: a checkout that skipped `bun install`
     // still loads the old npm SDK, whose calls 404 into "Failed to parse

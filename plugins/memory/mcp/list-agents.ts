@@ -28,11 +28,12 @@ export function createMemoryListAgentsTool(ctx: PluginContext): ExecToolDefiniti
         MEMORY_TIERS.map(async (tier) => {
           try {
             const res = await ctx.search.query({
-              q: '',
+              q: '*',
               filters: { tier },
               limit: 0,
               offset: 0,
               rerank: false,
+              strategy: 'full_text_only',
               facets: ['agent'],
             })
             const agg = res.aggregations?.agent ?? []

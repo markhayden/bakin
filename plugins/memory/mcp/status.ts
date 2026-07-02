@@ -36,11 +36,12 @@ export function createMemoryStatusTool(ctx: PluginContext): ExecToolDefinition {
         MEMORY_TIERS.map(async (tier) => {
           try {
             const res = await ctx.search.query({
-              q: '',
+              q: '*',
               filters: { tier },
               limit: 0,
               offset: 0,
               rerank: false,
+              strategy: 'full_text_only',
             })
             return [tier, res.meta?.total ?? 0] as const
           } catch {

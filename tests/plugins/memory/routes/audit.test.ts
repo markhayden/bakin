@@ -131,6 +131,8 @@ describe('auditRoute — handler', () => {
     expect(recorder.calls).toHaveLength(1)
     const call = recorder.calls[0]
     expect(call.filters?.tier).toBe('audit')
+    expect(call.q).toBe('*')
+    expect(call.strategy).toBe('full_text_only')
   })
 
   it('passes agent filter when ?agent= is set', async () => {

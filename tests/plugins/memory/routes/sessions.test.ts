@@ -311,6 +311,8 @@ describe('turnsListRoute — handler', () => {
       {} as any,
     )
     expect(h.queryCalls[0].filters).toEqual({ tier: 'turn', agent: 'chef' })
+    expect(h.queryCalls[0].q).toBe('sess-a')
+    expect(h.queryCalls[0].strategy).toBe('full_text_only')
   })
 
   it('returns 400 when agent or sessionId missing', async () => {

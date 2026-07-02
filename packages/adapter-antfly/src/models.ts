@@ -119,7 +119,7 @@ interface MissingEntry {
   reason: string
 }
 
-function missingModelEntries(models: InferenceModel[] = REQUIRED_MODELS): MissingEntry[] {
+function missingModelEntries(models: InferenceModel[]): MissingEntry[] {
   const out: MissingEntry[] = []
   for (const m of models) {
     const result = modelComplete(m)
@@ -128,11 +128,31 @@ function missingModelEntries(models: InferenceModel[] = REQUIRED_MODELS): Missin
   return out
 }
 
-function missingModels(models: InferenceModel[] = REQUIRED_MODELS): InferenceModel[] {
+function missingModels(models: InferenceModel[]): InferenceModel[] {
   return missingModelEntries(models).map((e) => e.model)
 }
 
-export async function checkInferenceModels(models: InferenceModel[] = REQUIRED_MODELS) {
+/**
+ * Impact statement for a set of missing models, split by kind: a missing
+ * embedder degrades semantic indexing/search, but a missing reranker only
+ * disables reranking — saying "semantic indexing is degraded" for the latter
+ * sends users chasing the wrong repair (bakin follow-up review, finding 6).
+ */
+export function describeMissingModels(missing: InferenceModel[]): { impact: string; remediation: string } {
+  const embeddersMissing = missing.some((m) => m.kind === 'embedder')
+  if (embeddersMissing) {
+    return {
+      impact: 'semantic indexing is degraded until they are (search itself keeps working)',
+      remediation: 'Run `bakin install search-models`, then `bakin reindex` if content was indexed in the meantime.',
+    }
+  }
+  return {
+    impact: 'result reranking is unavailable until it is (indexing and search are unaffected)',
+    remediation: 'Run `bakin install search-models`.',
+  }
+}
+
+export async function checkInferenceModels(models: InferenceModel[]) {
   const missing = missingModelEntries(models)
   if (missing.length === 0) {
     return {
@@ -142,11 +162,12 @@ export async function checkInferenceModels(models: InferenceModel[] = REQUIRED_M
       details: { root: inferenceModelsRoot(), models: models.map((m) => m.model) },
     }
   }
+  const { impact, remediation } = describeMissingModels(missing.map((e) => e.model))
   return {
     name: 'models',
     status: 'missing' as const,
-    message: `${missing.length} of ${models.length} search model${missing.length === 1 ? '' : 's'} not downloaded - semantic indexing is degraded until they are (search itself keeps working)`,
-    remediation: 'Run `bakin install search-models`, then `bakin reindex` if content was indexed in the meantime.',
+    message: `${missing.length} of ${models.length} search model${missing.length === 1 ? '' : 's'} not downloaded - ${impact}`,
+    remediation,
     details: {
       root: inferenceModelsRoot(),
       missing: missing.map((e) => ({
@@ -179,7 +200,7 @@ function runPull(
   })
 }
 
-export async function installInferenceModels(opts: SearchAdapterSetupOptions, logger: AdapterLogger = noopLogger, models: InferenceModel[] = REQUIRED_MODELS) {
+export async function installInferenceModels(opts: SearchAdapterSetupOptions, logger: AdapterLogger = noopLogger, models: InferenceModel[]) {
   const start = Date.now()
 
   const antfly = findAntflyBinary()

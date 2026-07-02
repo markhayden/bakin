@@ -103,7 +103,7 @@ describe('checkInferenceModels', () => {
     // v0.2.0-rc.2 does NOT lazy-download at index time (bakin#456): missing
     // models degrade semantic indexing until prefetch. Any write after the
     // model lands heals the index, so a plain reindex is the remediation.
-    const result = await checkInferenceModels()
+    const result = await checkInferenceModels(REQUIRED_MODELS)
     expect(result.status).toBe('missing')
     expect(result.message).toContain('semantic indexing is degraded')
     expect(result.message).toContain('search itself keeps working')
@@ -113,17 +113,28 @@ describe('checkInferenceModels', () => {
 
   it('reports ok when all models are present in the v0.2 owner/name layout', async () => {
     for (const m of REQUIRED_MODELS) seedModel(m.model)
-    const result = await checkInferenceModels()
+    const result = await checkInferenceModels(REQUIRED_MODELS)
     expect(result.status).toBe('ok')
     expect(result.message).toContain(`All ${REQUIRED_MODELS.length} search models present`)
     expect(String(result.details?.root)).toBe(modelsRoot)
+  })
+
+  it('names reranking (not semantic indexing) when only the reranker is missing', async () => {
+    seedModel(REQUIRED_MODELS[0].model)
+    seedModel(REQUIRED_MODELS[1].model)
+    // REQUIRED_MODELS[2] is the reranker — the only one missing now.
+    const result = await checkInferenceModels(REQUIRED_MODELS)
+    expect(result.status).toBe('missing')
+    expect(result.message).toContain('reranking is unavailable')
+    expect(result.message).not.toContain('semantic indexing is degraded')
+    expect(result.remediation).not.toContain('bakin reindex')
   })
 
   it('flags a model whose pull never completed (manifest missing)', async () => {
     for (const m of REQUIRED_MODELS) seedModel(m.model)
     rmSync(join(modelsRoot, REQUIRED_MODELS[0].model, 'model_manifest.json'))
 
-    const result = await checkInferenceModels()
+    const result = await checkInferenceModels(REQUIRED_MODELS)
     expect(result.status).toBe('missing')
     const missing = (result.details as { missing: Array<{ model: string; reason: string }> }).missing
     expect(missing).toHaveLength(1)
@@ -134,7 +145,7 @@ describe('checkInferenceModels', () => {
 
 describe('installInferenceModels', () => {
   it('fails when the antfly binary is missing', async () => {
-    const result = await installInferenceModels(optsAutoYes)
+    const result = await installInferenceModels(optsAutoYes, undefined, REQUIRED_MODELS)
     expect(result.status).toBe('failed')
     expect(result.message).toContain('antfly binary not found')
   })
@@ -142,13 +153,13 @@ describe('installInferenceModels', () => {
   it('pulls missing models via `antfly inference pull` and verifies the layout', async () => {
     installFakeBinary(PULL_OK)
 
-    const result = await installInferenceModels(optsAutoYes)
+    const result = await installInferenceModels(optsAutoYes, undefined, REQUIRED_MODELS)
     expect(result.status).toBe('installed')
     expect(result.message).toContain(`Pulled ${REQUIRED_MODELS.length} models`)
     for (const m of REQUIRED_MODELS) {
       expect(existsSync(join(modelsRoot, m.model, 'model_manifest.json'))).toBe(true)
     }
-    expect((await checkInferenceModels()).status).toBe('ok')
+    expect((await checkInferenceModels(REQUIRED_MODELS)).status).toBe('ok')
   })
 
   it('only pulls what is missing', async () => {
@@ -156,7 +167,7 @@ describe('installInferenceModels', () => {
     seedModel(REQUIRED_MODELS[0].model)
     seedModel(REQUIRED_MODELS[1].model)
 
-    const result = await installInferenceModels(optsAutoYes)
+    const result = await installInferenceModels(optsAutoYes, undefined, REQUIRED_MODELS)
     expect(result.status).toBe('installed')
     expect(result.message).toContain('Pulled 1 model')
     expect(result.message).toContain(REQUIRED_MODELS[2].label)
@@ -165,13 +176,13 @@ describe('installInferenceModels', () => {
   it('is a noop when everything is present', async () => {
     installFakeBinary(PULL_OK)
     for (const m of REQUIRED_MODELS) seedModel(m.model)
-    const result = await installInferenceModels(optsAutoYes)
+    const result = await installInferenceModels(optsAutoYes, undefined, REQUIRED_MODELS)
     expect(result.status).toBe('noop')
   })
 
   it('fails with the pull stderr when the CLI exits non-zero', async () => {
     installFakeBinary(PULL_FAILS)
-    const result = await installInferenceModels(optsAutoYes)
+    const result = await installInferenceModels(optsAutoYes, undefined, REQUIRED_MODELS)
     expect(result.status).toBe('failed')
     expect(result.message).toContain('exited with code 2')
     expect(result.message).toContain('HuggingFace unreachable')
@@ -179,7 +190,7 @@ describe('installInferenceModels', () => {
 
   it('fails when the pull claims success but the model never appears', async () => {
     installFakeBinary(PULL_LIES)
-    const result = await installInferenceModels(optsAutoYes)
+    const result = await installInferenceModels(optsAutoYes, undefined, REQUIRED_MODELS)
     expect(result.status).toBe('failed')
     expect(result.message).toContain('reported success but')
   })
@@ -192,7 +203,7 @@ describe('installInferenceModels', () => {
       autoApprove: false,
       askYesNo: () => Promise.resolve(false),
     }
-    const result = await installInferenceModels(opts)
+    const result = await installInferenceModels(opts, undefined, REQUIRED_MODELS)
     expect(result.status).toBe('skipped')
     expect(result.message).toContain('semantic indexing is degraded')
     expect(result.message).toContain('bakin reindex')
@@ -201,7 +212,7 @@ describe('installInferenceModels', () => {
   it('skips non-interactive without --yes, noting the degraded-semantic consequence', async () => {
     installFakeBinary(PULL_OK)
     const opts = { ...optsAutoYes, autoApprove: false }
-    const result = await installInferenceModels(opts)
+    const result = await installInferenceModels(opts, undefined, REQUIRED_MODELS)
     expect(result.status).toBe('skipped')
     expect(result.message).toContain('Semantic indexing is degraded')
   })

@@ -267,12 +267,21 @@ export class AntflySearchAdapter implements SearchAdapter {
           // reindexing succeed while every semantic query dies at query-time
           // embedding — a state users hit by skipping the models step
           // mid-recovery. Keep this check amber until it's actually fixed.
-          const models = await checkInferenceModels(requiredModelsForSettings(this.settings))
+          const required = requiredModelsForSettings(this.settings)
+          const models = await checkInferenceModels(required)
           if (models.status !== 'ok') {
+            const missingNames = new Set(
+              ((models.details as { missing?: Array<{ model: string }> } | undefined)?.missing ?? []).map((m) => m.model),
+            )
+            const missing = required.filter((m) => missingNames.has(m.model))
+            const embeddersMissing = missing.some((m) => m.kind === 'embedder')
+            const consequence = embeddersMissing
+              ? 'semantic search is dead until `bakin install search-models` runs (then `bakin reindex`)'
+              : 'reranking is unavailable until `bakin install search-models` runs (indexing and search are unaffected)'
             return [{
               check: 'antfly.availability',
               status: 'warn' as const,
-              message: `Antfly adapter is connected (${mode} at ${this.settings.url}) but search models are missing - semantic search is dead until \`bakin install search-models\` runs (then \`bakin reindex\`)`,
+              message: `Antfly adapter is connected (${mode} at ${this.settings.url}) but search models are missing - ${consequence}`,
               autoFixable: false,
             }]
           }

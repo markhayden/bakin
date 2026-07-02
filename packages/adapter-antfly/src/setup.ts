@@ -17,7 +17,7 @@ const noopLogger: AdapterLogger = {
   error: () => {},
 }
 
-export { REQUIRED_MODELS, type InferenceModel } from './models'
+export { REQUIRED_MODELS, requiredModelsForSettings, type InferenceModel } from './models'
 
 export function createAntflySearchSetup(
   logger: AdapterLogger = noopLogger,

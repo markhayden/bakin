@@ -138,7 +138,8 @@ describe('checkpointsListRoute — handler', () => {
     expect(body.total).toBe(1)
     expect(body.checkpoints).toHaveLength(1)
     expect(h.queryCalls[0].filters).toEqual({ tier: 'checkpoint', agent: 'main' })
-    expect(h.queryCalls[0].q).toBe('')
+    expect(h.queryCalls[0].q).toBe('*')
+    expect(h.queryCalls[0].strategy).toBe('full_text_only')
   })
 
   it('passes sessionId as q-string when provided', async () => {

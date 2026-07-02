@@ -6,10 +6,11 @@ import {
   findAntflyBinary,
   isAntflyInstalled,
   isAntflyRunning,
-  REQUIRED_MODELS as ANTFLY_REQUIRED_MODELS,
   inferenceModelsRoot as antflyInferenceModelsRoot,
+  mergeAntflySettings,
+  requiredModelsForSettings as antflyRequiredModelsForSettings,
 } from '@bakin/adapter-antfly'
-import type { SearchAdapterName } from './settings'
+import type { SearchAdapterName, SearchAdapterSettings } from './settings'
 
 export function createSearchAdapter(name: SearchAdapterName): SearchAdapter {
   switch (name) {
@@ -47,19 +48,23 @@ export function isSearchAdapterRunning(name: SearchAdapterName): boolean {
   }
 }
 
-export function getSearchAdapterSetup(name: SearchAdapterName, logger?: AdapterLogger): SearchAdapterSetup {
+export function getSearchAdapterSetup(
+  name: SearchAdapterName,
+  logger?: AdapterLogger,
+  settings?: SearchAdapterSettings,
+): SearchAdapterSetup {
   switch (name) {
     case 'antfly':
-      return createAntflySearchSetup(logger)
+      return createAntflySearchSetup(logger, mergeAntflySettings(settings))
     default:
       throw new Error(`Unknown search adapter: ${name}`)
   }
 }
 
-export function getSearchAdapterRequiredModels(name: SearchAdapterName): readonly unknown[] {
+export function getSearchAdapterRequiredModels(name: SearchAdapterName, settings?: SearchAdapterSettings): readonly unknown[] {
   switch (name) {
     case 'antfly':
-      return ANTFLY_REQUIRED_MODELS
+      return antflyRequiredModelsForSettings(mergeAntflySettings(settings))
     default:
       throw new Error(`Unknown search adapter: ${name}`)
   }

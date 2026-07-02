@@ -43,11 +43,12 @@ export const checkpointsListRoute = defineRoute({
     const { limit, offset } = parseLimitOffset(url)
 
     const params: SearchQueryParams = {
-      q: sessionId ?? '',
+      q: sessionId ?? '*',
       filters: { tier: 'checkpoint', agent },
       limit,
       offset,
       rerank: false,
+      strategy: 'full_text_only',
     }
     const res = await ctx.search.query(params)
     const checkpoints = res.results.map((r) => ({ id: r.id, score: r.score, ...r.fields }))

@@ -58,11 +58,12 @@ export const dreamsListRoute = defineRoute({
 
     const qTerms = [phase, date, artifactType].filter((x): x is string => !!x)
     const params: SearchQueryParams = {
-      q: qTerms.join(' '),
+      q: qTerms.join(' ') || '*',
       filters: { tier: 'dream', agent },
       limit,
       offset,
       rerank: false,
+      strategy: 'full_text_only',
     }
     const res = await ctx.search.query(params)
 

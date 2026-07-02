@@ -130,16 +130,18 @@ function parseLimitOffset(url: URL): { limit: number; offset: number } {
 
 async function queryTurns(
   ctx: PluginContext,
+  q: string,
   filters: Record<string, string>,
   limit: number,
   offset: number,
 ): Promise<Response> {
   const params: SearchQueryParams = {
-    q: '',
+    q,
     filters: { tier: 'turn', ...filters },
     limit,
     offset,
     rerank: false,
+    strategy: 'full_text_only',
   }
   const res = await ctx.search.query(params)
   const turns = res.results.map((r) => ({ id: r.id, score: r.score, ...r.fields }))
@@ -171,6 +173,7 @@ export const sessionTurnsRoute = defineRoute({
       limit,
       offset,
       rerank: false,
+      strategy: 'full_text_only',
     }
     const res = await ctx.search.query(params)
     const turns = res.results.map((r) => ({ id: r.id, score: r.score, ...r.fields }))
@@ -195,6 +198,6 @@ export const turnsListRoute = defineRoute({
     const filters: Record<string, string> = { agent }
     const eventType = url.searchParams.get('eventType')
     if (eventType) filters.eventType = eventType
-    return queryTurns(ctx as unknown as PluginContext, filters, limit, offset)
+    return queryTurns(ctx as unknown as PluginContext, sessionId, filters, limit, offset)
   },
 })

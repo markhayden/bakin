@@ -88,9 +88,10 @@ describe('memory_status', () => {
   })
 
   it('returns per-tier counts and totalRows', async () => {
-    const tool = createMemoryStatusTool(makeCtx({
+    const ctx = makeCtx({
       session: 3, turn: 30, checkpoint: 1, daily_note: 7, dream: 2, durable: 4, audit: 10,
-    }))
+    })
+    const tool = createMemoryStatusTool(ctx)
     const res = await tool.handler({}, 'system')
     expect(res.ok).toBe(true)
     expect(res.totalRows).toBe(57)
@@ -98,6 +99,11 @@ describe('memory_status', () => {
     expect(counts.session).toBe(3)
     expect(counts.turn).toBe(30)
     expect(counts.audit).toBe(10)
+    const calls = (ctx.search.query as ReturnType<typeof mock>).mock.calls as Array<[Record<string, unknown>]>
+    for (const [call] of calls) {
+      expect(call.q).toBe('*')
+      expect(call.strategy).toBe('full_text_only')
+    }
   })
 
   it('counts offsetsTracked from the persisted offsets file', async () => {
