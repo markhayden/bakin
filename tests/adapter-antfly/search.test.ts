@@ -701,7 +701,13 @@ describe('AntflySearchAdapter', () => {
           total_indexed: 30,
           wal_backlog: 15,
           rebuilding: true,
+          backfill_active: true,
           backfill_progress: 0.67,
+          replay_applied_sequence: 4,
+          replay_target_sequence: 9,
+          replay_catch_up_required: true,
+          catch_up_active: true,
+          dense_publish_pending: true,
         },
       },
     })
@@ -709,7 +715,22 @@ describe('AntflySearchAdapter', () => {
     const adapter = await createInitializedAdapter()
     const health = await adapter.tables.getHealth('bakin_tasks')
     expect(health?.status).toBe('warn')
-    expect((health?.details as { indexes: Array<{ walBacklog: number }> }).indexes[0].walBacklog).toBe(15)
+    const index = (health?.details as {
+      indexes: Array<{
+        walBacklog: number
+        backfillActive?: boolean
+        replayBacklog?: number
+        replayCatchUpRequired?: boolean
+        catchUpActive?: boolean
+        densePublishPending?: boolean
+      }>
+    }).indexes[0]
+    expect(index.walBacklog).toBe(15)
+    expect(index.backfillActive).toBe(true)
+    expect(index.replayBacklog).toBe(5)
+    expect(index.replayCatchUpRequired).toBe(true)
+    expect(index.catchUpActive).toBe(true)
+    expect(index.densePublishPending).toBe(true)
 
     mockIndexesList.mockRejectedValueOnce(new Error('network timeout'))
     expect(await adapter.tables.getHealth('bakin_tasks')).toBeNull()

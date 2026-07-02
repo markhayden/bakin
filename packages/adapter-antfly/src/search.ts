@@ -40,7 +40,15 @@ interface AntflyIndexHealthEntry {
   walBacklog: number
   error?: string
   rebuilding: boolean
+  backfillActive?: boolean
   backfillProgress?: number
+  backfillState?: string
+  replayAppliedSequence?: number
+  replayTargetSequence?: number
+  replayBacklog?: number
+  replayCatchUpRequired?: boolean
+  catchUpActive?: boolean
+  densePublishPending?: boolean
 }
 
 const noopLogger: AdapterLogger = {
@@ -80,6 +88,10 @@ function queryTimeoutMs(): number {
     if (Number.isFinite(parsed) && parsed > 0) return parsed
   }
   return QUERY_TIMEOUT_DEFAULT_MS
+}
+
+function readBoolean(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined
 }
 
 class QueryTimeoutError extends Error {
@@ -688,12 +700,26 @@ export class AntflySearchAdapter implements SearchAdapter {
         // the older top-level `wal_backlog` is not emitted at this pin (reads undefined), so prefer
         // the real field and fall back for forward/backward compat.
         const pending = Number(enrichment.pending_sequence_count ?? s.wal_backlog ?? 0)
+        const replayApplied = readNumber(s.replay_applied_sequence, readNumber(s.dense_replay_applied_sequence, 0))
+        const replayTarget = readNumber(s.replay_target_sequence, readNumber(s.dense_replay_target_sequence, 0))
+        const replayBacklog = Math.max(0, replayTarget - replayApplied)
+        const replayCatchUpRequired = readBoolean(s.replay_catch_up_required) ?? replayBacklog > 0
+        const catchUpActive = readBoolean(s.catch_up_active) ?? false
+        const densePublishPending = readBoolean(s.dense_publish_pending) ?? false
+        const backfillActive = readBoolean(s.backfill_active) ?? false
         const entry: AntflyIndexHealthEntry = {
           name: indexName,
           type: readIndexType(config) ?? 'unknown',
           totalIndexed: (s.total_indexed as number) ?? 0,
           walBacklog: Number.isFinite(pending) ? pending : 0,
           rebuilding: (s.rebuilding as boolean) ?? false,
+          backfillActive,
+          replayAppliedSequence: replayApplied,
+          replayTargetSequence: replayTarget,
+          replayBacklog,
+          replayCatchUpRequired,
+          catchUpActive,
+          densePublishPending,
         }
         if (s.error) {
           entry.error = String(s.error)
@@ -709,8 +735,11 @@ export class AntflySearchAdapter implements SearchAdapter {
           entry.error = 'embeddings backfill failed - semantic search dead for this index until a rebuild succeeds'
           healthy = false
         }
-        if (entry.walBacklog > 0) healthy = false
+        if (entry.walBacklog > 0 || backfillActive || replayCatchUpRequired || catchUpActive || densePublishPending) {
+          healthy = false
+        }
         if (typeof s.backfill_progress === 'number') entry.backfillProgress = s.backfill_progress
+        if (typeof s.backfill_state === 'string') entry.backfillState = s.backfill_state
         indexes.push(entry)
       }
       return { indexes, healthy }

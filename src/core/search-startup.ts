@@ -15,6 +15,20 @@ export type SearchMigrationResult = Awaited<ReturnType<typeof migrateIfNeeded>>
 
 export const SEARCH_STARTUP_RETRY_MS = 5000
 
+/**
+ * Backoff schedule for deferred bootstrap retries. A single retry used to be
+ * the whole story: two transient failures (antfly slow to accept connections,
+ * a momentary 500 during table create) left the process with tables missing
+ * and the warm signal stuck on 'cold' until a manual restart — even after
+ * antfly recovered seconds later.
+ */
+export const SEARCH_STARTUP_RETRY_SCHEDULE_MS: readonly number[] = [
+  SEARCH_STARTUP_RETRY_MS,
+  15_000,
+  60_000,
+  300_000,
+]
+
 export async function runSearchStartupBootstrap(
   migration: SearchMigrationResult,
   opts: { retry?: boolean } = {},
@@ -134,28 +148,45 @@ export async function logSearchHealthSummary(): Promise<void> {
 }
 
 /**
- * Run the search bootstrap once; if table setup isn't ready, schedule a single
- * deferred retry SEARCH_STARTUP_RETRY_MS later. Fire-and-forget — never throws
- * into the boot path.
+ * Run the search bootstrap; if table setup isn't ready, retry on the backoff
+ * schedule until it succeeds or the schedule is exhausted. Fire-and-forget —
+ * never throws into the boot path.
  */
 export async function bootSearch(migration: SearchMigrationResult): Promise<void> {
   const { warmSearchQueryPath } = await import('./search-warmup')
-  const ready = await runSearchStartupBootstrap(migration)
-  if (ready) {
+
+  const onReady = () => {
     // Warm the query-embedding path up front so the first user search isn't a
     // 15s cold-compile dead query; the warm state is surfaced via search-status.
     void warmSearchQueryPath().catch((err) => log.warn('Search warm-up failed', err))
     void logSearchHealthSummary().catch((err) => log.warn('Search health summary failed', err))
+  }
+
+  const ready = await runSearchStartupBootstrap(migration)
+  if (ready) {
+    onReady()
     return
   }
-  setTimeout(() => {
-    runSearchStartupBootstrap(migration, { retry: true }).then((retried) => {
-      if (retried) {
-        void warmSearchQueryPath().catch((err) => log.warn('Search warm-up failed', err))
-        void logSearchHealthSummary().catch((err) => log.warn('Search health summary failed', err))
-      }
-    }).catch((err) => {
-      log.warn('Deferred search startup retry failed', err)
-    })
-  }, SEARCH_STARTUP_RETRY_MS)
+
+  const scheduleRetry = (attempt: number) => {
+    if (attempt >= SEARCH_STARTUP_RETRY_SCHEDULE_MS.length) {
+      log.error('Search startup bootstrap gave up after all retries — search stays paused until restart', {
+        attempts: SEARCH_STARTUP_RETRY_SCHEDULE_MS.length + 1,
+      })
+      return
+    }
+    setTimeout(() => {
+      runSearchStartupBootstrap(migration, { retry: true }).then((retried) => {
+        if (retried) {
+          onReady()
+          return
+        }
+        scheduleRetry(attempt + 1)
+      }).catch((err) => {
+        log.warn('Deferred search startup retry failed', err)
+        scheduleRetry(attempt + 1)
+      })
+    }, SEARCH_STARTUP_RETRY_SCHEDULE_MS[attempt]).unref?.()
+  }
+  scheduleRetry(0)
 }
