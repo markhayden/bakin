@@ -76,6 +76,7 @@ mock.module('../../../src/core/settings', () => ({
 
 import { activatePlugin, findRoute } from '../test-helpers'
 import memoryPlugin from '../../../plugins/memory/index'
+import { getOffset, setOffset } from '../../../plugins/memory/lib/offsets'
 
 beforeAll(() => {
   mkdirSync(testDir, { recursive: true })
@@ -171,5 +172,21 @@ describe('memory plugin shell (C2)', () => {
     for (const frag of expectedFragments) {
       expect(paths.some((p) => p.includes(frag))).toBe(true)
     }
+  })
+
+  it('wires a real reindex generator that resets incremental offsets', async () => {
+    // Regression: the C2 shell shipped a reindex() that yielded nothing, so
+    // `bakin reindex` could never repopulate bakin_memory after a table loss.
+    // The generator now resets offsets + the dedupe cache and re-runs the
+    // backfill (writing rows via ctx.search.index as a side effect).
+    const activated = await activatePlugin(memoryPlugin, testDir)
+    const reg = activated.ctx.search.registerContentType as ReturnType<typeof mock>
+    const def = reg.mock.calls[0][0]
+
+    setOffset('reindex-probe-file', 123)
+    for await (const _row of def.reindex()) {
+      // yields nothing by design
+    }
+    expect(getOffset('reindex-probe-file')).toBe(0)
   })
 })

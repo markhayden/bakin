@@ -10,7 +10,7 @@
  * Writes go through tmp + rename for atomicity — a crash mid-write leaves
  * the previous snapshot intact.
  */
-import { existsSync, readFileSync } from 'fs'
+import { existsSync, readFileSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import { getContentDir } from '@bakin/core/content-dir'
 import { atomicWriteJson } from '@bakin/core/storage/atomic-write'
@@ -73,4 +73,24 @@ export function setOffset(fileKey: string, offset: number): void {
 export function clearAllOffsets(): void {
   cache = null
   loaded = false
+}
+
+/**
+ * Delete the persisted offsets snapshot AND reset in-memory state so every
+ * offset-based indexer re-reads its files from byte 0. For schema migration
+ * and full reindex — anywhere table contents were (or are about to be) reset
+ * while offsets.json still claims those bytes were indexed.
+ */
+export function resetAllOffsets(): void {
+  const file = getOffsetsFilePath()
+  if (existsSync(file)) {
+    try {
+      unlinkSync(file)
+    } catch (err) {
+      log.warn('failed to unlink offsets.json', {
+        err: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+  clearAllOffsets()
 }

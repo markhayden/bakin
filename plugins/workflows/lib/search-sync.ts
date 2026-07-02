@@ -25,6 +25,38 @@ import { createLogger } from '@bakin/core/logger'
 
 const log = createLogger('workflows')
 
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') {
+    const primitive = JSON.stringify(value)
+    return primitive === undefined ? String(value) : primitive
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => stableStringify(entry)).join(',')}]`
+  }
+  const entries = Object.entries(value as Record<string, unknown>)
+    .sort(([a], [b]) => a.localeCompare(b))
+  return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${stableStringify(entry)}`).join(',')}}`
+}
+
+function stableNumericStamp(value: unknown): number {
+  const text = stableStringify(value)
+  let hash = 2166136261
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i)
+    hash = Math.imul(hash, 16777619) >>> 0
+  }
+  return hash === 0 ? 1 : hash
+}
+
+function definitionFreshness(name: string, def: WorkflowDefinition, source?: DefinitionSource): number {
+  return stableNumericStamp({
+    name,
+    source: source ?? (def as WorkflowDefinition & { source?: DefinitionSource }).source ?? 'unknown',
+    disabled: source !== 'user' && isWorkflowDisabled(name),
+    definition: def,
+  })
+}
+
 /** Convert a workflow instance to a search document. */
 export function instanceToSearchDoc(inst: WorkflowInstance): Record<string, unknown> {
   const def = loadDefinition(inst.workflowId)
@@ -174,7 +206,11 @@ export function registerWorkflowSearch(ctx: PluginContext): void {
       // Yield effective definitions from every source: plugin defaults,
       // agent-package definitions, and user YAML shadows.
       for (const entry of listDefinitions(contentDir)) {
-        yield { key: `def:${entry.name}`, doc: definitionToSearchDoc(entry.name, entry.definition, entry.source) }
+        yield {
+          key: `def:${entry.name}`,
+          doc: definitionToSearchDoc(entry.name, entry.definition, entry.source),
+          mtimeMs: definitionFreshness(entry.name, entry.definition, entry.source),
+        }
       }
 
       // Yield instances

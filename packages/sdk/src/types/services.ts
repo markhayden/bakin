@@ -139,6 +139,19 @@ export interface SearchIndexDefinition {
   }
 }
 
+/** One document emitted by a content-type reindex generator. */
+export interface SearchReindexItem {
+  key: string
+  doc: Record<string, unknown>
+  /**
+   * Optional freshness stamp for virtual file-backed documents. When present,
+   * startup reconcile stores it in `_mtime_ms` and can skip unchanged virtual
+   * docs on subsequent boots. It may be a stable content token, not only a
+   * filesystem mtime.
+   */
+  mtimeMs?: number
+}
+
 /** Full content-type definition: schema, indexes, facets, reindex generator. */
 export interface SearchContentTypeDefinition {
   table: string
@@ -155,7 +168,7 @@ export interface SearchContentTypeDefinition {
     targetTokens?: number
     overlapTokens?: number
   }
-  reindex: () => AsyncGenerator<{ key: string; doc: Record<string, unknown> }>
+  reindex: () => AsyncGenerator<SearchReindexItem>
   verifyExists: (key: string) => Promise<boolean>
 }
 
@@ -245,6 +258,15 @@ export interface SearchTransformOp {
   value: unknown
 }
 
+/** Options for plugin-scoped search maintenance scans. */
+export interface SearchScanOptions {
+  /**
+   * Document fields to return with each scanned key. Some adapters return only
+   * keys unless fields are explicitly requested.
+   */
+  fields?: string[]
+}
+
 /** Search API exposed via `ctx.search` — index, query, transform documents. */
 export interface SearchAPI {
   /**
@@ -282,8 +304,8 @@ export interface SearchAPI {
 export interface SearchMaintenanceAPI {
   /** Whether the backing search service is reachable. */
   available(): Promise<boolean>
-  /** Iterate every document in this plugin's registered content type. */
-  scan(): AsyncIterable<{ key: string; document: Record<string, unknown> }>
+  /** Iterate this plugin's registered content type, optionally projecting document fields. */
+  scan(opts?: SearchScanOptions): AsyncIterable<{ key: string; document: Record<string, unknown> }>
   /** Remove several documents from this plugin's registered content type. */
   batchRemove(keys: string[]): Promise<number>
   /** Drop and recreate this plugin's registered content type table. */

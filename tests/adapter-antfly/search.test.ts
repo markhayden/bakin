@@ -27,7 +27,10 @@ const mockTablesQuery = mock(async (): Promise<QueryResponse> => ({
   responses: [{ hits: { hits: [], total: 0 }, took: 0 }],
 }))
 const mockTablesBatch = mock(async () => ({ inserted: 1, deleted: 1 }))
-const mockTablesScan = mock(async function* () {})
+const mockTablesScan = mock(async function* (
+  _tableName: string,
+  _request?: Record<string, unknown>,
+): AsyncGenerator<Record<string, unknown>, void, unknown> {})
 const mockIndexesList = mock(async () => ({}))
 const mockIndexesCreate = mock(async () => {})
 const mockIndexesDrop = mock(async () => {})
@@ -151,6 +154,8 @@ describe('AntflySearchAdapter', () => {
     mockTablesQuery.mockImplementation(async () => ({ responses: [{ hits: { hits: [], total: 0 }, took: 0 }] }))
     mockTablesBatch.mockClear()
     mockTablesBatch.mockImplementation(async () => ({ inserted: 1, deleted: 1 }))
+    mockTablesScan.mockClear()
+    mockTablesScan.mockImplementation(async function* () {})
     mockIndexesList.mockClear()
     mockIndexesList.mockImplementation(async () => ({}))
     mockIndexesCreate.mockClear()
@@ -427,6 +432,38 @@ describe('AntflySearchAdapter', () => {
     expect(result.hits).toEqual([])
     expect(result.total).toBe(0)
     expect(mockTablesQuery).not.toHaveBeenCalled()
+  })
+
+  it('scan requests projected fields and accepts live Antfly key rows', async () => {
+    mockTablesScan.mockImplementationOnce(async function* (tableName: string, request?: Record<string, unknown>) {
+      expect(tableName).toBe('bakin_assets')
+      expect(request).toEqual({ fields: ['_mtime_ms'] })
+      yield { key: 'asset-1', _mtime_ms: 12345 }
+    })
+
+    const adapter = await createInitializedAdapter()
+    const rows = []
+    for await (const row of adapter.scan('bakin_assets', { fields: ['_mtime_ms'] })) {
+      rows.push(row)
+    }
+
+    expect(mockTablesScan).toHaveBeenCalledWith('bakin_assets', { fields: ['_mtime_ms'] })
+    expect(rows).toEqual([{ key: 'asset-1', document: { _mtime_ms: 12345 } }])
+  })
+
+  it('scan remains compatible with SDK-typed _key rows', async () => {
+    mockTablesScan.mockImplementationOnce(async function* () {
+      yield { _key: 'legacy-1', title: 'Legacy row' }
+    })
+
+    const adapter = await createInitializedAdapter()
+    const rows = []
+    for await (const row of adapter.scan('bakin_legacy')) {
+      rows.push(row)
+    }
+
+    expect(mockTablesScan).toHaveBeenCalledWith('bakin_legacy')
+    expect(rows).toEqual([{ key: 'legacy-1', document: { title: 'Legacy row' } }])
   })
 
   it('refuses to run on a pre-0.2 @antfly/sdk (stale node_modules guard)', async () => {

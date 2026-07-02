@@ -12,9 +12,9 @@ function makeSearch(rows: Array<{ key: string; document: Record<string, unknown>
   removed: string[]
 } {
   const removed: string[] = []
-  async function* scan() {
+  const scan = mock(async function* () {
     for (const row of rows) yield row
-  }
+  })
   return {
     removed,
     search: {
@@ -50,6 +50,7 @@ describe('pruneExpired', () => {
     const stats = await pruneExpired(search, { turnRetentionDays: 7, auditRetentionDays: 30 })
 
     expect(removed.sort()).toEqual(['old-audit', 'old-turn'])
+    expect(search.maintenance!.scan).toHaveBeenCalledWith({ fields: ['tier', 'updated_at'] })
     expect(stats.turn).toBe(1)
     expect(stats.audit).toBe(1)
     expect(stats.scanned).toBe(4)

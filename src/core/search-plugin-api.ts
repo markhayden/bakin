@@ -11,6 +11,7 @@ import type {
   SearchHealthSnapshot,
   SearchQueryParams,
   SearchResponse,
+  SearchScanOptions,
   SearchTransformOp,
 } from '../../packages/core/src/plugin-types'
 import { createLogger } from './logger'
@@ -316,11 +317,12 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
         return getSearchAdapter().available()
       },
 
-      async *scan(): AsyncIterable<{ key: string; document: Record<string, unknown> }> {
+      async *scan(opts?: SearchScanOptions): AsyncIterable<{ key: string; document: Record<string, unknown> }> {
         const tableName = registry.pluginTables.get(pluginId)
         const search = getSearchAdapter()
         if (!tableName || !await search.available()) return
-        for await (const entry of search.scan(tableName)) {
+        const entries = opts === undefined ? search.scan(tableName) : search.scan(tableName, opts)
+        for await (const entry of entries) {
           yield entry
         }
       },
@@ -414,7 +416,7 @@ async function runPendingReconcilesMatching(predicate: (item: RegistryState['pen
           index: (key, doc) => getSearchAdapter().documents.index(reconcileTable, key, doc),
           remove: (key) => getSearchAdapter().documents.remove(reconcileTable, key),
           scanIndex: async function* (tableName) {
-            for await (const { key, document } of getSearchAdapter().scan(tableName)) {
+            for await (const { key, document } of getSearchAdapter().scan(tableName, { fields: [MTIME_FIELD] })) {
               const mtime = typeof document[MTIME_FIELD] === 'number'
                 ? document[MTIME_FIELD]
                 : Number(document[MTIME_FIELD] ?? 0)

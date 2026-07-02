@@ -1,4 +1,4 @@
-import type { Document, QueryResult, ScannedDocument, TableConfig, TableInfo } from './concepts'
+import type { Document, QueryResult, ScanOpts, ScannedDocument, TableConfig, TableInfo } from './concepts'
 import type { SearchAdapter } from './index'
 
 async function* scanDocuments(items: ScannedDocument[]): AsyncIterable<ScannedDocument> {
@@ -102,7 +102,7 @@ export function createMockSearchAdapter(
       }
     },
     multiQuery: async (queries) => Promise.all(queries.map((entry) => adapter.query(entry.table, entry.query))),
-    scan: (table) => scanDocuments(
+    scan: (table, _opts?: ScanOpts) => scanDocuments(
       Array.from(docs.get(table)?.entries() ?? []).map(([key, document]) => ({ key, document }))
     ),
 

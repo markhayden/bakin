@@ -276,17 +276,43 @@ describe('workflows plugin — file-backed sync hook', () => {
     const captured = makeCtx()
     await workflowsPlugin.activate(captured.ctx)
 
-    const yielded: Array<{ key: string; doc: Record<string, unknown> }> = []
+    const yielded: Array<{ key: string; doc: Record<string, unknown>; mtimeMs?: number }> = []
     for await (const item of captured.capturedDef!.reindex()) {
-      yielded.push(item as { key: string; doc: Record<string, unknown> })
+      yielded.push(item as { key: string; doc: Record<string, unknown>; mtimeMs?: number })
     }
     const keys = yielded.map(y => y.key).sort()
     expect(keys).toEqual(['def:managed', 'def:one', 'def:two', 'inst:task-1', 'inst:task-2'])
-    expect(yielded.find(y => y.key === 'def:managed')?.doc).toMatchObject({
+    const managed = yielded.find(y => y.key === 'def:managed')
+    expect(managed?.doc).toMatchObject({
       name: 'Managed Flow',
       type: 'definition',
       status: 'active',
     })
+    expect(typeof managed?.mtimeMs).toBe('number')
+    expect(managed?.mtimeMs).toBeGreaterThan(0)
+  })
+
+  it('reindex emits stable freshness stamps for managed definitions', async () => {
+    registerPluginDefinition('workflows', 'managed', MANAGED_DEF)
+
+    const captured = makeCtx()
+    await workflowsPlugin.activate(captured.ctx)
+
+    const findManagedStamp = async () => {
+      for await (const item of captured.capturedDef!.reindex()) {
+        if (item.key === 'def:managed') return item.mtimeMs
+      }
+      return undefined
+    }
+
+    const first = await findManagedStamp()
+    const second = await findManagedStamp()
+    expect(typeof first).toBe('number')
+    expect(second).toBe(first)
+
+    setWorkflowDisabled('managed', true)
+    const disabled = await findManagedStamp()
+    expect(disabled).not.toBe(first)
   })
 
   it('indexes a user shadow as active even when the managed fallback is disabled', async () => {

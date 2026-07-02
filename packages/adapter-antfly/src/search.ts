@@ -10,6 +10,7 @@ import type {
   IndexItem,
   Query,
   QueryResult,
+  ScanOpts,
   ScannedDocument,
   SearchAdapter,
   TableConfig,
@@ -632,12 +633,28 @@ export class AntflySearchAdapter implements SearchAdapter {
     return Promise.all(prepared.map(runOne))
   }
 
-  async *scan(table: string): AsyncIterable<ScannedDocument> {
+  async *scan(table: string, opts?: ScanOpts): AsyncIterable<ScannedDocument> {
     const client = this.client
     if (!client || !this.settings.enabled) return
-    for await (const doc of client.tables.scan(table)) {
-      const { _key, ...fields } = doc as Record<string, unknown>
-      if (typeof _key === 'string') yield { key: _key, document: fields }
+    const request: { fields?: string[]; limit?: number } = {}
+    if (opts?.fields?.length) request.fields = opts.fields
+    if (opts?.limit !== undefined && Number.isFinite(opts.limit) && opts.limit > 0) {
+      request.limit = opts.limit
+    }
+    const scanRequest = Object.keys(request).length > 0 ? request : undefined
+    const rows = scanRequest === undefined ? client.tables.scan(table) : client.tables.scan(table, scanRequest)
+    for await (const doc of rows) {
+      const record = doc as Record<string, unknown>
+      const rowKey = typeof record.key === 'string'
+        ? record.key
+        : typeof record._key === 'string'
+          ? record._key
+          : ''
+      if (!rowKey) continue
+      const fields: Record<string, unknown> = { ...record }
+      delete fields.key
+      delete fields._key
+      yield { key: rowKey, document: fields }
     }
   }
 

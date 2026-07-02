@@ -4,6 +4,7 @@ import type {
   IndexItem,
   Query,
   QueryResult,
+  ScanOpts,
   ScannedDocument,
   SearchAdapter,
   TableConfig,
@@ -126,7 +127,7 @@ export function createSearchAdapterHarness() {
   const multiQuery = mock(async (queries: Array<{ table: string; query: Query }>): Promise<QueryResult[]> => (
     Promise.all(queries.map((entry) => adapter.query(entry.table, entry.query)))
   ))
-  const scan = mock((table: string): AsyncIterable<ScannedDocument> => (
+  const scan = mock((table: string, _opts?: ScanOpts): AsyncIterable<ScannedDocument> => (
     scanDocuments(scanItems.get(table) ?? Array.from(docs.get(table)?.entries() ?? []).map(([key, document]) => ({ key, document })))
   ))
 

@@ -199,6 +199,11 @@ async function* defaultScanIndex(
   yield* []
 }
 
+function normalizeVirtualMtime(value: unknown): number {
+  const numeric = Number(value ?? 0)
+  return Number.isFinite(numeric) ? numeric : 0
+}
+
 /**
  * Reconcile the search index for one file-backed content type against
  * the current state of `contentDir`. Idempotent.
@@ -260,13 +265,25 @@ export async function performStartupReconcile(
   const reconciledVirtualKeys = new Set<string>()
 
   if (def.preserveVirtualDocuments && typeof def.reindex === 'function') {
-    for await (const { key, doc } of def.reindex()) {
+    for await (const item of def.reindex()) {
+      const { key, doc } = item
       if (!key || fsByKey.has(key)) continue
       try {
         if (!await def.verifyExists(key)) {
           continue
         }
-        await deps.index(key, { ...doc, [MTIME_FIELD]: 0 })
+        const virtualMtime = normalizeVirtualMtime(item.mtimeMs)
+        // Skip only when the content type actually provides a freshness stamp.
+        // Without this guard, a stamp-less doc reads as 0 on both sides
+        // (0 === 0) and would be skipped on every boot after the first —
+        // permanently stale. Stamp-less virtual docs keep the pre-stamp
+        // behavior: re-indexed every boot.
+        if (item.mtimeMs != null && indexedMtimes.has(key) && indexedMtimes.get(key) === virtualMtime) {
+          reconciledVirtualKeys.add(key)
+          result.skipped++
+          continue
+        }
+        await deps.index(key, { ...doc, [MTIME_FIELD]: virtualMtime })
         reconciledVirtualKeys.add(key)
         result.indexed++
       } catch (err) {

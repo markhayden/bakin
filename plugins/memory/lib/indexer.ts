@@ -61,6 +61,9 @@ export interface IndexerOptions {
 }
 
 export class MemoryIndexer {
+  private indexedUpdatedAt: Map<string, number> | null = null
+  private indexedUpdatedAtLoad: Promise<void> | null = null
+
   constructor(
     private readonly ctx: PluginContext,
     private readonly opts: IndexerOptions = {},
@@ -68,8 +71,48 @@ export class MemoryIndexer {
 
   async backfill(tiers: readonly MemoryTier[] = []): Promise<void> {
     log.debug('backfill requested', { tiers, opts: this.opts })
+    await this.ensureIndexedUpdatedAt()
     for (const tier of tiers) {
       await this.indexTier(tier)
+    }
+  }
+
+  /**
+   * Drop the indexed-updatedAt dedupe cache so the next write reloads it from
+   * the live table. MUST be called whenever table contents were reset
+   * underneath this indexer (schema migration, resetContentType, reindex) —
+   * a stale cache makes writeRow() skip every row and the table stays empty
+   * until restart.
+   */
+  invalidateIndexedCache(): void {
+    this.indexedUpdatedAt = null
+    this.indexedUpdatedAtLoad = null
+  }
+
+  private async ensureIndexedUpdatedAt(): Promise<Map<string, number>> {
+    if (this.indexedUpdatedAt) return this.indexedUpdatedAt
+    if (!this.indexedUpdatedAtLoad) {
+      this.indexedUpdatedAtLoad = this.loadIndexedUpdatedAt()
+    }
+    await this.indexedUpdatedAtLoad
+    return this.indexedUpdatedAt ?? new Map()
+  }
+
+  private async loadIndexedUpdatedAt(): Promise<void> {
+    const indexed = new Map<string, number>()
+    this.indexedUpdatedAt = indexed
+    const maintenance = this.ctx.search.maintenance
+    if (!maintenance || !await maintenance.available()) return
+    try {
+      for await (const { key, document } of maintenance.scan({ fields: ['updated_at'] })) {
+        const updatedAt = Number(document.updated_at ?? 0)
+        if (Number.isFinite(updatedAt)) indexed.set(key, updatedAt)
+      }
+    } catch (err) {
+      log.warn('existing memory index scan failed; backfill will write rows conservatively', {
+        err: err instanceof Error ? err.message : String(err),
+      })
+      indexed.clear()
     }
   }
 
@@ -270,7 +313,7 @@ export class MemoryIndexer {
     const prevCount = this.lastDurableChunkCount.get(this.durableKey(agent, basename)) ?? 0
     if (rows.length < prevCount) {
       for (let i = rows.length; i < prevCount; i += 1) {
-        await this.ctx.search.remove(durableRowId(agent, basename, i))
+        await this.removeRow(durableRowId(agent, basename, i))
       }
     }
 
@@ -283,7 +326,7 @@ export class MemoryIndexer {
   private async removeDurableFile(agent: string, basename: string): Promise<void> {
     const count = this.lastDurableChunkCount.get(this.durableKey(agent, basename)) ?? 0
     for (let i = 0; i < count; i += 1) {
-      await this.ctx.search.remove(durableRowId(agent, basename, i))
+      await this.removeRow(durableRowId(agent, basename, i))
     }
     this.lastDurableChunkCount.delete(this.durableKey(agent, basename))
   }
@@ -323,7 +366,7 @@ export class MemoryIndexer {
     const prevCount = this.lastSkillChunkCount.get(this.skillKey(agent, skillName)) ?? 0
     if (rows.length < prevCount) {
       for (let i = rows.length; i < prevCount; i += 1) {
-        await this.ctx.search.remove(skillRowId(agent, skillName, i))
+        await this.removeRow(skillRowId(agent, skillName, i))
       }
     }
 
@@ -336,7 +379,7 @@ export class MemoryIndexer {
   private async removeSkillFile(agent: string, skillName: string): Promise<void> {
     const count = this.lastSkillChunkCount.get(this.skillKey(agent, skillName)) ?? 0
     for (let i = 0; i < count; i += 1) {
-      await this.ctx.search.remove(skillRowId(agent, skillName, i))
+      await this.removeRow(skillRowId(agent, skillName, i))
     }
     this.lastSkillChunkCount.delete(this.skillKey(agent, skillName))
   }
@@ -368,7 +411,7 @@ export class MemoryIndexer {
   }
 
   private async removeDailyNote(agent: string, filename: string): Promise<void> {
-    await this.ctx.search.remove(dailyNoteRowId(agent, filename))
+    await this.removeRow(dailyNoteRowId(agent, filename))
   }
 
   // ─── Session tier (C6) ────────────────────────────────────────────────────
@@ -404,7 +447,7 @@ export class MemoryIndexer {
     const prev = this.lastSessionKeys.get(agent) ?? new Set<string>()
     for (const prevKey of prev) {
       if (!seen.has(prevKey)) {
-        await this.ctx.search.remove(sessionRowId(agent, prevKey))
+        await this.removeRow(sessionRowId(agent, prevKey))
       }
     }
     this.lastSessionKeys.set(agent, seen)
@@ -595,7 +638,7 @@ export class MemoryIndexer {
     sessionId: string,
     checkpointId: string,
   ): Promise<void> {
-    await this.ctx.search.remove(checkpointRowId(agent, sessionId, checkpointId))
+    await this.removeRow(checkpointRowId(agent, sessionId, checkpointId))
   }
 
   // ─── Dream tier (C8) ──────────────────────────────────────────────────────
@@ -644,14 +687,14 @@ export class MemoryIndexer {
     const m = /^(\d{4}-\d{2}-\d{2})(?:[-.].*)?\.md$/.exec(filename)
     if (!m) return
     const date = m[1]
-    await this.ctx.search.remove(dreamRowId(agent, 'phase_doc', `${phase}|${date}`))
+    await this.removeRow(dreamRowId(agent, 'phase_doc', `${phase}|${date}`))
   }
 
   private async removeDreamSignal(agent: string, relPath: string): Promise<void> {
     const c = classifyDreamSignal(relPath)
     if (!c) return
     const key = c.date ?? c.artifactType
-    await this.ctx.search.remove(dreamRowId(agent, c.artifactType, key))
+    await this.removeRow(dreamRowId(agent, c.artifactType, key))
   }
 
   // ─── Shared write ─────────────────────────────────────────────────────────
@@ -678,6 +721,9 @@ export class MemoryIndexer {
 
   private async writeRow(row: MemoryRow): Promise<void> {
     if (this.isExpired(row)) return
+    const indexedUpdatedAt = await this.ensureIndexedUpdatedAt()
+    const existingUpdatedAt = indexedUpdatedAt.get(row.id)
+    if (existingUpdatedAt !== undefined && existingUpdatedAt >= row.updatedAt) return
     const doc: Record<string, unknown> = {
       tier: row.tier,
       agent: row.agent,
@@ -692,5 +738,11 @@ export class MemoryIndexer {
     }
     if (row.kind !== undefined) doc.kind = row.kind
     await this.ctx.search.index(row.id, doc)
+    indexedUpdatedAt.set(row.id, row.updatedAt)
+  }
+
+  private async removeRow(key: string): Promise<void> {
+    await this.ctx.search.remove(key)
+    this.indexedUpdatedAt?.delete(key)
   }
 }

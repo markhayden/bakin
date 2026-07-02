@@ -86,6 +86,7 @@ function makeCtx(): { ctx: PluginContext; indexed: IndexedDoc[]; removed: string
             agentId: opts.agentId,
             path: mockDurableFilePath(opts.agentId, id),
             content,
+            metadata: { sourceKind: 'durable', basename: id, mtimeMs: 12345, sizeBytes: Buffer.byteLength(content, 'utf-8') },
           }
         }),
         resolvePath: mock(async (path: string) => {
@@ -203,7 +204,7 @@ describe('MemoryIndexer.indexTier("durable")', () => {
     for (const d of indexed) expect(d.doc.tier).toBe('durable')
   })
 
-  it('is idempotent — re-indexing the same file produces the same row ids', async () => {
+  it('is idempotent — re-indexing the same file does not rewrite unchanged rows', async () => {
     mockListAgentIds.mockReturnValue(['main'])
     const file = writeFixture('main', 'SOUL.md', '# hello\nbody')
     mockReadDurableFile.mockImplementation((a, b) =>
@@ -216,9 +217,26 @@ describe('MemoryIndexer.indexTier("durable")', () => {
     await idx.indexTier('durable')
     await idx.indexTier('durable')
 
-    // Both passes emit the same key — downstream search upsert dedupes.
-    const uniq = new Set(indexed.map((d) => d.key))
-    expect(uniq.size).toBe(1)
+    expect(indexed).toHaveLength(1)
+  })
+
+  it('rewrites rows after invalidateIndexedCache — a reset table must not be skipped', async () => {
+    mockListAgentIds.mockReturnValue(['main'])
+    const file = writeFixture('main', 'SOUL.md', '# hello\nbody')
+    mockReadDurableFile.mockImplementation((a, b) =>
+      a === 'main' && b === 'SOUL.md' ? '# hello\nbody' : null,
+    )
+    mockDurableFilePath.mockReturnValue(file)
+
+    const { ctx, indexed } = makeCtx()
+    const idx = new MemoryIndexer(ctx, {})
+    await idx.indexTier('durable')
+    expect(indexed).toHaveLength(1)
+
+    // Simulates migration/resetContentType: table contents are gone, cache
+    // must reload (from the now-empty table) instead of skipping every row.
+    idx.invalidateIndexedCache()
+    await idx.indexTier('durable')
     expect(indexed).toHaveLength(2)
   })
 

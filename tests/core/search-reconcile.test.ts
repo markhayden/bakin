@@ -9,6 +9,17 @@ mock.module('@bakin/core/main-agent', () => ({
   getMainAgentName: () => 'Main',
 }))
 
+// performStartupReconcile takes contentDir explicitly (always a temp dir
+// here), but pin the resolvers anyway so no transitive import can reach
+// ~/.bakin (CLAUDE.md test-isolation rules).
+const isolationDir = join(tmpdir(), `bakin-test-reconcile-${Date.now()}`)
+mock.module('../../src/core/content-dir', () => ({
+  getContentDir: () => isolationDir,
+}))
+mock.module('../../packages/core/src/content-dir', () => ({
+  getContentDir: () => isolationDir,
+}))
+
 mock.module('@/core/logger', () => ({
   createLogger: () => ({
     info: mock(),
@@ -264,6 +275,80 @@ describe('search-reconcile', () => {
     expect(indexed[0].doc.title).toBe('Virtual doc')
     expect(indexed[0].doc[MTIME_FIELD]).toBe(0)
     expect(removed).toEqual([])
+    expect(result.indexed).toBe(1)
+  })
+
+  it('re-indexes stamp-less virtual documents every boot — no 0===0 skip', async () => {
+    mkdirSync(join(tempDir, 'projects'), { recursive: true })
+
+    const indexed: string[] = []
+    const result = await performStartupReconcile(makeDef({
+      preserveVirtualDocuments: true,
+      reindex: async function* () {
+        // No mtimeMs stamp: pre-stamp content types must keep refreshing.
+        yield { key: 'virtual', doc: { title: 'Virtual doc' } }
+      },
+      verifyExists: async (key) => key === 'virtual',
+    }), tempDir, {
+      index: async (key) => { indexed.push(key) },
+      remove: async () => {},
+      scanIndex: async function* () {
+        // Stored stamp from a previous boot is 0 (stamp-less write).
+        yield { key: 'virtual', mtimeMs: 0 }
+      },
+    })
+
+    expect(indexed).toEqual(['virtual'])
+    expect(result.indexed).toBe(1)
+    expect(result.skipped).toBe(0)
+  })
+
+  it('skips unchanged virtual documents with a matching freshness stamp', async () => {
+    mkdirSync(join(tempDir, 'projects'), { recursive: true })
+
+    const indexed: string[] = []
+    const removed: string[] = []
+    const result = await performStartupReconcile(makeDef({
+      preserveVirtualDocuments: true,
+      reindex: async function* () {
+        yield { key: 'virtual', doc: { title: 'Virtual doc' }, mtimeMs: 42 }
+      },
+      verifyExists: async (key) => key === 'virtual',
+    }), tempDir, {
+      index: async (key) => { indexed.push(key) },
+      remove: async (key) => { removed.push(key) },
+      scanIndex: async function* () {
+        yield { key: 'virtual', mtimeMs: 42 }
+      },
+    })
+
+    expect(indexed).toEqual([])
+    expect(removed).toEqual([])
+    expect(result.indexed).toBe(0)
+    expect(result.skipped).toBe(1)
+  })
+
+  it('reindexes virtual documents when their freshness stamp changes', async () => {
+    mkdirSync(join(tempDir, 'projects'), { recursive: true })
+
+    const indexed: Array<{ key: string; doc: Record<string, unknown> }> = []
+    const result = await performStartupReconcile(makeDef({
+      preserveVirtualDocuments: true,
+      reindex: async function* () {
+        yield { key: 'virtual', doc: { title: 'Virtual doc v2' }, mtimeMs: 42 }
+      },
+      verifyExists: async (key) => key === 'virtual',
+    }), tempDir, {
+      index: async (key, doc) => { indexed.push({ key, doc }) },
+      remove: async () => {},
+      scanIndex: async function* () {
+        yield { key: 'virtual', mtimeMs: 99 }
+      },
+    })
+
+    expect(indexed).toHaveLength(1)
+    expect(indexed[0].key).toBe('virtual')
+    expect(indexed[0].doc[MTIME_FIELD]).toBe(42)
     expect(result.indexed).toBe(1)
   })
 

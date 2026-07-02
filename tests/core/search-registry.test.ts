@@ -259,9 +259,9 @@ describe('search-registry', () => {
     await api.index('task-1', { title: 'Build feature' })
 
     const rows = []
-    for await (const row of api.maintenance!.scan()) rows.push(row)
+    for await (const row of api.maintenance!.scan({ fields: ['title'] })) rows.push(row)
 
-    expect(searchHarness.calls.scan).toHaveBeenCalledWith('bakin_tasks')
+    expect(searchHarness.calls.scan).toHaveBeenCalledWith('bakin_tasks', { fields: ['title'] })
     expect(rows).toEqual([{ key: 'task-1', document: { title: 'Build feature' } }])
   })
 

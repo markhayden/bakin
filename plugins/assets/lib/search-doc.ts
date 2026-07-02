@@ -4,7 +4,9 @@
  * trigger; version/thumb/export files never get their own row.
  */
 import { join } from 'node:path'
+import { statSync } from 'node:fs'
 import { getContentDir } from '../../../src/core/content-dir'
+import { MTIME_FIELD } from '../../../src/core/search-reconcile'
 import { isValidAssetId, yearMonthFromAssetId } from './asset-id'
 import { extractAssetContent } from './content-extractor'
 import { buildAssetFileUrl } from './asset-url'
@@ -31,6 +33,16 @@ const RASTER_RE = /\.(png|jpe?g|gif|webp|bmp)$/i
 // re-index without re-running pdf-parse / re-reading the file on the hot path.
 const contentCache = new Map<string, string>()
 const CONTENT_CACHE_MAX = 256
+
+function manifestMtimeMs(assetId: string): number {
+  const ym = yearMonthFromAssetId(assetId)
+  if (!ym) return Date.now()
+  try {
+    return statSync(join(getContentDir(), 'assets', 'store', ym, assetId, 'manifest.json')).mtimeMs
+  } catch {
+    return Date.now()
+  }
+}
 
 /** Build the search document for a versioned asset from its current version. */
 export async function buildVersionedAssetSearchDoc(manifest: AssetManifest, assetId: string): Promise<Record<string, unknown>> {
@@ -66,5 +78,6 @@ export async function buildVersionedAssetSearchDoc(manifest: AssetManifest, asse
     updated_at: manifest.updated || new Date().toISOString(),
     content,
     image_url: isRaster ? buildAssetFileUrl(relFromAssetsRoot) : '',
+    [MTIME_FIELD]: manifestMtimeMs(assetId),
   }
 }

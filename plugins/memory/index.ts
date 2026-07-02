@@ -40,6 +40,8 @@ import { createMemoryGetTurnTool } from './mcp/get-turn'
 import { createMemoryListAgentsTool } from './mcp/list-agents'
 import { createMemoryStatusTool } from './mcp/status'
 import { migrateIfNeeded } from './lib/memory-migration'
+import { resetAllOffsets } from './lib/offsets'
+import type { MemoryTier } from './lib/types'
 import { pruneExpired, startTtlTimer, stopTtlTimer } from './lib/ttl-prune'
 import { checkSearchTables } from './lib/health-checks'
 
@@ -53,6 +55,17 @@ interface MemorySettings {
   turnRetentionDays: number
   auditRetentionDays: number
 }
+
+/** Every tier the initial backfill and full reindex derive from source. */
+const MEMORY_BACKFILL_TIERS: readonly MemoryTier[] = [
+  'audit',
+  'durable',
+  'daily_note',
+  'session',
+  'turn',
+  'checkpoint',
+  'dream',
+]
 
 const DEFAULTS: MemorySettings = {
   backfillDays: 30,
@@ -164,6 +177,15 @@ const memoryPlugin: BakinPlugin = definePlugin({
 
     const settings = { ...DEFAULTS, ...(ctx.getSettings<Partial<MemorySettings>>() ?? {}) }
 
+    // ─── Indexer ────────────────────────────────────────────────────────────
+    const indexer = new MemoryIndexer(ctx, {
+      backfillDays: settings.backfillDays,
+      skipSessionOverBytes: settings.skipSessionOverBytes,
+      skipResetBackups: settings.skipResetBackups,
+      turnRetentionDays: settings.turnRetentionDays,
+      auditRetentionDays: settings.auditRetentionDays,
+    })
+
     // ─── Search: unified bakin_memory table ─────────────────────────────────
     ctx.search.registerContentType({
       table: 'memory',
@@ -188,20 +210,18 @@ const memoryPlugin: BakinPlugin = definePlugin({
       embeddingTemplate: '{{tier}} {{agent}} {{title}} {{snippet}}',
       facets: ['tier', 'agent', 'kind', 'eventType', 'phase', 'date'],
       reindex: async function* () {
-        // Per-tier reindex streams land in C3–C8. For now there's nothing
-        // to yield — the table exists but stays empty until a later commit
-        // wires its first tier.
+        // Memory rows are derived from source files through the indexer
+        // (per-tier parsers, TTL filters, persisted byte offsets) rather than
+        // a stream of {key, doc} rows, so a reindex resets the incremental
+        // state and re-runs the full backfill; rows are written directly via
+        // ctx.search.index as a side effect and nothing is yielded. Without
+        // this, `bakin reindex` could never repopulate bakin_memory after a
+        // table loss.
+        resetAllOffsets()
+        indexer.invalidateIndexedCache()
+        await indexer.backfill(MEMORY_BACKFILL_TIERS)
       },
       verifyExists: async () => true,
-    })
-
-    // ─── Indexer ────────────────────────────────────────────────────────────
-    const indexer = new MemoryIndexer(ctx, {
-      backfillDays: settings.backfillDays,
-      skipSessionOverBytes: settings.skipSessionOverBytes,
-      skipResetBackups: settings.skipResetBackups,
-      turnRetentionDays: settings.turnRetentionDays,
-      auditRetentionDays: settings.auditRetentionDays,
     })
 
     // ─── Routes ─────────────────────────────────────────────────────────────
@@ -256,23 +276,26 @@ const memoryPlugin: BakinPlugin = definePlugin({
       // before backfill so the freshly-recreated table is what gets written.
       try {
         const { migrated, from, to } = await migrateIfNeeded(ctx.search)
-        if (migrated) log.info('memory schema migrated', { from, to })
+        if (migrated) {
+          log.info('memory schema migrated', { from, to })
+          // The table was dropped and recreated: any dedupe cache loaded from
+          // the pre-drop table would make the backfill skip every row.
+          indexer.invalidateIndexedCache()
+        }
       } catch (err) {
         log.warn('memory migration failed — proceeding with backfill anyway', {
           err: err instanceof Error ? err.message : String(err),
         })
       }
 
+      // Watcher events stay gated until the migration decided the table's
+      // fate — an event racing the drop would seed the indexer's dedupe cache
+      // from the doomed table and the backfill would then skip every row,
+      // leaving memory empty until the next restart.
+      ready = true
+
       try {
-        await indexer.backfill([
-          'audit',
-          'durable',
-          'daily_note',
-          'session',
-          'turn',
-          'checkpoint',
-          'dream',
-        ])
+        await indexer.backfill(MEMORY_BACKFILL_TIERS)
       } catch (err) {
         log.warn('initial backfill failed', {
           err: err instanceof Error ? err.message : String(err),
@@ -314,13 +337,17 @@ const memoryPlugin: BakinPlugin = definePlugin({
   },
 
   async onReady() {
-    ready = true
     const run = deferredBackfill
     deferredBackfill = null
-    if (!run) return
+    if (!run) {
+      ready = true
+      return
+    }
     // Fire-and-forget — onReady awaits each plugin sequentially, and the
     // audit+durable+daily-note tiers can take several seconds on a warm
-    // install. Blocking startup behind them is a bad trade.
+    // install. Blocking startup behind them is a bad trade. `ready` flips
+    // inside run() once the schema migration has settled (see the race note
+    // there); watcher events arriving earlier are dropped, same as pre-boot.
     void run()
   },
 

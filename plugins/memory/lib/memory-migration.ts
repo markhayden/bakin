@@ -28,12 +28,12 @@
  * rows should be re-derived from source (new filters, new fields, changed
  * id hashing, etc.). Pure UI tweaks do NOT need a bump.
  */
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { getContentDir } from '@bakin/core/content-dir'
 import { createLogger } from '../../../src/core/logger'
 import type { SearchAPI } from '@bakin/core/plugin-types'
-import { clearAllOffsets, getOffsetsFilePath } from './offsets'
+import { resetAllOffsets } from './offsets'
 
 const log = createLogger('memory:migration')
 
@@ -62,20 +62,6 @@ function writeStoredVersion(version: number): void {
   const dir = dirname(path)
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
   writeFileSync(path, JSON.stringify({ version }, null, 2), 'utf-8')
-}
-
-function resetOffsets(): void {
-  const path = getOffsetsFilePath()
-  if (existsSync(path)) {
-    try {
-      unlinkSync(path)
-    } catch (err) {
-      log.warn('failed to unlink offsets.json', {
-        err: err instanceof Error ? err.message : String(err),
-      })
-    }
-  }
-  clearAllOffsets()
 }
 
 export interface MigrationResult {
@@ -127,7 +113,7 @@ export async function migrateIfNeeded(search: SearchAPI): Promise<MigrationResul
     })
   }
 
-  resetOffsets()
+  resetAllOffsets()
 
   writeStoredVersion(MEMORY_SCHEMA_VERSION)
   return { migrated: true, from: stored, to: MEMORY_SCHEMA_VERSION }

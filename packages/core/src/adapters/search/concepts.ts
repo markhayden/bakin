@@ -136,6 +136,11 @@ export interface QueryDiagnostics {
 export interface ScanOpts {
   limit?: number
   cursor?: string
+  /**
+   * Adapter-projected document fields to return with each key. Adapters that
+   * support server-side projection may return only keys when this is omitted.
+   */
+  fields?: string[]
 }
 
 export interface ScannedDocument {

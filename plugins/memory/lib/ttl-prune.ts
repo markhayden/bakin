@@ -61,7 +61,7 @@ export async function pruneExpired(search: SearchAPI, config: TtlConfig): Promis
   }
 
   const toDelete: string[] = []
-  for await (const { key, document: doc } of maintenance.scan()) {
+  for await (const { key, document: doc } of maintenance.scan({ fields: ['tier', 'updated_at'] })) {
     stats.scanned += 1
     const tier = typeof doc.tier === 'string' ? doc.tier : ''
     const cutoff = cutoffs[tier]

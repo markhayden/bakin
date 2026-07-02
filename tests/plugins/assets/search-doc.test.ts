@@ -15,6 +15,7 @@ import sharp from 'sharp'
 import { createAsset } from '../../../plugins/assets/lib/asset-service'
 import { getAsset } from '../../../plugins/assets/lib/asset-service'
 import { versionedAssetPath, buildVersionedAssetSearchDoc } from '../../../plugins/assets/lib/search-doc'
+import { MTIME_FIELD } from '../../../src/core/search-reconcile'
 
 const srcDir = join(testDir, 'src')
 
@@ -55,6 +56,8 @@ describe('buildVersionedAssetSearchDoc', () => {
     expect(doc.task_id).toBe('t1')
     expect(String(doc.image_url)).toContain('store/') // file:// url to current version
     expect(String(doc.image_url)).toContain('v1.png')
+    expect(typeof doc[MTIME_FIELD]).toBe('number')
+    expect(doc[MTIME_FIELD] as number).toBeGreaterThan(0)
   })
 
   it('builds a text doc with extracted content and no image_url', async () => {
