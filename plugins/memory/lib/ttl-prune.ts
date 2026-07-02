@@ -96,27 +96,44 @@ const _g = globalThis as typeof globalThis & {
 }
 
 const DEFAULT_INTERVAL_MS = DAY_MS
+// First prune runs well after boot, NOT at boot: pruning is a full-table
+// scan, boot is exactly when antfly is busiest converging, and write-time
+// TTL filtering already keeps expired rows from ever being (re)written.
+// Rows aging past their window live at most this long extra — harmless.
+export const TTL_FIRST_RUN_DELAY_MS = 60 * 60 * 1000
 
-/** Start the daily prune timer. Idempotent — a second call is a no-op. */
+const timers = _g as typeof _g & {
+  __bakinMemoryTtlFirstRun?: ReturnType<typeof setTimeout> | null
+}
+
+/** Start the prune timer: first run after a post-boot delay, then daily. Idempotent. */
 export function startTtlTimer(search: SearchAPI, config: TtlConfig, intervalMs: number = DEFAULT_INTERVAL_MS): void {
-  if (_g.__bakinMemoryTtlTimer) return
-  _g.__bakinMemoryTtlTimer = setInterval(() => {
+  if (timers.__bakinMemoryTtlTimer) return
+  const run = () => {
     pruneExpired(search, config).catch((err) => {
       log.warn('scheduled ttl prune failed', {
         err: err instanceof Error ? err.message : String(err),
       })
     })
-  }, intervalMs)
+  }
+  timers.__bakinMemoryTtlFirstRun = setTimeout(run, Math.min(TTL_FIRST_RUN_DELAY_MS, intervalMs))
+  timers.__bakinMemoryTtlFirstRun.unref?.()
+  timers.__bakinMemoryTtlTimer = setInterval(run, intervalMs)
   log.info('memory ttl prune scheduled', {
     intervalHours: intervalMs / (60 * 60 * 1000),
+    firstRunInMinutes: Math.min(TTL_FIRST_RUN_DELAY_MS, intervalMs) / 60_000,
     turnRetentionDays: config.turnRetentionDays ?? null,
     auditRetentionDays: config.auditRetentionDays ?? null,
   })
 }
 
 export function stopTtlTimer(): void {
-  if (_g.__bakinMemoryTtlTimer) {
-    clearInterval(_g.__bakinMemoryTtlTimer)
-    _g.__bakinMemoryTtlTimer = null
+  if (timers.__bakinMemoryTtlTimer) {
+    clearInterval(timers.__bakinMemoryTtlTimer)
+    timers.__bakinMemoryTtlTimer = null
+  }
+  if (timers.__bakinMemoryTtlFirstRun) {
+    clearTimeout(timers.__bakinMemoryTtlFirstRun)
+    timers.__bakinMemoryTtlFirstRun = null
   }
 }

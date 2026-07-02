@@ -15,6 +15,8 @@ import { getContentDir } from '@bakin/core/content-dir'
 import type { RuntimeMemoryEntry } from '@bakin/core/adapters/runtime'
 import type { PluginContext } from '@bakin/core/plugin-types'
 import { createLogger } from '../../../src/core/logger'
+import { clearIndexedCache, loadIndexedCache, saveIndexedCache } from './indexed-cache'
+import { MEMORY_SCHEMA_VERSION } from './memory-migration'
 import type { MemoryRow, MemoryTier } from './types'
 import { parseAuditLine } from './tier-parsers/audit-parser'
 import { parseDurableFile, rowId as durableRowId } from './tier-parsers/durable-parser'
@@ -88,6 +90,9 @@ export class MemoryIndexer {
     this.backfillInFlight = run
     try {
       await run
+      // Snapshot the dedupe cache after a completed pass so the next boot
+      // can skip the full-table scan (count-validated on load).
+      this.persistIndexedCache()
     } finally {
       if (this.backfillInFlight === run) this.backfillInFlight = null
     }
@@ -116,6 +121,7 @@ export class MemoryIndexer {
   invalidateIndexedCache(): void {
     this.indexedUpdatedAt = null
     this.indexedUpdatedAtLoad = null
+    clearIndexedCache()
   }
 
   private async ensureIndexedUpdatedAt(): Promise<Map<string, number>> {
@@ -132,6 +138,37 @@ export class MemoryIndexer {
     this.indexedUpdatedAt = indexed
     const maintenance = this.ctx.search.maintenance
     if (!maintenance || !await maintenance.available()) return
+
+    // Fast path: the persisted snapshot from the last clean run, trusted ONLY
+    // when its entry count exactly matches the live table's row count — any
+    // drift (crash before save, external removal, table reset) falls back to
+    // the scan. A wrongly-trusted stale cache would skip rows forever; the
+    // count guard makes the failure mode "scan anyway", never "skip".
+    const persisted = loadIndexedCache(MEMORY_SCHEMA_VERSION)
+    if (persisted && persisted.size > 0) {
+      try {
+        const res = await this.ctx.search.query({
+          q: '*',
+          limit: 0,
+          rerank: false,
+          strategy: 'full_text_only',
+        })
+        if (res.meta?.total === persisted.size) {
+          for (const [key, value] of persisted) indexed.set(key, value)
+          log.debug('indexed-cache snapshot accepted — table scan skipped', { rows: persisted.size })
+          return
+        }
+        log.info('indexed-cache snapshot stale (count mismatch) — falling back to table scan', {
+          snapshot: persisted.size,
+          live: res.meta?.total ?? -1,
+        })
+      } catch (err) {
+        log.warn('indexed-cache count validation failed — falling back to table scan', {
+          err: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
+
     try {
       for await (const { key, document } of maintenance.scan({ fields: ['updated_at'] })) {
         const updatedAt = Number(document.updated_at ?? 0)
@@ -142,6 +179,13 @@ export class MemoryIndexer {
         err: err instanceof Error ? err.message : String(err),
       })
       indexed.clear()
+    }
+  }
+
+  /** Persist the dedupe cache so the next boot can skip the table scan. */
+  persistIndexedCache(): void {
+    if (this.indexedUpdatedAt && this.indexedUpdatedAt.size > 0) {
+      saveIndexedCache(MEMORY_SCHEMA_VERSION, this.indexedUpdatedAt)
     }
   }
 

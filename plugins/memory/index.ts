@@ -42,7 +42,7 @@ import { createMemoryStatusTool } from './mcp/status'
 import { migrateIfNeeded } from './lib/memory-migration'
 import { resetAllOffsets } from './lib/offsets'
 import type { MemoryTier } from './lib/types'
-import { pruneExpired, startTtlTimer, stopTtlTimer } from './lib/ttl-prune'
+import { startTtlTimer, stopTtlTimer } from './lib/ttl-prune'
 import { checkSearchTables } from './lib/health-checks'
 
 const log = createLogger('memory')
@@ -81,6 +81,7 @@ const DEFAULTS: MemorySettings = {
 // so watcher events can short-circuit until the table is guaranteed to
 // exist.
 let deferredBackfill: (() => Promise<void>) | null = null
+let activeIndexer: MemoryIndexer | null = null
 let ready = false
 let eventDisposers: Array<() => void> = []
 
@@ -185,6 +186,7 @@ const memoryPlugin: BakinPlugin = definePlugin({
       turnRetentionDays: settings.turnRetentionDays,
       auditRetentionDays: settings.auditRetentionDays,
     })
+    activeIndexer = indexer
 
     // ─── Search: unified bakin_memory table ─────────────────────────────────
     ctx.search.registerContentType({
@@ -315,22 +317,15 @@ const memoryPlugin: BakinPlugin = definePlugin({
         })
       }
 
-      // TTL prune: arm the daily timer first so a slow initial prune can't
-      // block the recurring one, then fire the one-shot prune. The one-shot
-      // catches rows older than the window that slipped through via edge-case
-      // write paths; after that, the daily timer handles ongoing aging.
-      const ttl = {
+      // TTL prune: timer only — first run ~1h after boot, then daily. No
+      // boot-time one-shot: pruning is a full-table scan, boot is when antfly
+      // is busiest converging, and write-time TTL filtering (isExpired in the
+      // indexer) already keeps expired rows from being (re)written during the
+      // backfill that just ran.
+      startTtlTimer(ctx.search, {
         turnRetentionDays: settings.turnRetentionDays,
         auditRetentionDays: settings.auditRetentionDays,
-      }
-      startTtlTimer(ctx.search, ttl)
-      try {
-        await pruneExpired(ctx.search, ttl)
-      } catch (err) {
-        log.warn('initial ttl prune failed', {
-          err: err instanceof Error ? err.message : String(err),
-        })
-      }
+      })
       // Runtime memory watcher paths are the live-update path. Runtime-native
       // subscriptions can be added to the adapter contract if another backend
       // needs push events that do not map to files.
@@ -367,6 +362,10 @@ const memoryPlugin: BakinPlugin = definePlugin({
   async onShutdown() {
     ready = false
     deferredBackfill = null
+    // Snapshot the dedupe cache with everything the watcher wrote since the
+    // backfill's save — the next boot's count validation then accepts it.
+    activeIndexer?.persistIndexedCache()
+    activeIndexer = null
     clearEventSubscriptions()
     stopTtlTimer()
   },
