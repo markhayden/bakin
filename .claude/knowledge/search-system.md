@@ -99,7 +99,10 @@ Higher-numbered paths exist as backstops for the lower ones.
 3. **Startup reconcile + 7d backstop scan (recovery).** On every boot
    `performStartupReconcile()` walks the filesystem, compares mtimes
    against the indexed `_mtime_ms` field, and re-indexes drift or
-   removes orphans. Then a periodic backstop scan runs every 7d
+   removes orphans. (The `_mtime_ms` field name is the `MTIME_FIELD`
+   constant from `@bakin/core/adapters/search` —
+   `packages/core/src/adapters/search/concepts.ts` — re-exported from
+   `src/core/search-reconcile.ts`.) Then a periodic backstop scan runs every 7d
    (`settings.search.settings.cleanupInterval`) calling `verifyExists()` for
    every indexed key — this catches the rare cases where the process
    was down during a delete or the fs event was lost. The 7d cadence
@@ -161,8 +164,14 @@ interface SearchContentTypeDefinition {
     targetTokens?: number
     overlapTokens?: number
   }
-  reindex(): AsyncGenerator<{ key: string; doc: Record<string, unknown> }>
+  reindex(): AsyncGenerator<SearchReindexItem>
   verifyExists(key: string): Promise<boolean>
+}
+
+interface SearchReindexItem {
+  key: string
+  doc: Record<string, unknown>
+  mtimeMs?: number   // optional freshness stamp — see below
 }
 
 interface SearchIndexDefinition {
@@ -176,6 +185,8 @@ interface SearchIndexDefinition {
 **Note:** Non-text field types (`number`, `boolean`, `datetime`, `array`) map to `keyword` in Antfly. They support exact-match filtering and faceting but not range queries or date math.
 
 **Backward compatibility:** Content types that don't set `indexes` get a synthesized single default index named `embeddings` using the top-level `embeddingTemplate` + the default embedder. Every content type registered before multi-index support works unchanged.
+
+**`mtimeMs` freshness stamp:** `SearchReindexItem.mtimeMs` (`packages/sdk/src/types/services.ts`) is an optional freshness stamp for `preserveVirtualDocuments` content types. Startup reconcile stores it in the indexed `_mtime_ms` field; on later boots, when the stamp is present and equal to the stored value, the virtual doc is skipped. When absent, the doc is re-indexed every boot (the pre-stamp behavior — deliberately, since a stamp-less doc would otherwise read `0 === 0` and go permanently stale). The stamp doesn't have to be a filesystem mtime: workflows stamps a stable content hash of the definition, assets stamps the manifest's mtime.
 
 ## SearchAPI (per plugin)
 
@@ -216,6 +227,8 @@ interface SearchResponse {
 
 `transform()` is for metadata-only updates (e.g. status change) where re-generating embeddings would be wasteful. Each op is `{ op: '$set' | '$inc' | '$push', field: string, value: unknown }`.
 
+`ctx.search.maintenance` (`SearchMaintenanceAPI` — plugin-scoped operations for indexers that own non-file-backed tables) exposes `scan(opts?: { fields?: string[] })` with field projection. **At antfly rc.9 a projection-less scan returns keys only — no document fields** — so any consumer that reads fields off scanned rows MUST project them explicitly (e.g. the memory indexer scans with `{ fields: ['updated_at'] }` to build its dedupe cache).
+
 ## Hybrid Search
 
 Queries combine full-text (BM25) and semantic (vector) results via Reciprocal Rank Fusion (RRF). Strategy is configurable per query and globally:
@@ -231,6 +244,13 @@ Global default: `settings.search.settings.search.strategy`.
 > **Fixed at v0.2.0-rc.9 (was an rc.2 limitation):** bare-term full-text queries return results again — the `_all` population bug ([#456](https://github.com/markhayden/bakin/issues/456)) is resolved (live-verified: bare terms return hits across reindexed tables). Bakin always sent the bare `full_text_search` leg, so no adapter change was needed; rc.2 just returned nothing and `rrf` rode the semantic leg alone. No interim field-qualification is needed anymore.
 
 **v0.2 protocol notes:** there is no strategy field on the wire — Bakin's strategy setting maps to which fields are populated (`semantic_search`, `full_text_search`, or both; RRF is implied when both are present). The vector `indexes` array is only sent alongside `semantic_search`. Tables are created **without a `schema`** (a create-time schema permanently breaks query parsing at this RC) and without a full-text index entry (the server always creates its own `full_text_index_v0`). Dense embeddings indexes carry an explicit `dimension`. `multiQuery` fans out as sequential single global queries — the NDJSON multiquery endpoint rejects its own framing, and request concurrency aggravates inference crashes.
+
+**rc.9 adapter workarounds (live-verified, absorbed in `packages/adapter-antfly/`):**
+
+- **`filter_query` returns zero hits in every mode** — identical requests return the right count via `count: true` but zero hits. The adapter never sends `filter_query`: filters are translated into the `full_text_search` boolean AST (`match_phrase` / numeric range / disjunction / `must_not`) by `query-translation.ts`, and semantic-lane hits (which the full-text AST can't constrain) are post-filtered client-side (`hitMatchesFilters`).
+- **`hits.total` and aggregation buckets are page-scoped unless `count: true`.** `limit: 0` flows (count/aggregate-only everywhere in Bakin) send `count: true` — this returns the true total AND full-corpus buckets. `count` is incompatible with a reranker (server 400s), which is fine: a count has nothing to rerank. Faceted queries that also want hits run a **companion count query** so facet buckets reflect the corpus, not the page; if the companion fails, facets fall back to page scope with a warning.
+- **`order_by` is rejected by the server** — `Query.sort` is dropped in translation.
+- **Scan rows carry `key`, not `_key`** — the adapter accepts both when mapping scanned documents.
 
 **Per-table index routing:** when a table has multiple embedding indexes declared via `def.indexes`, the registry's `getIndexNames(tableName)` resolves the effective index list (e.g. `['assets_text', 'assets_visual']`) and passes it to `antfly.queryTable()`. The client sends the array in `QueryRequest.indexes`, and Antfly runs semantic search across all of them — results from each index are merged into the final RRF ranking with a per-index score breakdown in `_index_scores`.
 
@@ -451,6 +471,8 @@ unlink hook now does the immediate work.
 
 `reindexContentTypes()` in `search-registry.ts` iterates all registered content types and runs their `reindex()` generators. Documents are batch-indexed (50 per batch) via `antfly.batchIndex()`, which applies the retry-on-transient-error wrapper.
 
+**Memory plugin exception:** `bakin_memory` rows are derived from source files through the incremental indexer (per-tier parsers, TTL filters, persisted byte offsets), not from a stream of `{key, doc}` rows. Its content-type `reindex()` resets the persisted byte offsets AND the write-dedupe cache (`invalidateIndexedCache()`), then re-runs the full backfill — rows are written via `ctx.search.index()` as a side effect and the generator yields nothing. Without this, `bakin reindex` could never repopulate `bakin_memory` after a table loss.
+
 SSE events broadcast during reindex:
 - `reindex.batch_start` — once at the start of the whole run, with the table list
 - `reindex.start` — emitted when each table begins
@@ -503,7 +525,7 @@ This is opt-in because it adds one query per table. Intended for smoke tests and
 
 ### Health endpoint enrichment status (Layer 4)
 
-`GET /api/plugins/health/antfly-status` (the health plugin owns this route post-issue-#67 — formerly `/api/antfly/health` in `server.ts`) includes `indexHealth` (array of per-index status) and `healthy` (aggregate boolean) for each table. The health page shows visual indicators:
+`GET /api/plugins/health/search-status` (the health plugin owns this route post-issue-#67 — formerly `/api/antfly/health` in `server.ts`, then `/antfly-status`) includes `indexHealth` (array of per-index status) and `healthy` (aggregate boolean) for each table, plus the top-level `warm` query-path signal from `SearchHealthSnapshot` (see `search-api-reference.md`). The health page shows visual indicators:
 
 - Green `CircleCheck` — all indexes healthy
 - Amber `Clock` — WAL backlog (enrichment in progress)

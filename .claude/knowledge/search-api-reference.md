@@ -13,6 +13,8 @@ Query params:
 - `offset` — skip N results for pagination
 - `facets` — comma-separated facet fields for aggregation counts
 
+`offset` and `facets` are honored in **both** branches. In the all-tables branch (no `plugin` param), each table is asked for up to `limit + offset` candidates, the hits are merged into one score-ordered list, and `offset` paginates that merged ordering. `facets` in the all-tables branch returns per-table term buckets **summed** into a single cross-table facet map (`mergeFacetCounts` in `src/core/search-query.ts`).
+
 For per-plugin search use `GET /api/plugins/{plugin}/search` instead — these routes are auto-registered when a plugin calls `ctx.search.registerContentType()` or `registerFileBackedContentType()` during `activate()`.
 
 Response:
@@ -80,14 +82,26 @@ Response:
 
 `ok` is `true` only when both `errors === 0` and `enrichmentErrors === 0`. Per-table failures appear as an `error` string on the corresponding `tables[]` entry. `enrichment` surfaces Antfly's async enrichment status per index — `healthy: false` when any index has an `error` or non-zero `walBacklog`. When `verify=true`, each table entry also includes `verified` (actual doc count) and `verifyDiscrepancy` (difference from indexed count).
 
-### GET /api/plugins/health/antfly-status — Search system health
+### GET /api/search/warm — Query-path warm signal
 
-Moved out of `server.ts` into the health plugin during the issue #67 cleanup.
+Lightweight boot-window signal served straight from `src/core/server/request-handler.ts` — reads in-memory state (`getSearchWarmState()` in `src/core/search-warmup.ts`), no adapter round-trip.
+
+Response:
+```json
+{ "warm": "cold" }
+```
+
+`warm` is `'cold' | 'warming' | 'warm'` — has the query-embedding path finished its warm-up probes. Search bars poll this during boot only (via the `useSearchWarm` hook, 2s interval, stops once warm) to show "warming up" instead of letting users hit cold-compile dead queries. **Display-only signal** — never gate query dispatch on it; the warm-up self-terminates server-side and the client fails open.
+
+### GET /api/plugins/health/search-status — Search system health
+
+Moved out of `server.ts` into the health plugin during the issue #67 cleanup (formerly `/antfly-status`). Returns the adapter's `SearchHealthSnapshot`, which now includes the optional top-level `warm` field (same `'cold' | 'warming' | 'warm'` values as `/api/search/warm`) — also surfaced to plugins via `ctx.search.health()`.
 
 Response:
 ```json
 {
   "enabled": true,
+  "warm": "warm",
   "tables": [
     {
       "table": "bakin_tasks",
@@ -116,6 +130,16 @@ Available at:
 - `/api/plugins/team/search?q=...`
 - `/api/plugins/memory/search?q=...`
 - `/api/plugins/messaging/search?q=...`
+
+## Plugin Maintenance API (ctx.search.maintenance)
+
+`SearchMaintenanceAPI` (`packages/sdk/src/types/services.ts`) is the plugin-scoped maintenance surface for indexers that own non-file-backed tables — intentionally narrower than the raw adapter, scoped to the caller's own registered content type. Alongside `available()`, `batchRemove(keys)`, and `resetContentType()`:
+
+```typescript
+scan(opts?: { fields?: string[] }): AsyncIterable<{ key: string; document: Record<string, unknown> }>
+```
+
+`fields` projects document fields onto each scanned row. **At antfly rc.9 a projection-less scan returns keys only** — `document` comes back empty — so consumers that read fields MUST request them (e.g. the memory indexer scans with `{ fields: ['updated_at'] }`).
 
 ## MCP Tools (Agent-Facing)
 
@@ -215,3 +239,5 @@ bakin search:stats   # show Antfly status and per-table doc counts
 | `bakin_messaging_brainstorm` | messaging | status, agent_id | No | `embeddings` (BGE) | `message_body` |
 
 **`bakin_assets` is the only multi-index table.** See `.claude/knowledge/multimodal-search.md` for why it has separate `assets_text` and `assets_visual` indexes, how server-side content extraction feeds the text index, and the format support matrix for which file types land in which index.
+
+**Per-index fusion weights:** a content type can weight its indexes in hybrid (RRF) fusion via `SearchIndexDefinition.weight` (defaults to 1.0). The registry resolves the per-table map (`getIndexWeights()` in `src/core/search-registry-core.ts`), sends it as `adapterOptions.indexWeights`, and the antfly adapter translates it to `merge_config: { strategy: 'rrf', weights }`. Use it to favor a reliable leg over a noisy one — e.g. a multimodal table weighting its visual index above a text index whose auto-generated descriptions add ranking noise.

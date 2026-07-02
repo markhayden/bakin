@@ -1,7 +1,7 @@
 {
   "id": "health",
   "name": "Health",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "bakin": ">=1.0.0",
   "description": "System health dashboard — MCP stats, diagnostics, and uptime",
   "entry": {

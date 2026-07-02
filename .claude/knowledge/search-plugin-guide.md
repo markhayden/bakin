@@ -183,6 +183,35 @@ ctx.search.transform(documentKey, [{ op: '$set', field: 'status', value: 'done' 
 The watcher path is the safety net for writes that bypass REST entirely
 (`cp`, `rsync`, restored backups, agents in other processes).
 
+### 7. Freshness stamps for virtual documents (`preserveVirtualDocuments`)
+
+Content types that set `preserveVirtualDocuments: true` index docs that have
+no single backing file on disk, so the startup reconcile can't compare
+filesystem mtimes for them. Instead, the `reindex()` generator may yield an
+optional `mtimeMs` freshness stamp (`SearchReindexItem = { key, doc, mtimeMs? }`):
+
+```typescript
+reindex: async function* () {
+  for (const item of listVirtualItems()) {
+    yield { key: item.id, doc: toSearchDoc(item), mtimeMs: contentHash(item) }
+  }
+},
+```
+
+The contract:
+
+- **Stamp present and equal** to the stored `_mtime_ms` → the doc is
+  **skipped** at boot (no re-index, no re-embed).
+- **Stamp absent** → the doc is **re-indexed every boot** (the pre-stamp
+  behavior). This is deliberate: a stamp-less doc would otherwise compare
+  `0 === 0` and go permanently stale after the first boot.
+
+The stamp doesn't have to be a filesystem mtime — any stable number that
+changes when the content changes works. **When there's no natural mtime,
+use a stable content hash** (workflows hashes the definition content;
+assets uses the manifest file's mtime since each asset does have one
+canonical `manifest.json`).
+
 ## Patterns by Data Source
 
 ### Filesystem-backed (assets, workflows, file-backed external plugins)
