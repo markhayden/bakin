@@ -27,6 +27,20 @@ let isRunning = false
 let recheckTimer: NodeJS.Timeout | null = null
 let exitHookRegistered = false
 
+// Supervision for Bakin's own spawned child: a mid-session crash must flip
+// isRunning false (so available() stops lying) AND get a bounded restart —
+// previously only the adopted-external path was ever rechecked, so a crashed
+// own-child stayed dead (queries fail-empty, writes dropped) until a manual
+// server restart.
+let childStopRequested = false
+let childStartedAtMs = 0
+let childRestartAttempts = 0
+let childRestartTimer: NodeJS.Timeout | null = null
+const CHILD_RESTART_DELAYS_MS: readonly number[] = [1000, 5000, 30_000]
+// A child that survived this long before dying gets a fresh restart budget —
+// only rapid crash-loops exhaust the attempts.
+const CHILD_STABLE_MS = 60_000
+
 /**
  * Belt-and-braces orphan net: any JS-level exit that bypasses the async
  * lifecycle shutdown — dev.ts's own signal handlers calling process.exit(0),
@@ -49,6 +63,17 @@ function registerExitHook(): void {
 export function _resetExitHookForTests(): void {
   process.removeListener('exit', killChildOnExit)
   exitHookRegistered = false
+}
+
+/** Tests use this between cases — supervision state is module-global. */
+export function _resetChildSupervisionForTests(): void {
+  childStopRequested = false
+  childStartedAtMs = 0
+  childRestartAttempts = 0
+  if (childRestartTimer) {
+    clearTimeout(childRestartTimer)
+    childRestartTimer = null
+  }
 }
 
 const DEFAULT_EXTERNAL_RECHECK_DELAY_MS = 3000
@@ -248,6 +273,7 @@ export async function startAntflyServer(
   ).flatMap((model) => ['--preload-model', `embedder:${model}`])
 
   try {
+    childStopRequested = false
     antflyProcess = spawn(binary, [
       'swarm',
       '--host', '127.0.0.1',
@@ -282,11 +308,12 @@ export async function startAntflyServer(
       isRunning = false
       antflyProcess = null
       clearRecheckTimer()
-      if (code !== null && code !== 0) {
-        logger.error('Antfly exited unexpectedly', { code, signal })
-      } else {
+      if (childStopRequested) {
         logger.info('Antfly stopped', { code, signal })
+        return
       }
+      logger.error('Antfly exited unexpectedly', { code, signal })
+      scheduleChildRestart(settings, logger)
     })
 
     antflyProcess.on('error', (err) => {
@@ -297,6 +324,7 @@ export async function startAntflyServer(
     const ready = await waitForReady(url)
     if (ready) {
       isRunning = true
+      childStartedAtMs = Date.now()
       logger.info('Antfly server started and healthy', { url })
       return true
     }
@@ -312,6 +340,11 @@ export async function startAntflyServer(
 
 export function stopAntflyServer(logger: AdapterLogger = noopLogger): void {
   clearRecheckTimer()
+  childStopRequested = true
+  if (childRestartTimer) {
+    clearTimeout(childRestartTimer)
+    childRestartTimer = null
+  }
 
   if (!antflyProcess) {
     isRunning = false
@@ -403,6 +436,33 @@ function clearRecheckTimer(): void {
   }
 }
 
+function scheduleChildRestart(settings: AntflyServerSettings, logger: AdapterLogger): void {
+  if (childRestartTimer) return
+  if (Date.now() - childStartedAtMs >= CHILD_STABLE_MS) childRestartAttempts = 0
+  if (childRestartAttempts >= CHILD_RESTART_DELAYS_MS.length) {
+    logger.error(
+      'Antfly crash-looped through every restart attempt - search stays unavailable until `bakin restart`. Check ~/.bakin/logs/server.log for the antfly crash output.',
+      { attempts: childRestartAttempts },
+    )
+    return
+  }
+  const delayMs = CHILD_RESTART_DELAYS_MS[childRestartAttempts]
+  childRestartAttempts += 1
+  logger.warn('Restarting crashed Antfly child', { attempt: childRestartAttempts, delayMs })
+  childRestartTimer = setTimeout(async () => {
+    childRestartTimer = null
+    if (childStopRequested || antflyProcess) return
+    try {
+      const ok = await startAntflyServer(settings, logger)
+      if (!ok) scheduleChildRestart(settings, logger)
+    } catch (err) {
+      logger.error('Antfly restart attempt failed', err)
+      scheduleChildRestart(settings, logger)
+    }
+  }, delayMs)
+  childRestartTimer.unref?.()
+}
+
 function scheduleExternalRecheck(settings: AntflyServerSettings, logger: AdapterLogger): void {
   clearRecheckTimer()
   const delayMs = readExternalRecheckDelayMs()
@@ -414,6 +474,10 @@ function scheduleExternalRecheck(settings: AntflyServerSettings, logger: Adapter
 
     const stillRunning = await isAlreadyRunning(settings.url)
     if (stillRunning) return
+
+    // Whoever we adopted is gone — reflect it immediately so available()
+    // reports the truth even if the takeover below can't bring one back.
+    isRunning = false
 
     // Takeover restarts only apply to Bakin's own instance; an external
     // server going away is its owner's business.

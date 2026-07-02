@@ -1,5 +1,6 @@
 import type { QueryHit, QueryRequest, QueryResult as AntflyQueryResult } from '@antfly/sdk'
 import type {
+  Filter,
   Query,
   QueryDiagnostics,
   QueryResult,
@@ -19,28 +20,29 @@ export function buildQueryRequest(table: string, q: Query, settings: AntflySetti
   const strategy = resolveStrategy(q.strategy, settings)
   const text = typeof q.text === 'string' ? q.text : ''
   const trimmedText = text.trim()
-  const filterQuery = buildFilterQuery(q)
+  const filterConjuncts = buildFilterConjuncts(q.filters)
   const aggregations = buildAggregations(q)
   const isMatchAllText = trimmedText === '*'
-  const shouldMatchAll = isMatchAllText || (trimmedText.length === 0 && (filterQuery != null || aggregations != null))
+  const shouldMatchAll = isMatchAllText
+    || (trimmedText.length === 0 && (filterConjuncts.must.length > 0 || filterConjuncts.mustNot.length > 0 || aggregations != null))
   const effectiveStrategy = shouldMatchAll ? 'full_text_only' : strategy
   const request: QueryRequest = {
     table,
     limit: q.limit ?? settings.search.defaultLimit,
   }
-  // `offset` is full-text-only per the antfly v0.2 contract — "Not supported
-  // for semantic_search due to vector index limitations." Sending it on a
-  // hybrid/semantic request is an unsupported wire parameter, so only attach it
-  // when the resolved strategy is full-text-only.
+  // `offset` is full-text-only per the antfly v0.2 contract — semantic +
+  // offset > 0 is a hard 400 ("invalid query request", live-verified at rc.9),
+  // so only attach it when the resolved strategy is full-text-only.
   if (q.offset != null && effectiveStrategy === 'full_text_only') {
     request.offset = q.offset
   }
 
+  let textLeg: Record<string, unknown> | undefined
   if (shouldMatchAll) {
     // Bakin uses `q: '*'` and blank filtered/faceted queries for list/count
     // flows. Antfly's AST has an explicit MatchAllQuery; do not field-scope
     // `*` into a literal MatchQuery, and do not ask semantic search to embed it.
-    request.full_text_search = { match_all: {} } as QueryRequest['full_text_search']
+    textLeg = { match_all: {} }
   } else if (trimmedText.length > 0 && effectiveStrategy !== 'semantic_only') {
     // The full-text leg MUST be field-scoped. A bare `{query: text}` resolves
     // against a default/_all field that antfly does not populate, so it matches
@@ -49,10 +51,22 @@ export function buildQueryRequest(table: string, q: Query, settings: AntflySetti
     // searchable fields; fall back to the bare query-string shape only when
     // fields are unknown.
     const searchableFields = readStringArray(q.adapterOptions?.searchableFields)
-    request.full_text_search = (searchableFields && searchableFields.length > 0)
+    textLeg = (searchableFields && searchableFields.length > 0)
       ? buildFieldScopedFullTextSearch(text, searchableFields)
-      : { query: text } as QueryRequest['full_text_search']
+      : { query: text }
   }
+
+  // Filters ride INSIDE the full-text AST as boolean conjuncts. The dedicated
+  // `filter_query` request field silently zeroes the hits path at this pin
+  // (rc.9, live-verified: identical requests return the right count via
+  // `count: true` but zero hits) — the AST form returns correct filtered hits.
+  // Semantic-leg hits cannot be filtered server-side at all; the adapter
+  // post-filters those (see hitMatchesFilters).
+  const combinedLeg = combineFullTextLeg(textLeg, filterConjuncts)
+  if (combinedLeg) {
+    request.full_text_search = combinedLeg as QueryRequest['full_text_search']
+  }
+
   if (trimmedText.length > 0 && !isMatchAllText && effectiveStrategy !== 'full_text_only') {
     // v0.2: `indexes` is the list of vector indexes for semantic search and
     // is only meaningful alongside `semantic_search`.
@@ -66,14 +80,164 @@ export function buildQueryRequest(table: string, q: Query, settings: AntflySetti
       request.merge_config = { strategy: 'rrf', weights: indexWeights } as unknown as QueryRequest['merge_config']
     }
   }
-  if (filterQuery) request.filter_query = { query: filterQuery } as QueryRequest['filter_query']
 
   if (aggregations) request.aggregations = aggregations as QueryRequest['aggregations']
 
   const reranker = buildRerankerConfig(q, settings)
   if (reranker) request.reranker = reranker as QueryRequest['reranker']
 
+  // limit: 0 means "count/aggregate only" everywhere in Bakin. At this pin a
+  // plain limit-0 query returns total 0 and NULL aggregation buckets; the
+  // documented count mechanism returns the true total AND full-corpus buckets
+  // (live-verified: 652 vs 0 on the same body). count is incompatible with a
+  // reranker (server 400s), which is fine — a count has nothing to rerank.
+  if (q.limit === 0) {
+    ;(request as Record<string, unknown>).count = true
+    delete request.reranker
+  }
+
   return request
+}
+
+interface FilterConjuncts {
+  must: Array<Record<string, unknown>>
+  mustNot: Array<Record<string, unknown>>
+}
+
+/**
+ * Translate Bakin filters into antfly Query-AST nodes. String equality uses
+ * MatchPhraseQuery (analyzed — matches the lowercased index terms the way the
+ * server itself would); numbers use NumericRangeQuery with min === max; ranges
+ * use NumericRangeQuery bounds. All shapes live-verified at rc.9.
+ */
+function buildFilterConjuncts(filters: Query['filters']): FilterConjuncts {
+  const must: Array<Record<string, unknown>> = []
+  const mustNot: Array<Record<string, unknown>> = []
+  for (const filter of filters ?? []) {
+    if (filter.op === 'neq') {
+      const node = equalityNode(filter.field, filter.value)
+      if (node) mustNot.push(node)
+      continue
+    }
+    const node = filterNode(filter)
+    if (node) must.push(node)
+  }
+  return { must, mustNot }
+}
+
+function filterNode(filter: Filter): Record<string, unknown> | null {
+  const { field, op, value } = filter
+  switch (op) {
+    case 'eq':
+      return equalityNode(field, value)
+    case 'in': {
+      if (!Array.isArray(value)) return equalityNode(field, value)
+      const disjuncts = value
+        .map((entry) => equalityNode(field, entry))
+        .filter((node): node is Record<string, unknown> => node !== null)
+      if (disjuncts.length === 0) return null
+      return disjuncts.length === 1 ? disjuncts[0] : { should: { disjuncts } }
+    }
+    case 'gt':
+      return numericBound(field, value, { min: true, inclusive: false })
+    case 'gte':
+      return numericBound(field, value, { min: true, inclusive: true })
+    case 'lt':
+      return numericBound(field, value, { min: false, inclusive: false })
+    case 'lte':
+      return numericBound(field, value, { min: false, inclusive: true })
+    case 'contains':
+      return { match: String(value), field }
+    default:
+      return null
+  }
+}
+
+function equalityNode(field: string, value: unknown): Record<string, unknown> | null {
+  if (value === null || value === undefined) return null
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return { min: value, max: value, inclusive_min: true, inclusive_max: true, field }
+  }
+  return { match_phrase: String(value), field }
+}
+
+function numericBound(
+  field: string,
+  value: unknown,
+  bound: { min: boolean; inclusive: boolean },
+): Record<string, unknown> | null {
+  const numeric = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(numeric)) return null
+  return bound.min
+    ? { min: numeric, inclusive_min: bound.inclusive, field }
+    : { max: numeric, inclusive_max: bound.inclusive, field }
+}
+
+function combineFullTextLeg(
+  textLeg: Record<string, unknown> | undefined,
+  filters: FilterConjuncts,
+): Record<string, unknown> | undefined {
+  if (filters.must.length === 0 && filters.mustNot.length === 0) return textLeg
+  // Filters without any text leg (semantic-only strategies) cannot form a
+  // full-text conjunction; the adapter post-filters those hits instead.
+  if (!textLeg) return undefined
+  const combined: Record<string, unknown> = {
+    must: { conjuncts: [textLeg, ...filters.must] },
+  }
+  if (filters.mustNot.length > 0) {
+    combined.must_not = { disjuncts: filters.mustNot }
+  }
+  return combined
+}
+
+/**
+ * Client-side filter check for hits the server could not filter: at this pin
+ * only the full-text leg can carry filters (see buildQueryRequest), so any hit
+ * that arrived purely via the semantic leg must be re-checked against the
+ * caller's filters. String comparison is case-insensitive to mirror the
+ * analyzed index terms.
+ */
+export function hitMatchesFilters(document: Record<string, unknown>, filters: Query['filters']): boolean {
+  for (const filter of filters ?? []) {
+    if (!valueMatches(document[filter.field], filter)) return false
+  }
+  return true
+}
+
+function valueMatches(raw: unknown, filter: Filter): boolean {
+  switch (filter.op) {
+    case 'eq':
+      return equalityMatches(raw, filter.value)
+    case 'neq':
+      return !equalityMatches(raw, filter.value)
+    case 'in':
+      return Array.isArray(filter.value)
+        ? filter.value.some((entry) => equalityMatches(raw, entry))
+        : equalityMatches(raw, filter.value)
+    case 'contains':
+      return typeof raw === 'string' && raw.toLowerCase().includes(String(filter.value).toLowerCase())
+    case 'gt':
+    case 'gte':
+    case 'lt':
+    case 'lte': {
+      const left = Number(raw)
+      const right = Number(filter.value)
+      if (!Number.isFinite(left) || !Number.isFinite(right)) return false
+      if (filter.op === 'gt') return left > right
+      if (filter.op === 'gte') return left >= right
+      if (filter.op === 'lt') return left < right
+      return left <= right
+    }
+    default:
+      return true
+  }
+}
+
+function equalityMatches(raw: unknown, expected: unknown): boolean {
+  if (raw === null || raw === undefined) return false
+  if (Array.isArray(raw)) return raw.some((entry) => equalityMatches(entry, expected))
+  if (typeof raw === 'number' || typeof expected === 'number') return Number(raw) === Number(expected)
+  return String(raw).toLowerCase() === String(expected).toLowerCase()
 }
 
 /**
@@ -158,24 +322,25 @@ function resolveEmbedder(ref: string, settings: AntflySettings): AntflySettings[
   return match
 }
 
-function buildFilterQuery(q: Query): string | null {
-  if (!q.filters || q.filters.length === 0) return null
-  const parts = q.filters.map((filter) => {
-    if (filter.op === 'eq') return `+${filter.field}:${filter.value}`
-    if (filter.op === 'in' && Array.isArray(filter.value)) return `+${filter.field}:(${filter.value.join(' OR ')})`
-    return `+${filter.field}:${filter.value}`
-  })
-  return parts.join(' ')
-}
-
 function buildAggregations(q: Query): Record<string, unknown> | undefined {
   const aggregations: Record<string, unknown> = {}
   for (const field of q.facets ?? []) {
     aggregations[field] = { type: 'terms', field, size: 50 }
   }
   for (const aggregation of q.aggregations ?? []) {
+    if (aggregation.type === 'histogram') {
+      // Antfly splits the concept: numeric buckets are `histogram` with a
+      // float `interval`; named periods are `date_histogram` with
+      // `calendar_interval` (minute|hour|day|week|month|quarter|year). The
+      // old mapping sent every histogram as date_histogram with a raw
+      // `interval`, which is invalid for string intervals per the contract.
+      aggregations[aggregation.name] = typeof aggregation.interval === 'string'
+        ? { type: 'date_histogram', field: aggregation.field, calendar_interval: aggregation.interval }
+        : { type: 'histogram', field: aggregation.field, ...(aggregation.interval === undefined ? {} : { interval: aggregation.interval }) }
+      continue
+    }
     aggregations[aggregation.name] = {
-      type: aggregation.type === 'histogram' ? 'date_histogram' : aggregation.type,
+      type: aggregation.type,
       field: aggregation.field,
       ...(aggregation.interval === undefined ? {} : { interval: aggregation.interval }),
     }

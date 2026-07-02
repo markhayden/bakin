@@ -1,4 +1,5 @@
 import { AntflyClient, InferenceClient } from '@antfly/sdk'
+import type { QueryRequest, QueryResult as AntflyQueryResponse } from '@antfly/sdk'
 import type {
   AdapterHealthCheckDefinition,
   AdapterInitOpts,
@@ -27,11 +28,12 @@ import {
   buildQueryRequest,
   buildTableConfig,
   emptyQueryResult,
+  hitMatchesFilters,
   mapResponse,
   readNumber,
   readString,
 } from './query-translation'
-import { getServerHealthDetail, isLocalDefaultUrl, startAntflyServer, stopAntflyServer } from './server'
+import { getServerHealthDetail, isAntflyRunning, isLocalDefaultUrl, startAntflyServer, stopAntflyServer } from './server'
 
 interface AntflyIndexHealthEntry {
   name: string
@@ -101,6 +103,18 @@ class QueryTimeoutError extends Error {
   }
 }
 
+/**
+ * A count-only twin of a request: true total + full-corpus aggregation
+ * buckets. The reranker must not ride along (the server 400s count+rerank,
+ * and a count has nothing to rerank).
+ */
+function companionCountRequest(request: QueryRequest): QueryRequest {
+  const clone = { ...request, count: true } as QueryRequest
+  delete clone.reranker
+  delete clone.offset
+  return clone
+}
+
 async function raceQueryTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
@@ -114,6 +128,10 @@ async function raceQueryTimeout<T>(promise: Promise<T>, ms: number): Promise<T> 
     if (err instanceof QueryTimeoutError) {
       // The losing query promise is still in flight; swallow its eventual
       // rejection so it can't surface as an unhandled rejection later.
+      // Abandon (not abort) is deliberate: antfly's HTTP layer runs every
+      // request synchronously to completion with no cancellation token
+      // (source-verified), so aborting the socket would free nothing
+      // server-side — the query finishes either way. Reported upstream.
       promise.catch(() => {})
     }
     throw err
@@ -266,7 +284,14 @@ export class AntflySearchAdapter implements SearchAdapter {
   }
 
   async available(): Promise<boolean> {
-    return this.settings.enabled && this.client !== null
+    if (!this.settings.enabled || this.client === null) return false
+    // A crashed local instance must not report available: every query would
+    // fail-empty, indexing would silently drop writes, and the doctor would
+    // say OK while search is dead. isAntflyRunning() tracks both the spawned
+    // child (exit handler) and the adopted local listener; external-URL guest
+    // servers are the owner's business and stay client-based.
+    if (isLocalDefaultUrl(this.settings.url) && !isAntflyRunning()) return false
+    return true
   }
 
   getHealthChecks(): AdapterHealthCheckDefinition[] {
@@ -553,6 +578,10 @@ export class AntflySearchAdapter implements SearchAdapter {
     if (ready.length === 0) {
       delete request.indexes
       delete (request as { semantic_search?: unknown }).semantic_search
+      // merge_config exists to weight the (now-stripped) semantic legs. It is
+      // NOT inert on a single-lane request — the server routes any request
+      // carrying merge_config through the fusion path — so drop it with them.
+      delete (request as { merge_config?: unknown }).merge_config
       this.logger.warn('All requested semantic indexes are rebuilding/absent - serving full-text only', { table, requested })
     } else {
       request.indexes = ready
@@ -578,10 +607,10 @@ export class AntflySearchAdapter implements SearchAdapter {
       // table with an active embeddings backfill hangs indefinitely at this
       // pin (bakin#456 finding 10), and this path serves the per-plugin
       // /search routes directly.
-      const result = await raceQueryTimeout(client.tables.query(table, request), queryTimeoutMs())
-      const response = result?.responses?.[0]
-      if (!response) return emptyQueryResult(q)
-      return mapResponse(response, table)
+      return await this.executePrepared(table, q, request, async (req) => {
+        const result = await client.tables.query(table, req)
+        return result?.responses?.[0]
+      }, queryTimeoutMs())
     } catch (err) {
       if (err instanceof QueryTimeoutError) {
         this.logger.warn('Antfly query timed out - returning empty result', { table, timeoutMs: queryTimeoutMs() })
@@ -590,6 +619,65 @@ export class AntflySearchAdapter implements SearchAdapter {
       }
       return emptyQueryResult(q)
     }
+  }
+
+  /**
+   * Run a prepared request, patching over two rc.9 server behaviors
+   * (live-verified, reported upstream):
+   *
+   * 1. `hits.total` and aggregation buckets are PAGE-scoped unless the
+   *    request is count-only. When the caller asked for facets, a companion
+   *    `count: true` query supplies the true total + full-corpus buckets.
+   *    (limit-0 count flows already run count-only — no companion needed.)
+   * 2. Filters can only ride the full-text leg (filter_query zeroes the hits
+   *    path), so hits that arrived via the semantic leg are re-checked
+   *    client-side. A hit with a full_text lane score already passed the
+   *    filtered leg server-side and is never dropped.
+   */
+  private async executePrepared(
+    table: string,
+    q: Query,
+    request: QueryRequest,
+    run: (req: QueryRequest) => Promise<AntflyQueryResponse | undefined>,
+    timeoutMs: number,
+  ): Promise<QueryResult> {
+    const isCountOnly = (request as Record<string, unknown>).count === true
+    const wantsCorpusAggregations = !isCountOnly && request.aggregations != null
+
+    const companionPromise: Promise<AntflyQueryResponse | undefined> = wantsCorpusAggregations
+      ? raceQueryTimeout(run(companionCountRequest(request)), timeoutMs).catch((err) => {
+          this.logger.warn('Companion count query failed - facet counts fall back to page scope', { table, error: err })
+          return undefined
+        })
+      : Promise.resolve(undefined)
+
+    const response = await raceQueryTimeout(run(request), timeoutMs)
+    const companion = await companionPromise
+    if (!response) return emptyQueryResult(q)
+
+    let result = mapResponse(response, table)
+
+    if (q.filters?.length && (request as { semantic_search?: unknown }).semantic_search != null) {
+      result = {
+        ...result,
+        hits: result.hits.filter((hit) =>
+          // mapHits spreads antfly's raw _index_scores into scoreBreakdown;
+          // `full_text` is the reserved lane name for the FTS leg.
+          (hit.scoreBreakdown as Record<string, number> | undefined)?.full_text !== undefined
+            || hitMatchesFilters(hit.document, q.filters)),
+      }
+    }
+
+    if (companion) {
+      const corpus = mapResponse(companion, table)
+      result = {
+        ...result,
+        total: corpus.total,
+        facets: corpus.facets ?? result.facets,
+        aggregations: corpus.aggregations ?? result.aggregations,
+      }
+    }
+    return result
   }
 
   async multiQuery(queries: Array<{ table: string; query: Query }>): Promise<QueryResult[]> {
@@ -622,8 +710,7 @@ export class AntflySearchAdapter implements SearchAdapter {
       // no-criteria request to antfly. Other tables in the batch still run.
       if (!hasSearchLeg(request)) return emptyQueryResult(query)
       try {
-        const response = await raceQueryTimeout(client.query(request), timeoutMs)
-        return response ? mapResponse(response, table) : emptyQueryResult(query)
+        return await this.executePrepared(table, query, request, (req) => client.query(req), timeoutMs)
       } catch (err) {
         if (err instanceof QueryTimeoutError) {
           // A timed-out table must not stall the others — return empty and keep

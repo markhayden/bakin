@@ -180,7 +180,9 @@ export async function installAntflyDependency(
 
   try {
     logger.info('Downloading Antfly', { url, version: pin.version })
-    const res = await fetch(url)
+    // A stalled CDN must not hang `bakin install search` forever; ~20MB
+    // binary, so 120s covers even a slow link with margin.
+    const res = await fetch(url, { signal: AbortSignal.timeout(120_000) })
     if (!res.ok) {
       return {
         name: 'antfly',

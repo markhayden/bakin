@@ -61,15 +61,73 @@ describe('buildQueryRequest — full-text AST shape (bakin#456 item 1)', () => {
     expect(req.full_text_search).toEqual({ match_all: {} })
   })
 
-  it('maps blank filter-only queries to MatchAllQuery plus filter_query', () => {
+  it('maps blank filter-only queries to MatchAllQuery AND filter conjuncts in the AST', () => {
     const q: Query = {
       text: '',
       strategy: 'fts',
       filters: [{ field: 'tier', op: 'eq', value: 'turn' }],
     }
     const req = buildQueryRequest('bakin_memory', q, settings)
-    expect(req.full_text_search).toEqual({ match_all: {} })
-    expect(req.filter_query).toEqual({ query: '+tier:turn' })
+    // Filters must ride INSIDE full_text_search: the dedicated filter_query
+    // field silently returns zero hits at rc.9 (live-verified upstream bug).
+    expect(req.full_text_search).toEqual({
+      must: {
+        conjuncts: [
+          { match_all: {} },
+          { match_phrase: 'turn', field: 'tier' },
+        ],
+      },
+    })
+    expect(req.filter_query).toBeUndefined()
+  })
+
+  it('maps every filter op to its live-verified AST node', () => {
+    const q: Query = {
+      text: '',
+      strategy: 'fts',
+      filters: [
+        { field: 'tier', op: 'in', value: ['audit', 'turn'] },
+        { field: 'updated_at', op: 'gte', value: 1000 },
+        { field: 'updated_at', op: 'lt', value: 2000 },
+        { field: 'content', op: 'contains', value: 'beacon' },
+        { field: 'agent', op: 'neq', value: 'system' },
+        { field: 'count', op: 'eq', value: 5 },
+      ],
+    }
+    const req = buildQueryRequest('bakin_memory', q, settings) as Record<string, unknown>
+    expect(req.full_text_search).toEqual({
+      must: {
+        conjuncts: [
+          { match_all: {} },
+          { should: { disjuncts: [
+            { match_phrase: 'audit', field: 'tier' },
+            { match_phrase: 'turn', field: 'tier' },
+          ] } },
+          { min: 1000, inclusive_min: true, field: 'updated_at' },
+          { max: 2000, inclusive_max: false, field: 'updated_at' },
+          { match: 'beacon', field: 'content' },
+          { min: 5, max: 5, inclusive_min: true, inclusive_max: true, field: 'count' },
+        ],
+      },
+      must_not: {
+        disjuncts: [{ match_phrase: 'system', field: 'agent' }],
+      },
+    })
+  })
+
+  it('marks limit-0 requests count-only and drops the reranker', () => {
+    const q: Query = {
+      text: '*',
+      strategy: 'fts',
+      limit: 0,
+      filters: [{ field: 'tier', op: 'eq', value: 'audit' }],
+      adapterOptions: { rerankField: 'content' },
+    }
+    const req = buildQueryRequest('bakin_memory', q, settings) as Record<string, unknown>
+    // limit:0 returns total 0 + null buckets at rc.9; count:true returns the
+    // real total and full-corpus buckets (live-verified).
+    expect(req.count).toBe(true)
+    expect(req.reranker).toBeUndefined()
   })
 
   it('maps blank facet-only queries to MatchAllQuery plus aggregations', () => {

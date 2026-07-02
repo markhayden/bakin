@@ -127,6 +127,7 @@ export function walkFiles(
   contentDir: string,
   includePatterns: string[],
   excludePatterns: string[] = [],
+  opts?: { onDirError?: (dir: string, err: unknown) => void },
 ): FsEntry[] {
   const out: FsEntry[] = []
   const includeRegexes = includePatterns.map(globToRegex)
@@ -136,7 +137,8 @@ export function walkFiles(
     let entries: import('fs').Dirent[]
     try {
       entries = readdirSync(dir, { withFileTypes: true }) as unknown as import('fs').Dirent[]
-    } catch {
+    } catch (err) {
+      opts?.onDirError?.(dir, err)
       return
     }
     for (const entry of entries) {
@@ -237,7 +239,13 @@ export async function performStartupReconcile(
   }
 
   const includePatterns = def.filePatterns.map(p => p.pattern)
-  const fsEntries = walkFiles(contentDir, includePatterns, def.excludePatterns ?? [])
+  let walkIncomplete = false
+  const fsEntries = walkFiles(contentDir, includePatterns, def.excludePatterns ?? [], {
+    onDirError: (dir, err) => {
+      walkIncomplete = true
+      log.warn('Reconcile fs walk could not read a directory', err, { table: tableName, dir })
+    },
+  })
   result.scanned = fsEntries.length
 
   // Build fs key→entry map (mapper.fileToId can return null to skip).
@@ -323,8 +331,16 @@ export async function performStartupReconcile(
     }
   }
 
-  // Orphans: indexed keys that no longer exist on disk
-  for (const indexedKey of indexedMtimes.keys()) {
+  // Orphans: indexed keys that no longer exist on disk. A partial fs walk
+  // MUST NOT reach this loop's conclusions: if any directory read failed,
+  // files under it are missing from fsByKey and every row they back would be
+  // deleted as a phantom orphan. Skip orphan removal for this boot — the next
+  // clean walk removes real orphans.
+  const orphanCandidates = walkIncomplete ? [] : Array.from(indexedMtimes.keys())
+  if (walkIncomplete) {
+    log.warn('Skipping orphan removal: fs walk was incomplete this boot', { table: tableName })
+  }
+  for (const indexedKey of orphanCandidates) {
     // Zombie row guard: an empty/nullish key came out of the index. This
     // shouldn't happen in normal writes, but a pre-existing bad row in the
     // underlying store (e.g. a legacy doc with a blank _key) would cause

@@ -23,7 +23,10 @@ const mockGetStatus = mock(async () => ({ health: 'healthy' }))
 const mockTablesList = mock(async () => [])
 const mockTablesCreate = mock(async () => {})
 const mockTablesDrop = mock(async () => {})
-const mockTablesQuery = mock(async (): Promise<QueryResponse> => ({
+const mockTablesQuery = mock(async (
+  _tableName?: string,
+  _request?: Record<string, unknown>,
+): Promise<QueryResponse> => ({
   responses: [{ hits: { hits: [], total: 0 }, took: 0 }],
 }))
 const mockTablesBatch = mock(async () => ({ inserted: 1, deleted: 1 }))
@@ -405,7 +408,7 @@ describe('AntflySearchAdapter', () => {
     expect(mockTablesQuery).not.toHaveBeenCalled()
   })
 
-  it('sends filter-only empty text queries as match-all searches', async () => {
+  it('sends filter-only empty text queries as match-all + AST filter conjuncts', async () => {
     const adapter = await createInitializedAdapter()
     mockTablesQuery.mockClear()
 
@@ -416,11 +419,81 @@ describe('AntflySearchAdapter', () => {
       facets: ['agent'],
     })
 
-    expect(mockTablesQuery).toHaveBeenCalledTimes(1)
-    const request = tableQueryRequest() as Record<string, unknown>
-    expect(request.full_text_search).toEqual({ match_all: {} })
-    expect(request.filter_query).toEqual({ query: '+tier:turn' })
-    expect(request.aggregations).toEqual({ agent: { type: 'terms', field: 'agent', size: 50 } })
+    // Facets trigger a companion count-only query (page-scoped buckets fix),
+    // so two requests go out: one main, one count twin.
+    expect(mockTablesQuery).toHaveBeenCalledTimes(2)
+    const requests = mockTablesQuery.mock.calls.map((call) => call[1] as Record<string, unknown>)
+    const main = requests.find((r) => r.count !== true)!
+    const companion = requests.find((r) => r.count === true)!
+
+    // Filters ride the AST: the filter_query request field zeroes the hits
+    // path at rc.9 (live-verified upstream bug).
+    expect(main.full_text_search).toEqual({
+      must: { conjuncts: [{ match_all: {} }, { match_phrase: 'turn', field: 'tier' }] },
+    })
+    expect(main.filter_query).toBeUndefined()
+    expect(main.aggregations).toEqual({ agent: { type: 'terms', field: 'agent', size: 50 } })
+    expect(companion.aggregations).toEqual(main.aggregations)
+    expect(companion.reranker).toBeUndefined()
+  })
+
+  it('takes total + facet buckets from the companion count query', async () => {
+    mockTablesQuery.mockImplementation(async (_table?: string, req?: Record<string, unknown>) => {
+      if (req?.count === true) {
+        return {
+          responses: [{
+            hits: { hits: [], total: 652 },
+            aggregations: { agent: { buckets: [{ key: 'main', doc_count: 500 }] } },
+            took: 1,
+          }],
+        }
+      }
+      return {
+        responses: [{
+          hits: { hits: [{ _id: 'row-1', _source: { tier: 'audit' }, _score: 1 }], total: 1 },
+          aggregations: { agent: { buckets: [{ key: 'main', doc_count: 1 }] } },
+          took: 1,
+        }],
+      }
+    })
+
+    const adapter = await createInitializedAdapter()
+    const result = await adapter.query('bakin_memory', { text: '*', strategy: 'fts', facets: ['agent'] })
+
+    expect(result.hits).toHaveLength(1)
+    expect(result.total).toBe(652)
+    expect(result.facets).toEqual({ agent: [{ value: 'main', count: 500 }] })
+  })
+
+  it('post-filters semantic-lane hits that the server could not filter', async () => {
+    mockIndexesList.mockResolvedValue([
+      { config: { name: 'embeddings', type: 'embeddings' }, status: { total_indexed: 5, rebuilding: false } },
+    ])
+    mockTablesQuery.mockImplementation(async () => ({
+      responses: [{
+        hits: {
+          hits: [
+            // Passed the filtered full-text leg server-side — always kept.
+            { _id: 'fts-hit', _source: { tier: 'other' }, _score: 2, _index_scores: { full_text: 2 } },
+            // Semantic-lane hit matching the filter — kept.
+            { _id: 'sem-match', _source: { tier: 'turn' }, _score: 1.5, _index_scores: { embeddings: 1.5 } },
+            // Semantic-lane hit violating the filter — dropped client-side.
+            { _id: 'sem-mismatch', _source: { tier: 'audit' }, _score: 1, _index_scores: { embeddings: 1 } },
+          ],
+          total: 3,
+        },
+        took: 1,
+      }],
+    }))
+
+    const adapter = await createInitializedAdapter()
+    const result = await adapter.query('bakin_memory', {
+      text: 'beacon',
+      strategy: 'hybrid',
+      filters: [{ field: 'tier', op: 'eq', value: 'turn' }],
+    })
+
+    expect(result.hits.map((h) => h.key)).toEqual(['fts-hit', 'sem-match'])
   })
 
   it('still returns empty for a blank no-criteria query without calling antfly', async () => {
