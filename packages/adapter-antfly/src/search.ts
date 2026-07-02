@@ -216,8 +216,20 @@ export class AntflySearchAdapter implements SearchAdapter {
       this.logger.info('Antfly connected', { url: this.settings.url, health: status?.health })
       this.warmEmbedders()
     } catch (err) {
-      this.client = null
-      this.logger.error('Failed to connect to Antfly - falling back to file-only mode', err)
+      // The server started (or was adopted) but its API didn't answer within
+      // the wait window — a slow post-restart convergence, not a dead server.
+      // Keep the client DEGRADED instead of dropping to file-only for the
+      // whole process lifetime: queries fail-empty gracefully, writes retry
+      // via retryTransientBatch, and the search bootstrap's backoff ladder
+      // re-runs table setup once the server settles. available() still
+      // reflects a genuinely dead child through isAntflyRunning().
+      this.client = client
+      this.embedderHashAtInit = this.embedderHash()
+      this.logger.warn(
+        'Antfly is up but not yet answering API calls - proceeding degraded; search recovers when it settles',
+        { url: this.settings.url, error: err instanceof Error ? err.message : String(err) },
+      )
+      this.warmEmbedders()
     }
   }
 

@@ -83,6 +83,7 @@ mock.module('../../../src/core/search-adapter-factory', () => ({
 
 const realFetch = globalThis.fetch
 let mockFetchOk = true
+let mockSearchAvailable = true
 let mockFetchHealth = 'green'
 function installMockFetch() {
   ;(globalThis as { fetch: typeof fetch }).fetch = mock(async () => {
@@ -140,19 +141,19 @@ mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
 mock.module('../../../src/core/app-services', () => ({
   getAppServices: () => ({
     runtime: mockRuntime,
-    search: {},
+    search: { available: async () => mockSearchAvailable },
     tasks: {},
     health: {},
   }),
   maybeGetAppServices: () => ({
     runtime: mockRuntime,
-    search: {},
+    search: { available: async () => mockSearchAvailable },
     tasks: {},
     health: {},
   }),
   createAppServices: async () => ({
     runtime: mockRuntime,
-    search: {},
+    search: { available: async () => mockSearchAvailable },
     tasks: {},
     health: {},
   }),
@@ -160,19 +161,19 @@ mock.module('../../../src/core/app-services', () => ({
 mock.module('../../../src/core/app-services.ts', () => ({
   getAppServices: () => ({
     runtime: mockRuntime,
-    search: {},
+    search: { available: async () => mockSearchAvailable },
     tasks: {},
     health: {},
   }),
   maybeGetAppServices: () => ({
     runtime: mockRuntime,
-    search: {},
+    search: { available: async () => mockSearchAvailable },
     tasks: {},
     health: {},
   }),
   createAppServices: async () => ({
     runtime: mockRuntime,
-    search: {},
+    search: { available: async () => mockSearchAvailable },
     tasks: {},
     health: {},
   }),
@@ -180,19 +181,19 @@ mock.module('../../../src/core/app-services.ts', () => ({
 mock.module('@/core/app-services', () => ({
   getAppServices: () => ({
     runtime: mockRuntime,
-    search: {},
+    search: { available: async () => mockSearchAvailable },
     tasks: {},
     health: {},
   }),
   maybeGetAppServices: () => ({
     runtime: mockRuntime,
-    search: {},
+    search: { available: async () => mockSearchAvailable },
     tasks: {},
     health: {},
   }),
   createAppServices: async () => ({
     runtime: mockRuntime,
-    search: {},
+    search: { available: async () => mockSearchAvailable },
     tasks: {},
     health: {},
   }),
@@ -269,6 +270,7 @@ beforeEach(() => {
   mockSearchInstalled = true
   mockSearchUrl = 'http://127.0.0.1:8765/api/v1'
   mockFetchOk = true
+  mockSearchAvailable = true
   mockFetchHealth = 'green'
   runtimeWorkspaceFiles = new Map()
   runtimeSkill = null
@@ -614,33 +616,25 @@ describe('checkSearchAdapter', () => {
     expect(results[0].message).toMatch(/Search enabled but active search adapter binary was not found/)
   })
 
-  it('reports ok when the daemon responds healthy', async () => {
+  it('reports ok when the live adapter is available', async () => {
+    // The check asks the ADAPTER, not a hardcoded HTTP endpoint — the old
+    // probe hit the pre-0.2 /api/v1/status path, which a healthy v0.2 zig
+    // server does not serve, so doctor reported a false error on every run.
     mockSearchEnabled = true
     mockSearchInstalled = true
-    mockFetchOk = true
-    mockFetchHealth = 'green'
-    installMockFetch()
-    try {
-      const results = await checkSearchAdapter()
-      expect(results[0].status).toBe('ok')
-      expect(results[0].message).toMatch(/health: green/)
-    } finally {
-      restoreFetch()
-    }
+    mockSearchAvailable = true
+    const results = await checkSearchAdapter()
+    expect(results[0].status).toBe('ok')
+    expect(results[0].message).toMatch(/connected/)
   })
 
-  it('reports error when every URL fails', async () => {
+  it('reports error when the adapter is unavailable', async () => {
     mockSearchEnabled = true
     mockSearchInstalled = true
-    mockFetchOk = false
-    installMockFetch()
-    try {
-      const results = await checkSearchAdapter()
-      expect(results[0].status).toBe('error')
-      expect(results[0].message).toMatch(/connection failed/)
-    } finally {
-      restoreFetch()
-    }
+    mockSearchAvailable = false
+    const results = await checkSearchAdapter()
+    expect(results[0].status).toBe('error')
+    expect(results[0].message).toMatch(/unavailable/)
   })
 })
 

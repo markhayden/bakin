@@ -38,24 +38,14 @@ export async function checkSearchAdapter(): Promise<HealthCheckResult[]> {
     return [error('Search enabled but active search adapter binary was not found')]
   }
 
-  const urls = Array.from(new Set([
-    searchSettings.url.replace(/\/api\/v1\/?$/, ''),
-    searchSettings.url.replace('localhost', '127.0.0.1').replace(/\/api\/v1\/?$/, ''),
-  ]))
-
-  let lastErr: unknown
-  for (const base of urls) {
-    try {
-      const res = await fetch(`${base}/api/v1/status`, { signal: AbortSignal.timeout(3000) })
-      if (res.ok) {
-        const status = await res.json()
-        return [ok(`Search adapter connected (health: ${status?.health})`)]
-      }
-      lastErr = new Error(`status ${res.status}`)
-    } catch (err) {
-      lastErr = err
-    }
+  // Ask the LIVE adapter instead of probing a hardcoded HTTP endpoint: the
+  // old check hit the pre-0.2 `/api/v1/status` path, which the v0.2 zig
+  // server does not serve — so a perfectly healthy instance reported
+  // "connection failed" as a doctor ERROR on every run. available() also
+  // reflects a crashed/supervised child, which a raw port probe cannot.
+  const { getAppServices } = await import('../../../../src/core/app-services')
+  if (await getAppServices().search.available()) {
+    return [ok('Search adapter connected')]
   }
-
-  return [error(`Search adapter connection failed: ${lastErr}`)]
+  return [error('Search enabled but the adapter is unavailable — check the antfly lines in ~/.bakin/logs/server.log')]
 }
