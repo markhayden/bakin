@@ -298,6 +298,14 @@ export interface SearchAPI {
   /** Global search adapter and registered-table health snapshot. */
   health?(): Promise<SearchHealthSnapshot>
   /**
+   * Resolves true once the boot-time search bootstrap (table creation +
+   * reconciles) has succeeded, false if it gave up for this process lifetime.
+   * Boot-time indexers MUST await this before writing: the server can come up
+   * while the bootstrap is still settling, and writes into missing tables are
+   * silently dropped.
+   */
+  whenReady?(): Promise<boolean>
+  /**
    * Plugin-scoped maintenance operations for indexers that own non-file-backed
    * tables. Intentionally narrower than the raw adapter: callers can only
    * touch their own registered content type.

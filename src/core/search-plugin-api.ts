@@ -312,6 +312,11 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
       return getSearchHealth()
     },
 
+    async whenReady(): Promise<boolean> {
+      const { whenSearchBootstrapSettled } = await import('./search-startup')
+      return whenSearchBootstrapSettled()
+    },
+
     maintenance: {
       available(): Promise<boolean> {
         return getSearchAdapter().available()

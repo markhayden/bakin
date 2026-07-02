@@ -20,7 +20,12 @@ mock.module('../../src/core/logger', () => ({
 }))
 
 let bootstrapFailuresRemaining = 0
+let bootstrapHangs = false
 const createRegisteredTables = mock(async () => {
+  if (bootstrapHangs) {
+    // A wedged antfly: the table call never returns (no client cancellation).
+    return new Promise<never>(() => {})
+  }
   if (bootstrapFailuresRemaining > 0) {
     bootstrapFailuresRemaining -= 1
     return { failures: ['bakin_tasks: connect ECONNREFUSED'], created: [] }
@@ -42,13 +47,14 @@ mock.module('../../src/core/search-warmup', () => ({
   warmSearchQueryPath,
 }))
 
-import { bootSearch, SEARCH_STARTUP_RETRY_SCHEDULE_MS } from '../../src/core/search-startup'
+import { bootSearch, SEARCH_BOOTSTRAP_BOOT_BUDGET_MS, SEARCH_STARTUP_RETRY_SCHEDULE_MS } from '../../src/core/search-startup'
 
 const migration = { migrated: false, from: 1, to: 1 } as Parameters<typeof bootSearch>[0]
 
 beforeEach(() => {
   vi.useFakeTimers()
   bootstrapFailuresRemaining = 0
+  bootstrapHangs = false
   createRegisteredTables.mockClear()
   warmSearchQueryPath.mockClear()
 })
@@ -60,6 +66,7 @@ afterEach(() => {
 describe('bootSearch', () => {
   it('warms immediately when the first bootstrap succeeds', async () => {
     await bootSearch(migration)
+    await vi.advanceTimersByTimeAsync(0) // flush the lazy warm-up import
     expect(createRegisteredTables).toHaveBeenCalledTimes(1)
     expect(warmSearchQueryPath).toHaveBeenCalledTimes(1)
   })
@@ -77,8 +84,29 @@ describe('bootSearch', () => {
     expect(warmSearchQueryPath).not.toHaveBeenCalled()
 
     await vi.advanceTimersByTimeAsync(SEARCH_STARTUP_RETRY_SCHEDULE_MS[2])
+    await vi.advanceTimersByTimeAsync(0) // flush the lazy warm-up import
     expect(createRegisteredTables).toHaveBeenCalledTimes(4)
     expect(warmSearchQueryPath).toHaveBeenCalledTimes(1)
+  })
+
+  it('never holds the boot longer than the boot budget when antfly is wedged', async () => {
+    // Field-verified: an antfly stuck in a startup catch-up retry loop
+    // (error.FileNotFound) held a table call open FOREVER — the whole server
+    // sat silent with no UI. The boot must proceed within the budget.
+    bootstrapHangs = true
+
+    let booted = false
+    const boot = bootSearch(migration).then(() => {
+      booted = true
+    })
+
+    await vi.advanceTimersByTimeAsync(SEARCH_BOOTSTRAP_BOOT_BUDGET_MS - 1)
+    expect(booted).toBe(false)
+
+    await vi.advanceTimersByTimeAsync(1)
+    await boot
+    expect(booted).toBe(true)
+    expect(warmSearchQueryPath).not.toHaveBeenCalled()
   })
 
   it('gives up after the schedule is exhausted without looping forever', async () => {

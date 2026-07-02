@@ -271,6 +271,15 @@ const memoryPlugin: BakinPlugin = definePlugin({
     // dashboard on every subsequent boot (Apr 2026 incident). onReady() is
     // the first lifecycle hook that is guaranteed to fire after tables exist.
     deferredBackfill = async () => {
+      // Boot may proceed past a slow/wedged search bootstrap (bounded boot
+      // budget). Writing before tables exist silently drops rows while byte
+      // offsets advance — the failure that once produced a permanently empty
+      // dashboard — so wait for the bootstrap to actually settle first.
+      if (ctx.search.whenReady && !await ctx.search.whenReady()) {
+        log.warn('search bootstrap never became ready — skipping memory backfill this boot (offsets untouched; next boot retries)')
+        return
+      }
+
       // Per-plugin schema migration. Bumping MEMORY_SCHEMA_VERSION drops the
       // table + clears offsets so the backfill below re-derives everything
       // under the current write-time filters (TTL, parser rules, etc.). Runs

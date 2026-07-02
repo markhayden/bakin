@@ -148,24 +148,47 @@ export async function logSearchHealthSummary(): Promise<void> {
 }
 
 /**
+ * How long the server boot is willing to WAIT on the first bootstrap attempt.
+ * The attempt itself keeps running past this — table ops against a wedged
+ * antfly have no client-side cancellation — but the boot proceeds and the
+ * server starts serving. Field-verified failure mode: antfly stuck in a
+ * `provisioned startup catch-up failed ... error.FileNotFound` retry loop
+ * held a table call open forever and the whole server sat silent at
+ * "Loading plugins" — no UI, no logs, no recovery without a kill.
+ */
+export const SEARCH_BOOTSTRAP_BOOT_BUDGET_MS = 10_000
+
+let bootstrapSettle: ((ready: boolean) => void) | null = null
+const bootstrapSettled: Promise<boolean> = new Promise((resolve) => {
+  bootstrapSettle = resolve
+})
+
+/**
+ * Resolves true once the search bootstrap (table creation + reconciles) has
+ * actually succeeded, false when it gave up for this process lifetime.
+ * Boot-time writers (e.g. the memory backfill) MUST await this before writing:
+ * writing into missing tables silently drops rows while byte offsets advance —
+ * the exact failure that once produced a permanently empty dashboard.
+ */
+export function whenSearchBootstrapSettled(): Promise<boolean> {
+  return bootstrapSettled
+}
+
+/**
  * Run the search bootstrap; if table setup isn't ready, retry on the backoff
  * schedule until it succeeds or the schedule is exhausted. Fire-and-forget —
- * never throws into the boot path.
+ * never throws into the boot path, and never holds the boot longer than
+ * SEARCH_BOOTSTRAP_BOOT_BUDGET_MS (the attempt continues in the background).
  */
 export async function bootSearch(migration: SearchMigrationResult): Promise<void> {
-  const { warmSearchQueryPath } = await import('./search-warmup')
-
   const onReady = () => {
+    bootstrapSettle?.(true)
     // Warm the query-embedding path up front so the first user search isn't a
     // 15s cold-compile dead query; the warm state is surfaced via search-status.
-    void warmSearchQueryPath().catch((err) => log.warn('Search warm-up failed', err))
+    void import('./search-warmup')
+      .then(({ warmSearchQueryPath }) => warmSearchQueryPath())
+      .catch((err) => log.warn('Search warm-up failed', err))
     void logSearchHealthSummary().catch((err) => log.warn('Search health summary failed', err))
-  }
-
-  const ready = await runSearchStartupBootstrap(migration)
-  if (ready) {
-    onReady()
-    return
   }
 
   const scheduleRetry = (attempt: number) => {
@@ -173,6 +196,7 @@ export async function bootSearch(migration: SearchMigrationResult): Promise<void
       log.error('Search startup bootstrap gave up after all retries — search stays paused until restart', {
         attempts: SEARCH_STARTUP_RETRY_SCHEDULE_MS.length + 1,
       })
+      bootstrapSettle?.(false)
       return
     }
     setTimeout(() => {
@@ -188,5 +212,39 @@ export async function bootSearch(migration: SearchMigrationResult): Promise<void
       })
     }, SEARCH_STARTUP_RETRY_SCHEDULE_MS[attempt]).unref?.()
   }
-  scheduleRetry(0)
+
+  // Retries only ever start after the previous attempt SETTLES — overlapping
+  // ensureRegisteredTables runs would race table creation against itself.
+  const attempt = runSearchStartupBootstrap(migration)
+  const outcome = await Promise.race([
+    attempt,
+    new Promise<'boot-budget-exceeded'>((resolve) => {
+      const timer = setTimeout(() => resolve('boot-budget-exceeded'), SEARCH_BOOTSTRAP_BOOT_BUDGET_MS)
+      timer.unref?.()
+    }),
+  ])
+
+  if (outcome === true) {
+    onReady()
+    return
+  }
+  if (outcome === false) {
+    scheduleRetry(0)
+    return
+  }
+
+  // Boot budget exceeded: let the server come up now; settle in the background.
+  log.warn(
+    `Search bootstrap still running after ${SEARCH_BOOTSTRAP_BOOT_BUDGET_MS}ms — continuing boot; search is degraded until it settles. If this repeats, antfly is likely wedged (check its startup catch-up log lines).`,
+  )
+  attempt.then((ready) => {
+    if (ready) {
+      onReady()
+      return
+    }
+    scheduleRetry(0)
+  }).catch((err) => {
+    log.warn('Search bootstrap failed after boot continued', err)
+    scheduleRetry(0)
+  })
 }
