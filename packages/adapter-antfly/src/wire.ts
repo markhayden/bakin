@@ -103,6 +103,14 @@ export interface WireIndexStatusEntry {
     worker_failed?: boolean
     fatal_error_count?: number
     last_error?: string
+    /** Live enrichment/embed pipeline counters (embeddings legs only). */
+    enrichment_runtime?: {
+      pending_sequence_count: number
+      retrying?: boolean
+      worker_failed?: boolean
+      fatal_error_count?: number
+      active_embed_batch_items?: number
+    }
   } | null
 }
 

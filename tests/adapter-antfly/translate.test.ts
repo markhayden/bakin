@@ -40,7 +40,7 @@ import type { WireQueryEnvelope, WireIndexStatusEntry } from '../../packages/ada
 const S = DEFAULT_SETTINGS
 
 describe('buildQueryRequest', () => {
-  it('hybrid query: field-scoped FTS + semantic legs + rrf weights', () => {
+  it('hybrid query: field-scoped FTS + semantic legs + fusion weights', () => {
     const req = buildQueryRequest('t', {
       text: 'dark dashboard',
       limit: 20,
@@ -61,7 +61,8 @@ describe('buildQueryRequest', () => {
       },
       semantic_search: 'dark dashboard',
       indexes: ['assets_text', 'assets_visual'],
-      merge_config: { strategy: 'rrf', weights: { assets_text: 0.5, assets_visual: 2 } },
+      // rsf is the measured default (search-tuning.md)
+      merge_config: { strategy: 'rsf', weights: { assets_text: 0.5, assets_visual: 2 } },
     })
   })
 

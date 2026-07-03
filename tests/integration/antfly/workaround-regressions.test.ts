@@ -11,6 +11,8 @@
  */
 import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
 import { join } from 'path'
+import { homedir } from 'os'
+import { existsSync } from 'fs'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
 
@@ -62,7 +64,7 @@ if (!binary) {
   const resp0 = (j: unknown) => (j as { responses?: Array<Record<string, unknown>> })?.responses?.[0]
 
   beforeAll(async () => {
-    instance = await spawnEphemeralAntfly(binary)
+    instance = await spawnEphemeralAntfly(binary, { modelOwners: ['BAAI', 'antflydb'], preloadModels: ['embedder:antflydb/clipclap'] })
     await api('POST', `/db/v1/tables/${T}`, { num_shards: 1 })
     // brief settle so the batch doesn't race table provisioning
     await sleep(1000)
@@ -124,6 +126,60 @@ if (!binary) {
       const result = await api('POST', `/db/v1/tables/${T}/lookup`)
       expect(result.status).toBeGreaterThanOrEqual(400)
     })
+
+    it('PIN antfly#319: mixed-corpus media leg — raw flags stuck building, health() overrides to ready', async () => {
+      // WHEN THE CANARY HALF FAILS (raw backfill_state becomes 'ready'):
+      // upstream fixed the skip accounting → delete the idle-detection
+      // override in mapIndexStatuses + this pin.
+      if (!instance.modelsAvailable || !existsSync(join(homedir(), '.antfly', 'inference', 'models', 'antflydb', 'clipclap'))) {
+        console.warn('⚠ antfly#319 pin skipped — clipclap model not present')
+        return
+      }
+      const T2 = 'pins_mixed'
+      await api('POST', `/db/v1/tables/${T2}`, {
+        num_shards: 1,
+        indexes: { vis: { name: 'vis', type: 'embeddings', template: '{{#if media_url}}{{remoteMedia url=media_url}}{{/if}}', dimension: 512, embedder: { provider: 'antfly', model: 'antflydb/clipclap' } } },
+      })
+      await sleep(1200)
+      const png = join(instance.root, 'pin319.png')
+      const { solidPng } = await import('./golden-queries')
+      const { writeFileSync } = await import('node:fs')
+      writeFileSync(png, solidPng([255, 0, 0]))
+      for (let i = 0; i < 10; i++) {
+        const r = await api('POST', `/db/v1/tables/${T2}/batch`, {
+          inserts: { m1: { title: 'red', media_url: `file://${png}` }, p1: { title: 'plain doc' } },
+          sync_level: 'full_index',
+        })
+        if (r.status < 300) break
+        await sleep(500)
+      }
+      // wait until the one embeddable doc is indexed and the pipeline is idle
+      let raw: Record<string, unknown> | null = null
+      for (let i = 0; i < 120; i++) {
+        const st = await api('GET', `/db/v1/tables/${T2}/indexes`)
+        const entries = Array.isArray(st.json) ? st.json as Array<{ config?: { name?: string }; status?: Record<string, unknown> }> : []
+        const vis = entries.find((e) => e.config?.name === 'vis')?.status ?? null
+        const runtime = vis?.enrichment_runtime as { pending_sequence_count?: number; active_embed_batch_items?: number } | undefined
+        if (vis && (vis.total_indexed as number) >= 1 && runtime?.pending_sequence_count === 0 && (runtime?.active_embed_batch_items ?? 0) === 0) {
+          raw = vis
+          break
+        }
+        await sleep(1000)
+      }
+      expect(raw).not.toBeNull()
+      // CANARY: raw flags still lie (building forever) — when this flips,
+      // delete the workaround.
+      expect(raw!.backfill_state).toBe('running')
+      expect(raw!.rebuilding === true || raw!.backfill_active === true).toBe(true)
+      // WORKAROUND GUARD: our health mapping overrides to ready.
+      const { AntflySearchClient } = await import('../../../packages/adapter-antfly/src/client')
+      const { DEFAULT_SETTINGS } = await import('../../../packages/adapter-antfly/src/defaults')
+      const client = new AntflySearchClient({ ...DEFAULT_SETTINGS, url: instance.url }, { fetchImpl: nativeFetch })
+      const legs = await client.tables.health(T2)
+      const vis = legs.find((l) => l.leg === 'vis')
+      expect(vis?.state).toBe('ready')
+      expect(vis?.indexedCount).toBe(1)
+    }, 180_000)
 
     it('CONTRACT CANARY: filter_query keeps filtering (the workaround we DELETED must stay dead)', async () => {
       // Inverse pin: this asserts the FIX keeps working. If it fails, the

@@ -48,7 +48,11 @@ export const DEFAULT_SETTINGS: AntflySettings = {
   url: 'http://127.0.0.1:3738',
   search: {
     strategy: 'rrf',
-    fusionStrategy: 'rrf',
+    // RSF over RRF: measured on the golden set (search-tuning.md) —
+    // hit@1 83% vs 72% at equal weights, identical latency. RSF's
+    // score-preserving normalization keeps a strong single-leg signal
+    // (exact caption or visual match) from being diluted by rank-only fusion.
+    fusionStrategy: 'rsf',
     defaultLimit: 20,
     reranker: {
       // Still disabled at v0.2.0-rc.9, but for a NEW reason. The rc.2 mxbai

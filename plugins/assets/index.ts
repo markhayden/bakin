@@ -393,20 +393,20 @@ const assetsPlugin: BakinPlugin = definePlugin({
           embedderRef: 'default',
           embeddingTemplate: '{{description}} {{caption}} {{tags}} {{suggested_tags}} {{file_name}} {{surface}} {{content}} {{ocr_text}} {{transcript}} {{summary}}',
           chunker: { enabled: true, targetTokens: 200, overlapTokens: 25 },
-          // Down-weighted in fusion: the text-embedding of an image's
-          // auto-generated description/tags is the noisiest leg and was
-          // mis-ranking image queries (cross-class results creeping above
-          // on-target ones). Full-text (BM25) and the visual leg carry image
-          // search; this still contributes for text/PDF-body assets.
-          weight: 0.5,
+          // Balanced with the visual leg since the golden-set tuning pass
+          // (.claude/knowledge/search-tuning.md): images now carry REAL
+          // vision-LLM captions/OCR in this leg (not auto-noise), and
+          // measured hit@1 nearly tripled at 1/1 vs the old 0.5/2.0 skew.
+          weight: 1.0,
         },
         {
           name: 'assets_visual',
           embedderRef: 'visual',
           mediaUrlField: 'media_url',
-          // Favored: pixel-level CLIP similarity is the reliable signal for
-          // image search, so it leads the RRF fusion.
-          weight: 2.0,
+          // Balanced (was 2.0): with enriched captions in the text leg, an
+          // over-weighted visual leg let color-similar swatches outrank
+          // exact caption matches. Measured in the tuning pass.
+          weight: 1.0,
         },
       ],
       facets: ['asset_type', 'agent', 'tool', 'tags_facet', 'provider', 'model'],

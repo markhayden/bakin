@@ -337,8 +337,27 @@ export function buildTableCreate(config: TableConfig, settings: AntflySettings):
 export function mapIndexStatuses(entries: WireIndexStatusEntry[]): TableLegHealth[] {
   return entries.map((entry) => {
     const status = entry.status
-    const failed = status?.worker_failed === true || (status?.fatal_error_count ?? 0) > 0 || status?.backfill_state === 'failed'
-    const building = status?.rebuilding === true || status?.backfill_active === true
+    const runtime = status?.enrichment_runtime
+    const failed = status?.worker_failed === true
+      || (status?.fatal_error_count ?? 0) > 0
+      || runtime?.worker_failed === true
+      || (runtime?.fatal_error_count ?? 0) > 0
+      || status?.backfill_state === 'failed'
+    let building = status?.rebuilding === true || status?.backfill_active === true
+    // Upstream accounting bug (antflydb/antfly#319): docs whose
+    // embed template renders EMPTY (e.g. non-media assets against a media
+    // leg) never complete the backfill, so a mixed corpus reports
+    // rebuilding/backfill_active FOREVER while nothing is in flight
+    // (pending_sequence_count 0, no active batch, not retrying). Without this
+    // override every assets-table migration would park. When upstream fixes
+    // the accounting, the canary pin in workaround-regressions fails → delete
+    // this block.
+    if (building && runtime
+      && runtime.pending_sequence_count === 0
+      && runtime.retrying !== true
+      && (runtime.active_embed_batch_items ?? 0) === 0) {
+      building = false
+    }
     return {
       leg: entry.config.name,
       state: failed ? 'error' as const : building ? 'building' as const : 'ready' as const,
