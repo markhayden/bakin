@@ -69,3 +69,12 @@ Working evidence log for `tasks/plan-search-rebuild.md`. Everything here is live
 - **Chaos drills vs the published artifact: 5/5 PASS** (mid-backfill SIGKILL, driver SIGKILL, 550-write outage replay, wipe→rebuild, upgrade-under-load).
 - **#317 (batch double-free) verdict:** rc.17 carries the vulnerable code (the file is identical to main@6538c0774), but none of our suites/drills trigger it — the trigger is an internal write failure inside the engine's offloaded batch job, which our settle/retry patterns avoid and the outbox+OS-supervision absorb if it ever fires in production (crash → KeepAlive restart → drain retries → lands). Not a ship blocker; upstream fix tracked in antflydb/antfly#317. The local dev worktree keeps the 2-line patch for dev builds.
 - **Verdict: dev-vs-ship skew NONE. Pin bumped rc.9 → rc.17.**
+
+
+## Live cutover (2026-07-03, this machine)
+
+Old world stopped (dev loop + orphaned rc.9 engine), search index + outbox wiped (D16), rc.17 installed, `bakin dev` relaunched. The adapter provisioned `io.bakin.antfly` into launchd automatically; nine blue/green tables (incl. two user-plugin types the in-repo enumeration never saw) created + seeded; memory = 6,399 docs.
+
+**Production-only findings (all fixed + covered same-day):** duplicate-create onto an existing physical hangs/500s rc.17 → exists-first check; missing-table 404 quarantined as permanent → transient; `sync_level: full_index` on 50-doc backfill chunks times out behind one Metal embed queue → async backfill (`sync:false`), converge-poll owns completion; one sick table zeroed cross-table search via Promise.all → per-table isolation with diagnostics; query-time embeds starve during big backfills → labeled FTS-only retry (`diagnostics.adapter.degraded`). **Root cause under the boot-wide flakiness: launchd's default 256-fd limit** (`ProcessFdQuotaExceeded`, exit-6 crash) → units now set 65536. After the fd fix, a clean re-seed created all nine tables first-try.
+
+**Verified live:** global `/api/search` returns real hits across tiers; ⌘K browser pass (9 chips, grouped results, neutral per-leg badges incl. VISUAL on real images); vector scores + queued writes survived engine SIGKILL earlier in the drill. Enrichment queue idle pending a vision key (`bakin assets enrich --all` is the user-initiated, billed backfill).

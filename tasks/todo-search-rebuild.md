@@ -59,7 +59,8 @@ Rule: every commit green (`bun run test` + typecheck). Tag `rebuild/pN` at each 
 - [x] GATE P5 → tag rebuild/p5 (5237/0)
 
 ## P6 — Ship
-- [ ] T23 Pin to newest release tag; suites vs published artifact
-- [ ] T24 Docs sweep + delete ANTFLY_SEARCH_*.md + memory-note updates
-- [ ] T25 /agent-skills:test coverage pass + /code-review of full branch diff
-- [ ] GATE P6 → tag rebuild/p6
+- [x] T23 (a5fec940) pinned v0.2.0-rc.17; published artifact SHA-verified; integration 58/58 + chaos 5/5 vs the artifact = ZERO dev-vs-ship skew; #319 canary holds; #317 documented (nothing triggers it in-suite; OS KeepAlive + outbox absorb if it fires); leftover @antfly/sdk dep + vendor/ tarball DELETED
+- [x] T24 (75582064) docs sweep (incl. full assets-plugin.md rewrite), both root ANTFLY_SEARCH_*.md deleted, CLAUDE.md blocks updated, memory notes superseded, grep gates clean
+- [x] LIVE CUTOVER (this machine): rc.17 installed, launchd io.bakin.antfly provisioned automatically, fresh blue/green world seeded (9 tables incl. 2 user-plugin types, memory 6.4k docs). FIVE production-only bugs found+fixed same-day: exists-first create (d72a5077), 404-transient drains + rowless sweep skip (d72a5077), async backfill batches (1b46cd70), multiQuery per-table isolation (f9a5df15), labeled FTS-degrade on embed starvation (e0177345), and THE ROOT CAUSE: launchd 256-fd default → NumberOfFiles/LimitNOFILE 65536 (1726e43c; memory note saved). Browser pass DONE: ⌘K over real data with 9 type chips, grouped results, neutral per-leg debug badges (TEXT/VISUAL/FT/EMBEDD), team avatars. Enrichment idle by design — USER ACTION: add a vision key then `bakin assets enrich --all` (billed)
+- [x] T25 (664da25c) 5 coverage cases for the cutover fixes (+ found the mock-stats fabrication bug); branch review clean; deferred nicety: `bakin search prune-outbox <table>` for retired content types. Suite 5243/0
+- [x] GATE P6 → tag rebuild/p6 — SHIPPED
