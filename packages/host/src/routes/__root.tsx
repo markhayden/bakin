@@ -15,6 +15,7 @@ import { Header } from '../components/layout/header'
 import { AppSidebar } from '../components/layout/app-sidebar'
 import { LayoutShell } from '../components/layout/layout-shell'
 import { PluginHost } from '../plugin-host/PluginHost'
+import { GlobalSearchOverlay } from '../components/search/global-search-overlay'
 import config from '../../../../bakin.config'
 
 const themeOverrides = config.theme && Object.keys(config.theme).length > 0
@@ -34,6 +35,8 @@ function RootComponent() {
   return (
     <Providers>
       <PluginHost>
+        {/* Inside PluginHost: the hit-renderer registry must be live. */}
+        <GlobalSearchOverlay />
         <Header />
         <LayoutShell sidebar={<AppSidebar />}>
           <Outlet />
