@@ -181,11 +181,10 @@ if (!binary) {
       expect(vis?.indexedCount).toBe(1)
     }, 180_000)
 
-    it('PIN: a WebP media_url fails the ENTIRE batch (engine decodes PNG/JPEG/GIF only)', async () => {
+    it('PIN antfly#322: a WebP media_url fails the ENTIRE batch (engine decodes PNG/JPEG/GIF only)', async () => {
       // WHEN THIS FAILS: upstream added WebP decode (or per-doc batch errors)
       // → widen EMBED_SAFE_RE in plugins/assets/lib/search-doc.ts (and
-      // consider passing originals again) + delete this pin. Issue draft:
-      // tasks/antfly-webp-issue-draft.md.
+      // consider passing originals again) + delete this pin.
       if (!instance.modelsAvailable || !existsSync(join(homedir(), '.antfly', 'inference', 'models', 'antflydb', 'clipclap'))) {
         console.warn('⚠ webp pin skipped — clipclap model not present')
         return

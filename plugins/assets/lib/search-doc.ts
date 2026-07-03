@@ -28,10 +28,9 @@ export function versionedAssetPath(rel: string): { assetId: string; isManifest: 
 const RASTER_RE = /\.(png|jpe?g|gif|webp|bmp)$/i
 const AUDIO_RE = /\.(mp3|wav|flac|ogg|m4a|aac)$/i
 // Formats every media-embedding engine can decode. WebP/BMP originals crash
-// the write wholesale (antfly decodes PNG/JPEG/GIF only — upstream issue
-// drafted in tasks/antfly-webp-issue-draft.md), so media_url prefers the JPEG
-// thumb rendition; embedders downscale to ~224px anyway, so the thumb costs
-// nothing in similarity quality.
+// the write wholesale (antfly decodes PNG/JPEG/GIF only — antfly#322), so
+// media_url prefers the JPEG thumb rendition; embedders downscale to ~224px
+// anyway, so the thumb costs nothing in similarity quality.
 const EMBED_SAFE_RE = /\.(png|jpe?g|gif)$/i
 
 // Cache extracted text per (assetId, version, size). Version files are

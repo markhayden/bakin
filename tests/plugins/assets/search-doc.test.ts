@@ -79,7 +79,7 @@ describe('buildVersionedAssetSearchDoc', () => {
     expect(String(doc.media_url)).toContain('.thumb.jpg')
   })
 
-  it('webp original: media_url uses the JPEG thumb (undecodable originals poison the whole row upstream)', async () => {
+  it('webp original: media_url uses the JPEG thumb (undecodable originals poison the whole row — antfly#322)', async () => {
     await sharp({ create: { width: 4, height: 4, channels: 3, background: { r: 9, g: 9, b: 9 } } }).webp().toFile(join(srcDir, 'w.webp'))
     const { assetId } = await createAsset({ sourceFilePath: join(srcDir, 'w.webp'), type: 'images', agent: 'user', taskId: null, slug: 'w', op: 'upload' })
     const doc = await buildVersionedAssetSearchDoc(getAsset(assetId)!, assetId)
