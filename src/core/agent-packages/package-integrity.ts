@@ -24,6 +24,7 @@ export function validatePackageContributionIntegrity(options: PackageIntegrityOp
       validateWorkflowFiles(stagingDir, manifest.id, manifest.contributions.workflows ?? [])
       validateWorkflowSkillFiles(stagingDir, manifest.contributions.workflowSkills ?? [])
       validateFiles(stagingDir, manifest.contributions.assets ?? [], 'asset')
+      validateFiles(stagingDir, manifest.contributions.persona ? [manifest.contributions.persona] : [], 'persona')
       break
     case 'skill-pack':
       validateSkillDirectories(stagingDir, manifest.contributions.skills)

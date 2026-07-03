@@ -471,6 +471,39 @@ function projectAssets(
   }
 }
 
+// ─── Persona (team-page seed: {contentDir}/team/personas/{agentId}.md) ───────
+
+/**
+ * Seed the agent's team persona from the package — ONLY when no persona
+ * exists yet. Personas are user territory (no managed block, no sentinel,
+ * no reclaim): once a file is there, the package never touches it again,
+ * so an existing persona is a silent no-op rather than a skip.
+ */
+function projectPersona(
+  manifest: Manifest,
+  agentId: string | undefined,
+  options: ProjectorOptions,
+  result: ProjectorResult,
+  writeLog: WriteLog,
+): void {
+  if (manifest.kind !== 'agent' || !agentId) return
+  const rel = manifest.contributions.persona
+  if (!rel) return
+
+  const src = join(options.stagingDir, rel)
+  if (!existsSync(src)) {
+    log.warn('Persona source missing — skipping', { rel })
+    return
+  }
+  const target = join(getContentDir(), 'team', 'personas', `${agentId}.md`)
+  if (existsSync(target)) return
+
+  ensureDir(dirname(target), writeLog)
+  copyFileSync(src, target)
+  writeLog.recordCreatedFile(target)
+  result.projections.push({ kind: 'persona', target, sha256: computeFileSha(target) })
+}
+
 // ─── Public entry point ──────────────────────────────────────────────────────
 
 /**
@@ -496,6 +529,7 @@ export async function projectPackage(options: ProjectorOptions): Promise<Project
       await projectComposedBlocks(options.manifest, options.agentId, options, result, writeLog)
       await projectSkills(options.manifest, options, result, writeLog)
       projectAssets(options.manifest, options.agentId, options, result, writeLog)
+      projectPersona(options.manifest, options.agentId, options, result, writeLog)
     } else if (options.manifest.kind === 'skill-pack') {
       await projectSkills(options.manifest, options, result, writeLog)
     }
@@ -524,6 +558,9 @@ export async function unprojectPackage(
 ): Promise<void> {
   const runtime = getAppServices().runtime
   for (const p of projections) {
+    // Personas are user territory from the moment they're seeded — package
+    // removal never takes them back (no sentinel required).
+    if (p.kind === 'persona') continue
     const runtimeTarget = parseRuntimeTarget(p.target)
     if (p.kind === 'lesson-marker') {
       if (options.keepBlocks) continue

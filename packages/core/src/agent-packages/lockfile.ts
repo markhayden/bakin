@@ -23,6 +23,8 @@ const ProjectionKindSchema = z.enum([
   'skill',
   'asset',
   'workspace-file',
+  // Team persona seed (seeded-if-missing; never overwritten or reclaimed).
+  'persona',
   // Legacy (pre-layered-context). New code never writes lesson-marker
   // projections — lessons are composed into the workspace-file block. Kept in
   // the enum only so pre-migration lockfiles parse; the one-time migration

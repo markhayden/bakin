@@ -421,6 +421,46 @@ describe('projectPackage — skills + assets', () => {
   })
 })
 
+// ─── Persona seeding ─────────────────────────────────────────────────────────
+
+describe('projectPackage — persona', () => {
+  function personaOptions(): ProjectorOptions {
+    const stagingDir = seedPackageStaging()
+    writeFileSync(join(stagingDir, 'persona.md'), '# Pixel\n\nPackage-shipped persona.\n')
+    const manifest = pixelManifest()
+    manifest.contributions.persona = 'persona.md'
+    return { manifest, stagingDir, agentId: 'pixel', installedBy: fixedInstalledBy() }
+  }
+  const personaTarget = () => join(testDir, 'team', 'personas', 'pixel.md')
+
+  it('seeds team/personas/{agentId}.md when missing and records a persona projection', async () => {
+    const result = await projectPackage(personaOptions())
+    expect(readFileSync(personaTarget(), 'utf-8')).toContain('Package-shipped persona')
+    expect(result.projections.some((p) => p.kind === 'persona' && p.target === personaTarget())).toBe(true)
+  })
+
+  it('NEVER overwrites an existing persona — silent no-op, no sentinel needed', async () => {
+    mkdirSync(join(testDir, 'team', 'personas'), { recursive: true })
+    writeFileSync(personaTarget(), '# My own take on Pixel\n')
+    const result = await projectPackage(personaOptions())
+    expect(readFileSync(personaTarget(), 'utf-8')).toBe('# My own take on Pixel\n')
+    expect(result.projections.some((p) => p.kind === 'persona')).toBe(false)
+  })
+
+  it('re-projection (sync) after seeding is a no-op — the seed itself is now "existing"', async () => {
+    await projectPackage(personaOptions())
+    writeFileSync(personaTarget(), '# Edited after seeding\n')
+    await projectPackage(personaOptions())
+    expect(readFileSync(personaTarget(), 'utf-8')).toBe('# Edited after seeding\n')
+  })
+
+  it('unprojectPackage leaves the persona in place (user territory)', async () => {
+    const result = await projectPackage(personaOptions())
+    await unprojectPackage(result.projections)
+    expect(existsSync(personaTarget())).toBe(true)
+  })
+})
+
 // ─── Rollback on failure ─────────────────────────────────────────────────────
 
 describe('projectPackage — atomic rollback', () => {
