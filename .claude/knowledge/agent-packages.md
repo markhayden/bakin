@@ -38,7 +38,7 @@ atomically.
 `packages/core/src/agent-packages/manifest.ts` — zod-validated. The schema is a discriminated union on `kind`. Common base fields (`id`, `name`, `version`, `description`, `bakin`, `author`) plus kind-specific stanzas:
 
 - `agent` only: `agent: { identity, role, defaultModel?, dispatchableBy[], allowedTools[], allowedSkills[] }` and `install: { createIfMissing, adoptIfExists, writeWorkspaceFiles, installSkills, installWorkflows, enableLessons[] }`
-- `contributions`: shape per kind. agent has all six (workspaceFiles/skills/workflows/workflowSkills/lessons/assets); skill-pack requires `skills` non-empty; workflow-pack requires at least one of workflows/workflowSkills; lesson-pack requires `lessons` non-empty.
+- `contributions`: shape per kind. agent has all six (workspaceFiles/skills/workflows/workflowSkills/lessons/assets) plus optional `persona` (single file seeded to `{contentDir}/team/personas/{agentId}.md` ONLY when missing — personas are user territory: never overwritten, never reclaimed, never removed on uninstall); skill-pack requires `skills` non-empty; workflow-pack requires at least one of workflows/workflowSkills; lesson-pack requires `lessons` non-empty.
 - `dependencies`: cross-kind. `{skills?: Dependency[], workflows?: Dependency[], lessons?: Dependency[]}` where each `Dependency = {source, ref, items?, installAs?}`.
 - `secrets`: shared top-level runtime requirements. Each declaration is `{name, description, required}` where `name` is a canonical env var name such as `RUNWAY_API_KEY`. Secret values never live in package manifests or lockfiles.
 

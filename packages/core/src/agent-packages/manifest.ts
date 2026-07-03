@@ -150,6 +150,8 @@ const AgentContributionsSchema = z.object({
   workflowSkills: z.array(z.string().min(1)).optional(),
   lessons: z.array(z.string().min(1)).optional(),
   assets: z.array(z.string().min(1)).optional(),
+  /** Team persona seed → {contentDir}/team/personas/{agentId}.md. Seeded only when missing — personas are user territory, never overwritten or reclaimed. */
+  persona: z.string().min(1).optional(),
 })
 
 const SkillPackContributionsSchema = z.object({
