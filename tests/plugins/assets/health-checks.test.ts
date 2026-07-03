@@ -122,13 +122,14 @@ describe('checkAssets — store shape', () => {
     expect(results.filter(r => r.status === 'warn' && r.message.includes('Missing assets/'))).toHaveLength(3)
   })
 
-  it('reports ok when the tree is empty and clean (incl. the unimported check)', () => {
+  it('reports ok when the tree is empty and clean (incl. unimported + enrichment checks)', () => {
     seedFullAssetsTree()
     const results = checkAssets(testDir)
-    expect(results).toHaveLength(2)
+    expect(results).toHaveLength(3)
     expect(results.every(r => r.status === 'ok')).toBe(true)
     expect(results[0].message).toMatch(/Asset store is empty and healthy/)
     expect(results[1].message).toMatch(/No unmanaged files/)
+    expect(results[2].message).toMatch(/enrichment/)
   })
 
   it('warns (not auto-fixable) when unmanaged files await import', () => {

@@ -19,6 +19,7 @@ import { healthOk as ok, healthWarn as warn, healthFixed as fixed } from '@makin
 
 import { isValidAssetId } from './asset-id'
 import { scanUnmanaged } from './import-unmanaged'
+import { getAsset, listAssets } from './asset-core'
 import { reseedUnmanaged } from './unmanaged-tracker'
 import { readManifest } from './manifest'
 
@@ -40,7 +41,7 @@ const STORE_SHARD_RE = /^\d{4}-\d{2}$/
  *   - purge .trash/ items older than 7 days
  */
 export function checkAssets(contentDir: string): HealthCheckResult[] {
-  return [...checkAssetsInternal(contentDir, false), ...checkUnimported()]
+  return [...checkAssetsInternal(contentDir, false), ...checkUnimported(), ...checkEnrichment()]
 }
 
 /**
@@ -60,6 +61,38 @@ export function checkUnimported(): HealthCheckResult[] {
     `${files.length} unmanaged file(s) under assets/ awaiting explicit import — Assets → Import, or \`bakin assets import --all\``,
     false,
   )]
+}
+
+/**
+ * Enrichment coverage (D8/T12): counts come straight from manifests — the
+ * durable record. Failed rows carry the last error; missing/stale rows are
+ * repairable via the billed backfill (`bakin assets enrich --all`), which
+ * is deliberately NOT auto-fix (it costs money).
+ */
+export function checkEnrichment(): HealthCheckResult[] {
+  const summaries = listAssets()
+  let missing = 0
+  let stale = 0
+  let failed = 0
+  for (const summary of summaries) {
+    const manifest = getAsset(summary.assetId)
+    if (!manifest) continue
+    const enrichment = manifest.enrichment
+    if (!enrichment) { missing++; continue }
+    if (enrichment.status === 'failed') { failed++; continue }
+    if (enrichment.status === 'done' && (enrichment.forVersion ?? 0) < manifest.currentVersion) stale++
+  }
+  const results: HealthCheckResult[] = []
+  if (failed > 0) {
+    results.push(warn('assets.enrichment', `${failed} asset(s) failed vision enrichment — retry with 'bakin assets enrich --all --force' after checking provider keys`, false))
+  }
+  if (missing + stale > 0) {
+    results.push(warn('assets.enrichment', `${missing + stale} asset(s) without current enrichment (${missing} never enriched, ${stale} stale) — 'bakin assets enrich --all' (billed)`, false))
+  }
+  if (results.length === 0) {
+    results.push(ok('assets.enrichment', 'All assets carry current enrichment (or recorded skips)'))
+  }
+  return results
 }
 
 function checkAssetsInternal(contentDir: string, autoFix: boolean): HealthCheckResult[] {
