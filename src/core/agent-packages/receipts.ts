@@ -22,7 +22,7 @@ export interface ReceiptBlock {
 
 export interface ReceiptProjection {
   target: string
-  kind: 'skill' | 'asset'
+  kind: 'skill' | 'asset' | 'identity'
   action: 'written' | 'skipped' | 'reclaimed'
   reason?: string
 }

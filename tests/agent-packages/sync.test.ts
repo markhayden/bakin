@@ -110,6 +110,16 @@ function installRuntimeMock(): void {
   const runtime = {
     agents: {
       list: async () => rosterIds.map((a) => ({ id: a.id, name: a.name ?? a.id, status: 'active' })),
+      get: async (agentId: string) => {
+        const entry = rosterIds.find((a) => a.id === agentId)
+        return entry ? { id: entry.id, name: entry.name ?? entry.id, status: 'active' } : null
+      },
+      update: async (agentId: string, input: { name?: string }) => {
+        const entry = rosterIds.find((a) => a.id === agentId)
+        if (!entry) throw new Error(`update: unknown agent ${agentId}`)
+        if (input.name) entry.name = input.name
+        return { id: entry.id, name: entry.name ?? entry.id, status: 'active' }
+      },
       readWorkspaceFile: async (agentId: string, path: string): Promise<WorkspaceFile | null> => {
         const file = wsPath(agentId, path)
         if (!existsSync(file)) return null
@@ -253,6 +263,30 @@ describe('syncAgent — local sync', () => {
     await syncAgent('pixel', { fetch: false })
     const second = readReceipt('pixel')
     expect(second?.syncedAt && first?.syncedAt && second.syncedAt >= first.syncedAt).toBe(true)
+  })
+})
+
+describe('syncAgent — identity refresh', () => {
+  it('re-applies the manifest display name when the runtime has drifted', async () => {
+    await seedSyncedBaseline()
+    // Simulate drift: the runtime record predates a package rename.
+    rosterIds.find((a) => a.id === 'pixel')!.name = 'pixel'
+    const receipt = await syncAgent('pixel', { fetch: false })
+    expect(rosterIds.find((a) => a.id === 'pixel')!.name).toBe('Pixel')
+    expect(receipt.projections).toContainEqual({ target: 'runtime:agent:pixel:name', kind: 'identity', action: 'written' })
+  })
+
+  it('no-ops when the name already matches (no identity projection in the receipt)', async () => {
+    await seedSyncedBaseline()
+    const receipt = await syncAgent('pixel', { fetch: false })
+    expect(receipt.projections.find((p) => p.kind === 'identity')).toBeUndefined()
+  })
+
+  it('--check never touches the runtime name even when drifted', async () => {
+    await seedSyncedBaseline()
+    rosterIds.find((a) => a.id === 'pixel')!.name = 'pixel'
+    await syncAgent('pixel', { fetch: false, check: true })
+    expect(rosterIds.find((a) => a.id === 'pixel')!.name).toBe('pixel')
   })
 })
 
