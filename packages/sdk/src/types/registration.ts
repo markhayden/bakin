@@ -390,6 +390,8 @@ export interface SearchHitDescriptor {
   thumbnailUrl?: string
   /** Lucide icon name fallback when there is no thumbnail. */
   icon?: string
+  /** Small meta line (type · agent · date) shown under the subtitle. */
+  meta?: string
 }
 
 /** Minimal hit shape passed to renderers (matches useSearch's SearchResult). */

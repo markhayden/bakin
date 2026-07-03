@@ -14,12 +14,31 @@ import { AssetsBadgeProvider } from './components/assets-badge-provider'
 registerPlugin({
   search: {
     hitRenderers: {
-      assets: (hit) => ({
-        title: String(hit.fields.caption ?? hit.fields.description ?? hit.id),
-        subtitle: String(hit.fields.asset_type ?? 'asset'),
-        href: `/assets/${hit.id}`,
-        thumbnailUrl: `/api/assets/${hit.id}/thumb`,
-      }),
+      assets: (hit) => {
+        // First NON-EMPTY wins — un-enriched assets carry caption: '' and
+        // nullish-coalescing would keep the empty string as the title.
+        const pick = (...vals: unknown[]) => vals.map((v) => String(v ?? '').trim()).find((v) => v.length > 0)
+        const type = pick(hit.fields.asset_type) ?? 'asset'
+        const iconByType: Record<string, string> = { image: 'image', images: 'image', text: 'file-text', audio: 'music', video: 'video', pdf: 'file-text' }
+        // Thumbnails only exist for media with a media_url (raster/audio);
+        // text/other assets get a type icon instead of a broken <img>.
+        const hasThumb = pick(hit.fields.media_url) !== undefined
+        const dateRaw = pick(hit.fields.updated_at)
+        const date = dateRaw ? new Date(dateRaw).toLocaleDateString() : undefined
+        const title = pick(hit.fields.caption, hit.fields.description, hit.fields.tags, hit.fields.file_name) ?? hit.id
+        // Subtitle: the best non-empty text that ISN'T already the title.
+        const subtitle = [hit.fields.description, hit.fields.tags, hit.fields.ocr_text]
+          .map((v) => String(v ?? '').trim())
+          .find((v) => v.length > 0 && v !== title)
+        return {
+          title,
+          subtitle,
+          meta: [type, pick(hit.fields.agent), date].filter(Boolean).join(' · '),
+          href: `/assets/${hit.id}`,
+          ...(hasThumb ? { thumbnailUrl: `/api/assets/${hit.id}/thumb` } : {}),
+          icon: iconByType[type] ?? 'file',
+        }
+      },
     },
   },
   id: 'assets',
