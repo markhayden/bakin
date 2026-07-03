@@ -228,11 +228,32 @@ export class AntflySearchClient implements SearchAdapter {
   async query(table: string, q: Query): Promise<QueryResult> {
     const request = buildQueryRequest(table, q, this.settings)
     const wantsTrueTotals = !request.count && (request.aggregations !== undefined || request.semantic_search !== undefined)
-    const [main, count] = await Promise.all([
-      this.runQuery(table, request),
-      wantsTrueTotals ? this.runQuery(table, toCountRequest(request)).catch(() => null) : Promise.resolve(null),
-    ])
+    let main: WireQueryEnvelope | null
+    let degraded = false
+    try {
+      main = await this.runQuery(table, request)
+    } catch (err) {
+      // D11's sanctioned degrade, implemented client-side: while a large
+      // embeddings backfill saturates the inference queue, the QUERY's own
+      // embed job starves and the whole request times out. Retry once
+      // FTS-only and LABEL it — visible in diagnostics, never silent.
+      const timedOut = err instanceof SearchEngineUnavailableError && /timed out|TimeoutError/i.test(err.message)
+      if (!timedOut || request.semantic_search === undefined) throw err
+      const ftsOnly = buildQueryRequest(table, { ...q, strategy: 'fts' }, this.settings)
+      main = await this.runQuery(table, ftsOnly)
+      degraded = true
+    }
+    const count = wantsTrueTotals && !degraded
+      ? await this.runQuery(table, toCountRequest(request)).catch(() => null)
+      : null
     const result = mapQueryResponse(main, table)
+    if (degraded) {
+      result.diagnostics = {
+        ...(result.diagnostics ?? { strategy: 'fts' }),
+        strategy: 'fts',
+        adapter: { ...(result.diagnostics?.adapter ?? {}), degraded: 'semantic-embed-timeout' },
+      }
+    }
     if (count) {
       const countResult = mapQueryResponse(count, table)
       result.total = countResult.total
