@@ -51,7 +51,7 @@ beforeEach(async () => {
   mkdirSync(join(testDir, 'assets'), { recursive: true })
   const src = join(testDir, 'pic.png')
   writeFileSync(src, 'not-really-a-png')
-  const created = await createAsset({ sourceFilePath: src, type: 'image', agent: 'user', op: 'upload', taskId: null, description: 'test pic' })
+  const created = await createAsset({ sourceFilePath: src, type: 'images', agent: 'user', op: 'upload', taskId: null, description: 'test pic' })
   assetId = created.assetId
 })
 

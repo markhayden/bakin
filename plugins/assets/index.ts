@@ -275,6 +275,9 @@ const assetsPlugin: BakinPlugin = definePlugin({
       { key: 'thumbnails', type: 'boolean', label: 'Generate thumbnails', description: 'Auto-create optimized thumbnails on upload', default: true },
       { key: 'maxFileSize', type: 'number', label: 'Max file size (MB)', description: 'Reject uploads larger than this', default: 50 },
       { key: 'purgeClipboardOnComplete', type: 'boolean', label: 'Purge clipboard assets on task completion', description: 'Auto-delete clipboard-pasted assets when their linked task is marked done', default: false },
+      { key: 'enrichmentEnabled', type: 'boolean', label: 'Vision enrichment', description: 'Derive caption/OCR/tags from asset content with a vision model (billed per asset version)', default: true },
+      { key: 'enrichmentProvider', type: 'select', label: 'Enrichment provider', description: 'auto picks the cheapest configured vision-capable model', options: ['auto', 'anthropic', 'openai', 'google'], default: 'auto' },
+      { key: 'enrichmentModel', type: 'string', label: 'Enrichment model override', description: 'Exact model id (catalog or provider-native); empty = auto', default: '' },
     ],
   },
 

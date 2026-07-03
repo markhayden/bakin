@@ -11,4 +11,5 @@
 export * from './idempotency'
 export * from './image-format'
 export * from './direct-image-provider'
+export * from './direct-vision-provider'
 export * from './secret-store'
