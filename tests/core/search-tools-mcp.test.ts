@@ -100,13 +100,13 @@ const crossTableSearchMock = mock(async (q: string, opts?: { table?: string; lim
   }
 })
 
-const reindexContentTypesMock = mock(async (opts?: { table?: string }) => {
-  if (opts?.table) {
-    return [{ table: opts.table, indexed: 5, error: null }]
+const rebuildRegisteredTablesMock = mock(async (table?: string) => {
+  if (table) {
+    return [{ table, result: 'migrated' }]
   }
   return [
-    { table: 'bakin_tasks', indexed: 5, error: null },
-    { table: 'bakin_assets', indexed: 3, error: null },
+    { table: 'bakin_tasks', result: 'migrated' },
+    { table: 'bakin_assets', result: 'migrated' },
   ]
 })
 
@@ -154,7 +154,7 @@ mock.module('../../src/core/app-services', () => ({
 
 mock.module('../../src/core/search-registry', () => ({
   crossTableSearch: crossTableSearchMock,
-  reindexContentTypes: reindexContentTypesMock,
+  rebuildRegisteredTables: rebuildRegisteredTablesMock,
   getContentTypes: getContentTypesMock,
   getTableForPlugin: getTableForPluginMock,
   getIndexNames: mock(() => ['embeddings']),
@@ -274,9 +274,9 @@ describe('MCP search tools — plugin param coverage', () => {
       const tool = await getTool('bakin_exec_search_reindex')
       const result = await tool.handler({ plugin: 'tasks' }, {} as never)
       expect(result.ok).toBe(true)
-      const lastCall = reindexContentTypesMock.mock.calls.at(-1)!
-      expect(lastCall[0]?.table).toBe('bakin_tasks')
-      expect((result as unknown as { total: number }).total).toBe(5)
+      const lastCall = rebuildRegisteredTablesMock.mock.calls.at(-1)!
+      expect(lastCall[0]).toBe('bakin_tasks')
+      expect((result as unknown as { tables: unknown[] }).tables).toHaveLength(1)
     })
   })
 

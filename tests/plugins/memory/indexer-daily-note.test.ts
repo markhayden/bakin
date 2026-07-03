@@ -219,7 +219,7 @@ describe('MemoryIndexer.indexTier("daily_note")', () => {
     expect(indexed[0].doc.title).toBe('2026-04-18.md')
   })
 
-  it('is idempotent — re-indexing the same file does not rewrite unchanged rows', async () => {
+  it('re-indexing writes unconditionally (the outbox acked-hash dedupes downstream)', async () => {
     mockListAgentIds.mockReturnValue(['main'])
     mockListDailyNotes.mockReturnValue(['2026-04-18.md'])
     mockReadDailyNote.mockReturnValue('body')
@@ -230,7 +230,7 @@ describe('MemoryIndexer.indexTier("daily_note")', () => {
     await idx.indexTier('daily_note')
     await idx.indexTier('daily_note')
 
-    expect(indexed).toHaveLength(1)
+    expect(indexed).toHaveLength(2)
     expect(indexed[0].key).toBe(dailyNoteRowId('main', '2026-04-18.md'))
   })
 })
@@ -283,18 +283,5 @@ describe('MemoryIndexer.backfill(["daily_note"])', () => {
     expect(indexed).toHaveLength(1)
   })
 
-  it('skips rows whose indexed updated_at is already current', async () => {
-    mockListAgentIds.mockReturnValue(['main'])
-    mockListDailyNotes.mockReturnValue(['2026-04-18.md'])
-    mockReadDailyNote.mockReturnValue('body')
-    mockDailyNotePath.mockReturnValue(join(testDir, 'x.md'))
 
-    const key = dailyNoteRowId('main', '2026-04-18.md')
-    const { ctx, indexed } = makeCtx([{ key, updatedAt: Number.MAX_SAFE_INTEGER }])
-    const idx = new MemoryIndexer(ctx, {})
-    await idx.backfill(['daily_note'])
-
-    expect(ctx.search.maintenance!.scan).toHaveBeenCalledWith({ fields: ['updated_at'] })
-    expect(indexed).toHaveLength(0)
-  })
 })

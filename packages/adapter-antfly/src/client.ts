@@ -22,7 +22,6 @@ import type {
   SearchAdapter,
   SearchAdapterCapabilities,
   TableConfig,
-  TableHealth,
   TableInfo,
   TableLegHealth,
   TableStats,
@@ -183,20 +182,6 @@ export class AntflySearchClient implements SearchAdapter {
       const entries = await this.indexStatuses(name)
       return entries === null ? [] : mapIndexStatuses(entries)
     },
-    getHealth: async (name: string): Promise<TableHealth | null> => {
-      const legs = await this.tables.health(name)
-      if (legs.length === 0) return null
-      const error = legs.find((l) => l.state === 'error')
-      const building = legs.some((l) => l.state === 'building')
-      return {
-        table: name,
-        status: error ? 'error' : building ? 'warn' : 'ok',
-        ...(error?.error ? { message: error.error } : {}),
-      }
-    },
-    rebuildIndexes: async (): Promise<void> => {
-      // Legacy surface — blue/green migrations supersede engine-side rebuilds.
-    },
   }
 
   private async indexStatuses(name: string): Promise<WireIndexStatusEntry[] | null> {
@@ -303,11 +288,4 @@ export class AntflySearchClient implements SearchAdapter {
     }
   }
 
-  embedder = {
-    // Legacy surface: fingerprint-driven blue/green replaces embedder-swap
-    // rebuilds entirely. hasChanged is always false so the old migration
-    // machinery never triggers engine-side rebuilds through this adapter.
-    hasChanged: async (): Promise<boolean> => false,
-    rebuildAll: async () => ({ tables: 0, documents: 0, errors: [] }),
-  }
 }

@@ -11,8 +11,8 @@ import type {
   ScannedDocument,
   SearchAdapter,
   TableConfig,
-  TableHealth,
   TableInfo,
+  TableLegHealth,
   TableStats,
 } from '@bakin/core/adapters/search'
 
@@ -59,7 +59,7 @@ export function createSearchAdapterHarness() {
   const tables = new Map<string, TableConfig>()
   const docs = new Map<string, Map<string, Document>>()
   const scanItems = new Map<string, ScannedDocument[]>()
-  const health = new Map<string, TableHealth | null>()
+  const legHealth = new Map<string, TableLegHealth[]>()
   const stats = new Map<string, TableStats | null>()
 
   function ensureDocs(table: string): Map<string, Document> {
@@ -72,6 +72,13 @@ export function createSearchAdapterHarness() {
   }
 
   const initialize = mock(async () => {})
+  const capabilities = mock(() => ({
+    legs: ['full-text', 'text-embedding', 'media-embedding'] as Array<'full-text' | 'text-embedding' | 'media-embedding'>,
+    rerank: false,
+    facets: true,
+    transform: true,
+  }))
+  const mappingFingerprint = mock(() => 'harness-mapping-v1')
   const shutdown = mock(async () => {})
   const available = mock(async () => availableValue)
   const getHealthChecks = mock(() => [])
@@ -91,7 +98,7 @@ export function createSearchAdapterHarness() {
     tables.delete(name)
     docs.delete(name)
     scanItems.delete(name)
-    health.delete(name)
+    legHealth.delete(name)
     stats.delete(name)
   })
   const tablesStats = mock(async (name: string): Promise<TableStats | null> => {
@@ -102,10 +109,11 @@ export function createSearchAdapterHarness() {
     if (!tables.has(name) && !docs.has(name)) return null
     return { table: name, documents: docs.get(name)?.size ?? 0 }
   })
-  const tablesGetHealth = mock(async (name: string): Promise<TableHealth | null> => (
-    health.has(name) ? health.get(name)! : null
+  const tablesHealth = mock(async (name: string): Promise<TableLegHealth[]> => (
+    legHealth.get(name) ?? (tables.has(name) || docs.has(name)
+      ? [{ leg: 'full_text', state: 'ready' as const, indexedCount: docs.get(name)?.size ?? 0 }]
+      : [])
   ))
-  const tablesRebuildIndexes = mock(async () => {})
 
   const documentsIndex = mock(async (table: string, key: string, doc: Document): Promise<void> => {
     ensureDocs(table).set(key, doc)
@@ -163,9 +171,6 @@ export function createSearchAdapterHarness() {
     )
   ))
 
-  const embedderHasChanged = mock(async () => false)
-  const embedderRebuildAll = mock(async () => ({ tables: tables.size, documents: 0, errors: [] }))
-
   const adapter: SearchAdapter = {
     name: 'mock-search',
     version: '0.0.0',
@@ -174,13 +179,14 @@ export function createSearchAdapterHarness() {
     shutdown,
     available,
     getHealthChecks,
+    capabilities,
+    mappingFingerprint,
     tables: {
       list: tablesList,
       create: tablesCreate,
       drop: tablesDrop,
       stats: tablesStats,
-      getHealth: tablesGetHealth,
-      rebuildIndexes: tablesRebuildIndexes,
+      health: tablesHealth,
     },
     documents: {
       index: documentsIndex,
@@ -192,10 +198,6 @@ export function createSearchAdapterHarness() {
     query,
     multiQuery,
     scan,
-    embedder: {
-      hasChanged: embedderHasChanged,
-      rebuildAll: embedderRebuildAll,
-    },
   }
 
   return {
@@ -213,20 +215,21 @@ export function createSearchAdapterHarness() {
     setTableStats(table: string, value: TableStats | null) {
       stats.set(table, value)
     },
-    setTableHealth(table: string, value: TableHealth | null) {
-      health.set(table, value)
+    setLegHealth(table: string, value: TableLegHealth[]) {
+      legHealth.set(table, value)
     },
     calls: {
       initialize,
       shutdown,
       available,
       getHealthChecks,
+      capabilities,
+      mappingFingerprint,
       tablesList,
       tablesCreate,
       tablesDrop,
       tablesStats,
-      tablesGetHealth,
-      tablesRebuildIndexes,
+      tablesHealth,
       documentsIndex,
       documentsBatchIndex,
       documentsRemove,
@@ -235,8 +238,6 @@ export function createSearchAdapterHarness() {
       query,
       multiQuery,
       scan,
-      embedderHasChanged,
-      embedderRebuildAll,
     },
   }
 }

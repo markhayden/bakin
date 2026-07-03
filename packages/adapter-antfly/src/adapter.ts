@@ -17,7 +17,6 @@ import type {
   BatchResult,
   Document,
   IndexItem,
-  IndexOpts,
   Query,
   QueryResult,
   ScanOpts,
@@ -95,13 +94,11 @@ export class AntflyAdapter implements SearchAdapter {
     drop: (name: string) => this.client.tables.drop(name),
     stats: (name: string) => this.client.tables.stats(name),
     health: (name: string) => this.client.tables.health(name),
-    getHealth: (name: string) => this.client.tables.getHealth(name),
-    rebuildIndexes: (_name: string) => this.client.tables.rebuildIndexes(),
   }
 
   documents = {
-    index: (table: string, key: string, doc: Document, _opts?: IndexOpts) => this.client.documents.index(table, key, doc),
-    batchIndex: (table: string, items: IndexItem[], _opts?: IndexOpts): Promise<BatchResult> => this.client.documents.batchIndex(table, items),
+    index: (table: string, key: string, doc: Document) => this.client.documents.index(table, key, doc),
+    batchIndex: (table: string, items: IndexItem[]): Promise<BatchResult> => this.client.documents.batchIndex(table, items),
     remove: (table: string, key: string) => this.client.documents.remove(table, key),
     batchRemove: (table: string, keys: string[]) => this.client.documents.batchRemove(table, keys),
     transform: (table: string, key: string, fn: TransformFn) => this.client.documents.transform(table, key, fn),
@@ -119,8 +116,4 @@ export class AntflyAdapter implements SearchAdapter {
     return this.client.scan(table, opts)
   }
 
-  embedder = {
-    hasChanged: () => this.client.embedder.hasChanged(),
-    rebuildAll: () => this.client.embedder.rebuildAll(),
-  }
 }

@@ -11,7 +11,7 @@ import { getAppServices } from '../../src/core/app-services'
 import { addExecTool } from '../../src/core/exec-tools/registry'
 import {
   crossTableSearch,
-  reindexContentTypes,
+  rebuildRegisteredTables,
   getContentTypes,
   getTableForPlugin,
   getIndexNames,
@@ -236,15 +236,10 @@ addExecTool({
       tableParam = resolved.table
     }
 
-    const results = await reindexContentTypes({
-      table: tableParam,
-      rebuild: params.rebuild as boolean | undefined,
-      verify: params.verify as boolean | undefined,
-    })
-    const total = results.reduce((sum, r) => sum + r.indexed, 0)
+    const results = await rebuildRegisteredTables(tableParam)
     const errors = results.filter(r => r.error).length
-    const enrichmentErrors = results.filter(r => r.enrichment && !r.enrichment.healthy).length
-    return { ok: errors === 0 && enrichmentErrors === 0, total, errors, enrichmentErrors, tables: results }
+    const parked = results.filter(r => r.result === 'parked').length
+    return { ok: errors === 0 && parked === 0, errors, parked, tables: results }
   },
 })
 

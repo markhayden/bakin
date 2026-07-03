@@ -77,7 +77,6 @@ const METHOD_PERMISSIONS: Record<string, Permission> = {
   'search.maintenance.available': 'search.read',
   'search.maintenance.scan': 'search.read',
   'search.maintenance.batchRemove': 'search.write',
-  'search.maintenance.resetContentType': 'search.write',
 }
 
 const RUNTIME_DOMAIN_PERMISSIONS: Record<string, Permission> = {

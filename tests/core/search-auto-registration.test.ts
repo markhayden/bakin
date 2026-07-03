@@ -100,6 +100,7 @@ describe('search-registry buildSearchAPI auto-registration', () => {
   function makeDef(table = 'widgets') {
     return {
       table,
+      schemaVersion: 1,
       schema: {
         title: { type: 'text' as const },
         status: { type: 'keyword' as const },

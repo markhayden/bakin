@@ -10,7 +10,7 @@
  *   (b) calling enumerateAll twice yields identical results (restartable;
  *       each call re-reads sources from byte 0).
  *   (c) enumerateAll never touches persisted state: no offsets.json, no
- *       indexed-cache.json, and zero search-adapter calls.
+ *       and zero search-adapter calls.
  *
  * Fixture setup mirrors the per-tier indexer tests (indexer-audit,
  * indexer-turns, indexer-durable, indexer-daily-note, indexer-sessions).
@@ -52,7 +52,6 @@ mock.module('../../../packages/adapter-openclaw/src/main-agent', () => ({
 
 import { MemoryIndexer } from '../../../plugins/memory/lib/indexer'
 import { clearAllOffsets, getOffsetsFilePath } from '../../../plugins/memory/lib/offsets'
-import { getIndexedCacheFilePath } from '../../../plugins/memory/lib/indexed-cache'
 import type { PluginContext } from '@bakin/core/plugin-types'
 
 interface IndexedDoc { key: string; doc: Record<string, unknown> }
@@ -340,21 +339,18 @@ describe('MemoryIndexer.enumerateAll — restartable', () => {
 })
 
 describe('MemoryIndexer.enumerateAll — side-effect free', () => {
-  it('leaves offsets.json and indexed-cache.json untouched and never calls the search adapter', async () => {
+  it('leaves offsets.json untouched and never calls the search adapter', async () => {
     const { ctx, indexed, removed, adapterCalls } = makeCtx()
     const idx = new MemoryIndexer(ctx, {})
 
     expect(existsSync(getOffsetsFilePath())).toBe(false)
-    expect(existsSync(getIndexedCacheFilePath())).toBe(false)
 
     const enumerated = await collect(idx.enumerateAll())
     expect(enumerated.length).toBeGreaterThan(0)
 
     // Persisted incremental state: never created.
     expect(existsSync(getOffsetsFilePath())).toBe(false)
-    expect(existsSync(getIndexedCacheFilePath())).toBe(false)
-    // Search adapter: never touched (no index/remove, not even the count
-    // query used by the indexed-cache validation).
+    // Search adapter: never touched.
     expect(indexed).toHaveLength(0)
     expect(removed).toHaveLength(0)
     expect(adapterCalls.queries).toBe(0)

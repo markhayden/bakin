@@ -143,13 +143,6 @@ export interface SearchIndexDefinition {
 export interface SearchReindexItem {
   key: string
   doc: Record<string, unknown>
-  /**
-   * Optional freshness stamp for virtual file-backed documents. When present,
-   * startup reconcile stores it in `_mtime_ms` and can skip unchanged virtual
-   * docs on subsequent boots. It may be a stable content token, not only a
-   * filesystem mtime.
-   */
-  mtimeMs?: number
 }
 
 /** Full content-type definition: schema, indexes, facets, reindex generator. */
@@ -158,10 +151,9 @@ export interface SearchContentTypeDefinition {
   /**
    * Doc-shape version for this content type. Bumping it triggers a blue/
    * green background migration to a fresh physical table (queries stay on
-   * the old one until the new converges). Defaults to 1; becomes required
-   * at the F4 surface cut.
+   * the old one until the new converges).
    */
-  schemaVersion?: number
+  schemaVersion: number
   schema: Record<string, SearchSchemaField>
   searchableFields: string[]
   embeddingTemplate: string
@@ -183,7 +175,8 @@ export interface SearchContentTypeDefinition {
 export interface FilePatternMapper {
   pattern: string
   fileToId: (relPath: string) => string | null
-  fileToDoc: (relPath: string, content: string) => Promise<Record<string, unknown> | null>
+  /** Omit when `onSync` owns doc-building for this pattern. */
+  fileToDoc?: (relPath: string, content: string) => Promise<Record<string, unknown> | null>
 }
 
 /** File-backed content type: indexes documents derived from on-disk files. */
@@ -192,8 +185,6 @@ export interface FileBackedContentTypeDefinition extends SearchContentTypeDefini
   excludePatterns?: string[]
   onSync?: (relPath: string, content: string) => Promise<void>
   onUnlink?: (relPath: string) => Promise<void>
-  buildOnStartup?: boolean
-  preserveVirtualDocuments?: boolean
 }
 
 /** Query payload for `search.query()` — filters, facets, paging, strategy. */
@@ -234,13 +225,11 @@ export interface SearchResponse {
 
 /** Per-index health within a registered content-type table. */
 export interface SearchHealthIndex {
+  /** Leg/index name — matches the scoreBreakdown key for this leg. */
   name: string
-  type: string
   totalIndexed: number
-  walBacklog: number
-  error?: string
   rebuilding: boolean
-  backfillProgress?: number
+  error?: string
 }
 
 /** Health of a single registered content-type table. */
@@ -255,11 +244,6 @@ export interface SearchHealthTable {
 /** Health snapshot reported by the search adapter (per-table state). */
 export interface SearchHealthSnapshot {
   enabled: boolean
-  /**
-   * Query-embedding warm state for the boot window ('cold' | 'warming' |
-   * 'warm'). Display-only UX signal — never gate query dispatch on it.
-   */
-  warm?: 'cold' | 'warming' | 'warm'
   tables: SearchHealthTable[]
 }
 
@@ -304,15 +288,7 @@ export interface SearchAPI {
   query(params: SearchQueryParams): Promise<SearchResponse>
   /** Global search adapter and registered-table health snapshot. */
   health?(): Promise<SearchHealthSnapshot>
-  /**
-   * Resolves true once the boot-time search bootstrap (table creation +
-   * reconciles) has succeeded, false if it gave up for this process lifetime.
-   * Boot-time indexers MUST await this before writing: the server can come up
-   * while the bootstrap is still settling, and writes into missing tables are
-   * silently dropped.
-   */
-  whenReady?(): Promise<boolean>
-  /**
+    /**
    * Plugin-scoped maintenance operations for indexers that own non-file-backed
    * tables. Intentionally narrower than the raw adapter: callers can only
    * touch their own registered content type.
@@ -328,9 +304,7 @@ export interface SearchMaintenanceAPI {
   scan(opts?: SearchScanOptions): AsyncIterable<{ key: string; document: Record<string, unknown> }>
   /** Remove several documents from this plugin's registered content type. */
   batchRemove(keys: string[]): Promise<number>
-  /** Drop and recreate this plugin's registered content type table. */
-  resetContentType(): Promise<void>
-}
+  }
 
 // ---------------------------------------------------------------------------
 // Assets

@@ -38,25 +38,6 @@ function stableStringify(value: unknown): string {
   return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${stableStringify(entry)}`).join(',')}}`
 }
 
-function stableNumericStamp(value: unknown): number {
-  const text = stableStringify(value)
-  let hash = 2166136261
-  for (let i = 0; i < text.length; i++) {
-    hash ^= text.charCodeAt(i)
-    hash = Math.imul(hash, 16777619) >>> 0
-  }
-  return hash === 0 ? 1 : hash
-}
-
-function definitionFreshness(name: string, def: WorkflowDefinition, source?: DefinitionSource): number {
-  return stableNumericStamp({
-    name,
-    source: source ?? (def as WorkflowDefinition & { source?: DefinitionSource }).source ?? 'unknown',
-    disabled: source !== 'user' && isWorkflowDisabled(name),
-    definition: def,
-  })
-}
-
 /** Convert a workflow instance to a search document. */
 export function instanceToSearchDoc(inst: WorkflowInstance): Record<string, unknown> {
   const def = loadDefinition(inst.workflowId)
@@ -120,6 +101,7 @@ export async function indexDefinition(name: string, def: WorkflowDefinition, sou
 export function registerWorkflowSearch(ctx: PluginContext): void {
   ctx.search.registerFileBackedContentType({
     table: 'workflows',
+    schemaVersion: 1,
     schema: {
       name: { type: 'text' },
       description: { type: 'text' },
@@ -162,7 +144,6 @@ export function registerWorkflowSearch(ctx: PluginContext): void {
         },
       },
     ],
-    preserveVirtualDocuments: true,
     onUnlink: async (rel) => {
       if (rel.startsWith('workflows/definitions/')) {
         const name = rel.replace(/^workflows\/definitions\//, '').replace(/\.(yaml|yml)$/, '')
@@ -209,7 +190,6 @@ export function registerWorkflowSearch(ctx: PluginContext): void {
         yield {
           key: `def:${entry.name}`,
           doc: definitionToSearchDoc(entry.name, entry.definition, entry.source),
-          mtimeMs: definitionFreshness(entry.name, entry.definition, entry.source),
         }
       }
 

@@ -79,10 +79,9 @@ if (!binary) {
       capabilities: adapter.capabilities?.bind(adapter),
       mappingFingerprint: adapter.mappingFingerprint?.bind(adapter),
       tables: adapter.tables,
-      embedder: adapter.embedder,
       documents: {
-        index: (t, k, d, o) => retry(() => adapter.documents.index(t, k, d, o)),
-        batchIndex: (t, i, o) => retry(() => adapter.documents.batchIndex(t, i, o)),
+        index: (t, k, d) => retry(() => adapter.documents.index(t, k, d)),
+        batchIndex: (t, i) => retry(() => adapter.documents.batchIndex(t, i)),
         remove: (t, k) => retry(() => adapter.documents.remove(t, k)),
         batchRemove: (t, k) => retry(() => adapter.documents.batchRemove(t, k)),
         transform: (t, k, fn) => retry(() => adapter.documents.transform(t, k, fn)),

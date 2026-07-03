@@ -126,6 +126,7 @@ const teamPlugin: BakinPlugin = definePlugin({
 
     ctx.search.registerContentType({
       table: 'team',
+      schemaVersion: 1,
       schema: {
         name: { type: 'text' },
         agent_id: { type: 'keyword' },
@@ -155,6 +156,7 @@ const teamPlugin: BakinPlugin = definePlugin({
     // client-side by cross-referencing the lockfile.
     ctx.search.registerFileBackedContentType({
       table: 'agent-lessons',
+      schemaVersion: 1,
       schema: {
         title: { type: 'text' },
         body: { type: 'text' },
@@ -225,10 +227,9 @@ const teamPlugin: BakinPlugin = definePlugin({
     }
 
     /**
-     * Batch-index all agents from the runtime adapter. Skips agents whose
-     * substantive content is unchanged (hash compare against the indexed
-     * rows) — this runs on every boot, and unconditional rewrites fed
-     * antfly per-boot WAL/enrichment churn for rows that hadn't moved.
+     * Batch-index all agents from the runtime adapter. Unconditional —
+     * the outbox's acked-hash dedupe drops unchanged rows before they
+     * reach the engine, so no scan-and-compare is needed here.
      */
     batchIndexAgents = async () => {
       try {
@@ -236,26 +237,11 @@ const teamPlugin: BakinPlugin = definePlugin({
         const heartbeats = readHeartbeats()
         const lastAuditActivity = getLastAuditActivity()
 
-        const indexedHashes = new Map<string, string>()
-        if (ctx.search.maintenance && await ctx.search.maintenance.available()) {
-          try {
-            for await (const { key, document } of ctx.search.maintenance.scan({ fields: ['content_hash'] })) {
-              if (typeof document.content_hash === 'string') indexedHashes.set(key, document.content_hash)
-            }
-          } catch (err) {
-            log.warn('Agent index scan failed - rewriting all agent rows', {
-              error: err instanceof Error ? err.message : String(err),
-            })
-            indexedHashes.clear()
-          }
-        }
-
         for (const runtimeAgent of runtimeAgents) {
           const a = agentToMeta(runtimeAgent)
           const { status } = resolveAgentStatus(a.id, heartbeats, lastAuditActivity)
           const model = await getRuntimeAgentModel(ctx.runtime, runtimeAgent)
           const doc = await agentToSearchDoc(a, model, status)
-          if (indexedHashes.get(a.id) === doc.content_hash) continue
           ctx.search.index(a.id, doc).catch((err) => {
             log.warn('Failed to index agent', { agentId: a.id, error: err instanceof Error ? err.message : String(err) })
           })

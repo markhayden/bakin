@@ -217,7 +217,7 @@ describe('workflows plugin — file-backed sync hook', () => {
     const defMapper = captured.capturedDef!.filePatterns.find(p =>
       p.pattern.startsWith('workflows/definitions')
     )!
-    const doc = await defMapper.fileToDoc('workflows/definitions/missing.yaml', '')
+    const doc = await defMapper.fileToDoc!('workflows/definitions/missing.yaml', '')
     expect(doc).toBeNull()
   })
 
@@ -228,7 +228,7 @@ describe('workflows plugin — file-backed sync hook', () => {
     const defMapper = captured.capturedDef!.filePatterns.find(p =>
       p.pattern.startsWith('workflows/definitions')
     )!
-    const doc = await defMapper.fileToDoc('workflows/definitions/sample.yaml', SAMPLE_DEF)
+    const doc = await defMapper.fileToDoc!('workflows/definitions/sample.yaml', SAMPLE_DEF)
     expect(doc).not.toBeNull()
     expect(doc!.name).toBe('Sample Flow')
     expect(doc!.type).toBe('definition')
@@ -249,7 +249,7 @@ describe('workflows plugin — file-backed sync hook', () => {
     const instMapper = captured.capturedDef!.filePatterns.find(p =>
       p.pattern.startsWith('workflows/instances')
     )!
-    const doc = await instMapper.fileToDoc('workflows/instances/task-42.json', SAMPLE_INSTANCE('task-42'))
+    const doc = await instMapper.fileToDoc!('workflows/instances/task-42.json', SAMPLE_INSTANCE('task-42'))
     expect(doc).not.toBeNull()
     expect(doc!.type).toBe('instance')
     expect(doc!.task_id).toBe('task-42')
@@ -262,7 +262,7 @@ describe('workflows plugin — file-backed sync hook', () => {
     const instMapper = captured.capturedDef!.filePatterns.find(p =>
       p.pattern.startsWith('workflows/instances')
     )!
-    const doc = await instMapper.fileToDoc('workflows/instances/broken.json', '{not json')
+    const doc = await instMapper.fileToDoc!('workflows/instances/broken.json', '{not json')
     expect(doc).toBeNull()
   })
 
@@ -288,31 +288,6 @@ describe('workflows plugin — file-backed sync hook', () => {
       type: 'definition',
       status: 'active',
     })
-    expect(typeof managed?.mtimeMs).toBe('number')
-    expect(managed?.mtimeMs).toBeGreaterThan(0)
-  })
-
-  it('reindex emits stable freshness stamps for managed definitions', async () => {
-    registerPluginDefinition('workflows', 'managed', MANAGED_DEF)
-
-    const captured = makeCtx()
-    await workflowsPlugin.activate(captured.ctx)
-
-    const findManagedStamp = async () => {
-      for await (const item of captured.capturedDef!.reindex()) {
-        if (item.key === 'def:managed') return item.mtimeMs
-      }
-      return undefined
-    }
-
-    const first = await findManagedStamp()
-    const second = await findManagedStamp()
-    expect(typeof first).toBe('number')
-    expect(second).toBe(first)
-
-    setWorkflowDisabled('managed', true)
-    const disabled = await findManagedStamp()
-    expect(disabled).not.toBe(first)
   })
 
   it('indexes a user shadow as active even when the managed fallback is disabled', async () => {

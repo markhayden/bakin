@@ -3,10 +3,8 @@ import type {
   BatchResult,
   Document,
   IndexItem,
-  IndexOpts,
   Query,
   QueryResult,
-  RebuildReport,
   ScanOpts,
   ScannedDocument,
   SearchAdapterCapabilities,
@@ -28,21 +26,16 @@ export interface SearchAdapter {
   available(): Promise<boolean>
   getHealthChecks(): AdapterHealthCheckDefinition[]
 
-  /**
-   * What this adapter can build/serve, in capability terms (D17).
-   * Optional ONLY during the engine-room transition (the old adapter
-   * predates it) — required at the F4 surface cut.
-   */
-  capabilities?(): SearchAdapterCapabilities
+  /** What this adapter can build/serve, in capability terms (D17). */
+  capabilities(): SearchAdapterCapabilities
 
   /**
    * Hash over adapter settings that change the PHYSICAL index layout
    * (embedder models, dimensions). Core folds it into each table's
    * blue/green config fingerprint so a model swap migrates tables without
    * any plugin edit. Must be stable across restarts for identical settings.
-   * Optional during the transition — required at F4.
    */
-  mappingFingerprint?(): string
+  mappingFingerprint(): string
 
   tables: {
     /** Doctor/status/introspection only — never called on the boot path. */
@@ -50,20 +43,13 @@ export interface SearchAdapter {
     create(name: string, config: TableConfig): Promise<void>
     drop(name: string): Promise<void>
     stats(name: string): Promise<TableStats | null>
-    /**
-     * Per-leg health — drives blue/green convergence checks + telemetry.
-     * Optional during the transition — required at F4.
-     */
-    health?(name: string): Promise<TableLegHealth[]>
-    /** Legacy single-status health — superseded by `health`; dies at F4. */
-    getHealth(name: string): Promise<TableHealth | null>
-    /** Legacy embedder-swap rebuild — superseded by blue/green; dies at F4. */
-    rebuildIndexes(name: string): Promise<void>
+    /** Per-leg health — drives blue/green convergence checks + telemetry. */
+    health(name: string): Promise<TableLegHealth[]>
   }
 
   documents: {
-    index(table: string, key: string, doc: Document, opts?: IndexOpts): Promise<void>
-    batchIndex(table: string, items: IndexItem[], opts?: IndexOpts): Promise<BatchResult>
+    index(table: string, key: string, doc: Document): Promise<void>
+    batchIndex(table: string, items: IndexItem[]): Promise<BatchResult>
     remove(table: string, key: string): Promise<void>
     batchRemove(table: string, keys: string[]): Promise<number>
     transform(table: string, key: string, fn: TransformFn): Promise<void>
@@ -72,11 +58,6 @@ export interface SearchAdapter {
   query(table: string, q: Query): Promise<QueryResult>
   multiQuery(queries: Array<{ table: string; query: Query }>): Promise<QueryResult[]>
   scan(table: string, opts?: ScanOpts): AsyncIterable<ScannedDocument>
-
-  embedder: {
-    hasChanged(): Promise<boolean>
-    rebuildAll(): Promise<RebuildReport>
-  }
 }
 
 export type SearchAdapterSetupCheckStatus = 'ok' | 'missing' | 'broken' | 'warn' | 'error'
@@ -116,8 +97,6 @@ export interface SearchAdapterSetup {
   readonly models?: SearchAdapterSetupComponent
 }
 
-export { MTIME_FIELD } from './concepts'
-
 export type {
   AggregationRequest,
   BatchResult,
@@ -125,11 +104,9 @@ export type {
   FacetCount,
   Filter,
   IndexItem,
-  IndexOpts,
   Query,
   QueryDiagnostics,
   QueryResult,
-  RebuildReport,
   ScanOpts,
   ScannedDocument,
   ScoreBreakdown,

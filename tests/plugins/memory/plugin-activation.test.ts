@@ -174,19 +174,35 @@ describe('memory plugin shell (C2)', () => {
     }
   })
 
-  it('wires a real reindex generator that resets incremental offsets', async () => {
-    // Regression: the C2 shell shipped a reindex() that yielded nothing, so
-    // `bakin reindex` could never repopulate bakin_memory after a table loss.
-    // The generator now resets offsets + the dedupe cache and re-runs the
-    // backfill (writing rows via ctx.search.index as a side effect).
+  it('wires a side-effect-free reindex generator that never touches offsets', async () => {
+    // Blue/green backfill source: reindex() delegates to enumerateAll() —
+    // rows are YIELDED (not side-effect written) and incremental offsets
+    // are never mutated by a backfill pass.
     const activated = await activatePlugin(memoryPlugin, testDir)
     const reg = activated.ctx.search.registerContentType as ReturnType<typeof mock>
     const def = reg.mock.calls[0][0]
 
     setOffset('reindex-probe-file', 123)
     for await (const _row of def.reindex()) {
-      // yields nothing by design
+      // rows yield through; enumeration must not mutate offsets
     }
-    expect(getOffset('reindex-probe-file')).toBe(0)
+    expect(getOffset('reindex-probe-file')).toBe(123)
+  })
+
+  it('reindex fails loudly when the runtime is unavailable (migration must park, not flip thin)', async () => {
+    const activated = await activatePlugin(memoryPlugin, testDir)
+    const reg = activated.ctx.search.registerContentType as ReturnType<typeof mock>
+    const def = reg.mock.calls[0][0]
+
+    const runtime = activated.ctx.runtime as unknown as { ping: ReturnType<typeof mock> }
+    const originalPing = runtime.ping
+    runtime.ping = mock(async () => false)
+    try {
+      await expect(async () => {
+        for await (const _row of def.reindex()) { /* drain */ }
+      }).toThrow(/runtime unavailable/)
+    } finally {
+      runtime.ping = originalPing
+    }
   })
 })

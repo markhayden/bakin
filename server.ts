@@ -39,7 +39,7 @@ import { registerShutdownHandlers, triggerShutdown } from './src/core/lifecycle'
 import { generateDocs } from './src/core/api-docs'
 import type { buildOpenApiDocument } from './packages/host/src/api/docs-runtime'
 import { collectOpenApiSources as collectTypedOpenApiSources } from './packages/host/src/api/openapi-sources'
-import { bootSearch } from './src/core/search-startup'
+import { startSearchEngine } from './src/core/search-startup'
 import * as mcporter from './src/core/mcporter'
 import { buildAllUserPlugins } from './packages/host/src/plugin-host/user-plugin-builder'
 import { dispatchCli } from './src/core/cli'
@@ -144,11 +144,8 @@ const eventBus = new BakinEventBus(broadcast)
   const { resolveDrainTargets } = await import('@bakin/core/search/tables')
   startOutboxPump({ adapter: getSearchAdapter(), resolveTargets: resolveDrainTargets })
 
-  await bootSearch()
+  await startSearchEngine()
 
-  // Start periodic orphan cleanup for search indexes
-  const { startCleanupTimer } = await import('./src/core/search-cleanup')
-  startCleanupTimer()
 
   // Register search sync hook with file watcher
   // Legacy syncFile/syncFileUnlink removed — plugins now handle their own

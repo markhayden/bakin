@@ -44,12 +44,7 @@ mock.module('../../src/core/search-registry', () => ({
   getSearchHealth,
 }))
 
-const warmSearchQueryPath = mock(async () => {})
-mock.module('../../src/core/search-warmup', () => ({
-  warmSearchQueryPath,
-}))
-
-import { bootSearch, SEARCH_BOOTSTRAP_BOOT_BUDGET_MS, SEARCH_STARTUP_RETRY_SCHEDULE_MS } from '../../src/core/search-startup'
+import { startSearchEngine, SEARCH_BOOTSTRAP_BOOT_BUDGET_MS, SEARCH_STARTUP_RETRY_SCHEDULE_MS } from '../../src/core/search-startup'
 
 
 beforeEach(() => {
@@ -57,19 +52,17 @@ beforeEach(() => {
   bootstrapFailuresRemaining = 0
   bootstrapHangs = false
   createRegisteredTables.mockClear()
-  warmSearchQueryPath.mockClear()
 })
 
 afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('bootSearch', () => {
-  it('warms immediately when the first bootstrap succeeds', async () => {
-    await bootSearch()
-    await vi.advanceTimersByTimeAsync(0) // flush the lazy warm-up import
+describe('startSearchEngine', () => {
+  it('runs the bootstrap exactly once when the first attempt succeeds', async () => {
+    await startSearchEngine()
+    await vi.advanceTimersByTimeAsync(0)
     expect(createRegisteredTables).toHaveBeenCalledTimes(1)
-    expect(warmSearchQueryPath).toHaveBeenCalledTimes(1)
   })
 
   it('keeps retrying on the backoff schedule until the bootstrap succeeds', async () => {
@@ -77,17 +70,16 @@ describe('bootSearch', () => {
     // single-retry behavior gave up exactly here.
     bootstrapFailuresRemaining = 3
 
-    await bootSearch()
-    expect(warmSearchQueryPath).not.toHaveBeenCalled()
+    await startSearchEngine()
+    expect(createRegisteredTables).toHaveBeenCalledTimes(1)
 
     await vi.advanceTimersByTimeAsync(SEARCH_STARTUP_RETRY_SCHEDULE_MS[0])
     await vi.advanceTimersByTimeAsync(SEARCH_STARTUP_RETRY_SCHEDULE_MS[1])
-    expect(warmSearchQueryPath).not.toHaveBeenCalled()
+    expect(createRegisteredTables).toHaveBeenCalledTimes(3)
 
     await vi.advanceTimersByTimeAsync(SEARCH_STARTUP_RETRY_SCHEDULE_MS[2])
-    await vi.advanceTimersByTimeAsync(0) // flush the lazy warm-up import
+    await vi.advanceTimersByTimeAsync(0)
     expect(createRegisteredTables).toHaveBeenCalledTimes(4)
-    expect(warmSearchQueryPath).toHaveBeenCalledTimes(1)
   })
 
   it('never holds the boot longer than the boot budget when antfly is wedged', async () => {
@@ -97,7 +89,7 @@ describe('bootSearch', () => {
     bootstrapHangs = true
 
     let booted = false
-    const boot = bootSearch().then(() => {
+    const boot = startSearchEngine().then(() => {
       booted = true
     })
 
@@ -107,13 +99,12 @@ describe('bootSearch', () => {
     await vi.advanceTimersByTimeAsync(1)
     await boot
     expect(booted).toBe(true)
-    expect(warmSearchQueryPath).not.toHaveBeenCalled()
   })
 
   it('gives up after the schedule is exhausted without looping forever', async () => {
     bootstrapFailuresRemaining = Number.POSITIVE_INFINITY
 
-    await bootSearch()
+    await startSearchEngine()
     for (const delay of SEARCH_STARTUP_RETRY_SCHEDULE_MS) {
       await vi.advanceTimersByTimeAsync(delay)
     }
@@ -121,6 +112,5 @@ describe('bootSearch', () => {
     expect(createRegisteredTables).toHaveBeenCalledTimes(1 + SEARCH_STARTUP_RETRY_SCHEDULE_MS.length)
     await vi.advanceTimersByTimeAsync(600_000)
     expect(createRegisteredTables).toHaveBeenCalledTimes(1 + SEARCH_STARTUP_RETRY_SCHEDULE_MS.length)
-    expect(warmSearchQueryPath).not.toHaveBeenCalled()
   })
 })

@@ -19,16 +19,8 @@ import { enqueueIndex, enqueueRemove, enqueueTransform, nudgeOutboxPump } from '
 import { resolvePhysicalTable } from './search-registry-core'
 import { registerSyncHook, registerUnlinkHook } from './watcher'
 import { getContentDir } from './content-dir'
+import { findMatchingMapper, matchesAnyPattern } from './search-file-patterns'
 import {
-  findMatchingMapper,
-  matchesAnyPattern,
-  performStartupReconcile,
-  MTIME_FIELD,
-} from './search-reconcile'
-import { statSync } from 'fs'
-import { join } from 'path'
-import {
-  type RegistryState,
   adapterHitToPluginResult,
   aggregationsFromRecord,
   disposeFileBackedWiring,
@@ -43,7 +35,6 @@ import {
   getSearchAdapter,
   mapFacetCounts,
   mapSearchStrategy,
-  removePendingReconciles,
 } from './search-registry-core'
 import { getSearchHealth } from './search-reindex'
 
@@ -155,7 +146,6 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
       // Replace the previous hook pair before wiring the new one so file
       // changes do not fan out through stale plugin closures.
       disposeFileBackedWiring(tableName)
-      removePendingReconciles(pluginId, tableName)
 
       // Standard registration first — gives us the table, schema, and reindex
       // generator. Registered as SECONDARY: file-backed types index into their
@@ -179,22 +169,15 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
             return
           }
           const mapper = findMatchingMapper(rel, def.filePatterns)
-          if (!mapper) return
+          if (!mapper?.fileToDoc) return
           const key = mapper.fileToId(rel)
           if (key === null) return
           const doc = await mapper.fileToDoc(rel, content)
           if (doc === null) return
-          let mtimeMs = Date.now()
-          try {
-            mtimeMs = statSync(join(getContentDir(), rel)).mtimeMs
-          } catch {
-            // file may have been removed between watcher emit and our stat;
-            // fall back to "now" so the index entry is at least monotonic.
-          }
           // Enqueue into THIS content type's table directly — not via
           // api.index, which resolves the plugin's primary table (wrong for
           // a secondary file-backed type on a multi-content plugin like team).
-          enqueueIndex(tableName, key, { ...doc, [MTIME_FIELD]: mtimeMs })
+          enqueueIndex(tableName, key, doc)
           await nudgeOutboxPump()
         } catch (err) {
           log.warn('File-backed sync hook failed', err, { table: tableName, rel })
@@ -227,13 +210,6 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
         },
       })
 
-      // Schedule startup reconcile. We can't run it inline because the
-      // Search table doesn't exist yet — `createRegisteredTables` runs
-      // after all plugins activate. The reconcile is enqueued and drained
-      // by `runPendingReconciles()` in server.ts after table creation.
-      if (def.buildOnStartup !== false) {
-        getRegistry().pendingReconciles.push({ pluginId, def })
-      }
     },
 
     async index(key: string, doc: Record<string, unknown>): Promise<void> {
@@ -310,11 +286,6 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
       return getSearchHealth()
     },
 
-    async whenReady(): Promise<boolean> {
-      const { whenSearchBootstrapSettled } = await import('./search-startup')
-      return whenSearchBootstrapSettled()
-    },
-
     maintenance: {
       available(): Promise<boolean> {
         return getSearchAdapter().available()
@@ -338,16 +309,6 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
         return search.documents.batchRemove(tableName, keys)
       },
 
-      async resetContentType(): Promise<void> {
-        const tableName = registry.pluginTables.get(pluginId)
-        if (!tableName) return
-        const search = getSearchAdapter()
-        if (!await search.available()) return
-        // Blue/green rebuild: fresh physical, backfilled from reindex(),
-        // pointer flips on convergence — queries never see a dropped table.
-        const { rebuildRegisteredTables } = await import('./search-registry-core')
-        await rebuildRegisteredTables(tableName)
-      },
     },
   }
 
@@ -355,98 +316,14 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
 }
 
 /**
- * Upper bound on a single table's startup reconcile. Generous enough for a
- * legitimately large table's scan + re-index, but finite so a wedged search
- * table can't hang the boot forever. On timeout the reconcile is abandoned and
- * the next watcher event / manual reindex retries it.
+ * Make one plugin's search table current after (re)activation (dev hot
+ * reload, live install). A matching blue/green registry row is ZERO
+ * adapter calls; a changed layout migrates in the background.
  */
-const STARTUP_RECONCILE_TIMEOUT_MS = 60_000
-
-/**
- * Resolve `promise`, or reject with a labeled timeout error after `ms`. The
- * underlying work is not cancelled (the adapter call may still be in flight),
- * but the caller stops awaiting it so startup can proceed.
- */
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout>
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
-  })
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer)) as Promise<T>
-}
-
-/**
- * Drain pending startup reconciles. Called from server.ts after
- * `createRegisteredTables()` so the underlying search tables exist
- * before the reconcile tries to scan them. Failures are logged and
- * swallowed so one bad reconcile doesn't block the rest.
- */
-async function runPendingReconcilesMatching(predicate: (item: RegistryState['pendingReconciles'][number]) => boolean): Promise<void> {
-  const registry = getRegistry()
-  if (registry.pendingReconciles.length === 0) return
-  if (!await getSearchAdapter().available()) {
-    const keep = registry.pendingReconciles.filter((item) => !predicate(item))
-    registry.pendingReconciles.length = 0
-    registry.pendingReconciles.push(...keep)
-    return
-  }
-  const contentDir = getContentDir()
-  const items: RegistryState['pendingReconciles'] = []
-  const keep: RegistryState['pendingReconciles'] = []
-  for (const item of registry.pendingReconciles) {
-    if (predicate(item)) items.push(item)
-    else keep.push(item)
-  }
-  registry.pendingReconciles.length = 0
-  registry.pendingReconciles.push(...keep)
-  for (const { pluginId, def } of items) {
-    try {
-      // Reconcile into THIS content type's own table directly (a file-backed
-      // type may be a secondary on a multi-content plugin; api.index would
-      // resolve the plugin's primary table instead).
-      const reconcileTable = fullTableName(def.table)
-      // Bound the per-table reconcile. The scan + re-index calls go through the
-      // search adapter to antfly, which has no internal timeout: a search table
-      // wedged at the engine level (e.g. a stuck index lock) makes those calls
-      // hang forever. Because this drain runs inline during server startup, one
-      // wedged table would otherwise brick the ENTIRE boot (server never opens
-      // its port). Race a timeout so a bad table degrades to "search stale for
-      // this type" instead — the watcher and manual reindex retry it later.
-      await withTimeout(
-        performStartupReconcile(def, contentDir, {
-          index: (key, doc) => getSearchAdapter().documents.index(reconcileTable, key, doc),
-          remove: (key) => getSearchAdapter().documents.remove(reconcileTable, key),
-          scanIndex: async function* (tableName) {
-            for await (const { key, document } of getSearchAdapter().scan(resolvePhysicalTable(tableName), { fields: [MTIME_FIELD] })) {
-              const mtime = typeof document[MTIME_FIELD] === 'number'
-                ? document[MTIME_FIELD]
-                : Number(document[MTIME_FIELD] ?? 0)
-              yield { key, mtimeMs: Number.isFinite(mtime) ? mtime : 0 }
-            }
-          },
-        }),
-        STARTUP_RECONCILE_TIMEOUT_MS,
-        `startup reconcile for ${reconcileTable}`,
-      )
-    } catch (err) {
-      log.error('Startup reconcile failed', err, { pluginId, table: def.table })
-    }
-  }
-}
-
-export async function runPendingReconciles(): Promise<void> {
-  await runPendingReconcilesMatching(() => true)
-}
-
-export async function runPendingReconcilesForPlugin(pluginId: string): Promise<void> {
-  await runPendingReconcilesMatching((item) => item.pluginId === pluginId)
-}
-
 export async function ensurePluginSearchReady(pluginId: string): Promise<void> {
   const { failures } = await ensureRegisteredTables()
   const pluginFailures = failures.filter((failure) => failure.pluginId === pluginId)
   if (pluginFailures.length > 0) {
     log.warn('Plugin search table readiness failed', { pluginId, failures: pluginFailures })
   }
-  await runPendingReconcilesForPlugin(pluginId)
 }

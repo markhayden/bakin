@@ -234,12 +234,7 @@ const routes = [
     description: 'Returns search adapter readiness and per-table index stats.',
     responses: { 200: searchStatusResponse },
     handler: async (_req, ctx) => {
-      // The snapshot carries the query-path warm signal ('cold' | 'warming' |
-      // 'warm') so the UI can show "search warming up" instead of users
-      // hitting cold-compile dead queries on boot.
-      // Fallback fails OPEN to 'warm': 'cold' would pin every search bar's
-      // spinner for the full poll window when health simply isn't wired.
-      const health = ctx.search.health ? await ctx.search.health() : { enabled: false, warm: 'warm' as const, tables: [] }
+      const health = ctx.search.health ? await ctx.search.health() : { enabled: false, tables: [] }
       return Response.json(health)
     },
   }),

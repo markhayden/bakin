@@ -127,7 +127,6 @@ describe('tables', () => {
       { leg: 'sem', state: 'building', indexedCount: 3 },
     ])
     expect((await client.tables.stats('t'))?.documents).toBe(7)
-    expect((await client.tables.getHealth('t'))?.status).toBe('warn')
   })
 
   it('stats returns null for a missing table (404)', async () => {

@@ -204,7 +204,7 @@ describe('MemoryIndexer.indexTier("durable")', () => {
     for (const d of indexed) expect(d.doc.tier).toBe('durable')
   })
 
-  it('is idempotent — re-indexing the same file does not rewrite unchanged rows', async () => {
+  it('re-indexing the same file writes unconditionally (the outbox acked-hash dedupes downstream)', async () => {
     mockListAgentIds.mockReturnValue(['main'])
     const file = writeFixture('main', 'SOUL.md', '# hello\nbody')
     mockReadDurableFile.mockImplementation((a, b) =>
@@ -217,92 +217,7 @@ describe('MemoryIndexer.indexTier("durable")', () => {
     await idx.indexTier('durable')
     await idx.indexTier('durable')
 
-    expect(indexed).toHaveLength(1)
-  })
-
-  it('rewrites rows after invalidateIndexedCache — a reset table must not be skipped', async () => {
-    mockListAgentIds.mockReturnValue(['main'])
-    const file = writeFixture('main', 'SOUL.md', '# hello\nbody')
-    mockReadDurableFile.mockImplementation((a, b) =>
-      a === 'main' && b === 'SOUL.md' ? '# hello\nbody' : null,
-    )
-    mockDurableFilePath.mockReturnValue(file)
-
-    const { ctx, indexed } = makeCtx()
-    const idx = new MemoryIndexer(ctx, {})
-    await idx.indexTier('durable')
-    expect(indexed).toHaveLength(1)
-
-    // Simulates migration/resetContentType: table contents are gone, cache
-    // must reload (from the now-empty table) instead of skipping every row.
-    idx.invalidateIndexedCache()
-    await idx.indexTier('durable')
     expect(indexed).toHaveLength(2)
-  })
-
-  it('persisted dedupe cache skips the table scan when the live count matches', async () => {
-    mockListAgentIds.mockReturnValue(['main'])
-    const file = writeFixture('main', 'SOUL.md', '# hello\nbody')
-    mockReadDurableFile.mockImplementation((a, b) =>
-      a === 'main' && b === 'SOUL.md' ? '# hello\nbody' : null,
-    )
-    mockDurableFilePath.mockReturnValue(file)
-
-    // First run writes the row and (via backfill) snapshots the cache.
-    const first = makeCtx()
-    const writer = new MemoryIndexer(first.ctx, {})
-    await writer.backfill(['durable'])
-    expect(first.indexed).toHaveLength(1)
-
-    // Second indexer (fresh boot): live count matches the snapshot (1 row),
-    // so the scan must be SKIPPED and the row deduped from the snapshot.
-    const second = makeCtx()
-    const scanSpy = mock(async function* (): AsyncGenerator<{ key: string; document: Record<string, unknown> }> {})
-    ;(second.ctx.search as unknown as Record<string, unknown>).maintenance = {
-      available: async () => true,
-      scan: scanSpy,
-    }
-    ;(second.ctx.search as unknown as { query: unknown }).query = mock(async () => ({
-      results: [],
-      meta: { query: '*', total: 1, took_ms: 0, source: 'search' as const },
-    }))
-    const reader = new MemoryIndexer(second.ctx, {})
-    await reader.indexTier('durable')
-
-    expect(scanSpy).not.toHaveBeenCalled()
-    expect(second.indexed).toHaveLength(0) // deduped via the persisted snapshot
-  })
-
-  it('persisted dedupe cache falls back to the scan on count mismatch', async () => {
-    mockListAgentIds.mockReturnValue(['main'])
-    const file = writeFixture('main', 'SOUL.md', '# hello\nbody')
-    mockReadDurableFile.mockImplementation((a, b) =>
-      a === 'main' && b === 'SOUL.md' ? '# hello\nbody' : null,
-    )
-    mockDurableFilePath.mockReturnValue(file)
-
-    const first = makeCtx()
-    const writer = new MemoryIndexer(first.ctx, {})
-    await writer.backfill(['durable'])
-
-    // Fresh boot but the live table reports a DIFFERENT count (drift):
-    // the snapshot must be distrusted and the scan used instead. The empty
-    // scan means no dedupe entries → the row is rewritten (safe direction).
-    const second = makeCtx()
-    const scanSpy = mock(async function* (): AsyncGenerator<{ key: string; document: Record<string, unknown> }> {})
-    ;(second.ctx.search as unknown as Record<string, unknown>).maintenance = {
-      available: async () => true,
-      scan: scanSpy,
-    }
-    ;(second.ctx.search as unknown as { query: unknown }).query = mock(async () => ({
-      results: [],
-      meta: { query: '*', total: 0, took_ms: 0, source: 'search' as const },
-    }))
-    const reader = new MemoryIndexer(second.ctx, {})
-    await reader.indexTier('durable')
-
-    expect(scanSpy).toHaveBeenCalled()
-    expect(second.indexed).toHaveLength(1) // rewritten — never skip-on-stale
   })
 
   it('skips agent/file combinations the adapter reports as missing', async () => {

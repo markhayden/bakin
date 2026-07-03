@@ -15,8 +15,6 @@ import { getContentDir } from '@bakin/core/content-dir'
 import type { RuntimeMemoryEntry } from '@bakin/core/adapters/runtime'
 import type { PluginContext } from '@bakin/core/plugin-types'
 import { createLogger } from '../../../src/core/logger'
-import { clearIndexedCache, loadIndexedCache, saveIndexedCache } from './indexed-cache'
-import { MEMORY_SCHEMA_VERSION } from './memory-migration'
 import { MEMORY_TIERS } from './types'
 import type { MemoryRow, MemoryTier } from './types'
 import { parseAuditLine } from './tier-parsers/audit-parser'
@@ -129,10 +127,7 @@ export interface IndexerOptions {
 }
 
 export class MemoryIndexer {
-  private indexedUpdatedAt: Map<string, number> | null = null
-  private indexedUpdatedAtLoad: Promise<void> | null = null
   private backfillInFlight: Promise<void> | null = null
-  private rewriteAllActive = false
 
   constructor(
     private readonly ctx: PluginContext,
@@ -141,117 +136,27 @@ export class MemoryIndexer {
 
   /**
    * Index the given tiers. Whole-corpus passes SERIALIZE: overlapping runs
-   * (boot backfill racing an explicit reindex) would interleave offset resets
-   * with in-flight offset advances and share the chunk-count maps.
-   *
-   * `rewriteAll` bypasses the indexed-updatedAt dedupe for this pass —
-   * reindex means "rewrite every row" (repairing drifted/corrupt row content),
-   * not just "fill in what's missing".
+   * would interleave offset resets with in-flight offset advances and share
+   * the chunk-count maps. Every row is written unconditionally — the search
+   * outbox's acked-hash dedupe drops unchanged content downstream.
    */
-  async backfill(tiers: readonly MemoryTier[] = [], opts?: { rewriteAll?: boolean }): Promise<void> {
+  async backfill(tiers: readonly MemoryTier[] = []): Promise<void> {
     while (this.backfillInFlight) {
       await this.backfillInFlight.catch(() => {})
     }
-    const run = this.runBackfill(tiers, opts?.rewriteAll === true)
+    const run = this.runBackfill(tiers)
     this.backfillInFlight = run
     try {
       await run
-      // Snapshot the dedupe cache after a completed pass so the next boot
-      // can skip the full-table scan (count-validated on load).
-      this.persistIndexedCache()
     } finally {
       if (this.backfillInFlight === run) this.backfillInFlight = null
     }
   }
 
-  private async runBackfill(tiers: readonly MemoryTier[], rewriteAll: boolean): Promise<void> {
-    log.debug('backfill requested', { tiers, rewriteAll, opts: this.opts })
-    await this.ensureIndexedUpdatedAt()
-    this.rewriteAllActive = rewriteAll
-    try {
-      for (const tier of tiers) {
-        await this.indexTier(tier)
-      }
-    } finally {
-      this.rewriteAllActive = false
-    }
-  }
-
-  /**
-   * Drop the indexed-updatedAt dedupe cache so the next write reloads it from
-   * the live table. MUST be called whenever table contents were reset
-   * underneath this indexer (schema migration, resetContentType, reindex) —
-   * a stale cache makes writeRow() skip every row and the table stays empty
-   * until restart.
-   */
-  invalidateIndexedCache(): void {
-    this.indexedUpdatedAt = null
-    this.indexedUpdatedAtLoad = null
-    clearIndexedCache()
-  }
-
-  private async ensureIndexedUpdatedAt(): Promise<Map<string, number>> {
-    if (this.indexedUpdatedAt) return this.indexedUpdatedAt
-    if (!this.indexedUpdatedAtLoad) {
-      this.indexedUpdatedAtLoad = this.loadIndexedUpdatedAt()
-    }
-    await this.indexedUpdatedAtLoad
-    return this.indexedUpdatedAt ?? new Map()
-  }
-
-  private async loadIndexedUpdatedAt(): Promise<void> {
-    const indexed = new Map<string, number>()
-    this.indexedUpdatedAt = indexed
-    const maintenance = this.ctx.search.maintenance
-    if (!maintenance || !await maintenance.available()) return
-
-    // Fast path: the persisted snapshot from the last clean run, trusted ONLY
-    // when its entry count exactly matches the live table's row count — any
-    // drift (crash before save, external removal, table reset) falls back to
-    // the scan. A wrongly-trusted stale cache would skip rows forever; the
-    // count guard makes the failure mode "scan anyway", never "skip".
-    const persisted = loadIndexedCache(MEMORY_SCHEMA_VERSION)
-    if (persisted && persisted.size > 0) {
-      try {
-        const res = await this.ctx.search.query({
-          q: '*',
-          limit: 0,
-          rerank: false,
-          strategy: 'full_text_only',
-        })
-        if (res.meta?.total === persisted.size) {
-          for (const [key, value] of persisted) indexed.set(key, value)
-          log.debug('indexed-cache snapshot accepted — table scan skipped', { rows: persisted.size })
-          return
-        }
-        log.info('indexed-cache snapshot stale (count mismatch) — falling back to table scan', {
-          snapshot: persisted.size,
-          live: res.meta?.total ?? -1,
-        })
-      } catch (err) {
-        log.warn('indexed-cache count validation failed — falling back to table scan', {
-          err: err instanceof Error ? err.message : String(err),
-        })
-      }
-    }
-
-    try {
-      for await (const { key, document } of maintenance.scan({ fields: ['updated_at'] })) {
-        const updatedAt = Number(document.updated_at ?? 0)
-        if (Number.isFinite(updatedAt)) indexed.set(key, updatedAt)
-      }
-    } catch (err) {
-      log.warn('existing memory index scan failed; backfill will write rows conservatively', {
-        err: err instanceof Error ? err.message : String(err),
-      })
-      indexed.clear()
-    }
-  }
-
-  /** Persist the dedupe cache so the next boot can skip the table scan. */
-  persistIndexedCache(): void {
-    if (this.indexedUpdatedAt && this.indexedUpdatedAt.size > 0) {
-      saveIndexedCache(MEMORY_SCHEMA_VERSION, this.indexedUpdatedAt)
+  private async runBackfill(tiers: readonly MemoryTier[]): Promise<void> {
+    log.debug('backfill requested', { tiers, opts: this.opts })
+    for (const tier of tiers) {
+      await this.indexTier(tier)
     }
   }
 
@@ -939,16 +844,14 @@ export class MemoryIndexer {
 
   private async writeRow(row: MemoryRow): Promise<void> {
     if (this.isExpired(row)) return
-    const indexedUpdatedAt = await this.ensureIndexedUpdatedAt()
-    const existingUpdatedAt = indexedUpdatedAt.get(row.id)
-    if (!this.rewriteAllActive && existingUpdatedAt !== undefined && existingUpdatedAt >= row.updatedAt) return
+    // Unconditional write: the search outbox's acked-hash dedupe drops
+    // unchanged rows before they reach the engine, so the old scan-loaded
+    // indexed-updatedAt cache (and its persisted snapshot) is gone.
     await this.ctx.search.index(row.id, buildMemoryDoc(row))
-    indexedUpdatedAt.set(row.id, row.updatedAt)
   }
 
   private async removeRow(key: string): Promise<void> {
     await this.ctx.search.remove(key)
-    this.indexedUpdatedAt?.delete(key)
   }
 
   // ─── Side-effect-free enumeration (blue/green backfill source) ────────────
@@ -956,15 +859,13 @@ export class MemoryIndexer {
   /**
    * Yield every `{key, doc}` the live indexing path would write for the
    * current source corpus, across all tiers, WITHOUT touching persisted
-   * state: no offset reads/writes, no indexed-cache load/save, no
-   * search-adapter calls, no chunk-count/roster bookkeeping. Restartable —
+   * state: no offset reads/writes, no search-adapter calls, no
+   * chunk-count/roster bookkeeping. Restartable —
    * every call re-reads sources from byte 0.
    *
    * Write-time policy filters DO apply (TTL retention, session backfill
    * cutoff, oversize head-chunking) so the emitted set matches what a fresh
-   * `rewriteAll` backfill would write. The index-state dedupe
-   * (indexed-updatedAt) deliberately does NOT apply — a backfill target
-   * starts empty.
+   * backfill would write.
    */
   async *enumerateAll(): AsyncGenerator<{ key: string; doc: Record<string, unknown> }> {
     for (const tier of MEMORY_TIERS) {

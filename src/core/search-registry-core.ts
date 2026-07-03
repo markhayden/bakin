@@ -49,16 +49,6 @@ export interface RegistryState {
   fileBackedWiring: Map<string, { pluginId: string; dispose: () => void }>
   /** Whether tables have been created during this startup */
   tablesCreated: boolean
-  /**
-   * File-backed registrations awaiting their first startup reconcile.
-   * Reconciles are deferred until after `createRegisteredTables()` so
-   * the underlying search tables exist before we try to scan them.
-   * Drained by `runPendingReconciles()`.
-   */
-  pendingReconciles: Array<{
-    pluginId: string
-    def: FileBackedContentTypeDefinition
-  }>
 }
 
 const _g = globalThis as typeof globalThis & {
@@ -72,7 +62,6 @@ export function getRegistry(): RegistryState {
       pluginTables: new Map(),
       fileBackedWiring: new Map(),
       tablesCreated: false,
-      pendingReconciles: [],
     }
   }
   return _g.__bakinSearchRegistry
@@ -89,21 +78,6 @@ export const TABLE_PREFIX = 'bakin_'
 
 export function fullTableName(table: string): string {
   return table.startsWith(TABLE_PREFIX) ? table : `${TABLE_PREFIX}${table}`
-}
-
-export function removePendingReconciles(pluginId: string, tableName?: string): number {
-  const registry = getRegistry()
-  let removed = 0
-  const keep = registry.pendingReconciles.filter((item) => {
-    const matchesPlugin = item.pluginId === pluginId
-    const matchesTable = tableName === undefined || fullTableName(item.def.table) === tableName
-    const shouldRemove = matchesPlugin && matchesTable
-    if (shouldRemove) removed++
-    return !shouldRemove
-  })
-  registry.pendingReconciles.length = 0
-  registry.pendingReconciles.push(...keep)
-  return removed
 }
 
 export function disposeFileBackedWiring(tableName: string): void {
@@ -124,7 +98,6 @@ function forgetContentType(tableName: string, def?: { pluginId: string }): boole
   const removed = registry.contentTypes.delete(tableName)
   disposeFileBackedWiring(tableName)
   if (existing) {
-    removePendingReconciles(existing.pluginId, tableName)
     if (registry.pluginTables.get(existing.pluginId) === tableName) {
       registry.pluginTables.delete(existing.pluginId)
     }
@@ -284,10 +257,6 @@ export interface EnsureTablesResult {
 export async function ensureRegisteredTables(): Promise<EnsureTablesResult> {
   const registry = getRegistry()
   const search = getSearchAdapter()
-  if (!await search.available()) {
-    registry.tablesCreated = true
-    return { created: 0, failures: [] }
-  }
 
   let created = 0
   const failures: Array<{ table: string; pluginId: string; error: string }> = []
@@ -397,7 +366,6 @@ export function unregisterContentTypesByPlugin(pluginId: string): number {
   for (const { tableName, def } of ownedTables) {
     forgetContentType(tableName, def)
   }
-  removePendingReconciles(pluginId)
   return ownedTables.length
 }
 

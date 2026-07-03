@@ -31,7 +31,6 @@ function makeSearch(rows: Array<{ key: string; document: Record<string, unknown>
           removed.push(...keys)
           return keys.length
         }),
-        resetContentType: mock(async () => {}),
       },
     },
   }

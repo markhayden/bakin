@@ -79,12 +79,6 @@ export function createMockSearchAdapter(
           : ['full_text']
         return legs.map((leg) => ({ leg, state: 'ready' as const, indexedCount: count }))
       },
-      getHealth: async (name) => ({
-        table: name,
-        status: tables.has(name) ? 'ok' : 'warn',
-        message: tables.has(name) ? 'table registered' : 'table not registered',
-      }),
-      rebuildIndexes: async () => {},
     },
 
     documents: {
@@ -153,14 +147,6 @@ export function createMockSearchAdapter(
       opts,
     ),
 
-    embedder: {
-      hasChanged: async () => false,
-      rebuildAll: async () => ({
-        tables: tables.size,
-        documents: Array.from(docs.values()).reduce((sum, table) => sum + table.size, 0),
-        errors: [],
-      }),
-    },
   }
 
   return { ...adapter, ...overrides }

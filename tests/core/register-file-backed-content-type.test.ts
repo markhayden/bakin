@@ -86,6 +86,7 @@ describe('registerFileBackedContentType', () => {
   function makeDef(overrides: Partial<FileBackedContentTypeDefinition> = {}): FileBackedContentTypeDefinition {
     return {
       table: 'projects',
+      schemaVersion: 1,
       schema: { title: { type: 'text' } },
       searchableFields: ['title'],
       embeddingTemplate: '{{title}}',
@@ -98,7 +99,6 @@ describe('registerFileBackedContentType', () => {
           fileToDoc: async (rel, content) => ({ title: rel, body: content }),
         },
       ],
-      buildOnStartup: false, // skip pending reconcile in unit tests
       ...overrides,
     }
   }
@@ -132,6 +132,7 @@ describe('registerFileBackedContentType', () => {
     const api = buildSearchAPI('team-like')
     api.registerContentType({
       table: 'agents',
+      schemaVersion: 1,
       schema: { name: { type: 'text' } },
       searchableFields: ['name'],
       embeddingTemplate: '{{name}}',

@@ -270,15 +270,6 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
       return
     }
 
-    // Lightweight query-path warm signal for search bars to poll ('cold' |
-    // 'warming' | 'warm'). Cheap — just reads in-memory state, unlike
-    // /api/plugins/health/search-status which scans every table.
-    if (url.pathname === '/api/search/warm' && req.method === 'GET') {
-      const { getSearchWarmState } = require('../search-warmup')
-      jsonResponse(res, 200, { warm: getSearchWarmState() })
-      return
-    }
-
     if (url.pathname.startsWith('/api/exec-tools/') && req.method === 'POST') {
       dispatchWebHandler(req, res, execToolsRoute.post)
       return

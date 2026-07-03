@@ -39,8 +39,6 @@ import { createMemoryGetSessionTool } from './mcp/get-session'
 import { createMemoryGetTurnTool } from './mcp/get-turn'
 import { createMemoryListAgentsTool } from './mcp/list-agents'
 import { createMemoryStatusTool } from './mcp/status'
-import { migrateIfNeeded } from './lib/memory-migration'
-import { resetAllOffsets } from './lib/offsets'
 import type { MemoryTier } from './lib/types'
 import { startTtlTimer, stopTtlTimer } from './lib/ttl-prune'
 import { checkSearchTables } from './lib/health-checks'
@@ -57,15 +55,6 @@ interface MemorySettings {
 }
 
 /** Every tier the initial backfill and full reindex derive from source. */
-const MEMORY_BACKFILL_TIERS: readonly MemoryTier[] = [
-  'audit',
-  'durable',
-  'daily_note',
-  'session',
-  'turn',
-  'checkpoint',
-  'dream',
-]
 
 const DEFAULTS: MemorySettings = {
   backfillDays: 30,
@@ -191,6 +180,7 @@ const memoryPlugin: BakinPlugin = definePlugin({
     // ─── Search: unified bakin_memory table ─────────────────────────────────
     ctx.search.registerContentType({
       table: 'memory',
+      schemaVersion: 1,
       schema: {
         tier: { type: 'keyword' },
         agent: { type: 'keyword' },
@@ -213,19 +203,16 @@ const memoryPlugin: BakinPlugin = definePlugin({
       embeddingTemplate: '{{tier}} {{agent}} {{title}} {{snippet}}',
       facets: ['tier', 'agent', 'kind', 'eventType', 'phase', 'date'],
       reindex: async function* () {
-        // Memory rows are derived from source files through the indexer
-        // (per-tier parsers, TTL filters, persisted byte offsets) rather than
-        // a stream of {key, doc} rows, so a reindex resets the incremental
-        // state and re-derives everything, REWRITING every row (rewriteAll
-        // bypasses the write dedupe — a reindex must repair drifted row
-        // content, not just fill gaps). Rows are written directly via
-        // ctx.search.index as a side effect and nothing is yielded, so the
-        // reindex progress UI reports 0 for this table by design. Without
-        // this, `bakin reindex` could never repopulate bakin_memory after a
-        // table loss.
-        resetAllOffsets()
-        indexer.invalidateIndexedCache()
-        await indexer.backfill(MEMORY_BACKFILL_TIERS, { rewriteAll: true })
+        // Blue/green backfill source: the side-effect-free enumerator
+        // re-derives every row from source files WITHOUT touching offsets
+        // or live state. MUST fail loudly when the runtime is down —
+        // non-audit tiers read through ctx.runtime, and silently yielding
+        // nothing would let a thin green table converge and flip.
+        const alive = await ctx.runtime.ping().catch(() => false)
+        if (!alive) {
+          throw new Error('runtime unavailable — memory backfill would be incomplete; migration stays parked')
+        }
+        yield* indexer.enumerateAll()
       },
       verifyExists: async () => true,
     })
@@ -269,66 +256,16 @@ const memoryPlugin: BakinPlugin = definePlugin({
       void indexer.handleWatcherEvent(String(data.file ?? ''), 'unlink')
     }))
 
-    // Defer the initial backfill until onReady(). activate() runs BEFORE
-    // createRegisteredTables() in server.ts, so writes issued here would
-    // silently fail ("Endpoint not found: /api/v1/tables/bakin_memory/batch")
-    // while offsets still advanced — that exact race once produced an empty
-    // dashboard on every subsequent boot (Apr 2026 incident). onReady() is
-    // the first lifecycle hook that is guaranteed to fire after tables exist.
+    // No boot backfill (D5/D6): initial population is the blue/green
+    // create-time seeding via reindex(); live updates ride the watcher
+    // tailer through the outbox; offline growth is the doctor's stat-sweep.
+    // TTL prune stays timer-only (first run ~1h after boot, then daily).
     deferredBackfill = async () => {
-      // Boot may proceed past a slow/wedged search bootstrap (bounded boot
-      // budget). Writing before tables exist silently drops rows while byte
-      // offsets advance — the failure that once produced a permanently empty
-      // dashboard — so wait for the bootstrap to actually settle first.
-      if (ctx.search.whenReady && !await ctx.search.whenReady()) {
-        log.warn('search bootstrap never became ready — skipping memory backfill this boot (offsets untouched; next boot retries)')
-        return
-      }
-
-      // Per-plugin schema migration. Bumping MEMORY_SCHEMA_VERSION drops the
-      // table + clears offsets so the backfill below re-derives everything
-      // under the current write-time filters (TTL, parser rules, etc.). Runs
-      // before backfill so the freshly-recreated table is what gets written.
-      try {
-        const { migrated, from, to } = await migrateIfNeeded(ctx.search)
-        if (migrated) {
-          log.info('memory schema migrated', { from, to })
-          // The table was dropped and recreated: any dedupe cache loaded from
-          // the pre-drop table would make the backfill skip every row.
-          indexer.invalidateIndexedCache()
-        }
-      } catch (err) {
-        log.warn('memory migration failed — proceeding with backfill anyway', {
-          err: err instanceof Error ? err.message : String(err),
-        })
-      }
-
-      // Watcher events stay gated until the migration decided the table's
-      // fate — an event racing the drop would seed the indexer's dedupe cache
-      // from the doomed table and the backfill would then skip every row,
-      // leaving memory empty until the next restart.
       ready = true
-
-      try {
-        await indexer.backfill(MEMORY_BACKFILL_TIERS)
-      } catch (err) {
-        log.warn('initial backfill failed', {
-          err: err instanceof Error ? err.message : String(err),
-        })
-      }
-
-      // TTL prune: timer only — first run ~1h after boot, then daily. No
-      // boot-time one-shot: pruning is a full-table scan, boot is when antfly
-      // is busiest converging, and write-time TTL filtering (isExpired in the
-      // indexer) already keeps expired rows from being (re)written during the
-      // backfill that just ran.
       startTtlTimer(ctx.search, {
         turnRetentionDays: settings.turnRetentionDays,
         auditRetentionDays: settings.auditRetentionDays,
       })
-      // Runtime memory watcher paths are the live-update path. Runtime-native
-      // subscriptions can be added to the adapter contract if another backend
-      // needs push events that do not map to files.
     }
 
     // ─── Health check (migrated out of core/doctor.ts per #139 C5) ──────
@@ -362,9 +299,6 @@ const memoryPlugin: BakinPlugin = definePlugin({
   async onShutdown() {
     ready = false
     deferredBackfill = null
-    // Snapshot the dedupe cache with everything the watcher wrote since the
-    // backfill's save — the next boot's count validation then accepts it.
-    activeIndexer?.persistIndexedCache()
     activeIndexer = null
     clearEventSubscriptions()
     stopTtlTimer()

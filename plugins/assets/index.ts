@@ -260,6 +260,7 @@ const assetsPlugin: BakinPlugin = definePlugin({
 
     ctx.search.registerFileBackedContentType({
       table: 'assets',
+      schemaVersion: 1,
       schema: {
         description: { type: 'text' },
         tags: { type: 'text' },
@@ -326,7 +327,7 @@ const assetsPlugin: BakinPlugin = definePlugin({
       // An asset is a directory under assets/store/<ym>/<assetId>/ whose
       // manifest.json is the single indexed unit (keyed by assetId). Version,
       // thumbnail, and export files never get their own search doc. onSync /
-      // onUnlink own indexing off the manifest; fileToDoc is unused.
+      // onUnlink own indexing off the manifest, so no fileToDoc is declared.
       filePatterns: [
         {
           pattern: 'assets/**/*',
@@ -334,7 +335,6 @@ const assetsPlugin: BakinPlugin = definePlugin({
             const v = versionedAssetPath(rel)
             return v?.isManifest ? v.assetId : null
           },
-          fileToDoc: async () => null, // unused — onSync handles indexing
         },
       ],
       excludePatterns: ['assets/**/.trash/**'],
