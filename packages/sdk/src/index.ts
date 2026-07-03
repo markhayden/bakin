@@ -56,6 +56,12 @@ export { getPluginRoutes } from './register'
 export { setManifestNav } from './register'
 /** Read the manifest nav currently seeded for a plugin (drift validation). */
 export { getManifestNav } from './register'
+/** Look up the ⌘K hit renderer registered for a content type. */
+export { getSearchHitRenderer } from './register'
+/** Stable snapshot of all registered hit renderers keyed by content type. */
+export { getSearchHitRenderersSnapshot } from './register'
+/** Subscribe to hit-renderer mutations (own channel). */
+export { subscribeSearchHitRenderers } from './register'
 export type { ClientRouteEntry, MatchedPluginRoute, NavItem, PluginRegistration } from './register'
 
 /** Install the manifest-derived slot/route ownership index for lazy loading (host-side). */

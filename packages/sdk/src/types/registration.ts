@@ -376,3 +376,28 @@ export interface WorkflowInstance {
 
 /** Alias for WorkflowDefinition when used as a reusable template. */
 export type WorkflowTemplate = WorkflowDefinition
+
+/**
+ * How one search hit of a given content type renders in the global (⌘K)
+ * search overlay. Plain DATA mapping — the overlay owns row layout,
+ * keyboard focus, and debug-badge placement uniformly.
+ */
+export interface SearchHitDescriptor {
+  title: string
+  subtitle?: string
+  /** Deep link for Enter/click. `null` = renderable but non-navigable. */
+  href: string | null
+  thumbnailUrl?: string
+  /** Lucide icon name fallback when there is no thumbnail. */
+  icon?: string
+}
+
+/** Minimal hit shape passed to renderers (matches useSearch's SearchResult). */
+export interface SearchHitInput {
+  id: string
+  table: string
+  score: number
+  fields: Record<string, unknown>
+}
+
+export type SearchHitRenderer = (hit: SearchHitInput) => SearchHitDescriptor

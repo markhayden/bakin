@@ -24,7 +24,7 @@ import type { ComponentType } from 'react'
 // drag the <Slot> rendering layer (runtime react) into the root barrel's
 // graph and poison every server bundle that inlines the SDK root.
 import { registerSlot, clearSlotsOwnedBy } from './slots/registry'
-import type { NavBadge, NavItem } from './types'
+import type { NavBadge, NavItem, SearchHitRenderer } from './types'
 
 interface PluginRegistration {
   id: string
@@ -43,6 +43,14 @@ interface PluginRegistration {
    * directly from the plugin's client.tsx alongside registerPlugin.
    */
   slots?: Record<string, ComponentType<any>>
+  /**
+   * Global-search contributions: content type (bare table name, e.g.
+   * 'assets') → hit renderer for the ⌘K overlay. Plain data-mapping
+   * functions, not components.
+   */
+  search?: {
+    hitRenderers: Record<string, SearchHitRenderer>
+  }
 }
 
 interface ClientRouteEntry {
@@ -72,6 +80,12 @@ interface ClientRegistry {
   badgesByPlugin: Map<string, Map<string, NavBadge>>
   badgesSnapshot: Map<string, NavBadge>
   badgeListeners: Set<() => void>
+  // Global-search hit renderers. Outer key: pluginId (unregister drops all
+  // of a plugin's renderers). Inner key: content type. Flattened snapshot
+  // rebuilt on mutation for useSyncExternalStore consumers.
+  hitRenderersByPlugin: Map<string, Map<string, SearchHitRenderer>>
+  hitRenderersSnapshot: Map<string, SearchHitRenderer>
+  hitRendererListeners: Set<() => void>
 }
 
 function buildNavItemsSnapshot(registry: ClientRegistry): NavItem[] {
@@ -100,6 +114,9 @@ function getRegistry(): ClientRegistry {
       badgesByPlugin: new Map<string, Map<string, NavBadge>>(),
       badgesSnapshot: new Map<string, NavBadge>(),
       badgeListeners: new Set<() => void>(),
+      hitRenderersByPlugin: new Map<string, Map<string, SearchHitRenderer>>(),
+      hitRenderersSnapshot: new Map<string, SearchHitRenderer>(),
+      hitRendererListeners: new Set<() => void>(),
     } as ClientRegistry
   }
   const registry = g.__bakinClientRegistry as ClientRegistry
@@ -114,7 +131,30 @@ function getRegistry(): ClientRegistry {
   if (!registry.badgesByPlugin) registry.badgesByPlugin = new Map()
   if (!registry.badgesSnapshot) registry.badgesSnapshot = buildBadgesSnapshot(registry)
   if (!registry.badgeListeners) registry.badgeListeners = new Set()
+  // Hydrate hit-renderer fields if the registry pre-dates this addition.
+  if (!registry.hitRenderersByPlugin) registry.hitRenderersByPlugin = new Map()
+  if (!registry.hitRenderersSnapshot) registry.hitRenderersSnapshot = buildHitRenderersSnapshot(registry)
+  if (!registry.hitRendererListeners) registry.hitRendererListeners = new Set()
   return registry
+}
+
+function buildHitRenderersSnapshot(registry: ClientRegistry): Map<string, SearchHitRenderer> {
+  const snapshot = new Map<string, SearchHitRenderer>()
+  for (const byType of registry.hitRenderersByPlugin.values()) {
+    for (const [type, renderer] of byType) {
+      // First plugin wins — one content type has one owner by convention.
+      if (!snapshot.has(type)) snapshot.set(type, renderer)
+    }
+  }
+  return snapshot
+}
+
+function bumpHitRenderers(): void {
+  const registry = getRegistry()
+  registry.hitRenderersSnapshot = buildHitRenderersSnapshot(registry)
+  for (const l of registry.hitRendererListeners) {
+    try { l() } catch (err) { console.error('[bakin] hit-renderer listener threw:', err) }
+  }
 }
 
 function buildBadgesSnapshot(registry: ClientRegistry): Map<string, NavBadge> {
@@ -172,6 +212,11 @@ export function registerPlugin(reg: PluginRegistration): void {
     }
   }
 
+  if (reg.search?.hitRenderers && Object.keys(reg.search.hitRenderers).length > 0) {
+    registry.hitRenderersByPlugin.set(reg.id, new Map(Object.entries(reg.search.hitRenderers)))
+    bumpHitRenderers()
+  }
+
   bumpVersion()
 }
 
@@ -200,9 +245,11 @@ export function unregisterPlugin(id: string): void {
   // full nav re-render — but unregister wipes both at once. Only notify
   // badge subscribers if the plugin actually had badges.
   const hadBadges = registry.badgesByPlugin.delete(id)
+  const hadRenderers = registry.hitRenderersByPlugin.delete(id)
 
   bumpVersion()
   if (hadBadges) bumpBadges()
+  if (hadRenderers) bumpHitRenderers()
 }
 
 /**
@@ -351,6 +398,31 @@ export function subscribeNavBadges(listener: () => void): () => void {
   const registry = getRegistry()
   registry.badgeListeners.add(listener)
   return () => { registry.badgeListeners.delete(listener) }
+}
+
+// ---------------------------------------------------------------------------
+// Global-search hit-renderer registry
+// ---------------------------------------------------------------------------
+
+/** Renderer for a content type (bare table name), or undefined if none. */
+export function getSearchHitRenderer(type: string): SearchHitRenderer | undefined {
+  return getRegistry().hitRenderersSnapshot.get(type)
+}
+
+/**
+ * Stable snapshot of every registered hit renderer keyed by content type.
+ * Identity changes only on register/unregister — safe for
+ * `useSyncExternalStore`. The ⌘K overlay derives its type chips from this.
+ */
+export function getSearchHitRenderersSnapshot(): ReadonlyMap<string, SearchHitRenderer> {
+  return getRegistry().hitRenderersSnapshot
+}
+
+/** Subscribe to hit-renderer mutations (own channel, like nav badges). */
+export function subscribeSearchHitRenderers(listener: () => void): () => void {
+  const registry = getRegistry()
+  registry.hitRendererListeners.add(listener)
+  return () => { registry.hitRendererListeners.delete(listener) }
 }
 
 function normalizePattern(pattern: string): string[] {
