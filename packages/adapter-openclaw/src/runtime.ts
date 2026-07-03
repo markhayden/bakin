@@ -864,8 +864,13 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         agent = mainId ? await this.agents.get(mainId) : null
       }
       const models = await this.models.listAvailable({ includeUnavailable: true })
-      const entry = agent?.model
-        ? models.find((m) => m.id === agent.model)
+      // The gateway accepts both `provider/model` and bare model ids
+      // (agent configs typically store the bare form while the catalog
+      // keys entries as provider/model) — match either, like it does.
+      const bare = (id: string) => (id.includes('/') ? id.slice(id.indexOf('/') + 1) : id)
+      const wanted = agent?.model
+      const entry = wanted
+        ? models.find((m) => m.id === wanted) ?? models.find((m) => bare(m.id) === bare(wanted))
         : models.find((m) => m.tags?.includes('default'))
       if (entry?.input) {
         const inputs = entry.input.toLowerCase().split(/[+,\s]+/).filter(Boolean)

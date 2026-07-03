@@ -141,4 +141,13 @@ describe('OpenClaw runtime capabilities', () => {
     const caps = await makeAdapter().capabilities!()
     expect(caps).toEqual({ imageInput: true, audioInput: true })
   })
+
+  it('matches a bare agent model against a provider-prefixed catalog key (live enrich-agent shape)', async () => {
+    mockAgents = [{ id: 'enrich', name: 'Enrich', model: { primary: 'claude-sonnet-4-6' } }]
+    writeModelsBinary([
+      { key: 'anthropic/claude-sonnet-4-6', name: 'Claude Sonnet 4.6', input: 'text+image', available: true },
+    ])
+    const caps = await makeAdapter().capabilities!({ agentId: 'enrich' })
+    expect(caps.imageInput).toBe(true)
+  })
 })
