@@ -2,191 +2,408 @@
 
 ## Overview
 
-Search goes through `AppServices.search` / `ctx.search`. Antfly is the current
-search adapter implementation in `packages/adapter-antfly/`, backing UI search
-and agent queries. It is **optional**: Bakin runs fully without it. When
-`settings.search.settings.enabled` is `false` (or Antfly is unreachable),
-search silently degrades — indexing calls are no-ops, queries return empty
-results.
+Search goes through `AppServices.search` / `ctx.search`. Antfly (v0.2, zig
+engine) is the **default** search adapter implementation in
+`packages/adapter-antfly/` — default, not the design: everything upstream of
+the adapter is expressed against the generic `SearchAdapter` contract
+(`packages/core/src/adapters/search/`), and the architecture test bans
+antfly-specific identifiers from core, SDK, `src/`, and plugin code
+(`tests/architecture/adapter-boundary.test.ts`, D17).
 
-**Install & runtime (antfly v0.2, zig):** `bakin install search` direct-downloads the pinned release tarball from releases.antfly.io (SHA256-verified against `packages/adapter-antfly/src/pin.ts` — no brew/npm/python/sudo) into `~/.antfly/bin/antfly`. Bakin runs a **private instance**: `antfly swarm` bound to `127.0.0.1:3738` (health `3739`) with `--data-dir ~/.bakin/antfly` — never the shared `~/.antfly/data`. Readiness via `GET /readyz`. Embedded inference uses antfly's auto-selected backend (Metal on Apple Silicon, CPU/ONNX on Linux); the rc.2 onnx pin was dropped at v0.2.0-rc.9, where Metal embeddings survive a full reindex + concurrent load (live-verified). An explicit `TERMITE_PREFERRED_BACKEND` still wins. A non-default `settings.url` means an externally managed server (guest mode: connect only, never spawn, never touch its disk). Remaining upstream caveats are tracked in [#456](https://github.com/markhayden/bakin/issues/456).
+The system is built on **record-keeping, not inference**. Every index write is
+journaled to a durable SQLite outbox at write time and drained into the
+engine; the engine being down just means rows wait. Boot resumes the drain and
+does nothing else — no filesystem scans, no mtime reconcile, no warming, ever.
+Schema changes are per-table **blue/green migrations**: queries keep answering
+from the old physical table until a fully-converged replacement flips in.
+(This replaced the pre-2026-07 reconcile/warmup/adoption architecture
+wholesale; none of that machinery exists anymore.)
 
-Bakin's search pipeline supports multimodal content: text embeddings via BGE, image embeddings via CLIP (running through antfly's embedded inference runtime), hybrid BM25 + semantic fusion via RRF, and optional cross-encoder reranking on single-modality tables. File content for PDFs and text formats is extracted **server-side in Bakin** (via pdf-parse and `fs.readFileSync`) and passed to Antfly as a pre-resolved `content` field rather than dereferenced via Antfly's `{{remotePDF}}` / `{{remoteText}}` template helpers. See **Multimodal Architecture** below and `.claude/knowledge/multimodal-search.md` for the full rationale.
+Degradation is honest, never silent, and never lossy:
+
+- **Writes are never dropped.** `ctx.search.index/remove/transform` enqueue
+  durably whether or not the engine is up.
+- **Queries** against an unavailable engine return empty results with
+  `meta.source: 'fallback'` (the client-side degradation UI is later work —
+  see the rebuild spec D11).
+- Browse/filter/listing paths never touch the search engine and keep working.
+
+## Install & Runtime: OS-Supervised Service
+
+`bakin install search` direct-downloads the pinned release tarball from the
+adapter's release host (SHA256-verified against
+`packages/adapter-antfly/src/pin.ts` — no brew/npm/python/sudo) into
+`~/.antfly/bin/antfly`, then provisions an **OS-supervised service** running
+`antfly swarm` on `127.0.0.1:3738` (health port 3739) with data under
+`~/.bakin/antfly/` and logs at `~/.bakin/logs/antfly.log`. Bakin is a pure
+HTTP client; the OS owns start, keep-alive, and crash-restart.
+
+`packages/adapter-antfly/src/service.ts` owns the lifecycle. Four modes,
+resolved by `detectServiceMode()` (env `BAKIN_SEARCH_SERVICE_MODE` override →
+platform detection):
+
+| Mode | When | Mechanism |
+|---|---|---|
+| `launchd` | macOS with `launchctl` | LaunchAgent `~/Library/LaunchAgents/io.bakin.antfly.plist`, `KeepAlive=true`, managed via `bootstrap`/`kickstart`/`bootout` (legacy `load`/`unload` fallback) |
+| `systemd` | Linux with `systemctl` | User unit `~/.config/systemd/user/bakin-antfly.service`, `Restart=always` |
+| `child` | No service manager (Docker rig, CI, tests) | Strict attached child: spawn on boot, kill on exit. No adoption, no sidecar, no restart ladder |
+| `guest` | Non-default `settings.url` | Externally managed engine — never provision, never spawn, never touch its disk |
+
+**The unit file IS the fingerprint.** `ensureProvisioned()` renders the
+desired plist/unit (argv includes `--data-dir`, `--models-dir`, and one
+`--preload-model` per configured embedder so the first embed never races a
+cold model load) and byte-compares it with what's on disk. Identical → nothing
+to do (the entire boot-time cost is one file read). Drift — pin bump, embedder
+change, different preloads — → rewrite + restart. There is no sidecar state
+file and no adoption probing.
+
+The adapter (`packages/adapter-antfly/src/adapter.ts`) calls
+`ensureProvisioned()` from `initialize()`; provisioning failures **never throw
+out of initialize** — search degrades honestly (writes queue, doctor reports)
+instead of blocking boot. `shutdown()` stops **only** a strict child:
+OS-supervised instances stay warm across Bakin restarts by design. Upgrades
+are `stopService()` → swap binary (verify-then-commit, `installer.ts`) →
+`startService()`. `ANTFLY_PATH` overrides binary discovery for dev builds.
 
 ## Architecture
 
 ```
 Plugin activate()
-  → ctx.search.registerContentType(def)             — bare registration, plugin owns sync
-  → ctx.search.registerFileBackedContentType(def)   — helper: also wires watcher hooks + reconcile
+  → ctx.search.registerContentType(def)             — direct registration, plugin owns sync
+  → ctx.search.registerFileBackedContentType(def)   — also wires watcher hooks → outbox
   → SearchRegistry stores definition (globalThis-backed)
 
-Mutation (create/update)
-  → ctx.search.index(key, doc)
-  → Bakin extracts file content (if applicable) into doc.content
-  → Bakin computes image_url (file://) for raster images
-  → SearchAdapter upserts into bakin_{contentType} table
-  → Antfly's embedding enricher chunks, embeds via BGE/CLIP, writes to indexes
-
-Deletion
-  → plugin calls ctx.search.remove(key)
-  → SearchAdapter deletes document
-
-Periodic backstop scan (default 7d)
-  → SearchCleanup scans all registered content types
-  → Calls def.verifyExists() per document
-  → Removes orphans that the watcher unlink hook missed
+Mutation (create/update/delete)
+  → ctx.search.index(key, doc) / remove(key) / transform(key, ops)
+  → durable enqueue into the search outbox (~/.bakin/search.db) — the enqueue
+    IS the write from the caller's perspective
+  → nudgeOutboxPump(): single-flight drain lands rows via the adapter
+    (engine up → immediately; engine down → rows wait, backoff retries)
 
 Query
-  → ctx.search.query(params)
-  → Registry looks up per-table index names and rerankField
-  → SearchAdapter hybrid query: full-text (Bleve) + semantic (embeddings) via RRF
-  → Cross-encoder reranker scores top-K if the content type opted in
-  → Returns ranked results with per-index score breakdown
+  → ctx.search.query(params) / GET /api/search / per-plugin GET /search
+  → registry resolves logical table → CURRENT physical table (blue/green pointer)
+  → adapter hybrid query: full-text + embedding legs, RRF/RSF fusion
+  → hits carry a neutral per-leg scoreBreakdown
 
-Boot-time migration (every start)
-  → search-migration.ts reads ~/.bakin/.search-state.json
-  → If stored < SCHEMA_VERSION, drop all bakin_* tables
-  → Registry recreates tables via createRegisteredTables()
-  → Fire-and-forget full reindex populates the new tables
-  → Write new version to the state file
+Boot (the whole story)
+  → startOutboxPump(): resume draining whatever the journal holds
+  → startSearchEngine(): ensure registered tables (a matching registry row is
+    ZERO adapter calls) + resume any crash/park-interrupted migration
+  → nothing else — no scans, no reconcile, no warmup
 ```
 
-### Auto-registered `/search` route (canonical wiring path)
+### The durable outbox (write path)
 
-Plugins **no longer register their own `/search` route**. When a plugin
-calls `ctx.search.registerContentType()` or
-`ctx.search.registerFileBackedContentType()` during `activate()`, the
-search registry's `buildSearchAPI(pluginId, { registerRoute })` helper
-automatically wires a `GET /search` route on the plugin's router. The
-route handler resolves the plugin's table via `getTableForPlugin()`,
-forwards the query params (`q`, `limit`, `offset`, `facets`, `filters`)
-to `ctx.search.query()`, and returns the standard `SearchResponse`
-shape. Registration is idempotent — calling `registerContentType` twice
-for the same plugin doesn't double-register the route. The catch-all
-plugin dispatch path uses `BuildSearchAPIOptions.skipFileBackedWiring`
-to avoid double-wiring file-backed hooks when the API is constructed
-outside the plugin activation phase.
+`packages/core/src/search/outbox.ts`, app facade + pump in
+`src/core/search-outbox.ts`. Lives in its own SQLite store,
+`~/.bakin/search.db`, opened through the keyed multi-db core
+(`openNamedDb('search', ...)` from `packages/core/src/storage/db.ts` — still
+the sole `bun:sqlite` importer). **Never** the execution ledger, which stays
+coordination-facts-only.
 
-`getTableForPlugin(pluginId)` (formerly `getPluginTable`) returns the plugin's
-**primary** content-type table — the one a plugin registers via
-`registerContentType` and targets with bare `ctx.search.index/remove/transform/query`,
-and what the auto-wired `/search` route + MCP plugin-param routing resolve to. A plugin
-has exactly one primary (a second *direct* registration throws early); **file-backed
-content types register as secondary** and are indexed into their own table directly, so a
-plugin like `team` can register a direct primary (`agents`) plus a file-backed secondary
-(`agent-lessons`) without the resolver misrouting. `getTableForPlugin` returns the primary
-(or null) and no longer throws on multi-content plugins.
+- **Coalescing:** `UNIQUE(logical_table, key)`, last-write-wins. The outbox
+  holds at most one row per live document; re-enqueueing replaces the pending
+  payload and resets retry state.
+- **Acked-hash dedupe:** `search_acked` remembers the last successfully
+  written content hash (canonical sorted-key JSON, SHA256) per key. Enqueueing
+  a doc whose hash matches the acked one with nothing in flight is a no-op.
+  This one mechanism replaces every per-plugin boot dedupe cache the old
+  world grew (team content-hash scan, memory indexed-cache). Indexer writes
+  are unconditional — the outbox owns change detection.
+- **Transform semantics:** `transform(key, ops)` journals real
+  `$set`/`$inc`/`$push` ops (`applyTransformOps`). Merged into a pending
+  `index` payload when one exists (stays one row), appended to a pending
+  `transform`, dropped on a pending `remove`. At drain time transforms apply
+  read-modify-write through `adapter.documents.transform`.
+- **Typed error classification** (`packages/core/src/adapters/search/errors.ts`):
+  adapters throw `SearchEngineUnavailableError` (network/timeout/5xx —
+  transient, retry-forever safe) or `SearchRequestRejectedError` (4xx —
+  retrying the identical payload cannot succeed). The outbox classifies by
+  **type, never message text** (same rule as dispatch `RuntimeError`s).
+- **Backoff & quarantine:** transient failures back off 1s → 5s → 30s → 2m →
+  10m → 30m cap without advancing toward quarantine; permanent failures
+  quarantine the row after 5 attempts. `retryQuarantined()` /
+  `listQuarantined()` are the doctor/CLI repair surface; `outboxStats()`
+  (pending/inflight/quarantined/oldest) feeds status and telemetry.
+- **Crash recovery:** rows are marked `inflight` while a batch lands; any
+  inflight row at drain-cycle start is orphaned (single process) and reset to
+  pending. Nothing is lost to a mid-write crash.
+- **The pump** (`src/core/search-outbox.ts`): a globalThis-backed single-flight
+  drain chain. Every enqueue calls `nudgeOutboxPump()` — when the engine is
+  up, the write lands before the caller's promise resolves. A 30s safety tick
+  retries when the engine was down (with its own 5s/10s/30s down-cycle gate so
+  a dead engine isn't hammered). `startOutboxPump()` in `server.ts` wires the
+  live adapter + the blue/green `resolveDrainTargets` and resumes whatever the
+  journal holds — that line is the whole recovery story for writes.
+
+### Blue/green versioned tables (migrations)
+
+`packages/core/src/search/tables.ts` (state in the same `search.db`), driven
+from `src/core/search-registry-core.ts`. There is no global schema version and
+no state file — each content type declares its own `schemaVersion`.
+
+- **Naming & fingerprint:** logical names (what plugins and queries use, e.g.
+  `bakin_assets`) map to versioned physicals
+  `{logical}_v{schemaVersion}_{fp8}`, where `fp8` is the first 8 hex chars of
+  SHA256 over the table config **plus the adapter's `mappingFingerprint()`**
+  (a hash over adapter settings that change the physical index layout —
+  embedder models, dimensions). A plugin bumping `schemaVersion` OR the
+  adapter swapping an embedder model yields a new desired physical and
+  triggers a migration — no plugin edit needed for a model swap.
+- **Migrator state machine:** `creating → backfilling → converging → flip →
+  drop`, persisted per step in the `search_tables` registry.
+  `migrating_to` is written **before** backfill starts, which turns on
+  dual-write: the outbox pump's `resolveDrainTargets(logical)` returns both
+  physicals during a migration, so a doc written mid-backfill exists in the
+  green either way. Backfill streams the content type's `reindex()` generator
+  in 50-doc chunks.
+- **Convergence:** green flips only when `tables.stats()` doc count reaches
+  the backfilled count AND every leg from `tables.health()` reports `ready`.
+  Poll every 2s, default cap 10 minutes.
+- **Park, never flip early:** on convergence timeout the migration **parks**
+  with dual-write still on. Queries keep hitting the old table; the doctor
+  surfaces the parked state; `resumeMigrations()` finishes the job when the
+  engine recovers.
+- **Resume at boot:** `startSearchEngine()` → `resumeTableMigrations()` reads
+  only the registry (recorded work, allowed by the boot-does-nothing rule) and
+  re-runs any in-flight migration. A desired-layout change underneath an
+  in-flight migration abandons the stale green and retargets.
+- **Drops are tolerant:** a failed drop of the old physical is tombstoned
+  (`search_table_tombstones`); `sweepTombstones()` retries from the doctor
+  sweep.
+- **Serialized:** one migration at a time process-wide (bounds embedding
+  load); other tables' `ensure()` calls queue behind it.
+- **Rebuild = same machinery:** `rebuildTable()` forces a fresh physical with
+  a nonce in the fingerprint. `POST /api/reindex[?table=t]` (the
+  `bakin reindex` CLI verb) runs `rebuildRegisteredTables()` — a blue/green
+  rebuild during which queries keep answering — and broadcasts
+  `search.rebuild.{start,progress,complete}` SSE events (the health page's
+  live per-table progress consumes these). The response reports
+  `ok/errors/parked` per table. There is no separate "reset" surface —
+  rebuild IS the repair verb.
+
+### Boot does nothing (guarantee)
+
+`src/core/search-startup.ts` is deliberately near-empty: `startSearchEngine()`
+ensures registered tables and resumes in-flight migrations. A matching
+registry row performs **zero adapter calls** — enforced by a call-spy test
+(`tests/core/search-boot-does-nothing.test.ts`). The bounded boot budget
+survives from the old world because a wedged engine must never brick server
+boot: the first attempt gets 10s (`SEARCH_BOOTSTRAP_BOOT_BUDGET_MS`) before
+boot proceeds with search degraded, and failed table setup retries on a
+5s/15s/60s/300s schedule.
 
 ### Three consistency paths
 
-The search index stays in sync with source data through three layered paths.
-Higher-numbered paths exist as backstops for the lower ones.
+The index stays in sync with source data through three paths. There is no
+startup reconcile — it was deleted, not demoted.
 
-1. **REST/MCP mutation path (authoritative, immediate).** When a route or
-   exec tool mutates data, it calls `ctx.search.index()` /
-   `ctx.search.remove()` directly. This is the only path that's truly
-   synchronous with the user's request. Awaiting the watcher's ~300ms
-   `awaitWriteFinish` lag would race the response — every plugin that
-   writes via REST/MCP must call the search mutators inline.
+1. **REST/MCP mutation path (authoritative, immediate).** Routes and exec
+   tools call `ctx.search.index()` / `remove()` / `transform()` inline when
+   they mutate data. These journal through the outbox and (engine up) land
+   before the response. Every plugin that writes via REST/MCP must call the
+   search mutators inline — waiting for the watcher would race the response.
 2. **Watcher hook path (filesystem-driven, eventually consistent).** For
-   writes that bypass the REST path — manual `cp`, `rsync`, restored
-   backups, another agent writing to disk, an MCP server in another
-   process — the chokidar watcher fires sync/unlink hooks ~300ms after
-   the write settles. Plugins opt into this by using
-   `registerFileBackedContentType()`, which auto-wires the hooks and
-   classifies events into the plugin's index/remove calls.
-3. **Startup reconcile + 7d backstop scan (recovery).** On every boot
-   `performStartupReconcile()` walks the filesystem, compares mtimes
-   against the indexed `_mtime_ms` field, and re-indexes drift or
-   removes orphans. (The `_mtime_ms` field name is the `MTIME_FIELD`
-   constant from `@bakin/core/adapters/search` —
-   `packages/core/src/adapters/search/concepts.ts` — re-exported from
-   `src/core/search-reconcile.ts`.) Then a periodic backstop scan runs every 7d
-   (`settings.search.settings.cleanupInterval`) calling `verifyExists()` for
-   every indexed key — this catches the rare cases where the process
-   was down during a delete or the fs event was lost. The 7d cadence
-   is intentional: the backstop is a safety net, not the primary path.
+   writes that bypass REST — manual `cp`, restored backups, another process —
+   `registerFileBackedContentType()` wires chokidar sync/unlink hooks that
+   fire ~300ms after the write settles and **enqueue into the outbox** (into
+   the content type's own table, correct for secondary file-backed types).
+   Glob scoping lives in `src/core/search-file-patterns.ts`.
+3. **Doctor sweep (deep-consistency backstop, never at boot).**
+   `src/core/search-orphan-sweep.ts` exports `runOrphanSweep()` /
+   `sweepTableOrphans()`: scan each table's indexed keys, call the content
+   type's `verifyExists(key)`, batch-remove orphans. Single-flight per
+   process, exists solely for doctor scheduling and explicit repair — nothing
+   invokes it on the boot path. `sweepTombstones()` (retry dropping old
+   physicals) belongs to the same tier, and black-swan recovery (wiped index)
+   is by design a doctor-surfaced count mismatch whose repair is an explicit
+   blue/green rebuild — never an automatic boot scan. (The doctor
+   health-check wiring for this tier lands with the rebuild's P4 tranche.)
+
+### Auto-registered `/search` route (canonical wiring path)
+
+Plugins don't register their own `/search` route. When a plugin calls
+`ctx.search.registerContentType()` or `registerFileBackedContentType()` during
+`activate()`, `buildSearchAPI(pluginId, { registerRoute })`
+(`src/core/search-plugin-api.ts`) auto-wires a `GET /search` route on the
+plugin's router that forwards `q`/`limit`/`offset`/`facets` to
+`ctx.search.query()` and returns the standard `SearchResponse`. Registration
+is idempotent. The plugin catch-all dispatch path uses
+`BuildSearchAPIOptions.skipFileBackedWiring` to avoid double-wiring watcher
+hooks when the API is constructed outside plugin activation.
+
+`getTableForPlugin(pluginId)` returns the plugin's **primary** content-type
+table — what bare `ctx.search.index/remove/transform/query` target and what
+the auto-wired `/search` route + MCP plugin-param routing resolve to. A plugin
+has exactly one primary (a second *direct* registration throws early);
+**file-backed content types register as secondary** and index into their own
+table directly, so a plugin like `team` can register a direct primary
+(`agents`) plus a file-backed secondary (`agent-lessons`) without the resolver
+misrouting.
 
 ### Key files
 
 | File | Purpose |
 |---|---|
-| `packages/adapter-antfly/src/search.ts` | `AntflySearchAdapter` implementation: write path, query builder, reranker mapping, index health, transient shard retry |
-| `packages/core/src/adapters/search/` | Search adapter contract and testing helper |
-| `src/core/search-registry.ts` | `SearchRegistry` singleton, ctx.search provider, multi-index registration, query routing, file-backed helper |
-| `src/core/search-reconcile.ts` | Startup mtime-aware reconcile, glob matcher, file walker |
-| `src/core/search-cleanup.ts` | Periodic orphan backstop scan (default 7d), configurable interval |
-| `src/core/watcher.ts` | Chokidar wrapper, `registerSyncHook` / `registerUnlinkHook` contract |
-| `src/core/search-migration.ts` | `SCHEMA_VERSION` constant, state file I/O, migrate-or-noop on boot |
-| `src/core/embedder-resolver.ts` | Pure function: resolve `embedderRef: 'default' \| 'visual' \| ...` → concrete provider+model config |
-| `packages/core/src/plugin-types.ts` | `SearchAPI`, `SearchContentTypeDefinition`, `SearchIndexDefinition` interfaces |
-| `plugins/assets/lib/content-extractor.ts` | Server-side text extraction for PDFs (pdf-parse) and plain text formats |
-| `plugins/assets/lib/asset-url.ts` | `buildAssetFileUrl()` — produces `file://` URLs for CLIP's visual index |
-| `src/hooks/use-search.ts` | Client-side hook for search queries (`useSearch`, types `SearchResult` / `SearchResponse` / `UseSearchOptions` / `UseSearchReturn`) + `reorderBySearchResults` utility. Plugins import this via `@bakin/sdk/hooks`, which re-exports it under the canonical author surface. |
-| `src/core/api-search-handler.ts` | Cross-plugin `/api/search` request handler (extracted from `server.ts` for testability) |
+| `packages/core/src/adapters/search/index.ts` | `SearchAdapter` contract: required `capabilities()`, `mappingFingerprint()`, `tables.{list,create,drop,stats,health}`, documents, query/multiQuery/scan; setup-component types |
+| `packages/core/src/adapters/search/concepts.ts` | Contract types: `TableConfig` (+ capability `legs`), `SearchLegCapability`, `TableLegHealth`, `Query`, `SearchHit`, neutral `ScoreBreakdown` |
+| `packages/core/src/adapters/search/errors.ts` | Typed error taxonomy: `SearchEngineUnavailableError` / `SearchRequestRejectedError`, `isEngineUnavailable()` |
+| `packages/core/src/search/outbox.ts` | Durable write journal: coalescing, acked-hash dedupe, transform merge, backoff, quarantine, `drainOnce` |
+| `packages/core/src/search/tables.ts` | Blue/green registry + migrator: fingerprints, state machine, park/resume, tombstones, `resolveDrainTargets` |
+| `packages/core/src/storage/db.ts` | Keyed multi-db SQLite core (`openNamedDb`) — sole `bun:sqlite` importer (architecture-test enforced) |
+| `src/core/search-outbox.ts` | App facade + the drain pump (single-flight, nudge-on-enqueue, 30s safety tick) |
+| `src/core/search-registry.ts` | The stable public barrel (`@/core/search-registry`) over the four registry modules below |
+| `src/core/search-registry-core.ts` | Registry singleton, table provisioning (`ensureRegisteredTables`), `rebuildRegisteredTables` (blue/green rebuild + `search.rebuild.*` SSE), logical→physical resolution, query/result mappers |
+| `src/core/search-plugin-api.ts` | `buildSearchAPI()` → `ctx.search`; watcher-hook wiring for file-backed types |
+| `src/core/search-query.ts` | `crossTableSearch()` — the `/api/search` engine (multiQuery + merge) |
+| `src/core/search-reindex.ts` | `getSearchHealth()` — per-table stats + per-leg health snapshot |
+| `src/core/search-startup.ts` | `startSearchEngine()` — ensure + resume, bounded boot budget |
+| `src/core/search-orphan-sweep.ts` | Doctor-scheduled deep-consistency sweep (`runOrphanSweep`) |
+| `src/core/search-file-patterns.ts` | Glob matching for file-backed patterns (watcher scoping) |
+| `src/core/search-adapter-factory.ts` | The ONLY production importer of `@bakin/adapter-antfly` |
+| `src/core/api-search-handler.ts` | Cross-plugin `/api/search` request handler |
+| `packages/adapter-antfly/src/` | The default adapter implementation (see below) |
+| `src/hooks/use-search.ts` | Client-side `useSearch` hook + `reorderBySearchResults` (re-exported via the SDK hooks surface) |
+
+### The antfly adapter package
+
+`packages/adapter-antfly/src/` after the rebuild:
+
+| Module | Purpose |
+|---|---|
+| `adapter.ts` | `AntflyAdapter` — lifecycle wrapper: settings merge + service provisioning + client construction |
+| `client.ts` | Stateless raw-fetch HTTP client implementing the full contract; one request path, one error taxonomy (network/timeout/5xx → unavailable, 4xx → rejected); timeouts ABANDON the request (the engine has no server-side cancellation) |
+| `translate.ts` | Pure Bakin ⇄ wire shape translation (queries, filters, batches, table creates, leg health) |
+| `wire.ts` | Hand-derived wire types + endpoint paths, probe-verified against upstream main |
+| `service.ts` | launchd/systemd/child/guest lifecycle (above) |
+| `defaults.ts` | `AntflySettings` + `mergeSettings` (deep-merge with per-embedder dimension preservation) |
+| `pin.ts` | Pinned release version + per-platform SHA256 checksums |
+| `installer.ts` | Direct-download verify-then-commit binary install; upgrade = stop → swap → start |
+| `models.ts` | Inference-model prefetch (`antfly inference pull`) + presence checks |
+| `setup.ts` | Onboarding composition (`bakin install search` / `search-models` components) |
+| `paths.ts` | `~/.antfly` binary/model path helpers |
+| `server-logs.ts` | Engine log-tail annotation for `bakin logs` |
+
+Deleted from the old adapter: `server.ts` (the 739-line process-supervision
+lattice — sidecar `instance.json`, adoption probes, restart ladder),
+`legacy-cleanup.ts`, `search.ts` (the 955-line monolith), and the old
+`query-translation.ts`.
+
+**No `@antfly/sdk` dependency — deliberate.** The adapter speaks raw HTTP with
+hand-written wire types covering exactly the shapes it uses. Rationale: the
+npm SDK publish lags upstream main by months (version strings never bump, so
+version-matching is meaningless), and a vendored tarball reintroduces the
+binary-vs-SDK skew problem class. The contract check is the **conformance +
+workaround-regression suites run against real binaries**, not generated types.
+Wire facts are recorded in `wire.ts` doc comments and
+`tasks/evidence-search-rebuild.md`.
+
+## Capability Legs & Neutral Scores (D17)
+
+Core and the SDK speak in **capability terms**, never engine/model names:
+
+- The adapter declares what it can build via `capabilities()`:
+  `{ legs: ['full-text', 'text-embedding', 'media-embedding'], rerank,
+  facets, transform }`.
+- The contract's `TableConfig.legs` (`TableLegConfig`) declares WHAT a table
+  needs — a leg `name` (the stable `scoreBreakdown` key), a `capability`,
+  source `fields`/`template`, optional `mediaUrlField`, fusion `weight`, and
+  chunker. The adapter maps each leg to its own engine/model specifics
+  (embedder refs, dimensions, GGUF vs ONNX — all adapter settings).
+  Plugin-facing `SearchContentTypeDefinition` currently declares
+  `indexes[]` (embedder-ref shaped); the registry passes those through
+  `TableConfig.indexes` and the adapter's `translate.ts` converts them to
+  legs (`legFromLegacyIndex`) — media-url indexes become `media-embedding`
+  legs, the rest `text-embedding`.
+- **Scores are generic:** every hit may carry `scoreBreakdown:
+  Record<legName, number>` (plus adapter extras like `rerank`). The antfly
+  wire's `_index_scores` keys are already neutral leg names (`full_text`,
+  declared embedding-leg names) and pass through verbatim. Debug UI renders
+  whatever legs appear — no engine-specific key sniffing upstream.
+- `tables.health(name)` returns per-leg `TableLegHealth`
+  (`ready | building | error`, indexed count, error) — this drives blue/green
+  convergence, `getSearchHealth()`, and the doctor.
+
+A second search adapter starts by passing the adapter-agnostic conformance
+suite (`tests/integration/search-conformance/` — `conformance.ts` runs against
+the mock in `mock.conformance.test.ts` and the real engine in
+`antfly.conformance.test.ts`); antfly-specific tests (workaround-regression
+pins, service provisioning) live in `tests/integration/antfly/` and
+`tests/adapter-antfly/`.
 
 ## Table Naming
 
-All Antfly tables use the `bakin_` prefix: `bakin_tasks`, `bakin_assets`, `bakin_projects`, etc.
+All logical tables use the `bakin_` prefix: `bakin_tasks`, `bakin_assets`,
+`bakin_memory`, etc. The **physical** table in the engine is versioned
+(`bakin_assets_v1_a1b2c3d4`); code never hardcodes physicals — the registry
+resolves logical→physical at dispatch time (`resolvePhysicalTable`).
 
-**Registered tables:** core tables are registered by their owning core plugin. Official external plugins add tables when installed; for example Projects owns `bakin_projects` and Messaging owns `bakin_messaging_brainstorm` plus `bakin_messaging_deliverables`. The **memory** plugin owns `bakin_memory` — a single unified table with a `tier` facet that discriminates across 7 memory tiers (audit, session, turn, checkpoint, daily_note, durable, dream). This replaced the former `bakin_audit` table during the memory-plugin-rebuild (2026-04-18) — the old table was dropped with no shim.
+Core tables are registered by their owning core plugin (tasks, schedule,
+memory, team ×2, assets, workflows); official external plugins add their own
+(e.g. Projects → `bakin_projects`, Messaging → `bakin_messaging_*`). The
+**memory** plugin owns `bakin_memory` — a single unified table with a `tier`
+facet across 7 memory tiers (audit, session, turn, checkpoint, daily_note,
+durable, dream).
 
-**Multi-index tables:** `bakin_assets` is currently the only table with more than one embedding index — it has `assets_text` (BGE over sidecar metadata + extracted PDF/text content) and `assets_visual` (CLIP over raster image pixels). All other tables use a single default embedding index named `embeddings`.
+`bakin_assets` is the only multi-leg table today: `assets_text` (text
+embedding over description + tags + filename + surface + extracted content,
+fusion weight 0.5) and `assets_visual` (media embedding over raster pixels via
+`image_url`, weight 2.0 — pixel similarity is the reliable signal for image
+search). All other tables use a single default embedding index named
+`embeddings`.
 
 ## SearchContentTypeDefinition
+
+Canonical type in `packages/sdk/src/types/services.ts` (re-exported through
+`packages/core/src/plugin-types.ts`):
 
 ```typescript
 interface SearchContentTypeDefinition {
   table: string                              // e.g. 'tasks' — auto-prefixed to 'bakin_tasks'
+  /** REQUIRED. Doc-shape version. Bumping it triggers a blue/green
+   *  background migration to a fresh physical table — queries stay on
+   *  the old one until the new converges. */
+  schemaVersion: number
   schema: Record<string, SearchSchemaField>  // { type: 'text' | 'keyword' | 'number' | 'boolean' | 'datetime' | 'array' }
-  searchableFields: string[]                 // fields included in full-text index (x-antfly-include-in-all)
-
-  /** Used when `indexes` is NOT set — the default single-index path. */
-  embeddingTemplate: string
-
-  /** Optional: declare multiple vector indexes for this table. Each
-   *  entry produces one embedding index in Antfly with its own
-   *  embedder (via embedderRef) and its own Handlebars template. */
-  indexes?: SearchIndexDefinition[]
-
-  /** Optional: field name the cross-encoder reranker scores against.
-   *  Unset → reranker skipped for this content type. Required for
-   *  reranker to run — Antfly rejects reranker configs that lack a
-   *  field or template. See "Reranker" below. */
-  rerankField?: string
-
-  facets?: string[]                          // fields available for facet/aggregation filtering
-  ttl?: string                               // Go duration format: '90d', '24h'. Empty to disable.
-  ttlField?: string                          // field holding the TTL timestamp (default: 'created_at')
-  chunker?: {                                // chunker applied to the synthesized default index
-    enabled: boolean
-    targetTokens?: number
-    overlapTokens?: number
-  }
-  reindex(): AsyncGenerator<SearchReindexItem>
-  verifyExists(key: string): Promise<boolean>
-}
-
-interface SearchReindexItem {
-  key: string
-  doc: Record<string, unknown>
-  mtimeMs?: number   // optional freshness stamp — see below
-}
-
-interface SearchIndexDefinition {
-  name: string            // e.g. 'assets_text', 'assets_visual'
-  embedderRef: string     // key into settings.search.settings.embedders
-  embeddingTemplate: string
+  searchableFields: string[]                 // fields the full-text leg matches over
+  embeddingTemplate: string                  // used when `indexes` is NOT set (default single-index path)
+  indexes?: SearchIndexDefinition[]          // named embedding indexes (embedderRef, template, mediaUrlField, weight, chunker)
+  facets?: string[]
+  rerankField?: string                       // unset → reranker never attaches for this type
+  ttl?: string                               // Go duration ('90d'); ttlField defaults to 'created_at'
+  ttlField?: string
   chunker?: { enabled: boolean; targetTokens?: number; overlapTokens?: number }
+  reindex: () => AsyncGenerator<SearchReindexItem>   // { key, doc } — see contract below
+  verifyExists: (key: string) => Promise<boolean>    // drives the doctor orphan sweep
+}
+
+interface FileBackedContentTypeDefinition extends SearchContentTypeDefinition {
+  filePatterns: FilePatternMapper[]  // { pattern, fileToId, fileToDoc? }
+  excludePatterns?: string[]
+  onSync?: (relPath: string, content: string) => Promise<void>   // owns doc-building when set
+  onUnlink?: (relPath: string) => Promise<void>
 }
 ```
 
-**Note:** Non-text field types (`number`, `boolean`, `datetime`, `array`) map to `keyword` in Antfly. They support exact-match filtering and faceting but not range queries or date math.
+**The `reindex()` contract matters more than it used to:** it is the
+blue/green **backfill source**. It MUST be side-effect free and restartable —
+it re-derives every row from source without mutating live state, and it runs
+whenever a migration or rebuild needs to populate a green table. A generator
+that silently yields nothing would let a thin green table converge and flip;
+the memory plugin's generator therefore **fails loudly** when the runtime is
+unreachable (the migration parks instead of flipping to an empty table). The
+old world's `mtimeMs` freshness stamps, `whenReady` gating, and
+`fileToDoc: () => null` hacks are gone — `fileToDoc` is simply optional now
+(omit it when `onSync` owns doc-building, as assets does).
 
-**Backward compatibility:** Content types that don't set `indexes` get a synthesized single default index named `embeddings` using the top-level `embeddingTemplate` + the default embedder. Every content type registered before multi-index support works unchanged.
-
-**`mtimeMs` freshness stamp:** `SearchReindexItem.mtimeMs` (`packages/sdk/src/types/services.ts`) is an optional freshness stamp for `preserveVirtualDocuments` content types. Startup reconcile stores it in the indexed `_mtime_ms` field; on later boots, when the stamp is present and equal to the stored value, the virtual doc is skipped. When absent, the doc is re-indexed every boot (the pre-stamp behavior — deliberately, since a stamp-less doc would otherwise read `0 === 0` and go permanently stale). The stamp doesn't have to be a filesystem mtime: workflows stamps a stable content hash of the definition, assets stamps the manifest's mtime.
+**When to bump `schemaVersion`:** any change that requires the physical table
+to be rebuilt — schema field add/remove/rename, index/leg add/remove, template
+changes that affect chunking, chunker config changes. Adapter-side changes
+(embedder model/dimension swaps) migrate automatically via
+`mappingFingerprint()` without a plugin edit. Pure data additions need no bump
+— they flow through normal writes, and `/api/reindex` exists for explicit
+repopulation.
 
 ## SearchAPI (per plugin)
 
@@ -195,414 +412,238 @@ Exposed on `PluginContext` as `ctx.search`:
 ```typescript
 interface SearchAPI {
   registerContentType(def: SearchContentTypeDefinition): void
-  index(key: string, doc: Record<string, unknown>): Promise<void>     // upsert; fire-and-forget safe
-  remove(key: string): Promise<void>                                  // delete document
-  transform(key: string, ops: SearchTransformOp[]): Promise<void>     // atomic field update, skips re-embed
+  registerFileBackedContentType(def: FileBackedContentTypeDefinition): void
+  index(key: string, doc: Record<string, unknown>): Promise<void>   // durable enqueue + pump nudge
+  remove(key: string): Promise<void>                                 // durable enqueue + pump nudge
+  transform(key: string, ops: SearchTransformOp[]): Promise<void>    // $set/$inc/$push via outbox
   query(params: SearchQueryParams): Promise<SearchResponse>
-}
-
-interface SearchQueryParams {
-  q: string
-  filters?: Record<string, string | boolean | number>
-  facets?: string[]
-  limit?: number
-  offset?: number
-  /** Per-query reranker disable. Defaults to true (rerank applies)
-   *  when the content type has a rerankField set. Pass false to
-   *  skip the cross-encoder pass for latency-sensitive calls. */
-  rerank?: boolean
-  /** Raw Antfly aggregations object. Use for date histograms, range
-   *  buckets, stats. Merged with facet-derived aggregations — caller
-   *  wins on key collision. Antfly schema docs apply. */
-  aggregations?: Record<string, unknown>
-}
-
-interface SearchResponse {
-  results: SearchResult[]
-  aggregations?: Record<string, Array<{ value: string; count: number }>>  // facet term buckets
-  rawAggregations?: Record<string, unknown>                                // Antfly's raw response (date_histogram etc.)
-  meta: { query: string; total: number; took_ms: number; source: 'search' | 'fallback' }
+  health?(): Promise<SearchHealthSnapshot>                           // per-table stats + per-leg health
+  maintenance?: SearchMaintenanceAPI                                 // available() / scan(fields?) / batchRemove(keys)
 }
 ```
 
-`transform()` is for metadata-only updates (e.g. status change) where re-generating embeddings would be wasteful. Each op is `{ op: '$set' | '$inc' | '$push', field: string, value: unknown }`.
+All three mutators are **fire-and-forget safe and never lossy**: they resolve
+once the row is journaled (and, engine up, landed). `transform()` is for
+metadata-only updates where re-embedding would be wasteful; each op is
+`{ op: '$set' | '$inc' | '$push', field, value }` and the outbox owns the
+merge semantics.
 
-`ctx.search.maintenance` (`SearchMaintenanceAPI` — plugin-scoped operations for indexers that own non-file-backed tables) exposes `scan(opts?: { fields?: string[] })` with field projection. **At antfly rc.9 a projection-less scan returns keys only — no document fields** — so any consumer that reads fields off scanned rows MUST project them explicitly (e.g. the memory indexer scans with `{ fields: ['updated_at'] }` to build its dedupe cache).
+`ctx.search.maintenance.scan(opts?)` supports field projection
+(`{ fields: [...] }`) — adapters may return keys only when no projection is
+requested, so any consumer reading fields off scanned rows MUST project them
+explicitly.
 
-## Hybrid Search
+## Hybrid Search & the Wire Contract
 
-Queries combine full-text (BM25) and semantic (vector) results via Reciprocal Rank Fusion (RRF). Strategy is configurable per query and globally:
+Queries combine a full-text leg and embedding legs, fused server-side:
 
 | Strategy | Behavior |
 |---|---|
-| `rrf` (default) | Merge BM25 + semantic results via RRF |
-| `semantic_only` | Vector similarity only |
-| `full_text_only` | BM25 only, no embeddings required |
+| `rrf` (default) | Full-text + semantic legs fused (RRF or RSF per `fusionStrategy`) |
+| `semantic_only` | Embedding legs only |
+| `full_text_only` | Full-text only, no embeddings required |
 
-Global default: `settings.search.settings.search.strategy`.
+Global default: `settings.search.settings.search.strategy`;
+`settings.search.settings.search.fusionStrategy` picks `rrf` vs `rsf`
+(upstream supports both; the tuning pass owns the default). Per-leg fusion
+weights come from the content type's `indexes[].weight` and ride
+`merge_config.weights`.
 
-> **Fixed at v0.2.0-rc.9 (was an rc.2 limitation):** bare-term full-text queries return results again — the `_all` population bug ([#456](https://github.com/markhayden/bakin/issues/456)) is resolved (live-verified: bare terms return hits across reindexed tables). Bakin always sent the bare `full_text_search` leg, so no adapter change was needed; rc.2 just returned nothing and `rrf` rode the semantic leg alone. No interim field-qualification is needed anymore.
+**Wire-contract facts vs antfly main** (probe-verified — recorded in
+`packages/adapter-antfly/src/wire.ts` and `tasks/evidence-search-rebuild.md`):
 
-**v0.2 protocol notes:** there is no strategy field on the wire — Bakin's strategy setting maps to which fields are populated (`semantic_search`, `full_text_search`, or both; RRF is implied when both are present). The vector `indexes` array is only sent alongside `semantic_search`. Tables are created **without a `schema`** (a create-time schema permanently breaks query parsing at this RC) and without a full-text index entry (the server always creates its own `full_text_index_v0`). Dense embeddings indexes carry an explicit `dimension`. `multiQuery` fans out as sequential single global queries — the NDJSON multiquery endpoint rejects its own framing, and request concurrency aggravates inference crashes.
+- **Query responses are always wrapped**: `{ responses: [...] }` even for a
+  single-table `POST /db/v1/tables/{t}/query`. Hits carry **`_id`** (not
+  `key`), `_score`, `_index_scores`, `_source`, `_sort`.
+- **`_index_scores` keys are neutral leg names** (`full_text`, the declared
+  embedding-leg names) — they map 1:1 onto `scoreBreakdown` with no
+  normalization. Embedding legs report `-cosine_distance`.
+- **`filter_query` works and filters BOTH lanes** (full-text and semantic)
+  server-side. Bakin filters translate to one boolean AST node
+  (`match_phrase` / numeric range / disjunction / `must_not`) in
+  `buildFilterQuery()`. The old filter-in-AST workaround and the client-side
+  semantic post-filter are gone.
+- **`order_by` is unsupported on the Zig engine** (hard-rejected, along with
+  `search_after`/`search_before`/`join`; the Go server supports it — engine
+  skew, not a bug). `Query.sort` is never sent.
+- **Totals are page-scoped** without `count: true`. `limit: 0` flows send
+  `count: true` (true total + full-corpus facet buckets; incompatible with a
+  reranker — a count has nothing to rerank). Queries that want hits AND true
+  totals (semantic or faceted flows) run a **companion count query** in
+  parallel (`toCountRequest`); if it fails, totals/facets fall back to page
+  scope.
+- **`semantic + offset > 0` hard-400s** — offset is only sent on
+  FTS-only queries.
+- **The semantic leg requires concrete index names** — naming none (or a
+  table without vector indexes) is a hard 400. The registry passes the
+  table's embedding-index names via `adapterOptions.indexes`; without them a
+  query is naturally FTS-only. No server introspection.
+- **`sync_level: 'full_index'`** on every batch write (`aknn` was removed
+  upstream — using it 500s).
+- **Scans** go through `POST /db/v1/tables/{t}/lookup`, which requires a body
+  (`{}` scans all keys), and stream NDJSON rows keyed by `key` (older docs
+  said `_key`; both accepted). `batchRemove` returns attempted counts.
+- **Table creates carry no `schema`** (type inference covers Bakin's needs)
+  and no full-text index entry (the server always creates its own); embedding
+  indexes carry explicit `dimension`. Embedders always run **in-process** —
+  an inference `url` flips antfly onto an external HTTP path whose failures
+  wedge backfills.
+- **No server-side query cancellation** — client timeouts abandon the request
+  (15s queries, 30s writes).
+- `GET /db/v1/tables/{t}/indexes` → per-index `{config, status}` with
+  `rebuilding`, `total_indexed`, `backfill_state`, `doc_count`,
+  `worker_failed` — the source for `tables.health()` and doc counts
+  (`tables.stats()` reads it too; **never a query**, which can hang during
+  backfill).
 
-**rc.9 adapter workarounds (live-verified, absorbed in `packages/adapter-antfly/`):**
+Each still-standing engine constraint has a regression pin in
+`tests/integration/antfly/workaround-regressions.test.ts` written to FAIL when
+upstream fixes it — dead workarounds announce themselves.
 
-- **`filter_query` returns zero hits in every mode** — identical requests return the right count via `count: true` but zero hits. The adapter never sends `filter_query`: filters are translated into the `full_text_search` boolean AST (`match_phrase` / numeric range / disjunction / `must_not`) by `query-translation.ts`, and semantic-lane hits (which the full-text AST can't constrain) are post-filtered client-side (`hitMatchesFilters`).
-- **`hits.total` and aggregation buckets are page-scoped unless `count: true`.** `limit: 0` flows (count/aggregate-only everywhere in Bakin) send `count: true` — this returns the true total AND full-corpus buckets. `count` is incompatible with a reranker (server 400s), which is fine: a count has nothing to rerank. Faceted queries that also want hits run a **companion count query** so facet buckets reflect the corpus, not the page; if the companion fails, facets fall back to page scope with a warning.
-- **`order_by` is rejected by the server** — `Query.sort` is dropped in translation.
-- **Scan rows carry `key`, not `_key`** — the adapter accepts both when mapping scanned documents.
-
-**Per-table index routing:** when a table has multiple embedding indexes declared via `def.indexes`, the registry's `getIndexNames(tableName)` resolves the effective index list (e.g. `['assets_text', 'assets_visual']`) and passes it to `antfly.queryTable()`. The client sends the array in `QueryRequest.indexes`, and Antfly runs semantic search across all of them — results from each index are merged into the final RRF ranking with a per-index score breakdown in `_index_scores`.
-
-**Implementation detail:** In Antfly query requests, `full_text_search` implicitly uses the full-text index. The `indexes` array should only list embedding indexes. Including the full-text index name alongside `full_text_search` causes errors.
-
-The BM25 index key in `_index_scores` is a full filesystem path (e.g. `/path/to/full_text_index_v0`) — the short name isn't used. Semantic keys are the ones declared in the content type's `indexes[]` (or `embeddings` for the legacy single-index path).
+**Cross-table search** (`/api/search`, `src/core/search-query.ts`): fans out
+via `multiQuery` across all registered tables (logical→physical resolved at
+dispatch; correlation back to logical names is positional), asks each table
+for the full page window, and takes the global top-N by score. Per-table
+scores come from each table's own fusion config, so the merged ordering is
+approximate — right for a global search box, not a calibrated ranking.
+`multiQuery` runs parallel unless something reranks (the reranker serializes
+on one Metal queue anyway).
 
 ### Reranker
 
-> **Still disabled by default at v0.2.0-rc.9 — but for performance, not crashes.** The rc.2 mxbai SIGABRT ([#456](https://github.com/markhayden/bakin/issues/456)) is fixed: the reranker no longer crashes the server and ranks correctly on Metal (live-verified — relevant doc 0.998 vs 0.0006). It stays off because it's throughput-bound: **~200ms per candidate on Metal, linear** (5 docs ~1.3s, 20 ~4s, 100 ~28s — no warmup benefit), it serializes on one Metal queue (so concurrent reranked queries back up), and it only loads on an explicit `TERMITE_PREFERRED_BACKEND=metal` (the auto-selected onnx mxbai variant fails `MissingWeight`). Default-on across the multi-table fan-out is too slow, but a **bounded top-K rerank (5-10 candidates, ~1-2s) is a viable per-query opt-in** (`rerankField`) on a Metal host. Revisit default-on if upstream moves the reranker to a faster path.
+Cross-encoder reranking is **per-query opt-in** and off by default: the
+adapter attaches a reranker only when the query passes `rerank: true` and a
+model is configured (`settings.search.settings.search.reranker`), and the
+registry passes the content type's `rerankField` via
+`adapterOptions.rerankField`. It stays off by default because it is
+throughput-bound (~200ms per candidate on Metal, linear, serialized on one
+Metal queue) — a bounded top-K rerank is a viable per-query opt-in; default-on
+across the multi-table fan-out is not. The tuning pass re-benchmarks on the
+current pin.
 
-Optional cross-encoder reranking after initial retrieval. Configured globally via `settings.search.settings.search.reranker` (provider, model, enabled flag — the v0.2 RerankerConfig has no `threshold`), and **opted into per content type** via `SearchContentTypeDefinition.rerankField`.
+**Structural limitation:** the reranker scores a query against a **single
+document field**. Fine for single-modality text tables; it creates inversions
+on multi-modality tables where different modalities live in different fields.
 
-**How rerank attachment works:**
-- The registry looks up `rerankField` for the queried table via `getRerankField(tableName)`
-- `buildRerankerConfig()` in `packages/adapter-antfly/src/query-translation.ts` only attaches a reranker to the `QueryRequest` when **all three** are true: global `enabled: true`, per-query `rerank !== false`, and `rerankField` is set on the content type
-- Tables that don't set `rerankField` get pure RRF hybrid fusion (Bleve full-text + semantic embeddings), no cross-encoder pass
-- Antfly rejects reranker configs that don't include `field` or `template` with a 400, so a missing `rerankField` MUST translate to "no reranker" — not "reranker without field"
+**Per-table choices (current):**
 
-**Structural limitation of `rerankField`:** the cross-encoder reranker scores a query against the value of a **single document field**. It never sees the embedding, the full-text index, or any other field. This is fine for single-modality text tables but creates inversions on multi-modality tables where different modalities live in different fields.
+| Table | rerankField |
+|---|---|
+| `bakin_tasks` | `description` |
+| `bakin_workflows` | `description` |
+| `bakin_schedule` | `command` |
+| `bakin_team` | `soul` |
+| `bakin_agent-lessons` | `body` |
+| `bakin_memory` | `content` |
+| **`bakin_assets`** | **(unset — intentional)** |
 
-**Per-plugin choices (current):**
-
-| Table | rerankField | Reason |
-|---|---|---|
-| `bakin_tasks` | `description` | Richest text field in the schema |
-| `bakin_projects` | `body` | Main document content |
-| `bakin_workflows` | `description` | Workflow purpose text |
-| `bakin_schedule` | `command` | The thing you actually search for |
-| `bakin_team` | `soul` | Agent persona text |
-| `bakin_memory` | `content` | Memory observability body — full text across 7 tiers (audit, session, turn, checkpoint, daily_note, durable, dream), owned by **memory** plugin |
-| `bakin_messaging_brainstorm` | `message_body` | Brainstorm session messages (owned by **messaging** plugin) |
-| `bakin_messaging_deliverables` | `brief`, `draft_caption` | Planned and quick-post deliverables (owned by **messaging** plugin) |
-| **`bakin_assets`** | **(unset)** | **Intentionally skipped — see below** |
-
-**Why `bakin_assets` skips the reranker**
-
-The assets table mixes modalities: PDF body text goes into `content` (extracted server-side), image data goes through the `assets_visual` index (CLIP embeddings of pixel data), and metadata lives in `description`/`tags`/`file_name`. No single field captures a doc's full semantic signal. During T6 manual smoke testing we observed consistent inversions — a query for `"tzatziki"` (a term in a PDF body) found the PDF via full-text on `content`, but the reranker scoring `"tzatziki"` against `description` rated an unrelated image higher because the cross-encoder happened to score the image description well against arbitrary queries.
-
-The fix was a one-line deletion: remove `rerankField` from the assets plugin registration. Multimodal tables get **raw RRF fusion** of Bleve + text embeddings + visual embeddings, and the cross-encoder pass is skipped entirely. Single-modality tables keep their reranker because it materially improves their ranking.
-
-The underlying issue is the single-field limitation of Antfly's reranker API. A future fix could pass a `template` instead of a `field` (e.g. `{{description}} {{content}}` so the cross-encoder sees both metadata and extracted body), or wait for Antfly to support multi-field reranking. Revisit when either path becomes viable.
+`bakin_assets` mixes modalities (PDF body in `content`, pixels in the visual
+leg, metadata in `description`/`tags`); no single field captures a doc's
+signal, and scoring against any one of them produced consistent inversions
+(the `"tzatziki"` case: full-text found the PDF, the reranker scored an
+unrelated image's `description` higher). Multimodal tables get raw fusion of
+full-text + text-embedding + media-embedding legs; the cross-encoder pass is
+skipped entirely.
 
 ## Embedders
 
-Bakin's text and visual embeddings use different models. Both run locally via antfly's embedded inference runtime — no cloud dependency by default.
-
-### Current models
-
-| Purpose | ref name | Provider | Model | Dims | Stored path |
-|---|---|---|---|---|---|
-| Default text | `default` | antfly | `BAAI/bge-small-en-v1.5` | 384 | `~/.antfly/inference/models/BAAI/bge-small-en-v1.5` |
-| Visual / multimodal | `visual` | antfly | `Xenova/clip-vit-base-patch32` | 512 | `~/.antfly/inference/models/Xenova/clip-vit-base-patch32` |
-
-Plus `mixedbread-ai/mxbai-rerank-base-v1` for the (currently disabled) reranker. Models are pulled from HuggingFace via `antfly inference pull <owner/name>` (`bakin install search-models`). The CLIP ref is the **Xenova ONNX mirror** — the upstream `openai/` HF repo ships no ONNX exports and cannot be pulled ([#456](https://github.com/markhayden/bakin/issues/456)).
-
-**Prefetch matters:** at v0.2.0-rc.2 index-time embedding does NOT lazy-download a missing model — the embeddings backfill fails with `ModelNotFound`. Recovery is cheap: once the model is on disk, **any write to the table heals the index** (previously-failed docs get embedded too). If models were missing while content was indexed: `bakin install search-models` then `bakin reindex`.
-
-**`dimension` is required** on every embedder entry: the v0.2 server demands declared dims for dense embeddings indexes at table-create time (no auto-probe at this RC). Dims feed the embedder rebuild hash, so changing them triggers an index rebuild.
-
-**BGE over MiniLM:** The default text embedder was upgraded from Antfly's builtin `all-MiniLM-L6-v2` to BGE in T7. BGE is measurably stronger on retrieval tasks, especially for longer documents with diverse vocabulary — task descriptions, markdown notes, PDF bodies, audit trails. Runs locally, no cost beyond disk (~130MB).
-
-**Model names MUST be the qualified HuggingFace-style names** (e.g. `BAAI/bge-small-en-v1.5`, not just `bge-small-en-v1.5`) — they map directly to the `{owner}/{name}` directory layout under the inference models root.
-
-### Per-index embedder selection
-
-Each `SearchIndexDefinition` declares an `embedderRef` string. The registry's table-creation path passes the ref to `resolveEmbedder()` which looks it up in `settings.search.settings.embedders` and returns the concrete `{ provider, model }` config. Add a new provider by:
-
-1. Adding a named entry to `settings.search.settings.embedders` (e.g. `highres: { provider: 'vertex', model: 'multimodalembedding@001' }`)
-2. Adding adapter/provider support in `packages/adapter-antfly/src/search.ts` if Antfly's built-in provider support is not enough
-3. Referencing the new name from a content type's `indexes[].embedderRef`
-
-No plugin code changes needed. The `visual` ref is only consumed by `bakin_assets.assets_visual` today; every other table uses `default`.
-
-## Content Extraction (Server-Side)
-
-For PDFs and plain-text file formats (`.md`, `.txt`, `.json`, `.csv`, `.yaml`, `.rtf`, `.xml`, `.tsv`), Bakin extracts the body text **before** sending the document to Antfly for indexing. The extracted text lives in a `content` field on the search doc, and the `assets_text` embedding template references `{{content}}` directly.
-
-### Why server-side instead of Antfly helpers
-
-Antfly ships `{{remotePDF url=...}}` and `{{remoteText url=...}}` template helpers that fetch and extract content at enrichment time. On paper those would be cleaner than wiring fs I/O into Bakin. In practice:
-
-1. **PDF extraction is broken upstream.** Antfly's Go PDF library (`ajroetker/pdf`, a fork of `rsc.io/pdf`) silently fails on any PDF with complex font subsetting, CID fonts, or matrix-positioned text — which is every design-tool PDF. See Bakin issue #72 for the full trace.
-2. **Loopback fetch is blocked.** Antfly's scraping layer hardcodes a private-IP block (#72 again), so `file://` URLs are the only local path that works — and `{{remoteText}}` via `file://` still routes through the broken fetch resolver.
-3. **Node has better tools.** `pdf-parse` uses the same `pdfjs-dist` engine Firefox ships. It handles the font edge cases Antfly's Go library can't.
-
-The server-side approach also means extracted content is stored as a first-class document field that shows up in Bleve full-text hits. Antfly's `{{remotePDF}}` output goes into the embedding but not the full-text index, so you can't keyword-search for terms inside a PDF via Antfly's helpers even when they work.
-
-### Supported formats
-
-`plugins/assets/lib/content-extractor.ts` `extractAssetContent(absPath, filename)` routes on extension:
-
-| Extension | Path | Notes |
-|---|---|---|
-| `.md`, `.txt`, `.rtf` | `fs.readFileSync` | Zero deps, plain text |
-| `.json`, `.csv`, `.tsv`, `.xml` | `fs.readFileSync` | Read as UTF-8, not parsed |
-| `.yaml`, `.yml` | `fs.readFileSync` | Same |
-| `.pdf` | `pdf-parse` (lazy-imported) | pdfjs engine, handles complex PDFs |
-| (anything else) | `''` | Returns empty string |
-
-Extraction is capped at **50K chars** with a word-boundary-safe truncate. Large PDFs are capped at **100 pages** via `pdf-parse`'s `last` option. Errors return an empty string and log a warning — never throw — so a malformed file doesn't block indexing.
-
-### How it reaches the embedding
-
-The assets plugin's `assetToSearchDoc()` reads the asset file (via the content dir + relative path), calls `extractAssetContent()`, and populates the resulting string on a `content` schema field:
-
-```typescript
-schema: {
-  description: { type: 'text' },
-  tags:        { type: 'text' },
-  file_name:   { type: 'text' },
-  content:     { type: 'text' },  // ← extracted body
-  image_url:   { type: 'keyword' }, // ← file:// for raster images only
-  // ...
-}
-
-indexes: [
-  {
-    name: 'assets_text',
-    embedderRef: 'default',
-    embeddingTemplate: '{{description}} {{tags}} {{file_name}} {{content}}',
-    chunker: { enabled: true, targetTokens: 200, overlapTokens: 25 },
-  },
-  {
-    name: 'assets_visual',
-    embedderRef: 'visual',
-    embeddingTemplate: '{{#if image_url}}{{remoteMedia url=image_url}}{{/if}}',
-  },
-]
-```
-
-The text index embeds `description + tags + filename + content` — sidecar metadata concatenated with the extracted body. The visual index only runs when `image_url` is populated (raster formats that CLIP can decode). SVG and ICO are excluded — Antfly's image processor uses Go's stdlib image library which can't handle vector or indexed-palette formats.
-
-## Visual Indexing (CLIP via the inference runtime)
-
-For raster images, the `assets_visual` index uses CLIP via antfly's embedded inference runtime. The path is Antfly's `{{remoteMedia url=image_url}}` helper pointing at a `file://` URL.
-
-**Why `file://` and not `http://`:** Antfly's `DownloadContent` dispatches on URL scheme. For `http://`, it runs `validateURLSecurity` which hardcodes a private-IP block (see #72). For `file://`, it calls `validatePathSecurity` which is a no-op unless `AllowedPaths` is configured. So `file://` bypasses the broken SSRF defense entirely. Since Antfly runs as the same user as Bakin on the same host, local filesystem access is already permitted — the security layer is the OS user boundary, not the URL scheme.
-
-`plugins/assets/lib/asset-url.ts` `buildAssetFileUrl(relPath)` builds the URL — takes a relative path under the assets root, resolves to an absolute path, percent-encodes path segments, returns `file://<abs>`. The encoding step is important: filenames with spaces or special characters round-trip correctly through Antfly's URL parser.
-
-**Format filtering:** only `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.bmp` get `image_url`. Vector and indexed-palette formats (`.svg`, `.ico`) are excluded because CLIP needs raster pixel data and Antfly's image processor can't decode them anyway.
-
-## Schema Migration
-
-`src/core/search-migration.ts` owns a `SCHEMA_VERSION` constant (currently `5`) and a state file at `~/.bakin/.search-state.json` with `{ version: N }`. On every boot, after `antfly.initialize()` connects:
-
-1. Read the stored version (or `0` if the file doesn't exist — fresh install)
-2. If stored < `SCHEMA_VERSION`, drop every `bakin_*` table via `antfly.dropTable()` and write the new version
-3. Plugins have already called `registerContentType()` earlier in the boot sequence, so when `createRegisteredTables()` runs next, it recreates all tables with the current schema
-4. If migration ran, the server triggers a background reindex via `reindexContentTypes()` to populate the fresh tables from source — fire-and-forget, Bakin is usable immediately with empty tables, indexing completes in the background
-
-### When to bump `SCHEMA_VERSION`
-
-Bump when a change requires an existing table to be dropped and recreated with new schema, indexes, or embedder config. Examples:
-
-- Added or removed a schema field (rename counts as remove + add)
-- Changed the default embedder's provider or model
-- Added or removed an entry in a content type's `indexes[]`
-- Changed a content type's `embeddingTemplate` in a way that affects chunking
-- Changed chunker config
-
-Pure data additions (no schema change, no embedder change) do **not** need a bump — those flow through the existing `/api/reindex` endpoint without dropping tables.
-
-### Version history
-
-- **1** — initial schema. Single `embeddings` index per table. Global `all-MiniLM-L6-v2` embedder via Antfly's builtin provider.
-- **2** — multi-index support. `bakin_assets` gains `assets_text` + `assets_visual`. `content` field populated server-side. Default embedder swapped to `BAAI/bge-small-en-v1.5`.
-- **3** — `bakin_assets` gains `tags_facet` + generation provenance fields; assets embedding template adds `{{surface}}`.
-- **4** — antfly v0.2 migration: embeddings indexes carry explicit `dimension`; provider naming `termite` → `antfly`.
-- **5** — drop create-time `schema` (breaks all queries on the table at v0.2.0-rc.2, [#456](https://github.com/markhayden/bakin/issues/456)); visual embedder moved to the Xenova ONNX mirror.
-
-## Retry on Transient Shard Errors
-
-Antfly's `createTable` returns as soon as table metadata is written, but the shards backing the table spin up **asynchronously** via Antfly's reconciler (typically 300–1500ms later). Writes that land before the shards are ready fail with one of:
-
-- `shard {hex} not found on store 1`
-- `shard is still initializing`
-- `Failed to forward batches: ... shard is still initializing`
-
-`retryTransientBatch()` in `packages/adapter-antfly/src/search.ts` wraps every batch write (`indexDocument`, `removeDocument`, `transformDocument`, `batchIndex`, `batchRemove`) with exponential backoff on those specific error messages:
-
-- **5 retries max** — ~3.1 seconds total (100ms → 200ms → 400ms → 800ms → 1600ms)
-- **Transient only** — non-matching errors bubble through on the first attempt
-- **After the last retry** — the original error is rethrown and the caller's `try` logs it as "Antfly batch index failed"
-
-The migration path is the common trigger — 7 tables recreated, reindex fires immediately, first batches hit the race, retries absorb it, subsequent attempts succeed. The reindex counter uses the actual return value from `batchIndex` (0 on failure, real insertion count on success) so the reported `total` reflects reality.
-
-## Chunking
-
-Long documents are split before embedding. Configured per content type via `chunker: { enabled, targetTokens, overlapTokens }`. Defaults from settings:
-
-```
-settings.search.settings.chunking.defaultTargetTokens   — target tokens per chunk (default 200)
-settings.search.settings.chunking.defaultOverlapTokens  — overlap between chunks (default 25)
-```
-
-If a content type has no `chunker` (or `chunker.enabled` is false), the `embeddingTemplate` output is embedded whole. For tables with `indexes[]`, each index's chunker config is applied independently — `assets_text` chunks at 200/25, `assets_visual` does not chunk (image embeddings are whole-doc).
-
-## Orphan Cleanup (Backstop Scan)
-
-`src/core/search-cleanup.ts` runs a periodic backstop scan. Since the
-watcher unlink hook (path 2 in "Three consistency paths" above) handles
-the vast majority of deletes within ~300ms, this scan is no longer the
-primary mechanism — it's a safety net for the rare cases where the
-process was down during a delete or the fs event was lost.
-
-1. For each registered content type, list all indexed document keys from Antfly
-2. Call `def.verifyExists(key)` for each key (checks source: filesystem, task store, runtime adapter, etc.)
-3. Remove any document whose source no longer exists
-
-Interval controlled by `settings.search.settings.cleanupInterval` (Go duration string,
-default `'7d'`). Backstop scan does not run if Antfly is disabled. The
-default was demoted from 24h → 7d in the issue #73 PR because the watcher
-unlink hook now does the immediate work.
-
-## Reindexing
-
-`reindexContentTypes()` in `search-registry.ts` iterates all registered content types and runs their `reindex()` generators. Documents are batch-indexed (50 per batch) via `antfly.batchIndex()`, which applies the retry-on-transient-error wrapper.
-
-**Memory plugin exception:** `bakin_memory` rows are derived from source files through the incremental indexer (per-tier parsers, TTL filters, persisted byte offsets), not from a stream of `{key, doc}` rows. Its content-type `reindex()` resets the persisted byte offsets AND the write-dedupe cache (`invalidateIndexedCache()`), then re-runs the full backfill — rows are written via `ctx.search.index()` as a side effect and the generator yields nothing. Without this, `bakin reindex` could never repopulate `bakin_memory` after a table loss.
-
-SSE events broadcast during reindex:
-- `reindex.batch_start` — once at the start of the whole run, with the table list
-- `reindex.start` — emitted when each table begins
-- `reindex.progress` — emitted after each 50-doc batch *and* after the trailing partial batch (so tables with `< BATCH_SIZE` documents always emit at least one progress tick)
-- `reindex.complete` — emitted when each table finishes (carries `indexed` count and any `error`)
-- `reindex.batch_pulse` — coarse heartbeat for the whole run, useful for keeping a UI spinner alive
-- `reindex.batch_complete` — once at the end of the whole run
-
-The health page consumes these via the global SSE connection — it subscribes with `usePluginEvent('reindex.start'|'reindex.progress'|'reindex.complete', …)` (the shell fans the per-table reindex frames out from its singleton connection) and keeps the per-card live counts in local component state, so per-card live counts work without opening a second `EventSource`.
-
-**Counter accuracy:** `count += await antfly.batchIndex(...)` — the actual inserted count from Antfly's response, not the batch size. If a batch fails after retries, `batchIndex` returns 0 and the counter doesn't advance for that batch, so the reported `indexed: N` matches what's actually in the table.
-
-## Enrichment Observability (#74)
-
-Antfly's enrichment (chunking, embedding, indexing) is **async** — documents land in the WAL before enrichment completes. The reindex pipeline previously only reported whether Antfly accepted the batch, not whether enrichment succeeded. Four layers close this gap:
-
-### Post-batch enrichment audit (Layer 1)
-
-After all batches complete for each table, `reindexContentTypes()` calls `antfly.getIndexHealth(tableName)` which wraps the SDK's `client.indexes.list()`. This returns per-index stats including:
-
-- `error` — enrichment error (e.g. "embedder model not found") → logged as ERROR
-- `wal_backlog` — docs pending enrichment → logged as WARN
-- `rebuilding` / `backfill_progress` — active rebuild status → logged as INFO
-
-The audit is best-effort: it never fails the reindex pipeline. If `getIndexHealth()` throws, the error is caught and logged.
-
-### Enriched reindex response (Layer 2)
-
-`reindexContentTypes()` returns `ReindexTableResult[]` which includes an optional `enrichment` field:
-
-```typescript
-interface ReindexTableResult {
-  table: string
-  pluginId: string
-  indexed: number           // docs Antfly accepted
-  error?: string            // batch-level error
-  enrichment?: IndexHealth  // per-index enrichment status
-  verified?: number         // docs actually findable (verify mode only)
-  verifyDiscrepancy?: number // indexed - verified (verify mode only)
-}
-```
-
-The `/api/reindex` HTTP response includes `enrichmentErrors` (count of tables where enrichment is unhealthy) alongside the existing `errors` count. The `ok` flag is `false` when either count is non-zero.
-
-### Verify mode (Layer 3)
-
-`POST /api/reindex?verify=true` adds a post-reindex verification pass. After all batches for a table complete, it calls `getTableStats()` to get the actual doc count in the table and compares against the `indexed` count. If they diverge, it logs the discrepancy as an error and includes `verified` and `verifyDiscrepancy` in the result.
-
-This is opt-in because it adds one query per table. Intended for smoke tests and CI, not routine reindexes.
-
-### Health endpoint enrichment status (Layer 4)
-
-`GET /api/plugins/health/search-status` (the health plugin owns this route post-issue-#67 — formerly `/api/antfly/health` in `server.ts`, then `/antfly-status`) includes `indexHealth` (array of per-index status) and `healthy` (aggregate boolean) for each table, plus the top-level `warm` query-path signal from `SearchHealthSnapshot` (see `search-api-reference.md`). The health page shows visual indicators:
-
-- Green `CircleCheck` — all indexes healthy
-- Amber `Clock` — WAL backlog (enrichment in progress)
-- Red `AlertCircle` — enrichment error, tooltip shows the message
-
-### Key types
-
-The foundation shape is the adapter index health result from `packages/adapter-antfly/src/search.ts`:
-
-```typescript
-interface IndexHealthEntry {
-  name: string           // e.g. 'embeddings', 'assets_text'
-  type: string           // 'full_text' | 'embeddings'
-  totalIndexed: number   // docs in the index
-  walBacklog: number     // docs pending enrichment
-  error?: string         // enrichment error message
-  rebuilding: boolean    // active rebuild
-  backfillProgress?: number // 0.0 to 1.0
-}
-
-interface IndexHealth {
-  indexes: IndexHealthEntry[]
-  healthy: boolean       // true when no errors and no WAL backlog
-}
-```
-
-These map directly from the Antfly SDK's `IndexStatus.status` fields (`EmbeddingsIndexStats` and `FullTextIndexStats`).
-
-## Client-side Search Pattern
-
-All plugin pages follow the same pattern for search:
-
-1. Use `useSearch({ plugin })` hook for queries — when `plugin` is set,
-   the hook fetches `/api/plugins/{plugin}/search?q=...` (the
-   auto-registered per-plugin route). When `plugin` is omitted it falls
-   back to the cross-plugin `/api/search?q=...` endpoint backed by
-   `src/core/api-search-handler.ts`.
-2. **Search results are the primary filter** — when results exist, filter the local list to matching IDs
-3. **Keyword is the fallback** — only used when search returns no results
-4. **Skip manual sort when search is active** — search returns results in relevance order (RRF score). Any post-hoc sort (by date, name, etc.) destroys relevance. Always check `if (search && results.length)` before applying manual sorts.
-
-`reorderBySearchResults<T>()` from `src/hooks/use-search.ts` is a utility that sorts a local array by relevance score order.
-
-The hook exports the `SearchResult`, `SearchResponse`, `UseSearchOptions`, and `UseSearchReturn` types — there are no `Antfly`-prefixed aliases.
+Model choices live in **adapter settings**, never in content-type definitions
+(content types request capabilities; the adapter maps them). Both defaults run
+locally through the engine's embedded inference runtime — no cloud dependency.
+
+| Purpose | ref name | Default model | Dims |
+|---|---|---|---|
+| Default text | `default` | `BAAI/bge-small-en-v1.5` | 384 |
+| Visual/media | `visual` | `antflydb/clipclap` (CLIP+CLAP multimodal, GGUF) | 512 |
+
+Models are pulled via `bakin install search-models`
+(`packages/adapter-antfly/src/models.ts` → `antfly inference pull`) into
+`~/.antfly/inference/models/{owner}/{name}/`. Prefetch matters: index-time
+embedding does NOT lazy-download a missing model — the backfill fails.
+Recovery is cheap: once the model is on disk, any write heals the index;
+`bakin install search-models` + `bakin reindex` fully repairs.
+The service argv preloads every configured antfly-provider embedder
+(`--preload-model`) so first embeds never race a cold model load.
+
+**`dimension` is required** on every embedder entry (the server demands
+declared dims at table-create time). Embedder settings feed
+`mappingFingerprint()`, so changing a model or dimension triggers blue/green
+migrations of every affected table automatically.
+
+Model names MUST be qualified `{owner}/{name}` HuggingFace-style names — they
+map directly to the models directory layout.
+
+## Content Extraction & Media URLs (assets)
+
+Still Bakin-side, unchanged in principle: `plugins/assets/lib/content-extractor.ts`
+extracts PDF/text body content server-side (pdf-parse + `readFileSync`, 50K
+char cap) into the search doc's `content` field, because upstream's PDF
+library and loopback-fetch path are broken and server-side extraction also
+makes body text full-text-searchable. `plugins/assets/lib/asset-url.ts`
+`buildAssetFileUrl()` produces percent-encoded `file://` URLs for raster
+images (`.png/.jpg/.jpeg/.gif/.webp/.bmp` — `RASTER_RE` in
+`plugins/assets/lib/search-doc.ts`), which the visual leg dereferences via the
+adapter's media template. Full rationale:
+`.claude/knowledge/multimodal-search.md`.
+
+## Health, Status & Telemetry
+
+- `ctx.search.health()` / `getSearchHealth()` (`src/core/search-reindex.ts`):
+  per registered table — physical-resolved stats + per-leg
+  `indexHealth` (`name`/`totalIndexed`/`rebuilding`/`error`) from
+  `tables.health()`, `healthy` = no leg in `error`. Read from status
+  surfaces, never a query.
+- `GET /api/plugins/health/search-status` (health plugin) serves that
+  snapshot to the health page.
+- `search.rebuild.{start,progress,complete}` SSE events drive live rebuild
+  progress in the health page (`usePluginEvent` on the shared connection).
+- `outboxStats()` (pending/inflight/quarantined/oldest) is the queue-depth
+  surface for doctor checks and telemetry.
+- Telemetry rides the existing usage recorder + doctor results — no parallel
+  stat system (hard rule).
 
 ## Settings Reference
 
-All under `settings.search.settings`:
+All under `settings.search.settings` (defaults merged by the adapter's
+`mergeSettings` — per-embedder entries deep-merge so a partial override keeps
+the default `dimension`):
 
 | Key | Type | Purpose |
 |---|---|---|
-| `enabled` | `boolean` | Enable/disable Antfly integration |
-| `url` | `string` | Antfly base URL, **no path suffix** (default `http://127.0.0.1:3738` — Bakin's private instance; the SDK owns the `/db/v1` prefix). A non-default URL = externally managed server (guest mode). |
-| `auth` | `object?` | Optional basic auth `{ username }` — the password lives in the secret store (`providers.antfly` in `~/.bakin/secrets.json`; env `ANTFLY_PASSWORD` overrides) and is injected into `auth.password` at adapter init by `createAppServices`, never stored or served from settings.json |
-| `search.strategy` | `string` | Default search strategy (`rrf` \| `semantic_only` \| `full_text_only`) |
+| `enabled` | `boolean` | Enable/disable the search integration |
+| `url` | `string` | Engine base URL, no path suffix (default `http://127.0.0.1:3738` — Bakin's private instance; `localhost` is normalized to `127.0.0.1` so the client dials exactly what the server binds). A non-default URL = guest mode (externally managed; never provisioned). |
+| `auth` | `object?` | Optional basic auth `{ username }` — the password lives in the secret store and is injected at adapter init, never stored in settings.json |
+| `search.strategy` | `string` | Default strategy (`rrf` \| `semantic_only` \| `full_text_only`) |
+| `search.fusionStrategy` | `string` | Hybrid fusion algorithm (`rrf` \| `rsf`, default `rrf`) |
 | `search.defaultLimit` | `number` | Default result count |
-| `search.reranker.enabled` | `boolean` | Master switch for cross-encoder reranking. **Default `false`** — at v0.2.0-rc.9 the rc.2 crash is fixed but reranking is slow (~3s/query) and needs an explicit Metal backend ([#456](https://github.com/markhayden/bakin/issues/456)); opt in per query |
-| `search.reranker.provider` | `string` | Reranker provider (`antfly`) |
-| `search.reranker.model` | `string` | Qualified model name (e.g. `mixedbread-ai/mxbai-rerank-base-v1`) |
-| `embedders.default.provider` | `string` | Text embedder provider (`antfly`) |
-| `embedders.default.model` | `string` | Text embedder model (`BAAI/bge-small-en-v1.5`) |
-| `embedders.default.dimension` | `number` | Embedding dims (`384`) — required by the v0.2 server for dense indexes |
-| `embedders.visual.provider` | `string` | Visual embedder provider (`antfly`) |
-| `embedders.visual.model` | `string` | Visual embedder model (`Xenova/clip-vit-base-patch32`) |
-| `embedders.visual.dimension` | `number` | Embedding dims (`512`) |
+| `search.reranker.provider` / `.model` | `string` | Reranker config; attaches only on per-query `rerank: true` (the content type's `rerankField` rides along when declared) |
+| `search.reranker.enabled` | `boolean` | Legacy master switch (default `false`); the current gate is per-query opt-in |
+| `embedders.default.{provider,model,dimension}` | | Text embedder (default `384` dims) |
+| `embedders.visual.{provider,model,dimension,multimodal?}` | | Media embedder (default `512` dims; `multimodal` only for models outside the engine's built-in registry) |
 | `embedders.<custom>` | `object?` | Additional named embedders referenced by `embedderRef` |
-| `embedder` | `object?` | **Deprecated.** Legacy single-embedder shape. Migrated to `embedders.default` on load. |
-| `chunking.defaultTargetTokens` | `number` | Default chunk target size |
-| `chunking.defaultOverlapTokens` | `number` | Default chunk overlap |
-| `auditTtl` | `string` | TTL for audit entries (Go duration: `'90d'`) |
-| `cleanupInterval` | `string` | Orphan backstop scan interval (Go duration: `'7d'`) |
+| `chunking.defaultTargetTokens` / `.defaultOverlapTokens` | `number` | Chunker defaults (200 / 25) |
+| `auditTtl` | `string` | TTL for audit-tier entries (Go duration: `'90d'`) |
+| `cleanupInterval` | `string` | Orphan-sweep cadence hint (Go duration: `'7d'`). The old periodic backstop timer is gone; the doctor owns sweep scheduling. |
 
-**Override hygiene:** code that persists settings must write **minimal partials** via `updateSettings()` — never the merged settings object. Persisting merged settings freezes every then-current default into `settings.json` as explicit overrides, silently pinning the install to stale defaults (this bit us during the v0.2 migration).
+**Override hygiene:** code that persists settings must write **minimal
+partials** via `updateSettings()` — never the merged settings object.
+Persisting merged settings freezes every then-current default into
+`settings.json` as explicit overrides, silently pinning the install to stale
+defaults.
+
+## Chunking
+
+Long documents are split before embedding, per index/leg via
+`chunker: { enabled, targetTokens, overlapTokens }` (defaults from
+`settings.search.settings.chunking`). Indexes without a chunker embed the
+template output whole; media-embedding legs don't declare chunkers (image/audio
+embeddings are whole-doc).
 
 ## Related docs
 
-- `.claude/knowledge/multimodal-search.md` — multimodal architecture, PDF/text extraction, CLIP visual path, how to add a new modality
+- `.claude/knowledge/search-plugin-guide.md` — plugin author walkthrough
 - `.claude/knowledge/search-api-reference.md` — REST/MCP surface for agent-facing search
-- [Bakin issue #456](https://github.com/markhayden/bakin/issues/456) — antfly upstream bugs + workarounds. Status at the v0.2.0-rc.9 pin (all live-verified): bare-term FTS **fixed**, NDJSON multiquery **fixed**, Metal-backend instability **fixed** (onnx pin dropped), reranker SIGABRT **fixed** (now correct but throughput-bound ~200ms/candidate — kept off, opt-in only), schema-at-create **fixed** (a schema'd table now queries identically to schemaless; adapter stays schemaless by choice). Still open: index-time lazy model download
-- [Bakin issue #72](https://github.com/markhayden/bakin/issues/72) — Antfly v0.1-era upstream bugs documented during T6 (dead `content_security` config, broken PDF library, no loopback HTTP path)
+- `.claude/knowledge/multimodal-search.md` — multimodal architecture, extraction, media legs
+- `.claude/knowledge/adapter-architecture.md` — adapter boundary + D17 enforcement
+- `.claude/specs/search-asset-rebuild.md` — the 17 locked decisions behind this architecture
+- `tasks/evidence-search-rebuild.md` — live-verified wire-contract evidence vs upstream main
