@@ -19,6 +19,9 @@ const ALLOWED_FILES = new Set([
   'src/core/search-adapter-factory.ts',
   'src/core/runtime-config-raw.ts',
   'scripts/bin/check-home-bypasses.mjs',
+  // Sole sanctioned bun:sqlite importer (per-rule allow in the CI arch test;
+  // the edit-time hook exempts it wholesale like the instance rig).
+  'packages/core/src/storage/db.ts',
 ])
 
 const DENYLIST = [
