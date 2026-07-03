@@ -16,6 +16,7 @@ import {
   getRerankField,
   getSearchAdapter,
   mapFacetCounts,
+  resolvePhysicalTable,
 } from './search-registry-core'
 
 /**
@@ -50,7 +51,7 @@ export async function crossTableSearch(q: string, opts?: {
       return crossTableSearch(q, { ...opts, table: resolved.replace(TABLE_PREFIX, '') })
     }
 
-    const result = await search.query(tableName, {
+    const result = await search.query(resolvePhysicalTable(tableName), {
       text: q,
       limit,
       offset: opts?.offset,
@@ -89,7 +90,9 @@ export async function crossTableSearch(q: string, opts?: {
   const perTableLimit = limit + offset
   const facets = opts?.facets
   const results = await search.multiQuery(tables.map((table) => ({
-    table,
+    // Logical→physical at dispatch time; correlation back to the logical
+    // table stays positional, so display names never leak physicals.
+    table: resolvePhysicalTable(table),
     query: {
       text: q,
       limit: perTableLimit,

@@ -16,6 +16,7 @@ import type {
 } from '../../packages/core/src/plugin-types'
 import { createLogger } from './logger'
 import { enqueueIndex, enqueueRemove, enqueueTransform, nudgeOutboxPump } from './search-outbox'
+import { resolvePhysicalTable } from './search-registry-core'
 import { registerSyncHook, registerUnlinkHook } from './watcher'
 import { getContentDir } from './content-dir'
 import {
@@ -275,7 +276,7 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
         }
       }
 
-      const result = await search.query(tableName, {
+      const result = await search.query(resolvePhysicalTable(tableName), {
         text: params.q,
         limit: params.limit,
         offset: params.offset,
@@ -342,12 +343,10 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
         if (!tableName) return
         const search = getSearchAdapter()
         if (!await search.available()) return
-        try {
-          await search.tables.drop(tableName)
-        } catch (err) {
-          log.warn('Plugin search table reset drop failed; recreating table anyway', err, { pluginId, tableName })
-        }
-        await ensureRegisteredTables()
+        // Blue/green rebuild: fresh physical, backfilled from reindex(),
+        // pointer flips on convergence — queries never see a dropped table.
+        const { rebuildRegisteredTables } = await import('./search-registry-core')
+        await rebuildRegisteredTables(tableName)
       },
     },
   }
@@ -418,7 +417,7 @@ async function runPendingReconcilesMatching(predicate: (item: RegistryState['pen
           index: (key, doc) => getSearchAdapter().documents.index(reconcileTable, key, doc),
           remove: (key) => getSearchAdapter().documents.remove(reconcileTable, key),
           scanIndex: async function* (tableName) {
-            for await (const { key, document } of getSearchAdapter().scan(tableName, { fields: [MTIME_FIELD] })) {
+            for await (const { key, document } of getSearchAdapter().scan(resolvePhysicalTable(tableName), { fields: [MTIME_FIELD] })) {
               const mtime = typeof document[MTIME_FIELD] === 'number'
                 ? document[MTIME_FIELD]
                 : Number(document[MTIME_FIELD] ?? 0)

@@ -1,5 +1,5 @@
 /**
- * Search boot logic, extracted from server.ts so it sits beside search-migration.ts
+ * Search boot logic, extracted from server.ts
  * / search-registry.ts and can be unit-tested with mocked registries.
  *
  * `bootSearch` runs the one-shot bootstrap and, if table setup isn't ready yet,
@@ -7,11 +7,9 @@
  * itself (table creation → reconcile drain → post-migration reindex).
  */
 import { createLogger } from './logger'
-import { migrateIfNeeded } from './search-migration'
 
 const log = createLogger('search-startup')
 
-export type SearchMigrationResult = Awaited<ReturnType<typeof migrateIfNeeded>>
 
 export const SEARCH_STARTUP_RETRY_MS = 5000
 
@@ -30,12 +28,11 @@ export const SEARCH_STARTUP_RETRY_SCHEDULE_MS: readonly number[] = [
 ]
 
 export async function runSearchStartupBootstrap(
-  migration: SearchMigrationResult,
   opts: { retry?: boolean } = {},
 ): Promise<boolean> {
   const {
     createRegisteredTables,
-    reindexContentTypes,
+    resumeTableMigrations,
     runPendingReconciles,
   } = await import('./search-registry')
 
@@ -53,25 +50,12 @@ export async function runSearchStartupBootstrap(
   // are logged inside the helper and do not block startup.
   await runPendingReconciles()
 
-  // If the schema migration dropped tables, kick off a full background
-  // reindex so the freshly-recreated tables get populated with content.
-  // Fire-and-forget: Bakin is usable immediately with empty tables;
-  // indexing completes in the background and streams progress over SSE.
-  if (migration.migrated) {
-    const message = opts.retry
-      ? 'Running deferred full reindex after schema migration'
-      : 'Running full reindex after schema migration'
-    log.info(message, {
-      from: migration.from,
-      to: migration.to,
-    })
-    reindexContentTypes().then((results) => {
-      const total = results.reduce((sum: number, r) => sum + (r.indexed || 0), 0)
-      log.info('Schema migration reindex complete', { tables: results.length, total })
-    }).catch((err) => {
-      log.error('Schema migration reindex failed', err)
-    })
-  }
+  // Finish any blue/green migration a crash or park left in flight —
+  // resume of RECORDED work (D5), never filesystem inference. Fire-and-
+  // forget: queries answer from the old physical throughout.
+  resumeTableMigrations().catch((err: unknown) => {
+    log.error('Resuming in-flight table migrations failed', err instanceof Error ? err : undefined)
+  })
 
   return true
 }
@@ -180,7 +164,7 @@ export function whenSearchBootstrapSettled(): Promise<boolean> {
  * never throws into the boot path, and never holds the boot longer than
  * SEARCH_BOOTSTRAP_BOOT_BUDGET_MS (the attempt continues in the background).
  */
-export async function bootSearch(migration: SearchMigrationResult): Promise<void> {
+export async function bootSearch(): Promise<void> {
   const onReady = () => {
     bootstrapSettle?.(true)
     // Warm the query-embedding path up front so the first user search isn't a
@@ -200,7 +184,7 @@ export async function bootSearch(migration: SearchMigrationResult): Promise<void
       return
     }
     setTimeout(() => {
-      runSearchStartupBootstrap(migration, { retry: true }).then((retried) => {
+      runSearchStartupBootstrap({ retry: true }).then((retried) => {
         if (retried) {
           onReady()
           return
@@ -215,7 +199,7 @@ export async function bootSearch(migration: SearchMigrationResult): Promise<void
 
   // Retries only ever start after the previous attempt SETTLES — overlapping
   // ensureRegisteredTables runs would race table creation against itself.
-  const attempt = runSearchStartupBootstrap(migration)
+  const attempt = runSearchStartupBootstrap()
   const outcome = await Promise.race([
     attempt,
     new Promise<'boot-budget-exceeded'>((resolve) => {

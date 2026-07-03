@@ -42,6 +42,8 @@ export interface EnsureOpts {
   convergePollMs?: number
   /** Force a fresh physical even when version+fingerprint match (rebuild). */
   forceNonce?: string
+  /** Live progress for UI (phase + backfilled-row count). Display-only. */
+  onProgress?: (phase: string, backfillDone?: number) => void
 }
 
 export type EnsureResult = 'created' | 'unchanged' | 'migrated' | 'parked'
@@ -192,7 +194,7 @@ async function createTableTolerant(adapter: SearchAdapter, physical: string, con
   }
 }
 
-async function backfill(adapter: SearchAdapter, def: TableEnsureDef, physical: string): Promise<number> {
+async function backfill(adapter: SearchAdapter, def: TableEnsureDef, physical: string, onProgress?: EnsureOpts['onProgress']): Promise<number> {
   let emitted = 0
   let chunk: Array<{ key: string; doc: Document }> = []
   const flush = async () => {
@@ -200,6 +202,7 @@ async function backfill(adapter: SearchAdapter, def: TableEnsureDef, physical: s
     await adapter.documents.batchIndex(physical, chunk)
     emitted += chunk.length
     setPhase(def.logical, 'backfilling', emitted)
+    onProgress?.('backfilling', emitted)
     chunk = []
   }
   for await (const item of def.reindex()) {
@@ -278,9 +281,11 @@ async function runMigration(
   await createTableTolerant(adapter, green, def.config)
 
   setPhase(def.logical, 'backfilling', 0)
-  const emitted = await backfill(adapter, def, green)
+  opts?.onProgress?.('backfilling', 0)
+  const emitted = await backfill(adapter, def, green, opts?.onProgress)
 
   setPhase(def.logical, 'converging')
+  opts?.onProgress?.('converging', emitted)
   const timeoutMs = opts?.convergeTimeoutMs ?? DEFAULT_CONVERGE_TIMEOUT_MS
   const pollMs = opts?.convergePollMs ?? DEFAULT_CONVERGE_POLL_MS
   const deadline = Date.now() + timeoutMs
@@ -345,7 +350,7 @@ export async function ensureTable(
 
     if (!current) {
       await createTableTolerant(adapter, desired, def.config)
-      const emitted = await backfill(adapter, def, desired)
+      const emitted = await backfill(adapter, def, desired, opts?.onProgress)
       db()
         .prepare(
           `INSERT INTO search_tables (logical, physical, schema_version, config_fingerprint, state, updated_at)

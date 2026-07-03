@@ -306,9 +306,9 @@ export function HealthPage() {
   // Per-table reindex progress, fed by the shell's single SSE connection.
   const [reindexProgress, setReindexProgress] = useState<Record<string, { indexed: number; done: boolean }>>({})
   const clearReindexProgress = useCallback(() => setReindexProgress({}), [])
-  usePluginEvent('reindex.start', (d) => setReindexProgress((p) => ({ ...p, [d.table as string]: { indexed: 0, done: false } })))
-  usePluginEvent('reindex.progress', (d) => setReindexProgress((p) => ({ ...p, [d.table as string]: { indexed: (d.indexed as number) ?? 0, done: false } })))
-  usePluginEvent('reindex.complete', (d) => setReindexProgress((p) => ({ ...p, [d.table as string]: { indexed: (d.indexed as number) ?? 0, done: true } })))
+  usePluginEvent('search.rebuild.start', (d) => setReindexProgress((p) => ({ ...p, [d.table as string]: { indexed: 0, done: false } })))
+  usePluginEvent('search.rebuild.progress', (d) => setReindexProgress((p) => ({ ...p, [d.table as string]: { indexed: (d.indexed as number) ?? 0, done: false } })))
+  usePluginEvent('search.rebuild.complete', (d) => setReindexProgress((p) => ({ ...p, [d.table as string]: { indexed: (d.indexed as number) ?? 0, done: true } })))
 
   // Search state
   const [pluginSearch, setPluginSearch] = useState('')

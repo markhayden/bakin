@@ -25,6 +25,14 @@ import type {
   TableConfig,
 } from '@bakin/core/adapters/search'
 import { createLogger } from './logger'
+import { broadcast } from './sse'
+import {
+  ensureTable as ensureVersionedTable,
+  rebuildTable as rebuildVersionedTable,
+  resumeMigrations as resumeVersionedMigrations,
+  queryTarget,
+  type TableEnsureDef,
+} from '@bakin/core/search/tables'
 import { getAppServices } from './app-services'
 
 const log = createLogger('search-registry-core')
@@ -180,15 +188,79 @@ function buildTableConfig(def: SearchContentTypeDefinition): TableConfig {
  * re-list after create to disambiguate "skipped, already there" from
  * "tried and failed".
  */
-async function ensureTable(search: SearchAdapter, def: SearchContentTypeDefinition, existingNames?: Set<string>): Promise<'created' | 'exists'> {
-  const tableName = fullTableName(def.table)
+function toVersionedDef(def: SearchContentTypeDefinition): TableEnsureDef {
+  return {
+    logical: fullTableName(def.table),
+    schemaVersion: def.schemaVersion ?? 1,
+    config: buildTableConfig(def),
+    reindex: async function* () {
+      if (!def.reindex) return
+      for await (const item of def.reindex()) {
+        yield { key: item.key, doc: item.doc }
+      }
+    },
+  }
+}
 
-  if (existingNames?.has(tableName)) return 'exists'
+function adapterFingerprint(search: SearchAdapter): string {
+  return search.mappingFingerprint?.() ?? 'legacy-adapter'
+}
 
-  await search.tables.create(tableName, buildTableConfig(def))
-  const after = await search.tables.list()
-  if (after.some(t => t.name === tableName)) return 'created'
-  throw new Error(`Search adapter rejected create for ${tableName}`)
+/** Physical table queries/scans hit right now (blue during migrations). */
+export function resolvePhysicalTable(logical: string): string {
+  return queryTarget(logical) ?? logical
+}
+
+function broadcastRebuild(type: 'search.rebuild.start' | 'search.rebuild.progress' | 'search.rebuild.complete', logical: string, extra?: Record<string, unknown>): void {
+  try {
+    broadcast({ type, table: logical, ...extra })
+  } catch {
+    // SSE not up (tests) — progress is best-effort display only
+  }
+}
+
+async function ensureTable(search: SearchAdapter, def: SearchContentTypeDefinition): Promise<'created' | 'exists'> {
+  const logical = fullTableName(def.table)
+  const result = await ensureVersionedTable(search, toVersionedDef(def), adapterFingerprint(search))
+  if (result === 'migrated' || result === 'parked') {
+    log.info('content-type layout changed — blue/green migration ran', { logical, result })
+  }
+  return result === 'created' ? 'created' : 'exists'
+}
+
+/**
+ * Force blue/green rebuilds (the /api/reindex + `bakin search rebuild`
+ * path). Queries keep answering from the old physical throughout; SSE
+ * `search.rebuild.*` events drive the health page's live progress.
+ */
+export async function rebuildRegisteredTables(tableName?: string): Promise<Array<{ table: string; result: string; error?: string }>> {
+  const registry = getRegistry()
+  const search = getSearchAdapter()
+  const results: Array<{ table: string; result: string; error?: string }> = []
+  for (const [logical, def] of registry.contentTypes) {
+    if (tableName && logical !== tableName && def.table !== tableName) continue
+    broadcastRebuild('search.rebuild.start', logical)
+    try {
+      const result = await rebuildVersionedTable(search, toVersionedDef(def), adapterFingerprint(search), {
+        onProgress: (phase, backfillDone) => broadcastRebuild('search.rebuild.progress', logical, { phase, indexed: backfillDone ?? 0 }),
+      })
+      broadcastRebuild('search.rebuild.complete', logical, { result })
+      results.push({ table: logical, result })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      broadcastRebuild('search.rebuild.complete', logical, { error: message })
+      results.push({ table: logical, result: 'failed', error: message })
+    }
+  }
+  return results
+}
+
+/** Boot-time continuation of crash/park-interrupted migrations (D5). */
+export async function resumeTableMigrations(): Promise<void> {
+  const registry = getRegistry()
+  const search = getSearchAdapter()
+  const defs = Array.from(registry.contentTypes.values()).map(toVersionedDef)
+  await resumeVersionedMigrations(search, defs, adapterFingerprint(search))
 }
 
 // ---------------------------------------------------------------------------
@@ -217,15 +289,14 @@ export async function ensureRegisteredTables(): Promise<EnsureTablesResult> {
     return { created: 0, failures: [] }
   }
 
-  const existingTables = await search.tables.list()
-  const existingNames = new Set(existingTables.map(t => t.name))
-
   let created = 0
   const failures: Array<{ table: string; pluginId: string; error: string }> = []
   for (const [tableName, def] of registry.contentTypes) {
-    if (existingNames.has(tableName)) continue
     try {
-      const status = await ensureTable(search, def, existingNames)
+      // Blue/green registry rows are the existence check — a matching row
+      // is ZERO adapter calls (boot-does-nothing, D5). Engine-side drift
+      // (wiped index) is the doctor's count-mismatch check, never a boot scan.
+      const status = await ensureTable(search, def)
       if (status === 'created') created++
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)

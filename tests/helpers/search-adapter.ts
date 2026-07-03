@@ -1,6 +1,7 @@
 import { mock } from 'bun:test'
 import { configureOutboxPump, stopOutboxPump } from '../../src/core/search-outbox'
 import { resetOutboxForTests } from '../../packages/core/src/search/outbox'
+import { resetTablesForTests } from '../../packages/core/src/search/tables'
 import type {
   Document,
   IndexItem,
@@ -45,6 +46,7 @@ export function installSearchAdapter(adapter: SearchAdapter): void {
   // an empty journal so per-test assertions see only their own writes.
   configureOutboxPump({ adapter, resolveTargets: (logical) => [logical] })
   resetOutboxForTests()
+  resetTablesForTests()
 }
 
 export function clearSearchAdapter(): void {
@@ -92,11 +94,14 @@ export function createSearchAdapterHarness() {
     health.delete(name)
     stats.delete(name)
   })
-  const tablesStats = mock(async (name: string): Promise<TableStats | null> => (
-    stats.has(name)
-      ? stats.get(name)!
-      : { table: name, documents: docs.get(name)?.size ?? 0 }
-  ))
+  const tablesStats = mock(async (name: string): Promise<TableStats | null> => {
+    if (stats.has(name)) return stats.get(name)!
+    // Mirror the real engine: an unknown table 404s → null. A harness that
+    // fabricated stats for any name would let tolerant-create swallow
+    // genuine create failures.
+    if (!tables.has(name) && !docs.has(name)) return null
+    return { table: name, documents: docs.get(name)?.size ?? 0 }
+  })
   const tablesGetHealth = mock(async (name: string): Promise<TableHealth | null> => (
     health.has(name) ? health.get(name)! : null
   ))

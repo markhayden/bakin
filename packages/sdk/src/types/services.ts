@@ -155,6 +155,13 @@ export interface SearchReindexItem {
 /** Full content-type definition: schema, indexes, facets, reindex generator. */
 export interface SearchContentTypeDefinition {
   table: string
+  /**
+   * Doc-shape version for this content type. Bumping it triggers a blue/
+   * green background migration to a fresh physical table (queries stay on
+   * the old one until the new converges). Defaults to 1; becomes required
+   * at the F4 surface cut.
+   */
+  schemaVersion?: number
   schema: Record<string, SearchSchemaField>
   searchableFields: string[]
   embeddingTemplate: string

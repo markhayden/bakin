@@ -35,10 +35,12 @@ const createRegisteredTables = mock(async () => {
 const runPendingReconciles = mock(async () => {})
 const reindexContentTypes = mock(async () => [])
 const getSearchHealth = mock(async () => ({ tables: [] }))
+const resumeTableMigrations = mock(async () => {})
 mock.module('../../src/core/search-registry', () => ({
   createRegisteredTables,
   runPendingReconciles,
   reindexContentTypes,
+  resumeTableMigrations,
   getSearchHealth,
 }))
 
@@ -49,7 +51,6 @@ mock.module('../../src/core/search-warmup', () => ({
 
 import { bootSearch, SEARCH_BOOTSTRAP_BOOT_BUDGET_MS, SEARCH_STARTUP_RETRY_SCHEDULE_MS } from '../../src/core/search-startup'
 
-const migration = { migrated: false, from: 1, to: 1 } as Parameters<typeof bootSearch>[0]
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -65,7 +66,7 @@ afterEach(() => {
 
 describe('bootSearch', () => {
   it('warms immediately when the first bootstrap succeeds', async () => {
-    await bootSearch(migration)
+    await bootSearch()
     await vi.advanceTimersByTimeAsync(0) // flush the lazy warm-up import
     expect(createRegisteredTables).toHaveBeenCalledTimes(1)
     expect(warmSearchQueryPath).toHaveBeenCalledTimes(1)
@@ -76,7 +77,7 @@ describe('bootSearch', () => {
     // single-retry behavior gave up exactly here.
     bootstrapFailuresRemaining = 3
 
-    await bootSearch(migration)
+    await bootSearch()
     expect(warmSearchQueryPath).not.toHaveBeenCalled()
 
     await vi.advanceTimersByTimeAsync(SEARCH_STARTUP_RETRY_SCHEDULE_MS[0])
@@ -96,7 +97,7 @@ describe('bootSearch', () => {
     bootstrapHangs = true
 
     let booted = false
-    const boot = bootSearch(migration).then(() => {
+    const boot = bootSearch().then(() => {
       booted = true
     })
 
@@ -112,7 +113,7 @@ describe('bootSearch', () => {
   it('gives up after the schedule is exhausted without looping forever', async () => {
     bootstrapFailuresRemaining = Number.POSITIVE_INFINITY
 
-    await bootSearch(migration)
+    await bootSearch()
     for (const delay of SEARCH_STARTUP_RETRY_SCHEDULE_MS) {
       await vi.advanceTimersByTimeAsync(delay)
     }

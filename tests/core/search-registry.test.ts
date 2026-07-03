@@ -284,9 +284,9 @@ describe('search-registry', () => {
 
     await api.maintenance!.resetContentType()
 
-    expect(searchHarness.calls.tablesDrop).toHaveBeenCalledWith('bakin_tasks')
+    expect(searchHarness.calls.tablesDrop).toHaveBeenCalledWith(expect.stringMatching(/^bakin_tasks(_v\d+_[0-9a-f]{8})?$/))
     expect(searchHarness.calls.tablesCreate).toHaveBeenCalledWith(
-      'bakin_tasks',
+      expect.stringMatching(/^bakin_tasks_v\d+_[0-9a-f]{8}$/),
       expect.objectContaining({ fields: expect.objectContaining({ title: { type: 'text' } }) }),
     )
   })
@@ -339,7 +339,7 @@ describe('search-registry', () => {
     await createRegisteredTables()
 
     expect(searchHarness.calls.tablesCreate).toHaveBeenCalledWith(
-      'bakin_tasks',
+      expect.stringMatching(/^bakin_tasks_v\d+_[0-9a-f]{8}$/),
       expect.objectContaining({
         indexes: [
           expect.objectContaining({
@@ -376,7 +376,7 @@ describe('search-registry', () => {
     await createRegisteredTables()
 
     expect(searchHarness.calls.tablesCreate).toHaveBeenCalledWith(
-      'bakin_assets',
+      expect.stringMatching(/^bakin_assets_v\d+_[0-9a-f]{8}$/),
       expect.objectContaining({
         indexes: [
           expect.objectContaining({
@@ -529,7 +529,7 @@ describe('search-registry', () => {
     const result = await createRegisteredTables()
 
     expect(searchHarness.calls.tablesCreate).toHaveBeenCalledWith(
-      'bakin_broken',
+      expect.stringMatching(/^bakin_broken_v\d+_[0-9a-f]{8}$/),
       expect.anything(),
     )
     expect(result.failures).toEqual([
@@ -556,11 +556,11 @@ describe('search-registry', () => {
 
     expect(searchHarness.calls.tablesCreate).toHaveBeenCalledTimes(2)
     expect(searchHarness.calls.tablesCreate).toHaveBeenCalledWith(
-      'bakin_tasks',
+      expect.stringMatching(/^bakin_tasks_v\d+_[0-9a-f]{8}$/),
       expect.objectContaining({ adapterOptions: expect.objectContaining({ description: expect.stringContaining('tasks') }) }),
     )
     expect(searchHarness.calls.tablesCreate).toHaveBeenCalledWith(
-      'bakin_assets',
+      expect.stringMatching(/^bakin_assets_v\d+_[0-9a-f]{8}$/),
       expect.objectContaining({ adapterOptions: expect.objectContaining({ description: expect.stringContaining('assets') }) }),
     )
   })

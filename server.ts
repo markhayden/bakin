@@ -39,7 +39,6 @@ import { registerShutdownHandlers, triggerShutdown } from './src/core/lifecycle'
 import { generateDocs } from './src/core/api-docs'
 import type { buildOpenApiDocument } from './packages/host/src/api/docs-runtime'
 import { collectOpenApiSources as collectTypedOpenApiSources } from './packages/host/src/api/openapi-sources'
-import { migrateIfNeeded } from './src/core/search-migration'
 import { bootSearch } from './src/core/search-startup'
 import * as mcporter from './src/core/mcporter'
 import { buildAllUserPlugins } from './packages/host/src/plugin-host/user-plugin-builder'
@@ -134,17 +133,18 @@ const eventBus = new BakinEventBus(broadcast)
   // the in-code version has advanced beyond the last-migrated version.
   // The registry recreates the tables below via createRegisteredTables,
   // and we trigger a full reindex after plugins are ready.
-  const migration = await migrateIfNeeded()
-
   // Start the durable-outbox pump (D5/F2): every ctx.search write journals
-  // to SQLite then drains through here. Identity mapping until F3 wires the
-  // blue/green registry as the resolver. Resumes whatever the journal holds
-  // from prior boots — this line is the whole "recovery" story for writes.
+  // to SQLite then drains through here, resolved logical→physical through
+  // the blue/green registry (dual-write during migrations). Resumes
+  // whatever the journal holds from prior boots — this line is the whole
+  // "recovery" story for writes. Global drop-and-reindex migration is gone:
+  // schema changes are per-table blue/green migrations (D4).
   const { startOutboxPump } = await import('./src/core/search-outbox')
   const { getSearchAdapter } = await import('./src/core/search-registry')
-  startOutboxPump({ adapter: getSearchAdapter(), resolveTargets: (logical) => [logical] })
+  const { resolveDrainTargets } = await import('@bakin/core/search/tables')
+  startOutboxPump({ adapter: getSearchAdapter(), resolveTargets: resolveDrainTargets })
 
-  await bootSearch(migration)
+  await bootSearch()
 
   // Start periodic orphan cleanup for search indexes
   const { startCleanupTimer } = await import('./src/core/search-cleanup')

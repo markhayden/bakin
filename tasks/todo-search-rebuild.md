@@ -9,13 +9,13 @@ Rule: every commit green (`bun run test` + typecheck). Tag `rebuild/pN` at each 
 - [x] P0.3 npm @antfly/sdk = 0.0.14 (2026-03-19), 77 SDK commits stale vs main → vendor tarball from same commit as dev binary; re-check npm at T23
 
 ## P1 — Engine room
-- [ ] A1 storage/db.ts keyed multi-db refactor + openNamedDb
-- [ ] A2 Contract additions (capabilities, mappingFingerprint, legs, per-leg health, generic scoreBreakdown) + mock + conformance skeleton
-- [ ] A3 search-store.ts + search-outbox.ts (coalescing LWW, acked-hash dedupe, backoff, quarantine, drain)
-- [ ] A4 search-tables.ts (logical→physical registry + blue/green migrator + crash-resume)
-- [ ] A5 Memory indexer row-emitting refactor + enumerateAll() ⚠
-- [ ] A6 New adapter: client.ts + translate.ts + service.ts (launchd/systemd/child) + SDK swap
-- [ ] A7 Integration harness + conformance vs real dev binary + workaround-regression pins ⚠
+- [x] A1 storage/db.ts keyed multi-db + openNamedDb (f0aa5c34)
+- [x] A2 Contract additions + mock + conformance skeleton (211c6390)
+- [x] A3 outbox in packages/core/src/search/outbox.ts + typed errors (0389fc70) — 12 tests; drain-loop wiring lands with F2
+- [x] A4 blue/green migrator in packages/core/src/search/tables.ts (651c8eea) — 8 tests incl. call-spy boot-does-nothing + park-never-flip + crash-resume
+- [x] A5 Memory indexer refactor + enumerateAll() (62d0d0b6; 432 memory tests green). ⚠ F4 NOTE: memory reindex() MUST fail loudly when ctx.runtime is unavailable — silent empty yields would let a thin green table converge and flip (agent finding #1)
+- [x] A6 New adapter: translate (a16b18a5) + client (7644632c) + service (8b046474). DESIGN CHANGE vs plan: raw-fetch client with hand-written probe-verified wire types — NO @antfly/sdk dependency at all (vendored tarball + npm-skew problem class deleted); conformance suite vs real binaries is the contract check
+- [x] A7 Harness (7edae15a) + regression pins (614a7344). Conformance GREEN vs real dev binary. Real-engine finds: semantic leg requires index names (400 otherwise — registry must pass embedding-leg names via adapterOptions.indexes), /lookup needs {} body, batchRemove counts are attempted-counts. Test-env gotcha: happy-dom preload breaks global fetch — use Bun.fetch in integration tests
 - [ ] F1 Adapter swap; delete server.ts/old search.ts/legacy-cleanup ⚠
 - [ ] F2 Writes through outbox (identity mapping)
 - [ ] F3 Blue/green live; SCHEMA_VERSION dies; search.rebuild.* SSE; health-page handler ⚠
