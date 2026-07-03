@@ -93,6 +93,8 @@ describe('unit rendering (goldens)', () => {
     const plist = renderLaunchdPlist(buildServiceArgv(DEFAULT_SETTINGS, paths), paths.logFile)
     expect(plist).toContain('<string>io.bakin.antfly</string>')
     expect(plist).toContain('<key>KeepAlive</key>\n  <true/>')
+    expect(plist).toContain('<key>NumberOfFiles</key>')
+    expect(plist).toContain('<integer>65536</integer>')
     expect(plist).toContain('<key>RunAtLoad</key>\n  <true/>')
     expect(plist).toContain('<string>/home/u/.bakin/logs/antfly.log</string>')
     expect(plist).toContain('<string>--preload-model</string>')
@@ -101,6 +103,7 @@ describe('unit rendering (goldens)', () => {
   it('systemd unit: Restart=always, append logs, install target', () => {
     const unit = renderSystemdUnit(buildServiceArgv(DEFAULT_SETTINGS, paths), paths.logFile)
     expect(unit).toContain('Restart=always')
+    expect(unit).toContain('LimitNOFILE=65536')
     expect(unit).toContain('StandardOutput=append:/home/u/.bakin/logs/antfly.log')
     expect(unit).toContain('WantedBy=default.target')
     expect(unit).toContain('ExecStart=/opt/antfly/bin/antfly swarm --host 127.0.0.1 --port 3738')

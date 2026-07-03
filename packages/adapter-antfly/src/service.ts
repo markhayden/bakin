@@ -145,6 +145,11 @@ function xmlEscape(value: string): string {
   return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
 }
 
+// NumberOfFiles/LimitNOFILE: launchd/systemd services get the OS default
+// fd limit (macOS soft limit is 256!) — nothing like the shell limits the
+// old child spawn inherited. An LSM engine with N tables x shards x
+// segment files exhausts 256 instantly (ProcessFdQuotaExceeded, observed
+// at the rc.17 cutover as boot-wide flakiness + an exit-6 crash).
 export function renderLaunchdPlist(argv: string[], logFile: string): string {
   const args = argv.map((a) => `    <string>${xmlEscape(a)}</string>`).join('\n')
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -161,6 +166,16 @@ ${args}
   <true/>
   <key>KeepAlive</key>
   <true/>
+  <key>SoftResourceLimits</key>
+  <dict>
+    <key>NumberOfFiles</key>
+    <integer>65536</integer>
+  </dict>
+  <key>HardResourceLimits</key>
+  <dict>
+    <key>NumberOfFiles</key>
+    <integer>65536</integer>
+  </dict>
   <key>StandardOutPath</key>
   <string>${xmlEscape(logFile)}</string>
   <key>StandardErrorPath</key>
@@ -180,6 +195,7 @@ Description=Bakin private antfly search engine
 ExecStart=${exec}
 Restart=always
 RestartSec=2
+LimitNOFILE=65536
 StandardOutput=append:${logFile}
 StandardError=append:${logFile}
 
