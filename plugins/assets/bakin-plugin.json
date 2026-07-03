@@ -180,7 +180,8 @@
     "slots": [
       "task-assets",
       "page:/assets",
-      "page:/assets/:assetId"
+      "page:/assets/:assetId",
+      "nav-badge-providers"
     ]
   }
 }

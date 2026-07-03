@@ -6,7 +6,7 @@ import { useQueryState, useQueryArrayState, useSearch, useDebug, useRouter, useP
 import { Button } from '@makinbakin/sdk/ui'
 import { PluginHeader, FacetFilter } from '@makinbakin/sdk/components'
 import { formatSize, formatAge } from '@makinbakin/sdk/utils'
-import { ImagePlus, Upload, Loader2, LayoutGrid, List, Trash2, RotateCcw, X, ListFilter, FolderOpen, Pencil, Check, SquareMousePointer, Tags, ArrowLeft } from 'lucide-react'
+import { ImagePlus, Upload, Loader2, LayoutGrid, List, Trash2, RotateCcw, X, ListFilter, FolderOpen, Pencil, Check, SquareMousePointer, Tags, ArrowLeft , Inbox } from 'lucide-react'
 import { ASSET_TYPES } from '../../lib/constants'
 import { createSseRefetchScheduler } from './sse-refetch'
 import { AssetEditDrawer } from './AssetEditDrawer'
@@ -15,14 +15,16 @@ import { TagInput } from './TagInput'
 import { UNTAGGED, matchesTagFilter } from './tag-filter'
 import { AssetThumb, AssetMetaSummary, AssetTypeIcon } from './atoms'
 import { VERSIONED_API, UPLOAD_API, TRASH_API, TAGS_API } from './asset-urls'
+import { ImportView } from './ImportView'
 import type { VersionedAssetSummary, TrashedAssetSummary } from './types'
 
-type View = 'grid' | 'list' | 'tags' | 'trash'
+type View = 'grid' | 'list' | 'tags' | 'import' | 'trash'
 
 const VIEW_OPTIONS: Array<{ key: View; label: string; Icon: typeof LayoutGrid }> = [
   { key: 'grid', label: 'Grid', Icon: LayoutGrid },
   { key: 'list', label: 'List', Icon: List },
   { key: 'tags', label: 'Folders', Icon: FolderOpen },
+  { key: 'import', label: 'Import', Icon: Inbox },
   { key: 'trash', label: 'Trash', Icon: Trash2 },
 ]
 
@@ -465,9 +467,9 @@ export function VersionedAssetGrid() {
       {fileInput}
       <PluginHeader
         title="Assets"
-        count={view === 'trash' ? trash.length : view === 'tags' ? folderCount : displayed.length}
+        count={view === 'trash' ? trash.length : view === 'import' ? undefined : view === 'tags' ? folderCount : displayed.length}
         actions={actions}
-        search={view === 'trash' ? undefined : view === 'tags'
+        search={view === 'trash' || view === 'import' ? undefined : view === 'tags'
           ? { value: q, onChange: setQ, placeholder: 'Filter folders…' }
           : { value: q, onChange: setQ, placeholder: 'Search assets…' }}
       />
@@ -502,8 +504,10 @@ export function VersionedAssetGrid() {
         </div>
       )}
 
-      {/* ─── Trash view ─── */}
-      {view === 'trash' ? (
+      {/* ─── Import view (D7 explicit import) ─── */}
+      {view === 'import' ? (
+        <ImportView onImported={fetchAssets} />
+      ) : view === 'trash' ? (
         trash.length === 0 ? (
           <div className="p-8 text-sm text-muted-foreground" data-testid="trash-empty">Trash is empty.</div>
         ) : (

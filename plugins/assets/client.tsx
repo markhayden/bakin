@@ -9,6 +9,7 @@ import { registerPlugin } from '@makinbakin/sdk'
 import { TaskAssets } from './components/task-assets'
 import { VersionedAssetGrid } from './components/versioned/VersionedAssetGrid'
 import { VersionedAssetDetail } from './components/versioned/VersionedAssetDetail'
+import { AssetsBadgeProvider } from './components/assets-badge-provider'
 
 registerPlugin({
   id: 'assets',
@@ -23,5 +24,8 @@ registerPlugin({
     // Versioned-asset detail route — timeline + exports + promote/delete,
     // rendered via <Slot name="page:/assets/:assetId" /> in routes/assets.$assetId.tsx.
     'page:/assets/:assetId': VersionedAssetDetail,
+    // Background badge: unmanaged-file count on the Assets nav item (D7) —
+    // driven by the asset.unmanaged SSE event, no fetch on mount.
+    'nav-badge-providers': AssetsBadgeProvider,
   },
 })
