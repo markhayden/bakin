@@ -159,3 +159,18 @@ min 4.0 s / **median 35.2 s** / p75 38.2 s / max 73.0 s. (The 30–40 s band is 
 | no CLI attachment flag | `openclaw agent --help` (2026.6.9) |
 | upstream issues | <https://github.com/openclaw/openclaw/issues/51254>, <https://github.com/openclaw/openclaw/issues/66253> |
 | docs portal | <https://docs.openclaw.ai/> (gateway protocol: <https://docs.openclaw.ai/gateway>, images: <https://docs.openclaw.ai/nodes/images>) |
+
+
+## Live override probes (2026-07-03, real gateway, ephemeral turns)
+
+Probes ran as one-shot `agent` RPC calls (sessionEffects internal, suppressPromptPersistence, isolated session keys) with a text-bearing test image ("ZEBRA-COPPER-91"):
+
+1. **Default model (gpt-5.5): attachment SILENTLY DROPPED, not hard-rejected.** The turn succeeds and the model confabulates ("Mint" for a red pixel; "No text" for the OCR image) — pixels never reach it. Worse than P0's expected hard-reject: it's a silent-quality failure mode.
+2. **Per-turn model override authorization: SOLVED.** `operator.admin` scope on the device-authed backend connection is granted without additional pairing — "overrides are not authorized" disappears with one scope added.
+3. **Per-turn override does NOT satisfy the attachment gate.** With authorized overrides to `openai/gpt-5.3-chat-latest` AND `claude-sonnet-4-6` (both catalog `text+image`), the gateway still throws `UnsupportedAttachmentError: active model does not accept image inputs` — attachment validation reads the AGENT'S CONFIGURED model and ignores the authorized per-turn override. Fresh sessions don't change it. **This is a second, distinct upstream bug (ordering), with a clean repro.**
+
+### Resulting paths
+- **Works today, zero upstream:** an agent whose *configured* model is catalog-vision-declared (e.g. `claude-sonnet-4-6`, served by this machine's Claude subscription). One agent entry in bakin-bits-official + the spec's `enrichmentAgent` setting. High confidence (untested only because agent config is user-managed); rig-validate in P2.
+- **Upstream issue A (drafted above):** gpt-5.5 family mis-declared `text`-only in the effective catalog.
+- **Upstream issue B (new, this probe):** attachment validation ignores authorized per-turn model overrides — validate against the effective (overridden) model. Repro: admin-scoped client, `agent` RPC, `model: claude-sonnet-4-6`, image attachment → UnsupportedAttachmentError naming the session's default model.
+- Silent-drop behavior (finding 1) is worth folding into issue A: text-declared models should reject loudly, not confabulate.
