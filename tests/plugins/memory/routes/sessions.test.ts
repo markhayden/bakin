@@ -64,7 +64,7 @@ function makeCtx(): CtxHarness {
   const queryCalls: CtxHarness['queryCalls'] = []
   let queryResponse: SearchResponse = {
     results: [],
-    meta: { query: '', total: 0, took_ms: 0, source: 'fallback' },
+    meta: { query: '', total: 0, took_ms: 0, source: 'unavailable' },
   }
   const ctx = {
     pluginId: 'memory',
@@ -280,8 +280,11 @@ describe('sessionTurnsRoute — handler', () => {
     expect(res.status).toBe(200)
     expect(body.total).toBe(1)
     expect(body.turns).toHaveLength(1)
-    expect(h.queryCalls[0].filters).toEqual({ tier: 'turn', agent: 'chef' })
-    expect(h.queryCalls[0].q).toBe('agent:chef:main')
+    // Session membership is a FILTER on the indexed sessionId (extracted from
+    // the `agent:<agent>:<id>` sessionKey) — a q=sessionKey full-text match
+    // never worked: the id lives only in the unsearchable meta JSON.
+    expect(h.queryCalls[0].filters).toEqual({ tier: 'turn', agent: 'chef', sessionId: 'main' })
+    expect(h.queryCalls[0].q).toBe('*')
     expect(h.queryCalls[0].limit).toBe(50)
   })
 
@@ -303,14 +306,16 @@ describe('sessionTurnsRoute — handler', () => {
 })
 
 describe('turnsListRoute — handler', () => {
-  it('queries by (agent, sessionId) — note sessionId not key', async () => {
+  it('queries by (agent, sessionId) — sessionId is a filter, not a q-string', async () => {
     const h = makeCtx()
     await turnsListRoute.handler(
       req('/turns', { agent: 'chef', sessionId: 'sess-a' }),
       h.ctx,
       {} as any,
     )
-    expect(h.queryCalls[0].filters).toEqual({ tier: 'turn', agent: 'chef' })
+    expect(h.queryCalls[0].filters).toEqual({ tier: 'turn', agent: 'chef', sessionId: 'sess-a' })
+    expect(h.queryCalls[0].q).toBe('*')
+    expect(h.queryCalls[0].strategy).toBe('full_text_only')
   })
 
   it('returns 400 when agent or sessionId missing', async () => {

@@ -124,6 +124,14 @@ export interface SearchIndexDefinition {
   embedderRef: string
   embeddingTemplate?: string
   mediaUrlField?: string
+  /**
+   * Relative fusion weight for this index in hybrid (RRF) search. Defaults to
+   * 1.0 when unset. Used to favor a reliable leg over a noisy one — e.g. a
+   * multimodal table can weight its visual (image-embedding) index above a
+   * text-embedding index whose auto-generated descriptions add ranking noise.
+   * Surfaced to the search adapter as `merge_config.weights`.
+   */
+  weight?: number
   chunker?: {
     enabled: boolean
     targetTokens?: number
@@ -131,9 +139,21 @@ export interface SearchIndexDefinition {
   }
 }
 
+/** One document emitted by a content-type reindex generator. */
+export interface SearchReindexItem {
+  key: string
+  doc: Record<string, unknown>
+}
+
 /** Full content-type definition: schema, indexes, facets, reindex generator. */
 export interface SearchContentTypeDefinition {
   table: string
+  /**
+   * Doc-shape version for this content type. Bumping it triggers a blue/
+   * green background migration to a fresh physical table (queries stay on
+   * the old one until the new converges).
+   */
+  schemaVersion: number
   schema: Record<string, SearchSchemaField>
   searchableFields: string[]
   embeddingTemplate: string
@@ -147,7 +167,7 @@ export interface SearchContentTypeDefinition {
     targetTokens?: number
     overlapTokens?: number
   }
-  reindex: () => AsyncGenerator<{ key: string; doc: Record<string, unknown> }>
+  reindex: () => AsyncGenerator<SearchReindexItem>
   verifyExists: (key: string) => Promise<boolean>
 }
 
@@ -155,7 +175,8 @@ export interface SearchContentTypeDefinition {
 export interface FilePatternMapper {
   pattern: string
   fileToId: (relPath: string) => string | null
-  fileToDoc: (relPath: string, content: string) => Promise<Record<string, unknown> | null>
+  /** Omit when `onSync` owns doc-building for this pattern. */
+  fileToDoc?: (relPath: string, content: string) => Promise<Record<string, unknown> | null>
 }
 
 /** File-backed content type: indexes documents derived from on-disk files. */
@@ -164,8 +185,6 @@ export interface FileBackedContentTypeDefinition extends SearchContentTypeDefini
   excludePatterns?: string[]
   onSync?: (relPath: string, content: string) => Promise<void>
   onUnlink?: (relPath: string) => Promise<void>
-  buildOnStartup?: boolean
-  preserveVirtualDocuments?: boolean
 }
 
 /** Query payload for `search.query()` — filters, facets, paging, strategy. */
@@ -200,33 +219,48 @@ export interface SearchResponse {
     query: string
     total: number
     took_ms: number
-    source: 'search' | 'fallback'
+    /** 'unavailable' = the engine was down; HTTP boundaries surface it as 503. */
+    source: 'search' | 'unavailable'
   }
 }
 
 /** Per-index health within a registered content-type table. */
 export interface SearchHealthIndex {
+  /** Leg/index name — matches the scoreBreakdown key for this leg. */
   name: string
-  type: string
   totalIndexed: number
-  walBacklog: number
-  error?: string
   rebuilding: boolean
-  backfillProgress?: number
+  error?: string
 }
 
-/** Health of a single registered content-type table. */
+/** Health of a single registered content-type table (blue/green aware). */
 export interface SearchHealthTable {
-  table: string
+  /** Logical name plugins and queries use (e.g. bakin_assets). */
+  logical: string
+  /** Versioned physical currently serving queries. */
+  physical: string
+  schemaVersion: number
+  /** 'migrating' = a green table is backfilling; queries stay on `physical`. */
+  state: 'active' | 'migrating'
+  /** Migration phase when state is 'migrating' (parked = needs attention). */
+  phase: string | null
   pluginId: string
-  stats: Record<string, unknown> | null
-  indexHealth?: SearchHealthIndex[]
+  docCount: number | null
+  legs: SearchHealthIndex[]
   healthy: boolean
+}
+
+/** Durable write-journal state surfaced with health. */
+export interface SearchOutboxHealth {
+  pending: number
+  quarantined: number
+  oldestPendingAt: number | null
 }
 
 /** Health snapshot reported by the search adapter (per-table state). */
 export interface SearchHealthSnapshot {
   enabled: boolean
+  outbox?: SearchOutboxHealth
   tables: SearchHealthTable[]
 }
 
@@ -235,6 +269,15 @@ export interface SearchTransformOp {
   op: '$set' | '$inc' | '$push'
   field?: string
   value: unknown
+}
+
+/** Options for plugin-scoped search maintenance scans. */
+export interface SearchScanOptions {
+  /**
+   * Document fields to return with each scanned key. Some adapters return only
+   * keys unless fields are explicitly requested.
+   */
+  fields?: string[]
 }
 
 /** Search API exposed via `ctx.search` — index, query, transform documents. */
@@ -262,7 +305,7 @@ export interface SearchAPI {
   query(params: SearchQueryParams): Promise<SearchResponse>
   /** Global search adapter and registered-table health snapshot. */
   health?(): Promise<SearchHealthSnapshot>
-  /**
+    /**
    * Plugin-scoped maintenance operations for indexers that own non-file-backed
    * tables. Intentionally narrower than the raw adapter: callers can only
    * touch their own registered content type.
@@ -274,13 +317,11 @@ export interface SearchAPI {
 export interface SearchMaintenanceAPI {
   /** Whether the backing search service is reachable. */
   available(): Promise<boolean>
-  /** Iterate every document in this plugin's registered content type. */
-  scan(): AsyncIterable<{ key: string; document: Record<string, unknown> }>
+  /** Iterate this plugin's registered content type, optionally projecting document fields. */
+  scan(opts?: SearchScanOptions): AsyncIterable<{ key: string; document: Record<string, unknown> }>
   /** Remove several documents from this plugin's registered content type. */
   batchRemove(keys: string[]): Promise<number>
-  /** Drop and recreate this plugin's registered content type table. */
-  resetContentType(): Promise<void>
-}
+  }
 
 // ---------------------------------------------------------------------------
 // Assets

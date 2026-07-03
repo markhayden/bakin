@@ -1,0 +1,140 @@
+// @vitest-environment jsdom
+/**
+ * ⌘K global search overlay — open via hotkey, grouped rendering through
+ * the hit-renderer registry, default renderer for unknown types, Enter
+ * deep-links, honest engine-down state.
+ */
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
+import { render, cleanup, screen, waitFor, fireEvent } from '@testing-library/react'
+
+const contentDirMock = () => ({
+  getContentDir: () => '/tmp/bakin-test-global-overlay',
+  getBakinPaths: () => ({}),
+})
+mock.module('../../src/core/content-dir', contentDirMock)
+mock.module('../../packages/core/src/content-dir', contentDirMock)
+const loggerMock = () => ({
+  createLogger: () => ({ debug: mock(), info: mock(), warn: mock(), error: mock() }),
+})
+mock.module('../../src/core/logger', loggerMock)
+mock.module('../../packages/core/src/logger', loggerMock)
+
+// Recordable navigate (overrides the global inert shim for this file).
+const navigateCalls: unknown[] = []
+mock.module('@tanstack/react-router', () => ({
+  ...require('../shims/tanstack-router'),
+  useNavigate: () => (opts: unknown) => { navigateCalls.push(opts) },
+}))
+
+import { GlobalSearchOverlay } from '../../packages/host/src/components/search/global-search-overlay'
+import { registerPlugin, unregisterPlugin } from '../../packages/sdk/src/register'
+
+function mockSearchFetch(handler: (url: string) => { status: number; body: unknown }) {
+  ;(globalThis as Record<string, unknown>).fetch = mock((url: string) =>
+    Promise.resolve({
+      ok: handler(String(url)).status < 400,
+      status: handler(String(url)).status,
+      json: () => Promise.resolve(handler(String(url)).body),
+    } as Response),
+  )
+}
+
+const HIT = (id: string, table: string, fields: Record<string, unknown> = {}) =>
+  ({ id, table, score: 0.9, fields, indexScores: { full_text: 0.7 } })
+
+beforeEach(() => {
+  navigateCalls.length = 0
+  delete (globalThis as Record<string, unknown>).__bakinClientRegistry
+  // cmdk calls scrollIntoView on selection; happy-dom lacks it.
+  if (!Element.prototype.scrollIntoView) {
+    Element.prototype.scrollIntoView = () => {}
+  }
+})
+
+afterEach(() => {
+  cleanup()
+  unregisterPlugin('assets')
+})
+
+function openOverlay() {
+  fireEvent.keyDown(window, { key: 'k', metaKey: true })
+}
+
+describe('GlobalSearchOverlay', () => {
+  it('opens on ⌘K, searches, and groups hits by type with registered renderers', async () => {
+    registerPlugin({
+      id: 'assets',
+      search: {
+        hitRenderers: {
+          assets: (hit) => ({ title: `Asset ${hit.id}`, subtitle: 'caption', href: `/assets/${hit.id}` }),
+        },
+      },
+    })
+    mockSearchFetch(() => ({
+      status: 200,
+      body: {
+        results: [HIT('a1', 'bakin_assets'), HIT('t1', 'bakin_tasks', { title: 'Fix the thing' })],
+        meta: { query: 'x', total: 2, took_ms: 1, source: 'search' },
+      },
+    }))
+
+    render(<GlobalSearchOverlay />)
+    openOverlay()
+    const input = await screen.findByPlaceholderText(/Search assets/)
+    fireEvent.input(input, { target: { value: 'dashboard' } })
+
+    await waitFor(() => expect(screen.getByTestId('global-search-hit-a1')).toBeTruthy(), { timeout: 3000 })
+    // registered renderer shaped the assets hit
+    expect(screen.getByTestId('global-search-hit-a1').textContent).toContain('Asset a1')
+    // unknown type (tasks — no renderer registered here) got the default renderer
+    expect(screen.getByTestId('global-search-hit-t1').textContent).toContain('Fix the thing')
+    // groups + chips present
+    expect(screen.getByTestId('global-search-group-assets')).toBeTruthy()
+    expect(screen.getByTestId('global-search-chip-assets')).toBeTruthy()
+  })
+
+  it('Enter on a hit with an href navigates and closes', async () => {
+    registerPlugin({
+      id: 'assets',
+      search: { hitRenderers: { assets: (hit) => ({ title: hit.id, href: `/assets/${hit.id}` }) } },
+    })
+    mockSearchFetch(() => ({
+      status: 200,
+      body: { results: [HIT('a1', 'bakin_assets')], meta: { query: 'x', total: 1, took_ms: 1, source: 'search' } },
+    }))
+
+    render(<GlobalSearchOverlay />)
+    openOverlay()
+    const input = await screen.findByPlaceholderText(/Search assets/)
+    fireEvent.input(input, { target: { value: 'red' } })
+    await waitFor(() => expect(screen.getByTestId('global-search-hit-a1')).toBeTruthy(), { timeout: 3000 })
+
+    fireEvent.click(screen.getByTestId('global-search-hit-a1'))
+    await waitFor(() => expect(navigateCalls.length).toBe(1))
+    expect(navigateCalls[0]).toEqual({ to: '/assets/a1' })
+    // closed: the input is gone
+    expect(screen.queryByPlaceholderText(/Search assets/)).toBeNull()
+  })
+
+  it('renders the honest unavailable state on the 503 contract', async () => {
+    mockSearchFetch(() => ({ status: 503, body: { error: 'search_unavailable' } }))
+    render(<GlobalSearchOverlay />)
+    openOverlay()
+    const input = await screen.findByPlaceholderText(/Search assets/)
+    fireEvent.input(input, { target: { value: 'down' } })
+    await waitFor(() => expect(screen.getByTestId('search-unavailable')).toBeTruthy(), { timeout: 3000 })
+  })
+
+  it('does not hijack ⌘K while typing in an input', async () => {
+    render(
+      <div>
+        <input data-testid="outside-input" />
+        <GlobalSearchOverlay />
+      </div>,
+    )
+    const outside = screen.getByTestId('outside-input')
+    outside.focus()
+    fireEvent.keyDown(outside, { key: 'k', metaKey: true })
+    expect(screen.queryByPlaceholderText(/Search assets/)).toBeNull()
+  })
+})

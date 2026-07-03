@@ -1,14 +1,15 @@
 import type { SearchAdapter } from '@bakin/core/adapters/search'
-import { AntflySearchAdapter } from './search'
-export { findAntflyBinary, isAntflyInstalled, isAntflyRunning } from './server'
-export { createAntflySearchSetup, REQUIRED_MODELS, termiteModelsRoot, _setupInternals } from './setup'
+import { AntflyAdapter, type AntflyAdapterOptions } from './adapter'
 
-export interface AntflySearchAdapterOptions {
-  settings?: Record<string, unknown>
-}
+export { findAntflyBinary, isAntflyInstalled, getAntflyServiceStatus, type AntflyServiceStatus } from './service'
+export { inferenceModelsRoot } from './paths'
+export { createAntflySearchSetup, REQUIRED_MODELS, requiredModelsForSettings } from './setup'
+export { mergeSettings as mergeAntflySettings, type AntflySettings } from './defaults'
+
+export type AntflySearchAdapterOptions = AntflyAdapterOptions
 
 export function createAntflySearchAdapter(
   options: AntflySearchAdapterOptions = {}
 ): SearchAdapter {
-  return new AntflySearchAdapter(options)
+  return new AntflyAdapter(options)
 }

@@ -1,7 +1,7 @@
 {
   "id": "assets",
   "name": "Assets",
-  "version": "2.0.0",
+  "version": "2.2.1",
   "bakin": ">=1.0.0",
   "description": "Centralized content store for all artifacts with rich rendering, search, task linking, manual upload, and clipboard paste",
   "entry": {
@@ -16,10 +16,21 @@
     "storage.write",
     "events.emit",
     "search.read",
-    "search.write"
+    "search.write",
+    "runtime.messaging"
   ],
   "contributes": {
     "apiRoutes": [
+      {
+        "path": "/import/scan",
+        "method": "GET",
+        "summary": "List unmanaged files awaiting explicit import"
+      },
+      {
+        "path": "/import",
+        "method": "POST",
+        "summary": "Import unmanaged files into versioned assets"
+      },
       {
         "method": "POST",
         "path": "/upload",
@@ -100,12 +111,12 @@
       {
         "name": "bakin_exec_assets_open",
         "summary": "Open an asset by assetId; returns its manifest plus extracted text for text-like assets.",
-        "description": "Open an asset by assetId: returns its manifest plus the current version’s extracted text for text-like assets."
+        "description": "Open an asset by assetId: returns its manifest plus the current version\u2019s extracted text for text-like assets."
       },
       {
         "name": "bakin_exec_assets_save",
         "summary": "Save an agent-created file as a managed, versioned asset (upserts by source path).",
-        "description": "Save an agent-created file as a managed, versioned asset. Re-saving the SAME source file appends a new version to the existing asset (or no-ops if unchanged) instead of creating a duplicate — so an evolving doc stays one asset with a version history. Returns the asset id."
+        "description": "Save an agent-created file as a managed, versioned asset. Re-saving the SAME source file appends a new version to the existing asset (or no-ops if unchanged) instead of creating a duplicate \u2014 so an evolving doc stays one asset with a version history. Returns the asset id."
       },
       {
         "name": "bakin_exec_assets_delete",
@@ -153,6 +164,16 @@
         "name": "trash",
         "usage": "bakin trash [list|restore|empty] ...",
         "summary": "Manage trashed assets."
+      },
+      {
+        "name": "assets scan",
+        "usage": "bakin assets scan",
+        "summary": "List unmanaged files awaiting explicit import"
+      },
+      {
+        "name": "assets import",
+        "usage": "bakin assets import [--all|<path>] [--type t]",
+        "summary": "Import unmanaged files into managed versioned assets"
       }
     ],
     "docs": {
@@ -170,7 +191,9 @@
     "slots": [
       "task-assets",
       "page:/assets",
-      "page:/assets/:assetId"
-    ]
+      "page:/assets/:assetId",
+      "nav-badge-providers"
+    ],
+    "eager": true
   }
 }

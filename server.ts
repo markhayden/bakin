@@ -39,8 +39,7 @@ import { registerShutdownHandlers, triggerShutdown } from './src/core/lifecycle'
 import { generateDocs } from './src/core/api-docs'
 import type { buildOpenApiDocument } from './packages/host/src/api/docs-runtime'
 import { collectOpenApiSources as collectTypedOpenApiSources } from './packages/host/src/api/openapi-sources'
-import { migrateIfNeeded } from './src/core/search-migration'
-import { bootSearch } from './src/core/search-startup'
+import { startSearchEngine } from './src/core/search-startup'
 import * as mcporter from './src/core/mcporter'
 import { buildAllUserPlugins } from './packages/host/src/plugin-host/user-plugin-builder'
 import { dispatchCli } from './src/core/cli'
@@ -134,13 +133,19 @@ const eventBus = new BakinEventBus(broadcast)
   // the in-code version has advanced beyond the last-migrated version.
   // The registry recreates the tables below via createRegisteredTables,
   // and we trigger a full reindex after plugins are ready.
-  const migration = await migrateIfNeeded()
+  // Start the durable-outbox pump (D5/F2): every ctx.search write journals
+  // to SQLite then drains through here, resolved logical→physical through
+  // the blue/green registry (dual-write during migrations). Resumes
+  // whatever the journal holds from prior boots — this line is the whole
+  // "recovery" story for writes. Global drop-and-reindex migration is gone:
+  // schema changes are per-table blue/green migrations (D4).
+  const { startOutboxPump } = await import('./src/core/search-outbox')
+  const { getSearchAdapter } = await import('./src/core/search-registry')
+  const { resolveDrainTargets } = await import('@bakin/core/search/tables')
+  startOutboxPump({ adapter: getSearchAdapter(), resolveTargets: resolveDrainTargets })
 
-  await bootSearch(migration)
+  await startSearchEngine()
 
-  // Start periodic orphan cleanup for search indexes
-  const { startCleanupTimer } = await import('./src/core/search-cleanup')
-  startCleanupTimer()
 
   // Register search sync hook with file watcher
   // Legacy syncFile/syncFileUnlink removed — plugins now handle their own
@@ -191,6 +196,26 @@ const eventBus = new BakinEventBus(broadcast)
       return
     }
     log.error('HTTP server error', err)
+  })
+
+  // Without this, an EADDRINUSE 'error' event throws as an uncaught
+  // exception — by now antfly is already spawned and the watcher is running,
+  // and the crash bypasses the lifecycle shutdown, orphaning the child
+  // (#459). Fail loudly with remediation and take the graceful path instead.
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      log.error(
+        `Port ${port} is already in use - another Bakin (or a half-dead dev generation) is holding it. ` +
+        `Find it with: lsof -nP -iTCP:${port} -sTCP:LISTEN`,
+        err,
+      )
+    } else {
+      log.error('HTTP server error', err)
+    }
+    // Route through the lifecycle shutdown (registered above) so children
+    // and watchers come down cleanly; exitCode survives into its exit call.
+    process.exitCode = 1
+    process.kill(process.pid, 'SIGTERM')
   })
 
   server.listen(port, '0.0.0.0', () => {

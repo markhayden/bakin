@@ -68,11 +68,13 @@ afterAll(() => {
 // ===========================================================================
 
 describe('route registration', () => {
-  it('registers all 18 routes', () => {
-    expect(plugin.routes.length).toBe(18)
+  it('registers all 22 routes', () => {
+    expect(plugin.routes.length).toBe(22)
   })
 
   it.each([
+    ['GET', '/import/scan'],
+    ['POST', '/import'],
     ['POST', '/upload'],
     ['GET', '/versioned'],
     ['GET', '/versioned/:assetId'],
@@ -80,6 +82,8 @@ describe('route registration', () => {
     ['DELETE', '/versioned/:assetId/v/:version'],
     ['POST', '/versioned/:assetId/export'],
     ['PATCH', '/versioned/:assetId/metadata'],
+    ['PATCH', '/versioned/:assetId/enrichment'],
+    ['POST', '/enrich'],
     ['POST', '/versioned/:assetId/relink'],
     ['POST', '/versioned/:assetId/version'],
     ['DELETE', '/versioned/:assetId'],
@@ -103,8 +107,8 @@ describe('route registration', () => {
 // ===========================================================================
 
 describe('exec tool registration', () => {
-  it('registers all 12 exec tools', () => {
-    expect(plugin.execTools.length).toBe(12)
+  it('registers all 14 exec tools', () => {
+    expect(plugin.execTools.length).toBe(14)
   })
 
   it.each([

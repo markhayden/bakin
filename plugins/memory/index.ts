@@ -39,8 +39,8 @@ import { createMemoryGetSessionTool } from './mcp/get-session'
 import { createMemoryGetTurnTool } from './mcp/get-turn'
 import { createMemoryListAgentsTool } from './mcp/list-agents'
 import { createMemoryStatusTool } from './mcp/status'
-import { migrateIfNeeded } from './lib/memory-migration'
-import { pruneExpired, startTtlTimer, stopTtlTimer } from './lib/ttl-prune'
+import type { MemoryTier } from './lib/types'
+import { startTtlTimer, stopTtlTimer } from './lib/ttl-prune'
 import { checkSearchTables } from './lib/health-checks'
 
 const log = createLogger('memory')
@@ -53,6 +53,8 @@ interface MemorySettings {
   turnRetentionDays: number
   auditRetentionDays: number
 }
+
+/** Every tier the initial backfill and full reindex derive from source. */
 
 const DEFAULTS: MemorySettings = {
   backfillDays: 30,
@@ -68,6 +70,7 @@ const DEFAULTS: MemorySettings = {
 // so watcher events can short-circuit until the table is guaranteed to
 // exist.
 let deferredBackfill: (() => Promise<void>) | null = null
+let activeIndexer: MemoryIndexer | null = null
 let ready = false
 let eventDisposers: Array<() => void> = []
 
@@ -164,9 +167,20 @@ const memoryPlugin: BakinPlugin = definePlugin({
 
     const settings = { ...DEFAULTS, ...(ctx.getSettings<Partial<MemorySettings>>() ?? {}) }
 
+    // ─── Indexer ────────────────────────────────────────────────────────────
+    const indexer = new MemoryIndexer(ctx, {
+      backfillDays: settings.backfillDays,
+      skipSessionOverBytes: settings.skipSessionOverBytes,
+      skipResetBackups: settings.skipResetBackups,
+      turnRetentionDays: settings.turnRetentionDays,
+      auditRetentionDays: settings.auditRetentionDays,
+    })
+    activeIndexer = indexer
+
     // ─── Search: unified bakin_memory table ─────────────────────────────────
     ctx.search.registerContentType({
       table: 'memory',
+      schemaVersion: 1,
       schema: {
         tier: { type: 'keyword' },
         agent: { type: 'keyword' },
@@ -174,6 +188,7 @@ const memoryPlugin: BakinPlugin = definePlugin({
         eventType: { type: 'keyword' },
         phase: { type: 'keyword' },
         date: { type: 'keyword' },
+        sessionId: { type: 'keyword' },
         title: { type: 'text' },
         snippet: { type: 'text' },
         content: { type: 'text' },
@@ -188,20 +203,18 @@ const memoryPlugin: BakinPlugin = definePlugin({
       embeddingTemplate: '{{tier}} {{agent}} {{title}} {{snippet}}',
       facets: ['tier', 'agent', 'kind', 'eventType', 'phase', 'date'],
       reindex: async function* () {
-        // Per-tier reindex streams land in C3–C8. For now there's nothing
-        // to yield — the table exists but stays empty until a later commit
-        // wires its first tier.
+        // Blue/green backfill source: the side-effect-free enumerator
+        // re-derives every row from source files WITHOUT touching offsets
+        // or live state. MUST fail loudly when the runtime is down —
+        // non-audit tiers read through ctx.runtime, and silently yielding
+        // nothing would let a thin green table converge and flip.
+        const alive = await ctx.runtime.ping().catch(() => false)
+        if (!alive) {
+          throw new Error('runtime unavailable — memory backfill would be incomplete; migration stays parked')
+        }
+        yield* indexer.enumerateAll()
       },
       verifyExists: async () => true,
-    })
-
-    // ─── Indexer ────────────────────────────────────────────────────────────
-    const indexer = new MemoryIndexer(ctx, {
-      backfillDays: settings.backfillDays,
-      skipSessionOverBytes: settings.skipSessionOverBytes,
-      skipResetBackups: settings.skipResetBackups,
-      turnRetentionDays: settings.turnRetentionDays,
-      auditRetentionDays: settings.auditRetentionDays,
     })
 
     // ─── Routes ─────────────────────────────────────────────────────────────
@@ -243,61 +256,16 @@ const memoryPlugin: BakinPlugin = definePlugin({
       void indexer.handleWatcherEvent(String(data.file ?? ''), 'unlink')
     }))
 
-    // Defer the initial backfill until onReady(). activate() runs BEFORE
-    // createRegisteredTables() in server.ts, so writes issued here would
-    // silently fail ("Endpoint not found: /api/v1/tables/bakin_memory/batch")
-    // while offsets still advanced — that exact race once produced an empty
-    // dashboard on every subsequent boot (Apr 2026 incident). onReady() is
-    // the first lifecycle hook that is guaranteed to fire after tables exist.
+    // No boot backfill (D5/D6): initial population is the blue/green
+    // create-time seeding via reindex(); live updates ride the watcher
+    // tailer through the outbox; offline growth is the doctor's stat-sweep.
+    // TTL prune stays timer-only (first run ~1h after boot, then daily).
     deferredBackfill = async () => {
-      // Per-plugin schema migration. Bumping MEMORY_SCHEMA_VERSION drops the
-      // table + clears offsets so the backfill below re-derives everything
-      // under the current write-time filters (TTL, parser rules, etc.). Runs
-      // before backfill so the freshly-recreated table is what gets written.
-      try {
-        const { migrated, from, to } = await migrateIfNeeded(ctx.search)
-        if (migrated) log.info('memory schema migrated', { from, to })
-      } catch (err) {
-        log.warn('memory migration failed — proceeding with backfill anyway', {
-          err: err instanceof Error ? err.message : String(err),
-        })
-      }
-
-      try {
-        await indexer.backfill([
-          'audit',
-          'durable',
-          'daily_note',
-          'session',
-          'turn',
-          'checkpoint',
-          'dream',
-        ])
-      } catch (err) {
-        log.warn('initial backfill failed', {
-          err: err instanceof Error ? err.message : String(err),
-        })
-      }
-
-      // TTL prune: arm the daily timer first so a slow initial prune can't
-      // block the recurring one, then fire the one-shot prune. The one-shot
-      // catches rows older than the window that slipped through via edge-case
-      // write paths; after that, the daily timer handles ongoing aging.
-      const ttl = {
+      ready = true
+      startTtlTimer(ctx.search, {
         turnRetentionDays: settings.turnRetentionDays,
         auditRetentionDays: settings.auditRetentionDays,
-      }
-      startTtlTimer(ctx.search, ttl)
-      try {
-        await pruneExpired(ctx.search, ttl)
-      } catch (err) {
-        log.warn('initial ttl prune failed', {
-          err: err instanceof Error ? err.message : String(err),
-        })
-      }
-      // Runtime memory watcher paths are the live-update path. Runtime-native
-      // subscriptions can be added to the adapter contract if another backend
-      // needs push events that do not map to files.
+      })
     }
 
     // ─── Health check (migrated out of core/doctor.ts per #139 C5) ──────
@@ -314,19 +282,24 @@ const memoryPlugin: BakinPlugin = definePlugin({
   },
 
   async onReady() {
-    ready = true
     const run = deferredBackfill
     deferredBackfill = null
-    if (!run) return
+    if (!run) {
+      ready = true
+      return
+    }
     // Fire-and-forget — onReady awaits each plugin sequentially, and the
     // audit+durable+daily-note tiers can take several seconds on a warm
-    // install. Blocking startup behind them is a bad trade.
+    // install. Blocking startup behind them is a bad trade. `ready` flips
+    // inside run() once the schema migration has settled (see the race note
+    // there); watcher events arriving earlier are dropped, same as pre-boot.
     void run()
   },
 
   async onShutdown() {
     ready = false
     deferredBackfill = null
+    activeIndexer = null
     clearEventSubscriptions()
     stopTtlTimer()
   },

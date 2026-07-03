@@ -8,7 +8,7 @@ export interface SearchResult {
   score: number
   fields: Record<string, unknown>
   _table?: string
-  /** Per-index score breakdown (e.g. { search: 0.8, embeddings: 0.6 }) */
+  /** Per-leg score breakdown keyed by neutral leg names (e.g. { full_text: 0.8, assets_visual: -0.2 }) */
   indexScores?: Record<string, number>
 }
 
@@ -19,36 +19,47 @@ export interface SearchResponse {
     query: string
     total: number
     took_ms: number
-    source: 'search' | 'fallback'
+    source: 'search' | 'unavailable'
   }
 }
+
+/**
+ * Honest search lifecycle (spec D11). `unavailable` is the explicit
+ * engine-down signal (HTTP 503 `search_unavailable`) — render
+ * `<SearchUnavailable/>`, never a silent lower-quality substitute.
+ */
+export type SearchStatus = 'idle' | 'loading' | 'ok' | 'unavailable' | 'error'
 
 export interface UseSearchOptions {
   /**
    * Plugin id to route the query to. When set, the hook fetches
    * `/api/plugins/{plugin}/search?q=...` — the plugin owns its table
    * name and the client never sees the raw `bakin_` prefix. Omit for
-   * cross-plugin search, which falls back to `/api/search?q=...`.
+   * cross-plugin search via `/api/search?q=...`.
    */
   plugin?: string
   /** Max results */
   limit?: number
   /** Facet fields to include aggregation counts for */
   facets?: string[]
+  /** Restrict cross-plugin search to these content types (tables). */
+  types?: string[]
   /** Debounce delay in ms (default: 250) */
   debounce?: number
-  /** Fallback filter function when search returns no results or errors */
-  fallback?: (query: string) => SearchResult[]
 }
 
 export interface UseSearchReturn {
   results: SearchResult[]
   aggregations: Record<string, Array<{ value: string; count: number }>>
+  status: SearchStatus
+  /** True while a request is in flight or debounce-pending (=== status 'loading'). */
   loading: boolean
   error: string | null
   meta: SearchResponse['meta'] | null
   search: (query: string) => void
   clear: () => void
+  /** Re-run the last query immediately (Retry in the unavailable state). */
+  retry: () => void
 }
 
 /**
@@ -84,29 +95,31 @@ export function reorderBySearchResults<T extends { id: string }>(
 }
 
 /**
- * React hook for Bakin search with debouncing, AbortController, and an
- * optional client-side fallback. Scopes to a plugin via `plugin:` or
- * runs cross-plugin when omitted.
+ * React hook for Bakin search with debouncing and AbortController.
+ * Scopes to a plugin via `plugin:` or runs cross-plugin when omitted.
+ * There is deliberately NO client-side fallback: engine-down is an
+ * explicit `unavailable` status the UI must surface (spec D11).
  */
 export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
   const {
     plugin,
     limit = 20,
     facets,
+    types,
     debounce: debounceMs = 250,
-    fallback,
   } = options
 
   const [results, setResults] = useState<SearchResult[]>([])
   const [aggregations, setAggregations] = useState<Record<string, Array<{ value: string; count: number }>>>({})
-  const [loading, setLoading] = useState(false)
+  const [status, setStatus] = useState<SearchStatus>('idle')
   const [error, setError] = useState<string | null>(null)
   const [meta, setMeta] = useState<SearchResponse['meta'] | null>(null)
-  const [, setQuery] = useState('')
 
   const abortRef = useRef<AbortController | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const mountedRef = useRef(true)
+  const lastQueryRef = useRef('')
+  const typesKey = types?.join(',')
 
   useEffect(() => {
     mountedRef.current = true
@@ -123,7 +136,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
       setAggregations({})
       setMeta(null)
       setError(null)
-      setLoading(false)
+      setStatus('idle')
       return
     }
 
@@ -131,13 +144,14 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     const controller = new AbortController()
     abortRef.current = controller
 
-    setLoading(true)
+    setStatus('loading')
     setError(null)
 
     try {
       const params = new URLSearchParams({ q })
       if (limit) params.set('limit', String(limit))
       if (facets?.length) params.set('facets', facets.join(','))
+      if (typesKey) params.set('types', typesKey)
 
       // Plugin-scoped → /api/plugins/{plugin}/search (table name stays server-side).
       // No plugin → /api/search (cross-plugin).
@@ -149,6 +163,15 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
 
       if (!mountedRef.current) return
 
+      if (res.status === 503) {
+        // The explicit engine-down contract: 503 { error: 'search_unavailable' }.
+        setResults([])
+        setAggregations({})
+        setMeta(null)
+        setStatus('unavailable')
+        return
+      }
+
       if (!res.ok) {
         throw new Error(`Search failed: ${res.status}`)
       }
@@ -157,59 +180,61 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
 
       if (!mountedRef.current) return
 
-      if (data.results.length === 0 && data.meta?.source === 'fallback' && fallback) {
-        setResults(fallback(q))
-        setAggregations({})
-        setMeta(data.meta)
-      } else {
-        setResults(data.results)
-        setAggregations(data.aggregations || {})
-        setMeta(data.meta || null)
-      }
+      setResults(data.results)
+      setAggregations(data.aggregations || {})
+      setMeta(data.meta || null)
+      setStatus('ok')
     } catch (err) {
       if (!mountedRef.current) return
       if (err instanceof DOMException && err.name === 'AbortError') return
 
       const msg = err instanceof Error ? err.message : String(err)
       setError(msg)
-
-      if (fallback) {
-        setResults(fallback(q))
-        setAggregations({})
-      } else {
-        setResults([])
-        setAggregations({})
-      }
-    } finally {
-      if (mountedRef.current) setLoading(false)
+      setResults([])
+      setAggregations({})
+      setStatus('error')
     }
-  }, [plugin, limit, facets, fallback])
+  }, [plugin, limit, facets, typesKey])
 
   const search = useCallback((q: string) => {
-    setQuery(q)
+    lastQueryRef.current = q
     if (timerRef.current) clearTimeout(timerRef.current)
     if (!q.trim()) {
       setResults([])
       setAggregations({})
       setMeta(null)
       setError(null)
-      setLoading(false)
+      setStatus('idle')
       return
     }
-    setLoading(true)
+    setStatus('loading')
     timerRef.current = setTimeout(() => executeSearch(q), debounceMs)
   }, [executeSearch, debounceMs])
 
+  const retry = useCallback(() => {
+    if (lastQueryRef.current.trim()) void executeSearch(lastQueryRef.current)
+  }, [executeSearch])
+
   const clear = useCallback(() => {
-    setQuery('')
+    lastQueryRef.current = ''
     setResults([])
     setAggregations({})
     setMeta(null)
     setError(null)
-    setLoading(false)
+    setStatus('idle')
     abortRef.current?.abort()
     if (timerRef.current) clearTimeout(timerRef.current)
   }, [])
 
-  return { results, aggregations, loading, error, meta, search, clear }
+  return {
+    results,
+    aggregations,
+    status,
+    loading: status === 'loading',
+    error,
+    meta,
+    search,
+    clear,
+    retry,
+  }
 }

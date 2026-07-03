@@ -17,8 +17,15 @@ import { join } from 'path'
 import type { HealthCheckResult, HealthRepairHandler } from '../../../packages/core/src/plugin-types'
 import { healthOk as ok, healthWarn as warn, healthFixed as fixed } from '@makinbakin/sdk/utils'
 
+import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
+
 import { isValidAssetId } from './asset-id'
+import { scanUnmanaged } from './import-unmanaged'
+import { getAsset, listAssets } from './asset-core'
+import { reseedUnmanaged } from './unmanaged-tracker'
 import { readManifest } from './manifest'
+import { resolveEnrichmentEngine } from './enrichment/engine'
+import type { EnrichmentSettings } from './enrichment/providers'
 
 // ─── Result constructors (inlined; matches workflows precedent) ─────────────
 
@@ -38,7 +45,110 @@ const STORE_SHARD_RE = /^\d{4}-\d{2}$/
  *   - purge .trash/ items older than 7 days
  */
 export function checkAssets(contentDir: string): HealthCheckResult[] {
-  return checkAssetsInternal(contentDir, false)
+  return [...checkAssetsInternal(contentDir, false), ...checkUnimported(), ...checkEnrichment()]
+}
+
+/**
+ * Unimported-files check (D7): the doctor's scheduled sweep is one of the
+ * two on-demand scan triggers (the Import view is the other). NOT
+ * auto-fixable by design — turning a file into an asset is an explicit
+ * user decision; the check names the count and points at the verbs.
+ */
+export function checkUnimported(): HealthCheckResult[] {
+  const files = scanUnmanaged()
+  reseedUnmanaged(files.map(f => f.relPath))
+  if (files.length === 0) {
+    return [ok('assets.unimported', 'No unmanaged files awaiting import')]
+  }
+  return [warn(
+    'assets.unimported',
+    `${files.length} unmanaged file(s) under assets/ awaiting explicit import — Assets → Import, or \`bakin assets import --all\``,
+    false,
+  )]
+}
+
+/**
+ * Enrichment coverage (D8/T12): counts come straight from manifests — the
+ * durable record. Failed rows carry the last error; missing/stale rows are
+ * repairable via the billed backfill (`bakin assets enrich --all`), which
+ * is deliberately NOT auto-fix (it costs money).
+ */
+export interface EnrichmentCoverage {
+  total: number
+  enriched: number
+  missing: number
+  stale: number
+  failed: number
+  skipped: number
+}
+
+/**
+ * Coverage counts for the health tile's "X/Y enriched" — computed straight
+ * from summaries (the summary's `enrichment` field already folds in the
+ * stale-version distinction; no per-asset manifest re-read on the poll path).
+ */
+export function enrichmentCoverage(): EnrichmentCoverage {
+  const summaries = listAssets()
+  const coverage: EnrichmentCoverage = { total: summaries.length, enriched: 0, missing: 0, stale: 0, failed: 0, skipped: 0 }
+  for (const summary of summaries) {
+    switch (summary.enrichment) {
+      case 'done': coverage.enriched++; break
+      case 'stale': coverage.stale++; break
+      case 'failed': coverage.failed++; break
+      case 'skipped': coverage.skipped++; break
+      default: coverage.missing++ // 'none' + pending that never completed
+    }
+  }
+  return coverage
+}
+
+export function checkEnrichment(): HealthCheckResult[] {
+  const summaries = listAssets()
+  let missing = 0
+  let stale = 0
+  let failed = 0
+  for (const summary of summaries) {
+    const manifest = getAsset(summary.assetId)
+    if (!manifest) continue
+    const enrichment = manifest.enrichment
+    if (!enrichment) { missing++; continue }
+    if (enrichment.status === 'failed') { failed++; continue }
+    if (enrichment.status === 'done' && (enrichment.forVersion ?? 0) < manifest.currentVersion) stale++
+  }
+  const results: HealthCheckResult[] = []
+  if (failed > 0) {
+    results.push(warn('assets.enrichment', `${failed} asset(s) failed vision enrichment — retry with 'bakin assets enrich --all --force' after checking provider keys`, false))
+  }
+  if (missing + stale > 0) {
+    results.push(warn('assets.enrichment', `${missing + stale} asset(s) without current enrichment (${missing} never enriched, ${stale} stale) — 'bakin assets enrich --all' (billed)`, false))
+  }
+  if (results.length === 0) {
+    results.push(ok('assets.enrichment', 'All assets carry current enrichment (or recorded skips)'))
+  }
+  return results
+}
+
+/**
+ * Which engine would serve an image-enrichment job RIGHT NOW (spec §5) —
+ * direct API model, runtime agent turns (subscription quota), or neither.
+ * Async (capability probe) and settings/runtime-dependent, so it's wired
+ * from the plugin's registerHealthCheck rather than checkAssets().
+ */
+export async function checkEnrichmentEngine(
+  settings: EnrichmentSettings,
+  runtime: AgentRuntimeAdapter | null,
+): Promise<HealthCheckResult> {
+  if (settings.enrichmentEnabled === false) {
+    return ok('assets.enrichment-engine', 'Vision enrichment disabled in settings')
+  }
+  const resolution = await resolveEnrichmentEngine(settings, { kind: 'image' }, { runtime })
+  if (!resolution.ok) {
+    return warn('assets.enrichment-engine', `No enrichment engine available — new assets will record skips: ${resolution.reason}`, false)
+  }
+  const engine = resolution.engine
+  return engine.name === 'runtime'
+    ? ok('assets.enrichment-engine', `Enrichment engine: runtime agent '${engine.modelId.slice('runtime:'.length)}' (image-capable; agent turns spend subscription quota, ~35s/asset)`)
+    : ok('assets.enrichment-engine', `Enrichment engine: direct API (${engine.modelId})`)
 }
 
 function checkAssetsInternal(contentDir: string, autoFix: boolean): HealthCheckResult[] {

@@ -126,6 +126,7 @@ const teamPlugin: BakinPlugin = definePlugin({
 
     ctx.search.registerContentType({
       table: 'team',
+      schemaVersion: 1,
       schema: {
         name: { type: 'text' },
         agent_id: { type: 'keyword' },
@@ -155,6 +156,7 @@ const teamPlugin: BakinPlugin = definePlugin({
     // client-side by cross-referencing the lockfile.
     ctx.search.registerFileBackedContentType({
       table: 'agent-lessons',
+      schemaVersion: 1,
       schema: {
         title: { type: 'text' },
         body: { type: 'text' },
@@ -191,10 +193,21 @@ const teamPlugin: BakinPlugin = definePlugin({
       },
     })
 
+    /** Stable content hash over the substantive fields (FNV-1a). */
+    function agentContentHash(doc: Record<string, unknown>): string {
+      const text = JSON.stringify([doc.name, doc.agent_id, doc.model, doc.status, doc.soul])
+      let hash = 2166136261
+      for (let i = 0; i < text.length; i++) {
+        hash ^= text.charCodeAt(i)
+        hash = Math.imul(hash, 16777619) >>> 0
+      }
+      return hash.toString(36)
+    }
+
     /** Convert an agent to a search document */
     async function agentToSearchDoc(agent: { id: string; name: string }, model: string, status: string): Promise<Record<string, unknown>> {
       const profile = await getRuntimeAgentProfile(ctx.runtime, agent.id)
-      return {
+      const doc: Record<string, unknown> = {
         name: agent.name,
         agent_id: agent.id,
         model,
@@ -202,6 +215,8 @@ const teamPlugin: BakinPlugin = definePlugin({
         soul: profile?.soul || '',
         updated_at: new Date().toISOString(),
       }
+      doc.content_hash = agentContentHash(doc)
+      return doc
     }
 
     /** Index a single agent in the search index */
@@ -211,17 +226,25 @@ const teamPlugin: BakinPlugin = definePlugin({
       })
     }
 
-    /** Batch-index all agents from the runtime adapter */
+    /**
+     * Batch-index all agents from the runtime adapter. Unconditional —
+     * the outbox's acked-hash dedupe drops unchanged rows before they
+     * reach the engine, so no scan-and-compare is needed here.
+     */
     batchIndexAgents = async () => {
       try {
         const runtimeAgents = await ctx.runtime.agents.list()
         const heartbeats = readHeartbeats()
         const lastAuditActivity = getLastAuditActivity()
+
         for (const runtimeAgent of runtimeAgents) {
           const a = agentToMeta(runtimeAgent)
           const { status } = resolveAgentStatus(a.id, heartbeats, lastAuditActivity)
           const model = await getRuntimeAgentModel(ctx.runtime, runtimeAgent)
-          indexAgent(a.id, a, model, status)
+          const doc = await agentToSearchDoc(a, model, status)
+          ctx.search.index(a.id, doc).catch((err) => {
+            log.warn('Failed to index agent', { agentId: a.id, error: err instanceof Error ? err.message : String(err) })
+          })
         }
       } catch (err) {
         log.warn('Failed to batch-index agents', { error: err instanceof Error ? err.message : String(err) })

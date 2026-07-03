@@ -1,331 +1,219 @@
 /**
- * Tests for the Antfly search-model setup component (Termite model downloads).
+ * Tests for the search-model prefetch component (antfly v0.2 inference runtime).
  *
- * Strategy mirrors the antfly test suite:
- *   - Mock the search adapter binary helper so the test can assert what happens when the
- *     antfly binary is present vs missing
- *   - Mock child_process.spawn to fire configurable exit codes without
- *     launching real processes
- *   - Mock fs.existsSync so the "is this model present on disk" check
- *     can be scripted per-test. A small in-memory set holds the paths
- *     the mock should report as existing.
- *   - Mock prompts so interactive confirmation is deterministic
+ * Strategy — same real-fs approach as the installer tests:
+ *   - ANTFLY_HOME points at a temp dir; models land under
+ *     $ANTFLY_HOME/inference/models/{owner}/{name}
+ *   - The fake antfly binary is a shell script whose `inference pull`
+ *     actually creates the model directory (manifest + onnx weight), so the
+ *     real spawn → verify pipeline runs end to end with zero module mocks
+ *   - Failure modes are scripted binary variants (exit non-zero, or exit 0
+ *     without creating files)
  */
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { EventEmitter } from 'events'
-import * as actualFs from 'fs'
-import { homedir } from 'os'
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
 import { join } from 'path'
 
-let antflyBinary: string | null
-let existingPaths: Set<string>
-/**
- * Virtual file contents for paths the component reads via readFileSync.
- * Currently only `model_manifest.json` for each "present" model.
- */
-let virtualFiles: Map<string, string>
-/** Virtual file sizes for statSync, keyed by absolute path. */
-let virtualSizes: Map<string, number>
-let spawnExitCode: number | null
-let spawnError: Error | null
-let spawnCalls: Array<{ cmd: string; args: string[] }>
-let askYesNoReturn: boolean
-/**
- * When true, every successful spawn('antfly termite pull <model>') also
- * "creates" the model directory in the fake fs — simulating a real pull
- * that actually populates the target dir. When false, spawn exits 0 but
- * existsSync still reports missing, exercising the "success but file
- * still missing" guard in the component.
- */
-let spawnCreatesFiles: boolean
+const testDir = join(tmpdir(), `bakin-test-antfly-models-${Date.now()}`)
+const antflyHomeDir = join(testDir, 'antfly-home')
+const modelsRoot = join(antflyHomeDir, 'inference', 'models')
+const fakeBinary = join(testDir, 'fake-antfly')
 
-/**
- * Fully "install" a model in the virtual fs: directory present, a
- * `model_manifest.json` listing one weights file, and a stat-able stub
- * for the weights file with the matching size. This is the shape that
- * `modelComplete()` requires to declare the model healthy.
- */
-function virtualInstall(modelDir: string) {
-  existingPaths.add(modelDir)
-  const manifestPath = join(modelDir, 'model_manifest.json')
-  const weightsPath = join(modelDir, 'model.onnx')
-  const manifest = {
-    schemaVersion: 2,
-    name: 'stub',
-    files: [{ name: 'model.onnx', digest: 'sha256:stub', size: 42 }],
-  }
-  virtualFiles.set(manifestPath, JSON.stringify(manifest))
-  existingPaths.add(manifestPath)
-  existingPaths.add(weightsPath)
-  virtualSizes.set(weightsPath, 42)
+mock.module('../../../src/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ home: testDir, antfly: join(testDir, 'antfly') }),
+}))
+mock.module('../../../packages/core/src/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ home: testDir, antfly: join(testDir, 'antfly') }),
+}))
+mock.module('../../../src/core/logger', () => ({
+  createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
+}))
+
+import {
+  checkInferenceModels,
+  installInferenceModels,
+  REQUIRED_MODELS,
+} from '../../../packages/adapter-antfly/src/models'
+
+/** A pull that actually creates the model dir, like the real CLI. */
+const PULL_OK = `#!/bin/sh
+if [ "$1" = "inference" ] && [ "$2" = "pull" ]; then
+  dir="$ANTFLY_HOME/inference/models/$3"
+  mkdir -p "$dir/onnx"
+  echo '{"type":"embedder","tasks":["embed"]}' > "$dir/model_manifest.json"
+  echo "fake-weights" > "$dir/onnx/model.onnx"
+  exit 0
+fi
+exit 1
+`
+
+/** A pull that exits non-zero. */
+const PULL_FAILS = `#!/bin/sh
+echo "pull failed: HuggingFace unreachable" >&2
+exit 2
+`
+
+/** A pull that claims success but creates nothing. */
+const PULL_LIES = `#!/bin/sh
+exit 0
+`
+
+function installFakeBinary(script: string): void {
+  writeFileSync(fakeBinary, script, { mode: 0o755 })
+  process.env.ANTFLY_PATH = fakeBinary
 }
 
-mock.module('../../../packages/adapter-antfly/src/server', () => ({
-  findAntflyBinary: () => antflyBinary,
-  isAntflyInstalled: () => antflyBinary !== null,
-  isAntflyRunning: () => false,
-  startAntflyServer: () => Promise.resolve(false),
-  stopAntflyServer: () => {},
-}))
+function seedModel(model: string): void {
+  const dir = join(modelsRoot, model)
+  mkdirSync(join(dir, 'onnx'), { recursive: true })
+  writeFileSync(join(dir, 'model_manifest.json'), '{"type":"embedder"}')
+  writeFileSync(join(dir, 'onnx', 'model.onnx'), 'weights')
+}
 
-mock.module('../../../src/core/logger', () => ({
-  createLogger: () => ({
-    info: mock(),
-    warn: mock(),
-    error: mock(),
-    debug: mock(),
-  }),
-}))
+const optsAutoYes = {
+  interactive: false,
+  autoApprove: true,
+  json: false,
+  checkOnly: false,
+  force: false,
+  askYesNo: () => Promise.resolve(true),
+}
 
-mock.module('fs', () => {
-  return {
-    ...actualFs,
-    existsSync: (p: unknown) => existingPaths.has(String(p)),
-    readFileSync: (p: unknown, ...rest: unknown[]) => {
-      const key = String(p)
-      if (virtualFiles.has(key)) return virtualFiles.get(key)!
-      return (actualFs.readFileSync as unknown as (...args: unknown[]) => unknown)(p, ...rest)
-    },
-    statSync: (p: unknown, ...rest: unknown[]) => {
-      const key = String(p)
-      if (virtualSizes.has(key)) return { size: virtualSizes.get(key)! }
-      return (actualFs.statSync as unknown as (...args: unknown[]) => unknown)(p, ...rest)
-    },
-  }
+beforeEach(() => {
+  rmSync(testDir, { recursive: true, force: true })
+  mkdirSync(antflyHomeDir, { recursive: true })
+  process.env.ANTFLY_HOME = antflyHomeDir
+  delete process.env.ANTFLY_PATH
 })
 
-mock.module('child_process', () => ({
-  spawn: (cmd: string, args: string[]) => {
-    spawnCalls.push({ cmd, args })
-    const child = new EventEmitter() as EventEmitter & {
-      stdout: EventEmitter | null
-      stderr: EventEmitter | null
-    }
-    child.stdout = new EventEmitter()
-    child.stderr = new EventEmitter()
-    setImmediate(() => {
-      if (spawnError) {
-        child.emit('error', spawnError)
-        return
-      }
-      if (spawnExitCode === 0 && spawnCreatesFiles && args[0] === 'termite' && args[1] === 'pull') {
-        const modelId = args[2]
-        // Termite stores embedders under embedders/<model>, rerankers
-        // under rerankers/<model>. Populate both branches with a
-        // complete virtual install (manifest + weights) so the
-        // post-pull verification step in the component finds the right
-        // shape regardless of which kind we mocked.
-        const root = join(homedir(), '.termite', 'models')
-        virtualInstall(join(root, 'embedders', modelId))
-        virtualInstall(join(root, 'rerankers', modelId))
-      }
-      child.stderr?.emit('data', Buffer.from(''))
-      child.emit('close', spawnExitCode)
-    })
-    return child
-  },
-}))
+afterEach(() => {
+  delete process.env.ANTFLY_HOME
+  delete process.env.ANTFLY_PATH
+})
 
-describe('Antfly search-model setup component', () => {
-  let searchModelsComponent: NonNullable<ReturnType<typeof import('../../../packages/adapter-antfly/src/setup').createAntflySearchSetup>['models']>
-  let REQUIRED_MODELS: typeof import('../../../packages/adapter-antfly/src/setup').REQUIRED_MODELS
-  let termiteModelsRoot: typeof import('../../../packages/adapter-antfly/src/setup').termiteModelsRoot
+afterAll(() => {
+  rmSync(testDir, { recursive: true, force: true })
+})
 
-  beforeEach(async () => {
-    antflyBinary = '/opt/homebrew/bin/antfly'
-    existingPaths = new Set()
-    virtualFiles = new Map()
-    virtualSizes = new Map()
-    spawnExitCode = 0
-    spawnError = null
-    spawnCalls = []
-    askYesNoReturn = true
-    spawnCreatesFiles = true
-    vi.resetModules()
-    const mod = await import('../../../packages/adapter-antfly/src/setup')
-    searchModelsComponent = mod.createAntflySearchSetup().models!
-    REQUIRED_MODELS = mod.REQUIRED_MODELS
-    termiteModelsRoot = mod.termiteModelsRoot
+describe('checkInferenceModels', () => {
+  it('treats missing models as degraded-not-broken, with the reindex remediation', async () => {
+    // v0.2.0-rc.2 does NOT lazy-download at index time (bakin#456): missing
+    // models degrade semantic indexing until prefetch. Any write after the
+    // model lands heals the index, so a plain reindex is the remediation.
+    const result = await checkInferenceModels(REQUIRED_MODELS)
+    expect(result.status).toBe('missing')
+    expect(result.message).toContain('semantic indexing is degraded')
+    expect(result.message).toContain('search itself keeps working')
+    expect(result.remediation).toContain('bakin install search-models')
+    expect(result.remediation).toContain('bakin reindex')
   })
 
-  afterEach(() => {
-    spawnCalls = []
+  it('reports ok when all models are present in the v0.2 owner/name layout', async () => {
+    for (const m of REQUIRED_MODELS) seedModel(m.model)
+    const result = await checkInferenceModels(REQUIRED_MODELS)
+    expect(result.status).toBe('ok')
+    expect(result.message).toContain(`All ${REQUIRED_MODELS.length} search models present`)
+    expect(String(result.details?.root)).toBe(modelsRoot)
   })
 
-  const optsAutoYes = {
-    interactive: false,
-    autoApprove: true,
-    json: false,
-    checkOnly: false,
-    force: false,
-    askYesNo: () => Promise.resolve(askYesNoReturn),
-  }
-  const optsInteractive = {
-    interactive: true,
-    autoApprove: false,
-    json: false,
-    checkOnly: false,
-    force: false,
-    askYesNo: () => Promise.resolve(askYesNoReturn),
-  }
-  const optsNonInteractiveNoYes = {
-    interactive: false,
-    autoApprove: false,
-    json: false,
-    checkOnly: false,
-    force: false,
-    askYesNo: () => Promise.resolve(askYesNoReturn),
-  }
+  it('names reranking (not semantic indexing) when only the reranker is missing', async () => {
+    seedModel(REQUIRED_MODELS[0].model)
+    seedModel(REQUIRED_MODELS[1].model)
+    // REQUIRED_MODELS[2] is the reranker — the only one missing now.
+    const result = await checkInferenceModels(REQUIRED_MODELS)
+    expect(result.status).toBe('missing')
+    expect(result.message).toContain('reranking is unavailable')
+    expect(result.message).not.toContain('semantic indexing is degraded')
+    expect(result.remediation).not.toContain('bakin reindex')
+  })
 
-  /** Seed every required model as a complete virtual install. */
-  function seedAllModelsPresent() {
-    const root = termiteModelsRoot()
+  it('flags a model whose pull never completed (manifest missing)', async () => {
+    for (const m of REQUIRED_MODELS) seedModel(m.model)
+    rmSync(join(modelsRoot, REQUIRED_MODELS[0].model, 'model_manifest.json'))
+
+    const result = await checkInferenceModels(REQUIRED_MODELS)
+    expect(result.status).toBe('missing')
+    const missing = (result.details as { missing: Array<{ model: string; reason: string }> }).missing
+    expect(missing).toHaveLength(1)
+    expect(missing[0].model).toBe(REQUIRED_MODELS[0].model)
+    expect(missing[0].reason).toContain('model_manifest.json missing')
+  })
+})
+
+describe('installInferenceModels', () => {
+  it('fails when the antfly binary is missing', async () => {
+    const result = await installInferenceModels(optsAutoYes, undefined, REQUIRED_MODELS)
+    expect(result.status).toBe('failed')
+    expect(result.message).toContain('antfly binary not found')
+  })
+
+  it('pulls missing models via `antfly inference pull` and verifies the layout', async () => {
+    installFakeBinary(PULL_OK)
+
+    const result = await installInferenceModels(optsAutoYes, undefined, REQUIRED_MODELS)
+    expect(result.status).toBe('installed')
+    expect(result.message).toContain(`Pulled ${REQUIRED_MODELS.length} models`)
     for (const m of REQUIRED_MODELS) {
-      const bucket = m.kind === 'embedder' ? 'embedders' : 'rerankers'
-      virtualInstall(join(root, bucket, m.model))
+      expect(existsSync(join(modelsRoot, m.model, 'model_manifest.json'))).toBe(true)
     }
-  }
-
-  describe('REQUIRED_MODELS', () => {
-    it('contains exactly the three expected Termite models', () => {
-      expect(REQUIRED_MODELS).toHaveLength(3)
-      const ids = REQUIRED_MODELS.map((m) => m.model)
-      expect(ids).toContain('BAAI/bge-small-en-v1.5')
-      expect(ids).toContain('openai/clip-vit-base-patch32')
-      expect(ids).toContain('mixedbread-ai/mxbai-rerank-base-v1')
-    })
+    expect((await checkInferenceModels(REQUIRED_MODELS)).status).toBe('ok')
   })
 
-  describe('check()', () => {
-    it('reports ok when all three models are present', async () => {
-      seedAllModelsPresent()
-      const result = await searchModelsComponent.check()
-      expect(result.status).toBe('ok')
-      expect(result.message).toContain('3 Termite models')
-    })
+  it('only pulls what is missing', async () => {
+    installFakeBinary(PULL_OK)
+    seedModel(REQUIRED_MODELS[0].model)
+    seedModel(REQUIRED_MODELS[1].model)
 
-    it('reports missing with details when all models are absent', async () => {
-      const result = await searchModelsComponent.check()
-      expect(result.status).toBe('missing')
-      expect(result.message).toContain('3 of 3')
-      const missing = result.details?.missing as Array<{ model: string }>
-      expect(missing).toHaveLength(3)
-    })
-
-    it('reports missing with partial list when only some are absent', async () => {
-      // Seed just the BGE embedder as fully installed
-      virtualInstall(join(termiteModelsRoot(), 'embedders', 'BAAI/bge-small-en-v1.5'))
-      const result = await searchModelsComponent.check()
-      expect(result.status).toBe('missing')
-      expect(result.message).toContain('2 of 3')
-      const missing = result.details?.missing as Array<{ model: string }>
-      expect(missing).toHaveLength(2)
-      expect(missing.map((m) => m.model)).not.toContain('BAAI/bge-small-en-v1.5')
-    })
-
-    it('reports missing when a model directory exists but model_manifest.json is absent', async () => {
-      // Half-pulled state — directory there, no manifest. This is the
-      // exact failure mode that bit us in production with BGE.
-      existingPaths.add(join(termiteModelsRoot(), 'embedders', 'BAAI/bge-small-en-v1.5'))
-      const result = await searchModelsComponent.check()
-      expect(result.status).toBe('missing')
-      const missing = result.details?.missing as Array<{ model: string; reason: string }>
-      const bge = missing.find((m) => m.model === 'BAAI/bge-small-en-v1.5')
-      expect(bge?.reason).toContain('model_manifest.json missing')
-    })
-
-    it('reports missing when a manifested file is the wrong size', async () => {
-      // Manifest claims 42 bytes, file is on disk but stat says 7 — the
-      // pull was interrupted mid-write.
-      const dir = join(termiteModelsRoot(), 'embedders', 'BAAI/bge-small-en-v1.5')
-      virtualInstall(dir)
-      virtualSizes.set(join(dir, 'model.onnx'), 7)
-      const result = await searchModelsComponent.check()
-      expect(result.status).toBe('missing')
-      const missing = result.details?.missing as Array<{ model: string; reason: string }>
-      const bge = missing.find((m) => m.model === 'BAAI/bge-small-en-v1.5')
-      expect(bge?.reason).toContain('size mismatch')
-    })
+    const result = await installInferenceModels(optsAutoYes, undefined, REQUIRED_MODELS)
+    expect(result.status).toBe('installed')
+    expect(result.message).toContain('Pulled 1 model')
+    expect(result.message).toContain(REQUIRED_MODELS[2].label)
   })
 
-  describe('install()', () => {
-    it('fails cleanly when the antfly binary is missing', async () => {
-      antflyBinary = null
-      const result = await searchModelsComponent.install(optsAutoYes)
-      expect(result.status).toBe('failed')
-      expect(result.message).toContain('antfly binary not found')
-      expect(spawnCalls).toHaveLength(0)
-    })
+  it('is a noop when everything is present', async () => {
+    installFakeBinary(PULL_OK)
+    for (const m of REQUIRED_MODELS) seedModel(m.model)
+    const result = await installInferenceModels(optsAutoYes, undefined, REQUIRED_MODELS)
+    expect(result.status).toBe('noop')
+  })
 
-    it('is a noop when all models are already present', async () => {
-      seedAllModelsPresent()
-      const result = await searchModelsComponent.install(optsAutoYes)
-      expect(result.status).toBe('noop')
-      expect(spawnCalls).toHaveLength(0)
-    })
+  it('fails with the pull stderr when the CLI exits non-zero', async () => {
+    installFakeBinary(PULL_FAILS)
+    const result = await installInferenceModels(optsAutoYes, undefined, REQUIRED_MODELS)
+    expect(result.status).toBe('failed')
+    expect(result.message).toContain('exited with code 2')
+    expect(result.message).toContain('HuggingFace unreachable')
+  })
 
-    it('pulls each missing model via antfly termite pull', async () => {
-      const result = await searchModelsComponent.install(optsAutoYes)
-      expect(result.status).toBe('installed')
-      expect(spawnCalls).toHaveLength(3)
-      for (const call of spawnCalls) {
-        expect(call.cmd).toBe('/opt/homebrew/bin/antfly')
-        expect(call.args[0]).toBe('termite')
-        expect(call.args[1]).toBe('pull')
-      }
-      const pulledIds = spawnCalls.map((c) => c.args[2])
-      expect(pulledIds).toContain('BAAI/bge-small-en-v1.5')
-      expect(pulledIds).toContain('openai/clip-vit-base-patch32')
-      expect(pulledIds).toContain('mixedbread-ai/mxbai-rerank-base-v1')
-    })
+  it('fails when the pull claims success but the model never appears', async () => {
+    installFakeBinary(PULL_LIES)
+    const result = await installInferenceModels(optsAutoYes, undefined, REQUIRED_MODELS)
+    expect(result.status).toBe('failed')
+    expect(result.message).toContain('reported success but')
+  })
 
-    it('pulls only the missing subset when some models already exist', async () => {
-      virtualInstall(join(termiteModelsRoot(), 'embedders', 'BAAI/bge-small-en-v1.5'))
-      const result = await searchModelsComponent.install(optsAutoYes)
-      expect(result.status).toBe('installed')
-      expect(spawnCalls).toHaveLength(2)
-      const pulledIds = spawnCalls.map((c) => c.args[2])
-      expect(pulledIds).not.toContain('BAAI/bge-small-en-v1.5')
-    })
+  it('skips on decline, noting the degraded-semantic consequence', async () => {
+    installFakeBinary(PULL_OK)
+    const opts = {
+      ...optsAutoYes,
+      interactive: true,
+      autoApprove: false,
+      askYesNo: () => Promise.resolve(false),
+    }
+    const result = await installInferenceModels(opts, undefined, REQUIRED_MODELS)
+    expect(result.status).toBe('skipped')
+    expect(result.message).toContain('semantic indexing is degraded')
+    expect(result.message).toContain('bakin reindex')
+  })
 
-    it('stops on the first failed pull and returns failed', async () => {
-      spawnExitCode = 1
-      const result = await searchModelsComponent.install(optsAutoYes)
-      expect(result.status).toBe('failed')
-      expect(result.message).toContain('exited with code 1')
-      // Bailed after the first failure — no retries of the other two
-      expect(spawnCalls).toHaveLength(1)
-    })
-
-    it('reports failed when spawn succeeds but the model directory is still empty', async () => {
-      spawnExitCode = 0
-      spawnCreatesFiles = false
-      const result = await searchModelsComponent.install(optsAutoYes)
-      expect(result.status).toBe('failed')
-      // modelComplete reports the specific reason — directory missing,
-      // manifest missing, file missing, or size mismatch.
-      expect(result.message).toMatch(/directory missing|manifest|missing|size mismatch/)
-    })
-
-    it('skips install when user declines the interactive prompt', async () => {
-      askYesNoReturn = false
-      const result = await searchModelsComponent.install(optsInteractive)
-      expect(result.status).toBe('skipped')
-      expect(spawnCalls).toHaveLength(0)
-    })
-
-    it('skips install in non-interactive mode without --yes', async () => {
-      const result = await searchModelsComponent.install(optsNonInteractiveNoYes)
-      expect(result.status).toBe('skipped')
-      expect(result.message).toContain('Non-interactive')
-      expect(spawnCalls).toHaveLength(0)
-    })
-
-    it('reports failed when spawn emits an error event', async () => {
-      spawnError = new Error('EPIPE')
-      const result = await searchModelsComponent.install(optsAutoYes)
-      expect(result.status).toBe('failed')
-      expect(result.message).toContain('EPIPE')
-    })
+  it('skips non-interactive without --yes, noting the degraded-semantic consequence', async () => {
+    installFakeBinary(PULL_OK)
+    const opts = { ...optsAutoYes, autoApprove: false }
+    const result = await installInferenceModels(opts, undefined, REQUIRED_MODELS)
+    expect(result.status).toBe('skipped')
+    expect(result.message).toContain('Semantic indexing is degraded')
   })
 })

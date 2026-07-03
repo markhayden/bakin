@@ -60,9 +60,27 @@ export interface RuntimeMessageToolPolicy {
   toolsDeny?: string[]
 }
 
+/** Local file offered to the runtime as model input for one turn. */
+export interface MessageAttachment {
+  path: string
+  mimeType: string
+}
+
 export interface MessageArgs extends RuntimeMessageToolPolicy {
   agentId: string
   content: string
+  /**
+   * Image attachments for the turn (runtime support is declared by
+   * `capabilities().imageInput`; adapters reject unsupported media loudly
+   * rather than silently dropping pixels).
+   */
+  attachments?: MessageAttachment[]
+  /**
+   * Utility turn: ask the runtime to suppress visible session side effects
+   * (control-UI visibility, prompt persistence) where it supports them.
+   * The thread still exists for idempotency; it just stays out of the way.
+   */
+  ephemeral?: boolean
   /**
    * Adapter-neutral durable conversation key. Runtime adapters should map the
    * same agentId + threadId pair to the same provider/runtime session.
@@ -328,6 +346,18 @@ export interface RuntimeMemorySearchResult {
   metadata?: RuntimeMetadata
 }
 
+/**
+ * What the runtime's ACTIVE configuration can accept as model input
+ * (spec: enrichment-runtime-fallback §3). Adapter-declared from the
+ * runtime's own model catalog for the SELECTED agent's effective model
+ * (default: the main agent) — conservative false on any ambiguity, never
+ * model-name heuristics.
+ */
+export interface RuntimeCapabilities {
+  imageInput: boolean
+  audioInput: boolean
+}
+
 export interface RuntimeAvailableModel {
   id: string
   name?: string
@@ -571,6 +601,15 @@ export interface AgentRuntimeAdapter {
   models: {
     listAvailable(opts?: { includeUnavailable?: boolean }): Promise<RuntimeAvailableModel[]>
   }
+
+  /**
+   * Input-modality capabilities of the runtime's current configuration,
+   * evaluated for `opts.agentId`'s effective model (default: the main
+   * agent). A requested agent that does not exist reports all-false.
+   * Transitional-optional (same pattern the search contract used): absent
+   * means "unknown" and callers MUST treat it as all-false.
+   */
+  capabilities?(opts?: { agentId?: string }): Promise<RuntimeCapabilities>
 
   images?: RuntimeImagesAccess
 

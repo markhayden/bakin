@@ -103,7 +103,7 @@ function makeCtx(searchResults: Record<string, unknown>[] = []): { ctx: PluginCo
             score: 1,
             fields,
           })),
-          meta: { query: params.q, total: searchResults.length, took_ms: 1, source: 'fallback' as const },
+          meta: { query: params.q, total: searchResults.length, took_ms: 1, source: 'unavailable' as const },
         }
       }),
     },

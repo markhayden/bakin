@@ -29,7 +29,11 @@ export function trackResponse(
       name: normalizePath(path),
       agent,
       durationMs,
-      status: status >= 400 ? 'error' : 'ok',
+      // 'error' = SERVER fault only. 4xx are client errors (a browser
+      // 404-ing on a missing avatar once triggered a "REST API returning
+      // 57% 5xx" watchdog alarm) — they stay visible via meta.httpStatus
+      // but must not feed the 5xx error rate.
+      status: status >= 500 ? 'error' : 'ok',
       meta: { method, httpStatus: status },
     })
 

@@ -138,6 +138,32 @@ export async function handleVersionedUpdateMetadata(req: Request): Promise<Respo
   }
 }
 
+/** PATCH /versioned/:assetId/enrichment — manual edit; locks fields against machine overwrites. */
+export async function handleVersionedUpdateEnrichment(req: Request): Promise<Response> {
+  const assetId = segmentsAfterVersioned(new URL(req.url))[0] || ''
+  if (!getAsset(assetId)) return Response.json({ error: 'Asset not found' }, { status: 404 })
+  const body = await req.json().catch(() => null) as Record<string, unknown> | null
+  if (!body) return Response.json({ error: 'JSON body required' }, { status: 400 })
+  const str = (v: unknown) => (typeof v === 'string' ? v : undefined)
+  const strArr = (v: unknown) => (Array.isArray(v) && v.every((t) => typeof t === 'string') ? v as string[] : undefined)
+  const fields = {
+    caption: str(body.caption),
+    ocrText: str(body.ocrText),
+    suggestedTags: strArr(body.suggestedTags),
+    summary: str(body.summary),
+    transcript: str(body.transcript),
+  }
+  if (Object.values(fields).every((v) => v === undefined)) {
+    return Response.json({ error: 'at least one of caption/ocrText/suggestedTags/summary/transcript required' }, { status: 400 })
+  }
+  try {
+    const { applyUserEnrichmentEdit } = await import('../lib/enrichment/apply')
+    return Response.json({ ok: true, asset: await applyUserEnrichmentEdit(assetId, fields) })
+  } catch (err) {
+    return Response.json({ error: errMsg(err) }, { status: 400 })
+  }
+}
+
 /** POST /versioned/:assetId/relink — change/clear the asset's taskId. */
 export async function handleVersionedRelink(req: Request): Promise<Response> {
   const assetId = segmentsAfterVersioned(new URL(req.url))[0] || ''

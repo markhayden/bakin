@@ -77,6 +77,7 @@ const schedulePlugin: BakinPlugin = definePlugin({
 
     ctx.search.registerContentType({
       table: 'schedule',
+      schemaVersion: 1,
       schema: {
         name: { type: 'text' },
         schedule: { type: 'keyword' },

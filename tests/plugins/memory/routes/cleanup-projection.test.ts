@@ -49,7 +49,7 @@ function makeCtx(seed: SeedFn): PluginContext {
         const rows = seed(agent, tier)
         return {
           results: rows.map((r) => ({ id: r.id, table: 'bakin_memory', score: 1, fields: r.fields })),
-          meta: { query: params.q, total: rows.length, took_ms: 1, source: 'fallback' as const },
+          meta: { query: params.q, total: rows.length, took_ms: 1, source: 'unavailable' as const },
         }
       }),
     },

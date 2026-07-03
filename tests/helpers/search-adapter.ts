@@ -1,14 +1,18 @@
 import { mock } from 'bun:test'
+import { configureOutboxPump, stopOutboxPump } from '../../src/core/search-outbox'
+import { resetOutboxForTests } from '../../packages/core/src/search/outbox'
+import { resetTablesForTests } from '../../packages/core/src/search/tables'
 import type {
   Document,
   IndexItem,
   Query,
   QueryResult,
+  ScanOpts,
   ScannedDocument,
   SearchAdapter,
   TableConfig,
-  TableHealth,
   TableInfo,
+  TableLegHealth,
   TableStats,
 } from '@bakin/core/adapters/search'
 
@@ -16,16 +20,38 @@ type AppServicesGlobal = typeof globalThis & {
   __bakinAppServices?: { search: SearchAdapter }
 }
 
-async function* scanDocuments(items: ScannedDocument[]): AsyncIterable<ScannedDocument> {
-  for (const item of items) yield item
+/**
+ * Mirrors live antfly scan semantics: keys-only without a fields projection,
+ * projected fields only with one — so a consumer that forgets to project
+ * fails here the same way it fails live.
+ */
+async function* scanDocuments(items: ScannedDocument[], opts?: ScanOpts): AsyncIterable<ScannedDocument> {
+  for (const item of items) {
+    if (!opts?.fields?.length) {
+      yield { key: item.key, document: {} }
+      continue
+    }
+    const projected: Document = {}
+    for (const field of opts.fields) {
+      if (field in item.document) projected[field] = item.document[field]
+    }
+    yield { key: item.key, document: projected }
+  }
 }
 
 export function installSearchAdapter(adapter: SearchAdapter): void {
   ;(globalThis as AppServicesGlobal).__bakinAppServices = { search: adapter }
+  // ctx.search writes journal through the outbox and land via the pump —
+  // wire it to this adapter (identity mapping) and start each install from
+  // an empty journal so per-test assertions see only their own writes.
+  configureOutboxPump({ adapter, resolveTargets: (logical) => [logical] })
+  resetOutboxForTests()
+  resetTablesForTests()
 }
 
 export function clearSearchAdapter(): void {
   delete (globalThis as AppServicesGlobal).__bakinAppServices
+  stopOutboxPump()
 }
 
 export function createSearchAdapterHarness() {
@@ -33,7 +59,7 @@ export function createSearchAdapterHarness() {
   const tables = new Map<string, TableConfig>()
   const docs = new Map<string, Map<string, Document>>()
   const scanItems = new Map<string, ScannedDocument[]>()
-  const health = new Map<string, TableHealth | null>()
+  const legHealth = new Map<string, TableLegHealth[]>()
   const stats = new Map<string, TableStats | null>()
 
   function ensureDocs(table: string): Map<string, Document> {
@@ -46,6 +72,13 @@ export function createSearchAdapterHarness() {
   }
 
   const initialize = mock(async () => {})
+  const capabilities = mock(() => ({
+    legs: ['full-text', 'text-embedding', 'media-embedding'] as Array<'full-text' | 'text-embedding' | 'media-embedding'>,
+    rerank: false,
+    facets: true,
+    transform: true,
+  }))
+  const mappingFingerprint = mock(() => 'harness-mapping-v1')
   const shutdown = mock(async () => {})
   const available = mock(async () => availableValue)
   const getHealthChecks = mock(() => [])
@@ -65,25 +98,30 @@ export function createSearchAdapterHarness() {
     tables.delete(name)
     docs.delete(name)
     scanItems.delete(name)
-    health.delete(name)
+    legHealth.delete(name)
     stats.delete(name)
   })
-  const tablesStats = mock(async (name: string): Promise<TableStats | null> => (
-    stats.has(name)
-      ? stats.get(name)!
-      : { table: name, documents: docs.get(name)?.size ?? 0 }
+  const tablesStats = mock(async (name: string): Promise<TableStats | null> => {
+    if (stats.has(name)) return stats.get(name)!
+    // Mirror the real engine: an unknown table 404s → null. A harness that
+    // fabricated stats for any name would let tolerant-create swallow
+    // genuine create failures.
+    if (!tables.has(name) && !docs.has(name)) return null
+    return { table: name, documents: docs.get(name)?.size ?? 0 }
+  })
+  const tablesHealth = mock(async (name: string): Promise<TableLegHealth[]> => (
+    legHealth.get(name) ?? (tables.has(name) || docs.has(name)
+      ? [{ leg: 'full_text', state: 'ready' as const, indexedCount: docs.get(name)?.size ?? 0 }]
+      : [])
   ))
-  const tablesGetHealth = mock(async (name: string): Promise<TableHealth | null> => (
-    health.has(name) ? health.get(name)! : null
-  ))
-  const tablesRebuildIndexes = mock(async () => {})
 
   const documentsIndex = mock(async (table: string, key: string, doc: Document): Promise<void> => {
     ensureDocs(table).set(key, doc)
   })
   const documentsBatchIndex = mock(async (table: string, items: IndexItem[]): Promise<{ indexed: number; failed: [] }> => {
-    const target = ensureDocs(table)
-    for (const item of items) target.set(item.key, item.doc)
+    // Batches double-record as per-item index calls: the outbox drains via
+    // batchIndex, and per-item spies keep test assertions readable.
+    for (const item of items) await documentsIndex(table, item.key, item.doc)
     return { indexed: items.length, failed: [] }
   })
   const documentsRemove = mock(async (table: string, key: string): Promise<void> => {
@@ -91,10 +129,10 @@ export function createSearchAdapterHarness() {
   })
   const documentsBatchRemove = mock(async (table: string, keys: string[]): Promise<number> => {
     const target = docs.get(table)
-    if (!target) return 0
     let removed = 0
     for (const key of keys) {
-      if (target.delete(key)) removed++
+      await documentsRemove(table, key)
+      if (target) removed++
     }
     return removed
   })
@@ -126,12 +164,12 @@ export function createSearchAdapterHarness() {
   const multiQuery = mock(async (queries: Array<{ table: string; query: Query }>): Promise<QueryResult[]> => (
     Promise.all(queries.map((entry) => adapter.query(entry.table, entry.query)))
   ))
-  const scan = mock((table: string): AsyncIterable<ScannedDocument> => (
-    scanDocuments(scanItems.get(table) ?? Array.from(docs.get(table)?.entries() ?? []).map(([key, document]) => ({ key, document })))
+  const scan = mock((table: string, opts?: ScanOpts): AsyncIterable<ScannedDocument> => (
+    scanDocuments(
+      scanItems.get(table) ?? Array.from(docs.get(table)?.entries() ?? []).map(([key, document]) => ({ key, document })),
+      opts,
+    )
   ))
-
-  const embedderHasChanged = mock(async () => false)
-  const embedderRebuildAll = mock(async () => ({ tables: tables.size, documents: 0, errors: [] }))
 
   const adapter: SearchAdapter = {
     name: 'mock-search',
@@ -141,13 +179,14 @@ export function createSearchAdapterHarness() {
     shutdown,
     available,
     getHealthChecks,
+    capabilities,
+    mappingFingerprint,
     tables: {
       list: tablesList,
       create: tablesCreate,
       drop: tablesDrop,
       stats: tablesStats,
-      getHealth: tablesGetHealth,
-      rebuildIndexes: tablesRebuildIndexes,
+      health: tablesHealth,
     },
     documents: {
       index: documentsIndex,
@@ -159,10 +198,6 @@ export function createSearchAdapterHarness() {
     query,
     multiQuery,
     scan,
-    embedder: {
-      hasChanged: embedderHasChanged,
-      rebuildAll: embedderRebuildAll,
-    },
   }
 
   return {
@@ -180,20 +215,21 @@ export function createSearchAdapterHarness() {
     setTableStats(table: string, value: TableStats | null) {
       stats.set(table, value)
     },
-    setTableHealth(table: string, value: TableHealth | null) {
-      health.set(table, value)
+    setLegHealth(table: string, value: TableLegHealth[]) {
+      legHealth.set(table, value)
     },
     calls: {
       initialize,
       shutdown,
       available,
       getHealthChecks,
+      capabilities,
+      mappingFingerprint,
       tablesList,
       tablesCreate,
       tablesDrop,
       tablesStats,
-      tablesGetHealth,
-      tablesRebuildIndexes,
+      tablesHealth,
       documentsIndex,
       documentsBatchIndex,
       documentsRemove,
@@ -202,8 +238,6 @@ export function createSearchAdapterHarness() {
       query,
       multiQuery,
       scan,
-      embedderHasChanged,
-      embedderRebuildAll,
     },
   }
 }

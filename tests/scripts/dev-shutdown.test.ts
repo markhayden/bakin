@@ -8,7 +8,7 @@
  */
 import { EventEmitter } from 'node:events'
 
-import { describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { registerDevShutdown } from '../../scripts/dev-shutdown'
 
@@ -24,19 +24,31 @@ interface Harness {
   proc: FakeProc
   tailwindKills: number
   warnings: string[]
+  forceKills: number
 }
 
 function setup(): Harness {
-  const harness: Harness = { proc: new FakeProc(), tailwindKills: 0, warnings: [] }
+  const harness: Harness = { proc: new FakeProc(), tailwindKills: 0, warnings: [], forceKills: 0 }
   registerDevShutdown({
     proc: harness.proc,
     killTailwind: () => { harness.tailwindKills++ },
     warn: (message) => { harness.warnings.push(message) },
+    // Inject a fake force-kill — the real default self-SIGKILLs, which would
+    // kill the test runner (and the unref'd backstop timer would too).
+    forceKill: () => { harness.forceKills++ },
   })
   return harness
 }
 
 describe('registerDevShutdown', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   test('solo listener (build phase): kills tailwind and exits 0', () => {
     const h = setup()
     h.proc.emit('SIGTERM')
@@ -72,24 +84,28 @@ describe('registerDevShutdown', () => {
     expect(h.proc.exitCalls).toEqual([])
   })
 
-  test('second signal (same signal) forces exit 130 with a warning', () => {
+  test('second signal force-kills (never needs a third) with a warning', () => {
     const h = setup()
     h.proc.on('SIGINT', () => {})
     h.proc.emit('SIGINT')
+    // First signal: "shutting down" feedback, defers to lifecycle, no exit yet.
     expect(h.proc.exitCalls).toEqual([])
+    expect(h.forceKills).toBe(0)
+    expect(h.warnings[0]).toContain('shutting down')
     h.proc.emit('SIGINT')
-    expect(h.proc.exitCalls).toEqual([130])
-    expect(h.warnings.length).toBe(1)
-    expect(h.warnings[0]).toContain('SIGINT')
+    // Second signal: force-kill immediately (not proc.exit, which may not
+    // terminate with a live child), so the user never needs a third.
+    expect(h.forceKills).toBe(1)
+    expect(h.warnings[h.warnings.length - 1]).toContain('SIGINT')
   })
 
-  test('second signal (mixed signals) forces exit with the second signal code', () => {
+  test('second signal (mixed signals) force-kills immediately', () => {
     const h = setup()
     h.proc.on('SIGINT', () => {})
     h.proc.on('SIGTERM', () => {})
     h.proc.emit('SIGINT')
     h.proc.emit('SIGTERM')
-    expect(h.proc.exitCalls).toEqual([143])
+    expect(h.forceKills).toBe(1)
   })
 
   test('signal then exit event calls killTailwind twice — dedup is the caller\'s job', () => {
@@ -106,5 +122,18 @@ describe('registerDevShutdown', () => {
     const h = setup()
     h.proc.emit('exit')
     expect(h.tailwindKills).toBe(1)
+  })
+
+  test('first signal force-kills after the graceful shutdown backstop', async () => {
+    const h = setup()
+    h.proc.on('SIGINT', () => {})
+
+    h.proc.emit('SIGINT')
+    await vi.advanceTimersByTimeAsync(5999)
+    expect(h.forceKills).toBe(0)
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(h.forceKills).toBe(1)
+    expect(h.warnings[h.warnings.length - 1]).toContain('graceful shutdown took too long')
   })
 })

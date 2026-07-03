@@ -4,6 +4,7 @@
  * trigger; version/thumb/export files never get their own row.
  */
 import { join } from 'node:path'
+import { statSync } from 'node:fs'
 import { getContentDir } from '../../../src/core/content-dir'
 import { isValidAssetId, yearMonthFromAssetId } from './asset-id'
 import { extractAssetContent } from './content-extractor'
@@ -25,6 +26,12 @@ export function versionedAssetPath(rel: string): { assetId: string; isManifest: 
 }
 
 const RASTER_RE = /\.(png|jpe?g|gif|webp|bmp)$/i
+const AUDIO_RE = /\.(mp3|wav|flac|ogg|m4a|aac)$/i
+// Formats every media-embedding engine can decode. WebP/BMP originals crash
+// the write wholesale (antfly decodes PNG/JPEG/GIF only — antfly#322), so
+// media_url prefers the JPEG thumb rendition; embedders downscale to ~224px
+// anyway, so the thumb costs nothing in similarity quality.
+const EMBED_SAFE_RE = /\.(png|jpe?g|gif)$/i
 
 // Cache extracted text per (assetId, version, size). Version files are
 // immutable, so metadata-only manifest writes (relink/retype/promote/addExport)
@@ -39,6 +46,9 @@ export async function buildVersionedAssetSearchDoc(manifest: AssetManifest, asse
   const relFromAssetsRoot = `store/${ym}/${assetId}/${current.file}`
   const absPath = join(getContentDir(), 'assets', relFromAssetsRoot)
   const isRaster = manifest.type === 'images' && RASTER_RE.test(current.file)
+  // Audio rides the same media-embedding leg (CLAP half of the multimodal
+  // embedder) — Bakin's job is just the MIME/URL wiring (spec D12).
+  const isAudio = manifest.type === 'audio' && AUDIO_RE.test(current.file)
   const cacheKey = `${assetId}:${current.version}:${current.size}`
   let content = contentCache.get(cacheKey)
   if (content === undefined) {
@@ -65,6 +75,29 @@ export async function buildVersionedAssetSearchDoc(manifest: AssetManifest, asse
     model: current.generation?.model ?? '',
     updated_at: manifest.updated || new Date().toISOString(),
     content,
-    image_url: isRaster ? buildAssetFileUrl(relFromAssetsRoot) : '',
+    // Derived enrichment (D8): the vision model's caption/OCR/tags give
+    // BM25 and the text-embedding leg real content for images and audio.
+    caption: manifest.enrichment?.caption ?? '',
+    ocr_text: manifest.enrichment?.ocrText ?? '',
+    suggested_tags: (manifest.enrichment?.suggestedTags ?? []).join(', '),
+    transcript: manifest.enrichment?.transcript ?? '',
+    summary: manifest.enrichment?.summary ?? '',
+    media_url: buildMediaUrl(isRaster, isAudio, ym, assetId, current, relFromAssetsRoot),
   }
+}
+
+function buildMediaUrl(
+  isRaster: boolean,
+  isAudio: boolean,
+  ym: string | null,
+  assetId: string,
+  current: { file: string; thumb: string | null },
+  relFromAssetsRoot: string,
+): string {
+  if (isAudio) return buildAssetFileUrl(relFromAssetsRoot)
+  if (!isRaster) return ''
+  if (current.thumb) return buildAssetFileUrl(`store/${ym}/${assetId}/${current.thumb}`)
+  // No thumb: only hand over originals the engine is known to decode —
+  // an undecodable media_url poisons the row's ENTIRE write (text legs too).
+  return EMBED_SAFE_RE.test(current.file) ? buildAssetFileUrl(relFromAssetsRoot) : ''
 }

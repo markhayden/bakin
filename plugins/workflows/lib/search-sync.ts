@@ -25,6 +25,19 @@ import { createLogger } from '@bakin/core/logger'
 
 const log = createLogger('workflows')
 
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') {
+    const primitive = JSON.stringify(value)
+    return primitive === undefined ? String(value) : primitive
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => stableStringify(entry)).join(',')}]`
+  }
+  const entries = Object.entries(value as Record<string, unknown>)
+    .sort(([a], [b]) => a.localeCompare(b))
+  return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${stableStringify(entry)}`).join(',')}}`
+}
+
 /** Convert a workflow instance to a search document. */
 export function instanceToSearchDoc(inst: WorkflowInstance): Record<string, unknown> {
   const def = loadDefinition(inst.workflowId)
@@ -88,6 +101,7 @@ export async function indexDefinition(name: string, def: WorkflowDefinition, sou
 export function registerWorkflowSearch(ctx: PluginContext): void {
   ctx.search.registerFileBackedContentType({
     table: 'workflows',
+    schemaVersion: 1,
     schema: {
       name: { type: 'text' },
       description: { type: 'text' },
@@ -130,7 +144,6 @@ export function registerWorkflowSearch(ctx: PluginContext): void {
         },
       },
     ],
-    preserveVirtualDocuments: true,
     onUnlink: async (rel) => {
       if (rel.startsWith('workflows/definitions/')) {
         const name = rel.replace(/^workflows\/definitions\//, '').replace(/\.(yaml|yml)$/, '')
@@ -174,7 +187,10 @@ export function registerWorkflowSearch(ctx: PluginContext): void {
       // Yield effective definitions from every source: plugin defaults,
       // agent-package definitions, and user YAML shadows.
       for (const entry of listDefinitions(contentDir)) {
-        yield { key: `def:${entry.name}`, doc: definitionToSearchDoc(entry.name, entry.definition, entry.source) }
+        yield {
+          key: `def:${entry.name}`,
+          doc: definitionToSearchDoc(entry.name, entry.definition, entry.source),
+        }
       }
 
       // Yield instances

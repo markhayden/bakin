@@ -38,24 +38,32 @@ export async function checkSearchAdapter(): Promise<HealthCheckResult[]> {
     return [error('Search enabled but active search adapter binary was not found')]
   }
 
-  const urls = Array.from(new Set([
-    searchSettings.url.replace(/\/api\/v1\/?$/, ''),
-    searchSettings.url.replace('localhost', '127.0.0.1').replace(/\/api\/v1\/?$/, ''),
-  ]))
-
-  let lastErr: unknown
-  for (const base of urls) {
-    try {
-      const res = await fetch(`${base}/api/v1/status`, { signal: AbortSignal.timeout(3000) })
-      if (res.ok) {
-        const status = await res.json()
-        return [ok(`Search adapter connected (health: ${status?.health})`)]
-      }
-      lastErr = new Error(`status ${res.status}`)
-    } catch (err) {
-      lastErr = err
+  // Supervision status (D3): who keeps the engine alive, and is the unit
+  // provisioned? A missing unit means nothing restarts the engine after a
+  // crash — `bakin install search` provisions it.
+  const results: HealthCheckResult[] = []
+  try {
+    const { getSearchAdapterServiceStatus } = await import('../../../../src/core/search-adapter-factory')
+    const service = getSearchAdapterServiceStatus(adapter, searchSettings)
+    if (!service.provisioned) {
+      results.push(warn(`Engine service not provisioned (${service.mode}): ${service.detail ?? 'unit missing'} — run: bakin install search`))
+    } else {
+      results.push(ok(`Engine supervised via ${service.mode}${service.detail ? ` — ${service.detail}` : ''}`))
     }
+  } catch (err) {
+    results.push(warn(`Could not determine engine supervision mode: ${err instanceof Error ? err.message : String(err)}`))
   }
 
-  return [error(`Search adapter connection failed: ${lastErr}`)]
+  // Ask the LIVE adapter instead of probing a hardcoded HTTP endpoint: the
+  // old check hit the pre-0.2 `/api/v1/status` path, which the v0.2 zig
+  // server does not serve — so a perfectly healthy instance reported
+  // "connection failed" as a doctor ERROR on every run. available() also
+  // reflects a crashed/supervised child, which a raw port probe cannot.
+  const { getAppServices } = await import('../../../../src/core/app-services')
+  if (await getAppServices().search.available()) {
+    results.push(ok('Search adapter connected'))
+  } else {
+    results.push(error('Search enabled but the engine is unavailable — check the engine lines in ~/.bakin/logs/server.log'))
+  }
+  return results
 }

@@ -10,7 +10,27 @@ const testDir = join(tmpdir(), `bakin-search-doc-${Date.now()}-${randomUUID()}`)
 process.env.BAKIN_HOME = testDir
 process.env.OPENCLAW_HOME = join(testDir, 'openclaw')
 
-import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
+import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
+
+const contentDirMock = () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({
+    home: testDir,
+    audit: join(testDir, 'audit.jsonl'),
+    tasks: join(testDir, 'tasks'),
+    logs: join(testDir, 'logs'),
+    assets: join(testDir, 'assets'),
+    db: join(testDir, 'bakin.db'),
+  }),
+})
+mock.module('../../../src/core/content-dir', contentDirMock)
+mock.module('../../../packages/core/src/content-dir', contentDirMock)
+mock.module('@bakin/adapter-openclaw/home', () => ({
+  getOpenClawHome: () => join(testDir, 'openclaw'),
+  getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
+  resetOpenClawHome: () => {},
+}))
+
 import sharp from 'sharp'
 import { createAsset } from '../../../plugins/assets/lib/asset-service'
 import { getAsset } from '../../../plugins/assets/lib/asset-service'
@@ -43,7 +63,7 @@ describe('versionedAssetPath', () => {
 })
 
 describe('buildVersionedAssetSearchDoc', () => {
-  it('builds an image doc keyed by assetId with a visual image_url', async () => {
+  it('builds an image doc keyed by assetId with a visual media_url', async () => {
     const { assetId } = await createAsset({ sourceFilePath: join(srcDir, 'p.png'), type: 'images', agent: 'pixel', taskId: 't1', slug: 'p', op: 'generate', description: 'a pic', tags: ['hero'] })
     const doc = await buildVersionedAssetSearchDoc(getAsset(assetId)!, assetId)
     expect(doc.file_name).toBe(assetId)
@@ -53,15 +73,35 @@ describe('buildVersionedAssetSearchDoc', () => {
     expect(doc.tags_facet).toEqual(['hero']) // keyword array for faceting
     expect(doc.agent).toBe('pixel')
     expect(doc.task_id).toBe('t1')
-    expect(String(doc.image_url)).toContain('store/') // file:// url to current version
-    expect(String(doc.image_url)).toContain('v1.png')
+    expect(String(doc.media_url)).toContain('store/')
+    // media_url prefers the JPEG thumb rendition — engines choke on some
+    // originals (antfly decodes PNG/JPEG/GIF only) and CLIP downscales anyway.
+    expect(String(doc.media_url)).toContain('.thumb.jpg')
   })
 
-  it('builds a text doc with extracted content and no image_url', async () => {
+  it('webp original: media_url uses the JPEG thumb (undecodable originals poison the whole row — antfly#322)', async () => {
+    await sharp({ create: { width: 4, height: 4, channels: 3, background: { r: 9, g: 9, b: 9 } } }).webp().toFile(join(srcDir, 'w.webp'))
+    const { assetId } = await createAsset({ sourceFilePath: join(srcDir, 'w.webp'), type: 'images', agent: 'user', taskId: null, slug: 'w', op: 'upload' })
+    const doc = await buildVersionedAssetSearchDoc(getAsset(assetId)!, assetId)
+    expect(String(doc.media_url)).toContain('.thumb.jpg')
+    expect(String(doc.media_url)).not.toContain('.webp')
+  })
+
+  it('no thumb: decodable originals pass through, undecodable ones get NO media_url', async () => {
+    const { assetId } = await createAsset({ sourceFilePath: join(srcDir, 'p.png'), type: 'images', agent: 'user', taskId: null, slug: 'nothumb', op: 'upload' })
+    const manifest = structuredClone(getAsset(assetId)!)
+    const current = manifest.versions.find((v) => v.version === manifest.currentVersion)!
+    current.thumb = null
+    expect(String((await buildVersionedAssetSearchDoc(manifest, assetId)).media_url)).toContain('v1.png')
+    current.file = 'v1.webp'
+    expect((await buildVersionedAssetSearchDoc(manifest, assetId)).media_url).toBe('')
+  })
+
+  it('builds a text doc with extracted content and no media_url', async () => {
     const { assetId } = await createAsset({ sourceFilePath: join(srcDir, 'doc.md'), type: 'text', agent: 'margo', taskId: null, slug: 'doc', op: 'upload' })
     const doc = await buildVersionedAssetSearchDoc(getAsset(assetId)!, assetId)
     expect(doc.asset_type).toBe('text')
-    expect(doc.image_url).toBe('')
+    expect(doc.media_url).toBe('')
     expect(String(doc.content)).toContain('searchable body text')
   })
 

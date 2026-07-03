@@ -104,11 +104,63 @@ describe('watcher', () => {
       expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'tasks-other', 'file.json'))).toBe(false)
     })
 
+    it('ignores the private antfly data dir — its churn deadlocks the process', () => {
+      // ~/.bakin/antfly is the private antfly instance's --data-dir. The
+      // server churns WAL/segment files there constantly; watching it floods
+      // chokidar (and has deadlocked Bun's file-watcher thread against the
+      // main thread, wedging the whole HTTP server).
+      expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'antfly'))).toBe(true)
+      expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'antfly', 'data', 'replicas', 'group-1', 'table-db', 'indexes', 'full_text_index_v0', 'segments', '377.seg'))).toBe(true)
+      // Sibling dirs that merely start with "antfly" are NOT ignored.
+      expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'antfly-notes', 'file.md'))).toBe(false)
+    })
+
     it('stop is idempotent', async () => {
       await stop()
       // second call should not throw; bun:test's toThrow matcher doesn't
       // compose with an async resolves, so await directly and assert no throw.
       await stop()
+    })
+
+    it('never replays the initial scan through the event pipeline (ignoreInitial)', async () => {
+      // Regression guard: without ignoreInitial, boot fired `add` for every
+      // existing file and the sync hooks REWROTE every indexed row into
+      // antfly — per-boot WAL/enrichment churn that grew the next boot's
+      // catch-up window. Boot state belongs to reconcile/backfill.
+      const chokidar = await import('chokidar')
+      const eventBus = new BakinEventBus(() => {})
+      start({ contentDir: tempDir, eventBus, onInboxFile: mock() })
+
+      const opts = vi.mocked(chokidar.watch).mock.calls[0][1] as { ignoreInitial?: boolean }
+      expect(opts.ignoreInitial).toBe(true)
+    })
+
+    it('sweeps ONLY completion reports at start — asset drops never auto-ingest (D7)', async () => {
+      // The one path that legitimately depends on an offline sweep: agent
+      // completion reports dropped while Bakin was down. Asset drops are
+      // the Import view's business — no boot hook, no auto-ingest.
+      mkdirSync(join(tempDir, 'inbox'), { recursive: true })
+      mkdirSync(join(tempDir, 'assets', 'inbox'), { recursive: true })
+      // Pre-existing indexed content that must NOT fire hooks at boot:
+      mkdirSync(join(tempDir, 'assets', 'store', '2026-07', 'asset-1'), { recursive: true })
+      writeFileSync(join(tempDir, 'assets', 'store', '2026-07', 'asset-1', 'manifest.json'), '{}')
+      writeFileSync(join(tempDir, 'inbox', 'report.json'), JSON.stringify({ type: 'task-complete', title: 'T', agent: 'a' }))
+      writeFileSync(join(tempDir, 'assets', 'inbox', 'dropped.png'), 'binary')
+
+      const seen: string[] = []
+      const unregister = registerSyncHook((rel) => { seen.push(rel) })
+      const onInboxFile = mock()
+      const eventBus = new BakinEventBus(() => {})
+      start({ contentDir: tempDir, eventBus, onInboxFile })
+      // sweep fires hooks fire-and-forget — let them settle
+      await new Promise((r) => setTimeout(r, 20))
+
+      expect(seen).toContain(join('inbox', 'report.json'))
+      expect(seen).not.toContain(join('assets', 'inbox', 'dropped.png'))
+      // The stored manifest fires no boot hook either.
+      expect(seen.some((p) => p.includes('manifest.json'))).toBe(false)
+      expect(onInboxFile).toHaveBeenCalledTimes(1)
+      unregister()
     })
   })
 

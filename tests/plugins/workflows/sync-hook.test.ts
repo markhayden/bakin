@@ -125,7 +125,7 @@ function makeCtx(): CapturedCtx {
       index: mock(async (key, doc) => { indexCalls.push({ key, doc }) }),
       remove: mock(async (key) => { removeCalls.push(key) }),
       transform: mock(async () => {}),
-      query: mock(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } })),
+      query: mock(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'unavailable' as const } })),
     },
     hooks: {
       register: mock(() => () => {}),
@@ -217,7 +217,7 @@ describe('workflows plugin — file-backed sync hook', () => {
     const defMapper = captured.capturedDef!.filePatterns.find(p =>
       p.pattern.startsWith('workflows/definitions')
     )!
-    const doc = await defMapper.fileToDoc('workflows/definitions/missing.yaml', '')
+    const doc = await defMapper.fileToDoc!('workflows/definitions/missing.yaml', '')
     expect(doc).toBeNull()
   })
 
@@ -228,7 +228,7 @@ describe('workflows plugin — file-backed sync hook', () => {
     const defMapper = captured.capturedDef!.filePatterns.find(p =>
       p.pattern.startsWith('workflows/definitions')
     )!
-    const doc = await defMapper.fileToDoc('workflows/definitions/sample.yaml', SAMPLE_DEF)
+    const doc = await defMapper.fileToDoc!('workflows/definitions/sample.yaml', SAMPLE_DEF)
     expect(doc).not.toBeNull()
     expect(doc!.name).toBe('Sample Flow')
     expect(doc!.type).toBe('definition')
@@ -249,7 +249,7 @@ describe('workflows plugin — file-backed sync hook', () => {
     const instMapper = captured.capturedDef!.filePatterns.find(p =>
       p.pattern.startsWith('workflows/instances')
     )!
-    const doc = await instMapper.fileToDoc('workflows/instances/task-42.json', SAMPLE_INSTANCE('task-42'))
+    const doc = await instMapper.fileToDoc!('workflows/instances/task-42.json', SAMPLE_INSTANCE('task-42'))
     expect(doc).not.toBeNull()
     expect(doc!.type).toBe('instance')
     expect(doc!.task_id).toBe('task-42')
@@ -262,7 +262,7 @@ describe('workflows plugin — file-backed sync hook', () => {
     const instMapper = captured.capturedDef!.filePatterns.find(p =>
       p.pattern.startsWith('workflows/instances')
     )!
-    const doc = await instMapper.fileToDoc('workflows/instances/broken.json', '{not json')
+    const doc = await instMapper.fileToDoc!('workflows/instances/broken.json', '{not json')
     expect(doc).toBeNull()
   })
 
@@ -276,13 +276,14 @@ describe('workflows plugin — file-backed sync hook', () => {
     const captured = makeCtx()
     await workflowsPlugin.activate(captured.ctx)
 
-    const yielded: Array<{ key: string; doc: Record<string, unknown> }> = []
+    const yielded: Array<{ key: string; doc: Record<string, unknown>; mtimeMs?: number }> = []
     for await (const item of captured.capturedDef!.reindex()) {
-      yielded.push(item as { key: string; doc: Record<string, unknown> })
+      yielded.push(item as { key: string; doc: Record<string, unknown>; mtimeMs?: number })
     }
     const keys = yielded.map(y => y.key).sort()
     expect(keys).toEqual(['def:managed', 'def:one', 'def:two', 'inst:task-1', 'inst:task-2'])
-    expect(yielded.find(y => y.key === 'def:managed')?.doc).toMatchObject({
+    const managed = yielded.find(y => y.key === 'def:managed')
+    expect(managed?.doc).toMatchObject({
       name: 'Managed Flow',
       type: 'definition',
       status: 'active',

@@ -30,6 +30,33 @@ No plugin, route, CLI command, script, or `src/core/*` feature module should
 import provider packages directly. Factories are the only production modules
 that import `@bakin/adapter-openclaw` or `@bakin/adapter-antfly`.
 
+### SearchAdapter contract
+
+`packages/core/src/adapters/search/index.ts`. Beyond the shared lifecycle
+(`initialize`/`shutdown`/`available`/`getHealthChecks`), every search adapter
+MUST implement:
+
+- `capabilities()` — what the adapter can build/serve, in capability terms:
+  `{ legs: SearchLegCapability[], rerank, facets, transform }` where legs are
+  `'full-text' | 'text-embedding' | 'media-embedding'`.
+- `mappingFingerprint()` — a stable hash over the adapter settings that
+  change the PHYSICAL index layout (embedder models, dimensions). Core folds
+  it into each table's blue/green config fingerprint, so an adapter-side
+  model swap migrates tables without any plugin edit.
+- `tables.health(name)` — per-leg `TableLegHealth`
+  (`ready | building | error`, indexed count, error). Drives the blue/green
+  convergence check, `getSearchHealth()`, and the doctor. `tables.list()` is
+  doctor/introspection only — never called on the boot path.
+- `documents.{index,batchIndex,remove,batchRemove,transform}`,
+  `query`/`multiQuery`/`scan` — generic primitives the outbox and registry
+  are built on. Query hits carry a neutral
+  `scoreBreakdown: Record<legName, number>` — leg names the table declared,
+  no engine-specific keys.
+
+Search setup (binary + models) flows through `SearchAdapterSetup`
+components returned by `getSearchAdapterSetup()` — the onboarding
+`check()`/`install()` contract.
+
 ## Ownership
 
 Bakin owns:
@@ -48,9 +75,26 @@ The runtime adapter owns runtime provider state:
 
 The search adapter owns search-provider details:
 
-- table/index creation
-- query translation, score breakdowns, facets, rerank mapping
-- transient provider retries and search health checks
+- engine lifecycle: OS-service provisioning (launchd/systemd unit files),
+  strict-child fallback, binary install/pin/upgrade, inference-model
+  management (`bakin install search` / `search-models` flow through
+  `getSearchAdapterSetup`)
+- physical table/index creation and the wire-shape translation for queries,
+  writes, facets, and rerank mapping
+- mapping capability legs (full-text / text-embedding / media-embedding) to
+  concrete embedder models — model names and dimensions are adapter
+  settings, never content-type or core concerns
+- normalizing per-leg scores into the neutral `scoreBreakdown` and per-leg
+  index health into `TableLegHealth`
+- classifying every failure into the typed search-error taxonomy before it
+  crosses the boundary (see below)
+
+Core owns the machinery built ON the contract: the durable search outbox,
+the blue/green table registry/migrator, the content-type registry, and the
+doctor's consistency sweeps (`packages/core/src/search/`,
+`src/core/search-*`). Those layers call only generic contract primitives —
+a second search adapter must require zero changes upstream of the adapter
+layer (D17).
 
 ## Boot Order
 
@@ -62,7 +106,10 @@ The search adapter owns search-provider details:
 4. `createFileBakinTaskStore(getBakinPaths().tasks)` creates the Bakin task
    store.
 5. Runtime and search adapters initialize with shared adapter init context:
-   content dir, logger, audit callback, and adapter-specific settings.
+   content dir, logger, audit callback, and adapter-specific settings. The
+   search adapter's `initialize()` ensures its OS-supervised engine service
+   is provisioned (idempotent unit-file byte-compare); provisioning failures
+   degrade search honestly instead of blocking boot.
 6. `setAppServices()` stores the object for server modules and plugin
    activation.
 
@@ -77,7 +124,9 @@ Plugins use:
   skills, sessions, memory, models, image generation, and runtime task
   execution status.
 - `ctx.search` for content type registration, indexing, transforms, removal,
-  and queries.
+  and queries. Writes journal through the durable search outbox before the
+  adapter ever sees them — plugins never talk to the engine directly and
+  never observe engine downtime on the write path.
 - `ctx.tasks` for Bakin-owned task metadata.
 
 Plugins must not import:
@@ -145,6 +194,24 @@ assembled from provider session forensics inside the adapter. Core classifies
 on `kind` exclusively — provider error strings are interpreted in exactly one
 adapter module (`packages/adapter-openclaw/src/errors.ts`). Deep reference:
 `.claude/knowledge/session-forensics.md`.
+
+## Typed Search Errors
+
+The same rule applies to search. Adapters map every write/query failure to a
+typed error from `@bakin/core/adapters/search/errors` before it crosses the
+boundary:
+
+- `SearchEngineUnavailableError` — engine unreachable or transiently failing
+  (connect refused, timeout, 5xx, shard settling). Retry-forever safe: the
+  search outbox backs off without advancing rows toward quarantine.
+- `SearchRequestRejectedError` — the engine rejected the request itself
+  (4xx: schema/validation/shape). Retrying the identical payload cannot
+  succeed; the outbox counts these toward quarantine (5 attempts).
+
+The outbox classifies by **type, never message text**
+(`isEngineUnavailable()`). Provider status codes are interpreted in exactly
+one place — the adapter's HTTP request path
+(`packages/adapter-antfly/src/client.ts`).
 
 ## Permission Layers
 
@@ -245,8 +312,19 @@ The architecture test scans `src/`, `plugins/`, `packages/core/src/`,
 YAML files in those roots. It fails on direct provider imports, raw provider
 paths, legacy OpenClaw client modules, legacy `flow_runs` metadata, provider
 setup URLs outside adapter factories, raw runtime config access outside the
-gate, and hard-coded local runtime agent ids in plugin-shipped workflow
-defaults.
+gate, raw SQLite access outside `packages/core/src/storage/db.ts`, and
+hard-coded local runtime agent ids in plugin-shipped workflow defaults.
+
+**Antfly identifier ban (D17):** the test additionally forbids
+antfly-specific identifiers — engine/model names (`antflydb/*`, the CLIP and
+rerank model names, the release-host URL, the swarm argv) — anywhere upstream
+of the adapter, **comments included** (they rot into load-bearing
+assumptions). Allowed exceptions: `src/core/search-adapter-factory.ts` and
+the settings surfaces that carry the adapter's own defaults for
+`~/.bakin/settings.json` (`src/core/settings.ts`,
+`packages/core/src/settings.ts`, `src/core/onboarding/`). Everything else
+must speak capabilities only — a second search adapter requires zero
+upstream changes.
 
 ESLint duplicates the import-level restriction so provider package imports fail
 before the architecture test runs. `.claude/hooks/check-adapter-boundary.mjs`

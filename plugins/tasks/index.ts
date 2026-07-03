@@ -50,6 +50,7 @@ const tasksPlugin: BakinPlugin = definePlugin({
 
     ctx.search.registerContentType({
       table: 'tasks',
+      schemaVersion: 1,
       schema: {
         title: { type: 'text' },
         description: { type: 'text' },

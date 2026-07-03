@@ -53,13 +53,19 @@ const {
 
 import { MemoryIndexer } from '../../../plugins/memory/lib/indexer'
 import { clearAllOffsets } from '../../../plugins/memory/lib/offsets'
+import { rowId as dailyNoteRowId } from '../../../plugins/memory/lib/tier-parsers/daily-note-parser'
 import type { PluginContext } from '@bakin/core/plugin-types'
 
 interface IndexedDoc { key: string; doc: Record<string, unknown> }
 
-function makeCtx(): { ctx: PluginContext; indexed: IndexedDoc[]; removed: string[] } {
+function makeCtx(existingRows: Array<{ key: string; updatedAt: number }> = []): { ctx: PluginContext; indexed: IndexedDoc[]; removed: string[] } {
   const indexed: IndexedDoc[] = []
   const removed: string[] = []
+  const maintenanceScan = mock(async function* () {
+    for (const row of existingRows) {
+      yield { key: row.key, document: { updated_at: row.updatedAt } }
+    }
+  })
   const ctx = {
     pluginId: 'memory',
     storage: {} as PluginContext['storage'],
@@ -93,7 +99,14 @@ function makeCtx(): { ctx: PluginContext; indexed: IndexedDoc[]; removed: string
           const content = mockReadDailyNote(agent, id)
           return content === null
             ? null
-            : { id, tierId: 'daily-tier', agentId: agent, path: mockDailyNotePath(agent, id), content }
+            : {
+                id,
+                tierId: 'daily-tier',
+                agentId: agent,
+                path: mockDailyNotePath(agent, id),
+                content,
+                metadata: { sourceKind: 'daily_note', filename: id, mtimeMs: 12345, sizeBytes: Buffer.byteLength(content, 'utf-8') },
+              }
         }),
         resolvePath: mock(async (path: string) => {
           const match = mockMatchDailyNotePath(path)
@@ -119,8 +132,14 @@ function makeCtx(): { ctx: PluginContext; indexed: IndexedDoc[]; removed: string
       transform: mock(async () => {}),
       query: mock(async () => ({
         results: [],
-        meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const },
+        meta: { query: '', total: 0, took_ms: 0, source: 'unavailable' as const },
       })),
+      maintenance: {
+        available: mock(async () => existingRows.length > 0),
+        scan: maintenanceScan,
+        batchRemove: mock(async () => 0),
+        resetContentType: mock(async () => {}),
+      },
     },
     hooks: {
       register: mock(() => () => {}),
@@ -200,7 +219,7 @@ describe('MemoryIndexer.indexTier("daily_note")', () => {
     expect(indexed[0].doc.title).toBe('2026-04-18.md')
   })
 
-  it('is idempotent — re-indexing the same file produces the same key', async () => {
+  it('re-indexing writes unconditionally (the outbox acked-hash dedupes downstream)', async () => {
     mockListAgentIds.mockReturnValue(['main'])
     mockListDailyNotes.mockReturnValue(['2026-04-18.md'])
     mockReadDailyNote.mockReturnValue('body')
@@ -211,9 +230,8 @@ describe('MemoryIndexer.indexTier("daily_note")', () => {
     await idx.indexTier('daily_note')
     await idx.indexTier('daily_note')
 
-    const uniq = new Set(indexed.map((d) => d.key))
-    expect(uniq.size).toBe(1)
     expect(indexed).toHaveLength(2)
+    expect(indexed[0].key).toBe(dailyNoteRowId('main', '2026-04-18.md'))
   })
 })
 
@@ -264,4 +282,6 @@ describe('MemoryIndexer.backfill(["daily_note"])', () => {
     await idx.backfill(['daily_note'])
     expect(indexed).toHaveLength(1)
   })
+
+
 })

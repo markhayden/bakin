@@ -2,40 +2,35 @@
 
 ## Overview
 
-Any Bakin plugin can register its content for Antfly-powered hybrid search by
-calling one of two methods on `ctx.search` during `activate()`:
+Any Bakin plugin registers its content for hybrid search by calling one of two
+methods on `ctx.search` during `activate()`:
 
 | Method | When to use |
 |---|---|
-| `registerFileBackedContentType(def)` | **Default for any plugin whose source of truth is files on disk under `~/.bakin/`.** Auto-wires the watcher sync/unlink hooks AND registers a startup mtime reconcile. |
-| `registerContentType(def)` | Bare registration for plugins whose data isn't filesystem-backed (task-store-backed `tasks`, runtime-adapter-backed `team`/`schedule`, the audit JSONL log). The plugin owns its own sync calls. |
+| `registerFileBackedContentType(def)` | **Default for any plugin whose source of truth is files on disk under `~/.bakin/`.** Auto-wires the watcher sync/unlink hooks; every hook write journals through the durable search outbox. |
+| `registerContentType(def)` | Bare registration for plugins whose data isn't filesystem-backed (task-store-backed `tasks`, runtime-adapter-backed `team`/`schedule`, the memory tailer). The plugin calls the mutators itself. |
 
-This guide focuses on the file-backed helper. See `search-system.md` for the
-"Three consistency paths" architecture and the rationale.
+There is **no boot-time reconcile**: boot performs zero engine calls when the
+blue/green registry matches. Consistency comes from three paths — inline
+mutator calls on REST/MCP writes, watcher hooks for filesystem writes, and the
+doctor's scheduled sweeps (orphan scan, memory offset stat-check) for
+black-swan drift. All three journal through the outbox: engine down = rows
+wait durably, never lost. See `search-system.md` for the architecture.
 
-**One call wires everything.** As of issue #67, calling either method during
-`activate()` auto-registers a `GET /search` route on the plugin's router
-(`/api/plugins/{pluginId}/search`). You do **not** need to call
-`ctx.registerRoute({ path: '/search', ... })` yourself — that boilerplate is
-gone. The auto-wired route resolves the plugin's table via
-`getTableForPlugin(pluginId)` and forwards `q`, `limit`, `offset`, `facets`,
-and `filters` to `ctx.search.query()`. The MCP search exec tools (`search_query`,
-`search_table`, etc.) all take a `plugin: <pluginId>` parameter and reach the
-same backend, so registering a content type also makes the plugin's data
-agent-searchable.
+**One call wires everything.** Registration auto-creates the blue/green
+versioned table, auto-registers `GET /api/plugins/{pluginId}/search`, joins the
+cross-plugin `GET /api/search` (the ⌘K overlay), and makes the data reachable
+from the MCP search tools (`plugin: <pluginId>` parameter). No manual route
+boilerplate.
 
-`getTableForPlugin(pluginId)` (formerly `getPluginTable`) returns the plugin's
-**primary** content-type table (the one registered via `registerContentType`).
-A plugin gets one primary — a second *direct* registration throws early — while
-file-backed content types register as secondary and index into their own table,
-so the auto-wired `/search` route resolves the primary unambiguously even for a
-multi-content plugin (e.g. `team`'s `agents` primary + `agent-lessons` file-backed).
+`getTableForPlugin(pluginId)` returns the plugin's **primary** content-type
+table. A plugin gets one primary — a second *direct* registration throws early —
+while file-backed content types register as secondary and index into their own
+table (e.g. `team`'s `agents` primary + `agent-lessons` file-backed).
 
 ## Step-by-Step (file-backed plugins)
 
 ### 1. Define the schema
-
-Pick fields that users and agents will search or filter by. Each field has a type:
 
 | Type | Use for | Indexed for full-text? |
 |------|---------|----------------------|
@@ -44,12 +39,16 @@ Pick fields that users and agents will search or filter by. Each field has a typ
 | `number` | Numeric values (progress, count) | No |
 | `datetime` | Timestamps (created_at, updated_at) | No |
 
-### 2. Register in activate() with file patterns
+### 2. Register in activate()
 
 ```typescript
 activate(ctx: PluginContext) {
   ctx.search.registerFileBackedContentType({
     table: 'notes',
+    // REQUIRED. Bump when the doc shape changes — the table blue/green-
+    // migrates in the background (queries stay on the old table until the
+    // new one converges; no degraded window, no manual reindex).
+    schemaVersion: 1,
     schema: {
       title: { type: 'text' },
       status: { type: 'keyword' },
@@ -74,105 +73,72 @@ activate(ctx: PluginContext) {
     ],
     // excludePatterns: ['data/**/.trash/**'],  // optional
 
-    // Required: full reindex generator (used by `/api/reindex`)
+    // Required: full-enumeration generator. This is the blue/green
+    // BACKFILL SOURCE — it must be side-effect free and restartable
+    // (each call re-reads sources). If your docs depend on live state
+    // (e.g. a runtime adapter), THROW when that state is unavailable so
+    // a migration parks instead of converging on a thin table.
     reindex: async function* () {
       for (const note of listAllNotes()) {
         yield { key: note.id, doc: noteToSearchDoc(note) }
       }
     },
 
-    // Required: source-of-truth check (used by orphan backstop scan)
+    // Required: source-of-truth check (used by the doctor orphan sweep)
     verifyExists: async (key) => ctx.storage.exists(`data/${key}.md`),
   })
-
-  // The plugin's REST/MCP routes still call ctx.search.index() directly
-  // for the authoritative immediate path. The watcher hooks are only
-  // for filesystem writes that bypass the REST path.
 }
 ```
 
-The helper does three things on top of `registerContentType()`:
+The helper wires two hooks on top of `registerContentType()`:
 
-1. Registers a `registerSyncHook` that, on every `add` / `change`, finds the
-   matching `filePatterns` entry, calls `fileToId` + `fileToDoc`, and indexes
-   the result with an `_mtime_ms` field for drift detection.
-2. Registers a `registerUnlinkHook` that, on every `unlink`, calls `fileToId`
-   and removes the matching key from search.
-3. Schedules a startup reconcile via `performStartupReconcile()` that
-   compares filesystem mtimes against indexed `_mtime_ms` and re-indexes
-   only what changed (or removes orphans).
+1. A sync hook that, on every watcher `add`/`change`, finds the matching
+   `filePatterns` entry, calls `fileToId` + `fileToDoc`, and **enqueues** the
+   result to the search outbox (landed by the drain pump — immediately when
+   the engine is up, on retry when it isn't).
+2. An unlink hook that enqueues a removal on every `unlink`.
+
+The outbox coalesces last-write-wins per key and dedupes identical content
+via an acked-hash — re-indexing an unchanged doc is a no-op. Plugins never
+implement their own change-detection caches.
 
 ### 3. Glob patterns
 
-Patterns are matched against paths relative to the content dir. Supported syntax:
-
-- `*` — any chars except `/`
-- `**` — any chars including `/`
-- `{a,b}` — alternation (e.g. `*.{yaml,yml}`)
-- Anything else is a literal
-
-Examples:
-- `workflows/definitions/*.{yaml,yml}` — both yaml extensions
-- `assets/**/*` — every file under assets, recursively
-- `plugins/<plugin-id>/data/*.md` — plugin-scoped markdown files
-
-`excludePatterns` use the same syntax. Useful for `.trash/` and other
-non-canonical locations.
+Patterns match paths relative to the content dir: `*` (no `/`), `**` (any),
+`{a,b}` alternation, everything else literal. `excludePatterns` use the same
+syntax (`.trash/` etc.).
 
 ### 4. Multiple file patterns under one table
 
-A single content type can register more than one `filePatterns` entry —
-useful when one logical table is backed by files in different shapes or
-locations (the `workflows` plugin uses this for definitions vs instances):
-
-```typescript
-filePatterns: [
-  {
-    pattern: 'workflows/definitions/*.{yaml,yml}',
-    fileToId: (rel) => `def:${basename(rel)}`,
-    fileToDoc: async (rel) => loadDefinition(...),
-  },
-  {
-    pattern: 'workflows/instances/*.json',
-    fileToId: (rel) => `inst:${basename(rel)}`,
-    fileToDoc: async (rel, content) => JSON.parse(content),
-  },
-],
-```
-
-The watcher hook routes events to the first matching pattern.
+One logical table can have several `filePatterns` entries (workflows uses this
+for definitions vs instances). The watcher routes events to the first matching
+pattern. Prefix keys (`def:`, `inst:`) so patterns can't collide.
 
 ### 5. Escape hatches: onSync / onUnlink
 
-When the default `fileToId + fileToDoc + index` flow doesn't fit cleanly —
-e.g. the asset plugin's sidecar/binary pairing where one watcher event
-needs to update both an in-memory tracker AND the search index — use the
-escape hatches:
+When the default `fileToId + fileToDoc` flow doesn't fit (e.g. assets: one
+manifest write updates a tracker AND the index), take full ownership:
 
 ```typescript
-filePatterns: [{ pattern: 'assets/**/*', fileToId: (rel) => rel, fileToDoc: async () => null }],
+filePatterns: [{ pattern: 'assets/**/*', fileToId: (rel) => rel }], // fileToDoc optional with onSync
 excludePatterns: ['assets/**/.trash/**'],
 onSync: async (rel, content) => {
-  // full ownership: do whatever you need
   upsertAsset(rel)
-  await indexAsset(rel)
+  await ctx.search.index(assetIdFor(rel), toSearchDoc(rel))
 },
 onUnlink: async (rel) => {
   removeAsset(rel)
-  await ctx.search.remove(rel)
+  await ctx.search.remove(assetIdFor(rel))
 },
 ```
 
-When `onSync` / `onUnlink` are set, they take over completely — the default
-`fileToDoc + index` flow is skipped. The `filePatterns` array is still
-required because it controls scope (which paths the hooks fire for) via
-`excludePatterns`.
+With `onSync`/`onUnlink` set they take over completely; `filePatterns` still
+controls scope. `fileToDoc` is optional in that case.
 
 ### 6. Index on REST/MCP mutations (still required)
 
-The watcher hooks are eventually consistent (~300ms `awaitWriteFinish`
-lag). For routes and exec tools that respond synchronously to a user
-request, **also** call the search mutators inline:
+The watcher is eventually consistent (~300ms `awaitWriteFinish`). Routes and
+exec tools that respond synchronously should also call the mutators inline:
 
 ```typescript
 ctx.search.index(documentKey, { ... }).catch(() => {})
@@ -180,59 +146,81 @@ ctx.search.remove(documentKey).catch(() => {})
 ctx.search.transform(documentKey, [{ op: '$set', field: 'status', value: 'done' }]).catch(() => {})
 ```
 
-The watcher path is the safety net for writes that bypass REST entirely
-(`cp`, `rsync`, restored backups, agents in other processes).
+All three are journal-first: they resolve once the write is durable in the
+outbox, and the pump lands it. `transform` has real `$set`/`$inc`/`$push`
+semantics (merged into any pending write for the key; read-modify-write at
+drain time). The watcher path remains the safety net for writes that bypass
+REST (`cp`, `rsync`, agents in other processes).
+
+## Client side: joining the ⌘K overlay
+
+Register a hit renderer in the plugin's `client.tsx` so global-search results
+render with the right title/link/thumbnail:
+
+```typescript
+registerPlugin({
+  id: 'notes',
+  navItems: [...],
+  slots: [...],
+  search: {
+    hitRenderers: {
+      notes: (hit) => ({
+        title: String(hit.fields.title ?? hit.id),
+        subtitle: String(hit.fields.status ?? ''),
+        href: `/notes/${hit.id}`,
+      }),
+    },
+  },
+})
+```
+
+Renderers are plain data-mapping functions (title/subtitle/href/thumbnailUrl/
+icon), not components — the overlay owns layout, keyboard focus, and debug
+badges. Unknown types get a default renderer.
+
+## Querying: `useSearch` and honest degradation
+
+`useSearch` returns `status: 'idle' | 'loading' | 'ok' | 'unavailable' | 'error'`
+plus `retry()`. When the engine is down the server returns
+`503 { error: 'search_unavailable' }` and the hook reports `unavailable` —
+render the shared `SearchUnavailable` component (SDK). There are **no silent
+fallbacks**: browse/filter listings that don't touch search keep working;
+search itself is honestly down.
 
 ## Patterns by Data Source
 
 ### Filesystem-backed (assets, workflows, file-backed external plugins)
-- Use `registerFileBackedContentType()`
-- `filePatterns` for the file shapes
-- `reindex()` scans directories, yields docs
-- `verifyExists()` checks file existence
-- REST/MCP routes still call `ctx.search.index()` for immediate consistency
+- `registerFileBackedContentType()`; `reindex()` scans directories and yields docs; `verifyExists()` checks file existence; REST/MCP routes also call `ctx.search.index()` inline.
 
 ### Bakin task-store-backed (tasks)
-- Use `registerContentType()`
-- Plugin owns sync via task-store wrapper functions
-- `verifyExists()` queries the task store
-- No watcher hooks; the task store subscription drives taskboard SSE and plugin routes call search directly
+- `registerContentType()`; the task-store wrapper functions drive sync; `verifyExists()` queries the store.
 
 ### Runtime-adapter-backed (schedule, team)
-- Use `registerContentType()`
-- `reindex()` is empty (data loaded at runtime)
-- `verifyExists()` returns `true` always
-- Batch-index on data load
+- `registerContentType()`; batch-index on data load (the outbox acked-hash makes unconditional re-index cheap); `reindex()` enumerates the adapter's current state — and THROWS if the runtime is unreachable (park, don't flip thin).
 
-### Memory plugin (audit)
-- Registered by the **memory** plugin via `ctx.search.registerContentType()`
-  (moved out of `server.ts` during the issue #67 cleanup — `_audit` is no
-  longer a synthetic plugin id)
-- TTL configured via `settings.search.settings.auditTtl`
-
-### Official external plugins
-- Messaging and Projects live in `bakin-bits-official`. When installed,
-  they register search content types through the same `ctx.search` API.
-- Their file patterns are relative to their scoped `plugin-data/<id>/`
-  storage root, not top-level core paths.
+### Memory plugin
+- `registerContentType()`; the byte-offset tailer feeds the outbox as runtime files grow; `reindex()` delegates to the indexer's side-effect-free `enumerateAll()` and fails loudly when the runtime is down; offline file growth is caught by the doctor's stat-level size-vs-offset check.
 
 ## Currently Registered Content Types
 
 | Plugin | Table | Source | Helper used |
 |--------|-------|--------|---|
 | tasks | `bakin_tasks` | Bakin task JSON store | `registerContentType` |
-| assets | `bakin_assets` | `.meta.json` sidecars + binaries | `registerFileBackedContentType` (escape hatches) |
+| assets | `bakin_assets` | versioned manifests (+ enrichment fields) | `registerFileBackedContentType` (escape hatches) |
 | workflows | `bakin_workflows` | YAML defs + JSON instances | `registerFileBackedContentType` (two filePatterns) |
 | schedule | `bakin_schedule` | runtime cron jobs | `registerContentType` |
 | team | `bakin_team` | runtime agents | `registerContentType` |
-| memory | `bakin_memory` | `audit.jsonl` + runtime sessions/workspace memory | `registerContentType` (single table, `tier` facet discriminates across 7 memory tiers) |
+| team | `bakin_agent-lessons` | lesson markdown files | `registerFileBackedContentType` (secondary) |
+| memory | `bakin_memory` | `audit.jsonl` + runtime memory tiers | `registerContentType` (single table, `tier` facet) |
 
-Official plugins add their own tables when installed; for example Projects registers `bakin_projects` and Messaging registers `bakin_messaging_brainstorm`.
+(Logical names — the physical tables are blue/green versioned:
+`bakin_assets_v2_<fp8>` etc. Plugins never see physical names.)
 
 ## Common Pitfalls
 
-1. **Always `.catch(() => {})` on index/remove calls in REST handlers** — search is best-effort, never block the main operation.
-2. **Don't rely on the watcher alone for REST responses.** The ~300ms `awaitWriteFinish` lag will race the response. Call `ctx.search.index()` inline AND let the watcher fire.
-3. **Use `transform()` for status-only changes** — avoids expensive re-embedding when only metadata changed.
-4. **Document keys must be stable** — use the item's unique ID, not a path that might change. For multi-pattern tables, prefix the key (`def:`, `inst:`) so different patterns can't collide.
-5. **Test the unlink hook.** The `tests/plugins/<plugin>/unlink-hook.test.ts` files (and the `tests/integration/search-watcher-sync.test.ts` integration test) drive the watcher pipeline end-to-end with mocked chokidar — copy the pattern.
+1. **Always `.catch(() => {})` on index/remove calls in REST handlers** — search is best-effort, never block the main operation (the enqueue itself only fails if local SQLite is broken).
+2. **Don't rely on the watcher alone for REST responses.** The ~300ms `awaitWriteFinish` lag races the response. Call `ctx.search.index()` inline AND let the watcher fire — the outbox dedupes.
+3. **Use `transform()` for status-only changes** — avoids re-embedding when only metadata changed.
+4. **Keys must be stable** — the item's unique ID, never a mutable path. Prefix multi-pattern keys.
+5. **`reindex()` is a backfill source, not a sync mechanism.** Side-effect free, restartable, throws on unavailable dependencies. A generator that yields nothing on failure will let a blue/green migration converge on an empty table.
+6. **Test the unlink hook** — copy `tests/integration/search-watcher-sync.test.ts`.

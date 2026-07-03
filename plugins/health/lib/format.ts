@@ -35,13 +35,6 @@ export function formatDateShort(date: Date): string {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
-export function searchStatsDocumentCount(stats: Record<string, unknown> | null | undefined): number {
-  if (!stats) return 0
-  const value = stats.documents ?? stats.num_docs ?? stats.documentCount
-  const count = typeof value === 'number' ? value : Number(value)
-  return Number.isFinite(count) ? count : 0
-}
-
 export function extractErrorMessage(entry: UsageEntry): string {
   const meta = entry.meta ?? {}
   if (typeof meta.error === 'string' && meta.error.length > 0) return meta.error

@@ -76,6 +76,7 @@ mock.module('../../../src/core/settings', () => ({
 
 import { activatePlugin, findRoute } from '../test-helpers'
 import memoryPlugin from '../../../plugins/memory/index'
+import { getOffset, setOffset } from '../../../plugins/memory/lib/offsets'
 
 beforeAll(() => {
   mkdirSync(testDir, { recursive: true })
@@ -170,6 +171,38 @@ describe('memory plugin shell (C2)', () => {
     ]
     for (const frag of expectedFragments) {
       expect(paths.some((p) => p.includes(frag))).toBe(true)
+    }
+  })
+
+  it('wires a side-effect-free reindex generator that never touches offsets', async () => {
+    // Blue/green backfill source: reindex() delegates to enumerateAll() —
+    // rows are YIELDED (not side-effect written) and incremental offsets
+    // are never mutated by a backfill pass.
+    const activated = await activatePlugin(memoryPlugin, testDir)
+    const reg = activated.ctx.search.registerContentType as ReturnType<typeof mock>
+    const def = reg.mock.calls[0][0]
+
+    setOffset('reindex-probe-file', 123)
+    for await (const _row of def.reindex()) {
+      // rows yield through; enumeration must not mutate offsets
+    }
+    expect(getOffset('reindex-probe-file')).toBe(123)
+  })
+
+  it('reindex fails loudly when the runtime is unavailable (migration must park, not flip thin)', async () => {
+    const activated = await activatePlugin(memoryPlugin, testDir)
+    const reg = activated.ctx.search.registerContentType as ReturnType<typeof mock>
+    const def = reg.mock.calls[0][0]
+
+    const runtime = activated.ctx.runtime as unknown as { ping: ReturnType<typeof mock> }
+    const originalPing = runtime.ping
+    runtime.ping = mock(async () => false)
+    try {
+      await expect(async () => {
+        for await (const _row of def.reindex()) { /* drain */ }
+      }).toThrow(/runtime unavailable/)
+    } finally {
+      runtime.ping = originalPing
     }
   })
 })

@@ -12,6 +12,7 @@ import { getMimeType, type AssetType } from './constants'
 import { assetDirAbs } from './asset-id'
 import { normalizeTags } from './tags'
 import { withAssetLock } from './asset-lock'
+import { emitAssetWritten } from './asset-events'
 import { loadSharp, imageDimensions, generateThumbnail } from './asset-media'
 import {
   readManifest,
@@ -95,6 +96,7 @@ export async function addVersion(assetId: string, input: AssetVersionInput): Pro
     manifest.updated = created
     mirrorDisplay(manifest)
     writeManifestAtomic(dirAbs, manifest)
+    emitAssetWritten({ assetId, version: nextVersion, op: 'add-version' })
     return { assetId, version: nextVersion, manifest }
   })
 }
@@ -181,7 +183,8 @@ export async function applyTags(
       failed.push(assetId)
       continue
     }
-    const tags = [...manifest.tags.filter((t) => !remove.has(t)), ...add]
+    const tags = normalizeTags([...manifest.tags.filter((t) => !remove.has(t)), ...add])
+    if (tags.length === manifest.tags.length && tags.every((t, i) => t === manifest.tags[i])) continue // no-op — skip the rewrite + reindex
     await updateMetadata(assetId, { tags })
     updated++
   }

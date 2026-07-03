@@ -15,6 +15,7 @@ import { getContentDir } from '@bakin/core/content-dir'
 import type { RuntimeMemoryEntry } from '@bakin/core/adapters/runtime'
 import type { PluginContext } from '@bakin/core/plugin-types'
 import { createLogger } from '../../../src/core/logger'
+import { MEMORY_TIERS } from './types'
 import type { MemoryRow, MemoryTier } from './types'
 import { parseAuditLine } from './tier-parsers/audit-parser'
 import { parseDurableFile, rowId as durableRowId } from './tier-parsers/durable-parser'
@@ -50,6 +51,71 @@ const DAY_MS = 86_400_000
 
 const log = createLogger('memory:indexer')
 
+/**
+ * Build the search document for a memory row. Shared by the live write path
+ * (`writeRow`) and the side-effect-free enumerator (`enumerateAll`) so a
+ * blue/green backfill emits exactly the docs the live path writes.
+ */
+export function buildMemoryDoc(row: MemoryRow): Record<string, unknown> {
+  const doc: Record<string, unknown> = {
+    tier: row.tier,
+    agent: row.agent,
+    title: row.title,
+    snippet: row.snippet,
+    content: row.content,
+    meta: row.meta,
+    source_backend: row.sourceRef.backend,
+    source_path: row.sourceRef.path,
+    updated_at: row.updatedAt,
+    created_at: row.createdAt,
+  }
+  if (row.kind !== undefined) doc.kind = row.kind
+  // Promote sessionId out of the meta JSON blob into a real filterable
+  // field: "turns/checkpoints for session X" can only work as a filter —
+  // meta is not a searchable field, so a q=sessionId full-text match over
+  // title/snippet/content never matched anything.
+  if (row.sourceRef.sessionId) doc.sessionId = row.sourceRef.sessionId
+  return doc
+}
+
+interface JsonlChunk {
+  rows: MemoryRow[]
+  /** Byte offset just past the last complete line consumed from the chunk. */
+  newOffset: number
+}
+
+/**
+ * Parse a chunk of JSONL text whose first byte sits at `startOffset` in the
+ * source file. A trailing partial line (chunk ended mid-write, no '\n') is
+ * excluded from both the rows and `newOffset` so an incremental pass
+ * re-reads it next time. `maxRows` caps parsed rows (head-only indexing of
+ * oversize sessions).
+ */
+function parseJsonlChunk(
+  text: string,
+  startOffset: number,
+  parseLine: (line: string, lineStart: number) => MemoryRow | null,
+  maxRows?: number,
+): JsonlChunk {
+  const rawLines = text.split('\n')
+  // If the chunk ended mid-line (no trailing newline), keep that fragment
+  // for the next pass — don't parse partial JSON.
+  const trailingIncomplete = text.endsWith('\n') ? '' : (rawLines.pop() ?? '')
+
+  const rows: MemoryRow[] = []
+  let lineStart = startOffset
+  for (const line of rawLines) {
+    if (maxRows !== undefined && rows.length >= maxRows) break
+    const row = parseLine(line, lineStart)
+    if (row) rows.push(row)
+    lineStart += Buffer.byteLength(line, 'utf-8') + 1 // +1 for the '\n'
+  }
+
+  const newOffset =
+    startOffset + Buffer.byteLength(text, 'utf-8') - Buffer.byteLength(trailingIncomplete, 'utf-8')
+  return { rows, newOffset }
+}
+
 export interface IndexerOptions {
   backfillDays?: number
   skipSessionOverBytes?: number
@@ -61,12 +127,33 @@ export interface IndexerOptions {
 }
 
 export class MemoryIndexer {
+  private backfillInFlight: Promise<void> | null = null
+
   constructor(
     private readonly ctx: PluginContext,
     private readonly opts: IndexerOptions = {},
   ) {}
 
+  /**
+   * Index the given tiers. Whole-corpus passes SERIALIZE: overlapping runs
+   * would interleave offset resets with in-flight offset advances and share
+   * the chunk-count maps. Every row is written unconditionally — the search
+   * outbox's acked-hash dedupe drops unchanged content downstream.
+   */
   async backfill(tiers: readonly MemoryTier[] = []): Promise<void> {
+    while (this.backfillInFlight) {
+      await this.backfillInFlight.catch(() => {})
+    }
+    const run = this.runBackfill(tiers)
+    this.backfillInFlight = run
+    try {
+      await run
+    } finally {
+      if (this.backfillInFlight === run) this.backfillInFlight = null
+    }
+  }
+
+  private async runBackfill(tiers: readonly MemoryTier[]): Promise<void> {
     log.debug('backfill requested', { tiers, opts: this.opts })
     for (const tier of tiers) {
       await this.indexTier(tier)
@@ -195,11 +282,29 @@ export class MemoryIndexer {
 
   private async indexAuditTier(): Promise<number> {
     const file = this.auditPath()
-    if (!existsSync(file)) return 0
+    const chunk = this.collectAuditRows(getOffset(file))
+    if (!chunk) return 0
+
+    for (const row of chunk.rows) {
+      await this.writeRow(row)
+    }
+    setOffset(file, chunk.newOffset)
+    return chunk.rows.length
+  }
+
+  /**
+   * Read audit.jsonl from `startOffset` and parse rows. Pure w.r.t. persisted
+   * state — no offset reads/writes — shared by the live incremental path and
+   * `enumerateAll` (which passes offset 0). Returns null when there is
+   * nothing to consume (missing file / no new bytes), so the live path can
+   * skip its offset write exactly as before.
+   */
+  private collectAuditRows(startOffset: number): JsonlChunk | null {
+    const file = this.auditPath()
+    if (!existsSync(file)) return null
 
     const stats = statSync(file)
-    let offset = getOffset(file)
-
+    let offset = startOffset
     if (stats.size < offset) {
       log.info('audit.jsonl shrank — restarting from offset 0', {
         previous: offset,
@@ -207,7 +312,7 @@ export class MemoryIndexer {
       })
       offset = 0
     }
-    if (stats.size === offset) return 0
+    if (stats.size === offset) return null
 
     const bytesToRead = stats.size - offset
     const buf = Buffer.alloc(bytesToRead)
@@ -218,26 +323,9 @@ export class MemoryIndexer {
       closeSync(fd)
     }
 
-    const text = buf.toString('utf-8')
-    const rawLines = text.split('\n')
-    // If the chunk ended mid-line (no trailing newline), keep that fragment
-    // for the next pass — don't parse partial JSON.
-    const trailingIncomplete = text.endsWith('\n') ? '' : (rawLines.pop() ?? '')
-
-    let lineStart = offset
-    let indexed = 0
-    for (const line of rawLines) {
-      const row = parseAuditLine(line, file, lineStart)
-      if (row) {
-        await this.writeRow(row)
-        indexed += 1
-      }
-      lineStart += Buffer.byteLength(line, 'utf-8') + 1 // +1 for the '\n'
-    }
-
-    const newOffset = stats.size - Buffer.byteLength(trailingIncomplete, 'utf-8')
-    setOffset(file, newOffset)
-    return indexed
+    return parseJsonlChunk(buf.toString('utf-8'), offset, (line, lineStart) =>
+      parseAuditLine(line, file, lineStart),
+    )
   }
 
   // ─── Durable tier (C4) ────────────────────────────────────────────────────
@@ -261,16 +349,21 @@ export class MemoryIndexer {
     }
   }
 
-  private async indexDurableFile(agent: string, basename: string): Promise<void> {
+  /** Fetch + parse one durable file. Null when the entry is missing. */
+  private async collectDurableFileRows(agent: string, basename: string): Promise<MemoryRow[] | null> {
     const entry = await getRuntimeMemoryEntry(this.ctx, 'durable', basename, agent)
-    if (!entry) return
+    if (!entry) return null
+    return parseDurableFile(agent, basename, entry.content, entry.path ?? basename, entryMtimeMs(entry))
+  }
 
-    const rows = parseDurableFile(agent, basename, entry.content, entry.path ?? basename, entryMtimeMs(entry))
+  private async indexDurableFile(agent: string, basename: string): Promise<void> {
+    const rows = await this.collectDurableFileRows(agent, basename)
+    if (rows === null) return
 
     const prevCount = this.lastDurableChunkCount.get(this.durableKey(agent, basename)) ?? 0
     if (rows.length < prevCount) {
       for (let i = rows.length; i < prevCount; i += 1) {
-        await this.ctx.search.remove(durableRowId(agent, basename, i))
+        await this.removeRow(durableRowId(agent, basename, i))
       }
     }
 
@@ -283,7 +376,7 @@ export class MemoryIndexer {
   private async removeDurableFile(agent: string, basename: string): Promise<void> {
     const count = this.lastDurableChunkCount.get(this.durableKey(agent, basename)) ?? 0
     for (let i = 0; i < count; i += 1) {
-      await this.ctx.search.remove(durableRowId(agent, basename, i))
+      await this.removeRow(durableRowId(agent, basename, i))
     }
     this.lastDurableChunkCount.delete(this.durableKey(agent, basename))
   }
@@ -314,16 +407,21 @@ export class MemoryIndexer {
     }
   }
 
-  private async indexSkillFile(agent: string, skillName: string): Promise<void> {
+  /** Fetch + parse one skill file. Null when the entry is missing. */
+  private async collectSkillFileRows(agent: string, skillName: string): Promise<MemoryRow[] | null> {
     const entry = await getRuntimeMemoryEntry(this.ctx, 'skill', skillName, agent)
-    if (!entry) return
+    if (!entry) return null
+    return parseSkillFile(agent, skillName, entry.content, entry.path ?? skillName, entryMtimeMs(entry))
+  }
 
-    const rows = parseSkillFile(agent, skillName, entry.content, entry.path ?? skillName, entryMtimeMs(entry))
+  private async indexSkillFile(agent: string, skillName: string): Promise<void> {
+    const rows = await this.collectSkillFileRows(agent, skillName)
+    if (rows === null) return
 
     const prevCount = this.lastSkillChunkCount.get(this.skillKey(agent, skillName)) ?? 0
     if (rows.length < prevCount) {
       for (let i = rows.length; i < prevCount; i += 1) {
-        await this.ctx.search.remove(skillRowId(agent, skillName, i))
+        await this.removeRow(skillRowId(agent, skillName, i))
       }
     }
 
@@ -336,7 +434,7 @@ export class MemoryIndexer {
   private async removeSkillFile(agent: string, skillName: string): Promise<void> {
     const count = this.lastSkillChunkCount.get(this.skillKey(agent, skillName)) ?? 0
     for (let i = 0; i < count; i += 1) {
-      await this.ctx.search.remove(skillRowId(agent, skillName, i))
+      await this.removeRow(skillRowId(agent, skillName, i))
     }
     this.lastSkillChunkCount.delete(this.skillKey(agent, skillName))
   }
@@ -351,11 +449,11 @@ export class MemoryIndexer {
     }
   }
 
-  private async indexDailyNote(agent: string, filename: string): Promise<void> {
+  /** Fetch + parse one daily note. Null when missing or not a daily-note filename. */
+  private async collectDailyNoteRow(agent: string, filename: string): Promise<MemoryRow | null> {
     const entry = await getRuntimeMemoryEntry(this.ctx, 'daily_note', filename, agent)
-    if (!entry) return
-
-    const row = parseDailyNote(
+    if (!entry) return null
+    return parseDailyNote(
       agent,
       filename,
       entry.content,
@@ -363,12 +461,16 @@ export class MemoryIndexer {
       entryMtimeMs(entry),
       entrySizeBytes(entry),
     )
+  }
+
+  private async indexDailyNote(agent: string, filename: string): Promise<void> {
+    const row = await this.collectDailyNoteRow(agent, filename)
     if (row === null) return
     await this.writeRow(row)
   }
 
   private async removeDailyNote(agent: string, filename: string): Promise<void> {
-    await this.ctx.search.remove(dailyNoteRowId(agent, filename))
+    await this.removeRow(dailyNoteRowId(agent, filename))
   }
 
   // ─── Session tier (C6) ────────────────────────────────────────────────────
@@ -381,30 +483,43 @@ export class MemoryIndexer {
     }
   }
 
-  private async indexSessionsForAgent(agent: string): Promise<void> {
+  /**
+   * Load + parse the agent's session roster, applying the backfill cutoff.
+   * Returns the session-map key alongside each row because the live path
+   * tracks roster membership by key for orphan removal. Null when the
+   * roster is missing/unparseable.
+   */
+  private async collectSessionRows(agent: string): Promise<Array<{ key: string; row: MemoryRow }> | null> {
     const loaded = await this.loadSessionMap(agent)
-    if (loaded === null) return
+    if (loaded === null) return null
 
     const cutoff = this.backfillCutoffMs()
-    const srcPath = loaded.sourcePath
-    const seen = new Set<string>()
-
+    const collected: Array<{ key: string; row: MemoryRow }> = []
     for (const [key, value] of Object.entries(loaded.map)) {
       if (!value || typeof value !== 'object' || Array.isArray(value)) continue
       const s = value as Record<string, unknown>
       const updatedAt = typeof s.updatedAt === 'number' ? s.updatedAt : null
       if (cutoff !== null && updatedAt !== null && updatedAt < cutoff) continue
-      const row = parseSession(agent, key, value, srcPath)
-      if (row) {
-        await this.writeRow(row)
-        seen.add(key)
-      }
+      const row = parseSession(agent, key, value, loaded.sourcePath)
+      if (row) collected.push({ key, row })
+    }
+    return collected
+  }
+
+  private async indexSessionsForAgent(agent: string): Promise<void> {
+    const collected = await this.collectSessionRows(agent)
+    if (collected === null) return
+
+    const seen = new Set<string>()
+    for (const { key, row } of collected) {
+      await this.writeRow(row)
+      seen.add(key)
     }
 
     const prev = this.lastSessionKeys.get(agent) ?? new Set<string>()
     for (const prevKey of prev) {
       if (!seen.has(prevKey)) {
-        await this.ctx.search.remove(sessionRowId(agent, prevKey))
+        await this.removeRow(sessionRowId(agent, prevKey))
       }
     }
     this.lastSessionKeys.set(agent, seen)
@@ -475,37 +590,85 @@ export class MemoryIndexer {
     await this.indexSessionJsonlIncremental(agent, sessionId, sessionKey, tierId, path)
   }
 
-  private async indexSessionJsonlHead(
+  /**
+   * Head-only parse of an oversize session JSONL: first HEAD_CHUNK_BYTES,
+   * capped at HEAD_CHUNK_MAX_ROWS parsed rows. Pure w.r.t. persisted state;
+   * shared by the live path and `enumerateAll`. Null when the entry is gone.
+   */
+  private async collectSessionJsonlHeadRows(
     agent: string,
     sessionId: string,
     sessionKey: string,
     tierId: string,
-  ): Promise<void> {
+  ): Promise<MemoryRow[] | null> {
     const stat = await this.ctx.runtime.memory.statEntry(tierId, sessionId, { agentId: agent })
-    if (!stat) return
+    if (!stat) return null
     const readBytes = Math.min(stat.size, HEAD_CHUNK_BYTES)
     const range = await this.ctx.runtime.memory.readEntryRange(tierId, sessionId, {
       agentId: agent,
       offset: 0,
       length: readBytes,
     })
-    if (!range) return
-    const text = range.content
-    const rawLines = text.split('\n')
-    if (!text.endsWith('\n')) rawLines.pop()
+    if (!range) return null
+    const chunk = parseJsonlChunk(
+      range.content,
+      0,
+      (line, lineStart) => parseTurnLine(agent, sessionId, sessionKey, line, lineStart),
+      HEAD_CHUNK_MAX_ROWS,
+    )
+    return chunk.rows
+  }
 
-    let lineStart = 0
-    let indexed = 0
-    for (const line of rawLines) {
-      if (indexed >= HEAD_CHUNK_MAX_ROWS) break
-      const row = parseTurnLine(agent, sessionId, sessionKey, line, lineStart)
-      if (row) {
-        await this.writeRow(row)
-        indexed += 1
-      }
-      lineStart += Buffer.byteLength(line, 'utf-8') + 1
+  private async indexSessionJsonlHead(
+    agent: string,
+    sessionId: string,
+    sessionKey: string,
+    tierId: string,
+  ): Promise<void> {
+    const rows = await this.collectSessionJsonlHeadRows(agent, sessionId, sessionKey, tierId)
+    if (rows === null) return
+    for (const row of rows) {
+      await this.writeRow(row)
     }
-    log.info('session jsonl oversize — indexed head-only', { agent, sessionId, indexed })
+    log.info('session jsonl oversize — indexed head-only', { agent, sessionId, indexed: rows.length })
+  }
+
+  /**
+   * Read a session JSONL from `startOffset` and parse rows. Pure w.r.t.
+   * persisted state — the caller owns offset persistence. Null when there is
+   * nothing to consume (missing entry / no new bytes / range read failed).
+   */
+  private async collectSessionJsonlRows(
+    agent: string,
+    sessionId: string,
+    sessionKey: string,
+    tierId: string,
+    path: string,
+    startOffset: number,
+  ): Promise<JsonlChunk | null> {
+    const stats = await this.ctx.runtime.memory.statEntry(tierId, sessionId, { agentId: agent })
+    if (!stats) return null
+    let offset = startOffset
+    if (stats.size < offset) {
+      log.info('session jsonl shrank — restarting from offset 0', {
+        path,
+        previous: offset,
+        current: stats.size,
+      })
+      offset = 0
+    }
+    if (stats.size === offset) return null
+
+    const bytesToRead = stats.size - offset
+    const range = await this.ctx.runtime.memory.readEntryRange(tierId, sessionId, {
+      agentId: agent,
+      offset,
+      length: bytesToRead,
+    })
+    if (!range) return null
+    return parseJsonlChunk(range.content, offset, (line, lineStart) =>
+      parseTurnLine(agent, sessionId, sessionKey, line, lineStart),
+    )
   }
 
   private async indexSessionJsonlIncremental(
@@ -515,39 +678,13 @@ export class MemoryIndexer {
     tierId: string,
     path: string,
   ): Promise<void> {
-    const stats = await this.ctx.runtime.memory.statEntry(tierId, sessionId, { agentId: agent })
-    if (!stats) return
-    let offset = getOffset(path)
-    if (stats.size < offset) {
-      log.info('session jsonl shrank — restarting from offset 0', {
-        path,
-        previous: offset,
-        current: stats.size,
-      })
-      offset = 0
+    const chunk = await this.collectSessionJsonlRows(agent, sessionId, sessionKey, tierId, path, getOffset(path))
+    if (!chunk) return
+
+    for (const row of chunk.rows) {
+      await this.writeRow(row)
     }
-    if (stats.size === offset) return
-
-    const bytesToRead = stats.size - offset
-    const range = await this.ctx.runtime.memory.readEntryRange(tierId, sessionId, {
-      agentId: agent,
-      offset,
-      length: bytesToRead,
-    })
-    if (!range) return
-    const text = range.content
-    const rawLines = text.split('\n')
-    const trailingIncomplete = text.endsWith('\n') ? '' : (rawLines.pop() ?? '')
-
-    let lineStart = offset
-    for (const line of rawLines) {
-      const row = parseTurnLine(agent, sessionId, sessionKey, line, lineStart)
-      if (row) await this.writeRow(row)
-      lineStart += Buffer.byteLength(line, 'utf-8') + 1
-    }
-
-    const newOffset = stats.size - Buffer.byteLength(trailingIncomplete, 'utf-8')
-    setOffset(path, newOffset)
+    setOffset(path, chunk.newOffset)
   }
 
   // ─── Checkpoint tier (C7) ─────────────────────────────────────────────────
@@ -569,15 +706,16 @@ export class MemoryIndexer {
     }
   }
 
-  private async indexCheckpointFile(
+  /** Fetch + parse one checkpoint file. Null when missing or unparseable. */
+  private async collectCheckpointRow(
     agent: string,
     sessionId: string,
     checkpointId: string,
     filename: string,
-  ): Promise<void> {
+  ): Promise<MemoryRow | null> {
     const entry = await getRuntimeMemoryEntry(this.ctx, 'checkpoint', filename, agent)
-    if (!entry) return
-    const row = parseCheckpoint(
+    if (!entry) return null
+    return parseCheckpoint(
       agent,
       sessionId,
       checkpointId,
@@ -586,6 +724,15 @@ export class MemoryIndexer {
       entry.path ?? filename,
       entryMtimeMs(entry),
     )
+  }
+
+  private async indexCheckpointFile(
+    agent: string,
+    sessionId: string,
+    checkpointId: string,
+    filename: string,
+  ): Promise<void> {
+    const row = await this.collectCheckpointRow(agent, sessionId, checkpointId, filename)
     if (row === null) return
     await this.writeRow(row)
   }
@@ -595,7 +742,7 @@ export class MemoryIndexer {
     sessionId: string,
     checkpointId: string,
   ): Promise<void> {
-    await this.ctx.search.remove(checkpointRowId(agent, sessionId, checkpointId))
+    await this.removeRow(checkpointRowId(agent, sessionId, checkpointId))
   }
 
   // ─── Dream tier (C8) ──────────────────────────────────────────────────────
@@ -615,17 +762,38 @@ export class MemoryIndexer {
     }
   }
 
+  /** Fetch + parse one dream phase doc. Null when missing or unparseable. */
+  private async collectPhaseDocRow(
+    agent: string,
+    phase: string,
+    filename: string,
+    knownEntry?: RuntimeMemoryEntry,
+  ): Promise<MemoryRow | null> {
+    const entry = knownEntry ?? await getRuntimeMemoryEntry(this.ctx, 'dream_phase', `${phase}/${filename}`, agent)
+    if (!entry) return null
+    return parsePhaseDoc(agent, phase, filename, entry.content, entry.path ?? `${phase}/${filename}`, entryMtimeMs(entry))
+  }
+
   private async indexPhaseDoc(
     agent: string,
     phase: string,
     filename: string,
     knownEntry?: RuntimeMemoryEntry,
   ): Promise<void> {
-    const entry = knownEntry ?? await getRuntimeMemoryEntry(this.ctx, 'dream_phase', `${phase}/${filename}`, agent)
-    if (!entry) return
-    const row = parsePhaseDoc(agent, phase, filename, entry.content, entry.path ?? `${phase}/${filename}`, entryMtimeMs(entry))
+    const row = await this.collectPhaseDocRow(agent, phase, filename, knownEntry)
     if (row === null) return
     await this.writeRow(row)
+  }
+
+  /** Fetch + parse one dream signal artifact. Null when missing or unparseable. */
+  private async collectDreamSignalRow(
+    agent: string,
+    relPath: string,
+    knownEntry?: RuntimeMemoryEntry,
+  ): Promise<MemoryRow | null> {
+    const entry = knownEntry ?? await getRuntimeMemoryEntry(this.ctx, 'dream_signal', relPath, agent)
+    if (!entry) return null
+    return parseDreamSignal(agent, relPath, entry.content, entry.path ?? relPath, entryMtimeMs(entry))
   }
 
   private async indexDreamSignal(
@@ -633,9 +801,7 @@ export class MemoryIndexer {
     relPath: string,
     knownEntry?: RuntimeMemoryEntry,
   ): Promise<void> {
-    const entry = knownEntry ?? await getRuntimeMemoryEntry(this.ctx, 'dream_signal', relPath, agent)
-    if (!entry) return
-    const row = parseDreamSignal(agent, relPath, entry.content, entry.path ?? relPath, entryMtimeMs(entry))
+    const row = await this.collectDreamSignalRow(agent, relPath, knownEntry)
     if (row === null) return
     await this.writeRow(row)
   }
@@ -644,14 +810,14 @@ export class MemoryIndexer {
     const m = /^(\d{4}-\d{2}-\d{2})(?:[-.].*)?\.md$/.exec(filename)
     if (!m) return
     const date = m[1]
-    await this.ctx.search.remove(dreamRowId(agent, 'phase_doc', `${phase}|${date}`))
+    await this.removeRow(dreamRowId(agent, 'phase_doc', `${phase}|${date}`))
   }
 
   private async removeDreamSignal(agent: string, relPath: string): Promise<void> {
     const c = classifyDreamSignal(relPath)
     if (!c) return
     const key = c.date ?? c.artifactType
-    await this.ctx.search.remove(dreamRowId(agent, c.artifactType, key))
+    await this.removeRow(dreamRowId(agent, c.artifactType, key))
   }
 
   // ─── Shared write ─────────────────────────────────────────────────────────
@@ -678,19 +844,150 @@ export class MemoryIndexer {
 
   private async writeRow(row: MemoryRow): Promise<void> {
     if (this.isExpired(row)) return
-    const doc: Record<string, unknown> = {
-      tier: row.tier,
-      agent: row.agent,
-      title: row.title,
-      snippet: row.snippet,
-      content: row.content,
-      meta: row.meta,
-      source_backend: row.sourceRef.backend,
-      source_path: row.sourceRef.path,
-      updated_at: row.updatedAt,
-      created_at: row.createdAt,
+    // Unconditional write: the search outbox's acked-hash dedupe drops
+    // unchanged rows before they reach the engine, so the old scan-loaded
+    // indexed-updatedAt cache (and its persisted snapshot) is gone.
+    await this.ctx.search.index(row.id, buildMemoryDoc(row))
+  }
+
+  private async removeRow(key: string): Promise<void> {
+    await this.ctx.search.remove(key)
+  }
+
+  // ─── Side-effect-free enumeration (blue/green backfill source) ────────────
+
+  /**
+   * Yield every `{key, doc}` the live indexing path would write for the
+   * current source corpus, across all tiers, WITHOUT touching persisted
+   * state: no offset reads/writes, no search-adapter calls, no
+   * chunk-count/roster bookkeeping. Restartable —
+   * every call re-reads sources from byte 0.
+   *
+   * Write-time policy filters DO apply (TTL retention, session backfill
+   * cutoff, oversize head-chunking) so the emitted set matches what a fresh
+   * backfill would write.
+   */
+  async *enumerateAll(): AsyncGenerator<{ key: string; doc: Record<string, unknown> }> {
+    for (const tier of MEMORY_TIERS) {
+      yield* this.enumerateTier(tier)
     }
-    if (row.kind !== undefined) doc.kind = row.kind
-    await this.ctx.search.index(row.id, doc)
+  }
+
+  async *enumerateTier(tier: MemoryTier): AsyncGenerator<{ key: string; doc: Record<string, unknown> }> {
+    if (tier === 'audit') {
+      const chunk = this.collectAuditRows(0)
+      if (chunk) yield* this.emitRows(chunk.rows)
+      return
+    }
+    if (tier === 'durable') {
+      yield* this.enumerateDurableTier()
+      return
+    }
+    if (tier === 'daily_note') {
+      yield* this.enumerateDailyNoteTier()
+      return
+    }
+    if (tier === 'session') {
+      yield* this.enumerateSessionTier()
+      return
+    }
+    if (tier === 'turn') {
+      yield* this.enumerateTurnTier()
+      return
+    }
+    if (tier === 'checkpoint') {
+      yield* this.enumerateCheckpointTier()
+      return
+    }
+    if (tier === 'dream') {
+      yield* this.enumerateDreamTier()
+      return
+    }
+  }
+
+  /** Apply the shared write-time TTL policy and map rows to {key, doc}. */
+  private *emitRows(rows: readonly MemoryRow[]): Generator<{ key: string; doc: Record<string, unknown> }> {
+    for (const row of rows) {
+      if (this.isExpired(row)) continue
+      yield { key: row.id, doc: buildMemoryDoc(row) }
+    }
+  }
+
+  private async *enumerateDurableTier(): AsyncGenerator<{ key: string; doc: Record<string, unknown> }> {
+    for (const agent of await this.listRuntimeAgentIds()) {
+      for (const basename of CANONICAL_DURABLE_FILES) {
+        const rows = await this.collectDurableFileRows(agent, basename)
+        if (rows) yield* this.emitRows(rows)
+      }
+      for (const file of await listRuntimeMemoryEntries(this.ctx, 'skill', agent)) {
+        const rows = await this.collectSkillFileRows(agent, file.id)
+        if (rows) yield* this.emitRows(rows)
+      }
+    }
+  }
+
+  private async *enumerateDailyNoteTier(): AsyncGenerator<{ key: string; doc: Record<string, unknown> }> {
+    for (const agent of await this.listRuntimeAgentIds()) {
+      for (const entry of await listRuntimeMemoryEntries(this.ctx, 'daily_note', agent)) {
+        const row = await this.collectDailyNoteRow(agent, entry.id)
+        if (row) yield* this.emitRows([row])
+      }
+    }
+  }
+
+  private async *enumerateSessionTier(): AsyncGenerator<{ key: string; doc: Record<string, unknown> }> {
+    for (const agent of await this.listRuntimeAgentIds()) {
+      const collected = await this.collectSessionRows(agent)
+      if (collected) yield* this.emitRows(collected.map((entry) => entry.row))
+    }
+  }
+
+  private async *enumerateTurnTier(): AsyncGenerator<{ key: string; doc: Record<string, unknown> }> {
+    const threshold = this.opts.skipSessionOverBytes ?? DEFAULT_SKIP_SESSION_BYTES
+    for (const agent of await this.listRuntimeAgentIds()) {
+      for (const file of await listRuntimeMemoryEntries(this.ctx, 'session_jsonl', agent)) {
+        if (metadataBoolean(file, 'isReset')) continue
+        const sessionId = metadataString(file, 'sessionId') ?? file.id
+        const sessionKey = `agent:${agent}:${sessionId}`
+        const path = file.path ?? `runtime:${file.tierId}:${agent}:${file.id}`
+        if (entrySizeBytes(file) > threshold) {
+          const rows = await this.collectSessionJsonlHeadRows(agent, sessionId, sessionKey, file.tierId)
+          if (rows) yield* this.emitRows(rows)
+        } else {
+          const chunk = await this.collectSessionJsonlRows(agent, sessionId, sessionKey, file.tierId, path, 0)
+          if (chunk) yield* this.emitRows(chunk.rows)
+        }
+      }
+    }
+  }
+
+  private async *enumerateCheckpointTier(): AsyncGenerator<{ key: string; doc: Record<string, unknown> }> {
+    for (const agent of await this.listRuntimeAgentIds()) {
+      for (const file of await listRuntimeMemoryEntries(this.ctx, 'checkpoint', agent)) {
+        const sessionId = metadataString(file, 'sessionId')
+        const checkpointId = metadataString(file, 'checkpointId')
+        const filename = metadataString(file, 'filename') ?? file.id
+        if (!sessionId || !checkpointId) continue
+        const row = await this.collectCheckpointRow(agent, sessionId, checkpointId, filename)
+        if (row) yield* this.emitRows([row])
+      }
+    }
+  }
+
+  private async *enumerateDreamTier(): AsyncGenerator<{ key: string; doc: Record<string, unknown> }> {
+    for (const agent of await this.listRuntimeAgentIds()) {
+      for (const file of await listRuntimeMemoryEntries(this.ctx, 'dream_phase', agent)) {
+        const phase = metadataString(file, 'phase')
+        const filename = metadataString(file, 'filename')
+        if (!phase || !filename) continue
+        const row = await this.collectPhaseDocRow(agent, phase, filename)
+        if (row) yield* this.emitRows([row])
+      }
+      for (const file of await listRuntimeMemoryEntries(this.ctx, 'dream_signal', agent)) {
+        const relPath = metadataString(file, 'relPath') ?? file.id
+        const row = await this.collectDreamSignalRow(agent, relPath)
+        if (row) yield* this.emitRows([row])
+      }
+    }
   }
 }

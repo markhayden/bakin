@@ -1,7 +1,7 @@
 import { accessSync, constants, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
 import { dirname, join, resolve, sep } from 'path'
 import { execFile } from 'child_process'
-import { randomUUID } from 'crypto'
+import { createHash, randomUUID } from 'crypto'
 import { promisify } from 'util'
 import type {
   AgentRuntimeAdapter,
@@ -16,6 +16,7 @@ import type {
   MessageUsage,
   RuntimeAgent,
   RuntimeAvailableModel,
+  RuntimeCapabilities,
   RuntimeImageEditInput,
   RuntimeImageGenerateInput,
   RuntimeImageGenerationResult,
@@ -29,6 +30,8 @@ import type {
 } from '@bakin/core/adapters/runtime'
 import type { AdapterHealthCheckDefinition, AdapterInitOpts, AdapterLogger } from '@bakin/core/adapters/shared'
 import { RuntimeError, RuntimeTurnError } from '@bakin/core/adapters/runtime'
+import { tryGetMainAgentId } from './main-agent'
+import { buildOpenClawAttachments } from './attachments'
 import { safeFileSize } from './file-utils'
 import { inspectTrajectoryRun, trajectoryFilePathFor, watchTrajectoryForDeath, TrajectoryRecoveredTurn, type TrajectoryUsage } from './trajectory-forensics'
 import { generateDirectImage, isDirectImageProvider, resolveProviderApiKeySource } from '@bakin/core/media'
@@ -141,6 +144,8 @@ interface OpenClawAgentTurnOptions {
   agentId: string
   messages: Array<{ role: string; content: string }>
   sessionKey?: string
+  attachments?: MessageArgs['attachments']
+  ephemeral?: boolean
   toolsMode?: MessageArgs['toolsMode']
   toolsAllow?: string[]
   toolsDeny?: string[]
@@ -415,6 +420,8 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         agentId: args.agentId,
         messages: [{ role: 'user', content: args.content }],
         sessionKey: args.threadId,
+        attachments: args.attachments,
+        ephemeral: args.ephemeral,
         toolsMode: args.toolsMode,
         toolsAllow: args.toolsAllow,
         toolsDeny: args.toolsDeny,
@@ -436,6 +443,8 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       agentId: args.agentId,
       messages: [{ role: 'user', content: args.content }],
       sessionKey: args.threadId,
+      attachments: args.attachments,
+      ephemeral: args.ephemeral,
       toolsMode: args.toolsMode,
       toolsAllow: args.toolsAllow,
       toolsDeny: args.toolsDeny,
@@ -822,6 +831,71 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     },
   }
 
+  private capabilitiesCache = new Map<string, { at: number; value: RuntimeCapabilities }>()
+
+  /**
+   * Input modalities of the SELECTED agent's effective model (default: the
+   * main agent), answered from the runtime's OWN catalog (`openclaw models
+   * list --json` `input` field — "text" | "text+image" | …): the same
+   * source of truth the gateway's attachment gate enforces, so this probe
+   * can never disagree with it. Effective model = the agent's configured
+   * model, else the entry the runtime itself tags `default`. A requested
+   * agent that does not exist reports all-false (never falls back to the
+   * default model — that would mis-describe a different agent's gate).
+   * Conservative false on any ambiguity; no model-name heuristics (D17
+   * discipline applies to runtimes too).
+   */
+  capabilities = async (opts?: { agentId?: string }): Promise<RuntimeCapabilities> => {
+    const CACHE_MS = 60_000
+    const requested = opts?.agentId?.trim() || ''
+    const cached = this.capabilitiesCache.get(requested)
+    if (cached && Date.now() - cached.at < CACHE_MS) {
+      return cached.value
+    }
+    const none: RuntimeCapabilities = { imageInput: false, audioInput: false }
+    let value = none
+    try {
+      let agent: Awaited<ReturnType<typeof this.agents.get>> = null
+      if (requested) {
+        agent = await this.agents.get(requested)
+        if (!agent) return none // missing agent: no default-model fallback
+      } else {
+        const mainId = tryGetMainAgentId()
+        agent = mainId ? await this.agents.get(mainId) : null
+      }
+      const models = await this.models.listAvailable({ includeUnavailable: true })
+      // The gateway accepts both `provider/model` and bare model ids
+      // (agent configs typically store the bare form while the catalog
+      // keys entries as provider/model) — match either, like it does.
+      // Ambiguity is FALSE: when two providers share a bare id (mirror
+      // catalogs), we can't know which entry the gateway's own resolver
+      // picks, and a wrong guess declares a capability the attachment gate
+      // then silently rejects (bakin#583 class). Bare matches count only
+      // when exactly one entry has that bare id.
+      const bare = (id: string) => (id.includes('/') ? id.slice(id.indexOf('/') + 1) : id)
+      const wanted = agent?.model
+      const bareMatches = wanted ? models.filter((m) => bare(m.id) === bare(wanted)) : []
+      const entry = wanted
+        ? models.find((m) => m.id === wanted) ?? (bareMatches.length === 1 ? bareMatches[0] : undefined)
+        : models.find((m) => m.tags?.includes('default'))
+      if (entry?.input) {
+        const inputs = entry.input.toLowerCase().split(/[+,\s]+/).filter(Boolean)
+        // audioInput stays false regardless of the model: capability = model
+        // ∧ transport, and THIS adapter's attachment transport is image-only
+        // (buildOpenClawAttachments rejects non-image mimes). Flip when the
+        // gateway grows an audio attachment path.
+        value = { imageInput: inputs.includes('image'), audioInput: false }
+      }
+    } catch (err) {
+      this.logger.warn('runtime capabilities probe failed — reporting none', {
+        err: err instanceof Error ? err.message : String(err),
+      })
+      return none
+    }
+    this.capabilitiesCache.set(requested, { at: Date.now(), value })
+    return value
+  }
+
   private imageProvidersCache: { at: number; value: RuntimeImageProvider[] } | null = null
 
   images = {
@@ -1163,15 +1237,22 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
   private async runOpenClawAgentGateway(opts: OpenClawAgentTurnOptions): Promise<OpenClawTurnResult> {
     const cliSessionId = opts.sessionKey ? openClawCliSessionId(opts.agentId, opts.sessionKey) : null
+    const prompt = messagesToOpenClawPrompt(opts.messages)
     const params: Record<string, unknown> = {
       agentId: opts.agentId,
-      message: messagesToOpenClawPrompt(opts.messages),
+      message: prompt,
       deliver: false,
       timeout: OPENCLAW_AGENT_TIMEOUT_SECONDS,
-      // Stable per-attempt key: a transport retry of the SAME logical turn
-      // (same threadId) is idempotent at the gateway. Unthreaded sends keep
-      // a random key — each is its own logical turn.
-      idempotencyKey: opts.sessionKey ? `bakin:${opts.sessionKey}` : `bakin-${randomUUID()}`,
+      // Per-turn key: the gateway DEDUPES on this for ~5 minutes and replays
+      // the cached payload, so two DIFFERENT logical turns on one thread must
+      // carry different keys (the enrichment corrective re-ask was the first
+      // multi-message-per-thread caller — a thread-only key silently replayed
+      // the first turn's reply to the re-ask). Hashing the rendered prompt
+      // keeps transport retries idempotent: same turn → same content → same
+      // key. Unthreaded sends keep a random key — each is its own turn.
+      idempotencyKey: opts.sessionKey
+        ? `bakin:${opts.sessionKey}:${createHash('sha256').update(prompt).digest('hex').slice(0, 12)}`
+        : `bakin-${randomUUID()}`,
     }
     applyRuntimeMessageToolPolicy(params, opts)
     if (cliSessionId) params.sessionId = cliSessionId
@@ -1179,6 +1260,18 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     // when unset so the runtime uses the agent's configured model/default.
     if (opts.model) params.model = opts.model
     if (opts.thinking) params.thinking = opts.thinking
+    // Image attachments → the gateway's native `attachments` param (base64
+    // inline; the builder enforces image/* + the 2 MB guaranteed-inline
+    // ceiling and throws loudly rather than let pixels silently degrade).
+    if (opts.attachments?.length) params.attachments = buildOpenClawAttachments(opts.attachments)
+    // Utility turns: runtime-native ephemeral controls. Available to
+    // backend-mode clients (which this connection is) — hides the run from
+    // the control UI and skips prompt persistence; the deterministic
+    // session (idempotency) is unaffected.
+    if (opts.ephemeral) {
+      params.sessionEffects = 'internal'
+      params.suppressPromptPersistence = true
+    }
 
     // Capture where the trajectory ends BEFORE the turn starts so any
     // post-mortem only sees events from this attempt (the file accrues one

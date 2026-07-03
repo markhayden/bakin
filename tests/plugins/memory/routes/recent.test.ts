@@ -74,7 +74,7 @@ function makeCtx(seed: SeedFn): { ctx: PluginContext; recorder: QueryRecorder } 
             query: params.q,
             total: rows.length,
             took_ms: 1,
-            source: 'fallback' as const,
+            source: 'unavailable' as const,
           },
         }
       }),

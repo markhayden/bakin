@@ -133,7 +133,7 @@ describe('usage-wiring-rest', () => {
     expect(feed.recent[0].agent).toBeNull()
   })
 
-  it('marks responses with status >= 400 as errors', () => {
+  it('marks 5xx responses as errors', () => {
     const { req, res } = makeFakeReqRes({ statusCode: 500 })
     trackResponse(req, res, urlFor('/api/tasks'), Date.now())
     res.end()
@@ -142,6 +142,17 @@ describe('usage-wiring-rest', () => {
     expect(feed.recent[0].status).toBe('error')
     expect(feed.totals.errors).toBe(1)
     expect(feed.recent[0].meta).toMatchObject({ httpStatus: 500 })
+  })
+
+  it('4xx are CLIENT errors — recorded ok (with httpStatus) so they never feed the 5xx alert', () => {
+    const { req, res } = makeFakeReqRes({ statusCode: 404 })
+    trackResponse(req, res, urlFor('/api/agents/avatar'), Date.now())
+    res.end()
+
+    const feed = getUsageFeed({ kind: 'rest', window: '5m' })
+    expect(feed.recent[0].status).toBe('ok')
+    expect(feed.totals.errors).toBe(0)
+    expect(feed.recent[0].meta).toMatchObject({ httpStatus: 404 })
   })
 
   it('keeps /api/plugins/* paths verbatim (non-UUID plugin ids preserved)', () => {

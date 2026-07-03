@@ -44,9 +44,10 @@ export const auditRoute = defineRoute({
     const qText = [q, event].filter(Boolean).join(' ')
 
     const params: SearchQueryParams = {
-      q: qText,
+      q: qText || '*',
       limit,
       filters,
+      strategy: 'full_text_only',
     }
 
     const result = await ctx.search.query(params)

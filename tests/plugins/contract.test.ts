@@ -173,7 +173,7 @@ function createMockContext(pluginId: string): {
       index: async () => {},
       remove: async () => {},
       transform: async () => {},
-      query: async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } }),
+      query: async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'unavailable' as const } }),
     },
     hooks: {
       register: () => () => {},

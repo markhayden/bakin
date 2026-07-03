@@ -185,10 +185,10 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
           query: params.q,
           total: seededResults.length,
           took_ms: 0,
-          source: 'fallback' as const,
+          source: 'search' as const,
         },
       })),
-      health: vi.fn(async () => ({ enabled: false, tables: [] })),
+      health: vi.fn(async () => ({ enabled: false as const, tables: [] })),
     },
     hooks: {
       register: vi.fn(() => () => {}),

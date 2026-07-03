@@ -50,7 +50,7 @@ function makeCtx(): CtxHarness {
   const queryCalls: CtxHarness['queryCalls'] = []
   let queryResponse: SearchResponse = {
     results: [],
-    meta: { query: '', total: 0, took_ms: 0, source: 'fallback' },
+    meta: { query: '', total: 0, took_ms: 0, source: 'unavailable' },
   }
   const ctx = {
     pluginId: 'memory',
@@ -142,7 +142,8 @@ describe('dreamsListRoute — handler', () => {
     expect(body.total).toBe(1)
     expect(body.dreams).toHaveLength(1)
     expect(h.queryCalls[0].filters).toEqual({ tier: 'dream', agent: 'main' })
-    expect(h.queryCalls[0].q).toBe('')
+    expect(h.queryCalls[0].q).toBe('*')
+    expect(h.queryCalls[0].strategy).toBe('full_text_only')
   })
 
   it('passes phase as part of q-string when provided', async () => {
@@ -150,6 +151,7 @@ describe('dreamsListRoute — handler', () => {
     await dreamsListRoute.handler(req('/dreams', { agent: 'main', phase: 'light' }), h.ctx, {})
     expect(h.queryCalls[0].q).toContain('light')
     expect(h.queryCalls[0].filters).toEqual({ tier: 'dream', agent: 'main' })
+    expect(h.queryCalls[0].strategy).toBe('full_text_only')
   })
 
   it('filters results by phase post-query when provided', async () => {

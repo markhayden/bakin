@@ -71,7 +71,6 @@ import {
   getTableForPlugin,
   createRegisteredTables,
   resetSearchRegistry,
-  reindexContentTypes,
   crossTableSearch,
   getSearchHealth,
 } from '@/core/search-registry'
@@ -102,6 +101,7 @@ describe('search-registry', () => {
   function makeDef(table = 'tasks') {
     return {
       table,
+      schemaVersion: 1,
       schema: {
         title: { type: 'text' as const },
         status: { type: 'keyword' as const },
@@ -259,9 +259,9 @@ describe('search-registry', () => {
     await api.index('task-1', { title: 'Build feature' })
 
     const rows = []
-    for await (const row of api.maintenance!.scan()) rows.push(row)
+    for await (const row of api.maintenance!.scan({ fields: ['title'] })) rows.push(row)
 
-    expect(searchHarness.calls.scan).toHaveBeenCalledWith('bakin_tasks')
+    expect(searchHarness.calls.scan).toHaveBeenCalledWith('bakin_tasks', { fields: ['title'] })
     expect(rows).toEqual([{ key: 'task-1', document: { title: 'Build feature' } }])
   })
 
@@ -274,21 +274,6 @@ describe('search-registry', () => {
 
     expect(removed).toBe(1)
     expect(searchHarness.calls.documentsBatchRemove).toHaveBeenCalledWith('bakin_tasks', ['task-1'])
-  })
-
-  it('maintenance.resetContentType drops and recreates the plugin table', async () => {
-    const api = buildSearchAPI('tasks')
-    api.registerContentType(makeDef('tasks'))
-    await createRegisteredTables()
-    searchHarness.calls.tablesCreate.mockClear()
-
-    await api.maintenance!.resetContentType()
-
-    expect(searchHarness.calls.tablesDrop).toHaveBeenCalledWith('bakin_tasks')
-    expect(searchHarness.calls.tablesCreate).toHaveBeenCalledWith(
-      'bakin_tasks',
-      expect.objectContaining({ fields: expect.objectContaining({ title: { type: 'text' } }) }),
-    )
   })
 
   it('transform calls search.documents.transform with $set ops', async () => {
@@ -339,12 +324,13 @@ describe('search-registry', () => {
     await createRegisteredTables()
 
     expect(searchHarness.calls.tablesCreate).toHaveBeenCalledWith(
-      'bakin_tasks',
+      expect.stringMatching(/^bakin_tasks_v\d+_[0-9a-f]{8}$/),
       expect.objectContaining({
-        indexes: [
+        legs: [
+          expect.objectContaining({ name: 'full_text', capability: 'full-text', fields: ['title'] }),
           expect.objectContaining({
             name: 'embeddings',
-            kind: 'vector',
+            capability: 'text-embedding',
             fields: ['title'],
             template: '{{title}}',
           }),
@@ -376,21 +362,20 @@ describe('search-registry', () => {
     await createRegisteredTables()
 
     expect(searchHarness.calls.tablesCreate).toHaveBeenCalledWith(
-      'bakin_assets',
+      expect.stringMatching(/^bakin_assets_v\d+_[0-9a-f]{8}$/),
       expect.objectContaining({
-        indexes: [
+        legs: [
+          expect.objectContaining({ name: 'full_text', capability: 'full-text' }),
           expect.objectContaining({
             name: 'assets_text',
-            kind: 'vector',
+            capability: 'text-embedding',
             template: '{{description}} {{tags}}',
-            embedderRef: 'default',
             chunker: { enabled: true, targetTokens: 200, overlapTokens: 25 },
           }),
           expect.objectContaining({
             name: 'assets_visual',
-            kind: 'vector',
+            capability: 'media-embedding',
             mediaUrlField: 'image_url',
-            embedderRef: 'visual',
           }),
         ],
       }),
@@ -529,7 +514,7 @@ describe('search-registry', () => {
     const result = await createRegisteredTables()
 
     expect(searchHarness.calls.tablesCreate).toHaveBeenCalledWith(
-      'bakin_broken',
+      expect.stringMatching(/^bakin_broken_v\d+_[0-9a-f]{8}$/),
       expect.anything(),
     )
     expect(result.failures).toEqual([
@@ -537,11 +522,11 @@ describe('search-registry', () => {
     ])
   })
 
-  it('query returns fallback when no content type registered', async () => {
+  it('query reports unavailable when no content type registered', async () => {
     const api = buildSearchAPI('orphan-plugin')
     const result = await api.query({ q: 'test' })
 
-    expect(result.meta.source).toBe('fallback')
+    expect(result.meta.source).toBe('unavailable')
     expect(result.results).toEqual([])
   })
 
@@ -556,11 +541,11 @@ describe('search-registry', () => {
 
     expect(searchHarness.calls.tablesCreate).toHaveBeenCalledTimes(2)
     expect(searchHarness.calls.tablesCreate).toHaveBeenCalledWith(
-      'bakin_tasks',
+      expect.stringMatching(/^bakin_tasks_v\d+_[0-9a-f]{8}$/),
       expect.objectContaining({ adapterOptions: expect.objectContaining({ description: expect.stringContaining('tasks') }) }),
     )
     expect(searchHarness.calls.tablesCreate).toHaveBeenCalledWith(
-      'bakin_assets',
+      expect.stringMatching(/^bakin_assets_v\d+_[0-9a-f]{8}$/),
       expect.objectContaining({ adapterOptions: expect.objectContaining({ description: expect.stringContaining('assets') }) }),
     )
   })
@@ -581,264 +566,6 @@ describe('search-registry', () => {
     expect(searchHarness.calls.documentsIndex).not.toHaveBeenCalled()
   })
 
-  // ── reindexContentTypes ─────────────────────────────────────────────
-
-  it('reindexContentTypes indexes all docs via batchIndex', async () => {
-    const api = buildSearchAPI('tasks')
-    api.registerContentType({
-      ...makeDef('tasks'),
-      reindex: async function* () {
-        yield { key: 'k1', doc: { title: 'one' } }
-        yield { key: 'k2', doc: { title: 'two' } }
-        yield { key: 'k3', doc: { title: 'three' } }
-      },
-    })
-
-    const results = await reindexContentTypes()
-
-    expect(results).toHaveLength(1)
-    expect(results[0]!.table).toBe('bakin_tasks')
-    expect(results[0]!.indexed).toBe(3)
-    expect(searchHarness.calls.documentsBatchIndex).toHaveBeenCalledWith('bakin_tasks', [
-      { key: 'k1', doc: { title: 'one' } },
-      { key: 'k2', doc: { title: 'two' } },
-      { key: 'k3', doc: { title: 'three' } },
-    ])
-  })
-
-  it('reindexContentTypes broadcasts start and complete events', async () => {
-    const api = buildSearchAPI('tasks')
-    api.registerContentType(makeDef('tasks'))
-
-    await reindexContentTypes()
-
-    expect(broadcast).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'reindex.start', table: 'bakin_tasks' }),
-    )
-    expect(broadcast).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'reindex.complete', table: 'bakin_tasks', indexed: 1 }),
-    )
-  })
-
-  it('reindexContentTypes filters by table name', async () => {
-    const api1 = buildSearchAPI('tasks')
-    api1.registerContentType(makeDef('tasks'))
-    const api2 = buildSearchAPI('assets')
-    api2.registerContentType(makeDef('assets'))
-
-    const results = await reindexContentTypes({ table: 'tasks' })
-
-    expect(results).toHaveLength(1)
-    expect(results[0]!.table).toBe('bakin_tasks')
-  })
-
-  it('reindexContentTypes calls rebuildIndexes when rebuild=true', async () => {
-    const api = buildSearchAPI('tasks')
-    api.registerContentType(makeDef('tasks'))
-
-    await reindexContentTypes({ rebuild: true })
-
-    expect(searchHarness.calls.tablesRebuildIndexes).toHaveBeenCalledWith('bakin_tasks')
-  })
-
-  it('reindexContentTypes handles generator errors gracefully', async () => {
-    const api = buildSearchAPI('tasks')
-    api.registerContentType({
-      ...makeDef('tasks'),
-      reindex: async function* () {
-        yield* []
-        throw new Error('boom')
-      },
-    })
-
-    const results = await reindexContentTypes()
-
-    expect(results).toHaveLength(1)
-    expect(results[0]!.error).toContain('boom')
-    expect(results[0]!.indexed).toBe(0)
-  })
-
-  // ── enrichment audit (#74) ──────────────────────────────────────────
-
-  it('reindexContentTypes includes enrichment status when healthy', async () => {
-    searchHarness.setTableHealth('bakin_tasks', {
-      table: 'bakin_tasks',
-      status: 'ok',
-      details: {
-        indexes: [
-          { name: 'search', type: 'full_text', totalIndexed: 1, walBacklog: 0, rebuilding: false },
-          { name: 'embeddings', type: 'embeddings', totalIndexed: 1, walBacklog: 0, rebuilding: false },
-        ],
-        healthy: true,
-      },
-    })
-
-    const api = buildSearchAPI('tasks')
-    api.registerContentType(makeDef('tasks'))
-
-    const results = await reindexContentTypes()
-
-    expect(results[0]!.enrichment).toBeDefined()
-    expect(results[0]!.enrichment!.healthy).toBe(true)
-    expect(results[0]!.enrichment!.indexes).toHaveLength(2)
-    expect(searchHarness.calls.tablesGetHealth).toHaveBeenCalledWith('bakin_tasks')
-  })
-
-  it('reindexContentTypes includes enrichment errors when unhealthy', async () => {
-    searchHarness.setTableHealth('bakin_tasks', {
-      table: 'bakin_tasks',
-      status: 'warn',
-      details: {
-        indexes: [
-          { name: 'embeddings', type: 'embeddings', totalIndexed: 0, walBacklog: 0, rebuilding: false, error: 'model not found' },
-        ],
-        healthy: false,
-      },
-    })
-
-    const api = buildSearchAPI('tasks')
-    api.registerContentType(makeDef('tasks'))
-
-    const results = await reindexContentTypes()
-
-    expect(results[0]!.enrichment).toBeDefined()
-    expect(results[0]!.enrichment!.healthy).toBe(false)
-    expect(results[0]!.enrichment!.indexes[0]!.error).toBe('model not found')
-  })
-
-  it('reindexContentTypes omits enrichment when getIndexHealth returns null', async () => {
-    const api = buildSearchAPI('tasks')
-    api.registerContentType(makeDef('tasks'))
-
-    const results = await reindexContentTypes()
-
-    expect(results[0]!.enrichment).toBeUndefined()
-    // Should not crash — enrichment is best-effort
-    expect(results[0]!.indexed).toBe(1)
-  })
-
-  it('reindexContentTypes broadcasts reindex.complete before enrichment audit', async () => {
-    searchHarness.setTableHealth('bakin_tasks', {
-      table: 'bakin_tasks',
-      status: 'ok',
-      details: {
-        indexes: [{ name: 'embeddings', type: 'embeddings', totalIndexed: 1, walBacklog: 0, rebuilding: false }],
-        healthy: true,
-      },
-    })
-
-    const api = buildSearchAPI('tasks')
-    api.registerContentType(makeDef('tasks'))
-
-    await reindexContentTypes()
-
-    // reindex.complete should fire before the enrichment audit runs —
-    // verify it was called (existing behavior preserved)
-    expect(broadcast).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'reindex.complete', table: 'bakin_tasks' }),
-    )
-  })
-
-  // ── verify mode (#74) ───────────────────────────────────────────────
-
-  it('reindexContentTypes with verify=true checks table doc count', async () => {
-    searchHarness.setTableStats('bakin_tasks', { table: 'bakin_tasks', documents: 1 })
-
-    const api = buildSearchAPI('tasks')
-    api.registerContentType(makeDef('tasks'))
-
-    const results = await reindexContentTypes({ verify: true })
-
-    expect(results[0]!.verified).toBe(1)
-    expect(results[0]!.verifyDiscrepancy).toBe(0)
-    expect(searchHarness.calls.tablesStats).toHaveBeenCalledWith('bakin_tasks')
-  })
-
-  it('reindexContentTypes with verify=true reports discrepancy', async () => {
-    searchHarness.setTableStats('bakin_tasks', { table: 'bakin_tasks', documents: 0 })
-
-    const api = buildSearchAPI('tasks')
-    api.registerContentType(makeDef('tasks'))
-
-    const results = await reindexContentTypes({ verify: true })
-
-    expect(results[0]!.verified).toBe(0)
-    expect(results[0]!.verifyDiscrepancy).toBe(1)
-  })
-
-  it('reindexContentTypes without verify does not check doc count', async () => {
-    const api = buildSearchAPI('tasks')
-    api.registerContentType(makeDef('tasks'))
-
-    const results = await reindexContentTypes()
-
-    expect(results[0]!.verified).toBeUndefined()
-    expect(searchHarness.calls.tablesStats).not.toHaveBeenCalled()
-  })
-
-  it('reindexContentTypes verify handles getTableStats errors gracefully', async () => {
-    searchHarness.calls.tablesStats.mockRejectedValueOnce(new Error('stats failed'))
-
-    const api = buildSearchAPI('tasks')
-    api.registerContentType(makeDef('tasks'))
-
-    const results = await reindexContentTypes({ verify: true })
-
-    // Should not crash — verify is best-effort
-    expect(results[0]!.indexed).toBe(1)
-    expect(results[0]!.verified).toBeUndefined()
-  })
-
-  it('reindexContentTypes runs enrichment audit even when batchIndex returns 0', async () => {
-    searchHarness.calls.documentsBatchIndex.mockResolvedValue({ indexed: 0, failed: [] })
-    searchHarness.setTableHealth('bakin_tasks', {
-      table: 'bakin_tasks',
-      status: 'warn',
-      details: {
-        indexes: [
-          { name: 'embeddings', type: 'embeddings', totalIndexed: 0, walBacklog: 5, rebuilding: false },
-        ],
-        healthy: false,
-      },
-    })
-
-    const api = buildSearchAPI('tasks')
-    api.registerContentType(makeDef('tasks'))
-
-    const results = await reindexContentTypes()
-
-    expect(results[0]!.indexed).toBe(0)
-    expect(results[0]!.enrichment).toBeDefined()
-    expect(results[0]!.enrichment!.healthy).toBe(false)
-    // verify skipped when indexed === 0
-    expect(results[0]!.verified).toBeUndefined()
-    expect(searchHarness.calls.tablesStats).not.toHaveBeenCalled()
-  })
-
-  it('reindexContentTypes populates both enrichment and verify fields together', async () => {
-    searchHarness.setTableHealth('bakin_tasks', {
-      table: 'bakin_tasks',
-      status: 'warn',
-      details: {
-        indexes: [
-          { name: 'embeddings', type: 'embeddings', totalIndexed: 1, walBacklog: 3, rebuilding: false },
-        ],
-        healthy: false,
-      },
-    })
-    searchHarness.setTableStats('bakin_tasks', { table: 'bakin_tasks', documents: 1 })
-
-    const api = buildSearchAPI('tasks')
-    api.registerContentType(makeDef('tasks'))
-
-    const results = await reindexContentTypes({ verify: true })
-
-    expect(results[0]!.enrichment).toBeDefined()
-    expect(results[0]!.enrichment!.healthy).toBe(false)
-    expect(results[0]!.verified).toBe(1)
-    expect(results[0]!.verifyDiscrepancy).toBe(0)
-  })
-
   // ── crossTableSearch ────────────────────────────────────────────────
 
   it('crossTableSearch returns fallback when search adapter is unavailable', async () => {
@@ -846,7 +573,7 @@ describe('search-registry', () => {
 
     const result = await crossTableSearch('hello')
 
-    expect(result.meta.source).toBe('fallback')
+    expect(result.meta.source).toBe('unavailable')
     expect(result.results).toEqual([])
   })
 
@@ -904,77 +631,107 @@ describe('search-registry', () => {
 
     const result = await crossTableSearch('hello')
 
+    // Each table now gets the full limit as its candidate pool; the global
+    // top-N is taken from the merged results (was ceil(limit/tables) = 10).
     expect(searchHarness.calls.multiQuery).toHaveBeenCalledWith(
       [
-        expect.objectContaining({ table: 'bakin_tasks', query: expect.objectContaining({ text: 'hello', limit: 10 }) }),
-        expect.objectContaining({ table: 'bakin_assets', query: expect.objectContaining({ text: 'hello', limit: 10 }) }),
+        expect.objectContaining({ table: 'bakin_tasks', query: expect.objectContaining({ text: 'hello', limit: 20 }) }),
+        expect.objectContaining({ table: 'bakin_assets', query: expect.objectContaining({ text: 'hello', limit: 20 }) }),
       ],
     )
     expect(result.results).toHaveLength(2)
     expect(result.meta.source).toBe('search')
   })
 
+  it('crossTableSearch paginates the merged ordering and merges facet buckets', async () => {
+    const api1 = buildSearchAPI('tasks')
+    api1.registerContentType(makeDef('tasks'))
+    const api2 = buildSearchAPI('assets')
+    api2.registerContentType(makeDef('assets'))
+
+    searchHarness.calls.multiQuery.mockResolvedValue([
+      {
+        hits: [
+          { key: 't1', document: {}, score: 0.9 },
+          { key: 't2', document: {}, score: 0.7 },
+        ],
+        total: 2,
+        facets: { kind: [{ value: 'doc', count: 2 }] },
+        diagnostics: { strategy: 'hybrid', durationMs: 5 },
+      },
+      {
+        hits: [{ key: 'a1', document: {}, score: 0.8 }],
+        total: 1,
+        facets: { kind: [{ value: 'doc', count: 1 }, { value: 'image', count: 1 }] },
+        diagnostics: { strategy: 'hybrid', durationMs: 4 },
+      },
+    ])
+
+    const result = await crossTableSearch('hello', { limit: 2, offset: 1, facets: ['kind'] })
+
+    // Candidate pool covers the page window (limit + offset) per table, and
+    // facets ride each per-table query.
+    expect(searchHarness.calls.multiQuery).toHaveBeenCalledWith([
+      expect.objectContaining({ query: expect.objectContaining({ limit: 3, facets: ['kind'] }) }),
+      expect.objectContaining({ query: expect.objectContaining({ limit: 3, facets: ['kind'] }) }),
+    ])
+    // Merged ordering: t1 (0.9), a1 (0.8), t2 (0.7) → offset 1, limit 2.
+    expect(result.results.map((r) => r.id)).toEqual(['a1', 't2'])
+    // Facet buckets sum across tables.
+    expect(result.aggregations).toEqual({ kind: [{ value: 'doc', count: 3 }, { value: 'image', count: 1 }] })
+  })
+
   // ── getSearchHealth with index health (#74) ────────────────────────
 
-  it('getSearchHealth includes indexHealth when available', async () => {
+  it('getSearchHealth maps per-leg health into indexHealth', async () => {
     const api = buildSearchAPI('tasks')
     api.registerContentType(makeDef('tasks'))
 
     searchHarness.setTableStats('bakin_tasks', { table: 'bakin_tasks', documents: 42 })
-    searchHarness.setTableHealth('bakin_tasks', {
-      table: 'bakin_tasks',
-      status: 'ok',
-      details: {
-        indexes: [
-          { name: 'search', type: 'full_text', totalIndexed: 42, walBacklog: 0, rebuilding: false },
-          { name: 'embeddings', type: 'embeddings', totalIndexed: 42, walBacklog: 0, rebuilding: false },
-        ],
-        healthy: true,
-      },
-    })
+    searchHarness.setLegHealth('bakin_tasks', [
+      { leg: 'full_text', state: 'ready', indexedCount: 42 },
+      { leg: 'embeddings', state: 'building', indexedCount: 12 },
+    ])
 
     const health = await getSearchHealth()
 
     expect(health.enabled).toBe(true)
     expect(health.tables).toHaveLength(1)
-    expect(health.tables[0]!.indexHealth).toBeDefined()
-    expect(health.tables[0]!.indexHealth).toHaveLength(2)
+    expect(health.tables[0]!.legs).toEqual([
+      { name: 'full_text', totalIndexed: 42, rebuilding: false },
+      { name: 'embeddings', totalIndexed: 12, rebuilding: true },
+    ])
+    expect(health.tables[0]!.logical).toBe('bakin_tasks')
+    expect(health.tables[0]!.docCount).toBe(42)
     expect(health.tables[0]!.healthy).toBe(true)
   })
 
-  it('getSearchHealth sets healthy false when indexes have errors', async () => {
+  it('getSearchHealth sets healthy false when a leg reports an error', async () => {
     const api = buildSearchAPI('tasks')
     api.registerContentType(makeDef('tasks'))
 
     searchHarness.setTableStats('bakin_tasks', { table: 'bakin_tasks', documents: 10 })
-    searchHarness.setTableHealth('bakin_tasks', {
-      table: 'bakin_tasks',
-      status: 'warn',
-      details: {
-        indexes: [
-          { name: 'embeddings', type: 'embeddings', totalIndexed: 0, walBacklog: 0, rebuilding: false, error: 'model missing' },
-        ],
-        healthy: false,
-      },
-    })
+    searchHarness.setLegHealth('bakin_tasks', [
+      { leg: 'embeddings', state: 'error', indexedCount: 0, error: 'model missing' },
+    ])
 
     const health = await getSearchHealth()
 
     expect(health.tables[0]!.healthy).toBe(false)
-    expect(health.tables[0]!.indexHealth![0]!.error).toBe('model missing')
+    expect(health.tables[0]!.legs[0]!.error).toBe('model missing')
   })
 
-  it('getSearchHealth handles getIndexHealth returning null', async () => {
+  it('getSearchHealth defaults to healthy when leg health is empty', async () => {
     const api = buildSearchAPI('tasks')
     api.registerContentType(makeDef('tasks'))
 
     searchHarness.setTableStats('bakin_tasks', { table: 'bakin_tasks', documents: 5 })
+    searchHarness.setLegHealth('bakin_tasks', [])
 
     const health = await getSearchHealth()
 
-    expect(health.tables[0]!.stats).toEqual({ table: 'bakin_tasks', documents: 5 })
-    expect(health.tables[0]!.indexHealth).toBeUndefined()
-    // When index health unavailable, default to healthy (don't red-flag)
+    expect(health.tables[0]!.docCount).toBe(5)
+    expect(health.tables[0]!.legs).toEqual([])
     expect(health.tables[0]!.healthy).toBe(true)
   })
 

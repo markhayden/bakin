@@ -34,6 +34,9 @@ export function mapAuditMessage(event: string, data: Record<string, unknown>): s
     case 'workflow.gate_rejected': return `Rejected: ${data.label || 'gate'}${data.reason ? ` — ${data.reason}` : ''}`
     case 'workflow.complete': return `Workflow complete${data.workflowId ? ` (${data.workflowId})` : ''}`
     default: {
+      // Plugin audit events may carry their own human-readable line — honor
+      // it instead of echoing the raw event name (e.g. assets.asset.enriched).
+      if (typeof data.message === 'string' && data.message.trim()) return data.message
       // Exec tool events: use label from audit data, fall back to humanized name
       if (event.startsWith('exec.')) {
         const suffix = event.endsWith('.fail') ? ' (failed)' : event.endsWith('.error') ? ' (error)' : ''

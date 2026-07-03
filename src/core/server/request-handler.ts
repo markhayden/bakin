@@ -248,28 +248,23 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
       return
     }
 
-    // Reindex endpoint — per-table or all, with optional rebuild and verify
+    // Reindex endpoint — per-table or all. Runs a blue/green rebuild:
+    // queries keep answering from the old physical table while the fresh
+    // one backfills; the pointer flips only after convergence (D4).
     if (url.pathname === '/api/reindex' && req.method === 'POST') {
-      const { reindexContentTypes } = require('../search-registry')
+      const { rebuildRegisteredTables } = require('../search-registry')
       const table = url.searchParams.get('table') || undefined
-      const rebuild = url.searchParams.get('rebuild') === 'true'
-      const verify = url.searchParams.get('verify') === 'true'
-      reindexContentTypes({ table, rebuild, verify }).then((results: Array<Record<string, unknown>>) => {
-        const total = results.reduce((sum: number, r: Record<string, unknown>) => sum + (r.indexed as number || 0), 0)
+      rebuildRegisteredTables(table).then((results: Array<{ table: string; result: string; error?: string }>) => {
         const errors = results.filter((r) => r.error).length
-        const enrichmentErrors = results.filter((r) => {
-          const enrichment = r.enrichment as { healthy?: boolean } | undefined
-          return enrichment && !enrichment.healthy
-        }).length
+        const parked = results.filter((r) => r.result === 'parked').length
         jsonResponse(res, 200, {
-          ok: errors === 0 && enrichmentErrors === 0,
-          total,
+          ok: errors === 0 && parked === 0,
           errors,
-          enrichmentErrors,
+          parked,
           tables: results,
         })
       }).catch((err: unknown) => {
-        log.error('Reindex failed', err, { table, rebuild })
+        log.error('Rebuild failed', err, { table })
         jsonResponse(res, 500, { error: err instanceof Error ? err.message : String(err) })
       })
       return

@@ -19,6 +19,12 @@ const openClawDir = pathJoin(testDir, 'openclaw')
 // reads BAKIN_HOME / OPENCLAW_HOME at top-level resolves to the temp dir.
 process.env.OPENCLAW_HOME = openClawDir
 process.env.BAKIN_HOME = testDir
+// ANTFLY_HOME is the antfly adapter's test-isolation seam (see
+// packages/adapter-antfly/src/paths.ts). agent-sync builds real AppServices,
+// which now boots a private antfly instance when search is enabled — point it
+// at an empty temp dir so findAntflyBinary() returns null and the adapter
+// stays in file-only mode instead of spawning the real ~/.antfly binary.
+process.env.ANTFLY_HOME = pathJoin(testDir, 'antfly-home')
 
 import { describe, it, expect, beforeEach, afterAll, afterEach, mock, spyOn } from 'bun:test'
 import { existsSync, mkdirSync, rmSync, writeFileSync, readFileSync, readdirSync } from 'fs'
@@ -418,7 +424,7 @@ describe('plugin registration', () => {
         index: noopAsync,
         remove: noopAsync,
         transform: noopAsync,
-        query: mock(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } })),
+        query: mock(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'unavailable' as const } })),
       },
       storage: {},
       events: { on: noop, emit: noop, off: noop },

@@ -1,0 +1,66 @@
+# Search & Asset Rebuild — Todo
+
+Plan: `tasks/plan-search-rebuild.md` · Spec: `.claude/specs/search-asset-rebuild.md`
+Rule: every commit green (`bun run test` + typecheck). Tag `rebuild/pN` at each phase gate.
+
+## P0 — Evidence & foundation
+- [x] P0.1 Build dev antfly from antflydb/antfly origin/main (`6538c0774`, worktree `antfly-main`, zig 0.16.0 from ~/toolchains); recipe in tasks/evidence-search-rebuild.md
+- [x] P0.2 Live-verified all verdicts (evidence file has the table). Found+patched+filed upstream double-free crasher (antflydb/antfly#317). Headlines: filter_query FIXED incl. semantic lane; findings 8/9 FIXED; order_by NOT supported on Zig engine (Go-only); totals still page-scoped (keep count:true); responses[] wrapper + _id keys + NEUTRAL _index_scores keys (full_text/legname)
+- [x] P0.3 npm @antfly/sdk = 0.0.14 (2026-03-19), 77 SDK commits stale vs main → vendor tarball from same commit as dev binary; re-check npm at T23
+
+## P1 — Engine room
+- [x] A1 storage/db.ts keyed multi-db + openNamedDb (f0aa5c34)
+- [x] A2 Contract additions + mock + conformance skeleton (211c6390)
+- [x] A3 outbox in packages/core/src/search/outbox.ts + typed errors (0389fc70) — 12 tests; drain-loop wiring lands with F2
+- [x] A4 blue/green migrator in packages/core/src/search/tables.ts (651c8eea) — 8 tests incl. call-spy boot-does-nothing + park-never-flip + crash-resume
+- [x] A5 Memory indexer refactor + enumerateAll() (62d0d0b6; 432 memory tests green). ⚠ F4 NOTE: memory reindex() MUST fail loudly when ctx.runtime is unavailable — silent empty yields would let a thin green table converge and flip (agent finding #1)
+- [x] A6 New adapter: translate (a16b18a5) + client (7644632c) + service (8b046474). DESIGN CHANGE vs plan: raw-fetch client with hand-written probe-verified wire types — NO @antfly/sdk dependency at all (vendored tarball + npm-skew problem class deleted); conformance suite vs real binaries is the contract check
+- [x] A7 Harness (7edae15a) + regression pins (614a7344). Conformance GREEN vs real dev binary. Real-engine finds: semantic leg requires index names (400 otherwise — registry must pass embedding-leg names via adapterOptions.indexes), /lookup needs {} body, batchRemove counts are attempted-counts. Test-env gotcha: happy-dom preload breaks global fetch — use Bun.fetch in integration tests
+- [x] F1 Adapter swap (aea79359, +197/−4210): supervision lattice deleted; installer = D3 stop→swap→restart; ANTFLY_PATH override preserved; dead isSearchAdapterRunning removed
+- [x] F2 Writes through outbox (a89d4c1b): all ctx.search writes + watcher hooks journal-first; single-flight pump in server.ts; REAL $set/$inc/$push transform semantics; harness batch→per-item spy recording
+- [x] F3 Blue/green live (77dd42d4): versioned physicals everywhere, logical→physical at dispatch, dual-write drains, resume-at-boot, search-migration.ts + global SCHEMA_VERSION DELETED, /api/reindex = blue/green rebuild + search.rebuild.* SSE, resetContentType rides rebuild. `bakin reindex` is the rebuild verb (no separate `search rebuild` alias needed — document at T24)
+- [x] F4 THE CUT (7e3ae4c0, 55 files +502/−3347): SDK surface final (no whenReady/warm/mtime/fileToDoc-null), contract members required (embedder/getHealth/rebuildIndexes/IndexOpts deleted), 7 registrations on schemaVersion, memory reindex()→enumerateAll + FAILS LOUDLY on runtime-down (parks, never flips thin), reconcile/warmup/cleanup deleted (orphan sweep → search-orphan-sweep.ts for doctor), boot-does-nothing call-spy test, MCP reindex tool → blue/green
+- [x] F5 Arch-test identifier ban (4a2197b5; caught the settings-defaults leak, now documented exception) + engine-room docs (agent running)
+- [x] GATE P1 DRILL PASS: SIGKILL mid-flight → write queued (transient) → restart same data dir → queued write landed → hybrid query 468ms with IDENTICAL vector scores (t_vis −0.70407 preserved exactly) + neutral leg names. Dense ranks survive kill/restart with zero degraded window (req 5 proven). Tag rebuild/p1 after docs land
+
+## P2 — Assets vertical
+- [x] T1 (1df38170) auto-ingest deleted everywhere; classifier+scan+import lib; watcher-fed tracker w/ debounced asset.unmanaged SSE; zero boot cost
+- [x] T2 (ff71a0af) /import/scan + /import routes + audits; manifest 2.1.0
+- [x] T3 (4b5eef30) Import tab (scan-on-open, type select, Import All) + nav badge. GOTCHA: nav-badge providers need contributes.eager:true (assets added to eager allowlist)
+- [x] T4 (7a71f975) CLI bakin assets scan/import + MCP scan_unmanaged/import tools
+- [x] T5 (2e241b63) doctor assets.unimported (autoFixable:false by design; doctor sweep doubles as badge reseeder)
+- [x] T6 (e7b9cbff) manifest enrichment schema + apply.ts chokepoint + PATCH route (userEdited field-preserved)
+- [x] T7 (c3c5814c) idempotency registry → packages/core/src/media
+- [x] T8 (18818688) direct-vision-provider (Anthropic/OpenAI/Google; Zod-strict, never fabricates; audio via Gemini; 20MB skip) + catalog + settings. Default model resolves from curated catalog x configured keys, cheapest-first (haiku→gemini-flash→…); no key ⇒ skipped with reason
+- [x] T9 (cda6b583) queue (separate from outbox: billed, bounded retries, manifest is the skip guard) + onAssetWritten triggers + /enrich + CLI + stats hook + recordUsage. meterEnrichmentTurn SKIPPED (pricing hook is image-shaped; revisit T21 if per-call cost display wanted)
+- [x] T10 (6fbbe472) detail-page enrichment card (edit locks field, tag apply, re-run)
+- [x] T11 (7202de40) caption/ocr/tags/transcript/summary in search docs; media_url for raster+AUDIO; assets schemaVersion 1→2 (blue/green); buildTableConfig emits capability LEGS for every table now
+- [x] T12 (c1c9af67) doctor assets.enrichment rows (billed backfill = manual by design)
+- [x] GATE P2 → tag rebuild/p2. Unit/integration seams all green (5212/0: manifest→watcher→outbox→engine, import drill, caption-in-search-doc). Live end-to-end with REAL captions folds into the P3 browser gate (needs the dev server + a configured vision key — user-visible there). T24 cleanup noted: client manifest type lacks enrichment field
+
+## P3 — Degradation + global search
+- [x] T13 (1dbf10e7) useSearch 5-state + retry(); fallback DELETED repo-wide; 503 search_unavailable at both HTTP boundaries; /api/search?types= (req 6)
+- [x] T14 (2fda9463) assets grid honest unavailable panel; local fallback + double-debounce gone
+- [x] T15 (1ec7cee9) registerPlugin({search:{hitRenderers}}) registry (nav-badge pattern)
+- [x] T16 (a18849f4) ScoreOverlay → SDK, fully neutral legs (no key sniffing anywhere)
+- [x] T17 (e3e1e4ac) ⌘K overlay (hotkey+header, chips, default renderer, deep links, debug badges, 503 state; cmdk shouldFilter=false so the engine's ranking wins)
+- [x] T18 (2ddec962) hit renderers: assets/tasks/memory/workflows/team
+- [x] GATE P3 → tag rebuild/p3 (code state; 5230/0). BROWSER ITEMS DEFERRED to the P6 live cutover: port 3737 is the LIVE production server — one consolidated disruption window at ship (pin swap → restart → browser-verify ⌘K/chips/badges/unavailable-panel/real-caption enrichment on real data) instead of two
+
+## P4 — Doctor & telemetry
+- [x] T19 (c3974837) service/outbox/consistency checks via factory-boundary getSearchAdapterServiceStatus; parked→destructive rebuild repair; hourly orphan+tombstone sweep rides doctor interval (no new timers, nothing at boot)
+- [x] T19b (080c7fce) SearchHealthSnapshot → blue/green shape (logical/physical/schemaVersion/state/phase/legs + outbox journal; warm GONE); panel w/ version chips, parked-red repair pointer, rebuild-stays-available copy; routes.test.ts:317 historical failure now green. Health manifest 1.1.0
+- [x] T20 (0da30892) search.query + search.drain recorded via usage recorder ONLY; /search-telemetry route; Search activity tiles
+- [x] GATE P4 → tag rebuild/p4 (5236/0). T24 cleanup noted: unconsumed searchStatsDocumentCount in health format.ts
+
+## P5 — Tuning & chaos
+- [x] T21 (40131192) MEASURED DEFAULTS FLIP: rsf + legs 1.0/1.0 → hit@1 83%/hit@3 100% vs inherited rrf 0.5/2.0 at 28%/33%, same latency; reranker stays opt-in (+11pts @ ~10x latency). knowledge/search-tuning.md; rerun via tests/integration/antfly/tuning-run.ts
+- [x] T22 (e030357b) chaos drills 5/5 PASS (scripts/dev/search-chaos-drills.ts + knowledge/search-chaos-drills.md): mid-backfill SIGKILL, driver SIGKILL, 550-write outage replay exactly-once, wipe→detect→rebuild, upgrade-under-load 0 lost. NEW UPSTREAM BUG FILED antflydb/antfly#319 (mixed-corpus backfill accounting never completes — would park every assets migration); idle-detection workaround in mapIndexStatuses + canary pin. GOTCHA documented: getContentDir() caches first resolution — never reassign BAKIN_HOME mid-process
+- [x] GATE P5 → tag rebuild/p5 (5237/0)
+
+## P6 — Ship
+- [x] T23 (a5fec940) pinned v0.2.0-rc.17; published artifact SHA-verified; integration 58/58 + chaos 5/5 vs the artifact = ZERO dev-vs-ship skew; #319 canary holds; #317 documented (nothing triggers it in-suite; OS KeepAlive + outbox absorb if it fires); leftover @antfly/sdk dep + vendor/ tarball DELETED
+- [x] T24 (75582064) docs sweep (incl. full assets-plugin.md rewrite), both root ANTFLY_SEARCH_*.md deleted, CLAUDE.md blocks updated, memory notes superseded, grep gates clean
+- [x] LIVE CUTOVER (this machine): rc.17 installed, launchd io.bakin.antfly provisioned automatically, fresh blue/green world seeded (9 tables incl. 2 user-plugin types, memory 6.4k docs). FIVE production-only bugs found+fixed same-day: exists-first create (d72a5077), 404-transient drains + rowless sweep skip (d72a5077), async backfill batches (1b46cd70), multiQuery per-table isolation (f9a5df15), labeled FTS-degrade on embed starvation (e0177345), and THE ROOT CAUSE: launchd 256-fd default → NumberOfFiles/LimitNOFILE 65536 (1726e43c; memory note saved). Browser pass DONE: ⌘K over real data with 9 type chips, grouped results, neutral per-leg debug badges (TEXT/VISUAL/FT/EMBEDD), team avatars. Enrichment idle by design — USER ACTION: add a vision key then `bakin assets enrich --all` (billed)
+- [x] T25 (664da25c) 5 coverage cases for the cutover fixes (+ found the mock-stats fabrication bug); branch review clean; deferred nicety: `bakin search prune-outbox <table>` for retired content types. Suite 5243/0
+- [x] GATE P6 → tag rebuild/p6 — SHIPPED

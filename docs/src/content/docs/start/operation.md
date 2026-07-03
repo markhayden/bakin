@@ -122,6 +122,35 @@ Use `--rebuild` only when you want to drop the existing index and start fresh.
 
 Prefer the dashboard? The same controls live in the [Health plugin](/docs/using/health/).
 
+## Upgrading search from a pre-0.2 install
+
+Early Bakin builds installed Antfly via Homebrew and shared the global `~/.antfly` data directory. Antfly v0.2 changed its file formats and Bakin now runs its **own private instance** (data under `~/.bakin/antfly/`, port `3738`), so nothing from the old install carries over — and nothing needs to. The search index is derived data; it rebuilds from your markdown and logs.
+
+The guided path (recommended):
+
+```sh
+bakin stop
+bakin install search          # downloads the pinned v0.2 binary; detects old state
+bakin install search-models   # prefetches the embedding models (~1GB)
+bakin start
+bakin reindex                 # rebuilds the index from source
+bakin check search            # should report OK
+```
+
+`bakin install search` will list anything left over from the old world — the legacy `~/.termite` model cache, the pre-0.2 server state under `~/.antfly`, a brew-installed binary — and offer to reclaim the disk per item (interactive only, default No). One warning to take seriously: the old `~/.antfly` data directory was shared, so if you ever used Antfly for projects *outside* Bakin, decline that deletion and migrate your own tables with Antfly's backup/restore first.
+
+The fully-manual equivalent, if you'd rather do it yourself:
+
+```sh
+rm -rf ~/.antfly/data ~/.antfly/store ~/.antfly/metadata ~/.antfly/bakin-managed.yaml
+rm -rf ~/.termite
+brew uninstall antfly         # if it was brew-installed; Bakin never runs brew
+bakin install search && bakin install search-models
+bakin start && bakin reindex
+```
+
+If you skipped the model download and indexed content in the meantime, semantic indexing for that content is repaired by `bakin install search-models` followed by a plain `bakin reindex`.
+
 ## Run as a service (macOS)
 
 Optional. To keep Bakin running across reboots:

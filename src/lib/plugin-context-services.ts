@@ -176,6 +176,9 @@ export function createPluginRuntimeFacade(runtime: AgentRuntimeAdapter): AgentRu
     ping: runtime.ping.bind(runtime),
     restart: runtime.restart.bind(runtime),
     getHealthChecks: runtime.getHealthChecks.bind(runtime),
+    // Read-only probe — without it a facade'd plugin following the documented
+    // enrichment contract always hears "runtime does not report capabilities".
+    ...(runtime.capabilities ? { capabilities: runtime.capabilities.bind(runtime) } : {}),
     agents: {
       list: runtime.agents.list.bind(runtime.agents),
       get: runtime.agents.get.bind(runtime.agents),

@@ -2,18 +2,21 @@
 
 ## REST Endpoints
 
-### GET /api/search — Cross-plugin search
+### GET /api/search — Cross-plugin search (the ⌘K overlay's backend)
 
-Backed by `src/core/api-search-handler.ts` (extracted from `server.ts` during the issue #67 cleanup so the handler is unit-testable).
+Backed by `src/core/api-search-handler.ts`.
 
 Query params:
 - `q` (required) — search query text
-- `plugin` — limit to a specific plugin (tasks, assets, projects, workflows, schedule, team, memory, messaging)
+- `plugin` — limit to a specific plugin (tasks, assets, workflows, schedule, team, memory, …)
+- `types` — comma-separated content types (logical table shorthand) to include; the ⌘K type chips use this
 - `limit` — max results (default: 20)
 - `offset` — skip N results for pagination
 - `facets` — comma-separated facet fields for aggregation counts
 
-For per-plugin search use `GET /api/plugins/{plugin}/search` instead — these routes are auto-registered when a plugin calls `ctx.search.registerContentType()` or `registerFileBackedContentType()` during `activate()`.
+`offset` and `facets` are honored in **both** branches. In the all-tables branch, each table is asked for up to `limit + offset` candidates, hits merge into one score-ordered list, and `offset` paginates the merged ordering. Facets merge per-table buckets summed into one map (`mergeFacetCounts` in `src/core/search-query.ts`).
+
+**Degradation contract:** when the search engine is unavailable the endpoint returns **`503 { "error": "search_unavailable" }`** (the per-plugin routes do the same). The `useSearch` hook maps this to `status: 'unavailable'`; UIs render the shared `SearchUnavailable` component. There are no silent-fallback responses.
 
 Response:
 ```json
@@ -24,194 +27,120 @@ Response:
       "table": "bakin_tasks",
       "score": 0.87,
       "fields": { "title": "...", "status": "done" },
-      "indexScores": {
-        "/path/to/full_text_index_v0": 0.35,
-        "embeddings": 0.91
-      },
+      "indexScores": { "full_text": 0.35, "embeddings": -0.21 },
       "rerankScore": 0.94,
       "_table": "bakin_tasks"
     }
   ],
-  "aggregations": {
-    "status": [{ "value": "done", "count": 5 }, { "value": "inProgress", "count": 3 }]
-  },
+  "aggregations": { "status": [{ "value": "done", "count": 5 }] },
   "rawAggregations": null,
   "meta": { "query": "hero image", "total": 8, "took_ms": 12, "source": "antfly" }
 }
 ```
 
 **Result fields:**
-- `score` — final merged RRF score (or reranker score when reranker is attached). Lower is *better* for distance-based embeddings, higher is better for RRF. Don't rely on the absolute magnitude — use rank order.
-- `indexScores` — per-index score breakdown. The Bleve full-text key is an absolute filesystem path (legacy Antfly quirk). Embedding indexes use their declared names (`embeddings`, `assets_text`, `assets_visual`, …). A result with a `bleve`/full-text key in `indexScores` means the query matched by keyword; a result with only embedding-index keys means only semantic similarity matched.
-- `rerankScore` — cross-encoder score, present only when the queried content type had `rerankField` set and the reranker ran. Skipped for multi-modality tables like `bakin_assets`.
-- `aggregations` — term-bucket facets (from `facets` query param). Convenience shape.
-- `rawAggregations` — Antfly's raw aggregation response when the query used the advanced `aggregations` API (date histograms, range buckets, sub-aggregations). Not populated by `GET /api/search` since it doesn't expose the raw aggregations input — use `ctx.search.query()` from a plugin route when you need non-term aggregations.
+- `score` — final fused score (RSF by default; see `search-tuning.md`). Use rank order, not magnitude.
+- `indexScores` — per-leg breakdown with **neutral keys**: `full_text` for the keyword leg, the declared leg names for embedding legs (`assets_text`, `assets_visual`, `embeddings`, …). Embedding legs report `-cosine_distance` (negative; closer to 0 is better). The shared `ScoreOverlay` SDK component renders whatever legs appear — no engine-specific keys exist anywhere upstream of the adapter.
+- `rerankScore` — cross-encoder score, present only when the content type has `rerankField` and reranking was requested (per-query opt-in).
+- `aggregations` / `rawAggregations` — term-bucket facets / raw advanced aggregations (the latter only via `ctx.search.query()`).
 
-### POST /api/reindex — Reindex content types
+### POST /api/reindex — Blue/green rebuild
+
+Rebuilds are **blue/green**: a fresh physical table backfills in the background while queries keep answering from the current one; the pointer flips only after convergence. Search stays available throughout.
 
 Query params:
-- `table` — reindex a specific table only (optional)
-- `rebuild=true` — drop and recreate indexes before reindexing
-- `verify=true` — re-query tables after reindex to verify doc counts (opt-in, adds latency)
+- `table` — rebuild a specific logical table only (optional; omit for all)
 
 Response:
 ```json
-{
-  "ok": true,
-  "total": 142,
-  "errors": 0,
-  "enrichmentErrors": 0,
-  "tables": [
-    {
-      "table": "bakin_tasks",
-      "pluginId": "tasks",
-      "indexed": 45,
-      "enrichment": {
-        "indexes": [
-          { "name": "search", "type": "full_text", "totalIndexed": 45, "walBacklog": 0, "rebuilding": false },
-          { "name": "embeddings", "type": "embeddings", "totalIndexed": 45, "walBacklog": 0, "rebuilding": false }
-        ],
-        "healthy": true
-      }
-    }
-  ]
-}
+{ "ok": true, "errors": 0, "parked": 0, "tables": [ { "table": "bakin_tasks", "result": "migrated" } ] }
 ```
 
-`ok` is `true` only when both `errors === 0` and `enrichmentErrors === 0`. Per-table failures appear as an `error` string on the corresponding `tables[]` entry. `enrichment` surfaces Antfly's async enrichment status per index — `healthy: false` when any index has an `error` or non-zero `walBacklog`. When `verify=true`, each table entry also includes `verified` (actual doc count) and `verifyDiscrepancy` (difference from indexed count).
+`result` per table: `migrated` (flipped), `parked` (never converged — the doctor's search-consistency check surfaces parked migrations with a repair), or `failed` (with `error`). Live progress broadcasts as `search.rebuild.start` / `search.rebuild.progress` / `search.rebuild.complete` SSE events (the health page renders them).
 
-### GET /api/plugins/health/antfly-status — Search system health
+### GET /api/plugins/health/search-status — Search system health
 
-Moved out of `server.ts` into the health plugin during the issue #67 cleanup.
+Returns the blue/green-native `SearchHealthSnapshot`:
 
-Response:
 ```json
 {
   "enabled": true,
+  "outbox": { "pending": 0, "quarantined": 0, "oldestPendingAt": null },
   "tables": [
     {
-      "table": "bakin_tasks",
-      "pluginId": "tasks",
-      "stats": { "num_docs": 45, "num_shards": 1 },
-      "indexHealth": [
-        { "name": "search", "type": "full_text", "totalIndexed": 45, "walBacklog": 0, "rebuilding": false },
-        { "name": "embeddings", "type": "embeddings", "totalIndexed": 45, "walBacklog": 0, "rebuilding": false }
-      ],
-      "healthy": true
+      "logical": "bakin_tasks",
+      "physical": "bakin_tasks_v1_9f2a11c0",
+      "schemaVersion": 1,
+      "state": "active",
+      "phase": null,
+      "docCount": 45,
+      "legs": [
+        { "leg": "full_text_index_v0", "state": "ready", "indexedCount": 45 },
+        { "leg": "embeddings", "state": "ready", "indexedCount": 45 }
+      ]
     }
   ]
 }
 ```
 
+### GET /api/plugins/health/search-telemetry — Query/drain/enrichment activity
+
+Composes the usage recorder (`search.query`, `search.drain`, `assets.enrich` over 1h/24h windows), outbox stats, the assets enrichment-stats hook, and the search doctor rows. No parallel stat store exists.
+
 ### GET /api/plugins/{pluginId}/search — Per-plugin search
 
-Each searchable plugin exposes a `/search` route — **auto-registered** when the plugin calls `ctx.search.registerContentType()` or `registerFileBackedContentType()`. Same query params as `/api/search` minus `plugin`, scoped to that plugin's table.
+Auto-registered by content-type registration. Same params as `/api/search` minus `plugin`; same 503 degradation contract.
 
-Available at:
-- `/api/plugins/tasks/search?q=...`
-- `/api/plugins/assets/search?q=...`
-- `/api/plugins/projects/search?q=...`
-- `/api/plugins/workflows/search?q=...`
-- `/api/plugins/schedule/search?q=...`
-- `/api/plugins/team/search?q=...`
-- `/api/plugins/memory/search?q=...`
-- `/api/plugins/messaging/search?q=...`
+## Plugin Maintenance API (ctx.search.maintenance)
+
+Scoped to the caller's registered content type: `available()`, `scan(opts?)`, `batchRemove(keys)`. Scans resolve to the live physical table automatically. **A projection-less scan returns keys only** — consumers that read fields MUST request them (`{ fields: ['updated_at'] }`).
 
 ## MCP Tools (Agent-Facing)
 
-All search MCP tools take a `plugin: <pluginId>` parameter — agents pass plugin ids (`tasks`, `assets`, `memory`, …), not raw `bakin_*` table names. Resolution happens server-side via `getTableForPlugin()`, so plugins can never leak their internal table prefix to the MCP surface.
+All search MCP tools take a `plugin: <pluginId>` parameter — agents pass plugin ids, never raw `bakin_*` names.
 
-### bakin_exec_search_query
-Cross-plugin or single-plugin search. Primary tool for agents to find information.
+| Tool | Purpose | Params |
+|---|---|---|
+| `bakin_exec_search_query` | Cross-/single-plugin search | `q` (req), `plugin?`, `limit?`, `offset?` |
+| `bakin_exec_search_table` | Single plugin + facets | `plugin` (req), `q` (req), `facets?`, `limit?` |
+| `bakin_exec_search_lookup` | Fetch one doc by key | `plugin` (req), `key` (req) |
+| `bakin_exec_search_facets` | Facet distributions | `plugin` (req), `facets` (req) |
+| `bakin_exec_search_similar` | Semantic similarity | `text` (req), `plugin?`, `limit?` |
+| `bakin_exec_search_reindex` | **Blue/green rebuild** (search stays available) | `plugin?` |
+| `bakin_exec_search_stats` | Health + per-table stats | — |
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| q | string | yes | Search query |
-| plugin | string | no | Limit to a specific plugin id (omit for cross-plugin search) |
-| limit | number | no | Max results (default: 20) |
-| offset | number | no | Pagination offset |
-
-### bakin_exec_search_table
-Search a specific plugin with facet counts. Use when the agent knows which content type to search.
-
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| plugin | string | yes | Plugin id to search |
-| q | string | yes | Search query |
-| facets | string | no | Comma-separated facet fields |
-| limit | number | no | Max results |
-
-### bakin_exec_search_lookup
-Look up a specific document by key. Direct retrieval, not a search.
-
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| plugin | string | yes | Plugin id |
-| key | string | yes | Document key |
-
-### bakin_exec_search_facets
-Get facet value distributions for a plugin without searching. Useful for understanding data shape.
-
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| plugin | string | yes | Plugin id |
-| facets | string | yes | Comma-separated facet fields |
-
-### bakin_exec_search_similar
-Semantic similarity search. Finds documents with similar meaning to the given text.
-
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| text | string | yes | Text to find similar docs for |
-| plugin | string | no | Limit to a specific plugin id |
-| limit | number | no | Max results (default: 10) |
-
-### bakin_exec_search_reindex
-Trigger a full reindex. Use after bulk data changes or schema updates.
-
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| plugin | string | no | Specific plugin id (omit for all) |
-| rebuild | boolean | no | Drop and recreate indexes first |
-| verify | boolean | no | Re-query tables after reindex to verify doc counts |
-
-### bakin_exec_search_stats
-Get search system health and per-table stats. No parameters.
+Asset-specific search-adjacent tools: `bakin_exec_assets_scan_unmanaged` (list unimported files), `bakin_exec_assets_import` (`path?`/`all?`/`type?`/`taskId?`).
 
 ## CLI Commands
 
-### bakin search `<query>` [options]
 ```bash
 bakin search "hero image"                    # cross-table search
-bakin search "blocked" --table=tasks         # search only tasks
-bakin search "logo" --table=assets --limit=5 # limit results
-bakin search "done" --facets=status,agent    # include facet counts
-```
+bakin search "blocked" --table=tasks         # single table
+bakin search "done" --facets=status,agent    # facet counts
 
-### bakin reindex [options]
-```bash
-bakin reindex                          # reindex all tables
-bakin reindex --table=tasks            # reindex only tasks
-bakin reindex --rebuild                # drop indexes + reindex
-bakin reindex --table=assets --rebuild # rebuild specific table
-```
+bakin reindex                                # blue/green rebuild, all tables
+bakin reindex --table=tasks                  # one table
 
-### bakin search:stats
-```bash
-bakin search:stats   # show Antfly status and per-table doc counts
+bakin search:stats                           # engine status + per-table doc counts
+
+bakin assets scan                            # list unmanaged (unimported) files
+bakin assets import --all                    # import them (explicit — nothing auto-ingests)
+bakin assets import inbox/shot.png --type image
+bakin assets enrich --all [--force]          # run/backfill vision enrichment (billed)
 ```
 
 ## Tables
 
-| Table | Plugin | Facets | Chunker | Indexes | Reranker field |
+| Table (logical) | Plugin | Facets | Chunker | Embedding legs | Reranker field |
 |---|---|---|---|---|---|
-| `bakin_tasks` | tasks | status, agent, created_by, project_id | Yes (200/25) | `embeddings` (BGE) | `description` |
-| `bakin_assets` | assets | asset_type, agent, tool | Yes (200/25 on text) | `assets_text` (BGE), `assets_visual` (CLIP) | — (skipped, multimodal) |
-| `bakin_projects` | projects | status | Yes (200/25) | `embeddings` (BGE) | `body` |
-| `bakin_workflows` | workflows | type, status | No | `embeddings` (BGE) | `description` |
-| `bakin_schedule` | schedule | agent, enabled | No | `embeddings` (BGE) | `command` |
-| `bakin_team` | team | model, status | No | `embeddings` (BGE) | `soul` |
-| `bakin_memory` | memory | tier, agent, kind, eventType, phase, date | No | `embeddings` (BGE) | `content` |
-| `bakin_messaging_brainstorm` | messaging | status, agent_id | No | `embeddings` (BGE) | `message_body` |
+| `bakin_tasks` | tasks | status, agent, created_by, project_id | Yes (200/25) | `embeddings` | `description` |
+| `bakin_assets` | assets | asset_type, agent, tool, tags_facet, provider, model | Yes (200/25 on text) | `assets_text`, `assets_visual` (media: raster + audio via `media_url`) | — (multimodal) |
+| `bakin_workflows` | workflows | type, status | No | `embeddings` | `description` |
+| `bakin_schedule` | schedule | agent, enabled | No | `embeddings` | `command` |
+| `bakin_team` | team | model, status | No | `embeddings` | `soul` |
+| `bakin_agent-lessons` | team | agent | No | `embeddings` | — |
+| `bakin_memory` | memory | tier, agent, kind, eventType, phase, date | No | `embeddings` | `content` |
 
-**`bakin_assets` is the only multi-index table.** See `.claude/knowledge/multimodal-search.md` for why it has separate `assets_text` and `assets_visual` indexes, how server-side content extraction feeds the text index, and the format support matrix for which file types land in which index.
+Physical names are versioned (`{logical}_v{schemaVersion}_{fp8}`); the registry resolves them — nothing upstream ever addresses a physical name directly.
+
+**Per-leg fusion weights:** declared per leg (`weight`, default 1.0), resolved by the registry, sent as `merge_config` weights. Current defaults (balanced 1.0/1.0, RSF fusion) are the measured winners — see `.claude/knowledge/search-tuning.md` before changing them.

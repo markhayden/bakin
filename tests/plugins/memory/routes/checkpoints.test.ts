@@ -50,7 +50,7 @@ function makeCtx(): CtxHarness {
   const queryCalls: CtxHarness['queryCalls'] = []
   let queryResponse: SearchResponse = {
     results: [],
-    meta: { query: '', total: 0, took_ms: 0, source: 'fallback' },
+    meta: { query: '', total: 0, took_ms: 0, source: 'unavailable' },
   }
   const ctx = {
     pluginId: 'memory',
@@ -138,18 +138,19 @@ describe('checkpointsListRoute — handler', () => {
     expect(body.total).toBe(1)
     expect(body.checkpoints).toHaveLength(1)
     expect(h.queryCalls[0].filters).toEqual({ tier: 'checkpoint', agent: 'main' })
-    expect(h.queryCalls[0].q).toBe('')
+    expect(h.queryCalls[0].q).toBe('*')
+    expect(h.queryCalls[0].strategy).toBe('full_text_only')
   })
 
-  it('passes sessionId as q-string when provided', async () => {
+  it('filters by sessionId when provided — never a q-string', async () => {
     const h = makeCtx()
     await checkpointsListRoute.handler(
       req('/checkpoints', { agent: 'main', sessionId: 'sess-1' }),
       h.ctx,
       {} as any,
     )
-    expect(h.queryCalls[0].q).toBe('sess-1')
-    expect(h.queryCalls[0].filters).toEqual({ tier: 'checkpoint', agent: 'main' })
+    expect(h.queryCalls[0].q).toBe('*')
+    expect(h.queryCalls[0].filters).toEqual({ tier: 'checkpoint', agent: 'main', sessionId: 'sess-1' })
   })
 
   it('clamps excessive limits to the 100 default', async () => {
@@ -231,7 +232,11 @@ describe('checkpointDetailRoute — handler', () => {
     expect(res.status).toBe(200)
     expect(body.id).toBe('checkpoint:right1')
     expect(body.title).toBe('hit')
-    expect(h.queryCalls[0].filters).toEqual({ tier: 'checkpoint', agent: 'main' })
+    // Session membership is a filter on the indexed sessionId field — the
+    // full ids only exist in meta (the searchable text carries 8-char
+    // prefixes), so a q-string can never match them.
+    expect(h.queryCalls[0].q).toBe('*')
+    expect(h.queryCalls[0].filters).toEqual({ tier: 'checkpoint', agent: 'main', sessionId: 'sess-1' })
   })
 
   it('returns 404 when no meta entry matches both ids', async () => {

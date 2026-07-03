@@ -59,13 +59,18 @@ describe('Settings', () => {
     const settings = getSettings()
     expect(settings.search.settings.search.strategy).toBe('rrf')
     expect(settings.search.settings.search.defaultLimit).toBe(20)
-    expect(settings.search.settings.search.reranker.enabled).toBe(true)
-    expect(settings.search.settings.search.reranker.provider).toBe('termite')
+    // Still default-off at v0.2.0-rc.9: the rc.2 mxbai SIGABRT (bakin#456) is
+    // fixed, but reranking is slow (~3s/query) and needs an explicit Metal
+    // backend, so it stays off and is opt-in per query.
+    expect(settings.search.settings.search.reranker.enabled).toBe(false)
+    expect(settings.search.settings.search.reranker.provider).toBe('antfly')
     expect(settings.search.settings.search.reranker.model).toBe('mixedbread-ai/mxbai-rerank-base-v1')
-    expect(settings.search.settings.embedders.default.provider).toBe('termite')
+    expect(settings.search.settings.embedders.default.provider).toBe('antfly')
     expect(settings.search.settings.embedders.default.model).toBe('BAAI/bge-small-en-v1.5')
-    expect(settings.search.settings.embedders.visual.provider).toBe('termite')
-    expect(settings.search.settings.embedders.visual.model).toBe('openai/clip-vit-base-patch32')
+    expect(settings.search.settings.embedders.default.dimension).toBe(384)
+    expect(settings.search.settings.embedders.visual.provider).toBe('antfly')
+    expect(settings.search.settings.embedders.visual.model).toBe('antflydb/clipclap')
+    expect(settings.search.settings.embedders.visual.dimension).toBe(512)
     expect(settings.search.settings.chunking.defaultTargetTokens).toBe(200)
     expect(settings.search.settings.chunking.defaultOverlapTokens).toBe(25)
     expect(settings.search.settings.auditTtl).toBe('90d')
@@ -80,10 +85,10 @@ describe('Settings', () => {
 
     const settings = getSettings()
     expect(settings.search.settings.enabled).toBe(true)
-    expect(settings.search.settings.url).toBe('http://localhost:8080/api/v1') // default preserved
+    expect(settings.search.settings.url).toBe('http://127.0.0.1:3738') // default preserved
     expect(settings.search.settings.search.defaultLimit).toBe(50) // overridden
     expect(settings.search.settings.search.strategy).toBe('rrf') // default preserved
-    expect(settings.search.settings.embedders.default.provider).toBe('termite') // default preserved
+    expect(settings.search.settings.embedders.default.provider).toBe('antfly') // default preserved
     expect(settings.search.settings.auditTtl).toBe('90d') // default preserved
   })
 

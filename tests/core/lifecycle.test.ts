@@ -100,10 +100,13 @@ mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
 describe('lifecycle', () => {
   let processListeners: Record<string, Function>
   let registerShutdownHandlers: typeof import('../../src/core/lifecycle').registerShutdownHandlers
+  let lifecycleMod: typeof import('../../src/core/lifecycle')
+  let hardTerminates: number[]
 
   beforeEach(async () => {
     mock.clearAllMocks()
     processListeners = {}
+    hardTerminates = []
 
     spyOn(process, 'on').mockImplementation((event: string | symbol, handler: any) => {
       processListeners[event as string] = handler
@@ -112,14 +115,16 @@ describe('lifecycle', () => {
     spyOn(process, 'exit').mockImplementation(() => undefined as never)
     vi.useFakeTimers()
 
-    const mod = await import('../../src/core/lifecycle')
-    registerShutdownHandlers = mod.registerShutdownHandlers
+    lifecycleMod = await import('../../src/core/lifecycle')
+    registerShutdownHandlers = lifecycleMod.registerShutdownHandlers
     // bun:test has no vi.resetModules; reset the shutdownInProgress flag
     // via the module's test hook.
-    mod._resetShutdownStateForTests()
+    lifecycleMod._resetShutdownStateForTests()
+    lifecycleMod._setHardTerminateForTests((exitCode) => { hardTerminates.push(exitCode) })
   })
 
   afterEach(() => {
+    lifecycleMod?._resetShutdownStateForTests()
     vi.useRealTimers()
     mock.restore()
   })
@@ -200,5 +205,32 @@ describe('lifecycle', () => {
     await processListeners['SIGTERM']()
     await processListeners['SIGTERM']()
     expect(mockShutdownAll).toHaveBeenCalledTimes(1)
+  })
+
+  it('hard-terminates when graceful shutdown hangs instead of waiting for another signal', async () => {
+    mockShutdownAll.mockImplementationOnce(() => new Promise(() => {}))
+    registerShutdownHandlers(mockServer(), '/tmp/test')
+
+    void processListeners['SIGINT']()
+    await vi.advanceTimersByTimeAsync(3999)
+    expect(hardTerminates).toEqual([])
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(hardTerminates).toEqual([0])
+    expect(process.exit).not.toHaveBeenCalled()
+  })
+
+  it('arms a hard fallback in case process.exit returns without terminating', async () => {
+    registerShutdownHandlers(mockServer(), '/tmp/test')
+    await processListeners['SIGTERM']()
+
+    expect(process.exit).toHaveBeenCalledWith(0)
+    expect(hardTerminates).toEqual([])
+
+    await vi.advanceTimersByTimeAsync(249)
+    expect(hardTerminates).toEqual([])
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(hardTerminates).toEqual([0])
   })
 })

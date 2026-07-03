@@ -1557,7 +1557,7 @@ async function cmdSearch(query: string, options: { table?: string; limit?: numbe
   if (options.limit) url += `&limit=${options.limit}`
   if (options.facets) url += `&facets=${encodeURIComponent(options.facets)}`
   const result = await apiGet(url) as {
-    results?: Array<{ key: string; score?: number; _table?: string; document?: Record<string, unknown> }>
+    results?: Array<{ id?: string; key?: string; score?: number; table?: string; _table?: string; fields?: Record<string, unknown>; document?: Record<string, unknown> }>
     aggregations?: Record<string, Array<{ value: string; count: number }>>
     meta?: { query: string; total: number; took_ms: number; source: string }
   }
@@ -1573,9 +1573,11 @@ async function cmdSearch(query: string, options: { table?: string; limit?: numbe
 
   if (result.results?.length) {
     for (const r of result.results) {
-      const table = r._table ? ` [${r._table.replace('bakin_', '')}]` : ''
-      const title = r.document?.title || r.document?.name || r.key
-      console.log(`  ${title}${table} (score: ${r.score?.toFixed(3) ?? '?'})`)
+      const tableName = r.table ?? r._table
+      const table = tableName ? ` [${tableName.replace('bakin_', '')}]` : ''
+      const doc = r.fields ?? r.document
+      const title = doc?.title || doc?.name || r.id || r.key
+      console.log(`  ${String(title).slice(0, 100)}${table} (score: ${r.score?.toFixed(3) ?? '?'})`)
     }
   } else {
     console.log('  No results found.')
@@ -2745,7 +2747,82 @@ async function cmdReboot(): Promise<void> {
   })
 }
 
+/** `bakin assets scan` — list unmanaged files awaiting explicit import. */
+async function cmdAssetsScan(): Promise<void> {
+  const body = await apiGet('/api/plugins/assets/import/scan') as { files: Array<{ relPath: string; size: number; suggestedType: string }>; count: number }
+  if (body.count === 0) {
+    console.log('No unmanaged files — everything under assets/ is managed.')
+    return
+  }
+  console.log(`${body.count} unmanaged file(s) awaiting import:`)
+  for (const f of body.files) {
+    console.log(`  ${f.relPath}  (${f.suggestedType}, ${f.size} bytes)`)
+  }
+  console.log('\nImport with: bakin assets import <path> [--type t]  |  bakin assets import --all')
+}
+
+/** `bakin assets enrich [--all|<assetId>] [--force]` — vision enrichment backfill (D8, billed). */
+async function cmdAssetsEnrich(options: { all?: boolean; assetId?: string; force?: boolean }): Promise<void> {
+  if (!options.all && !options.assetId) {
+    console.error('Usage: bakin assets enrich <assetId> [--force]  |  bakin assets enrich --all [--force]')
+    process.exitCode = 1
+    return
+  }
+  const body = options.all ? { all: true, force: options.force ?? false } : { assetId: options.assetId, force: options.force ?? false }
+  const result = await apiPost('/api/plugins/assets/enrich', body) as {
+    enqueued: number
+    engine?: 'direct' | 'runtime'
+    agent?: string
+    estimatedSecondsPerAsset?: number
+  }
+  if (result.engine === 'runtime') {
+    // Quota notice (spec §5): agent turns spend the runtime subscription —
+    // never silently. The batch is already queued; abort stops the rest.
+    const perAsset = result.estimatedSecondsPerAsset ?? 35
+    console.log(`NOTICE: ${result.enqueued} asset(s) will be enriched via agent turns on '${result.agent ?? 'enrich'}' — no direct API key is configured, so this uses your subscription quota and takes ~${perAsset}s per asset (ctrl-c the server or 'bakin restart' to abort; add an API key for the fast path).`)
+  } else {
+    console.log(`Enqueued ${result.enqueued} asset(s) for vision enrichment (runs in the background; billed per asset version).`)
+  }
+  console.log('Track progress: bakin doctor  (assets enrichment rows)')
+}
+
+/** `bakin assets import [--all|<path>] [--type t]` — explicit import (D7). */
+async function cmdAssetsImport(options: { all?: boolean; path?: string; type?: string }): Promise<void> {
+  if (!options.all && !options.path) {
+    console.error('Usage: bakin assets import <path> [--type t]  |  bakin assets import --all [--type t]')
+    process.exitCode = 1
+    return
+  }
+  const payload: Record<string, unknown> = options.all
+    ? { all: true }
+    : { paths: [options.path] }
+  if (options.type) payload.type = options.type
+  const body = await apiPost('/api/plugins/assets/import', payload) as { ok: boolean; imported: number; failed: number; results: Array<{ ok: boolean; relPath: string; assetId?: string; error?: string }> }
+  for (const r of body.results) {
+    console.log(r.ok ? `  imported ${r.relPath} → ${r.assetId}` : `  FAILED ${r.relPath}: ${r.error}`)
+  }
+  console.log(`${body.imported} imported, ${body.failed} failed.`)
+  if (!body.ok) process.exitCode = 1
+}
+
 async function cmdReindex(options: { table?: string; rebuild?: boolean } = {}): Promise<void> {
+  // Pre-flight: reindexing with models missing "works" (documents land in
+  // the tables) while every semantic query stays dead — a silently confusing
+  // state. Name it before doing the work, at the moment it matters. Goes
+  // through the onboarding component so the ACTIVE settings decide which
+  // models are required (custom embedders in, disabled reranker out) —
+  // hardcoding the adapter with default settings warned wrongly in both
+  // directions.
+  try {
+    const { searchModelsComponent } = await import('../src/core/onboarding/search-models')
+    const modelsCheck = await searchModelsComponent.check()
+    if (modelsCheck && modelsCheck.status !== 'ok') {
+      console.log('WARNING: search models are missing — this reindex will populate tables, but semantic search stays dead until `bakin install search-models` runs (then reindex again).')
+    }
+  } catch {
+    // Pre-flight is advisory only — never block a reindex on it.
+  }
+
   let url = '/api/reindex'
   const params: string[] = []
   if (options.table) params.push(`table=${encodeURIComponent(options.table)}`)
@@ -2994,6 +3071,11 @@ async function cmdStop(): Promise<void> {
   const { execFileSync } = await import('child_process')
 
   const printStopResult = async (result: Record<string, unknown>, detail?: string): Promise<void> => {
+    // Antfly dies ONLY after Bakin is down/absent: killing it while a Bakin
+    // server still runs would trip that server's takeover supervision, which
+    // exists precisely to resurrect a disappeared local instance.
+    const antflyPid = await stopAntflyInstance()
+    if (antflyPid && !process.stdout.isTTY) console.log(`[OK] Sent SIGTERM to Antfly instance (pid ${antflyPid})`)
     const message = typeof result.message === 'string' ? result.message : 'Bakin stop request completed.'
     if (process.stdout.isTTY) {
       await printRuntimeActionTui({
@@ -3010,6 +3092,32 @@ async function cmdStop(): Promise<void> {
     else if (result.status === 'warn') console.log(`[WARN] ${message}`)
     else console.log(message)
     if (detail) console.log(`  ${detail}`)
+  }
+
+  // `bakin stop` is one of the EXPLICIT antfly kill paths (the keep-alive
+  // lifecycle leaves the child running across routine Bakin restarts, so a
+  // routine server SIGTERM never stops it). Kill via the instance sidecar,
+  // best-effort — a missing/stale sidecar or dead pid is fine.
+  const stopAntflyInstance = async (): Promise<number | null> => {
+    try {
+      const { getBakinPaths } = await import('../packages/core/src/content-dir')
+      const { join } = await import('path')
+      const { readFileSync, existsSync, unlinkSync } = await import('fs')
+      const sidecarPath = join(getBakinPaths().antfly, 'instance.json')
+      if (!existsSync(sidecarPath)) return null
+      const sidecar = JSON.parse(readFileSync(sidecarPath, 'utf-8')) as { pid?: number | null }
+      if (sidecar?.pid) {
+        try {
+          process.kill(sidecar.pid, 'SIGTERM')
+        } catch { /* already gone */ }
+      }
+      try {
+        unlinkSync(sidecarPath)
+      } catch { /* best effort */ }
+      return sidecar?.pid ?? null
+    } catch {
+      return null
+    }
   }
 
   if (!process.stdout.isTTY) console.log('[..] Stopping Bakin server...')
@@ -4118,6 +4226,33 @@ export async function main(): Promise<void> {
       case 'restart':
         await cmdReboot()
         break
+
+      case 'assets': {
+        const sub = args[1]
+        if (sub === 'import') {
+          const importOpts: { all?: boolean; path?: string; type?: string } = {}
+          for (let i = 2; i < args.length; i++) {
+            if (args[i] === '--all') importOpts.all = true
+            else if (args[i].startsWith('--type=')) importOpts.type = args[i].split('=')[1]
+            else if (args[i] === '--type' && args[i + 1]) importOpts.type = args[++i]
+            else if (!args[i].startsWith('--')) importOpts.path = args[i]
+          }
+          await cmdAssetsImport(importOpts)
+        } else if (sub === 'scan') {
+          await cmdAssetsScan()
+        } else if (sub === 'enrich') {
+          const enrichOpts: { all?: boolean; assetId?: string; force?: boolean } = {}
+          for (let i = 2; i < args.length; i++) {
+            if (args[i] === '--all') enrichOpts.all = true
+            else if (args[i] === '--force') enrichOpts.force = true
+            else if (!args[i].startsWith('--')) enrichOpts.assetId = args[i]
+          }
+          await cmdAssetsEnrich(enrichOpts)
+        } else {
+          await exitUnknownSubcommand('assets', sub, ['scan', 'import', 'enrich'])
+        }
+        break
+      }
 
       case 'reindex': {
         const reindexOpts: { table?: string; rebuild?: boolean } = {}

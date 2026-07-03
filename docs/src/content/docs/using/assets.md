@@ -56,7 +56,7 @@ Every asset is a **stable id** (`YYYYMMDD-{slug}-{8charId}`) naming a directory 
 ### Drag and drop / inbox / clipboard
 
 - **Drag and drop**: `+ Add` on the assets page or any task. Drop one or many files — each becomes a new asset (v1).
-- **Inbox**: `~/.bakin/assets/inbox/` is a watched folder. Drop a file (or into `inbox/{type}/` to hint the type) and Bakin ingests it as a managed asset and indexes it.
+- **Import (explicit)**: files dropped anywhere under `~/.bakin/assets/` (including `inbox/`, or `inbox/{type}/` to hint the type) are NEVER auto-ingested. A sidebar badge counts unmanaged files; the Assets **Import** tab (or `bakin assets import [--all|<path>]`) adopts them as managed, searchable assets on your say-so.
 - **Clipboard**: paste an image or long text into a task description. Bakin uploads it (source `clipboard`), links it to the task, and writes a reference into the description.
 
 ### Saved by an agent
@@ -93,7 +93,7 @@ Editing a text asset's content saves a **new version** — the history captures 
         v3.png  v3.thumb.jpg                   # current (pointer lives in manifest.json)
         exports/
           open-graph.jpg                       # a derived export (from a version)
-  inbox/                                       # ingestion staging
+  inbox/                                       # optional drop location (explicit import — nothing auto-ingests)
   .trash/                                      # soft-deleted assets (whole directories)
 ```
 

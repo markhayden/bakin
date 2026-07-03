@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { ChevronRight, Workflow, Zap, Radio, MonitorDot, Plug } from 'lucide-react'
 import { useActivityContext } from '@/context/activity-context'
-import { useContentStore } from '@makinbakin/sdk/hooks'
+import { useAgent, useContentStore } from '@makinbakin/sdk/hooks'
 import { AgentAvatar } from '@/components/agent-avatar'
 
 /** Non-agent sources that will never have a headshot image */
@@ -16,6 +16,20 @@ const SYSTEM_ICONS: Record<string, React.ComponentType<{ className?: string }>> 
   watchdog: MonitorDot,
   dashboard: MonitorDot,
   api: Plug,
+}
+
+/** Agent rows show the DISPLAY name (H'enrich, not enrich); system sources keep their id. */
+function FeedAgentName({ agent }: { agent: string }) {
+  const resolved = useAgent(agent)
+  const label = SYSTEM_SOURCES.has(agent) ? agent : resolved?.name || agent
+  return (
+    <span
+      className="text-[11px] font-medium"
+      style={{ color: SYSTEM_SOURCES.has(agent) ? 'var(--muted-foreground)' : `var(--agent-${agent}, var(--muted-foreground))` }}
+    >
+      {label}
+    </span>
+  )
 }
 
 function FeedAvatar({ agent }: { agent: string }) {
@@ -149,12 +163,7 @@ export function ActivityFeed() {
               <FeedAvatar agent={evt.agent} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-1.5 mb-0.5">
-                  <span
-                    className="text-[11px] font-medium"
-                    style={{ color: SYSTEM_SOURCES.has(evt.agent) ? 'var(--muted-foreground)' : `var(--agent-${evt.agent}, var(--muted-foreground))` }}
-                  >
-                    {evt.agent}
-                  </span>
+                  <FeedAgentName agent={evt.agent} />
                   <span className="text-muted-foreground text-[10px] shrink-0 tabular-nums">{relativeTime(evt.ts)}</span>
                 </div>
                 {evt.taskTitle && evt.type === 'log' && (

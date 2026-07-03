@@ -13,9 +13,23 @@ import {
   handleVersionedList, handleVersionedGet, handleVersionedPromote,
   handleVersionedDeleteVersion, handleVersionedDeleteAsset, handleVersionedExport,
   handleVersionedRelink, handleVersionedAddVersion, handleVersionedUpdateMetadata,
+  handleVersionedUpdateEnrichment,
   handleTrashList, handleTrashRestore, handleTrashPermanentDelete, handleTrashEmpty,
 } from './routes/versioned'
+import { onAssetWritten } from './lib/asset-events'
+import {
+  drainEnrichmentQueue,
+  enqueueEnrichment,
+  enqueueEnrichmentBackfill,
+  enrichmentQueueStats,
+  initEnrichmentQueue,
+  stopEnrichmentQueue,
+} from './lib/enrichment/queue'
+import type { EnrichmentSettings } from './lib/enrichment/providers'
+import { resolveEnrichmentEngine } from './lib/enrichment/engine'
+import { RUNTIME_TURN_ESTIMATED_SECONDS } from './lib/enrichment/runtime'
 import { handleTagsRename, handleTagsRemove, handleTagsApply } from './routes/tags'
+import { handleImportScan, handleImport } from './routes/import'
 import { isValidAssetId } from './lib/asset-id'
 import {
   getAsset, upsertFromSource, resolveFile as resolveVersionedFile,
@@ -29,11 +43,11 @@ import {
 import { listAssetIdsByTask, taskAssetIndexRemove, taskAssetIndexUpsert } from './lib/task-asset-index'
 import { versionedAssetPath, buildVersionedAssetSearchDoc } from './lib/search-doc'
 import { ASSET_TYPES, type AssetType } from './lib/constants'
-import { ingestInboxFile, ingestInboxDir } from './lib/ingest-inbox'
+import { noteUnmanagedSync, noteUnmanagedUnlink, setUnmanagedEmitter } from './lib/unmanaged-tracker'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
 import { extractAssetContent } from './lib/content-extractor'
-import { assetRepair, checkAssets } from './lib/health-checks'
+import { assetRepair, checkAssets, checkEnrichmentEngine, enrichmentCoverage } from './lib/health-checks'
 
 const log = createLogger('assets')
 
@@ -64,6 +78,20 @@ const okPassthrough = z.object({ ok: z.boolean() }).passthrough()
 // ─── Routes (declarative) ────────────────────────────────────────────────
 
 const routes = [
+  defineRoute({
+    path: '/import/scan',
+    method: 'GET',
+    summary: 'List unmanaged files awaiting explicit import',
+    responses: { 200: passthrough, 500: errorResponse },
+    handler: async () => handleImportScan(),
+  }),
+  defineRoute({
+    path: '/import',
+    method: 'POST',
+    summary: 'Import unmanaged files into versioned assets',
+    responses: { 200: okPassthrough, 400: errorResponse, 500: errorResponse },
+    handler: async (req, ctx) => handleImport(req, ctx as unknown as { activity?: { audit: (event: string, agent: string, data: Record<string, unknown>) => void } }),
+  }),
   defineRoute({
     path: '/upload',
     method: 'POST',
@@ -125,6 +153,68 @@ const routes = [
     handler: async (req, ctx) => {
       const res = await handleVersionedUpdateMetadata(req)
       if (res.ok) ctx.activity.audit('asset.metadata_updated', 'user')
+      return res
+    },
+  }),
+  defineRoute({
+    path: '/enrich',
+    method: 'POST',
+    summary: 'Enqueue vision enrichment (one asset or backfill all); billed per asset version',
+    responses: { 200: okPassthrough, 400: errorResponse },
+    handler: async (req, ctx) => {
+      const body = await req.json().catch(() => ({})) as { assetId?: unknown; assetIds?: unknown; all?: unknown; force?: unknown }
+      const force = body.force === true
+      // Which engine will serve the batch — surfaced so callers can warn
+      // BEFORE a runtime backfill silently spends subscription quota (§5).
+      const engineInfo = async () => {
+        const resolution = await resolveEnrichmentEngine(
+          ctx.getSettings<EnrichmentSettings>(), { kind: 'image' }, { runtime: ctx.runtime ?? null },
+        )
+        if (!resolution.ok) return {}
+        return {
+          engine: resolution.engine.name,
+          ...(resolution.engine.name === 'runtime' ? {
+            agent: resolution.engine.modelId.slice('runtime:'.length),
+            estimatedSecondsPerAsset: RUNTIME_TURN_ESTIMATED_SECONDS,
+          } : {}),
+        }
+      }
+      if (typeof body.assetId === 'string' && body.assetId.length > 0) {
+        const { getAsset } = await import('./lib/asset-core')
+        if (!getAsset(body.assetId)) return Response.json({ error: 'Asset not found' }, { status: 404 })
+        const info = await engineInfo()
+        enqueueEnrichment(body.assetId, { force })
+        void drainEnrichmentQueue()
+        return Response.json({ ok: true, enqueued: 1, count: 1, ...info })
+      }
+      if (Array.isArray(body.assetIds) && body.assetIds.length > 0) {
+        const ids = body.assetIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
+        if (ids.length === 0) return Response.json({ error: 'assetIds must contain asset id strings' }, { status: 400 })
+        const info = await engineInfo()
+        enqueueEnrichmentBackfill(ids, { force })
+        void drainEnrichmentQueue()
+        return Response.json({ ok: true, enqueued: ids.length, count: ids.length, ...info })
+      }
+      if (body.all === true) {
+        const { listAssets } = await import('./lib/asset-core')
+        const ids = listAssets().map((a) => a.assetId)
+        const info = await engineInfo()
+        enqueueEnrichmentBackfill(ids, { force })
+        void drainEnrichmentQueue()
+        return Response.json({ ok: true, enqueued: ids.length, count: ids.length, ...info })
+      }
+      return Response.json({ error: 'assetId (string) or all:true required' }, { status: 400 })
+    },
+  }),
+  defineRoute({
+    path: '/versioned/:assetId/enrichment',
+    method: 'PATCH',
+    summary: 'Manually edit derived enrichment (locks fields against machine overwrites)',
+    params: z.object({ assetId: z.string().min(1) }),
+    responses: { 200: okPassthrough, 400: errorResponse, 404: errorResponse },
+    handler: async (req, ctx) => {
+      const res = await handleVersionedUpdateEnrichment(req)
+      if (res.ok) ctx.activity.audit('asset.enrichment_edited', 'user')
       return res
     },
   }),
@@ -239,7 +329,7 @@ const routes = [
 const assetsPlugin: BakinPlugin = definePlugin({
   id: 'assets',
   name: 'Assets',
-  version: '2.0.0',
+  version: '2.2.0',
   routes,
 
   settingsSchema: {
@@ -247,6 +337,10 @@ const assetsPlugin: BakinPlugin = definePlugin({
       { key: 'thumbnails', type: 'boolean', label: 'Generate thumbnails', description: 'Auto-create optimized thumbnails on upload', default: true },
       { key: 'maxFileSize', type: 'number', label: 'Max file size (MB)', description: 'Reject uploads larger than this', default: 50 },
       { key: 'purgeClipboardOnComplete', type: 'boolean', label: 'Purge clipboard assets on task completion', description: 'Auto-delete clipboard-pasted assets when their linked task is marked done', default: false },
+      { key: 'enrichmentEnabled', type: 'boolean', label: 'Vision enrichment', description: 'Derive caption/OCR/tags from asset content with a vision model (billed per asset version)', default: true },
+      { key: 'enrichmentProvider', type: 'select', label: 'Enrichment provider', description: 'auto = cheapest configured API model, else the runtime agent when its model accepts images; runtime = agent turns only (subscription quota)', options: ['auto', 'anthropic', 'openai', 'google', 'runtime'], default: 'auto' },
+      { key: 'enrichmentModel', type: 'string', label: 'Enrichment model override', description: 'Exact model id (catalog or provider-native); empty = auto', default: '' },
+      { key: 'enrichmentAgent', type: 'string', label: 'Enrichment agent', description: "Runtime agent for subscription-quota enrichment turns — its configured model must accept images (per-turn overrides don't pass the attachment gate; bakin#583/#584)", default: 'enrich' },
     ],
   },
 
@@ -256,10 +350,34 @@ const assetsPlugin: BakinPlugin = definePlugin({
   activate(ctx: PluginContext) {
     pluginCtx = ctx
 
+    // ─── Enrichment queue (D8) ─────────────────────────────────────────
+    // Every asset write enqueues; the queue never blocks creation; the
+    // manifest's status/forVersion is the durable skip guard.
+    initEnrichmentQueue(() => ctx.getSettings<EnrichmentSettings>(), {
+      getRuntime: () => ctx.runtime ?? null,
+      // Live Activity feed: started/enriched/failed per asset, attributed to
+      // the agent doing the work — the answer to "how do I know it's working"
+      // for 35s agent turns.
+      onActivity: (event, agent, detail) => {
+        try {
+          ctx.activity.audit(event, agent, detail)
+        } catch { /* activity surface unavailable (tests) */ }
+      },
+    })
+    onAssetWritten(({ assetId }) => enqueueEnrichment(assetId))
+    ctx.hooks.register('assets.enrichmentStats', () => ({ ...enrichmentQueueStats(), coverage: enrichmentCoverage() }), {
+      label: 'Enrichment queue stats.',
+      summary: 'Returns the vision-enrichment queue depth and processed/failed/skipped counters for telemetry.',
+      hookKind: 'rpc',
+    })
+
     // ─── Search Content Type Registration ─────────────────────────────
 
     ctx.search.registerFileBackedContentType({
       table: 'assets',
+      // v2: enrichment fields (caption/ocr_text/suggested_tags/transcript/
+      // summary) + image_url → media_url incl. audio. Blue/green migrates.
+      schemaVersion: 2,
       schema: {
         description: { type: 'text' },
         tags: { type: 'text' },
@@ -283,12 +401,19 @@ const assetsPlugin: BakinPlugin = definePlugin({
         // search adapter receives plain document text instead of reaching
         // back into local files during indexing.
         content: { type: 'text' },
-        // `image_url` is a file:// URL for raster images that CLIP can
-        // actually decode. Populated at index time by computeMediaUrls.
-        // The search adapter owns provider-specific media dereferencing.
-        image_url: { type: 'keyword' },
+        // Derived enrichment (D8) — searchable text a vision model produced
+        // from the asset ITSELF, durable in the manifest.
+        caption: { type: 'text' },
+        ocr_text: { type: 'text' },
+        suggested_tags: { type: 'text' },
+        transcript: { type: 'text' },
+        summary: { type: 'text' },
+        // `media_url` is a file:// URL for raster images AND audio files —
+        // both ride the media-embedding leg (CLIP + CLAP halves of the
+        // multimodal embedder). The adapter owns media dereferencing.
+        media_url: { type: 'keyword' },
       },
-      searchableFields: ['description', 'tags', 'file_name', 'surface', 'content'],
+      searchableFields: ['description', 'tags', 'file_name', 'surface', 'content', 'caption', 'ocr_text', 'suggested_tags', 'transcript', 'summary'],
       // Intentionally no `rerankField`. bakin_assets is a multimodal table
       // (PDF body text in `content`, image pixels in the visual index,
       // metadata in description/tags/file_name) and the cross-encoder
@@ -299,25 +424,34 @@ const assetsPlugin: BakinPlugin = definePlugin({
       // the full rationale and the queries that surfaced the problem.
       // Unused when `indexes` is set, but the type requires it. Kept as the
       // equivalent template for the default-index synthesis path.
-      embeddingTemplate: '{{description}} {{tags}} {{file_name}} {{surface}} {{content}}',
+      embeddingTemplate: '{{description}} {{caption}} {{tags}} {{suggested_tags}} {{file_name}} {{surface}} {{content}} {{ocr_text}} {{transcript}} {{summary}}',
       indexes: [
         {
           name: 'assets_text',
           embedderRef: 'default',
-          embeddingTemplate: '{{description}} {{tags}} {{file_name}} {{surface}} {{content}}',
+          embeddingTemplate: '{{description}} {{caption}} {{tags}} {{suggested_tags}} {{file_name}} {{surface}} {{content}} {{ocr_text}} {{transcript}} {{summary}}',
           chunker: { enabled: true, targetTokens: 200, overlapTokens: 25 },
+          // Balanced with the visual leg since the golden-set tuning pass
+          // (.claude/knowledge/search-tuning.md): images now carry REAL
+          // vision-LLM captions/OCR in this leg (not auto-noise), and
+          // measured hit@1 nearly tripled at 1/1 vs the old 0.5/2.0 skew.
+          weight: 1.0,
         },
         {
           name: 'assets_visual',
           embedderRef: 'visual',
-          mediaUrlField: 'image_url',
+          mediaUrlField: 'media_url',
+          // Balanced (was 2.0): with enriched captions in the text leg, an
+          // over-weighted visual leg let color-similar swatches outrank
+          // exact caption matches. Measured in the tuning pass.
+          weight: 1.0,
         },
       ],
       facets: ['asset_type', 'agent', 'tool', 'tags_facet', 'provider', 'model'],
       // An asset is a directory under assets/store/<ym>/<assetId>/ whose
       // manifest.json is the single indexed unit (keyed by assetId). Version,
       // thumbnail, and export files never get their own search doc. onSync /
-      // onUnlink own indexing off the manifest; fileToDoc is unused.
+      // onUnlink own indexing off the manifest, so no fileToDoc is declared.
       filePatterns: [
         {
           pattern: 'assets/**/*',
@@ -325,7 +459,6 @@ const assetsPlugin: BakinPlugin = definePlugin({
             const v = versionedAssetPath(rel)
             return v?.isManifest ? v.assetId : null
           },
-          fileToDoc: async () => null, // unused — onSync handles indexing
         },
       ],
       excludePatterns: ['assets/**/.trash/**'],
@@ -350,24 +483,17 @@ const assetsPlugin: BakinPlugin = definePlugin({
           return
         }
 
-        // Intercept inbox drops: canonicalize into a versioned asset under
-        // store/. The manifest write then re-enters onSync via the versioned
-        // branch above to index it.
-        if (relativePath.startsWith('assets/inbox/')) {
-          const result = await ingestInboxFile(relativePath)
-          if (result.ok) {
-            ctx.activity.log('user', `Ingested "${result.assetId}" from inbox`)
-            ctx.activity.audit('asset.ingested', 'user', { assetId: result.assetId })
-          } else if (result.error) {
-            log.warn('Inbox ingestion failed', { path: relativePath, error: result.error })
-          }
-        }
-        // Anything else under assets/ (loose files, non-manifest dir contents)
-        // is not an indexed unit — ignore.
+        // ONE RULE (D7): a raw file on disk NEVER becomes an asset without
+        // an explicit import action. Unmanaged appearances (inbox drops,
+        // loose files) are only NOTED — the badge/Import view surface them;
+        // the user (or CLI/MCP) imports.
+        noteUnmanagedSync(relativePath)
       },
       onUnlink: async (relativePath: string) => {
         if (!relativePath.startsWith('assets/')) return
         if (relativePath.includes('.trash/')) return
+
+        noteUnmanagedUnlink(relativePath)
 
         // Only a manifest unlink (asset dir trashed/removed) removes the row.
         const versioned = versionedAssetPath(relativePath)
@@ -475,15 +601,9 @@ const assetsPlugin: BakinPlugin = definePlugin({
       return { purged }
     }, { label: 'Purge task clipboard assets.', summary: 'Deletes clipboard-sourced assets associated with a completed task when that cleanup setting is enabled. Use it from task completion flows that want asset cleanup to stay centralized.', hookKind: 'rpc' })
 
-    // Drain the inbox first — anything a user dropped while the watcher
-    // wasn't running gets canonicalized into store/ before the index is
-    // built, so those assets appear in the first listing.
-    ingestInboxDir()
-      .then(ingested => {
-        const succeeded = ingested.filter(r => r.ok)
-        if (succeeded.length > 0) log.info('Ingested inbox drops on startup', { count: succeeded.length })
-      })
-      .catch(err => log.warn('Inbox startup scan failed', err))
+    // No boot drain, no auto-ingest (D7): unmanaged files are surfaced by
+    // the live tracker + on-demand scans and imported explicitly.
+    setUnmanagedEmitter((count) => ctx.events.emit('asset.unmanaged', { count }))
 
     // ─── MCP Exec Tools ────────────────────────────────────────────────
 
@@ -501,6 +621,51 @@ const assetsPlugin: BakinPlugin = definePlugin({
       '',
       'When unsure: if it informs future decisions, use research. If it\'s a deliverable, use text. If it describes what to do, use plans.',
     ].join('\n')
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_assets_scan_unmanaged',
+      label: 'Scanned for unmanaged files',
+      description: 'List files under assets/ that are NOT managed assets (inbox drops, loose files). Nothing is imported automatically — use bakin_exec_assets_import to import.',
+      parameters: {},
+      handler: async () => {
+        const { scanUnmanaged } = await import('./lib/import-unmanaged')
+        const { reseedUnmanaged } = await import('./lib/unmanaged-tracker')
+        const files = scanUnmanaged()
+        reseedUnmanaged(files.map(f => f.relPath))
+        return { ok: true, count: files.length, files }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_assets_import',
+      label: 'Imported unmanaged files',
+      description: 'Explicitly import unmanaged files into managed versioned assets. Pass path (content-dir relative, e.g. assets/inbox/pic.png) or all: true. Optional type override and taskId link.',
+      parameters: {
+        path: z.string().optional().describe('One unmanaged file to import (content-dir relative)'),
+        all: z.boolean().optional().describe('Import every unmanaged file'),
+        type: z.enum(ASSET_TYPES).optional().describe('Override the suggested asset type'),
+        taskId: z.string().optional().describe('Link the imported asset(s) to this task'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        const { scanUnmanaged, importUnmanagedFile } = await import('./lib/import-unmanaged')
+        const { reseedUnmanaged } = await import('./lib/unmanaged-tracker')
+        const type = typeof params.type === 'string' ? params.type as AssetType : undefined
+        const taskId = typeof params.taskId === 'string' && params.taskId.length > 0 ? params.taskId : null
+        const targets = params.all === true
+          ? scanUnmanaged().map(f => f.relPath)
+          : typeof params.path === 'string' && params.path.length > 0 ? [params.path] : []
+        if (targets.length === 0) return { ok: false, error: 'Pass path or all: true' }
+        const results = []
+        for (const rel of targets) {
+          const result = await importUnmanagedFile(rel, { ...(type ? { type } : {}), taskId })
+          results.push(result)
+          if (result.ok) ctx.activity.audit('asset.imported', 'user', { assetId: result.assetId, from: rel })
+        }
+        reseedUnmanaged(scanUnmanaged().map(f => f.relPath))
+        const imported = results.filter(r => r.ok).length
+        return { ok: imported === results.length, imported, failed: results.length - imported, results }
+      },
+    })
 
     ctx.registerExecTool({
       name: 'bakin_exec_assets_list',
@@ -714,7 +879,10 @@ const assetsPlugin: BakinPlugin = definePlugin({
     ctx.registerHealthCheck({
       id: 'assets',
       name: 'Asset store + manifest integrity',
-      run: () => Promise.resolve(checkAssets(getContentDir())),
+      run: async () => [
+        ...checkAssets(getContentDir()),
+        await checkEnrichmentEngine(ctx.getSettings<EnrichmentSettings>(), ctx.runtime ?? null),
+      ],
       repair: assetRepair(getContentDir()),
     })
   },
@@ -737,6 +905,7 @@ const assetsPlugin: BakinPlugin = definePlugin({
   },
 
   onShutdown() {
+    stopEnrichmentQueue()
     log.info('Shutting down assets plugin')
   },
 }) as unknown as BakinPlugin

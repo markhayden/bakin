@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
-import { Download, Loader2, Menu, X, PanelLeftClose, PanelLeft, Bug } from 'lucide-react'
+import { Download, Loader2, Menu, X, PanelLeftClose, PanelLeft, Bug, Search } from 'lucide-react'
 import { ConnectionDot } from './connection-dot'
 import { DispatchTimer } from './dispatch-timer'
 import { NotificationToggle } from './notification-toggle'
 import { AppSidebar } from './app-sidebar'
+import { openGlobalSearch } from '../search/use-search-hotkey'
 import { useSidebarContext } from '@/context/sidebar-context'
 import { useDebug } from '@makinbakin/sdk/hooks'
 import { Button } from '@/components/ui/button'
@@ -162,6 +163,17 @@ export function Header() {
           {version && <span className="text-[10px] font-mono text-muted-foreground">v{version}</span>}
         </div>
         <div className="ml-auto flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() => openGlobalSearch()}
+            className="flex items-center gap-2 rounded-md border border-border/60 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            title="Search everything (⌘K)"
+            data-testid="global-search-button"
+          >
+            <Search className="size-3.5" />
+            <span className="hidden sm:inline">Search</span>
+            <kbd className="rounded border border-border/60 px-1 font-mono text-[10px]">⌘K</kbd>
+          </button>
           <DispatchTimer />
           <DebugToggle />
           <NotificationToggle />

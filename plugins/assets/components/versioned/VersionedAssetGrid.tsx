@@ -3,10 +3,10 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryState, useQueryArrayState, useSearch, useDebug, useRouter, usePathname, useSearchParams, usePluginEvent } from '@makinbakin/sdk/hooks'
-import { Button } from '@makinbakin/sdk/ui'
-import { PluginHeader, FacetFilter } from '@makinbakin/sdk/components'
+import { Button, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@makinbakin/sdk/ui'
+import { PluginHeader, FacetFilter, SearchUnavailable, ScoreOverlay } from '@makinbakin/sdk/components'
 import { formatSize, formatAge } from '@makinbakin/sdk/utils'
-import { ImagePlus, Upload, Loader2, LayoutGrid, List, Trash2, RotateCcw, X, ListFilter, FolderOpen, Pencil, Check, SquareMousePointer, Tags, ArrowLeft } from 'lucide-react'
+import { ImagePlus, Upload, Loader2, LayoutGrid, List, Trash2, RotateCcw, X, ListFilter, FolderOpen, Pencil, Check, Tags, ArrowLeft , Inbox, Sparkles } from 'lucide-react'
 import { ASSET_TYPES } from '../../lib/constants'
 import { createSseRefetchScheduler } from './sse-refetch'
 import { AssetEditDrawer } from './AssetEditDrawer'
@@ -15,14 +15,16 @@ import { TagInput } from './TagInput'
 import { UNTAGGED, matchesTagFilter } from './tag-filter'
 import { AssetThumb, AssetMetaSummary, AssetTypeIcon } from './atoms'
 import { VERSIONED_API, UPLOAD_API, TRASH_API, TAGS_API } from './asset-urls'
+import { ImportView } from './ImportView'
 import type { VersionedAssetSummary, TrashedAssetSummary } from './types'
 
-type View = 'grid' | 'list' | 'tags' | 'trash'
+type View = 'grid' | 'list' | 'tags' | 'import' | 'trash'
 
 const VIEW_OPTIONS: Array<{ key: View; label: string; Icon: typeof LayoutGrid }> = [
   { key: 'grid', label: 'Grid', Icon: LayoutGrid },
   { key: 'list', label: 'List', Icon: List },
   { key: 'tags', label: 'Folders', Icon: FolderOpen },
+  { key: 'import', label: 'Import', Icon: Inbox },
   { key: 'trash', label: 'Trash', Icon: Trash2 },
 ]
 
@@ -35,32 +37,28 @@ const TYPE_OPTIONS = ASSET_TYPES.map((value) => ({
 }))
 
 
-/** Per-result Antfly relevance breakdown. */
+/** Per-result Antfly relevance breakdown (shape shared with the SDK ScoreOverlay). */
 export interface AssetScoreInfo { score: number; indexScores?: Record<string, number> }
 
-/**
- * Search-relevance debug overlay. bakin_assets is multimodal: Bleve BM25 +
- * assets_text (BGE text embeddings) + assets_visual (CLIP on pixels). The Bleve
- * index key is an absolute path containing "bleve"/"full_text", so detect it by
- * substring rather than a fixed key.
- */
-function ScoreOverlay({ info, className = '' }: { info: AssetScoreInfo; className?: string }) {
-  const scores = info.indexScores ?? {}
-  const bm25Key = Object.keys(scores).find(k => /bleve|full_text/.test(k))
-  const bm25 = bm25Key ? scores[bm25Key] ?? 0 : 0
-  const txt = scores['assets_text'] ?? 0
-  const vis = scores['assets_visual'] ?? 0
+const ENRICHMENT_BADGE: Record<VersionedAssetSummary['enrichment'], { className: string; label: string }> = {
+  done: { className: 'text-emerald-400', label: 'Enriched — searchable by derived caption/tags' },
+  stale: { className: 'text-amber-400', label: 'Enriched for an older version — re-enrich to refresh' },
+  pending: { className: 'text-sky-400 animate-pulse', label: 'Enrichment in progress' },
+  failed: { className: 'text-red-400', label: 'Enrichment failed — see asset detail' },
+  skipped: { className: 'text-zinc-500', label: 'Enrichment skipped (unsupported or no engine)' },
+  none: { className: 'text-zinc-600', label: 'Not enriched yet — select and hit Enrich' },
+}
+
+function EnrichmentDot({ status }: { status: VersionedAssetSummary['enrichment'] }) {
+  const badge = ENRICHMENT_BADGE[status] ?? ENRICHMENT_BADGE.none
   return (
-    <div className={`flex flex-col gap-0.5 rounded bg-black/80 px-1.5 py-1 font-mono text-[9px] ${className}`} data-testid="score-overlay">
-      <span className="text-amber-400">RRF {info.score.toFixed(4)}</span>
-      <span className="text-cyan-400">BM25 {bm25.toFixed(4)}</span>
-      <span className="text-purple-400">TXT {txt.toFixed(4)}</span>
-      <span className="text-pink-400">VIS {vis.toFixed(4)}</span>
-    </div>
+    <span title={badge.label} data-testid={`enrichment-dot-${status}`} className="flex items-center">
+      <Sparkles className={`size-3 ${badge.className}`} />
+    </span>
   )
 }
 
-function AssetCard({ asset, onOpen, onEdit, selected, scoreInfo }: { asset: VersionedAssetSummary; onOpen: () => void; onEdit: () => void; selected?: boolean; scoreInfo?: AssetScoreInfo }) {
+function AssetCard({ asset, onOpen, onEdit, selected, onToggleSelect, scoreInfo }: { asset: VersionedAssetSummary; onOpen: () => void; onEdit: () => void; selected: boolean; onToggleSelect: () => void; scoreInfo?: AssetScoreInfo }) {
   return (
     <div
       onClick={onOpen}
@@ -69,11 +67,14 @@ function AssetCard({ asset, onOpen, onEdit, selected, scoreInfo }: { asset: Vers
     >
       <div className="relative aspect-square overflow-hidden bg-zinc-900/50">
         <AssetThumb assetId={asset.assetId} type={asset.type} version={asset.currentVersion} hasThumb={asset.hasThumb} />
-        {selected !== undefined && (
-          <span className={`absolute left-1.5 top-1.5 z-10 flex size-5 items-center justify-center rounded border ${selected ? 'border-emerald-500 bg-emerald-500 text-black' : 'border-zinc-500 bg-black/60'}`} data-testid={`asset-selected-${asset.assetId}`}>
-            {selected && <Check className="size-3.5" />}
-          </span>
-        )}
+        <button
+          onClick={(e) => { e.stopPropagation(); onToggleSelect() }}
+          className={`absolute left-1.5 top-1.5 z-10 flex size-5 items-center justify-center rounded border transition-colors ${selected ? 'border-emerald-500 bg-emerald-500 text-black' : 'border-zinc-500 bg-black/60 hover:border-zinc-300'}`}
+          aria-label={selected ? 'Deselect asset' : 'Select asset'}
+          data-testid={`asset-selected-${asset.assetId}`}
+        >
+          {selected && <Check className="size-3.5" />}
+        </button>
         <button
           onClick={(e) => { e.stopPropagation(); onEdit() }}
           className="absolute right-1.5 top-1.5 z-10 rounded bg-black/60 p-1.5 text-zinc-300 opacity-0 transition-opacity hover:text-white group-hover:opacity-100"
@@ -88,7 +89,8 @@ function AssetCard({ asset, onOpen, onEdit, selected, scoreInfo }: { asset: Vers
             {asset.versionCount} versions
           </span>
         )}
-        <span className="absolute bottom-1.5 right-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-zinc-400">
+        <span className="absolute bottom-1.5 right-1.5 flex items-center gap-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-zinc-400">
+          <EnrichmentDot status={asset.enrichment} />
           {formatSize(asset.size)}
         </span>
       </div>
@@ -102,18 +104,21 @@ function AssetCard({ asset, onOpen, onEdit, selected, scoreInfo }: { asset: Vers
   )
 }
 
-function AssetListRow({ asset, onOpen, onEdit, selected, scoreInfo }: { asset: VersionedAssetSummary; onOpen: () => void; onEdit: () => void; selected?: boolean; scoreInfo?: AssetScoreInfo }) {
+function AssetListRow({ asset, onOpen, onEdit, selected, onToggleSelect, scoreInfo }: { asset: VersionedAssetSummary; onOpen: () => void; onEdit: () => void; selected: boolean; onToggleSelect: () => void; scoreInfo?: AssetScoreInfo }) {
   return (
     <div
       onClick={onOpen}
       className={`group flex w-full cursor-pointer items-center gap-3 rounded-md border bg-card px-3 py-2 text-left transition-colors ${selected ? 'border-emerald-500/70 ring-1 ring-emerald-500/50' : 'border-border hover:border-[rgba(255,255,255,0.15)]'}`}
       data-testid={`asset-row-${asset.assetId}`}
     >
-      {selected !== undefined && (
-        <span className={`flex size-4.5 shrink-0 items-center justify-center rounded border ${selected ? 'border-emerald-500 bg-emerald-500 text-black' : 'border-zinc-500'}`} data-testid={`asset-selected-${asset.assetId}`}>
-          {selected && <Check className="size-3" />}
-        </span>
-      )}
+      <button
+        onClick={(e) => { e.stopPropagation(); onToggleSelect() }}
+        className={`flex size-4.5 shrink-0 items-center justify-center rounded border transition-colors ${selected ? 'border-emerald-500 bg-emerald-500 text-black' : 'border-zinc-500 hover:border-zinc-300'}`}
+        aria-label={selected ? 'Deselect asset' : 'Select asset'}
+        data-testid={`asset-selected-${asset.assetId}`}
+      >
+        {selected && <Check className="size-3" />}
+      </button>
       <div className="size-10 shrink-0 overflow-hidden rounded">
         <AssetThumb assetId={asset.assetId} type={asset.type} version={asset.currentVersion} hasThumb={asset.hasThumb} />
       </div>
@@ -127,6 +132,7 @@ function AssetListRow({ asset, onOpen, onEdit, selected, scoreInfo }: { asset: V
         </div>
       </div>
       {scoreInfo && <ScoreOverlay info={scoreInfo} className="shrink-0" />}
+      <EnrichmentDot status={asset.enrichment} />
       <button
         onClick={(e) => { e.stopPropagation(); onEdit() }}
         className="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
@@ -174,19 +180,52 @@ export function VersionedAssetGrid() {
   const [trash, setTrash] = useState<TrashedAssetSummary[]>([])
   const [editing, setEditing] = useState<VersionedAssetSummary | null>(null)
 
-  // Bulk selection — ephemeral (not URL-backed), exits on view change.
-  const [selectMode, setSelectMode] = useState(false)
+  // Bulk selection — checkboxes are always visible; selecting anything
+  // raises the floating bulk bar. Ephemeral (not URL-backed), clears on
+  // view change.
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkTags, setBulkTags] = useState<string[]>([])
   const [bulkBusy, setBulkBusy] = useState(false)
   const [bulkError, setBulkError] = useState<string | null>(null)
-  const exitSelectMode = useCallback(() => {
-    setSelectMode(false)
+  const clearSelection = useCallback(() => {
     setSelected(new Set())
     setBulkTags([])
     setBulkError(null)
   }, [])
-  useEffect(() => { exitSelectMode() }, [view, exitSelectMode])
+  const [enriching, setEnriching] = useState(false)
+  // Non-null while the re-enrich confirmation is open: how many of the
+  // selected assets are already enriched for their current version.
+  const [confirmEnrich, setConfirmEnrich] = useState<{ done: number; total: number } | null>(null)
+  const bulkEnrich = async (force: boolean) => {
+    if (selected.size === 0) return
+    setConfirmEnrich(null)
+    setEnriching(true)
+    setBulkError(null)
+    try {
+      const res = await fetch('/api/plugins/assets/enrich', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assetIds: [...selected], force }),
+      })
+      const body = await res.json().catch(() => ({})) as { error?: string; engine?: string; agent?: string; count?: number }
+      if (!res.ok) throw new Error(body.error || `Enrichment failed (${res.status})`)
+      clearSelection()
+    } catch (err) {
+      setBulkError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setEnriching(false)
+    }
+  }
+  // One Enrich button: confirmation only when the selection contains assets
+  // that are already enriched for their current version (re-running those
+  // re-bills; everything else — none/stale/failed/skipped — runs free of that
+  // concern under force:false).
+  const startEnrich = () => {
+    if (selected.size === 0) return
+    const done = [...selected].filter((id) => assets.find((a) => a.assetId === id)?.enrichment === 'done').length
+    if (done === 0) { void bulkEnrich(false); return }
+    setConfirmEnrich({ done, total: selected.size })
+  }
+  useEffect(() => { clearSelection() }, [view, clearSelection])
   const toggleSelected = (assetId: string) => setSelected(prev => {
     const next = new Set(prev)
     if (next.has(assetId)) next.delete(assetId)
@@ -198,22 +237,12 @@ export function VersionedAssetGrid() {
   const [uploadError, setUploadError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  // Antfly-backed search (semantic + visual), with a client-side metadata
-  // fallback when search is disabled or returns nothing.
+  // Antfly-backed search (semantic + visual). No client-side fallback: the
+  // engine being down is an explicit unavailable state (spec D11), rendered
+  // below — never a silently-worse substring substitute.
   const search = useSearch({
     plugin: 'assets',
     facets: ['asset_type', 'agent'],
-    fallback: (query: string) => {
-      const n = query.toLowerCase()
-      return assets
-        .filter(a =>
-          a.assetId.toLowerCase().includes(n) ||
-          a.description.toLowerCase().includes(n) ||
-          a.agent.toLowerCase().includes(n) ||
-          (a.tags || []).some(t => t.toLowerCase().includes(n)),
-        )
-        .map(a => ({ id: a.assetId, table: 'bakin_assets', score: 1, fields: {} }))
-    },
   })
 
   const fetchAssets = useCallback(() => {
@@ -238,7 +267,11 @@ export function VersionedAssetGrid() {
 
   // Drive the search hook from the URL query. The folders view repurposes the
   // same box as a client-side folder-name filter — no Antfly round-trip.
-  useEffect(() => { if (view !== 'tags') search.search(q) }, [q, view]) // eslint-disable-line react-hooks/exhaustive-deps
+  // The hook debounces internally (250ms), so this fires per keystroke safely.
+  useEffect(() => {
+    if (view === 'tags') return
+    search.search(q)
+  }, [q, view]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Coalesce event bursts (agent edit loops) into one refetch per window —
   // direct user actions (upload/restore/trash ops) keep their immediate
@@ -335,7 +368,8 @@ export function VersionedAssetGrid() {
   // Folders view never searches (folder-name filter is client-side) — without
   // the view guard the stale meta.query would pin the spinner on forever.
   const searching = q.trim().length > 0 && view !== 'tags'
-  const pending = searching && (search.loading || (search.meta?.query ?? '') !== q.trim())
+  const searchUnavailable = searching && search.status === 'unavailable'
+  const pending = searching && !searchUnavailable && (search.loading || (search.meta?.query ?? '') !== q.trim())
 
   const filtered = useMemo(() => {
     let list = assets.filter(a =>
@@ -387,11 +421,6 @@ export function VersionedAssetGrid() {
   const actions = (
     <div className="flex items-center gap-2">
       {pending && <Loader2 className="size-4 animate-spin text-muted-foreground" data-testid="search-spinner" />}
-      {(view === 'grid' || view === 'list') && (
-        <Button size="sm" variant={selectMode ? 'secondary' : 'outline'} onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))} data-testid="toggle-select-mode">
-          <SquareMousePointer className="size-4" /> {selectMode ? 'Done' : 'Select'}
-        </Button>
-      )}
       <Button size="sm" onClick={openPicker} disabled={uploading} data-testid="add-asset">
         {uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
         {uploading ? 'Uploading…' : 'Add asset'}
@@ -413,8 +442,7 @@ export function VersionedAssetGrid() {
         const body = await res.json().catch(() => ({})) as { error?: string }
         throw new Error(body.error || `Tagging failed (${res.status})`)
       }
-      exitSelectMode()
-      setSelectMode(true) // stay in select mode for the next batch
+      clearSelection()
       fetchAssets()
     } catch (err) {
       setBulkError(err instanceof Error ? err.message : 'Tagging failed')
@@ -453,9 +481,9 @@ export function VersionedAssetGrid() {
       {fileInput}
       <PluginHeader
         title="Assets"
-        count={view === 'trash' ? trash.length : view === 'tags' ? folderCount : displayed.length}
+        count={view === 'trash' ? trash.length : view === 'import' ? undefined : view === 'tags' ? folderCount : displayed.length}
         actions={actions}
-        search={view === 'trash' ? undefined : view === 'tags'
+        search={view === 'trash' || view === 'import' ? undefined : view === 'tags'
           ? { value: q, onChange: setQ, placeholder: 'Filter folders…' }
           : { value: q, onChange: setQ, placeholder: 'Search assets…' }}
       />
@@ -490,8 +518,10 @@ export function VersionedAssetGrid() {
         </div>
       )}
 
-      {/* ─── Trash view ─── */}
-      {view === 'trash' ? (
+      {/* ─── Import view (D7 explicit import) ─── */}
+      {view === 'import' ? (
+        <ImportView onImported={fetchAssets} />
+      ) : view === 'trash' ? (
         trash.length === 0 ? (
           <div className="p-8 text-sm text-muted-foreground" data-testid="trash-empty">Trash is empty.</div>
         ) : (
@@ -531,6 +561,8 @@ export function VersionedAssetGrid() {
           onOpenFolder={openFolder}
           onChanged={fetchAssets}
         />
+      ) : searchUnavailable ? (
+        <SearchUnavailable retry={search.retry} />
       ) : displayed.length === 0 ? (
         <div className="p-8 text-sm text-muted-foreground" data-testid="assets-no-match">No assets match your filters.</div>
       ) : view === 'list' ? (
@@ -540,8 +572,9 @@ export function VersionedAssetGrid() {
               key={asset.assetId}
               asset={asset}
               scoreInfo={scoreFor(asset.assetId)}
-              selected={selectMode ? selected.has(asset.assetId) : undefined}
-              onOpen={() => (selectMode ? toggleSelected(asset.assetId) : navigate({ to: '/assets/$assetId', params: { assetId: asset.assetId } }))}
+              selected={selected.has(asset.assetId)}
+              onToggleSelect={() => toggleSelected(asset.assetId)}
+              onOpen={() => navigate({ to: '/assets/$assetId', params: { assetId: asset.assetId } })}
               onEdit={() => setEditing(asset)}
             />
           ))}
@@ -553,8 +586,9 @@ export function VersionedAssetGrid() {
               key={asset.assetId}
               asset={asset}
               scoreInfo={scoreFor(asset.assetId)}
-              selected={selectMode ? selected.has(asset.assetId) : undefined}
-              onOpen={() => (selectMode ? toggleSelected(asset.assetId) : navigate({ to: '/assets/$assetId', params: { assetId: asset.assetId } }))}
+              selected={selected.has(asset.assetId)}
+              onToggleSelect={() => toggleSelected(asset.assetId)}
+              onOpen={() => navigate({ to: '/assets/$assetId', params: { assetId: asset.assetId } })}
               onEdit={() => setEditing(asset)}
             />
           ))}
@@ -562,7 +596,7 @@ export function VersionedAssetGrid() {
       )}
 
       {/* Floating bulk-tag bar while assets are selected. */}
-      {selectMode && selected.size > 0 && (
+      {selected.size > 0 && (
         <div className="fixed bottom-4 left-1/2 z-40 flex w-[min(560px,calc(100vw-2rem))] -translate-x-1/2 items-center gap-2 rounded-lg border border-border bg-background/95 px-3 py-2 shadow-lg backdrop-blur" data-testid="bulk-tag-bar">
           <Tags className="size-4 shrink-0 text-muted-foreground" />
           <span className="shrink-0 text-xs text-muted-foreground" data-testid="bulk-selected-count">{selected.size} selected</span>
@@ -570,12 +604,43 @@ export function VersionedAssetGrid() {
             <TagInput value={bulkTags} onChange={setBulkTags} suggestions={tagOptions.filter(o => o.value !== UNTAGGED).map(o => o.value)} placeholder="Add tags…" />
           </div>
           <Button size="sm" onClick={applyBulkTags} disabled={bulkBusy || bulkTags.length === 0} data-testid="bulk-apply-tags">
-            {bulkBusy ? <Loader2 className="size-4 animate-spin" /> : null} Tag {selected.size}
+            {bulkBusy ? <Loader2 className="size-4 animate-spin" /> : null} Save
+          </Button>
+          <Button size="sm" variant="outline" onClick={startEnrich} disabled={enriching} title="Vision-enrich selected assets" data-testid="bulk-enrich">
+            {enriching ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />} Enrich
           </Button>
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())} data-testid="bulk-clear-selection">Clear</Button>
           {bulkError && <p className="text-xs text-destructive">{bulkError}</p>}
         </div>
       )}
+
+      <Dialog open={confirmEnrich !== null} onOpenChange={(open) => { if (!open) setConfirmEnrich(null) }}>
+        <DialogContent data-testid="reenrich-confirm">
+          <DialogHeader>
+            <DialogTitle>
+              {confirmEnrich?.done === confirmEnrich?.total
+                ? 'These assets are already enriched'
+                : 'Some of these assets are already enriched'}
+            </DialogTitle>
+            <DialogDescription>
+              {confirmEnrich && (confirmEnrich.done === confirmEnrich.total
+                ? `All ${confirmEnrich.total} selected ${confirmEnrich.total === 1 ? 'asset is' : 'assets are'} already enriched for their current version. Re-enriching spends a vision turn per asset; your manual edits stay protected.`
+                : `${confirmEnrich.done} of ${confirmEnrich.total} selected assets are already enriched. Enrich only the rest for free, or re-enrich everything — re-enriching spends a vision turn per asset; your manual edits stay protected.`)}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setConfirmEnrich(null)} data-testid="reenrich-cancel">Cancel</Button>
+            {confirmEnrich && confirmEnrich.done < confirmEnrich.total && (
+              <Button variant="outline" onClick={() => bulkEnrich(false)} data-testid="reenrich-new-only">
+                Enrich {confirmEnrich.total - confirmEnrich.done} new only
+              </Button>
+            )}
+            <Button onClick={() => bulkEnrich(true)} data-testid="reenrich-all">
+              Re-enrich all {confirmEnrich?.total ?? 0}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {editing && (
         <AssetEditDrawer

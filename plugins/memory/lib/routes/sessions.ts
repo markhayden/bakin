@@ -134,12 +134,16 @@ async function queryTurns(
   limit: number,
   offset: number,
 ): Promise<Response> {
+  // Session membership is a FILTER on the indexed sessionId field, never a
+  // full-text q: the id only exists inside the meta JSON blob otherwise, and
+  // meta is not a searchable field — a q=sessionId match returns nothing.
   const params: SearchQueryParams = {
-    q: '',
+    q: '*',
     filters: { tier: 'turn', ...filters },
     limit,
     offset,
     rerank: false,
+    strategy: 'full_text_only',
   }
   const res = await ctx.search.query(params)
   const turns = res.results.map((r) => ({ id: r.id, score: r.score, ...r.fields }))
@@ -162,19 +166,15 @@ export const sessionTurnsRoute = defineRoute({
     }
     const { limit, offset } = parseLimitOffset(url)
     const eventType = url.searchParams.get('eventType')
-    // Turn rows carry sessionKey inside `meta` (JSON-stringified). That field
-    // is indexed as text, so a q-string match on sessionKey narrows to the
-    // session without requiring a dedicated facet field.
-    const params: SearchQueryParams = {
-      q: sessionKey,
-      filters: { tier: 'turn', agent, ...(eventType ? { eventType } : {}) },
+    // sessionKey is `agent:<agent>:<sessionId>` — turn rows index the raw
+    // sessionId as a keyword field, so membership is a filter (see queryTurns).
+    const sessionId = sessionKey.split(':').slice(2).join(':') || sessionKey
+    return queryTurns(
+      ctx as unknown as PluginContext,
+      { agent, sessionId, ...(eventType ? { eventType } : {}) },
       limit,
       offset,
-      rerank: false,
-    }
-    const res = await ctx.search.query(params)
-    const turns = res.results.map((r) => ({ id: r.id, score: r.score, ...r.fields }))
-    return Response.json({ turns, total: res.meta.total })
+    )
   },
 })
 
@@ -192,7 +192,7 @@ export const turnsListRoute = defineRoute({
       return Response.json({ error: 'agent and sessionId required' }, { status: 400 })
     }
     const { limit, offset } = parseLimitOffset(url)
-    const filters: Record<string, string> = { agent }
+    const filters: Record<string, string> = { agent, sessionId }
     const eventType = url.searchParams.get('eventType')
     if (eventType) filters.eventType = eventType
     return queryTurns(ctx as unknown as PluginContext, filters, limit, offset)

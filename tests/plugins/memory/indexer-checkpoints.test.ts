@@ -170,7 +170,7 @@ function makeCtx(): { ctx: PluginContext; indexed: IndexedDoc[]; removed: string
       transform: mock(async () => {}),
       query: mock(async () => ({
         results: [],
-        meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const },
+        meta: { query: '', total: 0, took_ms: 0, source: 'unavailable' as const },
       })),
     },
     hooks: {

@@ -721,7 +721,7 @@ Provided to `activate()`. The plugin's only interface to the system:
 | `hooks.has(name)` | Check if any handlers registered for a hook |
 | `hooks.invoke<R>(name, data)` | Invoke a hook and get its result (RPC-style) |
 | `search.registerContentType(def)` | Register a searchable content type. Non-filesystem-backed path — plugin owns its own sync. |
-| `search.registerFileBackedContentType(def)` | File-backed variant: auto-wires watcher sync/unlink hooks AND schedules a startup mtime reconcile. |
+| `search.registerFileBackedContentType(def)` | File-backed variant: auto-wires watcher sync/unlink hooks (writes journal through the durable outbox; no boot-time scans). |
 | `search.index(key, doc)` | Upsert a document through the active search adapter (fire-and-forget safe) |
 | `search.remove(key)` | Remove a document from the index |
 | `search.transform(key, ops)` | Atomic metadata update without re-embedding |

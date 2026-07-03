@@ -86,6 +86,7 @@ function makeCtx(): { ctx: PluginContext; indexed: IndexedDoc[]; removed: string
             agentId: opts.agentId,
             path: mockDurableFilePath(opts.agentId, id),
             content,
+            metadata: { sourceKind: 'durable', basename: id, mtimeMs: 12345, sizeBytes: Buffer.byteLength(content, 'utf-8') },
           }
         }),
         resolvePath: mock(async (path: string) => {
@@ -114,7 +115,7 @@ function makeCtx(): { ctx: PluginContext; indexed: IndexedDoc[]; removed: string
       transform: mock(async () => {}),
       query: mock(async () => ({
         results: [],
-        meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const },
+        meta: { query: '', total: 0, took_ms: 0, source: 'unavailable' as const },
       })),
     },
     hooks: {
@@ -203,7 +204,7 @@ describe('MemoryIndexer.indexTier("durable")', () => {
     for (const d of indexed) expect(d.doc.tier).toBe('durable')
   })
 
-  it('is idempotent — re-indexing the same file produces the same row ids', async () => {
+  it('re-indexing the same file writes unconditionally (the outbox acked-hash dedupes downstream)', async () => {
     mockListAgentIds.mockReturnValue(['main'])
     const file = writeFixture('main', 'SOUL.md', '# hello\nbody')
     mockReadDurableFile.mockImplementation((a, b) =>
@@ -216,9 +217,6 @@ describe('MemoryIndexer.indexTier("durable")', () => {
     await idx.indexTier('durable')
     await idx.indexTier('durable')
 
-    // Both passes emit the same key — downstream search upsert dedupes.
-    const uniq = new Set(indexed.map((d) => d.key))
-    expect(uniq.size).toBe(1)
     expect(indexed).toHaveLength(2)
   })
 

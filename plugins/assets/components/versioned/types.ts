@@ -19,6 +19,8 @@ export interface VersionedAssetSummary {
   height: number | null
   size: number
   hasThumb: boolean
+  /** Derived-metadata state for the current version ('stale' = enriched for an older version). */
+  enrichment: 'none' | 'pending' | 'done' | 'stale' | 'failed' | 'skipped'
 }
 
 export interface TrashedAssetSummary {
@@ -29,6 +31,21 @@ export interface TrashedAssetSummary {
   deletedAt: number
   versionCount: number
   description: string
+}
+
+/** Client mirror of the manifest enrichment block (lib/manifest.ts). */
+export interface AssetEnrichmentInfo {
+  status: 'pending' | 'done' | 'failed' | 'skipped'
+  caption?: string
+  ocrText?: string
+  suggestedTags?: string[]
+  summary?: string
+  transcript?: string
+  model?: string
+  at?: string
+  forVersion?: number
+  error?: string
+  userEdited?: boolean
 }
 
 export interface AssetGenerationInfo {
@@ -86,4 +103,5 @@ export interface VersionedAssetManifest {
   tags: string[]
   versions: AssetVersion[]
   exports: AssetExport[]
+  enrichment?: AssetEnrichmentInfo
 }

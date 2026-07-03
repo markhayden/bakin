@@ -11,21 +11,17 @@ import type {
   SearchHealthSnapshot,
   SearchQueryParams,
   SearchResponse,
+  SearchScanOptions,
   SearchTransformOp,
 } from '../../packages/core/src/plugin-types'
 import { createLogger } from './logger'
+import { enqueueIndex, enqueueRemove, enqueueTransform, nudgeOutboxPump } from './search-outbox'
+import { recordUsage } from './usage'
+import { resolvePhysicalTable } from './search-registry-core'
 import { registerSyncHook, registerUnlinkHook } from './watcher'
 import { getContentDir } from './content-dir'
+import { findMatchingMapper, matchesAnyPattern } from './search-file-patterns'
 import {
-  findMatchingMapper,
-  matchesAnyPattern,
-  performStartupReconcile,
-  MTIME_FIELD,
-} from './search-reconcile'
-import { statSync } from 'fs'
-import { join } from 'path'
-import {
-  type RegistryState,
   adapterHitToPluginResult,
   aggregationsFromRecord,
   disposeFileBackedWiring,
@@ -33,12 +29,13 @@ import {
   filtersFromRecord,
   fullTableName,
   getIndexNames,
+  getSearchableFields,
+  getIndexWeights,
   getRegistry,
   getRerankField,
   getSearchAdapter,
   mapFacetCounts,
   mapSearchStrategy,
-  removePendingReconciles,
 } from './search-registry-core'
 import { getSearchHealth } from './search-reindex'
 
@@ -150,7 +147,6 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
       // Replace the previous hook pair before wiring the new one so file
       // changes do not fan out through stale plugin closures.
       disposeFileBackedWiring(tableName)
-      removePendingReconciles(pluginId, tableName)
 
       // Standard registration first — gives us the table, schema, and reindex
       // generator. Registered as SECONDARY: file-backed types index into their
@@ -174,22 +170,16 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
             return
           }
           const mapper = findMatchingMapper(rel, def.filePatterns)
-          if (!mapper) return
+          if (!mapper?.fileToDoc) return
           const key = mapper.fileToId(rel)
           if (key === null) return
           const doc = await mapper.fileToDoc(rel, content)
           if (doc === null) return
-          let mtimeMs = Date.now()
-          try {
-            mtimeMs = statSync(join(getContentDir(), rel)).mtimeMs
-          } catch {
-            // file may have been removed between watcher emit and our stat;
-            // fall back to "now" so the index entry is at least monotonic.
-          }
-          // Index into THIS content type's table directly — not via api.index,
-          // which resolves the plugin's primary table (wrong for a secondary
-          // file-backed type on a multi-content plugin like team).
-          await getSearchAdapter().documents.index(tableName, key, { ...doc, [MTIME_FIELD]: mtimeMs })
+          // Enqueue into THIS content type's table directly — not via
+          // api.index, which resolves the plugin's primary table (wrong for
+          // a secondary file-backed type on a multi-content plugin like team).
+          enqueueIndex(tableName, key, doc)
+          await nudgeOutboxPump()
         } catch (err) {
           log.warn('File-backed sync hook failed', err, { table: tableName, rel })
         }
@@ -206,7 +196,8 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
           if (!mapper) return
           const key = mapper.fileToId(rel)
           if (key === null) return
-          await getSearchAdapter().documents.remove(tableName, key)
+          enqueueRemove(tableName, key)
+          await nudgeOutboxPump()
         } catch (err) {
           log.warn('File-backed unlink hook failed', err, { table: tableName, rel })
         }
@@ -220,13 +211,6 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
         },
       })
 
-      // Schedule startup reconcile. We can't run it inline because the
-      // Search table doesn't exist yet — `createRegisteredTables` runs
-      // after all plugins activate. The reconcile is enqueued and drained
-      // by `runPendingReconciles()` in server.ts after table creation.
-      if (def.buildOnStartup !== false) {
-        getRegistry().pendingReconciles.push({ pluginId, def })
-      }
     },
 
     async index(key: string, doc: Record<string, unknown>): Promise<void> {
@@ -235,47 +219,53 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
         log.warn(`Plugin ${pluginId} called search.index() but has no registered content type`)
         return
       }
-      await getSearchAdapter().documents.index(tableName, key, doc)
+      // Durable outbox first (D5): the enqueue IS the write from the
+      // caller's perspective; the pump lands it (immediately when the
+      // engine is up, on retry when it isn't).
+      enqueueIndex(tableName, key, doc)
+      await nudgeOutboxPump()
     },
 
     async remove(key: string): Promise<void> {
       const tableName = registry.pluginTables.get(pluginId)
       if (!tableName) return
-      await getSearchAdapter().documents.remove(tableName, key)
+      enqueueRemove(tableName, key)
+      await nudgeOutboxPump()
     },
 
     async transform(key: string, operations: SearchTransformOp[]): Promise<void> {
       const tableName = registry.pluginTables.get(pluginId)
       if (!tableName) return
-
-      // Build a flat field update from transform ops
-      const fields: Record<string, unknown> = {}
-      for (const op of operations) {
-        if (op.op === '$set' && op.field) {
-          fields[op.field] = op.value
-        }
-        // $inc and $push would need server-side support — for now, treat as $set
-        if (op.op === '$inc' && op.field) {
-          fields[op.field] = op.value
-        }
-        if (op.op === '$push' && op.field) {
-          fields[op.field] = op.value
-        }
-      }
-      await getSearchAdapter().documents.transform(tableName, key, (doc) => ({ ...doc, ...fields }))
+      // The outbox owns transform semantics now: real $set/$inc/$push
+      // (applyTransformOps), merged into any pending write for the key, and
+      // applied read-modify-write at drain time.
+      enqueueTransform(tableName, key, operations)
+      await nudgeOutboxPump()
     },
 
     async query(params: SearchQueryParams): Promise<SearchResponse> {
+      const startedAt = Date.now()
+      const record = (status: 'ok' | 'error') => recordUsage({
+        kind: 'rest',
+        name: 'search.query',
+        agent: null,
+        durationMs: Date.now() - startedAt,
+        status,
+        meta: { scope: pluginId },
+      })
       const tableName = registry.pluginTables.get(pluginId)
       const search = getSearchAdapter()
       if (!tableName || !await search.available()) {
+        record('error')
         return {
           results: [],
-          meta: { query: params.q, total: 0, took_ms: 0, source: 'fallback' },
+          meta: { query: params.q, total: 0, took_ms: 0, source: 'unavailable' },
         }
       }
 
-      const result = await search.query(tableName, {
+      let result: Awaited<ReturnType<typeof search.query>>
+      try {
+        result = await search.query(resolvePhysicalTable(tableName), {
         text: params.q,
         limit: params.limit,
         offset: params.offset,
@@ -287,8 +277,15 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
         adapterOptions: {
           indexes: getIndexNames(tableName),
           rerankField: getRerankField(tableName),
+          searchableFields: getSearchableFields(tableName),
+          indexWeights: getIndexWeights(tableName),
         },
-      })
+        })
+      } catch (err) {
+        record('error')
+        throw err
+      }
+      record('ok')
 
       return {
         results: result.hits.map((hit) => adapterHitToPluginResult(hit, tableName)),
@@ -312,11 +309,13 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
         return getSearchAdapter().available()
       },
 
-      async *scan(): AsyncIterable<{ key: string; document: Record<string, unknown> }> {
+      async *scan(opts?: SearchScanOptions): AsyncIterable<{ key: string; document: Record<string, unknown> }> {
         const tableName = registry.pluginTables.get(pluginId)
         const search = getSearchAdapter()
         if (!tableName || !await search.available()) return
-        for await (const entry of search.scan(tableName)) {
+        const physical = resolvePhysicalTable(tableName)
+        const entries = opts === undefined ? search.scan(physical) : search.scan(physical, opts)
+        for await (const entry of entries) {
           yield entry
         }
       },
@@ -326,21 +325,9 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
         const tableName = registry.pluginTables.get(pluginId)
         const search = getSearchAdapter()
         if (!tableName || !await search.available()) return 0
-        return search.documents.batchRemove(tableName, keys)
+        return search.documents.batchRemove(resolvePhysicalTable(tableName), keys)
       },
 
-      async resetContentType(): Promise<void> {
-        const tableName = registry.pluginTables.get(pluginId)
-        if (!tableName) return
-        const search = getSearchAdapter()
-        if (!await search.available()) return
-        try {
-          await search.tables.drop(tableName)
-        } catch (err) {
-          log.warn('Plugin search table reset drop failed; recreating table anyway', err, { pluginId, tableName })
-        }
-        await ensureRegisteredTables()
-      },
     },
   }
 
@@ -348,66 +335,14 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
 }
 
 /**
- * Drain pending startup reconciles. Called from server.ts after
- * `createRegisteredTables()` so the underlying search tables exist
- * before the reconcile tries to scan them. Failures are logged and
- * swallowed so one bad reconcile doesn't block the rest.
+ * Make one plugin's search table current after (re)activation (dev hot
+ * reload, live install). A matching blue/green registry row is ZERO
+ * adapter calls; a changed layout migrates in the background.
  */
-async function runPendingReconcilesMatching(predicate: (item: RegistryState['pendingReconciles'][number]) => boolean): Promise<void> {
-  const registry = getRegistry()
-  if (registry.pendingReconciles.length === 0) return
-  if (!await getSearchAdapter().available()) {
-    const keep = registry.pendingReconciles.filter((item) => !predicate(item))
-    registry.pendingReconciles.length = 0
-    registry.pendingReconciles.push(...keep)
-    return
-  }
-  const contentDir = getContentDir()
-  const items: RegistryState['pendingReconciles'] = []
-  const keep: RegistryState['pendingReconciles'] = []
-  for (const item of registry.pendingReconciles) {
-    if (predicate(item)) items.push(item)
-    else keep.push(item)
-  }
-  registry.pendingReconciles.length = 0
-  registry.pendingReconciles.push(...keep)
-  for (const { pluginId, def } of items) {
-    try {
-      // Reconcile into THIS content type's own table directly (a file-backed
-      // type may be a secondary on a multi-content plugin; api.index would
-      // resolve the plugin's primary table instead).
-      const reconcileTable = fullTableName(def.table)
-      await performStartupReconcile(def, contentDir, {
-        index: (key, doc) => getSearchAdapter().documents.index(reconcileTable, key, doc),
-        remove: (key) => getSearchAdapter().documents.remove(reconcileTable, key),
-        scanIndex: async function* (tableName) {
-          for await (const { key, document } of getSearchAdapter().scan(tableName)) {
-            const mtime = typeof document[MTIME_FIELD] === 'number'
-              ? document[MTIME_FIELD]
-              : Number(document[MTIME_FIELD] ?? 0)
-            yield { key, mtimeMs: Number.isFinite(mtime) ? mtime : 0 }
-          }
-        },
-      })
-    } catch (err) {
-      log.error('Startup reconcile failed', err, { pluginId, table: def.table })
-    }
-  }
-}
-
-export async function runPendingReconciles(): Promise<void> {
-  await runPendingReconcilesMatching(() => true)
-}
-
-export async function runPendingReconcilesForPlugin(pluginId: string): Promise<void> {
-  await runPendingReconcilesMatching((item) => item.pluginId === pluginId)
-}
-
 export async function ensurePluginSearchReady(pluginId: string): Promise<void> {
   const { failures } = await ensureRegisteredTables()
   const pluginFailures = failures.filter((failure) => failure.pluginId === pluginId)
   if (pluginFailures.length > 0) {
     log.warn('Plugin search table readiness failed', { pluginId, failures: pluginFailures })
   }
-  await runPendingReconcilesForPlugin(pluginId)
 }

@@ -60,6 +60,24 @@ const DENYLIST = [
     regex: /tasks\.(?:readTaskboard|addTaskLog|updateTask|moveTask|blockTask|createTask|setDependency|clearDependency|deleteTask)/,
   },
   {
+    label: 'antfly-specific identifier upstream of the adapter (D17: antfly is the DEFAULT search adapter, not the design)',
+    // Engine/model names must not leak into core, SDK, src, or plugin code —
+    // a second search adapter must require zero changes upstream of the
+    // factory. Comments count: they rot into load-bearing assumptions.
+    regex: /(?:antflydb\/|clipclap|bge-small|mxbai-rerank|releases\.antfly\.io|antfly\s+swarm)/i,
+    allow: (rel: string) =>
+      rel === 'src/core/search-adapter-factory.ts'
+      // Settings surfaces carry the ADAPTER'S OWN defaults/keys for
+      // ~/.bakin/settings.json — the values are adapter-owned data, not
+      // upstream logic. Everything else must speak capabilities only.
+      || rel === 'src/core/settings.ts'
+      || rel === 'packages/core/src/settings.ts'
+      || rel.startsWith('src/core/onboarding/')
+      // Engine-specific dev tooling (same footing as the OpenClaw rig):
+      // the chaos drills deliberately drive a real antfly binary.
+      || rel === 'scripts/dev/search-chaos-drills.ts',
+  },
+  {
     label: 'raw SQLite access outside adapter packages',
     regex: /(?:bun:sqlite|new\s+Database\b|Database\()/,
     // The shared storage core is the SOLE bun:sqlite importer — domain

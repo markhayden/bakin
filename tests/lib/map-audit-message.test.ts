@@ -93,6 +93,13 @@ describe('mapAuditMessage', () => {
   it('returns raw event name for unknown events', () => {
     expect(mapAuditMessage('some.unknown.event', {})).toBe('some.unknown.event')
   })
+
+  it('honors a plugin-provided data.message for unknown events (assets enrichment feed)', () => {
+    expect(mapAuditMessage('assets.asset.enriched', { message: 'Enriched 2026-foo — “two horses”', assetId: '2026-foo' }))
+      .toBe('Enriched 2026-foo — “two horses”')
+    // blank messages fall back to the raw event name
+    expect(mapAuditMessage('assets.asset.enriched', { message: '   ' })).toBe('assets.asset.enriched')
+  })
 })
 
 describe('humanizeExecName', () => {

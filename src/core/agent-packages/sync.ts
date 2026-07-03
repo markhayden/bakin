@@ -59,6 +59,7 @@ import {
   type SyncFinding,
   deriveExpectedBlocks,
   mainAgentOf,
+  readInstalledManifest,
   scanAgentSync,
 } from './sync-scanner'
 import {
@@ -298,6 +299,27 @@ export async function syncAgent(agentId: string, opts: SyncOptions = {}): Promis
         reason: s.reason,
         hint: `bakin agents sync ${agentId} --reclaim ${s.target}`,
       }))
+
+      // Identity drift: the manifest owns a MANAGED agent's display name.
+      // Creation seeds it once; a rename in the package must land on sync
+      // (through the adapter — the runtime still owns the record itself).
+      const installed = readInstalledManifest(owner.id, owner.entry)
+      const wantName = installed?.manifest.kind === 'agent' ? installed.manifest.agent.identity.name : undefined
+      if (wantName) {
+        try {
+          const runtime = getAppServices().runtime
+          const live = await runtime.agents.get(agentId)
+          if (live && live.name !== wantName) {
+            await runtime.agents.update(agentId, { name: wantName })
+            projections.push({ target: `runtime:agent:${agentId}:name`, kind: 'identity', action: 'written' })
+          }
+        } catch (err) {
+          log.warn('Identity refresh failed — projections applied, name unchanged', {
+            agentId, wantName, error: String(err),
+          })
+          skipped.push({ target: `runtime:agent:${agentId}:name`, reason: `identity refresh failed: ${String(err)}` })
+        }
+      }
     }
 
     const findings = await verifyAgent(agentId, owner.id)

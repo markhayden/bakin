@@ -2,8 +2,8 @@
  * Unit coverage for the multimodal indexing path in the assets plugin.
  * Verifies that:
  *   - bakin_assets is registered with two indexes (assets_text, assets_visual)
- *   - image_url is computed for raster images (CLIP-compatible) only
- *   - SVG and non-image assets get no image_url
+ *   - media_url is computed for raster images AND audio (CLIP+CLAP legs)
+ *   - SVG and other non-media assets get no media_url
  *   - content is populated server-side for text and (mocked) PDF assets
  *     via extractAssetContent, not provider-side file fetch helpers
  */
@@ -161,14 +161,14 @@ describe('assets multimodal indexing', () => {
     const visualIndex = (def.indexes as SearchIndexDefinition[]).find(i => i.name === 'assets_visual')!
 
     expect(visualIndex.embedderRef).toBe('visual')
-    expect(visualIndex.mediaUrlField).toBe('image_url')
+    expect(visualIndex.mediaUrlField).toBe('media_url')
     expect(visualIndex.embeddingTemplate).toBeUndefined()
   })
 
-  it('schema includes content and image_url; no pdf_url', async () => {
+  it('schema includes content and media_url; no pdf_url', async () => {
     const def = await getRegisteredDef()
     expect(def.schema.content).toEqual({ type: 'text' })
-    expect(def.schema.image_url).toEqual({ type: 'keyword' })
+    expect(def.schema.media_url).toEqual({ type: 'keyword' })
     expect(def.schema.pdf_url).toBeUndefined()
   })
 
@@ -195,7 +195,7 @@ describe('assets multimodal indexing', () => {
     expect(mdDoc).toBeDefined()
     expect(mdDoc.content).toContain('autolyse')
     expect(mdDoc.content).toContain('banneton')
-    expect(mdDoc.image_url).toBe('')
+    expect(mdDoc.media_url).toBe('')
   })
 
   it('reindex populates content from PDF body via pdf-parse', async () => {
@@ -204,23 +204,23 @@ describe('assets multimodal indexing', () => {
     // The mocked pdf-parse returns synthetic content — presence proves the
     // extractor was called, not just that metadata was copied.
     expect(pdfDoc.content).toContain('MOCK PDF CONTENT')
-    expect(pdfDoc.image_url).toBe('')
+    expect(pdfDoc.media_url).toBe('')
   })
 
-  it('reindex populates image_url for raster images and empty content', async () => {
+  it('reindex populates media_url for raster images and empty content', async () => {
     const imageDoc = (await reindexDocs())[IMG_ID]
     expect(imageDoc).toBeDefined()
     // image_url is a file:// URL pointing at the current version's file.
-    expect(String(imageDoc.image_url)).toContain(`store/${MONTH}/${IMG_ID}/v1.png`)
+    expect(String(imageDoc.media_url)).toContain(`store/${MONTH}/${IMG_ID}/v1.png`)
     // Images are not text-extractable — content stays empty, CLIP handles
     // the pixel data through the visual index template.
     expect(imageDoc.content).toBe('')
   })
 
-  it('excludes SVG from image_url and leaves content empty', async () => {
+  it('excludes SVG from media_url and leaves content empty', async () => {
     const svgDoc = (await reindexDocs())[SVG_ID]
     expect(svgDoc).toBeDefined()
-    expect(svgDoc.image_url).toBe('')
+    expect(svgDoc.media_url).toBe('')
     expect(svgDoc.content).toBe('')
     // Manifest metadata is still indexed via description/tags/filename
     expect(svgDoc.description).toBe('Vector icon')

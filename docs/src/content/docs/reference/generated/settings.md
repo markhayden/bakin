@@ -219,20 +219,28 @@ description: Generated reference for Bakin core settings defaults.
       <td><code>&quot;7d&quot;</code></td>
     </tr>
     <tr>
+      <td><code>search.settings.embedders.default.dimension</code></td>
+      <td><code>384</code></td>
+    </tr>
+    <tr>
       <td><code>search.settings.embedders.default.model</code></td>
       <td><code>&quot;BAAI/bge-small-en-v1.5&quot;</code></td>
     </tr>
     <tr>
       <td><code>search.settings.embedders.default.provider</code></td>
-      <td><code>&quot;termite&quot;</code></td>
+      <td><code>&quot;antfly&quot;</code></td>
+    </tr>
+    <tr>
+      <td><code>search.settings.embedders.visual.dimension</code></td>
+      <td><code>512</code></td>
     </tr>
     <tr>
       <td><code>search.settings.embedders.visual.model</code></td>
-      <td><code>&quot;openai/clip-vit-base-patch32&quot;</code></td>
+      <td><code>&quot;Xenova/clip-vit-base-patch32&quot;</code></td>
     </tr>
     <tr>
       <td><code>search.settings.embedders.visual.provider</code></td>
-      <td><code>&quot;termite&quot;</code></td>
+      <td><code>&quot;antfly&quot;</code></td>
     </tr>
     <tr>
       <td><code>search.settings.enabled</code></td>
@@ -244,7 +252,7 @@ description: Generated reference for Bakin core settings defaults.
     </tr>
     <tr>
       <td><code>search.settings.search.reranker.enabled</code></td>
-      <td><code>true</code></td>
+      <td><code>false</code></td>
     </tr>
     <tr>
       <td><code>search.settings.search.reranker.model</code></td>
@@ -252,11 +260,7 @@ description: Generated reference for Bakin core settings defaults.
     </tr>
     <tr>
       <td><code>search.settings.search.reranker.provider</code></td>
-      <td><code>&quot;termite&quot;</code></td>
-    </tr>
-    <tr>
-      <td><code>search.settings.search.reranker.threshold</code></td>
-      <td><code>0</code></td>
+      <td><code>&quot;antfly&quot;</code></td>
     </tr>
     <tr>
       <td><code>search.settings.search.strategy</code></td>
@@ -264,7 +268,7 @@ description: Generated reference for Bakin core settings defaults.
     </tr>
     <tr>
       <td><code>search.settings.url</code></td>
-      <td><code>&quot;http://localhost:8080/api/v1&quot;</code></td>
+      <td><code>&quot;http://127.0.0.1:3738&quot;</code></td>
     </tr>
   </tbody>
 </table>

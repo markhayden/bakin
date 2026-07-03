@@ -80,14 +80,13 @@ describe('memory_list_agents', () => {
   })
 
   it('aggregates across tiers and sorts by total desc', async () => {
-    const tool = createMemoryListAgentsTool(
-      makeCtx({
-        session: [{ value: 'explorer', count: 10 }, { value: 'chef', count: 3 }],
-        turn: [{ value: 'explorer', count: 100 }, { value: 'chef', count: 5 }],
-        audit: [{ value: 'chef', count: 50 }],
-        daily_note: [], checkpoint: [], durable: [], dream: [],
-      }),
-    )
+    const ctx = makeCtx({
+      session: [{ value: 'explorer', count: 10 }, { value: 'chef', count: 3 }],
+      turn: [{ value: 'explorer', count: 100 }, { value: 'chef', count: 5 }],
+      audit: [{ value: 'chef', count: 50 }],
+      daily_note: [], checkpoint: [], durable: [], dream: [],
+    })
+    const tool = createMemoryListAgentsTool(ctx)
     const res = await tool.handler({}, 'system')
     expect(res.ok).toBe(true)
     const agents = res.agents as Array<{ agent: string; total: number; byTier: Record<string, number> }>
@@ -97,6 +96,11 @@ describe('memory_list_agents', () => {
     expect(agents[0].byTier.turn).toBe(100)
     expect(agents[1].total).toBe(58)
     expect(agents[1].byTier.audit).toBe(50)
+    const calls = (ctx.search.query as ReturnType<typeof mock>).mock.calls as Array<[Record<string, unknown>]>
+    for (const [call] of calls) {
+      expect(call.q).toBe('*')
+      expect(call.strategy).toBe('full_text_only')
+    }
   })
 
   it('tolerates a failing tier — that tier just contributes zero', async () => {

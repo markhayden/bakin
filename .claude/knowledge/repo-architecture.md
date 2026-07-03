@@ -67,13 +67,21 @@ packages/core/src/
 ├── settings.ts             ← BakinSettings, getSettings(), updateSettings()
 ├── app-services.ts         ← AppServices and health service contracts
 ├── adapters/               ← runtime/search adapter contracts and test helpers
+│   └── search/             ← SearchAdapter contract (index.ts), capability-leg
+│                             concepts + neutral ScoreBreakdown (concepts.ts),
+│                             typed error taxonomy (errors.ts), mock (testing.ts)
+├── search/
+│   ├── outbox.ts           ← durable write journal (coalescing, acked-hash
+│   │                         dedupe, backoff, quarantine, drainOnce)
+│   └── tables.ts           ← blue/green table registry + migrator
 ├── tasks/                  ← Bakin task store
 ├── plugin-types.ts         ← BakinPlugin, PluginContext, StorageAdapter, EventBus
 ├── logger.ts               ← createLogger()
 ├── format.ts               ← formatAge(), isStale()
 ├── vault.ts                ← secret storage
 ├── hooks/hook-registry.ts  ← cross-plugin hook RPC
-├── storage/                ← MarkdownStorageAdapter
+├── storage/                ← MarkdownStorageAdapter + db.ts (keyed multi-db
+│                             SQLite core, openNamedDb — SOLE bun:sqlite importer)
 └── events/                 ← BakinEventBus
 ```
 
@@ -130,9 +138,30 @@ packages/adapter-openclaw/src/
 └── config.ts               ← OpenClaw config parsing helpers
 
 packages/adapter-antfly/src/
-├── index.ts                ← createAntflySearchAdapter()
-└── search.ts               ← SearchAdapter implementation
+├── index.ts                ← createAntflySearchAdapter() + factory-facing exports
+├── adapter.ts              ← AntflyAdapter — lifecycle wrapper (settings +
+│                             service provisioning + client)
+├── client.ts               ← stateless raw-fetch HTTP client (full contract;
+│                             typed errors; no @antfly/sdk — deliberate)
+├── translate.ts            ← pure Bakin ⇄ wire shape translation
+├── wire.ts                 ← hand-derived, probe-verified wire types + paths
+├── service.ts              ← OS-supervised lifecycle: launchd/systemd unit
+│                             rendering (the unit file IS the fingerprint),
+│                             strict-child fallback, guest mode
+├── defaults.ts             ← AntflySettings + mergeSettings
+├── pin.ts                  ← pinned release version + per-platform SHA256s
+├── installer.ts            ← verify-then-commit binary install; upgrade =
+│                             stop → swap → start
+├── models.ts               ← inference-model prefetch + presence checks
+├── setup.ts                ← onboarding setup components (install search /
+│                             search-models)
+├── paths.ts                ← ~/.antfly binary/model path helpers
+└── server-logs.ts          ← engine log-tail annotation for `bakin logs`
 ```
+
+(The old `server.ts` supervision lattice, `search.ts` monolith,
+`legacy-cleanup.ts`, and `query-translation.ts` were deleted in the 2026-07
+search rebuild — lifecycle is OS-owned, the client is a thin HTTP layer.)
 
 ### `packages/host/` — `@bakin/host`
 
@@ -192,6 +221,8 @@ packages/host/
 | Events: BakinEventBus | agents.ts (agent API through AppServices.runtime) |
 | Vault, format utilities | app-services.ts and adapter factories |
 | Hook registry | cli.ts (binary CLI dispatcher) |
+| Search outbox + blue/green core (packages/core/src/search/) | search-registry-core.ts / search-plugin-api.ts / search-query.ts / search-reindex.ts (globalThis registry, ctx.search, cross-table search, health) |
+| Search adapter contract + typed errors (adapters/search/) | search-outbox.ts (drain pump), search-startup.ts (boot ensure/resume), search-orphan-sweep.ts (doctor sweep), search-file-patterns.ts |
 |  | runtime-config-raw.ts (allowlisted raw runtime config reads) |
 |  | plugin-scaffold.ts, self-update.ts |
 |  | onboarding/ (11 components) |
@@ -338,6 +369,17 @@ Run: `bun test --isolate` (CI) or `bun test --watch --isolate` (dev).
 - `tests/components/**/*.test.tsx` — component tests using Testing
   Library; the DOM comes from `@happy-dom/global-registrator`
   registered globally in `tests/setup.ts`
+- `tests/integration/search-conformance/` — the adapter-agnostic
+  `SearchAdapter` conformance suite (`conformance.ts`): run against the
+  mock adapter always, and against a REAL engine binary via the ephemeral
+  harness (`harness.ts` — throwaway data/model dirs, random ports; skips
+  loudly when no binary is present). A second search adapter starts by
+  passing this suite.
+- `tests/integration/antfly/` — engine-specific workaround-regression pins
+  (each written to FAIL when upstream fixes the behavior);
+  `tests/adapter-antfly/` — unit tests for translate/client/service
+- `tests/architecture/` — pure source scanners (adapter boundary, the
+  antfly-identifier ban, sole-sqlite-importer rule)
 - `bunfig.toml` preloads `tests/setup.ts` for every run; that file
   also exposes the `vi` compatibility shim (see `tests/vi-shim.d.ts`)
   for legacy vitest-era APIs (`useFakeTimers`, `stubGlobal`,
@@ -359,6 +401,11 @@ Created by `bakin onboard` or `initBakinHome()`.
 ~/.bakin/
 ├── settings.json             ← runtime config (deep-merged with defaults)
 ├── .onboarded                ← marker the doctor gates on
+├── bakin.db                  ← execution ledger (SQLite, WAL)
+├── search.db                 ← search outbox + blue/green table registry (SQLite)
+├── antfly/                   ← data dir for Bakin's private search engine
+│                               (OS-supervised service on 127.0.0.1:3738;
+│                               binary + models live under ~/.antfly)
 ├── MEMORY-LOG.md             ← agent memory log
 ├── audit.jsonl               ← append-only audit trail
 ├── assets/
@@ -376,7 +423,8 @@ Created by `bakin onboard` or `initBakinHome()`.
 ├── schedule/                 ← cron job state
 ├── plugin-settings/          ← per-plugin settings JSON
 ├── plugins/<id>/             ← installed user plugins (source + generated dist/)
-└── logs/server.log           ← rotating server log (10 MB, single backup)
+└── logs/                     ← server.log (rotating, 10 MB, single backup) +
+                                antfly.log (search-engine service stdout/err)
 ```
 
 ## Key Entry Points

@@ -3,15 +3,15 @@ import type {
   BatchResult,
   Document,
   IndexItem,
-  IndexOpts,
   Query,
   QueryResult,
-  RebuildReport,
   ScanOpts,
   ScannedDocument,
+  SearchAdapterCapabilities,
   TableConfig,
   TableHealth,
   TableInfo,
+  TableLegHealth,
   TableStats,
   TransformFn,
 } from './concepts'
@@ -26,18 +26,35 @@ export interface SearchAdapter {
   available(): Promise<boolean>
   getHealthChecks(): AdapterHealthCheckDefinition[]
 
+  /** What this adapter can build/serve, in capability terms (D17). */
+  capabilities(): SearchAdapterCapabilities
+
+  /**
+   * Hash over adapter settings that change the PHYSICAL index layout
+   * (embedder models, dimensions). Core folds it into each table's
+   * blue/green config fingerprint so a model swap migrates tables without
+   * any plugin edit. Must be stable across restarts for identical settings.
+   */
+  mappingFingerprint(): string
+
   tables: {
+    /** Doctor/status/introspection only — never called on the boot path. */
     list(): Promise<TableInfo[]>
     create(name: string, config: TableConfig): Promise<void>
     drop(name: string): Promise<void>
     stats(name: string): Promise<TableStats | null>
-    getHealth(name: string): Promise<TableHealth | null>
-    rebuildIndexes(name: string): Promise<void>
+    /** Per-leg health — drives blue/green convergence checks + telemetry. */
+    health(name: string): Promise<TableLegHealth[]>
   }
 
   documents: {
-    index(table: string, key: string, doc: Document, opts?: IndexOpts): Promise<void>
-    batchIndex(table: string, items: IndexItem[], opts?: IndexOpts): Promise<BatchResult>
+    index(table: string, key: string, doc: Document): Promise<void>
+    /**
+     * `sync: false` = async indexing (backfills: the blue/green converge
+     * poll owns completion; synchronous full-index on big chunks times out
+     * behind one embed queue). Default true = read-your-writes for drains.
+     */
+    batchIndex(table: string, items: IndexItem[], opts?: { sync?: boolean }): Promise<BatchResult>
     remove(table: string, key: string): Promise<void>
     batchRemove(table: string, keys: string[]): Promise<number>
     transform(table: string, key: string, fn: TransformFn): Promise<void>
@@ -46,11 +63,6 @@ export interface SearchAdapter {
   query(table: string, q: Query): Promise<QueryResult>
   multiQuery(queries: Array<{ table: string; query: Query }>): Promise<QueryResult[]>
   scan(table: string, opts?: ScanOpts): AsyncIterable<ScannedDocument>
-
-  embedder: {
-    hasChanged(): Promise<boolean>
-    rebuildAll(): Promise<RebuildReport>
-  }
 }
 
 export type SearchAdapterSetupCheckStatus = 'ok' | 'missing' | 'broken' | 'warn' | 'error'
@@ -97,21 +109,23 @@ export type {
   FacetCount,
   Filter,
   IndexItem,
-  IndexOpts,
   Query,
   QueryDiagnostics,
   QueryResult,
-  RebuildReport,
   ScanOpts,
   ScannedDocument,
   ScoreBreakdown,
+  SearchAdapterCapabilities,
   SearchFieldConfig,
   SearchHit,
   SearchIndexConfig,
+  SearchLegCapability,
   SortSpec,
   TableConfig,
   TableHealth,
   TableInfo,
+  TableLegConfig,
+  TableLegHealth,
   TableStats,
   TransformFn,
 } from './concepts'

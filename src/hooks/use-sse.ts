@@ -156,14 +156,14 @@ export function useSSE() {
           // entry per table per reindex). The aggregate batch_* events
           // below give the activity feed a single start/pulse/complete
           // pair instead.
-          if (data.type === 'reindex.start') {
-            emitPluginEvent({ event: 'reindex.start', table: data.table })
+          if (data.type === 'search.rebuild.start') {
+            emitPluginEvent({ event: 'search.rebuild.start', table: data.table })
           }
-          if (data.type === 'reindex.progress') {
-            emitPluginEvent({ event: 'reindex.progress', table: data.table, indexed: data.indexed ?? 0 })
+          if (data.type === 'search.rebuild.progress') {
+            emitPluginEvent({ event: 'search.rebuild.progress', table: data.table, indexed: data.indexed ?? 0 })
           }
-          if (data.type === 'reindex.complete') {
-            emitPluginEvent({ event: 'reindex.complete', table: data.table, indexed: data.indexed ?? 0 })
+          if (data.type === 'search.rebuild.complete') {
+            emitPluginEvent({ event: 'search.rebuild.complete', table: data.table, indexed: data.indexed ?? 0 })
           }
 
           // Aggregate reindex events for the activity feed — one entry

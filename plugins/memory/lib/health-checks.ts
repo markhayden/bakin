@@ -58,34 +58,24 @@ export async function checkSearchTables(
     let failedTables = 0
 
     for (const t of health.tables) {
-      if (!t.stats) {
+      if (t.docCount === null) {
         failedTables++
-        results.push(warn('search-tables', `Table "${t.table}" (${t.pluginId}) — stats unavailable, but table is registered${t.healthy ? ' and indexes look healthy' : ''}`))
+        results.push(warn('search-tables', `Table "${t.logical}" (${t.pluginId}) — doc count unavailable, but table is registered${t.healthy ? ' and legs look healthy' : ''}`))
         continue
       }
 
-      const statRecord = t.stats as Record<string, unknown>
-      const rawNumDocs = documentCountFromStats(statRecord)
-      if (rawNumDocs !== null) {
-        if (rawNumDocs === 0) {
-          if (t.pluginId === 'schedule') {
-            results.push(ok('search-tables', `Table "${t.table}" (${t.pluginId}) has 0 persisted documents; schedule jobs are indexed at runtime`))
-          } else {
-            results.push(ok('search-tables', `Table "${t.table}" (${t.pluginId}) has 0 documents — reindex via POST /api/reindex?table=${t.table}`))
-          }
+      if (t.docCount === 0) {
+        if (t.pluginId === 'schedule') {
+          results.push(ok('search-tables', `Table "${t.logical}" (${t.pluginId}) has 0 persisted documents; schedule jobs are indexed at runtime`))
+        } else {
+          results.push(ok('search-tables', `Table "${t.logical}" (${t.pluginId}) has 0 documents — rebuild via POST /api/reindex?table=${t.logical}`))
         }
-        continue
-      }
-
-      const storage = (t.stats as Record<string, unknown>).storage_status as Record<string, unknown> | undefined
-      if (storage?.empty === true) {
-        results.push(ok('search-tables', `Table "${t.table}" (${t.pluginId}) appears empty — reindex via POST /api/reindex?table=${t.table}`))
       }
     }
 
     if (results.length === 0) {
       const totals = health.tables
-        .map(t => documentCountFromStats(t.stats as Record<string, unknown> | null))
+        .map(t => t.docCount)
         .filter((n): n is number => n !== null)
 
       if (totals.length > 0) {

@@ -104,8 +104,9 @@ describe('core plugin manifest drift (lazy-loading contract)', () => {
       )
       return manifest.contributes?.eager === true
     })
-    // tasks + health run nav-badge providers that must mount at boot.
-    // Growing this list shrinks the lazy-loading win — do it deliberately.
-    expect(eager.sort()).toEqual(['health', 'tasks'])
+    // tasks + health + assets run nav-badge providers that must mount at
+    // boot (assets: the D7 unmanaged-import badge). Growing this list
+    // shrinks the lazy-loading win — do it deliberately.
+    expect(eager.sort()).toEqual(['assets', 'health', 'tasks'])
   })
 })

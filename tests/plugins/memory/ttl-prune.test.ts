@@ -12,9 +12,9 @@ function makeSearch(rows: Array<{ key: string; document: Record<string, unknown>
   removed: string[]
 } {
   const removed: string[] = []
-  async function* scan() {
+  const scan = mock(async function* () {
     for (const row of rows) yield row
-  }
+  })
   return {
     removed,
     search: {
@@ -23,7 +23,7 @@ function makeSearch(rows: Array<{ key: string; document: Record<string, unknown>
       index: mock(async () => {}),
       remove: mock(async () => {}),
       transform: mock(async () => {}),
-      query: mock(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } })),
+      query: mock(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'unavailable' as const } })),
       maintenance: {
         available: mock(async () => true),
         scan,
@@ -31,7 +31,6 @@ function makeSearch(rows: Array<{ key: string; document: Record<string, unknown>
           removed.push(...keys)
           return keys.length
         }),
-        resetContentType: mock(async () => {}),
       },
     },
   }
@@ -50,6 +49,7 @@ describe('pruneExpired', () => {
     const stats = await pruneExpired(search, { turnRetentionDays: 7, auditRetentionDays: 30 })
 
     expect(removed.sort()).toEqual(['old-audit', 'old-turn'])
+    expect(search.maintenance!.scan).toHaveBeenCalledWith({ fields: ['tier', 'updated_at'] })
     expect(stats.turn).toBe(1)
     expect(stats.audit).toBe(1)
     expect(stats.scanned).toBe(4)

@@ -77,12 +77,53 @@ mock.module('../../../src/core/mcporter', () => ({
 let mockSearchEnabled = false
 let mockSearchUrl = 'http://127.0.0.1:8765/api/v1'
 let mockSearchInstalled = true
+let mockServiceStatus = { mode: 'launchd' as const, provisioned: true }
 mock.module('../../../src/core/search-adapter-factory', () => ({
   isSearchAdapterInstalled: () => mockSearchInstalled,
+  getSearchAdapterServiceStatus: () => mockServiceStatus,
+}))
+
+// New-check seams: outbox facade + blue/green table states. Mutable so the
+// search-outbox / search-consistency cases steer them per test.
+let mockOutboxStats = { pending: 0, inflight: 0, quarantined: 0, oldestPendingEnqueuedAt: null as number | null }
+let mockQuarantinedRows: Array<{ logicalTable: string; key: string; lastError: string | null }> = []
+let mockRetried = 0
+mock.module('../../../src/core/search-outbox', () => ({
+  // Full facade surface — plugin activation pulls the real registry, which
+  // imports the write-path members too.
+  outboxStats: () => mockOutboxStats,
+  listQuarantined: () => mockQuarantinedRows,
+  retryQuarantined: () => { mockRetried = mockQuarantinedRows.length; return mockRetried },
+  nudgeOutboxPump: async () => null,
+  enqueueIndex: () => {},
+  enqueueRemove: () => {},
+  enqueueTransform: () => {},
+  applyTransformOps: (doc: Record<string, unknown>) => doc,
+  configureOutboxPump: () => {},
+  startOutboxPump: () => {},
+  stopOutboxPump: () => {},
+}))
+let mockTableStates: Array<Record<string, unknown>> = []
+mock.module('@bakin/core/search/tables', () => ({
+  // Full surface: the plugin-activation test pulls the real registry, which
+  // imports more than the checks do.
+  listTableStates: () => mockTableStates,
+  tableStatus: () => null,
+  queryTarget: () => null,
+  resolveDrainTargets: (logical: string) => [logical],
+  sweepTombstones: async () => 0,
+  ensureTable: async () => 'unchanged',
+  rebuildTable: async () => 'migrated',
+  resumeMigrations: async () => {},
+  resetTablesForTests: () => {},
+}))
+mock.module('../../../src/core/search-orphan-sweep', () => ({
+  runOrphanSweep: async () => [],
 }))
 
 const realFetch = globalThis.fetch
 let mockFetchOk = true
+let mockSearchAvailable = true
 let mockFetchHealth = 'green'
 function installMockFetch() {
   ;(globalThis as { fetch: typeof fetch }).fetch = mock(async () => {
@@ -140,19 +181,19 @@ mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
 mock.module('../../../src/core/app-services', () => ({
   getAppServices: () => ({
     runtime: mockRuntime,
-    search: {},
+    search: { available: async () => mockSearchAvailable, tables: { stats: async () => ({ table: 't', documents: 1 }) } },
     tasks: {},
     health: {},
   }),
   maybeGetAppServices: () => ({
     runtime: mockRuntime,
-    search: {},
+    search: { available: async () => mockSearchAvailable },
     tasks: {},
     health: {},
   }),
   createAppServices: async () => ({
     runtime: mockRuntime,
-    search: {},
+    search: { available: async () => mockSearchAvailable },
     tasks: {},
     health: {},
   }),
@@ -160,19 +201,19 @@ mock.module('../../../src/core/app-services', () => ({
 mock.module('../../../src/core/app-services.ts', () => ({
   getAppServices: () => ({
     runtime: mockRuntime,
-    search: {},
+    search: { available: async () => mockSearchAvailable, tables: { stats: async () => ({ table: 't', documents: 1 }) } },
     tasks: {},
     health: {},
   }),
   maybeGetAppServices: () => ({
     runtime: mockRuntime,
-    search: {},
+    search: { available: async () => mockSearchAvailable },
     tasks: {},
     health: {},
   }),
   createAppServices: async () => ({
     runtime: mockRuntime,
-    search: {},
+    search: { available: async () => mockSearchAvailable },
     tasks: {},
     health: {},
   }),
@@ -180,19 +221,19 @@ mock.module('../../../src/core/app-services.ts', () => ({
 mock.module('@/core/app-services', () => ({
   getAppServices: () => ({
     runtime: mockRuntime,
-    search: {},
+    search: { available: async () => mockSearchAvailable },
     tasks: {},
     health: {},
   }),
   maybeGetAppServices: () => ({
     runtime: mockRuntime,
-    search: {},
+    search: { available: async () => mockSearchAvailable },
     tasks: {},
     health: {},
   }),
   createAppServices: async () => ({
     runtime: mockRuntime,
-    search: {},
+    search: { available: async () => mockSearchAvailable },
     tasks: {},
     health: {},
   }),
@@ -221,6 +262,8 @@ import { checkRuntime } from '../../../plugins/health/lib/system-checks/runtime'
 import { checkChannelApprovals } from '../../../plugins/health/lib/system-checks/channel-approvals'
 import { checkChannelAliases } from '../../../plugins/health/lib/system-checks/channel-aliases'
 import { checkSearchAdapter } from '../../../plugins/health/lib/system-checks/search'
+import { checkSearchOutbox, searchOutboxRepair } from '../../../plugins/health/lib/system-checks/search-outbox'
+import { checkSearchConsistency } from '../../../plugins/health/lib/system-checks/search-consistency'
 import { checkAndSyncSkill, syncSkillRepair } from '../../../plugins/health/lib/system-checks/sync-skill'
 import { checkPluginAssets } from '../../../plugins/health/lib/system-checks/plugin-assets'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
@@ -269,6 +312,7 @@ beforeEach(() => {
   mockSearchInstalled = true
   mockSearchUrl = 'http://127.0.0.1:8765/api/v1'
   mockFetchOk = true
+  mockSearchAvailable = true
   mockFetchHealth = 'green'
   runtimeWorkspaceFiles = new Map()
   runtimeSkill = null
@@ -614,33 +658,106 @@ describe('checkSearchAdapter', () => {
     expect(results[0].message).toMatch(/Search enabled but active search adapter binary was not found/)
   })
 
-  it('reports ok when the daemon responds healthy', async () => {
+  it('reports ok when the live adapter is available', async () => {
+    // The check asks the ADAPTER, not a hardcoded HTTP endpoint — the old
+    // probe hit the pre-0.2 /api/v1/status path, which a healthy v0.2 zig
+    // server does not serve, so doctor reported a false error on every run.
     mockSearchEnabled = true
     mockSearchInstalled = true
-    mockFetchOk = true
-    mockFetchHealth = 'green'
-    installMockFetch()
-    try {
-      const results = await checkSearchAdapter()
-      expect(results[0].status).toBe('ok')
-      expect(results[0].message).toMatch(/health: green/)
-    } finally {
-      restoreFetch()
-    }
+    mockSearchAvailable = true
+    const results = await checkSearchAdapter()
+    // Row 0 is the supervision status (D3); the connection row follows.
+    expect(results[0].message).toMatch(/supervised via launchd/)
+    const connection = results.find(r => /connected|unavailable/.test(r.message))!
+    expect(connection.status).toBe('ok')
+    expect(connection.message).toMatch(/connected/)
   })
 
-  it('reports error when every URL fails', async () => {
+  it('reports error when the adapter is unavailable', async () => {
     mockSearchEnabled = true
     mockSearchInstalled = true
-    mockFetchOk = false
-    installMockFetch()
-    try {
-      const results = await checkSearchAdapter()
-      expect(results[0].status).toBe('error')
-      expect(results[0].message).toMatch(/connection failed/)
-    } finally {
-      restoreFetch()
-    }
+    mockSearchAvailable = false
+    const results = await checkSearchAdapter()
+    const connection = results.find(r => /connected|unavailable/.test(r.message))!
+    expect(connection.status).toBe('error')
+    expect(connection.message).toMatch(/unavailable/)
+  })
+})
+
+// ─── checkSearchOutbox ────────────────────────────────────────────────────
+
+describe('checkSearchOutbox', () => {
+  it('returns nothing when search is disabled', async () => {
+    mockSearchEnabled = false
+    expect(await checkSearchOutbox()).toEqual([])
+  })
+
+  it('reports ok on an empty journal', async () => {
+    mockSearchEnabled = true
+    mockOutboxStats = { pending: 0, inflight: 0, quarantined: 0, oldestPendingEnqueuedAt: null }
+    const results = await checkSearchOutbox()
+    expect(results[0].status).toBe('ok')
+    expect(results[0].message).toMatch(/journal empty/i)
+  })
+
+  it('warns on stale pending rows (engine likely down)', async () => {
+    mockSearchEnabled = true
+    mockOutboxStats = { pending: 4, inflight: 0, quarantined: 0, oldestPendingEnqueuedAt: Date.now() - 15 * 60_000 }
+    const results = await checkSearchOutbox()
+    expect(results[0].status).toBe('warn')
+    expect(results[0].message).toMatch(/queued for/)
+  })
+
+  it('errors on quarantined rows and repair revives them', async () => {
+    mockSearchEnabled = true
+    mockQuarantinedRows = [{ logicalTable: 'bakin_t', key: 'k1', lastError: 'schema mismatch' }]
+    mockOutboxStats = { pending: 0, inflight: 0, quarantined: 1, oldestPendingEnqueuedAt: null }
+    const results = await checkSearchOutbox()
+    expect(results[0].status).toBe('error')
+    expect(results[0].autoFixable).toBe(true)
+    expect(results[0].message).toMatch(/bakin_t\/k1/)
+
+    const repair = searchOutboxRepair()
+    const plan = await repair.plan(results)
+    expect(plan[0]?.safety).toBe('manual')
+    const applied = await repair.apply(plan)
+    expect(applied[0]?.status).toBe('applied')
+    expect(applied[0]?.message).toMatch(/Revived 1/)
+    mockQuarantinedRows = []
+    mockOutboxStats = { pending: 0, inflight: 0, quarantined: 0, oldestPendingEnqueuedAt: null }
+  })
+})
+
+// ─── checkSearchConsistency ───────────────────────────────────────────────
+
+describe('checkSearchConsistency', () => {
+  it('returns nothing when the engine is down (base check owns that)', async () => {
+    mockSearchEnabled = true
+    mockSearchAvailable = false
+    expect(await checkSearchConsistency()).toEqual([])
+    mockSearchAvailable = true
+  })
+
+  it('errors on a PARKED migration as auto-fixable', async () => {
+    mockSearchEnabled = true
+    mockSearchAvailable = true
+    mockTableStates = [{ logical: 'bakin_t', physical: 'bakin_t_v2_ff', schemaVersion: 2, state: 'migrating', migratingTo: 'bakin_t_v3_aa', phase: 'parked', backfillDone: 10 }]
+    const results = await checkSearchConsistency()
+    const parked = results.find(r => /PARKED/.test(r.message))!
+    expect(parked.status).toBe('error')
+    expect(parked.autoFixable).toBe(true)
+    mockTableStates = []
+  })
+
+  it('warns on an in-flight migration without flagging repair', async () => {
+    mockSearchEnabled = true
+    mockSearchAvailable = true
+    mockTableStates = [{ logical: 'bakin_t', physical: 'bakin_t_v2_ff', schemaVersion: 2, state: 'migrating', migratingTo: 'bakin_t_v3_aa', phase: 'backfilling', backfillDone: 42 }]
+    const results = await checkSearchConsistency()
+    const row = results.find(r => /in flight/.test(r.message))!
+    expect(row.status).toBe('warn')
+    expect(row.autoFixable).toBe(false)
+    mockTableStates = []
   })
 })
 
@@ -745,7 +862,7 @@ describe('plugin registration', () => {
       search: {
         registerContentType: noop, registerFileBackedContentType: noop,
         index: noopAsync, remove: noopAsync, transform: noopAsync,
-        query: mock(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } })),
+        query: mock(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'unavailable' as const } })),
       },
       storage: {},
       events: { on: noop, emit: noop, off: noop },
