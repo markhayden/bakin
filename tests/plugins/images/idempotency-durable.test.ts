@@ -135,6 +135,21 @@ describe('durable image idempotency', () => {
     expect(bills).toBe(0)
   })
 
+  it('the persisted row is allowlist-built — an unknown future field never reaches the ledger', async () => {
+    const key = makeKey({ promptHash: 'prompt-allowlist' })
+    const full = {
+      ok: true, assetId: 'asset-d', version: 1, width: 512, height: 512,
+      promptHash: 'prompt-allowlist',
+      futureDebugTranscript: 'CONTENT NOBODY STRIPPED', // not in any denylist
+    } as unknown as ExecToolResult
+
+    await runBilledImageCall(key, async () => full)
+
+    const row = getIdempotent(imageCallSignature(key))
+    expect(JSON.stringify(row)).not.toContain('CONTENT NOBODY STRIPPED')
+    expect((row?.result as { assetId?: string }).assetId).toBe('asset-d')
+  })
+
   it('concurrent identical calls share one in-flight promise (one bill)', async () => {
     const key = makeKey({ promptHash: 'prompt-conc' })
     let release: (() => void) | null = null
