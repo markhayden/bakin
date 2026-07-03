@@ -54,6 +54,7 @@ export type {
   RuntimeAllowlistPatch,
   RuntimeToolActivity,
   RuntimeAvailableModel,
+  RuntimeCapabilities,
   RuntimeConfigAccess,
   RuntimeImageBackground,
   RuntimeImageEditInput,

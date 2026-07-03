@@ -100,6 +100,9 @@ export function createMockRuntimeAdapter(
       listAvailable: async () => [],
     },
 
+    // Conservative default; tests override per-case ({...mock, capabilities}).
+    capabilities: async () => ({ imageInput: false, audioInput: false }),
+
     cron: {
       list: async () => [],
       get: async () => null,

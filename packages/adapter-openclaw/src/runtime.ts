@@ -16,6 +16,7 @@ import type {
   MessageUsage,
   RuntimeAgent,
   RuntimeAvailableModel,
+  RuntimeCapabilities,
   RuntimeImageEditInput,
   RuntimeImageGenerateInput,
   RuntimeImageGenerationResult,
@@ -29,6 +30,7 @@ import type {
 } from '@bakin/core/adapters/runtime'
 import type { AdapterHealthCheckDefinition, AdapterInitOpts, AdapterLogger } from '@bakin/core/adapters/shared'
 import { RuntimeError, RuntimeTurnError } from '@bakin/core/adapters/runtime'
+import { tryGetMainAgentId } from './main-agent'
 import { safeFileSize } from './file-utils'
 import { inspectTrajectoryRun, trajectoryFilePathFor, watchTrajectoryForDeath, TrajectoryRecoveredTurn, type TrajectoryUsage } from './trajectory-forensics'
 import { generateDirectImage, isDirectImageProvider, resolveProviderApiKeySource } from '@bakin/core/media'
@@ -820,6 +822,45 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         })
         .filter((model): model is RuntimeAvailableModel => model !== null)
     },
+  }
+
+  private capabilitiesCache: { at: number; value: RuntimeCapabilities } | null = null
+
+  /**
+   * Input modalities of the MAIN agent's effective model, answered from the
+   * runtime's OWN catalog (`openclaw models list --json` `input` field —
+   * "text" | "text+image" | …): the same source of truth the gateway's
+   * attachment gate enforces, so this probe can never disagree with it.
+   * Effective model = the agent's configured model, else the entry the
+   * runtime itself tags `default`. Conservative false on any ambiguity;
+   * no model-name heuristics (D17 discipline applies to runtimes too).
+   */
+  capabilities = async (): Promise<RuntimeCapabilities> => {
+    const CACHE_MS = 60_000
+    if (this.capabilitiesCache && Date.now() - this.capabilitiesCache.at < CACHE_MS) {
+      return this.capabilitiesCache.value
+    }
+    const none: RuntimeCapabilities = { imageInput: false, audioInput: false }
+    let value = none
+    try {
+      const mainId = tryGetMainAgentId()
+      const agent = mainId ? await this.agents.get(mainId) : null
+      const models = await this.models.listAvailable({ includeUnavailable: true })
+      const entry = agent?.model
+        ? models.find((m) => m.id === agent.model)
+        : models.find((m) => m.tags?.includes('default'))
+      if (entry?.input) {
+        const inputs = entry.input.toLowerCase().split(/[+,\s]+/).filter(Boolean)
+        value = { imageInput: inputs.includes('image'), audioInput: inputs.includes('audio') }
+      }
+    } catch (err) {
+      this.logger.warn('runtime capabilities probe failed — reporting none', {
+        err: err instanceof Error ? err.message : String(err),
+      })
+      return none
+    }
+    this.capabilitiesCache = { at: Date.now(), value }
+    return value
   }
 
   private imageProvidersCache: { at: number; value: RuntimeImageProvider[] } | null = null
