@@ -101,7 +101,7 @@ export function createMockRuntimeAdapter(
     },
 
     // Conservative default; tests override per-case ({...mock, capabilities}).
-    capabilities: async () => ({ imageInput: false, audioInput: false }),
+    capabilities: async (_opts?: { agentId?: string }) => ({ imageInput: false, audioInput: false }),
 
     cron: {
       list: async () => [],

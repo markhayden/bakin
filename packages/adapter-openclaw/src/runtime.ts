@@ -831,27 +831,38 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     },
   }
 
-  private capabilitiesCache: { at: number; value: RuntimeCapabilities } | null = null
+  private capabilitiesCache = new Map<string, { at: number; value: RuntimeCapabilities }>()
 
   /**
-   * Input modalities of the MAIN agent's effective model, answered from the
-   * runtime's OWN catalog (`openclaw models list --json` `input` field —
-   * "text" | "text+image" | …): the same source of truth the gateway's
-   * attachment gate enforces, so this probe can never disagree with it.
-   * Effective model = the agent's configured model, else the entry the
-   * runtime itself tags `default`. Conservative false on any ambiguity;
-   * no model-name heuristics (D17 discipline applies to runtimes too).
+   * Input modalities of the SELECTED agent's effective model (default: the
+   * main agent), answered from the runtime's OWN catalog (`openclaw models
+   * list --json` `input` field — "text" | "text+image" | …): the same
+   * source of truth the gateway's attachment gate enforces, so this probe
+   * can never disagree with it. Effective model = the agent's configured
+   * model, else the entry the runtime itself tags `default`. A requested
+   * agent that does not exist reports all-false (never falls back to the
+   * default model — that would mis-describe a different agent's gate).
+   * Conservative false on any ambiguity; no model-name heuristics (D17
+   * discipline applies to runtimes too).
    */
-  capabilities = async (): Promise<RuntimeCapabilities> => {
+  capabilities = async (opts?: { agentId?: string }): Promise<RuntimeCapabilities> => {
     const CACHE_MS = 60_000
-    if (this.capabilitiesCache && Date.now() - this.capabilitiesCache.at < CACHE_MS) {
-      return this.capabilitiesCache.value
+    const requested = opts?.agentId?.trim() || ''
+    const cached = this.capabilitiesCache.get(requested)
+    if (cached && Date.now() - cached.at < CACHE_MS) {
+      return cached.value
     }
     const none: RuntimeCapabilities = { imageInput: false, audioInput: false }
     let value = none
     try {
-      const mainId = tryGetMainAgentId()
-      const agent = mainId ? await this.agents.get(mainId) : null
+      let agent: Awaited<ReturnType<typeof this.agents.get>> = null
+      if (requested) {
+        agent = await this.agents.get(requested)
+        if (!agent) return none // missing agent: no default-model fallback
+      } else {
+        const mainId = tryGetMainAgentId()
+        agent = mainId ? await this.agents.get(mainId) : null
+      }
       const models = await this.models.listAvailable({ includeUnavailable: true })
       const entry = agent?.model
         ? models.find((m) => m.id === agent.model)
@@ -866,7 +877,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       })
       return none
     }
-    this.capabilitiesCache = { at: Date.now(), value }
+    this.capabilitiesCache.set(requested, { at: Date.now(), value })
     return value
   }
 

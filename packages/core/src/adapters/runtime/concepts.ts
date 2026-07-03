@@ -349,8 +349,9 @@ export interface RuntimeMemorySearchResult {
 /**
  * What the runtime's ACTIVE configuration can accept as model input
  * (spec: enrichment-runtime-fallback §3). Adapter-declared from the
- * runtime's own model catalog for the main agent's effective model —
- * conservative false on any ambiguity, never model-name heuristics.
+ * runtime's own model catalog for the SELECTED agent's effective model
+ * (default: the main agent) — conservative false on any ambiguity, never
+ * model-name heuristics.
  */
 export interface RuntimeCapabilities {
   imageInput: boolean
@@ -602,11 +603,13 @@ export interface AgentRuntimeAdapter {
   }
 
   /**
-   * Input-modality capabilities of the runtime's current configuration.
+   * Input-modality capabilities of the runtime's current configuration,
+   * evaluated for `opts.agentId`'s effective model (default: the main
+   * agent). A requested agent that does not exist reports all-false.
    * Transitional-optional (same pattern the search contract used): absent
    * means "unknown" and callers MUST treat it as all-false.
    */
-  capabilities?(): Promise<RuntimeCapabilities>
+  capabilities?(opts?: { agentId?: string }): Promise<RuntimeCapabilities>
 
   images?: RuntimeImagesAccess
 

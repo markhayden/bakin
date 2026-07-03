@@ -43,7 +43,17 @@ export interface EnrichmentSettings {
   enrichmentEnabled?: boolean
   enrichmentProvider?: 'auto' | 'runtime' | DirectVisionProviderId
   enrichmentModel?: string
+  /**
+   * Runtime agent for subscription-quota enrichment turns. Its CONFIGURED
+   * model must be catalog-declared for images — per-turn overrides are
+   * ignored by the gateway's attachment gate (bakin#584). Default 'enrich'
+   * (the bakin-bits utility agent on claude-sonnet-4-6).
+   */
+  enrichmentAgent?: string
 }
+
+/** Default runtime agent for enrichment turns (bakin-bits `enrich`). */
+export const DEFAULT_ENRICHMENT_AGENT = 'enrich'
 
 export interface ResolvedEnrichmentModel {
   descriptor: VisionModelDescriptor

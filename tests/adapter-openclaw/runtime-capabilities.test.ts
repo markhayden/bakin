@@ -1,6 +1,6 @@
 /**
  * Runtime capabilities probe — answers imageInput/audioInput from the
- * runtime's OWN model catalog for the main agent's effective model
+ * runtime's OWN model catalog for the selected agent's effective model (default: main)
  * (spec: enrichment-runtime-fallback §3). Conservative false everywhere
  * ambiguous; the same catalog the gateway's attachment gate enforces.
  */
@@ -106,6 +106,31 @@ describe('OpenClaw runtime capabilities', () => {
     writeFileSync(openclaw, '#!/bin/sh\nexit 1\n', 'utf-8')
     chmodSync(openclaw, 0o755)
     const caps = await makeAdapter().capabilities!()
+    expect(caps).toEqual({ imageInput: false, audioInput: false })
+  })
+
+  it('evaluates the REQUESTED agent, not main (per-agent probe for enrichmentAgent)', async () => {
+    mockAgents = [
+      { id: 'main', name: 'Main', model: { primary: 'openai/gpt-5.5' } },
+      { id: 'enrich', name: 'Enrich', model: { primary: 'anthropic/claude-sonnet-4-6' } },
+    ]
+    writeModelsBinary([
+      { key: 'openai/gpt-5.5', input: 'text', available: true },
+      { key: 'anthropic/claude-sonnet-4-6', input: 'text+image', available: true },
+    ])
+    const adapter = makeAdapter()
+    expect(await adapter.capabilities!()).toEqual({ imageInput: false, audioInput: false })
+    expect(await adapter.capabilities!({ agentId: 'enrich' })).toEqual({ imageInput: true, audioInput: false })
+    // per-agent cache isolation: repeat both, same answers
+    expect(await adapter.capabilities!({ agentId: 'enrich' })).toEqual({ imageInput: true, audioInput: false })
+    expect(await adapter.capabilities!()).toEqual({ imageInput: false, audioInput: false })
+  })
+
+  it('a REQUESTED agent that does not exist reports all-false (no default-model fallback)', async () => {
+    writeModelsBinary([
+      { key: 'openai/gpt-5.4', input: 'text+image', available: true, tags: ['default'] },
+    ])
+    const caps = await makeAdapter().capabilities!({ agentId: 'ghost' })
     expect(caps).toEqual({ imageInput: false, audioInput: false })
   })
 
