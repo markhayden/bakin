@@ -409,7 +409,8 @@ export async function resumeMigrations(
   }
 }
 
-/** Test-only: wipe registry + tombstones. */
+/** Test-only: wipe registry + tombstones (close-first — see outbox note). */
 export function resetTablesForTests(): void {
+  store.close()
   db().exec('DELETE FROM search_tables; DELETE FROM search_table_tombstones;')
 }

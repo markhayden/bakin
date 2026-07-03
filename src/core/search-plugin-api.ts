@@ -15,6 +15,7 @@ import type {
   SearchTransformOp,
 } from '../../packages/core/src/plugin-types'
 import { createLogger } from './logger'
+import { enqueueIndex, enqueueRemove, enqueueTransform, nudgeOutboxPump } from './search-outbox'
 import { registerSyncHook, registerUnlinkHook } from './watcher'
 import { getContentDir } from './content-dir'
 import {
@@ -189,10 +190,11 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
             // file may have been removed between watcher emit and our stat;
             // fall back to "now" so the index entry is at least monotonic.
           }
-          // Index into THIS content type's table directly — not via api.index,
-          // which resolves the plugin's primary table (wrong for a secondary
-          // file-backed type on a multi-content plugin like team).
-          await getSearchAdapter().documents.index(tableName, key, { ...doc, [MTIME_FIELD]: mtimeMs })
+          // Enqueue into THIS content type's table directly — not via
+          // api.index, which resolves the plugin's primary table (wrong for
+          // a secondary file-backed type on a multi-content plugin like team).
+          enqueueIndex(tableName, key, { ...doc, [MTIME_FIELD]: mtimeMs })
+          await nudgeOutboxPump()
         } catch (err) {
           log.warn('File-backed sync hook failed', err, { table: tableName, rel })
         }
@@ -209,7 +211,8 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
           if (!mapper) return
           const key = mapper.fileToId(rel)
           if (key === null) return
-          await getSearchAdapter().documents.remove(tableName, key)
+          enqueueRemove(tableName, key)
+          await nudgeOutboxPump()
         } catch (err) {
           log.warn('File-backed unlink hook failed', err, { table: tableName, rel })
         }
@@ -238,34 +241,28 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
         log.warn(`Plugin ${pluginId} called search.index() but has no registered content type`)
         return
       }
-      await getSearchAdapter().documents.index(tableName, key, doc)
+      // Durable outbox first (D5): the enqueue IS the write from the
+      // caller's perspective; the pump lands it (immediately when the
+      // engine is up, on retry when it isn't).
+      enqueueIndex(tableName, key, doc)
+      await nudgeOutboxPump()
     },
 
     async remove(key: string): Promise<void> {
       const tableName = registry.pluginTables.get(pluginId)
       if (!tableName) return
-      await getSearchAdapter().documents.remove(tableName, key)
+      enqueueRemove(tableName, key)
+      await nudgeOutboxPump()
     },
 
     async transform(key: string, operations: SearchTransformOp[]): Promise<void> {
       const tableName = registry.pluginTables.get(pluginId)
       if (!tableName) return
-
-      // Build a flat field update from transform ops
-      const fields: Record<string, unknown> = {}
-      for (const op of operations) {
-        if (op.op === '$set' && op.field) {
-          fields[op.field] = op.value
-        }
-        // $inc and $push would need server-side support — for now, treat as $set
-        if (op.op === '$inc' && op.field) {
-          fields[op.field] = op.value
-        }
-        if (op.op === '$push' && op.field) {
-          fields[op.field] = op.value
-        }
-      }
-      await getSearchAdapter().documents.transform(tableName, key, (doc) => ({ ...doc, ...fields }))
+      // The outbox owns transform semantics now: real $set/$inc/$push
+      // (applyTransformOps), merged into any pending write for the key, and
+      // applied read-modify-write at drain time.
+      enqueueTransform(tableName, key, operations)
+      await nudgeOutboxPump()
     },
 
     async query(params: SearchQueryParams): Promise<SearchResponse> {

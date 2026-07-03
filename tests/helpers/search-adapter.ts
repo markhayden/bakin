@@ -1,4 +1,6 @@
 import { mock } from 'bun:test'
+import { configureOutboxPump, stopOutboxPump } from '../../src/core/search-outbox'
+import { resetOutboxForTests } from '../../packages/core/src/search/outbox'
 import type {
   Document,
   IndexItem,
@@ -38,10 +40,16 @@ async function* scanDocuments(items: ScannedDocument[], opts?: ScanOpts): AsyncI
 
 export function installSearchAdapter(adapter: SearchAdapter): void {
   ;(globalThis as AppServicesGlobal).__bakinAppServices = { search: adapter }
+  // ctx.search writes journal through the outbox and land via the pump —
+  // wire it to this adapter (identity mapping) and start each install from
+  // an empty journal so per-test assertions see only their own writes.
+  configureOutboxPump({ adapter, resolveTargets: (logical) => [logical] })
+  resetOutboxForTests()
 }
 
 export function clearSearchAdapter(): void {
   delete (globalThis as AppServicesGlobal).__bakinAppServices
+  stopOutboxPump()
 }
 
 export function createSearchAdapterHarness() {
@@ -98,8 +106,9 @@ export function createSearchAdapterHarness() {
     ensureDocs(table).set(key, doc)
   })
   const documentsBatchIndex = mock(async (table: string, items: IndexItem[]): Promise<{ indexed: number; failed: [] }> => {
-    const target = ensureDocs(table)
-    for (const item of items) target.set(item.key, item.doc)
+    // Batches double-record as per-item index calls: the outbox drains via
+    // batchIndex, and per-item spies keep test assertions readable.
+    for (const item of items) await documentsIndex(table, item.key, item.doc)
     return { indexed: items.length, failed: [] }
   })
   const documentsRemove = mock(async (table: string, key: string): Promise<void> => {
@@ -107,10 +116,10 @@ export function createSearchAdapterHarness() {
   })
   const documentsBatchRemove = mock(async (table: string, keys: string[]): Promise<number> => {
     const target = docs.get(table)
-    if (!target) return 0
     let removed = 0
     for (const key of keys) {
-      if (target.delete(key)) removed++
+      await documentsRemove(table, key)
+      if (target) removed++
     }
     return removed
   })

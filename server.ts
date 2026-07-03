@@ -136,6 +136,14 @@ const eventBus = new BakinEventBus(broadcast)
   // and we trigger a full reindex after plugins are ready.
   const migration = await migrateIfNeeded()
 
+  // Start the durable-outbox pump (D5/F2): every ctx.search write journals
+  // to SQLite then drains through here. Identity mapping until F3 wires the
+  // blue/green registry as the resolver. Resumes whatever the journal holds
+  // from prior boots — this line is the whole "recovery" story for writes.
+  const { startOutboxPump } = await import('./src/core/search-outbox')
+  const { getSearchAdapter } = await import('./src/core/search-registry')
+  startOutboxPump({ adapter: getSearchAdapter(), resolveTargets: (logical) => [logical] })
+
   await bootSearch(migration)
 
   // Start periodic orphan cleanup for search indexes

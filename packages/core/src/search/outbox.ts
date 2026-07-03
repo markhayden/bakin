@@ -415,7 +415,12 @@ export function markInflightForTests(logicalTable: string, key: string): void {
   db().prepare("UPDATE search_outbox SET status = 'inflight' WHERE logical_table = ? AND key = ?").run(logicalTable, key)
 }
 
-/** Test-only: wipe both tables. */
+/**
+ * Test-only: wipe both tables. Closes the handle first — tests rm/recreate
+ * their temp dirs between cases, and a cached handle over a deleted inode
+ * throws disk-I/O errors (the SQLITE_IOERR_VNODE class from CLAUDE.md).
+ */
 export function resetOutboxForTests(): void {
+  store.close()
   db().exec('DELETE FROM search_outbox; DELETE FROM search_acked;')
 }
