@@ -72,7 +72,10 @@ const DENYLIST = [
       // upstream logic. Everything else must speak capabilities only.
       || rel === 'src/core/settings.ts'
       || rel === 'packages/core/src/settings.ts'
-      || rel.startsWith('src/core/onboarding/'),
+      || rel.startsWith('src/core/onboarding/')
+      // Engine-specific dev tooling (same footing as the OpenClaw rig):
+      // the chaos drills deliberately drive a real antfly binary.
+      || rel === 'scripts/dev/search-chaos-drills.ts',
   },
   {
     label: 'raw SQLite access outside adapter packages',
