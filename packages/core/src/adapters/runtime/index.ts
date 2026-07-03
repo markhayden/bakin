@@ -46,6 +46,7 @@ export type {
   DurableApprovalRecord,
   EditApprovalArgs,
   MessageArgs,
+  MessageAttachment,
   MessageResult,
   MessageUsage,
   NotificationArgs,

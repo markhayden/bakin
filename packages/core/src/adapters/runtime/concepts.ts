@@ -60,9 +60,27 @@ export interface RuntimeMessageToolPolicy {
   toolsDeny?: string[]
 }
 
+/** Local file offered to the runtime as model input for one turn. */
+export interface MessageAttachment {
+  path: string
+  mimeType: string
+}
+
 export interface MessageArgs extends RuntimeMessageToolPolicy {
   agentId: string
   content: string
+  /**
+   * Image attachments for the turn (runtime support is declared by
+   * `capabilities().imageInput`; adapters reject unsupported media loudly
+   * rather than silently dropping pixels).
+   */
+  attachments?: MessageAttachment[]
+  /**
+   * Utility turn: ask the runtime to suppress visible session side effects
+   * (control-UI visibility, prompt persistence) where it supports them.
+   * The thread still exists for idempotency; it just stays out of the way.
+   */
+  ephemeral?: boolean
   /**
    * Adapter-neutral durable conversation key. Runtime adapters should map the
    * same agentId + threadId pair to the same provider/runtime session.

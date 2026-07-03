@@ -31,6 +31,7 @@ import type {
 import type { AdapterHealthCheckDefinition, AdapterInitOpts, AdapterLogger } from '@bakin/core/adapters/shared'
 import { RuntimeError, RuntimeTurnError } from '@bakin/core/adapters/runtime'
 import { tryGetMainAgentId } from './main-agent'
+import { buildOpenClawAttachments } from './attachments'
 import { safeFileSize } from './file-utils'
 import { inspectTrajectoryRun, trajectoryFilePathFor, watchTrajectoryForDeath, TrajectoryRecoveredTurn, type TrajectoryUsage } from './trajectory-forensics'
 import { generateDirectImage, isDirectImageProvider, resolveProviderApiKeySource } from '@bakin/core/media'
@@ -143,6 +144,8 @@ interface OpenClawAgentTurnOptions {
   agentId: string
   messages: Array<{ role: string; content: string }>
   sessionKey?: string
+  attachments?: MessageArgs['attachments']
+  ephemeral?: boolean
   toolsMode?: MessageArgs['toolsMode']
   toolsAllow?: string[]
   toolsDeny?: string[]
@@ -417,6 +420,8 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         agentId: args.agentId,
         messages: [{ role: 'user', content: args.content }],
         sessionKey: args.threadId,
+        attachments: args.attachments,
+        ephemeral: args.ephemeral,
         toolsMode: args.toolsMode,
         toolsAllow: args.toolsAllow,
         toolsDeny: args.toolsDeny,
@@ -438,6 +443,8 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       agentId: args.agentId,
       messages: [{ role: 'user', content: args.content }],
       sessionKey: args.threadId,
+      attachments: args.attachments,
+      ephemeral: args.ephemeral,
       toolsMode: args.toolsMode,
       toolsAllow: args.toolsAllow,
       toolsDeny: args.toolsDeny,
@@ -1220,6 +1227,18 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     // when unset so the runtime uses the agent's configured model/default.
     if (opts.model) params.model = opts.model
     if (opts.thinking) params.thinking = opts.thinking
+    // Image attachments → the gateway's native `attachments` param (base64
+    // inline; the builder enforces image/* + the 2 MB guaranteed-inline
+    // ceiling and throws loudly rather than let pixels silently degrade).
+    if (opts.attachments?.length) params.attachments = buildOpenClawAttachments(opts.attachments)
+    // Utility turns: runtime-native ephemeral controls. Available to
+    // backend-mode clients (which this connection is) — hides the run from
+    // the control UI and skips prompt persistence; the deterministic
+    // session (idempotency) is unaffected.
+    if (opts.ephemeral) {
+      params.sessionEffects = 'internal'
+      params.suppressPromptPersistence = true
+    }
 
     // Capture where the trajectory ends BEFORE the turn starts so any
     // post-mortem only sees events from this attempt (the file accrues one
