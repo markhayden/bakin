@@ -2,8 +2,8 @@
  * Enrichment engine resolution ladder (spec: enrichment-runtime-fallback
  * §1/§4): auto = direct key → runtime-if-capable → skip-with-composed-
  * reason; pinned providers never fall through; runtime path is capability-
- * gated with honest reasons. P1: the runtime ENGINE is a stub — capability
- * satisfied still resolves to a reasoned unavailability.
+ * gated with honest reasons and resolves to the runtime engine bound to
+ * the configured agent (default 'enrich').
  */
 import { describe, it, expect, afterAll, beforeEach, mock } from 'bun:test'
 import { join } from 'path'
@@ -85,15 +85,24 @@ describe('resolveEnrichmentEngine ladder', () => {
     }
   })
 
-  it('auto + no key + capable runtime → P1 stub reason (engine lands in P2)', async () => {
+  it('auto + no key + capable runtime → runtime engine on the default agent', async () => {
     const resolution = await resolveEnrichmentEngine(
       {}, { kind: 'image' }, { runtime: runtimeWith({ imageInput: true, audioInput: false }) },
     )
-    expect(resolution.ok).toBe(false)
-    if (!resolution.ok) {
-      expect(resolution.reason).toContain('no vision-capable')
-      expect(resolution.reason).toContain('not yet implemented (P2)')
+    expect(resolution.ok).toBe(true)
+    if (resolution.ok) {
+      expect(resolution.engine.name).toBe('runtime')
+      expect(resolution.engine.modelId).toBe('runtime:enrich')
     }
+  })
+
+  it('enrichmentAgent setting picks the runtime agent', async () => {
+    const resolution = await resolveEnrichmentEngine(
+      { enrichmentProvider: 'runtime', enrichmentAgent: 'vision-bot' }, { kind: 'image' },
+      { runtime: runtimeWith({ imageInput: true, audioInput: false }) },
+    )
+    expect(resolution.ok).toBe(true)
+    if (resolution.ok) expect(resolution.engine.modelId).toBe('runtime:vision-bot')
   })
 
   it('auto + no key + text-only runtime → composed skip reason', async () => {
@@ -103,7 +112,7 @@ describe('resolveEnrichmentEngine ladder', () => {
     expect(resolution.ok).toBe(false)
     if (!resolution.ok) {
       expect(resolution.reason).toContain('no vision-capable enrichment model configured')
-      expect(resolution.reason).toContain('runtime unavailable: runtime model has no image input')
+      expect(resolution.reason).toContain("runtime unavailable: agent 'enrich' has no image input")
     }
   })
 
@@ -126,7 +135,7 @@ describe('resolveEnrichmentEngine ladder', () => {
       { runtime: runtimeWith({ imageInput: false, audioInput: false }) },
     )
     expect(resolution.ok).toBe(false)
-    if (!resolution.ok) expect(resolution.reason).toBe('runtime unavailable: runtime model has no image input')
+    if (!resolution.ok) expect(resolution.reason).toBe("runtime unavailable: agent 'enrich' has no image input")
   })
 
   it('disabled settings short-circuit everything', async () => {
@@ -154,6 +163,6 @@ describe('runtimeEngineAvailability capability gating', () => {
     expect(await runtimeEngineAvailability(imageOnly, { kind: 'audio' }))
       .toEqual({ ok: false, reason: 'runtime model has no audio input' })
     const doc = await runtimeEngineAvailability(runtimeWith({ imageInput: false, audioInput: false }), { kind: 'document' })
-    expect(doc.ok ? '' : doc.reason).toContain('not yet implemented (P2)')
+    expect(doc).toEqual({ ok: true })
   })
 })

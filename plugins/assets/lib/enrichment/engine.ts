@@ -15,9 +15,9 @@
  */
 import type { VisionEnrichmentResult } from '@bakin/core/media'
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
-import { resolveEnrichmentModel, type EnrichmentSettings } from './providers'
+import { resolveEnrichmentModel, DEFAULT_ENRICHMENT_AGENT, type EnrichmentSettings } from './providers'
 import { createDirectEngine } from './direct'
-import { runtimeEngineAvailability } from './runtime'
+import { createRuntimeEngine, runtimeEngineAvailability } from './runtime'
 
 export interface EnrichmentJobInput {
   kind: 'image' | 'audio' | 'document'
@@ -25,6 +25,9 @@ export interface EnrichmentJobInput {
   mediaMime?: string
   extractedText?: string
   existingDescription?: string
+  /** Stable job identity (`<assetId>:v<version>`) — the runtime engine's
+   *  deterministic thread key, so idempotent replays share a thread. */
+  jobKey?: string
 }
 
 export interface EnrichmentEngine {
@@ -53,11 +56,13 @@ export async function resolveEnrichmentEngine(
   const needsAudio = input.kind === 'audio'
   const provider = settings.enrichmentProvider ?? 'auto'
 
+  const agentId = settings.enrichmentAgent?.trim() || DEFAULT_ENRICHMENT_AGENT
+
   if (provider === 'runtime') {
-    const availability = await runtimeEngineAvailability(deps.runtime, input)
-    return availability.ok
-      ? { ok: false, reason: 'runtime engine resolution incomplete' } // replaced in P2 by the engine
-      : { ok: false, reason: `runtime unavailable: ${availability.reason}` }
+    const availability = await runtimeEngineAvailability(deps.runtime, input, { agentId })
+    return availability.ok && deps.runtime
+      ? { ok: true, engine: createRuntimeEngine(deps.runtime, agentId) }
+      : { ok: false, reason: `runtime unavailable: ${availability.ok ? 'no runtime adapter available' : availability.reason}` }
   }
 
   const direct = resolveEnrichmentModel(settings, { needsAudio })
@@ -73,6 +78,9 @@ export async function resolveEnrichmentEngine(
     return { ok: false, reason: `${directReason} (provider pinned to ${provider})` }
   }
 
-  const availability = await runtimeEngineAvailability(deps.runtime, input)
-  return { ok: false, reason: `${directReason}; runtime unavailable: ${availability.ok ? 'engine resolution incomplete' : availability.reason}` }
+  const availability = await runtimeEngineAvailability(deps.runtime, input, { agentId })
+  if (availability.ok && deps.runtime) {
+    return { ok: true, engine: createRuntimeEngine(deps.runtime, agentId) }
+  }
+  return { ok: false, reason: `${directReason}; runtime unavailable: ${availability.ok ? 'no runtime adapter available' : availability.reason}` }
 }

@@ -177,6 +177,7 @@ async function processJob(job: EnrichmentJob): Promise<void> {
 
     const callProvider = () => engine.run({
           kind: kind.kind,
+          jobKey: `${job.assetId}:v${manifest.currentVersion}`,
           ...(kind.kind !== 'document' ? { mediaPath: file.absPath, mediaMime: kind.mime } : {}),
           ...(extractedText ? { extractedText } : {}),
           ...(manifest.description ? { existingDescription: manifest.description } : {}),
@@ -214,7 +215,14 @@ async function processJob(job: EnrichmentJob): Promise<void> {
       agent: null,
       durationMs: Date.now() - start,
       status: status === 'failed' ? 'error' : 'ok',
-      meta: { outcome: status, ...(model ? { model, engine: model.startsWith('runtime:') ? 'runtime' : 'direct' } : {}) },
+      meta: {
+        outcome: status,
+        ...(model ? {
+          model,
+          engine: model.startsWith('runtime:') ? 'runtime' : 'direct',
+          ...(model.startsWith('runtime:') ? { agent: model.slice('runtime:'.length) } : {}),
+        } : {}),
+      },
     })
   }
 }
