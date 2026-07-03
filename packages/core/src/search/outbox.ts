@@ -21,7 +21,7 @@ import { createHash } from 'crypto'
 import { openNamedDb, type Db } from '../storage/db'
 import { getContentDir } from '../content-dir'
 import { createLogger } from '../logger'
-import { isEngineUnavailable } from '../adapters/search/errors'
+import { isEngineUnavailable, isMissingTable } from '../adapters/search/errors'
 import type { SearchAdapter, Document } from '../adapters/search'
 
 const log = createLogger('search-outbox')
@@ -315,7 +315,7 @@ export async function drainOnce(target: OutboxDrainTarget, opts?: { ignoreBackof
       }
       for (const row of indexRows) {
         if (batchError) {
-          if (isEngineUnavailable(batchError)) {
+          if (isEngineUnavailable(batchError) || isMissingTable(batchError)) {
             markTransient(row, (batchError as Error).message)
             report.failedTransient++
           } else {
@@ -343,7 +343,7 @@ export async function drainOnce(target: OutboxDrainTarget, opts?: { ignoreBackof
         }
       } catch (err) {
         for (const row of removeRows) {
-          if (isEngineUnavailable(err)) {
+          if (isEngineUnavailable(err) || isMissingTable(err)) {
             markTransient(row, (err as Error).message)
             report.failedTransient++
           } else {
@@ -363,7 +363,7 @@ export async function drainOnce(target: OutboxDrainTarget, opts?: { ignoreBackof
         ackSuccess(row)
         report.processed++
       } catch (err) {
-        if (isEngineUnavailable(err)) {
+        if (isEngineUnavailable(err) || isMissingTable(err)) {
           markTransient(row, (err as Error).message)
           report.failedTransient++
         } else {

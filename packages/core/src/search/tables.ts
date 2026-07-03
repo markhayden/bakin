@@ -185,10 +185,16 @@ export function listTableStates(): TableState[] {
 }
 
 async function createTableTolerant(adapter: SearchAdapter, physical: string, config: TableConfig): Promise<void> {
+  // Exists-check FIRST: re-POSTing a create onto an existing table is not
+  // benign on the live engine (duplicate creates with embeddings indexes
+  // hang/500 and poison the retry cycle — observed at the rc.17 cutover).
+  // One cheap GET; the matching-row fast path above this never gets here.
+  const existing = await adapter.tables.stats(physical).catch(() => null)
+  if (existing) return
   try {
     await adapter.tables.create(physical, config)
   } catch (err) {
-    // Resume path: the green may already exist from before a crash/park.
+    // Racing creator (another ensure/resume) — tolerate if it now exists.
     const stats = await adapter.tables.stats(physical).catch(() => null)
     if (!stats) throw err
   }

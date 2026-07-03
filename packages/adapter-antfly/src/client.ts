@@ -100,7 +100,7 @@ export class AntflySearchClient implements SearchAdapter {
     }
     if (response.status >= 400) {
       const text = await response.text().catch(() => '')
-      throw new SearchRequestRejectedError(`antfly rejected ${method} ${path} (${response.status}): ${text.slice(0, 300)}`)
+      throw new SearchRequestRejectedError(`antfly rejected ${method} ${path} (${response.status}): ${text.slice(0, 300)}`, undefined, response.status)
     }
     return response
   }

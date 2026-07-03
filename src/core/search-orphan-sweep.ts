@@ -39,6 +39,12 @@ export async function sweepTableOrphans(
   const search = getAppServices().search
   if (!await search.available()) return stats
 
+  // A type whose registry row hasn't been ensured yet has no physical
+  // table — scanning the logical name 404s. Skip quietly; the sweep runs
+  // hourly and catches it next round.
+  const { tableStatus } = await import('@bakin/core/search/tables')
+  if (!tableStatus(tableName)) return stats
+
   const physical = resolvePhysicalTable(tableName)
   const orphanKeys: string[] = []
   for await (const { key } of search.scan(physical)) {

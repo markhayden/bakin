@@ -23,11 +23,21 @@ export class SearchEngineUnavailableError extends Error {
  * toward quarantine.
  */
 export class SearchRequestRejectedError extends Error {
-  constructor(message: string, cause?: unknown) {
+  /** HTTP status when known — 404 (missing table) retries as transient. */
+  readonly status?: number
+  constructor(message: string, cause?: unknown, status?: number) {
     super(message)
     this.name = 'SearchRequestRejectedError'
     this.cause = cause
+    this.status = status
   }
+}
+
+/** Missing-table rejections are timing, not poison: the blue/green ensure
+ *  or a resumed migration creates the table momentarily. */
+export function isMissingTable(err: unknown): boolean {
+  return err instanceof Error && err.name === 'SearchRequestRejectedError'
+    && (err as SearchRequestRejectedError).status === 404
 }
 
 /** Type-based classification that survives module-instance duplication. */
