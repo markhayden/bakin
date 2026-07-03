@@ -17,7 +17,7 @@
 import { VisionEnrichmentResultSchema, type VisionEnrichmentResult } from '@bakin/core/media'
 import type { AgentRuntimeAdapter, MessageAttachment } from '@bakin/core/adapters/runtime'
 import type { EnrichmentEngine, EnrichmentJobInput } from './engine'
-import { prepareImageAttachment } from './downscale'
+import { cleanupPreparedAttachment, prepareImageAttachment, type PreparedAttachment } from './downscale'
 
 export type RuntimeAvailability =
   | { ok: true }
@@ -135,13 +135,14 @@ export function createRuntimeEngine(runtime: AgentRuntimeAdapter, agentId: strin
     async run(input: EnrichmentJobInput): Promise<VisionEnrichmentResult> {
       const threadId = `enrich:${input.jobKey ?? 'adhoc'}`
       let attachments: MessageAttachment[] | undefined
+      let prepared: PreparedAttachment | null = null
       if (input.kind !== 'document' && input.mediaPath) {
         // Oversized images are downscaled to a temp JPEG BEFORE the send —
         // the gateway's 2MB inline cap otherwise silently degrades them
         // and the model never sees pixels (bakin#583 territory).
-        const prepared = input.kind === 'image'
+        prepared = input.kind === 'image'
           ? await prepareImageAttachment(input.mediaPath, input.mediaMime ?? 'application/octet-stream')
-          : { path: input.mediaPath, mimeType: input.mediaMime ?? 'application/octet-stream' }
+          : { path: input.mediaPath, mimeType: input.mediaMime ?? 'application/octet-stream', downscaled: false }
         attachments = [{ path: prepared.path, mimeType: prepared.mimeType }]
       }
 
@@ -153,16 +154,22 @@ export function createRuntimeEngine(runtime: AgentRuntimeAdapter, agentId: strin
         ...(attachments ? { attachments } : {}),
       })
 
-      const first = await send(buildPrompt(input))
-      let outcome = parseReply(first.content)
-      if (outcome.ok) return outcome.result
-      if (outcome.noImage) throw new Error(outcome.reason)
+      try {
+        const first = await send(buildPrompt(input))
+        let outcome = parseReply(first.content)
+        if (outcome.ok) return outcome.result
+        if (outcome.noImage) throw new Error(outcome.reason)
 
-      // ONE corrective re-ask on the same thread, then honest failure.
-      const second = await send(CORRECTIVE_REASK)
-      outcome = parseReply(second.content)
-      if (outcome.ok) return outcome.result
-      throw new Error(outcome.reason)
+        // ONE corrective re-ask on the same thread, then honest failure.
+        const second = await send(CORRECTIVE_REASK)
+        outcome = parseReply(second.content)
+        if (outcome.ok) return outcome.result
+        throw new Error(outcome.reason)
+      } finally {
+        // The re-ask reuses the downscaled file, so cleanup happens only
+        // after the LAST send — including every throw path above.
+        if (prepared) cleanupPreparedAttachment(prepared)
+      }
     },
   }
 }

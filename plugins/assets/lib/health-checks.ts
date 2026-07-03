@@ -82,20 +82,22 @@ export interface EnrichmentCoverage {
   skipped: number
 }
 
-/** Manifest-derived coverage counts — the health tile's "X/Y enriched". */
+/**
+ * Coverage counts for the health tile's "X/Y enriched" — computed straight
+ * from summaries (the summary's `enrichment` field already folds in the
+ * stale-version distinction; no per-asset manifest re-read on the poll path).
+ */
 export function enrichmentCoverage(): EnrichmentCoverage {
   const summaries = listAssets()
   const coverage: EnrichmentCoverage = { total: summaries.length, enriched: 0, missing: 0, stale: 0, failed: 0, skipped: 0 }
   for (const summary of summaries) {
-    const manifest = getAsset(summary.assetId)
-    if (!manifest) continue
-    const enrichment = manifest.enrichment
-    if (!enrichment) { coverage.missing++; continue }
-    if (enrichment.status === 'failed') { coverage.failed++; continue }
-    if (enrichment.status === 'skipped') { coverage.skipped++; continue }
-    if (enrichment.status === 'done' && (enrichment.forVersion ?? 0) < manifest.currentVersion) { coverage.stale++; continue }
-    if (enrichment.status === 'done') coverage.enriched++
-    else coverage.missing++ // pending that never completed
+    switch (summary.enrichment) {
+      case 'done': coverage.enriched++; break
+      case 'stale': coverage.stale++; break
+      case 'failed': coverage.failed++; break
+      case 'skipped': coverage.skipped++; break
+      default: coverage.missing++ // 'none' + pending that never completed
+    }
   }
   return coverage
 }

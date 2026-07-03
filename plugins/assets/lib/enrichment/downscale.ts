@@ -5,9 +5,9 @@
  * downscaled to a temp JPEG first. ~1568px max dimension keeps OCR-able
  * detail while landing far under the cap for photographic content.
  */
-import { statSync, mkdtempSync } from 'fs'
+import { statSync, mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { loadSharp } from '../asset-media'
 
 export const INLINE_ATTACHMENT_LIMIT_BYTES = 2_000_000
@@ -44,9 +44,20 @@ export async function prepareImageAttachment(path: string, mimeType: string): Pr
     .toFile(outPath)
   const outSize = statSync(outPath).size
   if (outSize > INLINE_ATTACHMENT_LIMIT_BYTES) {
+    rmSync(outDir, { recursive: true, force: true })
     throw new Error(
       `attachment ${path}: still ${outSize} bytes after downscaling to ${MAX_DIMENSION}px — refusing to send (would silently degrade upstream).`,
     )
   }
   return { path: outPath, mimeType: 'image/jpeg', downscaled: true }
+}
+
+/**
+ * Remove the temp dir a downscale created. Callers own the lifetime — the
+ * engine calls this after its LAST send (the corrective re-ask reuses the
+ * file). No-op for originals.
+ */
+export function cleanupPreparedAttachment(prepared: PreparedAttachment): void {
+  if (!prepared.downscaled) return
+  rmSync(dirname(prepared.path), { recursive: true, force: true })
 }

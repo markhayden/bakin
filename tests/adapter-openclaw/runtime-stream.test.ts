@@ -102,9 +102,11 @@ describe('OpenClaw runtime Gateway chat', () => {
       deliver: false,
       timeout: 600,
     })
-    // Threaded sends use the stable per-attempt key (same threadId → same
-    // key → gateway-side idempotency for transport retries of one turn).
-    expect(agentRequest?.params.idempotencyKey).toBe('bakin:messaging:a50b420e:pixel')
+    // Threaded sends use a thread-scoped key with a per-turn content hash
+    // (same turn → same key → idempotent transport retries; a DIFFERENT
+    // message on the same thread gets a different key — gateway dedupe must
+    // never replay turn 1's payload to turn 2).
+    expect(String(agentRequest?.params.idempotencyKey)).toStartWith('bakin:messaging:a50b420e:pixel:')
     expect(agentRequest?.params).not.toHaveProperty('expectFinal')
     expect(agentRequest?.params).not.toHaveProperty('timeoutMs')
     expect(agentRequest?.params.sessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)

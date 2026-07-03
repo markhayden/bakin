@@ -201,28 +201,43 @@ async function processJob(job: EnrichmentJob): Promise<void> {
           ...(manifest.description ? { existingDescription: manifest.description } : {}),
         })
 
+    // Billed call first, bounded retries; the manifest write retries
+    // SEPARATELY so an apply hiccup can never re-bill a successful call
+    // (force bypasses the dedup cache, so its retries would each re-bill).
+    let result: VisionEnrichmentResult | null = null
     let lastError: unknown
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS && !result; attempt++) {
       try {
-        // force = an explicit re-bill request — it bypasses the dedup cache.
-        const result = job.force ? await callProvider() : await callRegistry.run(signature, callProvider)
-        await applyEnrichmentResult(job.assetId, manifest.currentVersion, engine.modelId, result)
-        counters.processed++
-        const caption = (result.caption ?? result.summary ?? '').slice(0, 120)
-        notifyActivity('asset.enriched', actingAgent(engine.modelId), {
-          message: `Enriched ${job.assetId}${caption ? ` — “${caption}”` : ''}`,
-          assetId: job.assetId,
-          engine: engine.modelId,
-          caption,
-          remaining: pending.size,
-        })
-        return
+        result = job.force ? await callProvider() : await callRegistry.run(signature, callProvider)
       } catch (err) {
         lastError = err
         log.warn('enrichment attempt failed', {
           assetId: job.assetId, attempt, model: engine.modelId,
           err: err instanceof Error ? err.message : String(err),
         })
+      }
+    }
+    if (result) {
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        try {
+          await applyEnrichmentResult(job.assetId, manifest.currentVersion, engine.modelId, result)
+          counters.processed++
+          const caption = (result.caption ?? result.summary ?? '').slice(0, 120)
+          notifyActivity('asset.enriched', actingAgent(engine.modelId), {
+            message: `Enriched ${job.assetId}${caption ? ` — “${caption}”` : ''}`,
+            assetId: job.assetId,
+            engine: engine.modelId,
+            caption,
+            remaining: pending.size,
+          })
+          return
+        } catch (err) {
+          lastError = err
+          log.warn('enrichment apply failed (billed result held — no re-bill)', {
+            assetId: job.assetId, attempt, model: engine.modelId,
+            err: err instanceof Error ? err.message : String(err),
+          })
+        }
       }
     }
     status = 'failed'

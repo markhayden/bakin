@@ -1,7 +1,7 @@
 import { accessSync, constants, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
 import { dirname, join, resolve, sep } from 'path'
 import { execFile } from 'child_process'
-import { randomUUID } from 'crypto'
+import { createHash, randomUUID } from 'crypto'
 import { promisify } from 'util'
 import type {
   AgentRuntimeAdapter,
@@ -867,14 +867,24 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       // The gateway accepts both `provider/model` and bare model ids
       // (agent configs typically store the bare form while the catalog
       // keys entries as provider/model) — match either, like it does.
+      // Ambiguity is FALSE: when two providers share a bare id (mirror
+      // catalogs), we can't know which entry the gateway's own resolver
+      // picks, and a wrong guess declares a capability the attachment gate
+      // then silently rejects (bakin#583 class). Bare matches count only
+      // when exactly one entry has that bare id.
       const bare = (id: string) => (id.includes('/') ? id.slice(id.indexOf('/') + 1) : id)
       const wanted = agent?.model
+      const bareMatches = wanted ? models.filter((m) => bare(m.id) === bare(wanted)) : []
       const entry = wanted
-        ? models.find((m) => m.id === wanted) ?? models.find((m) => bare(m.id) === bare(wanted))
+        ? models.find((m) => m.id === wanted) ?? (bareMatches.length === 1 ? bareMatches[0] : undefined)
         : models.find((m) => m.tags?.includes('default'))
       if (entry?.input) {
         const inputs = entry.input.toLowerCase().split(/[+,\s]+/).filter(Boolean)
-        value = { imageInput: inputs.includes('image'), audioInput: inputs.includes('audio') }
+        // audioInput stays false regardless of the model: capability = model
+        // ∧ transport, and THIS adapter's attachment transport is image-only
+        // (buildOpenClawAttachments rejects non-image mimes). Flip when the
+        // gateway grows an audio attachment path.
+        value = { imageInput: inputs.includes('image'), audioInput: false }
       }
     } catch (err) {
       this.logger.warn('runtime capabilities probe failed — reporting none', {
@@ -1227,15 +1237,22 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
   private async runOpenClawAgentGateway(opts: OpenClawAgentTurnOptions): Promise<OpenClawTurnResult> {
     const cliSessionId = opts.sessionKey ? openClawCliSessionId(opts.agentId, opts.sessionKey) : null
+    const prompt = messagesToOpenClawPrompt(opts.messages)
     const params: Record<string, unknown> = {
       agentId: opts.agentId,
-      message: messagesToOpenClawPrompt(opts.messages),
+      message: prompt,
       deliver: false,
       timeout: OPENCLAW_AGENT_TIMEOUT_SECONDS,
-      // Stable per-attempt key: a transport retry of the SAME logical turn
-      // (same threadId) is idempotent at the gateway. Unthreaded sends keep
-      // a random key — each is its own logical turn.
-      idempotencyKey: opts.sessionKey ? `bakin:${opts.sessionKey}` : `bakin-${randomUUID()}`,
+      // Per-turn key: the gateway DEDUPES on this for ~5 minutes and replays
+      // the cached payload, so two DIFFERENT logical turns on one thread must
+      // carry different keys (the enrichment corrective re-ask was the first
+      // multi-message-per-thread caller — a thread-only key silently replayed
+      // the first turn's reply to the re-ask). Hashing the rendered prompt
+      // keeps transport retries idempotent: same turn → same content → same
+      // key. Unthreaded sends keep a random key — each is its own turn.
+      idempotencyKey: opts.sessionKey
+        ? `bakin:${opts.sessionKey}:${createHash('sha256').update(prompt).digest('hex').slice(0, 12)}`
+        : `bakin-${randomUUID()}`,
     }
     applyRuntimeMessageToolPolicy(params, opts)
     if (cliSessionId) params.sessionId = cliSessionId

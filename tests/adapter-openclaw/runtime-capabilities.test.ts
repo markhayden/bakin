@@ -134,12 +134,29 @@ describe('OpenClaw runtime capabilities', () => {
     expect(caps).toEqual({ imageInput: false, audioInput: false })
   })
 
-  it('parses audio-inclusive declarations', async () => {
+  it('audio stays FALSE even for audio-declared models — the attachment transport is image-only', async () => {
+    // capability = model ∧ transport: buildOpenClawAttachments rejects
+    // non-image mimes, so an audioInput:true here would approve jobs the
+    // send is guaranteed to reject (failed assets, not skipped). Flip this
+    // expectation when the gateway grows an audio attachment path.
     writeModelsBinary([
       { key: 'openai/gpt-5.5', input: 'text+image+audio', available: true },
     ])
     const caps = await makeAdapter().capabilities!()
-    expect(caps).toEqual({ imageInput: true, audioInput: true })
+    expect(caps).toEqual({ imageInput: true, audioInput: false })
+  })
+
+  it('an AMBIGUOUS bare id (two providers share it) reports all-false, never first-match', async () => {
+    // Mirror catalogs frequently mis-declare capabilities (bakin#583);
+    // guessing the wrong twin declares image input the gateway gate then
+    // silently rejects. Ambiguity = false.
+    mockAgents = [{ id: 'enrich', name: 'Enrich', model: { primary: 'claude-sonnet-4-6' } }]
+    writeModelsBinary([
+      { key: 'openrouter/claude-sonnet-4-6', input: 'text', available: true },
+      { key: 'anthropic/claude-sonnet-4-6', input: 'text+image', available: true },
+    ])
+    const caps = await makeAdapter().capabilities!({ agentId: 'enrich' })
+    expect(caps).toEqual({ imageInput: false, audioInput: false })
   })
 
   it('matches a bare agent model against a provider-prefixed catalog key (live enrich-agent shape)', async () => {

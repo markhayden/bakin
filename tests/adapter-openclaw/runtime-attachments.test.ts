@@ -111,8 +111,19 @@ describe('messaging.send → gateway agent params', () => {
     expect(attachments[0].mimeType).toBe('image/png')
     expect(attachments[0].fileName).toBe('red.png')
     expect(typeof attachments[0].content).toBe('string')
-    // idempotent thread key preserved
-    expect(params.idempotencyKey).toBe('bakin:enrich:20260703-x:v1')
+    // thread-scoped key with a per-turn content discriminator
+    expect(String(params.idempotencyKey)).toStartWith('bakin:enrich:20260703-x:v1:')
+  })
+
+  it('distinct messages on ONE thread carry distinct idempotency keys (gateway dedupe must not swallow the corrective re-ask)', async () => {
+    const { adapter, captured } = adapterWithCapturedGateway()
+    const base = { agentId: 'main', threadId: 'enrich:as-1:v1', ephemeral: true as const }
+    await adapter.messaging.send({ ...base, content: 'Describe this image as JSON.' })
+    await adapter.messaging.send({ ...base, content: 'Reply with only the JSON object, nothing else.' })
+    await adapter.messaging.send({ ...base, content: 'Describe this image as JSON.' })
+    const keys = captured.map((c) => String(c.params.idempotencyKey))
+    expect(keys[0]).not.toBe(keys[1]) // different turn → different key → a real second turn
+    expect(keys[0]).toBe(keys[2])     // same turn re-sent → same key → transport retry stays idempotent
   })
 
   it('omits attachment/ephemeral params entirely on plain sends', async () => {
