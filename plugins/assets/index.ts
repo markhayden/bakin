@@ -29,7 +29,7 @@ import {
 import { listAssetIdsByTask, taskAssetIndexRemove, taskAssetIndexUpsert } from './lib/task-asset-index'
 import { versionedAssetPath, buildVersionedAssetSearchDoc } from './lib/search-doc'
 import { ASSET_TYPES, type AssetType } from './lib/constants'
-import { ingestInboxFile, ingestInboxDir } from './lib/ingest-inbox'
+import { noteUnmanagedSync, noteUnmanagedUnlink, setUnmanagedEmitter } from './lib/unmanaged-tracker'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
 import { extractAssetContent } from './lib/content-extractor'
@@ -359,24 +359,17 @@ const assetsPlugin: BakinPlugin = definePlugin({
           return
         }
 
-        // Intercept inbox drops: canonicalize into a versioned asset under
-        // store/. The manifest write then re-enters onSync via the versioned
-        // branch above to index it.
-        if (relativePath.startsWith('assets/inbox/')) {
-          const result = await ingestInboxFile(relativePath)
-          if (result.ok) {
-            ctx.activity.log('user', `Ingested "${result.assetId}" from inbox`)
-            ctx.activity.audit('asset.ingested', 'user', { assetId: result.assetId })
-          } else if (result.error) {
-            log.warn('Inbox ingestion failed', { path: relativePath, error: result.error })
-          }
-        }
-        // Anything else under assets/ (loose files, non-manifest dir contents)
-        // is not an indexed unit — ignore.
+        // ONE RULE (D7): a raw file on disk NEVER becomes an asset without
+        // an explicit import action. Unmanaged appearances (inbox drops,
+        // loose files) are only NOTED — the badge/Import view surface them;
+        // the user (or CLI/MCP) imports.
+        noteUnmanagedSync(relativePath)
       },
       onUnlink: async (relativePath: string) => {
         if (!relativePath.startsWith('assets/')) return
         if (relativePath.includes('.trash/')) return
+
+        noteUnmanagedUnlink(relativePath)
 
         // Only a manifest unlink (asset dir trashed/removed) removes the row.
         const versioned = versionedAssetPath(relativePath)
@@ -484,15 +477,9 @@ const assetsPlugin: BakinPlugin = definePlugin({
       return { purged }
     }, { label: 'Purge task clipboard assets.', summary: 'Deletes clipboard-sourced assets associated with a completed task when that cleanup setting is enabled. Use it from task completion flows that want asset cleanup to stay centralized.', hookKind: 'rpc' })
 
-    // Drain the inbox first — anything a user dropped while the watcher
-    // wasn't running gets canonicalized into store/ before the index is
-    // built, so those assets appear in the first listing.
-    ingestInboxDir()
-      .then(ingested => {
-        const succeeded = ingested.filter(r => r.ok)
-        if (succeeded.length > 0) log.info('Ingested inbox drops on startup', { count: succeeded.length })
-      })
-      .catch(err => log.warn('Inbox startup scan failed', err))
+    // No boot drain, no auto-ingest (D7): unmanaged files are surfaced by
+    // the live tracker + on-demand scans and imported explicitly.
+    setUnmanagedEmitter((count) => ctx.events.emit('asset.unmanaged', { count }))
 
     // ─── MCP Exec Tools ────────────────────────────────────────────────
 

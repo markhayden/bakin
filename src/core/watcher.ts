@@ -228,7 +228,10 @@ function handleFileEvent(deps: WatcherDeps, fullPath: string, event: string): vo
  * bug), these rewrites re-embedded for real.
  */
 function sweepOfflineDrops(deps: WatcherDeps): void {
-  for (const dir of ['inbox', join('assets', 'inbox')]) {
+  // Content-root inbox/*.json only: agent completion reports dropped while
+  // Bakin was down (dispatch-owned). assets/inbox is NOT swept — asset
+  // drops never auto-ingest (D7); the Import view scans on demand.
+  for (const dir of ['inbox']) {
     const full = join(deps.contentDir, dir)
     let entries: string[]
     try {

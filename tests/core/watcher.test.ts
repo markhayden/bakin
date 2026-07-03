@@ -135,9 +135,10 @@ describe('watcher', () => {
       expect(opts.ignoreInitial).toBe(true)
     })
 
-    it('sweeps offline drops at start: asset inbox + completion reports', async () => {
-      // The ONLY two paths that legitimately depended on initial-scan adds:
-      // files dropped while Bakin was down.
+    it('sweeps ONLY completion reports at start — asset drops never auto-ingest (D7)', async () => {
+      // The one path that legitimately depends on an offline sweep: agent
+      // completion reports dropped while Bakin was down. Asset drops are
+      // the Import view's business — no boot hook, no auto-ingest.
       mkdirSync(join(tempDir, 'inbox'), { recursive: true })
       mkdirSync(join(tempDir, 'assets', 'inbox'), { recursive: true })
       // Pre-existing indexed content that must NOT fire hooks at boot:
@@ -155,8 +156,8 @@ describe('watcher', () => {
       await new Promise((r) => setTimeout(r, 20))
 
       expect(seen).toContain(join('inbox', 'report.json'))
-      expect(seen).toContain(join('assets', 'inbox', 'dropped.png'))
-      // The stored manifest is reconcile territory — no boot hook.
+      expect(seen).not.toContain(join('assets', 'inbox', 'dropped.png'))
+      // The stored manifest fires no boot hook either.
       expect(seen.some((p) => p.includes('manifest.json'))).toBe(false)
       expect(onInboxFile).toHaveBeenCalledTimes(1)
       unregister()
