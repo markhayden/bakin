@@ -13,6 +13,7 @@ import {
   handleVersionedList, handleVersionedGet, handleVersionedPromote,
   handleVersionedDeleteVersion, handleVersionedDeleteAsset, handleVersionedExport,
   handleVersionedRelink, handleVersionedAddVersion, handleVersionedUpdateMetadata,
+  handleVersionedUpdateEnrichment,
   handleTrashList, handleTrashRestore, handleTrashPermanentDelete, handleTrashEmpty,
 } from './routes/versioned'
 import { handleTagsRename, handleTagsRemove, handleTagsApply } from './routes/tags'
@@ -140,6 +141,18 @@ const routes = [
     handler: async (req, ctx) => {
       const res = await handleVersionedUpdateMetadata(req)
       if (res.ok) ctx.activity.audit('asset.metadata_updated', 'user')
+      return res
+    },
+  }),
+  defineRoute({
+    path: '/versioned/:assetId/enrichment',
+    method: 'PATCH',
+    summary: 'Manually edit derived enrichment (locks fields against machine overwrites)',
+    params: z.object({ assetId: z.string().min(1) }),
+    responses: { 200: okPassthrough, 400: errorResponse, 404: errorResponse },
+    handler: async (req, ctx) => {
+      const res = await handleVersionedUpdateEnrichment(req)
+      if (res.ok) ctx.activity.audit('asset.enrichment_edited', 'user')
       return res
     },
   }),

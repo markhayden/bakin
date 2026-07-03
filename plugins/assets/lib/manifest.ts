@@ -76,6 +76,32 @@ export const AssetSourceSchema = z.object({
   path: z.string().nullable(),
 })
 
+export const ASSET_ENRICHMENT_STATUSES = ['pending', 'done', 'failed', 'skipped'] as const
+
+/**
+ * Derived metadata a vision model produced from the asset ITSELF (caption,
+ * OCR text, transcript, …). Lives in the manifest — durable, user-editable,
+ * survives any index rebuild without re-billing (spec D8). Absent fields
+ * mean "not derived"; nothing here is ever fabricated.
+ */
+export const AssetEnrichmentSchema = z.object({
+  status: z.enum(ASSET_ENRICHMENT_STATUSES),
+  caption: z.string().optional(),
+  ocrText: z.string().optional(),
+  suggestedTags: z.array(z.string()).optional(),
+  summary: z.string().optional(),
+  transcript: z.string().optional(),
+  /** provider/model that produced it (e.g. anthropic/claude-haiku-4-5). */
+  model: z.string().optional(),
+  at: z.string().optional(),
+  /** The version the enrichment describes; re-enrich when it trails currentVersion. */
+  forVersion: z.number().int().positive().optional(),
+  /** Last failure detail (doctor surfaces it; retry clears it). */
+  error: z.string().optional(),
+  /** Manual edits are never clobbered by re-enrichment (unless forced). */
+  userEdited: z.boolean().optional(),
+})
+
 export const AssetManifestSchema = z.object({
   assetId: z.string().min(1),
   type: z.string().min(1),
@@ -89,6 +115,7 @@ export const AssetManifestSchema = z.object({
   tags: z.array(z.string()),
   versions: z.array(AssetVersionSchema).min(1),
   exports: z.array(AssetExportSchema),
+  enrichment: AssetEnrichmentSchema.optional(),
 })
 
 export type AssetGeneration = z.infer<typeof GenerationSchema>
@@ -96,6 +123,7 @@ export type AssetVersion = z.infer<typeof AssetVersionSchema>
 export type AssetExport = z.infer<typeof AssetExportSchema>
 export type AssetSource = z.infer<typeof AssetSourceSchema>
 export type AssetManifest = z.infer<typeof AssetManifestSchema>
+export type AssetEnrichment = z.infer<typeof AssetEnrichmentSchema>
 
 export const MANIFEST_FILENAME = 'manifest.json'
 
