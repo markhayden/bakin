@@ -48,10 +48,10 @@ Rule: every commit green (`bun run test` + typecheck). Tag `rebuild/pN` at each 
 - [x] GATE P3 → tag rebuild/p3 (code state; 5230/0). BROWSER ITEMS DEFERRED to the P6 live cutover: port 3737 is the LIVE production server — one consolidated disruption window at ship (pin swap → restart → browser-verify ⌘K/chips/badges/unavailable-panel/real-caption enrichment on real data) instead of two
 
 ## P4 — Doctor & telemetry
-- [ ] T19 System checks (service/outbox/count-mismatch/deep-reconcile sweep)
-- [ ] T19b Health-page search panel rewrite (versions, leg health, blue/green rebuild buttons, routes test fix)
-- [ ] T20 Telemetry instrumentation + /search-telemetry + health-page section
-- [ ] GATE P4 → tag rebuild/p4
+- [x] T19 (c3974837) service/outbox/consistency checks via factory-boundary getSearchAdapterServiceStatus; parked→destructive rebuild repair; hourly orphan+tombstone sweep rides doctor interval (no new timers, nothing at boot)
+- [x] T19b (080c7fce) SearchHealthSnapshot → blue/green shape (logical/physical/schemaVersion/state/phase/legs + outbox journal; warm GONE); panel w/ version chips, parked-red repair pointer, rebuild-stays-available copy; routes.test.ts:317 historical failure now green. Health manifest 1.1.0
+- [x] T20 (0da30892) search.query + search.drain recorded via usage recorder ONLY; /search-telemetry route; Search activity tiles
+- [x] GATE P4 → tag rebuild/p4 (5236/0). T24 cleanup noted: unconsumed searchStatsDocumentCount in health format.ts
 
 ## P5 — Tuning & chaos
 - [ ] T21 Golden-query set; RRF vs RSF; reranker re-benchmark; weights; "why these defaults" doc
