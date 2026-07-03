@@ -16,6 +16,7 @@ import type {
 } from '../../packages/core/src/plugin-types'
 import { createLogger } from './logger'
 import { enqueueIndex, enqueueRemove, enqueueTransform, nudgeOutboxPump } from './search-outbox'
+import { recordUsage } from './usage'
 import { resolvePhysicalTable } from './search-registry-core'
 import { registerSyncHook, registerUnlinkHook } from './watcher'
 import { getContentDir } from './content-dir'
@@ -243,16 +244,28 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
     },
 
     async query(params: SearchQueryParams): Promise<SearchResponse> {
+      const startedAt = Date.now()
+      const record = (status: 'ok' | 'error') => recordUsage({
+        kind: 'rest',
+        name: 'search.query',
+        agent: null,
+        durationMs: Date.now() - startedAt,
+        status,
+        meta: { scope: pluginId },
+      })
       const tableName = registry.pluginTables.get(pluginId)
       const search = getSearchAdapter()
       if (!tableName || !await search.available()) {
+        record('error')
         return {
           results: [],
           meta: { query: params.q, total: 0, took_ms: 0, source: 'unavailable' },
         }
       }
 
-      const result = await search.query(resolvePhysicalTable(tableName), {
+      let result: Awaited<ReturnType<typeof search.query>>
+      try {
+        result = await search.query(resolvePhysicalTable(tableName), {
         text: params.q,
         limit: params.limit,
         offset: params.offset,
@@ -267,7 +280,12 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
           searchableFields: getSearchableFields(tableName),
           indexWeights: getIndexWeights(tableName),
         },
-      })
+        })
+      } catch (err) {
+        record('error')
+        throw err
+      }
+      record('ok')
 
       return {
         results: result.hits.map((hit) => adapterHitToPluginResult(hit, tableName)),

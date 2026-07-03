@@ -20,6 +20,7 @@ import {
   type OutboxDrainTarget,
 } from '@bakin/core/search/outbox'
 import { createLogger } from './logger'
+import { recordUsage } from './usage'
 
 export {
   enqueueIndex,
@@ -68,7 +69,18 @@ export function nudgeOutboxPump(): Promise<DrainReport | null> {
   if (Date.now() < pump.nextAttemptAt) return Promise.resolve(null)
   const cycle = pump.chain.then(async () => {
     try {
+      const startedAt = Date.now()
       const report = await drainOnce(target)
+      if (report.processed > 0 || report.failedTransient > 0 || report.failedPermanent > 0) {
+        recordUsage({
+          kind: 'rest',
+          name: 'search.drain',
+          agent: null,
+          durationMs: Date.now() - startedAt,
+          status: report.failedPermanent > 0 ? 'error' : 'ok',
+          meta: { processed: report.processed, failedTransient: report.failedTransient, failedPermanent: report.failedPermanent },
+        })
+      }
       if (report.failedTransient > 0 && report.processed === 0) {
         pump.consecutiveDownCycles += 1
         const backoff = DOWN_BACKOFF_MS[Math.min(pump.consecutiveDownCycles, DOWN_BACKOFF_MS.length) - 1]

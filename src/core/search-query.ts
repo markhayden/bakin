@@ -4,6 +4,7 @@
  * barrel.
  */
 import type { SearchResponse } from '../../packages/core/src/plugin-types'
+import { recordUsage } from './usage'
 import {
   TABLE_PREFIX,
   adapterHitToPluginResult,
@@ -32,6 +33,33 @@ export async function crossTableSearch(q: string, opts?: {
   /** Restrict cross-table search to these content types (bare or full table names). */
   types?: string[]
 }): Promise<SearchResponse> {
+  // Telemetry rides the shared usage recorder — never a parallel store.
+  const startedAt = Date.now()
+  try {
+    const response = await crossTableSearchInner(q, opts)
+    recordUsage({
+      kind: 'rest',
+      name: 'search.query',
+      agent: null,
+      durationMs: Date.now() - startedAt,
+      status: response.meta.source === 'unavailable' ? 'error' : 'ok',
+      meta: { scope: opts?.table ?? 'all' },
+    })
+    return response
+  } catch (err) {
+    recordUsage({ kind: 'rest', name: 'search.query', agent: null, durationMs: Date.now() - startedAt, status: 'error' })
+    throw err
+  }
+}
+
+async function crossTableSearchInner(q: string, opts?: {
+  table?: string
+  limit?: number
+  offset?: number
+  filters?: Record<string, string | boolean | number>
+  facets?: string[]
+  types?: string[]
+}): Promise<SearchResponse> {
   const search = getSearchAdapter()
   if (!await search.available()) {
     // Honest degradation (D11): the HTTP boundary maps this marker to a
@@ -52,7 +80,7 @@ export async function crossTableSearch(q: string, opts?: {
       if (!resolved) {
         return { results: [], meta: { query: q, total: 0, took_ms: 0, source: 'search' } }
       }
-      return crossTableSearch(q, { ...opts, table: resolved.replace(TABLE_PREFIX, '') })
+      return crossTableSearchInner(q, { ...opts, table: resolved.replace(TABLE_PREFIX, '') })
     }
 
     const result = await search.query(resolvePhysicalTable(tableName), {

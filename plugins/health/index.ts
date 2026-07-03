@@ -242,6 +242,48 @@ const routes = [
   }),
 
   defineRoute({
+    path: '/search-telemetry',
+    method: 'GET',
+    summary: 'Search activity telemetry',
+    description: 'Query/drain/enrichment activity from the shared usage recorder, outbox depth, and the latest search doctor rows.',
+    responses: { 200: passthrough },
+    handler: async () => {
+      const { getUsageFeed } = await import('../../src/core/usage')
+      const { outboxStats } = await import('../../src/core/search-outbox')
+
+      const byName = (window: '1h' | '24h') => {
+        const feed = getUsageFeed({ kind: 'rest', window })
+        const pick = (name: string) => {
+          const row = feed.topByName.find((r) => r.name === name)
+          return { count: row?.count ?? 0, errors: row?.errors ?? 0, medianMs: row?.medianDurationMs ?? null }
+        }
+        return {
+          query: pick('search.query'),
+          drain: pick('search.drain'),
+          enrich: pick('assets.enrich'),
+        }
+      }
+
+      let enrichment: unknown = null
+      try {
+        const { getHookRegistry } = await import('../../packages/core/src/hooks/hook-registry-singleton')
+        enrichment = await getHookRegistry().invoke('assets.enrichmentStats', {})
+      } catch { /* assets plugin absent or hook unregistered */ }
+
+      const doctor = getLastResults()
+      const searchRows = (doctor?.results ?? []).filter((row) =>
+        row.check === 'search' || row.check === 'search-outbox' || row.check === 'search-consistency')
+
+      return Response.json({
+        windows: { '1h': byName('1h'), '24h': byName('24h') },
+        outbox: outboxStats(),
+        enrichment,
+        doctor: { rows: searchRows, at: doctor ? new Date(doctor.timestamp).toISOString() : null },
+      })
+    },
+  }),
+
+  defineRoute({
     path: '/usage',
     method: 'GET',
     summary: 'Agent context/token usage',

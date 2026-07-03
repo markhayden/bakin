@@ -108,6 +108,9 @@ mock.module('../../../src/core/agent-usage', () => ({
 
 mock.module('../../../src/core/usage', () => ({
   getStatsByMs: mock(() => ({ total: 0, errors: 0 })),
+  // The search outbox pump (imported transitively) records drain telemetry.
+  recordUsage: mock(() => {}),
+  getUsageFeed: mock(() => ({ totals: { count: 0, errors: 0, errorRate: 0 }, topByName: [], byAgent: [], recent: [] })),
 }))
 
 mock.module('../../../plugins/team/lib/session-reader', () => ({

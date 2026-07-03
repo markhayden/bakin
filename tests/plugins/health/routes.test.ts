@@ -227,8 +227,8 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('Health Plugin Routes', () => {
-  it('registers 13 routes', () => {
-    expect(activated.routes.length).toBe(13)
+  it('registers 14 routes', () => {
+    expect(activated.routes.length).toBe(14)
   })
 
   it('registers 2 exec tools', () => {
@@ -316,6 +316,29 @@ describe('Health Plugin Routes', () => {
       expect(status).toBe(200)
       // Adapter unavailable in the test ctx → disabled snapshot, no outbox.
       expect(body).toEqual({ enabled: false, tables: [] })
+    })
+  })
+
+  describe('GET /search-telemetry', () => {
+    it('composes usage windows, outbox stats, and search doctor rows', async () => {
+      recordUsage({ kind: 'rest', name: 'search.query', agent: null, durationMs: 12, status: 'ok' })
+      recordUsage({ kind: 'rest', name: 'search.query', agent: null, durationMs: 30, status: 'error' })
+      recordUsage({ kind: 'rest', name: 'search.drain', agent: null, durationMs: 5, status: 'ok', meta: { processed: 3 } })
+
+      const route = findRoute(activated.routes, 'GET', '/search-telemetry')!
+      expect(route).toBeDefined()
+      const { status, body } = await callRoute(route, activated.ctx)
+      expect(status).toBe(200)
+      const telemetry = body as unknown as {
+        windows: Record<string, { query: { count: number; errors: number }; drain: { count: number } }>
+        outbox: { pending: number; quarantined: number }
+        doctor: { rows: unknown[] }
+      }
+      expect(telemetry.windows['1h'].query.count).toBe(2)
+      expect(telemetry.windows['1h'].query.errors).toBe(1)
+      expect(telemetry.windows['1h'].drain.count).toBe(1)
+      expect(typeof telemetry.outbox.pending).toBe('number')
+      expect(Array.isArray(telemetry.doctor.rows)).toBe(true)
     })
   })
 

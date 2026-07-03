@@ -295,6 +295,12 @@ export function HealthPage() {
       healthy: boolean
     }>
   } | null>(null)
+  const [searchTelemetry, setSearchTelemetry] = useState<{
+    windows: Record<'1h' | '24h', { query: { count: number; errors: number; medianMs: number | null }; drain: { count: number; errors: number }; enrich: { count: number; errors: number } }>
+    outbox: { pending: number; quarantined: number }
+    enrichment: { depth?: number; running?: number; failedRecent?: number } | null
+  } | null>(null)
+
   // Which reindex is currently running: null = none, 'all' = every table, or a
   // specific table name. Stays set through the BACKEND embedding convergence, not
   // just the HTTP round-trip (see triggerReindex / #582).
@@ -366,6 +372,10 @@ export function HealthPage() {
         const searchJson = await searchRes.json()
         setSearchHealth(searchJson)
       } catch { /* search endpoint optional */ }
+      try {
+        const telemetryRes = await fetch('/api/plugins/health/search-telemetry')
+        setSearchTelemetry(await telemetryRes.json())
+      } catch { /* telemetry optional */ }
       try {
         // Only trust a 2xx body — the /spend error path returns 500 with a
         // {totalUsdMicros:0} shape, which must NOT render as a real $0 card.
@@ -784,6 +794,44 @@ export function HealthPage() {
                 </span>
               )}
             </p>
+            {searchTelemetry?.windows?.['1h'] && searchTelemetry.outbox && (
+              <div className="grid grid-cols-3 gap-3 mb-3">
+                <div className="rounded-lg border border-border p-3">
+                  <p className="text-xs text-muted-foreground">Queries (1h)</p>
+                  <p className="text-lg font-semibold tabular-nums">
+                    {searchTelemetry.windows['1h'].query.count}
+                    {searchTelemetry.windows['1h'].query.errors > 0 && (
+                      <span className="text-sm text-red-400 ml-1">· {searchTelemetry.windows['1h'].query.errors} err</span>
+                    )}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {searchTelemetry.windows['1h'].query.medianMs != null ? `median ${Math.round(searchTelemetry.windows['1h'].query.medianMs)}ms` : 'no traffic'}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-border p-3">
+                  <p className="text-xs text-muted-foreground">Journal drains (1h)</p>
+                  <p className="text-lg font-semibold tabular-nums">
+                    {searchTelemetry.windows['1h'].drain.count}
+                    {searchTelemetry.outbox.quarantined > 0 && (
+                      <span className="text-sm text-red-400 ml-1">· {searchTelemetry.outbox.quarantined} quarantined</span>
+                    )}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">{searchTelemetry.outbox.pending} pending</p>
+                </div>
+                <div className="rounded-lg border border-border p-3">
+                  <p className="text-xs text-muted-foreground">Enrichment (1h)</p>
+                  <p className="text-lg font-semibold tabular-nums">
+                    {searchTelemetry.windows['1h'].enrich.count}
+                    {searchTelemetry.windows['1h'].enrich.errors > 0 && (
+                      <span className="text-sm text-red-400 ml-1">· {searchTelemetry.windows['1h'].enrich.errors} err</span>
+                    )}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {searchTelemetry.enrichment?.depth != null ? `${searchTelemetry.enrichment.depth} queued` : 'billed vision calls'}
+                  </p>
+                </div>
+              </div>
+            )}
             {searchHealth.tables.length === 0 ? (
               <p className="text-sm text-muted-foreground">No tables registered</p>
             ) : (
