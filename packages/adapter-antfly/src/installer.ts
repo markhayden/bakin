@@ -5,10 +5,10 @@ import { dirname, join } from 'path'
 import type { SearchAdapterSetupOptions } from '@bakin/core/adapters/search'
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
 import { DEFAULT_SETTINGS } from './defaults'
-import { runLegacyCleanup } from './legacy-cleanup'
 import { antflyBinaryPath, antflyHome } from './paths'
 import { ANTFLY_PIN, antflyDownloadUrl, antflyPlatformKey, type AntflyPin } from './pin'
-import { findAntflyBinary } from './server'
+import { findAntflyBinary, stopService, startService } from './service'
+import { DEFAULT_SETTINGS as SERVICE_DEFAULTS } from './defaults'
 
 /**
  * Direct-download installer for the pinned Antfly release.
@@ -121,11 +121,10 @@ export async function installAntflyDependency(
   const existing = findAntflyBinary()
   const existingVersion = existing ? await antflyBinaryVersion(existing) : null
   if (existing && existingVersion === pin.version) {
-    const cleanup = await runLegacyCleanup(opts, logger)
     return {
       name: 'antfly',
       status: 'noop' as const,
-      message: [`Antfly v${pin.version} is already installed at ${existing}`, ...cleanup.notes].join('\n'),
+      message: `Antfly v${pin.version} is already installed at ${existing}`,
       durationMs: Date.now() - start,
     }
   }
@@ -164,13 +163,21 @@ export async function installAntflyDependency(
     }
   }
 
-  // Never swap the binary under a live server.
+  // Upgrade flow (D3): never swap under a live server — stop the managed
+  // service first, swap atomically, restart after. Guest instances are not
+  // ours to stop; the responding-check refuses only in that case.
+  let restartAfterSwap = false
   if (existing && await isLocalServerResponding()) {
-    return {
-      name: 'antfly',
-      status: 'failed' as const,
-      message: 'Bakin\'s antfly instance is currently running. Run `bakin stop` first, then re-run `bakin install search`.',
-      durationMs: Date.now() - start,
+    logger.info('Stopping managed antfly service for binary swap')
+    await stopService(SERVICE_DEFAULTS)
+    restartAfterSwap = true
+    if (await isLocalServerResponding()) {
+      return {
+        name: 'antfly',
+        status: 'failed' as const,
+        message: 'An antfly instance is still responding on the private port and is not service-managed. Stop it manually, then re-run `bakin install search`.',
+        durationMs: Date.now() - start,
+      }
     }
   }
 
@@ -255,16 +262,16 @@ export async function installAntflyDependency(
     mkdirSync(dirname(targetPath), { recursive: true })
     renameSync(extractedBinary, targetPath)
 
-    const cleanup = await runLegacyCleanup(opts, logger)
+    if (restartAfterSwap) {
+      logger.info('Restarting managed antfly service on the new binary')
+      await startService(SERVICE_DEFAULTS)
+    }
     const durationMs = Date.now() - start
     logger.info('Antfly installed', { binary: targetPath, version: installedVersion, durationMs })
     return {
       name: 'antfly',
       status: 'installed' as const,
-      message: [
-        `Installed Antfly v${installedVersion} to ${targetPath} (checksum verified)`,
-        ...cleanup.notes,
-      ].join('\n'),
+      message: `Installed Antfly v${installedVersion} to ${targetPath} (checksum verified)`,
       durationMs,
     }
   } catch (err) {

@@ -5,7 +5,6 @@ import {
   createAntflySearchSetup,
   findAntflyBinary,
   isAntflyInstalled,
-  isAntflyRunning,
   inferenceModelsRoot as antflyInferenceModelsRoot,
   mergeAntflySettings,
   requiredModelsForSettings as antflyRequiredModelsForSettings,
@@ -34,15 +33,6 @@ export function isSearchAdapterInstalled(name: SearchAdapterName): boolean {
   switch (name) {
     case 'antfly':
       return isAntflyInstalled()
-    default:
-      throw new Error(`Unknown search adapter: ${name}`)
-  }
-}
-
-export function isSearchAdapterRunning(name: SearchAdapterName): boolean {
-  switch (name) {
-    case 'antfly':
-      return isAntflyRunning()
     default:
       throw new Error(`Unknown search adapter: ${name}`)
   }

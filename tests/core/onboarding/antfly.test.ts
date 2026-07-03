@@ -192,18 +192,26 @@ describe('installAntflyDependency', () => {
     expect(fetchCalls.some(u => u.endsWith('/readyz'))).toBe(true)
   })
 
-  it('refuses to swap the binary while the local server is running', async () => {
-    writeBinary(managedBinary, '0.1.1')
-    mockDownloadFetch(async (url) => {
-      if (url.endsWith('/readyz')) return new Response('ok', { status: 200 })
-      return new Response(tarballBytes.slice().buffer as ArrayBuffer, { status: 200 })
-    })
+  it('never swaps under a live NON-managed server (D3: managed services are stopped instead)', async () => {
+    // child mode: stopService is a no-op (no launchctl/systemctl exec from
+    // tests), so the still-responding instance reads as non-managed and the
+    // installer must refuse rather than swap underneath it.
+    process.env.BAKIN_SEARCH_SERVICE_MODE = 'child'
+    try {
+      writeBinary(managedBinary, '0.1.1')
+      mockDownloadFetch(async (url) => {
+        if (url.endsWith('/readyz')) return new Response('ok', { status: 200 })
+        return new Response(tarballBytes.slice().buffer as ArrayBuffer, { status: 200 })
+      })
 
-    const result = await installAntflyDependency(optsAutoYes, undefined, makePin())
-    expect(result.status).toBe('failed')
-    expect(result.message).toContain('bakin stop')
-    // Old binary untouched.
-    expect(readFileSync(managedBinary, 'utf-8')).toContain('0.1.1')
+      const result = await installAntflyDependency(optsAutoYes, undefined, makePin())
+      expect(result.status).toBe('failed')
+      expect(result.message).toContain('Stop it manually')
+      // Old binary untouched.
+      expect(readFileSync(managedBinary, 'utf-8')).toContain('0.1.1')
+    } finally {
+      delete process.env.BAKIN_SEARCH_SERVICE_MODE
+    }
   })
 
   it('fails on checksum mismatch and writes no binary', async () => {

@@ -5,7 +5,7 @@ import type { SearchAdapterSetupOptions } from '@bakin/core/adapters/search'
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
 import type { AntflySettings } from './defaults'
 import { inferenceModelsRoot } from './paths'
-import { findAntflyBinary } from './server'
+import { findAntflyBinary } from './service'
 
 /**
  * Search-model acquisition on antfly's v0.2 inference runtime.

@@ -65,6 +65,22 @@ export function defaultServiceIo(): ServiceIo {
   return { platform: process.platform, exec: realExec, hasCommand: realHasCommand, env: process.env }
 }
 
+/**
+ * Installed binary path, or null. ANTFLY_PATH overrides discovery (dev
+ * builds, tests); the installer version-guards overridden binaries.
+ */
+export function findAntflyBinary(): string | null {
+  const candidates = [process.env.ANTFLY_PATH, antflyBinaryPath()]
+  for (const candidate of candidates) {
+    if (candidate && existsSync(candidate)) return candidate
+  }
+  return null
+}
+
+export function isAntflyInstalled(): boolean {
+  return findAntflyBinary() !== null
+}
+
 /** The default private-instance URL — anything else is guest mode. */
 export function isLocalDefaultUrl(url: string): boolean {
   return url === 'http://127.0.0.1:3738' || url === 'http://localhost:3738'
