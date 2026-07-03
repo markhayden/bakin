@@ -302,7 +302,7 @@ const routes = [
 const assetsPlugin: BakinPlugin = definePlugin({
   id: 'assets',
   name: 'Assets',
-  version: '2.0.0',
+  version: '2.2.0',
   routes,
 
   settingsSchema: {
@@ -337,7 +337,9 @@ const assetsPlugin: BakinPlugin = definePlugin({
 
     ctx.search.registerFileBackedContentType({
       table: 'assets',
-      schemaVersion: 1,
+      // v2: enrichment fields (caption/ocr_text/suggested_tags/transcript/
+      // summary) + image_url → media_url incl. audio. Blue/green migrates.
+      schemaVersion: 2,
       schema: {
         description: { type: 'text' },
         tags: { type: 'text' },
@@ -361,12 +363,19 @@ const assetsPlugin: BakinPlugin = definePlugin({
         // search adapter receives plain document text instead of reaching
         // back into local files during indexing.
         content: { type: 'text' },
-        // `image_url` is a file:// URL for raster images that CLIP can
-        // actually decode. Populated at index time by computeMediaUrls.
-        // The search adapter owns provider-specific media dereferencing.
-        image_url: { type: 'keyword' },
+        // Derived enrichment (D8) — searchable text a vision model produced
+        // from the asset ITSELF, durable in the manifest.
+        caption: { type: 'text' },
+        ocr_text: { type: 'text' },
+        suggested_tags: { type: 'text' },
+        transcript: { type: 'text' },
+        summary: { type: 'text' },
+        // `media_url` is a file:// URL for raster images AND audio files —
+        // both ride the media-embedding leg (CLIP + CLAP halves of the
+        // multimodal embedder). The adapter owns media dereferencing.
+        media_url: { type: 'keyword' },
       },
-      searchableFields: ['description', 'tags', 'file_name', 'surface', 'content'],
+      searchableFields: ['description', 'tags', 'file_name', 'surface', 'content', 'caption', 'ocr_text', 'suggested_tags', 'transcript', 'summary'],
       // Intentionally no `rerankField`. bakin_assets is a multimodal table
       // (PDF body text in `content`, image pixels in the visual index,
       // metadata in description/tags/file_name) and the cross-encoder
@@ -377,12 +386,12 @@ const assetsPlugin: BakinPlugin = definePlugin({
       // the full rationale and the queries that surfaced the problem.
       // Unused when `indexes` is set, but the type requires it. Kept as the
       // equivalent template for the default-index synthesis path.
-      embeddingTemplate: '{{description}} {{tags}} {{file_name}} {{surface}} {{content}}',
+      embeddingTemplate: '{{description}} {{caption}} {{tags}} {{suggested_tags}} {{file_name}} {{surface}} {{content}} {{ocr_text}} {{transcript}} {{summary}}',
       indexes: [
         {
           name: 'assets_text',
           embedderRef: 'default',
-          embeddingTemplate: '{{description}} {{tags}} {{file_name}} {{surface}} {{content}}',
+          embeddingTemplate: '{{description}} {{caption}} {{tags}} {{suggested_tags}} {{file_name}} {{surface}} {{content}} {{ocr_text}} {{transcript}} {{summary}}',
           chunker: { enabled: true, targetTokens: 200, overlapTokens: 25 },
           // Down-weighted in fusion: the text-embedding of an image's
           // auto-generated description/tags is the noisiest leg and was
@@ -394,7 +403,7 @@ const assetsPlugin: BakinPlugin = definePlugin({
         {
           name: 'assets_visual',
           embedderRef: 'visual',
-          mediaUrlField: 'image_url',
+          mediaUrlField: 'media_url',
           // Favored: pixel-level CLIP similarity is the reliable signal for
           // image search, so it leads the RRF fusion.
           weight: 2.0,

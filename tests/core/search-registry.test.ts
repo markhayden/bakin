@@ -326,10 +326,11 @@ describe('search-registry', () => {
     expect(searchHarness.calls.tablesCreate).toHaveBeenCalledWith(
       expect.stringMatching(/^bakin_tasks_v\d+_[0-9a-f]{8}$/),
       expect.objectContaining({
-        indexes: [
+        legs: [
+          expect.objectContaining({ name: 'full_text', capability: 'full-text', fields: ['title'] }),
           expect.objectContaining({
             name: 'embeddings',
-            kind: 'vector',
+            capability: 'text-embedding',
             fields: ['title'],
             template: '{{title}}',
           }),
@@ -363,19 +364,18 @@ describe('search-registry', () => {
     expect(searchHarness.calls.tablesCreate).toHaveBeenCalledWith(
       expect.stringMatching(/^bakin_assets_v\d+_[0-9a-f]{8}$/),
       expect.objectContaining({
-        indexes: [
+        legs: [
+          expect.objectContaining({ name: 'full_text', capability: 'full-text' }),
           expect.objectContaining({
             name: 'assets_text',
-            kind: 'vector',
+            capability: 'text-embedding',
             template: '{{description}} {{tags}}',
-            embedderRef: 'default',
             chunker: { enabled: true, targetTokens: 200, overlapTokens: 25 },
           }),
           expect.objectContaining({
             name: 'assets_visual',
-            kind: 'vector',
+            capability: 'media-embedding',
             mediaUrlField: 'image_url',
-            embedderRef: 'visual',
           }),
         ],
       }),

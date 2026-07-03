@@ -43,7 +43,7 @@ describe('versionedAssetPath', () => {
 })
 
 describe('buildVersionedAssetSearchDoc', () => {
-  it('builds an image doc keyed by assetId with a visual image_url', async () => {
+  it('builds an image doc keyed by assetId with a visual media_url', async () => {
     const { assetId } = await createAsset({ sourceFilePath: join(srcDir, 'p.png'), type: 'images', agent: 'pixel', taskId: 't1', slug: 'p', op: 'generate', description: 'a pic', tags: ['hero'] })
     const doc = await buildVersionedAssetSearchDoc(getAsset(assetId)!, assetId)
     expect(doc.file_name).toBe(assetId)
@@ -53,15 +53,15 @@ describe('buildVersionedAssetSearchDoc', () => {
     expect(doc.tags_facet).toEqual(['hero']) // keyword array for faceting
     expect(doc.agent).toBe('pixel')
     expect(doc.task_id).toBe('t1')
-    expect(String(doc.image_url)).toContain('store/') // file:// url to current version
-    expect(String(doc.image_url)).toContain('v1.png')
+    expect(String(doc.media_url)).toContain('store/') // file:// url to current version
+    expect(String(doc.media_url)).toContain('v1.png')
   })
 
-  it('builds a text doc with extracted content and no image_url', async () => {
+  it('builds a text doc with extracted content and no media_url', async () => {
     const { assetId } = await createAsset({ sourceFilePath: join(srcDir, 'doc.md'), type: 'text', agent: 'margo', taskId: null, slug: 'doc', op: 'upload' })
     const doc = await buildVersionedAssetSearchDoc(getAsset(assetId)!, assetId)
     expect(doc.asset_type).toBe('text')
-    expect(doc.image_url).toBe('')
+    expect(doc.media_url).toBe('')
     expect(String(doc.content)).toContain('searchable body text')
   })
 

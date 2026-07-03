@@ -26,6 +26,7 @@ export function versionedAssetPath(rel: string): { assetId: string; isManifest: 
 }
 
 const RASTER_RE = /\.(png|jpe?g|gif|webp|bmp)$/i
+const AUDIO_RE = /\.(mp3|wav|flac|ogg|m4a|aac)$/i
 
 // Cache extracted text per (assetId, version, size). Version files are
 // immutable, so metadata-only manifest writes (relink/retype/promote/addExport)
@@ -40,6 +41,9 @@ export async function buildVersionedAssetSearchDoc(manifest: AssetManifest, asse
   const relFromAssetsRoot = `store/${ym}/${assetId}/${current.file}`
   const absPath = join(getContentDir(), 'assets', relFromAssetsRoot)
   const isRaster = manifest.type === 'images' && RASTER_RE.test(current.file)
+  // Audio rides the same media-embedding leg (CLAP half of the multimodal
+  // embedder) — Bakin's job is just the MIME/URL wiring (spec D12).
+  const isAudio = manifest.type === 'audio' && AUDIO_RE.test(current.file)
   const cacheKey = `${assetId}:${current.version}:${current.size}`
   let content = contentCache.get(cacheKey)
   if (content === undefined) {
@@ -66,6 +70,13 @@ export async function buildVersionedAssetSearchDoc(manifest: AssetManifest, asse
     model: current.generation?.model ?? '',
     updated_at: manifest.updated || new Date().toISOString(),
     content,
-    image_url: isRaster ? buildAssetFileUrl(relFromAssetsRoot) : '',
+    // Derived enrichment (D8): the vision model's caption/OCR/tags give
+    // BM25 and the text-embedding leg real content for images and audio.
+    caption: manifest.enrichment?.caption ?? '',
+    ocr_text: manifest.enrichment?.ocrText ?? '',
+    suggested_tags: (manifest.enrichment?.suggestedTags ?? []).join(', '),
+    transcript: manifest.enrichment?.transcript ?? '',
+    summary: manifest.enrichment?.summary ?? '',
+    media_url: isRaster || isAudio ? buildAssetFileUrl(relFromAssetsRoot) : '',
   }
 }

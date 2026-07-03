@@ -133,15 +133,21 @@ function getEffectiveIndexes(def: SearchContentTypeDefinition): SearchIndexDefin
 function buildTableConfig(def: SearchContentTypeDefinition): TableConfig {
   return {
     fields: def.schema,
-    indexes: getEffectiveIndexes(def).map((idx) => ({
-      name: idx.name,
-      kind: 'vector',
-      fields: def.searchableFields,
-      embedderRef: idx.embedderRef,
-      template: idx.embeddingTemplate,
-      mediaUrlField: idx.mediaUrlField,
-      chunker: idx.chunker,
-    })),
+    // Capability legs (D17): the adapter maps text-embedding → its default
+    // text embedder and media-embedding → its media embedder; the engine's
+    // own full-text leg is implied. Leg names are the scoreBreakdown keys.
+    legs: [
+      { name: 'full_text', capability: 'full-text' as const, fields: def.searchableFields },
+      ...getEffectiveIndexes(def).map((idx) => ({
+        name: idx.name,
+        capability: (idx.mediaUrlField ? 'media-embedding' : 'text-embedding') as 'media-embedding' | 'text-embedding',
+        fields: def.searchableFields,
+        template: idx.embeddingTemplate,
+        mediaUrlField: idx.mediaUrlField,
+        weight: idx.weight,
+        chunker: idx.chunker,
+      })),
+    ],
     adapterOptions: {
       defaultType: def.table,
       description: `Bakin ${def.table} - auto-created by search registry`,

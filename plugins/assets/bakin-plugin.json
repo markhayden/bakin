@@ -1,7 +1,7 @@
 {
   "id": "assets",
   "name": "Assets",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "bakin": ">=1.0.0",
   "description": "Centralized content store for all artifacts with rich rendering, search, task linking, manual upload, and clipboard paste",
   "entry": {
