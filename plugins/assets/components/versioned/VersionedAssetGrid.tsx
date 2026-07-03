@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryState, useQueryArrayState, useSearch, useDebug, useRouter, usePathname, useSearchParams, usePluginEvent } from '@makinbakin/sdk/hooks'
 import { Button } from '@makinbakin/sdk/ui'
-import { PluginHeader, FacetFilter } from '@makinbakin/sdk/components'
+import { PluginHeader, FacetFilter, SearchUnavailable } from '@makinbakin/sdk/components'
 import { formatSize, formatAge } from '@makinbakin/sdk/utils'
 import { ImagePlus, Upload, Loader2, LayoutGrid, List, Trash2, RotateCcw, X, ListFilter, FolderOpen, Pencil, Check, SquareMousePointer, Tags, ArrowLeft , Inbox } from 'lucide-react'
 import { ASSET_TYPES } from '../../lib/constants'
@@ -235,13 +235,10 @@ export function VersionedAssetGrid() {
 
   // Drive the search hook from the URL query. The folders view repurposes the
   // same box as a client-side folder-name filter — no Antfly round-trip.
-  // Debounced: `q` updates on every keystroke, and each search is a backend
-  // round-trip, so fire only after typing settles (typing "frosting" was
-  // 8 queries → seconds of spinner).
+  // The hook debounces internally (250ms), so this fires per keystroke safely.
   useEffect(() => {
     if (view === 'tags') return
-    const t = setTimeout(() => search.search(q), 250)
-    return () => clearTimeout(t)
+    search.search(q)
   }, [q, view]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Coalesce event bursts (agent edit loops) into one refetch per window —
@@ -339,7 +336,8 @@ export function VersionedAssetGrid() {
   // Folders view never searches (folder-name filter is client-side) — without
   // the view guard the stale meta.query would pin the spinner on forever.
   const searching = q.trim().length > 0 && view !== 'tags'
-  const pending = searching && (search.loading || (search.meta?.query ?? '') !== q.trim())
+  const searchUnavailable = searching && search.status === 'unavailable'
+  const pending = searching && !searchUnavailable && (search.loading || (search.meta?.query ?? '') !== q.trim())
 
   const filtered = useMemo(() => {
     let list = assets.filter(a =>
@@ -537,6 +535,8 @@ export function VersionedAssetGrid() {
           onOpenFolder={openFolder}
           onChanged={fetchAssets}
         />
+      ) : searchUnavailable ? (
+        <SearchUnavailable retry={search.retry} />
       ) : displayed.length === 0 ? (
         <div className="p-8 text-sm text-muted-foreground" data-testid="assets-no-match">No assets match your filters.</div>
       ) : view === 'list' ? (
