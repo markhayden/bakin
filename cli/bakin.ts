@@ -2761,6 +2761,19 @@ async function cmdAssetsScan(): Promise<void> {
   console.log('\nImport with: bakin assets import <path> [--type t]  |  bakin assets import --all')
 }
 
+/** `bakin assets enrich [--all|<assetId>] [--force]` — vision enrichment backfill (D8, billed). */
+async function cmdAssetsEnrich(options: { all?: boolean; assetId?: string; force?: boolean }): Promise<void> {
+  if (!options.all && !options.assetId) {
+    console.error('Usage: bakin assets enrich <assetId> [--force]  |  bakin assets enrich --all [--force]')
+    process.exitCode = 1
+    return
+  }
+  const body = options.all ? { all: true, force: options.force ?? false } : { assetId: options.assetId, force: options.force ?? false }
+  const result = await apiPost('/api/plugins/assets/enrich', body) as { enqueued: number }
+  console.log(`Enqueued ${result.enqueued} asset(s) for vision enrichment (runs in the background; billed per asset version).`)
+  console.log('Track progress: bakin doctor  (assets enrichment rows)')
+}
+
 /** `bakin assets import [--all|<path>] [--type t]` — explicit import (D7). */
 async function cmdAssetsImport(options: { all?: boolean; path?: string; type?: string }): Promise<void> {
   if (!options.all && !options.path) {
@@ -4215,8 +4228,16 @@ export async function main(): Promise<void> {
           await cmdAssetsImport(importOpts)
         } else if (sub === 'scan') {
           await cmdAssetsScan()
+        } else if (sub === 'enrich') {
+          const enrichOpts: { all?: boolean; assetId?: string; force?: boolean } = {}
+          for (let i = 2; i < args.length; i++) {
+            if (args[i] === '--all') enrichOpts.all = true
+            else if (args[i] === '--force') enrichOpts.force = true
+            else if (!args[i].startsWith('--')) enrichOpts.assetId = args[i]
+          }
+          await cmdAssetsEnrich(enrichOpts)
         } else {
-          await exitUnknownSubcommand('assets', sub, ['scan', 'import'])
+          await exitUnknownSubcommand('assets', sub, ['scan', 'import', 'enrich'])
         }
         break
       }

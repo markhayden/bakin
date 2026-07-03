@@ -68,8 +68,8 @@ afterAll(() => {
 // ===========================================================================
 
 describe('route registration', () => {
-  it('registers all 21 routes', () => {
-    expect(plugin.routes.length).toBe(21)
+  it('registers all 22 routes', () => {
+    expect(plugin.routes.length).toBe(22)
   })
 
   it.each([
@@ -83,6 +83,7 @@ describe('route registration', () => {
     ['POST', '/versioned/:assetId/export'],
     ['PATCH', '/versioned/:assetId/metadata'],
     ['PATCH', '/versioned/:assetId/enrichment'],
+    ['POST', '/enrich'],
     ['POST', '/versioned/:assetId/relink'],
     ['POST', '/versioned/:assetId/version'],
     ['DELETE', '/versioned/:assetId'],

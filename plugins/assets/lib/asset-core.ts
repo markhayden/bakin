@@ -11,6 +11,7 @@
  * same spine.
  */
 import { mkdirSync, copyFileSync, existsSync, readdirSync, statSync } from 'node:fs'
+import { emitAssetWritten } from './asset-events'
 import { join, extname } from 'node:path'
 import { getContentDir } from '../../../src/core/content-dir'
 import { getMimeType, type AssetType } from './constants'
@@ -142,6 +143,7 @@ export async function createAsset(input: AssetCreateInput): Promise<{ assetId: s
     exports: [],
   }
   writeManifestAtomic(dirAbs, manifest)
+  emitAssetWritten({ assetId, version: 1, op: 'create' })
   return { assetId, version: 1, manifest }
 }
 

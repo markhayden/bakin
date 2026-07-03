@@ -12,6 +12,7 @@ import { getMimeType, type AssetType } from './constants'
 import { assetDirAbs } from './asset-id'
 import { normalizeTags } from './tags'
 import { withAssetLock } from './asset-lock'
+import { emitAssetWritten } from './asset-events'
 import { loadSharp, imageDimensions, generateThumbnail } from './asset-media'
 import {
   readManifest,
@@ -95,6 +96,7 @@ export async function addVersion(assetId: string, input: AssetVersionInput): Pro
     manifest.updated = created
     mirrorDisplay(manifest)
     writeManifestAtomic(dirAbs, manifest)
+    emitAssetWritten({ assetId, version: nextVersion, op: 'add-version' })
     return { assetId, version: nextVersion, manifest }
   })
 }

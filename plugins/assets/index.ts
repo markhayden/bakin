@@ -16,6 +16,16 @@ import {
   handleVersionedUpdateEnrichment,
   handleTrashList, handleTrashRestore, handleTrashPermanentDelete, handleTrashEmpty,
 } from './routes/versioned'
+import { onAssetWritten } from './lib/asset-events'
+import {
+  drainEnrichmentQueue,
+  enqueueEnrichment,
+  enqueueEnrichmentBackfill,
+  enrichmentQueueStats,
+  initEnrichmentQueue,
+  stopEnrichmentQueue,
+} from './lib/enrichment/queue'
+import type { EnrichmentSettings } from './lib/enrichment/providers'
 import { handleTagsRename, handleTagsRemove, handleTagsApply } from './routes/tags'
 import { handleImportScan, handleImport } from './routes/import'
 import { isValidAssetId } from './lib/asset-id'
@@ -142,6 +152,31 @@ const routes = [
       const res = await handleVersionedUpdateMetadata(req)
       if (res.ok) ctx.activity.audit('asset.metadata_updated', 'user')
       return res
+    },
+  }),
+  defineRoute({
+    path: '/enrich',
+    method: 'POST',
+    summary: 'Enqueue vision enrichment (one asset or backfill all); billed per asset version',
+    responses: { 200: okPassthrough, 400: errorResponse },
+    handler: async (req) => {
+      const body = await req.json().catch(() => ({})) as { assetId?: unknown; all?: unknown; force?: unknown }
+      const force = body.force === true
+      if (typeof body.assetId === 'string' && body.assetId.length > 0) {
+        const { getAsset } = await import('./lib/asset-core')
+        if (!getAsset(body.assetId)) return Response.json({ error: 'Asset not found' }, { status: 404 })
+        enqueueEnrichment(body.assetId, { force })
+        void drainEnrichmentQueue()
+        return Response.json({ ok: true, enqueued: 1 })
+      }
+      if (body.all === true) {
+        const { listAssets } = await import('./lib/asset-core')
+        const ids = listAssets().map((a) => a.assetId)
+        enqueueEnrichmentBackfill(ids, { force })
+        void drainEnrichmentQueue()
+        return Response.json({ ok: true, enqueued: ids.length })
+      }
+      return Response.json({ error: 'assetId (string) or all:true required' }, { status: 400 })
     },
   }),
   defineRoute({
@@ -286,6 +321,17 @@ const assetsPlugin: BakinPlugin = definePlugin({
 
   activate(ctx: PluginContext) {
     pluginCtx = ctx
+
+    // ─── Enrichment queue (D8) ─────────────────────────────────────────
+    // Every asset write enqueues; the queue never blocks creation; the
+    // manifest's status/forVersion is the durable skip guard.
+    initEnrichmentQueue(() => ctx.getSettings<EnrichmentSettings>())
+    onAssetWritten(({ assetId }) => enqueueEnrichment(assetId))
+    ctx.hooks.register('assets.enrichmentStats', () => enrichmentQueueStats(), {
+      label: 'Enrichment queue stats.',
+      summary: 'Returns the vision-enrichment queue depth and processed/failed/skipped counters for telemetry.',
+      hookKind: 'rpc',
+    })
 
     // ─── Search Content Type Registration ─────────────────────────────
 
@@ -809,6 +855,7 @@ const assetsPlugin: BakinPlugin = definePlugin({
   },
 
   onShutdown() {
+    stopEnrichmentQueue()
     log.info('Shutting down assets plugin')
   },
 }) as unknown as BakinPlugin
