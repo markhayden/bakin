@@ -246,15 +246,30 @@ export class AntflySearchClient implements SearchAdapter {
   }
 
   async multiQuery(queries: Array<{ table: string; query: Query }>): Promise<QueryResult[]> {
+    // Per-table failures are ISOLATED: one sick table (empty embeddings
+    // index mid-backfill 500s, a wedged shard) contributes zero hits with
+    // a diagnostic instead of zeroing the whole cross-table search — the
+    // exact failure observed at the rc.17 cutover with Promise.all.
+    const run = async (entry: { table: string; query: Query }): Promise<QueryResult> => {
+      try {
+        return await this.query(entry.table, entry.query)
+      } catch (err) {
+        log.warn('multiQuery table failed — contributing zero hits', {
+          table: entry.table,
+          err: err instanceof Error ? err.message : String(err),
+        })
+        return { hits: [], total: 0, diagnostics: { strategy: 'none', adapter: { error: err instanceof Error ? err.message : String(err) } } }
+      }
+    }
     // Parallel by default; sequential only when something reranks (the
     // reranker serializes on one Metal queue — concurrent reranked queries
     // back up behind each other anyway).
     if (queries.some((entry) => entry.query.rerank)) {
       const results: QueryResult[] = []
-      for (const entry of queries) results.push(await this.query(entry.table, entry.query))
+      for (const entry of queries) results.push(await run(entry))
       return results
     }
-    return Promise.all(queries.map((entry) => this.query(entry.table, entry.query)))
+    return Promise.all(queries.map(run))
   }
 
   async *scan(table: string, opts?: ScanOpts): AsyncIterable<ScannedDocument> {
