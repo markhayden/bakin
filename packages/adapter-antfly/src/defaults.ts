@@ -4,6 +4,8 @@ export interface AntflySettings {
   auth?: { username: string; password: string }
   search: {
     strategy: 'rrf' | 'semantic_only' | 'full_text_only'
+    /** Hybrid fusion algorithm — upstream main supports both; tuned in T21. */
+    fusionStrategy: 'rrf' | 'rsf'
     defaultLimit: number
     reranker: {
       enabled: boolean
@@ -46,6 +48,7 @@ export const DEFAULT_SETTINGS: AntflySettings = {
   url: 'http://127.0.0.1:3738',
   search: {
     strategy: 'rrf',
+    fusionStrategy: 'rrf',
     defaultLimit: 20,
     reranker: {
       // Still disabled at v0.2.0-rc.9, but for a NEW reason. The rc.2 mxbai
