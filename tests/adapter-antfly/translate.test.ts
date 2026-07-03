@@ -102,8 +102,16 @@ describe('buildQueryRequest', () => {
   it('offset only attaches to FTS-only queries (semantic+offset hard-400s)', () => {
     const fts = buildQueryRequest('t', { text: 'x', strategy: 'fts', offset: 10 }, S)
     expect(fts.offset).toBe(10)
-    const hybrid = buildQueryRequest('t', { text: 'x', offset: 10 }, S)
+    const hybrid = buildQueryRequest('t', { text: 'x', offset: 10, adapterOptions: { indexes: ['sem'] } }, S)
+    expect(hybrid.semantic_search).toBe('x')
     expect(hybrid.offset).toBeUndefined()
+  })
+
+  it('no embedding-leg names → no semantic leg (tables without vector indexes 400 otherwise)', () => {
+    const req = buildQueryRequest('t', { text: 'x' }, S)
+    expect(req.semantic_search).toBeUndefined()
+    expect(req.merge_config).toBeUndefined()
+    expect(req.full_text_search).toEqual({ query: 'x' })
   })
 
   it('limit 0 → count-only, reranker stripped', () => {

@@ -156,10 +156,14 @@ export function buildQueryRequest(table: string, q: Query, settings: AntflySetti
 
   if (filterQuery) request.filter_query = filterQuery
 
-  if (text.length > 0 && !isMatchAll && effectiveStrategy !== 'full_text_only') {
+  // The semantic leg needs concrete vector indexes to search — naming none
+  // (or a table that has none) is a hard 400. The registry passes the
+  // table's embedding-leg names via adapterOptions.indexes; without them
+  // the query is naturally FTS-only. No server introspection needed.
+  const semanticIndexes = readStringArray(q.adapterOptions?.indexes)
+  if (text.length > 0 && !isMatchAll && effectiveStrategy !== 'full_text_only' && semanticIndexes) {
     request.semantic_search = text
-    const indexes = readStringArray(q.adapterOptions?.indexes)
-    if (indexes) request.indexes = indexes
+    request.indexes = semanticIndexes
     const weights = readNumberRecord(q.adapterOptions?.indexWeights)
     const strategyName = settings.search.fusionStrategy === 'rsf' ? 'rsf' : 'rrf'
     const merge: WireMergeConfig = { strategy: strategyName }
