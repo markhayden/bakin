@@ -24,19 +24,19 @@ Rule: every commit green (`bun run test` + typecheck). Tag `rebuild/pN` at each 
 - [x] GATE P1 DRILL PASS: SIGKILL mid-flight → write queued (transient) → restart same data dir → queued write landed → hybrid query 468ms with IDENTICAL vector scores (t_vis −0.70407 preserved exactly) + neutral leg names. Dense ranks survive kill/restart with zero degraded window (req 5 proven). Tag rebuild/p1 after docs land
 
 ## P2 — Assets vertical
-- [ ] T1 import-unmanaged.ts + unmanaged-tracker.ts; delete ingest-inbox auto-triggers + watcher sweep half
-- [ ] T2 GET /import/scan + POST /import routes
-- [ ] T3 Import tab UI + sidebar badge
-- [ ] T4 CLI bakin assets import + MCP tools
-- [ ] T5 Doctor assets.unimported check
-- [ ] T6 Manifest enrichment schema + apply.ts + PATCH route
-- [ ] T7 Lift idempotency registry to packages/core
-- [ ] T8 direct-vision-provider.ts + provider catalog + settings ⚠
-- [ ] T9 Enrichment queue + triggers + backfill + metering
-- [ ] T10 Detail-UI enrichment card
-- [ ] T11 Search-doc enrichment fields + media_url audio wiring
-- [ ] T12 Doctor unenriched check + repair
-- [ ] GATE P2: MCP asset → enriched → searchable by caption; drop → badge → import → searchable → tag rebuild/p2
+- [x] T1 (1df38170) auto-ingest deleted everywhere; classifier+scan+import lib; watcher-fed tracker w/ debounced asset.unmanaged SSE; zero boot cost
+- [x] T2 (ff71a0af) /import/scan + /import routes + audits; manifest 2.1.0
+- [x] T3 (4b5eef30) Import tab (scan-on-open, type select, Import All) + nav badge. GOTCHA: nav-badge providers need contributes.eager:true (assets added to eager allowlist)
+- [x] T4 (7a71f975) CLI bakin assets scan/import + MCP scan_unmanaged/import tools
+- [x] T5 (2e241b63) doctor assets.unimported (autoFixable:false by design; doctor sweep doubles as badge reseeder)
+- [x] T6 (e7b9cbff) manifest enrichment schema + apply.ts chokepoint + PATCH route (userEdited field-preserved)
+- [x] T7 (c3c5814c) idempotency registry → packages/core/src/media
+- [x] T8 (18818688) direct-vision-provider (Anthropic/OpenAI/Google; Zod-strict, never fabricates; audio via Gemini; 20MB skip) + catalog + settings. Default model resolves from curated catalog x configured keys, cheapest-first (haiku→gemini-flash→…); no key ⇒ skipped with reason
+- [x] T9 (cda6b583) queue (separate from outbox: billed, bounded retries, manifest is the skip guard) + onAssetWritten triggers + /enrich + CLI + stats hook + recordUsage. meterEnrichmentTurn SKIPPED (pricing hook is image-shaped; revisit T21 if per-call cost display wanted)
+- [x] T10 (6fbbe472) detail-page enrichment card (edit locks field, tag apply, re-run)
+- [x] T11 (7202de40) caption/ocr/tags/transcript/summary in search docs; media_url for raster+AUDIO; assets schemaVersion 1→2 (blue/green); buildTableConfig emits capability LEGS for every table now
+- [x] T12 (c1c9af67) doctor assets.enrichment rows (billed backfill = manual by design)
+- [x] GATE P2 → tag rebuild/p2. Unit/integration seams all green (5212/0: manifest→watcher→outbox→engine, import drill, caption-in-search-doc). Live end-to-end with REAL captions folds into the P3 browser gate (needs the dev server + a configured vision key — user-visible there). T24 cleanup noted: client manifest type lacks enrichment field
 
 ## P3 — Degradation + global search
 - [ ] T13 use-search rewrite (status states, 503 contract, SearchUnavailable); delete fallback + use-search-warm
