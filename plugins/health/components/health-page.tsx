@@ -298,7 +298,7 @@ export function HealthPage() {
   const [searchTelemetry, setSearchTelemetry] = useState<{
     windows: Record<'1h' | '24h', { query: { count: number; errors: number; medianMs: number | null }; drain: { count: number; errors: number }; enrich: { count: number; errors: number } }>
     outbox: { pending: number; quarantined: number }
-    enrichment: { depth?: number; running?: number; failedRecent?: number } | null
+    enrichment: { depth?: number; running?: number; failedRecent?: number; coverage?: { total: number; enriched: number; missing: number; stale: number; failed: number; skipped: number } } | null
   } | null>(null)
 
   // Which reindex is currently running: null = none, 'all' = every table, or a
@@ -819,15 +819,26 @@ export function HealthPage() {
                   <p className="text-[10px] text-muted-foreground">{searchTelemetry.outbox.pending} pending</p>
                 </div>
                 <div className="rounded-lg border border-border p-3">
-                  <p className="text-xs text-muted-foreground">Enrichment (1h)</p>
+                  <p className="text-xs text-muted-foreground">Enrichment</p>
                   <p className="text-lg font-semibold tabular-nums">
-                    {searchTelemetry.windows['1h'].enrich.count}
+                    {searchTelemetry.enrichment?.coverage
+                      ? `${searchTelemetry.enrichment.coverage.enriched}/${searchTelemetry.enrichment.coverage.total}`
+                      : searchTelemetry.windows['1h'].enrich.count}
                     {searchTelemetry.windows['1h'].enrich.errors > 0 && (
                       <span className="text-sm text-red-400 ml-1">· {searchTelemetry.windows['1h'].enrich.errors} err</span>
                     )}
                   </p>
                   <p className="text-[10px] text-muted-foreground">
-                    {searchTelemetry.enrichment?.depth != null ? `${searchTelemetry.enrichment.depth} queued` : 'billed vision calls'}
+                    {searchTelemetry.enrichment?.coverage
+                      ? [
+                          searchTelemetry.enrichment.coverage.missing + searchTelemetry.enrichment.coverage.stale > 0
+                            ? `${searchTelemetry.enrichment.coverage.missing + searchTelemetry.enrichment.coverage.stale} to enrich`
+                            : null,
+                          searchTelemetry.enrichment.coverage.skipped > 0 ? `${searchTelemetry.enrichment.coverage.skipped} skipped` : null,
+                          searchTelemetry.enrichment.coverage.failed > 0 ? `${searchTelemetry.enrichment.coverage.failed} failed` : null,
+                          `${searchTelemetry.enrichment?.depth ?? 0} queued`,
+                        ].filter(Boolean).join(' · ')
+                      : (searchTelemetry.enrichment?.depth != null ? `${searchTelemetry.enrichment.depth} queued` : 'billed vision calls')}
                   </p>
                 </div>
               </div>

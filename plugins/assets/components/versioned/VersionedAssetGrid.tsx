@@ -6,7 +6,7 @@ import { useQueryState, useQueryArrayState, useSearch, useDebug, useRouter, useP
 import { Button } from '@makinbakin/sdk/ui'
 import { PluginHeader, FacetFilter, SearchUnavailable, ScoreOverlay } from '@makinbakin/sdk/components'
 import { formatSize, formatAge } from '@makinbakin/sdk/utils'
-import { ImagePlus, Upload, Loader2, LayoutGrid, List, Trash2, RotateCcw, X, ListFilter, FolderOpen, Pencil, Check, Tags, ArrowLeft , Inbox } from 'lucide-react'
+import { ImagePlus, Upload, Loader2, LayoutGrid, List, Trash2, RotateCcw, X, ListFilter, FolderOpen, Pencil, Check, Tags, ArrowLeft , Inbox, Sparkles } from 'lucide-react'
 import { ASSET_TYPES } from '../../lib/constants'
 import { createSseRefetchScheduler } from './sse-refetch'
 import { AssetEditDrawer } from './AssetEditDrawer'
@@ -172,6 +172,25 @@ export function VersionedAssetGrid() {
     setBulkTags([])
     setBulkError(null)
   }, [])
+  const [enriching, setEnriching] = useState(false)
+  const bulkEnrich = async (force: boolean) => {
+    if (selected.size === 0) return
+    setEnriching(true)
+    setBulkError(null)
+    try {
+      const res = await fetch('/api/plugins/assets/enrich', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assetIds: [...selected], force }),
+      })
+      const body = await res.json().catch(() => ({})) as { error?: string; engine?: string; agent?: string; count?: number }
+      if (!res.ok) throw new Error(body.error || `Enrichment failed (${res.status})`)
+      clearSelection()
+    } catch (err) {
+      setBulkError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setEnriching(false)
+    }
+  }
   useEffect(() => { clearSelection() }, [view, clearSelection])
   const toggleSelected = (assetId: string) => setSelected(prev => {
     const next = new Set(prev)
@@ -552,6 +571,12 @@ export function VersionedAssetGrid() {
           </div>
           <Button size="sm" onClick={applyBulkTags} disabled={bulkBusy || bulkTags.length === 0} data-testid="bulk-apply-tags">
             {bulkBusy ? <Loader2 className="size-4 animate-spin" /> : null} Tag {selected.size}
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => bulkEnrich(false)} disabled={enriching} title="Vision-enrich selected assets (already-enriched are skipped free)" data-testid="bulk-enrich">
+            {enriching ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />} Enrich
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => bulkEnrich(true)} disabled={enriching} title="Force re-enrichment (re-bills; user-edited fields stay protected)" data-testid="bulk-reenrich">
+            Re-enrich
           </Button>
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())} data-testid="bulk-clear-selection">Clear</Button>
           {bulkError && <p className="text-xs text-destructive">{bulkError}</p>}

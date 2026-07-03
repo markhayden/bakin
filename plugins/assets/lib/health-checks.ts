@@ -73,6 +73,33 @@ export function checkUnimported(): HealthCheckResult[] {
  * repairable via the billed backfill (`bakin assets enrich --all`), which
  * is deliberately NOT auto-fix (it costs money).
  */
+export interface EnrichmentCoverage {
+  total: number
+  enriched: number
+  missing: number
+  stale: number
+  failed: number
+  skipped: number
+}
+
+/** Manifest-derived coverage counts — the health tile's "X/Y enriched". */
+export function enrichmentCoverage(): EnrichmentCoverage {
+  const summaries = listAssets()
+  const coverage: EnrichmentCoverage = { total: summaries.length, enriched: 0, missing: 0, stale: 0, failed: 0, skipped: 0 }
+  for (const summary of summaries) {
+    const manifest = getAsset(summary.assetId)
+    if (!manifest) continue
+    const enrichment = manifest.enrichment
+    if (!enrichment) { coverage.missing++; continue }
+    if (enrichment.status === 'failed') { coverage.failed++; continue }
+    if (enrichment.status === 'skipped') { coverage.skipped++; continue }
+    if (enrichment.status === 'done' && (enrichment.forVersion ?? 0) < manifest.currentVersion) { coverage.stale++; continue }
+    if (enrichment.status === 'done') coverage.enriched++
+    else coverage.missing++ // pending that never completed
+  }
+  return coverage
+}
+
 export function checkEnrichment(): HealthCheckResult[] {
   const summaries = listAssets()
   let missing = 0

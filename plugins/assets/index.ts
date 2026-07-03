@@ -47,7 +47,7 @@ import { noteUnmanagedSync, noteUnmanagedUnlink, setUnmanagedEmitter } from './l
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
 import { extractAssetContent } from './lib/content-extractor'
-import { assetRepair, checkAssets, checkEnrichmentEngine } from './lib/health-checks'
+import { assetRepair, checkAssets, checkEnrichmentEngine, enrichmentCoverage } from './lib/health-checks'
 
 const log = createLogger('assets')
 
@@ -162,7 +162,7 @@ const routes = [
     summary: 'Enqueue vision enrichment (one asset or backfill all); billed per asset version',
     responses: { 200: okPassthrough, 400: errorResponse },
     handler: async (req, ctx) => {
-      const body = await req.json().catch(() => ({})) as { assetId?: unknown; all?: unknown; force?: unknown }
+      const body = await req.json().catch(() => ({})) as { assetId?: unknown; assetIds?: unknown; all?: unknown; force?: unknown }
       const force = body.force === true
       // Which engine will serve the batch — surfaced so callers can warn
       // BEFORE a runtime backfill silently spends subscription quota (§5).
@@ -186,6 +186,14 @@ const routes = [
         enqueueEnrichment(body.assetId, { force })
         void drainEnrichmentQueue()
         return Response.json({ ok: true, enqueued: 1, count: 1, ...info })
+      }
+      if (Array.isArray(body.assetIds) && body.assetIds.length > 0) {
+        const ids = body.assetIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
+        if (ids.length === 0) return Response.json({ error: 'assetIds must contain asset id strings' }, { status: 400 })
+        const info = await engineInfo()
+        enqueueEnrichmentBackfill(ids, { force })
+        void drainEnrichmentQueue()
+        return Response.json({ ok: true, enqueued: ids.length, count: ids.length, ...info })
       }
       if (body.all === true) {
         const { listAssets } = await import('./lib/asset-core')
@@ -347,7 +355,7 @@ const assetsPlugin: BakinPlugin = definePlugin({
     // manifest's status/forVersion is the durable skip guard.
     initEnrichmentQueue(() => ctx.getSettings<EnrichmentSettings>(), { getRuntime: () => ctx.runtime ?? null })
     onAssetWritten(({ assetId }) => enqueueEnrichment(assetId))
-    ctx.hooks.register('assets.enrichmentStats', () => enrichmentQueueStats(), {
+    ctx.hooks.register('assets.enrichmentStats', () => ({ ...enrichmentQueueStats(), coverage: enrichmentCoverage() }), {
       label: 'Enrichment queue stats.',
       summary: 'Returns the vision-enrichment queue depth and processed/failed/skipped counters for telemetry.',
       hookKind: 'rpc',
