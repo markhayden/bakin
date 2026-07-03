@@ -39,6 +39,10 @@ mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => '/tmp/mcporter-test-bakin',
   getBakinPaths: () => ({ root: '/tmp/mcporter-test-bakin' }),
 }))
+mock.module('../../packages/core/src/content-dir', () => ({
+  getContentDir: () => '/tmp/mcporter-test-bakin',
+  getBakinPaths: () => ({ root: '/tmp/mcporter-test-bakin' }),
+}))
 
 mock.module('child_process', () => ({
   execSync: mock(),

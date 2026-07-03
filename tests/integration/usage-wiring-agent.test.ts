@@ -24,6 +24,16 @@ mock.module('../../src/core/content-dir', () => ({
     logs: join(testDir, 'logs'),
   }),
 }))
+mock.module('../../packages/core/src/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({
+    root: testDir,
+    tasks: join(testDir, 'tasks'),
+    settings: join(testDir, 'settings.json'),
+    audit: join(testDir, 'audit.jsonl'),
+    logs: join(testDir, 'logs'),
+  }),
+}))
 
 mock.module('../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),

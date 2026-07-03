@@ -46,6 +46,13 @@ mock.module('../../../src/core/content-dir', () => ({
     assets: assetsRoot,
   }),
 }))
+mock.module('../../../packages/core/src/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({
+    home: testDir,
+    assets: assetsRoot,
+  }),
+}))
 
 mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),

@@ -48,6 +48,28 @@ mock.module('../../src/core/content-dir', () => ({
   }),
   isUsingBakinHome: () => false,
 }))
+mock.module('../../packages/core/src/content-dir', () => ({
+  getContentDir: () => TEST_DIR,
+  getBakinPaths: () => ({
+    home: TEST_DIR,
+    assets: join(TEST_DIR, 'assets'),
+    audit: join(TEST_DIR, 'audit.jsonl'),
+    heartbeats: join(TEST_DIR, 'heartbeats'),
+    inbox: join(TEST_DIR, 'inbox'),
+    pluginSettings: join(TEST_DIR, 'plugin-settings'),
+    schedule: join(TEST_DIR, 'schedule'),
+    workflows: join(TEST_DIR, 'workflows'),
+    projects: join(TEST_DIR, 'projects'),
+    team: join(TEST_DIR, 'team'),
+    messaging: join(TEST_DIR, 'messaging'),
+    docs: join(TEST_DIR, 'docs'),
+    settings: join(TEST_DIR, 'settings.json'),
+    memory: join(TEST_DIR, 'MEMORY-LOG.md'),
+    plugins: join(TEST_DIR, 'plugins'),
+    logs: join(TEST_DIR, 'logs'),
+  }),
+  isUsingBakinHome: () => false,
+}))
 
 mock.module('../../src/core/logger', () => ({
   createLogger: () => ({

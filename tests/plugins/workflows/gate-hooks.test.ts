@@ -25,6 +25,13 @@ mock.module('../../../src/core/content-dir', () => ({
   initBakinHome: mock(),
   isUsingBakinHome: () => false,
 }))
+mock.module('../../../packages/core/src/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({}),
+  resetContentDir: mock(),
+  initBakinHome: mock(),
+  isUsingBakinHome: () => false,
+}))
 
 mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
