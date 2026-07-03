@@ -98,7 +98,7 @@ export class AntflyAdapter implements SearchAdapter {
 
   documents = {
     index: (table: string, key: string, doc: Document) => this.client.documents.index(table, key, doc),
-    batchIndex: (table: string, items: IndexItem[]): Promise<BatchResult> => this.client.documents.batchIndex(table, items),
+    batchIndex: (table: string, items: IndexItem[], opts?: { sync?: boolean }): Promise<BatchResult> => this.client.documents.batchIndex(table, items, opts),
     remove: (table: string, key: string) => this.client.documents.remove(table, key),
     batchRemove: (table: string, keys: string[]) => this.client.documents.batchRemove(table, keys),
     transform: (table: string, key: string, fn: TransformFn) => this.client.documents.transform(table, key, fn),

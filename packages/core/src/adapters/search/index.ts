@@ -49,7 +49,12 @@ export interface SearchAdapter {
 
   documents: {
     index(table: string, key: string, doc: Document): Promise<void>
-    batchIndex(table: string, items: IndexItem[]): Promise<BatchResult>
+    /**
+     * `sync: false` = async indexing (backfills: the blue/green converge
+     * poll owns completion; synchronous full-index on big chunks times out
+     * behind one embed queue). Default true = read-your-writes for drains.
+     */
+    batchIndex(table: string, items: IndexItem[], opts?: { sync?: boolean }): Promise<BatchResult>
     remove(table: string, key: string): Promise<void>
     batchRemove(table: string, keys: string[]): Promise<number>
     transform(table: string, key: string, fn: TransformFn): Promise<void>

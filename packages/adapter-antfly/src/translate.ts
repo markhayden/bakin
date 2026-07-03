@@ -253,10 +253,14 @@ export function mapQueryResponse(envelope: WireQueryEnvelope | null, table: stri
 // Writes
 // ---------------------------------------------------------------------------
 
-export function buildBatchInserts(items: Array<{ key: string; doc: Record<string, unknown> }>): WireBatchRequest {
+export function buildBatchInserts(items: Array<{ key: string; doc: Record<string, unknown> }>, opts?: { sync?: boolean }): WireBatchRequest {
   const inserts: Record<string, Record<string, unknown>> = {}
   for (const item of items) inserts[item.key] = item.doc
-  return { inserts, sync_level: 'full_index' }
+  // sync=false omits sync_level: indexing proceeds async and the caller
+  // (blue/green backfill) polls leg health for convergence. Synchronous
+  // full_index on 50-doc chunks serializes behind one Metal embed queue
+  // and times out on any real corpus (observed at the rc.17 cutover).
+  return opts?.sync === false ? { inserts } : { inserts, sync_level: 'full_index' }
 }
 
 export function buildBatchDeletes(keys: string[]): WireBatchRequest {

@@ -198,9 +198,9 @@ export class AntflySearchClient implements SearchAdapter {
     index: async (table: string, key: string, doc: Document): Promise<void> => {
       await this.request('POST', paths.batch(table), buildBatchInserts([{ key, doc }]))
     },
-    batchIndex: async (table: string, items: IndexItem[]): Promise<BatchResult> => {
+    batchIndex: async (table: string, items: IndexItem[], opts?: { sync?: boolean }): Promise<BatchResult> => {
       if (items.length === 0) return { indexed: 0, failed: [] }
-      const result = await this.requestJson<WireBatchResponse>('POST', paths.batch(table), buildBatchInserts(items))
+      const result = await this.requestJson<WireBatchResponse>('POST', paths.batch(table), buildBatchInserts(items, opts))
       return { indexed: result?.inserted ?? items.length, failed: [] }
     },
     remove: async (table: string, key: string): Promise<void> => {

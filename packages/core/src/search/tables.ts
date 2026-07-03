@@ -205,7 +205,7 @@ async function backfill(adapter: SearchAdapter, def: TableEnsureDef, physical: s
   let chunk: Array<{ key: string; doc: Document }> = []
   const flush = async () => {
     if (chunk.length === 0) return
-    await adapter.documents.batchIndex(physical, chunk)
+    await adapter.documents.batchIndex(physical, chunk, { sync: false })
     emitted += chunk.length
     setPhase(def.logical, 'backfilling', emitted)
     onProgress?.('backfilling', emitted)
