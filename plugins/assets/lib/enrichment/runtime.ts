@@ -17,6 +17,7 @@
 import { VisionEnrichmentResultSchema, type VisionEnrichmentResult } from '@bakin/core/media'
 import type { AgentRuntimeAdapter, MessageAttachment } from '@bakin/core/adapters/runtime'
 import type { EnrichmentEngine, EnrichmentJobInput } from './engine'
+import { prepareImageAttachment } from './downscale'
 
 export type RuntimeAvailability =
   | { ok: true }
@@ -133,10 +134,16 @@ export function createRuntimeEngine(runtime: AgentRuntimeAdapter, agentId: strin
     modelId: `runtime:${agentId}`,
     async run(input: EnrichmentJobInput): Promise<VisionEnrichmentResult> {
       const threadId = `enrich:${input.jobKey ?? 'adhoc'}`
-      const attachments: MessageAttachment[] | undefined =
-        input.kind !== 'document' && input.mediaPath
-          ? [{ path: input.mediaPath, mimeType: input.mediaMime ?? 'application/octet-stream' }]
-          : undefined
+      let attachments: MessageAttachment[] | undefined
+      if (input.kind !== 'document' && input.mediaPath) {
+        // Oversized images are downscaled to a temp JPEG BEFORE the send —
+        // the gateway's 2MB inline cap otherwise silently degrades them
+        // and the model never sees pixels (bakin#583 territory).
+        const prepared = input.kind === 'image'
+          ? await prepareImageAttachment(input.mediaPath, input.mediaMime ?? 'application/octet-stream')
+          : { path: input.mediaPath, mimeType: input.mediaMime ?? 'application/octet-stream' }
+        attachments = [{ path: prepared.path, mimeType: prepared.mimeType }]
+      }
 
       const send = (content: string) => runtime.messaging.send({
         agentId,

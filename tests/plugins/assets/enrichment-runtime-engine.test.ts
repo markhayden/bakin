@@ -9,7 +9,7 @@
 import { describe, it, expect, afterAll, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { rmSync } from 'fs'
+import { rmSync, mkdirSync, writeFileSync } from 'fs'
 import { randomUUID } from 'crypto'
 
 const testDir = join(tmpdir(), `bakin-test-enrich-rt-engine-${Date.now()}-${randomUUID()}`)
@@ -68,9 +68,15 @@ function scriptedRuntime(replies: Array<string | Error>): { runtime: AgentRuntim
   return { runtime, sent }
 }
 
+// Real file on disk: the engine stats + downscale-gates attachments before
+// sending (fake paths would fail the size check, correctly).
+const fixtureImage = join(testDir, 'v1.png')
+mkdirSync(testDir, { recursive: true })
+writeFileSync(fixtureImage, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64'))
+
 const imageJob: EnrichmentJobInput = {
   kind: 'image',
-  mediaPath: '/fake/asset/v1.png',
+  mediaPath: fixtureImage,
   mediaMime: 'image/png',
   jobKey: 'as-123:v1',
 }
@@ -91,7 +97,7 @@ describe('createRuntimeEngine send contract', () => {
     expect(args.agentId).toBe('enrich')
     expect(args.threadId).toBe('enrich:as-123:v1')
     expect(args.ephemeral).toBe(true)
-    expect(args.attachments).toEqual([{ path: '/fake/asset/v1.png', mimeType: 'image/png' }])
+    expect(args.attachments).toEqual([{ path: fixtureImage, mimeType: 'image/png' }])
     expect('model' in args).toBe(false)
     expect(args.content).toContain('{"error":"no-image"}') // anti-confabulation contract in the prompt
   })
