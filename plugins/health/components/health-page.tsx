@@ -35,7 +35,6 @@ import {
   formatTokenCount,
   formatRuntimeCost,
   formatDateShort,
-  searchStatsDocumentCount,
   extractErrorMessage,
   formatActivity,
 } from '../lib/format'
@@ -283,20 +282,17 @@ export function HealthPage() {
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
   const [searchHealth, setSearchHealth] = useState<{
     enabled: boolean
+    outbox?: { pending: number; quarantined: number; oldestPendingAt: number | null }
     tables: Array<{
-      table: string
+      logical: string
+      physical: string
+      schemaVersion: number
+      state: 'active' | 'migrating'
+      phase: string | null
       pluginId: string
-      stats: Record<string, unknown> | null
-      indexHealth?: Array<{
-        name: string
-        type: string
-        totalIndexed: number
-        walBacklog: number
-        error?: string
-        rebuilding: boolean
-        backfillProgress?: number
-      }>
-      healthy?: boolean
+      docCount: number | null
+      legs: Array<{ name: string; totalIndexed: number; rebuilding: boolean; error?: string }>
+      healthy: boolean
     }>
   } | null>(null)
   // Which reindex is currently running: null = none, 'all' = every table, or a
@@ -400,12 +396,11 @@ export function HealthPage() {
     return await res.json()
   }, [])
 
-  // Trigger a reindex of one table (by name) or all tables, then keep tracking it
-  // until the BACKEND actually converges — documents are written when the POST
-  // returns, but the embedding backfill + replay catch-up continue afterward.
-  // Completion is driven by real per-index state (rebuilding/walBacklog/error),
-  // not the request round-trip (#582). Gives up the live spinner after a timeout
-  // and lets the index keep converging in the background (it stays queryable).
+  // Trigger a blue/green rebuild of one table (by logical name) or all, then
+  // keep tracking until the pointer flips and every leg converges — the POST
+  // returns when the rebuild is INITIATED; the backfill continues behind it
+  // while queries keep answering from the old physical. Gives up the live
+  // spinner after a timeout and lets the migration finish in the background.
   const triggerReindex = useCallback(async (table?: string) => {
     const scope = table ?? 'all'
     setReindexScope(scope)
@@ -415,13 +410,13 @@ export function HealthPage() {
       const deadline = Date.now() + REINDEX_CONVERGE_TIMEOUT_MS
       while (Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, REINDEX_POLL_MS))
-        let snap: { tables?: Array<{ table: string; indexHealth?: Array<{ rebuilding: boolean; walBacklog: number; error?: string }> }> } | null = null
-        try { snap = await fetchSearchStatus() } catch { continue }
+        let snap: typeof searchHealth = null
+        try { snap = await fetchSearchStatus() as typeof searchHealth } catch { continue }
         if (!snap || !Array.isArray(snap.tables)) continue
-        setSearchHealth(snap as typeof searchHealth)
-        const targets = snap.tables.filter((t) => scope === 'all' || t.table === scope)
+        setSearchHealth(snap)
+        const targets = snap.tables.filter((t) => scope === 'all' || t.logical === scope)
         const converged = targets.length > 0 && targets.every((t) =>
-          (t.indexHealth ?? []).every((i) => !i.rebuilding && (i.walBacklog ?? 0) === 0 && !i.error))
+          t.state === 'active' && t.legs.every((i) => !i.rebuilding && !i.error))
         if (converged) break
       }
     } finally {
@@ -431,8 +426,10 @@ export function HealthPage() {
   }, [clearReindexProgress, fetchSearchStatus, fetchData])
 
   // A table's embedding indexes have finished backfilling + catching up.
-  const tableConverged = useCallback((t: { indexHealth?: Array<{ rebuilding: boolean; walBacklog: number; error?: string }> }) =>
-    (t.indexHealth ?? []).every((i) => !i.rebuilding && (i.walBacklog ?? 0) === 0 && !i.error), [])
+  // A table is converged once every leg stops building AND it isn't mid-
+  // migration (blue/green: the pointer only flips after the green converges).
+  const tableConverged = useCallback((t: { state: 'active' | 'migrating'; legs: Array<{ rebuilding: boolean; error?: string }> }) =>
+    t.state === 'active' && t.legs.every((i) => !i.rebuilding && !i.error), [])
 
   // Filtered plugins
   const filteredPlugins = useMemo(() => {
@@ -778,48 +775,55 @@ export function HealthPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
+            <p className="text-xs text-muted-foreground mb-3">
+              Rebuilds run blue/green — a fresh table backfills in the background and search stays available throughout.
+              {searchHealth.outbox && (searchHealth.outbox.pending > 0 || searchHealth.outbox.quarantined > 0) && (
+                <span className="ml-2">
+                  Journal: {searchHealth.outbox.pending} pending
+                  {searchHealth.outbox.quarantined > 0 && <span className="text-red-400"> · {searchHealth.outbox.quarantined} quarantined</span>}
+                </span>
+              )}
+            </p>
             {searchHealth.tables.length === 0 ? (
               <p className="text-sm text-muted-foreground">No tables registered</p>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {searchHealth.tables.map(t => {
-                  const docs = searchStatsDocumentCount(t.stats)
-                  const progress = reindexProgress[t.table]
+                  const progress = reindexProgress[t.logical]
                   const writing = progress && !progress.done
-                  const hasEnrichmentError = t.indexHealth?.some(i => i.error)
-                  const hasWalBacklog = t.indexHealth?.some(i => i.walBacklog > 0)
-                  const enrichmentError = t.indexHealth?.find(i => i.error)?.error
-                  // Real backend convergence (#582): a table is "done" only once its
-                  // embedding indexes stop rebuilding / draining their WAL, not when
-                  // the reindex request returned.
+                  const legError = t.legs.find(i => i.error)?.error
+                  const migrating = t.state === 'migrating'
+                  const parked = migrating && t.phase === 'parked'
+                  // Blue/green convergence: 'done' means the pointer flipped
+                  // (state active) and every leg finished building.
                   const converged = tableConverged(t)
-                  const isTarget = reindexScope !== null && (reindexScope === 'all' || reindexScope === t.table)
-                  const isConverging = isTarget && !converged
-                  const backfillVals = (t.indexHealth ?? []).filter(i => i.rebuilding && typeof i.backfillProgress === 'number').map(i => i.backfillProgress as number)
-                  const backfillPct = backfillVals.length ? Math.round(Math.min(...backfillVals) * 100) : null
+                  const isTarget = reindexScope !== null && (reindexScope === 'all' || reindexScope === t.logical)
+                  const isConverging = (isTarget && !converged) || (migrating && !parked)
                   return (
-                    <div key={t.table} className={`rounded-lg border p-3 transition-colors ${isConverging ? 'border-amber-500/50 bg-amber-500/5' : (isTarget && converged) ? 'border-emerald-500/50 bg-emerald-500/5' : 'border-border'}`}>
+                    <div key={t.logical} className={`rounded-lg border p-3 transition-colors ${parked ? 'border-red-500/50 bg-red-500/5' : isConverging ? 'border-amber-500/50 bg-amber-500/5' : (isTarget && converged) ? 'border-emerald-500/50 bg-emerald-500/5' : 'border-border'}`}>
                       <div className="flex items-center justify-between">
-                        <p className="text-xs text-muted-foreground">{t.pluginId}</p>
+                        <p className="text-xs text-muted-foreground">{t.pluginId} <span className="opacity-60">v{t.schemaVersion}</span></p>
                         <div className="flex items-center gap-1">
-                          {t.indexHealth && (
-                            hasEnrichmentError ? (
-                              <span title={enrichmentError ?? 'Enrichment error'}>
-                                <AlertCircle className="h-3.5 w-3.5 text-red-400" />
-                              </span>
-                            ) : (isConverging || hasWalBacklog) ? (
-                              <span title="Embedding / catching up">
-                                <Clock className="h-3.5 w-3.5 text-amber-400" />
-                              </span>
-                            ) : (
-                              <CircleCheck className="h-3.5 w-3.5 text-emerald-400" />
-                            )
+                          {legError ? (
+                            <span title={legError}>
+                              <AlertCircle className="h-3.5 w-3.5 text-red-400" />
+                            </span>
+                          ) : isConverging ? (
+                            <span title={migrating ? `migrating: ${t.phase ?? 'running'}` : 'Embedding / catching up'}>
+                              <Clock className="h-3.5 w-3.5 text-amber-400" />
+                            </span>
+                          ) : parked ? (
+                            <span title="Migration parked — repair from the doctor panel">
+                              <AlertCircle className="h-3.5 w-3.5 text-red-400" />
+                            </span>
+                          ) : (
+                            <CircleCheck className="h-3.5 w-3.5 text-emerald-400" />
                           )}
                           <button
                             type="button"
-                            title={`Reindex ${t.table}`}
+                            title={`Rebuild ${t.logical} (search stays available)`}
                             disabled={!searchHealth.enabled || reindexScope !== null}
-                            onClick={() => triggerReindex(t.table)}
+                            onClick={() => triggerReindex(t.logical)}
                             className="text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:hover:text-muted-foreground"
                           >
                             <RotateCw className={`h-3.5 w-3.5 ${isConverging ? 'animate-spin text-amber-400' : ''}`} />
@@ -827,12 +831,16 @@ export function HealthPage() {
                         </div>
                       </div>
                       <p className={`text-lg font-semibold tabular-nums ${isConverging ? 'text-amber-400' : (isTarget && converged) ? 'text-emerald-400' : ''}`}>
-                        {writing ? `${progress.indexed}…` : docs}
+                        {writing ? `${progress.indexed}…` : (t.docCount ?? '—')}
                       </p>
                       <p className="text-[10px] text-muted-foreground">
-                        {isConverging
-                          ? (backfillPct != null ? `embedding ${backfillPct}%` : writing ? 'writing…' : 'catching up…')
-                          : t.table}
+                        {parked
+                          ? 'migration parked'
+                          : migrating
+                            ? `migrating: ${t.phase ?? 'running'}`
+                            : isConverging
+                              ? (writing ? 'writing…' : 'catching up…')
+                              : t.logical}
                       </p>
                     </div>
                   )

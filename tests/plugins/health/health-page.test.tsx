@@ -99,13 +99,18 @@ afterEach(() => {
 })
 
 describe('HealthPage search stats', () => {
-  it('renders adapter document counts from the stable documents field', async () => {
+  it('renders per-table doc counts from the blue/green snapshot', async () => {
     const fetchMock = setupHealthFetch({
       searchTables: [{
-        table: 'bakin_tasks',
+        logical: 'bakin_tasks',
+        physical: 'bakin_tasks_v1_abcd1234',
+        schemaVersion: 1,
+        state: 'active',
+        phase: null,
         pluginId: 'tasks',
         healthy: true,
-        stats: { table: 'bakin_tasks', documents: 17 },
+        docCount: 17,
+        legs: [],
       }],
     })
 

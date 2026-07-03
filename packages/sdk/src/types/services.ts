@@ -233,18 +233,34 @@ export interface SearchHealthIndex {
   error?: string
 }
 
-/** Health of a single registered content-type table. */
+/** Health of a single registered content-type table (blue/green aware). */
 export interface SearchHealthTable {
-  table: string
+  /** Logical name plugins and queries use (e.g. bakin_assets). */
+  logical: string
+  /** Versioned physical currently serving queries. */
+  physical: string
+  schemaVersion: number
+  /** 'migrating' = a green table is backfilling; queries stay on `physical`. */
+  state: 'active' | 'migrating'
+  /** Migration phase when state is 'migrating' (parked = needs attention). */
+  phase: string | null
   pluginId: string
-  stats: Record<string, unknown> | null
-  indexHealth?: SearchHealthIndex[]
+  docCount: number | null
+  legs: SearchHealthIndex[]
   healthy: boolean
+}
+
+/** Durable write-journal state surfaced with health. */
+export interface SearchOutboxHealth {
+  pending: number
+  quarantined: number
+  oldestPendingAt: number | null
 }
 
 /** Health snapshot reported by the search adapter (per-table state). */
 export interface SearchHealthSnapshot {
   enabled: boolean
+  outbox?: SearchOutboxHealth
   tables: SearchHealthTable[]
 }
 

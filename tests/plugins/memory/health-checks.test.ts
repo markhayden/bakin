@@ -63,10 +63,15 @@ mock.module('../../../src/core/logger', () => ({
 }))
 
 interface MockTable {
-  table: string
+  logical: string
+  physical: string
+  schemaVersion: number
+  state: 'active' | 'migrating'
+  phase: string | null
   pluginId: string
   healthy: boolean
-  stats: Record<string, unknown> | null
+  docCount: number | null
+  legs: unknown[]
 }
 let mockHealth: SearchHealthSnapshot = { enabled: true, tables: [] }
 let mockSearchHealthThrows: Error | null = null
@@ -161,8 +166,8 @@ describe('checkSearchTables — registry shape', () => {
     mockHealth = {
       enabled: true,
       tables: [
-        { table: 'tasks', pluginId: 'tasks', healthy: true, stats: { documents: 12 } },
-        { table: 'projects', pluginId: 'projects', healthy: true, stats: { documents: 5 } },
+        { logical: 'tasks', physical: 'tasks_v1_x', schemaVersion: 1, state: 'active' as const, phase: null, pluginId: 'tasks', healthy: true, docCount: 12, legs: [] },
+        { logical: 'projects', physical: 'projects_v1_x', schemaVersion: 1, state: 'active' as const, phase: null, pluginId: 'projects', healthy: true, docCount: 5, legs: [] },
       ],
     }
     const results = await checkSearchTables(readMockSearchHealth)
@@ -171,18 +176,6 @@ describe('checkSearchTables — registry shape', () => {
     expect(results[0].message).toMatch(/2 tables, 17 total documents/)
   })
 
-  it('falls back to a metadata-readable note when num_docs is unavailable for every table', async () => {
-    mockHealth = {
-      enabled: true,
-      tables: [
-        { table: 'tasks', pluginId: 'tasks', healthy: true, stats: { storage_status: { empty: false } } },
-      ],
-    }
-    const results = await checkSearchTables(readMockSearchHealth)
-    expect(results).toHaveLength(1)
-    expect(results[0].status).toBe('ok')
-    expect(results[0].message).toMatch(/document counts unavailable from current search adapter API/)
-  })
 })
 
 // ─── Per-table branches ───────────────────────────────────────────────────
@@ -191,16 +184,16 @@ describe('checkSearchTables — per-table branches', () => {
   it('warns about a table whose stats are unavailable', async () => {
     mockHealth = {
       enabled: true,
-      tables: [{ table: 'tasks', pluginId: 'tasks', healthy: true, stats: null }],
+      tables: [{ logical: 'tasks', physical: 'tasks_v1_x', schemaVersion: 1, state: 'active' as const, phase: null, pluginId: 'tasks', healthy: true, docCount: null, legs: [] }],
     }
     const results = await checkSearchTables(readMockSearchHealth)
-    expect(results.some(r => r.status === 'warn' && r.message.includes('stats unavailable'))).toBe(true)
+    expect(results.some(r => r.status === 'warn' && r.message.includes('doc count unavailable'))).toBe(true)
   })
 
   it('reports schedule-table 0-doc count as ok with a runtime-only note', async () => {
     mockHealth = {
       enabled: true,
-      tables: [{ table: 'schedule', pluginId: 'schedule', healthy: true, stats: { num_docs: 0 } }],
+      tables: [{ logical: 'schedule', physical: 'schedule_v1_x', schemaVersion: 1, state: 'active' as const, phase: null, pluginId: 'schedule', healthy: true, docCount: 0, legs: [] }],
     }
     const results = await checkSearchTables(readMockSearchHealth)
     expect(results.some(r => r.status === 'ok' && r.message.includes('indexed at runtime'))).toBe(true)
@@ -209,20 +202,12 @@ describe('checkSearchTables — per-table branches', () => {
   it('reports a non-schedule table with 0-doc count as ok with reindex hint', async () => {
     mockHealth = {
       enabled: true,
-      tables: [{ table: 'tasks', pluginId: 'tasks', healthy: true, stats: { num_docs: 0 } }],
+      tables: [{ logical: 'tasks', physical: 'tasks_v1_x', schemaVersion: 1, state: 'active' as const, phase: null, pluginId: 'tasks', healthy: true, docCount: 0, legs: [] }],
     }
     const results = await checkSearchTables(readMockSearchHealth)
-    expect(results.some(r => r.status === 'ok' && r.message.includes('reindex via POST /api/reindex?table=tasks'))).toBe(true)
+    expect(results.some(r => r.status === 'ok' && r.message.includes('rebuild via POST /api/reindex?table=tasks'))).toBe(true)
   })
 
-  it('reports a table with storage_status.empty as ok with reindex hint', async () => {
-    mockHealth = {
-      enabled: true,
-      tables: [{ table: 'tasks', pluginId: 'tasks', healthy: true, stats: { storage_status: { empty: true } } }],
-    }
-    const results = await checkSearchTables(readMockSearchHealth)
-    expect(results.some(r => r.status === 'ok' && r.message.includes('appears empty'))).toBe(true)
-  })
 })
 
 // ─── Failure path ─────────────────────────────────────────────────────────

@@ -697,10 +697,12 @@ describe('search-registry', () => {
 
     expect(health.enabled).toBe(true)
     expect(health.tables).toHaveLength(1)
-    expect(health.tables[0]!.indexHealth).toEqual([
+    expect(health.tables[0]!.legs).toEqual([
       { name: 'full_text', totalIndexed: 42, rebuilding: false },
       { name: 'embeddings', totalIndexed: 12, rebuilding: true },
     ])
+    expect(health.tables[0]!.logical).toBe('bakin_tasks')
+    expect(health.tables[0]!.docCount).toBe(42)
     expect(health.tables[0]!.healthy).toBe(true)
   })
 
@@ -716,7 +718,7 @@ describe('search-registry', () => {
     const health = await getSearchHealth()
 
     expect(health.tables[0]!.healthy).toBe(false)
-    expect(health.tables[0]!.indexHealth![0]!.error).toBe('model missing')
+    expect(health.tables[0]!.legs[0]!.error).toBe('model missing')
   })
 
   it('getSearchHealth defaults to healthy when leg health is empty', async () => {
@@ -728,8 +730,8 @@ describe('search-registry', () => {
 
     const health = await getSearchHealth()
 
-    expect(health.tables[0]!.stats).toEqual({ table: 'bakin_tasks', documents: 5 })
-    expect(health.tables[0]!.indexHealth).toBeUndefined()
+    expect(health.tables[0]!.docCount).toBe(5)
+    expect(health.tables[0]!.legs).toEqual([])
     expect(health.tables[0]!.healthy).toBe(true)
   })
 
