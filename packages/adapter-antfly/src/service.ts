@@ -200,6 +200,23 @@ export function systemdUnitPath(io: ServiceIo = defaultServiceIo()): string {
 // Provisioning + control
 // ---------------------------------------------------------------------------
 
+export interface AntflyServiceStatus {
+  mode: ServiceMode
+  /** Unit file present for the detected service mode (n/a modes are true). */
+  provisioned: boolean
+  detail?: string
+}
+
+/** Cheap, read-only: one stat per call. Doctor/status surfaces only. */
+export function getAntflyServiceStatus(settings: AntflySettings, io: ServiceIo = defaultServiceIo()): AntflyServiceStatus {
+  const mode = detectServiceMode(settings, io)
+  if (mode === 'guest') return { mode, provisioned: true, detail: `externally managed (${settings.url})` }
+  if (mode === 'child') return { mode, provisioned: true, detail: 'strict child (ephemeral environment)' }
+  const unitPath = mode === 'launchd' ? launchdPlistPath(io) : systemdUnitPath(io)
+  const provisioned = existsSync(unitPath)
+  return { mode, provisioned, ...(provisioned ? {} : { detail: `unit file missing: ${unitPath}` }) }
+}
+
 export interface EnsureResult {
   mode: ServiceMode
   action: 'unchanged' | 'provisioned' | 'restarted' | 'skipped'

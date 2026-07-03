@@ -30,6 +30,8 @@ import { checkRestartRecovery } from './lib/system-checks/restart-recovery'
 import { checkExecutionSafety } from './lib/system-checks/execution-safety'
 import { checkBudget } from './lib/system-checks/budget'
 import { checkSearchAdapter } from './lib/system-checks/search'
+import { checkSearchOutbox, searchOutboxRepair } from './lib/system-checks/search-outbox'
+import { checkSearchConsistency, searchConsistencyRepair } from './lib/system-checks/search-consistency'
 import { checkAndSyncSkill, syncSkillRepair } from './lib/system-checks/sync-skill'
 import { checkPluginAssets } from './lib/system-checks/plugin-assets'
 import { checkPluginArtifacts } from './lib/system-checks/plugin-artifacts'
@@ -550,8 +552,20 @@ const healthPlugin: BakinPlugin = definePlugin({
     })
     ctx.registerHealthCheck({
       id: 'search',
-      name: 'Search adapter binary + daemon connection',
+      name: 'Search engine binary, supervision + connection',
       run: () => checkSearchAdapter(),
+    })
+    ctx.registerHealthCheck({
+      id: 'search-outbox',
+      name: 'Search write journal (outbox) drain state',
+      run: () => checkSearchOutbox(),
+      repair: searchOutboxRepair(),
+    })
+    ctx.registerHealthCheck({
+      id: 'search-consistency',
+      name: 'Search table consistency + deep sweep',
+      run: () => checkSearchConsistency(),
+      repair: searchConsistencyRepair(),
     })
     ctx.registerHealthCheck({
       id: 'skill',
