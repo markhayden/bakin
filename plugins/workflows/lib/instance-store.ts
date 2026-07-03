@@ -5,9 +5,10 @@
  * file. Everything here is parameterized by a contentDir and carries no
  * workflow semantics — pure persistence.
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
+import { readFileSync, readdirSync, existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { randomBytes } from 'crypto'
+import { atomicWriteJson } from '@bakin/core/storage/atomic-write'
 import type { WorkflowInstance } from '../types'
 import { getContentDir } from './content-dir'
 
@@ -37,7 +38,9 @@ export function saveInstance(instance: WorkflowInstance, contentDir?: string): v
   const instancesDir = getInstancesDir(dir)
   if (!existsSync(instancesDir)) mkdirSync(instancesDir, { recursive: true })
   instance.updatedAt = new Date().toISOString()
-  writeFileSync(getInstancePath(dir, instance.taskId), JSON.stringify(instance, null, 2), 'utf-8')
+  // Atomic: this is the engine's state file — a crash mid-write must never
+  // leave a truncated instance behind.
+  atomicWriteJson(getInstancePath(dir, instance.taskId), instance)
 }
 
 /**
@@ -51,7 +54,6 @@ export function listInstances(
   const instancesDir = getInstancesDir(dir)
   if (!existsSync(instancesDir)) return []
 
-  const { readdirSync } = require('fs')
   const files = readdirSync(instancesDir).filter((f: string) => f.endsWith('.json'))
 
   const instances: WorkflowInstance[] = []
@@ -87,7 +89,7 @@ function saveNotifiedGates(data: Record<string, string>, contentDir: string): vo
   const p = getNotifiedGatesPath(contentDir)
   const dir = join(contentDir, 'workflows')
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-  writeFileSync(p, JSON.stringify(data, null, 2), 'utf-8')
+  atomicWriteJson(p, data)
 }
 
 export function isGateNotified(taskId: string, stepId: string, contentDir?: string): boolean {
