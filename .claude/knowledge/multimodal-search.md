@@ -1,239 +1,100 @@
-# Multimodal Search
+# Multimodal Search — Assets Text + Media Legs
 
-How Bakin indexes content across modalities — text bodies, PDF extraction, and image pixels — and how to extend it.
+How Bakin makes assets findable by what they *are* — caption text, OCR'd
+words, visual similarity, audio similarity — not just filenames. For the full
+search architecture (outbox, blue/green, service lifecycle) see
+`search-system.md`; this doc is the `bakin_assets` multimodal pipeline.
 
-For the full search system reference (registry, hybrid fusion, reranker, migration), see `search-system.md`. This doc focuses specifically on the **multimodal pipeline** for the `bakin_assets` table.
+## The two embedding legs
 
-## The problem
+`bakin_assets` declares two capability legs (plus the engine-managed
+full-text index). The antfly adapter maps capabilities to models
+(`packages/adapter-antfly/src/defaults.ts`); nothing upstream names a model
+(D17 — architecture-test enforced).
 
-Assets are mixed-modality by nature. A single `bakin_assets` table holds:
-
-- PDFs (recipe, contract, spec sheet)
-- Markdown and plain text (notes, project docs, READMEs)
-- Structured data files (JSON, CSV, YAML)
-- Raster images (screenshots, photos, diagrams)
-- Vector images (SVG logos and icons)
-- Audio and video (not yet indexed beyond metadata)
-
-A single text embedding model can't meaningfully represent pixel data, and a single image embedder can't represent 500-word contract clauses. Bakin needs to route each asset through the right pipeline and merge the results at query time.
-
-## The design
-
-The `bakin_assets` Antfly table has **two embedding indexes** side by side:
-
-| Index | Embedder | Template | What goes in |
+| Leg | Capability | Default model (antfly adapter) | Input |
 |---|---|---|---|
-| `assets_text` | `BAAI/bge-small-en-v1.5` | `{{description}} {{tags}} {{file_name}} {{content}}` | Sidecar metadata + server-side extracted body text |
-| `assets_visual` | `openai/clip-vit-base-patch32` | `{{#if image_url}}{{remoteMedia url=image_url}}{{/if}}` | Raster image pixels (CLIP joint text-image space) |
+| `assets_text` | `text-embedding` | `BAAI/bge-small-en-v1.5` (384-dim) | description + caption + OCR + tags + transcript + extracted text (chunked 200/25) |
+| `assets_visual` | `media-embedding` | `antflydb/clipclap` (CLIP+CLAP, 512-dim) | raw media bytes via `media_url` — **raster images AND audio** |
 
-Plus the standard Bleve full-text index on `description`, `tags`, `file_name`, `content` — so keyword hits on extracted bodies show up in queries via the normal BM25 path.
+`antflydb/clipclap` is a dual-encoder CLIP (images↔text shared space) with a
+CLAP audio half — one leg embeds both pixels and audio into the same vector
+space, so "find that voice memo about the launch" and "red dashboard mockup"
+use the same query mechanics.
 
-At query time the registry passes `indexes: ['assets_text', 'assets_visual']` to `antfly.queryTable`, Antfly runs both embedders, and RRF merges them with Bleve into a unified ranking. The per-doc `_index_scores` breakdown tells you exactly which modality produced the hit.
+## Where the text comes from: enrichment (the load-bearing half)
 
-### Why two indexes on one table
+CLIP similarity alone can't carry image search. On asset create/new-version,
+the **enrichment queue** (assets plugin) calls a vision LLM and writes
+`caption`, `ocrText`, `suggestedTags`, `transcript` (audio), `summary`
+(text-heavy docs) into the asset **manifest** — durable, user-editable, never
+re-billed (`done + forVersion` skip guard; user-edited fields are never
+clobbered). `buildVersionedAssetSearchDoc` (`plugins/assets/lib/search-doc.ts`)
+folds those fields into the search doc, so BM25 and the text leg both see
+real content for images. Provider layer:
+`packages/core/src/media/direct-vision-provider.ts` (Anthropic/OpenAI/Google;
+Zod-strict output — invalid JSON means `failed`, never fabricated metadata).
 
-The alternative — two separate tables — would have required doubling reindex logic, splitting facets and aggregations, and merging cross-table query results. Antfly natively supports multiple named indexes on one table, and the registry's multi-index support (T3) makes the registration clean. Everything that touches assets (upload routes, trash, watcher, cleanup, facets) treats them as one logical collection; the storage layer just happens to run two embedders.
+## media_url mechanics
 
-### Why server-side extraction instead of `{{remotePDF}}` / `{{remoteText}}`
+- `search-doc.ts` sets `media_url` to a `file://` URL (`buildAssetFileUrl`)
+  for raster images (`png|jpe?g|gif|webp|bmp`) and audio files
+  (`mp3|wav|flac|ogg|m4a|aac` when `manifest.type === 'audio'`).
+- The media leg's template is `{{#if media_url}}{{remoteMedia url=media_url}}{{/if}}`
+  — docs without media simply skip the leg.
+- `file://` URLs, not loopback HTTP: the engine's scraper blocks private IPs
+  for `http(s)://`, while `file://` dispatches straight to a local read —
+  the sanctioned path for a same-host engine.
+- Embedding runs IN-PROCESS in the engine (never an inference URL — an HTTP
+  inference path wedges backfill on cold/dead endpoints).
 
-Antfly ships template helpers that fetch content over HTTP or `file://` at enrichment time — `{{remotePDF url=X}}`, `{{remoteText url=X}}`, `{{remoteMedia url=X}}`. On paper those are the right abstraction: the template handles I/O, Bakin just passes URLs. In practice two things bit us:
+## Server-side text extraction (unchanged rationale)
 
-**PDF extraction is broken upstream.** Antfly's Go PDF library (`ajroetker/pdf`, a fork of `rsc.io/pdf`) silently fails on any PDF with complex font subsetting, CID fonts, or text positioned via matrix transforms — which is every design-tool PDF from Canva, InDesign, Affinity, and basically any modern authoring tool. The helper returns empty text with no error. Documents index with no body content and every PDF query silently returns wrong results. See Bakin issue #72 for the full trace.
+Bakin extracts document text itself (`plugins/assets/lib/content-extractor.ts`:
+plain formats read directly, PDF via lazy `pdf-parse` with a 100-page cap,
+50K-char cap, per-(asset,version,size) LRU) and passes it as a first-class
+`content` field. The engine's own `{{remotePDF}}` extraction is unreliable on
+design-tool PDFs, and Bakin-side extraction also feeds BM25 keyword search.
+The engine never reads local files except `media_url` bytes.
 
-**Loopback HTTP fetches are blocked.** Antfly's scraping layer hardcodes a private-IP defense (`BlockPrivateIps: true` in the default `ContentSecurityConfig`) that rejects `127.0.0.1`, `10.*`, `192.168.*`, and `169.254.*`. There's a config key (`content_security.block_private_ips`) that *looks* like it disables this, but it's dead code — `SetDefaultSecurityConfig()` is defined in Antfly's source and never called anywhere. Another #72 finding. For plain-text formats we could theoretically work around this with `{{remoteText url=file://...}}`, but we'd still be at the mercy of Antfly's private-IP check on HTTPS sources, and the PDF path would still be broken.
+## Mixed corpora and antfly#319
 
-**Server-side extraction in Bakin sidesteps both.** Bakin reads the file directly from disk (trivial — assets live in `~/.bakin/assets/`), extracts text with well-maintained Node libraries, and passes the result as a first-class `content` field on the search document. Antfly just embeds what it's given. As a bonus: extracted text shows up in the Bleve full-text index, so keyword search works on PDF bodies — something `{{remotePDF}}` doesn't provide even when it functions.
+A table where some docs have `media_url` and some don't is the NORMAL case —
+and upstream's backfill accounting never reaches "complete" when the template
+skips docs ([antflydb/antfly#319](https://github.com/antflydb/antfly/issues/319)).
+The adapter's `mapIndexStatuses` applies idle-detection (pending 0 + no
+active batch + not retrying ⇒ ready); a canary in
+`tests/integration/antfly/workaround-regressions.test.ts` fails when upstream
+fixes the accounting so the override can be deleted.
 
-For **images**, we still use Antfly's `{{remoteMedia url=...}}` because CLIP needs pixel data and Bakin doesn't have an in-process way to hand raw image bytes to Termite. `file://` URLs work for `remoteMedia` because `DownloadContent` dispatches on scheme — the private-IP check only runs for `http(s)://`. `file://` goes through `validatePathSecurity`, which is a no-op unless `AllowedPaths` is configured.
+## Fusion + debug scores
 
-## The pipeline
+Hybrid queries fuse full-text + both legs with **RSF** at balanced weights
+(1.0/1.0) — the measured winners (83% vs 28% hit@1 against the old 0.5/2.0
+RRF skew; `search-tuning.md` has the numbers and the re-run command).
+Per-hit `indexScores` come back with neutral keys (`full_text`,
+`assets_text`, `assets_visual`); the shared `ScoreOverlay` SDK component
+renders one badge per leg in debug mode — in the assets grid AND the ⌘K
+overlay. Embedding legs report `-cosine_distance` (negative; nearer 0 =
+more similar).
 
-```
-Filesystem event (upload, paste, manual drop, sync hook)
-  ↓
-plugins/assets/index.ts indexAsset(relPath)
-  ↓
-assetToSearchDoc(meta, filename, assetType, relPath)
-  ├─ read sidecar (.meta.json)
-  ├─ computeImageUrl(rel, filename, assetType)
-  │    └─ raster formats → buildAssetFileUrl → 'file:///abs/path.jpg'
-  │    └─ other          → ''
-  ├─ extractAssetContent(absPath, filename)
-  │    ├─ .pdf                  → pdf-parse (lazy-imported, v2 PDFParse class)
-  │    ├─ .md/.txt/.json/.csv/… → fs.readFileSync('utf-8')
-  │    └─ (other)               → ''
-  │    (all paths capped at 50K chars, word-boundary-safe truncate)
-  └─ emit doc: { description, tags, file_name, agent, task_id,
-                asset_type, updated_at, content, image_url, ... }
-  ↓
-ctx.search.index(relPath, doc)
-  ↓
-SearchAdapter.batchIndex(bakin_assets, { [relPath]: doc })
-  ↓
-Antfly's embedding enricher (per-shard, async):
-  ├─ assets_text index: chunk → embed via BGE → store vectors
-  ├─ assets_visual index: fetch image_url via file:// → embed via CLIP → store vectors
-  └─ full_text_index_v0: tokenize description+tags+file_name+content → store Bleve doc
-```
+Reranking is per-query opt-in (`rerank: true`): +11pts hit@1 on the golden
+set at ~10× latency (~200ms/candidate, serialized on Metal). Never default-on.
 
-All three indexes are populated from the same source document in one insert. Failure in any one index is logged but doesn't abort the others — a doc with corrupt image bytes still gets its text embedding.
+## Schema changes
 
-## Format support matrix
+Doc-shape or leg changes ride the content type's `schemaVersion` (currently 2
+for assets) — bumping it (or changing adapter embedder settings, which changes
+`mappingFingerprint()`) triggers a background blue/green migration. No
+drop-and-reindex, no degraded window, no manual steps.
 
-| Extension | asset_type | Text content | Image index | Notes |
-|---|---|---|---|---|
-| `.pdf` | `other` | pdf-parse (v2) | — | Caps at 100 pages |
-| `.md`, `.txt`, `.rtf` | `text` | `fs.readFileSync` | — | |
-| `.json`, `.csv`, `.tsv`, `.xml` | `data` | `fs.readFileSync` | — | Read as UTF-8, not parsed |
-| `.yaml`, `.yml` | `plans` | `fs.readFileSync` | — | |
-| `.png`, `.jpg`, `.jpeg` | `images` | — | CLIP (raster) | |
-| `.gif`, `.webp`, `.bmp` | `images` | — | CLIP (raster) | |
-| `.svg`, `.ico` | `images` | — | **excluded** | Vector/indexed-palette — Go stdlib image lib can't decode, CLIP needs raster |
-| `.mp3`, `.wav`, `.m4a`, `.ogg` | `audio` | — | — | No transcription yet |
-| `.mp4`, `.mov`, `.webm`, `.avi` | `video` | — | — | No frame extraction yet |
+## Performance notes
 
-Everything with no text content and no image index still gets indexed via its sidecar metadata (`description`, `tags`, `file_name`), so you can always find an asset by its human-written description even when the body isn't machine-readable.
-
-## Adding a new modality
-
-Follow this path to add audio transcription, video frame extraction, or any other modality:
-
-### 1. Decide if it's a new index or reuses `assets_text`
-
-If the modality produces **text** (speech-to-text for audio, OCR for scans, description generation for video frames), add it to the existing `assets_text` index. No schema or index changes — just update the content extractor.
-
-If the modality produces **vectors in a different space** that can't be meaningfully fused into text embeddings (e.g., an audio embedder like Whisper-encoder, or a video embedder like VideoBERT), add a new index alongside `assets_text` and `assets_visual`.
-
-### 2. Case A — Extends `assets_text` (text output)
-
-Update `plugins/assets/lib/content-extractor.ts`:
-
-```typescript
-const AUDIO_EXTS = new Set(['.mp3', '.wav', '.m4a', '.ogg', '.flac'])
-
-export async function extractAssetContent(absPath: string, filename: string): Promise<string> {
-  const ext = (filename.toLowerCase().match(/\.[^.]+$/) ?? [''])[0]
-  try {
-    if (PLAIN_TEXT_EXTS.has(ext))  return truncate(readFileSync(absPath, 'utf-8'))
-    if (ext === '.pdf')            return truncate(await extractPdfText(absPath))
-    if (AUDIO_EXTS.has(ext))       return truncate(await transcribeAudio(absPath))  // NEW
-    return ''
-  } catch (err) { /* ... */ }
-}
-
-async function transcribeAudio(absPath: string): Promise<string> {
-  // whisper.cpp, openai-whisper, or a Node binding
-  // return the full transcript as plain text
-}
-```
-
-No schema change. No migration. Existing reindex picks it up. Bump `SCHEMA_VERSION` only if you want to force reprocessing of docs that were indexed before the new extractor landed.
-
-### 3. Case B — New embedding index (non-text output)
-
-Register a new index alongside the existing ones in `plugins/assets/index.ts`:
-
-```typescript
-indexes: [
-  { name: 'assets_text',   embedderRef: 'default',     embeddingTemplate: '…' },
-  { name: 'assets_visual', embedderRef: 'visual',      embeddingTemplate: '…' },
-  {
-    name: 'assets_audio',
-    embedderRef: 'audio',  // ← new ref
-    embeddingTemplate: '{{#if audio_url}}{{remoteMedia url=audio_url}}{{/if}}',
-  },
-]
-```
-
-Add the new embedder ref to `settings.search.settings.embedders`:
-
-```typescript
-embedders: {
-  default: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5', dimension: 384 },
-  visual:  { provider: 'antfly', model: 'Xenova/clip-vit-base-patch32', dimension: 512 },
-  audio:   { provider: 'antfly', model: 'openai/whisper-base', dimension: 512 },  // ← new (verify dims + an ONNX-bearing HF repo)
-}
-```
-
-Add a `audio_url` keyword field to the content-type definition. Compute it in `computeMediaUrls()` (rename to something more generic if it's getting crowded). Bump `SCHEMA_VERSION` — this is a breaking index-config change, and the migration mechanism will drop and recreate `bakin_assets` on next boot. Update tests, run `antfly inference pull openai/whisper-base`, restart. (Pick a model repo that ships ONNX exports — the v0.2 downloader requires them, see [#456](https://github.com/markhayden/bakin/issues/456).)
-
-### 4. Document the choice
-
-Add a row to the format support matrix above. Update the reranker decision table in `search-system.md` if the new modality affects the `rerankField` calculus. Note any upstream Antfly limitations encountered in #72.
-
-## Operational notes
-
-### Model warmup
-
-Both BGE and CLIP lazy-load on first use. The first query after boot (or after Termite's 5-minute keep-alive expires) takes 500ms–2s while the model loads from disk into RAM. Subsequent queries are sub-100ms. This only matters for cold starts — in production, the models stay warm under normal traffic.
-
-### Memory
-
-- BGE (`bge-small-en-v1.5`): ~130MB on disk, ~250MB RAM when loaded
-- CLIP (`clip-vit-base-patch32`): ~600MB on disk, ~800MB RAM when loaded
-- Reranker (`mxbai-rerank-base-v1`): ~700MB on disk, ~1GB RAM when loaded (only loaded for tables with `rerankField` set)
-
-Total worst case ≈2GB RAM. The Mac mini handles this comfortably; smaller boxes might want to skip the reranker or swap CLIP for a smaller visual model.
-
-### Reindex cost
-
-A full reindex of `bakin_assets` re-extracts every file's content, re-fetches every image via `file://`, and re-embeds everything. For a 1000-asset collection with a 50/50 mix of text and images, budget:
-
-- Text extraction: ~5ms per file for small text, ~200-500ms per PDF
-- BGE embedding: ~10-30ms per chunk (200-token chunks)
-- CLIP embedding: ~80-150ms per image (cold) or ~40-80ms (warm)
-
-Rough total: 1-3 minutes for a 1000-asset reindex. Runs in the background via the server boot hook; Bakin is usable immediately with empty tables and indexing completes asynchronously.
-
-### When CLIP batch embedding hits the Antfly bug
-
-There's a known Antfly ONNX issue where CLIP's batch embedding fails with a Reshape error when processing >1 image in a single call. Antfly logs it as a warning and falls back to per-item embedding, which succeeds. You'll see this in logs as:
-
-```
-embedding images: forward pass: running ONNX inference: ... Reshape node ... input_shape_size == size
-Batch embedding failed, falling back to per-item embedding ... succeeded=N failed=0
-```
-
-The fallback works, so this is noise, not a failure. Tracked in #72 as another Antfly finding.
-
-## Testing the pipeline
-
-Local smoke test against a running `bun run dev:mock`:
-
-```bash
-# 1. Drop test content
-cp my-recipe.pdf ~/.imitationcrab/assets/other/test-pdf/
-echo '{"agent":"main","taskId":"test","created":"2026-04-12T00:00:00Z","description":"pdf test","tags":[]}' \
-  > ~/.imitationcrab/assets/other/test-pdf/my-recipe.pdf.meta.json
-
-cp my-photo.jpg ~/.imitationcrab/assets/images/test-img/
-echo '{"agent":"main","taskId":"test","created":"2026-04-12T00:00:00Z","description":"image test","tags":[]}' \
-  > ~/.imitationcrab/assets/images/test-img/my-photo.jpg.meta.json
-
-# 2. Force a reindex (the watcher would also catch the drops, but this is deterministic)
-curl -X POST "http://localhost:3737/api/reindex?table=assets"
-
-# 3. Search for a term in the PDF body (not in sidecar)
-curl "http://localhost:3737/api/search?q=<unique+body+term>&table=assets"
-#    → recipe PDF at rank 1, look for `bleve` score in indexScores
-
-# 4. Search for a visual concept in the image (not in sidecar)
-curl "http://localhost:3737/api/search?q=<visual+concept>&table=assets"
-#    → image jpg at rank 1, look for `assets_visual` score in indexScores
-```
-
-The **`indexScores`** field on each result is the proof of life. A hit with `bleve: 0.4` means the full-text index matched — server-side extraction worked. A hit with `assets_visual: 1.5` means CLIP matched the image pixels to the query. A hit with only `assets_text` scores (no bleve, no visual) means only metadata matched — the body wasn't extracted, or the image wasn't raster, or the query didn't semantically resemble the embedded content.
-
-## Known upstream issues
-
-**v0.2.0-rc.9 (zig, current pin):** tracked in [Bakin issue #456](https://github.com/markhayden/bakin/issues/456). Fixed since rc.2 (all live-verified): bare-term FTS, NDJSON multiquery, Metal-backend stability (onnx pin dropped), schema-at-create (a schema'd table now queries identically to schemaless), and the reranker SIGABRT (reranking now ranks correctly on Metal but is throughput-bound at ~200ms/candidate, so it stays disabled by default — opt-in per query). Still open: no index-time lazy model download.
-
-**v0.1-era (Go, historical — these described the pre-0.2 world):** tracked in [Bakin issue #72](https://github.com/markhayden/bakin/issues/72):
-
-1. **`content_security.block_private_ips` is dead code** — documented Antfly config key that does nothing because `SetDefaultSecurityConfig()` is never called from app startup.
-2. **`ajroetker/pdf` is too weak for real PDFs** — fails silently on complex font encoding. Would be fixed upstream by swapping to `pdfcpu` or shelling out to `pdftotext`.
-3. **`remote_content.security.*` doesn't propagate to plain HTTP URLs** — only applies to S3 URLs with matching credentials. Plain `http://` falls through to the hardcoded default.
-4. **CLIP batch embedding ONNX reshape error** — batch size >1 fails, per-item fallback works. Tracked for an Antfly upstream fix.
-5. **Providing `--config` disrupts `viper.SetDefault("termite.api_url")`** — minor viper idiom issue, workaround is setting the key explicitly.
-
-When any of these are fixed upstream, Bakin can revert the corresponding workaround. The pivots are minimal and clearly marked in commit messages (`fix(antfly):` and `fix(assets):` on the feat/multimodal-search branch).
+- Embeddings are computed at index time (write-heavy, query-cheap); vectors
+  persist on disk — the SIGKILL drill shows identical scores ~500ms after an
+  engine restart.
+- The OS-supervised engine preloads its embedders (`--preload-model` per
+  configured antfly-provider embedder) — no cold-model window after service
+  restarts.
+- CLIP/CLAP embedding: tens of ms per item warm; enrichment (LLM) is the
+  slow + billed step and is asynchronous by design.

@@ -31,6 +31,21 @@ export interface TrashedAssetSummary {
   description: string
 }
 
+/** Client mirror of the manifest enrichment block (lib/manifest.ts). */
+export interface AssetEnrichmentInfo {
+  status: 'pending' | 'done' | 'failed' | 'skipped'
+  caption?: string
+  ocrText?: string
+  suggestedTags?: string[]
+  summary?: string
+  transcript?: string
+  model?: string
+  at?: string
+  forVersion?: number
+  error?: string
+  userEdited?: boolean
+}
+
 export interface AssetGenerationInfo {
   provider: string
   model: string
@@ -86,4 +101,5 @@ export interface VersionedAssetManifest {
   tags: string[]
   versions: AssetVersion[]
   exports: AssetExport[]
+  enrichment?: AssetEnrichmentInfo
 }

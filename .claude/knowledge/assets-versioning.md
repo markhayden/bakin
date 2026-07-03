@@ -140,9 +140,13 @@ templates — "instagram" matches `instagram-feed-portrait`) and
 `provider`/`model` (**facet-only**, deliberately kept out of embeddings so they
 don't flatten similarity across generated assets). Facets:
 `asset_type, agent, tool, tags_facet, provider, model`. Any future schema/index
-change here needs a `SCHEMA_VERSION` bump in `src/core/search-migration.ts`
-(existing tables are never altered in place — boot does drop → recreate →
-reindex; v3 added these fields).
+change bumps the content type's `schemaVersion` (in the assets registration —
+currently 2) and blue/green-migrates in the background: queries stay on the
+old physical table until the new one converges. No drops, no degraded window.
+Enrichment fields (`caption`, `ocr_text`, `suggested_tags`, `transcript`,
+`summary`) ride the search doc from the manifest's `enrichment` block, and
+`media_url` (a `file://` URL) feeds the visual/audio embedding leg for raster
+images and audio files.
 
 ## Live updates
 

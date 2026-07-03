@@ -209,7 +209,7 @@ Read settings with `ctx.getSettings()` and persist partial updates with `ctx.upd
 
 ## Search
 
-Register search content through `ctx.search`. File-backed content should use Bakin content paths, not absolute host paths. External content types need a complete `reindex()` generator and a `verifyExists()` check so orphan cleanup can work.
+Register search content through `ctx.search`. Every content type declares a required `schemaVersion` — bump it when the doc shape changes and the table migrates blue/green in the background (no manual reindex, no downtime). File-backed content should use Bakin content paths, not absolute host paths. All content types need a side-effect-free, restartable `reindex()` generator (it is the blue/green backfill source — throw when a dependency is unavailable) and a `verifyExists()` check for the doctor's orphan sweep. Writes (`index`/`remove`/`transform`) journal through a durable outbox: they are fire-and-forget safe, and the engine being down never loses a write.
 
 Search definitions should name stable tables, list searchable fields, provide facets where useful, and define embedding input that matches the way users and agents will query the content.
 

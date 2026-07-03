@@ -73,6 +73,8 @@ Not your ordinary search. Think of it as brain connectivity for your whole agent
 
 This is how knowledge compounds. Each completed task, every retrieved citation, every asset feeds the corpus your agents pull from on the next job. You search by name. Your agents search by meaning. Build the knowledge base. Tackle the world.
 
+Press **⌘K** (or the header search button) anywhere in the dashboard for the global search overlay: one query returns grouped results across every content type — assets with thumbnails, tasks, memory, workflows, agents — with type filters, keyboard navigation, and deep links. With Debug mode on, every hit shows its per-leg relevance scores. Rebuilds run blue/green (`bakin reindex`) — search stays available while a table rebuilds; if the engine itself is down, search says so honestly instead of degrading silently.
+
 ```sh
 bakin search <query>      # search indexed content
 bakin search:stats        # show index health

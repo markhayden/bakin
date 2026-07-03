@@ -12,21 +12,8 @@ import { VERSIONED_API } from './asset-urls'
 const PLUGIN_API = '/api/plugins/assets'
 import type { VersionedAssetManifest } from './types'
 
-export interface AssetEnrichmentView {
-  status: 'pending' | 'done' | 'failed' | 'skipped'
-  caption?: string
-  ocrText?: string
-  suggestedTags?: string[]
-  summary?: string
-  transcript?: string
-  model?: string
-  at?: string
-  error?: string
-  userEdited?: boolean
-}
-
 interface Props {
-  manifest: VersionedAssetManifest & { enrichment?: AssetEnrichmentView }
+  manifest: VersionedAssetManifest
   onChanged: () => void
 }
 

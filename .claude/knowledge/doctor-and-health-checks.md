@@ -40,13 +40,13 @@ The orchestrator is intentionally trivial — it has no opinion about what's bei
 |---|---|---|
 | `team` | `plugins/team/lib/health-checks.ts` | `agent-roster`, `personas`, `agent-sync` |
 | `tasks` | `plugins/tasks/lib/health-checks.ts` | `taskboard`, `task-consistency`, `order-integrity` |
-| `assets` | `plugins/assets/lib/health-checks.ts` | `assets` |
+| `assets` | `plugins/assets/lib/health-checks.ts` | `assets` (+ `assets.unimported` rows — NOT auto-fixable, explicit import is the point; + `assets.enrichment` rows — repair enqueues the billed backfill behind confirmation) |
 | `schedule` | `plugins/schedule/lib/health-checks.ts` | `schedule-sync` |
 | `memory` | `plugins/memory/lib/health-checks.ts` | `search-tables` |
 
 (Plus 3 workflow checks already migrated under #137: `definitions`, `stale-instances`, `skills`.)
 
-### System-owned (13 checks, registered by health plugin)
+### System-owned (15 checks, registered by health plugin)
 
 | File | Registered id |
 |---|---|
@@ -58,12 +58,14 @@ The orchestrator is intentionally trivial — it has no opinion about what's bei
 | `plugins/health/lib/system-checks/channel-aliases.ts` | `channel-aliases` |
 | `plugins/health/lib/system-checks/restart-recovery.ts` | `restart-recovery` |
 | `plugins/health/lib/system-checks/channel-approvals.ts` | `channel-approvals` |
-| `plugins/health/lib/system-checks/search.ts` | `search` |
+| `plugins/health/lib/system-checks/search.ts` | `search` (engine reachable + OS-service supervision mode/provisioning via the factory-boundary `getSearchAdapterServiceStatus`) |
+| `plugins/health/lib/system-checks/search-outbox.ts` | `search-outbox` (journal depth / oldest pending / quarantined; repair = retryQuarantined, manual tier) |
+| `plugins/health/lib/system-checks/search-consistency.ts` | `search-consistency` (PARKED migrations + wiped physicals → destructive-tier blue/green rebuild repair; also hosts the hourly orphan + tombstone sweep — module-level throttle on the doctor interval, nothing at boot) |
 | `plugins/health/lib/system-checks/sync-skill.ts` | `skill` |
 | `plugins/health/lib/system-checks/plugin-assets.ts` | `plugin-assets` |
 | `plugins/health/index.ts` | `plugin-registry` |
 
-Health plugin is the natural home for system-level checks because it already orchestrates the doctor UI (`/api/plugins/health/doctor` route + `bakin_exec_health_doctor` MCP tool) and imports `runDiagnostics` / `getLastResults`. The inversion is complete: health plugin both produces and consumes the doctor results.
+Health plugin is the natural home for system-level checks because it already orchestrates the doctor UI (`/api/plugins/health/doctor` route + `bakin_exec_health_doctor` MCP tool) and imports `runDiagnostics` / `getLastResults`. It also serves `GET /api/plugins/health/search-status` (blue/green table snapshot + outbox journal) and `GET /api/plugins/health/search-telemetry` (query/drain/enrichment activity from the usage recorder — no parallel stat store). The inversion is complete: health plugin both produces and consumes the doctor results.
 
 The registry and managed-block mechanics are core-owned. The health plugin
 registers/runs the checks, but CLI and plugin-host teardown import those shared

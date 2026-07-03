@@ -23,9 +23,11 @@ Degradation is honest, never silent, and never lossy:
 
 - **Writes are never dropped.** `ctx.search.index/remove/transform` enqueue
   durably whether or not the engine is up.
-- **Queries** against an unavailable engine return empty results with
-  `meta.source: 'fallback'` (the client-side degradation UI is later work —
-  see the rebuild spec D11).
+- **Queries** against an unavailable engine return `503
+  { error: 'search_unavailable' }` at both HTTP boundaries; the `useSearch`
+  hook reports `status: 'unavailable'` and UIs render the shared
+  `SearchUnavailable` component (doctor link + retry). No silent fallbacks
+  exist anywhere (D11).
 - Browse/filter/listing paths never touch the search engine and keep working.
 
 ## Install & Runtime: OS-Supervised Service

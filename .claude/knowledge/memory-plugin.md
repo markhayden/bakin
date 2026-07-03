@@ -81,8 +81,13 @@ plugins/memory/
                                 Stable geometry even on partial responses.
   lib/
     types.ts            ─ MemoryTier, MemoryRow, per-tier meta schemas (Zod).
-    indexer.ts          ─ MemoryIndexer: backfill, indexTier, handleWatcherEvent.
-                          Currently a skeleton; per-tier logic lands in C3–C8.
+    indexer.ts          ─ MemoryIndexer: indexTier, handleWatcherEvent, and the
+                          side-effect-free enumerateAll() generator (the blue/
+                          green backfill source; throws when the runtime is
+                          unavailable so migrations PARK instead of flipping
+                          thin). All writes flow through ctx.search → the
+                          durable outbox (its acked-hash IS the change
+                          detection — no plugin dedupe caches).
     offsets.ts          ─ Incremental JSONL byte-offset tracking (atomic rename).
     runtime-memory.ts   ─ Thin helpers over ctx.runtime.memory for tier
                           discovery, list, and detail reads.
@@ -130,10 +135,7 @@ plugins/memory/
                           window. One-shot at boot, then `setInterval(DAY_MS)`.
                           `scanTable` + `batchRemove(100)` — safe on tables
                           with ≤100k rows (actual size ~20k with debug data).
-    memory-migration.ts ─ Per-plugin schema-version gate. On bump: drop the
-                          `bakin_memory` table, unlink `offsets.json`, call
-                          `ensureRegisteredTables()` to recreate, write new
-                          marker. Runs once per boot from `onReady`.
+
     routes/
       audit.ts        ─ GET /audit — tier='audit' facet query + agent/event filters.
       durable.ts      ─ GET /durable?agent=<id> (list), GET /durable/:agent/:basename (render).
@@ -251,15 +253,16 @@ Two write-path + sweep-path filters keep the noisy tiers bounded:
 
 Tiers other than turn/audit have no retention — they're bounded by their own source file count.
 
-## Per-plugin schema migration
+## Schema changes
 
-`plugins/memory/lib/memory-migration.ts` owns this. Separate from the global `~/.bakin/.search-state.json` because bumping the global version drops every `bakin_*` table, which is too blunt when only memory's write rules changed.
-
-- Version marker lives at `~/.bakin/plugin-settings/memory/schema-version.json`.
-- `MEMORY_SCHEMA_VERSION = 1` — introduce turn/audit retention (v0 → v1 drops the table + clears offsets so the backfill re-derives under the new filters).
-- `MEMORY_SCHEMA_VERSION = 2` — populate `kind` on durable-tier rows and bring `{workspace}/skills/*/SKILL.md` into the durable indexer with `kind=skill`. v1 rows predate the `kind` field, so the table is dropped and the offsets cache is cleared; `onReady`'s backfill re-derives everything under the current write rules.
-- On boot, `migrateIfNeeded()` compares stored vs code version. Behind: drop `bakin_memory`, unlink `offsets.json` + `clearAllOffsets()` (so backfill re-reads every file from byte 0 instead of skipping past data that's no longer in the index), call `ensureRegisteredTables()` to recreate, write the new marker. Then `indexer.backfill(...)` runs under the current write rules.
-- Bump the version whenever a write-path change means existing rows should be re-derived: new filters, new fields, changed id hashing. Pure UI tweaks don't need a bump.
+Bump the content type's `schemaVersion` in the memory registration — the
+table blue/green-migrates in the background (backfill from `enumerateAll()`,
+queries pinned to the old table until convergence). There is no per-plugin
+migration module, no marker file, no drop-and-backfill: the old
+`memory-migration.ts` + boot backfill + persisted dedupe cache were deleted
+in the 2026-07 search rebuild. Offline file growth (agents appending while
+Bakin was down) is caught by the doctor's stat-level size-vs-offset check —
+never a boot scan.
 
 ## Page-local debug ("System Logs") vs global debug
 
@@ -272,7 +275,7 @@ Two distinct toggles with different jobs:
 
 They're intentionally separate — a user debugging a search-quality issue wants the global debug on (to see BM25 / SEM scores) without necessarily wanting the noisy tiers. Vice versa for operators reviewing audit activity.
 
-## Commit history (this rebuild)
+## Commit history (this rebuild — HISTORICAL; `memory-migration.ts` and the boot backfill described below were deleted in the 2026-07 search rebuild)
 
 - C1 — `feat(memory): foundational modules (types, adapter, gateway, cli, offsets)`
 - C2 — `refactor(memory): rewrite plugin shell, drop bakin_audit, register bakin_memory`
