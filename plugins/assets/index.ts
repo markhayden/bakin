@@ -353,7 +353,16 @@ const assetsPlugin: BakinPlugin = definePlugin({
     // ─── Enrichment queue (D8) ─────────────────────────────────────────
     // Every asset write enqueues; the queue never blocks creation; the
     // manifest's status/forVersion is the durable skip guard.
-    initEnrichmentQueue(() => ctx.getSettings<EnrichmentSettings>(), { getRuntime: () => ctx.runtime ?? null })
+    initEnrichmentQueue(() => ctx.getSettings<EnrichmentSettings>(), {
+      getRuntime: () => ctx.runtime ?? null,
+      // Live Activity feed: started/enriched/failed per asset — the answer
+      // to "how do I know it's working" for 35s agent turns.
+      onActivity: (event, detail) => {
+        try {
+          ctx.activity.audit(event, 'system', detail)
+        } catch { /* activity surface unavailable (tests) */ }
+      },
+    })
     onAssetWritten(({ assetId }) => enqueueEnrichment(assetId))
     ctx.hooks.register('assets.enrichmentStats', () => ({ ...enrichmentQueueStats(), coverage: enrichmentCoverage() }), {
       label: 'Enrichment queue stats.',

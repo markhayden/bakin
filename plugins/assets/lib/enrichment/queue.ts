@@ -65,9 +65,16 @@ const counters = { processed: 0, failed: 0, skipped: 0 }
 // (status done + forVersion), checked in the job itself.
 const callRegistry = createIdempotencyRegistry<VisionEnrichmentResult>()
 
-export function initEnrichmentQueue(settingsReader: SettingsReader, deps: { getRuntime?: RuntimeReader } = {}): void {
+type ActivityNotifier = (event: string, detail: Record<string, unknown>) => void
+let notifyActivity: ActivityNotifier = () => {}
+
+export function initEnrichmentQueue(
+  settingsReader: SettingsReader,
+  deps: { getRuntime?: RuntimeReader; onActivity?: ActivityNotifier } = {},
+): void {
   readSettings = settingsReader
   readRuntime = deps.getRuntime ?? (() => null)
+  notifyActivity = deps.onActivity ?? (() => {})
   stopped = false
 }
 
@@ -170,6 +177,7 @@ async function processJob(job: EnrichmentJob): Promise<void> {
     }
 
     await markEnrichmentPending(job.assetId)
+    notifyActivity('asset.enrich_started', { assetId: job.assetId, engine: engine.modelId, queued: pending.size })
 
     const signature = createHash('sha256')
       .update([job.assetId, manifest.currentVersion, engine.modelId].join('|'))
@@ -190,6 +198,12 @@ async function processJob(job: EnrichmentJob): Promise<void> {
         const result = job.force ? await callProvider() : await callRegistry.run(signature, callProvider)
         await applyEnrichmentResult(job.assetId, manifest.currentVersion, engine.modelId, result)
         counters.processed++
+        notifyActivity('asset.enriched', {
+          assetId: job.assetId,
+          engine: engine.modelId,
+          caption: (result.caption ?? '').slice(0, 120),
+          remaining: pending.size,
+        })
         return
       } catch (err) {
         lastError = err
@@ -201,7 +215,9 @@ async function processJob(job: EnrichmentJob): Promise<void> {
     }
     status = 'failed'
     counters.failed++
-    await markEnrichmentFailed(job.assetId, lastError instanceof Error ? lastError.message : String(lastError))
+    const failMessage = lastError instanceof Error ? lastError.message : String(lastError)
+    await markEnrichmentFailed(job.assetId, failMessage)
+    notifyActivity('asset.enrich_failed', { assetId: job.assetId, engine: engine.modelId, error: failMessage.slice(0, 160) })
   } catch (err) {
     // The queue itself must never explode a pump cycle.
     status = 'failed'
