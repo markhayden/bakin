@@ -6,8 +6,7 @@ import { checkInferenceModels, installInferenceModels, requiredModelsForSettings
 
 /**
  * Composition layer wiring the antfly setup surface for onboarding:
- * binary install lives in installer.ts, model prefetch in models.ts,
- * legacy-state cleanup in legacy-cleanup.ts.
+ * binary install lives in installer.ts, model prefetch in models.ts.
  */
 
 const noopLogger: AdapterLogger = {

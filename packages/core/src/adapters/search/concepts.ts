@@ -10,7 +10,7 @@ export interface TableInfo {
 
 export interface TableConfig {
   fields: Record<string, SearchFieldConfig>
-  /** Legacy index declarations — superseded by `legs`; deleted at the F4 surface cut. */
+  /** Legacy index declarations — the registry still emits these (adapters map them to legs); plugins migrate to `legs` per-table (assets at T11). */
   indexes?: SearchIndexConfig[]
   /**
    * Capability-level search legs (D17). Content types declare WHAT they need

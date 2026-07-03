@@ -295,7 +295,8 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
         const tableName = registry.pluginTables.get(pluginId)
         const search = getSearchAdapter()
         if (!tableName || !await search.available()) return
-        const entries = opts === undefined ? search.scan(tableName) : search.scan(tableName, opts)
+        const physical = resolvePhysicalTable(tableName)
+        const entries = opts === undefined ? search.scan(physical) : search.scan(physical, opts)
         for await (const entry of entries) {
           yield entry
         }
@@ -306,7 +307,7 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
         const tableName = registry.pluginTables.get(pluginId)
         const search = getSearchAdapter()
         if (!tableName || !await search.available()) return 0
-        return search.documents.batchRemove(tableName, keys)
+        return search.documents.batchRemove(resolvePhysicalTable(tableName), keys)
       },
 
     },

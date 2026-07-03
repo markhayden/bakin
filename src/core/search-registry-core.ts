@@ -330,16 +330,17 @@ export async function purgeContentType(name: string): Promise<number> {
     return 0
   }
 
+  const physical = resolvePhysicalTable(tableName)
   let removed = 0
   try {
-    const stats = await search.tables.stats(tableName)
+    const stats = await search.tables.stats(physical)
     removed = stats?.documents ?? 0
   } catch (err) {
     log.warn('purgeContentType: failed to read row count before drop', err, { tableName })
   }
 
   try {
-    await search.tables.drop(tableName)
+    await search.tables.drop(physical)
   } catch (err) {
     log.error('purgeContentType: table drop failed', err, { tableName })
     throw err
@@ -391,20 +392,6 @@ export function getIndexNames(tableName: string): string[] {
   const def = getRegistry().contentTypes.get(tableName)
   if (!def) return ['embeddings']
   return getEffectiveIndexes(def).map(i => i.name)
-}
-
-/**
- * The distinct embedder refs a table's indexes use (e.g. 'default', 'visual').
- * Used to warm one table per embedder model rather than probing every table.
- */
-export function getTableEmbedderRefs(tableName: string): string[] {
-  const def = getRegistry().contentTypes.get(tableName)
-  if (!def) return []
-  const refs = new Set<string>()
-  for (const idx of getEffectiveIndexes(def)) {
-    if (idx.embedderRef) refs.add(idx.embedderRef)
-  }
-  return Array.from(refs)
 }
 
 /**

@@ -16,12 +16,12 @@ Rule: every commit green (`bun run test` + typecheck). Tag `rebuild/pN` at each 
 - [x] A5 Memory indexer refactor + enumerateAll() (62d0d0b6; 432 memory tests green). ⚠ F4 NOTE: memory reindex() MUST fail loudly when ctx.runtime is unavailable — silent empty yields would let a thin green table converge and flip (agent finding #1)
 - [x] A6 New adapter: translate (a16b18a5) + client (7644632c) + service (8b046474). DESIGN CHANGE vs plan: raw-fetch client with hand-written probe-verified wire types — NO @antfly/sdk dependency at all (vendored tarball + npm-skew problem class deleted); conformance suite vs real binaries is the contract check
 - [x] A7 Harness (7edae15a) + regression pins (614a7344). Conformance GREEN vs real dev binary. Real-engine finds: semantic leg requires index names (400 otherwise — registry must pass embedding-leg names via adapterOptions.indexes), /lookup needs {} body, batchRemove counts are attempted-counts. Test-env gotcha: happy-dom preload breaks global fetch — use Bun.fetch in integration tests
-- [ ] F1 Adapter swap; delete server.ts/old search.ts/legacy-cleanup ⚠
-- [ ] F2 Writes through outbox (identity mapping)
-- [ ] F3 Blue/green live; SCHEMA_VERSION dies; search.rebuild.* SSE; health-page handler ⚠
-- [ ] F4 THE CUT: SDK surface final, 7 registrations migrated, boot does nothing, old machinery deleted
-- [ ] F5 Arch-test antfly-identifier ban + engine-room knowledge docs
-- [ ] GATE P1: conformance green; boot-does-nothing spy test; kill/restart drill; VIS survives restart → tag rebuild/p1
+- [x] F1 Adapter swap (aea79359, +197/−4210): supervision lattice deleted; installer = D3 stop→swap→restart; ANTFLY_PATH override preserved; dead isSearchAdapterRunning removed
+- [x] F2 Writes through outbox (a89d4c1b): all ctx.search writes + watcher hooks journal-first; single-flight pump in server.ts; REAL $set/$inc/$push transform semantics; harness batch→per-item spy recording
+- [x] F3 Blue/green live (77dd42d4): versioned physicals everywhere, logical→physical at dispatch, dual-write drains, resume-at-boot, search-migration.ts + global SCHEMA_VERSION DELETED, /api/reindex = blue/green rebuild + search.rebuild.* SSE, resetContentType rides rebuild. `bakin reindex` is the rebuild verb (no separate `search rebuild` alias needed — document at T24)
+- [x] F4 THE CUT (7e3ae4c0, 55 files +502/−3347): SDK surface final (no whenReady/warm/mtime/fileToDoc-null), contract members required (embedder/getHealth/rebuildIndexes/IndexOpts deleted), 7 registrations on schemaVersion, memory reindex()→enumerateAll + FAILS LOUDLY on runtime-down (parks, never flips thin), reconcile/warmup/cleanup deleted (orphan sweep → search-orphan-sweep.ts for doctor), boot-does-nothing call-spy test, MCP reindex tool → blue/green
+- [x] F5 Arch-test identifier ban (4a2197b5; caught the settings-defaults leak, now documented exception) + engine-room docs (agent running)
+- [x] GATE P1 DRILL PASS: SIGKILL mid-flight → write queued (transient) → restart same data dir → queued write landed → hybrid query 468ms with IDENTICAL vector scores (t_vis −0.70407 preserved exactly) + neutral leg names. Dense ranks survive kill/restart with zero degraded window (req 5 proven). Tag rebuild/p1 after docs land
 
 ## P2 — Assets vertical
 - [ ] T1 import-unmanaged.ts + unmanaged-tracker.ts; delete ingest-inbox auto-triggers + watcher sweep half

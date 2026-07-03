@@ -235,7 +235,7 @@ export const DEFAULT_SETTINGS: BakinSettings = {
         // with diverse vocabulary (which is most of what Bakin indexes —
         // task descriptions, markdown notes, PDF bodies, audit trails).
         // Runs locally via antfly's embedded inference runtime; no cloud
-        // dependency. A boot-time migration in src/core/search-migration.ts
+        // dependency. A boot-time migration in src/core/blue/green table migrations (packages/core/src/search/tables.ts)
         // drops stale tables whenever SCHEMA_VERSION advances beyond the
         // persisted version in `~/.bakin/.search-state.json`, forcing a
         // clean reindex onto the new embedder.
