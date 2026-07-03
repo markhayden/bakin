@@ -2769,8 +2769,20 @@ async function cmdAssetsEnrich(options: { all?: boolean; assetId?: string; force
     return
   }
   const body = options.all ? { all: true, force: options.force ?? false } : { assetId: options.assetId, force: options.force ?? false }
-  const result = await apiPost('/api/plugins/assets/enrich', body) as { enqueued: number }
-  console.log(`Enqueued ${result.enqueued} asset(s) for vision enrichment (runs in the background; billed per asset version).`)
+  const result = await apiPost('/api/plugins/assets/enrich', body) as {
+    enqueued: number
+    engine?: 'direct' | 'runtime'
+    agent?: string
+    estimatedSecondsPerAsset?: number
+  }
+  if (result.engine === 'runtime') {
+    // Quota notice (spec §5): agent turns spend the runtime subscription —
+    // never silently. The batch is already queued; abort stops the rest.
+    const perAsset = result.estimatedSecondsPerAsset ?? 35
+    console.log(`NOTICE: ${result.enqueued} asset(s) will be enriched via agent turns on '${result.agent ?? 'enrich'}' — no direct API key is configured, so this uses your subscription quota and takes ~${perAsset}s per asset (ctrl-c the server or 'bakin restart' to abort; add an API key for the fast path).`)
+  } else {
+    console.log(`Enqueued ${result.enqueued} asset(s) for vision enrichment (runs in the background; billed per asset version).`)
+  }
   console.log('Track progress: bakin doctor  (assets enrichment rows)')
 }
 

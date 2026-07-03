@@ -17,11 +17,15 @@ import { join } from 'path'
 import type { HealthCheckResult, HealthRepairHandler } from '../../../packages/core/src/plugin-types'
 import { healthOk as ok, healthWarn as warn, healthFixed as fixed } from '@makinbakin/sdk/utils'
 
+import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
+
 import { isValidAssetId } from './asset-id'
 import { scanUnmanaged } from './import-unmanaged'
 import { getAsset, listAssets } from './asset-core'
 import { reseedUnmanaged } from './unmanaged-tracker'
 import { readManifest } from './manifest'
+import { resolveEnrichmentEngine } from './enrichment/engine'
+import type { EnrichmentSettings } from './enrichment/providers'
 
 // ─── Result constructors (inlined; matches workflows precedent) ─────────────
 
@@ -93,6 +97,29 @@ export function checkEnrichment(): HealthCheckResult[] {
     results.push(ok('assets.enrichment', 'All assets carry current enrichment (or recorded skips)'))
   }
   return results
+}
+
+/**
+ * Which engine would serve an image-enrichment job RIGHT NOW (spec §5) —
+ * direct API model, runtime agent turns (subscription quota), or neither.
+ * Async (capability probe) and settings/runtime-dependent, so it's wired
+ * from the plugin's registerHealthCheck rather than checkAssets().
+ */
+export async function checkEnrichmentEngine(
+  settings: EnrichmentSettings,
+  runtime: AgentRuntimeAdapter | null,
+): Promise<HealthCheckResult> {
+  if (settings.enrichmentEnabled === false) {
+    return ok('assets.enrichment-engine', 'Vision enrichment disabled in settings')
+  }
+  const resolution = await resolveEnrichmentEngine(settings, { kind: 'image' }, { runtime })
+  if (!resolution.ok) {
+    return warn('assets.enrichment-engine', `No enrichment engine available — new assets will record skips: ${resolution.reason}`, false)
+  }
+  const engine = resolution.engine
+  return engine.name === 'runtime'
+    ? ok('assets.enrichment-engine', `Enrichment engine: runtime agent '${engine.modelId.slice('runtime:'.length)}' (image-capable; agent turns spend subscription quota, ~35s/asset)`)
+    : ok('assets.enrichment-engine', `Enrichment engine: direct API (${engine.modelId})`)
 }
 
 function checkAssetsInternal(contentDir: string, autoFix: boolean): HealthCheckResult[] {

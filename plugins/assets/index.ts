@@ -26,6 +26,8 @@ import {
   stopEnrichmentQueue,
 } from './lib/enrichment/queue'
 import type { EnrichmentSettings } from './lib/enrichment/providers'
+import { resolveEnrichmentEngine } from './lib/enrichment/engine'
+import { RUNTIME_TURN_ESTIMATED_SECONDS } from './lib/enrichment/runtime'
 import { handleTagsRename, handleTagsRemove, handleTagsApply } from './routes/tags'
 import { handleImportScan, handleImport } from './routes/import'
 import { isValidAssetId } from './lib/asset-id'
@@ -45,7 +47,7 @@ import { noteUnmanagedSync, noteUnmanagedUnlink, setUnmanagedEmitter } from './l
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
 import { extractAssetContent } from './lib/content-extractor'
-import { assetRepair, checkAssets } from './lib/health-checks'
+import { assetRepair, checkAssets, checkEnrichmentEngine } from './lib/health-checks'
 
 const log = createLogger('assets')
 
@@ -159,22 +161,39 @@ const routes = [
     method: 'POST',
     summary: 'Enqueue vision enrichment (one asset or backfill all); billed per asset version',
     responses: { 200: okPassthrough, 400: errorResponse },
-    handler: async (req) => {
+    handler: async (req, ctx) => {
       const body = await req.json().catch(() => ({})) as { assetId?: unknown; all?: unknown; force?: unknown }
       const force = body.force === true
+      // Which engine will serve the batch — surfaced so callers can warn
+      // BEFORE a runtime backfill silently spends subscription quota (§5).
+      const engineInfo = async () => {
+        const resolution = await resolveEnrichmentEngine(
+          ctx.getSettings<EnrichmentSettings>(), { kind: 'image' }, { runtime: ctx.runtime ?? null },
+        )
+        if (!resolution.ok) return {}
+        return {
+          engine: resolution.engine.name,
+          ...(resolution.engine.name === 'runtime' ? {
+            agent: resolution.engine.modelId.slice('runtime:'.length),
+            estimatedSecondsPerAsset: RUNTIME_TURN_ESTIMATED_SECONDS,
+          } : {}),
+        }
+      }
       if (typeof body.assetId === 'string' && body.assetId.length > 0) {
         const { getAsset } = await import('./lib/asset-core')
         if (!getAsset(body.assetId)) return Response.json({ error: 'Asset not found' }, { status: 404 })
+        const info = await engineInfo()
         enqueueEnrichment(body.assetId, { force })
         void drainEnrichmentQueue()
-        return Response.json({ ok: true, enqueued: 1 })
+        return Response.json({ ok: true, enqueued: 1, count: 1, ...info })
       }
       if (body.all === true) {
         const { listAssets } = await import('./lib/asset-core')
         const ids = listAssets().map((a) => a.assetId)
+        const info = await engineInfo()
         enqueueEnrichmentBackfill(ids, { force })
         void drainEnrichmentQueue()
-        return Response.json({ ok: true, enqueued: ids.length })
+        return Response.json({ ok: true, enqueued: ids.length, count: ids.length, ...info })
       }
       return Response.json({ error: 'assetId (string) or all:true required' }, { status: 400 })
     },
@@ -842,7 +861,10 @@ const assetsPlugin: BakinPlugin = definePlugin({
     ctx.registerHealthCheck({
       id: 'assets',
       name: 'Asset store + manifest integrity',
-      run: () => Promise.resolve(checkAssets(getContentDir())),
+      run: async () => [
+        ...checkAssets(getContentDir()),
+        await checkEnrichmentEngine(ctx.getSettings<EnrichmentSettings>(), ctx.runtime ?? null),
+      ],
       repair: assetRepair(getContentDir()),
     })
   },
