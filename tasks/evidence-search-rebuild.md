@@ -61,3 +61,11 @@ Working evidence log for `tasks/plan-search-rebuild.md`. Everything here is live
 - `git log --since=2026-03-19 origin/main -- ts/packages/sdk` → **77 commits** the npm artifact lacks, including the `sync_level` enum change (`aknn` removed → `full_index`), artifact/enrichment API surface (PR #274/#301), model-pull helpers, regenerated `public-api.d.ts`.
 - Upstream never bumps the package version string (still 0.0.14 in-source), so version-matching is meaningless — **content is tag-driven**.
 - **Decision (per D1):** build the vendored tarball from `ts/packages/sdk` at the SAME commit as the dev binary (`6538c0774`); replace `vendor/antfly-sdk-0.2.0-rc.2.tgz`. Re-evaluate npm at ship time (T23): if upstream cuts a fresh `ts/antfly/sdk/v*` tag matching the ship pin, switch to npm and delete the tarball.
+
+## T23 — Ship-tag validation (2026-07-02)
+
+- **Newest published tag: v0.2.0-rc.17** (rc.18+ 404). Checksums fetched from the release's `antfly_zig_checksums.txt`; darwin-arm64 artifact downloaded + SHA256 self-verified (`3cbf8aef…` matches) before any test ran.
+- **Full integration vs the published artifact: 58/58 pass** (`BAKIN_ANTFLY_BIN=<extracted> bun test tests/integration/ --isolate`): conformance suite, all workaround-regression pins (order_by still rejected, totals still page-scoped, aknn still removed, bodyless lookup still rejected), and the **#319 canary holds on rc.17** (raw backfill flags stick; the idle-detection override reports ready — the workaround ships correctly).
+- **Chaos drills vs the published artifact: 5/5 PASS** (mid-backfill SIGKILL, driver SIGKILL, 550-write outage replay, wipe→rebuild, upgrade-under-load).
+- **#317 (batch double-free) verdict:** rc.17 carries the vulnerable code (the file is identical to main@6538c0774), but none of our suites/drills trigger it — the trigger is an internal write failure inside the engine's offloaded batch job, which our settle/retry patterns avoid and the outbox+OS-supervision absorb if it ever fires in production (crash → KeepAlive restart → drain retries → lands). Not a ship blocker; upstream fix tracked in antflydb/antfly#317. The local dev worktree keeps the 2-line patch for dev builds.
+- **Verdict: dev-vs-ship skew NONE. Pin bumped rc.9 → rc.17.**
