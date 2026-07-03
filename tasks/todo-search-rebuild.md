@@ -39,13 +39,13 @@ Rule: every commit green (`bun run test` + typecheck). Tag `rebuild/pN` at each 
 - [x] GATE P2 → tag rebuild/p2. Unit/integration seams all green (5212/0: manifest→watcher→outbox→engine, import drill, caption-in-search-doc). Live end-to-end with REAL captions folds into the P3 browser gate (needs the dev server + a configured vision key — user-visible there). T24 cleanup noted: client manifest type lacks enrichment field
 
 ## P3 — Degradation + global search
-- [ ] T13 use-search rewrite (status states, 503 contract, SearchUnavailable); delete fallback + use-search-warm
-- [ ] T14 Assets grid fallback deletion + unavailable state
-- [ ] T15 SDK hitRenderer registry
-- [ ] T16 ScoreOverlay → shared neutral-legs SDK component
-- [ ] T17 ⌘K overlay + header entry ⚠
-- [ ] T18 hitRenderer registrations (assets/tasks/memory/workflows/team)
-- [ ] GATE P3: browser pass on dev rig → tag rebuild/p3
+- [x] T13 (1dbf10e7) useSearch 5-state + retry(); fallback DELETED repo-wide; 503 search_unavailable at both HTTP boundaries; /api/search?types= (req 6)
+- [x] T14 (2fda9463) assets grid honest unavailable panel; local fallback + double-debounce gone
+- [x] T15 (1ec7cee9) registerPlugin({search:{hitRenderers}}) registry (nav-badge pattern)
+- [x] T16 (a18849f4) ScoreOverlay → SDK, fully neutral legs (no key sniffing anywhere)
+- [x] T17 (e3e1e4ac) ⌘K overlay (hotkey+header, chips, default renderer, deep links, debug badges, 503 state; cmdk shouldFilter=false so the engine's ranking wins)
+- [x] T18 (2ddec962) hit renderers: assets/tasks/memory/workflows/team
+- [x] GATE P3 → tag rebuild/p3 (code state; 5230/0). BROWSER ITEMS DEFERRED to the P6 live cutover: port 3737 is the LIVE production server — one consolidated disruption window at ship (pin swap → restart → browser-verify ⌘K/chips/badges/unavailable-panel/real-caption enrichment on real data) instead of two
 
 ## P4 — Doctor & telemetry
 - [ ] T19 System checks (service/outbox/count-mismatch/deep-reconcile sweep)
