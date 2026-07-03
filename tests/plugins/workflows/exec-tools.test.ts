@@ -77,7 +77,7 @@ mock.module('../../../src/core/task-store', () => taskStoreMock)
 mock.module('@/core/task-store', () => taskStoreMock)
 
 import workflowsPlugin from '../../../plugins/workflows'
-import { createInstance } from '@bakin/workflows/lib/runtime'
+import { createInstance, rejectGate } from '@bakin/workflows/lib/runtime'
 
 const gateWorkflow = `name: Gate Exec Tool Test
 description: Workflow used by exec tool tests
@@ -99,12 +99,41 @@ steps:
       note_to_agent: true
 `
 
+// Gate whose id carries no gate/review/approval token, plus an agent step
+// whose id LOOKS like a gate — check_gates must classify by definition
+// type, never by stepId naming.
+const signoffWorkflow = `name: Signoff Exec Tool Test
+description: Gate detection by type, not name
+version: 1
+steps:
+  - id: draft
+    type: agent
+    label: Draft
+    agent: chef
+    description: Write the draft
+  - id: review-notes
+    type: agent
+    label: Compile review notes
+    agent: chef
+    description: Not a gate, despite the name
+  - id: signoff
+    type: gate
+    label: Final signoff
+    description: Human signoff
+    approval_required: true
+    on_approve: done
+    on_reject:
+      goto: draft
+      note_to_agent: true
+`
+
 let activated: ActivatedPlugin
 
 beforeAll(async () => {
   globalThis.fetch = mock(async () => new Response('{}')) as unknown as typeof fetch
   mkdirSync(definitionsDir, { recursive: true })
   writeFileSync(join(definitionsDir, 'gate-exec.yaml'), gateWorkflow)
+  writeFileSync(join(definitionsDir, 'signoff-exec.yaml'), signoffWorkflow)
   activated = await activatePlugin(workflowsPlugin, testDir)
 })
 
@@ -159,5 +188,36 @@ describe('workflow exec tools', () => {
       status: 'pending_approval',
       stepId: 'review',
     })
+  })
+
+  it('surfaces the rejection-repeat guidance via the typed code, not message text', async () => {
+    createInstance('task-repeat', 'gate-exec', testDir, 'chef')
+    const submit = findTool(activated.execTools, 'bakin_exec_submit_step')!
+
+    const first = await callTool(submit, {
+      taskId: 'task-repeat', stepId: 'draft', output: { text: 'the draft' },
+    }, 'chef')
+    expect(first.ok).toBe(true)
+
+    const rejected = rejectGate('task-repeat', 'review', 'needs work', { contentDir: testDir })
+    expect(rejected.success).toBe(true)
+
+    const repeat = await callTool(submit, {
+      taskId: 'task-repeat', stepId: 'draft', output: { text: 'the draft' },
+    }, 'chef')
+    expect(repeat.ok).toBe(false)
+    expect(String(repeat.error)).toContain('too similar')
+    expect(String(repeat.errors)).toContain('identical')
+  })
+
+  it('check_gates classifies gates by definition type, not stepId naming', async () => {
+    createInstance('task-signoff', 'signoff-exec', testDir, 'chef')
+    const checkGates = findTool(activated.execTools, 'bakin_exec_check_gates')!
+
+    const result = await callTool(checkGates, { taskId: 'task-signoff' })
+    expect(result.ok).toBe(true)
+    const formatted = String(result.formatted)
+    expect(formatted).toContain('signoff')
+    expect(formatted).not.toContain('review-notes')
   })
 })

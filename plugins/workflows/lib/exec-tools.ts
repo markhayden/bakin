@@ -11,7 +11,7 @@ import { z } from 'zod'
 import type { PluginContext } from '@bakin/core/plugin-types'
 import type { WorkflowDefinition } from '../types'
 import { buildTemplateList, resolveSubWorkflows } from './template-list'
-import { loadDefinition } from './parser'
+import { loadDefinition, findStep } from './parser'
 import { getCurrentStep, completeStep, listInstances, loadInstance } from './runtime'
 import { createValidatedInstance } from './start-validation'
 import { indexInstance } from './search-sync'
@@ -224,6 +224,9 @@ export function registerWorkflowExecTools(ctx: PluginContext): void {
         const result = completeStep(taskId, stepId, output, agent)
 
         if (!result.success) {
+          if (result.code === 'rejection_repeat') {
+            return { ok: false, error: 'Submission rejected: output is too similar to your previous rejected submission. Address the feedback and make substantive changes.', errors: result.errors }
+          }
           return { ok: false, error: 'Step completion failed', errors: result.errors }
         }
 
@@ -236,11 +239,7 @@ export function registerWorkflowExecTools(ctx: PluginContext): void {
 
         return { ok: true, workflowComplete: result.workflowComplete, nextStep: result.nextStep }
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        if (msg.includes('near-duplicate') || msg.includes('rejection')) {
-          return { ok: false, error: 'Submission rejected: output is too similar to your previous rejected submission. Address the feedback and make substantive changes.' }
-        }
-        return { ok: false, error: `Failed to submit step: ${msg}` }
+        return { ok: false, error: `Failed to submit step: ${err instanceof Error ? err.message : String(err)}` }
       }
     },
   })
@@ -258,6 +257,10 @@ export function registerWorkflowExecTools(ctx: PluginContext): void {
         const instance = loadInstance(params.taskId as string)
         if (!instance) return { ok: false, error: 'No workflow instance found for this task' }
 
+        // Gate detection is by the definition's step type — never by
+        // stepId naming (a step merely NAMED "review" is not a gate).
+        const def = loadDefinition(instance.workflowId)
+
         const STATUS_DISPLAY: Record<string, string> = {
           complete: 'APPROVED', pending_approval: 'WAITING', pending: 'PENDING',
           rejected: 'REJECTED', in_progress: 'IN PROGRESS',
@@ -273,8 +276,8 @@ export function registerWorkflowExecTools(ctx: PluginContext): void {
         const stepStates = (instance.stepStates || {}) as unknown as Record<string, Record<string, unknown>>
         for (const [stepId, state] of Object.entries(stepStates)) {
           const s = state as { status: string; completedAt?: string; startedAt?: string }
-          const isGate = s.status === 'pending_approval' ||
-            stepId.includes('gate') || stepId.includes('review') || stepId.includes('approval')
+          const defStep = def ? findStep(def, stepId) : null
+          const isGate = defStep?.type === 'gate' || s.status === 'pending_approval'
           if (!isGate) continue
           hasGates = true
 
