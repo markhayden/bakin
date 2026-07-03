@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryState, useQueryArrayState, useSearch, useDebug, useRouter, usePathname, useSearchParams, usePluginEvent } from '@makinbakin/sdk/hooks'
 import { Button } from '@makinbakin/sdk/ui'
-import { PluginHeader, FacetFilter, SearchUnavailable } from '@makinbakin/sdk/components'
+import { PluginHeader, FacetFilter, SearchUnavailable, ScoreOverlay } from '@makinbakin/sdk/components'
 import { formatSize, formatAge } from '@makinbakin/sdk/utils'
 import { ImagePlus, Upload, Loader2, LayoutGrid, List, Trash2, RotateCcw, X, ListFilter, FolderOpen, Pencil, Check, SquareMousePointer, Tags, ArrowLeft , Inbox } from 'lucide-react'
 import { ASSET_TYPES } from '../../lib/constants'
@@ -37,35 +37,8 @@ const TYPE_OPTIONS = ASSET_TYPES.map((value) => ({
 }))
 
 
-/** Per-result Antfly relevance breakdown. */
+/** Per-result Antfly relevance breakdown (shape shared with the SDK ScoreOverlay). */
 export interface AssetScoreInfo { score: number; indexScores?: Record<string, number> }
-
-/**
- * Search-relevance debug overlay. bakin_assets is multimodal: Bleve BM25 +
- * assets_text (BGE text embeddings) + assets_visual (CLIP on pixels). The Bleve
- * index key is an absolute path containing "bleve"/"full_text", so detect it by
- * substring rather than a fixed key.
- */
-function ScoreOverlay({ info, className = '' }: { info: AssetScoreInfo; className?: string }) {
-  const scores = info.indexScores ?? {}
-  const bm25Key = Object.keys(scores).find(k => /bleve|full_text/.test(k))
-  const bm25 = bm25Key ? scores[bm25Key] ?? 0 : 0
-  // The embedding legs report -cosine_distance in indexScores (higher = better,
-  // but negative). Show them as cosine SIMILARITY (1 - distance = 1 + score) so
-  // they read as a normal 0..1 relevance score. A leg absent for this doc (no
-  // vector in that index) shows 0, not 1.0.
-  const toSimilarity = (v: number | undefined) => (typeof v === 'number' ? 1 + v : 0)
-  const txt = toSimilarity(scores['assets_text'])
-  const vis = toSimilarity(scores['assets_visual'])
-  return (
-    <div className={`flex flex-col gap-0.5 rounded bg-black/80 px-1.5 py-1 font-mono text-[9px] ${className}`} data-testid="score-overlay">
-      <span className="text-amber-400">RRF {info.score.toFixed(4)}</span>
-      <span className="text-cyan-400">BM25 {bm25.toFixed(4)}</span>
-      <span className="text-purple-400">TXT {txt.toFixed(4)}</span>
-      <span className="text-pink-400">VIS {vis.toFixed(4)}</span>
-    </div>
-  )
-}
 
 function AssetCard({ asset, onOpen, onEdit, selected, scoreInfo }: { asset: VersionedAssetSummary; onOpen: () => void; onEdit: () => void; selected?: boolean; scoreInfo?: AssetScoreInfo }) {
   return (

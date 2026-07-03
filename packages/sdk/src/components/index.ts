@@ -28,6 +28,8 @@ export type { ConfirmDialogProps } from '@/components/confirm-dialog'
 export { EmptyState } from '@/components/empty-state'
 
 export { SearchUnavailable } from '@/components/search-unavailable'
+export { ScoreOverlay } from '@/components/score-overlay'
+export type { ScoreOverlayInfo } from '@/components/score-overlay'
 /** Inline error banner with dismiss + retry actions. */
 export { ErrorBanner } from '@/components/error-banner'
 /** Full-page error state with title, description, and retry button. */
