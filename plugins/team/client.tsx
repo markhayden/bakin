@@ -16,6 +16,7 @@ registerPlugin({
         subtitle: String(hit.fields.role ?? 'agent'),
         href: `/team/${encodeURIComponent(hit.id)}`,
         thumbnailUrl: `/api/agents/${encodeURIComponent(hit.id)}/avatar`,
+        icon: 'users',
       }),
       'agent-lessons': (hit) => {
         const agent = typeof hit.fields.agent === 'string' ? hit.fields.agent : ''

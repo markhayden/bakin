@@ -19,7 +19,8 @@ registerPlugin({
         // nullish-coalescing would keep the empty string as the title.
         const pick = (...vals: unknown[]) => vals.map((v) => String(v ?? '').trim()).find((v) => v.length > 0)
         const type = pick(hit.fields.asset_type) ?? 'asset'
-        const iconByType: Record<string, string> = { image: 'image', images: 'image', text: 'file-text', audio: 'music', video: 'video', pdf: 'file-text' }
+        // Mirrors the assets page TYPE_ICONS exactly (atoms.tsx).
+        const iconByType: Record<string, string> = { text: 'file-text', images: 'image', image: 'image', video: 'video', audio: 'music', plans: 'map', data: 'database', other: 'package' }
         // Thumbnails only exist for media with a media_url (raster/audio);
         // text/other assets get a type icon instead of a broken <img>.
         const hasThumb = pick(hit.fields.media_url) !== undefined
@@ -36,7 +37,7 @@ registerPlugin({
           meta: [type, pick(hit.fields.agent), date].filter(Boolean).join(' · '),
           href: `/assets/${hit.id}`,
           ...(hasThumb ? { thumbnailUrl: `/api/assets/${hit.id}/thumb` } : {}),
-          icon: iconByType[type] ?? 'file',
+          icon: iconByType[type] ?? 'package',
         }
       },
     },

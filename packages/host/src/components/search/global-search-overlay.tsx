@@ -12,8 +12,9 @@
 import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import {
-  Loader2, FileQuestion, Image as ImageIcon, FileText, Music, Video, File as FileIcon,
-  CheckSquare, Brain, Users, GitBranch, Calendar, LayoutGrid, List as ListIcon,
+  Loader2, Image as ImageIcon, FileText, Music, Video, Map as MapIcon, Database,
+  Package, CheckSquare, Brain, Users, GitBranch, Calendar, GraduationCap,
+  LayoutGrid, List as ListIcon,
   type LucideIcon,
 } from 'lucide-react'
 import { useSearch, useDebug, type SearchResult } from '@makinbakin/sdk/hooks'
@@ -36,20 +37,26 @@ import { useSearchHotkey } from './use-search-hotkey'
 
 const TABLE_PREFIX = 'bakin_'
 
-/** Renderer `icon` names → components (renderers are data-only; the host
- *  owns actual icon rendering). Unknown names fall back per group. */
-const HIT_ICONS: Record<string, LucideIcon> = {
-  'image': ImageIcon,
-  'file-text': FileText,
-  'music': Music,
-  'video': Video,
-  'file': FileIcon,
-  'check-square': CheckSquare,
-  'brain': Brain,
-  'users': Users,
-  'git-branch': GitBranch,
-  'calendar': Calendar,
+/** Renderer `icon` names → icon + tint. The asset types mirror the assets
+ *  page's TYPE_ICONS/TYPE_COLORS exactly so global search reads the same;
+ *  anything unknown gets the neutral Package — never a question mark. */
+const HIT_ICONS: Record<string, { Icon: LucideIcon; tint: string }> = {
+  'file-text': { Icon: FileText, tint: 'text-blue-400' },
+  'image': { Icon: ImageIcon, tint: 'text-emerald-400' },
+  'video': { Icon: Video, tint: 'text-purple-400' },
+  'music': { Icon: Music, tint: 'text-amber-400' },
+  'map': { Icon: MapIcon, tint: 'text-cyan-400' },
+  'database': { Icon: Database, tint: 'text-orange-400' },
+  'package': { Icon: Package, tint: 'text-muted-foreground' },
+  'check-square': { Icon: CheckSquare, tint: 'text-muted-foreground' },
+  'brain': { Icon: Brain, tint: 'text-muted-foreground' },
+  'users': { Icon: Users, tint: 'text-muted-foreground' },
+  'git-branch': { Icon: GitBranch, tint: 'text-muted-foreground' },
+  'calendar': { Icon: Calendar, tint: 'text-muted-foreground' },
+  'graduation-cap': { Icon: GraduationCap, tint: 'text-muted-foreground' },
+  'workflow': { Icon: GitBranch, tint: 'text-muted-foreground' },
 }
+const FALLBACK_ICON = { Icon: Package, tint: 'text-muted-foreground' }
 
 type ViewMode = 'card' | 'list'
 const VIEW_KEY = 'bakin-global-search-view'
@@ -223,15 +230,25 @@ export function GlobalSearchOverlay() {
           <CommandEmpty>No results for “{query}”.</CommandEmpty>
         )}
         {search.status === 'ok' && grouped.map(([type, results]) => (
-          <CommandGroup key={type} heading={type} data-testid={`global-search-group-${type}`}>
-            <div className={viewMode === 'card' ? 'grid grid-cols-2 gap-3 p-1 md:grid-cols-3 xl:grid-cols-4' : undefined}>
+          <CommandGroup
+            key={type}
+            heading={(
+              <span className="flex items-center gap-2">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-foreground/70">{type.replace(/[_-]/g, ' ')}</span>
+                <span className="rounded-full bg-muted px-1.5 py-px text-[10px] tabular-nums text-muted-foreground">{results.length}</span>
+                <span className="h-px flex-1 bg-border" />
+              </span>
+            )}
+            data-testid={`global-search-group-${type}`}
+          >
+            <div className={viewMode === 'card' ? 'grid gap-3 p-1 [grid-template-columns:repeat(auto-fill,minmax(250px,1fr))]' : undefined}>
               {results.map((result) => {
                 const renderer = renderers.get(type)
                 const descriptor = renderer ? renderer(result) : defaultDescriptor(result)
                 const thumbSrc = descriptor.thumbnailUrl && !brokenThumbs.has(descriptor.thumbnailUrl)
                   ? descriptor.thumbnailUrl
                   : undefined
-                const Icon = (descriptor.icon && HIT_ICONS[descriptor.icon]) || FileQuestion
+                const { Icon, tint } = (descriptor.icon && HIT_ICONS[descriptor.icon]) || FALLBACK_ICON
                 const media = (sizeClass: string, iconClass: string) => thumbSrc ? (
                   <img
                     src={thumbSrc}
@@ -241,7 +258,7 @@ export function GlobalSearchOverlay() {
                   />
                 ) : (
                   <div className={`flex ${sizeClass} items-center justify-center rounded-md bg-muted`}>
-                    <Icon className={`${iconClass} text-muted-foreground`} />
+                    <Icon className={`${iconClass} opacity-60 ${tint}`} />
                   </div>
                 )
                 return viewMode === 'card' ? (
@@ -256,12 +273,12 @@ export function GlobalSearchOverlay() {
                       <img
                         src={thumbSrc}
                         alt=""
-                        className="h-36 w-full rounded-lg object-cover"
+                        className="aspect-square w-full rounded-lg bg-zinc-900/50 object-cover"
                         onError={() => setBrokenThumbs((prev) => new Set(prev).add(descriptor.thumbnailUrl!))}
                       />
                     ) : (
-                      <div className="flex h-36 w-full items-center justify-center rounded-lg bg-muted">
-                        <Icon className="size-10 text-muted-foreground" />
+                      <div className="flex aspect-square w-full items-center justify-center rounded-lg bg-zinc-900/50">
+                        <Icon className={`size-10 opacity-40 ${tint}`} />
                       </div>
                     )}
                     <div className="min-w-0">
