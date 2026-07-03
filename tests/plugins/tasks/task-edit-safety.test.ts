@@ -91,6 +91,7 @@ mock.module('../../../src/core/task-service', () => ({
 
 import { recordCompletion, deleteCompletion } from '../../../src/core/execution-ledger'
 import { closeDb } from '../../../packages/core/src/storage/db'
+import { resolveTaskIdentifier } from '../../../plugins/tasks/lib/edit-guard'
 
 let activated: ActivatedPlugin
 
@@ -113,6 +114,20 @@ beforeEach(() => {
   mockAssignTask.mockClear()
   mockSetDependencyWithEffects.mockClear()
   ;(activated.ctx.activity.audit as ReturnType<typeof mock>).mockClear()
+})
+
+describe('resolveTaskIdentifier', () => {
+  it('prefers path param, then body.id, then the title fallbacks', () => {
+    expect(resolveTaskIdentifier('t-1', { id: 't-2', title: 'T' })).toBe('t-1')
+    expect(resolveTaskIdentifier(undefined, { id: 't-2', title: 'T' })).toBe('t-2')
+    expect(resolveTaskIdentifier(undefined, { title: 'T' })).toBe('T')
+    expect(resolveTaskIdentifier(undefined, {})).toBeUndefined()
+  })
+
+  it('update mode: body.title is payload, body.originalTitle is the identifier', () => {
+    expect(resolveTaskIdentifier(undefined, { originalTitle: 'Old', title: 'New' }, { bodyTitleIsPayload: true })).toBe('Old')
+    expect(resolveTaskIdentifier(undefined, { title: 'New' }, { bodyTitleIsPayload: true })).toBeUndefined()
+  })
 })
 
 describe('optimistic versioning', () => {
