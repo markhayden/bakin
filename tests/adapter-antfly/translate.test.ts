@@ -97,7 +97,7 @@ describe('buildQueryRequest', () => {
     }, S)
     expect(req.full_text_search).toEqual({ match_all: {} })
     expect(req.semantic_search).toBeUndefined()
-    expect(req.aggregations).toEqual({ kind: { terms: { field: 'kind', size: 50 } } })
+    expect(req.aggregations).toEqual({ kind: { type: 'terms', field: 'kind', size: 50 } })
   })
 
   it('offset only attaches to FTS-only queries (semantic+offset hard-400s)', () => {

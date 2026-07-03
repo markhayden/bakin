@@ -152,6 +152,27 @@ export function runSearchConformanceSuite(name: string, getTarget: () => Conform
       }
     })
 
+    it('faceted queries return term buckets (with and without a semantic leg)', async () => {
+      const { adapter } = getTarget()
+      const table = t('facets')
+      await adapter.tables.create(table, {
+        fields: { title: { type: 'text' }, kind: { type: 'keyword' } },
+        legs: [{ name: 'full_text', capability: 'full-text', fields: ['title'] }],
+        facets: ['kind'],
+      })
+      await adapter.documents.batchIndex(table, [
+        { key: 'f1', doc: { title: 'alpha', kind: 'note' } },
+        { key: 'f2', doc: { title: 'beta', kind: 'note' } },
+        { key: 'f3', doc: { title: 'gamma', kind: 'task' } },
+      ])
+      await settle(table)
+      const res = await adapter.query(table, { text: '*', limit: 10, facets: ['kind'] })
+      const buckets = res.facets?.kind ?? []
+      const byValue = new Map(buckets.map((b) => [b.value, b.count]))
+      expect(byValue.get('note')).toBe(2)
+      expect(byValue.get('task')).toBe(1)
+    })
+
     it('transform mutates a document without full reindex semantics changing', async () => {
       const { adapter } = getTarget()
       const table = t('transform')

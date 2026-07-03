@@ -114,9 +114,14 @@ export function GlobalSearchOverlay() {
   }
 
   return (
-    <CommandDialog open={open} onOpenChange={(next) => { if (!next) close(); else setOpen(true) }}>
+    <CommandDialog
+      open={open}
+      onOpenChange={(next) => { if (!next) close(); else setOpen(true) }}
+      // Takeover layout: ~80vw x 80vh centered, results fill the height.
+      className="top-1/2 -translate-y-1/2 h-[80vh] w-[80vw] max-w-[80vw] sm:max-w-[80vw] flex flex-col"
+    >
       {/* Results come pre-ranked from the engine — cmdk must not re-filter. */}
-      <Command shouldFilter={false}>
+      <Command shouldFilter={false} className="flex h-full flex-col">
       <CommandInput
         placeholder="Search assets, tasks, memory, workflows…"
         value={query}
@@ -141,7 +146,7 @@ export function GlobalSearchOverlay() {
           ))}
         </div>
       )}
-      <CommandList>
+      <CommandList className="max-h-none flex-1 overflow-y-auto">
         {search.status === 'unavailable' && (
           <SearchUnavailable retry={search.retry} className="py-10" />
         )}
@@ -173,18 +178,20 @@ export function GlobalSearchOverlay() {
                   key={`${type}:${result.id}`}
                   value={`${type}:${result.id}`}
                   onSelect={() => onSelect(descriptor)}
-                  className="flex items-center gap-3"
+                  className="flex items-center gap-4 rounded-lg px-4 py-3"
                   data-testid={`global-search-hit-${result.id}`}
                 >
                   {descriptor.thumbnailUrl ? (
-                    <img src={descriptor.thumbnailUrl} alt="" className="size-8 rounded object-cover" />
+                    <img src={descriptor.thumbnailUrl} alt="" className="size-16 shrink-0 rounded-md object-cover" />
                   ) : (
-                    <FileQuestion className="size-4 shrink-0 text-muted-foreground" />
+                    <div className="flex size-16 shrink-0 items-center justify-center rounded-md bg-muted">
+                      <FileQuestion className="size-6 text-muted-foreground" />
+                    </div>
                   )}
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm">{descriptor.title}</div>
+                    <div className="truncate text-base font-medium">{descriptor.title}</div>
                     {descriptor.subtitle && (
-                      <div className="truncate text-xs text-muted-foreground">{descriptor.subtitle}</div>
+                      <div className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">{descriptor.subtitle}</div>
                     )}
                   </div>
                   {debug && (

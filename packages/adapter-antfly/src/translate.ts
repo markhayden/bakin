@@ -197,13 +197,17 @@ export function buildQueryRequest(table: string, q: Query, settings: AntflySetti
 }
 
 function buildAggregations(q: Query): Record<string, unknown> | undefined {
+  // FLAT AggregationRequest shape ({type, field, size}) — the published
+  // rc.17 contract. The nested {terms:{...}} wrapper only exists on newer
+  // main; flat parses on both (live-verified 2026-07-03: nested 400s the
+  // whole query on rc.17, including faceted asset searches).
   const aggs: Record<string, unknown> = {}
   for (const facet of q.facets ?? []) {
-    aggs[facet] = { terms: { field: facet, size: 50 } }
+    aggs[facet] = { type: 'terms', field: facet, size: 50 }
   }
   for (const agg of q.aggregations ?? []) {
     if (agg.type === 'count') {
-      aggs[agg.name] = { terms: { field: agg.field, size: 100 } }
+      aggs[agg.name] = { type: 'terms', field: agg.field, size: 100 }
     }
   }
   return Object.keys(aggs).length > 0 ? aggs : undefined

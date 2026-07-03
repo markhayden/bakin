@@ -140,9 +140,26 @@ export function createMockSearchAdapter(
         score: 1,
         scoreBreakdown: { [legName]: 1 },
       }))
+      // Term buckets over the FULL matched set (engines facet the corpus,
+      // not the page) — keeps the conformance facets case honest.
+      let facets: Record<string, Array<{ value: string | number | boolean; count: number }>> | undefined
+      if (q.facets?.length) {
+        facets = {}
+        for (const field of q.facets) {
+          const counts = new Map<string, number>()
+          for (const [, document] of matched) {
+            const value = document[field]
+            if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+              counts.set(String(value), (counts.get(String(value)) ?? 0) + 1)
+            }
+          }
+          facets[field] = Array.from(counts.entries()).map(([value, count]) => ({ value, count }))
+        }
+      }
       return {
         hits,
         total: matched.length,
+        ...(facets ? { facets } : {}),
         diagnostics: { strategy: 'none' },
       }
     },
