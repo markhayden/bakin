@@ -10,8 +10,55 @@ export interface TableInfo {
 
 export interface TableConfig {
   fields: Record<string, SearchFieldConfig>
+  /** Legacy index declarations — superseded by `legs`; deleted at the F4 surface cut. */
   indexes?: SearchIndexConfig[]
+  /**
+   * Capability-level search legs (D17). Content types declare WHAT they need
+   * (full-text over these fields, a text-embedding leg, a media-embedding
+   * leg); the adapter maps each leg to its own engine/model specifics. Leg
+   * `name` is the stable key that query results echo in `scoreBreakdown`.
+   */
+  legs?: TableLegConfig[]
+  facets?: string[]
   adapterOptions?: Record<string, unknown>
+}
+
+/** What a search adapter can build/serve, in capability terms (D17). */
+export type SearchLegCapability = 'full-text' | 'text-embedding' | 'media-embedding'
+
+export interface SearchAdapterCapabilities {
+  legs: SearchLegCapability[]
+  rerank: boolean
+  facets: boolean
+  /** Atomic partial document update without a full re-embed. */
+  transform: boolean
+}
+
+export interface TableLegConfig {
+  /** Stable leg name — the `scoreBreakdown` key for this leg's scores. */
+  name: string
+  capability: SearchLegCapability
+  /** Source fields for full-text scoping / embedding-template inputs. */
+  fields: string[]
+  /** Text template for embedding input (adapter interpolates). */
+  template?: string
+  /** Document field holding a URL to media bytes (media-embedding legs). */
+  mediaUrlField?: string
+  /** Fusion weight relative to sibling legs (default 1). */
+  weight?: number
+  chunker?: {
+    enabled: boolean
+    targetTokens?: number
+    overlapTokens?: number
+  }
+}
+
+/** Per-leg index health — drives blue/green convergence + doctor/telemetry. */
+export interface TableLegHealth {
+  leg: string
+  state: 'ready' | 'building' | 'error'
+  indexedCount: number
+  error?: string
 }
 
 export interface SearchFieldConfig {
@@ -115,12 +162,13 @@ export interface SearchHit {
   highlights?: Record<string, string[]>
 }
 
-export interface ScoreBreakdown {
-  fts?: number
-  vector?: number
-  hybrid?: number
-  rerank?: number
-}
+/**
+ * Per-leg scores keyed by the leg names the table declared (plus adapter
+ * extras like `rerank`). Generic by design (D17): the debug UI renders
+ * whatever legs appear here — no engine-specific key sniffing upstream.
+ * (Structurally supersedes the old fixed `fts`/`vector`/`hybrid` keys.)
+ */
+export type ScoreBreakdown = Record<string, number>
 
 export interface FacetCount {
   value: string | number | boolean

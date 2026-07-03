@@ -9,9 +9,11 @@ import type {
   RebuildReport,
   ScanOpts,
   ScannedDocument,
+  SearchAdapterCapabilities,
   TableConfig,
   TableHealth,
   TableInfo,
+  TableLegHealth,
   TableStats,
   TransformFn,
 } from './concepts'
@@ -26,12 +28,36 @@ export interface SearchAdapter {
   available(): Promise<boolean>
   getHealthChecks(): AdapterHealthCheckDefinition[]
 
+  /**
+   * What this adapter can build/serve, in capability terms (D17).
+   * Optional ONLY during the engine-room transition (the old adapter
+   * predates it) — required at the F4 surface cut.
+   */
+  capabilities?(): SearchAdapterCapabilities
+
+  /**
+   * Hash over adapter settings that change the PHYSICAL index layout
+   * (embedder models, dimensions). Core folds it into each table's
+   * blue/green config fingerprint so a model swap migrates tables without
+   * any plugin edit. Must be stable across restarts for identical settings.
+   * Optional during the transition — required at F4.
+   */
+  mappingFingerprint?(): string
+
   tables: {
+    /** Doctor/status/introspection only — never called on the boot path. */
     list(): Promise<TableInfo[]>
     create(name: string, config: TableConfig): Promise<void>
     drop(name: string): Promise<void>
     stats(name: string): Promise<TableStats | null>
+    /**
+     * Per-leg health — drives blue/green convergence checks + telemetry.
+     * Optional during the transition — required at F4.
+     */
+    health?(name: string): Promise<TableLegHealth[]>
+    /** Legacy single-status health — superseded by `health`; dies at F4. */
     getHealth(name: string): Promise<TableHealth | null>
+    /** Legacy embedder-swap rebuild — superseded by blue/green; dies at F4. */
     rebuildIndexes(name: string): Promise<void>
   }
 
@@ -107,13 +133,17 @@ export type {
   ScanOpts,
   ScannedDocument,
   ScoreBreakdown,
+  SearchAdapterCapabilities,
   SearchFieldConfig,
   SearchHit,
   SearchIndexConfig,
+  SearchLegCapability,
   SortSpec,
   TableConfig,
   TableHealth,
   TableInfo,
+  TableLegConfig,
+  TableLegHealth,
   TableStats,
   TransformFn,
 } from './concepts'

@@ -44,6 +44,13 @@ export function createMockSearchAdapter(
     shutdown: async () => {},
     available: async () => true,
     getHealthChecks: () => [],
+    capabilities: () => ({
+      legs: ['full-text', 'text-embedding', 'media-embedding'],
+      rerank: false,
+      facets: true,
+      transform: true,
+    }),
+    mappingFingerprint: () => 'mock-mapping-v1',
 
     tables: {
       list: async (): Promise<TableInfo[]> => Array.from(tables.entries()).map(([name, config]) => ({
@@ -64,6 +71,14 @@ export function createMockSearchAdapter(
         documents: docs.get(name)?.size ?? 0,
         updatedAt: new Date().toISOString(),
       }),
+      health: async (name) => {
+        const config = tables.get(name)
+        const count = docs.get(name)?.size ?? 0
+        const legs = config?.legs?.length
+          ? config.legs.map((leg) => leg.name)
+          : ['full_text']
+        return legs.map((leg) => ({ leg, state: 'ready' as const, indexedCount: count }))
+      },
       getHealth: async (name) => ({
         table: name,
         status: tables.has(name) ? 'ok' : 'warn',
@@ -103,17 +118,32 @@ export function createMockSearchAdapter(
 
     query: async (table, q): Promise<QueryResult> => {
       const all = Array.from(docs.get(table)?.entries() ?? [])
+      // Naive substring matching over string fields — honest enough that
+      // conformance cases assert real filtering, cheap enough for a mock.
+      // Empty text = match-all (list/count flows).
+      const text = (q.text ?? '').trim().toLowerCase()
+      const searchable = Array.isArray((q.adapterOptions as Record<string, unknown> | undefined)?.searchableFields)
+        ? ((q.adapterOptions as Record<string, unknown>).searchableFields as string[])
+        : null
+      const matched = text.length === 0 || text === '*'
+        ? all
+        : all.filter(([, document]) =>
+            Object.entries(document).some(([field, value]) =>
+              typeof value === 'string'
+              && (!searchable || searchable.includes(field))
+              && value.toLowerCase().includes(text)))
       const offset = q.offset ?? 0
-      const limit = q.limit ?? all.length
-      const hits = all.slice(offset, offset + limit).map(([key, document]) => ({
+      const limit = q.limit ?? matched.length
+      const legName = tables.get(table)?.legs?.[0]?.name ?? 'full_text'
+      const hits = matched.slice(offset, offset + limit).map(([key, document]) => ({
         key,
         document,
         score: 1,
-        scoreBreakdown: { hybrid: 1 },
+        scoreBreakdown: { [legName]: 1 },
       }))
       return {
         hits,
-        total: all.length,
+        total: matched.length,
         diagnostics: { strategy: 'none' },
       }
     },
