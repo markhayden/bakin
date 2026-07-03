@@ -120,4 +120,5 @@ export const paths = {
   query: (t: string) => `/db/v1/tables/${encodeURIComponent(t)}/query`,
   indexes: (t: string) => `/db/v1/tables/${encodeURIComponent(t)}/indexes`,
   document: (t: string, key: string) => `/db/v1/tables/${encodeURIComponent(t)}/documents/${encodeURIComponent(key)}`,
+  lookup: (t: string) => `/db/v1/tables/${encodeURIComponent(t)}/lookup`,
 } as const
