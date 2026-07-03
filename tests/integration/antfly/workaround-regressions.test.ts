@@ -181,6 +181,40 @@ if (!binary) {
       expect(vis?.indexedCount).toBe(1)
     }, 180_000)
 
+    it('PIN: a WebP media_url fails the ENTIRE batch (engine decodes PNG/JPEG/GIF only)', async () => {
+      // WHEN THIS FAILS: upstream added WebP decode (or per-doc batch errors)
+      // → widen EMBED_SAFE_RE in plugins/assets/lib/search-doc.ts (and
+      // consider passing originals again) + delete this pin. Issue draft:
+      // tasks/antfly-webp-issue-draft.md.
+      if (!instance.modelsAvailable || !existsSync(join(homedir(), '.antfly', 'inference', 'models', 'antflydb', 'clipclap'))) {
+        console.warn('⚠ webp pin skipped — clipclap model not present')
+        return
+      }
+      const T3 = 'pins_webp'
+      await api('POST', `/db/v1/tables/${T3}`, {
+        num_shards: 1,
+        indexes: { vis: { name: 'vis', type: 'embeddings', template: '{{#if media_url}}{{remoteMedia url=media_url}}{{/if}}', dimension: 512, embedder: { provider: 'antfly', model: 'antflydb/clipclap' } } },
+      })
+      await sleep(1200)
+      const sharp = (await import('sharp')).default
+      const webp = join(instance.root, 'pin-webp.webp')
+      await sharp({ create: { width: 8, height: 8, channels: 3, background: { r: 200, g: 120, b: 40 } } }).webp().toFile(webp)
+      // Retry loop mirrors beforeAll: early attempts can race table
+      // provisioning (transient non-2xx). The pinned behavior is that the
+      // batch NEVER lands — including the innocent sibling doc.
+      let status = 0
+      for (let i = 0; i < 10; i++) {
+        const r = await api('POST', `/db/v1/tables/${T3}/batch`, {
+          inserts: { w1: { title: 'tacos', media_url: `file://${webp}` }, ok1: { title: 'innocent sibling' } },
+          sync_level: 'full_index',
+        })
+        status = r.status
+        if (r.status === 500 || r.status < 300) break
+        await sleep(500)
+      }
+      expect(status).toBe(500)
+    }, 120_000)
+
     it('CONTRACT CANARY: filter_query keeps filtering (the workaround we DELETED must stay dead)', async () => {
       // Inverse pin: this asserts the FIX keeps working. If it fails, the
       // filter-in-AST workaround has to come back (bakin#456 class).
