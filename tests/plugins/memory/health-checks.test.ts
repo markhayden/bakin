@@ -85,7 +85,7 @@ mock.module('../../../src/core/search-registry', () => ({
     index: async () => {},
     remove: async () => {},
     transform: async () => {},
-    query: async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } }),
+    query: async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'unavailable' as const } }),
   }),
 }))
 
@@ -260,7 +260,7 @@ describe('plugin registration', () => {
       search: {
         registerContentType: noop, registerFileBackedContentType: noop,
         index: noopAsync, remove: noopAsync, transform: noopAsync,
-        query: mock(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } })),
+        query: mock(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'unavailable' as const } })),
         health: readMockSearchHealth,
       },
       storage: {},

@@ -23,7 +23,7 @@ function makeSearch(rows: Array<{ key: string; document: Record<string, unknown>
       index: mock(async () => {}),
       remove: mock(async () => {}),
       transform: mock(async () => {}),
-      query: mock(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } })),
+      query: mock(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'unavailable' as const } })),
       maintenance: {
         available: mock(async () => true),
         scan,

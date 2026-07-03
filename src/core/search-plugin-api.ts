@@ -248,7 +248,7 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
       if (!tableName || !await search.available()) {
         return {
           results: [],
-          meta: { query: params.q, total: 0, took_ms: 0, source: 'fallback' },
+          meta: { query: params.q, total: 0, took_ms: 0, source: 'unavailable' },
         }
       }
 

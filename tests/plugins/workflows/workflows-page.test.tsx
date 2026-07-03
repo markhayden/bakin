@@ -86,7 +86,7 @@ mock.module('@/hooks/use-query-state', () => ({
 // useSearch stub — returns whatever the test sets in `searchState`.
 const searchState: {
   results: Array<{ id: string; table: string; score: number; fields: Record<string, unknown> }>
-  meta: { query: string; total: number; took_ms: number; source: 'search' | 'fallback' } | null
+  meta: { query: string; total: number; took_ms: number; source: 'search' | 'unavailable' } | null
   search: ReturnType<typeof mock>
   clear: ReturnType<typeof mock>
 } = {

@@ -166,7 +166,7 @@ mock.module('../../../src/core/search-registry', () => ({
     index: mock(async () => {}),
     remove: mock(async () => {}),
     transform: mock(async () => {}),
-    query: mock(async () => ({ results: [], aggregations: undefined, meta: { query: '', total: 0, took_ms: 0, source: 'fallback' } })),
+    query: mock(async () => ({ results: [], aggregations: undefined, meta: { query: '', total: 0, took_ms: 0, source: 'unavailable' } })),
   }),
 }))
 

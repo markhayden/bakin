@@ -125,7 +125,7 @@ function makeCtx(): CapturedCtx {
       index: mock(async (key, doc) => { indexCalls.push({ key, doc }) }),
       remove: mock(async (key) => { removeCalls.push(key) }),
       transform: mock(async () => {}),
-      query: mock(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } })),
+      query: mock(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'unavailable' as const } })),
     },
     hooks: {
       register: mock(() => () => {}),

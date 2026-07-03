@@ -219,7 +219,8 @@ export interface SearchResponse {
     query: string
     total: number
     took_ms: number
-    source: 'search' | 'fallback'
+    /** 'unavailable' = the engine was down; HTTP boundaries surface it as 503. */
+    source: 'search' | 'unavailable'
   }
 }
 

@@ -132,7 +132,7 @@ function makeCtx(existingRows: Array<{ key: string; updatedAt: number }> = []): 
       transform: mock(async () => {}),
       query: mock(async () => ({
         results: [],
-        meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const },
+        meta: { query: '', total: 0, took_ms: 0, source: 'unavailable' as const },
       })),
       maintenance: {
         available: mock(async () => existingRows.length > 0),

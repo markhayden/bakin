@@ -40,7 +40,7 @@ function makeContext() {
   }
   const search = {
     index: mock(async () => {}),
-    query: mock(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' } })),
+    query: mock(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'unavailable' } })),
   }
   const tasks = {
     create: mock(async () => ({ id: 'task-1' })),

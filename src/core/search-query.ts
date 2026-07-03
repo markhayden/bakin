@@ -29,10 +29,14 @@ export async function crossTableSearch(q: string, opts?: {
   offset?: number
   filters?: Record<string, string | boolean | number>
   facets?: string[]
+  /** Restrict cross-table search to these content types (bare or full table names). */
+  types?: string[]
 }): Promise<SearchResponse> {
   const search = getSearchAdapter()
   if (!await search.available()) {
-    return { results: [], meta: { query: q, total: 0, took_ms: 0, source: 'fallback' } }
+    // Honest degradation (D11): the HTTP boundary maps this marker to a
+    // 503 search_unavailable; server-side callers see structured empties.
+    return { results: [], meta: { query: q, total: 0, took_ms: 0, source: 'unavailable' } }
   }
 
   const registry = getRegistry()
@@ -73,8 +77,12 @@ export async function crossTableSearch(q: string, opts?: {
     }
   }
 
-  // Cross-table search via multiQuery
-  const tables = Array.from(registry.contentTypes.keys())
+  // Cross-table search via multiQuery, optionally restricted by type (req 6:
+  // the ⌘K chips + /api/search?types=a,b). Types match bare or full names.
+  const wanted = opts?.types?.length
+    ? new Set(opts.types.map((t) => fullTableName(t.replace(TABLE_PREFIX, ''))))
+    : null
+  const tables = Array.from(registry.contentTypes.keys()).filter((t) => !wanted || wanted.has(t))
   if (tables.length === 0) {
     return { results: [], meta: { query: q, total: 0, took_ms: 0, source: 'search' } }
   }

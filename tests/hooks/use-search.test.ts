@@ -289,3 +289,72 @@ describe('useSearch — clear()', () => {
     expect(result.current.loading).toBe(false)
   })
 })
+
+// --- honest status lifecycle (spec D11) ------------------------------------
+
+describe('useSearch status states', () => {
+  it('idle initially and after clear()', async () => {
+    mockFetchAlways({ results: [], meta: { query: 'x', total: 0, took_ms: 1, source: 'search' } })
+    const { result } = renderHook(() => useSearch({ debounce: 0 }))
+    expect(result.current.status).toBe('idle')
+
+    act(() => result.current.search('x'))
+    await waitFor(() => expect(result.current.status).toBe('ok'))
+    act(() => result.current.clear())
+    expect(result.current.status).toBe('idle')
+  })
+
+  it('loading while the request is debounce-pending or in flight', async () => {
+    mockFetchAlways({ results: [], meta: { query: 'x', total: 0, took_ms: 1, source: 'search' } })
+    const { result } = renderHook(() => useSearch({ debounce: 50 }))
+    act(() => result.current.search('x'))
+    expect(result.current.status).toBe('loading')
+    expect(result.current.loading).toBe(true)
+    await waitFor(() => expect(result.current.status).toBe('ok'))
+  })
+
+  it('ok on a successful response', async () => {
+    mockFetchResponse({
+      results: [{ id: 'a', table: 'bakin_tasks', score: 1, fields: {} }],
+      meta: { query: 'x', total: 1, took_ms: 2, source: 'search' },
+    })
+    const { result } = renderHook(() => useSearch({ debounce: 0 }))
+    act(() => result.current.search('x'))
+    await waitFor(() => expect(result.current.status).toBe('ok'))
+    expect(result.current.results).toHaveLength(1)
+  })
+
+  it('unavailable on the explicit 503 contract, and retry() re-fetches', async () => {
+    mockFetchResponse({ error: 'search_unavailable' }, { ok: false, status: 503 })
+    const { result } = renderHook(() => useSearch({ debounce: 0 }))
+    act(() => result.current.search('down'))
+    await waitFor(() => expect(result.current.status).toBe('unavailable'))
+    expect(result.current.results).toHaveLength(0)
+    expect(result.current.error).toBeNull()
+
+    // engine recovers → retry succeeds without re-typing the query
+    mockFetchResponse({
+      results: [{ id: 'a', table: 'bakin_tasks', score: 1, fields: {} }],
+      meta: { query: 'down', total: 1, took_ms: 2, source: 'search' },
+    })
+    act(() => result.current.retry())
+    await waitFor(() => expect(result.current.status).toBe('ok'))
+    expect(result.current.results).toHaveLength(1)
+  })
+
+  it('error on non-503 failures', async () => {
+    mockFetchResponse({ error: 'boom' }, { ok: false, status: 500 })
+    const { result } = renderHook(() => useSearch({ debounce: 0 }))
+    act(() => result.current.search('x'))
+    await waitFor(() => expect(result.current.status).toBe('error'))
+    expect(result.current.error).toContain('500')
+  })
+
+  it('types option rides the cross-plugin query string', async () => {
+    mockFetchAlways({ results: [], meta: { query: 'x', total: 0, took_ms: 1, source: 'search' } })
+    const { result } = renderHook(() => useSearch({ debounce: 0, types: ['assets', 'tasks'] }))
+    act(() => result.current.search('x'))
+    await waitFor(() => expect(result.current.status).toBe('ok'))
+    expect(fetchCalls[fetchCalls.length - 1].url).toContain('types=assets%2Ctasks')
+  })
+})

@@ -245,7 +245,7 @@ function makeCtx(): { ctx: PluginContext; indexed: IndexedDoc[]; removed: string
         adapterCalls.queries += 1
         return {
           results: [],
-          meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const },
+          meta: { query: '', total: 0, took_ms: 0, source: 'unavailable' as const },
         }
       }),
     },

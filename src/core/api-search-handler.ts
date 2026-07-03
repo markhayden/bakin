@@ -35,7 +35,13 @@ export async function handleCrossPluginSearch(url: URL): Promise<SearchHandlerRe
       limit: Number(url.searchParams.get('limit')) || undefined,
       offset: Number(url.searchParams.get('offset')) || undefined,
       facets: url.searchParams.get('facets')?.split(',').filter(Boolean) || undefined,
+      types: url.searchParams.get('types')?.split(',').filter(Boolean) || undefined,
     })
+    if (response.meta.source === 'unavailable') {
+      // Honest degradation (D11): engine down is an explicit 503, never a
+      // silent empty result the UI would mistake for "no matches".
+      return { status: 503, body: { error: 'search_unavailable' } }
+    }
     return { status: 200, body: response }
   } catch (err) {
     log.error('Search request failed', err)

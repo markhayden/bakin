@@ -205,22 +205,12 @@ export function VersionedAssetGrid() {
   const [uploadError, setUploadError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  // Antfly-backed search (semantic + visual), with a client-side metadata
-  // fallback when search is disabled or returns nothing.
+  // Antfly-backed search (semantic + visual). No client-side fallback: the
+  // engine being down is an explicit unavailable state (spec D11), rendered
+  // below — never a silently-worse substring substitute.
   const search = useSearch({
     plugin: 'assets',
     facets: ['asset_type', 'agent'],
-    fallback: (query: string) => {
-      const n = query.toLowerCase()
-      return assets
-        .filter(a =>
-          a.assetId.toLowerCase().includes(n) ||
-          a.description.toLowerCase().includes(n) ||
-          a.agent.toLowerCase().includes(n) ||
-          (a.tags || []).some(t => t.toLowerCase().includes(n)),
-        )
-        .map(a => ({ id: a.assetId, table: 'bakin_assets', score: 1, fields: {} }))
-    },
   })
 
   const fetchAssets = useCallback(() => {

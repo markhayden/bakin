@@ -103,7 +103,7 @@ export async function retrieveAgentPackageLessons(options: {
     filters: { package_id: owner.id },
   })
 
-  if (response.meta.source === 'fallback') {
+  if (response.meta.source === 'unavailable') {
     return { lessons: [], packageId: owner.id, reason: 'search-unavailable' }
   }
 

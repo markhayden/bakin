@@ -522,11 +522,11 @@ describe('search-registry', () => {
     ])
   })
 
-  it('query returns fallback when no content type registered', async () => {
+  it('query reports unavailable when no content type registered', async () => {
     const api = buildSearchAPI('orphan-plugin')
     const result = await api.query({ q: 'test' })
 
-    expect(result.meta.source).toBe('fallback')
+    expect(result.meta.source).toBe('unavailable')
     expect(result.results).toEqual([])
   })
 
@@ -573,7 +573,7 @@ describe('search-registry', () => {
 
     const result = await crossTableSearch('hello')
 
-    expect(result.meta.source).toBe('fallback')
+    expect(result.meta.source).toBe('unavailable')
     expect(result.results).toEqual([])
   })
 

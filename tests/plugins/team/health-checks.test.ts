@@ -424,7 +424,7 @@ describe('plugin registration', () => {
         index: noopAsync,
         remove: noopAsync,
         transform: noopAsync,
-        query: mock(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } })),
+        query: mock(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'unavailable' as const } })),
       },
       storage: {},
       events: { on: noop, emit: noop, off: noop },

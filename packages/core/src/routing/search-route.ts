@@ -44,7 +44,7 @@ export function searchRoute(opts: { table: string; description?: string }):
     summary: `Search ${opts.table}`,
     description: opts.description ?? `Full-text search across ${opts.table} indexed content.`,
     query: searchQuery,
-    responses: { 200: searchResponse, 400: errorResponse, 500: errorResponse },
+    responses: { 200: searchResponse, 400: errorResponse, 500: errorResponse, 503: errorResponse },
     handler: async (_req, ctx, parsed) => {
       const result = await ctx.search.query({
         q: parsed.query.q,
@@ -52,6 +52,10 @@ export function searchRoute(opts: { table: string; description?: string }):
         offset: parsed.query.offset,
         facets: parsed.query.facets?.split(',').filter(Boolean),
       })
+      if (result.meta?.source === 'unavailable') {
+        // Honest degradation (D11): explicit 503, never a silent empty page.
+        return Response.json({ error: 'search_unavailable' }, { status: 503 })
+      }
       return Response.json(result)
     },
   })

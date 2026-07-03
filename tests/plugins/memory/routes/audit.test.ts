@@ -73,7 +73,7 @@ function makeCtx(seeded: Record<string, unknown>[] = []): {
             query: params.q,
             total: seeded.length,
             took_ms: 1,
-            source: 'fallback' as const,
+            source: 'unavailable' as const,
           },
         }
       }),

@@ -50,7 +50,7 @@ function makeCtx(): CtxHarness {
   const queryCalls: CtxHarness['queryCalls'] = []
   let queryResponse: SearchResponse = {
     results: [],
-    meta: { query: '', total: 0, took_ms: 0, source: 'fallback' },
+    meta: { query: '', total: 0, took_ms: 0, source: 'unavailable' },
   }
   const ctx = {
     pluginId: 'memory',
