@@ -7,6 +7,7 @@ import { Badge, Button } from '@makinbakin/sdk/ui'
 import { ArrowLeft, Download, Pencil, Trash2, Upload, Loader2, X } from 'lucide-react'
 import { AssetMetaSummary, AssetThumb } from './atoms'
 import { AssetEditDrawer } from './AssetEditDrawer'
+import { EnrichmentCard } from './EnrichmentCard'
 import { AssetPreview } from './AssetPreview'
 import { VersionRow } from './VersionRow'
 import { assetVersionUrl, assetExportUrl, VERSIONED_API } from './asset-urls'
@@ -181,6 +182,9 @@ export function VersionedAssetDetail() {
         onOpenChange={setEditOpen}
         onSaved={fetchManifest}
       />
+
+      {/* Derived metadata — what the vision model saw (D8) */}
+      <EnrichmentCard manifest={manifest} onChanged={fetchManifest} />
 
       {/* References — assets that conditioned this generation (#418) */}
       {previewVer.generation?.references && previewVer.generation.references.length > 0 && (
