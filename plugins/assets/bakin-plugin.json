@@ -1,7 +1,7 @@
 {
   "id": "assets",
   "name": "Assets",
-  "version": "2.0.2",
+  "version": "2.1.0",
   "bakin": ">=1.0.0",
   "description": "Centralized content store for all artifacts with rich rendering, search, task linking, manual upload, and clipboard paste",
   "entry": {
@@ -20,6 +20,16 @@
   ],
   "contributes": {
     "apiRoutes": [
+      {
+        "path": "/import/scan",
+        "method": "GET",
+        "summary": "List unmanaged files awaiting explicit import"
+      },
+      {
+        "path": "/import",
+        "method": "POST",
+        "summary": "Import unmanaged files into versioned assets"
+      },
       {
         "method": "POST",
         "path": "/upload",
@@ -100,12 +110,12 @@
       {
         "name": "bakin_exec_assets_open",
         "summary": "Open an asset by assetId; returns its manifest plus extracted text for text-like assets.",
-        "description": "Open an asset by assetId: returns its manifest plus the current version’s extracted text for text-like assets."
+        "description": "Open an asset by assetId: returns its manifest plus the current version\u2019s extracted text for text-like assets."
       },
       {
         "name": "bakin_exec_assets_save",
         "summary": "Save an agent-created file as a managed, versioned asset (upserts by source path).",
-        "description": "Save an agent-created file as a managed, versioned asset. Re-saving the SAME source file appends a new version to the existing asset (or no-ops if unchanged) instead of creating a duplicate — so an evolving doc stays one asset with a version history. Returns the asset id."
+        "description": "Save an agent-created file as a managed, versioned asset. Re-saving the SAME source file appends a new version to the existing asset (or no-ops if unchanged) instead of creating a duplicate \u2014 so an evolving doc stays one asset with a version history. Returns the asset id."
       },
       {
         "name": "bakin_exec_assets_delete",

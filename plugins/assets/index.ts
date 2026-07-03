@@ -16,6 +16,7 @@ import {
   handleTrashList, handleTrashRestore, handleTrashPermanentDelete, handleTrashEmpty,
 } from './routes/versioned'
 import { handleTagsRename, handleTagsRemove, handleTagsApply } from './routes/tags'
+import { handleImportScan, handleImport } from './routes/import'
 import { isValidAssetId } from './lib/asset-id'
 import {
   getAsset, upsertFromSource, resolveFile as resolveVersionedFile,
@@ -64,6 +65,20 @@ const okPassthrough = z.object({ ok: z.boolean() }).passthrough()
 // ─── Routes (declarative) ────────────────────────────────────────────────
 
 const routes = [
+  defineRoute({
+    path: '/import/scan',
+    method: 'GET',
+    summary: 'List unmanaged files awaiting explicit import',
+    responses: { 200: passthrough, 500: errorResponse },
+    handler: async () => handleImportScan(),
+  }),
+  defineRoute({
+    path: '/import',
+    method: 'POST',
+    summary: 'Import unmanaged files into versioned assets',
+    responses: { 200: okPassthrough, 400: errorResponse, 500: errorResponse },
+    handler: async (req, ctx) => handleImport(req, ctx as unknown as { activity?: { audit: (event: string, agent: string, data: Record<string, unknown>) => void } }),
+  }),
   defineRoute({
     path: '/upload',
     method: 'POST',
