@@ -101,9 +101,16 @@ function countAutoRecoveries(task: { log?: { message: string }[] }): number {
   return task.log.filter(e => e.message.startsWith('Auto-recovered:')).length
 }
 
-function getNotificationChannel(settings: ReturnType<typeof getSettings>): string | null {
+export function getNotificationChannel(settings: ReturnType<typeof getSettings>): string | null {
   const channel = settings.notifications.channel.trim()
-  return channel && channel !== 'none' ? channel : null
+  if (!channel || channel === 'none') return null
+  if (channel.includes(':')) return channel
+  // OpenClaw's message send REQUIRES a destination (--target). Settings carry
+  // it separately (notifications.target) — compose the adapter's
+  // channel:target ref, same as channel-aliases does. A bare channel with no
+  // target fails at the CLI and alerts silently never arrive.
+  const target = (settings.notifications.target ?? '').trim()
+  return target ? `${channel}:${target}` : channel
 }
 
 async function sendWatchdogChannelMessage(channel: string, message: string): Promise<void> {

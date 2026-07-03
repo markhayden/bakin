@@ -145,7 +145,7 @@ mock.module('../../src/lib/format', () => ({
   isStale: mock().mockReturnValue(false),
 }))
 
-import { start, stop } from '../../src/core/watchdog'
+import { start, stop, getNotificationChannel } from '../../src/core/watchdog'
 import { appendAudit } from '../../src/core/audit'
 import { broadcast } from '../../src/core/sse'
 import { isStale } from '../../src/lib/format'
@@ -493,6 +493,29 @@ describe('watchdog', () => {
         'watchdog',
         expect.anything(),
       )
+    })
+  })
+
+  describe('getNotificationChannel', () => {
+    const settingsWith = (channel: string, target: string) =>
+      ({ notifications: { channel, target, gateAlerts: true, channelAliases: {} } }) as never
+
+    it('composes channel:target — OpenClaw send REQUIRES a destination', () => {
+      expect(getNotificationChannel(settingsWith('discord', '1492965013642543205')))
+        .toBe('discord:1492965013642543205')
+    })
+
+    it('passes a pre-composed channel:target through untouched', () => {
+      expect(getNotificationChannel(settingsWith('discord:user:42', 'ignored'))).toBe('discord:user:42')
+    })
+
+    it('bare channel with no target stays bare (adapter may have a default)', () => {
+      expect(getNotificationChannel(settingsWith('discord', ''))).toBe('discord')
+    })
+
+    it("'none' and empty disable alerts", () => {
+      expect(getNotificationChannel(settingsWith('none', 'x'))).toBeNull()
+      expect(getNotificationChannel(settingsWith('', 'x'))).toBeNull()
     })
   })
 })
