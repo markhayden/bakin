@@ -11,7 +11,27 @@ const testDir = join(tmpdir(), `bakin-tag-ops-${Date.now()}-${randomUUID()}`)
 process.env.BAKIN_HOME = testDir
 process.env.OPENCLAW_HOME = join(testDir, 'openclaw')
 
-import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
+import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
+
+const contentDirMock = () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({
+    home: testDir,
+    audit: join(testDir, 'audit.jsonl'),
+    tasks: join(testDir, 'tasks'),
+    logs: join(testDir, 'logs'),
+    assets: join(testDir, 'assets'),
+    db: join(testDir, 'bakin.db'),
+  }),
+})
+mock.module('../../../src/core/content-dir', contentDirMock)
+mock.module('../../../packages/core/src/content-dir', contentDirMock)
+mock.module('@bakin/adapter-openclaw/home', () => ({
+  getOpenClawHome: () => join(testDir, 'openclaw'),
+  getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
+  resetOpenClawHome: () => {},
+}))
+
 import sharp from 'sharp'
 import {
   createAsset, getAsset, renameTagGlobal, removeTagGlobal, applyTags,
@@ -97,6 +117,16 @@ describe('applyTags', () => {
     expect(getAsset(b)!.tags).toEqual(['new-tag'])
     expect(res.updated).toBe(2)
     expect(res.failed).toEqual(['20260529-ghost-deadbeef']) // unknown id doesn't abort the rest
+  })
+
+  it('re-applying tags an asset already has is a true no-op — no dupes, no manifest rewrite', async () => {
+    const a = await makeAsset('dedupe', ['keep', 'other'])
+    const manifestPath = join(testDir, assetDirRelPath(a)!, 'manifest.json')
+    const before = readFileSync(manifestPath, 'utf-8')
+    const res = await applyTags([a], { add: ['Keep'] }) // normalizes to existing 'keep'
+    expect(res.updated).toBe(0)
+    expect(getAsset(a)!.tags).toEqual(['keep', 'other'])
+    expect(readFileSync(manifestPath, 'utf-8')).toBe(before) // updated timestamp untouched, no reindex
   })
 })
 

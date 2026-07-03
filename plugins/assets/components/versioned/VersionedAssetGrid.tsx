@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryState, useQueryArrayState, useSearch, useDebug, useRouter, usePathname, useSearchParams, usePluginEvent } from '@makinbakin/sdk/hooks'
-import { Button } from '@makinbakin/sdk/ui'
+import { Button, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@makinbakin/sdk/ui'
 import { PluginHeader, FacetFilter, SearchUnavailable, ScoreOverlay } from '@makinbakin/sdk/components'
 import { formatSize, formatAge } from '@makinbakin/sdk/utils'
 import { ImagePlus, Upload, Loader2, LayoutGrid, List, Trash2, RotateCcw, X, ListFilter, FolderOpen, Pencil, Check, Tags, ArrowLeft , Inbox, Sparkles } from 'lucide-react'
@@ -193,8 +193,12 @@ export function VersionedAssetGrid() {
     setBulkError(null)
   }, [])
   const [enriching, setEnriching] = useState(false)
+  // Non-null while the re-enrich confirmation is open: how many of the
+  // selected assets are already enriched for their current version.
+  const [confirmEnrich, setConfirmEnrich] = useState<{ done: number; total: number } | null>(null)
   const bulkEnrich = async (force: boolean) => {
     if (selected.size === 0) return
+    setConfirmEnrich(null)
     setEnriching(true)
     setBulkError(null)
     try {
@@ -210,6 +214,16 @@ export function VersionedAssetGrid() {
     } finally {
       setEnriching(false)
     }
+  }
+  // One Enrich button: confirmation only when the selection contains assets
+  // that are already enriched for their current version (re-running those
+  // re-bills; everything else — none/stale/failed/skipped — runs free of that
+  // concern under force:false).
+  const startEnrich = () => {
+    if (selected.size === 0) return
+    const done = [...selected].filter((id) => assets.find((a) => a.assetId === id)?.enrichment === 'done').length
+    if (done === 0) { void bulkEnrich(false); return }
+    setConfirmEnrich({ done, total: selected.size })
   }
   useEffect(() => { clearSelection() }, [view, clearSelection])
   const toggleSelected = (assetId: string) => setSelected(prev => {
@@ -590,18 +604,43 @@ export function VersionedAssetGrid() {
             <TagInput value={bulkTags} onChange={setBulkTags} suggestions={tagOptions.filter(o => o.value !== UNTAGGED).map(o => o.value)} placeholder="Add tags…" />
           </div>
           <Button size="sm" onClick={applyBulkTags} disabled={bulkBusy || bulkTags.length === 0} data-testid="bulk-apply-tags">
-            {bulkBusy ? <Loader2 className="size-4 animate-spin" /> : null} Tag {selected.size}
+            {bulkBusy ? <Loader2 className="size-4 animate-spin" /> : null} Save
           </Button>
-          <Button size="sm" variant="outline" onClick={() => bulkEnrich(false)} disabled={enriching} title="Vision-enrich selected assets (already-enriched are skipped free)" data-testid="bulk-enrich">
+          <Button size="sm" variant="outline" onClick={startEnrich} disabled={enriching} title="Vision-enrich selected assets" data-testid="bulk-enrich">
             {enriching ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />} Enrich
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => bulkEnrich(true)} disabled={enriching} title="Force re-enrichment (re-bills; user-edited fields stay protected)" data-testid="bulk-reenrich">
-            Re-enrich
           </Button>
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())} data-testid="bulk-clear-selection">Clear</Button>
           {bulkError && <p className="text-xs text-destructive">{bulkError}</p>}
         </div>
       )}
+
+      <Dialog open={confirmEnrich !== null} onOpenChange={(open) => { if (!open) setConfirmEnrich(null) }}>
+        <DialogContent data-testid="reenrich-confirm">
+          <DialogHeader>
+            <DialogTitle>
+              {confirmEnrich?.done === confirmEnrich?.total
+                ? 'These assets are already enriched'
+                : 'Some of these assets are already enriched'}
+            </DialogTitle>
+            <DialogDescription>
+              {confirmEnrich && (confirmEnrich.done === confirmEnrich.total
+                ? `All ${confirmEnrich.total} selected ${confirmEnrich.total === 1 ? 'asset is' : 'assets are'} already enriched for their current version. Re-enriching spends a vision turn per asset; your manual edits stay protected.`
+                : `${confirmEnrich.done} of ${confirmEnrich.total} selected assets are already enriched. Enrich only the rest for free, or re-enrich everything — re-enriching spends a vision turn per asset; your manual edits stay protected.`)}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setConfirmEnrich(null)} data-testid="reenrich-cancel">Cancel</Button>
+            {confirmEnrich && confirmEnrich.done < confirmEnrich.total && (
+              <Button variant="outline" onClick={() => bulkEnrich(false)} data-testid="reenrich-new-only">
+                Enrich {confirmEnrich.total - confirmEnrich.done} new only
+              </Button>
+            )}
+            <Button onClick={() => bulkEnrich(true)} data-testid="reenrich-all">
+              Re-enrich all {confirmEnrich?.total ?? 0}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {editing && (
         <AssetEditDrawer

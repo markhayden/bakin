@@ -183,7 +183,8 @@ export async function applyTags(
       failed.push(assetId)
       continue
     }
-    const tags = [...manifest.tags.filter((t) => !remove.has(t)), ...add]
+    const tags = normalizeTags([...manifest.tags.filter((t) => !remove.has(t)), ...add])
+    if (tags.length === manifest.tags.length && tags.every((t, i) => t === manifest.tags[i])) continue // no-op — skip the rewrite + reindex
     await updateMetadata(assetId, { tags })
     updated++
   }
