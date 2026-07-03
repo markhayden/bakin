@@ -18,6 +18,8 @@ import type { HealthCheckResult, HealthRepairHandler } from '../../../packages/c
 import { healthOk as ok, healthWarn as warn, healthFixed as fixed } from '@makinbakin/sdk/utils'
 
 import { isValidAssetId } from './asset-id'
+import { scanUnmanaged } from './import-unmanaged'
+import { reseedUnmanaged } from './unmanaged-tracker'
 import { readManifest } from './manifest'
 
 // ─── Result constructors (inlined; matches workflows precedent) ─────────────
@@ -38,7 +40,26 @@ const STORE_SHARD_RE = /^\d{4}-\d{2}$/
  *   - purge .trash/ items older than 7 days
  */
 export function checkAssets(contentDir: string): HealthCheckResult[] {
-  return checkAssetsInternal(contentDir, false)
+  return [...checkAssetsInternal(contentDir, false), ...checkUnimported()]
+}
+
+/**
+ * Unimported-files check (D7): the doctor's scheduled sweep is one of the
+ * two on-demand scan triggers (the Import view is the other). NOT
+ * auto-fixable by design — turning a file into an asset is an explicit
+ * user decision; the check names the count and points at the verbs.
+ */
+export function checkUnimported(): HealthCheckResult[] {
+  const files = scanUnmanaged()
+  reseedUnmanaged(files.map(f => f.relPath))
+  if (files.length === 0) {
+    return [ok('assets.unimported', 'No unmanaged files awaiting import')]
+  }
+  return [warn(
+    'assets.unimported',
+    `${files.length} unmanaged file(s) under assets/ awaiting explicit import — Assets → Import, or \`bakin assets import --all\``,
+    false,
+  )]
 }
 
 function checkAssetsInternal(contentDir: string, autoFix: boolean): HealthCheckResult[] {

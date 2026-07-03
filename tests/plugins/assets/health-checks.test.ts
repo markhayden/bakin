@@ -122,12 +122,24 @@ describe('checkAssets — store shape', () => {
     expect(results.filter(r => r.status === 'warn' && r.message.includes('Missing assets/'))).toHaveLength(3)
   })
 
-  it('reports ok when the tree is empty and clean', () => {
+  it('reports ok when the tree is empty and clean (incl. the unimported check)', () => {
     seedFullAssetsTree()
     const results = checkAssets(testDir)
-    expect(results).toHaveLength(1)
-    expect(results[0].status).toBe('ok')
+    expect(results).toHaveLength(2)
+    expect(results.every(r => r.status === 'ok')).toBe(true)
     expect(results[0].message).toMatch(/Asset store is empty and healthy/)
+    expect(results[1].message).toMatch(/No unmanaged files/)
+  })
+
+  it('warns (not auto-fixable) when unmanaged files await import', () => {
+    seedFullAssetsTree()
+    mkdirSync(join(assetsRoot, 'inbox'), { recursive: true })
+    writeFileSync(join(assetsRoot, 'inbox', 'dropped.png'), 'x')
+    const results = checkAssets(testDir)
+    const unimported = results.find(r => r.check === 'assets.unimported')!
+    expect(unimported.status).toBe('warn')
+    expect(unimported.message).toContain('1 unmanaged file')
+    expect(unimported.autoFixable).toBe(false)
   })
 
   it('warns about legacy top-level type directories instead of scanning them', () => {
