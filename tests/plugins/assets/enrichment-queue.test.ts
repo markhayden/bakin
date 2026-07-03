@@ -42,8 +42,8 @@ mock.module('@bakin/core/media', () => ({
   callDirectVisionProvider: visionCall,
 }))
 
-import { createAsset } from '@bakin/assets/lib/asset-core'
-import { getAsset } from '@bakin/assets/lib/asset-core'
+import { createAsset, getAsset, getAssetSummary } from '@bakin/assets/lib/asset-core'
+import { addVersion } from '@bakin/assets/lib/asset-mutations'
 import {
   drainEnrichmentQueue,
   enqueueEnrichment,
@@ -138,5 +138,80 @@ describe('enrichment queue', () => {
     await drainEnrichmentQueue()
     expect(visionCall).not.toHaveBeenCalled()
     expect(getAsset(assetId)?.enrichment).toBeUndefined()
+  })
+})
+
+describe('enrichment activity notifications', () => {
+  type Notified = { event: string; agent: string; detail: Record<string, unknown> }
+
+  function captureActivity(settings: () => Record<string, unknown>, getRuntime?: () => any): Notified[] {
+    const events: Notified[] = []
+    initEnrichmentQueue(settings as never, {
+      ...(getRuntime ? { getRuntime } : {}),
+      onActivity: (event, agent, detail) => events.push({ event, agent, detail }),
+    })
+    return events
+  }
+
+  it('direct engine: started + enriched fire as system work with readable per-asset messages', async () => {
+    const events = captureActivity(() => ({}))
+    const assetId = await makeImageAsset()
+    enqueueEnrichment(assetId)
+    await drainEnrichmentQueue()
+
+    const started = events.find((e) => e.event === 'asset.enrich_started')
+    const enriched = events.find((e) => e.event === 'asset.enriched')
+    expect(started?.agent).toBe('system')
+    expect(String(started?.detail.message)).toContain(assetId)
+    expect(enriched?.agent).toBe('system')
+    expect(String(enriched?.detail.message)).toContain(assetId)
+    expect(String(enriched?.detail.message)).toContain('a red square')
+    expect(enriched?.detail.caption).toBe('a red square')
+  })
+
+  it('runtime engine: events are attributed to the enrich AGENT, not system', async () => {
+    delete process.env.ANTHROPIC_API_KEY
+    const runtime = {
+      capabilities: async () => ({ imageInput: true, audioInput: false }),
+      messaging: {
+        send: async () => ({ id: 'm1', content: '{"caption":"a blue door","ocrText":"","suggestedTags":["blue-door"]}' }),
+      },
+    }
+    const events = captureActivity(() => ({}), () => runtime)
+    const assetId = await makeImageAsset()
+    enqueueEnrichment(assetId)
+    await drainEnrichmentQueue()
+
+    const enriched = events.find((e) => e.event === 'asset.enriched')
+    expect(enriched?.agent).toBe('enrich')
+    expect(String(enriched?.detail.message)).toContain('a blue door')
+  })
+
+  it('summary.enrichment tracks the lifecycle: none → done → stale after a new version', async () => {
+    initEnrichmentQueue(() => ({}))
+    const assetId = await makeImageAsset()
+    expect(getAssetSummary(assetId)?.enrichment).toBe('none')
+
+    enqueueEnrichment(assetId)
+    await drainEnrichmentQueue()
+    expect(getAssetSummary(assetId)?.enrichment).toBe('done')
+
+    const src = join(testDir, `pic-v2-${Date.now()}.png`)
+    writeFileSync(src, 'png-bytes-v2')
+    await addVersion(assetId, { sourceFilePath: src, op: 'upload' })
+    expect(getAssetSummary(assetId)?.enrichment).toBe('stale')
+  })
+
+  it('failure notifies with the error in the message', async () => {
+    visionCall.mockImplementation(async () => { throw new Error('provider down') })
+    const events = captureActivity(() => ({}))
+    const assetId = await makeImageAsset()
+    enqueueEnrichment(assetId)
+    await drainEnrichmentQueue()
+
+    const failed = events.find((e) => e.event === 'asset.enrich_failed')
+    expect(failed?.agent).toBe('system')
+    expect(String(failed?.detail.message)).toContain(assetId)
+    expect(String(failed?.detail.message)).toContain('provider down')
   })
 })

@@ -6,7 +6,7 @@
  */
 import { useState } from 'react'
 import { Badge, Button } from '@makinbakin/sdk/ui'
-import { Loader2, Pencil, RefreshCw, Tags } from 'lucide-react'
+import { Loader2, Pencil, RefreshCw, Sparkles, Tags } from 'lucide-react'
 import { VERSIONED_API } from './asset-urls'
 
 const PLUGIN_API = '/api/plugins/assets'
@@ -73,7 +73,9 @@ export function EnrichmentCard({ manifest, onChanged }: Props) {
   return (
     <div className="mb-4 rounded-md border border-border p-3" data-testid="enrichment-card">
       <div className="mb-1.5 flex items-center justify-between">
-        <h2 className="text-xs font-semibold uppercase text-muted-foreground">Derived metadata</h2>
+        <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase text-muted-foreground">
+          <Sparkles className="size-3.5 text-emerald-400" /> Metadata
+        </h2>
         <div className="flex items-center gap-2">
           {enrichment.userEdited && <Badge variant="outline">edited</Badge>}
           <Badge variant={enrichment.status === 'failed' ? 'destructive' : 'secondary'} data-testid="enrichment-status">

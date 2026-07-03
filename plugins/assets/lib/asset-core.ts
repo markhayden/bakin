@@ -67,6 +67,8 @@ export interface AssetSummary {
   height: number | null
   size: number
   hasThumb: boolean
+  /** Derived-metadata state for the CURRENT version ('stale' = enriched for an older version). */
+  enrichment: 'none' | 'pending' | 'done' | 'stale' | 'failed' | 'skipped'
 }
 
 export function extOf(filePath: string): string {
@@ -197,6 +199,11 @@ function toSummary(manifest: AssetManifest): AssetSummary {
     height: current.height,
     size: current.size,
     hasThumb: current.thumb !== null,
+    enrichment: !manifest.enrichment
+      ? 'none'
+      : manifest.enrichment.status === 'done' && manifest.enrichment.forVersion !== manifest.currentVersion
+        ? 'stale'
+        : manifest.enrichment.status,
   }
 }
 

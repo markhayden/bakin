@@ -40,6 +40,24 @@ const TYPE_OPTIONS = ASSET_TYPES.map((value) => ({
 /** Per-result Antfly relevance breakdown (shape shared with the SDK ScoreOverlay). */
 export interface AssetScoreInfo { score: number; indexScores?: Record<string, number> }
 
+const ENRICHMENT_BADGE: Record<VersionedAssetSummary['enrichment'], { className: string; label: string }> = {
+  done: { className: 'text-emerald-400', label: 'Enriched — searchable by derived caption/tags' },
+  stale: { className: 'text-amber-400', label: 'Enriched for an older version — re-enrich to refresh' },
+  pending: { className: 'text-sky-400 animate-pulse', label: 'Enrichment in progress' },
+  failed: { className: 'text-red-400', label: 'Enrichment failed — see asset detail' },
+  skipped: { className: 'text-zinc-500', label: 'Enrichment skipped (unsupported or no engine)' },
+  none: { className: 'text-zinc-600', label: 'Not enriched yet — select and hit Enrich' },
+}
+
+function EnrichmentDot({ status }: { status: VersionedAssetSummary['enrichment'] }) {
+  const badge = ENRICHMENT_BADGE[status] ?? ENRICHMENT_BADGE.none
+  return (
+    <span title={badge.label} data-testid={`enrichment-dot-${status}`} className="flex items-center">
+      <Sparkles className={`size-3 ${badge.className}`} />
+    </span>
+  )
+}
+
 function AssetCard({ asset, onOpen, onEdit, selected, onToggleSelect, scoreInfo }: { asset: VersionedAssetSummary; onOpen: () => void; onEdit: () => void; selected: boolean; onToggleSelect: () => void; scoreInfo?: AssetScoreInfo }) {
   return (
     <div
@@ -71,7 +89,8 @@ function AssetCard({ asset, onOpen, onEdit, selected, onToggleSelect, scoreInfo 
             {asset.versionCount} versions
           </span>
         )}
-        <span className="absolute bottom-1.5 right-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-zinc-400">
+        <span className="absolute bottom-1.5 right-1.5 flex items-center gap-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-zinc-400">
+          <EnrichmentDot status={asset.enrichment} />
           {formatSize(asset.size)}
         </span>
       </div>
@@ -113,6 +132,7 @@ function AssetListRow({ asset, onOpen, onEdit, selected, onToggleSelect, scoreIn
         </div>
       </div>
       {scoreInfo && <ScoreOverlay info={scoreInfo} className="shrink-0" />}
+      <EnrichmentDot status={asset.enrichment} />
       <button
         onClick={(e) => { e.stopPropagation(); onEdit() }}
         className="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"

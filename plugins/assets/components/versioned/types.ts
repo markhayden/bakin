@@ -19,6 +19,8 @@ export interface VersionedAssetSummary {
   height: number | null
   size: number
   hasThumb: boolean
+  /** Derived-metadata state for the current version ('stale' = enriched for an older version). */
+  enrichment: 'none' | 'pending' | 'done' | 'stale' | 'failed' | 'skipped'
 }
 
 export interface TrashedAssetSummary {

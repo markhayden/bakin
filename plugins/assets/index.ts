@@ -355,11 +355,12 @@ const assetsPlugin: BakinPlugin = definePlugin({
     // manifest's status/forVersion is the durable skip guard.
     initEnrichmentQueue(() => ctx.getSettings<EnrichmentSettings>(), {
       getRuntime: () => ctx.runtime ?? null,
-      // Live Activity feed: started/enriched/failed per asset — the answer
-      // to "how do I know it's working" for 35s agent turns.
-      onActivity: (event, detail) => {
+      // Live Activity feed: started/enriched/failed per asset, attributed to
+      // the agent doing the work — the answer to "how do I know it's working"
+      // for 35s agent turns.
+      onActivity: (event, agent, detail) => {
         try {
-          ctx.activity.audit(event, 'system', detail)
+          ctx.activity.audit(event, agent, detail)
         } catch { /* activity surface unavailable (tests) */ }
       },
     })

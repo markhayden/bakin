@@ -65,8 +65,13 @@ const counters = { processed: 0, failed: 0, skipped: 0 }
 // (status done + forVersion), checked in the job itself.
 const callRegistry = createIdempotencyRegistry<VisionEnrichmentResult>()
 
-type ActivityNotifier = (event: string, detail: Record<string, unknown>) => void
+type ActivityNotifier = (event: string, agent: string, detail: Record<string, unknown>) => void
 let notifyActivity: ActivityNotifier = () => {}
+
+/** Feed attribution: runtime engines run AS an agent; direct API calls are system work. */
+function actingAgent(modelId: string): string {
+  return modelId.startsWith('runtime:') ? modelId.slice('runtime:'.length) : 'system'
+}
 
 export function initEnrichmentQueue(
   settingsReader: SettingsReader,
@@ -177,7 +182,12 @@ async function processJob(job: EnrichmentJob): Promise<void> {
     }
 
     await markEnrichmentPending(job.assetId)
-    notifyActivity('asset.enrich_started', { assetId: job.assetId, engine: engine.modelId, queued: pending.size })
+    notifyActivity('asset.enrich_started', actingAgent(engine.modelId), {
+      message: `Enriching ${job.assetId}${pending.size > 0 ? ` (${pending.size} more queued)` : ''}`,
+      assetId: job.assetId,
+      engine: engine.modelId,
+      queued: pending.size,
+    })
 
     const signature = createHash('sha256')
       .update([job.assetId, manifest.currentVersion, engine.modelId].join('|'))
@@ -198,10 +208,12 @@ async function processJob(job: EnrichmentJob): Promise<void> {
         const result = job.force ? await callProvider() : await callRegistry.run(signature, callProvider)
         await applyEnrichmentResult(job.assetId, manifest.currentVersion, engine.modelId, result)
         counters.processed++
-        notifyActivity('asset.enriched', {
+        const caption = (result.caption ?? result.summary ?? '').slice(0, 120)
+        notifyActivity('asset.enriched', actingAgent(engine.modelId), {
+          message: `Enriched ${job.assetId}${caption ? ` — “${caption}”` : ''}`,
           assetId: job.assetId,
           engine: engine.modelId,
-          caption: (result.caption ?? '').slice(0, 120),
+          caption,
           remaining: pending.size,
         })
         return
@@ -217,7 +229,12 @@ async function processJob(job: EnrichmentJob): Promise<void> {
     counters.failed++
     const failMessage = lastError instanceof Error ? lastError.message : String(lastError)
     await markEnrichmentFailed(job.assetId, failMessage)
-    notifyActivity('asset.enrich_failed', { assetId: job.assetId, engine: engine.modelId, error: failMessage.slice(0, 160) })
+    notifyActivity('asset.enrich_failed', actingAgent(engine.modelId), {
+      message: `Enrichment failed for ${job.assetId} — ${failMessage.slice(0, 160)}`,
+      assetId: job.assetId,
+      engine: engine.modelId,
+      error: failMessage.slice(0, 160),
+    })
   } catch (err) {
     // The queue itself must never explode a pump cycle.
     status = 'failed'

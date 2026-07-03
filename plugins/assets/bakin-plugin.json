@@ -1,7 +1,7 @@
 {
   "id": "assets",
   "name": "Assets",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "bakin": ">=1.0.0",
   "description": "Centralized content store for all artifacts with rich rendering, search, task linking, manual upload, and clipboard paste",
   "entry": {
@@ -16,7 +16,8 @@
     "storage.write",
     "events.emit",
     "search.read",
-    "search.write"
+    "search.write",
+    "runtime.messaging"
   ],
   "contributes": {
     "apiRoutes": [
