@@ -8,6 +8,7 @@
  *
  * See .claude/knowledge/media-generation-adapter-architecture.md.
  */
+export * from './idempotency'
 export * from './image-format'
 export * from './direct-image-provider'
 export * from './secret-store'
