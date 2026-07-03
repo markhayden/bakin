@@ -6,6 +6,13 @@
  * update/delete/assign) against the plugin context. The tools share the same
  * helpers as the REST routes — the edit-safety guard, search indexing, and the
  * checklist-nudge advisory — so they're imported from the same lib modules.
+ *
+ * Guard coverage mirrors the REST routes exactly: update/assign/set_dependency
+ * pass through `taskEditGuard` (freeze-on-complete + optimistic versioning).
+ * move/complete are exempt (they ARE the reopen/complete paths), block's
+ * completion freeze lives inside `blockTaskWithEffects` (agents retrying a
+ * block on a meanwhile-completed task must see success), and delete is
+ * unguarded on both channels (deleting a completed task is legitimate cleanup).
  */
 import { z } from 'zod'
 
@@ -290,7 +297,9 @@ export function registerTaskExecTools(ctx: PluginContext): void {
         taskId: z.string().describe('Your task ID (the one that depends)'),
         dependsOn: z.string().describe('Task ID you depend on'),
       },
-      handler: async (params: Record<string, unknown>) => {
+      handler: async (params: Record<string, unknown>, agent: string) => {
+        const guard = taskEditGuard(ctx, params.taskId as string, { agent })
+        if (guard) return { ok: false, error: guard.error }
         try {
           await setDependencyWithEffects(params.taskId as string, params.dependsOn as string, 'mcp')
           return { ok: true, message: `Dependency registered. You will be re-dispatched when ${params.dependsOn} completes. Stop now.` }
@@ -312,17 +321,19 @@ export function registerTaskExecTools(ctx: PluginContext): void {
         agent: z.string().optional().describe('New assigned agent'),
         availableAt: z.string().nullable().optional().describe('ISO timestamp before which dispatch should not pick up the task'),
         dueAt: z.string().nullable().optional().describe('ISO timestamp representing the task deadline or target delivery time'),
+        expectedVersion: z.number().optional().describe('Optimistic-concurrency check: fail if the task version has moved past this'),
       },
       handler: async (params: Record<string, unknown>, agent: string) => {
-        const { taskId, title, description, agent: assignee, availableAt, dueAt } = params as {
+        const { taskId, title, description, agent: assignee, availableAt, dueAt, expectedVersion } = params as {
           taskId: string
           title?: string
           description?: string
           agent?: string
           availableAt?: string | null
           dueAt?: string | null
+          expectedVersion?: number
         }
-        const guard = taskEditGuard(ctx, taskId, { agent })
+        const guard = taskEditGuard(ctx, taskId, { agent, expectedVersion })
         if (guard) return { ok: false, error: guard.error }
         try {
           const updates: Record<string, unknown> = {}
@@ -374,6 +385,8 @@ export function registerTaskExecTools(ctx: PluginContext): void {
       handler: async (params: Record<string, unknown>, callingAgent: string) => {
         const taskId = params.taskId as string
         const targetAgent = params.agent as string
+        const guard = taskEditGuard(ctx, taskId, { agent: callingAgent })
+        if (guard) return { ok: false, error: guard.error }
         try {
           await assignTask(taskId, targetAgent)
           ctx.activity.audit('assigned', callingAgent, { taskId, agent: targetAgent })

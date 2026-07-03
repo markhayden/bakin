@@ -110,6 +110,8 @@ beforeEach(() => {
   tasks.set('t-1', { id: 't-1', title: 'Editable', agent: 'pixel', version: 3 })
   deleteCompletion('t-1')
   mockUpdateTask.mockClear()
+  mockAssignTask.mockClear()
+  mockSetDependencyWithEffects.mockClear()
   ;(activated.ctx.activity.audit as ReturnType<typeof mock>).mockClear()
 })
 
@@ -152,6 +154,24 @@ describe('optimistic versioning', () => {
     expect(status).toBe(200)
     expect(mockUpdateTask).toHaveBeenCalledTimes(1)
   })
+
+  it('the MCP update tool honors expectedVersion (REST parity)', async () => {
+    const tool = findTool(activated.execTools, 'bakin_exec_tasks_update')!
+
+    const stale = await callTool(tool, { taskId: 't-1', title: 'Nope', expectedVersion: 2 }, 'pixel')
+    expect(stale.ok).toBe(false)
+    expect(String(stale.error)).toContain('Version conflict')
+    expect(mockUpdateTask).not.toHaveBeenCalled()
+    expect(activated.ctx.activity.audit).toHaveBeenCalledWith(
+      'edit_conflict',
+      'pixel',
+      expect.objectContaining({ taskId: 't-1', expectedVersion: 2, currentVersion: 3 }),
+    )
+
+    const fresh = await callTool(tool, { taskId: 't-1', title: 'Yep', expectedVersion: 3 }, 'pixel')
+    expect(fresh.ok).toBe(true)
+    expect(mockUpdateTask).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('freeze-on-complete', () => {
@@ -176,6 +196,22 @@ describe('freeze-on-complete', () => {
     const result = await callTool(tool, { taskId: 't-1', description: 'Nope' }, 'pixel')
     expect(result.ok).toBe(false)
     expect(String(result.error)).toContain('reopen')
+  })
+
+  it('the MCP assign tool refuses (REST parity — no write reaches the store)', async () => {
+    const tool = findTool(activated.execTools, 'bakin_exec_tasks_assign')!
+    const result = await callTool(tool, { taskId: 't-1', agent: 'chef' }, 'pixel')
+    expect(result.ok).toBe(false)
+    expect(String(result.error)).toContain('reopen')
+    expect(mockAssignTask).not.toHaveBeenCalled()
+  })
+
+  it('the MCP set_dependency tool refuses (REST parity — no dependency is written)', async () => {
+    const tool = findTool(activated.execTools, 'bakin_exec_tasks_set_dependency')!
+    const result = await callTool(tool, { taskId: 't-1', dependsOn: 't-2' }, 'pixel')
+    expect(result.ok).toBe(false)
+    expect(String(result.error)).toContain('reopen')
+    expect(mockSetDependencyWithEffects).not.toHaveBeenCalled()
   })
 
   it('reopen unfreezes: after deleteCompletion the edit succeeds', async () => {
