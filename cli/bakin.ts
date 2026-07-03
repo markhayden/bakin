@@ -2747,6 +2747,39 @@ async function cmdReboot(): Promise<void> {
   })
 }
 
+/** `bakin assets scan` — list unmanaged files awaiting explicit import. */
+async function cmdAssetsScan(): Promise<void> {
+  const body = await apiGet('/api/plugins/assets/import/scan') as { files: Array<{ relPath: string; size: number; suggestedType: string }>; count: number }
+  if (body.count === 0) {
+    console.log('No unmanaged files — everything under assets/ is managed.')
+    return
+  }
+  console.log(`${body.count} unmanaged file(s) awaiting import:`)
+  for (const f of body.files) {
+    console.log(`  ${f.relPath}  (${f.suggestedType}, ${f.size} bytes)`)
+  }
+  console.log('\nImport with: bakin assets import <path> [--type t]  |  bakin assets import --all')
+}
+
+/** `bakin assets import [--all|<path>] [--type t]` — explicit import (D7). */
+async function cmdAssetsImport(options: { all?: boolean; path?: string; type?: string }): Promise<void> {
+  if (!options.all && !options.path) {
+    console.error('Usage: bakin assets import <path> [--type t]  |  bakin assets import --all [--type t]')
+    process.exitCode = 1
+    return
+  }
+  const payload: Record<string, unknown> = options.all
+    ? { all: true }
+    : { paths: [options.path] }
+  if (options.type) payload.type = options.type
+  const body = await apiPost('/api/plugins/assets/import', payload) as { ok: boolean; imported: number; failed: number; results: Array<{ ok: boolean; relPath: string; assetId?: string; error?: string }> }
+  for (const r of body.results) {
+    console.log(r.ok ? `  imported ${r.relPath} → ${r.assetId}` : `  FAILED ${r.relPath}: ${r.error}`)
+  }
+  console.log(`${body.imported} imported, ${body.failed} failed.`)
+  if (!body.ok) process.exitCode = 1
+}
+
 async function cmdReindex(options: { table?: string; rebuild?: boolean } = {}): Promise<void> {
   // Pre-flight: reindexing with models missing "works" (documents land in
   // the tables) while every semantic query stays dead — a silently confusing
@@ -4168,6 +4201,25 @@ export async function main(): Promise<void> {
       case 'restart':
         await cmdReboot()
         break
+
+      case 'assets': {
+        const sub = args[1]
+        if (sub === 'import') {
+          const importOpts: { all?: boolean; path?: string; type?: string } = {}
+          for (let i = 2; i < args.length; i++) {
+            if (args[i] === '--all') importOpts.all = true
+            else if (args[i].startsWith('--type=')) importOpts.type = args[i].split('=')[1]
+            else if (args[i] === '--type' && args[i + 1]) importOpts.type = args[++i]
+            else if (!args[i].startsWith('--')) importOpts.path = args[i]
+          }
+          await cmdAssetsImport(importOpts)
+        } else if (sub === 'scan') {
+          await cmdAssetsScan()
+        } else {
+          await exitUnknownSubcommand('assets', sub, ['scan', 'import'])
+        }
+        break
+      }
 
       case 'reindex': {
         const reindexOpts: { table?: string; rebuild?: boolean } = {}

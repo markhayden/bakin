@@ -163,6 +163,16 @@
         "name": "trash",
         "usage": "bakin trash [list|restore|empty] ...",
         "summary": "Manage trashed assets."
+      },
+      {
+        "name": "assets scan",
+        "usage": "bakin assets scan",
+        "summary": "List unmanaged files awaiting explicit import"
+      },
+      {
+        "name": "assets import",
+        "usage": "bakin assets import [--all|<path>] [--type t]",
+        "summary": "Import unmanaged files into managed versioned assets"
       }
     ],
     "docs": {
@@ -182,6 +192,7 @@
       "page:/assets",
       "page:/assets/:assetId",
       "nav-badge-providers"
-    ]
+    ],
+    "eager": true
   }
 }

@@ -514,6 +514,51 @@ const assetsPlugin: BakinPlugin = definePlugin({
     ].join('\n')
 
     ctx.registerExecTool({
+      name: 'bakin_exec_assets_scan_unmanaged',
+      label: 'Scanned for unmanaged files',
+      description: 'List files under assets/ that are NOT managed assets (inbox drops, loose files). Nothing is imported automatically — use bakin_exec_assets_import to import.',
+      parameters: {},
+      handler: async () => {
+        const { scanUnmanaged } = await import('./lib/import-unmanaged')
+        const { reseedUnmanaged } = await import('./lib/unmanaged-tracker')
+        const files = scanUnmanaged()
+        reseedUnmanaged(files.map(f => f.relPath))
+        return { ok: true, count: files.length, files }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_assets_import',
+      label: 'Imported unmanaged files',
+      description: 'Explicitly import unmanaged files into managed versioned assets. Pass path (content-dir relative, e.g. assets/inbox/pic.png) or all: true. Optional type override and taskId link.',
+      parameters: {
+        path: z.string().optional().describe('One unmanaged file to import (content-dir relative)'),
+        all: z.boolean().optional().describe('Import every unmanaged file'),
+        type: z.enum(ASSET_TYPES).optional().describe('Override the suggested asset type'),
+        taskId: z.string().optional().describe('Link the imported asset(s) to this task'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        const { scanUnmanaged, importUnmanagedFile } = await import('./lib/import-unmanaged')
+        const { reseedUnmanaged } = await import('./lib/unmanaged-tracker')
+        const type = typeof params.type === 'string' ? params.type as AssetType : undefined
+        const taskId = typeof params.taskId === 'string' && params.taskId.length > 0 ? params.taskId : null
+        const targets = params.all === true
+          ? scanUnmanaged().map(f => f.relPath)
+          : typeof params.path === 'string' && params.path.length > 0 ? [params.path] : []
+        if (targets.length === 0) return { ok: false, error: 'Pass path or all: true' }
+        const results = []
+        for (const rel of targets) {
+          const result = await importUnmanagedFile(rel, { ...(type ? { type } : {}), taskId })
+          results.push(result)
+          if (result.ok) ctx.activity.audit('asset.imported', 'user', { assetId: result.assetId, from: rel })
+        }
+        reseedUnmanaged(scanUnmanaged().map(f => f.relPath))
+        const imported = results.filter(r => r.ok).length
+        return { ok: imported === results.length, imported, failed: results.length - imported, results }
+      },
+    })
+
+    ctx.registerExecTool({
       name: 'bakin_exec_assets_list',
       label: 'Listed assets',
       description: 'List managed assets (one entry per asset, current-version view). Optional type, task, and tag filters. Tags are the UI "folders" — pass tags to list a folder, e.g. ["brand"].',
