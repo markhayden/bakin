@@ -181,6 +181,26 @@ describe('drain failure handling', () => {
     expect((await ok.tables.stats('bakin_t'))?.documents).toBe(1)
   })
 
+  it('missing-table 404 is TRANSIENT: rows wait for the table, never quarantine (cutover fix)', async () => {
+    const noTable = createMockSearchAdapter({
+      documents: {
+        ...createMockSearchAdapter().documents,
+        batchIndex: async () => { throw new SearchRequestRejectedError('no such table', undefined, 404) },
+      },
+    })
+    enqueueIndex('bakin_t', 'k1', { title: 'waits for its table' })
+    for (let i = 0; i < 8; i++) await drainOnce(makeTarget(noTable), { ignoreBackoff: true })
+    expect(outboxStats().quarantined).toBe(0)
+    expect(outboxStats().pending).toBe(1)
+
+    // table shows up (blue/green ensure completed) → row lands
+    const ok = createMockSearchAdapter()
+    await ok.tables.create('bakin_t', { fields: {} })
+    await drainOnce(makeTarget(ok), { ignoreBackoff: true })
+    expect(outboxStats().pending).toBe(0)
+    expect((await ok.tables.stats('bakin_t'))?.documents).toBe(1)
+  })
+
   it('request-rejected is permanent: quarantined after 5 attempts, retryQuarantined revives', async () => {
     const bad = createMockSearchAdapter({
       documents: {

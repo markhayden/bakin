@@ -114,6 +114,48 @@ describe('ensureTable', () => {
   })
 })
 
+describe('createTableTolerant (exists-first, cutover fix)', () => {
+  it('never POSTs a create onto an existing physical; creates only when stats is null', async () => {
+    const base = createMockSearchAdapter()
+    // Pre-existing physical from a crashed first attempt (row insert lost).
+    const def = makeDef()
+    const createCalls: string[] = []
+    const adapter: SearchAdapter = {
+      ...base,
+      tables: {
+        ...base.tables,
+        create: async (name, config) => {
+          createCalls.push(name)
+          return base.tables.create(name, config)
+        },
+      },
+      capabilities: base.capabilities?.bind(base),
+      mappingFingerprint: base.mappingFingerprint?.bind(base),
+      query: base.query.bind(base),
+      multiQuery: base.multiQuery.bind(base),
+      scan: base.scan.bind(base),
+      documents: base.documents,
+    }
+
+    // First ensure: table absent → create IS called, row inserted, seeded.
+    await ensureTable(adapter, def, 'fp-a')
+    expect(createCalls).toHaveLength(1)
+    const physical = queryTarget(def.logical)!
+
+    // Simulate the crashed-first-attempt shape: physical EXISTS in the
+    // engine but the registry row is gone (lost between backfill and insert).
+    resetTablesForTests()
+    expect((await adapter.tables.stats(physical))?.documents).toBe(2)
+
+    // Re-ensure: exists-first check must SKIP the duplicate create POST
+    // (re-creating an existing table hangs/500s on the live engine).
+    await ensureTable(adapter, def, 'fp-a')
+    expect(createCalls).toHaveLength(1)
+    expect(queryTarget(def.logical)).toBe(physical)
+    expect(tableStatus(def.logical)?.state).toBe('active')
+  })
+})
+
 describe('blue/green migration', () => {
   it('schemaVersion bump migrates: dual-write during backfill, flip only after converge, old dropped', async () => {
     const adapter = createMockSearchAdapter()

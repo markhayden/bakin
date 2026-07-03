@@ -195,6 +195,12 @@ describe('buildBatch*', () => {
     const req = buildBatchInserts([{ key: 'k1', doc: { a: 1 } }])
     expect(req).toEqual({ inserts: { k1: { a: 1 } }, sync_level: 'full_index' })
   })
+  it('sync:false omits sync_level — async backfill indexing (cutover fix)', () => {
+    const req = buildBatchInserts([{ key: 'k1', doc: { a: 1 } }], { sync: false })
+    expect(req).toEqual({ inserts: { k1: { a: 1 } } })
+    expect('sync_level' in req).toBe(false)
+  })
+
   it('deletes ride the same batch shape', () => {
     expect(buildBatchDeletes(['k1', 'k2'])).toEqual({ deletes: ['k1', 'k2'], sync_level: 'full_index' })
   })

@@ -98,6 +98,65 @@ describe('query', () => {
     expect(result.total).toBe(42)
   })
 
+  it('semantic embed timeout degrades to a LABELED fts-only retry; count skipped (cutover fix)', async () => {
+    let calls = 0
+    const client = makeClient([
+      {
+        match: (url) => url.includes('/query'),
+        handle: async (_url, init) => {
+          calls++
+          const req = JSON.parse(String(init?.body))
+          if (req.semantic_search !== undefined) {
+            // simulate AbortSignal.timeout: fetch rejects with a timeout error
+            throw new Error('The operation timed out.')
+          }
+          return json({
+            responses: [{
+              hits: { total: 1, max_score: 0.5, hits: [{ _id: 'a', _score: 0.5, _index_scores: { full_text: 0.5 }, _source: { title: 'x' }, _sort: null }] },
+              aggregations: null, took: 2, status: 200, error: null, table: 't',
+            }],
+          })
+        },
+      },
+    ])
+    const result = await client.query('t', { text: 'x', adapterOptions: { indexes: ['sem'] } })
+    expect(result.hits).toHaveLength(1)
+    expect(result.diagnostics?.strategy).toBe('fts')
+    expect((result.diagnostics?.adapter as Record<string, unknown>)?.degraded).toBe('semantic-embed-timeout')
+    // attempt 1 (semantic, timed out) + retry (fts) — companion count skipped when degraded
+    expect(calls).toBe(2)
+  })
+
+  it('non-timeout semantic failures are NOT silently degraded', async () => {
+    const client = makeClient([
+      { match: (url) => url.includes('/query'), handle: () => new Response('bad', { status: 400 }) },
+    ])
+    expect(client.query('t', { text: 'x', adapterOptions: { indexes: ['sem'] } })).rejects.toThrow(SearchRequestRejectedError)
+  })
+
+  it('multiQuery isolates per-table failures: a sick table contributes zero hits (cutover fix)', async () => {
+    const client = makeClient([
+      { match: (url) => url.includes('/tables/sick/query'), handle: () => new Response('boom', { status: 500 }) },
+      {
+        match: (url) => url.includes('/tables/healthy/query'),
+        handle: () => json({
+          responses: [{
+            hits: { total: 1, max_score: 1, hits: [{ _id: 'h1', _score: 1, _index_scores: null, _source: {}, _sort: null }] },
+            aggregations: null, took: 1, status: 200, error: null, table: 'healthy',
+          }],
+        }),
+      },
+    ])
+    const results = await client.multiQuery([
+      { table: 'sick', query: { text: 'x', strategy: 'fts' } },
+      { table: 'healthy', query: { text: 'x', strategy: 'fts' } },
+    ])
+    expect(results).toHaveLength(2)
+    expect(results[0].hits).toHaveLength(0)
+    expect((results[0].diagnostics?.adapter as Record<string, unknown>)?.error).toContain('500')
+    expect(results[1].hits.map((h) => h.key)).toEqual(['h1'])
+  })
+
   it('FTS-only queries skip the companion count', async () => {
     let calls = 0
     const client = makeClient([

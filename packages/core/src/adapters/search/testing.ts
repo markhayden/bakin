@@ -66,11 +66,16 @@ export function createMockSearchAdapter(
         tables.delete(name)
         docs.delete(name)
       },
-      stats: async (name) => ({
-        table: name,
-        documents: docs.get(name)?.size ?? 0,
-        updatedAt: new Date().toISOString(),
-      }),
+      stats: async (name) => {
+        // Mirror the real engine: unknown table → null (404). Fabricating
+        // stats would let exists-first create checks skip real creates.
+        if (!tables.has(name)) return null
+        return {
+          table: name,
+          documents: docs.get(name)?.size ?? 0,
+          updatedAt: new Date().toISOString(),
+        }
+      },
       health: async (name) => {
         const config = tables.get(name)
         const count = docs.get(name)?.size ?? 0
