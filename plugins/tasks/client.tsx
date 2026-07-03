@@ -10,6 +10,16 @@ import { KanbanBoard } from './components/kanban-board'
 import { TasksBadgeProvider } from './components/tasks-badge-provider'
 
 registerPlugin({
+  search: {
+    hitRenderers: {
+      tasks: (hit) => ({
+        title: String(hit.fields.title ?? hit.id),
+        subtitle: [hit.fields.status, hit.fields.agent].filter(Boolean).join(' · ') || 'task',
+        href: `/tasks?taskId=${encodeURIComponent(hit.id)}`,
+        icon: 'check-square',
+      }),
+    },
+  },
   id: 'tasks',
   slots: {
     'page:/tasks': KanbanBoard,

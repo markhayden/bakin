@@ -12,6 +12,16 @@ import { VersionedAssetDetail } from './components/versioned/VersionedAssetDetai
 import { AssetsBadgeProvider } from './components/assets-badge-provider'
 
 registerPlugin({
+  search: {
+    hitRenderers: {
+      assets: (hit) => ({
+        title: String(hit.fields.caption ?? hit.fields.description ?? hit.id),
+        subtitle: String(hit.fields.asset_type ?? 'asset'),
+        href: `/assets/${hit.id}`,
+        thumbnailUrl: `/api/assets/${hit.id}/thumb`,
+      }),
+    },
+  },
   id: 'assets',
   slots: {
     // Task-scoped asset gallery — consumed by tasks detail dialog. Shows all

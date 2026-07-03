@@ -32,6 +32,20 @@ import {
 import { unregisterPluginDefinitions } from './lib/source-registry'
 
 registerPlugin({
+  search: {
+    hitRenderers: {
+      workflows: (hit) => {
+        const isInstance = hit.id.startsWith('inst:')
+        const bare = hit.id.replace(/^(def|inst):/, '')
+        return {
+          title: String(hit.fields.name ?? hit.fields.title ?? bare),
+          subtitle: isInstance ? 'workflow run' : 'workflow',
+          href: isInstance ? `/tasks?taskId=${encodeURIComponent(bare)}` : `/workflows/${encodeURIComponent(bare)}`,
+          icon: 'workflow',
+        }
+      },
+    },
+  },
   id: 'workflows',
   slots: {
     'page:/workflows': WorkflowsPage,
