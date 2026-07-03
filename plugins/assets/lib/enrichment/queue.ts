@@ -10,10 +10,8 @@
  * counts; explicit backfill retries). Unsupported asset kinds record
  * `skipped` with the reason.
  */
-import {
-  callDirectVisionProvider,
-  createIdempotencyRegistry,
-} from '@bakin/core/media'
+import { createIdempotencyRegistry } from '@bakin/core/media'
+import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import { createLogger } from '../../../../src/core/logger'
 import { recordUsage } from '../../../../src/core/usage'
 import { getAsset, resolveFile } from '../asset-core'
@@ -24,7 +22,8 @@ import {
   markEnrichmentPending,
   markEnrichmentSkipped,
 } from './apply'
-import { resolveEnrichmentModel, type EnrichmentSettings } from './providers'
+import type { EnrichmentSettings } from './providers'
+import { resolveEnrichmentEngine } from './engine'
 import type { VisionEnrichmentResult } from '@bakin/core/media'
 import { createHash } from 'crypto'
 
@@ -53,8 +52,10 @@ export interface EnrichmentQueueStats {
 }
 
 type SettingsReader = () => EnrichmentSettings
+type RuntimeReader = () => AgentRuntimeAdapter | null
 
 let readSettings: SettingsReader = () => ({})
+let readRuntime: RuntimeReader = () => null
 const pending = new Map<string, EnrichmentJob>()
 let activePump: Promise<void> | null = null
 let stopped = false
@@ -64,8 +65,9 @@ const counters = { processed: 0, failed: 0, skipped: 0 }
 // (status done + forVersion), checked in the job itself.
 const callRegistry = createIdempotencyRegistry<VisionEnrichmentResult>()
 
-export function initEnrichmentQueue(settingsReader: SettingsReader): void {
+export function initEnrichmentQueue(settingsReader: SettingsReader, deps: { getRuntime?: RuntimeReader } = {}): void {
   readSettings = settingsReader
+  readRuntime = deps.getRuntime ?? (() => null)
   stopped = false
 }
 
@@ -147,16 +149,15 @@ async function processJob(job: EnrichmentJob): Promise<void> {
       return
     }
 
-    const resolved = resolveEnrichmentModel(settings, { needsAudio: kind.kind === 'audio' })
-    if (!resolved) {
+    const resolution = await resolveEnrichmentEngine(settings, { kind: kind.kind }, { runtime: readRuntime() })
+    if (!resolution.ok) {
       status = 'skipped'
       counters.skipped++
-      await markEnrichmentSkipped(job.assetId, kind.kind === 'audio'
-        ? 'no audio-capable enrichment model configured'
-        : 'no vision-capable enrichment model configured')
+      await markEnrichmentSkipped(job.assetId, resolution.reason)
       return
     }
-    model = resolved.descriptor.id
+    const engine = resolution.engine
+    model = engine.modelId
 
     const extractedText = kind.kind === 'document'
       ? await extractAssetContent(file.absPath, file.absPath)
@@ -171,13 +172,10 @@ async function processJob(job: EnrichmentJob): Promise<void> {
     await markEnrichmentPending(job.assetId)
 
     const signature = createHash('sha256')
-      .update([job.assetId, manifest.currentVersion, resolved.descriptor.id].join('|'))
+      .update([job.assetId, manifest.currentVersion, engine.modelId].join('|'))
       .digest('hex')
 
-    const callProvider = () => callDirectVisionProvider({
-          provider: resolved.descriptor.provider,
-          model: resolved.descriptor.apiModel,
-          apiKey: resolved.apiKey,
+    const callProvider = () => engine.run({
           kind: kind.kind,
           ...(kind.kind !== 'document' ? { mediaPath: file.absPath, mediaMime: kind.mime } : {}),
           ...(extractedText ? { extractedText } : {}),
@@ -189,13 +187,13 @@ async function processJob(job: EnrichmentJob): Promise<void> {
       try {
         // force = an explicit re-bill request — it bypasses the dedup cache.
         const result = job.force ? await callProvider() : await callRegistry.run(signature, callProvider)
-        await applyEnrichmentResult(job.assetId, manifest.currentVersion, resolved.descriptor.id, result)
+        await applyEnrichmentResult(job.assetId, manifest.currentVersion, engine.modelId, result)
         counters.processed++
         return
       } catch (err) {
         lastError = err
         log.warn('enrichment attempt failed', {
-          assetId: job.assetId, attempt, model: resolved.descriptor.id,
+          assetId: job.assetId, attempt, model: engine.modelId,
           err: err instanceof Error ? err.message : String(err),
         })
       }
@@ -210,14 +208,13 @@ async function processJob(job: EnrichmentJob): Promise<void> {
   } finally {
     // No parallel stat system: the single usage recorder feeds telemetry.
     // Skips count as 'ok' — they are correct outcomes, not failures.
-    void model
     recordUsage({
       kind: 'rest',
       name: 'assets.enrich',
       agent: null,
       durationMs: Date.now() - start,
       status: status === 'failed' ? 'error' : 'ok',
-      meta: { outcome: status },
+      meta: { outcome: status, ...(model ? { model, engine: model.startsWith('runtime:') ? 'runtime' : 'direct' } : {}) },
     })
   }
 }

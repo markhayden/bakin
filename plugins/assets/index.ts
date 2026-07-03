@@ -311,7 +311,7 @@ const assetsPlugin: BakinPlugin = definePlugin({
       { key: 'maxFileSize', type: 'number', label: 'Max file size (MB)', description: 'Reject uploads larger than this', default: 50 },
       { key: 'purgeClipboardOnComplete', type: 'boolean', label: 'Purge clipboard assets on task completion', description: 'Auto-delete clipboard-pasted assets when their linked task is marked done', default: false },
       { key: 'enrichmentEnabled', type: 'boolean', label: 'Vision enrichment', description: 'Derive caption/OCR/tags from asset content with a vision model (billed per asset version)', default: true },
-      { key: 'enrichmentProvider', type: 'select', label: 'Enrichment provider', description: 'auto picks the cheapest configured vision-capable model', options: ['auto', 'anthropic', 'openai', 'google'], default: 'auto' },
+      { key: 'enrichmentProvider', type: 'select', label: 'Enrichment provider', description: 'auto = cheapest configured API model, else the runtime agent when its model accepts images; runtime = agent turns only (subscription quota)', options: ['auto', 'anthropic', 'openai', 'google', 'runtime'], default: 'auto' },
       { key: 'enrichmentModel', type: 'string', label: 'Enrichment model override', description: 'Exact model id (catalog or provider-native); empty = auto', default: '' },
     ],
   },
@@ -325,7 +325,7 @@ const assetsPlugin: BakinPlugin = definePlugin({
     // ─── Enrichment queue (D8) ─────────────────────────────────────────
     // Every asset write enqueues; the queue never blocks creation; the
     // manifest's status/forVersion is the durable skip guard.
-    initEnrichmentQueue(() => ctx.getSettings<EnrichmentSettings>())
+    initEnrichmentQueue(() => ctx.getSettings<EnrichmentSettings>(), { getRuntime: () => ctx.runtime ?? null })
     onAssetWritten(({ assetId }) => enqueueEnrichment(assetId))
     ctx.hooks.register('assets.enrichmentStats', () => enrichmentQueueStats(), {
       label: 'Enrichment queue stats.',

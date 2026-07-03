@@ -41,7 +41,7 @@ const TIER_ORDER: Record<VisionCostTier, number> = { budget: 0, standard: 1, pre
 
 export interface EnrichmentSettings {
   enrichmentEnabled?: boolean
-  enrichmentProvider?: 'auto' | DirectVisionProviderId
+  enrichmentProvider?: 'auto' | 'runtime' | DirectVisionProviderId
   enrichmentModel?: string
 }
 
@@ -74,7 +74,7 @@ export function resolveEnrichmentModel(
   }
 
   const pool = VISION_MODELS
-    .filter((m) => settings.enrichmentProvider && settings.enrichmentProvider !== 'auto'
+    .filter((m) => settings.enrichmentProvider && settings.enrichmentProvider !== 'auto' && settings.enrichmentProvider !== 'runtime'
       ? m.provider === settings.enrichmentProvider
       : true)
     .filter((m) => (opts.needsAudio ? m.audioInput : true))
