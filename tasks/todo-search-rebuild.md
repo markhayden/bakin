@@ -54,9 +54,9 @@ Rule: every commit green (`bun run test` + typecheck). Tag `rebuild/pN` at each 
 - [x] GATE P4 → tag rebuild/p4 (5236/0). T24 cleanup noted: unconsumed searchStatsDocumentCount in health format.ts
 
 ## P5 — Tuning & chaos
-- [ ] T21 Golden-query set; RRF vs RSF; reranker re-benchmark; weights; "why these defaults" doc
-- [ ] T22 Chaos drills (kill mid-backfill, kill mid-migration, 2-day replay, wipe→rebuild, upgrade under load)
-- [ ] GATE P5: drill log checked in → tag rebuild/p5
+- [x] T21 (40131192) MEASURED DEFAULTS FLIP: rsf + legs 1.0/1.0 → hit@1 83%/hit@3 100% vs inherited rrf 0.5/2.0 at 28%/33%, same latency; reranker stays opt-in (+11pts @ ~10x latency). knowledge/search-tuning.md; rerun via tests/integration/antfly/tuning-run.ts
+- [x] T22 (e030357b) chaos drills 5/5 PASS (scripts/dev/search-chaos-drills.ts + knowledge/search-chaos-drills.md): mid-backfill SIGKILL, driver SIGKILL, 550-write outage replay exactly-once, wipe→detect→rebuild, upgrade-under-load 0 lost. NEW UPSTREAM BUG FILED antflydb/antfly#319 (mixed-corpus backfill accounting never completes — would park every assets migration); idle-detection workaround in mapIndexStatuses + canary pin. GOTCHA documented: getContentDir() caches first resolution — never reassign BAKIN_HOME mid-process
+- [x] GATE P5 → tag rebuild/p5 (5237/0)
 
 ## P6 — Ship
 - [ ] T23 Pin to newest release tag; suites vs published artifact
