@@ -13,7 +13,13 @@
  * arrangement (implementations live in src/, SDK re-exports; see
  * packages/sdk/src/hooks/index.ts header).
  */
-import madge from 'madge'
+// madge ships no types; cast the narrow surface this script uses.
+// @ts-expect-error TS7016 — untyped module, no @types/madge exists
+const madgeModule = await import('madge')
+const madge = madgeModule.default as (
+  entries: string[],
+  opts: Record<string, unknown>,
+) => Promise<{ circular: (opts?: unknown) => string[][] }>
 
 const ENTRIES = ['server.ts', 'src/core/mcp-server.ts']
 
@@ -50,7 +56,7 @@ const result = await madge(ENTRIES, {
   detectiveOptions: { ts: { skipTypeImports: false }, tsx: { skipTypeImports: false } },
 })
 
-const cycles = result.circular({ tsx: true } as never) as unknown as string[][]
+const cycles = result.circular()
 const found = new Map(cycles.map((c) => [key(c), c]))
 
 const newCycles = [...found.entries()].filter(([k]) => !KNOWN_CYCLES.has(k))
@@ -67,3 +73,5 @@ if (staleAllowlist.length > 0) {
 if (newCycles.length > 0 || staleAllowlist.length > 0) process.exit(1)
 
 console.log(`check-cycles: ${cycles.length} known cycles, 0 new, allowlist current.`)
+
+export {} // top-level await requires module context under tsc
