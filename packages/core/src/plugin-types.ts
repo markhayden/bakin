@@ -578,6 +578,24 @@ export interface AssetSummary {
   hasThumb: boolean
 }
 
+/**
+ * Per-version detail of a versioned asset (mirrors the manifest's version
+ * entries — provenance fields are null when the version wasn't produced by a
+ * generation tool).
+ */
+export interface AssetVersionDetail {
+  version: number
+  /** Version file name inside the asset directory (e.g. `v2.png`). */
+  file: string
+  width: number | null
+  height: number | null
+  op: 'generate' | 'edit' | 'upload' | 'import'
+  tool: string | null
+  prompt: string | null
+  promptHash: string | null
+  generation: AssetGenerationInfo | null
+}
+
 export interface AssetsAPI {
   // Versioned (asset-as-directory) surface.
   createAsset(input: AssetCreateInput): Promise<VersionedAssetRef>
@@ -586,6 +604,23 @@ export interface AssetsAPI {
   addVersion(assetId: string, input: AssetVersionCreateInput): Promise<VersionedAssetRef>
   addExport(assetId: string, input: AssetExportRequest): Promise<{ name: string; file: string }>
   resolveVersionFile(assetId: string, version?: number): Promise<AssetVersionFileRef | null>
+  /** List asset summaries, optionally filtered by type and/or owning task. */
+  listAssets(filter?: { type?: AssetTypeName; taskId?: string }): Promise<AssetSummary[]>
+  /** Read an asset's version history (current pointer + per-version detail), or null. */
+  getAssetVersions(assetId: string): Promise<{ currentVersion: number; versions: AssetVersionDetail[] } | null>
+  /**
+   * Source-path-keyed upsert: create v1 if no asset tracks `sourcePath`,
+   * append a version if its content changed, or no-op if identical
+   * (`changed: false`). A path inside the asset store reflects to the asset
+   * it already belongs to — never a duplicate.
+   */
+  upsertFromSource(sourcePath: string, input: AssetCreateInput): Promise<VersionedAssetRef & { changed: boolean }>
+  /**
+   * Map an absolute path INSIDE the asset store back to its asset identity.
+   * `absPath` in the result is always the REAL version file (never the thumb).
+   * Null for anything outside the store or store-internal non-version files.
+   */
+  resolveStoreFile(absPath: string): Promise<(VersionedAssetRef & { absPath: string }) | null>
 }
 
 // ---------------------------------------------------------------------------
