@@ -809,6 +809,54 @@ export function spendByModel(sinceMs: number): SpendByModelRow[] {
   })
 }
 
+export interface RunCostRow {
+  runId: string
+  taskId: string | null
+  model: string | null
+  inputTokens: number | null
+  outputTokens: number | null
+  totalTokens: number | null
+  costUsdMicros: number | null
+  occurredAt: number
+}
+
+/**
+ * Recent DISPATCH runs for one agent, newest first — grounding data for the
+ * context-report diagnostics (#357). Filtered to `task:%` run ids so
+ * non-dispatch sends (`turn:…` watchdog/doctor/orchestrator, `image:…`)
+ * never pollute the per-dispatch token picture.
+ */
+export function recentRunsByAgent(agent: string, opts: { sinceMs?: number; limit?: number } = {}): RunCostRow[] {
+  return guard('recentRunsByAgent', () => {
+    const limit = Math.min(Math.max(Math.floor(opts.limit ?? 20), 1), 500)
+    const clauses = ["agent = ?", "run_id LIKE 'task:%'"]
+    const params: (string | number)[] = [agent]
+    if (opts.sinceMs !== undefined) { clauses.push('occurred_at >= ?'); params.push(opts.sinceMs) }
+    params.push(limit)
+    return ledger()
+      .prepare<{
+        run_id: string; task_id: string | null; model: string | null
+        input_tokens: number | null; output_tokens: number | null; total_tokens: number | null
+        cost_usd_micros: number | null; occurred_at: number
+      }, (string | number)[]>(
+        `SELECT run_id, task_id, model, input_tokens, output_tokens, total_tokens, cost_usd_micros, occurred_at
+           FROM run_costs WHERE ${clauses.join(' AND ')}
+          ORDER BY occurred_at DESC LIMIT ?`,
+      )
+      .all(...params)
+      .map((r) => ({
+        runId: r.run_id,
+        taskId: r.task_id,
+        model: r.model,
+        inputTokens: r.input_tokens,
+        outputTokens: r.output_tokens,
+        totalTokens: r.total_tokens,
+        costUsdMicros: r.cost_usd_micros,
+        occurredAt: r.occurred_at,
+      }))
+  })
+}
+
 // ---------------------------------------------------------------------------
 // maintenance
 // ---------------------------------------------------------------------------

@@ -61,6 +61,7 @@ import {
   putIdempotent,
   purgeTaskRows,
   recordRunCost,
+  recentRunsByAgent,
   spendTotal,
   spendByAgent,
   spendByModel,
@@ -415,6 +416,25 @@ describe('run costs', () => {
     recordRunCost({ runId: 'task:rc-unm:d1', taskId: 'rc-unm', agent: 'patch', model: 'mystery/x', inputTokens: 100, outputTokens: 50, totalTokens: 150, costUsdMicros: null, occurredAt: T0 + 5000 })
     const patch = spendByAgent(T0 - 1).find(r => r.agent === 'patch')
     expect(patch).toEqual({ agent: 'patch', costUsdMicros: 0, runs: 1 })
+  })
+
+  it('recentRunsByAgent returns dispatch runs newest-first with token detail', () => {
+    recordRunCost({ runId: 'task:rr1:d1', taskId: 'rr1', agent: 'nova', model: 'm', inputTokens: 100, outputTokens: 10, totalTokens: 110, costUsdMicros: 100, occurredAt: T0 })
+    recordRunCost({ runId: 'task:rr2:d1', taskId: 'rr2', agent: 'nova', model: 'm', inputTokens: 200, outputTokens: 20, totalTokens: 220, costUsdMicros: 200, occurredAt: T0 + 2000 })
+    const rows = recentRunsByAgent('nova')
+    expect(rows.map((r) => r.runId)).toEqual(['task:rr2:d1', 'task:rr1:d1'])
+    expect(rows[0]).toMatchObject({ taskId: 'rr2', inputTokens: 200, outputTokens: 20, totalTokens: 220, occurredAt: T0 + 2000 })
+  })
+
+  it('recentRunsByAgent excludes non-dispatch runs (turn:/image: ids)', () => {
+    recordRunCost({ runId: 'turn:rr-watchdog', agent: 'nova', model: 'm', inputTokens: 5000, outputTokens: 1, totalTokens: 5001, costUsdMicros: 1, occurredAt: T0 + 3000 })
+    recordRunCost({ runId: 'image:rr-img', agent: 'nova', model: 'img/x', costUsdMicros: 1, occurredAt: T0 + 4000 })
+    expect(recentRunsByAgent('nova').every((r) => r.runId.startsWith('task:'))).toBe(true)
+  })
+
+  it('recentRunsByAgent honors sinceMs and limit', () => {
+    expect(recentRunsByAgent('nova', { sinceMs: T0 + 1000 }).map((r) => r.runId)).toEqual(['task:rr2:d1'])
+    expect(recentRunsByAgent('nova', { limit: 1 }).map((r) => r.runId)).toEqual(['task:rr2:d1'])
   })
 })
 
