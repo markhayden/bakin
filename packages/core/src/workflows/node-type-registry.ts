@@ -167,7 +167,6 @@ export const gateStepSchema = z.object({
   approval_required: z.boolean().optional(),
   notify: z.array(notifyChannelSchema).optional(),
   preview: z.array(z.string()).optional(),
-  on_approve: z.string().min(1),
   on_reject: z
     .object({
       goto: z.string(),
@@ -247,7 +246,6 @@ const agentFormFields: FormField[] = [
 const gateFormFields: FormField[] = [
   { name: 'description', type: 'text' },
   { name: 'approval_required', type: 'boolean' },
-  { name: 'on_approve', type: 'string', required: true, description: 'Step id to advance to' },
   { name: 'on_reject', type: 'string', description: 'Step id to fall back to on rejection' },
   { name: 'preview', type: 'list', description: 'Output keys to show in the gate preview' },
 ]

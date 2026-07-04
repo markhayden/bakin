@@ -228,8 +228,7 @@ function GateStepDetail({ step }: { step: GateStep }) {
           <SectionLabel>On Approve</SectionLabel>
           <div className="flex items-center gap-2 rounded-lg bg-surface p-3">
             <ArrowRight className="size-4 text-green-400 shrink-0" />
-            <span className="text-sm font-medium">Continue to</span>
-            <Badge variant="secondary" className="text-[10px] font-mono">{step.on_approve}</Badge>
+            <span className="text-sm font-medium">Continue to the next step</span>
           </div>
         </div>
 

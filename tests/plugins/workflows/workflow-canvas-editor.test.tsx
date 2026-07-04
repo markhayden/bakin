@@ -277,7 +277,7 @@ const sampleDefinition: WorkflowDefinition = {
   version: 1,
   steps: [
     { id: 'write', type: 'agent', label: 'Write', agent: 'chef' },
-    { id: 'review', type: 'gate', label: 'Review', on_approve: 'done' },
+    { id: 'review', type: 'gate', label: 'Review' },
   ],
   layout: {
     positions: {
@@ -674,7 +674,6 @@ describe('WorkflowCanvasEditor', () => {
           id: 'review',
           type: 'gate',
           label: 'Review',
-          on_approve: 'done',
         },
       ],
       layout: {

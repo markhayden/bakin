@@ -161,17 +161,6 @@ export function validateDefinition(def: WorkflowDefinition, opts: ValidateDefini
       }
     }
 
-    if (step.type === 'gate') {
-      const expectedNext = def.steps[idx + 1]?.id
-      if (step.on_approve !== 'done' && step.on_approve !== expectedNext) {
-        errors.push(
-          expectedNext
-            ? `Step "${step.id}": on_approve must point to the next top-level step "${expectedNext}" or "done"`
-            : `Step "${step.id}": final gate on_approve must be "done"`,
-        )
-      }
-    }
-
     // Validate workflow step references. Structural checks (workflow_id
     // present, no self-reference) are always fatal; the EXISTENCE check is
     // gated by validateNestedWorkflowRefs because plugin-default loading runs

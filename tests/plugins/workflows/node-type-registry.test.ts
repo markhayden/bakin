@@ -108,16 +108,14 @@ describe('node-type-registry', () => {
         id: 'gate1',
         type: 'gate',
         label: 'Approve',
-        on_approve: 'next',
       })
       expect(result.success).toBe(true)
     })
 
-    it('rejects a gate step missing on_approve', () => {
+    it('rejects a gate step missing a label', () => {
       const result = gateStepSchema.safeParse({
         id: 'gate1',
         type: 'gate',
-        label: 'Approve',
       })
       expect(result.success).toBe(false)
     })
@@ -131,7 +129,7 @@ describe('node-type-registry', () => {
         label: 'Parallel',
         steps: [
           { id: 'c1', type: 'agent', label: 'Child 1', agent: 'chef' },
-          { id: 'c2', type: 'gate', label: 'Child gate', on_approve: 'done' },
+          { id: 'c2', type: 'gate', label: 'Child gate' },
         ],
       })
       expect(result.success).toBe(true)
@@ -220,7 +218,7 @@ describe('node-type-registry', () => {
         version: 1,
         steps: [
           { id: 'write', type: 'agent', label: 'Write', agent: 'chef', skill: 'write-script' },
-          { id: 'gate', type: 'gate', label: 'Approve', on_approve: 'done' },
+          { id: 'gate', type: 'gate', label: 'Approve' },
         ],
       })
       expect(result.success).toBe(true)

@@ -54,7 +54,6 @@ export interface GateStep extends BaseStep {
   approval_required?: boolean
   notify?: NotifyChannel[]
   preview?: string[]
-  on_approve: string
   on_reject?: {
     goto: string
     note_to_agent?: boolean

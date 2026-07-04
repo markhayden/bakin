@@ -15,7 +15,6 @@ steps:
     label: Approve Copy
     description: Review the proposed caption and supporting copy
     approval_required: true
-    on_approve: done
     on_reject:
       goto: draft-copy
       note_to_agent: true
