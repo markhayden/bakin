@@ -145,30 +145,10 @@ export function validateDefinition(def: WorkflowDefinition, opts: ValidateDefini
     }
   }
 
-  const validateDependsOn = (step: WorkflowStep, topLevelIdx: number): void => {
-    if (!('dependsOn' in step) || !step.dependsOn) return
-    const deps = Array.isArray(step.dependsOn) ? step.dependsOn : [step.dependsOn]
-    for (const dep of deps) {
-      if (!idSet.has(dep)) {
-        errors.push(`Step "${step.id}": dependsOn references nonexistent step "${dep}"`)
-        continue
-      }
-      if (!topLevelIds.has(dep)) {
-        errors.push(`Step "${step.id}": dependsOn references child step "${dep}"; only top-level step dependencies are supported`)
-        continue
-      }
-      const depIdx = getTopLevelStepIndex(def.steps, dep)
-      if (depIdx >= topLevelIdx) {
-        errors.push(`Step "${step.id}": dependsOn "${dep}" must reference an earlier top-level step`)
-      }
-    }
-  }
-
   // Validate references and runtime-supported semantics.
   for (let idx = 0; idx < def.steps.length; idx++) {
     const step = def.steps[idx]
     validateAgent(step, `steps[${idx}]`)
-    validateDependsOn(step, idx)
 
     // Check gate on_reject.goto references
     if (step.type === 'gate' && step.on_reject?.goto) {
@@ -224,9 +204,6 @@ export function validateDefinition(def: WorkflowDefinition, opts: ValidateDefini
         validateAgent(child, `steps[${idx}].steps[${childIdx}]`)
         if (child.type !== 'agent') {
           errors.push(`Step "${step.id}": parallel children must be agent steps; child "${child.id}" is "${child.type}"`)
-        }
-        if ('dependsOn' in child && child.dependsOn) {
-          errors.push(`Step "${child.id}": dependsOn inside parallel children is not supported`)
         }
       }
     }

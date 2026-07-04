@@ -354,12 +354,6 @@ export function NodeConfigDrawer({
             )
           })}
 
-          {Boolean(step.dependsOn) && (
-            <div className="rounded border border-amber-500/40 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-200">
-              dependsOn is preserved as metadata. This editor does not author runtime dependencies.
-            </div>
-          )}
-
           {kind === 'parallel' && (
             <ParallelChildrenEditor
               childrenRows={parallelChildren}

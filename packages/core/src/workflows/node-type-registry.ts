@@ -134,8 +134,6 @@ export function isPluginKind(kind: string): boolean {
 
 // ─── Shared sub-schemas ─────────────────────────────────────────────────────
 
-const dependsOnSchema = z.union([z.string(), z.array(z.string())]).optional()
-
 const stepOutputSchema = z.object({
   id: z.string(),
   type: z.enum(['string', 'file', 'number']).optional(),
@@ -158,7 +156,6 @@ export const agentStepSchema = z.object({
   skill: z.string().optional(),
   description: z.string().optional(),
   outputs: z.array(stepOutputSchema).optional(),
-  dependsOn: dependsOnSchema,
   deny_tools: z.array(z.string()).optional(),
 }).passthrough()
 
@@ -178,7 +175,6 @@ export const gateStepSchema = z.object({
     })
     .passthrough()
     .optional(),
-  dependsOn: dependsOnSchema,
 }).passthrough()
 
 export const outputStepSchema = z.object({
@@ -191,7 +187,6 @@ export const outputStepSchema = z.object({
   channels: z.array(z.string()).optional(),
   content: z.record(z.string(), z.string()).optional(),
   schedule: z.string().optional(),
-  dependsOn: dependsOnSchema,
   deny_tools: z.array(z.string()).optional(),
 }).passthrough()
 
@@ -201,7 +196,6 @@ export const nestedWorkflowStepSchema = z.object({
   label: z.string().min(1),
   workflow_id: z.string().min(1),
   description: z.string().optional(),
-  dependsOn: dependsOnSchema,
 }).passthrough()
 
 const taskSourceSchema = z.object({
@@ -227,7 +221,6 @@ export const createTaskStepSchema = z.object({
   dueAt: z.string().optional(),
   source: taskSourceSchema.optional(),
   skipWorkflowReason: z.string().optional(),
-  dependsOn: dependsOnSchema,
 }).passthrough()
 
 // Parallel children are a closed subset (agent | gate). Defined separately so
@@ -248,7 +241,6 @@ const agentFormFields: FormField[] = [
   { name: 'skill', type: 'skill', description: 'Optional skill instructions to inject' },
   { name: 'task', type: 'text', description: 'One-line task description' },
   { name: 'description', type: 'text', description: 'Long-form description' },
-  { name: 'dependsOn', type: 'list', description: 'Step IDs that must complete first' },
   { name: 'deny_tools', type: 'list', description: 'Tool names this step may not call' },
 ]
 

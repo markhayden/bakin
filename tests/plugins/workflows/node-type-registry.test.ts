@@ -87,7 +87,7 @@ describe('node-type-registry', () => {
       expect(agentStepSchema.safeParse({ type: 'agent', id: 'x', agent: 'a' }).success).toBe(false)
     })
 
-    it('accepts optional fields (skill, task, dependsOn, outputs, deny_tools)', () => {
+    it('accepts optional fields (skill, task, outputs, deny_tools)', () => {
       const result = agentStepSchema.safeParse({
         id: 'step1',
         type: 'agent',
@@ -95,7 +95,6 @@ describe('node-type-registry', () => {
         agent: 'chef',
         skill: 'write-script',
         task: 'do the thing',
-        dependsOn: ['otherStep'],
         outputs: [{ id: 'script', type: 'string' }],
         deny_tools: ['post_channel'],
       })

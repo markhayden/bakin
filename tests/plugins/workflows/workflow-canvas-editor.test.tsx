@@ -657,7 +657,7 @@ describe('WorkflowCanvasEditor', () => {
     expect(screen.getByTestId('edge-write-review')).toBeDefined()
   })
 
-  it('preserves dependsOn and YAML fields the editor does not own on save', async () => {
+  it('preserves YAML fields the editor does not own on save', async () => {
     const withMetadata = {
       ...sampleDefinition,
       metadata: { owner: 'workflow-audit' },
@@ -675,7 +675,6 @@ describe('WorkflowCanvasEditor', () => {
           type: 'gate',
           label: 'Review',
           on_approve: 'done',
-          dependsOn: 'write',
         },
       ],
       layout: {
@@ -701,7 +700,6 @@ describe('WorkflowCanvasEditor', () => {
     expect(body.metadata).toEqual({ owner: 'workflow-audit' })
     expect(body.triggers).toEqual([{ type: 'manual', enabled: true }])
     expect((body.steps[0] as unknown as Record<string, unknown>).model_policy).toEqual({ maxCostUsd: 3 })
-    expect((body.steps[1] as unknown as Record<string, unknown>).dependsOn).toBe('write')
     expect((body.layout as Record<string, unknown>).viewport).toEqual({ x: 12, y: 18, zoom: 0.75 })
   })
 

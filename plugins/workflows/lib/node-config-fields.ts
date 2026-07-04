@@ -28,7 +28,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export function isDrawerEditableField(kind: string, field: FormField): boolean {
-  return field.name !== 'dependsOn' && !(kind === 'parallel' && field.name === 'steps')
+  return !(kind === 'parallel' && field.name === 'steps')
 }
 
 function coerceListInput(value: string): string[] {

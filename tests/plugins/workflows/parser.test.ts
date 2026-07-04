@@ -173,19 +173,6 @@ steps:
       expect(errors.some(e => e.includes('nonexistent'))).toBe(true)
     })
 
-    it('rejects dependsOn referencing nonexistent step', () => {
-      const def: WorkflowDefinition = {
-        name: 'Test',
-        description: 'Test',
-        version: 1,
-        steps: [
-          { id: 'step1', type: 'agent', label: 'Step 1', agent: 'chef', dependsOn: 'missing' },
-        ],
-      }
-      const errors = validateDefinition(def)
-      expect(errors.some(e => e.includes('missing'))).toBe(true)
-    })
-
     it('rejects gate approval jumps that do not point to the next step', () => {
       const def: WorkflowDefinition = {
         name: 'Test',

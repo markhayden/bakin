@@ -45,7 +45,6 @@ export interface AgentStep extends BaseStep {
   skill?: string
   description?: string
   outputs?: StepOutput[]
-  dependsOn?: string | string[]
   deny_tools?: string[]
 }
 
@@ -61,7 +60,6 @@ export interface GateStep extends BaseStep {
     note_to_agent?: boolean
     [k: string]: unknown
   }
-  dependsOn?: string | string[]
 }
 
 export interface ParallelStep extends BaseStep {
@@ -77,7 +75,6 @@ export interface OutputStep extends BaseStep {
   channels?: string[]
   content?: Record<string, string>
   schedule?: string
-  dependsOn?: string | string[]
   deny_tools?: string[]
 }
 
@@ -85,7 +82,6 @@ export interface NestedWorkflowStep extends BaseStep {
   type: 'workflow'
   workflow_id: string
   description?: string
-  dependsOn?: string | string[]
 }
 
 export interface CreateTaskStep extends BaseStep {
@@ -108,7 +104,6 @@ export interface CreateTaskStep extends BaseStep {
     [k: string]: unknown
   }
   skipWorkflowReason?: string
-  dependsOn?: string | string[]
 }
 
 export type WorkflowStep = AgentStep | GateStep | ParallelStep | OutputStep | NestedWorkflowStep | CreateTaskStep

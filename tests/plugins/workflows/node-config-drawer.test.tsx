@@ -147,7 +147,6 @@ describe('NodeConfigDrawer', () => {
           type: 'agent',
           label: 'Write',
           agent: 'chef',
-          dependsOn: 'outline',
           output_schema: { type: 'object' },
         }}
         onApply={onApply}
@@ -160,7 +159,6 @@ describe('NodeConfigDrawer', () => {
     expect(onApply).toHaveBeenCalled()
     const patch = onApply.mock.calls[0][0] as Record<string, unknown>
     expect(patch.label).toBe('Write draft')
-    expect(patch.dependsOn).toBe('outline')
     expect(patch.output_schema).toEqual({ type: 'object' })
   })
 
