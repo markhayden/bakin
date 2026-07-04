@@ -66,7 +66,7 @@ Branch: `feat/usage-history`
 - [x] **Commit CP** ⑥
 
 ## Final gate
-- [ ] Full `bun run test` + `bun run build` green (don't commit generated-version.ts)
-- [ ] `/verify` end-to-end: scan fires → usage.db rows → route returns → UI renders
-- [ ] No stray dev instance on :3737
-- [ ] PR → #359 with SPEC §10 acceptance mapping
+- [x] Full `bun run test` + `bun run build` green (don't commit generated-version.ts)
+- [x] `/verify` end-to-end: scan fires → usage.db rows → route returns → UI renders (isolated instance :3799, real transcripts, 540 sessions/9 agents ingested)
+- [x] No stray dev instance on :3737 (production pid 46996 untouched; verify instance killed)
+- [x] PR → #359 with SPEC §10 acceptance mapping
