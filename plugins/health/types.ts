@@ -171,3 +171,34 @@ export interface MeteredSpendData {
   totalUsdMicros: number
   byAgent: Array<{ agent: string; costUsdMicros: number; runs: number }>
 }
+
+// ─── Usage history (GET /usage-history, #359) ────────────────────────────────
+
+export type UsageHistoryWindow = '24h' | '7d' | '30d'
+
+export interface UsageHistoryTokens {
+  input: number
+  output: number
+  cacheRead: number
+  cacheWrite: number
+  total: number
+}
+
+export interface UsageHistoryRollup {
+  tokens: UsageHistoryTokens
+  /** Runtime-reported cost sum (micro-dollars); null when none reported. */
+  costUsdMicros: number | null
+  /** Cost coverage: messages that carried runtime-reported cost / all messages. */
+  costedMessages: number
+  messageCount: number
+}
+
+export interface UsageHistoryData {
+  window: UsageHistoryWindow
+  /** First local calendar day (YYYY-MM-DD) included — windows are day-aligned. */
+  since: string
+  /** ISO time of the last completed scan; null before the first sweep. */
+  scannedAt: string | null
+  byAgent: Array<UsageHistoryRollup & { agent: string }>
+  byDay: Array<UsageHistoryRollup & { day: string }>
+}
