@@ -10,7 +10,7 @@ import { getIdempotent, putIdempotent, LedgerUnavailableError } from '@/core/exe
 import { createLogger } from '@/core/logger'
 import { resolveRuntimeChannelRef } from '@/core/channel-aliases'
 import { assertWorkflowToolAllowed } from '@/core/workflow-tool-authorization'
-import { addExport, getAsset, resolveFile } from '@bakin/assets/lib/asset-service'
+import { addExport, getAssetManifest, resolveVersionFile } from '@/core/assets-bridge'
 import { succeed, fail } from './common'
 import { addExecTool } from '../registry'
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
@@ -32,9 +32,9 @@ export interface PostChannelParams {
  * Resolve an assetId to its current-version file on disk. Returns null when the
  * asset is unknown or its file is missing.
  */
-function resolveAssetAbsPath(assetId: string | undefined): string | null {
+async function resolveAssetAbsPath(assetId: string | undefined): Promise<string | null> {
   if (!assetId) return null
-  const ref = resolveFile(assetId)
+  const ref = await resolveVersionFile(assetId)
   return ref && existsSync(ref.absPath) ? ref.absPath : null
 }
 
@@ -57,7 +57,7 @@ const RESIZABLE_IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp'])
  */
 async function resolveImageDeliveryFile(assetId: string | undefined): Promise<string | null> {
   if (!assetId) return null
-  const ref = resolveFile(assetId)
+  const ref = await resolveVersionFile(assetId)
   if (!ref || !existsSync(ref.absPath)) return null
   if (!RESIZABLE_IMAGE_EXTS.has(extname(ref.absPath).toLowerCase())) return ref.absPath
 
@@ -70,7 +70,7 @@ async function resolveImageDeliveryFile(assetId: string | undefined): Promise<st
   if (size <= CHANNEL_ATTACHMENT_LIMIT_BYTES) return ref.absPath
 
   try {
-    const manifest = getAsset(assetId)
+    const manifest = await getAssetManifest(assetId)
     const assetDir = dirname(ref.absPath)
     // Reuse a fresh export for the current version if one is already small enough.
     const fresh = manifest?.exports.find(
@@ -137,7 +137,7 @@ export async function postChannel(
 
   const files = [
     filePayload(imageAssetId, await resolveImageDeliveryFile(imageAssetId)),
-    filePayload(videoAssetId, resolveAssetAbsPath(videoAssetId)),
+    filePayload(videoAssetId, await resolveAssetAbsPath(videoAssetId)),
   ].filter((file): file is { name: string; path: string } => Boolean(file))
 
   // Identical-retry dedup runs FIRST: a verbatim retry of a post we already
