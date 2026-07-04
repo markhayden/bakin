@@ -2,7 +2,8 @@
  * Tests for plugins/memory/lib/routes/status.ts.
  *
  * GET /status returns indexer health at a glance:
- *   - countsByTier: one query per tier, using meta.total from search
+ *   - countsByTier: ONE query with a `tier` facet (meta.total is unreliable
+ *     at limit 0 — the engine reports total as returned-hit count)
  *   - offsetsTracked: number of files with a persisted byte-offset
  *   - lastUpdated: ms timestamp the route captured the snapshot
  */
@@ -67,11 +68,12 @@ function makeCtx(
       transform: mock(async () => {}),
       query: mock(async (p) => {
         queryCalls.push(p)
-        const tier = p.filters?.tier
-        const total = (typeof tier === 'string' && perTierTotals[tier]) || 0
         const resp: SearchResponse = {
           results: [],
-          meta: { query: '', total, took_ms: 0, source: 'search' },
+          meta: { query: '', total: 0, took_ms: 0, source: 'search' },
+          aggregations: {
+            tier: Object.entries(perTierTotals).map(([value, count]) => ({ value: String(value), count: count ?? 0 })),
+          },
         }
         return resp
       }),
@@ -107,7 +109,7 @@ describe('statusRoute — shape', () => {
 })
 
 describe('statusRoute — handler', () => {
-  it('returns counts for all 7 tiers from search queries', async () => {
+  it('returns counts for all 7 tiers from one facet query', async () => {
     const { ctx, queryCalls } = makeCtx({
       audit: 10,
       durable: 4,
@@ -135,12 +137,9 @@ describe('statusRoute — handler', () => {
       dream: 5,
     })
     expect(body.totalRows).toBe(230)
-    expect(queryCalls.map((c) => c.filters?.tier).sort()).toEqual([
-      'audit', 'checkpoint', 'daily_note', 'dream', 'durable', 'session', 'turn',
-    ])
-    for (const c of queryCalls) {
-      expect(c.limit).toBe(0)
-    }
+    expect(queryCalls).toHaveLength(1)
+    expect(queryCalls[0].facets).toEqual(['tier'])
+    expect(queryCalls[0].strategy).toBe('full_text_only')
   })
 
   it('reports the number of files with a persisted byte offset', async () => {
@@ -162,20 +161,15 @@ describe('statusRoute — handler', () => {
     expect(body.lastUpdated).toBeLessThanOrEqual(after)
   })
 
-  it('tolerates a query that throws — returns 0 for that tier', async () => {
-    let failed = false
+  it('tolerates a query that throws — returns all-zero counts', async () => {
     const { ctx } = makeCtx({ audit: 10 })
-    const originalQuery = ctx.search.query
-    ctx.search.query = mock(async (p) => {
-      if (p.filters?.tier === 'turn' && !failed) {
-        failed = true
-        throw new Error('boom')
-      }
-      return originalQuery(p)
+    ctx.search.query = mock(async () => {
+      throw new Error('boom')
     })
     const res = await statusRoute.handler(req('/status'), ctx, {})
-    const body = await res.json() as { countsByTier: Record<string, number> }
+    const body = await res.json() as { countsByTier: Record<string, number>; totalRows: number }
+    expect(res.status).toBe(200)
+    expect(body.totalRows).toBe(0)
     expect(body.countsByTier.turn).toBe(0)
-    expect(body.countsByTier.audit).toBe(10)
   })
 })

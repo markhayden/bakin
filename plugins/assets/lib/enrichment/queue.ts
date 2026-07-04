@@ -17,6 +17,7 @@ import { recordUsage } from '../../../../src/core/usage'
 import { getAsset, resolveFile } from '../asset-core'
 import { canExtractAssetContent, extractAssetContent } from '../content-extractor'
 import {
+  AssetGoneError,
   applyEnrichmentResult,
   markEnrichmentFailed,
   markEnrichmentPending,
@@ -232,6 +233,9 @@ async function processJob(job: EnrichmentJob): Promise<void> {
           })
           return
         } catch (err) {
+          // Asset trashed mid-flight: retrying the write is pointless — bail
+          // to the outer handler, which records a benign skip.
+          if (err instanceof AssetGoneError) throw err
           lastError = err
           log.warn('enrichment apply failed (billed result held — no re-bill)', {
             assetId: job.assetId, attempt, model: engine.modelId,
@@ -240,10 +244,13 @@ async function processJob(job: EnrichmentJob): Promise<void> {
         }
       }
     }
-    status = 'failed'
-    counters.failed++
+    // Record the failure BEFORE counting it: if the asset vanished mid-flight
+    // this throws AssetGoneError and the outer handler books a skip instead —
+    // a job must never inflate both counters.
     const failMessage = lastError instanceof Error ? lastError.message : String(lastError)
     await markEnrichmentFailed(job.assetId, failMessage)
+    status = 'failed'
+    counters.failed++
     notifyActivity('asset.enrich_failed', actingAgent(engine.modelId), {
       message: `Enrichment failed for ${job.assetId} — ${failMessage.slice(0, 160)}`,
       assetId: job.assetId,
@@ -251,9 +258,16 @@ async function processJob(job: EnrichmentJob): Promise<void> {
       error: failMessage.slice(0, 160),
     })
   } catch (err) {
-    // The queue itself must never explode a pump cycle.
-    status = 'failed'
-    log.error('enrichment job crashed', err instanceof Error ? err : undefined, { assetId: job.assetId })
+    if (err instanceof AssetGoneError) {
+      // Deleted between enqueue and write — normal lifecycle race, not a failure.
+      status = 'skipped'
+      counters.skipped++
+      log.info('asset deleted during enrichment; skipping', { assetId: job.assetId })
+    } else {
+      // The queue itself must never explode a pump cycle.
+      status = 'failed'
+      log.error('enrichment job crashed', err instanceof Error ? err : undefined, { assetId: job.assetId })
+    }
   } finally {
     // No parallel stat system: the single usage recorder feeds telemetry.
     // Skips count as 'ok' — they are correct outcomes, not failures.

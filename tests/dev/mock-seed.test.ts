@@ -23,6 +23,18 @@ describe('mock seed', () => {
     return tempHome
   }
 
+  /** All seeded asset dirs across the relative-dated YYYY-MM shards. */
+  function listSeededAssetDirs(home: string): string[] {
+    const fs = require('fs') as typeof import('fs')
+    const storeRoot = join(home, 'assets', 'store')
+    if (!existsSync(storeRoot)) return []
+    return fs.readdirSync(storeRoot).flatMap((shard) => {
+      const shardDir = join(storeRoot, shard)
+      if (!fs.statSync(shardDir).isDirectory()) return []
+      return fs.readdirSync(shardDir).map((id) => join(shardDir, id))
+    })
+  }
+
   it('seeds the expected directory structure into the configured mock home', () => {
     const home = configureTempHome()
 
@@ -42,18 +54,33 @@ describe('mock seed', () => {
     expect(existsSync(join(home, 'workflows', 'instances', 'task-rv-002.json'))).toBe(true)
     expect(existsSync(join(home, 'workflows', 'instances', 'task-rv-003.json'))).toBe(true)
     expect(existsSync(join(home, 'workflows', 'instances', 'task-rv-004.json'))).toBe(true)
-    expect(existsSync(join(home, 'assets', 'store', '2026-04', '20260406-trail-status-concept-a1b2c3d4.svg'))).toBe(true)
+    // Versioned-asset store (post-#457) — shards are relative to seed time.
+    const trailConcept = listSeededAssetDirs(home).find((d) => d.endsWith('-trail-status-concept-a1b2c3d4'))
+    expect(trailConcept).toBeTruthy()
   })
 
-  it('seeds canonical asset store with images and sidecars', () => {
+  it('seeds the versioned asset store: manifests + version files, no legacy sidecars', () => {
     const home = configureTempHome()
     seed(true)
-    const storeDir = join(home, 'assets', 'store', '2026-04')
-    const files = existsSync(storeDir) ? require('fs').readdirSync(storeDir) as string[] : []
-    const assets = files.filter((f: string) => !f.endsWith('.meta.json'))
-    const sidecars = files.filter((f: string) => f.endsWith('.meta.json'))
-    expect(assets.length).toBeGreaterThanOrEqual(19)
-    expect(sidecars.length).toBe(assets.length)
+    const fs = require('fs') as typeof import('fs')
+    const assetDirs = listSeededAssetDirs(home)
+    expect(assetDirs.length).toBeGreaterThanOrEqual(19)
+    for (const dir of assetDirs) {
+      expect(existsSync(join(dir, 'manifest.json')), `${dir} missing manifest.json`).toBe(true)
+      const manifest = JSON.parse(fs.readFileSync(join(dir, 'manifest.json'), 'utf-8')) as {
+        assetId: string
+        currentVersion: number
+        versions: Array<{ file: string }>
+      }
+      expect(manifest.versions.length).toBeGreaterThanOrEqual(1)
+      for (const v of manifest.versions) {
+        expect(existsSync(join(dir, v.file)), `${dir} missing version file ${v.file}`).toBe(true)
+      }
+      const entries = fs.readdirSync(dir)
+      expect(entries.some((f) => f.endsWith('.meta.json')), `${dir} carries a legacy sidecar`).toBe(false)
+    }
+    // Raw inbox drops stay unmanaged (explicit-import demo).
+    expect(fs.readdirSync(join(home, 'assets', 'inbox')).length).toBeGreaterThanOrEqual(2)
   })
 
   it('seeds plugin symlinks when bakin-bits-official is available', () => {

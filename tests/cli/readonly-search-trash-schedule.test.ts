@@ -65,15 +65,14 @@ describe('read-only CLI TTY commands — schedule, trash, search', () => {
     const { main } = await import('../../cli/bakin')
 
     fetchMock.mockResolvedValueOnce(jsonResponse({
-      count: 1,
-      assets: [{
-        filename: 'doc.md__deleted-20260518',
-        originalFilename: 'doc.md',
-        type: 'markdown',
-        size: 2048,
-        deletedAt: '2026-05-18T09:00:00.000Z',
-        expiresAt: '2026-05-25T09:00:00.000Z',
-        metadata: { agent: 'patch' },
+      items: [{
+        trashName: '20260518-text-doc__deleted-1747558800000',
+        assetId: '20260518-text-doc',
+        type: 'text',
+        agent: 'patch',
+        deletedAt: 1747558800000,
+        versionCount: 2,
+        description: 'a doc',
       }],
     }))
     process.argv = ['bun', 'cli/bakin.ts', 'trash', 'list']
@@ -81,7 +80,7 @@ describe('read-only CLI TTY commands — schedule, trash, search', () => {
 
     expect(output()).toContain('Trash')
     expect(output()).toContain('TRASHED ASSETS')
-    expect(output()).toContain('doc.md')
+    expect(output()).toContain('20260518-text-doc')
     expect(output()).toContain('bakin trash restore <trashName>')
     expect(output()).not.toContain('item in trash:')
   })
@@ -91,18 +90,23 @@ describe('read-only CLI TTY commands — schedule, trash, search', () => {
 
     fetchMock.mockResolvedValueOnce(jsonResponse({
       ok: true,
-      restoredPath: '/Users/roscoe/.bakin/assets/doc.md',
+      assetId: '20260518-text-doc',
     }))
-    process.argv = ['bun', 'cli/bakin.ts', 'trash', 'restore', 'doc.md__deleted-20260518']
+    process.argv = ['bun', 'cli/bakin.ts', 'trash', 'restore', '20260518-text-doc__deleted-1747558800000']
     await main()
     expect(output()).toContain('Trash action')
     expect(output()).toContain('RESULT')
-    expect(output()).toContain('Restored doc.md__deleted-20260518.')
+    expect(output()).toContain('Restored 20260518-text-doc.')
     expect(output()).not.toContain('Restored →')
 
     harness.log.mockClear()
     fetchMock
-      .mockResolvedValueOnce(jsonResponse({ count: 2 }))
+      .mockResolvedValueOnce(jsonResponse({
+        items: [
+          { trashName: 'a__deleted-1', assetId: 'a', type: 'text', agent: 'main', deletedAt: 1, versionCount: 1, description: '' },
+          { trashName: 'b__deleted-2', assetId: 'b', type: 'text', agent: 'main', deletedAt: 2, versionCount: 1, description: '' },
+        ],
+      }))
       .mockResolvedValueOnce(jsonResponse({ ok: true, deleted: 2 }))
     process.argv = ['bun', 'cli/bakin.ts', 'trash', 'empty']
     await main()

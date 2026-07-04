@@ -66,7 +66,23 @@ describe('buildQueryRequest', () => {
     })
   })
 
-  it('filters ride filter_query (fixed upstream — filters BOTH lanes)', () => {
+  it('filters drop the semantic leg — an unfiltered lane would leak filter-violating docs', () => {
+    const req = buildQueryRequest('t', {
+      text: 'dark dashboard',
+      filters: [{ field: 'agent', op: 'eq', value: 'pixel' }],
+      adapterOptions: { searchableFields: ['title'], indexes: ['assets_text'] },
+    }, S)
+    expect(req.semantic_search).toBeUndefined()
+    expect(req.merge_config).toBeUndefined()
+    expect(req.full_text_search).toEqual({
+      must: { conjuncts: [
+        { match: 'dark dashboard', field: 'title' },
+        { match_phrase: 'pixel', field: 'agent' },
+      ] },
+    })
+  })
+
+  it('filters compose INTO the full_text_search node (rc.17: filter_query is broken)', () => {
     const req = buildQueryRequest('t', {
       text: 'cats',
       strategy: 'fts',
@@ -77,25 +93,33 @@ describe('buildQueryRequest', () => {
       ],
       adapterOptions: { searchableFields: ['title'] },
     }, S)
-    expect(req.filter_query).toEqual({
+    // filter_query must NEVER be sent: rc.17 400s on match_phrase nodes and
+    // analyzer-mangles `match` on keyword fields (live-probed 2026-07-04).
+    expect(req.filter_query).toBeUndefined()
+    expect(req.full_text_search).toEqual({
       must: { conjuncts: [
+        { match: 'cats', field: 'title' },
         { match_phrase: 'note', field: 'kind' },
         { min: 3, inclusive_min: true, field: 'n' },
       ] },
       must_not: { disjuncts: [{ match_phrase: 'system', field: 'agent' }] },
     })
-    // no filter-in-AST: the full-text node carries ONLY the text query
-    expect(req.full_text_search).toEqual({ match: 'cats', field: 'title' })
   })
 
-  it('match-all list flow: bare filters/facets become match_all full-text-only', () => {
+  it('match-all list flow: bare filters/facets become filtered match_all full-text-only', () => {
     const req = buildQueryRequest('t', {
       text: '',
       filters: [{ field: 'kind', op: 'eq', value: 'note' }],
       facets: ['kind'],
       limit: 10,
     }, S)
-    expect(req.full_text_search).toEqual({ match_all: {} })
+    expect(req.full_text_search).toEqual({
+      must: { conjuncts: [
+        { match_all: {} },
+        { match_phrase: 'note', field: 'kind' },
+      ] },
+    })
+    expect(req.filter_query).toBeUndefined()
     expect(req.semantic_search).toBeUndefined()
     expect(req.aggregations).toEqual({ kind: { type: 'terms', field: 'kind', size: 50 } })
   })

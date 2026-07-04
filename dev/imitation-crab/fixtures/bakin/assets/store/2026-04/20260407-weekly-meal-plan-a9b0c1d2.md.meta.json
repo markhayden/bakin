@@ -1,9 +1,0 @@
-{
-  "agent": "jessica",
-  "taskId": "task-td-001",
-  "created": "2026-04-07T09:00:00Z",
-  "type": "text",
-  "description": "Weekly meal plan draft for spring menu rotation",
-  "tags": ["planning", "meal-plan", "menu"],
-  "source": "agent"
-}

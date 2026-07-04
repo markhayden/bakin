@@ -1,9 +1,0 @@
-{
-  "agent": "jessica",
-  "taskId": "task-dn-001",
-  "created": "2026-04-03T15:00:00Z",
-  "type": "text",
-  "description": "Double chocolate chunk cookie recipe",
-  "tags": ["recipe", "cookies", "baking"],
-  "source": "agent"
-}

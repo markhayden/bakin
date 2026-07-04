@@ -18,6 +18,17 @@ function nowIso(): string {
   return new Date().toISOString()
 }
 
+/**
+ * The asset vanished (trashed/deleted) between enqueue and write — a benign
+ * lifecycle race, not a failure. The queue treats this as a skip.
+ */
+export class AssetGoneError extends Error {
+  constructor(assetId: string) {
+    super(`Asset gone: ${assetId}`)
+    this.name = 'AssetGoneError'
+  }
+}
+
 async function mutateEnrichment(
   assetId: string,
   mutate: (manifest: AssetManifest) => AssetEnrichment,
@@ -26,7 +37,7 @@ async function mutateEnrichment(
     const dirAbs = assetDirAbs(assetId)
     if (!dirAbs) throw new Error(`Invalid assetId: ${assetId}`)
     const manifest = readManifest(dirAbs)
-    if (!manifest) throw new Error(`Asset not found: ${assetId}`)
+    if (!manifest) throw new AssetGoneError(assetId)
     const next: AssetManifest = { ...manifest, enrichment: mutate(manifest), updated: nowIso() }
     writeManifestAtomic(dirAbs, next)
     return next

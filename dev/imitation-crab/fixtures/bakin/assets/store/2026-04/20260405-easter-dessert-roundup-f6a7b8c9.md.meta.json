@@ -1,9 +1,0 @@
-{
-  "agent": "jessica",
-  "taskId": "task-ip-001",
-  "created": "2026-04-05T14:00:00Z",
-  "type": "text",
-  "description": "Easter dessert roundup with five seasonal picks",
-  "tags": ["roundup", "dessert", "easter"],
-  "source": "agent"
-}

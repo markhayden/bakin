@@ -136,7 +136,7 @@ async function main(argv: string[]): Promise<number> {
       }
       case 'dev': {
         if (plan.bakin.placement === 'container') {
-          console.error('`dev` runs Bakin on the host — use --mode native or isolated. For sandbox, use `instance shell` then `bun run server.ts`.')
+          console.error('`dev` runs Bakin on the host — use --mode native or isolated. For sandbox, use `instance shell` then `bun run server.ts serve`.')
           return 1
         }
         const health = await deps.runner.run(['curl', '-sf', 'http://127.0.0.1:18789/healthz'])
@@ -158,8 +158,10 @@ async function main(argv: string[]): Promise<number> {
           if (onboard.code !== 0) return onboard.code
         }
         console.log('▸ starting Bakin → http://localhost:3737  (Ctrl+C to stop)')
+        // `serve` is required: a bare `bun run server.ts` defaults to `help`
+        // since 6e36a4d8 (same reason scripts/dev.ts splices in 'serve').
         const server = await deps.runner.run(
-          ['bun', 'run', 'server.ts'],
+          ['bun', 'run', 'server.ts', 'serve'],
           { interactive: true, env: plan.hostEnv, cwd: REPO_ROOT },
         )
         return server.code
