@@ -11,7 +11,9 @@ import { TeamDetail } from './components/team-detail'
 registerPlugin({
   search: {
     hitRenderers: {
-      agents: (hit) => ({
+      // Keyed by bare table name — the overlay resolves renderers via
+      // renderers.get(table minus the bakin_ prefix), and the table is `team`.
+      team: (hit) => ({
         title: String(hit.fields.name ?? hit.id),
         subtitle: String(hit.fields.role ?? 'agent'),
         href: `/team/${encodeURIComponent(hit.id)}`,
@@ -19,11 +21,16 @@ registerPlugin({
         icon: 'users',
       }),
       'agent-lessons': (hit) => {
-        const agent = typeof hit.fields.agent === 'string' ? hit.fields.agent : ''
+        // Schema fields are agent_id/lesson_id (plugins/team/index.ts).
+        const agentId = typeof hit.fields.agent_id === 'string' ? hit.fields.agent_id : ''
+        const lessonId = typeof hit.fields.lesson_id === 'string' ? hit.fields.lesson_id : ''
+        const href = agentId
+          ? `/team/${encodeURIComponent(agentId)}?tab=lessons${lessonId ? `&lessonId=${encodeURIComponent(lessonId)}` : ''}`
+          : null
         return {
           title: String(hit.fields.title ?? hit.fields.summary ?? hit.id).slice(0, 120),
-          subtitle: agent ? `lesson · ${agent}` : 'lesson',
-          href: agent ? `/team/${encodeURIComponent(agent)}` : null,
+          subtitle: agentId ? `lesson · ${agentId}` : 'lesson',
+          href,
           icon: 'graduation-cap',
         }
       },
