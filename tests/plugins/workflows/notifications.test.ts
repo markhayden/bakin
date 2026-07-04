@@ -226,9 +226,35 @@ describe('runtime gate notifications', () => {
     expect(call.content.body).toContain('task task-42')
     expect(call.content.body).toContain('Owner reviews the draft before publishing')
     expect(call.content.body).toContain('Hello world')
-    expect(call.content.body).toContain('Decide: ')
-    expect(call.content.body).toContain('/?q=task-42')
+    expect(call.content.body).toMatch(/\[Approve or reject\]\(http.*\/gates\/task-42\/decision\?stepId=review-gate\)/)
+    expect(call.content.body).toMatch(/\[Open task\]\(http.*\/\?taskId=task-42\)/)
     expect(call.content.files).toBeUndefined()
+  })
+
+  it('renders prior output as labeled fields instead of a JSON blob', async () => {
+    await sendGateApprovalRequest(
+      mockInstance,
+      'review-gate',
+      'Review Draft',
+      {
+        caption: 'Testing automation turns the slow, repetitive parts of quality work into fast feedback for the whole team.',
+        targetPlatform: 'LinkedIn',
+        hashtags: ['#TestingAutomation', '#DevOps'],
+        image_brief: { mood: 'calm', palette: 'warm pastels' },
+      },
+      enabledSettings,
+    )
+
+    const [call] = deliverContent.mock.calls[0] as unknown as [{ content: { body: string } }]
+    const body = call.content.body
+    expect(body).toContain('Caption:')
+    expect(body).toContain('Testing automation turns the slow')
+    expect(body).toContain('Target platform: LinkedIn')
+    expect(body).toContain('Hashtags: #TestingAutomation, #DevOps')
+    expect(body).toContain('Image brief:')
+    expect(body).toContain('Mood: calm')
+    expect(body).not.toContain('{')
+    expect(body).not.toContain('"caption"')
   })
 
   it('attaches resolvable asset files from prior output to the context message', async () => {

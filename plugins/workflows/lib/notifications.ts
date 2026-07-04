@@ -336,12 +336,12 @@ async function sendGateContextMessage(
 
     const base = process.env.BAKIN_URL || 'http://localhost:3737'
     const approvalUrl = typeof context?.approvalUrl === 'string' ? context.approvalUrl : buildGateApprovalUrl(instance.taskId, stepId)
+    const taskUrl = `${base}/?taskId=${encodeURIComponent(instance.taskId)}`
     const body = [
       `Workflow **${instance.workflowId}** · task ${instance.taskId} · step ${stepId}`,
       getGateDescription(instance.workflowId, stepId),
       renderPriorOutput(priorOutput),
-      `Decide: ${approvalUrl}`,
-      `Task board: ${base}/?q=${encodeURIComponent(instance.taskId)}`,
+      `[Approve or reject](${approvalUrl}) · [Open task](${taskUrl})`,
     ].filter(Boolean).join('\n\n')
 
     await runtime.channels.deliverContent({
@@ -470,9 +470,44 @@ export async function sendGateDecisionSummary(
   }
 }
 
+function humanizeKey(key: string): string {
+  const spaced = key.replace(/[_-]+/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().trim()
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1)
+}
+
+function isScalar(value: unknown): value is string | number | boolean {
+  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+}
+
+/** Render one output entry as `Label: value` prose; nested objects indent. */
+function renderOutputEntry(key: string, value: unknown, indent: string): string[] {
+  const label = `${indent}${humanizeKey(key)}:`
+  if (value === null || value === undefined || value === '') return []
+  if (isScalar(value)) {
+    const text = String(value)
+    return text.length > 80 ? [label, `${indent}${text}`] : [`${label} ${text}`]
+  }
+  if (Array.isArray(value)) {
+    if (value.every(isScalar)) return [`${label} ${value.map(String).join(', ')}`]
+    return [label, ...value.flatMap((entry, i) => renderOutputEntry(String(i + 1), entry, `${indent}  `))]
+  }
+  if (typeof value === 'object') {
+    const children = Object.entries(value as Record<string, unknown>)
+      .flatMap(([childKey, child]) => renderOutputEntry(childKey, child, `${indent}  `))
+    return children.length > 0 ? [label, ...children] : []
+  }
+  return []
+}
+
+/**
+ * Render prior step output as labeled prose (humans review this in channels
+ * and on the decision page — never show them a JSON blob).
+ */
 function renderPriorOutput(priorOutput: Record<string, unknown> | undefined): string {
   if (!priorOutput) return ''
-  const rendered = JSON.stringify(priorOutput, null, 2)
+  const lines = Object.entries(priorOutput)
+    .flatMap(([key, value]) => renderOutputEntry(key, value, ''))
+  const rendered = lines.length > 0 ? lines.join('\n') : JSON.stringify(priorOutput, null, 2)
   if (!rendered) return ''
   const cap = 4000
   return `Prior output:\n${rendered.length > cap ? `${rendered.slice(0, cap)}\n...[truncated]` : rendered}`
