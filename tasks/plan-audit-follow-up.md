@@ -331,6 +331,38 @@ Mechanical; batch into one PR with per-item commits.
   `createScheduleJob/applyPauseAction/updateScheduleJob/projectJobDetail` into `lib/job-service.ts`.
   The behavioral drift is already fixed, so this is now pure dedup — rig E2E on pause/update.
 
+**FW6 STATUS — ☑ DONE (2026-07-05, branch `chore/audit-tail`, 8 commits).** All 9 item groups:
+formatters/ConfirmDialog migrated (STATUS_BADGE_STYLES + formatRelativeDate skipped with recorded
+reasons — no byte-equivalent shared form); atomicWriteJson ×3 (dispatch-state byte-format
+preserved); deepMerge single-homed at packages/core/src/merge.ts (semantics compared first —
+identical); sharp "4 caches" was stale — already 1 in assets + images' justified copy; shared
+walkFiles (4 clean migrations, 3 skipped: hasher-feeding + persisted-Merkle + error-swallowing
+walkers); parseJsonBodyWeb adopted + typed Package{NotInstalled,StillRequired}Error replacing the
+regex status-mapping; param-injection double-run claim OBSOLETE (one site remains, the other died
+with dispatcher.ts); imitation-crab seed gated out of compiled binaries (computed specifier +
+existsSync probe); embedded-assets escaper (byte-identical regen verified); schedule route/exec
+dedup landed in job-service. **Orphan scripts NOT deleted (SPEC §8 ask-first)** — findings:
+`scripts/migration/validate-package.ts` fully unreferenced (one doc mention); `scripts/release.ts`
+NOT orphaned (prep-release + tests import its helpers; only main() is a dead-by-design guard).
+Awaiting Mark's call.
+
+**FW7 STATUS — ☑ DONE (same branch, 4 commits).** schedule/routes 1,954 → 3 files + harness;
+tasks/routes 1,616 → 3 files + harness; workflows/runtime 1,381 → 5 files + harness (no standalone
+node-dispatch file — the source had no such describe; noted); plugin-registry → HookRegistry tests
+extracted (104), remainder 1,131 justified-cohesive. Expect-count parity exact on all four.
+Largest test file in the repo is now 1,131 lines — the SPEC test ceiling holds everywhere.
+
+**FW8 STATUS — ☑ DONE (same branch, 9 commits).** The Phase-4 sweep that never ran: repo-
+architecture.md (22-module adapter tree, moved registries/exec-tools/plugin-registry paths,
+@makinbakin/sdk naming, request-handler + dispatch-barrel rows); plugin-system.md (stale paths +
+the pre-#421 server-bundle build step corrected); dispatch.md (12-row module map); dev-loop.md
+(core-plugin-ids + plugins link); adapter-architecture.md (governed config wrapper documented);
+CLAUDE.md surgical fixes (request-handler dispatch, exec-tools path, 13 onboarding components,
+nonexistent agents/ dir removed); README (rc.8→rc.20 pin, bun run test); docs regenerated + all
+docs gates green. Coverage-pass note: FW1–7 tests shipped in-commit; the one indirectly-tested
+redesigned surface is createRequestHandler (byte-for-byte relocation, covered via per-handler
+API tests) — recorded, not actioned.
+
 ### FW7 `refactor/test-godfiles` — the SPEC's unmet test ceiling
 
 Split along source seams with shared harnesses (readonly-commands is FW2's B7):
