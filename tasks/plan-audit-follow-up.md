@@ -131,6 +131,27 @@ fragile remainder did not. Scope:
 - **Docs in-PR:** CLAUDE.md CLI section + repo-architecture.md.
 - **Gate:** dockerized-rig E2E on the binary + npm-bin surfaces (exit codes, help, delegation).
 
+**FW2 STATUS — ☑ DONE (2026-07-04, branch `refactor/cli-part3`, 26 commits).**
+The stalled WS4 remainder is finished:
+- **B5.3:** cli/bakin.ts **4,413 → 209 lines** — 17 gated commits extracting `src/cli/help.ts` +
+  17 per-scope modules under `src/cli/commands/` (largest: lifecycle 907, plugins 690, doctor 547).
+  All four load-bearing contracts verified (main()/import.meta.main, process.exit semantics, lazy
+  heavy deps, dynamic bakin↔core-cli edge). Binary rebuilt + smoked: help/version exit 0, unknown
+  command + unreachable-server exit 1, delegation works.
+- **Help-registry drift (P2 #7):** registry now advertises `agent-sync` (dispatch parity); the same
+  stale hint fixed in team's package-card; plugin-contributed `cliCommands` now appear in TTY help
+  and non-TTY usage (degrading silently when the server is down), with tests.
+- **B6:** framework RETIRED — runner/parser/options + tests deleted (zero production callers; a
+  209-line router doesn't need a parser layer). The live pieces (result.ts, render.tsx — plugin-CLI
+  output) stay. Registry-driven *dispatch* consciously NOT taken: the drift surface the audit
+  targeted was the god-file, which no longer exists.
+- **B7:** `tests/cli/helpers/tty-cli-harness.ts` (options for the real per-file variations);
+  11 files migrated; readonly-commands.test.ts (1,443) split into 7 domain files (119-342 lines),
+  original deleted. tests/cli 246-0; full suite 5,298-0.
+- **Docs:** CLAUDE.md CLI section + repo-architecture.md entry points updated in-PR.
+Emit()/isTTY-dispatcher consolidation NOT taken (output-risk; the branching now lives in small
+per-domain modules where it reads fine) — noted as an optional follow-up.
+
 ### FW3 `refactor/boundary` — the WS2 work that never landed
 
 The core→plugin boundary violation is live and unguarded; nothing stops it multiplying.

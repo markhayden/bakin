@@ -1,52 +1,18 @@
-import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { describe, expect, it } from 'bun:test'
 import { existsSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { dispatchCli } from '../../src/core/cli'
+import { setStdoutIsTTY, setupTtyCliHarness } from './helpers/tty-cli-harness'
 
-const mockFetch = mock()
+const harness = setupTtyCliHarness({ exitMode: 'none', defaultIsTTY: null, defaultFetchJson: { ok: true } })
+const { fetchMock: mockFetch, output, errorOutput } = harness
 
 describe('bakin plugins binary dispatch', () => {
-  const originalFetch = globalThis.fetch
-  const originalCwd = process.cwd()
-  const originalStdoutIsTTY = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
-  let log: ReturnType<typeof spyOn>
-  let error: ReturnType<typeof spyOn>
-
-  function output(): string {
-    return log.mock.calls.map((call: unknown[]) => String(call[0])).join('\n')
-  }
-
-  function errorOutput(): string {
-    return error.mock.calls
-      .map((call: unknown[]) => call.map(part => String(part)).join(' '))
-      .join('\n')
-  }
-
-  beforeEach(() => {
-    mock.clearAllMocks()
-    globalThis.fetch = mockFetch as unknown as typeof fetch
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ ok: true }),
-      text: () => Promise.resolve(''),
-    } as Response)
-    log = spyOn(console, 'log').mockImplementation(() => {})
-    error = spyOn(console, 'error').mockImplementation(() => {})
-  })
-
-  afterEach(() => {
-    globalThis.fetch = originalFetch
-    process.chdir(originalCwd)
-    if (originalStdoutIsTTY) Object.defineProperty(process.stdout, 'isTTY', originalStdoutIsTTY)
-    else delete (process.stdout as { isTTY?: boolean }).isTTY
-    log.mockRestore()
-    error.mockRestore()
-  })
 
   it('delegates plugin list to the shared source CLI TUI', async () => {
-    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true })
+    setStdoutIsTTY(true)
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: () => Promise.resolve({

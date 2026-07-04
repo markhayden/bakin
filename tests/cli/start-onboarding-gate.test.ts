@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import { setStdoutIsTTY, setupTtyCliHarness } from './helpers/tty-cli-harness'
 
 let onboarded = false
 
@@ -6,57 +7,43 @@ mock.module('../../src/core/onboarding/state', () => ({
   isOnboarded: () => onboarded,
 }))
 
-describe('CLI start onboarding gate', () => {
-  let originalSkip: string | undefined
-  const originalStdoutIsTTY = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
+const harness = setupTtyCliHarness({
+  exitMode: 'none',
+  mockFetch: false,
+  saveEnv: ['BAKIN_SKIP_ONBOARDING_CHECK'],
+})
 
+describe('CLI start onboarding gate', () => {
   beforeEach(() => {
     onboarded = false
-    originalSkip = process.env.BAKIN_SKIP_ONBOARDING_CHECK
     delete process.env.BAKIN_SKIP_ONBOARDING_CHECK
-    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true })
-  })
-
-  afterEach(() => {
-    if (originalSkip === undefined) delete process.env.BAKIN_SKIP_ONBOARDING_CHECK
-    else process.env.BAKIN_SKIP_ONBOARDING_CHECK = originalSkip
-    if (originalStdoutIsTTY) Object.defineProperty(process.stdout, 'isTTY', originalStdoutIsTTY)
-    else delete (process.stdout as { isTTY?: boolean }).isTTY
   })
 
   it('blocks start with the shared onboarding TUI when onboarding has not completed', async () => {
-    const logSpy = spyOn(console, 'log').mockImplementation(() => {})
-    const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
     const { dispatchCli } = await import('../../src/core/cli')
 
     const result = await dispatchCli(['node', 'bakin', 'start'])
 
     expect(result).toEqual({ startServer: false, exitCode: 1 })
-    const output = logSpy.mock.calls.map(call => String(call[0])).join('\n')
+    const output = harness.log.mock.calls.map((call: unknown[]) => String(call[0])).join('\n')
     expect(output).toContain("┃ 🐷 Bakin'")
     expect(output).toContain('Onboard')
     expect(output).toContain('Initial setup required')
     expect(output).toContain('Run `bakin onboard`')
-    expect(errorSpy.mock.calls).toHaveLength(0)
-    logSpy.mockRestore()
-    errorSpy.mockRestore()
+    expect(harness.error.mock.calls).toHaveLength(0)
   })
 
   it('keeps plain start gate errors for non-TTY output', async () => {
-    Object.defineProperty(process.stdout, 'isTTY', { value: false, configurable: true })
-    const logSpy = spyOn(console, 'log').mockImplementation(() => {})
-    const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
+    setStdoutIsTTY(false)
     const { dispatchCli } = await import('../../src/core/cli')
 
     const result = await dispatchCli(['node', 'bakin', 'start'])
 
     expect(result).toEqual({ startServer: false, exitCode: 1 })
-    const output = errorSpy.mock.calls.map(call => String(call[0])).join('\n')
+    const output = harness.error.mock.calls.map((call: unknown[]) => String(call[0])).join('\n')
     expect(output).toContain('Bakin has not been onboarded on this machine.')
     expect(output).toContain('bakin onboard')
-    expect(logSpy.mock.calls).toHaveLength(0)
-    logSpy.mockRestore()
-    errorSpy.mockRestore()
+    expect(harness.log.mock.calls).toHaveLength(0)
   })
 
   it('allows start when onboarding marker is current', async () => {

@@ -1,53 +1,19 @@
-import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import { APP_VERSION } from '../../packages/core/src/constants'
+import { setStdoutIsTTY, setupTtyCliHarness } from './helpers/tty-cli-harness'
 
 const execFileSync = mock((..._args: unknown[]) => '')
-const fetchMock = mock()
 
 mock.module('child_process', () => ({
   execFileSync,
 }))
 
+const harness = setupTtyCliHarness({ exitMode: 'none', defaultFetchJson: { ok: true } })
+const { fetchMock, output, errorOutput, jsonResponse } = harness
+
 describe('bakin runtime binary dispatch', () => {
-  const originalFetch = globalThis.fetch
-  const originalStdoutIsTTY = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
-  let log: ReturnType<typeof spyOn>
-  let error: ReturnType<typeof spyOn>
-
-  function jsonResponse(body: unknown): Response {
-    return {
-      ok: true,
-      json: () => Promise.resolve(body),
-      text: () => Promise.resolve(''),
-    } as Response
-  }
-
-  function output(): string {
-    return log.mock.calls.map((call: unknown[]) => String(call[0])).join('\n')
-  }
-
-  function errorOutput(): string {
-    return error.mock.calls
-      .map((call: unknown[]) => call.map(part => String(part)).join(' '))
-      .join('\n')
-  }
-
   beforeEach(() => {
-    mock.clearAllMocks()
-    globalThis.fetch = fetchMock as unknown as typeof fetch
-    fetchMock.mockResolvedValue(jsonResponse({ ok: true }))
     execFileSync.mockReturnValue('')
-    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true })
-    log = spyOn(console, 'log').mockImplementation(() => {})
-    error = spyOn(console, 'error').mockImplementation(() => {})
-  })
-
-  afterEach(() => {
-    globalThis.fetch = originalFetch
-    if (originalStdoutIsTTY) Object.defineProperty(process.stdout, 'isTTY', originalStdoutIsTTY)
-    else delete (process.stdout as { isTTY?: boolean }).isTTY
-    log.mockRestore()
-    error.mockRestore()
   })
 
   it('renders binary help with the shared TUI when stdout is a TTY', async () => {
@@ -76,7 +42,7 @@ describe('bakin runtime binary dispatch', () => {
   })
 
   it('keeps binary version plain outside TTY', async () => {
-    Object.defineProperty(process.stdout, 'isTTY', { value: false, configurable: true })
+    setStdoutIsTTY(false)
     const { dispatchCli } = await import('../../src/core/cli')
 
     const result = await dispatchCli(['bun', 'bakin', '--version'])
@@ -109,7 +75,7 @@ describe('bakin runtime binary dispatch', () => {
   })
 
   it('keeps binary update failures plain outside TTY', async () => {
-    Object.defineProperty(process.stdout, 'isTTY', { value: false, configurable: true })
+    setStdoutIsTTY(false)
     fetchMock.mockResolvedValueOnce({ ok: false, status: 500 } as Response)
     const { dispatchCli } = await import('../../src/core/cli')
 

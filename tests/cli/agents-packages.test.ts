@@ -31,10 +31,13 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
   resetOpenClawHome: () => {},
 }))
 
-const CLI_SOURCE = readFileSync(
+// The dispatcher spans the thin router (cli/bakin.ts) plus the extracted
+// per-scope command modules (B5.3); scan them together.
+const CLI_SOURCE = [
   join(import.meta.dir, '..', '..', 'cli', 'bakin.ts'),
-  'utf-8',
-)
+  join(import.meta.dir, '..', '..', 'src', 'cli', 'commands', 'agents.ts'),
+  join(import.meta.dir, '..', '..', 'src', 'cli', 'commands', 'packages.ts'),
+].map(path => readFileSync(path, 'utf-8')).join('\n')
 
 describe('cli: agents subcommands', () => {
   it('exposes install / list / orphan / remove / delete / sync / lessons subcommands', () => {

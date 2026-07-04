@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import { setupTtyCliHarness } from './helpers/tty-cli-harness'
 
 const outcomes = [
   {
@@ -46,42 +47,17 @@ mock.module('../../src/core/cli/onboarding-interactive', () => ({
   collectOnboardingSelections: async () => onboardingSelections,
 }))
 
+const harness = setupTtyCliHarness({
+  mockFetch: false,
+  spyStdoutWrite: true,
+  saveEnv: ['BAKIN_CONSOLE_FORMAT'],
+})
+
 describe('CLI onboard command', () => {
-  const originalArgv = process.argv
-  const originalExit = process.exit
-  const originalStdoutIsTTY = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
-  const originalConsoleFormat = process.env.BAKIN_CONSOLE_FORMAT
-  let log: ReturnType<typeof spyOn>
-  let stdoutWrite: ReturnType<typeof spyOn>
-
-  function setStdoutIsTTY(value: boolean): void {
-    Object.defineProperty(process.stdout, 'isTTY', { value, configurable: true })
-  }
-
   beforeEach(() => {
-    mock.clearAllMocks()
     onboarded = false
     onboardingSelections = {}
     onboardingState = null
-    process.argv = originalArgv
-    log = spyOn(console, 'log').mockImplementation(() => {})
-    stdoutWrite = spyOn(process.stdout, 'write').mockImplementation(() => true)
-    process.exit = ((code?: number) => {
-      if (code === 0) return undefined as never
-      throw new Error(`exit:${code}`)
-    }) as never
-    setStdoutIsTTY(true)
-  })
-
-  afterEach(() => {
-    process.argv = originalArgv
-    process.exit = originalExit
-    if (originalStdoutIsTTY) Object.defineProperty(process.stdout, 'isTTY', originalStdoutIsTTY)
-    else delete (process.stdout as { isTTY?: boolean }).isTTY
-    if (originalConsoleFormat === undefined) delete process.env.BAKIN_CONSOLE_FORMAT
-    else process.env.BAKIN_CONSOLE_FORMAT = originalConsoleFormat
-    log.mockRestore()
-    stdoutWrite.mockRestore()
   })
 
   it('continues the shared onboarding summary without replaying the brand header', async () => {
@@ -90,8 +66,8 @@ describe('CLI onboard command', () => {
     const { main } = await import('../../cli/bakin')
     await main()
 
-    const output = log.mock.calls.map((call: unknown[]) => String(call[0])).join('\n')
-    const liveOutput = stdoutWrite.mock.calls.map((call: unknown[]) => String(call[0])).join('')
+    const output = harness.output()
+    const liveOutput = harness.writeOutput()
     expect(liveOutput).toContain("┃ 🐷 Bakin'")
     expect(output).not.toContain("┃ 🐷 Bakin'")
     expect(output).toContain('Onboarding')
@@ -107,7 +83,7 @@ describe('CLI onboard command', () => {
     const { main } = await import('../../cli/bakin')
     await main()
 
-    const liveOutput = stdoutWrite.mock.calls.map((call: unknown[]) => String(call[0])).join('')
+    const liveOutput = harness.writeOutput()
     expect(liveOutput).toContain('Onboard')
     expect(liveOutput).not.toContain("┃ 🐷 Bakin'")
   })
@@ -125,7 +101,7 @@ describe('CLI onboard command', () => {
     const { main } = await import('../../cli/bakin')
     await main()
 
-    const output = log.mock.calls.map((call: unknown[]) => String(call[0])).join('\n')
+    const output = harness.output()
     expect(output).toContain("┃ 🐷 Bakin'")
     expect(output).toContain('Machine setup already complete')
     expect(output).toContain('Already onboarded on 2026-05-19.')
