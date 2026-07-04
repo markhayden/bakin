@@ -34,14 +34,25 @@ import {
   print,
   printTable,
   invocationCommand,
-  normalizeUsage,
-  usageLine,
   statusIcon,
   formatBytes,
   daysUntil,
 } from '../src/cli/output'
+import {
+  BINARY_ONLY_COMMANDS,
+  USAGE,
+  printPluginCliCommandResult,
+  printHelpTui,
+  printCommandFailureTui,
+  printVersionTui,
+  exitCommandIssue,
+  exitUsage,
+  exitUnknownSubcommand,
+  exitCommandFailure,
+  promptYesNo,
+  confirmPrompt,
+} from '../src/cli/help'
 import { getSettings, updateSettings } from '../src/core/settings'
-import { getCliUsageGroups, renderCliUsage } from '../src/core/cli/registry'
 import { parsePluginInstallArgs, PLUGIN_INSTALL_USAGE } from '../src/core/cli/plugin-install-args'
 import {
   createPluginExportManifest,
@@ -53,9 +64,6 @@ import {
 import type { Permission } from '@bakin/core/plugins/permissions'
 import { renderInkReport } from '../src/core/cli/ui/render-report'
 import type {
-  CommandFailureData,
-  CommandIssueData,
-  HelpGroupData,
   PackageActionData,
   PluginActionData,
   PluginRestoreResultData,
@@ -68,23 +76,9 @@ import type {
   SettingsActionData,
   TaskActionData,
   TrashActionData,
-  VersionData,
   WorkflowActionData,
 } from '../src/core/cli/ui/readonly'
 import type { CheckResult, InstallResult } from '../src/core/onboarding/types'
-
-async function printGenericCommandResultTui(command: string, data: unknown): Promise<void> {
-  const [{ renderCliResult }, { okResult }] = await Promise.all([
-    import('../src/core/cli/render'),
-    import('../src/core/cli/result'),
-  ])
-  console.log(renderCliResult(okResult(command, data), { mode: 'ink' }).trimEnd())
-}
-
-async function printPluginCliCommandResult(command: string, args: string[], data: unknown): Promise<void> {
-  if (process.stdout.isTTY && !args.includes('--json')) await printGenericCommandResultTui(command, data)
-  else print(data)
-}
 
 async function printStatusTui(dispatch: Record<string, unknown>, roster: CliRoster): Promise<void> {
   return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.StatusReport, { dispatch, roster })
@@ -92,105 +86,6 @@ async function printStatusTui(dispatch: Record<string, unknown>, roster: CliRost
 
 async function printRuntimeActionTui(action: RuntimeActionData): Promise<void> {
   return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.RuntimeActionReport, { action })
-}
-
-async function printHelpReportTui(groups: HelpGroupData[], error?: string, errorDetail?: string): Promise<void> {
-  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.HelpReport, {
-    groups,
-    env: { bakinUrl: BASE_URL },
-    error,
-    errorDetail,
-  })
-}
-
-async function printHelpTui(error?: string, errorDetail?: string): Promise<void> {
-  await printHelpReportTui(getCliUsageGroups({ excludeNames: BINARY_ONLY_COMMANDS }), error, errorDetail)
-}
-
-async function printCommandIssueTui(issue: CommandIssueData): Promise<void> {
-  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.CommandIssueReport, { issue })
-}
-
-async function printCommandFailureTui(failure: CommandFailureData): Promise<void> {
-  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.CommandFailureReport, { failure })
-}
-
-async function printVersionTui(data: VersionData): Promise<void> {
-  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.VersionReport, { data })
-}
-
-async function exitCommandIssue(
-  message: string,
-  options: {
-    command?: string
-    detail?: string
-    usage?: string
-    available?: string[]
-    availableLabel?: string
-    plainMessage?: boolean
-  } = {},
-): Promise<never> {
-  if (process.stdout.isTTY) {
-    await printCommandIssueTui({
-      command: options.command ?? (options.usage ? normalizeUsage(options.usage) : 'command'),
-      message,
-      detail: options.detail,
-      usage: options.usage ? normalizeUsage(options.usage) : undefined,
-      available: options.available,
-      availableLabel: options.availableLabel,
-    })
-  } else {
-    if (options.plainMessage !== false) console.error(message)
-    if (options.usage) console.error(usageLine(options.usage))
-    if (options.available?.length) console.error(`Available: ${options.available.join(' | ')}`)
-  }
-  process.exit(1)
-  throw new Error('unreachable')
-}
-
-async function exitUsage(usage: string, detail?: string): Promise<never> {
-  return exitCommandIssue('Missing required arguments.', {
-    command: normalizeUsage(usage),
-    detail,
-    usage,
-    plainMessage: false,
-  })
-}
-
-async function exitUnknownSubcommand(scope: string, sub: string | undefined, available: string[]): Promise<never> {
-  return exitCommandIssue(`Unknown ${scope} subcommand: ${sub ?? '(none)'}`, {
-    command: `bakin ${scope}`,
-    available,
-  })
-}
-
-async function exitCommandFailure(
-  message: string,
-  options: {
-    command?: string
-    detail?: string
-    code?: string
-    next?: string
-    plainLines?: string[]
-  } = {},
-): Promise<never> {
-  if (process.stdout.isTTY) {
-    await printCommandFailureTui({
-      command: options.command ?? 'bakin',
-      message,
-      detail: options.detail,
-      code: options.code ?? 'COMMAND_FAILED',
-      next: options.next,
-    })
-  } else if (options.plainLines) {
-    for (const line of options.plainLines) console.error(line)
-  } else {
-    console.error(`Error: ${message}`)
-    if (options.detail) console.error(`  ${options.detail}`)
-    if (options.next) console.error(`  ${options.next}`)
-  }
-  process.exit(1)
-  throw new Error('unreachable')
 }
 
 async function printSettingsTui(settings: Record<string, unknown>): Promise<void> {
@@ -1885,24 +1780,6 @@ async function printDoctorRepairVerifyTui(requestId: string, result: Record<stri
   return renderInkReport(() => import('../src/core/cli/ui/doctor-repair'), (m) => m.DoctorRepairVerifyReport, { requestId, result })
 }
 
-// Shared readline y/N core. Callers own their own pre-guards (isTTY / count
-// checks) so each keeps its exact behavior; only the readline boilerplate is shared.
-async function promptYesNo(message: string): Promise<boolean> {
-  const readline = await import('node:readline/promises')
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-  try {
-    const answer = await rl.question(`\n${message} [y/N] `)
-    return /^(y|yes)$/i.test(answer.trim())
-  } finally {
-    rl.close()
-  }
-}
-
-async function confirmPrompt(message: string): Promise<boolean> {
-  if (!process.stdin.isTTY) return false
-  return promptYesNo(message)
-}
-
 async function confirmDoctorRepair(plan: CliDoctorRepairPlan): Promise<boolean> {
   if (plan.summary.safeItems === 0) return false
   return promptYesNo(`Apply ${plan.summary.safeItems} safe repair item${plan.summary.safeItems === 1 ? '' : 's'}?`)
@@ -3539,9 +3416,6 @@ async function dispatchPluginCliCommand(cmd: string, args: string[]): Promise<bo
   }
   return false
 }
-
-const BINARY_ONLY_COMMANDS = new Set<string>()
-const USAGE = renderCliUsage({ bakinUrl: BASE_URL }, { excludeNames: BINARY_ONLY_COMMANDS })
 
 // ---------------------------------------------------------------------------
 // Onboarding CLI handlers
