@@ -23,7 +23,7 @@ import { createLogger } from './logger'
 const log = createLogger('task-store')
 
 // TaskLogEntry is single-homed in the SDK; re-exported via @bakin/core/tasks/store.
-export type { TaskLogEntry } from '@bakin/core/tasks/store'
+export type { TaskLogEntry, TaskSource } from '@bakin/core/tasks/store'
 
 export interface Task {
   id: string
