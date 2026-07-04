@@ -366,9 +366,6 @@ plugins/workflows/lib/
 ├── skill-loader.ts         extended with agent-package tier
 └── agent-package-skill-registry.ts  in-memory registry (parallel to plugin skills)
 
-scripts/migration/
-└── validate-package.ts     zod-validate a candidate package directory
-
 Agent packages now live outside the Bakin core repo:
 - Public first-party agents: `github:markhayden/bakin-bits-official#agents/<id>`
 - Private agents: `github:markhayden/bakin-bits-official-private#agents/<id>`

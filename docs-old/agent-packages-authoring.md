@@ -509,14 +509,10 @@ cycle), the loop is just remove + install:
 bakin packages remove my-pack@0.1.0 && bakin packages install ./my-pack
 ```
 
-Validation without installing: there's a script in
-`scripts/migration/validate-package.ts` that runs the manifest schema
-against a candidate directory and prints the validation result. Useful
-in CI for package repos:
-
-```sh
-bun run scripts/migration/validate-package.ts ./my-agent
-```
+Validation happens at install time (`bakin packages install` runs the
+manifest schema against the package directory and rejects invalid
+manifests before any files land). The old standalone
+`scripts/migration/validate-package.ts` checker was removed as unused.
 
 ## Drift + repair
 
@@ -563,7 +559,7 @@ bakin-agent-my-agent/
 ├── lessons/
 ├── assets/
 ├── .github/workflows/
-│   └── validate.yml         ← CI: bun run scripts/.../validate-package.ts
+│   └── validate.yml         ← CI: install the package against a scratch BAKIN_HOME
 └── LICENSE
 ```
 
