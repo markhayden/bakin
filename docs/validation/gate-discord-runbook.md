@@ -60,7 +60,7 @@ bun scripts/validate-gates.ts --all --report docs/validation/report-$(date +%Y%m
 ```
 
 Flags: `--agent` (assignee for `$assigned` steps, default `main`), `--workflow`
-(default `text-social-post-copy`), `--rewind-step` (default `write-copy`),
+(default `messaging-blog-prep`), `--rewind-step` (default `draft`),
 `--report <file>`. `us1..us6` are accepted scenario aliases.
 
 The script machine-checks instance state transitions, durable approval records,

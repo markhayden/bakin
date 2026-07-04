@@ -360,14 +360,14 @@ async function main(): Promise<void> {
   const scenario = requested ? (scenarioAliases[requested] ?? requested) : undefined
   const all = args.includes('--all')
   const agent = flag('agent') || 'main'
-  const workflowId = flag('workflow') || 'text-social-post-copy'
-  const rewindStepId = flag('rewind-step') || 'write-copy'
+  const workflowId = flag('workflow') || 'messaging-blog-prep'
+  const rewindStepId = flag('rewind-step') || 'draft'
   const reportPath = flag('report')
 
   const knownScenarios = ['delivery', 'approve', 'reject', 'ui-approve', 'nested']
   if ((!scenario && !all) || (scenario && !knownScenarios.includes(scenario))) {
     if (scenario) console.error(`Unknown scenario: ${scenario}`)
-    console.log('Usage: bun scripts/validate-gates.ts --scenario <delivery|approve|reject|ui-approve|nested|us1..us6> [--agent main] [--workflow text-social-post-copy] [--report out.md]')
+    console.log('Usage: bun scripts/validate-gates.ts --scenario <delivery|approve|reject|ui-approve|nested|us1..us6> [--agent main] [--workflow messaging-blog-prep] [--report out.md]')
     console.log('       bun scripts/validate-gates.ts --all [--agent main] [--report out.md]')
     process.exit(1)
   }
