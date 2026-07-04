@@ -28,6 +28,7 @@ import { matchWorkflow } from './matcher'
 import { listDefinitions, loadDefinition } from './parser'
 import { workflowDefinitionNameFromHookInput } from './hook-input'
 import { validateStepOutput } from './schema-validator'
+import { clearSkillCache } from './skill-loader'
 import { listNotificationChannels, getNotificationChannel } from '@bakin/core/workflows/notification-channel-registry'
 
 export function registerWorkflowHooks(ctx: PluginContext): void {
@@ -67,6 +68,9 @@ export function registerWorkflowHooks(ctx: PluginContext): void {
   ctx.hooks.register('workflows.cancelInstance', (d: Record<string, unknown>) => {
     cancelInstance(d.taskId as string, d.contentDir as string | undefined)
   }, { label: 'Cancel workflow instance.', summary: 'Cancels the workflow instance attached to a task. Use it when task state changes make the workflow no longer relevant or safe to continue.', hookKind: 'event' })
+  ctx.hooks.register('workflows.clearSkillCache', () => {
+    clearSkillCache()
+  }, { label: 'Clear workflow skill cache.', summary: 'Drops the in-memory workflow-skill resolution cache so the next lookup re-reads disk and the registries. Use it after agent-package sync, migration, install, or removal changes which skills resolve.', hookKind: 'event' })
 
   // ─── Notification Channel Registry Hooks ─────────────────────────
   ctx.hooks.register('workflows.notificationChannels.list', () => listNotificationChannels(), { label: 'List notification channels.', summary: 'Returns workflow notification channels registered by core or plugins. Use it to show available delivery targets for gate and workflow alerts.', hookKind: 'rpc' })
