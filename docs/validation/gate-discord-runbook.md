@@ -18,10 +18,14 @@ Spec + acceptance criteria: `SPEC.md` (US1–US7). Plan: `tasks/gate-discord/pla
    ```json
    "notifications": {
      "channel": "discord",
-     "target": "<general channel id>",
+     "target": "channel:<general channel id>",
      "channelAliases": { "approvals": "discord:channel:<approvals channel id>" }
    }
    ```
+   The `channel:` prefix applies to `target` too — OpenClaw rejects bare
+   Discord ids as ambiguous ("for channels use channel:<id>"), which breaks
+   the watchdog's gate alert and anything using the synthesized `general`
+   alias.
 3. **Workflows plugin settings** (`~/.bakin/plugin-settings/workflows.json`):
    `approvalChannelAlerts: true`, `approvalChannel: "approvals"`,
    `requireRejectReason: true`.
