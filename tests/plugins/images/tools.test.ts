@@ -9,7 +9,15 @@ import { resetContentDir } from '../../../src/core/content-dir'
 let testDir = join(tmpdir(), `bakin-images-tools-${Date.now()}`)
 
 import { editImage, exportImage, generateImage, importImage } from '../../../plugins/images/lib/tools'
-import { createAsset, addVersion } from '../../../plugins/assets/lib/asset-service'
+import {
+  createAsset,
+  addVersion,
+  getAsset as realGetAsset,
+  getAssetSummary as realGetAssetSummary,
+  listAssets as realListAssets,
+  upsertFromSource as realUpsertFromSource,
+  resolveStoreFile as realResolveStoreFile,
+} from '../../../plugins/assets/lib/asset-service'
 
 const originalOpenAI = process.env.OPENAI_API_KEY
 const originalGemini = process.env.GEMINI_API_KEY
@@ -31,6 +39,17 @@ function makeContext(overrides: Partial<PluginContext> = {}, sourceRef: { absPat
       addVersion: mock(async (assetId: string, input: Record<string, unknown>) => { versioned.push({ assetId, input }); return { assetId, version: 2 } }),
       addExport: mock(async (assetId: string, input: Record<string, unknown>) => { exported.push({ assetId, input }); return { name: input.surface as string, file: `exports/${input.surface}.${input.format}` } }),
       resolveVersionFile: mock(async () => sourceRef),
+      // Read paths delegate to the REAL asset service against the temp
+      // BAKIN_HOME — the same store the tests seed with createAsset/addVersion
+      // (tools.ts used to import these directly; it now goes through ctx.assets).
+      getAsset: mock(async (assetId: string) => realGetAssetSummary(assetId)),
+      listAssets: mock(async (filter?: { type?: 'images'; taskId?: string }) => realListAssets(filter)),
+      getAssetVersions: mock(async (assetId: string) => {
+        const manifest = realGetAsset(assetId)
+        return manifest ? { currentVersion: manifest.currentVersion, versions: manifest.versions } : null
+      }),
+      upsertFromSource: mock(realUpsertFromSource),
+      resolveStoreFile: mock(async (absPath: string) => realResolveStoreFile(absPath)),
     },
     runtime: { config: { get: mock(async () => ({})) } },
     ...overrides,

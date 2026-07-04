@@ -69,8 +69,8 @@ import {
 import {
   registerPluginNodeType,
   unregisterPluginNodeTypes,
-} from '@bakin/workflows/lib/node-type-registry'
-import { workflowDefinitionSchema } from '@bakin/workflows/lib/node-type-registry'
+} from '@bakin/core/workflows/node-type-registry'
+import { workflowDefinitionSchema } from '@bakin/core/workflows/node-type-registry'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 
 /**

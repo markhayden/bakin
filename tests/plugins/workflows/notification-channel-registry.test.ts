@@ -40,7 +40,7 @@ import {
   unregisterNotificationChannel,
   registerPluginNotificationChannel,
   unregisterPluginNotificationChannels,
-} from '../../../plugins/workflows/lib/notification-channel-registry'
+} from '@bakin/core/workflows/notification-channel-registry'
 
 const BUILTIN_IDS = ['general', 'announcements', 'alerts', 'email']
 

@@ -18,7 +18,7 @@
  * Backed by globalThis so a single process keeps one registry instance
  * even when this module is reached from multiple entry points.
  */
-import type { WorkflowDefinition } from '../types'
+import type { WorkflowDefinition } from './definition-types'
 
 export type DefinitionSource = 'plugin' | 'agent-package' | 'user'
 

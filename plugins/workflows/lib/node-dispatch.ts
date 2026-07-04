@@ -16,7 +16,7 @@ import type {
 } from '../types'
 import { loadDefinition, findStep } from './parser'
 import { notifyStepDispatched } from './notifications'
-import { isPluginKind } from './node-type-registry'
+import { isPluginKind } from '@bakin/core/workflows/node-type-registry'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { createLogger } from '@bakin/core/logger'
 import { loadInstance, saveInstance } from './instance-store'

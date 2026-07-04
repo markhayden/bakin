@@ -28,7 +28,7 @@ import { parseFrontmatter } from '@bakin/core/format/frontmatter'
 import type { SkillDefinition } from '../types'
 import { getContentDir } from './content-dir'
 import { getPluginSkills } from '@bakin/core/skills/plugin-skill-registry'
-import { getAgentPackageSkills } from './agent-package-skill-registry'
+import { getAgentPackageSkills } from '@bakin/core/workflows/agent-package-skill-registry'
 
 const skillCache = new Map<string, SkillDefinition | null>()
 

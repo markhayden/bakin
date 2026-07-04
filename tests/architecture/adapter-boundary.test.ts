@@ -100,6 +100,14 @@ const DENYLIST = [
     allow: (rel: string) => rel === 'src/core/runtime-config-raw.ts',
   },
   {
+    // Whole-config reads/replaces are scope-typed + mutation-audited via the
+    // governed wrapper; direct adapter calls bypass that (the audit's
+    // config-surface finding). update(patch) no longer exists at all.
+    label: 'whole runtime-config access outside the governed wrapper',
+    regex: /\.config\.(?:get|replace|update)\s*(?:<[^>]*>)?\s*\(/,
+    allow: (rel: string) => rel === 'src/core/runtime-config.ts',
+  },
+  {
     label: 'provider setup URL outside adapter factory',
     regex: /openclaw\.ai/,
     allow: (rel: string) => rel === 'src/core/runtime-adapter-factory.ts',

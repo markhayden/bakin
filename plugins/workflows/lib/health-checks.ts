@@ -18,7 +18,7 @@ import { healthOk as ok, healthWarn as warn, healthFixed as fixed } from '@makin
 import { splitFrontmatter } from '@bakin/core/format/frontmatter'
 
 import { listDefinitions } from './parser'
-import { getAgentPackageSkills } from './agent-package-skill-registry'
+import { getAgentPackageSkills } from '@bakin/core/workflows/agent-package-skill-registry'
 import { getPluginSkills } from '@bakin/core/skills/plugin-skill-registry'
 import { listInstances } from './runtime'
 import {

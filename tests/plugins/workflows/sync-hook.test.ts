@@ -73,7 +73,7 @@ mock.module('@/core/task-store', () => ({
 }))
 
 import workflowsPlugin from '../../../plugins/workflows'
-import { clearSourceRegistry, registerPluginDefinition } from '../../../plugins/workflows/lib/source-registry'
+import { clearSourceRegistry, registerPluginDefinition } from '@bakin/core/workflows/source-registry'
 import { resetWorkflowAvailabilityCache, setWorkflowDisabled } from '../../../plugins/workflows/lib/availability'
 
 afterAll(() => {
@@ -110,6 +110,10 @@ function makeCtx(): CapturedCtx {
       addVersion: mock(async () => ({ assetId: 'test-asset', version: 2 })),
       addExport: mock(async () => ({ name: 'export', file: 'exports/export.jpg' })),
       resolveVersionFile: mock(async () => null),
+      listAssets: mock(async () => []),
+      getAssetVersions: mock(async () => null),
+      upsertFromSource: mock(async () => ({ assetId: 'test-asset', version: 1, changed: true })),
+      resolveStoreFile: mock(async () => null),
     },
     registerNav: mock(),
     registerRoute: mock(),

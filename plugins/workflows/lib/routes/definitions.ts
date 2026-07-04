@@ -27,12 +27,12 @@ import {
   isReadOnly,
   getDefinition as getRegistryDefinition,
   getShadowedSource,
-} from '../source-registry'
+} from '@bakin/core/workflows/source-registry'
 import { isWorkflowDisabled, setWorkflowDisabled } from '../availability'
 import { indexDefinition } from '../search-sync'
 import { repairWorkflowSkillDrift } from '../workflow-skill-drift'
-import { workflowDefinitionSchema, listNodeTypes } from '../node-type-registry'
-import { listNotificationChannels } from '../notification-channel-registry'
+import { workflowDefinitionSchema, listNodeTypes } from '@bakin/core/workflows/node-type-registry'
+import { listNotificationChannels } from '@bakin/core/workflows/notification-channel-registry'
 import { passthroughWf, errorResponseWf, repairSkillBodyWf } from '../route-schemas'
 
 const log = createLogger('workflows')

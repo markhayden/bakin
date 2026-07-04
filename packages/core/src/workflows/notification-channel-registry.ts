@@ -11,7 +11,7 @@
 import type {
   NotificationChannelDef,
   PluginNotificationChannelInput,
-} from '../../../packages/core/src/plugin-types'
+} from '../plugin-types'
 
 export type { NotificationChannelDef, PluginNotificationChannelInput }
 

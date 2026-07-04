@@ -180,6 +180,35 @@ The core→plugin boundary violation is live and unguarded; nothing stops it mul
    with the implementations, or record the cohesion justification. (The larger SDK↔app cycle
    stays deferred — see Re-deferred.)
 
+**FW3 STATUS — ☑ DONE (2026-07-04, branch `refactor/boundary`, 13 commits).**
+The boundary is now real and guarded:
+1. **Workflow registries → `packages/core/src/workflows/`** (source/node-type/notification-channel/
+   agent-package-skill registries + the definition type family + validateDefinition +
+   loadDefaultWorkflows); `clearSkillCache` rewired through the HookRegistry. Zero core→plugin
+   workflow imports remain (grep-proven).
+2. **Assets crossing consolidated**: new sanctioned bridge `src/core/assets-bridge.ts` (the single
+   core-side crossing, lazy); `ctx.assets` AssetsAPI extended (listAssets, getAssetVersions +
+   published AssetVersionDetail, upsertFromSource, resolveStoreFile); images plugin fully on
+   ctx.assets — the repo's only cross-plugin import is gone; isValidAssetId became a pure SDK util.
+3. **`tests/architecture/plugin-boundaries.test.ts`**: bans cross-plugin imports (zero, no
+   allowlist) and core→plugin imports outside 3 justified entries (static-imports table, assets
+   bridge, generated embeds); stale-entry ratchet; negative-tested.
+4. **Config governance**: `src/core/runtime-config.ts` wrapper (typed scopes, audited replaces,
+   un-audited hot-path reads — deliberate); dead `config.update(patch)` DELETED from the adapter
+   contract; adapter-boundary test gates `.config.get/replace` like `.raw`. Typed-adapter-method
+   promotion deferred to the FW5 models split (where the RuntimeModelConfig shape gets designed).
+5. **Import-cycle ratchet**: `bun run check:cycles` (madge) pins the 16 known cycles with reasons,
+   fails CI (ci-pr + ci-main) on new AND stale entries.
+6. **scripts/ out of the prod graph**: the 5 self-registering tool peers + common.ts →
+   `src/core/exec-tools/tools/`; post-channel debug CLI shebang npx-tsx → bun; docs scanner
+   repointed; plugin-system.md exec-tool authoring section fixed.
+7. **P2 #5 decided — documented, not moved**: plugin-sourced SDK hook re-exports stay (wire
+   contracts live with their owning plugin; npm publish inlines + asserts self-containment);
+   justification recorded in the sdk/hooks header.
+Gates: full suite 5,314-0; build-plugins 10/10; vendors 23; binary build + isolated-home boot
+smoke (10 plugins activate through the moved registries; schedule's openclaw-cron ENOENT is the
+documented environmental miss); check:cycles green.
+
 ### FW4 `refactor/ui-godfiles` — the dropped WS6 files
 
 All four have audited seams; pure decomposition, one PR each or stacked.

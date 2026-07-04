@@ -16,8 +16,8 @@ const contentDirMock = {
   initBakinHome: mock(),
   isUsingBakinHome: () => false,
 }
-mock.module('../../src/core/content-dir', () => contentDirMock)
-mock.module('../../packages/core/src/content-dir', () => contentDirMock)
+mock.module('../../../src/core/content-dir', () => contentDirMock)
+mock.module('../../../packages/core/src/content-dir', () => contentDirMock)
 mock.module('@/core/content-dir', () => contentDirMock)
 
 let mockChannelAliases: Record<string, string> = {}
@@ -35,7 +35,7 @@ const settingsMock = {
   }),
 }
 mock.module('@/core/settings', () => settingsMock)
-mock.module('../../src/core/settings', () => settingsMock)
+mock.module('../../../src/core/settings', () => settingsMock)
 
 // In-memory durable delivery ledger (asset-level once-per-channel dedupe).
 const idempotencyRows = new Map<string, { result: unknown }>()
@@ -44,7 +44,7 @@ const ledgerMock = {
   putIdempotent: (key: string, _kind: string, result: unknown) => { idempotencyRows.set(key, { result }) },
 }
 mock.module('@/core/execution-ledger', () => ledgerMock)
-mock.module('../../src/core/execution-ledger', () => ledgerMock)
+mock.module('../../../src/core/execution-ledger', () => ledgerMock)
 
 let mockWorkflowAuthorizationError: Error | null = null
 const mockAssertWorkflowToolAllowed = mock(async (..._args: unknown[]) => {
@@ -53,11 +53,11 @@ const mockAssertWorkflowToolAllowed = mock(async (..._args: unknown[]) => {
 mock.module('@/core/workflow-tool-authorization', () => ({
   assertWorkflowToolAllowed: (...args: unknown[]) => mockAssertWorkflowToolAllowed(...args),
 }))
-mock.module('../../src/core/workflow-tool-authorization', () => ({
+mock.module('../../../src/core/workflow-tool-authorization', () => ({
   assertWorkflowToolAllowed: (...args: unknown[]) => mockAssertWorkflowToolAllowed(...args),
 }))
 
-import { CHANNEL_POST_CHUNK_LIMIT, chunkChannelPostContent, postChannel, resetPostChannelIdempotencyForTests } from '../../scripts/lib/post-channel'
+import { CHANNEL_POST_CHUNK_LIMIT, chunkChannelPostContent, postChannel, resetPostChannelIdempotencyForTests } from '../../../src/core/exec-tools/tools/post-channel'
 
 describe('postChannel', () => {
   const originalEnv = { ...process.env }

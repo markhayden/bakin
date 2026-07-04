@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import type { NotificationChannelDef } from '../lib/notification-channel-registry'
+import type { NotificationChannelDef } from '@bakin/core/workflows/notification-channel-registry'
 
 /**
  * Module-level cache + single-flight promise. Two components mounting in

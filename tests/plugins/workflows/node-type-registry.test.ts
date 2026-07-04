@@ -37,7 +37,7 @@ import {
   nestedWorkflowStepSchema,
   createTaskStepSchema,
   type NodeTypeDef,
-} from '@bakin/workflows/lib/node-type-registry'
+} from '@bakin/core/workflows/node-type-registry'
 import { z } from 'zod'
 
 describe('node-type-registry', () => {

@@ -28,7 +28,7 @@ import {
   getGateNotificationSettings,
 } from './notifications'
 import { getContentDir } from './content-dir'
-import { isPluginKind } from './node-type-registry'
+import { isPluginKind } from '@bakin/core/workflows/node-type-registry'
 import { createLogger } from '@bakin/core/logger'
 import { loadInstance, saveInstance, generateId } from './instance-store'
 import {

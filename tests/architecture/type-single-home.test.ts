@@ -29,6 +29,7 @@ const SANCTIONED_HOMES: Record<string, string[]> = {
   Task: ['packages/sdk/src/types/services.ts', 'src/core/task-store.ts'],
   TaskSource: ['packages/sdk/src/types/services.ts', 'packages/core/src/tasks/store.ts'],
   WorkflowInstance: ['packages/sdk/src/types/registration.ts', 'plugins/workflows/types.ts'],
+  WorkflowDefinition: ['packages/sdk/src/types/registration.ts', 'packages/core/src/workflows/definition-types.ts'],
   // Single-homed (SDK is the one source; everything else re-exports)
   TaskLogEntry: ['packages/sdk/src/types/services.ts'],
   HealthCheckResult: ['packages/sdk/src/types/registration.ts'],

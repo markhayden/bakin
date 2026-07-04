@@ -1,7 +1,7 @@
 /**
  * MCP search tools plugin-param coverage.
  *
- * Phase-1 commit 64b49be rewrote scripts/lib/search-tools.ts so every tool
+ * Phase-1 commit 64b49be rewrote src/core/exec-tools/tools/search-tools.ts so every tool
  * accepts `plugin: <pluginId>` instead of a raw table name. These tests
  * exercise the resolution path for all 7 tools through the in-memory
  * exec-tool registry.
@@ -198,7 +198,7 @@ afterAll(() => {
 
 async function getTool(name: string) {
   // Importing search-tools triggers self-registration via addExecTool.
-  await import('../../scripts/lib/search-tools')
+  await import('../../src/core/exec-tools/tools/search-tools')
   const { getExecTool } = require('@/core/exec-tools/registry') as typeof import('@/core/exec-tools/registry')
   const tool = getExecTool(name)
   if (!tool) throw new Error(`Tool ${name} not registered`)
