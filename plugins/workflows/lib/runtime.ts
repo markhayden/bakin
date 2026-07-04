@@ -24,6 +24,7 @@
 export {
   loadInstance,
   saveInstance,
+  deleteInstance,
   listInstances,
   isGateNotified,
   markGateNotified,

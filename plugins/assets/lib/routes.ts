@@ -123,7 +123,7 @@ export const assetsRoutes = [
     path: '/enrich',
     method: 'POST',
     summary: 'Enqueue vision enrichment (one asset or backfill all); billed per asset version',
-    responses: { 200: okPassthrough, 400: errorResponse },
+    responses: { 200: okPassthrough, 400: errorResponse, 404: errorResponse },
     handler: async (req, ctx) => {
       const body = await req.json().catch(() => ({})) as { assetId?: unknown; assetIds?: unknown; all?: unknown; force?: unknown }
       const force = body.force === true
