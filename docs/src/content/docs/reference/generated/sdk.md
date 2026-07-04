@@ -34,6 +34,9 @@ The main entry. Re-exports the plugin contract types (`./types`) plus the high-t
 | `getPluginRoutes` | Get all registered client routes (across all plugins). |
 | `setManifestNav` | Seed a plugin's declarative nav from its manifest (host-side; survives unregisterPlugin). |
 | `getManifestNav` | Read the manifest nav currently seeded for a plugin (drift validation). |
+| `getSearchHitRenderer` | Look up the ⌘K hit renderer registered for a content type. |
+| `getSearchHitRenderersSnapshot` | Stable snapshot of all registered hit renderers keyed by content type. |
+| `subscribeSearchHitRenderers` | Subscribe to hit-renderer mutations (own channel). |
 | `ClientRouteEntry` | — |
 | `MatchedPluginRoute` | — |
 | `PluginRegistration` | — |
@@ -147,9 +150,15 @@ import { useSearch, useDebug } from '@makinbakin/sdk/hooks'
 | Hook | Description |
 | --- | --- |
 | `useNavBadge` | Sync a nav item's badge to a derived value; the recommended provider glue. |
+| `useJsonFetch` | Cancellable JSON GET with a `{ data, loading, error, refresh }` lifecycle. |
+| `UseJsonFetchResult` | — |
 | `useTaskRunHistory` | Fetch dispatch run history for a task. |
 | `TaskOutcome` | — |
 | `TaskRunEntry` | — |
+| `usePluginEvent` | Subscribe to a server-pushed plugin event over the shell's single connection. |
+| `PluginEventPayload` | Subscribe to a server-pushed plugin event over the shell's single connection. |
+| `useHorizontalResize` | Resize a side-by-side split pane by dragging the divider between columns. |
+| `useAvailableModels` | The available-models catalog (cached, read-only); empty until loaded. |
 
 ## `@makinbakin/sdk/components`
 
@@ -168,7 +177,12 @@ import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/componen
 | `AgentStatus` | Compound agent status (dot + label + last-seen timestamp). |
 | `BakinDrawer` | Right-side slide-out drawer with backdrop and focus trap. |
 | `ColorPicker` | Color picker swatch grid for tag/agent color assignment. |
+| `ConfirmDialog` | Controlled confirmation dialog for destructive actions (busy/error aware). |
+| `ConfirmDialogProps` | — |
 | `EmptyState` | Centered empty-state component with icon, title, and CTA. |
+| `SearchUnavailable` | — |
+| `ScoreOverlay` | — |
+| `ScoreOverlayInfo` | — |
 | `ErrorBanner` | Inline error banner with dismiss + retry actions. |
 | `ErrorState` | Full-page error state with title, description, and retry button. |
 | `FacetFilter` | Popover multi-select facet filter (column, owner, tag, etc.). |
@@ -240,8 +254,18 @@ Source: `packages/sdk/src/utils/index.ts`.
 
 | Utility | Description |
 | --- | --- |
+| `healthOk` | Build an `ok` health-check result. |
+| `healthWarn` | Build a `warn` health-check result (optionally auto-fixable). |
+| `healthError` | Build an `error` health-check result (optionally auto-fixable). |
+| `healthFixed` | Build a `fixed` health-check result (the auto-repair just ran). |
 | `cn` | Tailwind class merger (clsx + tailwind-merge). |
+| `BadgeTone` | Semantic tone for an outline status badge. |
+| `toneBadgeClass` | Classes for an outline status badge of the given tone — the |
+| `isValidAssetId` | Pure assetId shape validators (see ./asset-id). |
+| `yearMonthFromAssetId` | Pure assetId shape validators (see ./asset-id). |
 | `formatAge` | Format a Date or ISO string as a relative age (e.g. "5m ago"). |
+| `formatDateTime` | Format an ISO timestamp as a calendar-aware absolute date+time (e.g. "Today 3:45 PM", "Jan 5 9:02 AM"). |
+| `formatDuration` | Format a millisecond count as an elapsed duration (e.g. "42s", "3m 5s"); null when undefined. |
 | `formatSize` | Format a byte count as a human-readable size string (e.g. "1.2 MB"). |
 | `isStale` | Returns true if a timestamp is older than a configurable staleness threshold. |
 | `brainstormActivityMessageFromCustom` | Convert a custom activity message into a brainstorm activity input. |
@@ -314,5 +338,5 @@ Source: `packages/sdk/src/routing/index.ts`.
 | `DefinePluginInput` | — |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jun 13, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 4, 2026 · Bakin 0.0.0-dev</span>
 </aside>

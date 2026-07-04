@@ -144,6 +144,10 @@ Plugins compose by `assetId` (`/api/assets/<assetId>` is a stable URL) or by slo
 | Generate thumbnails | `boolean` | `true` | Auto-create optimized thumbnails on upload |
 | Max file size (MB) | `number` | `50` | Reject uploads larger than this |
 | Purge clipboard assets on task completion | `boolean` | `false` | Auto-delete clipboard-pasted assets when their linked task is marked done |
+| Vision enrichment | `boolean` | `true` | Derive caption/OCR/tags from asset content with a vision model (billed per asset version) |
+| Enrichment provider | `select` | `auto` | auto = cheapest configured API model, else the runtime agent when its model accepts images; runtime = agent turns only (subscription quota) |
+| Enrichment model override | `string` |  | Exact model id (catalog or provider-native); empty = auto |
+| Enrichment agent | `string` | `enrich` | Runtime agent for subscription-quota enrichment turns — its configured model must accept images (per-turn overrides don't pass the attachment gate; bakin#583/#584) |
 
 </div>
 <!-- /docs:settings -->
@@ -156,6 +160,8 @@ Most asset workflows happen in the UI or through agents. Trash is CLI-friendly:
 | Command | Purpose |
 | --- | --- |
 | `bakin trash [list\|restore\|empty] ...` | Manage trashed assets. |
+| `bakin assets scan` | List unmanaged files awaiting explicit import |
+| `bakin assets import [--all\|<path>] [--type t]` | Import unmanaged files into managed versioned assets |
 <!-- /docs:cli-commands -->
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/). HTTP API surface: see the [API reference](/docs/reference/generated/api/#assets).
@@ -171,6 +177,7 @@ Agents create, version, link, and curate assets through MCP exec tools. The head
 - `bakin_exec_assets_delete`: Soft-delete a whole asset (all versions) to trash, restorable until trash is emptied.
 - `bakin_exec_assets_empty_trash`: Permanently delete all trashed assets. This cannot be undone.
 - `bakin_exec_assets_get`: Retrieve an asset manifest (versions, current pointer, exports) by assetId.
+- `bakin_exec_assets_import`: Explicitly import unmanaged files into managed versioned assets. Pass path (content-dir relative, e.g. assets/inbox/pic.png) or all: true. Optional type override and taskId link.
 - `bakin_exec_assets_link`: Link an asset to a different task, or unlink it (set taskId to null).
 - `bakin_exec_assets_list`: List managed assets (one entry per asset, current-version view). Optional type, task, and tag filters. Tags are the UI "folders" — pass tags to list a folder, e.g. ["brand"].
 - `bakin_exec_assets_list_trash`: List trashed assets (whole-asset deletions) with deletion time and version count.
@@ -179,6 +186,7 @@ Agents create, version, link, and curate assets through MCP exec tools. The head
 - `bakin_exec_assets_restore`: Restore a trashed asset by its trash name (from bakin_exec_assets_list_trash).
 - `bakin_exec_assets_retype`: Change an asset type classification.
 - `bakin_exec_assets_save`: Save an agent-created file as a managed, versioned asset. Re-saving the SAME source file appends a new version to the existing asset (or no-ops if unchanged) instead of creating a duplicate — so an evolving doc stays one asset with a version history. Returns the asset id.
+- `bakin_exec_assets_scan_unmanaged`: List files under assets/ that are NOT managed assets (inbox drops, loose files). Nothing is imported automatically — use bakin_exec_assets_import to import.
 <!-- /docs:exec-tools -->
 
 Full schemas and arguments in the [Exec tools reference](/docs/reference/generated/exec-tools/).

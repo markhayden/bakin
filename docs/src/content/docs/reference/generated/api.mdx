@@ -512,6 +512,29 @@ curl -sS \
 
 <OpenApiReference tag="Assets" summary />
 
+<OpenApiReference operationId="assets.post.enrich">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/assets/enrich'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets.post.import">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/assets/import'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets.get.import-scan">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/assets/import/scan'
+```
+</OpenApiReference>
+
 <OpenApiReference operationId="assets.get.search">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
@@ -603,6 +626,14 @@ curl -sS \
 curl -sS \
   -X DELETE \
   'http://localhost:3737/api/plugins/assets/versioned/<assetId>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets.patch.versioned-asset-id-enrichment">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PATCH \
+  'http://localhost:3737/api/plugins/assets/versioned/<assetId>/enrichment'
 ```
 </OpenApiReference>
 
@@ -765,6 +796,13 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   'http://localhost:3737/api/plugins/health/search-status'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="health.get.search-telemetry">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/health/search-telemetry'
 ```
 </OpenApiReference>
 
@@ -1725,5 +1763,5 @@ curl -sS \
 </OpenApiReference>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jun 13, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 4, 2026 · Bakin 0.0.0-dev</span>
 </aside>

@@ -67,6 +67,10 @@ description: Generated reference for Bakin core settings defaults.
   </thead>
   <tbody>
     <tr>
+      <td><code>dispatch.contextBudgetBytes</code></td>
+      <td><code>65536</code></td>
+    </tr>
+    <tr>
       <td><code>dispatch.failureCooldownMs</code></td>
       <td><code>1800000</code></td>
     </tr>
@@ -89,6 +93,10 @@ description: Generated reference for Bakin core settings defaults.
     <tr>
       <td><code>dispatch.maxTurnsPerAgent</code></td>
       <td><code>1</code></td>
+    </tr>
+    <tr>
+      <td><code>dispatch.maxWorkflowContextBytes</code></td>
+      <td><code>16384</code></td>
     </tr>
     <tr>
       <td><code>dispatch.oversizedOutputBytes</code></td>
@@ -236,7 +244,7 @@ description: Generated reference for Bakin core settings defaults.
     </tr>
     <tr>
       <td><code>search.settings.embedders.visual.model</code></td>
-      <td><code>&quot;Xenova/clip-vit-base-patch32&quot;</code></td>
+      <td><code>&quot;antflydb/clipclap&quot;</code></td>
     </tr>
     <tr>
       <td><code>search.settings.embedders.visual.provider</code></td>
@@ -395,5 +403,5 @@ description: Generated reference for Bakin core settings defaults.
 
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jun 13, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 4, 2026 · Bakin 0.0.0-dev</span>
 </aside>
