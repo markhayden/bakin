@@ -54,12 +54,12 @@ Turns and Audit are noisy by default. Flip the `System Logs` toggle in the page 
 
 | Setting | Type | Default | What it does |
 | --- | --- | --- | --- |
-| Backfill window (days) | `number` | `30` | On first activation, index this many days of history across all tiers. |
-| Skip sessions over (bytes) | `number` | `10 * 1024 * 1024` | Transcripts larger than this are skipped to keep the indexer responsive. |
-| Skip .reset backup transcripts | `boolean` | `true` | Historical reset backups are not live state; skip by default. |
-| Compare against runtime recall | `boolean` | `true` | Show runtime daily-note recall alongside Bakin search results. |
-| Turn retention (days) | `number` | `7` | Turns older than this are dropped at write time and pruned daily. The runtime still owns the source transcript. |
-| Audit retention (days) | `number` | `30` | Audit rows older than this are dropped at write time and pruned daily. |
+| Backfill window (days) | `number` | `DEFAULTS.backfillDays` | On first activation, index this many days of history across all tiers. |
+| Skip sessions over (bytes) | `number` | `DEFAULTS.skipSessionOverBytes` | Transcripts larger than this are skipped to keep the indexer responsive. |
+| Skip .reset backup transcripts | `boolean` | `DEFAULTS.skipResetBackups` | Historical reset backups are not live state; skip by default. |
+| Compare against runtime recall | `boolean` | `DEFAULTS.runtimeComparisonEnabled` | Show runtime daily-note recall alongside Bakin search results. |
+| Turn retention (days) | `number` | `DEFAULTS.turnRetentionDays` | Turns older than this are dropped at write time and pruned daily. The runtime still owns the source transcript. |
+| Audit retention (days) | `number` | `DEFAULTS.auditRetentionDays` | Audit rows older than this are dropped at write time and pruned daily. |
 
 </div>
 <!-- /docs:settings -->

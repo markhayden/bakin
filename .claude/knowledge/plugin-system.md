@@ -24,7 +24,7 @@ Bakin's plugin system is three things working in concert:
    react-free — guard: `assertServerBundleExternalsClean` in
    `src/core/whiskit/build.ts`, #267 residual).
 3. A **shared runtime identity** — plugins mark `react` and
-   `@bakin/sdk/*` as externals. The browser import map
+   `@makinbakin/sdk/*` as externals. The browser import map
    (`packages/host/public/index.html` + `scripts/build-vendors.ts`)
    points those specifiers at singleton vendor bundles, so every
    plugin shares one React and one SDK with the shell.
@@ -32,7 +32,7 @@ Bakin's plugin system is three things working in concert:
 Cross-plugin communication never goes through direct imports. On the
 server it goes through the HookRegistry
 (`packages/core/src/hooks/hook-registry.ts`). On the client it goes
-through `@bakin/sdk/hooks` (data hooks) and slots.
+through `@makinbakin/sdk/hooks` (data hooks) and slots.
 
 ## Core vs user plugins
 
@@ -851,30 +851,24 @@ bytes instead of disk.
 
 ### Core plugins — `scripts/build-plugins.ts`
 
-For each of the 10 core plugins:
+For each of the 10 core plugins, **browser assets only** (`serverEntry:
+false` — core plugin server code is never bundled; `server.ts` reaches
+`plugins/<id>/index.ts` through the static import table in
+`src/lib/plugin-static-imports.ts`, #421):
 
 ```
-bun build plugins/<id>/index.ts
-  --outdir plugins/<id>/dist
-  --target bun --format esm
-  --entry-naming index.[ext]
-  --packages external                ← keep node_modules out of the bundle
-  --external react --external react-dom ...
-  --external @bakin/sdk --external @bakin/sdk/ui ...
-
 bun build plugins/<id>/client.tsx    (if it exists)
   --outdir plugins/<id>/dist
   --target browser --format esm
   --entry-naming client.[ext]
   --external react --external react-dom ...
-  --external @bakin/sdk --external @bakin/sdk/ui ...
+  --external @makinbakin/sdk --external @makinbakin/sdk/ui ...
 ```
 
-Server entries use `--packages=external` because the host has every
-node_modules dep already installed — the plugin bundle is a thin
-adapter, not a standalone binary. Client entries only externalize
-react + sdk; everything else (lucide icons, zustand, shadcn primitives)
-bundles in so the plugin is self-contained from the browser's POV.
+Client entries only externalize react + sdk; everything else (lucide
+icons, zustand, shadcn primitives) bundles in so the plugin is
+self-contained from the browser's POV. The externals list is the shared
+contract in `src/core/whiskit/externals.ts` (`PLUGIN_CLIENT_EXTERNALS`).
 
 ### User plugins — `buildUserPlugin()`
 
@@ -882,7 +876,7 @@ bundles in so the plugin is self-contained from the browser's POV.
 shape inside the Bakin binary when the user runs `bakin plugins install`:
 
 1. Compare source mtimes to `dist/` mtimes — skip if up-to-date.
-2. If `package.json` declares deps beyond `@bakin/sdk` / `react` peers,
+2. If `package.json` declares deps beyond `@makinbakin/sdk` / `react` peers,
    run `bun install` in the plugin dir.
 3. `Bun.build()` server entry with `packages=external` + externals.
 4. `Bun.build()` client entry with browser target + externals.
@@ -915,24 +909,24 @@ filenames are stable (#422, guarded by
 `tests/scripts/sdk-vendor-bundles.test.ts`).
 
 The `<script type="importmap">` in `packages/host/public/index.html`
-maps `react`, `react-dom`, `@bakin/sdk`, `@bakin/sdk/ui`, etc. to those
+maps `react`, `react-dom`, `@makinbakin/sdk`, `@makinbakin/sdk/ui`, etc. to those
 files. Changes to either file must happen in lockstep — the
 specifier list is duplicated because the map is static HTML and the
 build script is the generator.
 
-## @bakin/sdk Surface
+## @makinbakin/sdk Surface
 
-Plugin authors import from `@bakin/sdk/*`. Full sub-path map:
+Plugin authors import from `@makinbakin/sdk/*`. Full sub-path map:
 
 | Path | What it exports |
 |------|-----------------|
-| `@bakin/sdk` | `registerPlugin`, `getAllNavItems`, `NavItem` type |
-| `@bakin/sdk/ui` | shadcn primitives (Button, Card, Dialog, Input, Select, Table, Tabs, Tooltip, ...) |
-| `@bakin/sdk/hooks` | React hooks (`useAgent`, `useAgentList`, `useSSE`, `usePluginEvent`, `useJsonFetch`, `useAvailableModels`, `useSearch`, `useQueryState`, `useQueryArrayState`, `useDebug`, `useNotificationChannels`, ...) |
-| `@bakin/sdk/components` | Shared components (`PluginHeader`, `FacetFilter`, `AgentAvatar`, `AgentSelect`, `ConfirmDialog`, `EmptyState`, `ChannelIcon`, `BakinDrawer`, ...) |
-| `@bakin/sdk/slots` | `Slot`, `registerSlot`, `__clearSlot` |
-| `@bakin/sdk/types` | Canonical, self-contained contract types (`PluginContext`, `BakinPlugin`, `Task`, `WorkflowDefinition`, ...), split into primitives/manifest/runtime/services/registration/context behind a barrel. The single source of truth — `packages/core/src/plugin-types.ts` re-exports the identical leaf types from here and keeps its own fuller internal tier (see repo-architecture.md § two-tier type contract). |
-| `@bakin/sdk/utils` | `cn`, `formatAge`, `formatDateTime`, `formatDuration`, `formatSize`, `isStale`, `toneBadgeClass` |
+| `@makinbakin/sdk` | `registerPlugin`, `getAllNavItems`, `NavItem` type |
+| `@makinbakin/sdk/ui` | shadcn primitives (Button, Card, Dialog, Input, Select, Table, Tabs, Tooltip, ...) |
+| `@makinbakin/sdk/hooks` | React hooks (`useAgent`, `useAgentList`, `useSSE`, `usePluginEvent`, `useJsonFetch`, `useAvailableModels`, `useSearch`, `useQueryState`, `useQueryArrayState`, `useDebug`, `useNotificationChannels`, ...) |
+| `@makinbakin/sdk/components` | Shared components (`PluginHeader`, `FacetFilter`, `AgentAvatar`, `AgentSelect`, `ConfirmDialog`, `EmptyState`, `ChannelIcon`, `BakinDrawer`, ...) |
+| `@makinbakin/sdk/slots` | `Slot`, `registerSlot`, `__clearSlot` |
+| `@makinbakin/sdk/types` | Canonical, self-contained contract types (`PluginContext`, `BakinPlugin`, `Task`, `WorkflowDefinition`, ...), split into primitives/manifest/runtime/services/registration/context behind a barrel. The single source of truth — `packages/core/src/plugin-types.ts` re-exports the identical leaf types from here and keeps its own fuller internal tier (see repo-architecture.md § two-tier type contract). |
+| `@makinbakin/sdk/utils` | `cn`, `formatAge`, `formatDateTime`, `formatDuration`, `formatSize`, `isStale`, `toneBadgeClass` |
 
 ### Shared client primitives (WS3/WS3b)
 
@@ -945,7 +939,7 @@ The audit consolidated copy-pasted client patterns into the SDK; reach for these
 - `toneBadgeClass(tone)` — the `bg-X-500/10 text-X-400 border-X-500/20` outline-badge idiom across `success|pending|error|muted|info`.
 - `formatDateTime(ts)` / `formatDuration(ms)` — calendar-aware absolute time and elapsed-duration formatters next to `formatAge`.
 
-Published to npm as `@bakin/sdk`. `scripts/publish-sdk.ts` pushes on the
+Published to npm as `@makinbakin/sdk`. `scripts/publish-sdk.ts` pushes on the
 release workflow. Lint rules block direct imports from `@/components/*`,
 `@/hooks/*`, `@/lib/*`, and other plugins — the SDK is the only
 surface plugin authors should see.
@@ -959,7 +953,7 @@ its own teardown bugs. Instead they subscribe to named server events
 through `usePluginEvent`:
 
 ```ts
-import { usePluginEvent } from '@bakin/sdk/hooks'
+import { usePluginEvent } from '@makinbakin/sdk/hooks'
 
 usePluginEvent('asset.changed', (payload) => { /* refetch, etc. */ })
 ```
@@ -995,7 +989,7 @@ backs them via a globalThis-backed `Map<name, Array<{Component, order}>>`
 (survives HMR). Lower `order` wins; default is 100.
 
 ```ts
-import { registerSlot, Slot } from '@bakin/sdk/slots'
+import { registerSlot, Slot } from '@makinbakin/sdk/slots'
 
 // Contribute
 registerSlot('asset-preview', MyRenderer, 50)
@@ -1509,10 +1503,10 @@ Two distinct error sources, each with its own tracker:
 | `packages/host/src/api/plugins/manifest.ts` | `GET /api/plugins/manifest` for the loader |
 | `packages/host/src/api/plugins/assets.ts` | Serves the plugin `client.js` bundle |
 | `packages/host/src/api/plugins/[pluginId]/[[...path]].ts` | Catch-all plugin API router |
-| `src/lib/plugin-registry.ts` | Plugin loading singleton, topo sort, route/nav/slot lookups |
+| `src/core/plugin-registry.ts` | Plugin loading singleton, topo sort, route/nav/slot lookups |
 | `src/lib/plugin-static-imports.ts` | Core plugin import table consumed by server.ts |
 | `bakin.config.ts` | Core plugin enable list |
 | `scripts/build-plugins.ts` | Core plugin build pipeline |
 | `scripts/build-vendors.ts` | Import-map vendor bundles |
-| `scripts/lib/registry.ts` | Exec tool registry |
+| `src/core/exec-tools/registry.ts` | Exec tool registry |
 | `src/core/mcp-server.ts` | MCP server, tool registration |

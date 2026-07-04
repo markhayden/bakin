@@ -1,6 +1,7 @@
 /**
- * Tests for tasks plugin routes and exec tools.
- * Validates all REST API endpoints and MCP exec tools registered by the plugin.
+ * Tests for tasks plugin REST routes (plugins/tasks/lib/routes.ts).
+ * Split from routes.test.ts (FW7); shared mock scaffold lives in
+ * helpers/tasks-routes-harness.ts.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterAll, mock } from 'bun:test'
 import { join } from 'path'
@@ -8,17 +9,36 @@ import { mkdirSync, rmSync, existsSync } from 'fs'
 import {
   activatePlugin,
   findRoute,
-  findTool,
   callRoute,
-  callTool,
-  callSearchRoute,
   type ActivatedPlugin,
 } from '../test-helpers'
 import type { TaskRunEntry } from '@bakin/tasks/types'
+import {
+  ledgerMock,
+  taskStoreMock,
+  taskServiceMock,
+  resetTasksRoutesHarness,
+  completionsFake,
+  mockTaskRuns,
+  mockReadTaskboard,
+  mockDeleteTask,
+  mockAssignTask,
+  mockUpdateTask,
+  mockReorderTasks,
+  mockGetTaskWithColumn,
+  mockMoveTaskWithEffects,
+  mockBlockTaskWithEffects,
+  mockCreateTaskWithEffects,
+  mockSetDependencyWithEffects,
+  mockGetTaskDetails,
+  mockLogProgress,
+} from './helpers/tasks-routes-harness'
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
+// (mock.module stays per-file — FW1.8 dual mocks on every split surface;
+// the shared mock functions and module factories live in the harness helper)
 
-const testDir = join(process.cwd(), 'test-content-tasks-routes')
+const testDir = join(process.cwd(), 'test-content-tasks-routes-rest')
 
 mock.module('@bakin/core/main-agent', () => ({
   getMainAgentId: () => 'main',
@@ -61,30 +81,6 @@ mock.module('../../../src/lib/content-files', () => ({
   writeContentFile: mock(),
 }))
 
-// In-memory completion-gate fake — route tests exercise handler wiring, not
-// ledger semantics (covered by tests/core/completion-gate.test.ts).
-const completionsFake = new Map<string, { taskId: string; runId: string | null; agent: string; channel: string | null; completedAt: number }>()
-// Seedable per-task runs for the run-history route (the route maps these via runs-reader).
-let mockTaskRuns: Record<string, Array<Record<string, unknown>>> = {}
-// Seedable live runs for the tasks_get liveRun block.
-let mockLiveRuns: Record<string, { runId: string; agent: string; startedAt: number }> = {}
-const ledgerMock = () => ({
-  recordCompletion: (taskId: string, input: { runId?: string; agent: string; channel?: string }) => {
-    const existing = completionsFake.get(taskId)
-    if (existing) return { recorded: false as const, existing }
-    completionsFake.set(taskId, { taskId, runId: input.runId ?? null, agent: input.agent, channel: input.channel ?? null, completedAt: Date.now() })
-    return { recorded: true as const }
-  },
-  hasCompletion: (taskId: string) => completionsFake.has(taskId),
-  getCompletion: (taskId: string) => completionsFake.get(taskId) ?? null,
-  deleteCompletion: (taskId: string) => completionsFake.delete(taskId),
-  getLiveRun: (taskId: string) => {
-    const run = mockLiveRuns[taskId]
-    return run ? { ...run, taskId, status: 'running' } : null
-  },
-  bumpHeartbeatByTask: () => {},
-  listRunsByTask: (taskId: string, limit = 50) => (mockTaskRuns[taskId] ?? []).slice(0, limit),
-})
 mock.module('@/core/execution-ledger', ledgerMock)
 mock.module('../../../src/core/execution-ledger', ledgerMock)
 
@@ -92,64 +88,11 @@ mock.module('../../../plugins/workflows/lib/runtime', () => ({
   cancelInstance: mock(),
 }))
 
-// Mock taskboard functions
-const mockReadTaskboard = mock()
-const mockCreateTask = mock()
-const mockDeleteTask = mock()
-const mockAssignTask = mock()
-const mockAddTaskLog = mock()
-const mockBlockTask = mock()
-const mockUpdateTask = mock()
-const mockMoveTask = mock()
-const mockSetDependency = mock()
-const mockClearDependency = mock()
-const mockReorderTasks = mock()
-const mockGetTask = mock()
-const mockGetTaskWithColumn = mock(
-  (_id: string): { task: Record<string, unknown>; column: string } | null => null,
-)
-
-const taskStoreMock = () => ({
-  readTaskboard: (...args: unknown[]) => mockReadTaskboard(...args),
-  createTask: (...args: unknown[]) => mockCreateTask(...args),
-  deleteTask: (...args: unknown[]) => mockDeleteTask(...args),
-  assignTask: (...args: unknown[]) => mockAssignTask(...args),
-  addTaskLog: (...args: unknown[]) => mockAddTaskLog(...args),
-  blockTask: (...args: unknown[]) => mockBlockTask(...args),
-  updateTask: (...args: unknown[]) => mockUpdateTask(...args),
-  moveTask: (...args: unknown[]) => mockMoveTask(...args),
-  setDependency: (...args: unknown[]) => mockSetDependency(...args),
-  clearDependency: (...args: unknown[]) => mockClearDependency(...args),
-  reorderTasks: (...args: unknown[]) => mockReorderTasks(...args),
-  getTask: (...args: unknown[]) => mockGetTask(...args),
-  getTaskWithColumn: (...args: unknown[]) => mockGetTaskWithColumn(...(args as [string])),
-  autoArchiveDoneTasks: mock().mockReturnValue(0),
-  archiveOldTasks: mock().mockReturnValue(0),
-})
 // Both specifiers — runs-reader imports task-store relatively (same trap as the ledger mock).
 mock.module('@/core/task-store', taskStoreMock)
 mock.module('../../../src/core/task-store', taskStoreMock)
 
-// Mock task-service functions
-const mockMoveTaskWithEffects = mock()
-const mockBlockTaskWithEffects = mock()
-const mockCreateTaskWithEffects = mock()
-const mockReportComplete = mock()
-const mockSetDependencyWithEffects = mock()
-const mockGetTaskDetails = mock()
-const mockLogProgress = mock()
-const mockTriggerDispatch = mock()
-
-mock.module('../../../src/core/task-service', () => ({
-  moveTaskWithEffects: (...args: unknown[]) => mockMoveTaskWithEffects(...args),
-  blockTaskWithEffects: (...args: unknown[]) => mockBlockTaskWithEffects(...args),
-  createTaskWithEffects: (...args: unknown[]) => mockCreateTaskWithEffects(...args),
-  reportComplete: (...args: unknown[]) => mockReportComplete(...args),
-  setDependencyWithEffects: (...args: unknown[]) => mockSetDependencyWithEffects(...args),
-  getTaskDetails: (...args: unknown[]) => mockGetTaskDetails(...args),
-  logProgress: (...args: unknown[]) => mockLogProgress(...args),
-  triggerDispatch: (...args: unknown[]) => mockTriggerDispatch(...args),
-}))
+mock.module('../../../src/core/task-service', taskServiceMock)
 
 // ─── Setup ─────────────────────────────────────────────────────────────────
 
@@ -171,23 +114,7 @@ afterAll(() => {
 
 beforeEach(() => {
   mock.clearAllMocks()
-  mockTaskRuns = {}
-  mockLiveRuns = {}
-  // bun:test's clearAllMocks only clears call history; reset implementations
-  // so a previous test's mockRejectedValue doesn't leak into the next.
-  for (const m of [
-    mockReadTaskboard, mockCreateTask, mockDeleteTask, mockAssignTask,
-    mockAddTaskLog, mockBlockTask, mockUpdateTask, mockMoveTask,
-    mockSetDependency, mockClearDependency, mockReorderTasks, mockGetTask,
-    mockMoveTaskWithEffects, mockBlockTaskWithEffects, mockCreateTaskWithEffects,
-    mockReportComplete, mockSetDependencyWithEffects, mockGetTaskDetails,
-    mockLogProgress, mockTriggerDispatch, mockGetTaskWithColumn,
-  ]) m.mockReset()
-  mockGetTaskWithColumn.mockReturnValue(null)
-  completionsFake.clear()
-  // Handlers destructure the completion-gate result from these two.
-  mockMoveTaskWithEffects.mockResolvedValue({ alreadyComplete: false })
-  mockReportComplete.mockResolvedValue({ alreadyComplete: false })
+  resetTasksRoutesHarness()
 })
 
 // ─── Routing — :taskId requirement (replaces 6 legacy skipped cases) ───────
@@ -1012,605 +939,5 @@ describe('POST /reorder — Reorder Tasks', () => {
 
     expect(status).toBe(500)
     expect(body.error).toContain('reorder failed')
-  })
-})
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Exec Tools
-// ═══════════════════════════════════════════════════════════════════════════
-
-describe('Tasks Plugin — Exec Tool Registration', () => {
-  it('registers 11 exec tools', () => {
-    expect(activated.execTools.length).toBe(11)
-  })
-
-  it.each([
-    'bakin_exec_tasks_list',
-    'bakin_exec_tasks_get',
-    'bakin_exec_tasks_create',
-    'bakin_exec_tasks_move',
-    'bakin_exec_tasks_block',
-    'bakin_exec_tasks_complete',
-    'bakin_exec_tasks_log_progress',
-    'bakin_exec_tasks_set_dependency',
-  ])('registers %s', (name) => {
-    expect(findTool(activated.execTools, name)).toBeDefined()
-  })
-})
-
-// ─── bakin_exec_tasks_list ─────────────────────────────────────────────────
-
-describe('bakin_exec_tasks_list', () => {
-  it('returns the full board when no filters are provided', async () => {
-    const board = { columns: { todo: [{ id: 't1' }], done: [{ id: 't2' }] } }
-    mockReadTaskboard.mockResolvedValue(board)
-
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_list')!
-    const result = await callTool(tool, {})
-
-    expect(result.ok).toBe(true)
-    expect(result.columns).toEqual(board.columns)
-  })
-
-  it('filters by column', async () => {
-    const board = {
-      columns: {
-        todo: [{ id: 't1', agent: 'pixel' }],
-        done: [{ id: 't2', agent: 'rolo' }],
-      },
-    }
-    mockReadTaskboard.mockResolvedValue(board)
-
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_list')!
-    const result = await callTool(tool, { column: 'todo' })
-
-    expect(result.ok).toBe(true)
-    expect((result.columns as Record<string, unknown[]>).todo).toHaveLength(1)
-    expect((result.columns as Record<string, unknown[]>).done).toBeUndefined()
-  })
-
-  it('filters by agent', async () => {
-    const board = {
-      columns: {
-        todo: [{ id: 't1', agent: 'pixel' }, { id: 't2', agent: 'rolo' }],
-      },
-    }
-    mockReadTaskboard.mockResolvedValue(board)
-
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_list')!
-    const result = await callTool(tool, { agent: 'pixel' })
-
-    expect(result.ok).toBe(true)
-    const cols = result.columns as Record<string, Array<{ agent: string }>>
-    expect(cols.todo).toHaveLength(1)
-    expect(cols.todo[0].agent).toBe('pixel')
-  })
-
-  it('returns error when taskboard is null', async () => {
-    mockReadTaskboard.mockResolvedValue(null)
-
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_list')!
-    const result = await callTool(tool, {})
-
-    expect(result.ok).toBe(false)
-    expect(result.error).toContain('Failed to read')
-  })
-})
-
-// ─── bakin_exec_tasks_get ──────────────────────────────────────────────────
-
-describe('bakin_exec_tasks_get', () => {
-  it('returns task details', async () => {
-    const details = { task: { id: 'abc', title: 'Test' }, column: 'inProgress' }
-    mockGetTaskDetails.mockResolvedValue(details)
-
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_get')!
-    const result = await callTool(tool, { taskId: 'abc' })
-
-    expect(result.ok).toBe(true)
-    expect(result.task).toEqual(details.task)
-  })
-
-  it('returns error when task not found', async () => {
-    mockGetTaskDetails.mockResolvedValue(null)
-
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_get')!
-    const result = await callTool(tool, { taskId: 'missing' })
-
-    expect(result.ok).toBe(false)
-    expect(result.error).toContain('not found')
-  })
-
-  it('enriches with project context when projectId is present', async () => {
-    const details = { task: { id: 'abc', projectId: 'proj-1' }, column: 'todo' }
-    mockGetTaskDetails.mockResolvedValue(details)
-    const mockHooksCall = activated.ctx.hooks.call as ReturnType<typeof mock>
-    mockHooksCall.mockImplementationOnce(async (_name: string, data: Record<string, unknown>) => ({
-      ...data,
-      projectTitle: 'Project X',
-      projectStatus: 'active',
-      projectProgress: 50,
-      projectExcerpt: 'This is the project body content for testing purposes.',
-    })
-    )
-
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_get')!
-    const result = await callTool(tool, { taskId: 'abc' })
-
-    expect(result.ok).toBe(true)
-    expect(mockHooksCall).toHaveBeenCalledWith('tasks.enrichDetails', details)
-    expect(result.projectTitle).toBe('Project X')
-    expect(result.projectStatus).toBe('active')
-    expect(result.projectProgress).toBe(50)
-  })
-
-  it('gracefully handles missing project plugin', async () => {
-    const details = { task: { id: 'abc', projectId: 'proj-1' }, column: 'todo' }
-    mockGetTaskDetails.mockResolvedValue(details)
-    const mockHooksCall = activated.ctx.hooks.call as ReturnType<typeof mock>
-    mockHooksCall.mockRejectedValueOnce(new Error('Hook not found'))
-
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_get')!
-    const result = await callTool(tool, { taskId: 'abc' })
-
-    // Should still succeed, just without project data
-    expect(result.ok).toBe(true)
-    expect(result.projectTitle).toBeUndefined()
-  })
-})
-
-describe('bakin_exec_tasks_get liveRun visibility', () => {
-  it('includes the live run while one is in flight, so duplicate sessions can self-detect', async () => {
-    mockGetTaskDetails.mockResolvedValue({ task: { id: 'd1b213a5', title: 'Cat image' }, column: 'inProgress' })
-    mockLiveRuns['d1b213a5'] = { runId: 'task:d1b213a5:d1', agent: 'pixel', startedAt: 1781063794175 }
-
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_get')!
-    const result = await callTool(tool, { taskId: 'd1b213a5' })
-
-    expect(result.ok).toBe(true)
-    expect(result.liveRun).toEqual({
-      runId: 'task:d1b213a5:d1',
-      agent: 'pixel',
-      startedAt: new Date(1781063794175).toISOString(),
-    })
-  })
-
-  it('returns liveRun null when no run is in flight', async () => {
-    mockGetTaskDetails.mockResolvedValue({ task: { id: 'abc', title: 'Done thing' }, column: 'done' })
-
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_get')!
-    const result = await callTool(tool, { taskId: 'abc' })
-
-    expect(result.ok).toBe(true)
-    expect(result.liveRun).toBeNull()
-  })
-})
-
-// ─── bakin_exec_tasks_create ───────────────────────────────────────────────
-
-describe('bakin_exec_tasks_create', () => {
-  it('tells the creator that dispatch notifies the assignee — no separate message needed', async () => {
-    mockCreateTaskWithEffects.mockResolvedValue({ id: 'new-t', workflowId: 'wf-1' })
-
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_create')!
-    const result = await callTool(tool, { title: 'New Task', assignee: 'pixel', workflowId: 'wf-1' }, 'main')
-
-    expect(result.ok).toBe(true)
-    expect(result.notice).toContain('dispatch will notify pixel')
-    expect(result.notice).toContain('do NOT send them a separate message')
-  })
-
-  it('omits the dispatch copy when nothing was dispatched', async () => {
-    mockCreateTaskWithEffects.mockResolvedValue({ id: 'new-t3', workflowId: 'wf-1' })
-
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_create')!
-    const result = await callTool(tool, { title: 'Unassigned Task', workflowId: 'wf-1' }, 'main')
-
-    expect(result.ok).toBe(true)
-    expect(result.notice ?? '').not.toContain('separate message')
-  })
-
-  it('creates a task with workflow', async () => {
-    mockCreateTaskWithEffects.mockResolvedValue({ id: 'new-t', workflowId: 'wf-1' })
-
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_create')!
-    const result = await callTool(tool, {
-      title: 'New Task',
-      assignee: 'pixel',
-      workflowId: 'wf-1',
-    }, 'chef')
-
-    expect(result.ok).toBe(true)
-    expect(result.id).toBe('new-t')
-    expect(mockCreateTaskWithEffects).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: 'New Task',
-        assignee: 'pixel',
-        workflowId: 'wf-1',
-        createdBy: 'chef',
-        channel: 'mcp',
-      })
-    )
-  })
-
-  it('creates a scheduled source-linked task from MCP parameters', async () => {
-    mockCreateTaskWithEffects.mockResolvedValue({ id: 'scheduled-mcp' })
-
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_create')!
-    const result = await callTool(tool, {
-      title: 'Scheduled channel kickoff',
-      availableAt: '2026-05-18T15:00:00.000Z',
-      dueAt: '2026-05-22T15:00:00.000Z',
-      sourcePluginId: 'messaging',
-      sourceEntityType: 'deliverable',
-      sourceEntityId: 'deliverable-1',
-      sourcePurpose: 'kickoff',
-    }, 'chef')
-
-    expect(result.ok).toBe(true)
-    expect(mockCreateTaskWithEffects).toHaveBeenCalledWith(
-      expect.objectContaining({
-        availableAt: '2026-05-18T15:00:00.000Z',
-        dueAt: '2026-05-22T15:00:00.000Z',
-        source: {
-          pluginId: 'messaging',
-          entityType: 'deliverable',
-          entityId: 'deliverable-1',
-          purpose: 'kickoff',
-        },
-      }),
-    )
-  })
-
-  it('creates a task with skipWorkflowReason', async () => {
-    mockCreateTaskWithEffects.mockResolvedValue({ id: 'new-t2' })
-
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_create')!
-    const result = await callTool(tool, {
-      title: 'Simple Task',
-      skipWorkflowReason: 'One-off cleanup',
-    }, 'chef')
-
-    expect(result.ok).toBe(true)
-  })
-
-  it('creates a subtask without workflow requirement', async () => {
-    mockCreateTaskWithEffects.mockResolvedValue({ id: 'sub-1' })
-
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_create')!
-    const result = await callTool(tool, {
-      title: 'Subtask',
-      parentId: 'parent-1',
-    }, 'chef')
-
-    expect(result.ok).toBe(true)
-    expect(result.id).toBe('sub-1')
-  })
-
-  it('succeeds without workflowId but includes notice when no workflow matched', async () => {
-    mockCreateTaskWithEffects.mockResolvedValue({ id: 'no-wf-1' })
-
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_create')!
-    const result = await callTool(tool, { title: 'Bad Task' }, 'chef')
-
-    expect(result.ok).toBe(true)
-    expect(result.notice).toContain('No workflow attached')
-  })
-
-  it('nudges toward checklist structure when the description enumerates several deliverables', async () => {
-    mockCreateTaskWithEffects.mockResolvedValue({ id: 'multi-1' })
-
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_create')!
-    const result = await callTool(tool, {
-      title: 'Competitive research',
-      parentId: 'parent-1',
-      description: 'Produce:\n1. Executive brief\n2. Technical report\n3. Comparison matrix\n4. Recommendation memo',
-    }, 'chef')
-
-    expect(result.ok).toBe(true)
-    expect(result.notice).toContain('markdown checklist')
-    expect(result.notice).toContain('one in succession')
-  })
-
-  it('nudge boundary: 2 enumerated items stay silent, 3 fire — across marker styles', async () => {
-    mockCreateTaskWithEffects.mockResolvedValue({ id: 'bound-1' })
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_create')!
-
-    const two = await callTool(tool, {
-      title: 'Two items',
-      parentId: 'parent-1',
-      description: 'Deliver:\n- brief\n- report',
-    }, 'chef')
-    expect(two.notice ?? '').not.toContain('markdown checklist')
-
-    const threeMixed = await callTool(tool, {
-      title: 'Three items, mixed markers',
-      parentId: 'parent-1',
-      description: 'Deliver:\n• brief\n* report\n1) matrix',
-    }, 'chef')
-    expect(threeMixed.notice).toContain('markdown checklist')
-  })
-
-  it('does NOT nudge for checklist-formatted or short descriptions (advisory only, never rejects)', async () => {
-    mockCreateTaskWithEffects.mockResolvedValue({ id: 'ok-1' })
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_create')!
-
-    const checklisted = await callTool(tool, {
-      title: 'Research',
-      parentId: 'parent-1',
-      description: '- [ ] brief\n- [ ] report\n- [ ] matrix\n- [ ] memo',
-    }, 'chef')
-    expect(checklisted.ok).toBe(true)
-    expect(checklisted.notice ?? '').not.toContain('markdown checklist')
-
-    const short = await callTool(tool, {
-      title: 'Small task',
-      parentId: 'parent-1',
-      description: 'Just one deliverable:\n- the report',
-    }, 'chef')
-    expect(short.ok).toBe(true)
-    expect(short.notice ?? '').not.toContain('markdown checklist')
-  })
-
-  it('triggers dispatch when assignee is provided', async () => {
-    mockCreateTaskWithEffects.mockResolvedValue({ id: 'disp-1' })
-
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_create')!
-    await callTool(tool, {
-      title: 'Dispatched Task',
-      assignee: 'pixel',
-      workflowId: 'wf-1',
-    }, 'chef')
-
-    expect(mockTriggerDispatch).toHaveBeenCalled()
-  })
-
-  it('triggers dispatch when parentId is provided', async () => {
-    mockCreateTaskWithEffects.mockResolvedValue({ id: 'disp-2' })
-
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_create')!
-    await callTool(tool, {
-      title: 'Child Task',
-      parentId: 'parent-1',
-    }, 'chef')
-
-    expect(mockTriggerDispatch).toHaveBeenCalled()
-  })
-
-  it('does not trigger dispatch for unassigned top-level tasks', async () => {
-    mockCreateTaskWithEffects.mockResolvedValue({ id: 'no-disp' })
-
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_create')!
-    await callTool(tool, {
-      title: 'Unassigned',
-      workflowId: 'wf-1',
-    }, 'chef')
-
-    expect(mockTriggerDispatch).not.toHaveBeenCalled()
-  })
-
-  it('returns error on creation failure', async () => {
-    mockCreateTaskWithEffects.mockRejectedValue(new Error('boom'))
-
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_create')!
-    const result = await callTool(tool, {
-      title: 'Fail',
-      workflowId: 'wf-1',
-    }, 'chef')
-
-    expect(result.ok).toBe(false)
-    expect(result.error).toContain('boom')
-  })
-})
-
-// ─── bakin_exec_tasks_move ─────────────────────────────────────────────────
-
-describe('bakin_exec_tasks_move', () => {
-  it('moves a task to a new column', async () => {
-    mockMoveTaskWithEffects.mockResolvedValue({ alreadyComplete: false })
-
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_move')!
-    const result = await callTool(tool, { taskId: 'task-m', to: 'review' }, 'pixel')
-
-    expect(result.ok).toBe(true)
-    expect(mockMoveTaskWithEffects).toHaveBeenCalledWith('task-m', 'review', 'pixel', { channel: 'mcp' })
-  })
-
-  it('requires reason when moving to blocked', async () => {
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_move')!
-    const result = await callTool(tool, { taskId: 'task-m', to: 'blocked' }, 'pixel')
-
-    expect(result.ok).toBe(false)
-    expect(result.error).toContain('reason is required')
-  })
-
-  it('returns error on move failure', async () => {
-    mockMoveTaskWithEffects.mockRejectedValue(new Error('invalid transition'))
-
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_move')!
-    const result = await callTool(tool, { taskId: 'task-m', to: 'done' }, 'pixel')
-
-    expect(result.ok).toBe(false)
-    expect(result.error).toContain('invalid transition')
-  })
-})
-
-// ─── bakin_exec_tasks_block ────────────────────────────────────────────────
-
-describe('bakin_exec_tasks_block', () => {
-  it('blocks a task', async () => {
-    mockBlockTaskWithEffects.mockResolvedValue({ alreadyComplete: false })
-
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_block')!
-    const result = await callTool(tool, { taskId: 'task-b', reason: 'need API key' }, 'trainer')
-
-    expect(result.ok).toBe(true)
-    expect(mockBlockTaskWithEffects).toHaveBeenCalledWith('task-b', 'need API key', 'trainer', 'mcp')
-  })
-
-  it('returns error on block failure', async () => {
-    mockBlockTaskWithEffects.mockRejectedValue(new Error('block err'))
-
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_block')!
-    const result = await callTool(tool, { taskId: 'task-b', reason: 'fail' }, 'trainer')
-
-    expect(result.ok).toBe(false)
-    expect(result.error).toContain('block err')
-  })
-})
-
-// ─── bakin_exec_tasks_complete ─────────────────────────────────────────────
-
-describe('bakin_exec_tasks_complete', () => {
-  it('completes a task', async () => {
-    mockReportComplete.mockResolvedValue({ alreadyComplete: false })
-
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_complete')!
-    const result = await callTool(tool, { taskId: 'task-c', summary: 'All done' }, 'pixel')
-
-    expect(result.ok).toBe(true)
-    expect(mockReportComplete).toHaveBeenCalledWith('task-c', 'pixel', 'All done', 'mcp')
-  })
-
-  it('returns error on completion failure', async () => {
-    mockReportComplete.mockRejectedValue(new Error('complete err'))
-
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_complete')!
-    const result = await callTool(tool, { taskId: 'task-c', summary: 'fail' }, 'pixel')
-
-    expect(result.ok).toBe(false)
-    expect(result.error).toContain('complete err')
-  })
-})
-
-// ─── bakin_exec_tasks_log_progress ─────────────────────────────────────────
-
-describe('bakin_exec_tasks_log_progress', () => {
-  it('logs a progress update', async () => {
-    mockLogProgress.mockResolvedValue(undefined)
-
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_log_progress')!
-    const result = await callTool(tool, { taskId: 'task-lp', message: 'Step 3 done' }, 'pixel')
-
-    expect(result.ok).toBe(true)
-    expect(mockLogProgress).toHaveBeenCalledWith('task-lp', 'pixel', 'Step 3 done', 'mcp')
-  })
-
-  it('returns error on log failure', async () => {
-    mockLogProgress.mockRejectedValue(new Error('log err'))
-
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_log_progress')!
-    const result = await callTool(tool, { taskId: 'task-lp', message: 'fail' }, 'pixel')
-
-    expect(result.ok).toBe(false)
-    expect(result.error).toContain('log err')
-  })
-})
-
-// ─── bakin_exec_tasks_set_dependency ───────────────────────────────────────
-
-describe('bakin_exec_tasks_set_dependency', () => {
-  it('sets a dependency', async () => {
-    mockSetDependencyWithEffects.mockResolvedValue(undefined)
-
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_set_dependency')!
-    const result = await callTool(tool, { taskId: 'task-sd', dependsOn: 'task-other' }, 'rolo')
-
-    expect(result.ok).toBe(true)
-    expect(result.message).toContain('Dependency registered')
-    expect(mockSetDependencyWithEffects).toHaveBeenCalledWith('task-sd', 'task-other', 'mcp')
-  })
-
-  it('returns error on dependency failure', async () => {
-    mockSetDependencyWithEffects.mockRejectedValue(new Error('dep err'))
-
-    const tool = findTool(activated.execTools, 'bakin_exec_tasks_set_dependency')!
-    const result = await callTool(tool, { taskId: 'task-sd', dependsOn: 'task-other' }, 'rolo')
-
-    expect(result.ok).toBe(false)
-    expect(result.error).toContain('dep err')
-  })
-})
-
-// ─── Search Index Side Effects ──────────────────────────────────────────────
-
-describe('Search index side effects', () => {
-  it('removes task from search on delete', async () => {
-    mockDeleteTask.mockResolvedValue(undefined)
-
-    const route = findRoute(activated.routes, 'DELETE', '/:taskId')!
-    await callRoute(route, activated.ctx, {
-      searchParams: { taskId: 'task-rm' },
-    })
-
-    // search.remove is fire-and-forget, give it a tick
-    await new Promise(r => setTimeout(r, 20))
-
-    expect(activated.ctx.search.remove).toHaveBeenCalledWith('task-rm')
-  })
-
-  it('updates search index on task assign via transform', async () => {
-    mockAssignTask.mockReturnValue(undefined)
-
-    const route = findRoute(activated.routes, 'POST', '/:taskId/assign')!
-    await callRoute(route, activated.ctx, {
-      searchParams: { taskId: 'task-asgn' },
-      body: { agent: 'pixel' },
-    })
-
-    // search.transform is fire-and-forget, give it a tick
-    await new Promise(r => setTimeout(r, 20))
-
-    expect(activated.ctx.search.transform).toHaveBeenCalledWith(
-      'task-asgn',
-      [{ op: '$set', field: 'agent', value: 'pixel' }],
-    )
-  })
-})
-
-// ─── Search Route ───────────────────────────────────────────────────────────
-
-describe('Tasks Plugin — GET /search', () => {
-  beforeEach(() => {
-    activated.seedResults([])
-  })
-
-  it('returns seeded results for a valid query', async () => {
-    activated.seedResults([
-      { id: 't1', table: 'bakin_tasks', score: 0.9, fields: { title: 'Test task' } },
-    ])
-
-    const { status, body } = await callSearchRoute(activated, 'test')
-
-    expect(status).toBe(200)
-    const results = body.results as Array<{ id: string; score: number }>
-    expect(results).toHaveLength(1)
-    expect(results[0].id).toBe('t1')
-    expect(results[0].score).toBe(0.9)
-  })
-
-  it('returns 400 when q is missing', async () => {
-    const { status, body } = await callSearchRoute(activated, '')
-
-    expect(status).toBe(400)
-    expect(body.error).toBe('invalid input')
-  })
-
-  it('returns 200 with empty results when no matches', async () => {
-    const { status, body } = await callSearchRoute(activated, 'zzz')
-
-    expect(status).toBe(200)
-    expect(body.results).toEqual([])
-  })
-
-  it('passes parsed facets to ctx.search.query', async () => {
-    await callSearchRoute(activated, 'test', { facets: 'status,agent' })
-
-    expect(activated.ctx.search.query).toHaveBeenCalledWith(
-      expect.objectContaining({
-        q: 'test',
-        facets: ['status', 'agent'],
-      }),
-    )
   })
 })

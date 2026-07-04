@@ -758,14 +758,14 @@ mcporter call bakin-<agent>.bakin_exec_projects_update_item --args '{
 <p class="mcp-section-description">Schedule tools let agents create, inspect, pause, run, and update recurring Bakin jobs.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="schedule-briefing" name="bakin_exec_schedule_briefing" label="Generated schedule briefing" description="Today's schedule summary — which jobs fire, assigned agents, alerts. Designed for orchestrator daily briefing." source="plugins/schedule/lib/exec-tools.ts:293" parameters={[{"name":"date","type":"string","required":false,"description":"ISO date to check (defaults to today)"}]}>
+<McpToolCard id="schedule-briefing" name="bakin_exec_schedule_briefing" label="Generated schedule briefing" description="Today's schedule summary — which jobs fire, assigned agents, alerts. Designed for orchestrator daily briefing." source="plugins/schedule/lib/exec-tools.ts:220" parameters={[{"name":"date","type":"string","required":false,"description":"ISO date to check (defaults to today)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_schedule_briefing --args '{
   "date": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="schedule-create" name="bakin_exec_schedule_create" label="Created a scheduled job" description="Create a new scheduled job that creates tasks on the board" source="plugins/schedule/lib/exec-tools.ts:52" parameters={[{"name":"name","type":"string","required":true,"description":"Job name (required)"},{"name":"schedule","type":"string","required":true,"description":"Schedule expression: NL (\"every day at 9am\") or raw cron (\"0 9 * * *\") (required)"},{"name":"agentId","type":"string","required":false,"description":"Agent to assign tasks to"},{"name":"workflowId","type":"string","required":false,"description":"Workflow to attach to tasks"},{"name":"taskPrompt","type":"string","required":false,"description":"Task description template"},{"name":"taskTitle","type":"string","required":false,"description":"Task title template (supports {date}, {agent})"}]}>
+<McpToolCard id="schedule-create" name="bakin_exec_schedule_create" label="Created a scheduled job" description="Create a new scheduled job that creates tasks on the board" source="plugins/schedule/lib/exec-tools.ts:58" parameters={[{"name":"name","type":"string","required":true,"description":"Job name (required)"},{"name":"schedule","type":"string","required":true,"description":"Schedule expression: NL (\"every day at 9am\") or raw cron (\"0 9 * * *\") (required)"},{"name":"agentId","type":"string","required":false,"description":"Agent to assign tasks to"},{"name":"workflowId","type":"string","required":false,"description":"Workflow to attach to tasks"},{"name":"taskPrompt","type":"string","required":false,"description":"Task description template"},{"name":"taskTitle","type":"string","required":false,"description":"Task title template (supports {date}, {agent})"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_schedule_create --args '{
   "name": "value",
@@ -777,21 +777,21 @@ mcporter call bakin-<agent>.bakin_exec_schedule_create --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="schedule-delete" name="bakin_exec_schedule_delete" label="Deleted a scheduled job" description="Delete a scheduled job" source="plugins/schedule/lib/exec-tools.ts:189" parameters={[{"name":"jobId","type":"string","required":true,"description":"Job ID (required)"}]}>
+<McpToolCard id="schedule-delete" name="bakin_exec_schedule_delete" label="Deleted a scheduled job" description="Delete a scheduled job" source="plugins/schedule/lib/exec-tools.ts:139" parameters={[{"name":"jobId","type":"string","required":true,"description":"Job ID (required)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_schedule_delete --args '{
   "jobId": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="schedule-get" name="bakin_exec_schedule_get" label="Read schedule details" description="Get details for a single scheduled job" source="plugins/schedule/lib/exec-tools.ts:205" parameters={[{"name":"jobId","type":"string","required":true,"description":"Job ID (required)"}]}>
+<McpToolCard id="schedule-get" name="bakin_exec_schedule_get" label="Read schedule details" description="Get details for a single scheduled job" source="plugins/schedule/lib/exec-tools.ts:155" parameters={[{"name":"jobId","type":"string","required":true,"description":"Job ID (required)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_schedule_get --args '{
   "jobId": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="schedule-list" name="bakin_exec_schedule_list" label="Listed scheduled jobs" description="List all scheduled jobs (merged runtime cron + Bakin view)" source="plugins/schedule/lib/exec-tools.ts:23" parameters={[{"name":"filter","type":"choice","required":false,"description":"Filter by job type"},{"name":"agentId","type":"string","required":false,"description":"Filter by assigned agent"}]}>
+<McpToolCard id="schedule-list" name="bakin_exec_schedule_list" label="Listed scheduled jobs" description="List all scheduled jobs (merged runtime cron + Bakin view)" source="plugins/schedule/lib/exec-tools.ts:29" parameters={[{"name":"filter","type":"choice","required":false,"description":"Filter by job type"},{"name":"agentId","type":"string","required":false,"description":"Filter by assigned agent"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_schedule_list --args '{
   "filter": "value",
@@ -799,14 +799,14 @@ mcporter call bakin-<agent>.bakin_exec_schedule_list --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="schedule-parse" name="bakin_exec_schedule_parse" label="Parsed cron expression" description="Parse a natural language or raw cron schedule expression" source="plugins/schedule/lib/exec-tools.ts:278" parameters={[{"name":"input","type":"string","required":true,"description":"Schedule expression to parse (required)"}]}>
+<McpToolCard id="schedule-parse" name="bakin_exec_schedule_parse" label="Parsed cron expression" description="Parse a natural language or raw cron schedule expression" source="plugins/schedule/lib/exec-tools.ts:205" parameters={[{"name":"input","type":"string","required":true,"description":"Schedule expression to parse (required)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_schedule_parse --args '{
   "input": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="schedule-pause" name="bakin_exec_schedule_pause" label="Paused a scheduled job" description="Pause, resume, or skip runs for a scheduled job" source="plugins/schedule/lib/exec-tools.ts:141" parameters={[{"name":"jobId","type":"string","required":true,"description":"Job ID (required)"},{"name":"action","type":"choice","required":true,"description":"Action to take (required)"},{"name":"pauseUntil","type":"string","required":false,"description":"ISO date to auto-resume (for pause action)"},{"name":"skipN","type":"number","required":false,"description":"Number of runs to skip (for skip action)"}]}>
+<McpToolCard id="schedule-pause" name="bakin_exec_schedule_pause" label="Paused a scheduled job" description="Pause, resume, or skip runs for a scheduled job" source="plugins/schedule/lib/exec-tools.ts:116" parameters={[{"name":"jobId","type":"string","required":true,"description":"Job ID (required)"},{"name":"action","type":"choice","required":true,"description":"Action to take (required)"},{"name":"pauseUntil","type":"string","required":false,"description":"ISO date to auto-resume (for pause action)"},{"name":"skipN","type":"number","required":false,"description":"Number of runs to skip (for skip action)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_schedule_pause --args '{
   "jobId": "value",
@@ -816,14 +816,14 @@ mcporter call bakin-<agent>.bakin_exec_schedule_pause --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="schedule-run-now" name="bakin_exec_schedule_run_now" label="Triggered scheduled job" description="Trigger an immediate run of a scheduled job" source="plugins/schedule/lib/exec-tools.ts:243" parameters={[{"name":"jobId","type":"string","required":true,"description":"Job ID (required)"}]}>
+<McpToolCard id="schedule-run-now" name="bakin_exec_schedule_run_now" label="Triggered scheduled job" description="Trigger an immediate run of a scheduled job" source="plugins/schedule/lib/exec-tools.ts:170" parameters={[{"name":"jobId","type":"string","required":true,"description":"Job ID (required)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_schedule_run_now --args '{
   "jobId": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="schedule-runs" name="bakin_exec_schedule_runs" label="Listed schedule runs" description="Get run history for a scheduled job" source="plugins/schedule/lib/exec-tools.ts:262" parameters={[{"name":"jobId","type":"string","required":true,"description":"Job ID (required)"},{"name":"limit","type":"number","required":false,"description":"Max runs to return (default 50)"}]}>
+<McpToolCard id="schedule-runs" name="bakin_exec_schedule_runs" label="Listed schedule runs" description="Get run history for a scheduled job" source="plugins/schedule/lib/exec-tools.ts:189" parameters={[{"name":"jobId","type":"string","required":true,"description":"Job ID (required)"},{"name":"limit","type":"number","required":false,"description":"Max runs to return (default 50)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_schedule_runs --args '{
   "jobId": "value",
@@ -831,7 +831,7 @@ mcporter call bakin-<agent>.bakin_exec_schedule_runs --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="schedule-update" name="bakin_exec_schedule_update" label="Updated a scheduled job" description="Update an existing scheduled job" source="plugins/schedule/lib/exec-tools.ts:102" parameters={[{"name":"jobId","type":"string","required":true,"description":"Job ID (required)"},{"name":"name","type":"string","required":false,"description":"New job name"},{"name":"schedule","type":"string","required":false,"description":"New schedule expression"},{"name":"agentId","type":"string","required":false,"description":"New agent assignment"},{"name":"workflowId","type":"string","required":false,"description":"New workflow binding"},{"name":"taskPrompt","type":"string","required":false,"description":"New task prompt template"},{"name":"taskTitle","type":"string","required":false,"description":"New task title template"}]}>
+<McpToolCard id="schedule-update" name="bakin_exec_schedule_update" label="Updated a scheduled job" description="Update an existing scheduled job" source="plugins/schedule/lib/exec-tools.ts:88" parameters={[{"name":"jobId","type":"string","required":true,"description":"Job ID (required)"},{"name":"name","type":"string","required":false,"description":"New job name"},{"name":"schedule","type":"string","required":false,"description":"New schedule expression"},{"name":"agentId","type":"string","required":false,"description":"New agent assignment"},{"name":"workflowId","type":"string","required":false,"description":"New workflow binding"},{"name":"taskPrompt","type":"string","required":false,"description":"New task prompt template"},{"name":"taskTitle","type":"string","required":false,"description":"New task title template"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_schedule_update --args '{
   "jobId": "value",
@@ -851,7 +851,7 @@ mcporter call bakin-<agent>.bakin_exec_schedule_update --args '{
 <p class="mcp-section-description">Search tools query Bakin-indexed content across plugins or inside a specific surface.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="search-facets" name="bakin_exec_search_facets" label="Search facets" description="Get facet value counts for a plugin. Useful for understanding data distribution (e.g., how many tasks per status)." source="src/core/exec-tools/tools/search-tools.ts:158" parameters={[{"name":"plugin","type":"string","required":true,"description":"Plugin id (tasks, assets, projects, etc.)"},{"name":"facets","type":"string","required":true,"description":"Comma-separated facet fields (e.g., \"status,agent\")"}]}>
+<McpToolCard id="search-facets" name="bakin_exec_search_facets" label="Search facets" description="Get facet value counts for a plugin. Useful for understanding data distribution (e.g., how many tasks per status)." source="src/core/exec-tools/tools/search-tools.ts:157" parameters={[{"name":"plugin","type":"string","required":true,"description":"Plugin id (tasks, assets, projects, etc.)"},{"name":"facets","type":"string","required":true,"description":"Comma-separated facet fields (e.g., \"status,agent\")"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_search_facets --args '{
   "plugin": "value",
@@ -876,7 +876,7 @@ mcporter call bakin-<agent>.bakin_exec_search_query --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="search-reindex" name="bakin_exec_search_reindex" label="Reindex search" description="Trigger a full reindex of all content types (or a specific plugin). Use after bulk data changes." source="src/core/exec-tools/tools/search-tools.ts:221" parameters={[{"name":"plugin","type":"string","required":false,"description":"Specific plugin id to reindex (optional — omit for all)"},{"name":"rebuild","type":"boolean","required":false,"description":"Drop and recreate indexes before reindexing (default: false)"},{"name":"verify","type":"boolean","required":false,"description":"Re-query tables after reindex to verify doc counts (default: false)"}]}>
+<McpToolCard id="search-reindex" name="bakin_exec_search_reindex" label="Reindex search" description="Trigger a full reindex of all content types (or a specific plugin). Use after bulk data changes." source="src/core/exec-tools/tools/search-tools.ts:220" parameters={[{"name":"plugin","type":"string","required":false,"description":"Specific plugin id to reindex (optional — omit for all)"},{"name":"rebuild","type":"boolean","required":false,"description":"Drop and recreate indexes before reindexing (default: false)"},{"name":"verify","type":"boolean","required":false,"description":"Re-query tables after reindex to verify doc counts (default: false)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_search_reindex --args '{
   "plugin": "value",
@@ -885,7 +885,7 @@ mcporter call bakin-<agent>.bakin_exec_search_reindex --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="search-similar" name="bakin_exec_search_similar" label="Find similar" description="Find documents similar to a given text description. Uses semantic (vector) search for meaning-based matching." source="src/core/exec-tools/tools/search-tools.ts:187" parameters={[{"name":"text","type":"string","required":true,"description":"Text to find similar documents for"},{"name":"plugin","type":"string","required":false,"description":"Limit to a specific plugin id (optional)"},{"name":"limit","type":"number","required":false,"description":"Maximum results (default: 10)"}]}>
+<McpToolCard id="search-similar" name="bakin_exec_search_similar" label="Find similar" description="Find documents similar to a given text description. Uses semantic (vector) search for meaning-based matching." source="src/core/exec-tools/tools/search-tools.ts:186" parameters={[{"name":"text","type":"string","required":true,"description":"Text to find similar documents for"},{"name":"plugin","type":"string","required":false,"description":"Limit to a specific plugin id (optional)"},{"name":"limit","type":"number","required":false,"description":"Maximum results (default: 10)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_search_similar --args '{
   "text": "value",
@@ -894,7 +894,7 @@ mcporter call bakin-<agent>.bakin_exec_search_similar --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="search-stats" name="bakin_exec_search_stats" label="Search stats" description="Get search system health: enabled status, per-table document counts, and index stats." source="src/core/exec-tools/tools/search-tools.ts:251">
+<McpToolCard id="search-stats" name="bakin_exec_search_stats" label="Search stats" description="Get search system health: enabled status, per-table document counts, and index stats." source="src/core/exec-tools/tools/search-tools.ts:250">
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_search_stats
 ```

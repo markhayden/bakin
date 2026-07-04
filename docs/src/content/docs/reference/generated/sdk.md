@@ -49,6 +49,7 @@ The main entry. Re-exports the plugin contract types (`./types`) plus the high-t
 | `getRouteOwners` | Plugins whose manifest `contributes.routes` patterns match a pathname. |
 | `requestSlotPlugins` | Ask the host to lazy-load every idle plugin that fills the named slot. |
 | `requestRoutePlugins` | Ask the host to lazy-load every idle plugin whose route patterns match the pathname. |
+| `requestAllPlugins` | Ask the host to lazy-load every idle plugin — cross-plugin surfaces (⌘K search). |
 | `retryPluginLoad` | Reset a failed plugin to idle and re-request its client bundle. |
 | `getLazyPluginsVersion` | Monotonic lazy-store version for useSyncExternalStore consumers. |
 | `subscribeLazyPlugins` | Subscribe to lazy-plugin store mutations. Returns an unsubscribe fn. |

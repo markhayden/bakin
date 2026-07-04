@@ -7,6 +7,11 @@
  * the create/read/mutation paths free of side effects. `sharp` is loaded lazily
  * and tolerated-absent — image metadata/export degrade to null rather than
  * failing the asset operation.
+ *
+ * This `loadSharp` is the ONE sharp loader for the assets plugin — mutations
+ * and enrichment import it from here; don't add another module-level cache.
+ * (The images plugin keeps its own tiny copy: plugin boundaries forbid the
+ * cross-plugin import and its single call site doesn't justify a hook.)
  */
 import { existsSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'

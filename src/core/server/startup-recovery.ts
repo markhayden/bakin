@@ -68,8 +68,25 @@ export async function runStartupRecovery(contentDir: string, port: number): Prom
   }
 
   if (process.env.BAKIN_SEED_USAGE === '1') {
-    import('../../../dev/imitation-crab/usage-seed')
-      .then(m => m.seedMockUsage())
-      .catch(err => log.warn('Mock usage seed failed', err))
+    // Dev-only imitation-crab seed. Two gates: the env flag AND the dev/ tree
+    // existing on a real filesystem. The specifier is computed at runtime so
+    // `bun build --compile` can't statically bundle dev/ into release
+    // binaries (the old static string did — audit P2 #25), and inside a
+    // compiled binary this module resolves under /$bunfs where the existsSync
+    // probe fails, so the flag is inert there.
+    const { fileURLToPath } = await import('node:url')
+    const { existsSync } = await import('node:fs')
+    const { dirname, join, resolve } = await import('node:path')
+    let here = ''
+    try { here = fileURLToPath(import.meta.url) } catch { /* non-file URL: stay gated off */ }
+    const repoRoot = here ? resolve(dirname(here), '..', '..', '..') : ''
+    const seedModule = repoRoot ? join(repoRoot, 'dev', 'imitation-crab', 'usage-seed.ts') : ''
+    if (seedModule && existsSync(seedModule)) {
+      import(seedModule)
+        .then(m => (m as { seedMockUsage: () => void }).seedMockUsage())
+        .catch(err => log.warn('Mock usage seed failed', err))
+    } else {
+      log.warn('BAKIN_SEED_USAGE=1 ignored — dev/imitation-crab is not present (compiled binary or trimmed tree)')
+    }
   }
 }

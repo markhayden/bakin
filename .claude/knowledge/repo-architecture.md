@@ -3,7 +3,7 @@
 ## Overview
 
 Bakin is a single Bun workspace. The repo is five named packages under
-`packages/{core,sdk,host,adapter-openclaw,adapter-antfly}`, eight first-party
+`packages/{core,sdk,host,adapter-openclaw,adapter-antfly}`, ten first-party
 plugins under `plugins/<id>/`, a small server-side core under `src/`, and a
 handful of scripts. The
 whole thing compiles via `bun build --compile` into a single-file
@@ -28,23 +28,27 @@ Bun.
 ├── bunfig.toml                ← Bun test config (preload + DOM env)
 ├── packages/
 │   ├── core/                  ← @bakin/core — shared types, adapter contracts, settings
-│   ├── sdk/                   ← @bakin/sdk — plugin author SDK (published to npm)
+│   ├── sdk/                   ← @makinbakin/sdk — plugin author SDK (published to npm)
 │   ├── host/                  ← @bakin/host — client shell + API handlers
 │   ├── adapter-openclaw/      ← runtime adapter implementation
 │   └── adapter-antfly/        ← search adapter implementation
-├── plugins/                   ← 8 first-party plugins (each has bakin-plugin.json)
-│   ├── tasks/      workflows/   assets/      schedule/
-│   ├── memory/     models/      team/        health/
+├── plugins/                   ← 10 first-party plugins (each has bakin-plugin.json)
+│   ├── tasks/      workflows/   assets/      schedule/    git/
+│   ├── memory/     models/      team/        health/      images/
 ├── src/
 │   ├── core/                  ← server-only modules with side effects
+│   ├── cli/                   ← CLI command modules (commands/<group>.ts) + shared
+│   │                            plumbing (http/output/help) behind cli/bakin.ts
 │   └── lib/                   ← shared code (client + server safe)
 ├── scripts/                   ← build + infrastructure
 │   ├── build-vendors.ts       ← import-map vendor bundles
 │   ├── build-plugins.ts       ← core plugin dist/ builder
 │   ├── build-binary.ts        ← cross-platform `bun build --compile`
 │   ├── generate-embedded-assets.ts
-│   ├── publish-sdk.ts
-│   └── lib/                   ← MCP exec tools (self-registering)
+│   ├── build-sdk-package.ts / publish-sdk.ts
+│   ├── docs/                  ← docs-site generation (generate/check/route-contract)
+│   └── lib/                   ← build-script helpers (npm-registry); the MCP exec
+│                                tools moved to src/core/exec-tools/tools/
 ├── cli/                       ← thin CLI wrapper delegated to by the binary dispatcher for HTTP-backed commands
 ├── dev/imitation-crab/        ← OpenClaw mock for dev without real OpenClaw
 ├── tests/                     ← bun:test suite (bun test --isolate)
@@ -74,6 +78,11 @@ packages/core/src/
 │   ├── outbox.ts           ← durable write journal (coalescing, acked-hash
 │   │                         dedupe, backoff, quarantine, drainOnce)
 │   └── tables.ts           ← blue/green table registry + migrator
+├── execution/ledger.ts     ← execution-ledger domain verbs (claims, completions,
+│                             idempotency) over storage/db
+├── workflows/              ← workflow definition types + registries (node-type,
+│                             source, notification-channel, agent-package skills,
+│                             load-defaults, validate-definition)
 ├── tasks/                  ← Bakin task store
 ├── plugin-types.ts         ← BakinPlugin, PluginContext, StorageAdapter, EventBus
 ├── logger.ts               ← createLogger()
@@ -85,13 +94,14 @@ packages/core/src/
 └── events/                 ← BakinEventBus
 ```
 
-### `packages/sdk/` — `@bakin/sdk`
+### `packages/sdk/` — `@makinbakin/sdk`
 
-Plugin author SDK. Published to npm as `@bakin/sdk` via
-`scripts/publish-sdk.ts` on release. Plugin authors `bun install`
-this package to get types; the actual runtime implementation is
-injected via the browser import map so every plugin and the shell
-share one SDK instance.
+Plugin author SDK. Published to npm as `@makinbakin/sdk` via
+`scripts/publish-sdk.ts` (package assembly in
+`scripts/build-sdk-package.ts`) on release. Plugin authors
+`bun install` this package to get types; the actual runtime
+implementation is injected via the browser import map so every plugin
+and the shell share one SDK instance.
 
 ```
 packages/sdk/src/
@@ -101,6 +111,10 @@ packages/sdk/src/
 ├── hooks/                  ← useAgent, useSSE, useSearch, useQueryState, ...
 ├── components/             ← PluginHeader, FacetFilter, AgentAvatar, ...
 ├── slots/                  ← Slot, registerSlot primitive
+├── metadata/               ← docs-aware contract helpers (Route/CliCommand/Hook/
+│                             Slot/ExecTool contracts, re-exported from @bakin/core/docs)
+├── routing/                ← typed route contracts (defineRoute, re-exported
+│                             from @bakin/core/routing)
 ├── types/                  ← CANONICAL contract types, self-contained, split into
 │                             primitives/manifest/runtime/services/registration/context
 │                             behind an index.ts barrel (see the two-tier note below)
@@ -121,8 +135,9 @@ divergences are intentional, not drift; don't collapse them (collapsing the
 runtime boundary is adapter-boundary work, not type cleanup).
 
 Sub-paths are declared via `exports` in `packages/sdk/package.json`:
-`@bakin/sdk/ui`, `@bakin/sdk/hooks`, `@bakin/sdk/components`,
-`@bakin/sdk/slots`, `@bakin/sdk/types`, `@bakin/sdk/utils`.
+`@makinbakin/sdk/ui`, `@makinbakin/sdk/hooks`, `@makinbakin/sdk/components`,
+`@makinbakin/sdk/slots`, `@makinbakin/sdk/types`, `@makinbakin/sdk/utils`,
+`@makinbakin/sdk/metadata`, `@makinbakin/sdk/routing`.
 
 ### `packages/adapter-openclaw/` and `packages/adapter-antfly/`
 
@@ -133,9 +148,28 @@ should only be imported by `src/core/runtime-adapter-factory.ts` and
 ```
 packages/adapter-openclaw/src/
 ├── index.ts                ← createOpenClawRuntimeAdapter()
-├── runtime.ts              ← AgentRuntimeAdapter implementation
+├── runtime.ts              ← AgentRuntimeAdapter facade (the documented
+│                             irreducible class; exec + capability wiring)
 ├── home.ts                 ← OPENCLAW_HOME / ~/.openclaw helpers
-└── config.ts               ← OpenClaw config parsing helpers
+├── config.ts               ← OpenClaw runtime config reader
+├── agent-config.ts         ← openclaw.json mutators + workspace/skill readers
+├── agent-turn.ts           ← turn prompt building + response/usage parsing
+├── gateway-rpc.ts          ← gateway WebSocket RPC client
+├── device-auth.ts          ← device identity for the gateway handshake
+├── attachments.ts          ← turn attachments → gateway `agent` RPC payload
+├── channel-helpers.ts      ← channel refs, delivery parsing, registry read
+├── approval-gateway.ts     ← plugin-approval gateway plumbing
+├── approval-helpers.ts     ← Bakin ⇄ OpenClaw approval payload mapping
+├── cron-store.ts           ← runtime.cron persistence + CLI argv + parsing
+├── memory.ts               ← runtime memory tier reads
+├── session-activity.ts     ← live session transcript tail → ChatChunk stream
+├── activity-summary.ts     ← transcript records → displayable activity
+├── trajectory-forensics.ts ← read-only session death-watch / post-mortems
+├── image-inference.ts      ← `openclaw image` arg formatting + parsers
+├── errors.ts               ← the ONE place provider error text → typed RuntimeError
+├── main-agent.ts           ← "main" orchestrator-id invariant
+├── file-utils.ts           ← shared incremental file-read primitives
+└── runtime-utils.ts        ← shared pure JSON/string leaf utilities
 
 packages/adapter-antfly/src/
 ├── index.ts                ← createAntflySearchAdapter() + factory-facing exports
@@ -215,7 +249,7 @@ packages/host/
 | Types: BakinPlugin, PluginContext, StorageAdapter, EventBus | task-service.ts (side effects, SSE) |
 | Constants: APP_NAME, APP_SLUG, etc. | audit.ts (append-only writes) |
 | Settings: getSettings(), BakinSettings | sse.ts (globalThis state) |
-| Content dir: getContentDir(), getBakinPaths() | dispatch.ts (agent communication through AppServices.runtime) |
+| Content dir: getContentDir(), getBakinPaths() | dispatch.ts (29-line barrel over the `dispatch-*` sibling modules; agent communication through AppServices.runtime) |
 | Logger: createLogger() | watcher.ts (chokidar, file events) |
 | Storage: MarkdownStorageAdapter | mcp-server.ts (tool registration) |
 | Events: BakinEventBus | agents.ts (agent API through AppServices.runtime) |
@@ -223,9 +257,11 @@ packages/host/
 | Hook registry | cli.ts (binary CLI dispatcher) |
 | Search outbox + blue/green core (packages/core/src/search/) | search-registry-core.ts / search-plugin-api.ts / search-query.ts / search-reindex.ts (globalThis registry, ctx.search, cross-table search, health) |
 | Search adapter contract + typed errors (adapters/search/) | search-outbox.ts (drain pump), search-startup.ts (boot ensure/resume), search-orphan-sweep.ts (doctor sweep), search-file-patterns.ts |
-|  | runtime-config-raw.ts (allowlisted raw runtime config reads) |
+|  | runtime-config.ts (governed whole-config access: typed scopes, audited mutations) + runtime-config-raw.ts (allowlisted key-level raw reads) |
+|  | exec-tools/ (registry.ts + self-registering built-in tools under tools/) |
+|  | server/ (request-handler.ts router factory + startup-recovery.ts) |
 |  | plugin-scaffold.ts, self-update.ts |
-|  | onboarding/ (11 components) |
+|  | onboarding/ (13 components in COMPONENT_ORDER) |
 
 **Rule of thumb:** If a module has external side effects (writes files,
 opens connections, uses globalThis) it stays in `src/core/`. If it's a
@@ -254,14 +290,14 @@ leaks writes to `~/.bakin/`.
 ## Plugin Import Rules
 
 Plugins live under `plugins/<id>/` and are NOT Bun workspace packages.
-They have their own `package.json` (for `@bakin/sdk` + `react`
+They have their own `package.json` (for `@makinbakin/sdk` + `react`
 devDependencies) but are not declared under the root workspace.
 
 From a core plugin:
 
 ```typescript
 // From plugins/X/index.ts (depth 2)
-import type { BakinPlugin } from '../../src/lib/plugin-types'
+import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { createLogger } from '../../src/core/logger'
 import { appendAudit } from '../../src/core/audit'
 
@@ -269,12 +305,12 @@ import { appendAudit } from '../../src/core/audit'
 import { getContentDir } from '../../../src/core/content-dir'
 
 // Client files import from the SDK
-import { registerPlugin, type NavItem } from '@bakin/sdk'
-import { PluginHeader } from '@bakin/sdk/components'
+import { registerPlugin, type NavItem } from '@makinbakin/sdk'
+import { PluginHeader } from '@makinbakin/sdk/components'
 ```
 
 Plugin authors (outside the repo) never use the `../../src/*` paths —
-they only see `@bakin/sdk/*`. The lint rule enforces this.
+they only see `@makinbakin/sdk/*`. The lint rule enforces this.
 
 ## TypeScript Path Aliases
 
@@ -286,7 +322,7 @@ Defined in `tsconfig.json`; bun picks them up automatically for both runtime and
 | `@bakin/core` | `./packages/core/src/index.ts` | Workspace dependency |
 | `@bakin/adapter-openclaw` | `./packages/adapter-openclaw/src/index.ts` | Runtime adapter factory only |
 | `@bakin/adapter-antfly` | `./packages/adapter-antfly/src/index.ts` | Search adapter factory only |
-| `@bakin/sdk` + sub-paths | `./packages/sdk/src/*` | Plugin client entries |
+| `@makinbakin/sdk` + sub-paths | `./packages/sdk/src/*` | Plugin client entries |
 | `@bakin/tasks` ... `@bakin/health` | `./plugins/<id>` | App + test code (never cross-plugin) |
 
 ## Build Pipeline
@@ -296,7 +332,7 @@ the detailed command reference; the summary:
 
 1. **`bun run build:vendors`** — `scripts/build-vendors.ts` builds
    standalone ESM bundles of `react`, `react-dom`, `react/jsx-runtime`,
-   and every `@bakin/sdk/*` sub-path to
+   and every `@makinbakin/sdk/*` sub-path to
    `packages/host/public/vendor/*.js`. The import map in
    `packages/host/public/index.html` points at these files. The nine SDK
    sub-paths are built in a single `bun build --splitting` invocation:
@@ -305,7 +341,7 @@ the detailed command reference; the summary:
    bundle (#422); the entry filenames and the import map stay stable.
 2. **`bun run build:plugins`** — `scripts/build-plugins.ts` builds
    each `plugins/<id>/{index.ts, client.tsx}` to `plugins/<id>/dist/`
-   with `react` + `@bakin/sdk/*` externalized.
+   with `react` + `@makinbakin/sdk/*` externalized.
 3. **`bun run build:host-shell`** — `packages/host/build.ts` builds
    `packages/host/src/main.tsx` → `packages/host/dist/main.js` (+ `.css`)
    with the same externals.
@@ -336,7 +372,9 @@ the static handler.
 ```
 Browser →  HTTP request → Bakin (server.ts)
   ↓
-  Node http.createServer((req, res) => ...)
+  Node http.createServer(createRequestHandler({ port, CONTENT_DIR, ... }))
+  — the ordered if/else router lives in src/core/server/request-handler.ts
+    (extracted from server.ts as an injectable factory; server.ts keeps boot)
   Dispatch by URL prefix:
     /api/sse           → handleSSE                   (streams)
     /api/*             → dispatchWebHandler(handler) (Web Fetch shape)
@@ -412,17 +450,20 @@ Created by `bakin onboard` or `initBakinHome()`.
 │   ├── store/                ← canonical assets, flat, sharded by month
 │   ├── inbox/                ← drop-zone for manual ingestion
 │   └── .trash/               ← soft-delete with 7-day TTL
-├── plugins/                  ← installed external plugin storage and bundles
+├── tasks/                    ← Bakin task metadata JSON, sharded by created month
+├── agents/                   ← per-agent UI data (avatars + .installedBy sidecars)
+├── packages/                 ← agent-package install state (lock.json, receipts, per-kind dirs)
 ├── workflows/
 │   ├── definitions/          ← YAML templates (user-owned)
 │   ├── instances/            ← running workflow state
 │   └── skills/               ← skill markdown files
 ├── heartbeats/               ← agent heartbeat JSON files
 ├── inbox/                    ← incoming items
-├── team/personas/            ← agent persona files
+├── team/                     ← contacts, personas, layered-context files (context/)
 ├── schedule/                 ← cron job state
 ├── plugin-settings/          ← per-plugin settings JSON
 ├── plugins/<id>/             ← installed user plugins (source + generated dist/)
+├── plugin-data/<id>/         ← installed plugin runtime data
 └── logs/                     ← server.log (rotating, 10 MB, single backup) +
                                 antfly.log (search-engine service stdout/err)
 ```
@@ -435,10 +476,11 @@ Created by `bakin onboard` or `initBakinHome()`.
 | Binary CLI | `src/core/cli.ts` | argv parsed in `server.ts` before boot; dispatches `start/stop/status/version/update/plugins/...`; unknown commands delegate (dynamic import, both directions stay lazy) to `cli/bakin.ts` |
 | HTTP-client CLI | `cli/bakin.ts` | ~210-line router (npm bin entry, `main()` + `import.meta.main`): one lazy `import('src/cli/commands/<group>')` per switch case; shared plumbing in `src/cli/{http,output,help}.ts`; each command module owns its heavy imports (whiskit, import-export, settings) so the entry graph stays light; plugin-contributed commands (manifest `contributes.cliCommands`) dispatch via `src/cli/commands/plugin-dispatch.ts` and appear in help |
 | Core plugin config | `bakin.config.ts` | Imported by `server.ts` + `registerCorePlugins` |
-| Plugin loading | `src/lib/plugin-registry.ts` | Called by `server.ts` during startup |
-| MCP tools | `src/core/mcp-server.ts` | Imports `scripts/lib/*.ts` + plugin exec tools. Supports Streamable HTTP and SSE transports. |
+| Plugin loading | `src/core/plugin-registry.ts` | `registerCorePlugins(CORE_PLUGIN_IMPORTS)` + `pluginRegistry` called by `server.ts` during startup |
+| HTTP router | `src/core/server/request-handler.ts` | `createRequestHandler({...})` factory passed to `http.createServer` by `server.ts` |
+| MCP tools | `src/core/mcp-server.ts` | Calls `getAllExecTools()` from `src/core/exec-tools/registry.ts`; built-in tools self-register via `addExecTool()` on import (`src/core/exec-tools/tools/*`), plugins register via `ctx.registerExecTool()`. Supports Streamable HTTP and SSE transports. |
 | Runtime adapters | `packages/adapter-*` | Provider-specific runtime implementations for agents, channels, approvals, cron, memory, and raw access gates |
-| Doctor cron | `src/core/doctor.ts` | `doctor.start(contentDir, projectRoot)` from `server.ts`. ~170-line orchestrator (cron + cache + audit + notify); every check is plugin-registered. Deep ref: `.claude/knowledge/doctor-and-health-checks.md`. |
+| Doctor cron | `src/core/doctor.ts` | `doctor.start(contentDir, projectRoot)` from `server.ts`. ~200-line orchestrator (cron + cache + audit + notify); every check is plugin-registered. Deep ref: `.claude/knowledge/doctor-and-health-checks.md`. |
 | TanStack router | `packages/host/src/router.ts` | Boots on client, matches URL to `routes/*.tsx` |
 | Runtime plugin loader | `packages/host/src/plugin-host/PluginHost.tsx` | Dynamic-imports every plugin's `client.js` on mount |
 | Binary build | `scripts/build-binary.ts` | Runs `bun build --compile` per target triple |
@@ -463,7 +505,7 @@ Binaries ship under 120 MB raw per target. The release pipeline
 (`.github/workflows/release.yml`) fires on `v*` tags, builds all three
 targets, packages each executable as `bakin-<platform>-<arch>.tar.gz`,
 computes checksums for the archives users download, and publishes
-`@bakin/sdk` to npm.
+`@makinbakin/sdk` to npm.
 
 ## Related docs
 

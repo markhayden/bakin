@@ -1,7 +1,8 @@
 import type { TaskLogEntry } from '@makinbakin/sdk/types'
 import type { Unsubscribe } from '../adapters/shared'
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs'
-import { dirname, join } from 'path'
+import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync } from 'fs'
+import { join } from 'path'
+import { atomicWriteJson } from '../storage/atomic-write'
 
 // TaskLogEntry is single-homed in the SDK (published TaskService contract);
 // re-exported here so the in-repo store stays the internal import source.
@@ -271,11 +272,8 @@ export function createFileBakinTaskStore(root: string): SyncBakinTaskStore {
 
   function writeTask(task: BakinTask): void {
     const path = taskPath(task)
-    const dir = dirname(path)
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-    const tmp = `${path}.${process.pid}.${Date.now()}.tmp`
-    writeFileSync(tmp, JSON.stringify(task, null, 2), 'utf-8')
-    renameSync(tmp, path)
+    // trailingNewline: false — the store has always written bare JSON.
+    atomicWriteJson(path, task, { trailingNewline: false })
     indexUpsert(task, path)
   }
 

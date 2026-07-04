@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate, Link } from '@tanstack/react-router'
 import { usePluginEvent } from '@makinbakin/sdk/hooks'
+import { ConfirmDialog } from '@makinbakin/sdk/components'
 import { Badge, Button } from '@makinbakin/sdk/ui'
 import { ArrowLeft, Download, Pencil, Trash2, Upload, Loader2, X } from 'lucide-react'
 import { AssetMetaSummary, AssetThumb } from './atoms'
@@ -266,34 +267,31 @@ export function VersionedAssetDetail() {
       )}
 
       {/* Delete-scope dialog */}
-      {confirmDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" data-testid="delete-dialog">
-          <div className="w-80 rounded-lg border border-border bg-card p-4">
-            <h3 className="mb-3 text-sm font-semibold">Delete asset</h3>
-            {manifest.versions.length > 1 ? (
-              <div className="mb-3 flex flex-col gap-2 text-sm">
-                <label className="flex items-center gap-2">
-                  <input type="radio" name="scope" checked={deleteScope === 'asset'} onChange={() => setDeleteScope('asset')} data-testid="scope-asset" />
-                  Delete whole asset (all {manifest.versions.length} versions)
-                </label>
-                <label className="flex items-center gap-2">
-                  <input type="radio" name="scope" checked={deleteScope === 'current'} onChange={() => setDeleteScope('current')} data-testid="scope-current" />
-                  Just delete the current version (v{manifest.currentVersion})
-                </label>
-              </div>
-            ) : (
-              <p className="mb-3 text-sm text-muted-foreground">Delete this asset?</p>
-            )}
-            <div className="flex justify-end gap-2">
-              {deleteError && <p className="mr-auto max-w-40 text-xs text-destructive">{deleteError}</p>}
-              <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(false)} disabled={deleting}>Cancel</Button>
-              <Button size="sm" variant="destructive" onClick={doDelete} disabled={deleting} data-testid="confirm-delete">
-                {deleting ? 'Deleting...' : 'Delete'}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Delete asset"
+        description={manifest.versions.length > 1 ? (
+          // DialogDescription renders a <p>, so the radio group stays phrasing
+          // content: <span>/<label>/<input> only, no block elements.
+          <span className="flex flex-col gap-2 text-sm text-foreground" data-testid="delete-dialog">
+            <label className="flex items-center gap-2">
+              <input type="radio" name="scope" checked={deleteScope === 'asset'} onChange={() => setDeleteScope('asset')} data-testid="scope-asset" />
+              Delete whole asset (all {manifest.versions.length} versions)
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="radio" name="scope" checked={deleteScope === 'current'} onChange={() => setDeleteScope('current')} data-testid="scope-current" />
+              Just delete the current version (v{manifest.currentVersion})
+            </label>
+          </span>
+        ) : 'Delete this asset?'}
+        busy={deleting}
+        busyLabel="Deleting..."
+        error={deleteError}
+        cancelVariant="ghost"
+        confirmTestId="confirm-delete"
+        onConfirm={doDelete}
+        onCancel={() => setConfirmDelete(false)}
+      />
     </div>
   )
 }

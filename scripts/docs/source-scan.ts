@@ -1,5 +1,6 @@
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { walkFiles as walkFileTree } from '../../packages/core/src/storage/walk'
 
 export const repoRoot = new URL('../..', import.meta.url).pathname
 const repoSourceRoots = [
@@ -63,13 +64,10 @@ export function locateExtractedPlugin(marker: string): string | undefined {
   return undefined
 }
 
-function walkFiles(dir: string, files: string[] = []): string[] {
-  for (const entry of readdirSync(dir)) {
-    if (entry === 'node_modules' || entry === 'dist' || entry === '.astro') continue
-    const path = join(dir, entry)
-    const stat = statSync(path)
-    if (stat.isDirectory()) walkFiles(path, files)
-    else if (/\.(ts|tsx)$/.test(entry)) files.push(path)
+function walkFiles(dir: string): string[] {
+  const files: string[] = []
+  for (const file of walkFileTree(dir, { skipDirs: ['node_modules', 'dist', '.astro'] })) {
+    if (/\.(ts|tsx)$/.test(file.name)) files.push(file.path)
   }
   return files
 }

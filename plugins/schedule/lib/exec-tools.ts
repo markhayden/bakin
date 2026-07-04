@@ -8,15 +8,21 @@
  */
 import { z } from 'zod'
 import type { PluginContext } from '@bakin/core/plugin-types'
-import type { BakinJobMeta } from '../types'
-import { getJob, upsertJob, newScheduleId, withDefaults } from './sidecar'
+import { getJob } from './sidecar'
 import { parseSchedule } from './cron-parser'
-import { getSystemTimezone } from './schedule-util'
-import { checkSchedulePrompt } from './prompt-guard'
-import { getLastRun, readRuns } from './runs-reader'
-import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
+import { readRuns } from './runs-reader'
 import { fireManualRun } from './fire-engine'
-import { guardBakinMutation, deleteScheduleJob, indexJob, readMergedRuntimeJobs } from './job-service'
+import {
+  applyPauseAction,
+  createScheduleJob,
+  deleteScheduleJob,
+  guardBakinMutation,
+  indexJob,
+  projectJobDetail,
+  readMergedRuntimeJobs,
+  updateScheduleJob,
+  type PauseAction,
+} from './job-service'
 
 export function registerScheduleExecTools(ctx: PluginContext): void {
   ctx.registerExecTool({
@@ -64,37 +70,17 @@ export function registerScheduleExecTools(ctx: PluginContext): void {
       if (!params.name || !params.schedule) {
         return { ok: false, error: 'name and schedule are required' }
       }
-
-      const parsed = parseSchedule(params.schedule as string)
-      if (!parsed) return { ok: false, error: 'Could not parse schedule expression' }
-
-      const tz = getSystemTimezone()
-      const jobId = newScheduleId()
-
-      const meta: BakinJobMeta = {
-        jobId,
-        isBakinJob: true,
-        source: 'bakin',
-        schedule: { kind: 'cron', expr: parsed.cron },
-        enabled: true,
-        displayName: params.name as string,
+      const result = await createScheduleJob(ctx, {
+        name: params.name as string,
+        schedule: params.schedule as string,
         agentId: params.agentId as string | undefined,
-        owner: await getRuntimeMainAgentId(ctx.runtime),
         workflowId: params.workflowId as string | undefined,
         taskPrompt: params.taskPrompt as string | undefined,
         taskTitle: params.taskTitle as string | undefined,
-        allowOverlap: false,
-        maxFailures: 3,
-        consecutiveFailures: 0,
-        tz,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      }
-      upsertJob(meta)
-      indexJob(jobId)
-
-      const warnings = checkSchedulePrompt(params.taskPrompt as string | undefined)
-      return { ok: true, jobId, cron: parsed.cron, human: parsed.human, tz, ...(warnings.length ? { warnings } : {}) }
+      })
+      if (!result.ok) return result
+      const { warnings, ...created } = result
+      return { ...created, ...(warnings.length ? { warnings } : {}) }
     },
   })
 
@@ -116,24 +102,13 @@ export function registerScheduleExecTools(ctx: PluginContext): void {
 
       const guard = await guardBakinMutation(params.jobId as string)
       if (!guard.ok) return { ok: false, error: guard.error }
-      const meta = guard.meta
 
-      if (params.schedule) {
-        const parsed = parseSchedule(params.schedule as string)
-        if (!parsed) return { ok: false, error: 'Could not parse schedule' }
-        meta.schedule = { kind: 'cron', expr: parsed.cron }
-      }
-
-      const fields = ['displayName', 'agentId', 'workflowId', 'taskPrompt', 'taskTitle']
-      for (const f of fields) {
-        if (params[f] !== undefined) (meta as unknown as Record<string, unknown>)[f] = params[f]
-      }
-      if (params.name) meta.displayName = params.name as string
-      upsertJob(meta)
+      const result = updateScheduleJob(guard.meta, params, [
+        'displayName', 'agentId', 'workflowId', 'taskPrompt', 'taskTitle',
+      ])
+      if (!result.ok) return result
       indexJob(params.jobId as string)
-
-      const warnings = checkSchedulePrompt(meta.taskPrompt)
-      return { ok: true, ...(warnings.length ? { warnings } : {}) }
+      return { ok: true, ...(result.warnings.length ? { warnings: result.warnings } : {}) }
     },
   })
 
@@ -152,36 +127,11 @@ export function registerScheduleExecTools(ctx: PluginContext): void {
 
       const guard = await guardBakinMutation(params.jobId as string)
       if (!guard.ok) return { ok: false, error: guard.error }
-      const meta = guard.meta
 
-      switch (params.action) {
-        case 'pause':
-          meta.paused = true
-          meta.pauseReason = 'manual'
-          // Unconditional, matching the REST pause route: a fresh pause without a
-          // date clears any stale auto-resume from a prior pause (was a conditional
-          // assignment here that left the old pauseUntil in place).
-          meta.pauseUntil = params.pauseUntil as string | undefined
-          meta.enabled = false
-          break
-        case 'resume':
-          meta.paused = false
-          meta.pauseReason = undefined
-          meta.pauseUntil = undefined
-          meta.skipNextN = undefined
-          meta.skippedCount = undefined
-          meta.consecutiveFailures = 0
-          meta.enabled = true
-          break
-        case 'skip':
-          if (!meta.isBakinJob) return { ok: false, error: 'Skip is only available for Bakin schedules' }
-          meta.skipNextN = (params.skipN as number) ?? 1
-          meta.skippedCount = 0
-          break
-      }
-      upsertJob(meta)
-
-      return { ok: true }
+      return applyPauseAction(guard.meta, params.action as PauseAction, {
+        pauseUntil: params.pauseUntil as string | undefined,
+        skipN: params.skipN as number | undefined,
+      })
     },
   })
 
@@ -212,30 +162,7 @@ export function registerScheduleExecTools(ctx: PluginContext): void {
       if (!params.jobId) return { ok: false, error: 'jobId required' }
       const meta = getJob(params.jobId as string)
       if (!meta) return { ok: false, error: 'Job not found' }
-      const defaults = withDefaults(meta, await getRuntimeMainAgentId(ctx.runtime))
-      const lastRun = await getLastRun(ctx.runtime.cron, params.jobId as string)
-      return {
-        ok: true,
-        job: {
-          id: meta.jobId,
-          name: meta.displayName,
-          agent: meta.agentId,
-          owner: defaults.owner,
-          paused: meta.paused ?? false,
-          pauseReason: meta.pauseReason,
-          pauseUntil: meta.pauseUntil,
-          workflowId: meta.workflowId,
-          taskPrompt: meta.taskPrompt,
-          taskTitle: meta.taskTitle,
-          allowOverlap: defaults.allowOverlap,
-          maxFailures: defaults.maxFailures,
-          consecutiveFailures: meta.consecutiveFailures ?? 0,
-          lastTaskId: meta.lastTaskId,
-          lastRun: lastRun ?? null,
-          tz: meta.tz,
-          createdAt: meta.createdAt,
-        },
-      }
+      return { ok: true, job: await projectJobDetail(ctx, params.jobId as string, meta) }
     },
   })
 

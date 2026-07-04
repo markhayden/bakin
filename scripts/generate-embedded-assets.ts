@@ -24,6 +24,7 @@
  */
 import { readdirSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join, resolve, relative, dirname } from 'node:path'
+import { walkFiles } from '../packages/core/src/storage/walk'
 
 const OUT_FILE_REL = 'packages/host/src/api/_embedded-assets-static.ts'
 const REQUIRED_ASSETS: Array<{ path: string; build: string }> = [
@@ -71,21 +72,13 @@ export function collectAssets(repoRoot: string): AssetSource[] {
   }
 
   function walk(dir: string, prefix: string, out: AssetSource[]): void {
-    if (!existsSync(dir)) return
-    const entries = readdirSync(dir, { withFileTypes: true })
-    for (const entry of entries) {
-      const name = String(entry.name)
+    for (const file of walkFiles(dir)) {
       // Skip source maps — we don't need to ship them with the binary and
       // Vite's define plugin chokes on .map files being treated as modules
       // during test module graph traversal.
-      if (name.endsWith('.map')) continue
-      const full = join(dir, name)
-      if (entry.isDirectory()) {
-        walk(full, `${prefix}/${name}`, out)
-      } else if (entry.isFile()) {
-        const urlPath = `${prefix}/${name}`
-        out.push({ absPath: full, urlPath, varName: makeVarName(urlPath) })
-      }
+      if (file.name.endsWith('.map')) continue
+      const urlPath = `${prefix}/${file.relPath}`
+      out.push({ absPath: file.path, urlPath, varName: makeVarName(urlPath) })
     }
   }
 
@@ -176,6 +169,21 @@ function assertRequiredAssetsExist(repoRoot: string): void {
   )
 }
 
+/**
+ * Escape a value for a single-quoted TS string literal. Asset paths are
+ * repo-controlled, but a quote/backslash/newline in a filename must not break
+ * out of the generated literal (audit P2 #26). Single quotes (not
+ * JSON.stringify's double quotes) keep the emission byte-identical to the
+ * historical format for benign names.
+ */
+function quoteLiteral(value: string): string {
+  return `'${value
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')}'`
+}
+
 export function emitManifest(assets: AssetSource[], outFile: string): string {
   const header = `// @ts-nocheck — every import below uses \`with { type: 'file' }\`;
 // Bun resolves these at build time (for --compile) or dev time (as on-disk
@@ -201,12 +209,12 @@ export function emitManifest(assets: AssetSource[], outFile: string): string {
       // Force POSIX separators for the module specifier.
       const specifier = rel.split(/[\\/]/).join('/')
       const spec = specifier.startsWith('.') ? specifier : `./${specifier}`
-      return `import ${a.varName} from '${spec}' with { type: 'file' }`
+      return `import ${a.varName} from ${quoteLiteral(spec)} with { type: 'file' }`
     })
     .join('\n')
 
   const entries = assets
-    .map(a => `  ['${a.urlPath}', ${a.varName}],`)
+    .map(a => `  [${quoteLiteral(a.urlPath)}, ${a.varName}],`)
     .join('\n')
 
   return `${header}

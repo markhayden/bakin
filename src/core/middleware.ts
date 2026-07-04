@@ -30,6 +30,23 @@ export async function parseJsonBody(
 }
 
 /**
+ * Web-`Request` twin of parseJsonBody for Fetch-style handlers
+ * (packages/host/src/api/**): same lenient contract — the parsed object, or
+ * null when the body is empty, invalid JSON, or not an object. Size limits are
+ * enforced upstream by the Node→Web adapter's readRequestBody.
+ */
+export async function parseJsonBodyWeb(req: Request): Promise<Record<string, unknown> | null> {
+  try {
+    const body: unknown = await req.json()
+    // Same object test as parseJsonBody (arrays included) so downstream zod
+    // validation sees identical inputs on either path.
+    return body && typeof body === 'object' ? body as Record<string, unknown> : null
+  } catch {
+    return null
+  }
+}
+
+/**
  * Validate that a POST/PUT/DELETE request has a JSON content type.
  * Returns true if valid, sends 400 and returns false if not.
  */

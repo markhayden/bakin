@@ -9,6 +9,7 @@ import { EmptyState } from "@makinbakin/sdk/components"
 import { Skeleton } from "@makinbakin/sdk/ui"
 import { ClipboardList } from 'lucide-react'
 import { STATUS_BADGE_STYLES } from '../constants'
+import { formatDateTime, formatDuration } from "@makinbakin/sdk/utils"
 import { useAgent } from "@makinbakin/sdk/hooks"
 import { AgentAvatar } from "@makinbakin/sdk/components"
 import type { FlatTask } from '../hooks/use-task-filters'
@@ -151,22 +152,14 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
   }, [sortField])
 
   function formatDate(d?: string) {
-    if (!d) return '—'
-    const date = new Date(d)
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
-      ' ' + date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    return d ? formatDateTime(d) : '—'
   }
 
-  function formatDuration(created?: string, completed?: string) {
+  function taskDuration(created?: string, completed?: string) {
     if (!created || !completed) return '—'
     const ms = new Date(completed).getTime() - new Date(created).getTime()
-    if (ms < 0) return '—'
-    const mins = Math.floor(ms / 60000)
-    if (mins < 60) return `${mins}m`
-    const hrs = Math.floor(mins / 60)
-    if (hrs < 24) return `${hrs}h ${mins % 60}m`
-    const days = Math.floor(hrs / 24)
-    return `${days}d ${hrs % 24}h`
+    if (!Number.isFinite(ms) || ms < 0) return '—'
+    return formatDuration(ms) ?? '—'
   }
 
   return (
@@ -239,7 +232,7 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
                     <TableCell className="text-xs text-muted-foreground">{formatDate(created)}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{formatDate(completed)}</TableCell>
                     <TableCell className="text-xs font-mono text-muted-foreground">
-                      {formatDuration(created, completed)}
+                      {taskDuration(created, completed)}
                     </TableCell>
                   </TableRow>
                 )

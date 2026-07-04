@@ -65,16 +65,9 @@ export function readPath(source: Record<string, unknown>, key: string): unknown 
   return current
 }
 
-export function deepMerge(base: Record<string, unknown>, patch: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...base }
-  for (const [key, value] of Object.entries(patch)) {
-    const existing = out[key]
-    out[key] = isPlainObject(existing) && isPlainObject(value)
-      ? deepMerge(existing, value)
-      : value
-  }
-  return out
-}
+// Single-homed in @bakin/core (also used by settings.ts); re-exported so the
+// adapter's callers keep their runtime-utils import path.
+export { deepMerge } from '@bakin/core/merge'
 
 export function cloneJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T

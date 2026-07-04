@@ -31,6 +31,16 @@ describe('formatDuration', () => {
   it('renders minute+second values', () => {
     expect(formatDuration(60_000)).toBe('1m 0s')
     expect(formatDuration(185_000)).toBe('3m 5s')
+    expect(formatDuration(59 * 60_000 + 59_000)).toBe('59m 59s')
+  })
+  it('rolls hour-scale values up to hours+minutes', () => {
+    expect(formatDuration(3_600_000)).toBe('1h 0m')
+    expect(formatDuration(2 * 3_600_000 + 5 * 60_000)).toBe('2h 5m')
+    expect(formatDuration(23 * 3_600_000 + 59 * 60_000)).toBe('23h 59m')
+  })
+  it('rolls day-scale values up to days+hours', () => {
+    expect(formatDuration(24 * 3_600_000)).toBe('1d 0h')
+    expect(formatDuration(3 * 24 * 3_600_000 + 2 * 3_600_000)).toBe('3d 2h')
   })
 })
 

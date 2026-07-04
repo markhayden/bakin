@@ -30,13 +30,20 @@ export function formatDateTime(timestamp: string): string {
   return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(sameYear ? {} : { year: 'numeric' }) })} ${time}`
 }
 
-/** Human-readable elapsed duration from a millisecond count ("850ms" / "42s" / "3m 5s"); null when undefined. */
+/**
+ * Human-readable elapsed duration from a millisecond count, rolling up through
+ * units ("850ms" / "42s" / "3m 5s" / "2h 5m" / "3d 2h"); null when undefined.
+ */
 export function formatDuration(ms?: number): string | null {
   if (ms == null) return null
   if (ms < 1000) return `${ms}ms`
   const s = Math.round(ms / 1000)
   if (s < 60) return `${s}s`
-  return `${Math.floor(s / 60)}m ${s % 60}s`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m ${s % 60}s`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ${m % 60}m`
+  return `${Math.floor(h / 24)}d ${h % 24}h`
 }
 
 /** Human-readable file size */

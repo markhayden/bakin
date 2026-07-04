@@ -137,11 +137,18 @@ Plugins must not import:
 - `@antfly/sdk`
 - provider database paths or provider-owned SQLite files
 
-## Raw Runtime Config
+## Runtime Config Access (governed)
 
-`runtime.config.raw()` is intentionally exposed on the adapter contract because
-some provider data is not worth turning into a stable cross-runtime interface
-yet. Direct calls are forbidden outside `src/core/runtime-config-raw.ts`.
+Two gates, both audited, both architecture-test enforced:
+
+- **Whole-config access** — `runtime.config.get()`/`.replace()` are called
+  ONLY from `src/core/runtime-config.ts` (`readRuntimeConfig`/
+  `replaceRuntimeConfig`). Every caller passes a typed scope; mutations
+  append an audit row (reads deliberately don't — the models plugin reads
+  config per `/config` request and auditing reads would spam the feed).
+- **Key-level raw reads** — `runtime.config.raw()` for provider data not
+  worth a stable cross-runtime interface yet. Direct calls are forbidden
+  outside `src/core/runtime-config-raw.ts`.
 
 Every raw read must be:
 
@@ -179,7 +186,7 @@ directly. (The old
 `runtime.tasks.*` adapter surface was deleted — it returned fabricated
 `flowId`s and always-`'unknown'` status with zero real consumers; dispatch
 execution tracking lives in the in-flight turn registry in
-`src/core/dispatch.ts`. Likewise deleted as dead/lying surface:
+`src/core/dispatch-turns.ts`. Likewise deleted as dead/lying surface:
 `agents.heartbeat()` — the real liveness system is `~/.bakin/heartbeats/` —
 `channels.onMessage`/`onInteraction`, and `tools.list()`.)
 

@@ -13,8 +13,9 @@
  * are a cross-package contract (packages/core/src/execution/ledger.ts reads the
  * file directly for its seq-watermark migration) — do not rename or reshape.
  */
-import { readFileSync, writeFileSync, renameSync, existsSync } from 'fs'
+import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
+import { atomicWriteJson } from '@bakin/core/storage/atomic-write'
 import { createLogger } from './logger'
 import type { DispatchState, FailureRecord } from './dispatch-types'
 
@@ -88,15 +89,12 @@ export function loadDispatchState(contentDir: string): DispatchState {
 export function saveDispatchState(contentDir: string, state: DispatchState): void {
   // Atomic write: a torn .dispatch-state.json (process killed mid-write) fails
   // loadDispatchState's JSON.parse and resets ALL dispatch bookkeeping
-  // (dispatched markers + failure records). Write a sibling temp then rename —
-  // rename is atomic on the same filesystem, so a reader (or the ledger's
-  // seq-watermark migration) sees either the old file or the complete new one,
-  // never a partial. The pid suffix avoids collision if a second process ever
-  // races (the server lock refuses that, but defense-in-depth is cheap).
-  const target = getStateFile(contentDir)
-  const tmp = `${target}.${process.pid}.tmp`
-  writeFileSync(tmp, JSON.stringify(state, null, 2), 'utf-8')
-  renameSync(tmp, target)
+  // (dispatched markers + failure records). atomicWriteJson writes a sibling
+  // temp then renames — rename is atomic on the same filesystem, so a reader
+  // (or the ledger's seq-watermark migration) sees either the old file or the
+  // complete new one, never a partial. trailingNewline: false preserves this
+  // file's historical byte-for-byte serialization (cross-package contract).
+  atomicWriteJson(getStateFile(contentDir), state, { trailingNewline: false })
 }
 
 export async function clearDispatchMarker(contentDir: string, taskId: string): Promise<void> {

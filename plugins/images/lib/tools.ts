@@ -68,6 +68,10 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
+// Deliberate small duplicate of plugins/assets/lib/asset-media.ts loadSharp:
+// the plugin-boundaries architecture test bans cross-plugin imports, images'
+// only sharp use is the single imageDimensions probe below, and a hook-based
+// bridge for a 6-line lazy loader isn't worth the indirection.
 async function loadSharp(): Promise<Sharp | null> {
   sharpModule ??= import('sharp')
     .then((mod): Sharp => (mod as unknown as { default?: Sharp }).default ?? (mod as unknown as Sharp))

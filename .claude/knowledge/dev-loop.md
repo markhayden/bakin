@@ -20,7 +20,7 @@ visible difference is what happens when you save a plugin file:
 - **v2 behavior (linked user plugins):** save a linked plugin file under
   its source tree → Bakin rebuilds the plugin, hot-swaps server
   registrations in-process, then remounts that plugin's client bundle.
-  This is the path used by `bakin plugins install --dev <path>`.
+  This is the path used by `bakin plugins link <path>`.
 
 Not yet shipped:
 
@@ -70,7 +70,7 @@ Browser:
                                        before </body> when BAKIN_DEV=1)
         │
         ├── /_app/main.js     (shell bundle)
-        ├── /vendor/*.js       (react, tanstack-router, @bakin/sdk/*)
+        ├── /vendor/*.js       (react, tanstack-router, @makinbakin/sdk/*)
         ├── /__bakin-dev/client.js   (dev client — dev-only, disk-only)
         └── /api/plugins/<id>/assets/client.js   (each plugin's bundle)
 
@@ -82,6 +82,14 @@ Browser:
             on 'dev:error'    → render red overlay
             on 'dev:recover'  → dismiss overlay
 ```
+
+The core plugin set the dev watcher (and `scripts/build-plugins.ts`)
+iterates comes from ONE place: `CORE_PLUGIN_IDS` in
+`src/lib/core-plugin-ids.ts`. The scripts previously kept hand-maintained
+copies with different orderings — adding a plugin had to be threaded into
+each by hand, and a miss silently dropped it from one build path. An
+architecture test (`tests/architecture/core-plugin-ids.test.ts`) pins the
+list to the keys of `CORE_PLUGIN_IMPORTS` (the set the binary embeds).
 
 ## Gates (defense in depth)
 
@@ -154,7 +162,7 @@ The shell and every plugin share React via the import map:
 ```
 /vendor/react.js           ← single React instance, loaded once per page
 /vendor/react-dom.js       ← single react-dom instance, uses /vendor/react.js
-/vendor/sdk-*.js           ← @bakin/sdk bundles, externalize react
+/vendor/sdk-*.js           ← @makinbakin/sdk bundles, externalize react
 /vendor/sdk-shared-*.js    ← code-split chunks shared by the SDK bundles (relative imports, no map entries)
 ```
 
@@ -174,7 +182,7 @@ When a core plugin client file changes:
 1. `scripts/dev.ts` calls `buildOnePlugin(id, { serverEntry: false })` — client assets only; core server bundles aren't built at all (core server code is statically imported from source, #421). On success, captures `mtime` of the new `plugins/<id>/dist/client.js` and broadcasts `{ type: 'dev:hot-swap', scope: 'plugin', id, version: mtime }`.
 2. Dev client debounces events per-plugin (100 ms), picks the latest, calls `window.__bakinHotSwapPlugin(id, '/api/plugins/<id>/assets/client.js', version)`.
 3. `PluginHost` (in the shell bundle) runs:
-   a. `unregisterPlugin(id)` from `@bakin/sdk`:
+   a. `unregisterPlugin(id)` from `@makinbakin/sdk`:
       - Runs enrolled cleanup fns (`cleanupByPlugin.get(id)`). Workflows plugin uses this to sweep its node-renderer and workflow-source registries.
       - Drops nav items keyed on `id`.
       - Calls `clearSlotsOwnedBy(id)` — sweeps slot entries where `entry.owner === id`. Unowned entries (test registrations, pre-v2 legacy) survive.
@@ -187,7 +195,7 @@ When a linked user plugin file changes:
 
 1. `src/core/plugin-host/hot-reload-coordinator.ts` watches the
    lockfile's `linked: true` entries. `bakin dev` starts this coordinator
-   automatically, and `bakin plugins install --dev <path>` attaches a
+   automatically, and `bakin plugins link <path>` attaches a
    watcher immediately if the server is already running.
    `~/.bakin/plugins/<id>` is a symlink in this mode; startup plugin
    discovery must follow symlinks to directories, not rely on
@@ -262,7 +270,7 @@ v2 hot-swap is correct iff every client-side registration API has a paired teard
 | `registerPlugin({id, navItems, slots})` | `packages/sdk/src/register.ts` | `id` | `unregisterPlugin(id)` |
 | `registerSlot(name, component, order, owner)` | `packages/sdk/src/slots/index.tsx` | `owner` (pluginId) | `clearSlotsOwnedBy(pluginId)` — called by `unregisterPlugin` |
 | `registerNodeRenderer(kind, component)` | `plugins/workflows/lib/node-renderer-registry.ts` | `kind` | `unregisterNodeRenderer(kind)` — swept by `registerPluginCleanup('workflows', …)` |
-| `registerPluginDefinition(pluginId, id, def)` | `plugins/workflows/lib/source-registry.ts` | `pluginId` | `unregisterPluginDefinitions(pluginId)` — same cleanup hook |
+| `registerPluginDefinition(pluginId, id, def)` | `packages/core/src/workflows/source-registry.ts` | `pluginId` | `unregisterPluginDefinitions(pluginId)` — same cleanup hook |
 
 For linked user plugins, server-side registrations (`ctx.registerExecTool`,
 `ctx.hooks.register`, `ctx.registerRoute`, `ctx.search.registerContentType`,
@@ -321,14 +329,14 @@ To wire a new source tree into the watch/rebuild/broadcast cycle:
 4. Broadcast `dev:building` on start and either `dev:reload` / `dev:hot-swap` on success or `dev:error` on failure. Use `emitSuccess()` / `emitError()` to get dev:recover emission on success-after-error.
 5. Update the matrix in `CONTRIBUTING.md` and this doc.
 
-## Adding a new registration API to `@bakin/sdk`
+## Adding a new registration API to `@makinbakin/sdk`
 
 If a plugin needs a new client-side registry beyond nav + slots, the teardown contract is:
 
 1. Expose the registry as a module with `register` + `unregister` (or `clear`) primitives. Key entries by whatever makes sense for the registry — for plugin-owned entries, include a `pluginId` tag.
 2. In the plugin's `client.tsx`, after the `registerPlugin` call:
    ```ts
-   import { registerPluginCleanup } from '@bakin/sdk'
+   import { registerPluginCleanup } from '@makinbakin/sdk'
 
    registerPluginCleanup('my-plugin', () => {
      // Sweep whatever you registered

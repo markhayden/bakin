@@ -1,5 +1,6 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'fs'
-import { dirname, join } from 'path'
+import { existsSync, readdirSync, readFileSync } from 'fs'
+import { join } from 'path'
+import { atomicWriteJson } from '@bakin/core/storage/atomic-write'
 import type { HealthCheckResult } from '../../packages/core/src/plugin-types'
 import type { DoctorRepairPlanReport } from './doctor-repair'
 
@@ -41,13 +42,6 @@ function requestPath(contentDir: string, request: Pick<DoctorRepairRequest, 'id'
   return join(repairRoot(contentDir), monthShard(request.createdAt), `${request.id}.json`)
 }
 
-function writeJsonAtomic(path: string, value: unknown): void {
-  mkdirSync(dirname(path), { recursive: true })
-  const tmp = `${path}.tmp-${process.pid}-${Date.now()}`
-  writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`)
-  renameSync(tmp, path)
-}
-
 function readRequestFile(path: string): DoctorRepairRequest {
   return JSON.parse(readFileSync(path, 'utf-8')) as DoctorRepairRequest
 }
@@ -86,7 +80,7 @@ export function createDoctorRepairRequest(
       message: 'Delegated doctor repair request planned.',
     }],
   }
-  writeJsonAtomic(requestPath(contentDir, request), request)
+  atomicWriteJson(requestPath(contentDir, request), request)
   return request
 }
 
@@ -104,7 +98,7 @@ export function updateDoctorRepairRequest(
   if (!path) throw new Error(`Doctor repair request not found: ${requestId}`)
   const current = readRequestFile(path)
   const next = { ...update(current), updatedAt: nowIso() }
-  writeJsonAtomic(path, next)
+  atomicWriteJson(path, next)
   return next
 }
 
