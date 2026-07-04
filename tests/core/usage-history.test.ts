@@ -33,7 +33,7 @@ mock.module('../../packages/core/src/logger', loggerMock)
 
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 import type { AgentRuntimeAdapter, RuntimeMemoryEntry } from '@bakin/core/adapters/runtime'
-import { scanUsageHistory } from '../../src/core/usage-history'
+import { scanUsageHistory, bucketSessionUsage } from '../../src/core/usage-history'
 import { usageByAgentSince, usageByDaySince, toLocalDayKey } from '@bakin/core/usage-history/store'
 import { closeAllDbs } from '@bakin/core/storage/db'
 
@@ -271,5 +271,39 @@ describe('scanUsageHistory', () => {
     const basil = usageByAgentSince(EPOCH_DAY).find((a) => a.agent === 'basil')
     expect(basil?.costUsdMicros).toBe(3_000)
     expect(basil?.costedMessages).toBe(1)
+  })
+})
+
+describe('toLocalDayKey', () => {
+  it('formats zero-padded local calendar days', () => {
+    // 2026-03-05 12:00 local — construct from local components so the
+    // assertion holds in every timezone.
+    const ts = new Date(2026, 2, 5, 12, 0, 0).getTime()
+    expect(toLocalDayKey(ts)).toBe('2026-03-05')
+  })
+
+  it('two timestamps on the same local day share a key; adjacent days differ', () => {
+    const morning = new Date(2026, 6, 4, 0, 30).getTime()
+    const night = new Date(2026, 6, 4, 23, 30).getTime()
+    const nextDay = new Date(2026, 6, 5, 0, 30).getTime()
+    expect(toLocalDayKey(morning)).toBe(toLocalDayKey(night))
+    expect(toLocalDayKey(nextDay)).not.toBe(toLocalDayKey(morning))
+  })
+})
+
+describe('bucketSessionUsage cost honesty', () => {
+  it('an empty cost object is not runtime-reported cost', () => {
+    const content = [
+      JSON.stringify({ type: 'session', id: 'ec', timestamp: '2026-07-01T10:00:00Z' }),
+      JSON.stringify({
+        type: 'message', timestamp: '2026-07-01T10:01:00Z',
+        message: { role: 'assistant', model: 'm1', usage: { input: 1, output: 1, totalTokens: 2, cost: {} } },
+      }),
+    ].join('\n')
+    const rows = bucketSessionUsage(content)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].costUsdMicros).toBeNull()
+    expect(rows[0].costedMessages).toBe(0)
+    expect(rows[0].messageCount).toBe(1)
   })
 })
