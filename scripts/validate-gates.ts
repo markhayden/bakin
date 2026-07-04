@@ -347,8 +347,11 @@ function printReport(reportPath?: string): void {
 async function main(): Promise<void> {
   const args = process.argv.slice(2)
   const flag = (name: string): string | undefined => {
-    const hit = args.find(a => a.startsWith(`--${name}=`))
-    return hit ? hit.split('=').slice(1).join('=') : undefined
+    const eq = args.find(a => a.startsWith(`--${name}=`))
+    if (eq) return eq.split('=').slice(1).join('=')
+    const idx = args.indexOf(`--${name}`)
+    const next = idx >= 0 ? args[idx + 1] : undefined
+    return next && !next.startsWith('--') ? next : undefined
   }
   const scenarioAliases: Record<string, string> = {
     us1: 'delivery', us2: 'approve', us3: 'reject', us4: 'ui-approve', us5: 'nested', us6: 'approve',
@@ -361,7 +364,9 @@ async function main(): Promise<void> {
   const rewindStepId = flag('rewind-step') || 'write-copy'
   const reportPath = flag('report')
 
-  if (!scenario && !all) {
+  const knownScenarios = ['delivery', 'approve', 'reject', 'ui-approve', 'nested']
+  if ((!scenario && !all) || (scenario && !knownScenarios.includes(scenario))) {
+    if (scenario) console.error(`Unknown scenario: ${scenario}`)
     console.log('Usage: bun scripts/validate-gates.ts --scenario <delivery|approve|reject|ui-approve|nested|us1..us6> [--agent main] [--workflow text-social-post-copy] [--report out.md]')
     console.log('       bun scripts/validate-gates.ts --all [--agent main] [--report out.md]')
     process.exit(1)
