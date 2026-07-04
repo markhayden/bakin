@@ -169,6 +169,21 @@ function assertRequiredAssetsExist(repoRoot: string): void {
   )
 }
 
+/**
+ * Escape a value for a single-quoted TS string literal. Asset paths are
+ * repo-controlled, but a quote/backslash/newline in a filename must not break
+ * out of the generated literal (audit P2 #26). Single quotes (not
+ * JSON.stringify's double quotes) keep the emission byte-identical to the
+ * historical format for benign names.
+ */
+function quoteLiteral(value: string): string {
+  return `'${value
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')}'`
+}
+
 export function emitManifest(assets: AssetSource[], outFile: string): string {
   const header = `// @ts-nocheck — every import below uses \`with { type: 'file' }\`;
 // Bun resolves these at build time (for --compile) or dev time (as on-disk
@@ -194,12 +209,12 @@ export function emitManifest(assets: AssetSource[], outFile: string): string {
       // Force POSIX separators for the module specifier.
       const specifier = rel.split(/[\\/]/).join('/')
       const spec = specifier.startsWith('.') ? specifier : `./${specifier}`
-      return `import ${a.varName} from '${spec}' with { type: 'file' }`
+      return `import ${a.varName} from ${quoteLiteral(spec)} with { type: 'file' }`
     })
     .join('\n')
 
   const entries = assets
-    .map(a => `  ['${a.urlPath}', ${a.varName}],`)
+    .map(a => `  [${quoteLiteral(a.urlPath)}, ${a.varName}],`)
     .join('\n')
 
   return `${header}
