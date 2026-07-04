@@ -37,6 +37,7 @@ import {
   type SkillPackManifest,
 } from '../../../packages/core/src/agent-packages/manifest'
 import {
+  PROJECTION_KIND_POLICY,
   type ProjectionEntry,
 } from '../../../packages/core/src/agent-packages/lockfile'
 import {
@@ -558,9 +559,11 @@ export async function unprojectPackage(
 ): Promise<void> {
   const runtime = getAppServices().runtime
   for (const p of projections) {
-    // Personas are user territory from the moment they're seeded — package
-    // removal never takes them back (no sentinel required).
-    if (p.kind === 'persona') continue
+    // Seed-once kinds (personas today) are user territory from the moment
+    // they're seeded — package removal never takes them back (no sentinel
+    // required). Policy lives in PROJECTION_KIND_POLICY; workspace-file and
+    // lesson-marker rows survive too but via block surgery below, not here.
+    if (PROJECTION_KIND_POLICY[p.kind].seedOnce) continue
     const runtimeTarget = parseRuntimeTarget(p.target)
     if (p.kind === 'lesson-marker') {
       if (options.keepBlocks) continue

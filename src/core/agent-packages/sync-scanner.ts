@@ -38,6 +38,7 @@ import {
 import {
   type Lockfile,
   type PackageEntry,
+  PROJECTION_KIND_POLICY,
   type ProjectionEntry,
   type ProjectionInputs,
   readLockfile,
@@ -485,11 +486,12 @@ export async function scanAgentSync(lockfile?: Lockfile): Promise<SyncScanReport
     for (const p of entry.projections ?? []) {
       if (p.kind === 'workspace-file' || p.kind === 'lesson-marker') continue
 
-      // Personas are seeded once and then user-owned: no .installedBy sidecar,
-      // edits are expected, uninstall leaves them behind. Only their absence is
-      // actionable (sync re-seeds a missing persona per the only-when-missing
-      // contract) — marker and drift checks would be permanent false positives.
-      if (p.kind === 'persona') {
+      // Seed-once kinds (personas today) are user-owned after projection: no
+      // .installedBy sidecar, edits are expected, uninstall leaves them
+      // behind. Only their absence is actionable (sync re-seeds per the
+      // only-when-missing contract) — marker and drift checks would be
+      // permanent false positives. Policy lives in PROJECTION_KIND_POLICY.
+      if (PROJECTION_KIND_POLICY[p.kind].seedOnce) {
         if (!existsSync(p.target)) {
           report.findings.push({
             type: 'asset-missing',
@@ -498,7 +500,7 @@ export async function scanAgentSync(lockfile?: Lockfile): Promise<SyncScanReport
             packageId,
             agentId: entry.agentId,
             target: p.target,
-            message: `Persona file missing (sync will re-seed it): ${p.target}`,
+            message: `Seed-once file missing (sync will re-seed it): ${p.target}`,
           })
         } else {
           report.projectionsOk++
