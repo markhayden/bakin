@@ -35,15 +35,7 @@ Review the draft.
 
 ## PROGRESS LOGGING — MANDATORY
 
-You MUST log your progress throughout this workflow step. These updates appear in the live activity feed so humans can monitor your work in real-time.
-
-**When to log:**
-- IMMEDIATELY when you start working (what you are about to do and your approach)
-- After each significant action (reading files, generating content, making API calls, reviewing output)
-- Share your reasoning ("The brief calls for warm tones, going with golden hour lighting")
-- If anything unexpected happens or you are blocked
-- When you complete and submit your output (summary of what you produced)
-- If more than 2 minutes have passed since your last log, send a status update — even if just "Still working on X, currently Y"
+Log progress at EVERY major step (start, each action, decisions, blockers, submission; at least every 2 minutes). Full logging rules: "Bakin Execution Tools" in your AGENTS.md.
 
 ## COMMANDS
 
@@ -59,23 +51,13 @@ mcporter call bakin-main.bakin_exec_tasks_log_progress taskId=t-wf-2 message="<u
 # Check your current step details if needed
 mcporter call bakin-main.bakin_exec_get_step taskId=t-wf-2
 
-# --- Execution tools for doing actual work ---
-
-# Save any file as a managed asset (handles naming + sidecar metadata)
+# execution tools — full reference: "Bakin Execution Tools" in your AGENTS.md
 mcporter call bakin-main.bakin_exec_assets_save taskId=t-wf-2 type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what it is>"
-
-# Recommend and generate an image through the core images plugin
 mcporter call bakin-main.bakin_exec_images_recommend surface=instagram-feed-portrait objective="<goal>"
 mcporter call bakin-main.bakin_exec_images_generate --timeout 600000 taskId=t-wf-2 prompt="<text>" surface=instagram-feed-portrait provider=auto
-
-# Check workflow gate statuses
 mcporter call bakin-main.bakin_exec_check_gates taskId=t-wf-2
 ```
 
 ## AFTER SUBMITTING
 
-After bakin_exec_submit_step returns success, your work is done. Do NOT:
-- Generate additional outputs or deliverables
-- Start work on what you think the next step might be
-- Send messages about what should happen next
-- Move the task to Done (the workflow engine handles this)
+After bakin_exec_submit_step returns success, STOP — no further outputs, no next-step work, no messages, no task moves (hard constraints 4–5 apply until the session ends; the workflow engine owns all handoffs).

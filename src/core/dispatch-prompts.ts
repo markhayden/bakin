@@ -29,23 +29,17 @@ export function mcporterHelpers(agentName: string) {
  */
 export function sharedExecutionToolDocs(agentName: string, taskId: string, opts: { allowChannelPost: boolean }): string[] {
   const { mc, mcImage } = mcporterHelpers(agentName)
+  // Bare taskId-templated invocations only — the per-tool explanations live in
+  // the "Bakin Execution Tools" role-layer section of AGENTS.md (#357 trim).
   const lines = [
-    '# Save any file as a managed asset (handles naming + sidecar metadata)',
+    '# execution tools — full reference: "Bakin Execution Tools" in your AGENTS.md',
     mc('bakin_exec_assets_save', `taskId=${taskId} type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what it is>"`),
-    '',
-    '# Recommend and generate an image through the core images plugin',
     mc('bakin_exec_images_recommend', 'surface=instagram-feed-portrait objective="<goal>"'),
     mcImage('bakin_exec_images_generate', `taskId=${taskId} prompt="<text>" surface=instagram-feed-portrait provider=auto`),
-    '',
-    '# Check workflow gate statuses',
     mc('bakin_exec_check_gates', `taskId=${taskId}`),
   ]
   if (opts.allowChannelPost) {
-    lines.push(
-      '',
-      '# Post to a runtime channel (with optional image/video attachment)',
-      mc('bakin_exec_post_channel', `channel="<name>" content="<message>" taskId=${taskId}`),
-    )
+    lines.push(mc('bakin_exec_post_channel', `channel="<name>" content="<message>" taskId=${taskId}`))
   }
   return lines
 }
@@ -214,22 +208,16 @@ ${outputDisciplineSection(agentName, task.id, { subtasksAllowed: true }).join('\
 ## TASK COMMANDS — via mcporter (server \`${server}\`)
 
 \`\`\`bash
-# Log progress (mandatory, every major step)
+# log progress (mandatory at every major step)
 ${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<what you did or are doing>"`)}
-
-# Report complete (when finished — includes summary + notifies orchestrator)
+# complete / block
 ${mc('bakin_exec_tasks_complete', `taskId=${task.id} summary="<what you accomplished>"`)}
-
-# Block task (if stuck or cannot proceed)
 ${mc('bakin_exec_tasks_block', `taskId=${task.id} reason="<what went wrong>"`)}
-
-# Create subtask + register dependency (then stop — you'll be re-dispatched)
+# subtask + dependency chain (then stop — you'll be re-dispatched)
 ${mc('bakin_exec_tasks_create', `title="<subtask>" assignee="<agent>" description="<brief>" parentId=${task.id}`)}
 ${mc('bakin_exec_tasks_set_dependency', `taskId=${task.id} dependsOn="<other-task-id>"`)}
-
-# Check your task details
+# your task details
 ${mc('bakin_exec_tasks_get', `taskId=${task.id}`)}
-
 `)
   add('shared-tool-docs', sharedExecutionToolDocs(agentName, task.id, { allowChannelPost: true }).join('\n'))
   add('project-tools', task.projectId ? `

@@ -39,33 +39,21 @@ Keep chat short — status + asset ids only. Numerous independent deliverables �
 ## TASK COMMANDS — via mcporter (server `bakin-jessica`)
 
 ```bash
-# Log progress (mandatory, every major step)
+# log progress (mandatory at every major step)
 mcporter call bakin-jessica.bakin_exec_tasks_log_progress taskId=t-fix-2 message="<what you did or are doing>"
-
-# Report complete (when finished — includes summary + notifies orchestrator)
+# complete / block
 mcporter call bakin-jessica.bakin_exec_tasks_complete taskId=t-fix-2 summary="<what you accomplished>"
-
-# Block task (if stuck or cannot proceed)
 mcporter call bakin-jessica.bakin_exec_tasks_block taskId=t-fix-2 reason="<what went wrong>"
-
-# Create subtask + register dependency (then stop — you'll be re-dispatched)
+# subtask + dependency chain (then stop — you'll be re-dispatched)
 mcporter call bakin-jessica.bakin_exec_tasks_create title="<subtask>" assignee="<agent>" description="<brief>" parentId=t-fix-2
 mcporter call bakin-jessica.bakin_exec_tasks_set_dependency taskId=t-fix-2 dependsOn="<other-task-id>"
-
-# Check your task details
+# your task details
 mcporter call bakin-jessica.bakin_exec_tasks_get taskId=t-fix-2
-
-# Save any file as a managed asset (handles naming + sidecar metadata)
+# execution tools — full reference: "Bakin Execution Tools" in your AGENTS.md
 mcporter call bakin-jessica.bakin_exec_assets_save taskId=t-fix-2 type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what it is>"
-
-# Recommend and generate an image through the core images plugin
 mcporter call bakin-jessica.bakin_exec_images_recommend surface=instagram-feed-portrait objective="<goal>"
 mcporter call bakin-jessica.bakin_exec_images_generate --timeout 600000 taskId=t-fix-2 prompt="<text>" surface=instagram-feed-portrait provider=auto
-
-# Check workflow gate statuses
 mcporter call bakin-jessica.bakin_exec_check_gates taskId=t-fix-2
-
-# Post to a runtime channel (with optional image/video attachment)
 mcporter call bakin-jessica.bakin_exec_post_channel channel="<name>" content="<message>" taskId=t-fix-2
 
 # Project tools (this task is part of a project)

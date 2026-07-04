@@ -382,19 +382,13 @@ export function buildWorkflowDispatchSections(
   flush('output-schema')
 
   // ─── Progress Logging ──────────────────────────────────────────────
+  // Short reminder only — the full logging rules live in the role-layer
+  // "Bakin Execution Tools" section of AGENTS.md (#357 trim).
   lines.push('## PROGRESS LOGGING — MANDATORY')
   lines.push('')
   const { server: wfServer, mc: wfMc } = mcporterHelpers(agentName)
 
-  lines.push('You MUST log your progress throughout this workflow step. These updates appear in the live activity feed so humans can monitor your work in real-time.')
-  lines.push('')
-  lines.push('**When to log:**')
-  lines.push('- IMMEDIATELY when you start working (what you are about to do and your approach)')
-  lines.push('- After each significant action (reading files, generating content, making API calls, reviewing output)')
-  lines.push('- Share your reasoning ("The brief calls for warm tones, going with golden hour lighting")')
-  lines.push('- If anything unexpected happens or you are blocked')
-  lines.push('- When you complete and submit your output (summary of what you produced)')
-  lines.push('- If more than 2 minutes have passed since your last log, send a status update — even if just "Still working on X, currently Y"')
+  lines.push('Log progress at EVERY major step (start, each action, decisions, blockers, submission; at least every 2 minutes). Full logging rules: "Bakin Execution Tools" in your AGENTS.md.')
   lines.push('')
   flush('progress-logging')
 
@@ -413,8 +407,6 @@ export function buildWorkflowDispatchSections(
   lines.push(`# Check your current step details if needed`)
   lines.push(`${wfMc('bakin_exec_get_step', `taskId=${task.id}`)}`)
   lines.push('')
-  lines.push('# --- Execution tools for doing actual work ---')
-  lines.push('')
   // Channel posting only for output/publish steps (others have "NO SIDE EFFECTS")
   lines.push(...sharedExecutionToolDocs(agentName, task.id, { allowChannelPost: stepContext.type === 'output' }))
   lines.push('```')
@@ -424,11 +416,7 @@ export function buildWorkflowDispatchSections(
   // ─── Stop Instruction ───────────────────────────────────────────────
   lines.push('## AFTER SUBMITTING')
   lines.push('')
-  lines.push('After bakin_exec_submit_step returns success, your work is done. Do NOT:')
-  lines.push('- Generate additional outputs or deliverables')
-  lines.push('- Start work on what you think the next step might be')
-  lines.push('- Send messages about what should happen next')
-  lines.push('- Move the task to Done (the workflow engine handles this)')
+  lines.push('After bakin_exec_submit_step returns success, STOP — no further outputs, no next-step work, no messages, no task moves (hard constraints 4–5 apply until the session ends; the workflow engine owns all handoffs).')
   flush('stop')
 
   return sections
