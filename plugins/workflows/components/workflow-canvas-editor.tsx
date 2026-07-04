@@ -42,7 +42,6 @@ import {
   ArrowUp,
   Copy,
   GitBranch,
-  Info,
   LayoutGrid,
   Pencil,
   Save,
@@ -852,11 +851,6 @@ export function WorkflowCanvasEditor({
     [k: string]: unknown
   } | undefined) : null
   const selectedIndex = selectedId ? state.order.indexOf(selectedId) : -1
-  const selectedHasDependsOn = Boolean(
-    selectedStep &&
-    'dependsOn' in selectedStep &&
-    selectedStep.dependsOn,
-  )
   const workflowIdLabel = editingId ?? initialId ?? (mode === 'create' ? 'new' : 'unknown')
   const workflowNameLabel = definition.name?.trim() || 'Untitled workflow'
   const workflowDescriptionLabel = definition.description?.trim() || 'No description'
@@ -1025,15 +1019,6 @@ export function WorkflowCanvasEditor({
                 >
                   <Trash2 className="size-3.5" />
                 </Button>
-                {selectedHasDependsOn && (
-                  <span
-                    className="inline-flex max-w-[240px] items-center gap-1 px-1 text-[11px] text-amber-300"
-                    title="dependsOn is preserved as metadata; runtime still follows step order."
-                  >
-                    <Info className="size-3.5 shrink-0" />
-                    dependsOn preserved
-                  </span>
-                )}
               </NodeToolbar>
             )}
             <Panel

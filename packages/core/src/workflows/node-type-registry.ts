@@ -134,18 +134,16 @@ export function isPluginKind(kind: string): boolean {
 
 // ─── Shared sub-schemas ─────────────────────────────────────────────────────
 
-const dependsOnSchema = z.union([z.string(), z.array(z.string())]).optional()
-
 const stepOutputSchema = z.object({
   id: z.string(),
   type: z.enum(['string', 'file', 'number']).optional(),
   path: z.string().optional(),
-}).passthrough()
+}).strict()
 
 const notifyChannelSchema = z.object({
   channel: z.string().min(1),
   target: z.string(),
-}).passthrough()
+}).strict()
 
 // ─── Builtin step schemas ───────────────────────────────────────────────────
 
@@ -158,9 +156,9 @@ export const agentStepSchema = z.object({
   skill: z.string().optional(),
   description: z.string().optional(),
   outputs: z.array(stepOutputSchema).optional(),
-  dependsOn: dependsOnSchema,
+  output_schema: z.record(z.string(), z.unknown()).optional(),
   deny_tools: z.array(z.string()).optional(),
-}).passthrough()
+}).strict()
 
 export const gateStepSchema = z.object({
   id: z.string().min(1),
@@ -170,16 +168,14 @@ export const gateStepSchema = z.object({
   approval_required: z.boolean().optional(),
   notify: z.array(notifyChannelSchema).optional(),
   preview: z.array(z.string()).optional(),
-  on_approve: z.string().min(1),
   on_reject: z
     .object({
       goto: z.string(),
       note_to_agent: z.boolean().optional(),
     })
-    .passthrough()
+    .strict()
     .optional(),
-  dependsOn: dependsOnSchema,
-}).passthrough()
+}).strict()
 
 export const outputStepSchema = z.object({
   id: z.string().min(1),
@@ -191,9 +187,9 @@ export const outputStepSchema = z.object({
   channels: z.array(z.string()).optional(),
   content: z.record(z.string(), z.string()).optional(),
   schedule: z.string().optional(),
-  dependsOn: dependsOnSchema,
+  output_schema: z.record(z.string(), z.unknown()).optional(),
   deny_tools: z.array(z.string()).optional(),
-}).passthrough()
+}).strict()
 
 export const nestedWorkflowStepSchema = z.object({
   id: z.string().min(1),
@@ -201,15 +197,14 @@ export const nestedWorkflowStepSchema = z.object({
   label: z.string().min(1),
   workflow_id: z.string().min(1),
   description: z.string().optional(),
-  dependsOn: dependsOnSchema,
-}).passthrough()
+}).strict()
 
 const taskSourceSchema = z.object({
   pluginId: z.string().optional(),
   entityType: z.string().optional(),
   entityId: z.string().optional(),
   purpose: z.string().optional(),
-}).passthrough()
+}).strict()
 
 export const createTaskStepSchema = z.object({
   id: z.string().min(1),
@@ -227,19 +222,18 @@ export const createTaskStepSchema = z.object({
   dueAt: z.string().optional(),
   source: taskSourceSchema.optional(),
   skipWorkflowReason: z.string().optional(),
-  dependsOn: dependsOnSchema,
-}).passthrough()
+}).strict()
 
-// Parallel children are a closed subset (agent | gate). Defined separately so
-// the parallel schema can reference them without recursion through the union.
-const parallelChildSchema = z.discriminatedUnion('type', [agentStepSchema, gateStepSchema])
+// Parallel children are agent steps only — the semantic validator has always
+// rejected non-agent children; the schema now says the same thing.
+const parallelChildSchema = agentStepSchema
 
 export const parallelStepSchema = z.object({
   id: z.string().min(1),
   type: z.literal('parallel'),
   label: z.string().min(1),
   steps: z.array(parallelChildSchema).min(1),
-}).passthrough()
+}).strict()
 
 // ─── Builtin form-field metadata (drives the editor UI) ─────────────────────
 
@@ -248,14 +242,12 @@ const agentFormFields: FormField[] = [
   { name: 'skill', type: 'skill', description: 'Optional skill instructions to inject' },
   { name: 'task', type: 'text', description: 'One-line task description' },
   { name: 'description', type: 'text', description: 'Long-form description' },
-  { name: 'dependsOn', type: 'list', description: 'Step IDs that must complete first' },
   { name: 'deny_tools', type: 'list', description: 'Tool names this step may not call' },
 ]
 
 const gateFormFields: FormField[] = [
   { name: 'description', type: 'text' },
   { name: 'approval_required', type: 'boolean' },
-  { name: 'on_approve', type: 'string', required: true, description: 'Step id to advance to' },
   { name: 'on_reject', type: 'string', description: 'Step id to fall back to on rejection' },
   { name: 'preview', type: 'list', description: 'Output keys to show in the gate preview' },
 ]
@@ -369,13 +361,23 @@ const pluginStepSchema = z.unknown().superRefine((val, ctx) => {
     return
   }
   if (BUILTIN_KINDS.has(kind)) {
-    // Builtins are handled by the discriminated union above; this branch should
-    // never be reached for a builtin step. If we got here with a builtin kind
-    // it means the builtin validation already failed — let that error surface.
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: `Invalid builtin step of kind '${kind}'`,
-    })
+    // Builtins are handled by the discriminated union above; reaching this
+    // branch means the builtin validation already failed. Re-parse with the
+    // builtin schema and forward its issues so the caller sees the REAL
+    // problem (e.g. `Unrecognized key(s) in object: 'on_approve'`) instead of
+    // a generic invalid-step message.
+    const builtin = registry.get(kind)
+    const reparsed = builtin?.zodSchema.safeParse(val)
+    if (reparsed && !reparsed.success) {
+      for (const issue of reparsed.error.issues) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: issue.message, path: issue.path })
+      }
+    } else {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Invalid builtin step of kind '${kind}'`,
+      })
+    }
     return
   }
   const def = registry.get(kind)
@@ -406,7 +408,7 @@ export const workflowInputSchema = z.object({
   description: z.string(),
   required: z.boolean().optional(),
   default: z.unknown().optional(),
-}).passthrough()
+}).strict()
 
 /**
  * Canvas-editor layout hints. Optional — the workflow engine does not consult
@@ -417,11 +419,11 @@ export const workflowInputSchema = z.object({
 export const nodePositionSchema = z.object({
   x: z.number(),
   y: z.number(),
-}).passthrough()
+}).strict()
 
 export const workflowLayoutSchema = z.object({
   positions: z.record(z.string(), nodePositionSchema).optional(),
-}).passthrough()
+}).strict()
 
 export const workflowDefinitionSchema = z.object({
   id: z.string().optional(),
@@ -431,6 +433,6 @@ export const workflowDefinitionSchema = z.object({
   inputs: z.record(z.string(), workflowInputSchema).optional(),
   steps: z.array(stepSchema),
   layout: workflowLayoutSchema.optional(),
-}).passthrough()
+}).strict()
 
 export type WorkflowDefinitionParsed = z.infer<typeof workflowDefinitionSchema>

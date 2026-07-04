@@ -16,7 +16,6 @@ import {
   User,
   ShieldCheck,
   Megaphone,
-  GitBranch,
   Ban,
   ArrowRight,
   AlertTriangle,
@@ -70,20 +69,6 @@ function MetadataCard({ icon: Icon, label, children }: { icon?: React.ElementTyp
       </div>
       <div className="text-sm font-medium">{children}</div>
     </div>
-  )
-}
-
-function DependsOnSection({ dependsOn }: { dependsOn?: string | string[] }) {
-  if (!dependsOn) return null
-  const deps = Array.isArray(dependsOn) ? dependsOn : [dependsOn]
-  return (
-    <MetadataCard icon={GitBranch} label="Depends On">
-      <div className="flex flex-wrap gap-1">
-        {deps.map(d => (
-          <Badge key={d} variant="secondary" className="text-[10px] font-mono">{d}</Badge>
-        ))}
-      </div>
-    </MetadataCard>
   )
 }
 
@@ -154,7 +139,7 @@ function AgentStepDetail({ step }: { step: AgentStep }) {
       )}
 
       {/* Metadata grid */}
-      {(step.outputs?.length || step.dependsOn) && (
+      {Boolean(step.outputs?.length) && (
         <>
           <Separator />
           <div className="grid grid-cols-2 gap-3">
@@ -175,7 +160,6 @@ function AgentStepDetail({ step }: { step: AgentStep }) {
                 </div>
               </div>
             )}
-            <DependsOnSection dependsOn={step.dependsOn} />
           </div>
         </>
       )}
@@ -216,7 +200,6 @@ function GateStepDetail({ step }: { step: GateStep }) {
           </MetadataCard>
         )}
 
-        <DependsOnSection dependsOn={step.dependsOn} />
       </div>
 
       {/* Notification channels */}
@@ -245,8 +228,7 @@ function GateStepDetail({ step }: { step: GateStep }) {
           <SectionLabel>On Approve</SectionLabel>
           <div className="flex items-center gap-2 rounded-lg bg-surface p-3">
             <ArrowRight className="size-4 text-green-400 shrink-0" />
-            <span className="text-sm font-medium">Continue to</span>
-            <Badge variant="secondary" className="text-[10px] font-mono">{step.on_approve}</Badge>
+            <span className="text-sm font-medium">Continue to the next step</span>
           </div>
         </div>
 
@@ -317,7 +299,6 @@ function OutputStepDetail({ step }: { step: OutputStep }) {
           </MetadataCard>
         )}
 
-        <DependsOnSection dependsOn={step.dependsOn} />
       </div>
 
       {/* Content templates */}
@@ -385,7 +366,6 @@ function WorkflowStepDetail({ step }: { step: NestedWorkflowStep }) {
         <MetadataCard icon={RefreshCw} label="Workflow ID">
           <span className="font-mono">{step.workflow_id}</span>
         </MetadataCard>
-        <DependsOnSection dependsOn={step.dependsOn} />
       </div>
 
       {/* Description */}

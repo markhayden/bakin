@@ -28,7 +28,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export function isDrawerEditableField(kind: string, field: FormField): boolean {
-  return field.name !== 'dependsOn' && !(kind === 'parallel' && field.name === 'steps')
+  return !(kind === 'parallel' && field.name === 'steps')
 }
 
 function coerceListInput(value: string): string[] {
@@ -134,7 +134,6 @@ const FIELD_LABELS: Record<string, string> = {
   description: 'Detailed instructions',
   deny_tools: 'Denied tools',
   approval_required: 'Require approval',
-  on_approve: 'Approved path',
   on_reject: 'Rejected path',
   preview: 'Preview fields',
   channels: 'Notification channels',
@@ -155,7 +154,6 @@ const FIELD_HELP_TEXT: Record<string, string> = {
   description: 'Longer context, constraints, or acceptance criteria for this step.',
   deny_tools: 'Optional comma-separated tool names the agent may not call during this step.',
   approval_required: 'Require a human decision before the workflow can continue.',
-  on_approve: 'Step ID to run after approval. Use done when this approval completes the workflow.',
   on_reject: 'Step ID to return to after rejection. Leave blank when rejection should not rewind.',
   preview: 'Comma-separated output keys to show in the approval preview.',
   channels: 'Comma-separated channels or destinations for the final output.',
@@ -174,7 +172,6 @@ const FIELD_PLACEHOLDERS: Record<string, string> = {
   task: 'Write a concise post caption for the approved brief.',
   description: 'Include caption text, target platform notes, hashtags, and any required mentions.',
   deny_tools: 'web.run, shell.exec',
-  on_approve: 'review-copy or done',
   on_reject: 'revise-copy',
   preview: 'caption, hashtags, mentions',
   channels: 'general, announcements',

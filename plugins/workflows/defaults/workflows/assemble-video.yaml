@@ -15,7 +15,6 @@ steps:
     label: Approve Voiceover
     description: Owner reviews the voiceover audio
     approval_required: true
-    on_approve: stitch-video
     on_reject:
       goto: generate-voiceover
       note_to_agent: true
@@ -31,7 +30,6 @@ steps:
     label: Approve Final Video
     description: Owner reviews the assembled video before publishing
     approval_required: true
-    on_approve: publish
     on_reject:
       goto: stitch-video
       note_to_agent: true

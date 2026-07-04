@@ -75,7 +75,6 @@ steps:
       Check: Does the caption match the brief? Is the image brief specific enough
       for an artist to execute without guessing?
     approval_required: true
-    on_approve: generate-image
     on_reject:
       goto: write-copy
       note_to_agent: true
@@ -102,7 +101,6 @@ steps:
       caption and image work together as a cohesive post. If either needs
       changes, reject with notes specifying which part to fix.
     approval_required: true
-    on_approve: publish
     on_reject:
       goto: write-copy
       note_to_agent: true

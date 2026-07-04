@@ -101,9 +101,9 @@ const noiseGateSchema = z.object({
   type: z.literal(NAMESPACED_KIND),
   label: z.string().min(1),
   threshold_db: z.number(),
-  // Plugin steps opt into `dependsOn` if they want it; we include it to
+  // Plugin schemas own arbitrary config fields; `notes` stands in to
   // match the builtin shape.
-  dependsOn: z.union([z.string(), z.array(z.string())]).optional(),
+  notes: z.union([z.string(), z.array(z.string())]).optional(),
 })
 
 describe('plugin node-type integration', () => {

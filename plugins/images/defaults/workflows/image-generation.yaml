@@ -83,7 +83,6 @@ steps:
       prompt is vague, unsafe for the brand, routed to the wrong surface, or
       missing required copy/reference constraints.
     approval_required: true
-    on_approve: generate-image
     on_reject:
       goto: develop-prompt
       note_to_agent: true

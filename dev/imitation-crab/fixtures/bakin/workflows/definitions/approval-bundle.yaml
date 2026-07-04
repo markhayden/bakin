@@ -14,7 +14,6 @@ steps:
     label: Approve Bundle
     description: Review the recommendation bundle before downstream work starts
     approval_required: true
-    on_approve: done
     on_reject:
       goto: package-bundle
       note_to_agent: true

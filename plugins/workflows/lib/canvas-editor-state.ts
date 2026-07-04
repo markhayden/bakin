@@ -75,7 +75,7 @@ export function defaultStepBody(id: string, kind: string): WorkflowStep {
   const label = BUILTIN_STEP_LABELS[kind] ?? id
   // Builtins have known required fields; plugin kinds get a minimal shell.
   if (kind === 'agent') return { id, type: 'agent', label, agent: '$assigned' }
-  if (kind === 'gate') return { id, type: 'gate', label, on_approve: '' }
+  if (kind === 'gate') return { id, type: 'gate', label }
   if (kind === 'output') return { id, type: 'output', label }
   if (kind === 'workflow') return { id, type: 'workflow', label, workflow_id: '' }
   if (kind === 'parallel') return { id, type: 'parallel', label, steps: [] }

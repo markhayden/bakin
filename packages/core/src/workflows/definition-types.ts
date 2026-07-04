@@ -32,6 +32,12 @@ export interface NotifyChannel {
   [k: string]: unknown
 }
 
+/**
+ * The index signature is for RUNTIME augmentation (rejectionReason,
+ * previousOutput, plugin node-kind config), not YAML freedom — the zod
+ * schemas in node-type-registry are strict, so unknown keys reject at the
+ * CRUD/save boundary.
+ */
 export interface BaseStep {
   id: string
   label: string
@@ -45,7 +51,8 @@ export interface AgentStep extends BaseStep {
   skill?: string
   description?: string
   outputs?: StepOutput[]
-  dependsOn?: string | string[]
+  /** JSON-schema-ish shape injected into the dispatch prompt (step-format). */
+  output_schema?: Record<string, unknown>
   deny_tools?: string[]
 }
 
@@ -55,18 +62,16 @@ export interface GateStep extends BaseStep {
   approval_required?: boolean
   notify?: NotifyChannel[]
   preview?: string[]
-  on_approve: string
   on_reject?: {
     goto: string
     note_to_agent?: boolean
     [k: string]: unknown
   }
-  dependsOn?: string | string[]
 }
 
 export interface ParallelStep extends BaseStep {
   type: 'parallel'
-  steps: (AgentStep | GateStep)[]
+  steps: AgentStep[]
 }
 
 export interface OutputStep extends BaseStep {
@@ -77,7 +82,8 @@ export interface OutputStep extends BaseStep {
   channels?: string[]
   content?: Record<string, string>
   schedule?: string
-  dependsOn?: string | string[]
+  /** JSON-schema-ish shape injected into the dispatch prompt (step-format). */
+  output_schema?: Record<string, unknown>
   deny_tools?: string[]
 }
 
@@ -85,7 +91,6 @@ export interface NestedWorkflowStep extends BaseStep {
   type: 'workflow'
   workflow_id: string
   description?: string
-  dependsOn?: string | string[]
 }
 
 export interface CreateTaskStep extends BaseStep {
@@ -108,7 +113,6 @@ export interface CreateTaskStep extends BaseStep {
     [k: string]: unknown
   }
   skipWorkflowReason?: string
-  dependsOn?: string | string[]
 }
 
 export type WorkflowStep = AgentStep | GateStep | ParallelStep | OutputStep | NestedWorkflowStep | CreateTaskStep

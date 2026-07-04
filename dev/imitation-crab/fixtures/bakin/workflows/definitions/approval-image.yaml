@@ -15,7 +15,6 @@ steps:
     label: Approve Image Direction
     description: Review the recommended concept image before production
     approval_required: true
-    on_approve: done
     on_reject:
       goto: recommend-image
       note_to_agent: true

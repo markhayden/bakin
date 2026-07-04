@@ -330,7 +330,6 @@ const pendingGatesHandler = async (_req: Request, _ctx: PluginContextLite) => {
       description: (gateStep as { description?: string })?.description,
       priorStepOutputs,
       gateDefinition: gateStep ? {
-        on_approve: (gateStep as { on_approve?: string }).on_approve,
         on_reject: (gateStep as { on_reject?: { goto: string; note_to_agent?: boolean } }).on_reject,
       } : undefined,
     }

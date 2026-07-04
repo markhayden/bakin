@@ -93,7 +93,6 @@ steps:
     label: Review
     description: Human review.
     approval_required: true
-    on_approve: publish
     on_reject:
       goto: draft
       note_to_agent: true

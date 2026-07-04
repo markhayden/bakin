@@ -164,7 +164,6 @@ steps:
             id: 'gate1',
             type: 'gate',
             label: 'Gate',
-            on_approve: 'step1',
             on_reject: { goto: 'nonexistent', note_to_agent: true },
           },
         ],
@@ -173,38 +172,10 @@ steps:
       expect(errors.some(e => e.includes('nonexistent'))).toBe(true)
     })
 
-    it('rejects dependsOn referencing nonexistent step', () => {
-      const def: WorkflowDefinition = {
-        name: 'Test',
-        description: 'Test',
-        version: 1,
-        steps: [
-          { id: 'step1', type: 'agent', label: 'Step 1', agent: 'chef', dependsOn: 'missing' },
-        ],
-      }
-      const errors = validateDefinition(def)
-      expect(errors.some(e => e.includes('missing'))).toBe(true)
-    })
-
-    it('rejects gate approval jumps that do not point to the next step', () => {
-      const def: WorkflowDefinition = {
-        name: 'Test',
-        description: 'Test',
-        version: 1,
-        steps: [
-          { id: 'write', type: 'agent', label: 'Write', agent: 'chef' },
-          { id: 'review', type: 'gate', label: 'Review', on_approve: 'publish' },
-          { id: 'revise', type: 'agent', label: 'Revise', agent: 'chef' },
-          { id: 'publish', type: 'output', label: 'Publish', agent: 'chef' },
-        ],
-      }
-
-      const errors = validateDefinition(def)
-      expect(errors.some(e => e.includes('on_approve must point to the next'))).toBe(true)
-    })
-
     it('rejects gates inside parallel groups', () => {
-      const def: WorkflowDefinition = {
+      // Deliberately violates ParallelStep (agent-only children) — YAML input
+      // bypasses TS types, so the runtime validator must still catch this.
+      const def = {
         name: 'Test',
         description: 'Test',
         version: 1,
@@ -215,11 +186,11 @@ steps:
             label: 'Fan Out',
             steps: [
               { id: 'write', type: 'agent', label: 'Write', agent: 'chef' },
-              { id: 'review', type: 'gate', label: 'Review', on_approve: 'done' },
+              { id: 'review', type: 'gate', label: 'Review' },
             ],
           },
         ],
-      }
+      } as unknown as WorkflowDefinition
 
       const errors = validateDefinition(def)
       expect(errors.some(e => e.includes('parallel children must be agent steps'))).toBe(true)

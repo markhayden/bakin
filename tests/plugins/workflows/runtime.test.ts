@@ -237,7 +237,6 @@ steps:
     label: Review
     description: Human review
     approval_required: true
-    on_approve: publish
     on_reject:
       goto: write-copy
       note_to_agent: true
@@ -281,6 +280,20 @@ steps:
     writeFileSync(join(defsDir, 'parallel.yaml'), parallelWorkflow)
     writeFileSync(join(defsDir, 'preferred.yaml'), preferredWorkflow)
     writeFileSync(join(defsDir, 'gate.yaml'), gateWorkflow)
+    writeFileSync(join(defsDir, 'final-gate.yaml'), `
+name: Final Gate
+description: Workflow ending in an approval gate
+version: 1
+steps:
+  - id: write-copy
+    type: agent
+    label: Write Copy
+    agent: chef
+  - id: publish-gate
+    type: gate
+    label: Publish approval
+    approval_required: true
+`)
     writeFileSync(join(defsDir, 'skill-test.yaml'), skillWorkflow)
     writeFileSync(join(defsDir, 'task-node.yaml'), `
 name: Task Node Test
@@ -667,6 +680,18 @@ steps: []
       const instance = loadInstance('task-gate-a', testDir)
       expect(instance!.currentStepId).toBe('publish')
       expect(instance!.status).toBe('in_progress')
+    })
+
+    it('approveGate on the final step completes the workflow (advance is purely positional)', () => {
+      createInstance('task-gate-final', 'final-gate', testDir)
+      completeStep('task-gate-final', 'write-copy', { text: 'hello' }, undefined, testDir)
+
+      const approveResult = approveGate('task-gate-final', 'publish-gate', { contentDir: testDir })
+      expect(approveResult.success).toBe(true)
+
+      const instance = loadInstance('task-gate-final', testDir)
+      expect(instance!.status).toBe('complete')
+      expect(instance!.stepStates['publish-gate'].status).toBe('complete')
     })
 
     it('rejectGate rewinds to target step', () => {
