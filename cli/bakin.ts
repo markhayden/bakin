@@ -27,9 +27,8 @@ import {
   jsonObject,
   isServerConnectionError,
   getCliAgent,
-  getCliRoster,
-  type CliRoster,
 } from '../src/cli/http'
+import { printRuntimeActionTui } from '../src/cli/commands/runtime'
 import {
   print,
   printTable,
@@ -69,7 +68,6 @@ import type {
   PluginRestoreResultData,
   PluginRestoreSnapshotData,
   ReindexResultData,
-  RuntimeActionData,
   SearchAggregationsData,
   SearchMetaData,
   SearchResultData,
@@ -79,14 +77,6 @@ import type {
   WorkflowActionData,
 } from '../src/core/cli/ui/readonly'
 import type { CheckResult, InstallResult } from '../src/core/onboarding/types'
-
-async function printStatusTui(dispatch: Record<string, unknown>, roster: CliRoster): Promise<void> {
-  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.StatusReport, { dispatch, roster })
-}
-
-async function printRuntimeActionTui(action: RuntimeActionData): Promise<void> {
-  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.RuntimeActionReport, { action })
-}
 
 async function printSettingsTui(settings: Record<string, unknown>): Promise<void> {
   return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.SettingsReport, { settings })
@@ -223,36 +213,6 @@ async function printOnboardingInstallTui(result: InstallResult): Promise<void> {
 // ---------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------
-async function cmdStatus(): Promise<void> {
-  const dispatch = await apiGet('/api/dispatch') as Record<string, unknown>
-  const roster = await getCliRoster()
-
-  if (process.stdout.isTTY) {
-    await printStatusTui(dispatch, roster)
-    return
-  }
-
-  console.log('=== Bakin Status ===')
-  console.log(`Dispatch interval: ${dispatch.intervalMin}min`)
-  console.log(`Last run: ${dispatch.lastRun || 'never'}`)
-  console.log(`Next run: ${dispatch.nextRun} (${dispatch.secondsUntilNext}s)`)
-  console.log(`Tasks dispatched: ${dispatch.dispatchedCount}`)
-  console.log(`Agents: ${roster.agentIds.join(', ')}`)
-}
-
-async function cmdDispatch(): Promise<void> {
-  const result = await apiPost('/api/dispatch')
-  if (process.stdout.isTTY) {
-    await printRuntimeActionTui({
-      action: 'dispatch',
-      target: 'task dispatcher',
-      result,
-    })
-    return
-  }
-  print(result)
-}
-
 async function cmdTasksList(column?: string): Promise<void> {
   // Read tasks from the API
   const result = await apiGet('/api/plugins/tasks/') as { columns: Record<string, Array<Record<string, unknown>>> }
@@ -3743,11 +3703,8 @@ export async function main(): Promise<void> {
         break
 
       case 'status':
-        await cmdStatus()
-        break
-
       case 'dispatch':
-        await cmdDispatch()
+        await (await import('../src/cli/commands/runtime')).run(args)
         break
 
       case 'tasks':
