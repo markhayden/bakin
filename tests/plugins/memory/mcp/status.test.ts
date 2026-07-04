@@ -58,11 +58,12 @@ function makeCtx(perTierTotal: Record<string, number>): PluginContext {
       remove: mock(async () => {}),
       transform: mock(async () => {}),
       query: mock(async (p) => {
-        const tier = (p.filters as Record<string, string>)?.tier ?? ''
-        const total = perTierTotal[tier] ?? 0
         return {
           results: [],
-          meta: { query: p.q, total, took_ms: 0, source: 'search' },
+          meta: { query: p.q, total: 0, took_ms: 0, source: 'search' },
+          aggregations: {
+            tier: Object.entries(perTierTotal).map(([value, count]) => ({ value, count })),
+          },
         } satisfies SearchResponse
       }),
     },
@@ -100,10 +101,10 @@ describe('memory_status', () => {
     expect(counts.turn).toBe(30)
     expect(counts.audit).toBe(10)
     const calls = (ctx.search.query as ReturnType<typeof mock>).mock.calls as Array<[Record<string, unknown>]>
-    for (const [call] of calls) {
-      expect(call.q).toBe('*')
-      expect(call.strategy).toBe('full_text_only')
-    }
+    expect(calls).toHaveLength(1)
+    expect(calls[0][0].q).toBe('*')
+    expect(calls[0][0].strategy).toBe('full_text_only')
+    expect(calls[0][0].facets).toEqual(['tier'])
   })
 
   it('counts offsetsTracked from the persisted offsets file', async () => {
@@ -113,19 +114,17 @@ describe('memory_status', () => {
     expect(res.offsetsTracked).toBe(2)
   })
 
-  it('degrades to 0 when a tier query throws', async () => {
+  it('degrades to all-zero counts when the facet query throws', async () => {
     const ctx = makeCtx({ audit: 10 })
     const q = ctx.search.query as ReturnType<typeof mock>
-    q.mockImplementation(async (p: { filters?: Record<string, string>; q: string }) => {
-      if (p.filters?.tier === 'turn') throw new Error('boom')
-      const tier = p.filters?.tier ?? ''
-      const total = tier === 'audit' ? 10 : 0
-      return { results: [], meta: { query: p.q, total, took_ms: 0, source: 'search' } } satisfies SearchResponse
+    q.mockImplementation(async () => {
+      throw new Error('boom')
     })
     const res = await createMemoryStatusTool(ctx).handler({}, 'system')
     expect(res.ok).toBe(true)
+    expect(res.totalRows).toBe(0)
     const counts = res.countsByTier as Record<string, number>
     expect(counts.turn).toBe(0)
-    expect(counts.audit).toBe(10)
+    expect(counts.audit).toBe(0)
   })
 })

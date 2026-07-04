@@ -8,63 +8,17 @@
  *     lastUpdated: number,  // ms
  *   }
  *
- * One search query per tier with `limit: 0` — we only need `meta.total`.
- * A failure on one tier yields 0 for that tier rather than erroring the
- * whole response; the status view is for at-a-glance diagnostics, not a
- * source of truth.
+ * Counting lives in lib/status-snapshot.ts, shared with the
+ * bakin_exec_memory_status exec tool.
  */
 import { z } from 'zod'
 import { defineRoute } from '@bakin/core/routing'
 import type { PluginContextLite } from '@bakin/core/routing'
-import type { PluginContext, SearchQueryParams } from '@bakin/core/plugin-types'
+import type { PluginContext } from '@bakin/core/plugin-types'
+import { statusSnapshot } from '../status-snapshot'
 
 const passthrough = z.object({}).passthrough()
 const errorResponse = z.object({ error: z.string() })
-import { MEMORY_TIERS, type MemoryTier } from '../types'
-import { getOffsetsFilePath } from '../offsets'
-import { existsSync, readFileSync } from 'fs'
-import { createLogger } from '../../../../src/core/logger'
-
-const log = createLogger('memory:status')
-
-async function countForTier(ctx: PluginContext, tier: MemoryTier): Promise<number> {
-  // Count rows by filter. Two non-obvious choices here:
-  //   - q: '*' so full-text matches every doc (empty q scores nothing
-  //     and returns total=0, which looked like an empty backfill).
-  //   - strategy: 'full_text_only' so semantic search is skipped. With
-  //     the default RRF strategy, semantic adapters can reject limit: 0
-  //     queries because topk must be positive, and the status route would
-  //     silently return 0 for every tier.
-  const params: SearchQueryParams = {
-    q: '*',
-    filters: { tier },
-    limit: 0,
-    offset: 0,
-    rerank: false,
-    strategy: 'full_text_only',
-  }
-  try {
-    const res = await ctx.search.query(params)
-    return res.meta?.total ?? 0
-  } catch (err) {
-    log.warn('status: tier count failed', { tier, err: err instanceof Error ? err.message : String(err) })
-    return 0
-  }
-}
-
-function offsetsTracked(): number {
-  const file = getOffsetsFilePath()
-  if (!existsSync(file)) return 0
-  try {
-    const parsed = JSON.parse(readFileSync(file, 'utf-8'))
-    if (parsed && typeof parsed === 'object') {
-      return Object.keys(parsed as Record<string, unknown>).length
-    }
-  } catch {
-    return 0
-  }
-  return 0
-}
 
 export const statusRoute = defineRoute({
   path: '/status',
@@ -73,16 +27,6 @@ export const statusRoute = defineRoute({
   summary: 'Indexer health: per-tier row counts + offset snapshot',
   responses: { 200: passthrough, 400: errorResponse },
   handler: async (_req: Request, ctx: PluginContextLite) => {
-    const entries = await Promise.all(
-      MEMORY_TIERS.map(async (t) => [t, await countForTier(ctx as unknown as PluginContext, t)] as const),
-    )
-    const countsByTier = Object.fromEntries(entries) as Record<MemoryTier, number>
-    const totalRows = entries.reduce((sum, [, n]) => sum + n, 0)
-    return Response.json({
-      countsByTier,
-      totalRows,
-      offsetsTracked: offsetsTracked(),
-      lastUpdated: Date.now(),
-    })
+    return Response.json(await statusSnapshot(ctx as unknown as PluginContext))
   },
 })
