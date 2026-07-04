@@ -303,7 +303,7 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
           <p className="text-xs text-muted-foreground">
             Projection sha mismatch detected. Repair from the CLI:
           </p>
-          <CliHint command="bakin install agent-assets" />
+          <CliHint command="bakin install agent-sync" />
         </div>
       )}
       {state === 'update-available' && !hasPackage && (

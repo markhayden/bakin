@@ -8,7 +8,7 @@ import { BASE_URL, isServerConnectionError } from '../src/cli/http'
 import { invocationCommand } from '../src/cli/output'
 import {
   BINARY_ONLY_COMMANDS,
-  USAGE,
+  usageWithPluginCommands,
   printHelpTui,
   printCommandFailureTui,
   printVersionTui,
@@ -19,7 +19,7 @@ export async function main(): Promise<void> {
 
   if (args.length === 0 || args[0] === '--help' || args[0] === '-h' || args[0] === 'help') {
     if (process.stdout.isTTY) await printHelpTui()
-    else console.log(USAGE.trim())
+    else console.log((await usageWithPluginCommands()).trim())
     process.exit(0)
   }
 
@@ -156,7 +156,7 @@ export async function main(): Promise<void> {
         } else {
           console.error(`Unknown command: ${cmd}`)
           if (pluginLookupError) console.error(pluginLookupError)
-          console.log(USAGE.trim())
+          console.log((await usageWithPluginCommands()).trim())
         }
         process.exit(1)
       }

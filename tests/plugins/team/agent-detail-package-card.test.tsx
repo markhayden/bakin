@@ -198,7 +198,7 @@ describe('PackageCard — read-only display per state', () => {
     })
     await renderDetail()
     expect(screen.getByText('drifted')).toBeDefined()
-    expect(screen.getByText('bakin install agent-assets')).toBeDefined()
+    expect(screen.getByText('bakin install agent-sync')).toBeDefined()
     expect(screen.getByLabelText('Copy command')).toBeDefined()
     expect(screen.queryByRole('button', { name: 'Adopt' })).toBeNull()
   })

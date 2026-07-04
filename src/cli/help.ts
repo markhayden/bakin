@@ -12,7 +12,7 @@
  * never anything that statically pulls react/ink/server-core into the binary
  * entry's import graph.
  */
-import { BASE_URL } from './http'
+import { BASE_URL, apiGet } from './http'
 import { print, normalizeUsage, usageLine } from './output'
 import { getCliUsageGroups, renderCliUsage } from '../core/cli/registry'
 import { renderInkReport } from '../core/cli/ui/render-report'
@@ -48,8 +48,53 @@ export async function printHelpReportTui(groups: HelpGroupData[], error?: string
   })
 }
 
+/**
+ * Plugin-contributed commands (manifest `contributes.cliCommands`) belong in
+ * help alongside the static registry — they were dispatchable but invisible
+ * (audit P2 #7). Help must always render, so a down/unreachable server or a
+ * malformed manifest yields an empty group, never an error.
+ */
+export async function pluginCommandHelpGroups(): Promise<HelpGroupData[]> {
+  try {
+    const manifest = await apiGet('/api/plugins/manifest') as {
+      plugins?: Array<{ contributes?: { cliCommands?: Array<{ name?: string; usage?: string; summary?: string }> } }>
+    }
+    const commands = (manifest.plugins ?? []).flatMap((p) => p.contributes?.cliCommands ?? [])
+    if (commands.length === 0) return []
+    return [{
+      group: 'Plugin commands',
+      commands: commands.map((c) => ({ name: c.name, usage: c.usage, summary: c.summary })),
+    }]
+  } catch {
+    return []
+  }
+}
+
 export async function printHelpTui(error?: string, errorDetail?: string): Promise<void> {
-  await printHelpReportTui(getCliUsageGroups({ excludeNames: BINARY_ONLY_COMMANDS }), error, errorDetail)
+  const groups = [
+    ...getCliUsageGroups({ excludeNames: BINARY_ONLY_COMMANDS }),
+    ...(await pluginCommandHelpGroups()),
+  ]
+  await printHelpReportTui(groups, error, errorDetail)
+}
+
+/**
+ * Non-TTY counterpart: the static USAGE plus a plain "Plugin commands:"
+ * section when the server is reachable and plugins contribute commands.
+ */
+export async function usageWithPluginCommands(): Promise<string> {
+  const groups = await pluginCommandHelpGroups()
+  if (groups.length === 0) return USAGE
+  const lines = [USAGE.trimEnd(), '']
+  for (const group of groups) {
+    lines.push(`${group.group}:`)
+    for (const c of group.commands) {
+      const usage = typeof c.usage === 'string' && c.usage.trim() !== '' ? c.usage : String(c.name ?? '')
+      const summary = typeof c.summary === 'string' ? c.summary : ''
+      lines.push(`  ${usage.padEnd(58)} ${summary}`.trimEnd())
+    }
+  }
+  return lines.join('\n') + '\n'
 }
 
 export async function printCommandIssueTui(issue: CommandIssueData): Promise<void> {
