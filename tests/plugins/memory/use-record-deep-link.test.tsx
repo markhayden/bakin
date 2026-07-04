@@ -2,8 +2,9 @@
 /**
  * useRecordDeepLink — ?recordId= drives the memory detail drawer.
  *
- * - a row already on screen (or just clicked) opens without a fetch
- * - an off-screen rowId resolves via GET /record
+ * - open() (explicit list click) caches the clicked row, pushes the param
+ * - deep links ALWAYS resolve via GET /record — never from on-screen index
+ *   copies (the &q= href fallback would silently reopen pruned records)
  * - a 404 yields an honest "not found" error — never a silent fallback
  * - close() clears the param
  */
@@ -63,13 +64,13 @@ function mockRecordFetch(status: number, body: unknown) {
 describe('useRecordDeepLink', () => {
   it('open() caches the clicked row and PUSHES the param (history entry) — no fetch', async () => {
     mockRecordFetch(500, {})
-    const { result } = renderHook(() => useRecordDeepLink([]))
+    const { result } = renderHook(() => useRecordDeepLink())
     act(() => result.current.open(ROW))
     // Push variant, not replace — the back button must close the drawer.
     expect(pushRecordId).toHaveBeenCalledWith('durable:abc123')
     expect(setRecordId).not.toHaveBeenCalled()
     queryState.recordId = 'durable:abc123'
-    const { result: reopened } = renderHook(() => useRecordDeepLink([]))
+    const { result: reopened } = renderHook(() => useRecordDeepLink())
     // A fresh mount with no cache WOULD fetch; the same hook instance must not.
     await waitFor(() => expect(result.current.row?.id).toBe('durable:abc123'))
     expect(reopened).toBeDefined()
@@ -77,31 +78,43 @@ describe('useRecordDeepLink', () => {
 
   it('switching to another record clears the stale row while it resolves', async () => {
     const ROW_B: SearchResult = { id: 'durable:def456', table: 'bakin_memory', score: 1, fields: { tier: 'durable', title: 'TOOLS' } }
-    mockRecordFetch(200, { result: ROW_B })
+    // URL-aware mock: each record resolves to its own row.
+    ;(globalThis as Record<string, unknown>).fetch = mock((url: string) => {
+      fetchCalls.push(String(url))
+      const row = String(url).includes(encodeURIComponent('durable:def456')) ? ROW_B : ROW
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ result: row }),
+      } as Response)
+    })
     queryState.recordId = 'durable:abc123'
-    const { result, rerender } = renderHook(() => useRecordDeepLink([ROW]))
+    const { result, rerender } = renderHook(() => useRecordDeepLink())
     await waitFor(() => expect(result.current.row?.id).toBe('durable:abc123'))
 
-    // Deep-link to record B (off-screen) — record A must not linger under ?recordId=B.
+    // Deep-link to record B — record A must not linger under ?recordId=B.
     queryState.recordId = 'durable:def456'
     act(() => rerender())
     expect(result.current.row).toBeNull()
     await waitFor(() => expect(result.current.row?.id).toBe('durable:def456'))
   })
 
-  it('resolves an on-screen row without fetching', async () => {
-    mockRecordFetch(500, {})
+  it('deep links ALWAYS resolve via /record — never from on-screen index copies', async () => {
+    // The &q= fallback in hit hrefs populates the list with the row's stale
+    // INDEX copy; short-circuiting on it would silently open a pruned
+    // record and suppress the honest 404 notice.
+    mockRecordFetch(404, { error: 'record not found' })
     queryState.recordId = 'durable:abc123'
-    const { result } = renderHook(() => useRecordDeepLink([ROW]))
-    await waitFor(() => expect(result.current.row?.id).toBe('durable:abc123'))
-    expect(fetchCalls.length).toBe(0)
-    expect(result.current.error).toBeNull()
+    const { result } = renderHook(() => useRecordDeepLink())
+    await waitFor(() => expect(result.current.error).toContain('not found'))
+    expect(fetchCalls.length).toBe(1)
+    expect(result.current.row).toBeNull()
   })
 
   it('fetches an off-screen row from /record', async () => {
     mockRecordFetch(200, { result: ROW })
     queryState.recordId = 'durable:abc123'
-    const { result } = renderHook(() => useRecordDeepLink([]))
+    const { result } = renderHook(() => useRecordDeepLink())
     await waitFor(() => expect(result.current.row?.id).toBe('durable:abc123'))
     expect(fetchCalls[0]).toContain('/api/plugins/memory/record?id=durable%3Aabc123')
     expect(result.current.error).toBeNull()
@@ -110,7 +123,7 @@ describe('useRecordDeepLink', () => {
   it('404 → honest not-found error, no row', async () => {
     mockRecordFetch(404, { error: 'record not found' })
     queryState.recordId = 'durable:gone'
-    const { result } = renderHook(() => useRecordDeepLink([]))
+    const { result } = renderHook(() => useRecordDeepLink())
     await waitFor(() => expect(result.current.error).toContain('not found'))
     expect(result.current.row).toBeNull()
   })
@@ -118,7 +131,7 @@ describe('useRecordDeepLink', () => {
   it('non-404 fetch failure → honest load error, distinct from not-found', async () => {
     mockRecordFetch(500, { error: 'boom' })
     queryState.recordId = 'durable:abc123'
-    const { result } = renderHook(() => useRecordDeepLink([]))
+    const { result } = renderHook(() => useRecordDeepLink())
     await waitFor(() => expect(result.current.error).toContain('Could not load'))
     expect(result.current.error).not.toContain('not found')
     expect(result.current.row).toBeNull()
@@ -127,7 +140,7 @@ describe('useRecordDeepLink', () => {
   it('close() clears the param', () => {
     mockRecordFetch(200, { result: ROW })
     queryState.recordId = 'durable:abc123'
-    const { result } = renderHook(() => useRecordDeepLink([ROW]))
+    const { result } = renderHook(() => useRecordDeepLink())
     act(() => result.current.close())
     expect(setRecordId).toHaveBeenCalledWith('')
   })

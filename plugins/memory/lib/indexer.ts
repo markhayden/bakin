@@ -9,7 +9,8 @@
  * Dependencies are injected via `PluginContext` so tests can swap in fakes
  * without deep mocking.
  */
-import { closeSync, existsSync, openSync, readSync, statSync } from 'fs'
+import { closeSync, createReadStream, existsSync, openSync, readSync, statSync } from 'fs'
+import { createInterface } from 'readline'
 import { join } from 'path'
 import { getContentDir } from '@bakin/core/content-dir'
 import type { RuntimeMemoryEntry } from '@bakin/core/adapters/runtime'
@@ -278,6 +279,40 @@ export class MemoryIndexer {
 
   private auditPath(): string {
     return join(getContentDir(), 'audit.jsonl')
+  }
+
+  /**
+   * Stream audit.jsonl line by line and return the row matching `id`, or
+   * null. Early-exits on match and never materializes the whole file —
+   * audit.jsonl is append-only and unbounded, and collectAuditRows() slurps
+   * it into one Buffer, which must never happen per-request (the /record
+   * deep-link route calls this). Applies the same write-time retention
+   * filter as indexing (isExpired), so record resolution and live indexing
+   * stay consistent. Missing file → null; other I/O errors log + rethrow.
+   */
+  async findAuditRowById(id: string): Promise<{ key: string; doc: Record<string, unknown> } | null> {
+    const file = this.auditPath()
+    if (!existsSync(file)) return null
+    const stream = createReadStream(file, { encoding: 'utf-8' })
+    const lines = createInterface({ input: stream, crlfDelay: Infinity })
+    let offset = 0
+    try {
+      for await (const line of lines) {
+        const row = parseAuditLine(line, file, offset)
+        offset += Buffer.byteLength(line, 'utf-8') + 1
+        if (row && row.id === id) {
+          if (this.isExpired(row)) return null
+          return { key: row.id, doc: buildMemoryDoc(row) }
+        }
+      }
+      return null
+    } catch (err) {
+      log.error('audit stream failed during record lookup', err as Error, { id })
+      throw err
+    } finally {
+      lines.close()
+      stream.destroy()
+    }
   }
 
   private async indexAuditTier(): Promise<number> {

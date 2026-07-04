@@ -216,19 +216,16 @@ export class AntflySearchClient implements SearchAdapter {
         const doc = await this.requestJson<Document>('GET', paths.document(table, key))
         return doc && typeof doc === 'object' ? doc : null
       } catch (err) {
-        if (err instanceof SearchRequestRejectedError) return null // 404 — absent
+        // ONLY a 404 means "absent". Other 4xx (400/401/403/422) are engine
+        // rejections — masking those as null would turn a config/auth
+        // regression into silent "Document not found" answers.
+        if (err instanceof SearchRequestRejectedError && err.status === 404) return null
         throw err
       }
     },
     transform: async (table: string, key: string, fn: TransformFn): Promise<void> => {
-      let current: Document | null = null
-      try {
-        current = await this.requestJson<Document>('GET', paths.document(table, key))
-      } catch (err) {
-        if (err instanceof SearchRequestRejectedError) return // 404 — nothing to transform
-        throw err
-      }
-      if (!current || typeof current !== 'object') return
+      const current = await this.documents.get(table, key)
+      if (!current) return // absent — nothing to transform
       const next = await fn(current)
       await this.request('POST', paths.batch(table), buildBatchInserts([{ key, doc: next }]))
     },

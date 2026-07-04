@@ -14,7 +14,6 @@ import {
   rebuildRegisteredTables,
   getContentTypes,
   getTableForPlugin,
-  getIndexNames,
   resolvePhysicalTable,
   buildSearchAPI,
 } from '../../src/core/search-registry'

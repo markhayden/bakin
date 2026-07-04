@@ -1,9 +1,12 @@
 /**
  * ?recordId= — URL-addressable memory detail drawer.
  *
- * ⌘K memory hits deep-link to /memory?recordId=<rowId>. The hook resolves
- * the id to a full SearchResult: a row already on screen (or just clicked
- * via open()) is used as-is; otherwise GET /record fetches it by rowId.
+ * ⌘K memory hits deep-link to /memory?recordId=<rowId>. Deep links ALWAYS
+ * resolve through GET /record (source-of-truth files) — never through rows
+ * already on screen: the &q= fallback in the hit href populates the list
+ * with the row's stale INDEX copy, and short-circuiting on it would
+ * silently open a pruned record and suppress the honest 404 notice. Only
+ * open() (an explicit list click on a rendered row) skips the fetch.
  * A miss surfaces an honest error — never a silent fuzzy-search fallback.
  */
 import { useEffect, useState } from 'react'
@@ -21,7 +24,7 @@ export interface RecordDeepLink {
   close: () => void
 }
 
-export function useRecordDeepLink(onScreenRows: SearchResult[]): RecordDeepLink {
+export function useRecordDeepLink(): RecordDeepLink {
   // Push-mode setter for open() — opening a drawer must create a history
   // entry so the back button closes it (same pattern as schedule's jobId).
   const [recordId, setRecordId, pushRecordId] = useQueryState('recordId', '')
@@ -37,12 +40,6 @@ export function useRecordDeepLink(onScreenRows: SearchResult[]): RecordDeepLink 
     if (row?.id === recordId) return
     // Never show record A's content under ?recordId=B while B resolves.
     setRow(null)
-    const onScreen = onScreenRows.find((r) => r.id === recordId)
-    if (onScreen) {
-      setRow(onScreen)
-      setError(null)
-      return
-    }
     const controller = new AbortController()
     fetch(`/api/plugins/memory/record?id=${encodeURIComponent(recordId)}`, { signal: controller.signal })
       .then(async (res) => {
@@ -63,7 +60,7 @@ export function useRecordDeepLink(onScreenRows: SearchResult[]): RecordDeepLink 
       })
     return () => controller.abort()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recordId, onScreenRows])
+  }, [recordId])
 
   return {
     recordId,

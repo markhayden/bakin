@@ -48,7 +48,7 @@ export function SchedulePage() {
   const [debug] = useDebug()
 
   const {
-    jobs, loading, refresh,
+    jobs, allJobs, loading, fetchFailed, refresh,
     pauseJob, resumeJob, deleteJob, runNow, updateJob, adoptJob, restoreNative, skipNext,
   } = useScheduleJobs({
     agent: agentFilter === 'all' ? undefined : agentFilter,
@@ -89,13 +89,16 @@ export function SchedulePage() {
     )
   }, [jobs, search, searchHook.results, scoreMap])
 
-  // Derive drawer/form visibility from URL state
-  const selectedJob = jobIdParam ? jobs.find(j => j.id === jobIdParam) ?? null : null
+  // Derive drawer/form visibility from URL state. Deep links resolve
+  // against the UNFILTERED list — a ?jobId= must open its job even when the
+  // active agent filter excludes it from the visible list.
+  const selectedJob = jobIdParam ? allJobs.find(j => j.id === jobIdParam) ?? null : null
   const showForm = mode === 'create' || ((mode === 'edit' || mode === 'duplicate' || mode === 'adopt') && !!selectedJob)
   const showDetail = !!selectedJob && !showForm
   // A ?jobId= that matches nothing (job deleted, stale search hit) must be
   // an honest notice, not a silent no-op with a dead param in the URL.
-  const jobNotFound = !!jobIdParam && !loading && !selectedJob
+  // Guard on fetchFailed — a failed fetch is not evidence of deletion.
+  const jobNotFound = !!jobIdParam && !loading && !fetchFailed && !selectedJob
 
   // --- Transitions ---
 

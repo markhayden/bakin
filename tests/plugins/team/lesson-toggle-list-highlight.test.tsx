@@ -82,6 +82,20 @@ describe('LessonToggleList ?lessonId= highlight', () => {
     expect(scrollSpy.mock.calls.length).toBe(1)
   })
 
+  it('re-arms the scroll when the param clears — revisiting the same lesson scrolls again', async () => {
+    queryState.lessonId = 'tone'
+    const { rerender } = render(<LessonToggleList agentId="pixel" />)
+    await waitFor(() => expect(scrollSpy.mock.calls.length).toBe(1))
+
+    // Param cleared (user dismissed / navigated within the page)…
+    queryState.lessonId = ''
+    rerender(<LessonToggleList agentId="pixel" />)
+    // …then a fresh deep link to the SAME lesson must scroll again.
+    queryState.lessonId = 'tone'
+    rerender(<LessonToggleList agentId="pixel" />)
+    await waitFor(() => expect(scrollSpy.mock.calls.length).toBe(2))
+  })
+
   it('renders normally when the lessonId is unknown', async () => {
     queryState.lessonId = 'does-not-exist'
     render(<LessonToggleList agentId="pixel" />)

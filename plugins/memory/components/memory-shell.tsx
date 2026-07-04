@@ -198,8 +198,10 @@ function MemoryShellInner() {
   const error = searchActive ? searchError : recentError
 
   // ?recordId= drives the detail drawer (⌘K deep links, refresh, back
-  // button). List clicks route through the same param via record.open().
-  const record = useRecordDeepLink(sourceResults)
+  // button). List clicks route through the same param via record.open();
+  // deep links always resolve via /record (source of truth), never from
+  // on-screen index copies.
+  const record = useRecordDeepLink()
 
   // Client-side post-filter. When Debug is off we normally strip turn+audit
   // (they drown out everything else), BUT an explicit tier chip is an opt-in

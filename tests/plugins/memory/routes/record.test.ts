@@ -128,6 +128,26 @@ describe('GET /record', () => {
     expect(res.status).toBe(404)
   })
 
+  it('404s for an audit row past the retention window — same filter as live indexing', async () => {
+    const ctx = makeCtx()
+    // Append an entry far older than auditRetentionDays (default 30d).
+    const oldIso = '2020-01-01T00:00:00.000Z'
+    const { appendFileSync } = await import('fs')
+    appendFileSync(
+      join(testDir, 'audit.jsonl'),
+      JSON.stringify({ ts: oldIso, event: 'task.ancient', agent: AGENT, data: {} }) + '\n',
+    )
+    // Discover its key via a retention-free parse (streaming reader must
+    // find the line, then reject it on expiry).
+    const { parseAuditLine } = await import('../../../../plugins/memory/lib/tier-parsers/audit-parser')
+    const line = JSON.stringify({ ts: oldIso, event: 'task.ancient', agent: AGENT, data: {} })
+    const row = parseAuditLine(line, 'x', 0)
+    expect(row).not.toBeNull()
+
+    const res = await recordRoute.handler(makeReq(row!.id), ctx, {})
+    expect(res.status).toBe(404)
+  })
+
   it('routes skill: ids to the durable tier (404 here, not 400)', async () => {
     const res = await recordRoute.handler(makeReq('skill:deadbeefdeadbeef'), makeCtx(), {})
     expect(res.status).toBe(404)

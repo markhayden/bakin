@@ -39,7 +39,13 @@ export function LessonToggleList({ agentId }: LessonToggleListProps) {
   const scrolledForRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!lessons || !highlightId || scrolledForRef.current === highlightId) return
+    if (!highlightId) {
+      // Param cleared — re-arm so a later deep link to the SAME lesson
+      // scrolls again instead of being eaten by the once-guard.
+      scrolledForRef.current = null
+      return
+    }
+    if (!lessons || scrolledForRef.current === highlightId) return
     if (highlightRef.current) {
       highlightRef.current.scrollIntoView({ block: 'center' })
       scrolledForRef.current = highlightId

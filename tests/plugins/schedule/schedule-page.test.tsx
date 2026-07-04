@@ -124,9 +124,13 @@ interface ScheduleJobStub {
   consecutiveFailures: number
 }
 
-const scheduleState: { jobs: ScheduleJobStub[]; loading: boolean } = {
+const scheduleState: { jobs: ScheduleJobStub[]; allJobs: ScheduleJobStub[] | null; loading: boolean; fetchFailed: boolean } = {
   jobs: [],
+  // null = mirror `jobs` (most tests don't filter); set explicitly to test
+  // the filtered-list vs unfiltered-list distinction.
+  allJobs: null,
   loading: false,
+  fetchFailed: false,
 }
 
 const scheduleActions = {
@@ -143,7 +147,9 @@ const scheduleActions = {
 mock.module('@/hooks/use-schedule', () => ({
   useScheduleJobs: () => ({
     jobs: scheduleState.jobs,
+    allJobs: scheduleState.allJobs ?? scheduleState.jobs,
     loading: scheduleState.loading,
+    fetchFailed: scheduleState.fetchFailed,
     ...scheduleActions,
   }),
 }))
@@ -265,6 +271,8 @@ beforeEach(() => {
   for (const action of Object.values(scheduleActions)) action.mockReset()
   scheduleActions.deleteJob.mockImplementation(async () => true)
   scheduleState.jobs = []
+  scheduleState.allJobs = null
+  scheduleState.fetchFailed = false
   scheduleState.loading = false
 })
 
@@ -294,6 +302,32 @@ describe('SchedulePage smoke', () => {
 
   it('does not show the not-found notice while jobs are still loading', () => {
     scheduleState.loading = true
+    queryStateRefs.view = 'list'
+    queryStateRefs.jobId = 'some-job'
+
+    render(<SchedulePage />)
+
+    expect(screen.queryByTestId('schedule-job-not-found')).toBeNull()
+  })
+
+  it('no false not-found when the active agent filter excludes the deep-linked job', () => {
+    // The visible list is agent-filtered; the deep link must resolve
+    // against the UNFILTERED list — the job exists, so no notice.
+    scheduleState.jobs = []
+    scheduleState.allJobs = [makeJob({ id: 'other-agent-job', displayName: 'Other', agentId: 'pixel' })]
+    queryStateRefs.view = 'list'
+    queryStateRefs.agent = 'chef'
+    queryStateRefs.jobId = 'other-agent-job'
+
+    render(<SchedulePage />)
+
+    expect(screen.queryByTestId('schedule-job-not-found')).toBeNull()
+  })
+
+  it('no false not-found when the jobs fetch failed', () => {
+    // A failed fetch (empty stale list) is not evidence of deletion.
+    scheduleState.jobs = []
+    scheduleState.fetchFailed = true
     queryStateRefs.view = 'list'
     queryStateRefs.jobId = 'some-job'
 

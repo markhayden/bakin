@@ -7,28 +7,24 @@
  * until the key matches (lazy, early-exit). Deliberately search-engine-
  * independent — a deep link resolves even when antfly is down.
  *
- * The audit tier gets a dedicated line-streaming reader with early exit:
- * audit.jsonl is append-only and unbounded, and the indexer's
- * collectAuditRows() slurps the whole file into one Buffer, which must
- * never happen per-request on the server's event loop.
+ * The audit tier goes through MemoryIndexer.findAuditRowById — a streaming
+ * reader with early exit, because audit.jsonl is append-only and unbounded
+ * and must never be materialized per-request. It applies the same retention
+ * filter as live indexing.
  *
  * (An index-first exact-id lookup was tried and rejected: row keys are not
  * indexed as searchable text, so `q=<rowId>` returns unrelated hits — the
- * same reason bakin_exec_search_lookup's text-then-filter trick misses.)
+ * old bakin_exec_search_lookup shipped broken on that same trick before it
+ * moved to SearchAdapter.documents.get.)
  *
  * Response is SearchResult-shaped ({ id, table, fields, score }) so the
  * client can hand it straight to MemoryDetailDrawer.
  */
-import { createReadStream } from 'fs'
-import { createInterface } from 'readline'
-import { join } from 'path'
 import { z } from 'zod'
-import { getContentDir } from '@bakin/core/content-dir'
 import { defineRoute } from '@bakin/core/routing'
 import type { PluginContextLite } from '@bakin/core/routing'
 import type { PluginContext } from '@bakin/core/plugin-types'
-import { MemoryIndexer, buildMemoryDoc } from '../indexer'
-import { parseAuditLine } from '../tier-parsers/audit-parser'
+import { MemoryIndexer } from '../indexer'
 import { resolveIndexerOptions } from '../settings'
 import { MEMORY_TIERS, type MemoryTier } from '../types'
 
@@ -45,35 +41,11 @@ const PREFIX_TO_TIER: Record<string, MemoryTier> = {
 
 const RowIdSchema = z.string().min(3).refine((v) => v.includes(':'), 'expected <tier>:<hash>')
 
-/** Stream audit.jsonl line by line, early-exit on the matching row —
- *  never materializes the whole file. */
-async function findAuditRow(id: string): Promise<Record<string, unknown> | null> {
-  const file = join(getContentDir(), 'audit.jsonl')
-  const stream = createReadStream(file, { encoding: 'utf-8' })
-  const lines = createInterface({ input: stream, crlfDelay: Infinity })
-  let offset = 0
-  try {
-    for await (const line of lines) {
-      const row = parseAuditLine(line, file, offset)
-      offset += Buffer.byteLength(line, 'utf-8') + 1
-      if (row && row.id === id) {
-        return { id: row.id, table: 'memory', fields: buildMemoryDoc(row), score: 0 }
-      }
-    }
-  } catch {
-    return null // missing/unreadable file — treated as not found
-  } finally {
-    lines.close()
-    stream.destroy()
-  }
-  return null
-}
-
 export const recordRoute = defineRoute({
   path: '/record',
   method: 'GET',
   summary: 'Resolve one memory row by its unified rowId',
-  description: 'Resolve a unified memory rowId (<tier>:<hash>) to its exact row — index lookup first, tier enumeration fallback',
+  description: 'Resolve a unified memory rowId (<tier>:<hash>) to its exact row via tier enumeration (streaming early-exit for the audit tier)',
   responses: { 200: passthrough, 400: errorResponse, 404: errorResponse },
   handler: async (req: Request, ctx: PluginContextLite) => {
     const raw = new URL(req.url).searchParams.get('id') ?? ''
@@ -84,14 +56,19 @@ export const recordRoute = defineRoute({
     }
     const id = parsed.data
 
+    const pluginCtx = ctx as unknown as PluginContext
+    const indexer = new MemoryIndexer(pluginCtx, resolveIndexerOptions(pluginCtx))
+
     if (tier === 'audit') {
-      const row = await findAuditRow(id)
-      if (row) return Response.json({ result: row })
+      // I/O errors (not ENOENT) are logged by the indexer and bubble to the
+      // server's 500 handler — never masked as a 404.
+      const row = await indexer.findAuditRowById(id)
+      if (row) {
+        return Response.json({ result: { id: row.key, table: 'memory', fields: row.doc, score: 0 } })
+      }
       return Response.json({ error: 'record not found' }, { status: 404 })
     }
 
-    const pluginCtx = ctx as unknown as PluginContext
-    const indexer = new MemoryIndexer(pluginCtx, resolveIndexerOptions(pluginCtx))
     for await (const { key, doc } of indexer.enumerateTier(tier)) {
       if (key === id) {
         return Response.json({ result: { id: key, table: 'memory', fields: doc, score: 0 } })
