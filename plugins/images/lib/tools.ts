@@ -1,11 +1,10 @@
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { basename } from 'node:path'
+import type { AssetVersionDetail } from '@makinbakin/sdk/types'
+import { isValidAssetId } from '@makinbakin/sdk/utils'
 import type { ExecToolResult, PluginContext } from '@bakin/core/plugin-types'
 import type { RuntimeImageGenerationResult } from '@bakin/core/adapters/runtime'
-import { getAsset, listAssets, upsertFromSource, resolveStoreFile } from '../../assets/lib/asset-service'
-import { isValidAssetId } from '../../assets/lib/asset-id'
-import type { AssetManifest, AssetVersion } from '../../assets/lib/manifest'
 import type { ImageProviderId, ImageProviderReadiness } from '../types'
 import { effectiveImageSettings, getImageProvider, providerReadiness } from './providers'
 import { resolveImageRoute } from './routing'
@@ -227,7 +226,7 @@ async function resolveReferences(
     // A path INSIDE the asset store is already managed — reflect it to its
     // identity (and to the real version file when given a thumb) instead of
     // letting auto-import clone it.
-    const managed = resolveStoreFile(entry)
+    const managed = await ctx.assets.resolveStoreFile(entry)
     if (managed) {
       paths.push(managed.absPath)
       lineage.push({ assetId: managed.assetId, version: managed.version })
@@ -242,7 +241,7 @@ async function resolveReferences(
       if (!existsSync(entry)) return { error: `Reference file not found: ${entry}` }
       // Auto-import the loose file so the reference is tracked provenance, not a
       // path+hash that can't be browsed later. Source-path dedup avoids dupes.
-      const up = await upsertFromSource(entry, {
+      const up = await ctx.assets.upsertFromSource(entry, {
         sourceFilePath: entry, type: 'images', agent, taskId: params.taskId,
         op: 'import', tool: 'bakin_exec_images_import',
         description: basename(entry), source: { kind: 'import', path: entry },
@@ -363,12 +362,12 @@ async function persistImageResult(
   }
 }
 
-function referencesFingerprint(version: AssetVersion | undefined): string {
+function referencesFingerprint(version: AssetVersionDetail | undefined): string {
   const refs = version?.generation?.references ?? []
   return refs.map(ref => `${ref.assetId}@${ref.version}`).sort().join(',')
 }
 
-function versionMatchesRequest(version: AssetVersion | undefined, req: PreparedImageRequest, promptHash: string, tool: string): boolean {
+function versionMatchesRequest(version: AssetVersionDetail | undefined, req: PreparedImageRequest, promptHash: string, tool: string): boolean {
   if (!version) return false
   // Quality only participates when it was actually recorded (shim path). A
   // native version omits quality, so comparing it would wrongly miss the reuse
@@ -386,11 +385,10 @@ function versionMatchesRequest(version: AssetVersion | undefined, req: PreparedI
     && referencesMatch
 }
 
-function reusableGenerateResult(params: ImagesGenerateParams, req: PreparedImageRequest, promptHash: string): ExecToolResult | null {
-  const existing = listAssets({ type: 'images', taskId: params.taskId })
+async function reusableGenerateResult(ctx: PluginContext, params: ImagesGenerateParams, req: PreparedImageRequest, promptHash: string): Promise<ExecToolResult | null> {
+  const existing = await ctx.assets.listAssets({ type: 'images', taskId: params.taskId })
   for (const summary of existing) {
-    const manifest = getAsset(summary.assetId)
-    const current = currentVersion(manifest)
+    const current = await currentVersionOf(ctx, summary.assetId)
     if (!current) continue
     if (!versionMatchesRequest(current, req, promptHash, 'bakin_exec_images_generate')) continue
     return imageToolResultFromVersion(summary.assetId, current, req, { reused: true, idempotency: 'asset' })
@@ -399,27 +397,27 @@ function reusableGenerateResult(params: ImagesGenerateParams, req: PreparedImage
 }
 
 /** Reuse check for a versionOf re-roll: only the target asset's current version counts. */
-function reusableVersionOfResult(assetId: string, req: PreparedImageRequest, promptHash: string): ExecToolResult | null {
-  const manifest = getAsset(assetId)
-  const current = currentVersion(manifest)
+async function reusableVersionOfResult(ctx: PluginContext, assetId: string, req: PreparedImageRequest, promptHash: string): Promise<ExecToolResult | null> {
+  const current = await currentVersionOf(ctx, assetId)
   if (!current || !versionMatchesRequest(current, req, promptHash, 'bakin_exec_images_generate')) return null
   return imageToolResultFromVersion(assetId, current, req, { reused: true, idempotency: 'asset' })
 }
 
-function reusableEditResult(assetId: string, req: PreparedImageRequest, promptHash: string): ExecToolResult | null {
-  const manifest = getAsset(assetId)
-  const current = currentVersion(manifest)
+async function reusableEditResult(ctx: PluginContext, assetId: string, req: PreparedImageRequest, promptHash: string): Promise<ExecToolResult | null> {
+  const current = await currentVersionOf(ctx, assetId)
   if (!current || !versionMatchesRequest(current, req, promptHash, 'bakin_exec_images_edit')) return null
   return imageToolResultFromVersion(assetId, current, req, { reused: true, idempotency: 'asset' })
 }
 
-function currentVersion(manifest: AssetManifest | null): AssetVersion | undefined {
-  return manifest?.versions.find(version => version.version === manifest.currentVersion)
+/** The asset's current version detail (one versions fetch), or undefined. */
+async function currentVersionOf(ctx: PluginContext, assetId: string): Promise<AssetVersionDetail | undefined> {
+  const history = await ctx.assets.getAssetVersions(assetId)
+  return history?.versions.find(version => version.version === history.currentVersion)
 }
 
 function imageToolResultFromVersion(
   assetId: string,
-  version: AssetVersion,
+  version: AssetVersionDetail,
   req: PreparedImageRequest,
   extra: Record<string, unknown> = {},
 ): ExecToolResult {
@@ -450,20 +448,20 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
     return fail('versionOf and allowNewAsset contradict — versionOf appends a version of an existing asset, allowNewAsset declares a separate companion asset. Pass exactly one.')
   }
   if (params.versionOf) {
-    const targetManifest = getAsset(params.versionOf)
-    if (!targetManifest) return fail(`versionOf asset not found: ${params.versionOf}`)
-    if (targetManifest.type !== 'images') {
-      return fail(`versionOf must target an images asset; ${params.versionOf} is type '${targetManifest.type}'`)
+    const target = await ctx.assets.getAsset(params.versionOf)
+    if (!target) return fail(`versionOf asset not found: ${params.versionOf}`)
+    if (target.type !== 'images') {
+      return fail(`versionOf must target an images asset; ${params.versionOf} is type '${target.type}'`)
     }
   } else if (!params.allowNewAsset) {
     // Guard the iteration trap: referencing your own generated output from
     // THIS task without declaring intent. Imported reference material (op
     // import/upload) on the same task is the normal flow and never trips this.
     for (const ref of req.references.lineage) {
-      const manifest = getAsset(ref.assetId)
-      const current = currentVersion(manifest)
-      if (!manifest || !current) continue
-      if (manifest.taskId === params.taskId && (current.op === 'generate' || current.op === 'edit')) {
+      const summary = await ctx.assets.getAsset(ref.assetId)
+      const current = await currentVersionOf(ctx, ref.assetId)
+      if (!summary || !current) continue
+      if (summary.taskId === params.taskId && (current.op === 'generate' || current.op === 'edit')) {
         return fail(
           `Reference ${ref.assetId} is your own output on this task. If this is an iteration/correction of that deliverable, pass versionOf="${ref.assetId}" so the render appends a new VERSION (one asset, stable id). If it is a deliberately separate companion image, pass allowNewAsset=true.`,
         )
@@ -475,8 +473,8 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
   // With versionOf, reuse is scoped to the TARGET asset only — a matching
   // sibling must not hijack an explicit re-roll into a different asset.
   const reused = params.versionOf
-    ? reusableVersionOfResult(params.versionOf, req, promptHash)
-    : reusableGenerateResult(params, req, promptHash)
+    ? await reusableVersionOfResult(ctx, params.versionOf, req, promptHash)
+    : await reusableGenerateResult(ctx, params, req, promptHash)
   if (reused) return reused
 
   // The runtime capability owns transport: native when it can, the shared
@@ -529,7 +527,7 @@ export async function editImage(ctx: PluginContext, params: ImagesEditParams, ag
     return fail(`Reference resolves to the asset being edited (${params.assetId}) — the edit already includes its current version; references add OTHER context images`)
   }
   const promptHash = hashPrompt(req.prompt)
-  const reused = reusableEditResult(params.assetId, req, promptHash)
+  const reused = await reusableEditResult(ctx, params.assetId, req, promptHash)
   if (reused) return reused
 
   // Edit is runtime-only — the shared shim does generation, not editing.

@@ -8,10 +8,16 @@
  */
 import { join } from 'node:path'
 
+import { isValidAssetId, yearMonthFromAssetId } from '@makinbakin/sdk/utils'
+
 import { getContentDir } from '../../../src/core/content-dir'
 import { slugify, generateId8 } from './filename-id'
 
-const ASSET_ID_RE = /^(\d{4})(\d{2})(\d{2})-.+-[0-9a-f]{8}$/i
+// The pure shape validators are single-homed on the SDK surface
+// (`@makinbakin/sdk/utils`) so other plugins (e.g. images) validate ids
+// without importing this plugin. Re-exported here for plugin-internal
+// consumers, which keep this module as their import surface.
+export { isValidAssetId, yearMonthFromAssetId }
 
 function datePrefix(): string {
   return new Date().toISOString().slice(0, 10).replace(/-/g, '')
@@ -21,30 +27,6 @@ function datePrefix(): string {
 export function generateAssetId(slug: string, id8?: string): string {
   const cleanSlug = slugify(slug) || 'asset'
   return `${datePrefix()}-${cleanSlug}-${id8 ?? generateId8()}`
-}
-
-/** `YYYY-MM` shard for a valid assetId, or null. Validates the date components. */
-export function yearMonthFromAssetId(assetId: string): string | null {
-  const m = ASSET_ID_RE.exec(assetId)
-  if (!m) return null
-  const year = parseInt(m[1], 10)
-  const month = parseInt(m[2], 10)
-  const day = parseInt(m[3], 10)
-  if (year < 1970 || year > 9999) return null
-  if (month < 1 || month > 12) return null
-  if (day < 1 || day > 31) return null
-  return `${m[1]}-${m[2]}`
-}
-
-/** True when an external-supplied id is safe to resolve (no separators/traversal). */
-export function isValidAssetId(assetId: string): boolean {
-  return (
-    assetId.length > 0 &&
-    !assetId.includes('/') &&
-    !assetId.includes('\\') &&
-    !assetId.includes('..') &&
-    yearMonthFromAssetId(assetId) !== null
-  )
 }
 
 /**
