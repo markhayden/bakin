@@ -59,6 +59,22 @@ describe('meterAgentTurn', () => {
     expect(costRows[0].taskId).toBe('t1')
   })
 
+  it('threads cache read/write tokens into the cost row and the usage entry', async () => {
+    await meterAgentTurn({
+      runId: 'task:t-cache:d1', taskId: 't-cache', agent: 'pixel',
+      result: { id: 'm', usage: { input: 1000, output: 50, total: 1050, cacheRead: 900, cacheWrite: 40 } },
+    })
+    expect(costRows[0]).toMatchObject({ cacheReadTokens: 900, cacheWriteTokens: 40 })
+    expect(usageRows[0]).toMatchObject({ tokensCacheRead: 900, tokensCacheWrite: 40 })
+  })
+
+  it('omits cache fields entirely when the runtime reports no cache usage', async () => {
+    await meterAgentTurn({ agent: 'pixel', result: { id: 'm', usage: { input: 10, output: 5 } } })
+    expect(costRows[0].cacheReadTokens ?? null).toBeNull()
+    expect('tokensCacheRead' in usageRows[0]).toBe(false)
+    expect('tokensCacheWrite' in usageRows[0]).toBe(false)
+  })
+
   it('prices the model the runtime actually ran, not the requested override', async () => {
     // Runtime reports it ran modelY; routing had requested modelX.
     const seen: Record<string, unknown>[] = []

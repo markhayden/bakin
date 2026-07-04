@@ -154,6 +154,16 @@ const MIGRATIONS = [
       db.exec('CREATE INDEX run_costs_by_time ON run_costs(occurred_at)')
     },
   },
+  {
+    // Cache-token attribution (#357): how much of a turn's input was served
+    // from provider cache vs re-billed. Pre-migration rows stay NULL —
+    // "unknown", never a fabricated zero.
+    version: 4,
+    up: (db: Db) => {
+      db.exec('ALTER TABLE run_costs ADD COLUMN cache_read_tokens INTEGER')
+      db.exec('ALTER TABLE run_costs ADD COLUMN cache_write_tokens INTEGER')
+    },
+  },
 ]
 
 /** Open the db with this module's schema applied. Every verb goes through here. */
@@ -722,6 +732,9 @@ export interface RunCostInput {
   inputTokens?: number | null
   outputTokens?: number | null
   totalTokens?: number | null
+  /** Provider-cache token counts; null when the runtime reported none. */
+  cacheReadTokens?: number | null
+  cacheWriteTokens?: number | null
   /** Estimated cost; null when the model has no catalog pricing (unmetered). */
   costUsdMicros?: number | null
   occurredAt: number
@@ -750,8 +763,8 @@ export function recordRunCost(input: RunCostInput): void {
     ledger()
       .prepare(
         `INSERT OR IGNORE INTO run_costs
-           (run_id, task_id, agent, model, input_tokens, output_tokens, total_tokens, cost_usd_micros, occurred_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (run_id, task_id, agent, model, input_tokens, output_tokens, total_tokens, cache_read_tokens, cache_write_tokens, cost_usd_micros, occurred_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         input.runId,
@@ -761,6 +774,8 @@ export function recordRunCost(input: RunCostInput): void {
         input.inputTokens ?? null,
         input.outputTokens ?? null,
         input.totalTokens ?? null,
+        input.cacheReadTokens ?? null,
+        input.cacheWriteTokens ?? null,
         input.costUsdMicros ?? null,
         input.occurredAt,
       )
@@ -816,6 +831,8 @@ export interface RunCostRow {
   inputTokens: number | null
   outputTokens: number | null
   totalTokens: number | null
+  cacheReadTokens: number | null
+  cacheWriteTokens: number | null
   costUsdMicros: number | null
   occurredAt: number
 }
@@ -837,9 +854,10 @@ export function recentRunsByAgent(agent: string, opts: { sinceMs?: number; limit
       .prepare<{
         run_id: string; task_id: string | null; model: string | null
         input_tokens: number | null; output_tokens: number | null; total_tokens: number | null
+        cache_read_tokens: number | null; cache_write_tokens: number | null
         cost_usd_micros: number | null; occurred_at: number
       }, (string | number)[]>(
-        `SELECT run_id, task_id, model, input_tokens, output_tokens, total_tokens, cost_usd_micros, occurred_at
+        `SELECT run_id, task_id, model, input_tokens, output_tokens, total_tokens, cache_read_tokens, cache_write_tokens, cost_usd_micros, occurred_at
            FROM run_costs WHERE ${clauses.join(' AND ')}
           ORDER BY occurred_at DESC LIMIT ?`,
       )
@@ -851,6 +869,8 @@ export function recentRunsByAgent(agent: string, opts: { sinceMs?: number; limit
         inputTokens: r.input_tokens,
         outputTokens: r.output_tokens,
         totalTokens: r.total_tokens,
+        cacheReadTokens: r.cache_read_tokens,
+        cacheWriteTokens: r.cache_write_tokens,
         costUsdMicros: r.cost_usd_micros,
         occurredAt: r.occurred_at,
       }))

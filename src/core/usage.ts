@@ -23,6 +23,9 @@ export interface UsageEntry {
   /** Per-turn token usage, when the entry is a completed agent turn. */
   tokensIn?: number
   tokensOut?: number
+  /** Provider-cache slices of the input, when the runtime reported them. */
+  tokensCacheRead?: number
+  tokensCacheWrite?: number
   /** Estimated turn cost in micro-dollars; absent when unmetered. */
   costUsdMicros?: number
   meta?: Record<string, unknown>
@@ -101,6 +104,8 @@ export function recordUsage(entry: Omit<UsageEntry, 'ts'> & { ts?: string }): vo
     status: entry.status,
     ...(entry.tokensIn !== undefined ? { tokensIn: entry.tokensIn } : {}),
     ...(entry.tokensOut !== undefined ? { tokensOut: entry.tokensOut } : {}),
+    ...(entry.tokensCacheRead !== undefined ? { tokensCacheRead: entry.tokensCacheRead } : {}),
+    ...(entry.tokensCacheWrite !== undefined ? { tokensCacheWrite: entry.tokensCacheWrite } : {}),
     ...(entry.costUsdMicros !== undefined ? { costUsdMicros: entry.costUsdMicros } : {}),
     ...(entry.meta ? { meta: entry.meta } : {}),
   }

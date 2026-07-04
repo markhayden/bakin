@@ -41,7 +41,7 @@ async function recordSpend(e: {
   costUsdMicros: number | null
   /** Usage-recorder entry name (e.g. 'turn', 'image'). */
   name: string
-  tokens?: { input?: number; output?: number; total?: number }
+  tokens?: { input?: number; output?: number; total?: number; cacheRead?: number; cacheWrite?: number }
   /** Extra recorder meta (e.g. image count). */
   meta?: Record<string, unknown>
 }): Promise<void> {
@@ -58,6 +58,8 @@ async function recordSpend(e: {
       inputTokens: e.tokens?.input ?? null,
       outputTokens: e.tokens?.output ?? null,
       totalTokens: e.tokens?.total ?? null,
+      cacheReadTokens: e.tokens?.cacheRead ?? null,
+      cacheWriteTokens: e.tokens?.cacheWrite ?? null,
       costUsdMicros: e.costUsdMicros,
       occurredAt: Date.now(),
     })
@@ -69,6 +71,8 @@ async function recordSpend(e: {
       status: 'ok',
       ...(e.tokens?.input !== undefined ? { tokensIn: e.tokens.input } : {}),
       ...(e.tokens?.output !== undefined ? { tokensOut: e.tokens.output } : {}),
+      ...(e.tokens?.cacheRead !== undefined ? { tokensCacheRead: e.tokens.cacheRead } : {}),
+      ...(e.tokens?.cacheWrite !== undefined ? { tokensCacheWrite: e.tokens.cacheWrite } : {}),
       ...(e.costUsdMicros !== null ? { costUsdMicros: e.costUsdMicros } : {}),
       meta: { ...(e.taskId ? { taskId: e.taskId } : {}), ...(e.model ? { model: e.model } : {}), ...(e.meta ?? {}) },
     })
@@ -108,7 +112,7 @@ export async function meterAgentTurn(opts: {
       model: ranModel ?? priced?.model ?? null,
       costUsdMicros: priced?.costUsdMicros ?? null,
       name: opts.name ?? 'turn',
-      tokens: { input: usage?.input, output: usage?.output, total: usage?.total },
+      tokens: { input: usage?.input, output: usage?.output, total: usage?.total, cacheRead: usage?.cacheRead, cacheWrite: usage?.cacheWrite },
     })
   } catch (err) {
     log.error('Failed to meter agent turn', err, { agent: opts.agent, runId: opts.runId })

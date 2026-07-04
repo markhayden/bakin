@@ -432,6 +432,20 @@ describe('run costs', () => {
     expect(recentRunsByAgent('nova').every((r) => r.runId.startsWith('task:'))).toBe(true)
   })
 
+  it('persists cache token counts and returns them via recentRunsByAgent', () => {
+    recordRunCost({
+      runId: 'task:rr-cache:d1', taskId: 'rr-cache', agent: 'cachet', model: 'm',
+      inputTokens: 1000, outputTokens: 50, totalTokens: 1050,
+      cacheReadTokens: 900, cacheWriteTokens: 40,
+      costUsdMicros: 10, occurredAt: T0,
+    })
+    // Rows written before the columns existed read back as null, never 0.
+    recordRunCost({ runId: 'task:rr-nocache:d1', taskId: 'rr-nocache', agent: 'cachet', model: 'm', inputTokens: 10, outputTokens: 5, totalTokens: 15, costUsdMicros: 1, occurredAt: T0 + 1000 })
+    const rows = recentRunsByAgent('cachet')
+    expect(rows[1]).toMatchObject({ runId: 'task:rr-cache:d1', cacheReadTokens: 900, cacheWriteTokens: 40 })
+    expect(rows[0]).toMatchObject({ runId: 'task:rr-nocache:d1', cacheReadTokens: null, cacheWriteTokens: null })
+  })
+
   it('recentRunsByAgent honors sinceMs and limit', () => {
     expect(recentRunsByAgent('nova', { sinceMs: T0 + 1000 }).map((r) => r.runId)).toEqual(['task:rr2:d1'])
     expect(recentRunsByAgent('nova', { limit: 1 }).map((r) => r.runId)).toEqual(['task:rr2:d1'])
