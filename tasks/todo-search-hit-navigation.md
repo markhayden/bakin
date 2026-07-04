@@ -9,4 +9,5 @@ Branch: `fix/search-hit-navigation`
 - [x] T4 Memory: `/record` route, `?recordId=` drawer, renderer href + manifest 2.0.2 — commit 4 `feat(memory): exact-record deep link — /record route + ?recordId= drawer`
 - [x] T5 Contract test (red-checked against reverted team-key fix) — commit 5 `test(plugins): contract — every content type has a working hit renderer`
 - [x] T6 Knowledge docs + spec status + README check (no impact) — commit 6 `docs(search): hit-renderer contract, memory record deep link`
-- [ ] Final gate: full suite green, manual 4-type click-through, ports clean, open PR
+- [x] T7 (found in browser verify): lazy plugin clients never registered renderers until page visit — `requestAllPlugins()` on overlay open — commit 7 `fix(host): load all lazy plugin clients when the search overlay opens`
+- [ ] Final gate: full suite green, manual 4-type click-through (schedule ✓, lessons ✓, memory ✓ incl. not-found ✓), ports clean, open PR

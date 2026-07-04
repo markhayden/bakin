@@ -157,6 +157,22 @@ export function requestRoutePlugins(pathname: string): void {
   demand(getRouteOwners(pathname))
 }
 
+/**
+ * Ask the host to load EVERY idle plugin in the ownership index (slot and
+ * route owners alike). Cross-plugin surfaces — the ⌘K global search overlay
+ * — need renderers from all plugins, not just the ones whose pages have
+ * been visited. Safe to call repeatedly; non-idle plugins are skipped.
+ */
+export function requestAllPlugins(): void {
+  const store = getStore()
+  const ids = new Set<string>()
+  for (const owners of store.ownersBySlot.values()) {
+    for (const id of owners) ids.add(id)
+  }
+  for (const { pluginId } of store.routeOwners) ids.add(pluginId)
+  demand([...ids])
+}
+
 /** Reset a failed plugin to idle and re-request it. Used by error fallbacks. */
 export function retryPluginLoad(pluginId: string): void {
   const store = getStore()

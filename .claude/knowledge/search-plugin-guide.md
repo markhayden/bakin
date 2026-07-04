@@ -189,6 +189,10 @@ must never look clickable while going nowhere.
 - `tests/plugins/search-hit-renderer-contract.test.ts` activates every core
   plugin, imports every client entry, and fails on a missing renderer, a
   mis-keyed renderer, or a null href — keep it green when adding types.
+- **Lazy-load interaction:** renderers register when the plugin's client
+  bundle loads, and most clients are lazy (loaded on first page visit).
+  Opening the overlay calls `requestAllPlugins()` (SDK) to demand every idle
+  client, so hits render with real renderers even for never-visited pages.
 
 ## Querying: `useSearch` and honest degradation
 

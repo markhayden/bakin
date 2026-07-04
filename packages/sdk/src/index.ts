@@ -82,6 +82,8 @@ export { getRouteOwners } from './lazy'
 export { requestSlotPlugins } from './lazy'
 /** Ask the host to lazy-load every idle plugin whose route patterns match the pathname. */
 export { requestRoutePlugins } from './lazy'
+/** Ask the host to lazy-load every idle plugin — cross-plugin surfaces (⌘K search). */
+export { requestAllPlugins } from './lazy'
 /** Reset a failed plugin to idle and re-request its client bundle. */
 export { retryPluginLoad } from './lazy'
 /** Monotonic lazy-store version for useSyncExternalStore consumers. */

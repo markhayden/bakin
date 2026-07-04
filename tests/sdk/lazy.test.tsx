@@ -40,6 +40,7 @@ import {
   getRouteOwners,
   getSlotOwners,
   registerPlugin,
+  requestAllPlugins,
   requestRoutePlugins,
   requestSlotPlugins,
   retryPluginLoad,
@@ -177,6 +178,26 @@ describe('lazy plugin store — ownership + demand', () => {
     expect(() => requestSlotPlugins('page:/lz-a')).not.toThrow()
     expect(getPluginLoadState('lz-a')).toBe('idle')
     expect(getSlotOwners('page:/lz-a')).toEqual(['lz-a'])
+  })
+
+  it('requestAllPlugins demands every idle plugin in the ownership index', () => {
+    const loaded: string[] = []
+    configureLazyPlugins({
+      slotOwners: new Map([['page:/lz-a', ['lz-a']], ['shared-slot', ['lz-a', 'lz-b']]]),
+      routeOwners: [{ pattern: 'page:/lz-c/[id]', pluginId: 'lz-c' }],
+    })
+    setLazyPluginLoader((id) => {
+      loaded.push(id)
+      setPluginLoadState(id, 'loading')
+    })
+    setPluginLoadState('lz-b', 'loaded') // already loaded — must be skipped
+
+    requestAllPlugins()
+    expect(loaded.sort()).toEqual(['lz-a', 'lz-c'])
+
+    // Everything settled; repeat demand is a no-op.
+    requestAllPlugins()
+    expect(loaded.sort()).toEqual(['lz-a', 'lz-c'])
   })
 })
 
