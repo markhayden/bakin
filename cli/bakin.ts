@@ -225,6 +225,14 @@ async function printAgentStatusTui(agentId: string, profile: Record<string, unkn
   return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.AgentStatusReport, { agentId, profile })
 }
 
+async function printAgentContextTui(report: import('../src/core/cli/ui/reports/context').ContextReportData): Promise<void> {
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.ContextReportReport, { report })
+}
+
+async function printAgentContextSummaryTui(agents: Array<import('../src/core/cli/ui/reports/context').ContextSummaryRowData>): Promise<void> {
+  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.ContextSummaryReport, { agents })
+}
+
 async function printAgentTasksTui(agentId: string, tasks: Array<Record<string, unknown>>): Promise<void> {
   return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.AgentTasksReport, { agentId, tasks })
 }
@@ -466,6 +474,38 @@ async function cmdAgentsList(opts: { json?: boolean } = {}): Promise<void> {
   for (const agent of result.agents) {
     const statusIcon = agent.status === 'working' ? '●' : agent.status === 'online' ? '○' : '·'
     console.log(`  ${statusIcon} ${agent.id}: ${agent.name} [${agent.status}] (${agent.model})`)
+  }
+}
+
+async function cmdAgentsContext(agentId: string | undefined, opts: { json?: boolean } = {}): Promise<void> {
+  if (agentId) {
+    const result = await apiGet(`/api/context-report/${agentId}`) as {
+      report: import('../src/core/cli/ui/reports/context').ContextReportData
+    }
+    if (opts.json) {
+      print(result)
+      return
+    }
+    if (process.stdout.isTTY) {
+      await printAgentContextTui(result.report)
+      return
+    }
+    print(result)
+    return
+  }
+  const result = await apiGet('/api/context-report') as {
+    agents: Array<import('../src/core/cli/ui/reports/context').ContextSummaryRowData>
+  }
+  if (opts.json) {
+    print(result)
+    return
+  }
+  if (process.stdout.isTTY) {
+    await printAgentContextSummaryTui(result.agents)
+    return
+  }
+  for (const row of result.agents) {
+    console.log(`  ${row.agentId}: static ${row.staticTaskBytes}B, est. max ${row.estimatedMaxTaskBytes}B, workspace ${row.workspaceAvailable ? `${row.workspaceTotalBytes}B` : 'n/a'}`)
   }
 }
 
@@ -3948,6 +3988,10 @@ export async function main(): Promise<void> {
         } else if (sub === 'tasks') {
           if (!args[2]) await exitUsage('bakin agents tasks <id>')
           await cmdAgentsTasks(args[2])
+        } else if (sub === 'context') {
+          // `bakin agents context` (no id) = per-agent summary; `<id>` = full breakdown
+          const id = args[2] && !args[2].startsWith('--') ? args[2] : undefined
+          await cmdAgentsContext(id, { json: args.includes('--json') })
         } else if (sub === 'send') {
           if (!args[2] || !args[3]) await exitUsage('bakin agents send <id> <message>')
           await cmdAgentsSend(args[2], args.slice(3).join(' '))
@@ -3980,7 +4024,7 @@ export async function main(): Promise<void> {
             await exitUnknownSubcommand('agents lessons', lessonSub, ['list', 'enable', 'disable'])
           }
         } else {
-          await exitUnknownSubcommand('agents', sub, ['list', 'status', 'tasks', 'send', 'install', 'orphan', 'delete', 'remove', 'update', 'lessons'])
+          await exitUnknownSubcommand('agents', sub, ['list', 'status', 'tasks', 'context', 'send', 'install', 'orphan', 'delete', 'remove', 'update', 'lessons'])
         }
         break
 

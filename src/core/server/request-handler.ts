@@ -42,6 +42,7 @@ import * as pluginsUnlinkRoute from '../../../packages/host/src/api/plugins/unli
 import * as agentPackagesListRoute from '../../../packages/host/src/api/agent-packages/list'
 import * as agentPackagesInstallRoute from '../../../packages/host/src/api/agent-packages/install'
 import * as agentPackagesDynamicRoute from '../../../packages/host/src/api/agent-packages/dynamic'
+import * as contextReportRoute from '../../../packages/host/src/api/context-report/index'
 import * as execToolsRoute from '../../../packages/host/src/api/exec-tools/[toolName]'
 import * as packagesListRoute from '../../../packages/host/src/api/packages/list'
 import * as packagesInstallRoute from '../../../packages/host/src/api/packages/install'
@@ -319,6 +320,12 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
     }
     if (url.pathname.startsWith('/api/agent-packages/') && url.pathname !== '/api/agent-packages/install') {
       dispatchWebHandler(req, res, agentPackagesDynamicRoute.handler)
+      return
+    }
+
+    // ─── Startup-context diagnostics (#357) — names + numbers, never content ──
+    if (url.pathname === '/api/context-report' || url.pathname.startsWith('/api/context-report/')) {
+      dispatchWebHandler(req, res, contextReportRoute.handler)
       return
     }
 
