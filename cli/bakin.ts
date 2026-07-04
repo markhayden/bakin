@@ -14,10 +14,6 @@ import {
   writeArtifactsIndex,
 } from '../src/core/whiskit/artifacts-index'
 import {
-  cmdScheduleList, cmdScheduleAdd, cmdSchedulePause,
-  cmdScheduleResume, cmdScheduleRemove, cmdScheduleRun, cmdScheduleRuns,
-} from '../src/cli/schedule'
-import {
   BASE_URL,
   api,
   apiGet,
@@ -3763,41 +3759,7 @@ export async function main(): Promise<void> {
         break
 
       case 'schedule':
-        if (!sub || sub === 'list') {
-          await cmdScheduleList({ agent: args.includes('--agent') ? args[args.indexOf('--agent') + 1] : undefined })
-        } else if (sub === 'add') {
-          if (!args[2] || !args[3]) await exitUsage('bakin schedule add <name> <schedule> [--agent <id>] [--prompt <text>]')
-          const agentIdx = args.indexOf('--agent')
-          const promptIdx = args.indexOf('--prompt')
-          await cmdScheduleAdd({
-            name: args[2],
-            schedule: args[3],
-            agent: agentIdx > -1 ? args[agentIdx + 1] : undefined,
-            prompt: promptIdx > -1 ? args.slice(promptIdx + 1).join(' ') : undefined,
-          })
-        } else if (sub === 'pause') {
-          if (!args[2]) await exitUsage('bakin schedule pause <jobId> [--until <date>] [--skip <n>]')
-          const untilIdx = args.indexOf('--until')
-          const skipIdx = args.indexOf('--skip')
-          await cmdSchedulePause(args[2], {
-            until: untilIdx > -1 ? args[untilIdx + 1] : undefined,
-            skip: skipIdx > -1 ? Number(args[skipIdx + 1]) : undefined,
-          })
-        } else if (sub === 'resume') {
-          if (!args[2]) await exitUsage('bakin schedule resume <jobId>')
-          await cmdScheduleResume(args[2])
-        } else if (sub === 'remove') {
-          if (!args[2]) await exitUsage('bakin schedule remove <jobId>')
-          await cmdScheduleRemove(args[2])
-        } else if (sub === 'run') {
-          if (!args[2]) await exitUsage('bakin schedule run <jobId>')
-          await cmdScheduleRun(args[2])
-        } else if (sub === 'runs') {
-          if (!args[2]) await exitUsage('bakin schedule runs <jobId>')
-          await cmdScheduleRuns(args[2], { limit: 20 })
-        } else {
-          await exitUnknownSubcommand('schedule', sub, ['list', 'add', 'pause', 'resume', 'remove', 'run', 'runs'])
-        }
+        await (await import('../src/cli/commands/schedule')).run(args)
         break
 
       default: {
