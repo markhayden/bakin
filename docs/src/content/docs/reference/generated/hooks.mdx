@@ -15,7 +15,15 @@ import HookCard from '../../../../components/HookCard.astro'
 <p class="hook-section-description">Asset hooks expose file, sidecar, variant, and trash helpers for plugins that need to work with Bakin-managed files.</p>
 
 <div class="hook-card-list">
-<HookCard id="assets-getassettypes" name="assets.getAssetTypes" label="List asset types." summary="Returns the asset type definitions known to the assets plugin. Use it to build filters, upload forms, or validation messages that match Bakin asset categories." source="plugins/assets/index.ts:415" badges={["rpc"]}>
+<HookCard id="assets-enrichmentstats" name="assets.enrichmentStats" label="Enrichment queue stats." summary="Returns the vision-enrichment queue depth and processed/failed/skipped counters for telemetry." source="plugins/assets/lib/register-hooks.ts:30" badges={["rpc"]}>
+```ts frame="terminal"
+const result = await ctx.hooks.invoke(
+  'assets.enrichmentStats',
+  {},
+)
+```
+</HookCard>
+<HookCard id="assets-getassettypes" name="assets.getAssetTypes" label="List asset types." summary="Returns the asset type definitions known to the assets plugin. Use it to build filters, upload forms, or validation messages that match Bakin asset categories." source="plugins/assets/lib/register-hooks.ts:44" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.getAssetTypes',
@@ -23,7 +31,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="assets-listbytask" name="assets.listByTask" label="List assets linked to a task." summary="Returns {assetId, description, type} for every versioned asset whose manifest taskId matches. Backed by an in-memory index — the sanctioned way for core (dispatch) to resolve a task’s attached assets without scanning plugin storage." source="plugins/assets/index.ts:407" badges={["rpc"]}>
+<HookCard id="assets-listbytask" name="assets.listByTask" label="List assets linked to a task." summary="Returns {assetId, description, type} for every versioned asset whose manifest taskId matches. Backed by an in-memory index — the sanctioned way for core (dispatch) to resolve a task’s attached assets without scanning plugin storage." source="plugins/assets/lib/register-hooks.ts:36" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.listByTask',
@@ -31,7 +39,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="assets-purgeclipboardfortask" name="assets.purgeClipboardForTask" label="Purge task clipboard assets." summary="Deletes clipboard-sourced assets associated with a completed task when that cleanup setting is enabled. Use it from task completion flows that want asset cleanup to stay centralized." source="plugins/assets/index.ts:448" badges={["rpc"]}>
+<HookCard id="assets-purgeclipboardfortask" name="assets.purgeClipboardForTask" label="Purge task clipboard assets." summary="Deletes clipboard-sourced assets associated with a completed task when that cleanup setting is enabled. Use it from task completion flows that want asset cleanup to stay centralized." source="plugins/assets/lib/register-hooks.ts:77" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.purgeClipboardForTask',
@@ -41,7 +49,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="assets-resolveserve" name="assets.resolveServe" label="Resolve versioned asset serve request." summary="Resolves an /api/assets/&lt;assetId&gt; path (current, /v/&lt;n&gt;, /thumb, /export/&lt;name&gt;) to a file on disk for serving." source="plugins/assets/index.ts:416" badges={["rpc"]}>
+<HookCard id="assets-resolveserve" name="assets.resolveServe" label="Resolve versioned asset serve request." summary="Resolves an /api/assets/&lt;assetId&gt; path (current, /v/&lt;n&gt;, /thumb, /export/&lt;name&gt;) to a file on disk for serving." source="plugins/assets/lib/register-hooks.ts:45" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.resolveServe',
@@ -54,7 +62,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="assets-savefromsource" name="assets.saveFromSource" label="Save a file as a managed asset." summary="Upserts a file into the versioned asset store by source path (new asset, version bump, or no-op when unchanged). The sanctioned cross-plugin/core save path; mirrors bakin_exec_assets_save." source="plugins/assets/index.ts:422" badges={["rpc"]}>
+<HookCard id="assets-savefromsource" name="assets.saveFromSource" label="Save a file as a managed asset." summary="Upserts a file into the versioned asset store by source path (new asset, version bump, or no-op when unchanged). The sanctioned cross-plugin/core save path; mirrors bakin_exec_assets_save." source="plugins/assets/lib/register-hooks.ts:51" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.saveFromSource',
@@ -69,7 +77,7 @@ const result = await ctx.hooks.invoke(
 <p class="hook-section-description">Health hooks expose registered readiness and diagnostic checks so other surfaces can list or inspect them.</p>
 
 <div class="hook-card-list">
-<HookCard id="health-getcheck" name="health.getCheck" label="Get a health check." summary="Returns metadata for one registered health check by id, without running the check. Use it when a plugin needs the check name, owner, and autofix capability before deciding what to show or run." source="plugins/health/index.ts:433" badges={["rpc"]}>
+<HookCard id="health-getcheck" name="health.getCheck" label="Get a health check." summary="Returns metadata for one registered health check by id, without running the check. Use it when a plugin needs the check name, owner, and autofix capability before deciding what to show or run." source="plugins/health/index.ts:478" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'health.getCheck',
@@ -79,7 +87,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="health-list" name="health.list" label="List health checks." summary="Returns the health checks registered by core and plugins without executing them. Use it when another surface needs to show the available diagnostics or autofix support." source="plugins/health/index.ts:432" badges={["rpc"]}>
+<HookCard id="health-list" name="health.list" label="List health checks." summary="Returns the health checks registered by core and plugins without executing them. Use it when another surface needs to show the available diagnostics or autofix support." source="plugins/health/index.ts:477" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'health.list',
@@ -94,7 +102,7 @@ const result = await ctx.hooks.invoke(
 <p class="hook-section-description">Model hooks expose the effective model configuration and notify dependent surfaces when runtime model state changes.</p>
 
 <div class="hook-card-list">
-<HookCard id="models-configchanged" name="models.configChanged" label="Model config changed." summary="Notifies listeners after an agent model assignment changes. Use it to refresh dependent state, update UI, or invalidate plugin caches that depend on model routing." source="plugins/models/index.ts:778" badges={["event"]}>
+<HookCard id="models-configchanged" name="models.configChanged" label="Model config changed." summary="Notifies listeners after an agent model assignment changes. Use it to refresh dependent state, update UI, or invalidate plugin caches that depend on model routing." source="plugins/models/lib/register-hooks.ts:20" badges={["event"]}>
 ```ts frame="terminal"
 await ctx.hooks.callAll(
   'models.configChanged',
@@ -106,7 +114,7 @@ await ctx.hooks.callAll(
 )
 ```
 </HookCard>
-<HookCard id="models-getavailablemodels" name="models.getAvailableModels" label="List available models." summary="Returns the model catalog available from the currently configured providers. Use it to populate pickers, validate assignments, or compare model options before saving config." source="plugins/models/index.ts:794" badges={["rpc"]}>
+<HookCard id="models-getavailablemodels" name="models.getAvailableModels" label="List available models." summary="Returns the model catalog available from the currently configured providers. Use it to populate pickers, validate assignments, or compare model options before saving config." source="plugins/models/lib/register-hooks.ts:36" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'models.getAvailableModels',
@@ -114,7 +122,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="models-getbudgetpolicy" name="models.getBudgetPolicy" label="Get budget policy." summary="Returns the spend-cap policy (global + per-agent daily/monthly limits) that dispatch consults before each turn. Use it to read the current budget limits." source="plugins/models/index.ts:843" badges={["rpc"]}>
+<HookCard id="models-getbudgetpolicy" name="models.getBudgetPolicy" label="Get budget policy." summary="Returns the spend-cap policy (global + per-agent daily/monthly limits) that dispatch consults before each turn. Use it to read the current budget limits." source="plugins/models/lib/register-hooks.ts:85" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'models.getBudgetPolicy',
@@ -122,7 +130,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="models-geteffectivemodel" name="models.getEffectiveModel" label="Get effective model." summary="Resolves the model an agent will actually use after defaults, overrides, and provider settings are applied. Use it when a plugin needs runtime-ready model information for one agent." source="plugins/models/index.ts:782" badges={["rpc"]}>
+<HookCard id="models-geteffectivemodel" name="models.getEffectiveModel" label="Get effective model." summary="Resolves the model an agent will actually use after defaults, overrides, and provider settings are applied. Use it when a plugin needs runtime-ready model information for one agent." source="plugins/models/lib/register-hooks.ts:24" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'models.getEffectiveModel',
@@ -132,7 +140,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="models-getroutingconfig" name="models.getRoutingConfig" label="Get routing config." summary="Returns the per-turn model/thinking routing policy (origins + tag overrides) that dispatch applies before each agent turn. Use it to read the current routing rules." source="plugins/models/index.ts:836" badges={["rpc"]}>
+<HookCard id="models-getroutingconfig" name="models.getRoutingConfig" label="Get routing config." summary="Returns the per-turn model/thinking routing policy (origins + tag overrides) that dispatch applies before each agent turn. Use it to read the current routing rules." source="plugins/models/lib/register-hooks.ts:78" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'models.getRoutingConfig',
@@ -140,7 +148,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="models-markconfigdirty" name="models.markConfigDirty" label="Mark config dirty." summary="Marks model configuration as changed so the runtime knows a refresh is needed. Use it after writing model settings that should not be treated as live yet." source="plugins/models/index.ts:790" badges={["event"]}>
+<HookCard id="models-markconfigdirty" name="models.markConfigDirty" label="Mark config dirty." summary="Marks model configuration as changed so the runtime knows a refresh is needed. Use it after writing model settings that should not be treated as live yet." source="plugins/models/lib/register-hooks.ts:32" badges={["event"]}>
 ```ts frame="terminal"
 await ctx.hooks.callAll(
   'models.markConfigDirty',
@@ -148,7 +156,7 @@ await ctx.hooks.callAll(
 )
 ```
 </HookCard>
-<HookCard id="models-markruntimerestarted" name="models.markRuntimeRestarted" label="Mark runtime refreshed." summary="Records that the runtime has picked up the latest model configuration. Use it after restart or reload flows so stale dirty-state warnings can clear." source="plugins/models/index.ts:792" badges={["event"]}>
+<HookCard id="models-markruntimerestarted" name="models.markRuntimeRestarted" label="Mark runtime refreshed." summary="Records that the runtime has picked up the latest model configuration. Use it after restart or reload flows so stale dirty-state warnings can clear." source="plugins/models/lib/register-hooks.ts:34" badges={["event"]}>
 ```ts frame="terminal"
 await ctx.hooks.callAll(
   'models.markRuntimeRestarted',
@@ -156,7 +164,7 @@ await ctx.hooks.callAll(
 )
 ```
 </HookCard>
-<HookCard id="models-priceimage" name="models.priceImage" label="Price an image." summary="Returns an estimated cost in micro-dollars for an image generation (count × the model’s flat per-image rate), or null when the model is provider-priced. Use it to attribute image-generation spend." source="plugins/models/index.ts:826" badges={["rpc"]}>
+<HookCard id="models-priceimage" name="models.priceImage" label="Price an image." summary="Returns an estimated cost in micro-dollars for an image generation (count × the model’s flat per-image rate), or null when the model is provider-priced. Use it to attribute image-generation spend." source="plugins/models/lib/register-hooks.ts:68" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'models.priceImage',
@@ -164,7 +172,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="models-priceturn" name="models.priceTurn" label="Price a turn." summary="Resolves the model an agent turn ran on and returns an estimated cost in micro-dollars from the catalog pricing. Use it to attribute spend to a completed turn. Cost is null when the model is unpriced." source="plugins/models/index.ts:805" badges={["rpc"]}>
+<HookCard id="models-priceturn" name="models.priceTurn" label="Price a turn." summary="Resolves the model an agent turn ran on and returns an estimated cost in micro-dollars from the catalog pricing. Use it to attribute spend to a completed turn. Cost is null when the model is unpriced." source="plugins/models/lib/register-hooks.ts:47" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'models.priceTurn',
@@ -179,7 +187,7 @@ const result = await ctx.hooks.invoke(
 <p class="hook-section-description">Hooks discovered from source registration audit.</p>
 
 <div class="hook-card-list">
-<HookCard id="schedule-ensurebakinjob" name="schedule.ensureBakinJob" label="Ensure Bakin schedule" summary="Create or update a Bakin-managed runtime cron job and return the provider job id." source="plugins/schedule/index.ts:1019" badges={["rpc"]}>
+<HookCard id="schedule-ensurebakinjob" name="schedule.ensureBakinJob" label="Ensure Bakin schedule" summary="Create or update a Bakin-managed runtime cron job and return the provider job id." source="plugins/schedule/index.ts:68" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'schedule.ensureBakinJob',
@@ -226,7 +234,7 @@ await ctx.hooks.callAll(
 <p class="hook-section-description">Team hooks expose runtime agent and team metadata for plugins that need agent-aware behavior.</p>
 
 <div class="hook-card-list">
-<HookCard id="team-getagent" name="team.getAgent" label="Get an agent." summary="Returns one runtime agent by id, including team-aware metadata when available. Use it when a plugin already has an agent id and needs the full display record." source="plugins/team/index.ts:1879" badges={["rpc"]}>
+<HookCard id="team-getagent" name="team.getAgent" label="Get an agent." summary="Returns one runtime agent by id, including team-aware metadata when available. Use it when a plugin already has an agent id and needs the full display record." source="plugins/team/index.ts:267" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'team.getAgent',
@@ -236,7 +244,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="team-getagentids" name="team.getAgentIds" label="List agent ids." summary="Returns the ids of agents currently known to the runtime. Use it for lightweight validation, assignment pickers, or loops that do not need full agent metadata." source="plugins/team/index.ts:1884" badges={["rpc"]}>
+<HookCard id="team-getagentids" name="team.getAgentIds" label="List agent ids." summary="Returns the ids of agents currently known to the runtime. Use it for lightweight validation, assignment pickers, or loops that do not need full agent metadata." source="plugins/team/index.ts:272" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'team.getAgentIds',
@@ -244,7 +252,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="team-getagentteam" name="team.getAgentTeam" label="Get agent team." summary="Returns the team currently assigned to an agent, or null when the agent is unassigned. Use it to add team context to task, workflow, or activity views." source="plugins/team/index.ts:1891" badges={["rpc"]}>
+<HookCard id="team-getagentteam" name="team.getAgentTeam" label="Get agent team." summary="Returns the team currently assigned to an agent, or null when the agent is unassigned. Use it to add team context to task, workflow, or activity views." source="plugins/team/index.ts:279" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'team.getAgentTeam',
@@ -254,7 +262,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="team-getorgstructure" name="team.getOrgStructure" label="Get org structure." summary="Returns the current organization structure for teams and agents. Use it when a plugin needs the full hierarchy instead of individual team or agent records." source="plugins/team/index.ts:1897" badges={["rpc"]}>
+<HookCard id="team-getorgstructure" name="team.getOrgStructure" label="Get org structure." summary="Returns the current organization structure for teams and agents. Use it when a plugin needs the full hierarchy instead of individual team or agent records." source="plugins/team/index.ts:285" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'team.getOrgStructure',
@@ -262,7 +270,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="team-getteammembers" name="team.getTeamMembers" label="List team members." summary="Returns the agents assigned to one team. Use it for team dashboards, routing rules, or workflow logic that needs team membership." source="plugins/team/index.ts:1888" badges={["rpc"]}>
+<HookCard id="team-getteammembers" name="team.getTeamMembers" label="List team members." summary="Returns the agents assigned to one team. Use it for team dashboards, routing rules, or workflow logic that needs team membership." source="plugins/team/index.ts:276" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'team.getTeamMembers',
@@ -272,7 +280,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="team-list" name="team.list" label="List agents." summary="Returns runtime agents with their display and team metadata attached. Use it when another plugin needs the agent roster as Bakin presents it." source="plugins/team/index.ts:1878" badges={["rpc"]}>
+<HookCard id="team-list" name="team.list" label="List agents." summary="Returns runtime agents with their display and team metadata attached. Use it when another plugin needs the agent roster as Bakin presents it." source="plugins/team/index.ts:266" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'team.list',
@@ -280,7 +288,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="team-resolveprofile" name="team.resolveProfile" label="Resolve agent profile." summary="Returns the runtime profile for an agent id. Use it when a plugin needs the lower-level profile data behind an agent display record." source="plugins/team/index.ts:1885" badges={["rpc"]}>
+<HookCard id="team-resolveprofile" name="team.resolveProfile" label="Resolve agent profile." summary="Returns the runtime profile for an agent id. Use it when a plugin needs the lower-level profile data behind an agent display record." source="plugins/team/index.ts:273" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'team.resolveProfile',
@@ -297,7 +305,7 @@ const result = await ctx.hooks.invoke(
 <p class="hook-section-description">Workflow hooks expose workflow definitions, instances, steps, gates, and notification helpers for task automation.</p>
 
 <div class="hook-card-list">
-<HookCard id="workflows-approvegate" name="workflows.approveGate" label="Approve workflow gate." summary="Approves a pending workflow gate and advances the instance. Use it from plugins that own an external review surface for workflow-backed tasks." source="plugins/workflows/index.ts:1682" badges={["rpc"]}>
+<HookCard id="workflows-approvegate" name="workflows.approveGate" label="Approve workflow gate." summary="Approves a pending workflow gate and advances the instance. Use it from plugins that own an external review surface for workflow-backed tasks." source="plugins/workflows/lib/register-hooks.ts:38" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.approveGate',
@@ -305,7 +313,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-authorizetooluse" name="workflows.authorizeToolUse" label="Authorize workflow tool use." summary="Checks whether an agent may perform a workflow-scoped tool action for a task. Use it before executing workflow-sensitive automation." source="plugins/workflows/index.ts:1708" badges={["rpc"]}>
+<HookCard id="workflows-authorizetooluse" name="workflows.authorizeToolUse" label="Authorize workflow tool use." summary="Checks whether an agent may perform a workflow-scoped tool action for a task. Use it before executing workflow-sensitive automation." source="plugins/workflows/lib/register-hooks.ts:64" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.authorizeToolUse',
@@ -313,7 +321,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-cancelinstance" name="workflows.cancelInstance" label="Cancel workflow instance." summary="Cancels the workflow instance attached to a task. Use it when task state changes make the workflow no longer relevant or safe to continue." source="plugins/workflows/index.ts:1712" badges={["event"]}>
+<HookCard id="workflows-cancelinstance" name="workflows.cancelInstance" label="Cancel workflow instance." summary="Cancels the workflow instance attached to a task. Use it when task state changes make the workflow no longer relevant or safe to continue." source="plugins/workflows/lib/register-hooks.ts:68" badges={["event"]}>
 ```ts frame="terminal"
 await ctx.hooks.callAll(
   'workflows.cancelInstance',
@@ -323,7 +331,15 @@ await ctx.hooks.callAll(
 )
 ```
 </HookCard>
-<HookCard id="workflows-completestep" name="workflows.completeStep" label="Complete workflow step." summary="Submits output for a workflow step and advances the instance when validation passes. Use it from agents or tools that finish a workflow action." source="plugins/workflows/index.ts:1700" badges={["rpc"]}>
+<HookCard id="workflows-clearskillcache" name="workflows.clearSkillCache" label="Clear workflow skill cache." summary="Drops the in-memory workflow-skill resolution cache so the next lookup re-reads disk and the registries. Use it after agent-package sync, migration, install, or removal changes which skills resolve." source="plugins/workflows/lib/register-hooks.ts:71" badges={["event"]}>
+```ts frame="terminal"
+await ctx.hooks.callAll(
+  'workflows.clearSkillCache',
+  {},
+)
+```
+</HookCard>
+<HookCard id="workflows-completestep" name="workflows.completeStep" label="Complete workflow step." summary="Submits output for a workflow step and advances the instance when validation passes. Use it from agents or tools that finish a workflow action." source="plugins/workflows/lib/register-hooks.ts:56" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.completeStep',
@@ -337,7 +353,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-createinstance" name="workflows.createInstance" label="Create workflow instance." summary="Creates a workflow instance for a task and optional assignee context. Use it when task creation or routing should immediately attach a workflow." source="plugins/workflows/index.ts:1681" badges={["rpc"]}>
+<HookCard id="workflows-createinstance" name="workflows.createInstance" label="Create workflow instance." summary="Creates a workflow instance for a task and optional assignee context. Use it when task creation or routing should immediately attach a workflow." source="plugins/workflows/lib/register-hooks.ts:37" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.createInstance',
@@ -349,7 +365,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-definitions-list" name="workflows.definitions.list" label="List workflow definitions." summary="Returns available workflow definitions from the configured content directory. Use it to populate workflow selectors or validate workflow ids before creating instances." source="plugins/workflows/index.ts:1702" badges={["rpc"]}>
+<HookCard id="workflows-definitions-list" name="workflows.definitions.list" label="List workflow definitions." summary="Returns available workflow definitions from the configured content directory. Use it to populate workflow selectors or validate workflow ids before creating instances." source="plugins/workflows/lib/register-hooks.ts:58" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.definitions.list',
@@ -357,7 +373,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-getactiveagents" name="workflows.getActiveAgents" label="List active workflow agents." summary="Returns agents currently active in a workflow task. Use it for coordination, notification, or assignment views that need live workflow participants." source="plugins/workflows/index.ts:1707" badges={["rpc"]}>
+<HookCard id="workflows-getactiveagents" name="workflows.getActiveAgents" label="List active workflow agents." summary="Returns agents currently active in a workflow task. Use it for coordination, notification, or assignment views that need live workflow participants." source="plugins/workflows/lib/register-hooks.ts:63" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.getActiveAgents',
@@ -367,7 +383,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-getcurrentstep" name="workflows.getCurrentStep" label="Get current step." summary="Returns the current workflow step for a task, optionally scoped to an agent. Use it when a plugin needs to know what work is currently actionable." source="plugins/workflows/index.ts:1699" badges={["rpc"]}>
+<HookCard id="workflows-getcurrentstep" name="workflows.getCurrentStep" label="Get current step." summary="Returns the current workflow step for a task, optionally scoped to an agent. Use it when a plugin needs to know what work is currently actionable." source="plugins/workflows/lib/register-hooks.ts:55" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.getCurrentStep',
@@ -378,7 +394,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-getnotificationchannel" name="workflows.getNotificationChannel" label="Get notification channel." summary="Returns one workflow notification channel by id. Use it before sending or configuring alerts that depend on a specific channel implementation." source="plugins/workflows/index.ts:1718" badges={["rpc"]}>
+<HookCard id="workflows-getnotificationchannel" name="workflows.getNotificationChannel" label="Get notification channel." summary="Returns one workflow notification channel by id. Use it before sending or configuring alerts that depend on a specific channel implementation." source="plugins/workflows/lib/register-hooks.ts:77" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.getNotificationChannel',
@@ -388,7 +404,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-instances-list" name="workflows.instances.list" label="List workflow instances." summary="Returns workflow instances, optionally filtered by status. Use it for dashboards, queues, and maintenance flows that need a broad view of active workflow state." source="plugins/workflows/index.ts:1698" badges={["rpc"]}>
+<HookCard id="workflows-instances-list" name="workflows.instances.list" label="List workflow instances." summary="Returns workflow instances, optionally filtered by status. Use it for dashboards, queues, and maintenance flows that need a broad view of active workflow state." source="plugins/workflows/lib/register-hooks.ts:54" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.instances.list',
@@ -398,7 +414,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-isgatenotified" name="workflows.isGateNotified" label="Check gate notification." summary="Checks whether a workflow gate notification has already been sent. Use it to avoid duplicate alerts for the same task and gate step." source="plugins/workflows/index.ts:1709" badges={["rpc"]}>
+<HookCard id="workflows-isgatenotified" name="workflows.isGateNotified" label="Check gate notification." summary="Checks whether a workflow gate notification has already been sent. Use it to avoid duplicate alerts for the same task and gate step." source="plugins/workflows/lib/register-hooks.ts:65" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.isGateNotified',
@@ -409,7 +425,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-loaddefinition" name="workflows.loadDefinition" label="Load workflow definition." summary="Loads one workflow definition by name. Use it when a plugin needs the template shape, steps, or metadata behind a workflow id." source="plugins/workflows/index.ts:1703" badges={["rpc"]}>
+<HookCard id="workflows-loaddefinition" name="workflows.loadDefinition" label="Load workflow definition." summary="Loads one workflow definition by name. Use it when a plugin needs the template shape, steps, or metadata behind a workflow id." source="plugins/workflows/lib/register-hooks.ts:59" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.loadDefinition',
@@ -419,7 +435,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-loadinstance" name="workflows.loadInstance" label="Load workflow instance." summary="Loads the workflow instance attached to a task. Use it when a plugin needs current workflow state without reading workflow files directly." source="plugins/workflows/index.ts:1679" badges={["rpc"]}>
+<HookCard id="workflows-loadinstance" name="workflows.loadInstance" label="Load workflow instance." summary="Loads the workflow instance attached to a task. Use it when a plugin needs current workflow state without reading workflow files directly." source="plugins/workflows/lib/register-hooks.ts:35" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.loadInstance',
@@ -429,7 +445,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-markgatenotified" name="workflows.markGateNotified" label="Mark gate notified." summary="Records that a workflow gate notification was sent. Use it immediately after notifying a reviewer or channel so future checks can suppress duplicates." source="plugins/workflows/index.ts:1710" badges={["rpc"]}>
+<HookCard id="workflows-markgatenotified" name="workflows.markGateNotified" label="Mark gate notified." summary="Records that a workflow gate notification was sent. Use it immediately after notifying a reviewer or channel so future checks can suppress duplicates." source="plugins/workflows/lib/register-hooks.ts:66" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.markGateNotified',
@@ -440,7 +456,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-matchworkflow" name="workflows.matchWorkflow" label="Match workflow." summary="Suggests a workflow based on a task title and description. Use it when creating tasks that should automatically pick the most relevant workflow template." source="plugins/workflows/index.ts:1701" badges={["rpc"]}>
+<HookCard id="workflows-matchworkflow" name="workflows.matchWorkflow" label="Match workflow." summary="Suggests a workflow based on a task title and description. Use it when creating tasks that should automatically pick the most relevant workflow template." source="plugins/workflows/lib/register-hooks.ts:57" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.matchWorkflow',
@@ -451,7 +467,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-notificationchannels-list" name="workflows.notificationChannels.list" label="List notification channels." summary="Returns workflow notification channels registered by core or plugins. Use it to show available delivery targets for gate and workflow alerts." source="plugins/workflows/index.ts:1717" badges={["rpc"]}>
+<HookCard id="workflows-notificationchannels-list" name="workflows.notificationChannels.list" label="List notification channels." summary="Returns workflow notification channels registered by core or plugins. Use it to show available delivery targets for gate and workflow alerts." source="plugins/workflows/lib/register-hooks.ts:76" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.notificationChannels.list',
@@ -459,7 +475,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-rejectgate" name="workflows.rejectGate" label="Reject workflow gate." summary="Rejects a pending workflow gate, records the reason, and rewinds the instance per the workflow gate policy. Use it from plugins that own an external review surface for workflow-backed tasks." source="plugins/workflows/index.ts:1686" badges={["rpc"]}>
+<HookCard id="workflows-rejectgate" name="workflows.rejectGate" label="Reject workflow gate." summary="Rejects a pending workflow gate, records the reason, and rewinds the instance per the workflow gate policy. Use it from plugins that own an external review surface for workflow-backed tasks." source="plugins/workflows/lib/register-hooks.ts:42" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.rejectGate',
@@ -467,7 +483,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-reopenfromstep" name="workflows.reopenFromStep" label="Reopen workflow from step." summary="Reopens an existing workflow instance at a prior actionable step. Use it when a plugin needs explicit user recovery without creating a replacement workflow task." source="plugins/workflows/index.ts:1691" badges={["rpc"]}>
+<HookCard id="workflows-reopenfromstep" name="workflows.reopenFromStep" label="Reopen workflow from step." summary="Reopens an existing workflow instance at a prior actionable step. Use it when a plugin needs explicit user recovery without creating a replacement workflow task." source="plugins/workflows/lib/register-hooks.ts:47" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.reopenFromStep',
@@ -475,7 +491,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-saveinstance" name="workflows.saveInstance" label="Save workflow instance." summary="Persists a workflow instance after a plugin has changed its state. Use it to keep workflow updates routed through the workflow plugin storage layer." source="plugins/workflows/index.ts:1680" badges={["rpc"]}>
+<HookCard id="workflows-saveinstance" name="workflows.saveInstance" label="Save workflow instance." summary="Persists a workflow instance after a plugin has changed its state. Use it to keep workflow updates routed through the workflow plugin storage layer." source="plugins/workflows/lib/register-hooks.ts:36" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.saveInstance',
@@ -488,7 +504,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-validatestepoutput" name="workflows.validateStepOutput" label="Validate step output." summary="Validates workflow step output against the step schema. Use it before accepting agent or tool output that should advance a workflow." source="plugins/workflows/index.ts:1711" badges={["rpc"]}>
+<HookCard id="workflows-validatestepoutput" name="workflows.validateStepOutput" label="Validate step output." summary="Validates workflow step output against the step schema. Use it before accepting agent or tool output that should advance a workflow." source="plugins/workflows/lib/register-hooks.ts:67" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.validateStepOutput',
@@ -506,5 +522,5 @@ const result = await ctx.hooks.invoke(
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jun 13, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 4, 2026 · Bakin 0.0.0-dev</span>
 </aside>

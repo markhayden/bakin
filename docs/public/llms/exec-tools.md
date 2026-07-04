@@ -78,6 +78,29 @@ mcporter call bakin-<agent>.bakin_exec_assets_get --args '{
 }'
 ```
 
+### bakin_exec_assets_import
+
+Label: Imported unmanaged files
+Purpose: Explicitly import unmanaged files into managed versioned assets. Pass path (content-dir relative, e.g. assets/inbox/pic.png) or all: true. Optional type override and taskId link.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `path` | string | no | One unmanaged file to import (content-dir relative) |
+| `all` | boolean | no | Import every unmanaged file |
+| `type` | choice | no | Override the suggested asset type |
+| `taskId` | string | no | Link the imported asset(s) to this task |
+
+Example:
+
+```sh
+mcporter call bakin-<agent>.bakin_exec_assets_import --args '{
+  "path": "value",
+  "all": true,
+  "type": "value",
+  "taskId": "value"
+}'
+```
+
 ### bakin_exec_assets_link
 
 Label: Linked an asset
@@ -232,6 +255,19 @@ mcporter call bakin-<agent>.bakin_exec_assets_save --args '{
   "tool": "value",
   "slug": "value"
 }'
+```
+
+### bakin_exec_assets_scan_unmanaged
+
+Label: Scanned for unmanaged files
+Purpose: List files under assets/ that are NOT managed assets (inbox drops, loose files). Nothing is imported automatically — use bakin_exec_assets_import to import.
+
+Arguments: none.
+
+Example:
+
+```sh
+mcporter call bakin-<agent>.bakin_exec_assets_scan_unmanaged
 ```
 
 ## Check
@@ -1139,13 +1175,13 @@ Publishing tools send completed work to configured channels through Bakin adapte
 ### bakin_exec_post_channel
 
 Label: Posted to channel
-Purpose: Post a message through the active runtime channel adapter. Supports image/video attachments when the adapter supports rich content.
+Purpose: Post a message through the active runtime channel adapter. Supports image/video attachments when the adapter supports rich content. Oversized images are downscaled automatically for the channel (as a derived export of the same asset) — pass the original asset id; do NOT create a separate, smaller asset just to post it.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
 | `channel` | string | yes | Channel name or runtime channel target |
 | `content` | string | yes | Message text / caption |
-| `imageAssetId` | string | no | Asset id of an image to attach (current version is sent). |
+| `imageAssetId` | string | no | Asset id of an image to attach. The current version is sent, or an auto-downscaled export if it exceeds the channel attachment limit (no separate asset is created). |
 | `videoAssetId` | string | no | Asset id of a video to attach (current version is sent). |
 | `embed` | record | no | Optional rich metadata for adapters that support it |
 | `taskId` | string | no | Task ID for audit trail |
@@ -2127,6 +2163,7 @@ Purpose: Update a task on the board — change title, description, or assigned a
 | `agent` | string | no | New assigned agent |
 | `availableAt` | string | no | ISO timestamp before which dispatch should not pick up the task |
 | `dueAt` | string | no | ISO timestamp representing the task deadline or target delivery time |
+| `expectedVersion` | number | no | Optimistic-concurrency check: fail if the task version has moved past this |
 
 Example:
 
@@ -2137,7 +2174,8 @@ mcporter call bakin-<agent>.bakin_exec_tasks_update --args '{
   "description": "value",
   "agent": "value",
   "availableAt": "value",
-  "dueAt": "value"
+  "dueAt": "value",
+  "expectedVersion": 20
 }'
 ```
 

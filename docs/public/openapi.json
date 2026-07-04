@@ -47,6 +47,118 @@
     }
   ],
   "paths": {
+    "/api/plugins/assets/import/scan": {
+      "get": {
+        "operationId": "assets.get.import-scan",
+        "summary": "List unmanaged files awaiting explicit import",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Assets"
+        ],
+        "x-bakin-full-path": "/api/plugins/assets/import/scan"
+      }
+    },
+    "/api/plugins/assets/import": {
+      "post": {
+        "operationId": "assets.post.import",
+        "summary": "Import unmanaged files into versioned assets",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Assets"
+        ],
+        "x-bakin-full-path": "/api/plugins/assets/import"
+      }
+    },
     "/api/plugins/assets/upload": {
       "post": {
         "operationId": "assets.post.upload",
@@ -592,6 +704,136 @@
           }
         ],
         "x-bakin-full-path": "/api/plugins/assets/versioned/:assetId/metadata"
+      }
+    },
+    "/api/plugins/assets/enrich": {
+      "post": {
+        "operationId": "assets.post.enrich",
+        "summary": "Enqueue vision enrichment (one asset or backfill all); billed per asset version",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Assets"
+        ],
+        "x-bakin-full-path": "/api/plugins/assets/enrich"
+      }
+    },
+    "/api/plugins/assets/versioned/{assetId}/enrichment": {
+      "patch": {
+        "operationId": "assets.patch.versioned-asset-id-enrichment",
+        "summary": "Manually edit derived enrichment (locks fields against machine overwrites)",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Assets"
+        ],
+        "parameters": [
+          {
+            "name": "assetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "x-bakin-full-path": "/api/plugins/assets/versioned/:assetId/enrichment"
       }
     },
     "/api/plugins/assets/versioned/{assetId}/relink": {
@@ -1227,6 +1469,25 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -1845,6 +2106,31 @@
         ],
         "description": "Returns search adapter readiness and per-table index stats.",
         "x-bakin-full-path": "/api/plugins/health/search-status"
+      }
+    },
+    "/api/plugins/health/search-telemetry": {
+      "get": {
+        "operationId": "health.get.search-telemetry",
+        "summary": "Search activity telemetry",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Health"
+        ],
+        "description": "Query/drain/enrichment activity from the shared usage recorder, outbox depth, and the latest search doctor rows.",
+        "x-bakin-full-path": "/api/plugins/health/search-telemetry"
       }
     },
     "/api/plugins/health/usage": {
@@ -6292,6 +6578,25 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -8195,6 +8500,25 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Service unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -9219,13 +9543,16 @@
           "200": {
             "description": "Successful response.",
             "content": {
-              "image/jpeg": {
+              "application/octet-stream": {
                 "schema": {
                   "type": "string",
                   "format": "binary"
                 }
               }
             }
+          },
+          "304": {
+            "description": "Not modified."
           },
           "400": {
             "description": "Invalid input.",
@@ -11440,6 +11767,420 @@
         "x-bakin-full-path": "/api/plugins/team/settings"
       }
     },
+    "/api/plugins/team/context": {
+      "get": {
+        "operationId": "team.get.context",
+        "summary": "List layered context files",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Team"
+        ],
+        "description": "List layered context files (global, roles, teams)",
+        "x-bakin-full-path": "/api/plugins/team/context"
+      }
+    },
+    "/api/plugins/team/context/{scope}": {
+      "get": {
+        "operationId": "team.get.context-scope",
+        "summary": "Read a layered context file",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Team"
+        ],
+        "description": "Read a layered context file (scope: global, or role/team via ?id=)",
+        "parameters": [
+          {
+            "name": "scope",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-bakin-full-path": "/api/plugins/team/context/:scope"
+      },
+      "put": {
+        "operationId": "team.put.context-scope",
+        "summary": "Write a layered context file",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Team"
+        ],
+        "description": "Write a layered context file (scope: global, or role/team via ?id=)",
+        "parameters": [
+          {
+            "name": "scope",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-bakin-full-path": "/api/plugins/team/context/:scope"
+      }
+    },
     "/api/plugins/team/teams": {
       "get": {
         "operationId": "team.get.teams",
@@ -12124,420 +12865,6 @@
           }
         ],
         "x-bakin-full-path": "/api/plugins/team/teams/:teamId/members"
-      }
-    },
-    "/api/plugins/team/context": {
-      "get": {
-        "operationId": "team.get.context",
-        "summary": "List layered context files",
-        "responses": {
-          "200": {
-            "description": "Successful response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {},
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "201": {
-            "description": "Created.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {},
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Team"
-        ],
-        "description": "List layered context files (global, roles, teams)",
-        "x-bakin-full-path": "/api/plugins/team/context"
-      }
-    },
-    "/api/plugins/team/context/{scope}": {
-      "get": {
-        "operationId": "team.get.context-scope",
-        "summary": "Read a layered context file",
-        "responses": {
-          "200": {
-            "description": "Successful response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {},
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "201": {
-            "description": "Created.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {},
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Team"
-        ],
-        "description": "Read a layered context file (scope: global, or role/team via ?id=)",
-        "parameters": [
-          {
-            "name": "scope",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "x-bakin-full-path": "/api/plugins/team/context/:scope"
-      },
-      "put": {
-        "operationId": "team.put.context-scope",
-        "summary": "Write a layered context file",
-        "responses": {
-          "200": {
-            "description": "Successful response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {},
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "201": {
-            "description": "Created.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {},
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Team"
-        ],
-        "description": "Write a layered context file (scope: global, or role/team via ?id=)",
-        "parameters": [
-          {
-            "name": "scope",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "x-bakin-full-path": "/api/plugins/team/context/:scope"
       }
     },
     "/api/plugins/team/teams/{teamId}/sync": {
@@ -14365,6 +14692,412 @@
         "x-bakin-full-path": "/api/plugins/workflows/steps/:taskId/complete"
       }
     },
+    "/api/plugins/workflows/instances": {
+      "get": {
+        "operationId": "workflows.get.instances",
+        "summary": "List active workflow instances. Optional status filter.",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Workflows"
+        ],
+        "description": "List active workflow instances. Optional status filter.",
+        "x-bakin-full-path": "/api/plugins/workflows/instances"
+      }
+    },
+    "/api/plugins/workflows/instances/{taskId}": {
+      "get": {
+        "operationId": "workflows.get.instances-task-id",
+        "summary": "Get full workflow instance state for a task",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Workflows"
+        ],
+        "description": "Get full workflow instance state for a task",
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-bakin-full-path": "/api/plugins/workflows/instances/:taskId"
+      }
+    },
+    "/api/plugins/workflows/instances/start": {
+      "post": {
+        "operationId": "workflows.post.instances-start",
+        "summary": "Start a workflow instance for a task",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Workflows"
+        ],
+        "description": "Start a workflow instance for a task",
+        "x-bakin-full-path": "/api/plugins/workflows/instances/start"
+      }
+    },
     "/api/plugins/workflows/gates/{taskId}/approve": {
       "post": {
         "operationId": "workflows.post.gates-task-id-approve",
@@ -14759,280 +15492,6 @@
         "x-bakin-full-path": "/api/plugins/workflows/gates/:taskId/decision"
       }
     },
-    "/api/plugins/workflows/instances": {
-      "get": {
-        "operationId": "workflows.get.instances",
-        "summary": "List active workflow instances. Optional status filter.",
-        "responses": {
-          "200": {
-            "description": "Successful response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {},
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "201": {
-            "description": "Created.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {},
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Workflows"
-        ],
-        "description": "List active workflow instances. Optional status filter.",
-        "x-bakin-full-path": "/api/plugins/workflows/instances"
-      }
-    },
-    "/api/plugins/workflows/instances/{taskId}": {
-      "get": {
-        "operationId": "workflows.get.instances-task-id",
-        "summary": "Get full workflow instance state for a task",
-        "responses": {
-          "200": {
-            "description": "Successful response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {},
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "201": {
-            "description": "Created.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {},
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Workflows"
-        ],
-        "description": "Get full workflow instance state for a task",
-        "parameters": [
-          {
-            "name": "taskId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "x-bakin-full-path": "/api/plugins/workflows/instances/:taskId"
-      }
-    },
     "/api/plugins/workflows/gates/pending": {
       "get": {
         "operationId": "workflows.get.gates-pending",
@@ -15295,138 +15754,6 @@
         ],
         "description": "Batch check gate status for tasks",
         "x-bakin-full-path": "/api/plugins/workflows/gates/status"
-      }
-    },
-    "/api/plugins/workflows/instances/start": {
-      "post": {
-        "operationId": "workflows.post.instances-start",
-        "summary": "Start a workflow instance for a task",
-        "responses": {
-          "200": {
-            "description": "Successful response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {},
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "201": {
-            "description": "Created.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {},
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Workflows"
-        ],
-        "description": "Start a workflow instance for a task",
-        "x-bakin-full-path": "/api/plugins/workflows/instances/start"
       }
     },
     "/api/agents": {
