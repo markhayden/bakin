@@ -5,7 +5,7 @@
  * because it only installs a CLI tool and writes config.
  */
 import * as mcporter from '../../../../src/core/mcporter'
-import { healthOk, healthWarn, healthError } from '@makinbakin/sdk/utils'
+import { healthOk, healthWarn, healthError, healthFixed } from '@makinbakin/sdk/utils'
 import type { HealthCheckResult, HealthRepairHandler } from '../../../../packages/core/src/plugin-types'
 
 function ok(message: string): HealthCheckResult {
@@ -18,7 +18,7 @@ function error(message: string): HealthCheckResult {
   return healthError('mcporter', message)
 }
 function fixed(message: string): HealthCheckResult {
-  return { check: 'mcporter', status: 'fixed', message, autoFixable: true }
+  return healthFixed('mcporter', message)
 }
 
 export async function checkMcporter(): Promise<HealthCheckResult[]> {
