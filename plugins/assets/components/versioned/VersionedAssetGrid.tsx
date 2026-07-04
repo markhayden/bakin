@@ -564,7 +564,17 @@ export function VersionedAssetGrid() {
       ) : searchUnavailable ? (
         <SearchUnavailable retry={search.retry} />
       ) : displayed.length === 0 ? (
-        <div className="p-8 text-sm text-muted-foreground" data-testid="assets-no-match">No assets match your filters.</div>
+        // A pending search with nothing settled yet (cold deep link like
+        // /assets?q=beef, or a new query after an empty result) must read as
+        // "searching", never as a premature "no match".
+        pending ? (
+          <div className="flex items-center gap-2 p-8 text-sm text-muted-foreground" data-testid="assets-searching">
+            <Loader2 className="size-4 animate-spin" />
+            Searching assets…
+          </div>
+        ) : (
+          <div className="p-8 text-sm text-muted-foreground" data-testid="assets-no-match">No assets match your filters.</div>
+        )
       ) : view === 'list' ? (
         <div className="flex flex-col gap-1.5" data-testid="assets-list">
           {displayed.map(asset => (
