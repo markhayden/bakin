@@ -11,8 +11,8 @@
  * so legacy / pre-activation definitions don't break the editor.
  */
 
-import type { EdgeRules } from './node-type-registry'
-import { getNodeType } from './node-type-registry'
+import type { EdgeRules } from '@bakin/core/workflows/node-type-registry'
+import { getNodeType } from '@bakin/core/workflows/node-type-registry'
 
 export interface EdgeLike {
   source: string

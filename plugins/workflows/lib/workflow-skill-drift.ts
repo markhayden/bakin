@@ -8,7 +8,7 @@ import { getPluginSkills } from '@bakin/core/skills/plugin-skill-registry'
 import {
   getAgentPackageSkillOwner,
   getAgentPackageSkills,
-} from './agent-package-skill-registry'
+} from '@bakin/core/workflows/agent-package-skill-registry'
 import legacyWorkflowSkillHashes from '../defaults/workflow-skill-legacy-hashes.json'
 
 export type WorkflowSkillManagedSourceKind = 'plugin' | 'agent-package'

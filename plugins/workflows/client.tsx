@@ -29,7 +29,7 @@ import {
   unregisterNodeRenderer,
   listNodeRendererKinds,
 } from './lib/node-renderer-registry'
-import { unregisterPluginDefinitions } from './lib/source-registry'
+import { unregisterPluginDefinitions } from '@bakin/core/workflows/source-registry'
 
 registerPlugin({
   search: {

@@ -73,7 +73,7 @@ mock.module('@/core/task-store', () => ({
 }))
 
 import workflowsPlugin from '../../../plugins/workflows'
-import { clearSourceRegistry, registerPluginDefinition } from '../../../plugins/workflows/lib/source-registry'
+import { clearSourceRegistry, registerPluginDefinition } from '@bakin/core/workflows/source-registry'
 import { resetWorkflowAvailabilityCache, setWorkflowDisabled } from '../../../plugins/workflows/lib/availability'
 
 afterAll(() => {

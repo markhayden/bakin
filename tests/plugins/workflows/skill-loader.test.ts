@@ -28,7 +28,7 @@ import { loadSkill, listAllSkills, invalidateSkillCache } from '@bakin/workflows
 import {
   clearAgentPackageSkillRegistry,
   registerAgentPackageSkill,
-} from '@bakin/workflows/lib/agent-package-skill-registry'
+} from '@bakin/core/workflows/agent-package-skill-registry'
 
 describe('skill-loader', () => {
   const testDir = join(tmpdir(), `bakin-test-skills-${Date.now()}`)

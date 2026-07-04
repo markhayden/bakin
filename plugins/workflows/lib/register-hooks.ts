@@ -28,7 +28,7 @@ import { matchWorkflow } from './matcher'
 import { listDefinitions, loadDefinition } from './parser'
 import { workflowDefinitionNameFromHookInput } from './hook-input'
 import { validateStepOutput } from './schema-validator'
-import { listNotificationChannels, getNotificationChannel } from './notification-channel-registry'
+import { listNotificationChannels, getNotificationChannel } from '@bakin/core/workflows/notification-channel-registry'
 
 export function registerWorkflowHooks(ctx: PluginContext): void {
   ctx.hooks.register('workflows.loadInstance', (d: Record<string, unknown>) => loadInstance(d.taskId as string, d.contentDir as string | undefined), { label: 'Load workflow instance.', summary: 'Loads the workflow instance attached to a task. Use it when a plugin needs current workflow state without reading workflow files directly.', hookKind: 'rpc' })

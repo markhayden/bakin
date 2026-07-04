@@ -267,7 +267,7 @@ steps:
   })
 
   it('resolves skills registered by agent packages (no local file shadow needed)', async () => {
-    const { registerAgentPackageSkill, unregisterAgentPackageSkills } = await import('../../../plugins/workflows/lib/agent-package-skill-registry')
+    const { registerAgentPackageSkill, unregisterAgentPackageSkills } = await import('@bakin/core/workflows/agent-package-skill-registry')
     registerAgentPackageSkill('pixel', 'packaged-skill', {
       name: 'packaged-skill',
       description: 'from the pixel package',

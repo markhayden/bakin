@@ -57,7 +57,7 @@ mock.module('@/core/task-store', () => ({
   getTaskWithColumn: mock(() => null),
 }))
 
-import { workflowDefinitionSchema } from '../../../plugins/workflows/lib/node-type-registry'
+import { workflowDefinitionSchema } from '@bakin/core/workflows/node-type-registry'
 
 const REPO_ROOT = join(__dirname, '..', '..', '..')
 const PLUGINS_DIR = join(REPO_ROOT, 'plugins')

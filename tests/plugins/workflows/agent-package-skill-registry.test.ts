@@ -35,7 +35,7 @@ import {
   getAgentPackageSkills,
   registerAgentPackageSkill,
   unregisterAgentPackageSkills,
-} from '@bakin/workflows/lib/agent-package-skill-registry'
+} from '@bakin/core/workflows/agent-package-skill-registry'
 
 function skill(name: string, body = 'instructions'): SkillDefinition {
   return { name, instructions: body }

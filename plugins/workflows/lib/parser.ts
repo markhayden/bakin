@@ -15,7 +15,7 @@ import {
   getDefinition as getRegistryDefinition,
   listAll as listRegistryAll,
   type DefinitionSource,
-} from './source-registry'
+} from '@bakin/core/workflows/source-registry'
 
 /**
  * A definition plus its provenance.

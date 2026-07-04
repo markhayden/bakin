@@ -24,13 +24,13 @@ import type {
   WorkflowDefinitionInput,
   PluginNodeTypeInput,
 } from '@bakin/core/plugin-types'
-import { registerPluginDefinition } from '../../plugins/workflows/lib/source-registry'
+import { registerPluginDefinition } from '@bakin/core/workflows/source-registry'
 import type { WorkflowDefinition } from '@bakin/core/workflows/definition-types'
-import { registerPluginNodeType, unregisterPluginNodeTypes } from '../../plugins/workflows/lib/node-type-registry'
+import { registerPluginNodeType, unregisterPluginNodeTypes } from '@bakin/core/workflows/node-type-registry'
 import {
   registerPluginNotificationChannel,
   unregisterPluginNotificationChannels,
-} from '../../plugins/workflows/lib/notification-channel-registry'
+} from '@bakin/core/workflows/notification-channel-registry'
 import {
   registerPluginHealthCheck,
   unregisterPluginHealthChecks,

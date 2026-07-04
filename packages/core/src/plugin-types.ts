@@ -286,7 +286,7 @@ export interface PluginNodeTypeInput<T = unknown> {
  * is prepended to `id` automatically (`{pluginId}.{id}`), matching the node-
  * type precedent. Built-in workflows-plugin runtime channels (general,
  * announcements, alerts, email) self-register at module load in
- * `plugins/workflows/lib/notification-channel-registry.ts`.
+ * `packages/core/src/workflows/notification-channel-registry.ts`.
  */
 export interface PluginNotificationChannelInput {
   id: string

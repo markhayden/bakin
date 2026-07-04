@@ -59,7 +59,7 @@ import { canConnect } from '../../../plugins/workflows/lib/edge-rules'
 import {
   registerPluginNodeType,
   unregisterPluginNodeTypes,
-} from '../../../plugins/workflows/lib/node-type-registry'
+} from '@bakin/core/workflows/node-type-registry'
 
 type Edge = { source: string; target: string }
 

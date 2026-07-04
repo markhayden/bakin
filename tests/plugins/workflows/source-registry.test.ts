@@ -36,7 +36,7 @@ import {
   isReadOnly,
   getSource,
   clearSourceRegistry,
-} from '@bakin/workflows/lib/source-registry'
+} from '@bakin/core/workflows/source-registry'
 
 function def(name: string, extras: Partial<WorkflowDefinition> = {}): WorkflowDefinition {
   return {

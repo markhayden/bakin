@@ -22,7 +22,7 @@ import {
   Workflow as WorkflowIcon,
   type LucideIcon,
 } from 'lucide-react'
-import type { FormField, EdgeRules } from '../lib/node-type-registry'
+import type { FormField, EdgeRules } from '@bakin/core/workflows/node-type-registry'
 
 export interface PaletteNodeType {
   kind: string

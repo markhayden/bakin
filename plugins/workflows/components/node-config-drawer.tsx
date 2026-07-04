@@ -24,7 +24,7 @@ import {
   SelectValue,
 } from "@makinbakin/sdk/ui"
 import { AgentSelect } from "@makinbakin/sdk/components"
-import { getNodeType, type FormField } from '../lib/node-type-registry'
+import { getNodeType, type FormField } from '@bakin/core/workflows/node-type-registry'
 
 export interface NodeConfigDrawerProps {
   /** Step currently under edit, or null when nothing selected. */

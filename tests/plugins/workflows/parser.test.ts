@@ -57,7 +57,7 @@ import {
 import {
   registerPluginDefinition,
   clearSourceRegistry,
-} from '@bakin/workflows/lib/source-registry'
+} from '@bakin/core/workflows/source-registry'
 import type { WorkflowDefinition } from '@bakin/workflows/types'
 
 describe('parser', () => {

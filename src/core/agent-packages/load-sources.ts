@@ -41,12 +41,12 @@ import { getPackageSourceDir } from '../../../packages/core/src/agent-packages/p
 import {
   registerAgentPackageDefinition,
   unregisterAgentPackageDefinitions,
-} from '../../../plugins/workflows/lib/source-registry'
+} from '@bakin/core/workflows/source-registry'
 import { validateDefinition } from '../../../plugins/workflows/lib/parser'
 import {
   registerAgentPackageSkill,
   unregisterAgentPackageSkills,
-} from '../../../plugins/workflows/lib/agent-package-skill-registry'
+} from '@bakin/core/workflows/agent-package-skill-registry'
 import type { WorkflowDefinition } from '@bakin/core/workflows/definition-types'
 import type { SkillDefinition } from '../../../packages/core/src/plugin-types'
 

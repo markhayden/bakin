@@ -18,7 +18,7 @@
  * Backed by globalThis so a single process keeps one registry instance
  * even when this module is reached from multiple entry points.
  */
-import type { SkillDefinition } from '@bakin/core/plugin-types'
+import type { SkillDefinition } from '../plugin-types'
 
 interface AgentPackageSkillEntry {
   packageId: string

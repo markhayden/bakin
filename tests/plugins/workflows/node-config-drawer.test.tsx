@@ -55,7 +55,7 @@ mock.module('@/components/agent-avatar', () => ({
 }))
 
 import { NodeConfigDrawer } from '../../../plugins/workflows/components/node-config-drawer'
-import { registerNodeType, unregisterNodeType } from '../../../plugins/workflows/lib/node-type-registry'
+import { registerNodeType, unregisterNodeType } from '@bakin/core/workflows/node-type-registry'
 
 afterEach(() => {
   cleanup()
