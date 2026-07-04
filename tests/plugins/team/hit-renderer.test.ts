@@ -24,7 +24,7 @@ mock.module('../../../packages/core/src/logger', loggerMock)
 
 import '../../../plugins/team/client'
 import { getSearchHitRenderer } from '../../../packages/sdk/src/register'
-import type { SearchResult } from '../../../packages/sdk/src/types/registration'
+import type { SearchResult } from '../../../packages/sdk/src/types/services'
 
 const hit = (id: string, table: string, fields: Record<string, unknown> = {}): SearchResult =>
   ({ id, table, score: 1, fields })

@@ -33,6 +33,7 @@ import { checkpointsListRoute, checkpointDetailRoute } from './lib/routes/checkp
 import { dreamsListRoute, dreamDetailRoute } from './lib/routes/dreams'
 import { statusRoute } from './lib/routes/status'
 import { recentRoute } from './lib/routes/recent'
+import { recordRoute } from './lib/routes/record'
 import { cleanupFindRoute, cleanupDispatchRoute, cleanupVerifyRoute } from './lib/routes/cleanup'
 import { createMemorySearchTool } from './mcp/search'
 import { createMemoryGetSessionTool } from './mcp/get-session'
@@ -40,30 +41,11 @@ import { createMemoryGetTurnTool } from './mcp/get-turn'
 import { createMemoryListAgentsTool } from './mcp/list-agents'
 import { createMemoryStatusTool } from './mcp/status'
 import type { MemoryTier } from './lib/types'
+import { DEFAULTS, type MemorySettings } from './lib/settings'
 import { startTtlTimer, stopTtlTimer } from './lib/ttl-prune'
 import { checkSearchTables } from './lib/health-checks'
 
 const log = createLogger('memory')
-
-interface MemorySettings {
-  backfillDays: number
-  skipSessionOverBytes: number
-  skipResetBackups: boolean
-  runtimeComparisonEnabled: boolean
-  turnRetentionDays: number
-  auditRetentionDays: number
-}
-
-/** Every tier the initial backfill and full reindex derive from source. */
-
-const DEFAULTS: MemorySettings = {
-  backfillDays: 30,
-  skipSessionOverBytes: 10 * 1024 * 1024,
-  skipResetBackups: true,
-  runtimeComparisonEnabled: true,
-  turnRetentionDays: 7,
-  auditRetentionDays: 30,
-}
 
 // onReady needs access to the per-activation indexer. Keep module-level
 // handles so the lifecycle hook can find what activate() just built, and
@@ -98,6 +80,7 @@ const routes = [
   dreamDetailRoute,
   statusRoute,
   recentRoute,
+  recordRoute,
   cleanupFindRoute,
   cleanupDispatchRoute,
   cleanupVerifyRoute,

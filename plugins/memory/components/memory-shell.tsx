@@ -49,6 +49,7 @@ import { useAgentList } from "@makinbakin/sdk/hooks"
 import { TierOverviewCards } from './tier-overview-cards'
 import { MemorySearchResults } from './memory-search-results'
 import { MemoryDetailDrawer } from './memory-detail-drawer'
+import { useRecordDeepLink } from './use-record-deep-link'
 import { MemoryCleanup } from './memory-cleanup'
 import { Button } from "@makinbakin/sdk/ui"
 import { Eraser } from 'lucide-react'
@@ -152,7 +153,6 @@ function MemoryShellInner() {
   const [mode, setMode] = useQueryState('mode', '')
   const cleanupMode = mode === 'cleanup'
   const debug = debugParam === '1'
-  const [selected, setSelected] = useState<SearchResult | null>(null)
 
   const searchActive = query.trim().length > 0
 
@@ -196,6 +196,10 @@ function MemoryShellInner() {
   const sourceResults = searchActive ? searchResults : recentResults
   const loading = searchActive ? searchLoading : recentLoading
   const error = searchActive ? searchError : recentError
+
+  // ?recordId= drives the detail drawer (⌘K deep links, refresh, back
+  // button). List clicks route through the same param via record.open().
+  const record = useRecordDeepLink(sourceResults)
 
   // Client-side post-filter. When Debug is off we normally strip turn+audit
   // (they drown out everything else), BUT an explicit tier chip is an opt-in
@@ -344,6 +348,18 @@ function MemoryShellInner() {
         )}
       </div>
 
+      {record.error && (
+        <div
+          className="flex items-center justify-between rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          data-testid="memory-record-error"
+        >
+          <span>{record.error}</span>
+          <button type="button" className="text-xs underline" onClick={record.close}>
+            Dismiss
+          </button>
+        </div>
+      )}
+
       <MemorySearchResults
         results={filtered}
         loading={loading}
@@ -351,13 +367,13 @@ function MemoryShellInner() {
         query={query}
         hiddenByDebug={hiddenByDebug}
         onEnableDebug={() => setDebugParam('1')}
-        onSelect={(r) => setSelected(r)}
+        onSelect={record.open}
       />
 
       <MemoryDetailDrawer
-        result={selected}
-        open={selected !== null}
-        onOpenChange={(open) => { if (!open) setSelected(null) }}
+        result={record.row}
+        open={record.row !== null}
+        onOpenChange={(open) => { if (!open) record.close() }}
       />
       </>
       )}
