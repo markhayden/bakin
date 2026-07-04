@@ -8,9 +8,11 @@
 import type { AgentRuntimeAdapter, ApprovalRenderRef, CreateApprovalArgs } from '@bakin/core/adapters/runtime'
 import type { ApprovalActor, EventBus } from '@bakin/core/plugin-types'
 import type { WorkflowInstance } from '../types'
+import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { createLogger } from '../../../src/core/logger'
 import { resolveRuntimeChannelRef } from '../../../src/core/channel-aliases'
 import { createApprovalRecord, resolveApprovalRecord, updateApprovalDeliveries } from './approval-store'
+import { getGateDescription } from './gate-audit'
 
 const log = createLogger('workflow-notifications')
 
@@ -232,7 +234,7 @@ export async function sendGateApprovalRequest(
       taskId: instance.taskId,
       stepId,
       requireRejectReason: settings.requireRejectReason,
-      approvalUrl: buildGateApprovalUrl(instance.taskId, stepId, approvalId),
+      approvalUrl: buildGateApprovalUrl(instance.taskId, stepId),
     },
   }
 
@@ -256,6 +258,12 @@ export async function sendGateApprovalRequest(
     return null
   }
 
+  // Context first, buttons second: the native approval card is capped at 256
+  // chars upstream, so the reviewable substance (gate description, prior
+  // output, generated media) rides a normal rich message posted just before
+  // the card. Best-effort — a context failure never blocks the approval.
+  await sendGateContextMessage(instance, stepId, label, priorOutput, resolvedChannel, request.context)
+
   try {
     const result = await runtime.channels.createApproval({
       approvalId,
@@ -274,11 +282,94 @@ export async function sendGateApprovalRequest(
   }
 }
 
-function buildGateApprovalUrl(taskId: string, stepId: string, approvalId: string): string {
+/** Recursively collect assetId-ish string values from a step output object. */
+export function extractAssetIds(value: unknown, found: string[] = []): string[] {
+  if (Array.isArray(value)) {
+    for (const entry of value) extractAssetIds(entry, found)
+  } else if (value && typeof value === 'object') {
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      if (/^asset_?ids?$/i.test(key)) {
+        for (const id of Array.isArray(entry) ? entry : [entry]) {
+          if (typeof id === 'string' && id && !found.includes(id)) found.push(id)
+        }
+      } else {
+        extractAssetIds(entry, found)
+      }
+    }
+  }
+  return found
+}
+
+interface ResolvedAssetFile {
+  match?: boolean
+  found?: boolean
+  absPath?: string
+  mimeType?: string
+}
+
+/**
+ * Post the human-readable gate context (description, prior output, generated
+ * media, links) to the approvals channel as a normal rich message. The native
+ * approval card that follows carries only the decision buttons.
+ */
+async function sendGateContextMessage(
+  instance: WorkflowInstance,
+  stepId: string,
+  label: string,
+  priorOutput: Record<string, unknown> | undefined,
+  resolvedChannel: string,
+  context: CreateApprovalArgs['request']['context'],
+): Promise<void> {
+  if (!runtime) return
+  try {
+    const files: Array<{ name: string; path: string; contentType?: string }> = []
+    for (const assetId of extractAssetIds(priorOutput)) {
+      try {
+        const resolved = await getHookRegistry().invoke<ResolvedAssetFile>('assets.resolveServe', { segments: [assetId] })
+        if (resolved?.found && resolved.absPath) {
+          files.push({ name: assetId, path: resolved.absPath, ...(resolved.mimeType ? { contentType: resolved.mimeType } : {}) })
+        }
+      } catch {
+        // Assets plugin unavailable or unknown id — context ships without media.
+      }
+    }
+
+    const base = process.env.BAKIN_URL || 'http://localhost:3737'
+    const approvalUrl = typeof context?.approvalUrl === 'string' ? context.approvalUrl : buildGateApprovalUrl(instance.taskId, stepId)
+    const body = [
+      `Workflow **${instance.workflowId}** · task ${instance.taskId} · step ${stepId}`,
+      getGateDescription(instance.workflowId, stepId),
+      renderPriorOutput(priorOutput),
+      `Decide: ${approvalUrl}`,
+      `Task board: ${base}/?q=${encodeURIComponent(instance.taskId)}`,
+    ].filter(Boolean).join('\n\n')
+
+    await runtime.channels.deliverContent({
+      channels: [resolvedChannel],
+      content: {
+        title: `Gate: ${label} — ${instance.workflowId}`,
+        body,
+        ...(files.length > 0 ? { files } : {}),
+        metadata: {
+          instanceId: instance.instanceId,
+          workflowId: instance.workflowId,
+          taskId: instance.taskId,
+          stepId,
+        },
+      },
+    })
+  } catch (err) {
+    log.warn('Gate context message failed', err, { taskId: instance.taskId, stepId })
+  }
+}
+
+// Deliberately short: the native approval card caps descriptions at 256 chars
+// (upstream), so every character spent on the URL is context lost. The page
+// resolves the pending approval from task + step; no approvalId needed.
+function buildGateApprovalUrl(taskId: string, stepId: string): string {
   const base = process.env.BAKIN_URL || 'http://localhost:3737'
   const url = new URL(`/api/plugins/workflows/gates/${encodeURIComponent(taskId)}/decision`, base)
   url.searchParams.set('stepId', stepId)
-  url.searchParams.set('approvalId', approvalId)
   return url.toString()
 }
 

@@ -160,15 +160,20 @@ const gateDecisionPageHandler = async (req: Request, _ctx: PluginContextLite) =>
   const url = new URL(req.url)
   const taskId = url.searchParams.get('taskId')
   const stepId = url.searchParams.get('stepId')
-  const approvalId = url.searchParams.get('approvalId')
-  if (!taskId || !stepId || !approvalId) {
-    return gateDecisionHtmlResponse('Approval Link Error', '<p>taskId, stepId, and approvalId are required.</p>', 400)
+  const requestedApprovalId = url.searchParams.get('approvalId')
+  if (!taskId || !stepId) {
+    return gateDecisionHtmlResponse('Approval Link Error', '<p>taskId and stepId are required.</p>', 400)
   }
 
-  const approvalRecord = getApprovalRecord(approvalId)
+  // Links omit approvalId (native-card description budget); resolve the
+  // pending record for the gate. Explicit approvalId still binds old links.
+  const approvalRecord = requestedApprovalId
+    ? getApprovalRecord(requestedApprovalId)
+    : findPendingApprovalForGate(taskId, stepId)
   if (!approvalRecord || approvalRecord.owner.taskId !== taskId || approvalRecord.owner.stepId !== stepId) {
     return gateDecisionHtmlResponse('Approval Not Found', '<p>This approval link no longer matches a pending workflow gate.</p>', 404)
   }
+  const approvalId = approvalRecord.approvalId
 
   const escapedTitle = escapeHtml(approvalRecord.request.title)
   const escapedBody = escapeHtml(approvalRecord.request.body)
@@ -211,11 +216,14 @@ const gateDecisionActionHandler = async (req: Request, ctx: PluginContextLite) =
   const stepId = url.searchParams.get('stepId') || formValue(form, 'stepId')
   const approvalId = url.searchParams.get('approvalId') || formValue(form, 'approvalId')
   const decision = formValue(form, 'decision')
-  if (!taskId || !stepId || !approvalId || !decision) {
-    return gateDecisionHtmlResponse('Approval Link Error', '<p>taskId, stepId, approvalId, and decision are required.</p>', 400)
+  if (!taskId || !stepId || !decision) {
+    return gateDecisionHtmlResponse('Approval Link Error', '<p>taskId, stepId, and decision are required.</p>', 400)
   }
 
-  const approvalRecord = getApprovalRecord(approvalId)
+  // The rendered page embeds the exact approvalId; direct POSTs may omit it.
+  const approvalRecord = approvalId
+    ? getApprovalRecord(approvalId)
+    : findPendingApprovalForGate(taskId, stepId)
   if (!approvalRecord || approvalRecord.owner.taskId !== taskId || approvalRecord.owner.stepId !== stepId) {
     return gateDecisionHtmlResponse('Approval Not Found', '<p>This approval link no longer matches a pending workflow gate.</p>', 404)
   }

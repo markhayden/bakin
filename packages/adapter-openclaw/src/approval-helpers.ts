@@ -9,11 +9,12 @@ import type { ApprovalResolveEvent, RuntimeMetadata } from '@bakin/core/adapters
 import type { OpenClawPluginApprovalDecision, OpenClawPluginApprovalResolvedPayload } from './approval-gateway'
 import { truncate } from './runtime-utils'
 
-/** Footer appended to native channel approval prompts (render-only path). */
-const NATIVE_APPROVAL_NOTICE = [
-  'Channel buttons are a convenience path and may expire before the Bakin gate does.',
-  'The durable Bakin approval record remains canonical.',
-].join(' ')
+/**
+ * Footer appended to native channel approval prompts. Deliberately terse: the
+ * plugin-approval description is capped at 256 chars upstream and every char
+ * spent here is gate context lost.
+ */
+const NATIVE_APPROVAL_NOTICE = 'Buttons may expire; the link stays valid.'
 
 export const OPENCLAW_PLUGIN_APPROVAL_REF_PREFIX = 'openclaw-plugin-approval:'
 export const OPENCLAW_PLUGIN_ID = 'bakin'

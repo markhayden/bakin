@@ -413,62 +413,10 @@ export function start(contentDir: string): void {
         log.error('Workflow step timeout check failed', err)
       }
 
-      // ─── Gate notification check (channel alert) ──────────────────────
-      const gateNotificationChannel = getNotificationChannel(settings)
-      if (gateNotificationChannel && settings.notifications.gateAlerts !== false) {
-        try {
-          const pendingGates = await hooks().invoke<Array<{ taskId: string; currentStepId: string; workflowId: string; stepStates: Record<string, { status: string; output?: unknown }>; history: Array<Record<string, unknown>> }>>('workflows.instances.list', { statusFilter: 'pending_approval' }) ?? []
-
-          for (const instance of pendingGates) {
-            const { taskId, currentStepId, workflowId } = instance
-            if (await hooks().invoke<boolean>('workflows.isGateNotified', { taskId, stepId: currentStepId })) continue
-
-            const def = await hooks().invoke<{ steps: Array<{ id: string; label?: string; description?: string }> }>('workflows.loadDefinition', { name: workflowId })
-            const gateStep = def?.steps.find(s => s.id === currentStepId)
-            const label = gateStep?.label || currentStepId
-
-            // Find task title from taskboard
-            const gateBoard = readTaskboard() as unknown as { columns: Record<string, Array<{ id: string; title: string }>> }
-            let taskTitle = taskId
-            for (const col of Object.values(gateBoard.columns)) {
-              const task = col.find(t => t.id === taskId)
-              if (task) { taskTitle = task.title; break }
-            }
-
-            const shortId = taskId.slice(0, 6).toUpperCase()
-            const description = (gateStep as { description?: string })?.description
-            let msg = `🚦 **Gate Approval Needed**\nTask: "${taskTitle}" (#${shortId})\nGate: "${label}"`
-            if (description) msg += `\n${description}`
-
-            // Include prior step output preview
-            if (def) {
-              const gateIdx = def.steps.findIndex(s => s.id === currentStepId)
-              if (gateIdx > 0) {
-                const priorStep = def.steps[gateIdx - 1]
-                const priorOutput = instance.stepStates[priorStep.id]?.output
-                if (priorOutput) {
-                  const preview = JSON.stringify(priorOutput, null, 2).slice(0, 500)
-                  msg += `\n\nPrior output:\n\`\`\`json\n${preview}\n\`\`\``
-                }
-              }
-            }
-
-            msg += `\n\nApprove or reject in Bakin UI.`
-
-            sendWatchdogChannelMessage(
-              gateNotificationChannel,
-              msg
-            ).catch(err => {
-              log.error('Gate channel notification failed', err, { taskId })
-            })
-
-            await hooks().invoke<void>('workflows.markGateNotified', { taskId, stepId: currentStepId })
-            log.info('Gate notification sent', { taskId, stepId: currentStepId, label })
-          }
-        } catch (err) {
-          log.error('Gate notification check failed', err)
-        }
-      }
+      // Gate approval notifications are owned by the workflows plugin: it posts
+      // a rich context message + native approval card to the approvals channel
+      // at gate-fire time (sendGateApprovalRequest). The watchdog no longer
+      // pings the general channel per gate.
     } catch (err) {
       log.error('Watchdog error', err)
     }

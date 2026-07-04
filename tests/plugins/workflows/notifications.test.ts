@@ -54,6 +54,21 @@ const settingsMock = {
 mock.module('@/core/settings', () => settingsMock)
 mock.module('../../../src/core/settings', () => settingsMock)
 
+let mockAssetResolution: { found?: boolean; absPath?: string; mimeType?: string } | null = null
+mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
+  getHookRegistry: () => ({
+    invoke: async (name: string) => {
+      if (name === 'assets.resolveServe' && mockAssetResolution) return mockAssetResolution
+      throw new Error(`no hook: ${name}`)
+    },
+  }),
+}))
+
+mock.module('@bakin/workflows/lib/gate-audit', () => ({
+  buildGateAuditPayload: () => ({}),
+  getGateDescription: () => 'Owner reviews the draft before publishing',
+}))
+
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import type { WorkflowInstance } from '@bakin/workflows/types'
 import type { GateNotificationSettings } from '@bakin/workflows/lib/notifications'
@@ -102,6 +117,7 @@ describe('runtime gate notifications', () => {
   }))
   const resolveApproval = mock(async () => {})
   const sendNotification = mock(async () => ({ deliveries: [] }))
+  const deliverContent = mock(async (..._args: unknown[]) => ({ deliveries: [] }))
   const listChannels = mock(async () => [] as Array<{ id: string }>)
 
   beforeEach(() => {
@@ -112,13 +128,17 @@ describe('runtime gate notifications', () => {
     createApproval.mockClear()
     resolveApproval.mockClear()
     sendNotification.mockClear()
+    deliverContent.mockClear()
+    deliverContent.mockImplementation(async (..._args: unknown[]) => ({ deliveries: [] }))
     listChannels.mockClear()
     logError.mockClear()
+    mockAssetResolution = null
     const runtime = {
       channels: {
         createApproval,
         resolveApproval,
         sendNotification,
+        deliverContent,
         list: listChannels,
       },
     } as unknown as AgentRuntimeAdapter
@@ -181,9 +201,66 @@ describe('runtime gate notifications', () => {
       { id: 'approve', label: 'Approve', variant: 'primary' },
       { id: 'reject', label: 'Reject', variant: 'destructive' },
     ])
-    expect(call.request.context).toEqual(expect.objectContaining({
-      approvalUrl: expect.stringContaining('/api/plugins/workflows/gates/task-42/decision'),
-    }))
+    const contextValue = call.request.context as { approvalUrl: string }
+    expect(contextValue.approvalUrl).toContain('/api/plugins/workflows/gates/task-42/decision?stepId=review-gate')
+    expect(contextValue.approvalUrl).not.toContain('approvalId')
+  })
+
+  it('posts a rich context message to the channel before creating the approval', async () => {
+    const callOrder: string[] = []
+    deliverContent.mockImplementation(async (..._args: unknown[]) => { callOrder.push('context'); return { deliveries: [] } })
+    createApproval.mockImplementationOnce(async () => { callOrder.push('approval'); return { deliveries: [] } })
+
+    await sendGateApprovalRequest(
+      mockInstance,
+      'review-gate',
+      'Review Draft',
+      { draft: { caption: 'Hello world' } },
+      enabledSettings,
+    )
+
+    expect(callOrder).toEqual(['context', 'approval'])
+    const [call] = deliverContent.mock.calls[0] as unknown as [{ channels: string[]; content: { title: string; body: string; files?: unknown[] } }]
+    expect(call.channels).toEqual(['discord:123'])
+    expect(call.content.title).toBe('Gate: Review Draft — content-pipeline')
+    expect(call.content.body).toContain('task task-42')
+    expect(call.content.body).toContain('Owner reviews the draft before publishing')
+    expect(call.content.body).toContain('Hello world')
+    expect(call.content.body).toContain('Decide: ')
+    expect(call.content.body).toContain('/?q=task-42')
+    expect(call.content.files).toBeUndefined()
+  })
+
+  it('attaches resolvable asset files from prior output to the context message', async () => {
+    mockAssetResolution = { found: true, absPath: '/tmp/generated.png', mimeType: 'image/png' }
+
+    await sendGateApprovalRequest(
+      mockInstance,
+      'review-gate',
+      'Review Draft',
+      { image: { assetId: 'asset-abc123' } },
+      enabledSettings,
+    )
+
+    const [call] = deliverContent.mock.calls[0] as unknown as [{ content: { files?: Array<{ name: string; path: string; contentType?: string }> } }]
+    expect(call.content.files).toEqual([
+      { name: 'asset-abc123', path: '/tmp/generated.png', contentType: 'image/png' },
+    ])
+  })
+
+  it('still creates the approval when the context message fails', async () => {
+    deliverContent.mockImplementationOnce(async () => { throw new Error('channel hiccup') })
+
+    const ref = await sendGateApprovalRequest(
+      mockInstance,
+      'review-gate',
+      'Review Draft',
+      undefined,
+      enabledSettings,
+    )
+
+    expect(ref).not.toBeNull()
+    expect(createApproval).toHaveBeenCalledTimes(1)
   })
 
   it('accepts a bare channel that the runtime lists', async () => {
