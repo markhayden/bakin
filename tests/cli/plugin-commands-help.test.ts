@@ -4,9 +4,10 @@
  * always render — an unreachable server or malformed manifest degrades to
  * the static usage, never an error.
  */
-import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { describe, expect, it, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import { setupTtyCliHarness } from './helpers/tty-cli-harness'
 
 // The help flow is HTTP-only (fetch is mocked), but the isolation mocks are
 // mandatory insurance: nothing this test transitively imports may ever
@@ -19,27 +20,10 @@ const contentDirMock = () => ({
 mock.module('../../src/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
 
-const fetchMock = mock()
+const harness = setupTtyCliHarness({ defaultIsTTY: false })
+const { fetchMock, output, jsonResponse } = harness
 
 describe('plugin commands in CLI help', () => {
-  const originalArgv = process.argv
-  const originalExit = process.exit
-  const originalFetch = globalThis.fetch
-  const originalStdoutIsTTY = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
-  let log: ReturnType<typeof spyOn>
-
-  function setStdoutIsTTY(value: boolean): void {
-    Object.defineProperty(process.stdout, 'isTTY', { value, configurable: true })
-  }
-
-  function jsonResponse(body: unknown): Response {
-    return { ok: true, json: () => Promise.resolve(body), text: () => Promise.resolve('') } as Response
-  }
-
-  function output(): string {
-    return log.mock.calls.map((call: unknown[]) => String(call[0])).join('\n')
-  }
-
   const manifestWithCommands = {
     plugins: [
       { id: 'projects', contributes: { cliCommands: [
@@ -48,27 +32,6 @@ describe('plugin commands in CLI help', () => {
       { id: 'messaging', contributes: {} },
     ],
   }
-
-  beforeEach(() => {
-    mock.clearAllMocks()
-    globalThis.fetch = fetchMock as unknown as typeof fetch
-    log = spyOn(console, 'log').mockImplementation(() => {})
-    spyOn(console, 'error').mockImplementation(() => {})
-    process.exit = ((code?: number) => {
-      if (code === 0) return undefined as never
-      throw new Error(`exit:${code}`)
-    }) as never
-    setStdoutIsTTY(false)
-  })
-
-  afterEach(() => {
-    process.argv = originalArgv
-    process.exit = originalExit
-    globalThis.fetch = originalFetch
-    if (originalStdoutIsTTY) Object.defineProperty(process.stdout, 'isTTY', originalStdoutIsTTY)
-    else delete (process.stdout as { isTTY?: boolean }).isTTY
-    mock.restore()
-  })
 
   it('non-TTY --help appends a Plugin commands section when the manifest lists them', async () => {
     fetchMock.mockResolvedValue(jsonResponse(manifestWithCommands))
