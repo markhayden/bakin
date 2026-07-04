@@ -25,7 +25,6 @@ import {
   getCliAgent,
 } from '../src/cli/http'
 import { printRuntimeActionTui } from '../src/cli/commands/runtime'
-import { cmdOnboardingSettingsInit } from '../src/cli/commands/onboarding'
 import {
   print,
   printTable,
@@ -58,16 +57,7 @@ import type {
   PluginActionData,
   PluginRestoreResultData,
   PluginRestoreSnapshotData,
-  SettingsActionData,
 } from '../src/core/cli/ui/readonly'
-
-async function printSettingsTui(settings: Record<string, unknown>): Promise<void> {
-  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.SettingsReport, { settings })
-}
-
-async function printSettingsActionTui(action: SettingsActionData): Promise<void> {
-  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.SettingsActionReport, { action })
-}
 
 async function printPluginsListTui(plugins: Array<Record<string, unknown>>): Promise<void> {
   return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.PluginsListReport, { plugins })
@@ -90,75 +80,6 @@ async function printPluginRestoreResultTui(pluginId: string, result: PluginResto
 // ---------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------
-async function cmdSettingsGet(key?: string, opts: { json?: boolean } = {}): Promise<void> {
-  const settings = await apiGet('/api/settings') as Record<string, unknown>
-  if (key) {
-    const parts = key.split('.')
-    let val: unknown = settings
-    let found = true
-    for (const part of parts) {
-      if (val && typeof val === 'object' && Object.prototype.hasOwnProperty.call(val, part)) {
-        val = (val as Record<string, unknown>)[part]
-      } else {
-        val = undefined
-        found = false
-        break
-      }
-    }
-    if (opts.json) {
-      print(found ? val : null)
-      return
-    }
-    if (!opts.json && process.stdout.isTTY) {
-      await printSettingsTui({ [key]: val })
-      return
-    }
-    print(val)
-  } else {
-    if (opts.json) {
-      print(settings)
-      return
-    }
-    if (process.stdout.isTTY) {
-      await printSettingsTui(settings)
-      return
-    }
-    print(settings)
-  }
-}
-
-async function cmdSettingsSet(key: string, value: string, opts: { json?: boolean } = {}): Promise<void> {
-  const parts = key.split('.')
-  const obj: Record<string, unknown> = {}
-  let current = obj
-  for (let i = 0; i < parts.length - 1; i++) {
-    current[parts[i]] = {}
-    current = current[parts[i]] as Record<string, unknown>
-  }
-
-  // Try to parse as JSON, fall back to string
-  let parsedValue: unknown
-  try {
-    parsedValue = JSON.parse(value)
-  } catch {
-    parsedValue = value
-  }
-  current[parts[parts.length - 1]] = parsedValue
-
-  const result = await apiPost('/api/settings', obj)
-  if (!opts.json && process.stdout.isTTY) {
-    await printSettingsActionTui({
-      action: 'updated',
-      key,
-      value: parsedValue,
-      result,
-    })
-    return
-  }
-
-  print(result)
-}
-
 /**
  * `bakin plugins publish <pluginDir> --out <dir> [--build]` — assemble a
  * published artifact from a plugin directory (Whiskit Phase 4). Purely local:
@@ -2245,18 +2166,7 @@ export async function main(): Promise<void> {
         break
 
       case 'settings':
-        if (sub === 'get') {
-          const flags = args.slice(2)
-          const key = flags.find(arg => !arg.startsWith('--'))
-          await cmdSettingsGet(key, { json: flags.includes('--json') })
-        } else if (sub === 'set') {
-          if (!args[2] || !args[3]) await exitUsage('bakin settings set <key> <value>')
-          await cmdSettingsSet(args[2], args[3], { json: args.slice(4).includes('--json') })
-        } else if (sub === 'init') {
-          await cmdOnboardingSettingsInit({ json: args.slice(2).includes('--json') })
-        } else {
-          await exitUnknownSubcommand('settings', sub, ['get', 'set', 'init'])
-        }
+        await (await import('../src/cli/commands/settings')).run(args)
         break
 
       case 'diagnostics':
