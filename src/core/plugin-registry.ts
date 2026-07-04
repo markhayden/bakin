@@ -25,7 +25,7 @@ import type {
   PluginNodeTypeInput,
 } from '@bakin/core/plugin-types'
 import { registerPluginDefinition } from '../../plugins/workflows/lib/source-registry'
-import type { WorkflowDefinition } from '../../plugins/workflows/types'
+import type { WorkflowDefinition } from '@bakin/core/workflows/definition-types'
 import { registerPluginNodeType, unregisterPluginNodeTypes } from '../../plugins/workflows/lib/node-type-registry'
 import {
   registerPluginNotificationChannel,

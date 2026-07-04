@@ -47,7 +47,7 @@ import {
   registerAgentPackageSkill,
   unregisterAgentPackageSkills,
 } from '../../../plugins/workflows/lib/agent-package-skill-registry'
-import type { WorkflowDefinition } from '../../../plugins/workflows/types'
+import type { WorkflowDefinition } from '@bakin/core/workflows/definition-types'
 import type { SkillDefinition } from '../../../packages/core/src/plugin-types'
 
 const log = createLogger('agent-pkg:load-sources')
