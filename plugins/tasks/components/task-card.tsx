@@ -1,6 +1,6 @@
 'use client'
 
-import type { CSSProperties } from 'react'
+import { useEffect, type CSSProperties } from 'react'
 import { useSortable } from '@dnd-kit/react/sortable'
 import { AlertTriangle, X } from 'lucide-react'
 import { AgentAvatar } from "@makinbakin/sdk/components"
@@ -54,8 +54,24 @@ function shortId(id: string): string {
   return id.slice(0, 6).toUpperCase()
 }
 
+const CHILD_HIGHLIGHT_CLASSES = ['ring-2', 'ring-cyan-400/60', 'border-cyan-400/60']
+
+/** Outline the linked child task's card (matched via data-task-id) while the sub-task badge is hovered. */
+function setChildCardHighlight(childTaskId: string, on: boolean): void {
+  const wrapper = document.querySelector(`[data-task-id="${CSS.escape(childTaskId)}"]`)
+  const card = wrapper?.firstElementChild
+  if (!card) return
+  for (const cls of CHILD_HIGHLIGHT_CLASSES) card.classList.toggle(cls, on)
+}
+
 export function TaskCardContent({ task, columnId, className, gateLabel, childTaskId, style, scoreInfo }: { task: Task; columnId: string; className?: string; gateLabel?: string; childTaskId?: string; style?: CSSProperties; scoreInfo?: TaskScoreInfo }) {
   const badge = STATUS_BADGE_STYLES[columnId as ColumnId]
+  // Clear any lingering child-card outline if this card unmounts mid-hover
+  // (e.g. the sub-task finishes and the badge disappears under the cursor).
+  useEffect(() => {
+    if (!childTaskId) return
+    return () => setChildCardHighlight(childTaskId, false)
+  }, [childTaskId])
   const isComplete = task.checked || columnId === 'done' || columnId === 'archived'
   const availableAtMs = getTaskAvailableAtMs(task)
   const isFutureScheduled = availableAtMs !== null && availableAtMs > Date.now()
@@ -124,11 +140,18 @@ export function TaskCardContent({ task, columnId, className, gateLabel, childTas
         </div>
       )}
 
-      {/* Child sub-task indicator */}
+      {/* Child sub-task indicator — hover outlines the linked child card */}
       {childTaskId && (
-        <div className="flex items-center gap-1.5 mt-1.5 px-2 py-1 rounded-md bg-cyan-500/10 border border-cyan-500/20">
-          <span className="text-cyan-400 text-[11px]">Sub-task in progress</span>
-          <span className="text-cyan-400/60 text-[10px] font-mono">#{childTaskId.split('--').pop()?.slice(0, 8) || childTaskId.slice(0, 6)}</span>
+        <div
+          className="flex items-center gap-1.5 mt-1.5 px-2 py-1 rounded-md bg-cyan-500/10 border border-cyan-500/20 whitespace-nowrap overflow-hidden"
+          title={childTaskId}
+          onMouseEnter={() => setChildCardHighlight(childTaskId, true)}
+          onMouseLeave={() => setChildCardHighlight(childTaskId, false)}
+        >
+          <span className="text-cyan-400 text-[11px] shrink-0">Sub-task in progress</span>
+          <span className="text-cyan-400/60 text-[10px] font-mono truncate">
+            {shortId(childTaskId)} · {childTaskId.split('--').pop() || childTaskId}
+          </span>
         </div>
       )}
 
