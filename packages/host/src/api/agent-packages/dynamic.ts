@@ -17,6 +17,7 @@
  * projection state.
  */
 import { z } from 'zod'
+import { PackageStillRequiredError } from '@/core/agent-packages/errors'
 import { removePackageById } from '@/core/agent-packages/uninstaller'
 import { MigrationRequiredError, syncAgent } from '@/core/agent-packages/sync'
 import { migrateToManagedBlocks } from '@/core/agent-packages/migration'
@@ -27,6 +28,7 @@ import {
   setLessonEnabled,
 } from '@/core/agent-packages/lesson-toggle'
 import { findAgentPackage, readLockfile } from '@bakin/core/agent-packages/lockfile'
+import { parseJsonBodyWeb } from '@/core/middleware'
 import { createLogger } from '@/core/logger'
 
 const log = createLogger('api:agent-packages:dynamic')
@@ -117,12 +119,8 @@ async function handleRemove(req: Request, agentId: string): Promise<Response> {
     )
   }
 
-  let raw: unknown = {}
-  try {
-    raw = await req.json()
-  } catch {
-    // Body is optional for DELETE — empty body is fine
-  }
+  // Lenient parse — body is optional for DELETE; empty/invalid means "no options".
+  const raw = await parseJsonBodyWeb(req) ?? {}
   const parsed = RemoveBodySchema.safeParse(raw)
   if (!parsed.success) {
     return Response.json(
@@ -145,18 +143,14 @@ async function handleRemove(req: Request, agentId: string): Promise<Response> {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     log.error('agents/remove failed', err as Error, { packageId })
-    const isConflict = /still required by/i.test(message)
+    const isConflict = err instanceof PackageStillRequiredError
     return Response.json({ ok: false, error: message }, { status: isConflict ? 409 : 500 })
   }
 }
 
 async function handleSync(req: Request, agentId: string): Promise<Response> {
-  let raw: unknown = {}
-  try {
-    raw = await req.json()
-  } catch {
-    // empty body OK
-  }
+  // Lenient parse — empty/invalid body means "no options".
+  const raw = await parseJsonBodyWeb(req) ?? {}
   const parsed = SyncBodySchema.safeParse(raw)
   if (!parsed.success) {
     return Response.json(

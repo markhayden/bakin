@@ -24,6 +24,7 @@ import {
   type PackageEntry,
 } from '../../../packages/core/src/agent-packages/lockfile'
 import { getPackageSourceDir } from '../../../packages/core/src/agent-packages/package-paths'
+import { PackageNotInstalledError, PackageStillRequiredError } from './errors'
 import { unprojectPackage } from './projector'
 import {
   acquireInstallLock,
@@ -75,15 +76,11 @@ export async function removePackageById(options: RemoveOptions): Promise<RemoveR
     let lock = readLockfile()
     const entry = lock.packages[options.packageId]
     if (!entry) {
-      throw new Error(`Package "${options.packageId}" is not installed.`)
+      throw new PackageNotInstalledError(options.packageId)
     }
 
     if (!options.force && hasDependents(lock, options.packageId)) {
-      const dependents = entry.dependents ?? []
-      throw new Error(
-        `Refusing to remove "${options.packageId}" — still required by [${dependents.join(', ')}]. ` +
-          `Remove the dependents first, or pass --force.`,
-      )
+      throw new PackageStillRequiredError(options.packageId, entry.dependents ?? [])
     }
 
     const removed: string[] = []

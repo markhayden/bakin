@@ -51,6 +51,7 @@ import {
 } from '../../../packages/core/src/agent-packages/composer'
 import { extractBlock, removeBlock } from '../../../packages/core/src/agent-packages/managed-blocks'
 import { unmarkUserEdited } from '../../../packages/core/src/agent-packages/markers'
+import { PackageNotInstalledError } from './errors'
 import { projectPackage, type ProjectorResult } from './projector'
 import { updatePackageById } from './updater'
 import { checkPackageUpdate } from './checker'
@@ -191,7 +192,7 @@ async function reclaimTargets(
 async function applyLocalProjection(packageId: string): Promise<ProjectorResult> {
   const lock = readLockfile()
   const entry = lock.packages[packageId]
-  if (!entry) throw new Error(`Package "${packageId}" is not installed.`)
+  if (!entry) throw new PackageNotInstalledError(packageId)
 
   const sourceDir = getPackageSourceDir(
     getContentDir(), entry.kind, stripVersionFromKey(packageId), entry.version,
@@ -466,7 +467,7 @@ export async function syncPack(
 ): Promise<PackSyncReceipt> {
   const lock = readLockfile()
   const entry = lock.packages[packageId]
-  if (!entry) throw new Error(`Package "${packageId}" is not installed.`)
+  if (!entry) throw new PackageNotInstalledError(packageId)
   if (entry.kind === 'agent') {
     throw new Error(`"${packageId}" is an agent package — use \`bakin agents sync ${entry.agentId ?? packageId}\`.`)
   }

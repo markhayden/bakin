@@ -10,9 +10,11 @@
  * extra parsing.
  */
 import { z } from 'zod'
+import { PackageNotInstalledError, PackageStillRequiredError } from '@/core/agent-packages/errors'
 import { removePackageById } from '@/core/agent-packages/uninstaller'
 import { syncPack } from '@/core/agent-packages/sync'
 import { reloadAgentPackageRegistries } from '@/core/agent-packages/post-sync-reload'
+import { parseJsonBodyWeb } from '@/core/middleware'
 import { createLogger } from '@/core/logger'
 
 const log = createLogger('api:packages:dynamic')
@@ -52,12 +54,8 @@ export async function handler(req: Request, url: URL): Promise<Response> {
 }
 
 async function handleRemove(req: Request, packageId: string): Promise<Response> {
-  let raw: unknown = {}
-  try {
-    raw = await req.json()
-  } catch {
-    /* empty body OK */
-  }
+  // Lenient parse — empty/invalid body means "no options".
+  const raw = await parseJsonBodyWeb(req) ?? {}
   const parsed = RemoveBodySchema.safeParse(raw)
   if (!parsed.success) {
     return Response.json(
@@ -79,9 +77,9 @@ async function handleRemove(req: Request, packageId: string): Promise<Response> 
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     log.error('packages/remove failed', err as Error, { packageId })
-    const status = /still required by/i.test(message)
+    const status = err instanceof PackageStillRequiredError
       ? 409
-      : /not installed/i.test(message)
+      : err instanceof PackageNotInstalledError
         ? 404
         : 500
     return Response.json({ ok: false, error: message }, { status })
@@ -89,12 +87,8 @@ async function handleRemove(req: Request, packageId: string): Promise<Response> 
 }
 
 async function handleSync(req: Request, packageId: string): Promise<Response> {
-  let raw: unknown = {}
-  try {
-    raw = await req.json()
-  } catch {
-    /* empty body OK */
-  }
+  // Lenient parse — empty/invalid body means "no options".
+  const raw = await parseJsonBodyWeb(req) ?? {}
   const parsed = SyncBodySchema.safeParse(raw)
   if (!parsed.success) {
     return Response.json(
@@ -115,7 +109,7 @@ async function handleSync(req: Request, packageId: string): Promise<Response> {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     log.error('packages/sync failed', err as Error, { packageId })
-    const status = /not installed/i.test(message) ? 404 : 500
+    const status = err instanceof PackageNotInstalledError ? 404 : 500
     return Response.json({ ok: false, error: message }, { status })
   }
 }
