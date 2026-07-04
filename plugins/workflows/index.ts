@@ -50,8 +50,8 @@ const workflowsPlugin: BakinPlugin = definePlugin({
       { key: 'maxConcurrentSteps', type: 'number', label: 'Max concurrent steps', description: 'Maximum steps running in parallel per workflow', default: 3 },
       { key: 'notifyOnGate', type: 'boolean', label: 'Notify on gate', description: 'Send notification when a gate needs approval', default: true },
       { key: 'approvalChannelAlerts', type: 'boolean', label: 'Channel gate alerts', description: 'Send runtime channel approvals when gates need review', default: false },
-      { key: 'approvalChannel', type: 'string', label: 'Gate approval channel', description: 'Runtime channel ID for gate approval messages', default: 'general' },
-      { key: 'requireRejectReason', type: 'boolean', label: 'Require reject reason', description: 'Require a reason when rejecting from a channel approval', default: true },
+      { key: 'approvalChannel', type: 'string', label: 'Gate approval channel', description: 'Runtime channel id or notifications.channelAliases alias for gate approval messages', default: 'general' },
+      { key: 'requireRejectReason', type: 'boolean', label: 'Require reject reason', description: 'Require a typed reason in the Bakin UI and fallback page; channel button rejects record a default reason', default: true },
     ],
   },
 

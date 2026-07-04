@@ -72,7 +72,7 @@ import {
 } from './image-inference'
 import {
   OPENCLAW_PLUGIN_ID, OPENCLAW_WORKFLOW_GATE_TOOL, OPENCLAW_PLUGIN_APPROVAL_REF_PREFIX,
-  renderNativeApprovalDescription, supportsNativeApprovalOptions, requiresRejectReason,
+  renderNativeApprovalDescription, supportsNativeApprovalOptions,
   approvalEventFromOpenClawPayload, openClawDecisionFromBakinOption,
   parseNativeApprovalRef, isExpectedNativeApprovalResolveMiss,
 } from './approval-helpers'
@@ -537,7 +537,6 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       for (const channel of args.channels) {
         if (
           channelHasInteractiveApproval(channel)
-          && !requiresRejectReason(context)
           && supportsNativeApprovalOptions(args.request.options)
         ) {
           const delivery = await this.tryCreateNativeApproval(channel, args, renderedAt)

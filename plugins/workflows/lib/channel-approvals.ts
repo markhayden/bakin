@@ -84,18 +84,7 @@ export async function wireChannelApprovals(ctx: PluginContext): Promise<() => vo
       }
     } else if (selected === 'reject') {
       const channelComment = event.response.comment?.trim()
-      const requiresRejectReason = approvalRecord.request.context?.requireRejectReason === true
-      if (requiresRejectReason && !channelComment) {
-        log.warn('Channel reject ignored: this gate requires a reject reason', {
-          approvalId: event.approvalId,
-          taskId,
-          stepId,
-          channelId: event.channelId,
-        })
-        ctx.activity.log('channel', `Gate "${stepId}" reject ignored because a reason is required. Use the Bakin approval link to reject with a reason.`, { taskId })
-        return
-      }
-      const rejectReason = channelComment || 'Rejected via runtime channel'
+      const rejectReason = channelComment || 'Rejected via runtime channel (no reason provided)'
       const approvalRef = approvalRefFromRecord(approvalRecord)
       const result = rejectGate(taskId, stepId, rejectReason, { approver })
       if (!result.success) {

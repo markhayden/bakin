@@ -18,8 +18,8 @@ const RENDER_ONLY_APPROVAL_NOTICE = [
   'Use the Bakin approval link or approve/reject this gate in the Bakin UI.',
 ].join(' ')
 const REJECT_REASON_APPROVAL_NOTICE = [
-  'This gate requires a reject reason.',
-  'Use the Bakin approval link so reject decisions include the required reason.',
+  'Button rejects record a default reason.',
+  'Use the Bakin approval link to reject with a typed reason.',
 ].join(' ')
 const NATIVE_APPROVAL_PROVIDERS = new Set(['discord', 'telegram', 'slack', 'matrix', 'qqbot'])
 
@@ -93,7 +93,7 @@ export function readChannelInfos(): ChannelInfo[] {
         ...(interactive
           ? {
               approvalTimeoutMs: OPENCLAW_PLUGIN_APPROVAL_TIMEOUT_MS,
-              rejectReason: 'bakin-fallback-link',
+              rejectReason: 'native-default-reason',
             }
           : {}),
       },

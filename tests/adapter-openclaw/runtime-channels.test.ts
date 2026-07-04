@@ -1,11 +1,36 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
 
+const isolationDir = mkdtempSync(join(tmpdir(), 'bakin-openclaw-channel-isolation-'))
+const contentDirMock = {
+  getContentDir: () => isolationDir,
+  getBakinPaths: () => ({ db: join(isolationDir, 'bakin.db') }),
+  resetContentDir: mock(),
+  initBakinHome: mock(),
+  isUsingBakinHome: () => false,
+}
+mock.module('../../src/core/content-dir', () => contentDirMock)
+mock.module('../../packages/core/src/content-dir', () => contentDirMock)
+mock.module('@/core/content-dir', () => contentDirMock)
+mock.module('@/core/task-store', () => ({
+  createTask: mock(() => Promise.resolve({ id: 'mock-task' })),
+  addTaskLog: mock(() => Promise.resolve()),
+  moveTask: mock(() => Promise.resolve()),
+  readTaskboard: mock(() => ({ columns: {} })),
+  getTask: mock(() => null),
+  getTaskWithColumn: mock(() => null),
+}))
+
+afterAll(() => {
+  rmSync(isolationDir, { recursive: true, force: true })
+})
+
 function installOpenClawCliRecorder(testDir: string): { binaryPath: string; calls: () => string[][] } {
   const cliLog = join(testDir, `openclaw-cli-calls-${randomUUID()}.jsonl`)
+  writeFileSync(cliLog, '', 'utf-8')
   const shimPath = join(testDir, `openclaw-shim-${randomUUID()}.ts`)
   writeFileSync(shimPath, [
     '#!/usr/bin/env bun',
@@ -42,6 +67,7 @@ describe('OpenClaw runtime channels', () => {
     originalFetch = globalThis.fetch
     originalWebSocket = globalThis.WebSocket
     FakeWebSocket.instances.length = 0
+    FakeWebSocket.failApprovalRequests = false
     process.env.OPENCLAW_HOME = testDir
     mkdirSync(testDir, { recursive: true })
     writeFileSync(join(testDir, 'openclaw.json'), JSON.stringify({
@@ -248,7 +274,7 @@ describe('OpenClaw runtime channels', () => {
     expect(String((approvalRequest?.params as Record<string, unknown>).description)).toContain('Bakin fallback:')
   })
 
-  it('uses the Bakin fallback link instead of native approvals when reject reasons are required', async () => {
+  it('creates native approvals even when reject reasons are required', async () => {
     writeFileSync(join(testDir, 'openclaw.json'), JSON.stringify({
       gateway: { auth: { token: 'test-token' } },
       channels: {
@@ -260,6 +286,50 @@ describe('OpenClaw runtime channels', () => {
     }), 'utf-8')
     const recorder = installOpenClawCliRecorder(testDir)
     globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: recorder.binaryPath } })
+    await runtime.initialize({ contentDir: testDir })
+
+    const result = await runtime.channels.createApproval({
+      approvalId: 'approval-1',
+      channels: ['discord:channel-1'],
+      request: {
+        title: 'Gate: Review',
+        body: 'Review the post.',
+        options: [
+          { id: 'approve', label: 'Approve' },
+          { id: 'reject', label: 'Reject' },
+        ],
+        context: {
+          requireRejectReason: true,
+          approvalUrl: 'http://localhost:3737/api/plugins/workflows/gates/task-1/decision',
+        },
+      },
+    })
+
+    expect(result.deliveries).toEqual([expect.objectContaining({
+      channelId: 'discord:channel-1',
+      ref: 'openclaw-plugin-approval:plugin:test-approval',
+    })])
+    const approvalRequest = FakeWebSocket.instances[0]!.sentFrames.find(frame => frame.method === 'plugin.approval.request')
+    expect(approvalRequest?.params).toEqual(expect.objectContaining({ toolCallId: 'approval-1' }))
+    expect(recorder.calls()).toHaveLength(0)
+  })
+
+  it('falls back to a Bakin-link message when native approval creation fails on a reject-reason gate', async () => {
+    writeFileSync(join(testDir, 'openclaw.json'), JSON.stringify({
+      gateway: { auth: { token: 'test-token' } },
+      channels: {
+        discord: {
+          token: 'discord-token',
+          execApprovals: { enabled: true, approvers: ['202168845362921483'], target: 'both' },
+        },
+      },
+    }), 'utf-8')
+    const recorder = installOpenClawCliRecorder(testDir)
+    globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket
+    FakeWebSocket.failApprovalRequests = true
 
     const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
     const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: recorder.binaryPath } })
@@ -282,10 +352,9 @@ describe('OpenClaw runtime channels', () => {
       },
     })
 
-    expect(FakeWebSocket.instances).toHaveLength(0)
     const calls = recorder.calls()
     expect(calls).toHaveLength(1)
-    expect(messageArg(calls[0]!)).toContain('This gate requires a reject reason')
+    expect(messageArg(calls[0]!)).toContain('record a default reason')
     expect(messageArg(calls[0]!)).toContain('Open in Bakin:')
   })
 
@@ -452,6 +521,7 @@ interface FakeGatewayFrame {
 
 class FakeWebSocket {
   static instances: FakeWebSocket[] = []
+  static failApprovalRequests = false
   readyState = 0
   sentFrames: FakeGatewayFrame[] = []
   private listeners = new Map<string, Set<(event: { data?: string }) => void>>()
@@ -485,6 +555,10 @@ class FakeWebSocket {
     if (frame.method === 'connect') {
       this.emitMessage({ type: 'res', id: frame.id, ok: true, payload: { auth: { scopes: ['operator.approvals'] } } })
     } else if (frame.method === 'plugin.approval.request') {
+      if (FakeWebSocket.failApprovalRequests) {
+        this.emitMessage({ type: 'res', id: frame.id, ok: false, error: { message: 'no approval route' } })
+        return
+      }
       this.emitMessage({
         type: 'res',
         id: frame.id,
