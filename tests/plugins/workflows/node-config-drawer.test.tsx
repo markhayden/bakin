@@ -455,7 +455,11 @@ describe('NodeConfigDrawer', () => {
     )
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith('/api/plugins/workflows/definitions?includeDisabled=1')
+      // useJsonFetch passes an options object carrying the abort signal.
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/plugins/workflows/definitions?includeDisabled=1',
+        expect.anything(),
+      )
     })
     expect(screen.getByRole('combobox')).toBeDefined()
     expect(screen.queryByRole('textbox', { name: /^workflow_id$/i })).toBeNull()
