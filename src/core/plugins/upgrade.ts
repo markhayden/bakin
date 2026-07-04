@@ -35,7 +35,7 @@ import {
 } from '@bakin/core/plugins/lockfile'
 import { parseGithubSource } from '@bakin/core/plugins/source'
 import { buildUserPlugin } from '../../../packages/host/src/plugin-host/user-plugin-builder'
-import { computeSourceTreeSha } from './source-tree-sha'
+import { SOURCE_TREE_SHA_ALGO, compareStoredSourceTreeSha } from './source-tree-sha'
 import {
   type UpgradeOptions,
   type UpgradeResult,
@@ -132,8 +132,22 @@ async function upgradeLocal(
     )
   }
 
-  const newTreeSha = computeSourceTreeSha(sourcePath)
-  if (entry.sourceTreeSha && entry.sourceTreeSha === newTreeSha) {
+  // Legacy-aware compare: a stored algo-1 sha is verified with the legacy
+  // hasher so hasher consolidation never forces a spurious rebuild of an
+  // untouched source (see source-tree-sha.ts).
+  const cmp = compareStoredSourceTreeSha(entry, sourcePath)
+  const newTreeSha = cmp.liveSha
+  if (entry.sourceTreeSha && !cmp.changed) {
+    if (cmp.needsAlgoMigration) {
+      // One-time reset: rewrite the row under the canonical hasher so the
+      // next check/upgrade (and the manifest route's lastSourceTreeSha
+      // comparison) takes the canonical fast path.
+      writePluginLockfile(updatePlugin(readPluginLockfile(), id, {
+        sourceTreeSha: newTreeSha,
+        sourceTreeShaAlgo: SOURCE_TREE_SHA_ALGO,
+        ...(entry.lastSourceTreeSha ? { lastSourceTreeSha: newTreeSha } : {}),
+      }))
+    }
     return {
       id,
       before,
@@ -182,6 +196,7 @@ async function upgradeLocal(
     manifestSha,
     permissions: newPerms,
     sourceTreeSha: newTreeSha,
+    sourceTreeShaAlgo: SOURCE_TREE_SHA_ALGO,
     installedSkills: assets.installedSkills,
   })
   writePluginLockfile(updated)

@@ -410,7 +410,8 @@ Tasks:
   - shared install lock + pre-flight collision check
   - lockfile write (shared IO) with artifact provenance + `.installedBy`
   - live-activate with a cache-busted `import()`
-- Remove `trustExistingDist` as install policy.
+- Remove `trustExistingDist` as install policy. *(Done — fix/security T6,
+  `1d4a4b34`; the option no longer exists.)*
 - Replace `git clone` materialization for the consumer path; keep git only for
   developer/source convenience.
 - Forward-compatible lockfile schema bump (additive, version-gated).
@@ -434,7 +435,9 @@ bun test --isolate tests/plugins/lifecycle/install-artifact.test.ts tests/plugin
 bun run typecheck
 ```
 
-Rollback: revert install/upgrade callers to old builder + `trustExistingDist`.
+Rollback: revert install/upgrade callers to old builder + `trustExistingDist`
+*(historical — `trustExistingDist` has since been deleted; a revert would need
+to restore it)*.
 
 ## Phase 7: Dependency And Install-Script Trust (publish/dev side) — DEFERRED post-v1
 

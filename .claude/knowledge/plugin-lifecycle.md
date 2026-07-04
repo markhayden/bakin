@@ -58,6 +58,7 @@ const PluginLockEntrySchema = z.object({
   lastChecked: z.string().optional(),// ISO 8601, set by `list --check`
   remoteHeadSha: z.string().optional(),  // last seen remote HEAD sha (github only)
   sourceTreeSha: z.string().optional(),  // last seen local source tree sha (local only)
+  sourceTreeShaAlgo: z.number().int().optional(), // absent = legacy algo 1; 2 = canonical whiskit hashSourceTree
 })
 
 export const PluginLockfileSchema = z.object({
@@ -240,7 +241,7 @@ No retention. Tarballs accumulate. Follow-up issue tracks expiry policy.
   - Exit: `"Upgraded <id> v<old> → v<new> (sha <old8>...<new8>). Restart Bakin to activate the change: bakin stop && bakin start"`
 - **Local plugins:**
   - Read recorded `source` path; missing → error: `"Original source path <path> no longer exists. Reinstall with: bakin plugins install <new-path>"`
-  - Compute current source-tree sha (skip `node_modules`, `dist`, `.git`); if equal → `"<id> v<version>: already up to date"`
+  - Compute current source-tree sha (canonical whiskit `hashSourceTree` — sorted rel+filehash lines, skipping NON_RUNTIME_DIRS + dotfiles; `src/core/plugins/source-tree-sha.ts`); if equal → `"<id> v<version>: already up to date"`. Rows written by the legacy hasher (no `sourceTreeShaAlgo`) are verified with the legacy formula and rewritten once (canonical sha + `sourceTreeShaAlgo: 2`) instead of reporting a spurious change.
   - `cpSync` source → plugin dir (overwrites)
   - Validate, prompt (if widened), build, update lockfile, restart-required exit
 

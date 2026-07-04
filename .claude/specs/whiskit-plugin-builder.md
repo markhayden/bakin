@@ -275,8 +275,12 @@ Current plugin build behavior is split:
   plugins — it rebuilds stale plugins on every cold start.
 - GitHub source materialization uses **system `git clone --depth 1`** via
   `src/core/github-source-cache.ts`. It does not download archives over HTTPS.
-- GitHub-installed plugins are currently treated as trusted prebuilt `dist/`
-  when present, via the `trustExistingDist` policy in the builder and lockfile.
+- GitHub-installed plugins were historically treated as trusted prebuilt
+  `dist/` when present, via the `trustExistingDist` policy in the builder and
+  lockfile. That policy was removed (fix/security T6, `1d4a4b34`): source
+  installs always rebuild, and the install commit deletes any shipped
+  `dist/` before compiling. Only provenance-verified Whiskit artifacts skip
+  the rebuild.
 - `bakin-bits-official` currently has a publisher-side build script and
   explicitly unignores `plugins/*/dist/**` in `.gitignore`.
 
@@ -286,8 +290,9 @@ Implications for this revision:
   consumer binary — which is precisely why the consumer path must not build. The
   build backend should standardize on shelling out to system `bun` so the same
   code works in dev (compiled binary or source run) and CI.
-- `trustExistingDist` is the ad-hoc precursor to a real verified-artifact model
-  (checksummed; signing reserved post-v1). It is replaced, not extended.
+- `trustExistingDist` was the ad-hoc precursor to a real verified-artifact
+  model (checksummed; signing reserved post-v1). It was replaced, not
+  extended — the option no longer exists.
 
 Local measurements from 2026-06-04:
 

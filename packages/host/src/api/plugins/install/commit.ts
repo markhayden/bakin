@@ -13,7 +13,7 @@ import {
   writePluginLockfile,
   type PluginLockEntry,
 } from '@bakin/core/plugins/lockfile'
-import { computeSourceTreeSha } from '@/core/plugins/upgrade'
+import { SOURCE_TREE_SHA_ALGO, computeSourceTreeSha } from '@/core/plugins/source-tree-sha'
 import { findSkillsForPlugin } from '@/core/onboarding/plugin-assets'
 import {
   activateUserPluginDir,
@@ -102,6 +102,7 @@ export function recordInstall(args: {
       permissions: args.permissions,
       manifestSha,
       sourceTreeSha,
+      ...(sourceTreeSha ? { sourceTreeShaAlgo: SOURCE_TREE_SHA_ALGO } : {}),
       installedSkills,
     }
 

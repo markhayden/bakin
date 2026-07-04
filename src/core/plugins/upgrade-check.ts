@@ -12,7 +12,7 @@ import {
   updatePlugin,
   writePluginLockfile,
 } from '@bakin/core/plugins/lockfile'
-import { computeSourceTreeSha } from './source-tree-sha'
+import { SOURCE_TREE_SHA_ALGO, compareStoredSourceTreeSha } from './source-tree-sha'
 import { isArtifactInstall, latestPublishedVersion } from './upgrade-artifact'
 import { githubCloneUrl } from './upgrade-github'
 import { run } from './upgrade-gate'
@@ -28,6 +28,13 @@ export interface UpgradeAvailability {
   remoteArtifactVersion?: string
   /** Local only — last seen source tree sha. */
   sourceTreeSha?: string
+  /**
+   * Local only — the stored sha was legacy (algo 1) and the source is
+   * unchanged; `runChecks` rewrites the row once with the canonical sha +
+   * `sourceTreeShaAlgo` so the consolidation never spuriously reports
+   * "source changed" (see source-tree-sha.ts).
+   */
+  sourceTreeShaAlgoMigration?: boolean
   /** Set when the check itself failed (e.g. network error, missing source). */
   error?: string
 }
@@ -81,12 +88,16 @@ async function probeOne(entry: PluginLockEntry, id: string): Promise<UpgradeAvai
     if (!existsSync(entry.source)) {
       return { id, upgradeAvailable: false, lastChecked, error: `source path missing: ${entry.source}` }
     }
-    const liveTreeSha = computeSourceTreeSha(entry.source)
+    // Legacy-aware compare: a stored algo-1 sha is verified with the
+    // legacy hasher so hasher consolidation never reports a spurious
+    // "upgrade available" for an untouched source.
+    const cmp = compareStoredSourceTreeSha(entry, entry.source)
     return {
       id,
-      upgradeAvailable: entry.sourceTreeSha ? liveTreeSha !== entry.sourceTreeSha : true,
+      upgradeAvailable: cmp.changed,
       lastChecked,
-      sourceTreeSha: liveTreeSha,
+      sourceTreeSha: cmp.liveSha,
+      ...(cmp.needsAlgoMigration ? { sourceTreeShaAlgoMigration: true } : {}),
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
@@ -131,6 +142,14 @@ export async function runChecks(ids: readonly string[]): Promise<UpgradeAvailabi
     if (r.remoteHeadSha) patch.remoteHeadSha = r.remoteHeadSha
     if (r.remoteArtifactVersion) patch.remoteArtifactVersion = r.remoteArtifactVersion
     if (r.sourceTreeSha) patch.lastSourceTreeSha = r.sourceTreeSha
+    if (r.sourceTreeShaAlgoMigration && r.sourceTreeSha) {
+      // One-time reset: the row held a legacy (algo 1) sha and the source
+      // is unchanged — rewrite it under the canonical hasher so the next
+      // probe (and the manifest route's lastSourceTreeSha comparison)
+      // takes the canonical fast path.
+      patch.sourceTreeSha = r.sourceTreeSha
+      patch.sourceTreeShaAlgo = SOURCE_TREE_SHA_ALGO
+    }
     lock = updatePlugin(lock, r.id, patch)
   }
   writePluginLockfile(lock)
