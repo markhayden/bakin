@@ -1,9 +1,0 @@
-{
-  "agent": "jessica",
-  "taskId": null,
-  "created": "2026-04-04T08:00:00Z",
-  "type": "text",
-  "description": "Pour-over coffee brewing guide with grind size chart",
-  "tags": ["guide", "coffee", "beverage"],
-  "source": "agent"
-}

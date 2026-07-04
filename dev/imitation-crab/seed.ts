@@ -3,12 +3,19 @@
  * Idempotent: skips if directory already exists (use --force to re-seed).
  */
 import { existsSync, mkdirSync, cpSync, readFileSync, writeFileSync, rmSync, symlinkSync, appendFileSync } from 'fs'
+import { execSync } from 'child_process'
+import { homedir } from 'os'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { initBakinHome, resetContentDir } from '../../packages/core/src/content-dir'
 import { claimCronFire, attachCronTask, markCronFireSkipped, claimRun, settleRun, loseRun, supersedeStaleRun } from '../../src/core/execution-ledger'
 import { closeDb } from '../../packages/core/src/storage/db'
 import { getMockHome } from './env'
+import { seedUsageSessions } from './seed-usage-sessions'
+import { seedVersionedAssets } from './seed-assets'
+import { seedTeamContent } from './seed-team'
+import { seedEnrichAgent } from './seed-enrich'
+import { seedMessagingCalendar } from './seed-messaging'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const FIXTURES_DIR = join(__dirname, 'fixtures')
@@ -24,6 +31,12 @@ export function seed(force = false): void {
   }
 
   if (force) {
+    // The wipe below takes the antfly data dir with it. If the OS-supervised
+    // engine is running against this home, it must be BOUNCED after the wipe
+    // — otherwise it keeps serving deleted inodes: some tables 500, others
+    // 404, drains stall, and blue/green rebuilds park ("green never
+    // converged"). Stop it first; the post-wipe restart happens below.
+    stopAntflyServiceIfPresent()
     rmSync(mockHome, { recursive: true, force: true })
   }
 
@@ -74,6 +87,14 @@ export function seed(force = false): void {
   seedAvatars(mockHome)
   seedSessionJsonl(mockHome)
 
+  // Usage-history transcripts (relative dates → all 3 windows populate),
+  // versioned assets with enrichment states, personas + lessons + webp avatar.
+  seedUsageSessions(mockHome)
+  seedVersionedAssets(mockHome)
+  seedTeamContent(mockHome)
+  seedEnrichAgent(mockHome)
+  seedMessagingCalendar(mockHome)
+
   // Seed Bakin-owned task-store data.
   seedTasks(mockHome)
 
@@ -94,7 +115,73 @@ export function seed(force = false): void {
   // Symlink external plugins from bakin-bits-official
   seedPluginSymlinks(mockHome)
 
+  // If the OS-supervised antfly service exists, restart it so it opens the
+  // freshly wiped data dir instead of serving pre-wipe inodes.
+  restartAntflyServiceIfPresent()
+
   console.log(`[seed] Done — ${mockHome} ready`)
+}
+
+// ─── Antfly service coordination (darwin best-effort) ────────────────────────
+// The mock home's engine runs under launchd (io.bakin.antfly). Wiping its
+// data dir under a live engine leaves it serving deleted inodes — every
+// force-reseed must stop-before-wipe and restart-after-seed. All calls are
+// best-effort: no service (CI/Linux/child-mode) is fine.
+
+const ANTFLY_SERVICE = 'io.bakin.antfly'
+
+function antflyPlistPath(): string {
+  return join(homedir(), 'Library', 'LaunchAgents', `${ANTFLY_SERVICE}.plist`)
+}
+
+/**
+ * True only when the LaunchAgent's --data-dir points inside the mock home.
+ * A service serving another home (real ~/.bakin, the docker rig) is left
+ * strictly alone — the wipe doesn't touch its data, so no bounce is needed.
+ */
+function antflyServiceTargetsMockHome(): boolean {
+  if (process.platform !== 'darwin') return false
+  const plist = antflyPlistPath()
+  if (!existsSync(plist)) return false
+  try {
+    return readFileSync(plist, 'utf-8').includes(getMockHome())
+  } catch {
+    return false
+  }
+}
+
+function antflyServiceLoaded(): boolean {
+  if (process.platform !== 'darwin') return false
+  try {
+    execSync(`launchctl list ${ANTFLY_SERVICE}`, { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+}
+
+function stopAntflyServiceIfPresent(): void {
+  if (!antflyServiceTargetsMockHome() || !antflyServiceLoaded()) return
+  try {
+    execSync(`launchctl bootout gui/$(id -u)/${ANTFLY_SERVICE}`, { stdio: 'ignore', shell: '/bin/bash' })
+    console.log('[seed] antfly service stopped for the wipe')
+  } catch {
+    console.warn('[seed] could not stop antfly service — a stale engine may need `launchctl kickstart -k` after seeding')
+  }
+}
+
+function restartAntflyServiceIfPresent(): void {
+  if (!antflyServiceTargetsMockHome()) return
+  const plist = antflyPlistPath()
+  try {
+    if (!antflyServiceLoaded()) {
+      execSync(`launchctl bootstrap gui/$(id -u) ${JSON.stringify(plist)}`, { stdio: 'ignore', shell: '/bin/bash' })
+    }
+    execSync(`launchctl kickstart -k gui/$(id -u)/${ANTFLY_SERVICE}`, { stdio: 'ignore', shell: '/bin/bash' })
+    console.log('[seed] antfly service restarted on the fresh data dir')
+  } catch {
+    console.warn('[seed] could not restart antfly service — run `launchctl kickstart -k gui/$UID/io.bakin.antfly` manually')
+  }
 }
 
 function seedOpenClawConfig(mockHome: string): void {
