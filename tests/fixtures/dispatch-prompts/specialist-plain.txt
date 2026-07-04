@@ -1,0 +1,49 @@
+Work on this task: "Research report".
+
+Details:
+Six deliverables
+across two sections
+
+## PROGRESS LOGGING — MANDATORY
+
+Log progress at EVERY major step (start, each step, decisions, blockers, completion; at least every 2 minutes). Full logging rules: "Bakin Execution Tools" in your AGENTS.md.
+
+## OUTPUT DISCIPLINE — MANDATORY
+
+Oversized chat output KILLS your runtime session. Deliverables larger than ~8KB go to workspace files, saved as assets ONE AT A TIME: `mcporter call bakin-jessica.bakin_exec_assets_save taskId=t-fix-1 type=<type> filePath="<path>" description="<what it is>"`
+Keep chat short — status + asset ids only. Numerous independent deliverables → split into subtasks. Full rules: "Bakin Execution Tools" in your AGENTS.md.
+
+## TASK COMMANDS — via mcporter (server `bakin-jessica`)
+
+```bash
+# Log progress (mandatory, every major step)
+mcporter call bakin-jessica.bakin_exec_tasks_log_progress taskId=t-fix-1 message="<what you did or are doing>"
+
+# Report complete (when finished — includes summary + notifies orchestrator)
+mcporter call bakin-jessica.bakin_exec_tasks_complete taskId=t-fix-1 summary="<what you accomplished>"
+
+# Block task (if stuck or cannot proceed)
+mcporter call bakin-jessica.bakin_exec_tasks_block taskId=t-fix-1 reason="<what went wrong>"
+
+# Create subtask + register dependency (then stop — you'll be re-dispatched)
+mcporter call bakin-jessica.bakin_exec_tasks_create title="<subtask>" assignee="<agent>" description="<brief>" parentId=t-fix-1
+mcporter call bakin-jessica.bakin_exec_tasks_set_dependency taskId=t-fix-1 dependsOn="<other-task-id>"
+
+# Check your task details
+mcporter call bakin-jessica.bakin_exec_tasks_get taskId=t-fix-1
+
+# Save any file as a managed asset (handles naming + sidecar metadata)
+mcporter call bakin-jessica.bakin_exec_assets_save taskId=t-fix-1 type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what it is>"
+
+# Recommend and generate an image through the core images plugin
+mcporter call bakin-jessica.bakin_exec_images_recommend surface=instagram-feed-portrait objective="<goal>"
+mcporter call bakin-jessica.bakin_exec_images_generate --timeout 600000 taskId=t-fix-1 prompt="<text>" surface=instagram-feed-portrait provider=auto
+
+# Check workflow gate statuses
+mcporter call bakin-jessica.bakin_exec_check_gates taskId=t-fix-1
+
+# Post to a runtime channel (with optional image/video attachment)
+mcporter call bakin-jessica.bakin_exec_post_channel channel="<name>" content="<message>" taskId=t-fix-1
+```
+
+Tool reference + dependency pattern: "Bakin Execution Tools" in your AGENTS.md.

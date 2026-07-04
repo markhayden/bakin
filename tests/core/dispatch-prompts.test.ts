@@ -51,9 +51,22 @@ mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
 }))
 
 import { buildDispatchMessage } from '../../src/core/dispatch'
+import { buildDispatchSections } from '../../src/core/dispatch-prompts'
+import { buildWorkflowDispatchMessage, buildWorkflowDispatchSections } from '../../src/core/dispatch-workflow'
+import {
+  FIXTURE_CONTENT_DIR,
+  MAIN_AGENT,
+  SPECIALIST_FULL,
+  SPECIALIST_PLAIN,
+  TRIAGE,
+  WORKFLOW_FULL,
+  WORKFLOW_PRIOR_ONLY,
+} from '../fixtures/dispatch-prompts/inputs'
 import { readFileSync } from 'fs'
 
 const specialistTask = { id: 't-1', title: 'Research report', agent: 'jessica', description: 'Six deliverables' }
+const fixture = (name: string) =>
+  readFileSync(join(import.meta.dir, `../fixtures/dispatch-prompts/${name}.txt`), 'utf-8')
 
 describe('OUTPUT DISCIPLINE in dispatch prompts', () => {
   it('every specialist dispatch carries the short discipline reminder with the templated save command', () => {
@@ -82,12 +95,109 @@ describe('OUTPUT DISCIPLINE in dispatch prompts', () => {
   })
 
   it('workflow step prompts carry the discipline with the step-output variant (no subtasks)', () => {
-    // buildWorkflowDispatchMessage is module-private; assert via source that
-    // it consumes the same shared section with subtasksAllowed: false.
-    const source = readFileSync(join(import.meta.dir, '../../src/core/dispatch-workflow.ts'), 'utf-8')
-    const wfBuilder = source.slice(source.indexOf('function buildWorkflowDispatchMessage'))
-    expect(wfBuilder).toContain('outputDisciplineSection(agentName, task.id, { subtasksAllowed: false })')
-    expect(wfBuilder).toContain('sharedExecutionToolDocs(agentName, task.id,')
+    const msg = buildWorkflowDispatchMessage(
+      WORKFLOW_FULL.task,
+      WORKFLOW_FULL.stepContext,
+      WORKFLOW_FULL.agentName,
+    )
+    expect(msg).toContain('## OUTPUT DISCIPLINE — MANDATORY')
+    // Step variant: save-as-asset guidance, never subtask splitting.
+    expect(msg).toContain('reference the asset id in your submitted output')
+    expect(msg).not.toContain('split into subtasks')
+    expect(msg).toContain(`bakin_exec_check_gates taskId=${WORKFLOW_FULL.task.id}`)
+  })
+})
+
+describe('prompt byte fixtures + labeled sections', () => {
+  const cases: Array<{ name: string; build: () => string; sections: () => Array<{ source: string; text: string }>; joiner: string }> = [
+    {
+      name: 'specialist-plain',
+      build: () => buildDispatchMessage(SPECIALIST_PLAIN.task, SPECIALIST_PLAIN.agentName, FIXTURE_CONTENT_DIR),
+      sections: () => buildDispatchSections(SPECIALIST_PLAIN.task, SPECIALIST_PLAIN.agentName, FIXTURE_CONTENT_DIR),
+      joiner: '',
+    },
+    {
+      name: 'specialist-full',
+      build: () =>
+        buildDispatchMessage(
+          SPECIALIST_FULL.task, SPECIALIST_FULL.agentName, FIXTURE_CONTENT_DIR, SPECIALIST_FULL.mainAgentId,
+          SPECIALIST_FULL.lessonBlock, SPECIALIST_FULL.continuation, SPECIALIST_FULL.recovery,
+          [...SPECIALIST_FULL.roster], SPECIALIST_FULL.assetsBlock,
+        ),
+      sections: () =>
+        buildDispatchSections(
+          SPECIALIST_FULL.task, SPECIALIST_FULL.agentName, FIXTURE_CONTENT_DIR, SPECIALIST_FULL.mainAgentId,
+          SPECIALIST_FULL.lessonBlock, SPECIALIST_FULL.continuation, SPECIALIST_FULL.recovery,
+          [...SPECIALIST_FULL.roster], SPECIALIST_FULL.assetsBlock,
+        ),
+      joiner: '',
+    },
+    {
+      name: 'triage',
+      build: () => buildDispatchMessage(TRIAGE.task, TRIAGE.agentName, FIXTURE_CONTENT_DIR, 'main', '', {}, undefined, [...TRIAGE.roster]),
+      sections: () => buildDispatchSections(TRIAGE.task, TRIAGE.agentName, FIXTURE_CONTENT_DIR, 'main', '', {}, undefined, [...TRIAGE.roster]),
+      joiner: '',
+    },
+    {
+      name: 'main-agent',
+      build: () => buildDispatchMessage(MAIN_AGENT.task, MAIN_AGENT.agentName, FIXTURE_CONTENT_DIR),
+      sections: () => buildDispatchSections(MAIN_AGENT.task, MAIN_AGENT.agentName, FIXTURE_CONTENT_DIR),
+      joiner: '',
+    },
+    {
+      name: 'workflow-full',
+      build: () =>
+        buildWorkflowDispatchMessage(
+          WORKFLOW_FULL.task, WORKFLOW_FULL.stepContext, WORKFLOW_FULL.agentName,
+          WORKFLOW_FULL.lessonBlock, undefined, WORKFLOW_FULL.assetsBlock,
+        ),
+      sections: () =>
+        buildWorkflowDispatchSections(
+          WORKFLOW_FULL.task, WORKFLOW_FULL.stepContext, WORKFLOW_FULL.agentName,
+          WORKFLOW_FULL.lessonBlock, undefined, WORKFLOW_FULL.assetsBlock,
+        ),
+      joiner: '\n',
+    },
+    {
+      name: 'workflow-prior-only',
+      build: () => buildWorkflowDispatchMessage(WORKFLOW_PRIOR_ONLY.task, WORKFLOW_PRIOR_ONLY.stepContext, WORKFLOW_PRIOR_ONLY.agentName),
+      sections: () => buildWorkflowDispatchSections(WORKFLOW_PRIOR_ONLY.task, WORKFLOW_PRIOR_ONLY.stepContext, WORKFLOW_PRIOR_ONLY.agentName),
+      joiner: '\n',
+    },
+  ]
+
+  for (const c of cases) {
+    it(`${c.name}: builder output matches the committed byte fixture`, () => {
+      // Regenerate deliberately: bun tests/fixtures/dispatch-prompts/generate.ts
+      expect(c.build()).toBe(fixture(c.name))
+    })
+
+    it(`${c.name}: labeled sections join byte-identically to the message`, () => {
+      const sections = c.sections()
+      expect(sections.map((s) => s.text).join(c.joiner)).toBe(c.build())
+      expect(sections.every((s) => s.source.length > 0 && s.text.length > 0)).toBe(true)
+    })
+  }
+
+  it('specialist sections carry stable source labels for the context report', () => {
+    const sources = cases[1].sections().map((s) => s.source)
+    for (const expected of [
+      'corrective', 'task-header', 'description', 'continuation', 'assets', 'project', 'lessons',
+      'progress-logging', 'output-discipline', 'task-commands', 'shared-tool-docs', 'project-tools',
+      'task-commands-close',
+    ]) {
+      expect(sources).toContain(expected)
+    }
+  })
+
+  it('workflow sections label the prior-step dump for the context report', () => {
+    const sources = cases[4].sections().map((s) => s.source)
+    for (const expected of [
+      'identity', 'hard-constraints', 'output-discipline', 'revision', 'workflow-context',
+      'lessons', 'assets', 'task-instructions', 'output-schema', 'progress-logging', 'commands', 'stop',
+    ]) {
+      expect(sources).toContain(expected)
+    }
   })
 })
 

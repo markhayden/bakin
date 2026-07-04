@@ -15,7 +15,7 @@ import type { DispatchState, SessionDeathState } from './dispatch-types'
 import { getFailureRecord } from './dispatch-state'
 import { findDispatchTaskSnapshot } from './dispatch-board'
 import { buildDispatchLessonBlock, buildDispatchAssetBlock } from './dispatch-context-blocks'
-import { mcporterHelpers, sharedExecutionToolDocs, outputDisciplineSection, buildCorrectiveSection } from './dispatch-prompts'
+import { mcporterHelpers, sharedExecutionToolDocs, outputDisciplineSection, buildCorrectiveSection, type PromptSection } from './dispatch-prompts'
 import { concurrencyGate, deferForBudget, claimDispatchRun, auditDispatchSuppressed, fireDispatchTurn } from './dispatch-turns'
 
 const log = createLogger('dispatch-workflow')
@@ -160,8 +160,10 @@ export async function dispatchWorkflowTask(
  *
  * Structure: identity frame → hard constraints → revision context → task → output → commands → stop.
  * Rules come BEFORE instructions (position primacy — LLMs weight early text more).
+ *
+ * @internal Exported for testing and the context-report diagnostics.
  */
-function buildWorkflowDispatchMessage(
+export function buildWorkflowDispatchSections(
   task: { id: string; title: string; description?: string },
   stepContext: {
     stepId: string
@@ -179,12 +181,23 @@ function buildWorkflowDispatchMessage(
   lessonBlock = '',
   recovery?: SessionDeathState,
   assetsBlock = '',
-): string {
-  const lines: string[] = []
+): PromptSection[] {
+  // Sections are groups of lines; the message is section texts joined by
+  // '\n', byte-identical to joining all lines directly (empty groups are
+  // skipped, so no boundary gains a stray newline).
+  const sections: PromptSection[] = []
+  let lines: string[] = []
+  const flush = (source: string) => {
+    if (lines.length > 0) {
+      sections.push({ source, text: lines.join('\n') })
+      lines = []
+    }
+  }
   if (recovery?.stage === 'corrective') {
     lines.push(buildCorrectiveSection(task.id, recovery).trimEnd())
     lines.push('')
   }
+  flush('corrective')
 
   // ─── Identity Frame ─────────────────────────────────────────────────
   lines.push('# WORKFLOW STEP ASSIGNMENT')
@@ -198,6 +211,7 @@ function buildWorkflowDispatchMessage(
   lines.push(`**Your step:** ${stepContext.label} (ID: ${stepContext.stepId})`)
   lines.push(`**Your agent name:** ${agentName}`)
   lines.push('')
+  flush('identity')
 
   // ─── Hard Constraints ───────────────────────────────────────────────
   lines.push('## HARD CONSTRAINTS — violations are rejected server-side')
@@ -211,8 +225,10 @@ function buildWorkflowDispatchMessage(
     lines.push(`6. **TOOL RESTRICTIONS:** Do NOT use: ${stepContext.deny_tools.join(', ')}. If this step requires those capabilities, BLOCK the task immediately.`)
   }
   lines.push('')
+  flush('hard-constraints')
   lines.push(...outputDisciplineSection(agentName, task.id, { subtasksAllowed: false }))
   lines.push('')
+  flush('output-discipline')
 
   // ─── Revision Context ───────────────────────────────────────────────
   if (stepContext.rejectionReason) {
@@ -230,6 +246,7 @@ function buildWorkflowDispatchMessage(
     lines.push('You MUST address this specific feedback. Do NOT resubmit unchanged output — the server detects near-duplicate resubmissions and rejects them.')
     lines.push('')
   }
+  flush('revision')
 
   // ─── Workflow Context (all prior step outputs) ─────────────────────
   if (stepContext.stepOutputs && Object.keys(stepContext.stepOutputs).length > 0) {
@@ -272,16 +289,19 @@ function buildWorkflowDispatchMessage(
     lines.push('```')
     lines.push('')
   }
+  flush('workflow-context')
 
   if (lessonBlock) {
     lines.push(lessonBlock)
     lines.push('')
   }
+  flush('lessons')
 
   if (assetsBlock) {
     lines.push(assetsBlock.trim())
     lines.push('')
   }
+  flush('assets')
 
   // ─── Task Instructions ──────────────────────────────────────────────
   lines.push('## YOUR TASK')
@@ -290,6 +310,7 @@ function buildWorkflowDispatchMessage(
     lines.push(stepContext.instructions)
     lines.push('')
   }
+  flush('task-instructions')
 
   // ─── Required Output ────────────────────────────────────────────────
   if (stepContext.output_schema) {
@@ -301,6 +322,7 @@ function buildWorkflowDispatchMessage(
     lines.push('```')
     lines.push('')
   }
+  flush('output-schema')
 
   // ─── Progress Logging ──────────────────────────────────────────────
   lines.push('## PROGRESS LOGGING — MANDATORY')
@@ -317,6 +339,7 @@ function buildWorkflowDispatchMessage(
   lines.push('- When you complete and submit your output (summary of what you produced)')
   lines.push('- If more than 2 minutes have passed since your last log, send a status update — even if just "Still working on X, currently Y"')
   lines.push('')
+  flush('progress-logging')
 
   // ─── Commands ───────────────────────────────────────────────────────
   lines.push('## COMMANDS')
@@ -339,6 +362,7 @@ function buildWorkflowDispatchMessage(
   lines.push(...sharedExecutionToolDocs(agentName, task.id, { allowChannelPost: stepContext.type === 'output' }))
   lines.push('```')
   lines.push('')
+  flush('commands')
 
   // ─── Stop Instruction ───────────────────────────────────────────────
   lines.push('## AFTER SUBMITTING')
@@ -348,6 +372,24 @@ function buildWorkflowDispatchMessage(
   lines.push('- Start work on what you think the next step might be')
   lines.push('- Send messages about what should happen next')
   lines.push('- Move the task to Done (the workflow engine handles this)')
+  flush('stop')
 
-  return lines.join('\n')
+  return sections
+}
+
+/**
+ * Build a workflow-step dispatch message.
+ * @internal Exported for testing and the context-report diagnostics.
+ */
+export function buildWorkflowDispatchMessage(
+  task: { id: string; title: string; description?: string },
+  stepContext: Parameters<typeof buildWorkflowDispatchSections>[1],
+  agentName: string,
+  lessonBlock = '',
+  recovery?: SessionDeathState,
+  assetsBlock = '',
+): string {
+  return buildWorkflowDispatchSections(task, stepContext, agentName, lessonBlock, recovery, assetsBlock)
+    .map((s) => s.text)
+    .join('\n')
 }
