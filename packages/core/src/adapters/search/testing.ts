@@ -113,6 +113,7 @@ export function createMockSearchAdapter(
         if (!current) return
         target.set(key, await fn(current))
       },
+      get: async (table, key) => docs.get(table)?.get(key) ?? null,
     },
 
     query: async (table, q): Promise<QueryResult> => {

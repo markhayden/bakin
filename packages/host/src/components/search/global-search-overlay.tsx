@@ -21,6 +21,7 @@ import { useSearch, useDebug, type SearchResult } from '@makinbakin/sdk/hooks'
 import { SearchUnavailable, ScoreOverlay } from '@makinbakin/sdk/components'
 import {
   getSearchHitRenderersSnapshot,
+  requestAllPlugins,
   subscribeSearchHitRenderers,
   type SearchHitDescriptor,
 } from '@makinbakin/sdk'
@@ -100,7 +101,13 @@ export function GlobalSearchOverlay() {
     types: activeTypes.length > 0 ? activeTypes : undefined,
   })
 
-  const onOpen = useCallback(() => setOpen(true), [])
+  const onOpen = useCallback(() => {
+    // Search is cross-plugin: lazy-loaded clients (schedule, team, …) only
+    // register their hit renderers when their bundle loads. Demand them all
+    // so every hit renders with its real renderer, not the inert default.
+    requestAllPlugins()
+    setOpen(true)
+  }, [])
   useSearchHotkey(onOpen)
 
   const [viewMode, setViewMode] = useState<ViewMode>(loadViewMode)
@@ -159,7 +166,7 @@ export function GlobalSearchOverlay() {
   return (
     <CommandDialog
       open={open}
-      onOpenChange={(next) => { if (!next) close(); else setOpen(true) }}
+      onOpenChange={(next) => { if (!next) close(); else onOpen() }}
       // Takeover layout: ~80vw x 80vh centered, results fill the height.
       className="top-1/2 -translate-y-1/2 h-[80vh] w-[80vw] max-w-[80vw] sm:max-w-[80vw] flex flex-col"
     >
@@ -249,6 +256,12 @@ export function GlobalSearchOverlay() {
                   ? descriptor.thumbnailUrl
                   : undefined
                 const { Icon, tint } = (descriptor.icon && HIT_ICONS[descriptor.icon]) || FALLBACK_ICON
+                // No href = nowhere to go: render visibly inert instead of
+                // masquerading as a clickable card (onSelect already no-ops).
+                const inert = !descriptor.href
+                const inertProps = inert
+                  ? { 'data-inert': 'true' as const, 'aria-disabled': true }
+                  : {}
                 const media = (sizeClass: string, iconClass: string) => thumbSrc ? (
                   <img
                     src={thumbSrc}
@@ -266,8 +279,9 @@ export function GlobalSearchOverlay() {
                     key={`${type}:${result.id}`}
                     value={`${type}:${result.id}`}
                     onSelect={() => onSelect(descriptor)}
-                    className="flex flex-col items-stretch gap-2 rounded-xl border p-3"
+                    className={`flex flex-col items-stretch gap-2 rounded-xl border p-3 ${inert ? 'opacity-60 cursor-default data-[selected=true]:bg-accent/40' : ''}`}
                     data-testid={`global-search-hit-${result.id}`}
+                    {...inertProps}
                   >
                     {thumbSrc ? (
                       <img
@@ -299,8 +313,9 @@ export function GlobalSearchOverlay() {
                     key={`${type}:${result.id}`}
                     value={`${type}:${result.id}`}
                     onSelect={() => onSelect(descriptor)}
-                    className="flex items-center gap-4 rounded-lg px-4 py-3"
+                    className={`flex items-center gap-4 rounded-lg px-4 py-3 ${inert ? 'opacity-60 cursor-default data-[selected=true]:bg-accent/40' : ''}`}
                     data-testid={`global-search-hit-${result.id}`}
+                    {...inertProps}
                   >
                     {media('size-16 shrink-0', 'size-6')}
                     <div className="min-w-0 flex-1">

@@ -85,6 +85,7 @@ if (!binary) {
         remove: (t, k) => retry(() => adapter.documents.remove(t, k)),
         batchRemove: (t, k) => retry(() => adapter.documents.batchRemove(t, k)),
         transform: (t, k, fn) => retry(() => adapter.documents.transform(t, k, fn)),
+        get: (t, k) => retry(() => adapter.documents.get(t, k)),
       },
       query: adapter.query.bind(adapter),
       multiQuery: adapter.multiQuery.bind(adapter),

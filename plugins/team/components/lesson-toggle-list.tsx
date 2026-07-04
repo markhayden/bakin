@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Loader2, Package } from 'lucide-react'
 import { Switch } from '@makinbakin/sdk/ui'
+import { useQueryState } from '@makinbakin/sdk/hooks'
 
 /**
  * Per-agent lessons toggle list. Fetches from
@@ -29,6 +30,27 @@ export function LessonToggleList({ agentId }: LessonToggleListProps) {
   const [error, setError] = useState<string | null>(null)
   const [packageId, setPackageId] = useState<string | null>(null)
   const [pendingId, setPendingId] = useState<string | null>(null)
+  // ⌘K lesson hits deep-link here as ?tab=lessons&lessonId=<id>; the
+  // matching card gets a highlight ring and scrolls into view ONCE per
+  // highlight id — `lessons` also changes on every optimistic toggle
+  // update, and re-scrolling mid-interaction would yank the viewport.
+  const [highlightId] = useQueryState('lessonId', '')
+  const highlightRef = useRef<HTMLElement | null>(null)
+  const scrolledForRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!highlightId) {
+      // Param cleared — re-arm so a later deep link to the SAME lesson
+      // scrolls again instead of being eaten by the once-guard.
+      scrolledForRef.current = null
+      return
+    }
+    if (!lessons || scrolledForRef.current === highlightId) return
+    if (highlightRef.current) {
+      highlightRef.current.scrollIntoView({ block: 'center' })
+      scrolledForRef.current = highlightId
+    }
+  }, [lessons, highlightId])
 
   useEffect(() => {
     let cancelled = false
@@ -113,14 +135,18 @@ export function LessonToggleList({ agentId }: LessonToggleListProps) {
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-      {lessons.map((lesson) => (
+      {lessons.map((lesson) => {
+        const highlighted = highlightId !== '' && lesson.lessonId === highlightId
+        return (
         <article
           key={lesson.lessonId}
+          ref={highlighted ? highlightRef : undefined}
+          data-highlighted={highlighted ? 'true' : undefined}
           className={`group relative flex flex-col gap-3 rounded-xl border p-5 transition-colors ${
             lesson.enabled
               ? 'border-border bg-muted/20 hover:bg-muted/30'
               : 'border-border/60 bg-muted/5 hover:bg-muted/15'
-          }`}
+          } ${highlighted ? 'ring-2 ring-primary' : ''}`}
         >
           <header className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
@@ -158,7 +184,8 @@ export function LessonToggleList({ agentId }: LessonToggleListProps) {
             </footer>
           )}
         </article>
-      ))}
+        )
+      })}
     </div>
   )
 }

@@ -145,6 +145,8 @@ export function createSearchAdapterHarness() {
     const current = target.get(key) ?? {}
     target.set(key, await fn(current))
   })
+  const documentsGet = mock(async (table: string, key: string): Promise<Document | null> =>
+    docs.get(table)?.get(key) ?? null)
 
   const query = mock(async (table: string, q: Query): Promise<QueryResult> => {
     const all = Array.from(docs.get(table)?.entries() ?? [])
@@ -194,6 +196,7 @@ export function createSearchAdapterHarness() {
       remove: documentsRemove,
       batchRemove: documentsBatchRemove,
       transform: documentsTransform,
+      get: documentsGet,
     },
     query,
     multiQuery,
@@ -235,6 +238,7 @@ export function createSearchAdapterHarness() {
       documentsRemove,
       documentsBatchRemove,
       documentsTransform,
+      documentsGet,
       query,
       multiQuery,
       scan,
