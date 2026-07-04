@@ -27,6 +27,7 @@ import type {
   RuntimeSkill,
   UpdateCronJobInput,
   WorkspaceFile,
+  WorkspaceFileStat,
 } from '@bakin/core/adapters/runtime'
 import type { AdapterHealthCheckDefinition, AdapterInitOpts, AdapterLogger } from '@bakin/core/adapters/shared'
 import { RuntimeError, RuntimeTurnError } from '@bakin/core/adapters/runtime'
@@ -48,6 +49,7 @@ import type { OpenClawRuntimeAdapterOptions } from './index'
 import { OpenClawApprovalGatewayClient } from './approval-gateway'
 import { OpenClawGatewayRpcClient } from './gateway-rpc'
 import {
+  CANONICAL_DURABLE_FILES,
   getOpenClawMemoryEntry,
   getOpenClawMemoryWatchPaths,
   listOpenClawMemoryEntries,
@@ -358,6 +360,37 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       } catch {
         return []
       }
+    },
+    workspaceFileStats: async (agentId: string): Promise<WorkspaceFileStat[] | null> => {
+      const root = getWorkspacePath(agentId)
+      if (!existsSync(root)) return null
+      const stats: WorkspaceFileStat[] = []
+      const statInto = (relPath: string, kind: WorkspaceFileStat['kind']): void => {
+        try {
+          const s = statSync(join(root, relPath))
+          if (s.isFile()) stats.push({ name: relPath, bytes: s.size, mtimeMs: s.mtimeMs, kind })
+        } catch {
+          // File raced away between enumeration and stat — stats stay best-effort.
+        }
+      }
+      for (const name of CANONICAL_DURABLE_FILES) statInto(name, 'canonical')
+      try {
+        const skillsDir = join(root, 'skills')
+        if (existsSync(skillsDir)) {
+          for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
+            if (entry.isDirectory()) statInto(join('skills', entry.name, 'SKILL.md'), 'skill')
+          }
+        }
+        const memoryDir = join(root, 'memory')
+        if (existsSync(memoryDir)) {
+          for (const entry of readdirSync(memoryDir, { withFileTypes: true })) {
+            if (entry.isFile() && entry.name.endsWith('.md')) statInto(join('memory', entry.name), 'memory')
+          }
+        }
+      } catch {
+        return stats // partial stats beat a thrown session-start diagnostic
+      }
+      return stats
     },
     readWorkspaceFile: async (agentId: string, path: string): Promise<WorkspaceFile | null> => {
       if (!isSafeWorkspaceFile(path)) return null
