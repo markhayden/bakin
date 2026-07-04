@@ -132,7 +132,7 @@ export function newPermissions(prev: Permission[], next: Permission[]): Permissi
 
 ### 3.4 Core-plugin guard
 
-**Module:** `src/lib/plugin-registry.ts`
+**Module:** `src/core/plugin-registry.ts`
 
 ```ts
 const corePluginIds = new Set<string>()
@@ -361,7 +361,7 @@ tests/fixtures/plugins/
 ```
 packages/core/src/plugin-types.ts          — Add onUninstall? to BakinPlugin
 packages/core/src/hooks/hook-registry.ts   — unregisterByPlugin + per-handler pluginId tracking
-src/lib/plugin-registry.ts                 — isCorePlugin, populate corePluginIds, wire activation log
+src/core/plugin-registry.ts                 — isCorePlugin, populate corePluginIds, wire activation log
 src/core/exec-tools/registry.ts            — removeExecToolsByPlugin
 src/core/search-registry.ts                — purgeContentType
 src/core/onboarding/plugin-assets.ts       — removePluginAssets

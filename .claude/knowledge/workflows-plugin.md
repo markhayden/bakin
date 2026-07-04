@@ -41,7 +41,7 @@ None of the three are required. A plugin can ship any subset.
 | Directory | Loader | Trigger |
 |-----------|--------|---------|
 | `defaults/workflows/` | `plugins/workflows/lib/load-defaults.ts` (called from the workflows plugin's `activate()`) | Server boot, every startup |
-| `defaults/workflow-skills/` | `src/lib/plugin-skill-loader.ts` (invoked by `src/lib/plugin-registry.ts` after every `activate()`) | Server boot, every startup, generic across all plugins |
+| `defaults/workflow-skills/` | `src/lib/plugin-skill-loader.ts` (invoked by `src/core/plugin-registry.ts` after every `activate()`) | Server boot, every startup, generic across all plugins |
 | `defaults/runtime-skills/` | `src/core/onboarding/plugin-assets.ts` (`scanPluginAssets` + `installPluginAssets`) | `bakin install plugin-assets` (manual), or surfaced by `bakin doctor` |
 
 The workflow definition and managed workflow-skill registries are rebuilt on every boot. User workflow-skill files under `~/.bakin/workflows/skills/*.md` still win over managed sources, so those local shadows need drift visibility when a shipped skill contract changes.
@@ -198,7 +198,7 @@ Plugin ids are auto-namespaced as `{pluginId}.{id}`; builtins keep their short r
 
 **Icon rendering** goes through `<ChannelIcon channelId="..." />` in `plugins/workflows/hooks/channel-icon.tsx`, which holds an explicit lucide map. `import * as Lucide` is deliberately avoided to keep the client bundle small — unknown icon names silently fall back to `HelpCircle`. Widening the map (or switching to an `IconSpec` discriminator that accepts emoji/URL/SVG) is a future concern when a plugin actually needs non-lucide icons.
 
-Teardown: `unregisterPluginNotificationChannels(pluginId)` is called by `src/lib/plugin-registry.ts` in the user-plugin-overrides-builtin path alongside `unregisterPluginNodeTypes`, so hot reload of a plugin that registered channels doesn't leak `{pluginId}.{id}` entries.
+Teardown: `unregisterPluginNotificationChannels(pluginId)` is called by `src/core/plugin-registry.ts` in the user-plugin-overrides-builtin path alongside `unregisterPluginNodeTypes`, so hot reload of a plugin that registered channels doesn't leak `{pluginId}.{id}` entries.
 
 The official Messaging plugin resolves channels through this registry from `bakin-bits-official/plugins/messaging`; the old hardcoded channel label/icon maps are gone.
 
