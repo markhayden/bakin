@@ -190,6 +190,20 @@ describe('prompt byte fixtures + labeled sections', () => {
     }
   })
 
+  it('static boilerplate stays inside its byte budget (#357 creep guard)', () => {
+    // Post-trim baselines (2026-07): task 2275 B, workflow 3292 B. The
+    // ceilings leave ~10% headroom for legitimate wording tweaks; growth past
+    // them means per-dispatch boilerplate is creeping back — move static
+    // prose to the role-layer catalog (team-context-defaults.ts) instead, or
+    // consciously raise the budget in the same commit that explains why.
+    const staticBytes = (sections: Array<{ text: string }>) =>
+      sections.reduce((n, s) => n + Buffer.byteLength(s.text, 'utf-8'), 0)
+    const task = buildDispatchSections({ id: '00000000', title: '', agent: 'jessica' }, 'jessica', testDir)
+    const workflow = buildWorkflowDispatchSections({ id: '00000000', title: '' }, { stepId: 'step', label: '' }, 'jessica')
+    expect(staticBytes(task)).toBeLessThanOrEqual(2560)
+    expect(staticBytes(workflow)).toBeLessThanOrEqual(3584)
+  })
+
   it('workflow sections label the prior-step dump for the context report', () => {
     const sources = cases[4].sections().map((s) => s.source)
     for (const expected of [
