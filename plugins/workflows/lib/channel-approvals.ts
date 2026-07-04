@@ -26,7 +26,7 @@ export async function wireChannelApprovals(ctx: PluginContext): Promise<() => vo
     renderMissingDeliveries: activeGateSettings().approvalChannelAlerts,
     log,
   })
-  if (approvalRehydration.pending > 0) {
+  if (approvalRehydration.pending > 0 || approvalRehydration.pruned > 0 || approvalRehydration.cancelled > 0) {
     log.info('Rehydrated pending workflow approvals', { ...approvalRehydration })
   }
 

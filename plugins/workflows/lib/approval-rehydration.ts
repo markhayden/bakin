@@ -3,9 +3,14 @@ import { resolveRuntimeChannelRef } from '../../../src/core/channel-aliases'
 import { loadInstance, saveInstance } from './runtime'
 import {
   approvalRefFromRecord,
+  cancelApprovalRecord,
   listApprovalRecords,
+  pruneResolvedApprovalRecords,
   updateApprovalDeliveries,
 } from './approval-store'
+
+/** Resolved approval records older than this are deleted at rehydration. */
+const RESOLVED_APPROVAL_MAX_AGE_MS = 30 * 24 * 3600 * 1000
 
 type ApprovalRehydrationLogger = {
   info?: (message: string, meta?: Record<string, unknown>) => void
@@ -19,6 +24,10 @@ export interface ApprovalRehydrationSummary {
   rerendered: number
   skipped: number
   failed: number
+  /** Resolved records past retention, deleted this pass. */
+  pruned: number
+  /** Pending records orphaned by their workflow instance, cancelled this pass. */
+  cancelled: number
 }
 
 export interface ApprovalRehydrationOptions {
@@ -47,7 +56,11 @@ export async function rehydratePendingApprovals(
     rerendered: 0,
     skipped: 0,
     failed: 0,
+    pruned: 0,
+    cancelled: 0,
   }
+
+  summary.pruned = pruneResolvedApprovalRecords(RESOLVED_APPROVAL_MAX_AGE_MS, options.contentDir)
 
   const pendingRecords = listApprovalRecords(options.contentDir)
     .filter((record) => record.status === 'pending')
@@ -74,7 +87,8 @@ export async function rehydratePendingApprovals(
   for (const record of pendingRecords) {
     const { taskId, stepId, runId } = record.owner
     if (!taskId || !stepId) {
-      summary.skipped += 1
+      cancelApprovalRecord(record.approvalId, 'orphaned: approval record has no owner identity', options.contentDir)
+      summary.cancelled += 1
       continue
     }
 
@@ -87,7 +101,8 @@ export async function rehydratePendingApprovals(
       || instance.status !== 'pending_approval'
       || stepState?.status !== 'pending_approval'
     ) {
-      summary.skipped += 1
+      cancelApprovalRecord(record.approvalId, 'orphaned: workflow instance is no longer pending at this gate', options.contentDir)
+      summary.cancelled += 1
       continue
     }
 

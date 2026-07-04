@@ -81,7 +81,7 @@ mock.module('@bakin/workflows/lib/approval-store', () => ({
 
 mock.module('@bakin/workflows/lib/approval-rehydration', () => ({
   rehydratePendingApprovals: mock(async () => ({
-    pending: 0, reattached: 0, rerendered: 0, skipped: 0, failed: 0,
+    pending: 0, reattached: 0, rerendered: 0, skipped: 0, failed: 0, pruned: 0, cancelled: 0,
   })),
 }))
 
