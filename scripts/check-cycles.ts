@@ -32,12 +32,6 @@ const KNOWN_CYCLES = new Set<string>([
   key(['packages/core/src/plugin-types.ts', 'packages/core/src/routing/types.ts']),
   key(['packages/sdk/src/types/context.ts', 'packages/sdk/src/types/registration.ts']),
   key(['packages/adapter-openclaw/src/index.ts', 'packages/adapter-openclaw/src/runtime.ts']),
-  // SDK ↔ app implementation layer (deliberate; audit P2 #2, re-deferred)
-  key(['packages/sdk/src/hooks/index.ts', 'src/hooks/use-query-state.ts']),
-  key(['packages/sdk/src/components/index.ts', 'src/components/integrated-brainstorm/index.tsx', 'src/components/integrated-brainstorm/empty-state.tsx']),
-  key(['packages/sdk/src/components/index.ts', 'src/components/integrated-brainstorm/index.tsx', 'src/components/integrated-brainstorm/input-row.tsx']),
-  key(['packages/sdk/src/components/index.ts', 'src/components/integrated-brainstorm/index.tsx', 'src/components/integrated-brainstorm/input-row.tsx', 'src/components/integrated-brainstorm/use-brainstorm-state.ts', 'src/components/integrated-brainstorm/thinking-indicator.tsx']),
-  key(['packages/sdk/src/components/index.ts', 'src/components/integrated-brainstorm/index.tsx', 'src/components/integrated-brainstorm/message-list.tsx']),
   // Dispatch fire-core: runtime-only cycles via lazy import('./dispatch-single')
   key(['src/core/dispatch-prepare.ts', 'src/core/dispatch-turns.ts', 'src/core/dispatch-session-death.ts', 'src/core/dispatch-single.ts']),
   key(['src/core/dispatch-turns.ts', 'src/core/dispatch-session-death.ts', 'src/core/dispatch-single.ts']),
@@ -50,6 +44,23 @@ const KNOWN_CYCLES = new Set<string>([
   key(['plugins/workflows/lib/engine.ts', 'plugins/workflows/lib/node-dispatch.ts']),
 ])
 
+
+/**
+ * Cycles whose PRESENCE depends on module-resolution environment: the
+ * SDK ↔ app implementation-layer edges resolve through `@makinbakin/sdk`
+ * and `@/` aliases — locally they resolve to workspace source (cycle
+ * visible), in CI `bun install --frozen-lockfile` resolves the published
+ * package (edge invisible). Tolerated either way, never required — the
+ * deliberate P2 #2 arrangement (see packages/sdk/src/hooks/index.ts).
+ */
+const TOLERATED_CYCLES = new Set<string>([
+  key(['packages/sdk/src/hooks/index.ts', 'src/hooks/use-query-state.ts']),
+  key(['packages/sdk/src/components/index.ts', 'src/components/integrated-brainstorm/index.tsx', 'src/components/integrated-brainstorm/empty-state.tsx']),
+  key(['packages/sdk/src/components/index.ts', 'src/components/integrated-brainstorm/index.tsx', 'src/components/integrated-brainstorm/input-row.tsx']),
+  key(['packages/sdk/src/components/index.ts', 'src/components/integrated-brainstorm/index.tsx', 'src/components/integrated-brainstorm/input-row.tsx', 'src/components/integrated-brainstorm/use-brainstorm-state.ts', 'src/components/integrated-brainstorm/thinking-indicator.tsx']),
+  key(['packages/sdk/src/components/index.ts', 'src/components/integrated-brainstorm/index.tsx', 'src/components/integrated-brainstorm/message-list.tsx']),
+])
+
 const result = await madge(ENTRIES, {
   fileExtensions: ['ts', 'tsx'],
   tsConfig: 'tsconfig.app.json',
@@ -59,7 +70,7 @@ const result = await madge(ENTRIES, {
 const cycles = result.circular()
 const found = new Map(cycles.map((c) => [key(c), c]))
 
-const newCycles = [...found.entries()].filter(([k]) => !KNOWN_CYCLES.has(k))
+const newCycles = [...found.entries()].filter(([k]) => !KNOWN_CYCLES.has(k) && !TOLERATED_CYCLES.has(k))
 const staleAllowlist = [...KNOWN_CYCLES].filter((k) => !found.has(k))
 
 if (newCycles.length > 0) {
@@ -72,6 +83,7 @@ if (staleAllowlist.length > 0) {
 }
 if (newCycles.length > 0 || staleAllowlist.length > 0) process.exit(1)
 
-console.log(`check-cycles: ${cycles.length} known cycles, 0 new, allowlist current.`)
+const toleratedSeen = [...found.keys()].filter((k) => TOLERATED_CYCLES.has(k)).length
+console.log(`check-cycles: ${cycles.length - toleratedSeen} pinned + ${toleratedSeen} tolerated cycles, 0 new, allowlist current.`)
 
 export {} // top-level await requires module context under tsc
