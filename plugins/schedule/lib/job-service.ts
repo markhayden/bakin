@@ -1,20 +1,25 @@
 /**
  * Schedule job service — the CRUD verbs shared by the REST routes and the exec
  * tools, plus the core-boundary crossings (runtime cron + search). Isolating
- * them here keeps the route/exec handlers thin and the read-only guard / delete
- * semantics consistent across both surfaces.
+ * them here keeps the route/exec handlers thin and the read-only guard /
+ * create / update / pause / delete / detail-projection semantics consistent
+ * across both surfaces (createScheduleJob / applyPauseAction /
+ * updateScheduleJob / projectJobDetail were deduped from the route and
+ * exec-tool copies after FW1 fixed the pause-`pauseUntil` drift).
  *
- * (The route↔exec-tool dedup the audit flagged — createScheduleJob /
- * applyPauseAction / updateScheduleJob / projectJobDetail, including the
- * pause-`pauseUntil` behavioral drift — is a deliberate behavior-touching
- * follow-up, NOT taken in this pure relocation.)
+ * Surface-specific behavior stays with the callers: audit/activity logging,
+ * post-mutation `indexJob` re-indexing (the REST routes reindex after
+ * update/pause; the exec tools historically only reindex after update), and
+ * status-code mapping.
  */
 import type { PluginContext } from '@bakin/core/plugin-types'
 import type { BakinJobMeta, MergedJob } from '../types'
 import { getPluginCtx } from './plugin-context'
-import { getJob, upsertJob, removeJob, readSidecar } from './sidecar'
+import { getJob, upsertJob, removeJob, readSidecar, newScheduleId, withDefaults } from './sidecar'
 import { readMergedJobs } from './jobs-reader'
 import { parseSchedule } from './cron-parser'
+import { checkSchedulePrompt, type PromptWarning } from './prompt-guard'
+import { getLastRun } from './runs-reader'
 import { getSystemTimezone } from './schedule-util'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { createLogger } from '../../../src/core/logger'
@@ -104,6 +109,158 @@ export async function ensureBakinJob(ctx: PluginContext, input: Record<string, u
   indexJob(jobId)
 
   return { ok: true, jobId, cron: parsed.cron, human: parsed.human }
+}
+
+export interface CreateScheduleJobInput {
+  name: string
+  schedule: string
+  agentId?: string
+  workflowId?: string
+  taskPrompt?: string
+  taskTitle?: string
+  owner?: string
+  requireTriage?: boolean
+  allowOverlap?: boolean
+  maxFailures?: number
+  tz?: string
+}
+
+export type CreateScheduleJobResult =
+  | { ok: true; jobId: string; cron: string; human: string; tz: string; warnings: PromptWarning[] }
+  | { ok: false; error: string }
+
+/** Create a Bakin-owned schedule: parse, build meta, persist, index. */
+export async function createScheduleJob(
+  ctx: Pick<PluginContext, 'runtime'>,
+  input: CreateScheduleJobInput,
+): Promise<CreateScheduleJobResult> {
+  const parsed = parseSchedule(input.schedule)
+  if (!parsed) return { ok: false, error: 'Could not parse schedule expression' }
+
+  const tz = input.tz || getSystemTimezone()
+  const jobId = newScheduleId()
+  const owner = input.owner ?? await getRuntimeMainAgentId(ctx.runtime)
+  const now = new Date().toISOString()
+  const meta: BakinJobMeta = {
+    jobId,
+    isBakinJob: true,
+    source: 'bakin',
+    schedule: { kind: 'cron', expr: parsed.cron },
+    enabled: true,
+    displayName: input.name,
+    agentId: input.agentId,
+    owner,
+    requireTriage: input.requireTriage ?? false,
+    workflowId: input.workflowId,
+    taskPrompt: input.taskPrompt,
+    taskTitle: input.taskTitle,
+    allowOverlap: input.allowOverlap ?? false,
+    maxFailures: input.maxFailures ?? 3,
+    consecutiveFailures: 0,
+    tz,
+    createdAt: now,
+    updatedAt: now,
+  }
+  upsertJob(meta)
+  indexJob(jobId)
+  return { ok: true, jobId, cron: parsed.cron, human: parsed.human, tz, warnings: checkSchedulePrompt(input.taskPrompt) }
+}
+
+export type PauseAction = 'pause' | 'resume' | 'skip'
+
+/**
+ * Apply pause/resume/skip to an already-guarded Bakin job meta and persist it.
+ * Callers own re-indexing + audit.
+ */
+export function applyPauseAction(
+  meta: BakinJobMeta,
+  action: PauseAction,
+  opts: { pauseUntil?: string; skipN?: number } = {},
+): { ok: true } | { ok: false; error: string } {
+  switch (action) {
+    case 'pause':
+      meta.paused = true
+      meta.pauseReason = 'manual'
+      // Unconditional: a fresh pause without a date clears any stale
+      // auto-resume left in place by a prior pause.
+      meta.pauseUntil = opts.pauseUntil
+      meta.enabled = false
+      break
+    case 'resume':
+      meta.paused = false
+      meta.pauseReason = undefined
+      meta.pauseUntil = undefined
+      meta.skipNextN = undefined
+      meta.skippedCount = undefined
+      meta.consecutiveFailures = 0
+      meta.enabled = true
+      break
+    case 'skip':
+      if (!meta.isBakinJob) return { ok: false, error: 'Skip is only available for Bakin schedules' }
+      meta.skipNextN = opts.skipN ?? 1
+      meta.skippedCount = 0
+      break
+  }
+  upsertJob(meta)
+  return { ok: true }
+}
+
+/**
+ * Apply a partial update to an already-guarded Bakin job meta and persist it.
+ * `fields` is the calling surface's allowlist of sidecar fields (the REST
+ * route accepts more fields than the exec tool). `name` maps to displayName
+ * before the field loop, so an explicit `displayName` in `updates` wins —
+ * both surfaces now share that precedence. Callers own re-indexing + audit.
+ */
+export function updateScheduleJob(
+  meta: BakinJobMeta,
+  updates: Record<string, unknown>,
+  fields: readonly string[],
+): { ok: true; warnings: PromptWarning[] } | { ok: false; error: string } {
+  if (updates.schedule && typeof updates.schedule === 'string') {
+    const parsed = parseSchedule(updates.schedule)
+    if (!parsed) return { ok: false, error: 'Could not parse schedule' }
+    meta.schedule = { kind: 'cron', expr: parsed.cron }
+  }
+  if (updates.name && typeof updates.name === 'string') {
+    meta.displayName = updates.name
+  }
+  for (const field of fields) {
+    if (updates[field] !== undefined) {
+      ;(meta as unknown as Record<string, unknown>)[field] = updates[field]
+    }
+  }
+  upsertJob(meta)
+  return { ok: true, warnings: checkSchedulePrompt(meta.taskPrompt) }
+}
+
+/** The detail projection shared by GET /:jobId and bakin_exec_schedule_get. */
+export async function projectJobDetail(
+  ctx: Pick<PluginContext, 'runtime'>,
+  jobId: string,
+  meta: BakinJobMeta,
+): Promise<Record<string, unknown>> {
+  const defaults = withDefaults(meta, await getRuntimeMainAgentId(ctx.runtime))
+  const lastRun = await getLastRun(ctx.runtime.cron, jobId)
+  return {
+    id: meta.jobId,
+    name: meta.displayName,
+    agent: meta.agentId,
+    owner: defaults.owner,
+    paused: meta.paused ?? false,
+    pauseReason: meta.pauseReason,
+    pauseUntil: meta.pauseUntil,
+    workflowId: meta.workflowId,
+    taskPrompt: meta.taskPrompt,
+    taskTitle: meta.taskTitle,
+    allowOverlap: defaults.allowOverlap,
+    maxFailures: defaults.maxFailures,
+    consecutiveFailures: meta.consecutiveFailures ?? 0,
+    lastTaskId: meta.lastTaskId,
+    lastRun: lastRun ?? null,
+    tz: meta.tz,
+    createdAt: meta.createdAt,
+  }
 }
 
 export function getJobByLogicalJobId(logicalJobId: string): BakinJobMeta | null {

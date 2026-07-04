@@ -8,14 +8,22 @@
 import { z } from 'zod'
 import { defineRoute, searchRoute } from '@bakin/core/routing'
 import type { BakinJobMeta } from '../../types'
-import { getJob, upsertJob, newScheduleId, withDefaults } from '../sidecar'
+import { getJob, upsertJob } from '../sidecar'
 import { parseSchedule } from '../cron-parser'
 import { getSystemTimezone, json } from '../schedule-util'
-import { checkSchedulePrompt } from '../prompt-guard'
-import { getLastRun, readRuns } from '../runs-reader'
+import { readRuns } from '../runs-reader'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { fireManualRun } from '../fire-engine'
-import { guardBakinMutation, deleteScheduleJob, indexJob, readMergedRuntimeJobs } from '../job-service'
+import {
+  applyPauseAction,
+  createScheduleJob,
+  deleteScheduleJob,
+  guardBakinMutation,
+  indexJob,
+  projectJobDetail,
+  readMergedRuntimeJobs,
+  updateScheduleJob,
+} from '../job-service'
 
 // ─── Schemas ─────────────────────────────────────────────────────────────
 
@@ -107,39 +115,12 @@ export const scheduleRoutes = [
     body: createJobBody,
     responses: { 200: passthrough, 400: errorResponse, 500: errorResponse },
     handler: async (_req, ctx, { body }) => {
-      const parsed = parseSchedule(body.schedule)
-      if (!parsed) {
-        return json({ error: 'Could not parse schedule expression' }, 400)
-      }
-      const tz = body.tz || getSystemTimezone()
-      const jobId = newScheduleId()
-      const owner = body.owner ?? await getRuntimeMainAgentId(ctx.runtime)
-      const meta: BakinJobMeta = {
-        jobId,
-        isBakinJob: true,
-        source: 'bakin',
-        schedule: { kind: 'cron', expr: parsed.cron },
-        enabled: true,
-        displayName: body.name,
-        agentId: body.agentId,
-        owner,
-        requireTriage: body.requireTriage ?? false,
-        workflowId: body.workflowId,
-        taskPrompt: body.taskPrompt,
-        taskTitle: body.taskTitle,
-        allowOverlap: body.allowOverlap ?? false,
-        maxFailures: body.maxFailures ?? 3,
-        consecutiveFailures: 0,
-        tz,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      }
-      upsertJob(meta)
-      indexJob(jobId)
-      ctx.activity.audit('job.created', body.owner ?? 'system', { jobId, name: body.name })
+      const result = await createScheduleJob(ctx, body)
+      if (!result.ok) return json({ error: result.error }, 400)
+      ctx.activity.audit('job.created', body.owner ?? 'system', { jobId: result.jobId, name: body.name })
       ctx.activity.log(body.owner ?? 'system', `Created schedule "${body.name}"`)
-      const warnings = checkSchedulePrompt(body.taskPrompt)
-      return json({ ok: true, jobId, cron: parsed.cron, human: parsed.human, tz, ...(warnings.length ? { warnings } : {}) })
+      const { warnings, ...created } = result
+      return json({ ...created, ...(warnings.length ? { warnings } : {}) })
     },
   }),
 
@@ -156,30 +137,15 @@ export const scheduleRoutes = [
       const guard = await guardBakinMutation(jobId)
       if (!guard.ok) return json({ error: guard.error }, guard.status)
       const meta = guard.meta
-      const b = body as Record<string, unknown>
-      if (b.schedule && typeof b.schedule === 'string') {
-        const parsed = parseSchedule(b.schedule)
-        if (!parsed) return json({ error: 'Could not parse schedule' }, 400)
-        meta.schedule = { kind: 'cron', expr: parsed.cron }
-      }
-      if (b.name && typeof b.name === 'string') {
-        meta.displayName = b.name
-      }
-      const sidecarFields = [
+      const result = updateScheduleJob(meta, body as Record<string, unknown>, [
         'displayName', 'description', 'agentId', 'owner', 'requireTriage',
         'workflowId', 'taskPrompt', 'taskTitle', 'allowOverlap', 'maxFailures',
-      ]
-      for (const field of sidecarFields) {
-        if (b[field] !== undefined) {
-          ;(meta as unknown as Record<string, unknown>)[field] = b[field]
-        }
-      }
-      upsertJob(meta)
+      ])
+      if (!result.ok) return json({ error: result.error }, 400)
       indexJob(jobId)
       ctx.activity.audit('job.updated', 'system', { jobId })
       ctx.activity.log('system', `Updated schedule "${meta.displayName || jobId}"`)
-      const warnings = checkSchedulePrompt(meta.taskPrompt)
-      return json({ ok: true, ...(warnings.length ? { warnings } : {}) })
+      return json({ ok: true, ...(result.warnings.length ? { warnings: result.warnings } : {}) })
     },
   }),
 
@@ -192,29 +158,7 @@ export const scheduleRoutes = [
     handler: async (_req, ctx, { params }) => {
       const meta = getJob(params.jobId)
       if (!meta) return json({ error: 'Job not found' }, 404)
-      const defaults = withDefaults(meta, await getRuntimeMainAgentId(ctx.runtime))
-      const lastRun = await getLastRun(ctx.runtime.cron, params.jobId)
-      return json({
-        job: {
-          id: meta.jobId,
-          name: meta.displayName,
-          agent: meta.agentId,
-          owner: defaults.owner,
-          paused: meta.paused ?? false,
-          pauseReason: meta.pauseReason,
-          pauseUntil: meta.pauseUntil,
-          workflowId: meta.workflowId,
-          taskPrompt: meta.taskPrompt,
-          taskTitle: meta.taskTitle,
-          allowOverlap: defaults.allowOverlap,
-          maxFailures: defaults.maxFailures,
-          consecutiveFailures: meta.consecutiveFailures ?? 0,
-          lastTaskId: meta.lastTaskId,
-          lastRun: lastRun ?? null,
-          tz: meta.tz,
-          createdAt: meta.createdAt,
-        },
-      })
+      return json({ job: await projectJobDetail(ctx, params.jobId, meta) })
     },
   }),
 
@@ -354,29 +298,8 @@ export const scheduleRoutes = [
       const guard = await guardBakinMutation(jobId)
       if (!guard.ok) return json({ error: guard.error }, guard.status)
       const meta = guard.meta
-      switch (body.action) {
-        case 'pause':
-          meta.paused = true
-          meta.pauseReason = 'manual'
-          meta.pauseUntil = body.pauseUntil
-          meta.enabled = false
-          break
-        case 'resume':
-          meta.paused = false
-          meta.pauseReason = undefined
-          meta.pauseUntil = undefined
-          meta.skipNextN = undefined
-          meta.skippedCount = undefined
-          meta.consecutiveFailures = 0
-          meta.enabled = true
-          break
-        case 'skip':
-          if (!meta.isBakinJob) return json({ error: 'Skip is only available for Bakin schedules' }, 400)
-          meta.skipNextN = body.skipN ?? 1
-          meta.skippedCount = 0
-          break
-      }
-      upsertJob(meta)
+      const result = applyPauseAction(meta, body.action, { pauseUntil: body.pauseUntil, skipN: body.skipN })
+      if (!result.ok) return json({ error: result.error }, 400)
       indexJob(jobId)
       ctx.activity.audit(`job.${body.action}`, 'system', { jobId })
       ctx.activity.log('system', `Schedule "${meta.displayName || jobId}" ${body.action}d`)
