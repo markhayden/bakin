@@ -76,6 +76,7 @@ describe('GET /api/curated', () => {
     const body = await res.json()
 
     expect(body.catalog.agents.map((agent: { id: string }) => agent.id).sort()).toEqual([
+      'enrich',
       'jessica',
       'patch',
       'pixel',
