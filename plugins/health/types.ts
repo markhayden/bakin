@@ -111,3 +111,63 @@ export interface HealthSummary {
   upSince: string | null
   server: ServerData | null
 }
+
+// --- Search health (blue/green index status) -------------------------------
+// Promoted from the inline shape the health page previously declared in-place,
+// so the page component and /search-status route type against one contract.
+
+export interface SearchHealthLeg {
+  name: string
+  totalIndexed: number
+  rebuilding: boolean
+  error?: string
+}
+
+export interface SearchHealthTable {
+  logical: string
+  physical: string
+  schemaVersion: number
+  state: 'active' | 'migrating'
+  phase: string | null
+  pluginId: string
+  docCount: number | null
+  legs: SearchHealthLeg[]
+  healthy: boolean
+}
+
+export interface SearchHealthData {
+  enabled: boolean
+  outbox?: { pending: number; quarantined: number; oldestPendingAt: number | null }
+  tables: SearchHealthTable[]
+}
+
+export interface SearchTelemetryWindow {
+  query: { count: number; errors: number; medianMs: number | null }
+  drain: { count: number; errors: number }
+  enrich: { count: number; errors: number }
+}
+
+export interface SearchEnrichmentCoverage {
+  total: number
+  enriched: number
+  missing: number
+  stale: number
+  failed: number
+  skipped: number
+}
+
+export interface SearchTelemetryData {
+  windows: Record<'1h' | '24h', SearchTelemetryWindow>
+  outbox: { pending: number; quarantined: number }
+  enrichment: {
+    depth?: number
+    running?: number
+    failedRecent?: number
+    coverage?: SearchEnrichmentCoverage
+  } | null
+}
+
+export interface MeteredSpendData {
+  totalUsdMicros: number
+  byAgent: Array<{ agent: string; costUsdMicros: number; runs: number }>
+}
