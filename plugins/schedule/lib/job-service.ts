@@ -17,7 +17,8 @@ import type { BakinJobMeta, MergedJob } from '../types'
 import { getPluginCtx } from './plugin-context'
 import { getJob, upsertJob, removeJob, readSidecar, newScheduleId, withDefaults } from './sidecar'
 import { readMergedJobs } from './jobs-reader'
-import { parseSchedule } from './cron-parser'
+import { parseSchedule, cronToHuman } from './cron-parser'
+import { nextRun as cronNextRun } from './cron-eval'
 import { checkSchedulePrompt, type PromptWarning } from './prompt-guard'
 import { getLastRun } from './runs-reader'
 import { getSystemTimezone } from './schedule-util'
@@ -242,10 +243,20 @@ export async function projectJobDetail(
 ): Promise<Record<string, unknown>> {
   const defaults = withDefaults(meta, await getRuntimeMainAgentId(ctx.runtime))
   const lastRun = await getLastRun(ctx.runtime.cron, jobId)
+  const isCron = meta.schedule?.kind === 'cron' && !!meta.schedule.expr
   return {
     id: meta.jobId,
     name: meta.displayName,
     agent: meta.agentId,
+    // When the job runs — the list projection carries these; a client on the
+    // detail endpoint alone must be able to display the schedule too.
+    schedule: meta.schedule,
+    cron: isCron ? meta.schedule!.expr : undefined,
+    humanSchedule: isCron ? cronToHuman(meta.schedule!.expr) : undefined,
+    nextRun: isCron && !(meta.paused ?? false)
+      ? cronNextRun(meta.schedule!.expr, meta.tz, new Date())?.toISOString()
+      : undefined,
+    enabled: meta.enabled !== false,
     owner: defaults.owner,
     paused: meta.paused ?? false,
     pauseReason: meta.pauseReason,
