@@ -10,4 +10,4 @@ Branch: `fix/search-hit-navigation`
 - [x] T5 Contract test (red-checked against reverted team-key fix) — commit 5 `test(plugins): contract — every content type has a working hit renderer`
 - [x] T6 Knowledge docs + spec status + README check (no impact) — commit 6 `docs(search): hit-renderer contract, memory record deep link`
 - [x] T7 (found in browser verify): lazy plugin clients never registered renderers until page visit — `requestAllPlugins()` on overlay open — commit 7 `fix(host): load all lazy plugin clients when the search overlay opens`
-- [ ] Final gate: full suite green, manual 4-type click-through (schedule ✓, lessons ✓, memory ✓ incl. not-found ✓), ports clean, open PR
+- [x] Final gate: full suite green (5390 pass), manual click-through on real data (schedule ✓, lessons ✓, memory ✓ incl. not-found ✓, all 7 chips ✓), embedded-assets manifest regenerated for new SDK chunks, PR #593 opened
