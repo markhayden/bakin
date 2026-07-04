@@ -15,7 +15,11 @@ registerPlugin({
         return {
           title: content.slice(0, 120),
           subtitle: [hit.fields.tier, agent].filter(Boolean).join(' · ') || 'memory',
-          href: `/memory?q=${encodeURIComponent(content.slice(0, 60))}${agent ? `&agent=${encodeURIComponent(agent)}` : ''}`,
+          // Exact-record deep link: the page resolves ?recordId= via
+          // GET /record and opens the detail drawer on the clicked row.
+          // ?q= rides along so a resolution miss (row pruned from source)
+          // still lands on the closest matches instead of a dead end.
+          href: `/memory?recordId=${encodeURIComponent(hit.id)}&q=${encodeURIComponent(content.slice(0, 60))}`,
           icon: 'brain',
         }
       },

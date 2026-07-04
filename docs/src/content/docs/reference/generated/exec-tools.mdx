@@ -851,7 +851,7 @@ mcporter call bakin-<agent>.bakin_exec_schedule_update --args '{
 <p class="mcp-section-description">Search tools query Bakin-indexed content across plugins or inside a specific surface.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="search-facets" name="bakin_exec_search_facets" label="Search facets" description="Get facet value counts for a plugin. Useful for understanding data distribution (e.g., how many tasks per status)." source="src/core/exec-tools/tools/search-tools.ts:158" parameters={[{"name":"plugin","type":"string","required":true,"description":"Plugin id (tasks, assets, projects, etc.)"},{"name":"facets","type":"string","required":true,"description":"Comma-separated facet fields (e.g., \"status,agent\")"}]}>
+<McpToolCard id="search-facets" name="bakin_exec_search_facets" label="Search facets" description="Get facet value counts for a plugin. Useful for understanding data distribution (e.g., how many tasks per status)." source="src/core/exec-tools/tools/search-tools.ts:157" parameters={[{"name":"plugin","type":"string","required":true,"description":"Plugin id (tasks, assets, projects, etc.)"},{"name":"facets","type":"string","required":true,"description":"Comma-separated facet fields (e.g., \"status,agent\")"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_search_facets --args '{
   "plugin": "value",
@@ -876,7 +876,7 @@ mcporter call bakin-<agent>.bakin_exec_search_query --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="search-reindex" name="bakin_exec_search_reindex" label="Reindex search" description="Trigger a full reindex of all content types (or a specific plugin). Use after bulk data changes." source="src/core/exec-tools/tools/search-tools.ts:221" parameters={[{"name":"plugin","type":"string","required":false,"description":"Specific plugin id to reindex (optional — omit for all)"},{"name":"rebuild","type":"boolean","required":false,"description":"Drop and recreate indexes before reindexing (default: false)"},{"name":"verify","type":"boolean","required":false,"description":"Re-query tables after reindex to verify doc counts (default: false)"}]}>
+<McpToolCard id="search-reindex" name="bakin_exec_search_reindex" label="Reindex search" description="Trigger a full reindex of all content types (or a specific plugin). Use after bulk data changes." source="src/core/exec-tools/tools/search-tools.ts:220" parameters={[{"name":"plugin","type":"string","required":false,"description":"Specific plugin id to reindex (optional — omit for all)"},{"name":"rebuild","type":"boolean","required":false,"description":"Drop and recreate indexes before reindexing (default: false)"},{"name":"verify","type":"boolean","required":false,"description":"Re-query tables after reindex to verify doc counts (default: false)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_search_reindex --args '{
   "plugin": "value",
@@ -885,7 +885,7 @@ mcporter call bakin-<agent>.bakin_exec_search_reindex --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="search-similar" name="bakin_exec_search_similar" label="Find similar" description="Find documents similar to a given text description. Uses semantic (vector) search for meaning-based matching." source="src/core/exec-tools/tools/search-tools.ts:187" parameters={[{"name":"text","type":"string","required":true,"description":"Text to find similar documents for"},{"name":"plugin","type":"string","required":false,"description":"Limit to a specific plugin id (optional)"},{"name":"limit","type":"number","required":false,"description":"Maximum results (default: 10)"}]}>
+<McpToolCard id="search-similar" name="bakin_exec_search_similar" label="Find similar" description="Find documents similar to a given text description. Uses semantic (vector) search for meaning-based matching." source="src/core/exec-tools/tools/search-tools.ts:186" parameters={[{"name":"text","type":"string","required":true,"description":"Text to find similar documents for"},{"name":"plugin","type":"string","required":false,"description":"Limit to a specific plugin id (optional)"},{"name":"limit","type":"number","required":false,"description":"Maximum results (default: 10)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_search_similar --args '{
   "text": "value",
@@ -894,7 +894,7 @@ mcporter call bakin-<agent>.bakin_exec_search_similar --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="search-stats" name="bakin_exec_search_stats" label="Search stats" description="Get search system health: enabled status, per-table document counts, and index stats." source="src/core/exec-tools/tools/search-tools.ts:251">
+<McpToolCard id="search-stats" name="bakin_exec_search_stats" label="Search stats" description="Get search system health: enabled status, per-table document counts, and index stats." source="src/core/exec-tools/tools/search-tools.ts:250">
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_search_stats
 ```

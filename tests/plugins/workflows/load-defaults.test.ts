@@ -51,10 +51,10 @@ import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 
 const fakeLog = { warn: mock(), info: mock(), error: mock(), debug: mock() }
 
-function makeHostPlugin(defaultsDir: string): BakinPlugin {
+function makeHostPlugin(defaultsDir: string, id = 'workflows-host'): BakinPlugin {
   return {
-    id: 'workflows-host',
-    name: 'workflows-host',
+    id,
+    name: id,
     version: '1.0.0',
     activate: (ctx: PluginContext) => {
       loadDefaultWorkflows(ctx, defaultsDir, fakeLog)
@@ -163,7 +163,7 @@ steps:
     expect(getDefinition('child')).toBeDefined()
   })
 
-  it('skips defaults with truly missing nested workflow refs', async () => {
+  it('registers defaults whose nested refs are missing at load — existence is start-time + health, not load-fatal (#374)', async () => {
     writeFileSync(join(fakeDefaultsDir, 'parent.yaml'), `name: Parent
 description: Parent workflow
 version: 1
@@ -176,8 +176,56 @@ steps:
 
     await activatePlugin(makeHostPlugin(fakeDefaultsDir), testDir)
 
-    expect(getDefinition('parent')).toBeUndefined()
+    expect(getDefinition('parent')).toBeDefined()
+  })
+
+  it('still skips structural failures and self-references at load', async () => {
+    writeFileSync(join(fakeDefaultsDir, 'self-ref.yaml'), `name: Self
+description: references itself
+version: 1
+steps:
+  - id: run-self
+    type: workflow
+    label: Run Self
+    workflow_id: self-ref
+`)
+    writeFileSync(join(fakeDefaultsDir, 'bad.yaml'), invalidYaml)
+
+    await activatePlugin(makeHostPlugin(fakeDefaultsDir), testDir)
+
+    expect(getDefinition('self-ref')).toBeUndefined()
+    expect(getDefinition('bad')).toBeUndefined()
     expect(fakeLog.warn).toHaveBeenCalled()
+  })
+
+  it('loads cross-plugin nested refs regardless of plugin activation order (#374)', async () => {
+    const parentDir = join(testDir, 'plugin-a', 'defaults', 'workflows')
+    const childDir = join(testDir, 'plugin-b', 'defaults', 'workflows')
+    mkdirSync(parentDir, { recursive: true })
+    mkdirSync(childDir, { recursive: true })
+    writeFileSync(join(parentDir, 'composite-post.yaml'), `name: Composite Post
+description: parent in plugin A
+version: 1
+steps:
+  - id: make-image
+    type: workflow
+    label: Make Image
+    workflow_id: shared-child
+`)
+    writeFileSync(join(childDir, 'shared-child.yaml'), validYaml)
+
+    // Parent's plugin activates FIRST — child not yet in the registry.
+    await activatePlugin(makeHostPlugin(parentDir, 'plugin-a'), testDir)
+    await activatePlugin(makeHostPlugin(childDir, 'plugin-b'), testDir)
+    expect(getDefinition('composite-post')).toBeDefined()
+    expect(getDefinition('shared-child')).toBeDefined()
+
+    // And the reverse order.
+    clearSourceRegistry()
+    await activatePlugin(makeHostPlugin(childDir, 'plugin-b'), testDir)
+    await activatePlugin(makeHostPlugin(parentDir, 'plugin-a'), testDir)
+    expect(getDefinition('composite-post')).toBeDefined()
+    expect(getDefinition('shared-child')).toBeDefined()
   })
 
   it('returns an empty result when the defaults dir does not exist', async () => {

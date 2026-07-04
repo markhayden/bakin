@@ -103,7 +103,7 @@ All search MCP tools take a `plugin: <pluginId>` parameter — agents pass plugi
 |---|---|---|
 | `bakin_exec_search_query` | Cross-/single-plugin search | `q` (req), `plugin?`, `limit?`, `offset?` |
 | `bakin_exec_search_table` | Single plugin + facets | `plugin` (req), `q` (req), `facets?`, `limit?` |
-| `bakin_exec_search_lookup` | Fetch one doc by key | `plugin` (req), `key` (req) |
+| `bakin_exec_search_lookup` | Fetch one doc by exact key via `SearchAdapter.documents.get` (returns `{ key, document }` — the raw doc, not a scored hit) | `plugin` (req), `key` (req) |
 | `bakin_exec_search_facets` | Facet distributions | `plugin` (req), `facets` (req) |
 | `bakin_exec_search_similar` | Semantic similarity | `text` (req), `plugin?`, `limit?` |
 | `bakin_exec_search_reindex` | **Blue/green rebuild** (search stays available) | `plugin?` |

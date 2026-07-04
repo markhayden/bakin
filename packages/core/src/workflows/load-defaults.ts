@@ -40,26 +40,29 @@ export function loadDefaultWorkflows(
     (f) => f.endsWith('.yaml') || f.endsWith('.yml'),
   )
 
-  const parsedFiles: Array<{ id: string; definition: WorkflowDefinition }> = []
   for (const file of files) {
     const id = file.replace(/\.(yaml|yml)$/, '')
+    let definition: WorkflowDefinition
     try {
       const raw = readFileSync(join(defaultsDir, file), 'utf-8')
-      const parsed = yaml.load(raw) as unknown as WorkflowDefinition
-      parsedFiles.push({ id, definition: parsed })
+      definition = yaml.load(raw) as unknown as WorkflowDefinition
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       result.skipped.push({ id, errors: [message] })
       log.warn(`Failed to load plugin-shipped workflow "${id}"`, { error: message })
+      continue
     }
-  }
 
-  const knownWorkflowIds = new Set(parsedFiles.map((entry) => entry.id))
-  for (const { id, definition } of parsedFiles) {
+    // Nested-ref EXISTENCE is deliberately not checked at load time: the
+    // referenced workflow may ship in a plugin that has not activated yet
+    // (#374). Structural validation and self-references stay fatal here; a
+    // truly missing child is rejected by start-time validation
+    // (createValidatedInstance) and surfaced by the workflow-definitions
+    // health check.
     const errors = validateDefinition(definition, {
       definitionId: id,
       source: 'plugin',
-      knownWorkflowIds,
+      validateNestedWorkflowRefs: false,
     })
     if (errors.length > 0) {
       result.skipped.push({ id, errors })

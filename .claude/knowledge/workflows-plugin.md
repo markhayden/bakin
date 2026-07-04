@@ -109,9 +109,24 @@ Start-time validation checks those ids against the runtime roster. `$assigned`
 requires the task to already have an assignee and fails before instance creation
 if it cannot resolve.
 
-Default workflow loading is two-pass: Bakin parses every file, builds the set of
-known workflow ids, then validates. Nested workflow references are therefore not
-filesystem-order dependent.
+### Three-tier reference validation (#374)
+
+Nested `workflow_id` existence is deliberately validated at three tiers,
+because plugin-default loading runs per-plugin during `activate()` and a
+referenced workflow may ship in a plugin that has not activated yet:
+
+1. **Load (structural only, fatal):** `loadDefaultWorkflows` validates each
+   YAML in a single pass with `validateNestedWorkflowRefs: false`. Malformed
+   definitions, missing `workflow_id`, and self-references are skipped with a
+   warn log. A nested ref pointing at a workflow that is not (yet) registered
+   is NOT a load error — cross-plugin composition must not depend on plugin
+   activation order, hot-reload timing, or user-plugin install order.
+2. **Start (strict, fatal):** every start path (REST, hooks, exec tools) goes
+   through `createValidatedInstance`, which recursively loads each nested
+   definition, detects cycles, and rejects genuinely missing children.
+3. **Health (advisory):** the `workflow-definitions` check warns when any
+   definition references a nested workflow absent from the live user-disk +
+   registry set — order-independent and current under hot reload.
 
 ## Runtime Execution Contract
 
@@ -125,7 +140,7 @@ Validation enforces the current engine's real contract:
 - `gate.on_approve` must advance to the next top-level step, or `done` for a final gate.
 - `gate.on_reject.goto` can only target the current or an earlier top-level step.
 - `parallel` groups can only contain agent child steps; gates, output steps, nested workflows, and child `dependsOn` are rejected.
-- `workflow` nested references must resolve to known definitions and cannot reference themselves. Start-time validation rejects nested workflow cycles.
+- `workflow` nested references cannot reference themselves (fatal everywhere). Existence is tiered (#374): not checked at plugin-default load, fatal at start time, advisory in the `workflow-definitions` health check.
 - `output` steps require an agent owner so channel-post authorization has a concrete principal.
 
 Agents are also gated at tool-use time. Workflow step reads and submissions use

@@ -53,6 +53,9 @@ interface UseScheduleOptions {
 export function useScheduleJobs(options: UseScheduleOptions = {}) {
   const [jobs, setJobs] = useState<ScheduleJob[]>([])
   const [loading, setLoading] = useState(true)
+  // True while the last fetch failed — consumers must not treat the stale
+  // (possibly empty) list as ground truth, e.g. for "job not found" notices.
+  const [fetchFailed, setFetchFailed] = useState(false)
   const optionsRef = useRef(options)
   optionsRef.current = options
 
@@ -62,9 +65,13 @@ export function useScheduleJobs(options: UseScheduleOptions = {}) {
       if (res.ok) {
         const data = await res.json()
         setJobs(data.jobs || [])
+        setFetchFailed(false)
+      } else {
+        setFetchFailed(true)
       }
     } catch {
       // Network error — keep existing state
+      setFetchFailed(true)
     } finally {
       setLoading(false)
     }
@@ -224,7 +231,7 @@ export function useScheduleJobs(options: UseScheduleOptions = {}) {
   }, [jobs, fetchJobs])
 
   return {
-    jobs: filtered, loading, refresh: fetchJobs,
+    jobs: filtered, allJobs: jobs, loading, fetchFailed, refresh: fetchJobs,
     pauseJob, resumeJob, deleteJob, runNow, updateJob, adoptJob, restoreNative, skipNext, duplicateJob,
   }
 }

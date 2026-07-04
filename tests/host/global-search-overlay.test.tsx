@@ -28,6 +28,7 @@ mock.module('@tanstack/react-router', () => ({
 
 import { GlobalSearchOverlay } from '../../packages/host/src/components/search/global-search-overlay'
 import { registerPlugin, unregisterPlugin } from '../../packages/sdk/src/register'
+import { configureLazyPlugins, setLazyPluginLoader, setPluginLoadState } from '../../packages/sdk/src/lazy'
 
 function mockSearchFetch(handler: (url: string) => { status: number; body: unknown }) {
   ;(globalThis as Record<string, unknown>).fetch = mock((url: string) =>
@@ -116,6 +117,27 @@ describe('GlobalSearchOverlay', () => {
     expect(screen.queryByPlaceholderText(/Search assets/)).toBeNull()
   })
 
+  it('null-href hits render inert and do not navigate', async () => {
+    // No renderer registered for `schedule` → defaultDescriptor → href: null.
+    mockSearchFetch(() => ({
+      status: 200,
+      body: { results: [HIT('job-1', 'bakin_schedule', { title: 'Nightly sweep' })], meta: { query: 'x', total: 1, took_ms: 1, source: 'search' } },
+    }))
+
+    render(<GlobalSearchOverlay />)
+    openOverlay()
+    const input = await screen.findByPlaceholderText(/Search assets/)
+    fireEvent.input(input, { target: { value: 'sweep' } })
+    await waitFor(() => expect(screen.getByTestId('global-search-hit-job-1')).toBeTruthy(), { timeout: 3000 })
+
+    const hit = screen.getByTestId('global-search-hit-job-1')
+    expect(hit.getAttribute('data-inert')).toBe('true')
+    fireEvent.click(hit)
+    expect(navigateCalls.length).toBe(0)
+    // overlay stays open — a dead click must not close it
+    expect(screen.queryByPlaceholderText(/Search assets/)).not.toBeNull()
+  })
+
   it('renders the honest unavailable state on the 503 contract', async () => {
     mockSearchFetch(() => ({ status: 503, body: { error: 'search_unavailable' } }))
     render(<GlobalSearchOverlay />)
@@ -123,6 +145,29 @@ describe('GlobalSearchOverlay', () => {
     const input = await screen.findByPlaceholderText(/Search assets/)
     fireEvent.input(input, { target: { value: 'down' } })
     await waitFor(() => expect(screen.getByTestId('search-unavailable')).toBeTruthy(), { timeout: 3000 })
+  })
+
+  it('opening the overlay demands every idle lazy plugin client', async () => {
+    // Lazy plugins register hit renderers only when their client loads —
+    // search is cross-plugin, so opening the overlay must load them all.
+    const loaded: string[] = []
+    configureLazyPlugins({
+      slotOwners: new Map([['page:/lzso-a', ['lzso-a']]]),
+      routeOwners: [{ pattern: 'page:/lzso-b/[id]', pluginId: 'lzso-b' }],
+    })
+    setLazyPluginLoader((id) => {
+      loaded.push(id)
+      setPluginLoadState(id, 'loading')
+    })
+    try {
+      render(<GlobalSearchOverlay />)
+      openOverlay()
+      await screen.findByPlaceholderText(/Search assets/)
+      expect(loaded.sort()).toEqual(['lzso-a', 'lzso-b'])
+    } finally {
+      setLazyPluginLoader(null)
+      configureLazyPlugins({ slotOwners: new Map(), routeOwners: [] })
+    }
   })
 
   it('does not hijack ⌘K while typing in an input', async () => {

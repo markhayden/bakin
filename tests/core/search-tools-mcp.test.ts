@@ -164,15 +164,23 @@ const searchQueryMock = mock(async (_table: string, query: { text: string }) => 
   ],
   total: 1,
 }))
+// Exact get-by-key — what the lookup tool must use (doc keys are not
+// searchable text, so a text query can never find a doc by key).
+const documentsGetMock = mock(async (_table: string, key: string) =>
+  key === 'doc-1' ? { name: 'Project One', status: 'active' } : null)
 
 mock.module('../../src/core/app-services', () => ({
   getAppServices: () => ({
     search: {
       tables: { stats: searchStatsMock },
+      documents: { get: documentsGetMock },
       query: searchQueryMock,
     },
   }),
 }))
+
+// Blue/green: raw-adapter calls must target the physical table.
+const resolvePhysicalTableMock = mock((logical: string) => `${logical}_v1_phys`)
 
 mock.module('../../src/core/search-registry', () => ({
   crossTableSearch: crossTableSearchMock,
@@ -180,6 +188,7 @@ mock.module('../../src/core/search-registry', () => ({
   getContentTypes: getContentTypesMock,
   getTableForPlugin: getTableForPluginMock,
   getIndexNames: mock(() => ['embeddings']),
+  resolvePhysicalTable: resolvePhysicalTableMock,
   purgeContentType: mock(async () => {}),
   buildSearchAPI: mock(() => ({ health: getSearchHealthMock })),
 }))
@@ -255,13 +264,25 @@ describe('MCP search tools — plugin param coverage', () => {
   })
 
   describe('bakin_exec_search_lookup', () => {
-    it('looks up document by key for the resolved plugin', async () => {
+    it('fetches the document by exact key via documents.get on the physical table', async () => {
+      searchQueryMock.mockClear()
       const tool = await getTool('bakin_exec_search_lookup')
       const result = await tool.handler({ plugin: 'projects', key: 'doc-1' }, {} as never)
       expect(result.ok).toBe(true)
-      expect(searchStatsMock).toHaveBeenCalledWith('bakin_projects')
-      expect(searchQueryMock).toHaveBeenCalled()
-      expect((result as unknown as { document: { id: string } }).document.id).toBe('doc-1')
+      expect(documentsGetMock).toHaveBeenCalledWith('bakin_projects_v1_phys', 'doc-1')
+      // The old implementation text-searched the key — keys are not indexed
+      // as text, so that lookup silently missed. Must never query.
+      expect(searchQueryMock).not.toHaveBeenCalled()
+      const body = result as unknown as { key: string; document: Record<string, unknown> }
+      expect(body.key).toBe('doc-1')
+      expect(body.document).toEqual({ name: 'Project One', status: 'active' })
+    })
+
+    it('reports an honest miss when the key does not exist', async () => {
+      const tool = await getTool('bakin_exec_search_lookup')
+      const result = await tool.handler({ plugin: 'projects', key: 'nope' }, {} as never)
+      expect(result.ok).toBe(false)
+      expect((result as unknown as { error: string }).error).toContain('not found')
     })
   })
 
