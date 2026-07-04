@@ -1,4 +1,5 @@
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
+import { resolveRuntimeChannelRef } from '../../../src/core/channel-aliases'
 import { loadInstance, saveInstance } from './runtime'
 import {
   approvalRefFromRecord,
@@ -9,6 +10,7 @@ import {
 type ApprovalRehydrationLogger = {
   info?: (message: string, meta?: Record<string, unknown>) => void
   warn?: (message: string, meta?: Record<string, unknown>) => void
+  error?: (message: string, meta?: Record<string, unknown>) => void
 }
 
 export interface ApprovalRehydrationSummary {
@@ -51,6 +53,24 @@ export async function rehydratePendingApprovals(
     .filter((record) => record.status === 'pending')
   summary.pending = pendingRecords.length
 
+  // Resolved lazily so boots with nothing to re-render never touch settings
+  // or the runtime channel list (and never error-log on unresolvable config).
+  let resolvedChannel: string | null = null
+  let channelResolutionFailed = false
+  const resolveChannelOnce = async (): Promise<string | null> => {
+    if (resolvedChannel || channelResolutionFailed) return resolvedChannel
+    try {
+      resolvedChannel = (await resolveRuntimeChannelRef(options.runtime, options.channel)).resolved
+    } catch (err) {
+      channelResolutionFailed = true
+      options.log?.error?.('Approval re-render channel resolution failed', {
+        channel: options.channel,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+    return resolvedChannel
+  }
+
   for (const record of pendingRecords) {
     const { taskId, stepId, runId } = record.owner
     if (!taskId || !stepId) {
@@ -79,10 +99,15 @@ export async function rehydratePendingApprovals(
     }
 
     if (currentRecord.deliveries.length === 0 && options.renderMissingDeliveries) {
+      const channel = await resolveChannelOnce()
+      if (!channel) {
+        summary.failed += 1
+        continue
+      }
       try {
         const result = await options.runtime.channels.createApproval({
           approvalId: currentRecord.approvalId,
-          channels: [options.channel],
+          channels: [channel],
           request: currentRecord.request,
         })
         currentRecord = updateApprovalDeliveries(currentRecord.approvalId, result.deliveries, options.contentDir)

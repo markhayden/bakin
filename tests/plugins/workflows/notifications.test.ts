@@ -2,7 +2,65 @@ import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import {
+
+const testHome = join(tmpdir(), `bakin-workflow-notifications-${Date.now()}`)
+
+const contentDirMock = {
+  getContentDir: () => testHome,
+  getBakinPaths: () => ({ db: join(testHome, 'bakin.db') }),
+  resetContentDir: mock(),
+  initBakinHome: mock(),
+  isUsingBakinHome: () => false,
+}
+mock.module('../../../src/core/content-dir', () => contentDirMock)
+mock.module('../../../packages/core/src/content-dir', () => contentDirMock)
+mock.module('@/core/content-dir', () => contentDirMock)
+
+mock.module('@/core/task-store', () => ({
+  createTask: mock(() => Promise.resolve({ id: 'mock-task' })),
+  addTaskLog: mock(() => Promise.resolve()),
+  moveTask: mock(() => Promise.resolve()),
+  readTaskboard: mock(() => ({
+    columns: { backlog: [], inProgress: [], todo: [], review: [], done: [], archived: [], blocked: [] },
+  })),
+  getTask: mock(() => null),
+  getTaskWithColumn: mock(() => null),
+}))
+
+const logInfo = mock()
+const logWarn = mock()
+const logError = mock()
+mock.module('../../../src/core/logger', () => ({
+  createLogger: () => ({
+    info: logInfo,
+    warn: logWarn,
+    error: logError,
+    debug: mock(),
+  }),
+}))
+
+let mockChannelAliases: Record<string, string> = {}
+const settingsMock = {
+  resetSettingsCache: () => {},
+  getSettings: () => ({
+    notifications: {
+      channel: '',
+      target: '',
+      gateAlerts: true,
+      channelAliases: mockChannelAliases,
+    },
+  }),
+}
+mock.module('@/core/settings', () => settingsMock)
+mock.module('../../../src/core/settings', () => settingsMock)
+
+import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
+import type { WorkflowInstance } from '@bakin/workflows/types'
+import type { GateNotificationSettings } from '@bakin/workflows/lib/notifications'
+
+// Dynamic imports so the mock.module overlays above apply before the modules
+// capture their logger/settings references at evaluation time.
+const {
   buildGateApprovalId,
   parseGateApprovalId,
   resolveGateApproval,
@@ -10,23 +68,10 @@ import {
   sendGateDecisionSummary,
   setGateNotificationSettings,
   setNotificationRuntime,
-  type GateNotificationSettings,
-} from '@bakin/workflows/lib/notifications'
-import { createApprovalRecord, getApprovalRecord } from '@bakin/workflows/lib/approval-store'
-import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
-import type { WorkflowInstance } from '@bakin/workflows/types'
-
-mock.module('../../../src/core/logger', () => ({
-  createLogger: () => ({
-    info: mock(),
-    warn: mock(),
-    error: mock(),
-    debug: mock(),
-  }),
-}))
+} = await import('@bakin/workflows/lib/notifications')
+const { createApprovalRecord, getApprovalRecord } = await import('@bakin/workflows/lib/approval-store')
 
 describe('runtime gate notifications', () => {
-  const testHome = join(tmpdir(), `bakin-workflow-notifications-${Date.now()}`)
   const previousBakinHome = process.env.BAKIN_HOME
 
   const mockInstance: WorkflowInstance = {
@@ -53,23 +98,28 @@ describe('runtime gate notifications', () => {
   }
 
   const createApproval = mock(async () => ({
-    deliveries: [{ channelId: 'approvals', ref: 'message:1', renderedAt: '2026-04-11T10:00:00Z' }],
+    deliveries: [{ channelId: 'discord:123', ref: 'message:1', renderedAt: '2026-04-11T10:00:00Z' }],
   }))
   const resolveApproval = mock(async () => {})
   const sendNotification = mock(async () => ({ deliveries: [] }))
+  const listChannels = mock(async () => [] as Array<{ id: string }>)
 
   beforeEach(() => {
     rmSync(testHome, { recursive: true, force: true })
     mkdirSync(testHome, { recursive: true })
     process.env.BAKIN_HOME = testHome
+    mockChannelAliases = { approvals: 'discord:123' }
     createApproval.mockClear()
     resolveApproval.mockClear()
     sendNotification.mockClear()
+    listChannels.mockClear()
+    logError.mockClear()
     const runtime = {
       channels: {
         createApproval,
         resolveApproval,
         sendNotification,
+        list: listChannels,
       },
     } as unknown as AgentRuntimeAdapter
     setNotificationRuntime(runtime)
@@ -91,7 +141,7 @@ describe('runtime gate notifications', () => {
     expect(parseGateApprovalId('not-a-gate')).toBeNull()
   })
 
-  it('creates approvals through the runtime channel adapter', async () => {
+  it('creates approvals through the runtime channel adapter with the resolved channel', async () => {
     const ref = await sendGateApprovalRequest(
       mockInstance,
       'review-gate',
@@ -108,12 +158,12 @@ describe('runtime gate notifications', () => {
     )
     expect(ref).toEqual({
       approvalId: expectedApprovalId,
-      deliveries: [{ channelId: 'approvals', ref: 'message:1', renderedAt: '2026-04-11T10:00:00Z' }],
+      deliveries: [{ channelId: 'discord:123', ref: 'message:1', renderedAt: '2026-04-11T10:00:00Z' }],
     })
     expect(getApprovalRecord(expectedApprovalId, testHome)).toEqual(expect.objectContaining({
       approvalId: expectedApprovalId,
       status: 'pending',
-      deliveries: [{ channelId: 'approvals', ref: 'message:1', renderedAt: '2026-04-11T10:00:00Z' }],
+      deliveries: [{ channelId: 'discord:123', ref: 'message:1', renderedAt: '2026-04-11T10:00:00Z' }],
       owner: {
         workflowId: 'content-pipeline',
         runId: 'wf_abc123',
@@ -125,7 +175,7 @@ describe('runtime gate notifications', () => {
     const [call] = createApproval.mock.calls[0] as unknown as [Record<string, unknown> & { request: { options: unknown; context: unknown } }]
     expect(call).toEqual(expect.objectContaining({
       approvalId: expectedApprovalId,
-      channels: ['approvals'],
+      channels: ['discord:123'],
     }))
     expect(call.request.options).toEqual([
       { id: 'approve', label: 'Approve', variant: 'primary' },
@@ -133,6 +183,45 @@ describe('runtime gate notifications', () => {
     ])
     expect(call.request.context).toEqual(expect.objectContaining({
       approvalUrl: expect.stringContaining('/api/plugins/workflows/gates/task-42/decision'),
+    }))
+  })
+
+  it('accepts a bare channel that the runtime lists', async () => {
+    mockChannelAliases = {}
+    listChannels.mockImplementationOnce(async () => [{ id: 'approvals' }])
+
+    await sendGateApprovalRequest(mockInstance, 'review-gate', 'Review Draft', undefined, enabledSettings)
+
+    expect(createApproval).toHaveBeenCalledTimes(1)
+    const [call] = createApproval.mock.calls[0] as unknown as [Record<string, unknown>]
+    expect(call).toEqual(expect.objectContaining({ channels: ['approvals'] }))
+  })
+
+  it('returns null, keeps the durable record, and logs an error when the channel cannot be resolved', async () => {
+    mockChannelAliases = {}
+
+    const ref = await sendGateApprovalRequest(
+      mockInstance,
+      'review-gate',
+      'Review Draft',
+      undefined,
+      enabledSettings,
+    )
+
+    expect(ref).toBeNull()
+    expect(createApproval).not.toHaveBeenCalled()
+    expect(logError).toHaveBeenCalledTimes(1)
+
+    const expectedApprovalId = buildGateApprovalId(
+      'task-42',
+      'review-gate',
+      'wf_abc123',
+      '2026-04-11T10:00:00Z',
+    )
+    expect(getApprovalRecord(expectedApprovalId, testHome)).toEqual(expect.objectContaining({
+      approvalId: expectedApprovalId,
+      status: 'pending',
+      deliveries: [],
     }))
   })
 
@@ -169,7 +258,7 @@ describe('runtime gate notifications', () => {
     await resolveGateApproval(
       {
         approvalId: 'workflow-gate:task-42:review-gate',
-        deliveries: [{ channelId: 'approvals', ref: 'message:1', renderedAt: '2026-04-11T10:00:00Z' }],
+        deliveries: [{ channelId: 'discord:123', ref: 'message:1', renderedAt: '2026-04-11T10:00:00Z' }],
       },
       'rejected',
       { source: 'channel', id: 'reviewer-1', displayName: 'Reviewer One' },
@@ -197,7 +286,7 @@ describe('runtime gate notifications', () => {
     }))
   })
 
-  it('sends decision summaries through the runtime channel adapter', async () => {
+  it('sends decision summaries through the resolved channel', async () => {
     await sendGateDecisionSummary(
       mockInstance,
       'review-gate',
@@ -214,11 +303,31 @@ describe('runtime gate notifications', () => {
     expect(sendNotification).toHaveBeenCalledTimes(1)
     const [call] = sendNotification.mock.calls[0] as unknown as [Record<string, unknown>]
     expect(call).toEqual(expect.objectContaining({
-      channels: ['approvals'],
+      channels: ['discord:123'],
       notification: expect.objectContaining({
         severity: 'success',
         title: 'Gate Approved: Review Draft',
       }),
     }))
+  })
+
+  it('skips the decision summary and logs an error when the channel cannot be resolved', async () => {
+    mockChannelAliases = {}
+
+    await sendGateDecisionSummary(
+      mockInstance,
+      'review-gate',
+      'Review Draft',
+      undefined,
+      'approved',
+      { source: 'web', id: 'main-operator' },
+      undefined,
+      '2026-04-11T10:05:00Z',
+      undefined,
+      enabledSettings,
+    )
+
+    expect(sendNotification).not.toHaveBeenCalled()
+    expect(logError).toHaveBeenCalledTimes(1)
   })
 })

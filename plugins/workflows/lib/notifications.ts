@@ -9,6 +9,7 @@ import type { AgentRuntimeAdapter, ApprovalRenderRef, CreateApprovalArgs } from 
 import type { ApprovalActor, EventBus } from '@bakin/core/plugin-types'
 import type { WorkflowInstance } from '../types'
 import { createLogger } from '../../../src/core/logger'
+import { resolveRuntimeChannelRef } from '../../../src/core/channel-aliases'
 import { createApprovalRecord, resolveApprovalRecord, updateApprovalDeliveries } from './approval-store'
 
 const log = createLogger('workflow-notifications')
@@ -247,10 +248,18 @@ export async function sendGateApprovalRequest(
     createdAt: requestedAt,
   })
 
+  let resolvedChannel: string
+  try {
+    resolvedChannel = (await resolveRuntimeChannelRef(runtime, channel)).resolved
+  } catch (err) {
+    log.error('Gate approval channel resolution failed', err, { approvalId, channel })
+    return null
+  }
+
   try {
     const result = await runtime.channels.createApproval({
       approvalId,
-      channels: [channel],
+      channels: [resolvedChannel],
       request,
     })
     updateApprovalDeliveries(approvalId, result.deliveries)
@@ -339,9 +348,18 @@ export async function sendGateDecisionSummary(
     ...(reason ? [{ label: 'Reason', value: reason }] : []),
   ]
 
+  const channel = settings.approvalChannel || 'general'
+  let resolvedChannel: string
+  try {
+    resolvedChannel = (await resolveRuntimeChannelRef(runtime, channel)).resolved
+  } catch (err) {
+    log.error('Gate decision summary channel resolution failed', err, { channel })
+    return
+  }
+
   try {
     await runtime.channels.sendNotification({
-      channels: [settings.approvalChannel || 'general'],
+      channels: [resolvedChannel],
       notification: {
         severity: decision === 'approved' ? 'success' : 'warn',
         title: `Gate ${decisionLabel}: ${gateLabel}`,

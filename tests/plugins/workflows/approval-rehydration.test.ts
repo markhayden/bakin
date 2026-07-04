@@ -6,13 +6,31 @@ import { tmpdir } from 'os'
 const testDir = join(tmpdir(), `bakin-workflow-approval-rehydration-${Date.now()}`)
 const previousBakinHome = process.env.BAKIN_HOME
 
-mock.module('../../../src/core/content-dir', () => ({
+const contentDirMock = {
   getContentDir: () => testDir,
-  getBakinPaths: () => ({}),
+  getBakinPaths: () => ({ db: join(testDir, 'bakin.db') }),
   resetContentDir: mock(),
   initBakinHome: mock(),
   isUsingBakinHome: () => false,
-}))
+}
+mock.module('../../../src/core/content-dir', () => contentDirMock)
+mock.module('../../../packages/core/src/content-dir', () => contentDirMock)
+mock.module('@/core/content-dir', () => contentDirMock)
+
+let mockChannelAliases: Record<string, string> = {}
+const settingsMock = {
+  resetSettingsCache: () => {},
+  getSettings: () => ({
+    notifications: {
+      channel: '',
+      target: '',
+      gateAlerts: true,
+      channelAliases: mockChannelAliases,
+    },
+  }),
+}
+mock.module('@/core/settings', () => settingsMock)
+mock.module('../../../src/core/settings', () => settingsMock)
 
 mock.module('../../../src/core/audit', () => ({
   appendAudit: mock(),
@@ -105,6 +123,7 @@ describe('workflow approval rehydration', () => {
     rmSync(testDir, { recursive: true, force: true })
     mkdirSync(testDir, { recursive: true })
     process.env.BAKIN_HOME = testDir
+    mockChannelAliases = { approvals: 'discord:123' }
   })
 
   afterAll(() => {
@@ -170,12 +189,60 @@ describe('workflow approval rehydration', () => {
     })
     expect(createApproval).toHaveBeenCalledWith(expect.objectContaining({
       approvalId: 'workflow-gate:task-42:review-gate',
-      channels: ['approvals'],
+      channels: ['discord:123'],
     }))
     expect(getApprovalRecord('workflow-gate:task-42:review-gate', testDir)?.deliveries).toEqual([delivery])
     expect(loadInstance('task-42', testDir)?.stepStates['review-gate'].approvalRef).toEqual({
       approvalId: 'workflow-gate:task-42:review-gate',
       deliveries: [delivery],
     })
+  })
+
+  it('counts re-renders as failed and logs an error when the channel cannot be resolved', async () => {
+    mockChannelAliases = {}
+    saveInstance(pendingInstance(), testDir)
+    createPendingRecord()
+
+    const runtime = createMockRuntimeAdapter() as AgentRuntimeAdapter
+    const createApproval = mock(async () => ({ deliveries: [delivery] }))
+    runtime.channels.createApproval = createApproval
+    const logError = mock()
+
+    const summary = await rehydratePendingApprovals({
+      runtime,
+      channel: 'approvals',
+      renderMissingDeliveries: true,
+      contentDir: testDir,
+      log: { error: logError },
+    })
+
+    expect(summary).toEqual(expect.objectContaining({
+      pending: 1,
+      reattached: 0,
+      rerendered: 0,
+      failed: 1,
+    }))
+    expect(createApproval).not.toHaveBeenCalled()
+    expect(logError).toHaveBeenCalledTimes(1)
+    expect(getApprovalRecord('workflow-gate:task-42:review-gate', testDir)?.status).toBe('pending')
+  })
+
+  it('does not resolve the channel when no record needs re-rendering', async () => {
+    mockChannelAliases = {}
+    saveInstance(pendingInstance(), testDir)
+    createPendingRecord()
+    updateApprovalDeliveries('workflow-gate:task-42:review-gate', [delivery], testDir)
+
+    const logError = mock()
+    const summary = await rehydratePendingApprovals({
+      runtime: createMockRuntimeAdapter() as AgentRuntimeAdapter,
+      channel: 'approvals',
+      renderMissingDeliveries: true,
+      contentDir: testDir,
+      log: { error: logError },
+    })
+
+    expect(summary).toEqual(expect.objectContaining({ pending: 1, reattached: 1, failed: 0 }))
+    expect(logError).not.toHaveBeenCalled()
   })
 })
