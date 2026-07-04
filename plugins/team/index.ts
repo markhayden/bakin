@@ -53,7 +53,9 @@ import {
   getTeamMembers,
   getOrgStructure,
 } from './lib/agent-status'
-import { populateTeamRoutes } from './lib/team-routes'
+import { populateAgentRoutes } from './lib/routes/agents'
+import { populateContextRoutes } from './lib/routes/context'
+import { populateOrgTeamRoutes } from './lib/routes/teams'
 
 const log = createLogger('team')
 const BAKIN_PORT = Number(process.env.PORT || 3737)
@@ -91,7 +93,15 @@ function indexAgentStatic(agentId: string, agent: { id: string; name: string }, 
 
 const teamRoutes: any[] = []
 
-populateTeamRoutes(teamRoutes, { indexAgentStatic })
+// Registration order matters: the RouteRegistry breaks specificity-score ties
+// by insertion order. Agent routes first (so e.g. GET /context/files keeps
+// resolving to the agent files route), then context routes, then org-team
+// routes — whose PUT /:agentId/team assignment route must register after both
+// PUT /teams/:teamId and PUT /context/:scope (paths like /teams/team and
+// /context/team tie on score).
+populateAgentRoutes(teamRoutes, { indexAgentStatic })
+populateContextRoutes(teamRoutes)
+populateOrgTeamRoutes(teamRoutes)
 
 
 const teamPlugin: BakinPlugin = definePlugin({
@@ -276,7 +286,7 @@ const teamPlugin: BakinPlugin = definePlugin({
       return getOrgStructure(ctx.runtime)
     }, { label: 'Get org structure.', summary: 'Returns the current organization structure for teams and agents. Use it when a plugin needs the full hierarchy instead of individual team or agent records.', hookKind: 'rpc' })
 
-    // routes registered at module scope via populateTeamRoutes() (T20+).
+    // routes registered at module scope via the lib/routes/* populate functions (T20+).
 
     // ─── MCP Exec Tools ────────────────────────────────────────────────
 
