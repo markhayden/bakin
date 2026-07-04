@@ -3,95 +3,14 @@ import { AsyncResource } from 'async_hooks'
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync, symlinkSync } from 'fs'
 import { dirname, join } from 'path'
 import { tmpdir } from 'os'
-import { HookRegistry } from '../../packages/core/src/hooks/hook-registry'
 import { createHealthService } from '@bakin/core/app-services'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 import { createMockSearchAdapter } from '@bakin/core/adapters/search/testing'
 import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
 
 // ---------------------------------------------------------------------------
-// Section A: HookRegistry (standalone — no mocks needed)
-// ---------------------------------------------------------------------------
-
-describe('HookRegistry', () => {
-  let registry: HookRegistry
-
-  beforeEach(() => {
-    registry = new HookRegistry()
-  })
-
-  it('register() makes has() return true', () => {
-    registry.register('test.hook', () => {})
-    expect(registry.has('test.hook')).toBe(true)
-  })
-
-  it('has() returns false for unregistered hooks', () => {
-    expect(registry.has('nonexistent')).toBe(false)
-  })
-
-  it('unsubscribe removes handler and has() returns false', () => {
-    const unsub = registry.register('test.hook', () => {})
-    unsub()
-    expect(registry.has('test.hook')).toBe(false)
-  })
-
-  it('call() returns original data when no handlers registered', async () => {
-    const result = await registry.call('empty', { value: 42 })
-    expect(result).toEqual({ value: 42 })
-  })
-
-  it('call() chains multiple handlers in waterfall', async () => {
-    registry.register('math', (n: number) => n + 1)
-    registry.register('math', (n: number) => n * 2)
-    const result = await registry.call('math', 5)
-    expect(result).toBe(12) // (5 + 1) * 2
-  })
-
-  it('call() skips handler result when it returns null or undefined', async () => {
-    registry.register('skip', () => null)
-    registry.register('skip', (n: number) => n + 10)
-    const result = await registry.call('skip', 5)
-    expect(result).toBe(15) // null skipped, 5 + 10
-  })
-
-  it('callAll() invokes all handlers and ignores return values', async () => {
-    const spy1 = mock()
-    const spy2 = mock()
-    registry.register('notify', spy1)
-    registry.register('notify', spy2)
-    await registry.callAll('notify', { event: 'ping' })
-    expect(spy1).toHaveBeenCalledWith({ event: 'ping' })
-    expect(spy2).toHaveBeenCalledWith({ event: 'ping' })
-  })
-
-  it('invoke() calls only the first registered handler', async () => {
-    const spy1 = mock().mockReturnValue('first')
-    const spy2 = mock().mockReturnValue('second')
-    registry.register('rpc', spy1)
-    registry.register('rpc', spy2)
-    const result = await registry.invoke<string>('rpc', 'input')
-    expect(result).toBe('first')
-    expect(spy1).toHaveBeenCalledWith('input')
-    expect(spy2).not.toHaveBeenCalled()
-  })
-
-  it('invoke() returns undefined when no handlers exist', async () => {
-    const result = await registry.invoke('missing', 'data')
-    expect(result).toBeUndefined()
-  })
-
-  it('getRegisteredHooks() lists all registered hook names', () => {
-    registry.register('alpha', () => {})
-    registry.register('beta', () => {})
-    const hooks = registry.getRegisteredHooks()
-    expect(hooks).toContain('alpha')
-    expect(hooks).toContain('beta')
-    expect(hooks).toHaveLength(2)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Section B: PluginRegistryImpl
+// PluginRegistryImpl
+// (the HookRegistry unit tests split to hook-registry.test.ts in FW7)
 //
 // The registry uses dynamic import() inside loadPlugin, which makes it hard
 // to test via initialize(). Instead, we test the public API by:
