@@ -16,7 +16,7 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Assets<br/><span>Centralized content store for all artifacts with rich rendering, search, task linking, manual upload, and clipboard paste</span></td>
       <td><code>assets</code></td>
       <td>Core</td>
-      <td><code>2.0.0</code></td>
+      <td><code>2.2.2</code></td>
       <td>none</td>
     </tr>
     <tr>
@@ -30,7 +30,7 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Health<br/><span>System health dashboard — MCP stats, diagnostics, and uptime</span></td>
       <td><code>health</code></td>
       <td>Core</td>
-      <td><code>1.0.0</code></td>
+      <td><code>1.2.0</code></td>
       <td>none</td>
     </tr>
     <tr>
@@ -44,14 +44,14 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Memory<br/><span>Observability dashboard over runtime memory tiers plus Bakin's audit log</span></td>
       <td><code>memory</code></td>
       <td>Core</td>
-      <td><code>2.0.0</code></td>
+      <td><code>2.0.1</code></td>
       <td>none</td>
     </tr>
     <tr>
       <td>Messaging<br/><span>Content messaging with scheduling, brainstorming, and multi-agent content pipeline</span></td>
       <td><code>messaging</code></td>
       <td>Official</td>
-      <td><code>0.5.0</code></td>
+      <td><code>0.5.1</code></td>
       <td><code>team</code> <code>workflows</code></td>
     </tr>
     <tr>
@@ -65,7 +65,7 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Projects<br/><span>Project management with specs, checklists, task linking, and agent access via MCP tools</span></td>
       <td><code>projects</code></td>
       <td>Official</td>
-      <td><code>0.5.0</code></td>
+      <td><code>0.5.1</code></td>
       <td><code>tasks</code> <code>assets</code> <code>team</code></td>
     </tr>
     <tr>
@@ -86,19 +86,19 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Team<br/><span>Agent team management — adapter layer over runtime agent workspaces</span></td>
       <td><code>team</code></td>
       <td>Core</td>
-      <td><code>1.0.0</code></td>
+      <td><code>1.0.1</code></td>
       <td>none</td>
     </tr>
     <tr>
       <td>Workflows<br/><span>Workflow runtime — enforces step-by-step agent execution with gated delivery, parallel steps, human gates, and output validation</span></td>
       <td><code>workflows</code></td>
       <td>Core</td>
-      <td><code>2.0.0</code></td>
+      <td><code>2.0.1</code></td>
       <td><code>tasks</code></td>
     </tr>
   </tbody>
 </table>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jun 13, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 4, 2026 · Bakin 0.0.0-dev</span>
 </aside>
