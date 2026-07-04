@@ -6,6 +6,15 @@ import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react
 
 const clearReindexProgress = mock()
 
+// Pure client-component test (stubbed global fetch, no server imports) — the
+// isolation mocks are belt-and-braces per the repo's test rules.
+const contentDirMock = () => ({
+  getContentDir: () => '/tmp/bakin-test-health-page-unused',
+  getBakinPaths: () => ({ home: '/tmp/bakin-test-health-page-unused' }),
+})
+mock.module('../../../src/core/content-dir', contentDirMock)
+mock.module('../../../packages/core/src/content-dir', contentDirMock)
+
 mock.module('@makinbakin/sdk/hooks', () => ({
   useContentStore: (selector: (state: { reindexProgress: Record<string, unknown>; clearReindexProgress: () => void }) => unknown) =>
     selector({ reindexProgress: {}, clearReindexProgress }),
@@ -46,6 +55,7 @@ function jsonResponse(body: unknown): Response {
 
 function setupHealthFetch(options: {
   usage?: unknown[]
+  usageHistory?: Record<string, unknown>
   searchTables?: unknown[]
   registryPlugins?: unknown[]
   manifestPlugins?: unknown[]
@@ -71,6 +81,11 @@ function setupHealthFetch(options: {
     }
     if (url === '/api/plugins/health/usage') {
       return Promise.resolve(jsonResponse(options.usage ?? []))
+    }
+    if (url.startsWith('/api/plugins/health/usage-history')) {
+      return Promise.resolve(jsonResponse(options.usageHistory ?? {
+        window: '24h', since: '2026-05-01', scannedAt: null, byAgent: [], byDay: [],
+      }))
     }
     if (url === '/api/plugins/health/search-status') {
       return Promise.resolve(jsonResponse({
@@ -152,7 +167,7 @@ describe('HealthPage runtime usage display', () => {
     // The runtime card is now usage-only (tokens), no dollar figure — cost
     // moved to the separate "Bakin Spend" card to avoid two competing
     // "cost" numbers.
-    expect(await screen.findByText('Estimated Token Usage')).toBeDefined()
+    expect(await screen.findByText('Latest Session Context')).toBeDefined()
     expect(screen.getAllByText('patch').length).toBeGreaterThan(0)
     // No runtime-reported dollar cost rendered on this card anymore.
     expect(screen.queryByText(/reported/)).toBeNull()
@@ -217,5 +232,53 @@ describe('HealthPage plugin update controls', () => {
         && String((call[1] as RequestInit | undefined)?.body).includes('"pluginId":"projects"')
       ))).toBe(true)
     })
+  })
+})
+
+describe('HealthPage usage history section', () => {
+  afterEach(() => cleanup())
+
+  it('renders per-agent rollups with partial-cost indicator and em-dash for no cost', async () => {
+    setupHealthFetch({
+      usageHistory: {
+        window: '24h',
+        since: '2026-05-01',
+        scannedAt: '2026-05-02T10:00:00.000Z',
+        byAgent: [
+          {
+            agent: 'basil',
+            tokens: { input: 1000, output: 500, cacheRead: 10, cacheWrite: 5, total: 1515 },
+            costUsdMicros: 12_000, costedMessages: 2, messageCount: 3,
+          },
+          {
+            agent: 'clover',
+            tokens: { input: 100, output: 50, cacheRead: 0, cacheWrite: 0, total: 150 },
+            costUsdMicros: null, costedMessages: 0, messageCount: 4,
+          },
+        ],
+        byDay: [
+          { day: '2026-05-01', tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 800 }, costUsdMicros: null, costedMessages: 0, messageCount: 2 },
+          { day: '2026-05-02', tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 865 }, costUsdMicros: null, costedMessages: 0, messageCount: 5 },
+        ],
+      },
+    })
+
+    render(<HealthPage />)
+
+    expect(await screen.findByText('Usage History')).toBeDefined()
+    expect(await screen.findByText('basil')).toBeDefined()
+    expect(screen.getByText('clover')).toBeDefined()
+    // Partial coverage marker on basil's runtime-reported cost.
+    expect(screen.getByTitle('Runtime-reported cost on 2 of 3 messages')).toBeDefined()
+    // clover reported no cost — em-dash, never $0.
+    expect(screen.getByText('—')).toBeDefined()
+    // Daily chart bars carry per-day tooltips.
+    expect(screen.getByTitle(/2026-05-01: 800 tokens/)).toBeDefined()
+  })
+
+  it('renders the honest empty state before any scan has completed', async () => {
+    setupHealthFetch()
+    render(<HealthPage />)
+    expect(await screen.findByText(/first transcript scan has not completed/)).toBeDefined()
   })
 })

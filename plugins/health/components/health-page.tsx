@@ -18,6 +18,7 @@ import {
 } from './health-sections'
 import { SearchSection } from './search-section'
 import { PluginsSection } from './plugins-section'
+import { UsageHistorySection } from './usage-history-section'
 
 /**
  * The System Health dashboard shell. Each section fetches independently (see
@@ -80,6 +81,8 @@ export function HealthPage() {
       <SummaryCards result={summary} />
 
       <SpendTokenSection usage={usage} meteredSpend={spend.data} />
+
+      <UsageHistorySection refreshNonce={refreshNonce} />
 
       <UsageSection
         feed={usageFeed.data}
