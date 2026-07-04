@@ -95,6 +95,15 @@ describe('useRecordDeepLink', () => {
     expect(result.current.row).toBeNull()
   })
 
+  it('non-404 fetch failure → honest load error, distinct from not-found', async () => {
+    mockRecordFetch(500, { error: 'boom' })
+    queryState.recordId = 'durable:abc123'
+    const { result } = renderHook(() => useRecordDeepLink([]))
+    await waitFor(() => expect(result.current.error).toContain('Could not load'))
+    expect(result.current.error).not.toContain('not found')
+    expect(result.current.row).toBeNull()
+  })
+
   it('close() clears the param', () => {
     mockRecordFetch(200, { result: ROW })
     queryState.recordId = 'durable:abc123'
