@@ -13,7 +13,7 @@ const log = createLogger('agent-usage')
 
 const SESSION_JSONL_SOURCE_KIND = 'session_jsonl'
 
-interface SessionUsageCost {
+export interface SessionUsageCost {
   input?: number
   output?: number
   cacheRead?: number
@@ -41,47 +41,93 @@ interface SessionMessage {
   }
 }
 
+/** One assistant message's usage, as read from a session JSONL line. */
+export interface ParsedSessionMessage {
+  /** Epoch ms of the message's own timestamp; null when absent/unparseable. */
+  tsMs: number | null
+  /** Model that produced the message; '' when the line had no model field. */
+  model: string
+  tokens: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number }
+  /** Runtime-reported cost fields; null when the line carried none. */
+  cost: SessionUsageCost | null
+}
+
+export interface ParsedSessionUsage {
+  sessionId: string
+  sessionStarted: string
+  messages: ParsedSessionMessage[]
+}
+
+/**
+ * Walk a session JSONL string and surface every assistant message's usage
+ * with its own timestamp and model. The ONE parser behind both the
+ * latest-session card (`parseSessionUsageContent`) and the usage-history
+ * scanner — they must never drift. Malformed lines are skipped, never fatal.
+ */
+export function parseSessionUsageMessages(content: string): ParsedSessionUsage {
+  const lines = content.split('\n').filter(l => l.trim())
+
+  let sessionId = ''
+  let sessionStarted = ''
+  const messages: ParsedSessionMessage[] = []
+
+  for (const line of lines) {
+    try {
+      const entry = JSON.parse(line) as SessionMessage
+
+      if (entry.type === 'session') {
+        sessionId = entry.id || ''
+        sessionStarted = entry.timestamp || ''
+      }
+
+      if (entry.type === 'message' && entry.message?.role === 'assistant' && entry.message.usage) {
+        const u = entry.message.usage
+        messages.push({
+          tsMs: timestampMs(entry.timestamp),
+          model: entry.message.model || '',
+          tokens: {
+            input: u.input ?? 0,
+            output: u.output ?? 0,
+            cacheRead: u.cacheRead ?? 0,
+            cacheWrite: u.cacheWrite ?? 0,
+            total: u.totalTokens ?? 0,
+          },
+          cost: u.cost ?? null,
+        })
+      }
+    } catch {
+      // Skip malformed lines
+    }
+  }
+
+  return { sessionId, sessionStarted, messages }
+}
+
 /**
  * Parse a session JSONL string and sum up usage across all assistant messages.
  */
 export function parseSessionUsageContent(content: string, agentName: string): AgentUsage | null {
   try {
-    const lines = content.split('\n').filter(l => l.trim())
+    const { sessionId, sessionStarted, messages } = parseSessionUsageMessages(content)
 
-    let sessionId = ''
-    let sessionStarted = ''
     let model = ''
     let messageCount = 0
     const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 }
     const costValues = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 }
     const costSeen = { input: false, output: false, cacheRead: false, cacheWrite: false, total: false }
 
-    for (const line of lines) {
-      try {
-        const entry = JSON.parse(line) as SessionMessage
+    for (const msg of messages) {
+      messageCount++
+      if (msg.model) model = msg.model
 
-        if (entry.type === 'session') {
-          sessionId = entry.id || ''
-          sessionStarted = entry.timestamp || ''
-        }
+      tokens.input += msg.tokens.input
+      tokens.output += msg.tokens.output
+      tokens.cacheRead += msg.tokens.cacheRead
+      tokens.cacheWrite += msg.tokens.cacheWrite
+      tokens.total += msg.tokens.total
 
-        if (entry.type === 'message' && entry.message?.role === 'assistant' && entry.message.usage) {
-          messageCount++
-          const u = entry.message.usage
-          if (entry.message.model) model = entry.message.model
-
-          tokens.input += u.input ?? 0
-          tokens.output += u.output ?? 0
-          tokens.cacheRead += u.cacheRead ?? 0
-          tokens.cacheWrite += u.cacheWrite ?? 0
-          tokens.total += u.totalTokens ?? 0
-
-          if (u.cost) {
-            addUsageCost(costValues, costSeen, u.cost)
-          }
-        }
-      } catch {
-        // Skip malformed lines
+      if (msg.cost) {
+        addUsageCost(costValues, costSeen, msg.cost)
       }
     }
 
@@ -174,7 +220,8 @@ export async function getAllAgentUsage(runtime: AgentRuntimeAdapter): Promise<Ag
   return results.sort((a, b) => b.tokens.total - a.tokens.total)
 }
 
-async function getSessionJsonlTierId(runtime: AgentRuntimeAdapter): Promise<string | null> {
+/** Discover the runtime's session-transcript memory tier (shared with the usage-history scanner). */
+export async function getSessionJsonlTierId(runtime: AgentRuntimeAdapter): Promise<string | null> {
   try {
     const tiers = await runtime.memory.listTiers()
     return tiers.find((tier) => tier.metadata?.sourceKind === SESSION_JSONL_SOURCE_KIND)?.id ?? null

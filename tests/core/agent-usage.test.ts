@@ -1,7 +1,27 @@
-import { describe, it, expect, beforeEach } from 'bun:test'
+import { describe, it, expect, beforeEach, mock } from 'bun:test'
+import { join } from 'path'
+import { tmpdir } from 'os'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 import type { AgentRuntimeAdapter, RuntimeMemoryEntry } from '@bakin/core/adapters/runtime'
-import { getAllAgentUsage, parseSessionUsageContent } from '../../src/core/agent-usage'
+
+// Pure parser + mock-adapter tests — no filesystem I/O — but the isolation
+// mocks are mandatory belt-and-braces so a future change here can never
+// touch ~/.bakin/.
+const testDir = join(tmpdir(), `bakin-test-agent-usage-${Date.now()}`)
+const contentDirMock = () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({
+    home: testDir,
+    audit: join(testDir, 'audit.jsonl'),
+    tasks: join(testDir, 'tasks'),
+    logs: join(testDir, 'logs'),
+    db: join(testDir, 'bakin.db'),
+  }),
+})
+mock.module('../../src/core/content-dir', contentDirMock)
+mock.module('../../packages/core/src/content-dir', contentDirMock)
+
+import { getAllAgentUsage, parseSessionUsageContent, parseSessionUsageMessages } from '../../src/core/agent-usage'
 
 interface FixtureSession {
   agentId: string
@@ -347,5 +367,72 @@ describe('getAllAgentUsage', () => {
     const result = await getAllAgentUsage(makeRuntime())
     expect(result).toHaveLength(1)
     expect(result[0].messages).toBe(1)
+  })
+})
+
+describe('parseSessionUsageMessages', () => {
+  it('surfaces per-message timestamp, model, tokens, and cost', () => {
+    const content = [
+      JSON.stringify({ type: 'session', id: 'sess-1', timestamp: '2026-07-01T10:00:00Z' }),
+      JSON.stringify({
+        type: 'message', timestamp: '2026-07-01T10:01:00Z',
+        message: { role: 'assistant', model: 'gpt-5.4', usage: { input: 10, output: 5, cacheRead: 2, cacheWrite: 1, totalTokens: 18, cost: { total: 0.01 } } },
+      }),
+      JSON.stringify({
+        type: 'message', timestamp: '2026-07-02T09:00:00Z',
+        message: { role: 'assistant', model: 'claude-fable-5', usage: { input: 20, output: 10, totalTokens: 30 } },
+      }),
+    ].join('\n')
+
+    const parsed = parseSessionUsageMessages(content)
+    expect(parsed.sessionId).toBe('sess-1')
+    expect(parsed.sessionStarted).toBe('2026-07-01T10:00:00Z')
+    expect(parsed.messages).toHaveLength(2)
+
+    expect(parsed.messages[0].tsMs).toBe(Date.parse('2026-07-01T10:01:00Z'))
+    expect(parsed.messages[0].model).toBe('gpt-5.4')
+    expect(parsed.messages[0].tokens).toEqual({ input: 10, output: 5, cacheRead: 2, cacheWrite: 1, total: 18 })
+    expect(parsed.messages[0].cost).toEqual({ total: 0.01 })
+
+    expect(parsed.messages[1].model).toBe('claude-fable-5')
+    expect(parsed.messages[1].cost).toBeNull()
+  })
+
+  it('missing timestamp/model become null/empty, never fabricated', () => {
+    const content = JSON.stringify({
+      type: 'message',
+      message: { role: 'assistant', usage: { input: 1, output: 1, totalTokens: 2 } },
+    })
+    const parsed = parseSessionUsageMessages(content)
+    expect(parsed.messages).toHaveLength(1)
+    expect(parsed.messages[0].tsMs).toBeNull()
+    expect(parsed.messages[0].model).toBe('')
+  })
+
+  it('skips malformed lines, non-assistant roles, and usage-less messages', () => {
+    const content = [
+      'not json {{{',
+      JSON.stringify({ type: 'message', message: { role: 'user' } }),
+      JSON.stringify({ type: 'message', message: { role: 'assistant' } }),
+      JSON.stringify({ type: 'message', timestamp: '2026-07-01T10:00:00Z', message: { role: 'assistant', usage: { input: 3, output: 4, totalTokens: 7 } } }),
+    ].join('\n')
+    const parsed = parseSessionUsageMessages(content)
+    expect(parsed.messages).toHaveLength(1)
+    expect(parsed.messages[0].tokens.total).toBe(7)
+  })
+
+  it('agrees with parseSessionUsageContent sums (single-parser invariant)', () => {
+    const lines = [
+      JSON.stringify({ type: 'session', id: 's', timestamp: '2026-07-01T00:00:00Z' }),
+      JSON.stringify({ type: 'message', timestamp: '2026-07-01T01:00:00Z', message: { role: 'assistant', model: 'm1', usage: { input: 100, output: 50, cacheRead: 10, cacheWrite: 5, totalTokens: 165, cost: { input: 0.001, output: 0.002 } } } }),
+      JSON.stringify({ type: 'message', timestamp: '2026-07-01T02:00:00Z', message: { role: 'assistant', model: 'm2', usage: { input: 200, output: 100, totalTokens: 300 } } }),
+    ]
+    const content = lines.join('\n')
+
+    const messages = parseSessionUsageMessages(content).messages
+    const summed = messages.reduce((acc, m) => acc + m.tokens.total, 0)
+    const card = parseSessionUsageContent(content, 'agent-x')
+    expect(card?.tokens.total).toBe(summed)
+    expect(card?.model).toBe('m2')
   })
 })

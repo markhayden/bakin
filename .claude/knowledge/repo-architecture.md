@@ -441,6 +441,8 @@ Created by `bakin onboard` or `initBakinHome()`.
 ├── .onboarded                ← marker the doctor gates on
 ├── bakin.db                  ← execution ledger (SQLite, WAL)
 ├── search.db                 ← search outbox + blue/green table registry (SQLite)
+├── usage.db                  ← durable usage history: per-(session, day, model)
+│                               token/cost rollups from session transcripts (#359)
 ├── antfly/                   ← data dir for Bakin's private search engine
 │                               (OS-supervised service on 127.0.0.1:3738;
 │                               binary + models live under ~/.antfly)

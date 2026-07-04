@@ -149,6 +149,10 @@ mock.module('../../../src/core/agent-usage', () => ({
   getAllAgentUsage: () => [
     { agent: 'patch', sessionId: 's1', model: 'claude-4', messages: 10, tokens: { total: 1000 }, cost: { total: 0.05, source: 'runtime' } },
   ],
+  // Consumed by the usage-history scanner, which rides the plugin's import
+  // graph via the scan timer (#359).
+  getSessionJsonlTierId: async () => null,
+  parseSessionUsageMessages: () => ({ sessionId: '', sessionStarted: '', messages: [] }),
 }))
 
 mock.module('../../../src/core/search-registry', () => ({
@@ -231,8 +235,8 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('Health Plugin Routes', () => {
-  it('registers 14 routes', () => {
-    expect(activated.routes.length).toBe(14)
+  it('registers 15 routes', () => {
+    expect(activated.routes.length).toBe(15)
   })
 
   it('registers 2 exec tools', () => {

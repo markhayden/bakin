@@ -38,6 +38,7 @@ Created by `bakin onboard` / `initBakinHome()`. Per-installation state, NOT in t
 ~/.bakin/
   settings.json            — Runtime config (dispatch/watchdog/antfly/bridge settings)
   bakin.db                 — Execution ledger (SQLite, WAL): run claims, cron fires, completions, idempotency
+  usage.db                 — Durable usage history (SQLite): per-(session, day, model) token/cost rollups scanned from runtime session transcripts (#359)
   server.lock              — Server singleton lock ({pid, port, startedAt, bootId})
   plugin-settings/         — Per-plugin configuration (id.json)
   plugins/<id>/            — Installed addon plugins (source + generated dist/)

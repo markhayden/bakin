@@ -6,9 +6,11 @@ import { totalmem } from 'os'
 import { z } from 'zod'
 import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { definePlugin, defineRoute } from '@bakin/core/routing'
+import { usageByAgentSince, usageByDaySince, toLocalDayKey } from '@bakin/core/usage-history/store'
 import { getLastResults, runDiagnostics } from '../../src/core/doctor'
 import { createLogger } from '../../src/core/logger'
 import { getAllAgentUsage } from '../../src/core/agent-usage'
+import { startUsageHistoryTimer, stopUsageHistoryTimer, getLastUsageScan, DEFAULT_SCAN_MINUTES } from './lib/usage-history-timer'
 import { getContentDir } from '../../src/core/content-dir'
 import { applyDoctorRepair, planDoctorRepair } from '../../src/core/doctor-repair'
 import { delegateDoctorRepair, verifyDoctorRepairRequest } from '../../src/core/doctor-delegate'
@@ -124,6 +126,16 @@ const usageFeedQuery = z.object({
   window: z.enum(['5m', '1h', '24h']).default('1h'),
   agent: z.string().min(1).optional(),
 })
+
+const usageHistoryQuery = z.object({
+  window: z.enum(['24h', '7d', '30d']).default('24h'),
+})
+
+const USAGE_HISTORY_WINDOW_MS: Record<'24h' | '7d' | '30d', number> = {
+  '24h': 24 * 60 * 60 * 1000,
+  '7d': 7 * 24 * 60 * 60 * 1000,
+  '30d': 30 * 24 * 60 * 60 * 1000,
+}
 
 const doctorQuery = z.object({
   fresh: z.union([z.literal('true'), z.literal('false')]).optional(),
@@ -296,6 +308,27 @@ const routes = [
   }),
 
   defineRoute({
+    path: '/usage-history',
+    method: 'GET',
+    summary: 'Historical agent token usage',
+    description: 'Durable per-agent and per-day token rollups from the usage-history store. Windows are day-aligned: a window includes every local calendar day it touches. Cost is runtime-reported only.',
+    query: usageHistoryQuery,
+    responses: { 200: passthrough, 400: errorResponse },
+    handler: async (_req, _ctx, { query }) => {
+      const windowMs = USAGE_HISTORY_WINDOW_MS[query.window]
+      const since = toLocalDayKey(Date.now() - windowMs)
+      const lastScan = getLastUsageScan()
+      return Response.json({
+        window: query.window,
+        since,
+        scannedAt: lastScan ? new Date(lastScan.at).toISOString() : null,
+        byAgent: usageByAgentSince(since),
+        byDay: usageByDaySince(since),
+      })
+    },
+  }),
+
+  defineRoute({
     path: '/registry',
     method: 'GET',
     summary: 'List registered plugins',
@@ -461,6 +494,7 @@ const healthPlugin: BakinPlugin = definePlugin({
     fields: [
       { key: 'refreshInterval', type: 'number', label: 'Refresh interval (seconds)', description: 'How often to poll for updated metrics', default: 30 },
       { key: 'showDetailedMetrics', type: 'boolean', label: 'Detailed metrics', description: 'Show per-plugin and per-tool breakdowns', default: true },
+      { key: 'usageHistoryScanMinutes', type: 'number', label: 'Usage history scan interval (minutes)', description: 'How often session transcripts are swept into the durable usage history', default: 5 },
     ],
   },
 
@@ -471,6 +505,12 @@ const healthPlugin: BakinPlugin = definePlugin({
   contentFiles: [],
 
   activate(ctx: PluginContext) {
+    // ─── Usage-history scan timer (#359) ─────────────────────────────
+    // First sweep runs one full interval after activation — boot does
+    // zero scan work. onShutdown stops it (hot-reload safe).
+    const settings = ctx.getSettings<{ usageHistoryScanMinutes?: number }>()
+    startUsageHistoryTimer(ctx.runtime, settings.usageHistoryScanMinutes ?? DEFAULT_SCAN_MINUTES)
+
     // ─── Health-check registry hooks ─────────────────────────────────
     // `run` is not serializable and isn't useful to consumers that only
     // want registry metadata. Strip it at the boundary.
@@ -636,6 +676,10 @@ const healthPlugin: BakinPlugin = definePlugin({
       name: 'Plugin activation state',
       run: () => Promise.resolve(checkPluginRegistry()),
     })
+  },
+
+  onShutdown() {
+    stopUsageHistoryTimer()
   },
 
   onReady() {

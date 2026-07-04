@@ -329,17 +329,24 @@ export function SummaryCards({ result }: { result: PolledResult<HealthSummary> }
   )
 }
 
-/** Estimated token usage (runtime-reported) + estimated cost (Bakin's figure), side by side. */
+/** Latest-session context (runtime-reported) + estimated cost (Bakin's figure), side by side. */
 export function SpendTokenSection({ usage, meteredSpend }: { usage: AgentUsage[]; meteredSpend: MeteredSpendData | null }) {
   if (!(usage.length > 0 || meteredSpend)) return null
   return (
     <div className={`grid gap-6 ${usage.length > 0 && meteredSpend ? 'md:grid-cols-2' : 'grid-cols-1'}`}>
-      {/* Estimated Token Usage — runtime-reported token breakdown (no $). */}
+      {/* Latest Session Context — runtime-reported token breakdown for each
+          agent's NEWEST session only (context pressure, not history — the
+          Usage History section is the multi-session aggregate). */}
       {usage.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
-              <span>Estimated Token Usage</span>
+              <span>
+                Latest Session Context
+                <span className="block text-[11px] font-normal text-muted-foreground mt-0.5">
+                  Each agent&apos;s newest session only — not a historical total
+                </span>
+              </span>
               <Badge variant="secondary" className="font-mono text-xs">
                 {formatTokenCount(usage.reduce((sum, u) => sum + (u.tokens.total ?? 0), 0))} tokens
               </Badge>

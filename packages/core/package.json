@@ -28,6 +28,7 @@
     "./search/tables": "./src/search/tables.ts",
     "./tasks/store": "./src/tasks/store.ts",
     "./tasks/testing": "./src/tasks/testing.ts",
+    "./usage-history/store": "./src/usage-history/store.ts",
     "./logger": "./src/logger.ts",
     "./settings": "./src/settings.ts",
     "./content-dir": "./src/content-dir.ts",

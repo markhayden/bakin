@@ -24,6 +24,7 @@ import asset_vendor_sdk_ui_js from '../../public/vendor/sdk-ui.js' with { type: 
 import asset_vendor_sdk_routing_js from '../../public/vendor/sdk-routing.js' with { type: 'file' }
 import asset_vendor_sdk_shared_05ney3ed_js from '../../public/vendor/sdk-shared-05ney3ed.js' with { type: 'file' }
 import asset_vendor_sdk_shared_yx7p0vdd_js from '../../public/vendor/sdk-shared-yx7p0vdd.js' with { type: 'file' }
+import asset_vendor_sdk_shared_6t7j4tzx_js from '../../public/vendor/sdk-shared-6t7j4tzx.js' with { type: 'file' }
 import asset_vendor_react_js from '../../public/vendor/react.js' with { type: 'file' }
 import asset_vendor_sdk_shared_840ema2e_js from '../../public/vendor/sdk-shared-840ema2e.js' with { type: 'file' }
 import asset_vendor_jsx_runtime_js from '../../public/vendor/jsx-runtime.js' with { type: 'file' }
@@ -42,7 +43,6 @@ import asset_vendor_sdk_components_js from '../../public/vendor/sdk-components.j
 import asset_vendor_sdk_hooks_js from '../../public/vendor/sdk-hooks.js' with { type: 'file' }
 import asset_vendor_tanstack_router_js from '../../public/vendor/tanstack-router.js' with { type: 'file' }
 import asset_vendor_jsx_dev_runtime_js from '../../public/vendor/jsx-dev-runtime.js' with { type: 'file' }
-import asset_vendor_sdk_shared_18wtdpw0_js from '../../public/vendor/sdk-shared-18wtdpw0.js' with { type: 'file' }
 import asset_api_plugins_schedule_assets_client_js from '../../../../plugins/schedule/dist/client.js' with { type: 'file' }
 import asset_api_plugins_tasks_assets_client_js from '../../../../plugins/tasks/dist/client.js' with { type: 'file' }
 import asset_api_plugins_memory_assets_client_js from '../../../../plugins/memory/dist/client.js' with { type: 'file' }
@@ -69,6 +69,7 @@ export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
   ['/vendor/sdk-routing.js', asset_vendor_sdk_routing_js],
   ['/vendor/sdk-shared-05ney3ed.js', asset_vendor_sdk_shared_05ney3ed_js],
   ['/vendor/sdk-shared-yx7p0vdd.js', asset_vendor_sdk_shared_yx7p0vdd_js],
+  ['/vendor/sdk-shared-6t7j4tzx.js', asset_vendor_sdk_shared_6t7j4tzx_js],
   ['/vendor/react.js', asset_vendor_react_js],
   ['/vendor/sdk-shared-840ema2e.js', asset_vendor_sdk_shared_840ema2e_js],
   ['/vendor/jsx-runtime.js', asset_vendor_jsx_runtime_js],
@@ -87,7 +88,6 @@ export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
   ['/vendor/sdk-hooks.js', asset_vendor_sdk_hooks_js],
   ['/vendor/tanstack-router.js', asset_vendor_tanstack_router_js],
   ['/vendor/jsx-dev-runtime.js', asset_vendor_jsx_dev_runtime_js],
-  ['/vendor/sdk-shared-18wtdpw0.js', asset_vendor_sdk_shared_18wtdpw0_js],
   ['/api/plugins/schedule/assets/client.js', asset_api_plugins_schedule_assets_client_js],
   ['/api/plugins/tasks/assets/client.js', asset_api_plugins_tasks_assets_client_js],
   ['/api/plugins/memory/assets/client.js', asset_api_plugins_memory_assets_client_js],

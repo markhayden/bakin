@@ -33,7 +33,20 @@ Health's context and cost cards do **not** come from the in-memory usage recorde
 - Token fields (`input`, `output`, `cacheRead`, `cacheWrite`, `totalTokens`) are summed from assistant messages in each agent's latest session.
 - Cost fields are runtime-reported only. Bakin does not map model ids to pricing tables for Health.
 - Missing runtime cost is represented as unavailable, not `$0.00`.
-- Historical token/cost aggregation across multiple sessions is separate follow-up work; the current Health card is latest-session scoped.
+- The "Latest Session Context" card is **latest-session scoped** (context pressure). Multi-session history is the separate pipeline below.
+
+## Usage history (multi-session, durable — #359)
+
+Historical token usage lives in its own named SQLite store `~/.bakin/usage.db` (via `openNamedDb`, like the search outbox — **never** the coordination ledger) and is populated by scanning the same session JSONL source the latest-session card reads. One parser feeds both surfaces (`parseSessionUsageMessages` in `src/core/agent-usage.ts`) so they cannot drift.
+
+Pipeline: health plugin interval timer (`usageHistoryScanMinutes` setting, default 5; armed in `activate`, first sweep one interval after boot, stopped in `onShutdown`) → `scanUsageHistory(runtime)` in `src/core/usage-history.ts` → `runtime.memory.statEntry` mtime+size skip → changed sessions recomputed into per-`(session_id, day, model)` rows → `replaceSessionUsage` in `packages/core/src/usage-history/store.ts`.
+
+Invariants:
+- **Absolute replace, never accumulate.** A rescan deletes the session's rows and inserts the fresh recompute in one transaction — retries, rescans, and rewritten/compacted transcripts structurally cannot double-count. There is no other write path.
+- **Day attribution is per message** (local calendar day of the message's own timestamp; session start as fallback), so long-lived main sessions don't dump weeks of tokens on one day.
+- **History outlives its source.** Deleting/rotating a session file just stops updates; ingested rows are permanent (no tombstones, no retention cap).
+- **Cost is runtime-reported only and NULL-honest** — stored as micro-dollar sums with `costed_messages`/`message_count` coverage counts; a group with no reported cost sums to `null`, never `$0`. Bakin never prices these rows.
+- Serving: `GET /api/plugins/health/usage-history?window=24h|7d|30d` — windows are **day-aligned** (every local calendar day the window touches). The Usage History section on the health page renders it (URL param `uw`).
 
 ## Reading
 
