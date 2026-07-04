@@ -241,7 +241,7 @@ describe('T2.3 agent usage wiring', () => {
 
   it('heartbeat tool records an agent usage entry', async () => {
     // Importing the module auto-registers the exec tool via addExecTool.
-    await import('../../scripts/lib/heartbeat')
+    await import('../../src/core/exec-tools/tools/heartbeat')
     const { getExecTool } = require('@/core/exec-tools/registry') as typeof import('@/core/exec-tools/registry')
     const tool = getExecTool('bakin_exec_heartbeat')
     expect(tool).toBeTruthy()

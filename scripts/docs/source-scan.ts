@@ -6,7 +6,7 @@ const repoSourceRoots = [
   join(repoRoot, 'plugins'),
   join(repoRoot, 'src'),
   join(repoRoot, 'packages'),
-  join(repoRoot, 'scripts/lib'),
+  join(repoRoot, 'src/core/exec-tools/tools'),
 ]
 
 /**

@@ -1,14 +1,14 @@
-#!/usr/bin/env npx tsx
+#!/usr/bin/env bun
 /**
  * CLI wrapper for bakin_exec_post_channel.
  * For debugging - agents use the MCP tool directly.
  *
  * Usage:
- *   npx tsx scripts/bin/post-channel.ts --channel general --content "Hello world"
- *   npx tsx scripts/bin/post-channel.ts --channel content --content "New post!" --imageAssetId 20260401-hero-a1b2c3d4
+ *   bun scripts/bin/post-channel.ts --channel general --content "Hello world"
+ *   bun scripts/bin/post-channel.ts --channel content --content "New post!" --imageAssetId 20260401-hero-a1b2c3d4
  */
 import { parseArgs } from 'util'
-import { postChannel } from '../lib/post-channel'
+import { postChannel } from '../../src/core/exec-tools/tools/post-channel'
 
 console.error('⚠  WARNING: This CLI script bypasses Bakin tracking (no MCP call, no Health metrics, no audit log).')
 console.error('   Agents should use: mcporter call bakin-<agent>.bakin_exec_post_channel ...')
@@ -27,7 +27,7 @@ const { values } = parseArgs({
 })
 
 if (values.help || !values.channel || !values.content) {
-  console.log(`Usage: npx tsx scripts/bin/post-channel.ts --channel <name> --content "..." [--imageAssetId <id>] [--videoAssetId <id>] [--taskId <id>]`)
+  console.log(`Usage: bun scripts/bin/post-channel.ts --channel <name> --content "..." [--imageAssetId <id>] [--videoAssetId <id>] [--taskId <id>]`)
   process.exit(values.help ? 0 : 1)
 }
 

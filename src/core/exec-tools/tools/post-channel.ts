@@ -12,7 +12,7 @@ import { resolveRuntimeChannelRef } from '@/core/channel-aliases'
 import { assertWorkflowToolAllowed } from '@/core/workflow-tool-authorization'
 import { addExport, getAsset, resolveFile } from '@bakin/assets/lib/asset-service'
 import { succeed, fail } from './common'
-import { addExecTool } from '../../src/core/exec-tools/registry'
+import { addExecTool } from '../registry'
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import type { ExecToolResult } from '@bakin/core/plugin-types'
 

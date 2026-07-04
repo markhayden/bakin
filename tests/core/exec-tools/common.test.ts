@@ -11,7 +11,7 @@ import {
   generateThumbnail,
   IMAGE_PRESETS,
   MAX_IMAGE_EDGE,
-} from '../../scripts/lib/common'
+} from '../../../src/core/exec-tools/tools/common'
 
 describe('succeed / fail helpers', () => {
   it('succeed returns ok: true with data', () => {

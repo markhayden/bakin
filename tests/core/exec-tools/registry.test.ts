@@ -15,9 +15,9 @@ mock.module('../../packages/core/src/content-dir', () => ({
 }))
 
 // Mock self-registering tool imports to prevent side-effect errors
-mock.module('../../scripts/lib/log-progress', () => ({}))
-mock.module('../../scripts/lib/post-channel', () => ({}))
-mock.module('../../scripts/lib/get-paths', () => ({}))
+mock.module('../../src/core/exec-tools/tools/log-progress', () => ({}))
+mock.module('../../src/core/exec-tools/tools/post-channel', () => ({}))
+mock.module('../../src/core/exec-tools/tools/get-paths', () => ({}))
 
 import {
   addExecTool,

@@ -7,8 +7,8 @@
  * never leak their `bakin_` table prefix to the MCP surface.
  */
 import { z } from 'zod'
-import { getAppServices } from '../../src/core/app-services'
-import { addExecTool } from '../../src/core/exec-tools/registry'
+import { getAppServices } from '../../../core/app-services'
+import { addExecTool } from '../registry'
 import {
   crossTableSearch,
   rebuildRegisteredTables,
@@ -16,7 +16,7 @@ import {
   getTableForPlugin,
   getIndexNames,
   buildSearchAPI,
-} from '../../src/core/search-registry'
+} from '../../../core/search-registry'
 
 /**
  * Resolve a plugin id to its registered bakin_ table name.

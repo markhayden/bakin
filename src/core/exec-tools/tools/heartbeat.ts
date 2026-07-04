@@ -5,9 +5,9 @@
 import { z } from 'zod'
 import { writeFileSync, mkdirSync, existsSync } from 'fs'
 import { join } from 'path'
-import { getContentDir } from '../../src/core/content-dir'
-import { recordUsage } from '../../src/core/usage'
-import { addExecTool } from '../../src/core/exec-tools/registry'
+import { getContentDir } from '../../../core/content-dir'
+import { recordUsage } from '../../../core/usage'
+import { addExecTool } from '../registry'
 
 addExecTool({
   name: 'bakin_exec_heartbeat',

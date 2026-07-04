@@ -2,9 +2,9 @@
  * bakin_exec_log — Consistent progress logging with categories and stage tags.
  */
 import { z } from 'zod'
-import { logProgress } from '../../src/core/task-service'
+import { logProgress } from '../../../core/task-service'
 import { succeed, fail } from './common'
-import { addExecTool } from '../../src/core/exec-tools/registry'
+import { addExecTool } from '../registry'
 import type { ExecToolResult } from '@bakin/core/plugin-types'
 
 const CATEGORIES = ['start', 'progress', 'milestone', 'blocked', 'complete'] as const
