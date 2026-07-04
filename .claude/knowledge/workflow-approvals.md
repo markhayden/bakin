@@ -39,8 +39,14 @@ The shared type lives in `packages/core/src/plugin-types.ts`.
 
 When a gate enters `pending_approval` and channel gate alerts are enabled,
 workflows call `runtime.channels.createApproval()` through
-`plugins/workflows/lib/notifications.ts`. The adapter renders the approval in
-whatever provider it owns (buttons, commands, links, or plain text) and returns
+`plugins/workflows/lib/notifications.ts`. The `approvalChannel` setting is
+resolved through `resolveRuntimeChannelRef` (`src/core/channel-aliases.ts` —
+the same resolver `bakin_exec_post_channel` uses), so it may be an alias from
+`notifications.channelAliases`, a `provider:target` ref, or a bare runtime
+channel id. Resolution failure logs at **error** level and skips delivery; the
+durable approval record is created before resolution, so rehydration can retry
+once the config is fixed. The adapter renders the approval in whatever
+provider it owns (buttons, commands, links, or plain text) and returns
 delivery refs. Bakin persists those refs on the step state only so later
 resolve/cancel operations can target the same rendered message.
 
@@ -54,15 +60,31 @@ advertise `interactive-approval`. The OpenClaw adapter uses native
 `plugin.approval.*` gateway requests for those channels and maps provider
 decisions back to Bakin `approvalId` values. Channels without real runtime
 approval responses stay render-only and include a Bakin approval link.
-Requests that require a reject reason also stay on the Bakin fallback page
-unless the provider can collect a structured reason.
+Native buttons are used regardless of `requireRejectReason` — the reason
+requirement binds only surfaces that can collect one (Bakin UI and the
+fallback decision page, both of which enforce a typed reason
+unconditionally). A channel button reject with no comment records the
+provider-neutral default reason `Rejected via runtime channel (no reason
+provided)` (`plugins/workflows/lib/channel-approvals.ts`).
 
 Provider approval buttons are a convenience surface, not Bakin state. OpenClaw
 native approval requests can expire before a workflow gate does, and provider
 events may be missed if Bakin is offline. The durable Bakin approval record and
-the Bakin fallback approval URL remain canonical. Reject responses that require
-a reason must include one; no-reason channel rejects are ignored and the user is
-sent back to the Bakin approval link.
+the Bakin fallback approval URL remain canonical.
+
+## Approval Store GC
+
+Startup rehydration (`plugins/workflows/lib/approval-rehydration.ts`) garbage
+collects the durable store before reattaching deliveries: resolved records
+(`approved`/`rejected`/`cancelled`/`expired`) older than 30 days are deleted
+(`pruneResolvedApprovalRecords`), and pending records whose workflow instance
+is missing, mismatched, or no longer pending at that gate are cancelled with
+an `orphaned:` reason. Pending records for live gates are never pruned or
+cancelled — a live gate whose alert simply has not rendered yet stays pending
+so `findPendingApprovalForGate` and re-render keep working. The rehydration
+summary carries `pruned`/`cancelled` counts and is logged whenever GC did
+work. Consequence: a fallback decision link for a record pruned by age renders
+404 "Approval Not Found" instead of "already decided".
 
 ## Long Prior Outputs
 
