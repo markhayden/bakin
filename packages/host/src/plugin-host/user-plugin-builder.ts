@@ -266,10 +266,19 @@ export async function buildAllUserPlugins(
     return
   }
   for (const entry of entries) {
-    if (!entry.isDirectory()) continue
     const name = String(entry.name)
     if (name.startsWith('.')) continue
     const pluginDir = join(userPluginsDir, name)
+    // Linked plugins (`bakin plugins link`) are symlinks to a source tree —
+    // a symlink Dirent is not isDirectory(), so resolve through it.
+    if (!entry.isDirectory()) {
+      if (!entry.isSymbolicLink()) continue
+      try {
+        if (!statSync(pluginDir).isDirectory()) continue
+      } catch {
+        continue // broken symlink
+      }
+    }
     if (!existsSync(join(pluginDir, 'bakin-plugin.json'))) continue
 
     // Whiskit artifact installs carry provenance; verify host compatibility
@@ -287,6 +296,20 @@ export async function buildAllUserPlugins(
       log.warn?.(
         `Plugin "${name}" has invalid Whiskit provenance — ${verification.reason}. Skipping activation.`,
       )
+      continue
+    }
+
+    // Published-artifact installs ship dist/ only — there is no source entry
+    // to rebuild from, and that's a valid installed state, not a build
+    // failure. Gate on verified Whiskit provenance: a provenance-less dir
+    // missing index.ts is a CORRUPTED source install (interrupted copy,
+    // deleted entry), and silently activating its stale dist would hide that
+    // — let the build fail loudly instead.
+    if (
+      verification.status === 'compatible' &&
+      !existsSync(join(pluginDir, 'index.ts')) &&
+      existsSync(join(pluginDir, 'dist', 'index.js'))
+    ) {
       continue
     }
 
