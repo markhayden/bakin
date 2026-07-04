@@ -5,6 +5,27 @@ and a session-death recovery ladder. Companion deep dives:
 `.claude/knowledge/session-forensics.md` and
 `.claude/knowledge/execution-ledger.md` (the claims/seq/completion layer).
 
+## Module map
+
+`src/core/dispatch.ts` is a **29-line public barrel** — consumers keep the
+`@/core/dispatch` import path, but the implementation lives in sibling
+modules that import each other directly (never through the barrel):
+
+| Module | Responsibility |
+|---|---|
+| `dispatch-types.ts` | Shared type/interface declarations (no runtime code) |
+| `dispatch-state.ts` | `.dispatch-state.json` load/save + the single state mutex + marker/failure-record accessors |
+| `dispatch-board.ts` | Taskboard reads, `isTaskDispatchEligible` policy, thin task-store wrappers |
+| `dispatch-failures.ts` | Pure RuntimeError→cooldown-class classification (kind-only, never message text) |
+| `dispatch-prompts.ts` | Synchronous prompt assembly (labeled sections; pure string builders) |
+| `dispatch-context-blocks.ts` | Async prompt-context builders (lessons via retrieval, assets via hook) + lessonBlockCache |
+| `dispatch-turns.ts` | The concurrent fire engine: budget gate, run claiming, in-flight registry + caps, `fireDispatchTurn` settle handlers |
+| `dispatch-prepare.ts` | Shared per-task fire prep (claim → lesson → assets → message → move → audit) for cycle + single |
+| `dispatch-cycle.ts` | The periodic two-phase collect-then-fire cycle, start/stop, `getDispatchInfo` |
+| `dispatch-single.ts` | Immediate single-task dispatch (kick / subtask / continuation / recovery) |
+| `dispatch-workflow.ts` | Workflow-step dispatch + workflow prompt builder |
+| `dispatch-session-death.ts` | Session-death recovery ladder + dispatch-rejection reconciliation |
+
 ## Execution claims (the correctness mechanism)
 
 Every dispatch path — the cycle, `dispatchSingleTask`, and workflow steps —
@@ -26,7 +47,8 @@ restart recovery, or stale claims would suppress legitimate re-dispatch.
 
 The dispatch cycle **fires sends and returns** — it never awaits an agent
 turn (turns legally run up to 10 minutes; the old serial-await loop stalled
-the whole board behind one slow agent). Mechanics in `src/core/dispatch.ts`:
+the whole board behind one slow agent). Mechanics in
+`src/core/dispatch-turns.ts` (fire engine) + `dispatch-cycle.ts` (the scan):
 
 - `fireDispatchTurn()` registers each send in an in-flight turn registry
   (`marker → { agentId, threadId, startedAt, settled }`) and attaches settle
@@ -75,9 +97,9 @@ Consequences:
 ## Failure classification (typed, no string matching)
 
 Adapters throw typed `RuntimeError`s (`@bakin/core/adapters/runtime`) with a
-structural `kind`; `classifyDispatchError()` maps kinds to cooldown classes.
-**No error-message text is ever inspected in dispatch.ts** — an architecture
-test pins this.
+structural `kind`; `classifyDispatchError()` (in `dispatch-failures.ts`) maps
+kinds to cooldown classes. **No error-message text is ever inspected in the
+dispatch modules** — an architecture test pins this.
 
 | RuntimeError kind | Cooldown class | reasonCode |
 |---|---|---|
@@ -309,7 +331,7 @@ one-time scheduled work.
 - `packages/adapter-openclaw/src/runtime.ts` — OpenClaw adapter transport, fail-fast watcher, post-mortem
 - `packages/adapter-openclaw/src/trajectory-forensics.ts` — trajectory parsing + diagnosis
 - `packages/adapter-openclaw/src/errors.ts` — the ONE place provider error strings are interpreted
-- `src/core/dispatch.ts` — classification, recovery ladder, concurrency registry, prompt builders
+- `src/core/dispatch.ts` — the public barrel; implementation in the `dispatch-*` modules (see the module map above)
 - `src/core/continuation.ts` — dependency continuation as full re-dispatch
 - `src/core/restart-recovery.ts` — post-boot recovery of orphaned `inProgress` tasks
 - `plugins/schedule/index.ts` — Bakin-owned scheduler wiring (see `.claude/knowledge/bakin-owned-scheduler.md`)
