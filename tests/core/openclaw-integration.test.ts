@@ -71,7 +71,8 @@ describe('OpenClaw native Bakin integration', () => {
       'added bakin-patch',
     ])
     expect(replaceCalls).toHaveLength(1)
-    expect(replaceCalls[0].reason).toBe('bakin.onboarding.openclaw-mcp')
+    // Scope naming follows runtime-config-raw's house style (no 'bakin.' prefix)
+    expect(replaceCalls[0].reason).toBe('onboarding.openclaw-mcp')
 
     expect((runtimeConfig.mcp as any).servers.existing.url).toBe('http://localhost:9999/mcp')
     expect((runtimeConfig.mcp as any).servers['bakin-main'].url).toBe('http://localhost:3737/mcp?agent=main')

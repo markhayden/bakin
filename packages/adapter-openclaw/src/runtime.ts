@@ -1075,10 +1075,6 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       if (Array.isArray(list) && list.length > 0) return config as T
       return { ...config, agents: { ...config.agents, list: agentListFrom(config) } } as T
     },
-    update: async (patch: Record<string, unknown>): Promise<void> => {
-      const config = readOpenClawConfig() ?? {}
-      writeOpenClawConfig(deepMerge(config as Record<string, unknown>, patch))
-    },
     replace: async <T = Record<string, unknown>>(next: T, reason: string): Promise<void> => {
       if (!reason) throw new Error('config.replace requires a reason')
       writeOpenClawConfig(next as Record<string, unknown>)

@@ -16,6 +16,7 @@ import {
 } from './lib/models-cache'
 import { getKnownModel, getKnownProvider, formatCostRange, computeCostUsdMicros, computeImageCostUsdMicros } from './data/known-models'
 import { spendTotal, spendByAgent, spendByModel, LedgerUnavailableError } from '../../src/core/execution-ledger'
+import { readRuntimeConfig, replaceRuntimeConfig } from '../../src/core/runtime-config'
 import { ORIGINS } from '../../src/core/model-routing'
 
 // ---------------------------------------------------------------------------
@@ -83,11 +84,11 @@ async function getAgentMeta(ctx: PluginContext): Promise<AgentMeta[]> {
 // Config read/write helpers
 // ---------------------------------------------------------------------------
 async function readConfig(ctx: PluginContext): Promise<RuntimeModelConfig> {
-  return ctx.runtime.config.get<RuntimeModelConfig>()
+  return readRuntimeConfig<RuntimeModelConfig>(ctx.runtime, 'models.routing')
 }
 
 async function writeConfig(ctx: PluginContext, config: RuntimeModelConfig, reason: string): Promise<void> {
-  await ctx.runtime.config.replace(config, reason)
+  await replaceRuntimeConfig(ctx.runtime, config, 'models.routing', reason)
 }
 
 async function updateConfig(

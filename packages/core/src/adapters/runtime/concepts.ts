@@ -512,9 +512,19 @@ export interface RawCronSnapshot {
   snapshot: unknown
 }
 
+/**
+ * Whole-config access to the runtime provider's own configuration.
+ *
+ * GOVERNED SURFACE: app and plugin code never calls these directly — reads
+ * and replaces go through the scoped wrapper in `src/core/runtime-config.ts`
+ * (typed scopes; mutations audited), and key-level reads through
+ * `src/core/runtime-config-raw.ts` (allowlist + audit). Both are
+ * architecture-test enforced. `update(patch)` was removed — it had zero
+ * callers, and a reasonless deep-merge write was exactly the ungoverned
+ * surface the audit flagged.
+ */
 export interface RuntimeConfigAccess {
   get<T = Record<string, unknown>>(): Promise<T>
-  update(patch: Record<string, unknown>): Promise<void>
   replace<T = Record<string, unknown>>(next: T, reason: string): Promise<void>
   raw<T = unknown>(key: string, reason: string): Promise<T>
 }
