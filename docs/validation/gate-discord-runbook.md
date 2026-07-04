@@ -11,6 +11,9 @@ Spec + acceptance criteria: `SPEC.md` (US1–US7). Plan: `tasks/gate-discord/pla
 
 1. **Server** running the branch/build under test on port 3737 (`bakin status`).
    Server code is not hot-reloaded — restart after checking out new code.
+   Launch with `BAKIN_URL=http://<tailscale-hostname>:3737` so decision links
+   in Discord open from any device (default is localhost, which only works on
+   the server itself).
 2. **Settings** (`~/.bakin/settings.json`) — the approvals alias MUST use the
    `channel:` prefix or OpenClaw's native approval prompts fall back to
    approver DMs (its origin resolver requires an explicit `channel:`/`group:`

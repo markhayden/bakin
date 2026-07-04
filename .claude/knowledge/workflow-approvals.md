@@ -72,6 +72,20 @@ native approval requests can expire before a workflow gate does, and provider
 events may be missed if Bakin is offline. The durable Bakin approval record and
 the Bakin fallback approval URL remain canonical.
 
+**Gate context companion message:** because the native card is capped at 256
+chars (upstream), `sendGateApprovalRequest` posts a rich context message to
+the same resolved channel immediately before `createApproval` — workflow,
+task, gate description, prior-step output, generated assets attached as media
+(assetIds extracted from prior output, resolved through the
+`assets.resolveServe` hook), plus the decision link and a task-board link.
+Best-effort: context failure logs a warn and never blocks the approval card.
+Decision links omit the approvalId (the page resolves the newest pending
+record via `findPendingApprovalForGate`; explicit ids still bind) so the card
+description has room for the workflow/task/step line. `BAKIN_URL` should be
+set to a network-reachable host (e.g. Tailscale hostname) or links render as
+localhost. The watchdog's per-gate general-channel ping was retired in favor
+of this.
+
 Native request hardening (all in `packages/adapter-openclaw/src/runtime.ts`):
 
 - Gate requests send `allowedDecisions: ['allow-once', 'deny']` so OpenClaw
