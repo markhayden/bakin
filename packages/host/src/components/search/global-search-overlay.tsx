@@ -249,6 +249,12 @@ export function GlobalSearchOverlay() {
                   ? descriptor.thumbnailUrl
                   : undefined
                 const { Icon, tint } = (descriptor.icon && HIT_ICONS[descriptor.icon]) || FALLBACK_ICON
+                // No href = nowhere to go: render visibly inert instead of
+                // masquerading as a clickable card (onSelect already no-ops).
+                const inert = !descriptor.href
+                const inertProps = inert
+                  ? { 'data-inert': 'true' as const, 'aria-disabled': true }
+                  : {}
                 const media = (sizeClass: string, iconClass: string) => thumbSrc ? (
                   <img
                     src={thumbSrc}
@@ -266,8 +272,9 @@ export function GlobalSearchOverlay() {
                     key={`${type}:${result.id}`}
                     value={`${type}:${result.id}`}
                     onSelect={() => onSelect(descriptor)}
-                    className="flex flex-col items-stretch gap-2 rounded-xl border p-3"
+                    className={`flex flex-col items-stretch gap-2 rounded-xl border p-3 ${inert ? 'opacity-60 cursor-default data-[selected=true]:bg-transparent' : ''}`}
                     data-testid={`global-search-hit-${result.id}`}
+                    {...inertProps}
                   >
                     {thumbSrc ? (
                       <img
@@ -299,8 +306,9 @@ export function GlobalSearchOverlay() {
                     key={`${type}:${result.id}`}
                     value={`${type}:${result.id}`}
                     onSelect={() => onSelect(descriptor)}
-                    className="flex items-center gap-4 rounded-lg px-4 py-3"
+                    className={`flex items-center gap-4 rounded-lg px-4 py-3 ${inert ? 'opacity-60 cursor-default data-[selected=true]:bg-transparent' : ''}`}
                     data-testid={`global-search-hit-${result.id}`}
+                    {...inertProps}
                   >
                     {media('size-16 shrink-0', 'size-6')}
                     <div className="min-w-0 flex-1">

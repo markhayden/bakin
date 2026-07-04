@@ -116,6 +116,27 @@ describe('GlobalSearchOverlay', () => {
     expect(screen.queryByPlaceholderText(/Search assets/)).toBeNull()
   })
 
+  it('null-href hits render inert and do not navigate', async () => {
+    // No renderer registered for `schedule` → defaultDescriptor → href: null.
+    mockSearchFetch(() => ({
+      status: 200,
+      body: { results: [HIT('job-1', 'bakin_schedule', { title: 'Nightly sweep' })], meta: { query: 'x', total: 1, took_ms: 1, source: 'search' } },
+    }))
+
+    render(<GlobalSearchOverlay />)
+    openOverlay()
+    const input = await screen.findByPlaceholderText(/Search assets/)
+    fireEvent.input(input, { target: { value: 'sweep' } })
+    await waitFor(() => expect(screen.getByTestId('global-search-hit-job-1')).toBeTruthy(), { timeout: 3000 })
+
+    const hit = screen.getByTestId('global-search-hit-job-1')
+    expect(hit.getAttribute('data-inert')).toBe('true')
+    fireEvent.click(hit)
+    expect(navigateCalls.length).toBe(0)
+    // overlay stays open — a dead click must not close it
+    expect(screen.queryByPlaceholderText(/Search assets/)).not.toBeNull()
+  })
+
   it('renders the honest unavailable state on the 503 contract', async () => {
     mockSearchFetch(() => ({ status: 503, body: { error: 'search_unavailable' } }))
     render(<GlobalSearchOverlay />)
