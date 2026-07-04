@@ -84,4 +84,5 @@ export type {
   UpdateCronJobInput,
   UpdateRuntimeAgentInput,
   WorkspaceFile,
+  WorkspaceFileStat,
 } from './concepts'

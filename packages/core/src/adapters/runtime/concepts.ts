@@ -46,6 +46,20 @@ export interface WorkspaceFile {
   metadata?: RuntimeMetadata
 }
 
+/**
+ * Size stats for one file the runtime loads at session start. Names + sizes
+ * only — content never crosses the adapter boundary (#357). `kind` is
+ * classified by the adapter so callers never re-derive runtime-private
+ * file conventions.
+ */
+export interface WorkspaceFileStat {
+  /** Path relative to the agent's workspace root (e.g. 'AGENTS.md', 'skills/foo/SKILL.md'). */
+  name: string
+  bytes: number
+  mtimeMs: number
+  kind: 'canonical' | 'skill' | 'memory'
+}
+
 export type RuntimeMessageToolsMode = 'auto' | 'none'
 
 export interface RuntimeMessageToolPolicy {
@@ -550,6 +564,14 @@ export interface AgentRuntimeAdapter {
     readWorkspaceFile(agentId: string, path: string): Promise<WorkspaceFile | null>
     writeWorkspaceFile(agentId: string, file: WorkspaceFile): Promise<void>
     removeWorkspaceFile(agentId: string, path: string): Promise<void>
+    /**
+     * Read-only size stats for the files the runtime loads at session start
+     * (canonical bootstrap files, skills, memory notes). Null when the agent
+     * has no workspace. Optional: runtimes without a file-backed workspace
+     * omit it, and callers must treat absence as "stats unavailable" —
+     * skip, never error.
+     */
+    workspaceFileStats?(agentId: string): Promise<WorkspaceFileStat[] | null>
     updatePermissions(agentId: string, patch: RuntimePermissionPatch): Promise<void>
     updateAllowlist(agentId: string, patch: RuntimeAllowlistPatch): Promise<void>
   }

@@ -384,6 +384,30 @@ describe('team plugin — avatar upload (dual-format)', () => {
     expect(existsSync(join(testDir, 'agents', 'pix-png', 'avatar.png'))).toBe(true)
   })
 
+  it('serves 304 for a matching If-None-Match and DECLARES it on the route', async () => {
+    const activated = await activatePlugin(teamPlugin, testDir)
+    const upload = findRoute(activated.routes, 'POST', '/:agentId/avatar')!
+    await uploadAvatar(upload, activated.ctx, 'pix-cache', WEBP)
+
+    const serve = findRoute(activated.routes, 'GET', '/:agentId/avatar')!
+    // Undeclared statuses make the dev-mode response validator warn on every
+    // conditional browser refetch ("undeclared response status 304").
+    // `responses` is a RouteDefinition field the legacy APIRoute type omits.
+    const declared = (serve as unknown as { responses?: Record<string, unknown> }).responses
+    expect(Object.keys(declared ?? {})).toContain('304')
+
+    const first = await callRoute(serve, activated.ctx, { searchParams: { agentId: 'pix-cache' }, rawResponse: true })
+    expect(first.response.status).toBe(200)
+    const etag = first.response.headers.get('ETag')
+    expect(etag).toBeTruthy()
+
+    const req = new Request('http://localhost/pix-cache/avatar?agentId=pix-cache', {
+      headers: { 'If-None-Match': etag! },
+    })
+    const res = await serve.handler(req, activated.ctx)
+    expect(res.status).toBe(304)
+  })
+
   it('rejects non-image bytes with 400', async () => {
     const activated = await activatePlugin(teamPlugin, testDir)
     const upload = findRoute(activated.routes, 'POST', '/:agentId/avatar')!

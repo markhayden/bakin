@@ -200,7 +200,10 @@ schedule gate, but automatic dispatch and automatic subtasks cannot.
 
 ## Prompt construction
 
-`buildDispatchMessage()` / `buildWorkflowDispatchMessage()` share
+Both builders assemble LABELED SECTIONS (`Array<{source, text}>`; the message
+is the joined sections) so the context-report diagnostics measure exactly
+what production sends — see `.claude/knowledge/startup-context.md` (#357).
+`buildDispatchSections()` / `buildWorkflowDispatchSections()` share
 `outputDisciplineSection()` (a SHORT artifact-first reminder in EVERY
 dispatch carrying the taskId-templated `assets_save` command) and
 `sharedExecutionToolDocs()` (taskId-templated invocations — intentional
@@ -210,7 +213,11 @@ pattern, tool reference) lives in the SUBAGENT ROLE CONTEXT layer
 (`~/.bakin/team/context/roles/subagent.md`, defaults in
 `src/core/team-context-defaults.ts`) composed into each subagent's AGENTS.md
 managed block — `bakin agents sync` (or the doctor's agent-sync repair)
-refreshes it after deploy. The
+refreshes it after deploy. Static sections are pinned by byte fixtures
+(`tests/fixtures/dispatch-prompts/`, regenerated deliberately) and a
+boilerplate budget test; the workflow WORKFLOW CONTEXT block is byte-budgeted
+by `settings.dispatch.maxWorkflowContextBytes` (newest step outputs kept
+whole, visible omission markers). The
 triage roster is derived
 from `runtime.agents.list()`; core contains no hardcoded agent names.
 Recovery variants: corrective prompts open with `PREVIOUS ATTEMPT FAILED`;
