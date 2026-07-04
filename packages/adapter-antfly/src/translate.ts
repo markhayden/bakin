@@ -86,11 +86,8 @@ function rangeNode(field: string, op: 'gt' | 'gte' | 'lt' | 'lte', value: unknow
   return { max: value, inclusive_max: true, field }
 }
 
-/**
- * Bakin filters → ONE `filter_query` AST node (boolean conjunction).
- * Applies to BOTH lanes server-side (probe-verified on main).
- */
-export function buildFilterQuery(filters: Filter[] | undefined): WireQueryNode | undefined {
+/** Bakin filters → must/must_not clause lists (shared by both builders below). */
+function filterClauses(filters: Filter[] | undefined): { must: WireQueryNode[]; mustNot: WireQueryNode[] } {
   const must: WireQueryNode[] = []
   const mustNot: WireQueryNode[] = []
   for (const filter of filters ?? []) {
@@ -112,10 +109,39 @@ export function buildFilterQuery(filters: Filter[] | undefined): WireQueryNode |
       if (node) must.push(node)
     }
   }
+  return { must, mustNot }
+}
+
+/**
+ * Bakin filters → ONE boolean AST node. Retained for callers/tests that
+ * want the standalone shape; buildQueryRequest composes filters into the
+ * full_text_search node instead (see composeFtsWithFilters).
+ */
+export function buildFilterQuery(filters: Filter[] | undefined): WireQueryNode | undefined {
+  const { must, mustNot } = filterClauses(filters)
   if (must.length === 0 && mustNot.length === 0) return undefined
   if (must.length === 1 && mustNot.length === 0) return must[0]
   const node: WireQueryNode = {}
   if (must.length > 0) node.must = { conjuncts: must }
+  if (mustNot.length > 0) node.must_not = { disjuncts: mustNot }
+  return node
+}
+
+/**
+ * rc.17 WORKAROUND — filters ride INSIDE the full_text_search node, never
+ * `filter_query`. On the pinned engine, `filter_query` 400s on match_phrase
+ * nodes ("invalid query request") and silently analyzer-mangles `match`
+ * nodes on keyword fields (tier:"durable" matched nothing while
+ * tier:"turn" did). Every clause shape (match_phrase conjuncts, must_not
+ * exclusions, should-disjunct INs, numeric ranges) is live-verified to
+ * behave in the full_text_search position (probed 2026-07-04). Pinned by
+ * tests/integration/antfly/workaround-regressions.test.ts — remove when
+ * upstream fixes filter_query.
+ */
+export function composeFtsWithFilters(base: WireQueryNode, filters: Filter[] | undefined): WireQueryNode {
+  const { must, mustNot } = filterClauses(filters)
+  if (must.length === 0 && mustNot.length === 0) return base
+  const node: WireQueryNode = { must: { conjuncts: [base, ...must] } }
   if (mustNot.length > 0) node.must_not = { disjuncts: mustNot }
   return node
 }
@@ -137,24 +163,33 @@ function readNumberRecord(value: unknown): Record<string, number> | null {
 export function buildQueryRequest(table: string, q: Query, settings: AntflySettings): WireQueryRequest {
   const strategy = resolveStrategy(q.strategy, settings)
   const text = (q.text ?? '').trim()
-  const filterQuery = buildFilterQuery(q.filters)
+  const hasFilters = (q.filters?.length ?? 0) > 0
   const aggregations = buildAggregations(q)
   const isMatchAll = text === '*'
-  const listFlow = text.length === 0 && (filterQuery !== undefined || aggregations !== undefined)
-  const effectiveStrategy: Strategy = isMatchAll || listFlow ? 'full_text_only' : strategy
+  const listFlow = text.length === 0 && (hasFilters || aggregations !== undefined)
+  // Filters force the FTS-only lane: they can only be enforced inside the
+  // full_text_search node on rc.17 (see composeFtsWithFilters), and an
+  // unfiltered semantic leg would merge filter-violating documents into the
+  // response (e.g. another agent's rows in an agent-filtered search).
+  // Filter correctness beats semantic recall; remove when upstream fixes
+  // filter_query.
+  const effectiveStrategy: Strategy = isMatchAll || listFlow || hasFilters ? 'full_text_only' : strategy
 
   const request: WireQueryRequest = {
     table,
     limit: q.limit ?? settings.search.defaultLimit,
   }
 
+  // Filters compose INTO the full_text_search node (rc.17 filter_query is
+  // broken — see composeFtsWithFilters).
   if (isMatchAll || listFlow) {
-    request.full_text_search = { match_all: {} }
+    request.full_text_search = composeFtsWithFilters({ match_all: {} }, q.filters)
   } else if (text.length > 0 && effectiveStrategy !== 'semantic_only') {
-    request.full_text_search = fullTextNode(text, readStringArray(q.adapterOptions?.searchableFields))
+    request.full_text_search = composeFtsWithFilters(
+      fullTextNode(text, readStringArray(q.adapterOptions?.searchableFields)),
+      q.filters,
+    )
   }
-
-  if (filterQuery) request.filter_query = filterQuery
 
   // The semantic leg needs concrete vector indexes to search — naming none
   // (or a table that has none) is a hard 400. The registry passes the
@@ -224,7 +259,7 @@ export function toCountRequest(request: WireQueryRequest): WireQueryRequest {
   return count
 }
 
-export function mapQueryResponse(envelope: WireQueryEnvelope | null, table: string): QueryResult {
+export function mapQueryResponse(envelope: WireQueryEnvelope | null, _table: string): QueryResult {
   const response = envelope?.responses?.[0]
   if (!response) {
     return { hits: [], total: 0, diagnostics: { strategy: 'none' } }

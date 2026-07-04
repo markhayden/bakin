@@ -214,12 +214,37 @@ if (!binary) {
       expect(status).toBe(500)
     }, 120_000)
 
-    it('CONTRACT CANARY: filter_query keeps filtering (the workaround we DELETED must stay dead)', async () => {
-      // Inverse pin: this asserts the FIX keeps working. If it fails, the
-      // filter-in-AST workaround has to come back (bakin#456 class).
+    it('PIN: filter_query rejects match_phrase nodes (the eq-filter shape) with 400', async () => {
+      // WHEN THIS FAILS: upstream accepts match_phrase in filter_query →
+      // re-probe keyword-field equality end-to-end and, if it filters
+      // correctly, move filters back to filter_query (delete
+      // composeFtsWithFilters in translate.ts) + delete this pin.
+      //
+      // History: the old canary here probed `match` on a TEXT field — the
+      // one shape that works — which justified deleting the original
+      // filter-in-AST workaround while every string-eq filter (match_phrase)
+      // 400'd and keyword-field `match` filters returned nothing. That's
+      // what blanked the memory dashboard. Probe the shape production sends.
       const result = await api('POST', `/db/v1/tables/${T}/query`, {
         full_text_search: { match_all: {} },
-        filter_query: { match: 'cats', field: 'title' },
+        filter_query: { match_phrase: 'alpha cats', field: 'title' },
+        limit: 10,
+      })
+      expect(result.status).toBe(400)
+    })
+
+    it('CONTRACT CANARY: fts-composed filters keep filtering (composeFtsWithFilters shape)', async () => {
+      // Inverse pin: asserts the CURRENT workaround shape keeps working —
+      // equality rides as a match_phrase conjunct inside full_text_search.
+      const result = await api('POST', `/db/v1/tables/${T}/query`, {
+        full_text_search: {
+          must: {
+            conjuncts: [
+              { match_all: {} },
+              { match_phrase: 'cats', field: 'title' },
+            ],
+          },
+        },
         limit: 10,
       })
       const hits = resp0(result.json)?.hits as { hits: unknown[] } | undefined
