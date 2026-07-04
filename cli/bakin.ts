@@ -132,10 +132,6 @@ async function printPluginRestoreResultTui(pluginId: string, result: PluginResto
   return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.PluginRestoreResultReport, { pluginId, result })
 }
 
-async function printDocsTui(routes: Array<Record<string, unknown>>): Promise<void> {
-  return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.DocsReport, { routes })
-}
-
 async function printWorkflowsListTui(templates: Array<Record<string, unknown>>): Promise<void> {
   return renderInkReport(() => import('../src/core/cli/ui/readonly'), (m) => m.WorkflowsListReport, { templates })
 }
@@ -1392,18 +1388,6 @@ function parseAgentsFlags(args: string[]): AgentsCmdFlags {
     }
   }
   return flags
-}
-
-async function cmdDocs(): Promise<void> {
-  const docs = await apiGet('/api/docs') as { routes: Array<Record<string, unknown>> }
-  if (process.stdout.isTTY) {
-    await printDocsTui(docs.routes)
-    return
-  }
-  for (const route of docs.routes) {
-    const desc = route.description ? ` — ${route.description}` : ''
-    console.log(`${route.method} ${route.fullPath}${desc}`)
-  }
 }
 
 async function cmdSearch(query: string, options: { table?: string; limit?: number; agent?: string; facets?: string } = {}): Promise<void> {
@@ -4097,7 +4081,7 @@ export async function main(): Promise<void> {
       }
 
       case 'docs':
-        await cmdDocs()
+        await (await import('../src/cli/commands/docs')).run(args)
         break
 
       case 'search': {
