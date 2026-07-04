@@ -272,6 +272,27 @@ Gates: full suite 5,362-0; typecheck; 10/10 plugin builds; binary build + isolat
    split pattern — `lib/routes/` + `lib/exec-tools.ts`; `plugins/assets/lib/` already has the
    enrichment modules, so this is index-orchestration extraction, not new design.
 
+**FW5 STATUS — ☑ DONE (2026-07-05, branch `refactor/server-godfiles`, 7 commits).**
+1. **models/index.ts 897 → 43** — lib/{model-id 25, config-io 149, available-models 155, aliases 32,
+   route-schemas 76, routes 413, register-hooks 89, exec-tools 58}; all 4 module-scope cells
+   single-homed; cache path + never-fabricate merge byte-for-byte.
+2. **assets/index.ts 913 → 121** — lib/{routes 290, register-search 209 (owns the pluginCtx cell),
+   register-hooks 103, exec-tools 299}; asset-service bridge surface + hook-name contracts untouched.
+3. **install.ts 793 → 102-line sequencing handler** + 6 phase modules under api/plugins/install/;
+   NEW security unit tests (13): consent-token manifestSha binding, core-id squatting, FW1.7
+   dist-deletion — the audit's untestable-buried-logic complaint resolved.
+4. **upgrade.ts 895 → 213** + 5 lane modules; **hasher consolidation DONE** — whiskit hashSourceTree
+   is canonical (its values live in checksummed published artifacts; lockfile shas are local +
+   rewritable), with a one-time lockfile migration (sourceTreeShaAlgo field; legacy rows verified
+   via retained legacy hasher then rewritten once; genuinely-changed source still detected;
+   10 migration tests). Stale whiskit spec docs updated. Accepted consequence: tests/-or-dotfile-
+   only changes no longer flag "upgrade available" (canonical skip-set matches what builds).
+Deferred (recorded): models typed-ctx cleanup + RuntimeModelConfig promotion; assets /enrich fat
+handler → routes/enrich.ts; upgrade-lane consent/commit dedup (supply-chain, kept mechanical).
+Gates: full suite 5,376-0; typecheck; check:cycles 0 new; 10/10 plugin builds; binary build +
+isolated boot smoke (models/available + assets/versioned + import/scan 200; install bad-body 400
+through the split validator; models/config 500 is the documented no-runtime environmental miss).
+
 ### FW6 `refactor/dedup-remainder` — kill the surviving copy-paste
 
 Mechanical; batch into one PR with per-item commits.
