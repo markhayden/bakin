@@ -665,7 +665,9 @@ export function populateTeamRoutes(arr: any[], deps: TeamRouteDeps): void {
     description: 'Serve agent avatar image',
     summary: 'Serve agent avatar image',
     params: z.object({ agentId: z.string() }),
-    responses: { 200: { contentType: 'application/octet-stream' }, 400: errorResponseTeam, 404: errorResponseTeam, 500: errorResponseTeam },
+    // 304: serveAvatar honors If-None-Match/If-Modified-Since (RFC 7232) —
+    // undeclared, every conditional browser refetch logs a dev-validator warn.
+    responses: { 200: { contentType: 'application/octet-stream' }, 304: { contentType: 'none' }, 400: errorResponseTeam, 404: errorResponseTeam, 500: errorResponseTeam },
     handler: async (req: Request, _ctx: PluginContextLite) => {
       const url = new URL(req.url)
       const agentId = url.searchParams.get('agentId')
