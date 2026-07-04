@@ -1,6 +1,6 @@
 # Spec: Workflows Hardening Batch
 
-**Status:** Draft — pending approval
+**Status:** Shipped 2026-07-04 — PRs #595 (cross-plugin refs, #374), #600 (YAML-surface deletions + strict schemas), #598 (map_workflow design doc). #203 re-scoped to implementation-only.
 **Date:** 2026-07-03
 **Issues:** #374 (implement), #203 (design doc + issue rewrite)
 **Closed by the audit preceding this spec:** #386 (resolved by skill-registry redesign + #407), #98 (not planned — speculative, architecturally stale), #38 (obsolete premise, contradicts adapter-boundary doctrine)
