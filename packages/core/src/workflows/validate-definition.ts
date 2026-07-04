@@ -192,17 +192,20 @@ export function validateDefinition(def: WorkflowDefinition, opts: ValidateDefini
       }
     }
 
-    // Validate workflow step references
-    if (validateNestedWorkflowRefs && step.type === 'workflow') {
+    // Validate workflow step references. Structural checks (workflow_id
+    // present, no self-reference) are always fatal; the EXISTENCE check is
+    // gated by validateNestedWorkflowRefs because plugin-default loading runs
+    // before every plugin has activated (#374) — there, existence is enforced
+    // at start time and surfaced by the workflow-definitions health check.
+    if (step.type === 'workflow') {
       const nested = step as NestedWorkflowStep
       if (!nested.workflow_id) {
         errors.push(`Step "${step.id}": workflow step requires workflow_id`)
       } else if (opts.definitionId && nested.workflow_id === opts.definitionId) {
         errors.push(`Step "${step.id}": workflow_id "${nested.workflow_id}" cannot reference its own workflow`)
-      } else {
-        // Check that referenced workflow exists in the current validation set,
-        // on disk, or in the registry. The validation-set path is what lets
-        // plugin-shipped defaults validate in two passes before registration.
+      } else if (validateNestedWorkflowRefs) {
+        // Referenced workflow must exist in the current validation set, on
+        // disk, or in the registry.
         const inKnownSet = knownWorkflowIds?.has(nested.workflow_id) ?? false
         const defsDir = join(opts.contentDir || getContentDir(), 'workflows', 'definitions')
         const nestedYaml = join(defsDir, `${nested.workflow_id}.yaml`)

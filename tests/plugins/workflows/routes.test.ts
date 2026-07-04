@@ -386,5 +386,28 @@ steps:
       expect(status).toBeGreaterThanOrEqual(400)
       expect(JSON.stringify(body)).toContain('cycle detected')
     })
+
+    it('rejects starting a workflow whose nested child is truly missing (load no longer gates existence, #374)', async () => {
+      const defsDir = join(testDir, 'workflows', 'definitions')
+      mkdirSync(defsDir, { recursive: true })
+      writeFileSync(join(defsDir, 'orphan-parent.yaml'), `
+name: Orphan Parent
+description: references a child that does not exist anywhere
+version: 1
+steps:
+  - id: run-child
+    type: workflow
+    label: Run Child
+    workflow_id: nowhere-to-be-found
+`)
+
+      const route = findRoute(activated.routes, 'POST', '/instances/start')!
+      const { status, body } = await callRoute(route, activated.ctx, {
+        body: { taskId: 'task-orphan', workflowId: 'orphan-parent' },
+      })
+
+      expect(status).toBeGreaterThanOrEqual(400)
+      expect(JSON.stringify(body)).toContain('nowhere-to-be-found')
+    })
   })
 })
