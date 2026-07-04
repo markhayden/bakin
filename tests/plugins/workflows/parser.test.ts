@@ -173,7 +173,9 @@ steps:
     })
 
     it('rejects gates inside parallel groups', () => {
-      const def: WorkflowDefinition = {
+      // Deliberately violates ParallelStep (agent-only children) — YAML input
+      // bypasses TS types, so the runtime validator must still catch this.
+      const def = {
         name: 'Test',
         description: 'Test',
         version: 1,
@@ -188,7 +190,7 @@ steps:
             ],
           },
         ],
-      }
+      } as unknown as WorkflowDefinition
 
       const errors = validateDefinition(def)
       expect(errors.some(e => e.includes('parallel children must be agent steps'))).toBe(true)

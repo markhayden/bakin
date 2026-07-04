@@ -63,7 +63,7 @@ export interface GateStep extends BaseStep {
 
 export interface ParallelStep extends BaseStep {
   type: 'parallel'
-  steps: (AgentStep | GateStep)[]
+  steps: AgentStep[]
 }
 
 export interface OutputStep extends BaseStep {

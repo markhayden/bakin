@@ -222,9 +222,9 @@ export const createTaskStepSchema = z.object({
   skipWorkflowReason: z.string().optional(),
 }).passthrough()
 
-// Parallel children are a closed subset (agent | gate). Defined separately so
-// the parallel schema can reference them without recursion through the union.
-const parallelChildSchema = z.discriminatedUnion('type', [agentStepSchema, gateStepSchema])
+// Parallel children are agent steps only — the semantic validator has always
+// rejected non-agent children; the schema now says the same thing.
+const parallelChildSchema = agentStepSchema
 
 export const parallelStepSchema = z.object({
   id: z.string().min(1),
