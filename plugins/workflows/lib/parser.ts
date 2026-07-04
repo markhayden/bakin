@@ -9,7 +9,7 @@
 import { readFileSync, readdirSync, existsSync } from 'fs'
 import { join } from 'path'
 import yaml from 'js-yaml'
-import type { WorkflowDefinition, WorkflowStep, ParallelStep, NestedWorkflowStep } from '../types'
+import type { WorkflowDefinition, WorkflowStep, ParallelStep } from '../types'
 import { getContentDir } from './content-dir'
 import {
   getDefinition as getRegistryDefinition,
@@ -37,17 +37,16 @@ export interface LoadedDefinitionEntry {
   packageId?: string
 }
 
-export interface ValidateDefinitionOptions {
-  definitionId?: string
-  source?: DefinitionSource
-  contentDir?: string
-  knownWorkflowIds?: Iterable<string>
-  runtimeAgents?: Iterable<string>
-  assignee?: string
-  requireResolvedAgents?: boolean
-  validateNestedWorkflowRefs?: boolean
-  allowEmptySteps?: boolean
-}
+// validateDefinition + its option type and the preferred-agent expression
+// parser moved to core so the agent-package loader and package-integrity
+// checks stop importing this plugin's source tree. Re-exported here so
+// plugin-internal consumers (routes, start-validation, load-defaults,
+// step-context) keep this module as their import surface.
+export {
+  validateDefinition,
+  parsePreferredAgentExpression,
+  type ValidateDefinitionOptions,
+} from '@bakin/core/workflows/validate-definition'
 
 export const WORKFLOW_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 export const WORKFLOW_ID_VALIDATION_MESSAGE = 'Workflow id must use lowercase letters, numbers, and hyphens.'
@@ -68,26 +67,6 @@ function getDefinitionsDir(contentDir?: string): string {
  */
 export function parseYAML(content: string): Record<string, unknown> {
   return yaml.load(content) as Record<string, unknown>
-}
-
-/**
- * Collect all step IDs (including nested parallel children).
- */
-function collectStepIds(steps: WorkflowStep[]): string[] {
-  const ids: string[] = []
-  for (const step of steps) {
-    ids.push(step.id)
-    if (step.type === 'parallel') {
-      for (const child of (step as ParallelStep).steps) {
-        ids.push(child.id)
-      }
-    }
-  }
-  return ids
-}
-
-function getTopLevelStepIndex(steps: WorkflowStep[], stepId: string): number {
-  return steps.findIndex((step) => step.id === stepId)
 }
 
 // ─── Definition traversal helpers ───────────────────────────────────────────
@@ -140,195 +119,6 @@ export function getTopLevelIndex(def: WorkflowDefinition, stepId: string): numbe
     }
   }
   return -1
-}
-
-function isSymbolicAgent(agent: string): boolean {
-  return agent.startsWith('$')
-}
-
-const SUPPORTED_AGENT_SYMBOLS = new Set(['$assigned'])
-
-export function parsePreferredAgentExpression(agent: string): string[] | null {
-  const match = agent.match(/^\$preferred\((.*)\)$/)
-  if (!match) return null
-  const raw = match[1].split(',').map(part => part.trim())
-  if (raw.length < 2 || raw.some(part => part.length === 0)) return null
-  return raw
-}
-
-function resolvePreferredForValidation(
-  choices: string[],
-  opts: { runtimeAgents?: Set<string>; assignee?: string },
-): string | null {
-  for (const choice of choices) {
-    if (choice === '$assigned') {
-      if (opts.assignee && (!opts.runtimeAgents || opts.runtimeAgents.has(opts.assignee))) return opts.assignee
-      continue
-    }
-    if (!choice.startsWith('$') && opts.runtimeAgents?.has(choice)) return choice
-  }
-  return null
-}
-
-/**
- * Validate a parsed workflow definition.
- * Returns an array of error messages (empty if valid).
- */
-export function validateDefinition(def: WorkflowDefinition, opts: ValidateDefinitionOptions = {}): string[] {
-  const errors: string[] = []
-  const knownWorkflowIds = opts.knownWorkflowIds ? new Set(opts.knownWorkflowIds) : undefined
-  const runtimeAgents = opts.runtimeAgents ? new Set(opts.runtimeAgents) : undefined
-  const validateNestedWorkflowRefs = opts.validateNestedWorkflowRefs ?? true
-
-  if (!def.name) errors.push('Missing required field: name')
-  if (!def.steps || !Array.isArray(def.steps)) {
-    errors.push('Workflow must have at least one step')
-    return errors
-  }
-  if (def.steps.length === 0) {
-    if (opts.allowEmptySteps) return errors
-    errors.push('Workflow must have at least one step')
-    return errors
-  }
-
-  const allIds = collectStepIds(def.steps)
-  const idSet = new Set<string>()
-  const topLevelIds = new Set(def.steps.map((step) => step.id))
-
-  // Check for duplicate IDs
-  for (const id of allIds) {
-    if (idSet.has(id)) {
-      errors.push(`Duplicate step ID: "${id}"`)
-    }
-    idSet.add(id)
-  }
-
-  const validateAgent = (step: WorkflowStep, path: string): void => {
-    const agent = 'agent' in step ? step.agent : undefined
-    if (step.type === 'output' && !agent) {
-      errors.push(`Step "${step.id}": output step requires an agent owner`)
-      return
-    }
-    if (typeof agent !== 'string' || agent.length === 0) return
-
-    if (isSymbolicAgent(agent)) {
-      const preferred = parsePreferredAgentExpression(agent)
-      if (preferred) {
-        for (const choice of preferred) {
-          if (choice.startsWith('$') && !SUPPORTED_AGENT_SYMBOLS.has(choice)) {
-            errors.push(`Step "${step.id}": unsupported agent symbol "${choice}" in selector at ${path}.agent`)
-          }
-        }
-        if (opts.requireResolvedAgents && !resolvePreferredForValidation(preferred, { runtimeAgents, assignee: opts.assignee })) {
-          errors.push(`Step "${step.id}": agent selector "${agent}" cannot resolve to a known runtime agent`)
-        }
-      } else if (agent.startsWith('$preferred(')) {
-        errors.push(`Step "${step.id}": unsupported agent selector "${agent}" at ${path}.agent`)
-      } else if (!SUPPORTED_AGENT_SYMBOLS.has(agent)) {
-        errors.push(`Step "${step.id}": unsupported agent symbol "${agent}" at ${path}.agent`)
-      } else if (agent === '$assigned' && opts.requireResolvedAgents && !opts.assignee) {
-        errors.push(`Step "${step.id}": agent "$assigned" cannot resolve because the task has no assignee`)
-      } else if (agent === '$assigned' && opts.assignee && runtimeAgents && !runtimeAgents.has(opts.assignee)) {
-        errors.push(`Step "${step.id}": agent "$assigned" resolves to unknown agent "${opts.assignee}"`)
-      }
-      return
-    }
-
-    if (opts.source === 'plugin') {
-      errors.push(`Step "${step.id}": plugin-shipped workflows must use symbolic agents; found literal agent "${agent}"`)
-      return
-    }
-
-    if (runtimeAgents && !runtimeAgents.has(agent)) {
-      errors.push(`Step "${step.id}": references unknown agent "${agent}"`)
-    }
-  }
-
-  const validateDependsOn = (step: WorkflowStep, topLevelIdx: number): void => {
-    if (!('dependsOn' in step) || !step.dependsOn) return
-    const deps = Array.isArray(step.dependsOn) ? step.dependsOn : [step.dependsOn]
-    for (const dep of deps) {
-      if (!idSet.has(dep)) {
-        errors.push(`Step "${step.id}": dependsOn references nonexistent step "${dep}"`)
-        continue
-      }
-      if (!topLevelIds.has(dep)) {
-        errors.push(`Step "${step.id}": dependsOn references child step "${dep}"; only top-level step dependencies are supported`)
-        continue
-      }
-      const depIdx = getTopLevelStepIndex(def.steps, dep)
-      if (depIdx >= topLevelIdx) {
-        errors.push(`Step "${step.id}": dependsOn "${dep}" must reference an earlier top-level step`)
-      }
-    }
-  }
-
-  // Validate references and runtime-supported semantics.
-  for (let idx = 0; idx < def.steps.length; idx++) {
-    const step = def.steps[idx]
-    validateAgent(step, `steps[${idx}]`)
-    validateDependsOn(step, idx)
-
-    // Check gate on_reject.goto references
-    if (step.type === 'gate' && step.on_reject?.goto) {
-      if (!idSet.has(step.on_reject.goto)) {
-        errors.push(`Step "${step.id}": on_reject.goto references nonexistent step "${step.on_reject.goto}"`)
-      } else if (!topLevelIds.has(step.on_reject.goto)) {
-        errors.push(`Step "${step.id}": on_reject.goto must target a top-level step`)
-      } else if (getTopLevelStepIndex(def.steps, step.on_reject.goto) > idx) {
-        errors.push(`Step "${step.id}": on_reject.goto must rewind to this or an earlier step`)
-      }
-    }
-
-    if (step.type === 'gate') {
-      const expectedNext = def.steps[idx + 1]?.id
-      if (step.on_approve !== 'done' && step.on_approve !== expectedNext) {
-        errors.push(
-          expectedNext
-            ? `Step "${step.id}": on_approve must point to the next top-level step "${expectedNext}" or "done"`
-            : `Step "${step.id}": final gate on_approve must be "done"`,
-        )
-      }
-    }
-
-    // Validate workflow step references
-    if (validateNestedWorkflowRefs && step.type === 'workflow') {
-      const nested = step as NestedWorkflowStep
-      if (!nested.workflow_id) {
-        errors.push(`Step "${step.id}": workflow step requires workflow_id`)
-      } else if (opts.definitionId && nested.workflow_id === opts.definitionId) {
-        errors.push(`Step "${step.id}": workflow_id "${nested.workflow_id}" cannot reference its own workflow`)
-      } else {
-        // Check that referenced workflow exists in the current validation set,
-        // on disk, or in the registry. The validation-set path is what lets
-        // plugin-shipped defaults validate in two passes before registration.
-        const inKnownSet = knownWorkflowIds?.has(nested.workflow_id) ?? false
-        const defsDir = join(opts.contentDir || getContentDir(), 'workflows', 'definitions')
-        const nestedYaml = join(defsDir, `${nested.workflow_id}.yaml`)
-        const nestedYml = join(defsDir, `${nested.workflow_id}.yml`)
-        const onDisk = existsSync(nestedYaml) || existsSync(nestedYml)
-        const inRegistry = !!getRegistryDefinition(nested.workflow_id)
-        if (!inKnownSet && !onDisk && !inRegistry) {
-          errors.push(`Step "${step.id}": workflow_id "${nested.workflow_id}" not found in definitions`)
-        }
-      }
-    }
-
-    // Validate parallel children
-    if (step.type === 'parallel') {
-      for (const [childIdx, child] of (step as ParallelStep).steps.entries()) {
-        validateAgent(child, `steps[${idx}].steps[${childIdx}]`)
-        if (child.type !== 'agent') {
-          errors.push(`Step "${step.id}": parallel children must be agent steps; child "${child.id}" is "${child.type}"`)
-        }
-        if ('dependsOn' in child && child.dependsOn) {
-          errors.push(`Step "${child.id}": dependsOn inside parallel children is not supported`)
-        }
-      }
-    }
-  }
-
-  return errors
 }
 
 /**

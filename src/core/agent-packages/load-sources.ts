@@ -42,7 +42,7 @@ import {
   registerAgentPackageDefinition,
   unregisterAgentPackageDefinitions,
 } from '@bakin/core/workflows/source-registry'
-import { validateDefinition } from '../../../plugins/workflows/lib/parser'
+import { validateDefinition } from '@bakin/core/workflows/validate-definition'
 import {
   registerAgentPackageSkill,
   unregisterAgentPackageSkills,
