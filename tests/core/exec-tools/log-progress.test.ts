@@ -6,7 +6,7 @@ mock.module('@bakin/core/main-agent', () => ({
   getMainAgentName: () => 'Main',
 }))
 
-mock.module('../../src/core/task-service', () => ({
+mock.module('../../../src/core/task-service', () => ({
   logProgress: mock(),
 }))
 
@@ -14,8 +14,8 @@ mock.module('@/core/exec-tools/registry', () => ({
   addExecTool: mock(),
 }))
 
-import { logProgressFormatted } from '../../scripts/lib/log-progress'
-import { logProgress } from '../../src/core/task-service'
+import { logProgressFormatted } from '../../../src/core/exec-tools/tools/log-progress'
+import { logProgress } from '../../../src/core/task-service'
 
 const mockLogProgress = vi.mocked(logProgress)
 

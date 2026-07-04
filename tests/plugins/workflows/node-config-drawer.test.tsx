@@ -55,7 +55,7 @@ mock.module('@/components/agent-avatar', () => ({
 }))
 
 import { NodeConfigDrawer } from '../../../plugins/workflows/components/node-config-drawer'
-import { registerNodeType, unregisterNodeType } from '../../../plugins/workflows/lib/node-type-registry'
+import { registerNodeType, unregisterNodeType } from '@bakin/core/workflows/node-type-registry'
 
 afterEach(() => {
   cleanup()
@@ -455,7 +455,11 @@ describe('NodeConfigDrawer', () => {
     )
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith('/api/plugins/workflows/definitions?includeDisabled=1')
+      // useJsonFetch passes an options object carrying the abort signal.
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/plugins/workflows/definitions?includeDisabled=1',
+        expect.anything(),
+      )
     })
     expect(screen.getByRole('combobox')).toBeDefined()
     expect(screen.queryByRole('textbox', { name: /^workflow_id$/i })).toBeNull()

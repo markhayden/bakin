@@ -45,7 +45,7 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 }))
 
 import { loadDefaultWorkflows } from '@bakin/workflows/lib/load-defaults'
-import { clearSourceRegistry, getDefinition, registerPluginDefinition } from '@bakin/workflows/lib/source-registry'
+import { clearSourceRegistry, getDefinition, registerPluginDefinition } from '@bakin/core/workflows/source-registry'
 import { activatePlugin } from '../test-helpers'
 import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 

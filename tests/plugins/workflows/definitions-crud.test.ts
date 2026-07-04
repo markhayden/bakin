@@ -41,7 +41,7 @@ import workflowsPlugin from '@bakin/workflows'
 import {
   clearSourceRegistry,
   registerPluginDefinition,
-} from '@bakin/workflows/lib/source-registry'
+} from '@bakin/core/workflows/source-registry'
 import { matchWorkflow } from '@bakin/workflows/lib/matcher'
 import { resetWorkflowAvailabilityCache } from '@bakin/workflows/lib/availability'
 import { activatePlugin, callRoute, findRoute } from '../test-helpers'

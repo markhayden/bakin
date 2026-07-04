@@ -128,34 +128,70 @@ export function createPluginTaskService(store: BakinTaskStore): PluginTaskServic
 
 export function createPluginAssetsAPI(): AssetsAPI {
   return {
-    // Versioned (asset-as-directory) surface — delegates to the asset service.
+    // Versioned (asset-as-directory) surface — delegates to the sanctioned
+    // assets bridge (`src/core/assets-bridge.ts`), the single core-side
+    // crossing into the assets plugin. The bridge lazy-loads the service, so
+    // this keeps the pre-bridge lazy-import behavior.
     async createAsset(input) {
-      const { createAsset } = await import('../../plugins/assets/lib/asset-service')
-      const r = await createAsset(input)
-      return { assetId: r.assetId, version: r.version }
+      const bridge = await import('../core/assets-bridge')
+      return bridge.createAsset(input)
     },
 
     async getAsset(assetId) {
-      const { getAssetSummary } = await import('../../plugins/assets/lib/asset-service')
-      return getAssetSummary(assetId) as Awaited<ReturnType<AssetsAPI['getAsset']>>
+      const bridge = await import('../core/assets-bridge')
+      return (await bridge.getAssetSummary(assetId)) as Awaited<ReturnType<AssetsAPI['getAsset']>>
     },
 
     async addVersion(assetId, input) {
-      const { addVersion } = await import('../../plugins/assets/lib/asset-service')
-      const r = await addVersion(assetId, input)
-      return { assetId: r.assetId, version: r.version }
+      const bridge = await import('../core/assets-bridge')
+      return bridge.addVersion(assetId, input)
     },
 
     async addExport(assetId, input) {
-      const { addExport } = await import('../../plugins/assets/lib/asset-service')
-      const r = await addExport(assetId, input)
-      return { name: r.name, file: r.file }
+      const bridge = await import('../core/assets-bridge')
+      return bridge.addExport(assetId, input)
     },
 
     async resolveVersionFile(assetId, version) {
-      const { resolveFile } = await import('../../plugins/assets/lib/asset-service')
-      const ref = resolveFile(assetId, version)
+      const bridge = await import('../core/assets-bridge')
+      const ref = await bridge.resolveVersionFile(assetId, version)
       return ref ? { absPath: ref.absPath, mimeType: ref.mimeType, version: ref.version } : null
+    },
+
+    async listAssets(filter) {
+      const bridge = await import('../core/assets-bridge')
+      const summaries = await bridge.listAssets(filter)
+      return summaries as Awaited<ReturnType<AssetsAPI['listAssets']>>
+    },
+
+    async getAssetVersions(assetId) {
+      const bridge = await import('../core/assets-bridge')
+      const manifest = await bridge.getAssetManifest(assetId)
+      if (!manifest) return null
+      return {
+        currentVersion: manifest.currentVersion,
+        versions: manifest.versions.map((v) => ({
+          version: v.version,
+          file: v.file,
+          width: v.width,
+          height: v.height,
+          op: v.op,
+          tool: v.tool,
+          prompt: v.prompt,
+          promptHash: v.promptHash,
+          generation: v.generation,
+        })),
+      }
+    },
+
+    async upsertFromSource(sourcePath, input) {
+      const bridge = await import('../core/assets-bridge')
+      return bridge.upsertFromSource(sourcePath, input)
+    },
+
+    async resolveStoreFile(absPath) {
+      const bridge = await import('../core/assets-bridge')
+      return bridge.resolveStoreFile(absPath)
     },
   }
 }
@@ -255,7 +291,6 @@ export function createPluginRuntimeFacade(runtime: AgentRuntimeAdapter): AgentRu
     },
     config: {
       get: async () => { throw new Error('Runtime config is not exposed to plugins') },
-      update: async () => { throw new Error('Runtime config is not exposed to plugins') },
       replace: async () => { throw new Error('Runtime config is not exposed to plugins') },
       raw: async () => { throw new Error('Runtime config is not exposed to plugins') },
     },

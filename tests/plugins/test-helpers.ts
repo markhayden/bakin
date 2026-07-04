@@ -16,9 +16,9 @@ import type {
 } from '@bakin/core/plugin-types'
 import { BakinEventBus } from '../../src/lib/events/event-bus'
 import { MarkdownStorageAdapter } from '../../src/lib/storage/markdown-adapter'
-import { registerPluginDefinition } from '../../plugins/workflows/lib/source-registry'
-import { registerPluginNodeType } from '../../plugins/workflows/lib/node-type-registry'
-import { registerPluginNotificationChannel } from '../../plugins/workflows/lib/notification-channel-registry'
+import { registerPluginDefinition } from '@bakin/core/workflows/source-registry'
+import { registerPluginNodeType } from '@bakin/core/workflows/node-type-registry'
+import { registerPluginNotificationChannel } from '@bakin/core/workflows/notification-channel-registry'
 import type { WorkflowDefinition } from '../../plugins/workflows/types'
 import { createLogger } from '../../src/core/logger'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
@@ -121,6 +121,10 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
       addVersion: vi.fn(async () => ({ assetId: 'test-asset', version: 2 })),
       addExport: vi.fn(async () => ({ name: 'export', file: 'exports/export.jpg' })),
       resolveVersionFile: vi.fn(async () => null),
+      listAssets: vi.fn(async () => []),
+      getAssetVersions: vi.fn(async () => null),
+      upsertFromSource: vi.fn(async () => ({ assetId: 'test-asset', version: 1, changed: true })),
+      resolveStoreFile: vi.fn(async () => null),
     },
     registerNav: vi.fn(),
     registerRoute: (route) => routes.push(route),

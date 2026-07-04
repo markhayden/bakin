@@ -1177,8 +1177,8 @@ sidecars directly.
 ## Exec Tool Registry
 
 ### How it works
-1. `scripts/lib/registry.ts` — global `Map<string, ExecToolDefinition>`.
-2. Core scripts self-register at import time (`scripts/lib/*.ts`).
+1. `src/core/exec-tools/registry.ts` — global `Map<string, ExecToolDefinition>`.
+2. Built-in tools self-register at import time (`src/core/exec-tools/tools/*.ts`).
 3. Plugin tools register via `ctx.registerExecTool()` →
    `addExecTool()` with `source: 'plugin:{id}'`.
 4. `src/core/mcp-server.ts` imports core tool files, then calls
@@ -1256,7 +1256,7 @@ Handlers should NOT call `ctx.activity.log()` — the auto-audit from
 `bakin_exec_schedule_fire`.
 
 ### Adding a new core tool
-1. Create `scripts/lib/{tool-name}.ts`
+1. Create `src/core/exec-tools/tools/{tool-name}.ts`
 2. Call `addExecTool()` at module scope
 3. Add import in `src/core/mcp-server.ts`
 

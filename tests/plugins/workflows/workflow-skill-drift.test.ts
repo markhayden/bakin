@@ -41,7 +41,7 @@ import {
 import {
   clearAgentPackageSkillRegistry,
   registerAgentPackageSkill,
-} from '../../../plugins/workflows/lib/agent-package-skill-registry'
+} from '@bakin/core/workflows/agent-package-skill-registry'
 import { getPluginSkills } from '../../../src/core/plugin-registry'
 
 const skillsDir = join(testDir, 'workflows', 'skills')

@@ -8,9 +8,9 @@
  *
  * Also broadcasts an SSE event so open UIs refresh their sync state.
  */
+import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { createLogger } from '../logger'
 import { loadAgentPackageSources } from './load-sources'
-import { clearSkillCache } from '../../../plugins/workflows/lib/skill-loader'
 import { broadcast } from '../sse'
 
 const log = createLogger('agent-pkg:reload')
@@ -25,7 +25,16 @@ export async function reloadAgentPackageRegistries(
 ): Promise<ReloadSummary | null> {
   try {
     const result = loadAgentPackageSources()
-    clearSkillCache()
+    // The skill cache lives in the workflows plugin (skill-loader.ts); core
+    // reaches it through the sanctioned HookRegistry surface instead of
+    // importing the plugin's source tree. If the plugin isn't active the
+    // cache doesn't exist either — log and move on, never throw.
+    const hooks = getHookRegistry()
+    if (hooks.has('workflows.clearSkillCache')) {
+      await hooks.invoke('workflows.clearSkillCache', {})
+    } else {
+      log.warn('workflows.clearSkillCache hook not registered — skipping skill-cache clear', { kind: event.kind })
+    }
     broadcast({
       type: 'agent_pkg:changed',
       kind: event.kind,

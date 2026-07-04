@@ -44,11 +44,11 @@ import { getPackageSourceDir } from '../../packages/core/src/agent-packages/pack
 import {
   clearSourceRegistry,
   getDefinition,
-} from '../../plugins/workflows/lib/source-registry'
+} from '@bakin/core/workflows/source-registry'
 import {
   clearAgentPackageSkillRegistry,
   getAgentPackageSkills,
-} from '../../plugins/workflows/lib/agent-package-skill-registry'
+} from '@bakin/core/workflows/agent-package-skill-registry'
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })

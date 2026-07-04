@@ -139,6 +139,16 @@ const PluginLockEntrySchema = z.object({
    */
   sourceTreeSha: z.string().optional(),
   /**
+   * Which hashing algorithm produced `sourceTreeSha`/`lastSourceTreeSha`.
+   * Absent = legacy algorithm 1 (concatenated rel+bytes, skipping only
+   * node_modules/dist/.git). 2 = the canonical Whiskit `hashSourceTree`
+   * (rel+filehash lines, skipping NON_RUNTIME_DIRS + dotfiles) — see
+   * `src/core/plugins/source-tree-sha.ts`. Legacy entries are migrated
+   * to algorithm 2 the first time a check/upgrade observes the source
+   * unchanged under the legacy formula.
+   */
+  sourceTreeShaAlgo: z.number().int().optional(),
+  /**
    * Live source-tree sha last observed by `bakin plugins list --check`
    * (local only). Symmetric with `remoteHeadSha`. Compared against
    * `sourceTreeSha` to determine whether an upgrade is available.

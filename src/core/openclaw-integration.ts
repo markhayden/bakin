@@ -1,5 +1,6 @@
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import { createAppServices, maybeGetAppServices } from './app-services'
+import { readRuntimeConfig, replaceRuntimeConfig } from './runtime-config'
 import { mcpUrl, serverName } from './mcporter'
 
 interface RuntimeMcpServerEntry {
@@ -38,7 +39,7 @@ async function listRuntimeAgentIds(runtime: AgentRuntimeAdapter): Promise<string
 export async function syncOpenClawMcpConfig(port: number): Promise<string[]> {
   const runtime = await getRuntime()
   const agents = await listRuntimeAgentIds(runtime)
-  const config = await runtime.config.get<RuntimeBakinMcpConfig>()
+  const config = await readRuntimeConfig<RuntimeBakinMcpConfig>(runtime, 'onboarding.openclaw-mcp')
   const changes: string[] = []
 
   config.mcp ??= {}
@@ -67,7 +68,7 @@ export async function syncOpenClawMcpConfig(port: number): Promise<string[]> {
   }
 
   if (changes.length > 0) {
-    await runtime.config.replace(config, 'bakin.onboarding.openclaw-mcp')
+    await replaceRuntimeConfig(runtime, config, 'onboarding.openclaw-mcp')
   }
 
   return changes
@@ -76,7 +77,7 @@ export async function syncOpenClawMcpConfig(port: number): Promise<string[]> {
 export async function verifyOpenClawMcpConfig(port: number): Promise<RuntimeMcpConfigStatus> {
   const runtime = await getRuntime()
   const agents = await listRuntimeAgentIds(runtime)
-  const config = await runtime.config.get<RuntimeBakinMcpConfig>()
+  const config = await readRuntimeConfig<RuntimeBakinMcpConfig>(runtime, 'onboarding.openclaw-mcp')
   const servers = config.mcp?.servers ?? {}
 
   const agentEntries = agents.map((agent) => {

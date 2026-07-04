@@ -3,8 +3,8 @@ import { splitFrontmatter } from '@bakin/core/format/frontmatter'
 import { basename, isAbsolute, normalize, relative, resolve } from 'path'
 import yaml from 'js-yaml'
 import type { Manifest } from '../../../packages/core/src/agent-packages/manifest'
-import type { WorkflowDefinition } from '../../../plugins/workflows/types'
-import { validateDefinition } from '../../../plugins/workflows/lib/parser'
+import type { WorkflowDefinition } from '@bakin/core/workflows/definition-types'
+import { validateDefinition } from '@bakin/core/workflows/validate-definition'
 import { validatePackageLessonIntegrity } from './lesson-integrity'
 
 export interface PackageIntegrityOptions {

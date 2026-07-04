@@ -57,7 +57,7 @@ import { loadAgentPackageSources } from '../../src/core/agent-packages/load-sour
 import {
   clearSourceRegistry,
   getDefinition,
-} from '../../plugins/workflows/lib/source-registry'
+} from '@bakin/core/workflows/source-registry'
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })

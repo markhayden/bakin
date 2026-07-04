@@ -39,7 +39,7 @@ mock.module('../../src/core/logger', () => ({
 const {
   clearSourceRegistry,
   getDefinition,
-} = require('@bakin/workflows/lib/source-registry') as typeof import('@bakin/workflows/lib/source-registry')
+} = require('@bakin/core/workflows/source-registry') as typeof import('@bakin/core/workflows/source-registry')
 import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 const { activatePlugin } = require('../plugins/test-helpers') as typeof import('../plugins/test-helpers')
 

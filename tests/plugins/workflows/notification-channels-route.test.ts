@@ -87,7 +87,7 @@ mock.module('../../../src/core/task-store', taskStoreMock)
 const workflowsPlugin = require('../../../plugins/workflows/index').default as typeof import('../../../plugins/workflows/index').default
 import { activatePlugin, findRoute, callRoute } from '../test-helpers'
 import type { ActivatedPlugin } from '../test-helpers'
-import type { NotificationChannelDef } from '../../../plugins/workflows/lib/notification-channel-registry'
+import type { NotificationChannelDef } from '@bakin/core/workflows/notification-channel-registry'
 
 let plugin: ActivatedPlugin
 

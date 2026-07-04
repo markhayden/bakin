@@ -50,6 +50,9 @@ export function toneBadgeClass(tone: BadgeTone): string {
   return TONE_BADGE_CLASS[tone]
 }
 
+/** Pure assetId shape validators (see ./asset-id). */
+export { isValidAssetId, yearMonthFromAssetId } from './asset-id'
+
 /** Format a Date or ISO string as a relative age (e.g. "5m ago"). */
 export { formatAge } from '@bakin/core/format'
 /** Format an ISO timestamp as a calendar-aware absolute date+time (e.g. "Today 3:45 PM", "Jan 5 9:02 AM"). */

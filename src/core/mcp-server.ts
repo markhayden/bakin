@@ -11,7 +11,7 @@
  *
  * All tools are registered dynamically via the exec tool registry:
  * - Plugin tools: registered via ctx.registerExecTool() in plugin activate()
- * - Script tools: self-register via addExecTool() on import (scripts/lib/*.ts)
+ * - Built-in tools: self-register via addExecTool() on import (src/core/exec-tools/tools/*.ts)
  *
  * Each agent session gets its own McpServer + transport pair.
  * Agent identity is bound at session initialization from the query param.
@@ -39,13 +39,13 @@ import {
   type McpToolPolicy,
 } from './mcp-tool-policy'
 
-// Script execution tools that stay in scripts/lib/ — self-register on import.
+// Built-in exec tools — self-register on import (src/core/exec-tools/tools/).
 // Must be imported AFTER registry.ts so the Map is initialized.
-import '../../scripts/lib/log-progress'
-import '../../scripts/lib/post-channel'
-import '../../scripts/lib/get-paths'
-import '../../scripts/lib/heartbeat'
-import '../../scripts/lib/search-tools'
+import './exec-tools/tools/log-progress'
+import './exec-tools/tools/post-channel'
+import './exec-tools/tools/get-paths'
+import './exec-tools/tools/heartbeat'
+import './exec-tools/tools/search-tools'
 
 const log = createLogger('mcp')
 

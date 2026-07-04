@@ -45,6 +45,9 @@ jobs:
       - name: Typecheck
         run: bunx tsc --noEmit -p tsconfig.app.json
 
+      - name: Import-cycle ratchet
+        run: bun run check:cycles
+
       - name: Docs build
         env:
           BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/external/bakin-bits-official/plugins

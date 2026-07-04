@@ -180,6 +180,35 @@ The core→plugin boundary violation is live and unguarded; nothing stops it mul
    with the implementations, or record the cohesion justification. (The larger SDK↔app cycle
    stays deferred — see Re-deferred.)
 
+**FW3 STATUS — ☑ DONE (2026-07-04, branch `refactor/boundary`, 13 commits).**
+The boundary is now real and guarded:
+1. **Workflow registries → `packages/core/src/workflows/`** (source/node-type/notification-channel/
+   agent-package-skill registries + the definition type family + validateDefinition +
+   loadDefaultWorkflows); `clearSkillCache` rewired through the HookRegistry. Zero core→plugin
+   workflow imports remain (grep-proven).
+2. **Assets crossing consolidated**: new sanctioned bridge `src/core/assets-bridge.ts` (the single
+   core-side crossing, lazy); `ctx.assets` AssetsAPI extended (listAssets, getAssetVersions +
+   published AssetVersionDetail, upsertFromSource, resolveStoreFile); images plugin fully on
+   ctx.assets — the repo's only cross-plugin import is gone; isValidAssetId became a pure SDK util.
+3. **`tests/architecture/plugin-boundaries.test.ts`**: bans cross-plugin imports (zero, no
+   allowlist) and core→plugin imports outside 3 justified entries (static-imports table, assets
+   bridge, generated embeds); stale-entry ratchet; negative-tested.
+4. **Config governance**: `src/core/runtime-config.ts` wrapper (typed scopes, audited replaces,
+   un-audited hot-path reads — deliberate); dead `config.update(patch)` DELETED from the adapter
+   contract; adapter-boundary test gates `.config.get/replace` like `.raw`. Typed-adapter-method
+   promotion deferred to the FW5 models split (where the RuntimeModelConfig shape gets designed).
+5. **Import-cycle ratchet**: `bun run check:cycles` (madge) pins the 16 known cycles with reasons,
+   fails CI (ci-pr + ci-main) on new AND stale entries.
+6. **scripts/ out of the prod graph**: the 5 self-registering tool peers + common.ts →
+   `src/core/exec-tools/tools/`; post-channel debug CLI shebang npx-tsx → bun; docs scanner
+   repointed; plugin-system.md exec-tool authoring section fixed.
+7. **P2 #5 decided — documented, not moved**: plugin-sourced SDK hook re-exports stay (wire
+   contracts live with their owning plugin; npm publish inlines + asserts self-containment);
+   justification recorded in the sdk/hooks header.
+Gates: full suite 5,314-0; build-plugins 10/10; vendors 23; binary build + isolated-home boot
+smoke (10 plugins activate through the moved registries; schedule's openclaw-cron ENOENT is the
+documented environmental miss); check:cycles green.
+
 ### FW4 `refactor/ui-godfiles` — the dropped WS6 files
 
 All four have audited seams; pure decomposition, one PR each or stacked.
@@ -201,6 +230,27 @@ All four have audited seams; pure decomposition, one PR each or stacked.
    effort (`workflows/lib/routes/*`, `schedule/lib/routes/jobs.ts`): split to
    `lib/routes/{agents,teams,context}.ts`, same single `indexAgentStatic` dep.
 
+**FW4 STATUS — ☑ DONE (2026-07-05, branch `refactor/ui-godfiles`, 6 commits).**
+All four files decomposed:
+1. **task-detail-dialog.tsx 1,033 → 54-line shell** across 6 files (use-task-detail hook holding the
+   ~26-hook state web — models-page precedent; mode drawers, workflow panels, notes, step-output
+   leaves). One clean fetch migrated to useJsonFetch; three effects stay raw with recorded reasons.
+   The P2 #18 local WorkflowInstance extension moved into the hook, module-local (scanner-green).
+2. **node-config-drawer.tsx 976 → 561** + lib/node-config-fields.ts (221, pure/unit-testable) +
+   drawer-header + parallel-children-editor. The FW6-noted `let cancelled` straggler migrated to
+   useJsonFetch.
+3. **health-page.tsx 1,137 → 103-line shell** — THE deliberate redesign: per-section components
+   (health-sections 573 / search-section 246 / plugins-section 289) with independent per-section
+   polling (usePolledJson); one failing endpoint faults its own card, not the page. SearchHealthData
+   + telemetry/spend wire types promoted to types.ts. Existing tests passed unchanged (they pin
+   data, not the old gate).
+4. **team-routes.ts 1,049 → DELETED** — lib/routes/{agents 741, teams 249, context 112, shared 10}.
+   Kept populate-function registration (indexAgentStatic closes over pluginCtx; const arrays would
+   cycle). Route-registry tie-order preserved and documented (specificity ties break by insertion
+   order — agents → context → teams verified pair-by-pair).
+Gates: full suite 5,362-0; typecheck; 10/10 plugin builds; binary build + isolated boot smoke
+(team agents/teams/context routes + health/tasks/workflows client assets all 200).
+
 ### FW5 `refactor/server-godfiles` — audit misses + the un-split WS5 file
 
 1. **`plugins/models/index.ts` (896, actively growing).** The clearest audit miss — only the
@@ -221,6 +271,27 @@ All four have audited seams; pure decomposition, one PR each or stacked.
    enrichment work (engine wiring, import routes, enrichment exec tools). Mirror the tasks/models
    split pattern — `lib/routes/` + `lib/exec-tools.ts`; `plugins/assets/lib/` already has the
    enrichment modules, so this is index-orchestration extraction, not new design.
+
+**FW5 STATUS — ☑ DONE (2026-07-05, branch `refactor/server-godfiles`, 7 commits).**
+1. **models/index.ts 897 → 43** — lib/{model-id 25, config-io 149, available-models 155, aliases 32,
+   route-schemas 76, routes 413, register-hooks 89, exec-tools 58}; all 4 module-scope cells
+   single-homed; cache path + never-fabricate merge byte-for-byte.
+2. **assets/index.ts 913 → 121** — lib/{routes 290, register-search 209 (owns the pluginCtx cell),
+   register-hooks 103, exec-tools 299}; asset-service bridge surface + hook-name contracts untouched.
+3. **install.ts 793 → 102-line sequencing handler** + 6 phase modules under api/plugins/install/;
+   NEW security unit tests (13): consent-token manifestSha binding, core-id squatting, FW1.7
+   dist-deletion — the audit's untestable-buried-logic complaint resolved.
+4. **upgrade.ts 895 → 213** + 5 lane modules; **hasher consolidation DONE** — whiskit hashSourceTree
+   is canonical (its values live in checksummed published artifacts; lockfile shas are local +
+   rewritable), with a one-time lockfile migration (sourceTreeShaAlgo field; legacy rows verified
+   via retained legacy hasher then rewritten once; genuinely-changed source still detected;
+   10 migration tests). Stale whiskit spec docs updated. Accepted consequence: tests/-or-dotfile-
+   only changes no longer flag "upgrade available" (canonical skip-set matches what builds).
+Deferred (recorded): models typed-ctx cleanup + RuntimeModelConfig promotion; assets /enrich fat
+handler → routes/enrich.ts; upgrade-lane consent/commit dedup (supply-chain, kept mechanical).
+Gates: full suite 5,376-0; typecheck; check:cycles 0 new; 10/10 plugin builds; binary build +
+isolated boot smoke (models/available + assets/versioned + import/scan 200; install bad-body 400
+through the split validator; models/config 500 is the documented no-runtime environmental miss).
 
 ### FW6 `refactor/dedup-remainder` — kill the surviving copy-paste
 

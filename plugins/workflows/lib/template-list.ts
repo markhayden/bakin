@@ -13,7 +13,7 @@ import type {
 } from '../types'
 import { listDefinitions, loadDefinition } from './parser'
 import { readDisabledWorkflowIds } from './availability'
-import { getShadowedSource } from './source-registry'
+import { getShadowedSource } from '@bakin/core/workflows/source-registry'
 import { scanWorkflowSkillDrift, type WorkflowSkillDriftReport } from './workflow-skill-drift'
 import { getContentDir } from './content-dir'
 

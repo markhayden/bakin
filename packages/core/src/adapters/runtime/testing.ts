@@ -166,7 +166,6 @@ export function createMockRuntimeAdapter(
 
     config: {
       get: async <T = Record<string, unknown>>() => ({}) as T,
-      update: async () => {},
       replace: async () => {},
       raw: async <T = unknown>() => undefined as T,
     },

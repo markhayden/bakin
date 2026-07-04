@@ -1,15 +1,17 @@
 /**
- * Team plugin REST routes.
+ * Agent routes — lifecycle, identity, permissions, avatar, workspace files,
+ * skills, memory, stats, heartbeat, activity, and display settings.
  *
- * Extracted from index.ts. `populateTeamRoutes` pushes every team route into the
- * shared array at module load (the T20 declarative-routes pattern). Handlers
- * receive their PluginContextLite per request; the one piece of plugin-scope
- * wiring they need — the search-index helper — is injected via `deps` so this
- * module stays free of the plugin's live context state.
+ * Split out of `lib/team-routes.ts` (FW4). `populateAgentRoutes` pushes every
+ * agent-scoped route into the shared array at module load (the T20
+ * declarative-routes pattern). Handlers receive their PluginContextLite per
+ * request; the one piece of plugin-scope wiring they need — the search-index
+ * helper — is injected via `deps` so this module stays free of the plugin's
+ * live context state.
  */
 import { z } from 'zod'
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs'
-import { dirname, join } from 'path'
+import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'fs'
+import { join } from 'path'
 
 import { defineRoute } from '@bakin/core/routing'
 import type { PluginContextLite } from '@bakin/core/routing'
@@ -17,19 +19,18 @@ import { serveAvatar, detectImageExtension } from '@bakin/core/agents/avatar'
 import { removeInstalledBy } from '@bakin/core/agent-packages/markers'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 
-import { createLogger } from '../../../src/core/logger'
-import { readHeartbeats } from '../../../src/lib/content-files'
-import { getBakinPaths } from '../../../packages/core/src/content-dir'
-import { startAgent, stopAgent } from '../../../src/lib/agents'
-import { resetSettingsCache } from '../../../src/core/settings'
-import { syncConfig as syncMcporter } from '../../../src/core/mcporter'
-import { getAllAgentUsage } from '../../../src/core/agent-usage'
-import { getStatsByMs } from '../../../src/core/usage'
-import { readLatestSessionTranscript } from './session-reader'
+import { createLogger } from '../../../../src/core/logger'
+import { readHeartbeats } from '../../../../src/lib/content-files'
+import { getBakinPaths } from '../../../../packages/core/src/content-dir'
+import { startAgent, stopAgent } from '../../../../src/lib/agents'
+import { resetSettingsCache } from '../../../../src/core/settings'
+import { syncConfig as syncMcporter } from '../../../../src/core/mcporter'
+import { getAllAgentUsage } from '../../../../src/core/agent-usage'
+import { getStatsByMs } from '../../../../src/core/usage'
+import { readLatestSessionTranscript } from '../session-reader'
 
 import {
   agentToMeta,
-  listRuntimeAgentMetas,
   getRuntimeAgentIds,
   getRuntimeAgentModel,
   getRuntimeAgentProfile,
@@ -44,39 +45,33 @@ import {
   listRuntimeMemoryFiles,
   readRuntimeMemoryFile,
   readRuntimeHeartbeatRaw,
-} from './runtime-agents'
+} from '../runtime-agents'
 import {
   readDisplaySettings,
   writeDisplaySettings,
   readTeams,
-  writeTeams,
-  normalizeReportsTo,
   degradeUnknownReportsTo,
   mergeDisplayDefaults,
-} from './team-settings'
+} from '../team-settings'
 import {
   getLastAuditActivity,
   resolveAgentStatus,
-  getTeamMembers,
-} from './agent-status'
+} from '../agent-status'
 import type {
   AgentWithStatus,
   AgentDisplaySettingsMap,
-  OrgTeam,
-} from '../types'
+} from '../../types'
+import { passthroughTeam, errorResponseTeam } from './shared'
 
 const log = createLogger('team')
 const BAKIN_PORT = Number(process.env.PORT || 3737)
-
-const passthroughTeam = z.object({}).passthrough()
-const errorResponseTeam = z.object({ error: z.string() }).passthrough()
 
 export interface TeamRouteDeps {
   /** Fire-and-forget search-index upsert for an agent (plugin-context-backed). */
   indexAgentStatic: (agentId: string, agent: { id: string; name: string }, model: string, status: string) => void
 }
 
-export function populateTeamRoutes(arr: any[], deps: TeamRouteDeps): void {
+export function populateAgentRoutes(arr: any[], deps: TeamRouteDeps): void {
 
   // GET / — List all agents with status
   arr.push(defineRoute({
@@ -740,309 +735,6 @@ export function populateTeamRoutes(arr: any[], deps: TeamRouteDeps): void {
     handler: async (req: Request, _ctx: PluginContextLite) => {
       const body = await req.json() as AgentDisplaySettingsMap
       writeDisplaySettings(body)
-      return Response.json({ ok: true })
-    },
-  }))
-
-  // ─── Team (Org) Routes ──────────────────────────────────────────────
-
-  // GET /teams — List all org teams
-  arr.push(defineRoute({
-    path: '/teams',
-    method: 'GET',
-    description: 'List organizational teams',
-    summary: 'List organizational teams',
-    responses: { 200: passthroughTeam, 201: passthroughTeam, 400: errorResponseTeam, 403: errorResponseTeam, 404: errorResponseTeam, 409: errorResponseTeam, 500: errorResponseTeam },
-    handler: async (_req: Request, _ctx: PluginContextLite) => {
-      return Response.json({ teams: readTeams() })
-    },
-  }))
-
-  // POST /teams — Create a team
-  arr.push(defineRoute({
-    path: '/teams',
-    method: 'POST',
-    description: 'Create an organizational team',
-    summary: 'Create an organizational team',
-    responses: { 200: passthroughTeam, 201: passthroughTeam, 400: errorResponseTeam, 403: errorResponseTeam, 404: errorResponseTeam, 409: errorResponseTeam, 500: errorResponseTeam },
-    handler: async (req: Request, ctx: PluginContextLite) => {
-      const body = await req.json() as Record<string, unknown>
-      const id = (body.id as string || '').toLowerCase().replace(/[^a-z0-9-]/g, '')
-      if (!id) return Response.json({ error: 'id required' }, { status: 400 })
-      if (!body.label) return Response.json({ error: 'label required' }, { status: 400 })
-
-      const teams = readTeams()
-      if (teams.some((t) => t.id === id)) {
-        return Response.json({ error: `Team "${id}" already exists` }, { status: 409 })
-      }
-
-      const mainAgentId = await getRuntimeMainAgentId(ctx.runtime)
-      const team: OrgTeam = {
-        id,
-        label: body.label as string,
-        reportsTo: normalizeReportsTo(body.reportsTo, mainAgentId),
-        color: body.color as string | undefined,
-        order: typeof body.order === 'number' ? body.order : teams.length,
-      }
-      teams.push(team)
-      writeTeams(teams)
-
-      ctx.activity.audit('team.org.created', 'system', { teamId: id, label: team.label })
-      return Response.json({ ok: true, team })
-    },
-  }))
-
-  // PUT /teams/:teamId — Update a team
-  arr.push(defineRoute({
-    path: '/teams/:teamId',
-    method: 'PUT',
-    description: 'Update an organizational team',
-    summary: 'Update an organizational team',
-    params: z.object({ teamId: z.string() }),
-    responses: { 200: passthroughTeam, 201: passthroughTeam, 400: errorResponseTeam, 403: errorResponseTeam, 404: errorResponseTeam, 409: errorResponseTeam, 500: errorResponseTeam },
-    handler: async (req: Request, ctx: PluginContextLite) => {
-      const url = new URL(req.url)
-      const teamId = url.searchParams.get('teamId')
-      if (!teamId) return Response.json({ error: 'teamId required' }, { status: 400 })
-
-      const teams = readTeams()
-      const idx = teams.findIndex((t) => t.id === teamId)
-      if (idx === -1) return Response.json({ error: 'Team not found' }, { status: 404 })
-
-      const body = await req.json() as Record<string, unknown>
-      if (body.label !== undefined) teams[idx].label = body.label as string
-      if (body.reportsTo !== undefined) {
-        teams[idx].reportsTo = normalizeReportsTo(body.reportsTo, await getRuntimeMainAgentId(ctx.runtime))
-      }
-      if (body.color !== undefined) teams[idx].color = body.color as string
-      if (body.order !== undefined) teams[idx].order = body.order as number
-
-      writeTeams(teams)
-      return Response.json({ ok: true, team: teams[idx] })
-    },
-  }))
-
-  // DELETE /teams/:teamId — Delete a team (unassigns agents)
-  arr.push(defineRoute({
-    path: '/teams/:teamId',
-    method: 'DELETE',
-    description: 'Delete an organizational team',
-    summary: 'Delete an organizational team',
-    params: z.object({ teamId: z.string() }),
-    responses: { 200: passthroughTeam, 201: passthroughTeam, 400: errorResponseTeam, 403: errorResponseTeam, 404: errorResponseTeam, 409: errorResponseTeam, 500: errorResponseTeam },
-    handler: async (req: Request, ctx: PluginContextLite) => {
-      const url = new URL(req.url)
-      const teamId = url.searchParams.get('teamId')
-      if (!teamId) return Response.json({ error: 'teamId required' }, { status: 400 })
-
-      const teams = readTeams()
-      const filtered = teams.filter((t) => t.id !== teamId)
-      if (filtered.length === teams.length) return Response.json({ error: 'Team not found' }, { status: 404 })
-
-      writeTeams(filtered)
-
-      // Unassign agents from this team
-      const ds = readDisplaySettings()
-      let changed = false
-      for (const [agentId, settings] of Object.entries(ds)) {
-        if (settings.teamId === teamId) {
-          delete ds[agentId].teamId
-          changed = true
-        }
-      }
-      if (changed) writeDisplaySettings(ds)
-
-      ctx.activity.audit('team.org.deleted', 'system', { teamId })
-      return Response.json({ ok: true })
-    },
-  }))
-
-  // GET /teams/:teamId/members — List agents in a team
-  arr.push(defineRoute({
-    path: '/teams/:teamId/members',
-    method: 'GET',
-    description: 'List agents belonging to a team',
-    summary: 'List agents belonging to a team',
-    params: z.object({ teamId: z.string() }),
-    responses: { 200: passthroughTeam, 201: passthroughTeam, 400: errorResponseTeam, 403: errorResponseTeam, 404: errorResponseTeam, 409: errorResponseTeam, 500: errorResponseTeam },
-    handler: async (req: Request, ctx: PluginContextLite) => {
-      const url = new URL(req.url)
-      const teamId = url.searchParams.get('teamId')
-      if (!teamId) return Response.json({ error: 'teamId required' }, { status: 400 })
-
-      const teams = readTeams()
-      const team = teams.find((t) => t.id === teamId)
-      if (!team) return Response.json({ error: 'Team not found' }, { status: 404 })
-
-      const memberIds = await getTeamMembers(ctx.runtime, teamId)
-      const agents = await listRuntimeAgentMetas(ctx.runtime)
-      const members = agents.filter((a) => memberIds.includes(a.id))
-
-      return Response.json({ team, members })
-    },
-  }))
-
-  // ─── Layered context files (layered-context spec, C9) ────────────────────
-  // Scope segment: 'global' | 'role' (with :id orchestrator|subagent) |
-  // 'team' (with :id = teamId). PUT replaces the file; role files get their
-  // Bakin-managed block re-asserted afterwards so a mangled block can't
-  // brick the role defaults.
-
-  // GET /context — full overview for the UI
-  arr.push(defineRoute({
-    path: '/context',
-    method: 'GET',
-    description: 'List layered context files (global, roles, teams)',
-    summary: 'List layered context files',
-    responses: { 200: passthroughTeam, 201: passthroughTeam, 400: errorResponseTeam, 403: errorResponseTeam, 404: errorResponseTeam, 409: errorResponseTeam, 500: errorResponseTeam },
-    handler: async () => {
-      const { getGlobalContextPath, getRoleContextPath, getTeamContextPath, seedContextFiles } = await import('../../../src/core/team-context')
-      seedContextFiles()
-      const read = (path: string) => existsSync(path) ? readFileSync(path, 'utf-8') : null
-      const teams = readTeams()
-      return Response.json({
-        ok: true,
-        global: { path: getGlobalContextPath(), content: read(getGlobalContextPath()) },
-        roles: {
-          orchestrator: { path: getRoleContextPath('orchestrator'), content: read(getRoleContextPath('orchestrator')) },
-          subagent: { path: getRoleContextPath('subagent'), content: read(getRoleContextPath('subagent')) },
-        },
-        teams: teams.map((t) => ({
-          teamId: t.id,
-          label: t.label,
-          path: getTeamContextPath(t.id),
-          content: read(getTeamContextPath(t.id)),
-        })),
-      })
-    },
-  }))
-
-  // GET/PUT /context/:scope/:id? — read or write one context file
-  for (const method of ['GET', 'PUT'] as const) {
-    arr.push(defineRoute({
-      path: '/context/:scope',
-      method,
-      description: `${method === 'GET' ? 'Read' : 'Write'} a layered context file (scope: global, or role/team via ?id=)`,
-      summary: `${method === 'GET' ? 'Read' : 'Write'} a layered context file`,
-      params: z.object({ scope: z.string() }),
-      responses: { 200: passthroughTeam, 201: passthroughTeam, 400: errorResponseTeam, 403: errorResponseTeam, 404: errorResponseTeam, 409: errorResponseTeam, 500: errorResponseTeam },
-      handler: async (req: Request) => {
-        const url = new URL(req.url)
-        const scope = url.searchParams.get('scope') ?? ''
-        const id = url.searchParams.get('id') ?? ''
-        const ctxMod = await import('../../../src/core/team-context')
-
-        let path: string
-        if (scope === 'global') path = ctxMod.getGlobalContextPath()
-        else if (scope === 'role' && (id === 'orchestrator' || id === 'subagent')) path = ctxMod.getRoleContextPath(id)
-        else if (scope === 'team' && id) {
-          if (!readTeams().some((t) => t.id === id)) {
-            return Response.json({ ok: false, error: `Team "${id}" not found` }, { status: 404 })
-          }
-          path = ctxMod.getTeamContextPath(id)
-        } else {
-          return Response.json({ ok: false, error: 'scope must be global, role (id=orchestrator|subagent), or team (id=<teamId>)' }, { status: 400 })
-        }
-
-        if (req.method === 'GET') {
-          ctxMod.seedContextFiles()
-          return Response.json({
-            ok: true,
-            path,
-            content: existsSync(path) ? readFileSync(path, 'utf-8') : null,
-          })
-        }
-
-        const body = await req.json().catch(() => null) as { content?: unknown } | null
-        if (!body || typeof body.content !== 'string') {
-          return Response.json({ ok: false, error: 'Body must be { content: string }' }, { status: 400 })
-        }
-        mkdirSync(dirname(path), { recursive: true })
-        writeFileSync(path, body.content, 'utf-8')
-        if (scope === 'role') {
-          // Re-assert the Bakin-managed block — user edits outside it are
-          // preserved; a deleted/mangled block is restored to the shipped
-          // defaults.
-          ctxMod.refreshRoleContextBlocks()
-        }
-        return Response.json({ ok: true, path, content: readFileSync(path, 'utf-8') })
-      },
-    }))
-  }
-
-  // POST /teams/:teamId/sync — sync every member of a team
-  arr.push(defineRoute({
-    path: '/teams/:teamId/sync',
-    method: 'POST',
-    description: 'Sync every member agent of a team (recompose blocks, re-project, verify)',
-    summary: 'Sync every member agent of a team',
-    params: z.object({ teamId: z.string() }),
-    responses: { 200: passthroughTeam, 201: passthroughTeam, 400: errorResponseTeam, 403: errorResponseTeam, 404: errorResponseTeam, 409: errorResponseTeam, 500: errorResponseTeam },
-    handler: async (req: Request, ctx: PluginContextLite) => {
-      const url = new URL(req.url)
-      const teamId = url.searchParams.get('teamId')
-      if (!teamId) return Response.json({ ok: false, error: 'teamId required' }, { status: 400 })
-      if (!readTeams().some((t) => t.id === teamId)) {
-        return Response.json({ ok: false, error: `Team "${teamId}" not found` }, { status: 404 })
-      }
-
-      const body = await req.json().catch(() => ({})) as { check?: boolean; fetch?: boolean }
-      const { syncAgent } = await import('../../../src/core/agent-packages/sync')
-      const { reloadAgentPackageRegistries } = await import('../../../src/core/agent-packages/post-sync-reload')
-
-      const memberIds = await getTeamMembers(ctx.runtime, teamId)
-      const results: Array<{ agentId: string; receipt?: unknown; error?: string }> = []
-      for (const agentId of memberIds) {
-        try {
-          results.push({
-            agentId,
-            receipt: await syncAgent(agentId, {
-              check: body.check,
-              fetch: body.fetch ?? false,
-              trigger: 'rest',
-            }),
-          })
-        } catch (err) {
-          results.push({ agentId, error: err instanceof Error ? err.message : String(err) })
-        }
-      }
-      if (!body.check) await reloadAgentPackageRegistries({ kind: 'synced' })
-      return Response.json({ ok: true, teamId, results })
-    },
-  }))
-
-  // PUT /:agentId/team — Assign agent to a team
-  arr.push(defineRoute({
-    path: '/:agentId/team',
-    method: 'PUT',
-    description: 'Assign an agent to an organizational team',
-    summary: 'Assign an agent to an organizational team',
-    params: z.object({ agentId: z.string() }),
-    responses: { 200: passthroughTeam, 201: passthroughTeam, 400: errorResponseTeam, 403: errorResponseTeam, 404: errorResponseTeam, 409: errorResponseTeam, 500: errorResponseTeam },
-    handler: async (req: Request, ctx: PluginContextLite) => {
-      const url = new URL(req.url)
-      const agentId = url.searchParams.get('agentId')
-      if (!agentId) return Response.json({ error: 'agentId required' }, { status: 400 })
-
-      const body = await req.json() as Record<string, unknown>
-      const teamId = body.teamId as string | null
-
-      const ds = readDisplaySettings()
-      const merged = await mergeDisplayDefaults(ctx.runtime, ds)
-      if (!merged[agentId]) return Response.json({ error: 'Agent not found' }, { status: 404 })
-
-      if (teamId) {
-        const teams = readTeams()
-        if (!teams.some((t) => t.id === teamId)) {
-          return Response.json({ error: `Team "${teamId}" not found` }, { status: 404 })
-        }
-        ds[agentId] = { ...ds[agentId], teamId }
-      } else {
-        // Unassign
-        if (ds[agentId]) delete ds[agentId].teamId
-      }
-
-      writeDisplaySettings(ds)
       return Response.json({ ok: true })
     },
   }))

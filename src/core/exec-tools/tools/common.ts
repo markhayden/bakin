@@ -1,6 +1,6 @@
 /**
  * Shared utilities for execution scripts.
- * Every scripts/lib/ module imports from here.
+ * Every built-in exec-tool module in this directory imports from here.
  */
 import { execSync } from 'child_process'
 import type { ExecToolResult } from '@bakin/core/plugin-types'

@@ -1,7 +1,7 @@
 /**
  * Persistent disk cache for the runtime models list.
  *
- * The in-memory cache in `plugins/models/index.ts` stays as the hot-read
+ * The in-memory cache in `plugins/models/lib/available-models.ts` stays as the hot-read
  * layer; this module is the persistence layer underneath. On cold start
  * (server restart), the in-memory cache is empty but disk may still hold
  * the last successful fetch — hydrating from here means the UI renders

@@ -41,13 +41,13 @@ import { getPackageSourceDir } from '../../../packages/core/src/agent-packages/p
 import {
   registerAgentPackageDefinition,
   unregisterAgentPackageDefinitions,
-} from '../../../plugins/workflows/lib/source-registry'
-import { validateDefinition } from '../../../plugins/workflows/lib/parser'
+} from '@bakin/core/workflows/source-registry'
+import { validateDefinition } from '@bakin/core/workflows/validate-definition'
 import {
   registerAgentPackageSkill,
   unregisterAgentPackageSkills,
-} from '../../../plugins/workflows/lib/agent-package-skill-registry'
-import type { WorkflowDefinition } from '../../../plugins/workflows/types'
+} from '@bakin/core/workflows/agent-package-skill-registry'
+import type { WorkflowDefinition } from '@bakin/core/workflows/definition-types'
 import type { SkillDefinition } from '../../../packages/core/src/plugin-types'
 
 const log = createLogger('agent-pkg:load-sources')

@@ -5,6 +5,17 @@
  *   1. Bakin-wide hooks from `src/hooks/*` (SSE, search, query-state, debug, etc.)
  *   2. Cross-plugin hooks from `plugins/team/hooks/*` (agent data)
  *   3. Cross-plugin hooks from `plugins/workflows/hooks/*` (notification channels)
+ *
+ * DELIBERATE ARRANGEMENT (audit P2 #5, decided 2026-07 in FW3): groups 2-3
+ * reach into plugin source on purpose. Each hook's wire contract (the
+ * `/api/plugins/<id>/...` routes it fetches) is owned by its plugin, so the
+ * implementation lives WITH that contract; the SDK re-export exists so
+ * external authors get one import surface. The npm publish build BUNDLES
+ * these sources into the package and `assertNoForbiddenImports`
+ * (scripts/build-sdk-package.ts) fails the release if any `@bakin/*`
+ * specifier survives — the published SDK is self-contained. Moving the
+ * implementations into the SDK would decouple them from the routes they
+ * call, which is the worse drift.
  */
 
 // Group 1: Bakin-wide hooks

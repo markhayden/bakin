@@ -31,6 +31,9 @@ mock.module('@makinbakin/sdk/slots', () => ({
 mock.module('@makinbakin/sdk/hooks', () => ({
   useAgent: (agentId: string) => agentId ? { id: agentId, name: agentId } : null,
   toast: mock(),
+  // useTaskDetail migrated the workflow-definitions load to useJsonFetch (WS3);
+  // stub the standard lifecycle shape (no data — this test drives no workflow).
+  useJsonFetch: () => ({ data: null, loading: false, error: null, refresh: () => {} }),
 }))
 
 mock.module('@makinbakin/sdk/ui', () => ({
