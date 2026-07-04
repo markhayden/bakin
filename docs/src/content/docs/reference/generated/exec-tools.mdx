@@ -184,14 +184,14 @@ mcporter call bakin-<agent>.bakin_exec_git_status
 <p class="mcp-section-description">Health tools let agents check whether Bakin is running correctly before or during work.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="health-doctor" name="bakin_exec_health_doctor" label="Ran diagnostics" description="Run system diagnostics (agent roster, skill sync, runtime, taskboard, assets, etc.). Returns detailed check results. Use fresh=true to force a full re-check instead of returning cached results." source="plugins/health/index.ts:515" parameters={[{"name":"fresh","type":"boolean","required":false,"description":"Force fresh diagnostics instead of cached results"}]}>
+<McpToolCard id="health-doctor" name="bakin_exec_health_doctor" label="Ran diagnostics" description="Run system diagnostics (agent roster, skill sync, runtime, taskboard, assets, etc.). Returns detailed check results. Use fresh=true to force a full re-check instead of returning cached results." source="plugins/health/index.ts:555" parameters={[{"name":"fresh","type":"boolean","required":false,"description":"Force fresh diagnostics instead of cached results"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_health_doctor --args '{
   "fresh": true
 }'
 ```
 </McpToolCard>
-<McpToolCard id="health-status" name="bakin_exec_health_status" label="Checked system health" description="Get a quick system health summary — uptime, memory, active MCP sessions, and doctor error/warning counts. Useful for checking system state before starting work." source="plugins/health/index.ts:486">
+<McpToolCard id="health-status" name="bakin_exec_health_status" label="Checked system health" description="Get a quick system health summary — uptime, memory, active MCP sessions, and doctor error/warning counts. Useful for checking system state before starting work." source="plugins/health/index.ts:526">
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_health_status
 ```
