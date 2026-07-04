@@ -41,7 +41,7 @@ import { createMemoryGetTurnTool } from './mcp/get-turn'
 import { createMemoryListAgentsTool } from './mcp/list-agents'
 import { createMemoryStatusTool } from './mcp/status'
 import type { MemoryTier } from './lib/types'
-import { DEFAULTS, type MemorySettings } from './lib/settings'
+import { DEFAULTS, indexerOptionsFrom, resolveSettings } from './lib/settings'
 import { startTtlTimer, stopTtlTimer } from './lib/ttl-prune'
 import { checkSearchTables } from './lib/health-checks'
 
@@ -148,16 +148,10 @@ const memoryPlugin: BakinPlugin = definePlugin({
   async activate(ctx: PluginContext) {
     clearEventSubscriptions()
 
-    const settings = { ...DEFAULTS, ...(ctx.getSettings<Partial<MemorySettings>>() ?? {}) }
+    const settings = resolveSettings(ctx)
 
     // ─── Indexer ────────────────────────────────────────────────────────────
-    const indexer = new MemoryIndexer(ctx, {
-      backfillDays: settings.backfillDays,
-      skipSessionOverBytes: settings.skipSessionOverBytes,
-      skipResetBackups: settings.skipResetBackups,
-      turnRetentionDays: settings.turnRetentionDays,
-      auditRetentionDays: settings.auditRetentionDays,
-    })
+    const indexer = new MemoryIndexer(ctx, indexerOptionsFrom(settings))
     activeIndexer = indexer
 
     // ─── Search: unified bakin_memory table ─────────────────────────────────

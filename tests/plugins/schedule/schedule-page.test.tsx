@@ -282,6 +282,26 @@ describe('SchedulePage smoke', () => {
     expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(0)
   })
 
+  it('shows an honest notice when ?jobId= matches no job (stale deep link)', () => {
+    scheduleState.jobs = [makeJob({ id: 'a', displayName: 'Alpha' })]
+    queryStateRefs.view = 'list'
+    queryStateRefs.jobId = 'deleted-job'
+
+    render(<SchedulePage />)
+
+    expect(screen.getByTestId('schedule-job-not-found')).toBeDefined()
+  })
+
+  it('does not show the not-found notice while jobs are still loading', () => {
+    scheduleState.loading = true
+    queryStateRefs.view = 'list'
+    queryStateRefs.jobId = 'some-job'
+
+    render(<SchedulePage />)
+
+    expect(screen.queryByTestId('schedule-job-not-found')).toBeNull()
+  })
+
   it('renders the JobList in list view with all jobs when no search is active', () => {
     scheduleState.jobs = [
       makeJob({ id: 'a', displayName: 'Alpha' }),

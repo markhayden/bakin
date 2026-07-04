@@ -94,12 +94,8 @@ mock.module('../../../src/core/search-registry', () => ({
   }),
 }))
 
-// memory-migration also reaches into search + offsets — stub the migrator
-// itself so we don't need to mock its full deps tree.
-mock.module('../../../plugins/memory/lib/memory-migration', () => ({
-  migrateIfNeeded: async () => {},
-  MEMORY_SCHEMA_VERSION: 1,
-}))
+// (The old memory-migration stub is gone — the module was deleted in the
+// search rebuild; blue/green schemaVersion migration replaced it.)
 
 // ttl-prune timer: avoid leaving a real setInterval alive.
 mock.module('../../../plugins/memory/lib/ttl-prune', () => ({
@@ -109,8 +105,10 @@ mock.module('../../../plugins/memory/lib/ttl-prune', () => ({
 }))
 
 // Indexer constructor — only called inside the plugin smoke. Stub it.
+// buildMemoryDoc must exist too: routes/record.ts imports it at module load.
 mock.module('../../../plugins/memory/lib/indexer', () => ({
   MemoryIndexer: class { backfill = async () => {}; sync = async () => {}; remove = async () => {} },
+  buildMemoryDoc: (row: Record<string, unknown>) => row,
 }))
 
 import { checkSearchTables } from '../../../plugins/memory/lib/health-checks'

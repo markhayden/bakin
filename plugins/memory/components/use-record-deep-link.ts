@@ -22,7 +22,9 @@ export interface RecordDeepLink {
 }
 
 export function useRecordDeepLink(onScreenRows: SearchResult[]): RecordDeepLink {
-  const [recordId, setRecordId] = useQueryState('recordId', '')
+  // Push-mode setter for open() — opening a drawer must create a history
+  // entry so the back button closes it (same pattern as schedule's jobId).
+  const [recordId, setRecordId, pushRecordId] = useQueryState('recordId', '')
   const [row, setRow] = useState<SearchResult | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -33,6 +35,8 @@ export function useRecordDeepLink(onScreenRows: SearchResult[]): RecordDeepLink 
       return
     }
     if (row?.id === recordId) return
+    // Never show record A's content under ?recordId=B while B resolves.
+    setRow(null)
     const onScreen = onScreenRows.find((r) => r.id === recordId)
     if (onScreen) {
       setRow(onScreen)
@@ -68,7 +72,7 @@ export function useRecordDeepLink(onScreenRows: SearchResult[]): RecordDeepLink 
     open: (r: SearchResult) => {
       setRow(r)
       setError(null)
-      setRecordId(r.id)
+      pushRecordId(r.id)
     },
     close: () => setRecordId(''),
   }

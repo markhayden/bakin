@@ -17,7 +17,9 @@ registerPlugin({
           subtitle: [hit.fields.tier, agent].filter(Boolean).join(' · ') || 'memory',
           // Exact-record deep link: the page resolves ?recordId= via
           // GET /record and opens the detail drawer on the clicked row.
-          href: `/memory?recordId=${encodeURIComponent(hit.id)}`,
+          // ?q= rides along so a resolution miss (row pruned from source)
+          // still lands on the closest matches instead of a dead end.
+          href: `/memory?recordId=${encodeURIComponent(hit.id)}&q=${encodeURIComponent(content.slice(0, 60))}`,
           icon: 'brain',
         }
       },

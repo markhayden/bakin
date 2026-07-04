@@ -24,9 +24,12 @@ mock.module('../../../packages/core/src/logger', loggerMock)
 
 const queryState: { recordId: string } = { recordId: '' }
 const setRecordId = mock((v: string) => { queryState.recordId = v })
+// Distinct push-mode spy: opening a drawer must use the push variant so the
+// back button closes it (third tuple element of useQueryState).
+const pushRecordId = mock((v: string) => { queryState.recordId = v })
 mock.module('@/hooks/use-query-state', () => ({
   useQueryState: (key: string, defaultValue: string) =>
-    key === 'recordId' ? [queryState.recordId || defaultValue, setRecordId, setRecordId] : [defaultValue, mock(), mock()],
+    key === 'recordId' ? [queryState.recordId || defaultValue, setRecordId, pushRecordId] : [defaultValue, mock(), mock()],
   useQueryArrayState: () => [[], mock()],
 }))
 
@@ -40,6 +43,7 @@ let fetchCalls: string[]
 beforeEach(() => {
   queryState.recordId = ''
   setRecordId.mockClear()
+  pushRecordId.mockClear()
   fetchCalls = []
 })
 
@@ -57,16 +61,32 @@ function mockRecordFetch(status: number, body: unknown) {
 }
 
 describe('useRecordDeepLink', () => {
-  it('open() caches the clicked row and writes the param — no fetch', async () => {
+  it('open() caches the clicked row and PUSHES the param (history entry) — no fetch', async () => {
     mockRecordFetch(500, {})
     const { result } = renderHook(() => useRecordDeepLink([]))
     act(() => result.current.open(ROW))
-    expect(setRecordId).toHaveBeenCalledWith('durable:abc123')
+    // Push variant, not replace — the back button must close the drawer.
+    expect(pushRecordId).toHaveBeenCalledWith('durable:abc123')
+    expect(setRecordId).not.toHaveBeenCalled()
     queryState.recordId = 'durable:abc123'
     const { result: reopened } = renderHook(() => useRecordDeepLink([]))
     // A fresh mount with no cache WOULD fetch; the same hook instance must not.
     await waitFor(() => expect(result.current.row?.id).toBe('durable:abc123'))
     expect(reopened).toBeDefined()
+  })
+
+  it('switching to another record clears the stale row while it resolves', async () => {
+    const ROW_B: SearchResult = { id: 'durable:def456', table: 'bakin_memory', score: 1, fields: { tier: 'durable', title: 'TOOLS' } }
+    mockRecordFetch(200, { result: ROW_B })
+    queryState.recordId = 'durable:abc123'
+    const { result, rerender } = renderHook(() => useRecordDeepLink([ROW]))
+    await waitFor(() => expect(result.current.row?.id).toBe('durable:abc123'))
+
+    // Deep-link to record B (off-screen) — record A must not linger under ?recordId=B.
+    queryState.recordId = 'durable:def456'
+    act(() => rerender())
+    expect(result.current.row).toBeNull()
+    await waitFor(() => expect(result.current.row?.id).toBe('durable:def456'))
   })
 
   it('resolves an on-screen row without fetching', async () => {

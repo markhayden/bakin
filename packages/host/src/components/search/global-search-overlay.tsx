@@ -279,7 +279,7 @@ export function GlobalSearchOverlay() {
                     key={`${type}:${result.id}`}
                     value={`${type}:${result.id}`}
                     onSelect={() => onSelect(descriptor)}
-                    className={`flex flex-col items-stretch gap-2 rounded-xl border p-3 ${inert ? 'opacity-60 cursor-default data-[selected=true]:bg-transparent' : ''}`}
+                    className={`flex flex-col items-stretch gap-2 rounded-xl border p-3 ${inert ? 'opacity-60 cursor-default data-[selected=true]:bg-accent/40' : ''}`}
                     data-testid={`global-search-hit-${result.id}`}
                     {...inertProps}
                   >
@@ -313,7 +313,7 @@ export function GlobalSearchOverlay() {
                     key={`${type}:${result.id}`}
                     value={`${type}:${result.id}`}
                     onSelect={() => onSelect(descriptor)}
-                    className={`flex items-center gap-4 rounded-lg px-4 py-3 ${inert ? 'opacity-60 cursor-default data-[selected=true]:bg-transparent' : ''}`}
+                    className={`flex items-center gap-4 rounded-lg px-4 py-3 ${inert ? 'opacity-60 cursor-default data-[selected=true]:bg-accent/40' : ''}`}
                     data-testid={`global-search-hit-${result.id}`}
                     {...inertProps}
                   >

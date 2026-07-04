@@ -29,9 +29,9 @@ export function resolveSettings(ctx: PluginContext): MemorySettings {
   return { ...DEFAULTS, ...(ctx.getSettings<Partial<MemorySettings>>() ?? {}) }
 }
 
-/** The subset of settings the indexer consumes — same mapping activate() uses. */
-export function resolveIndexerOptions(ctx: PluginContext): IndexerOptions {
-  const settings = resolveSettings(ctx)
+/** The subset of settings the indexer consumes — THE one mapping, used by
+ *  both activate() and the /record route. */
+export function indexerOptionsFrom(settings: MemorySettings): IndexerOptions {
   return {
     backfillDays: settings.backfillDays,
     skipSessionOverBytes: settings.skipSessionOverBytes,
@@ -39,4 +39,8 @@ export function resolveIndexerOptions(ctx: PluginContext): IndexerOptions {
     turnRetentionDays: settings.turnRetentionDays,
     auditRetentionDays: settings.auditRetentionDays,
   }
+}
+
+export function resolveIndexerOptions(ctx: PluginContext): IndexerOptions {
+  return indexerOptionsFrom(resolveSettings(ctx))
 }

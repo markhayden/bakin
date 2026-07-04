@@ -31,13 +31,18 @@ export function LessonToggleList({ agentId }: LessonToggleListProps) {
   const [packageId, setPackageId] = useState<string | null>(null)
   const [pendingId, setPendingId] = useState<string | null>(null)
   // ⌘K lesson hits deep-link here as ?tab=lessons&lessonId=<id>; the
-  // matching card gets a highlight ring and scrolls into view once.
+  // matching card gets a highlight ring and scrolls into view ONCE per
+  // highlight id — `lessons` also changes on every optimistic toggle
+  // update, and re-scrolling mid-interaction would yank the viewport.
   const [highlightId] = useQueryState('lessonId', '')
   const highlightRef = useRef<HTMLElement | null>(null)
+  const scrolledForRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (lessons && highlightId && highlightRef.current) {
+    if (!lessons || !highlightId || scrolledForRef.current === highlightId) return
+    if (highlightRef.current) {
       highlightRef.current.scrollIntoView({ block: 'center' })
+      scrolledForRef.current = highlightId
     }
   }, [lessons, highlightId])
 

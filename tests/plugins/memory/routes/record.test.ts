@@ -89,9 +89,12 @@ function makeReq(id?: string): Request {
 beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(testDir, { recursive: true })
+  // Two lines so the streaming reader's byte-offset tracking is exercised
+  // on a non-zero offset (line 2) and compared against the enumerator.
   writeFileSync(
     join(testDir, 'audit.jsonl'),
-    JSON.stringify({ ts: FIXTURE_ISO, event: 'task.created', agent: AGENT, data: { id: '1' } }) + '\n',
+    JSON.stringify({ ts: FIXTURE_ISO, event: 'task.created', agent: AGENT, data: { id: '1' } }) + '\n'
+    + JSON.stringify({ ts: FIXTURE_ISO, event: 'task.completed', agent: AGENT, data: { id: '2' } }) + '\n',
   )
 })
 
@@ -100,21 +103,24 @@ afterAll(() => {
 })
 
 describe('GET /record', () => {
-  it('resolves an existing audit rowId to its exact row', async () => {
+  it('resolves existing audit rowIds to their exact rows (both lines, offsets intact)', async () => {
     const ctx = makeCtx()
-    // Discover the real key the enumerator emits for the fixture row.
+    // Discover the real keys/docs the enumerator emits for the fixture rows —
+    // the streaming reader must produce identical docs, including the
+    // byte-offset-bearing source metadata for the second line.
     const rows: Array<{ key: string; doc: Record<string, unknown> }> = []
     for await (const r of new MemoryIndexer(ctx, {}).enumerateTier('audit')) rows.push(r)
-    expect(rows.length).toBe(1)
-    const key = rows[0]!.key
-    expect(key.startsWith('audit:')).toBe(true)
+    expect(rows.length).toBe(2)
 
-    const res = await recordRoute.handler(makeReq(key), ctx, {})
-    expect(res.status).toBe(200)
-    const body = await res.json() as { result: { id: string; table: string; fields: Record<string, unknown> } }
-    expect(body.result.id).toBe(key)
-    expect(body.result.table).toBe('memory')
-    expect(body.result.fields).toEqual(rows[0]!.doc)
+    for (const expected of rows) {
+      expect(expected.key.startsWith('audit:')).toBe(true)
+      const res = await recordRoute.handler(makeReq(expected.key), ctx, {})
+      expect(res.status).toBe(200)
+      const body = await res.json() as { result: { id: string; table: string; fields: Record<string, unknown> } }
+      expect(body.result.id).toBe(expected.key)
+      expect(body.result.table).toBe('memory')
+      expect(body.result.fields).toEqual(expected.doc)
+    }
   })
 
   it('404s for a well-formed id that matches nothing', async () => {

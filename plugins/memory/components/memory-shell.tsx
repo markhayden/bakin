@@ -353,7 +353,10 @@ function MemoryShellInner() {
           className="flex items-center justify-between rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
           data-testid="memory-record-error"
         >
-          <span>{record.error}</span>
+          <span>
+            {record.error}
+            {searchActive && ' Showing the closest matches below.'}
+          </span>
           <button type="button" className="text-xs underline" onClick={record.close}>
             Dismiss
           </button>

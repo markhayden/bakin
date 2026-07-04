@@ -93,6 +93,9 @@ export function SchedulePage() {
   const selectedJob = jobIdParam ? jobs.find(j => j.id === jobIdParam) ?? null : null
   const showForm = mode === 'create' || ((mode === 'edit' || mode === 'duplicate' || mode === 'adopt') && !!selectedJob)
   const showDetail = !!selectedJob && !showForm
+  // A ?jobId= that matches nothing (job deleted, stale search hit) must be
+  // an honest notice, not a silent no-op with a dead param in the URL.
+  const jobNotFound = !!jobIdParam && !loading && !selectedJob
 
   // --- Transitions ---
 
@@ -257,6 +260,18 @@ export function SchedulePage() {
 
       {/* Filters */}
       <AgentFilter agentIds={agentIds} value={agentFilter} onChange={setAgentFilter} />
+
+      {jobNotFound && (
+        <div
+          className="flex items-center justify-between rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          data-testid="schedule-job-not-found"
+        >
+          <span>Job not found — it may have been deleted.</span>
+          <button type="button" className="text-xs underline" onClick={closeJob}>
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Content */}
       <div className="flex-1 min-h-0 overflow-auto">

@@ -7,7 +7,7 @@
  * Unknown or absent lessonId → no card highlighted, normal render.
  */
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
-import { render, cleanup, screen, waitFor } from '@testing-library/react'
+import { render, cleanup, screen, waitFor, fireEvent } from '@testing-library/react'
 
 const contentDirMock = () => ({
   getContentDir: () => '/tmp/bakin-test-lesson-highlight',
@@ -36,9 +36,12 @@ const LESSONS = [
   { lessonId: 'tone', title: 'Tone of voice', tags: [], defaultEnabled: true, enabled: false },
 ]
 
+const scrollSpy = mock()
+
 beforeEach(() => {
   queryState.lessonId = ''
-  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
+  scrollSpy.mockClear()
+  Element.prototype.scrollIntoView = scrollSpy
   ;(globalThis as Record<string, unknown>).fetch = mock(() =>
     Promise.resolve({
       ok: true,
@@ -64,6 +67,19 @@ describe('LessonToggleList ?lessonId= highlight', () => {
     render(<LessonToggleList agentId="pixel" />)
     await waitFor(() => expect(screen.getByText('Style guide')).toBeTruthy())
     expect(document.querySelectorAll('[data-highlighted="true"]').length).toBe(0)
+  })
+
+  it('scrolls to the highlighted card ONCE — not again on optimistic toggle updates', async () => {
+    queryState.lessonId = 'tone'
+    render(<LessonToggleList agentId="pixel" />)
+    await waitFor(() => expect(screen.getByText('Tone of voice')).toBeTruthy())
+    await waitFor(() => expect(scrollSpy.mock.calls.length).toBe(1))
+
+    // Flipping any switch triggers an optimistic setLessons — the effect
+    // re-runs but must NOT yank the viewport back to the highlighted card.
+    fireEvent.click(screen.getByLabelText('Toggle Style guide'))
+    await waitFor(() => expect(screen.getByLabelText('Toggle Style guide')).toBeTruthy())
+    expect(scrollSpy.mock.calls.length).toBe(1)
   })
 
   it('renders normally when the lessonId is unknown', async () => {

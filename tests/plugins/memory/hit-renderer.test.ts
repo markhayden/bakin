@@ -24,11 +24,13 @@ const hit = (id: string, fields: Record<string, unknown> = {}): SearchResult =>
   ({ id, table: 'bakin_memory', score: 1, fields })
 
 describe('memory hit renderer', () => {
-  it('deep-links to the exact record by rowId', () => {
+  it('deep-links to the exact record by rowId, with a ?q= recovery fallback', () => {
     const d = getSearchHitRenderer('memory')!(
       hit('durable:abc123', { tier: 'durable', agent: 'chef', content: 'soul body' }),
     )
-    expect(d.href).toBe(`/memory?recordId=${encodeURIComponent('durable:abc123')}`)
+    // recordId targets the exact row; q rides along so a resolution miss
+    // (row pruned from source) lands on closest matches, not a dead end.
+    expect(d.href).toBe(`/memory?recordId=${encodeURIComponent('durable:abc123')}&q=${encodeURIComponent('soul body')}`)
     expect(d.subtitle).toContain('durable')
     expect(d.subtitle).toContain('chef')
     expect(d.icon).toBe('brain')
