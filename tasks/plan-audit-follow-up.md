@@ -230,6 +230,27 @@ All four have audited seams; pure decomposition, one PR each or stacked.
    effort (`workflows/lib/routes/*`, `schedule/lib/routes/jobs.ts`): split to
    `lib/routes/{agents,teams,context}.ts`, same single `indexAgentStatic` dep.
 
+**FW4 STATUS — ☑ DONE (2026-07-05, branch `refactor/ui-godfiles`, 6 commits).**
+All four files decomposed:
+1. **task-detail-dialog.tsx 1,033 → 54-line shell** across 6 files (use-task-detail hook holding the
+   ~26-hook state web — models-page precedent; mode drawers, workflow panels, notes, step-output
+   leaves). One clean fetch migrated to useJsonFetch; three effects stay raw with recorded reasons.
+   The P2 #18 local WorkflowInstance extension moved into the hook, module-local (scanner-green).
+2. **node-config-drawer.tsx 976 → 561** + lib/node-config-fields.ts (221, pure/unit-testable) +
+   drawer-header + parallel-children-editor. The FW6-noted `let cancelled` straggler migrated to
+   useJsonFetch.
+3. **health-page.tsx 1,137 → 103-line shell** — THE deliberate redesign: per-section components
+   (health-sections 573 / search-section 246 / plugins-section 289) with independent per-section
+   polling (usePolledJson); one failing endpoint faults its own card, not the page. SearchHealthData
+   + telemetry/spend wire types promoted to types.ts. Existing tests passed unchanged (they pin
+   data, not the old gate).
+4. **team-routes.ts 1,049 → DELETED** — lib/routes/{agents 741, teams 249, context 112, shared 10}.
+   Kept populate-function registration (indexAgentStatic closes over pluginCtx; const arrays would
+   cycle). Route-registry tie-order preserved and documented (specificity ties break by insertion
+   order — agents → context → teams verified pair-by-pair).
+Gates: full suite 5,362-0; typecheck; 10/10 plugin builds; binary build + isolated boot smoke
+(team agents/teams/context routes + health/tasks/workflows client assets all 200).
+
 ### FW5 `refactor/server-godfiles` — audit misses + the un-split WS5 file
 
 1. **`plugins/models/index.ts` (896, actively growing).** The clearest audit miss — only the
