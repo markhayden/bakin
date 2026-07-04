@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach, mock, spyOn } from 'bun:test'
+import { describe, it, expect } from 'bun:test'
+import { setupTtyCliHarness } from './helpers/tty-cli-harness'
 import {
   cmdScheduleList,
   cmdScheduleAdd,
@@ -14,36 +15,14 @@ import {
  * with the correct payload. We mock global fetch to intercept HTTP calls.
  */
 
-const mockFetch = mock()
-const consoleSpy = spyOn(console, 'log').mockImplementation(() => {})
+const harness = setupTtyCliHarness({
+  exitMode: 'none',
+  defaultIsTTY: false,
+  passthroughDataUrls: true,
+})
+const { fetchMock: mockFetch, output, setStdoutIsTTY } = harness
 
 describe('CLI schedule commands', () => {
-  const originalFetch = globalThis.fetch
-  const originalStdoutIsTTY = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
-
-  function setStdoutIsTTY(value: boolean): void {
-    Object.defineProperty(process.stdout, 'isTTY', { value, configurable: true })
-  }
-
-  function output(): string {
-    return consoleSpy.mock.calls.map(c => String(c[0])).join('\n')
-  }
-
-  beforeEach(() => {
-    mock.clearAllMocks()
-    globalThis.fetch = ((input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
-      if (typeof input === 'string' && input.startsWith('data:')) return originalFetch(input, init)
-      return mockFetch(input, init)
-    }) as typeof fetch
-    setStdoutIsTTY(false)
-  })
-
-  afterEach(() => {
-    globalThis.fetch = originalFetch
-    if (originalStdoutIsTTY) Object.defineProperty(process.stdout, 'isTTY', originalStdoutIsTTY)
-    else delete (process.stdout as { isTTY?: boolean }).isTTY
-  })
-
   function mockJsonResponse(data: unknown) {
     mockFetch.mockResolvedValueOnce({
       ok: true,
@@ -87,7 +66,7 @@ describe('CLI schedule commands', () => {
       })
       await cmdScheduleList({})
       // Should only show Bakin job (1 header line + 1 separator + 1 job = logged displayName once)
-      const output = consoleSpy.mock.calls.map(c => c[0]).join('\n')
+      const output = harness.log.mock.calls.map((c: unknown[]) => c[0]).join('\n')
       expect(output).toContain('Bakin Job')
       expect(output).not.toContain('Other Job')
     })
@@ -100,7 +79,7 @@ describe('CLI schedule commands', () => {
         ],
       })
       await cmdScheduleList({ all: true })
-      const output = consoleSpy.mock.calls.map(c => c[0]).join('\n')
+      const output = harness.log.mock.calls.map((c: unknown[]) => c[0]).join('\n')
       expect(output).toContain('Bakin Job')
       expect(output).toContain('Other Job')
     })
@@ -113,7 +92,7 @@ describe('CLI schedule commands', () => {
         ],
       })
       await cmdScheduleList({ agent: 'chef' })
-      const output = consoleSpy.mock.calls.map(c => c[0]).join('\n')
+      const output = harness.log.mock.calls.map((c: unknown[]) => c[0]).join('\n')
       expect(output).toContain('Chef Job')
       expect(output).not.toContain('Pixel Job')
     })
@@ -125,7 +104,7 @@ describe('CLI schedule commands', () => {
         ],
       })
       await cmdScheduleList({ json: true })
-      const output = consoleSpy.mock.calls[0][0]
+      const output = harness.log.mock.calls[0][0]
       const parsed = JSON.parse(output)
       expect(parsed).toHaveLength(1)
       expect(parsed[0].id).toBe('j1')
@@ -134,7 +113,7 @@ describe('CLI schedule commands', () => {
     it('shows empty message when no jobs', async () => {
       mockJsonResponse({ jobs: [] })
       await cmdScheduleList({})
-      expect(consoleSpy).toHaveBeenCalledWith('No scheduled jobs found.')
+      expect(harness.log).toHaveBeenCalledWith('No scheduled jobs found.')
     })
 
     it('shows status correctly for paused/active/disabled', async () => {
@@ -146,7 +125,7 @@ describe('CLI schedule commands', () => {
         ],
       })
       await cmdScheduleList({ all: true })
-      const output = consoleSpy.mock.calls.map(c => c[0]).join('\n')
+      const output = harness.log.mock.calls.map((c: unknown[]) => c[0]).join('\n')
       expect(output).toContain('paused')
       expect(output).toContain('active')
       expect(output).toContain('disabled')
@@ -169,8 +148,8 @@ describe('CLI schedule commands', () => {
     it('prints confirmation with job ID and human schedule', async () => {
       mockJsonResponse({ ok: true, jobId: 'new-1', cron: '0 9 * * *', human: 'Every day at 9:00 AM' })
       await cmdScheduleAdd({ name: 'Daily Check', schedule: 'every day at 9am' })
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Daily Check'))
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('new-1'))
+      expect(harness.log).toHaveBeenCalledWith(expect.stringContaining('Daily Check'))
+      expect(harness.log).toHaveBeenCalledWith(expect.stringContaining('new-1'))
     })
 
     it('passes workflow and prompt when provided', async () => {
@@ -232,14 +211,14 @@ describe('CLI schedule commands', () => {
       mockJsonResponse({ ok: true })
       await cmdSchedulePause('job-1', { until: '2026-04-01' })
       expectPostTo('/api/plugins/schedule/job-1/pause', { action: 'pause', pauseUntil: '2026-04-01' })
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('until 2026-04-01'))
+      expect(harness.log).toHaveBeenCalledWith(expect.stringContaining('until 2026-04-01'))
     })
 
     it('sends skip action with count when --skip provided', async () => {
       mockJsonResponse({ ok: true })
       await cmdSchedulePause('job-1', { skip: 3 })
       expectPostTo('/api/plugins/schedule/job-1/pause', { action: 'skip', skipN: 3 })
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Skipping next 3'))
+      expect(harness.log).toHaveBeenCalledWith(expect.stringContaining('Skipping next 3'))
     })
   })
 
@@ -248,7 +227,7 @@ describe('CLI schedule commands', () => {
       mockJsonResponse({ ok: true })
       await cmdScheduleResume('job-1')
       expectPostTo('/api/plugins/schedule/job-1/pause', { action: 'resume' })
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Resumed'))
+      expect(harness.log).toHaveBeenCalledWith(expect.stringContaining('Resumed'))
     })
   })
 
@@ -260,7 +239,7 @@ describe('CLI schedule commands', () => {
         expect.stringContaining('/api/plugins/schedule/job-1'),
         expect.objectContaining({ method: 'DELETE' })
       )
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Removed'))
+      expect(harness.log).toHaveBeenCalledWith(expect.stringContaining('Removed'))
     })
   })
 
@@ -269,7 +248,7 @@ describe('CLI schedule commands', () => {
       mockJsonResponse({ ok: true })
       await cmdScheduleRun('job-1')
       expectPostTo('/api/plugins/schedule/job-1/run', {})
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Triggered'))
+      expect(harness.log).toHaveBeenCalledWith(expect.stringContaining('Triggered'))
     })
   })
 
@@ -289,7 +268,7 @@ describe('CLI schedule commands', () => {
     it('shows empty message when no runs', async () => {
       mockJsonResponse({ runs: [] })
       await cmdScheduleRuns('job-1', {})
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('No run history'))
+      expect(harness.log).toHaveBeenCalledWith(expect.stringContaining('No run history'))
     })
 
     it('formats run history table', async () => {
@@ -300,7 +279,7 @@ describe('CLI schedule commands', () => {
         ],
       })
       await cmdScheduleRuns('job-1', {})
-      const output = consoleSpy.mock.calls.map(c => c[0]).join('\n')
+      const output = harness.log.mock.calls.map((c: unknown[]) => c[0]).join('\n')
       expect(output).toContain('task-1')
       expect(output).toContain('timeout')
     })
