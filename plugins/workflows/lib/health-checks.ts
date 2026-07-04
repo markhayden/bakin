@@ -166,11 +166,15 @@ function workflowSkillRepairabilityLabel(repairability: WorkflowSkillDriftReport
   }
 }
 
-// ─── Workflow definitions: skill reference integrity ──────────────────────
+// ─── Workflow definitions: skill + nested-workflow reference integrity ─────
 
 /**
- * Verify every step `skill:` reference in every workflow definition resolves
- * to an existing skill file. Walks builtin + parallel children.
+ * Verify every step `skill:` reference and every nested `workflow_id`
+ * reference in every workflow definition resolves. Walks builtin + parallel
+ * children. Nested-workflow existence is checked HERE (against the live
+ * user-disk + registry set) rather than at plugin-default load time, because
+ * load order must not decide validity (#374) — this check is order-independent
+ * and stays current under hot reload.
  */
 export async function checkWorkflowDefinitions(contentDir: string): Promise<HealthCheckResult[]> {
   const results: HealthCheckResult[] = []
@@ -188,14 +192,24 @@ export async function checkWorkflowDefinitions(contentDir: string): Promise<Heal
 
   try {
     const defs = listDefinitions(contentDir)
+    // listDefinitions merges user-disk and plugin/agent-package registry
+    // definitions (user wins), so this set IS the resolvable-workflow universe.
+    const knownWorkflowIds = new Set(defs.map((entry) => entry.name))
     for (const { name, definition } of defs) {
       for (const step of definition.steps) {
         const skillName = (step as { skill?: string }).skill
         if (skillName && !skillExists(skillName)) {
           results.push(warn('workflow-definitions', `Workflow "${name}" step "${(step as { id: string }).id}" references skill "${skillName}" which does not exist`))
         }
+        const stepType = (step as { type?: string }).type
+        if (stepType === 'workflow') {
+          const workflowId = (step as { workflow_id?: string }).workflow_id
+          if (workflowId && !knownWorkflowIds.has(workflowId)) {
+            results.push(warn('workflow-definitions', `Workflow "${name}" step "${(step as { id: string }).id}" references nested workflow "${workflowId}" which does not exist`))
+          }
+        }
         // Check parallel children too
-        if ((step as { type?: string }).type === 'parallel' && 'steps' in step) {
+        if (stepType === 'parallel' && 'steps' in step) {
           for (const child of (step as { steps: Array<{ id: string; skill?: string }> }).steps) {
             if (child.skill && !skillExists(child.skill)) {
               results.push(warn('workflow-definitions', `Workflow "${name}" parallel step "${child.id}" references skill "${child.skill}" which does not exist`))
@@ -209,7 +223,7 @@ export async function checkWorkflowDefinitions(contentDir: string): Promise<Heal
   }
 
   if (results.length === 0) {
-    results.push(ok('workflow-definitions', 'All workflow skill references resolve'))
+    results.push(ok('workflow-definitions', 'All workflow references resolve'))
   }
 
   return results

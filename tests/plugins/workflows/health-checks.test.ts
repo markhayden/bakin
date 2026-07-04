@@ -243,7 +243,72 @@ describe('checkWorkflowDefinitions', () => {
     const results = await checkWorkflowDefinitions(testDir)
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('ok')
-    expect(results[0].message).toMatch(/All workflow skill references resolve/)
+    expect(results[0].message).toMatch(/All workflow references resolve/)
+  })
+
+  it('warns when a definition references a missing nested workflow (#374)', async () => {
+    writeFileSync(
+      join(definitionsDir, 'orphan-parent.yaml'),
+      `name: Orphan parent
+description: test
+version: 1
+steps:
+  - id: run-child
+    label: Run Child
+    type: workflow
+    workflow_id: ghost-child
+`,
+    )
+    const results = await checkWorkflowDefinitions(testDir)
+    expect(results.some(r =>
+      r.status === 'warn' &&
+      r.message.includes('orphan-parent') &&
+      r.message.includes('ghost-child'),
+    )).toBe(true)
+  })
+
+  it('does not warn when the nested workflow exists on disk or in the registry', async () => {
+    const { registerPluginDefinition, clearSourceRegistry } = await import('@bakin/core/workflows/source-registry')
+    writeFileSync(
+      join(definitionsDir, 'disk-child.yaml'),
+      `name: Disk child
+description: test
+version: 1
+steps:
+  - id: s1
+    label: Step 1
+    type: agent
+    agent: main
+`,
+    )
+    registerPluginDefinition('some-plugin', 'registry-child', {
+      name: 'Registry child',
+      description: 'test',
+      version: 1,
+      steps: [{ id: 's1', label: 'Step 1', type: 'agent', agent: 'main' }],
+    } as never)
+    try {
+      writeFileSync(
+        join(definitionsDir, 'happy-parent.yaml'),
+        `name: Happy parent
+description: test
+version: 1
+steps:
+  - id: run-disk
+    label: Run Disk Child
+    type: workflow
+    workflow_id: disk-child
+  - id: run-registry
+    label: Run Registry Child
+    type: workflow
+    workflow_id: registry-child
+`,
+      )
+      const results = await checkWorkflowDefinitions(testDir)
+      expect(results.some(r => r.message.includes('happy-parent'))).toBe(false)
+    } finally {
+      clearSourceRegistry()
+    }
   })
 
   it('flags a workflow step referencing a missing skill', async () => {
