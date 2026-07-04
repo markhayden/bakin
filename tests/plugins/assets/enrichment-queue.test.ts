@@ -131,6 +131,23 @@ describe('enrichment queue', () => {
     expect(getAsset(assetId)?.enrichment?.error).toContain('no vision-capable')
   })
 
+  it('asset deleted mid-enrichment records a benign skip, not a failure', async () => {
+    const { assetDirAbs } = await import('@bakin/assets/lib/asset-id')
+    const assetId = await makeImageAsset()
+    // Simulate the delete race: the asset vanishes while the billed call runs,
+    // so the manifest write finds nothing.
+    visionCall.mockImplementation(async () => {
+      rmSync(assetDirAbs(assetId)!, { recursive: true, force: true })
+      return { caption: 'gone', suggestedTags: [] }
+    })
+    const failedBefore = enrichmentQueueStats().failed
+    const skippedBefore = enrichmentQueueStats().skipped
+    enqueueEnrichment(assetId)
+    await drainEnrichmentQueue()
+    expect(enrichmentQueueStats().failed).toBe(failedBefore)
+    expect(enrichmentQueueStats().skipped).toBe(skippedBefore + 1)
+  })
+
   it('enrichmentEnabled:false short-circuits without touching the manifest', async () => {
     initEnrichmentQueue(() => ({ enrichmentEnabled: false }))
     const assetId = await makeImageAsset()
