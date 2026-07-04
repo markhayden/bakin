@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import { setupTtyCliHarness } from './helpers/tty-cli-harness'
 
 let nextQuestionAnswer = 'y'
 let prompts: string[] = []
@@ -64,48 +65,17 @@ const mockDelegate = {
   unresolved: mockPlan.diagnostics,
 }
 
+const harness = setupTtyCliHarness({ exitMode: 'always-throws', defaultIsTTY: null })
+const { fetchMock, setStdoutIsTTY, output: loggedOutput } = harness
+
 describe('legacy CLI doctor repair', () => {
-  const originalArgv = process.argv
-  const originalExit = process.exit
-  const originalFetch = globalThis.fetch
-  const originalStdoutIsTTY = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
-  let log: ReturnType<typeof spyOn>
-  let error: ReturnType<typeof spyOn>
-  const fetchMock = mock()
-
-  function setStdoutIsTTY(value: boolean): void {
-    Object.defineProperty(process.stdout, 'isTTY', { value, configurable: true })
-  }
-
-  function loggedOutput(): string {
-    return log.mock.calls.map((call: unknown[]) => String(call[0])).join('\n')
-  }
-
   function headerCount(output: string): number {
     return output.split("┃ 🐷 Bakin'").length - 1
   }
 
   beforeEach(() => {
-    mock.clearAllMocks()
     prompts = []
     nextQuestionAnswer = 'y'
-    process.argv = originalArgv
-    globalThis.fetch = fetchMock as unknown as typeof fetch
-    log = spyOn(console, 'log').mockImplementation(() => {})
-    error = spyOn(console, 'error').mockImplementation(() => {})
-    process.exit = ((code?: number) => {
-      throw new Error(`exit:${code}`)
-    }) as never
-  })
-
-  afterEach(() => {
-    process.argv = originalArgv
-    process.exit = originalExit
-    globalThis.fetch = originalFetch
-    if (originalStdoutIsTTY) Object.defineProperty(process.stdout, 'isTTY', originalStdoutIsTTY)
-    else delete (process.stdout as { isTTY?: boolean }).isTTY
-    log.mockRestore()
-    error.mockRestore()
   })
 
   it('prints a JSON repair plan and does not mutate without --yes', async () => {
@@ -122,7 +92,7 @@ describe('legacy CLI doctor repair', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(fetchMock.mock.calls[0][0]).toContain('/api/plugins/health/doctor/repair/plan')
     expect(fetchMock.mock.calls[0][1]?.method).toBeUndefined()
-    const body = JSON.parse(String(log.mock.calls[0][0]))
+    const body = JSON.parse(String(harness.log.mock.calls[0][0]))
     expect(body.ok).toBe(false)
     expect(body.error.code).toBe('CONFIRMATION_REQUIRED')
     expect(body.data.plan.summary.safeItems).toBe(1)
@@ -143,7 +113,7 @@ describe('legacy CLI doctor repair', () => {
     expect(fetchMock.mock.calls[0][0]).toContain('/api/plugins/health/doctor/repair/apply')
     expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'POST' })
     expect(fetchMock.mock.calls[0][1]?.body).toBe(JSON.stringify({ accepted: true }))
-    const body = JSON.parse(String(log.mock.calls[0][0]))
+    const body = JSON.parse(String(harness.log.mock.calls[0][0]))
     expect(body.ok).toBe(true)
     expect(body.data.summary.applied).toBe(1)
   })
@@ -215,7 +185,7 @@ describe('legacy CLI doctor repair', () => {
     expect(output).toContain('Doctor repair plan')
     expect(output).toContain('Doctor repair results')
     expect(headerCount(output)).toBe(1)
-    const logLines: string[] = log.mock.calls.map((call: unknown[]) => String(call[0] ?? ''))
+    const logLines: string[] = harness.log.mock.calls.map((call: unknown[]) => String(call[0] ?? ''))
     const resultIndex = logLines.findIndex(line => line.includes('Doctor repair results'))
     expect(logLines[resultIndex - 1]).toBe('')
   })
@@ -241,7 +211,7 @@ describe('legacy CLI doctor repair', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(fetchMock.mock.calls[0][0]).toContain('/api/plugins/health/doctor/repair/plan')
-    const body = JSON.parse(String(log.mock.calls[0][0]))
+    const body = JSON.parse(String(harness.log.mock.calls[0][0]))
     expect(body.error.code).toBe('CONFIRMATION_REQUIRED')
     expect(body.data.unresolved).toHaveLength(1)
   })
@@ -261,7 +231,7 @@ describe('legacy CLI doctor repair', () => {
     expect(fetchMock.mock.calls[0][0]).toContain('/api/plugins/health/doctor/delegate')
     expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'POST' })
     expect(fetchMock.mock.calls[0][1]?.body).toBe(JSON.stringify({ accepted: true }))
-    const body = JSON.parse(String(log.mock.calls[0][0]))
+    const body = JSON.parse(String(harness.log.mock.calls[0][0]))
     expect(body.ok).toBe(true)
     expect(body.data.request.taskId).toBe('task-repair-1')
   })
@@ -297,7 +267,7 @@ describe('legacy CLI doctor repair', () => {
     await main()
 
     expect(fetchMock.mock.calls[0][0]).toContain('/api/plugins/health/doctor/repair')
-    const body = JSON.parse(String(log.mock.calls[0][0]))
+    const body = JSON.parse(String(harness.log.mock.calls[0][0]))
     expect(body.data.requests[0].id).toBe('repair-1')
   })
 
@@ -355,7 +325,7 @@ describe('legacy CLI doctor repair', () => {
 
     expect(fetchMock.mock.calls[0][0]).toContain('/api/plugins/health/doctor/repair/repair-1/verify')
     expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'POST' })
-    const body = JSON.parse(String(log.mock.calls[0][0]))
+    const body = JSON.parse(String(harness.log.mock.calls[0][0]))
     expect(body.data.verified).toBe(true)
   })
 
