@@ -432,7 +432,8 @@ Created by `bakin onboard` or `initBakinHome()`.
 | What | File | How it starts |
 |---|---|---|
 | HTTP server | `server.ts` | `bakin start` (binary) or `bun run dev` |
-| Binary CLI | `src/core/cli.ts` | argv parsed in `server.ts` before boot; dispatches `start/stop/status/version/update/plugins/...` |
+| Binary CLI | `src/core/cli.ts` | argv parsed in `server.ts` before boot; dispatches `start/stop/status/version/update/plugins/...`; unknown commands delegate (dynamic import, both directions stay lazy) to `cli/bakin.ts` |
+| HTTP-client CLI | `cli/bakin.ts` | ~210-line router (npm bin entry, `main()` + `import.meta.main`): one lazy `import('src/cli/commands/<group>')` per switch case; shared plumbing in `src/cli/{http,output,help}.ts`; each command module owns its heavy imports (whiskit, import-export, settings) so the entry graph stays light; plugin-contributed commands (manifest `contributes.cliCommands`) dispatch via `src/cli/commands/plugin-dispatch.ts` and appear in help |
 | Core plugin config | `bakin.config.ts` | Imported by `server.ts` + `registerCorePlugins` |
 | Plugin loading | `src/lib/plugin-registry.ts` | Called by `server.ts` during startup |
 | MCP tools | `src/core/mcp-server.ts` | Imports `scripts/lib/*.ts` + plugin exec tools. Supports Streamable HTTP and SSE transports. |

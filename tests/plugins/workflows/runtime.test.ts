@@ -19,6 +19,13 @@ mock.module('../../../src/core/content-dir', () => ({
   initBakinHome: mock(),
   isUsingBakinHome: () => false,
 }))
+mock.module('../../../packages/core/src/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({}),
+  resetContentDir: mock(),
+  initBakinHome: mock(),
+  isUsingBakinHome: () => false,
+}))
 
 type HookTask = { id: string; title: string; column: string; description?: string }
 const hookTasks = new Map<string, HookTask>()

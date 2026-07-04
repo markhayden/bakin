@@ -139,6 +139,12 @@ export function createInstance(
 export interface CompleteStepResult {
   success: boolean
   errors?: string[]
+  /**
+   * Typed failure discriminant. 'rejection_repeat' = the near-duplicate
+   * resubmission detector fired. Callers branch on this, never on the
+   * error-message text.
+   */
+  code?: 'rejection_repeat'
   nextStep?: StepContext | { status: 'complete' } | { status: 'pending_approval'; stepId: string; label: string }
   workflowComplete?: boolean
 }
@@ -196,7 +202,7 @@ export function completeStep(
   if (stepState.previousOutput) {
     const repeatError = detectRejectionRepeat(stepState.previousOutput, output)
     if (repeatError) {
-      return { success: false, errors: [repeatError] }
+      return { success: false, errors: [repeatError], code: 'rejection_repeat' }
     }
   }
 

@@ -15,6 +15,7 @@ import { join } from 'path'
 import { readTaskboard } from '../../../src/core/task-store'
 import type { HealthCheckResult, HealthRepairHandler } from '../../../packages/core/src/plugin-types'
 import { healthOk as ok, healthWarn as warn, healthFixed as fixed } from '@makinbakin/sdk/utils'
+import { splitFrontmatter } from '@bakin/core/format/frontmatter'
 
 import { listDefinitions } from './parser'
 import { getAgentPackageSkills } from './agent-package-skill-registry'
@@ -46,8 +47,7 @@ export function checkWorkflowSkills(contentDir: string): HealthCheckResult[] {
     for (const file of files) {
       try {
         const content = readFileSync(join(skillsDir, file), 'utf-8')
-        const match = content.match(/^---\n([\s\S]*?)\n---/)
-        if (!match) {
+        if (splitFrontmatter(content).raw === null) {
           results.push(warn('workflow-skills', `Skill ${file} has no YAML frontmatter — output will not be validated`))
           continue
         }

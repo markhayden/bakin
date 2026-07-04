@@ -9,6 +9,10 @@ mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ content: testDir }),
 }))
+mock.module('../../packages/core/src/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ content: testDir }),
+}))
 
 // Mock self-registering tool imports to prevent side-effect errors
 mock.module('../../scripts/lib/log-progress', () => ({}))

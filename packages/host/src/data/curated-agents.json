@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-05-10T00:00:00Z",
+  "updatedAt": "2026-07-03T00:00:00Z",
   "agents": [
     {
       "id": "pixel",
@@ -41,6 +41,17 @@
       "source": "github:markhayden/bakin-bits-official#agents/patch",
       "ref": null,
       "trust": "official"
+    },
+    {
+      "id": "enrich",
+      "name": "H'enrich",
+      "emoji": "🔍",
+      "description": "Vision utility agent — captions, OCR, and tags for asset search. Powers zero-config enrichment; not dispatchable, no channels.",
+      "tags": ["utility", "vision", "enrichment"],
+      "source": "github:markhayden/bakin-bits-official#agents/enrich",
+      "ref": null,
+      "trust": "official",
+      "defaultSelected": true
     }
   ]
 }

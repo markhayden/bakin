@@ -22,7 +22,7 @@
  * Frontmatter carries metadata (name, output_schema); the markdown body
  * becomes the agent's step instructions.
  */
-import { readFileSync, existsSync } from 'fs'
+import { readFileSync, readdirSync, existsSync } from 'fs'
 import { join } from 'path'
 import { parseFrontmatter } from '@bakin/core/format/frontmatter'
 import type { SkillDefinition } from '../types'
@@ -140,7 +140,6 @@ export function listAllSkills(contentDir?: string): Array<{
   const dir = contentDir || getContentDir()
   const skillsDir = join(dir, 'workflows', 'skills')
   if (existsSync(skillsDir)) {
-    const { readdirSync } = require('fs') as typeof import('fs')
     try {
       const files = readdirSync(skillsDir)
       for (const file of files) {

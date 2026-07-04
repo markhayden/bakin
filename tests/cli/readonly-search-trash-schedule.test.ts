@@ -1,0 +1,203 @@
+/**
+ * Read-only CLI TTY commands — schedule, trash, docs, search, and reindex.
+ * Split from readonly-commands.test.ts (B7).
+ */
+import { describe, expect, it, mock } from 'bun:test'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import { setupTtyCliHarness } from './helpers/tty-cli-harness'
+
+// These flows are HTTP-only (fetch is mocked), but the isolation mocks are
+// mandatory insurance: nothing this test transitively imports may ever
+// resolve the real ~/.bakin.
+const testDir = join(tmpdir(), `bakin-test-readonly-search-${Date.now()}`)
+const contentDirMock = () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ home: testDir, db: join(testDir, 'bakin.db') }),
+})
+mock.module('../../src/core/content-dir', contentDirMock)
+mock.module('../../packages/core/src/content-dir', contentDirMock)
+
+const harness = setupTtyCliHarness({ defaultFetchJson: { ok: true } })
+const { fetchMock, output, jsonResponse } = harness
+
+describe('read-only CLI TTY commands — schedule, trash, search', () => {
+  it('renders schedule list and run history with shared TUI screens in a TTY', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      jobs: [
+        {
+          id: 'job-1',
+          displayName: 'Daily Doctor',
+          agentId: 'main',
+          humanSchedule: 'Every day at 9:00 AM',
+          paused: false,
+          enabled: true,
+          isBakinJob: true,
+        },
+      ],
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'schedule', 'list']
+    await main()
+    expect(output()).toContain('Schedule')
+    expect(output()).toContain('JOBS')
+    expect(output()).toContain('Daily Doctor')
+    expect(output()).not.toContain('Name                      Agent')
+
+    harness.log.mockClear()
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      runs: [
+        { runId: 'run-1', timestamp: '2026-05-18T09:00:00.000Z', status: 'ok', taskId: 'task-1' },
+        { runId: 'run-2', timestamp: '2026-05-17T09:00:00.000Z', status: 'error', error: 'timeout' },
+      ],
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'schedule', 'runs', 'job-1']
+    await main()
+    expect(output()).toContain('Schedule Runs')
+    expect(output()).toContain('RUN HISTORY')
+    expect(output()).toContain('task-1')
+    expect(output()).toContain('timeout')
+    expect(output()).not.toContain('Time                   Status')
+  })
+
+  it('renders trash list with the shared TUI screen in a TTY', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      count: 1,
+      assets: [{
+        filename: 'doc.md__deleted-20260518',
+        originalFilename: 'doc.md',
+        type: 'markdown',
+        size: 2048,
+        deletedAt: '2026-05-18T09:00:00.000Z',
+        expiresAt: '2026-05-25T09:00:00.000Z',
+        metadata: { agent: 'patch' },
+      }],
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'trash', 'list']
+    await main()
+
+    expect(output()).toContain('Trash')
+    expect(output()).toContain('TRASHED ASSETS')
+    expect(output()).toContain('doc.md')
+    expect(output()).toContain('bakin trash restore <trashName>')
+    expect(output()).not.toContain('item in trash:')
+  })
+
+  it('renders trash action confirmations with the shared TUI screen in a TTY', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      restoredPath: '/Users/roscoe/.bakin/assets/doc.md',
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'trash', 'restore', 'doc.md__deleted-20260518']
+    await main()
+    expect(output()).toContain('Trash action')
+    expect(output()).toContain('RESULT')
+    expect(output()).toContain('Restored doc.md__deleted-20260518.')
+    expect(output()).not.toContain('Restored →')
+
+    harness.log.mockClear()
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ count: 2 }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, deleted: 2 }))
+    process.argv = ['bun', 'cli/bakin.ts', 'trash', 'empty']
+    await main()
+    expect(output()).toContain('Trash action')
+    expect(output()).toContain('Permanently deleted 2 items.')
+    expect(output()).toContain('RESULT')
+  })
+
+  it('renders docs and search read-only commands with shared TUI screens in a TTY', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      routes: [
+        { method: 'GET', fullPath: '/api/plugins/tasks/', pluginId: 'tasks', description: 'List tasks' },
+        { method: 'POST', fullPath: '/api/plugins/tasks/', pluginId: 'tasks', description: 'Create task' },
+      ],
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'docs']
+    await main()
+    expect(output()).toContain('Docs')
+    expect(output()).toContain('ROUTES')
+    expect(output()).toContain('/api/plugins/tasks/')
+    expect(output()).not.toContain('GET /api/plugins/tasks/')
+
+    harness.log.mockClear()
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      results: [
+        {
+          id: 'task-1',
+          score: 0.9123,
+          table: 'bakin_tasks',
+          fields: { title: 'Blocked task' },
+        },
+      ],
+      aggregations: { status: [{ value: 'blocked', count: 1 }] },
+      meta: { query: 'blocked task', total: 1, took_ms: 4, source: 'tantivy' },
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'search', 'blocked', 'task', '--table=tasks']
+    await main()
+    expect(output()).toContain('Search')
+    expect(output()).toContain('RESULTS')
+    expect(output()).toContain('Blocked task')
+    expect(output()).toContain('tasks')
+    expect(output()).toContain('task-1')
+    expect(output()).toContain('FACETS')
+    expect(output()).not.toContain('Search: "blocked task"')
+
+    harness.log.mockClear()
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      enabled: true,
+      tables: [
+        {
+          table: 'bakin_tasks',
+          pluginId: 'tasks',
+          stats: { documents: 12 },
+          healthy: true,
+          indexHealth: [],
+        },
+      ],
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'search:stats']
+    await main()
+    expect(output()).toContain('Search Stats')
+    expect(output()).toContain('TABLES')
+    expect(output()).toContain('bakin_tasks')
+    expect(output()).toContain('12')
+    expect(output()).not.toContain('Search: enabled')
+  })
+
+  it('renders reindex results with the shared TUI screen in a TTY', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: false,
+      total: 12,
+      errors: 1,
+      enrichmentErrors: 1,
+      tables: [
+        { table: 'bakin_tasks', indexed: 12, enrichment: { healthy: true, indexes: [] } },
+        { table: 'agent_lessons', indexed: 0, error: 'schema missing' },
+      ],
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'reindex', '--table', 'tasks', '--rebuild']
+    await main()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:3737/api/reindex?table=tasks&rebuild=true',
+      expect.objectContaining({ method: 'POST' }),
+    )
+    expect(output()).toContain('Reindex')
+    expect(output()).toContain('target: tasks')
+    expect(output()).toContain('TABLES')
+    expect(output()).toContain('bakin_tasks')
+    expect(output()).toContain('agent_lessons')
+    expect(output()).toContain('schema missing')
+    expect(output()).not.toContain('Reindexing tasks into search')
+  })
+})

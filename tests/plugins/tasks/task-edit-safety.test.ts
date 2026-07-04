@@ -91,6 +91,7 @@ mock.module('../../../src/core/task-service', () => ({
 
 import { recordCompletion, deleteCompletion } from '../../../src/core/execution-ledger'
 import { closeDb } from '../../../packages/core/src/storage/db'
+import { resolveTaskIdentifier } from '../../../plugins/tasks/lib/edit-guard'
 
 let activated: ActivatedPlugin
 
@@ -110,7 +111,23 @@ beforeEach(() => {
   tasks.set('t-1', { id: 't-1', title: 'Editable', agent: 'pixel', version: 3 })
   deleteCompletion('t-1')
   mockUpdateTask.mockClear()
+  mockAssignTask.mockClear()
+  mockSetDependencyWithEffects.mockClear()
   ;(activated.ctx.activity.audit as ReturnType<typeof mock>).mockClear()
+})
+
+describe('resolveTaskIdentifier', () => {
+  it('prefers path param, then body.id, then the title fallbacks', () => {
+    expect(resolveTaskIdentifier('t-1', { id: 't-2', title: 'T' })).toBe('t-1')
+    expect(resolveTaskIdentifier(undefined, { id: 't-2', title: 'T' })).toBe('t-2')
+    expect(resolveTaskIdentifier(undefined, { title: 'T' })).toBe('T')
+    expect(resolveTaskIdentifier(undefined, {})).toBeUndefined()
+  })
+
+  it('update mode: body.title is payload, body.originalTitle is the identifier', () => {
+    expect(resolveTaskIdentifier(undefined, { originalTitle: 'Old', title: 'New' }, { bodyTitleIsPayload: true })).toBe('Old')
+    expect(resolveTaskIdentifier(undefined, { title: 'New' }, { bodyTitleIsPayload: true })).toBeUndefined()
+  })
 })
 
 describe('optimistic versioning', () => {
@@ -152,6 +169,24 @@ describe('optimistic versioning', () => {
     expect(status).toBe(200)
     expect(mockUpdateTask).toHaveBeenCalledTimes(1)
   })
+
+  it('the MCP update tool honors expectedVersion (REST parity)', async () => {
+    const tool = findTool(activated.execTools, 'bakin_exec_tasks_update')!
+
+    const stale = await callTool(tool, { taskId: 't-1', title: 'Nope', expectedVersion: 2 }, 'pixel')
+    expect(stale.ok).toBe(false)
+    expect(String(stale.error)).toContain('Version conflict')
+    expect(mockUpdateTask).not.toHaveBeenCalled()
+    expect(activated.ctx.activity.audit).toHaveBeenCalledWith(
+      'edit_conflict',
+      'pixel',
+      expect.objectContaining({ taskId: 't-1', expectedVersion: 2, currentVersion: 3 }),
+    )
+
+    const fresh = await callTool(tool, { taskId: 't-1', title: 'Yep', expectedVersion: 3 }, 'pixel')
+    expect(fresh.ok).toBe(true)
+    expect(mockUpdateTask).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('freeze-on-complete', () => {
@@ -176,6 +211,22 @@ describe('freeze-on-complete', () => {
     const result = await callTool(tool, { taskId: 't-1', description: 'Nope' }, 'pixel')
     expect(result.ok).toBe(false)
     expect(String(result.error)).toContain('reopen')
+  })
+
+  it('the MCP assign tool refuses (REST parity — no write reaches the store)', async () => {
+    const tool = findTool(activated.execTools, 'bakin_exec_tasks_assign')!
+    const result = await callTool(tool, { taskId: 't-1', agent: 'chef' }, 'pixel')
+    expect(result.ok).toBe(false)
+    expect(String(result.error)).toContain('reopen')
+    expect(mockAssignTask).not.toHaveBeenCalled()
+  })
+
+  it('the MCP set_dependency tool refuses (REST parity — no dependency is written)', async () => {
+    const tool = findTool(activated.execTools, 'bakin_exec_tasks_set_dependency')!
+    const result = await callTool(tool, { taskId: 't-1', dependsOn: 't-2' }, 'pixel')
+    expect(result.ok).toBe(false)
+    expect(String(result.error)).toContain('reopen')
+    expect(mockSetDependencyWithEffects).not.toHaveBeenCalled()
   })
 
   it('reopen unfreezes: after deleteCompletion the edit succeeds', async () => {

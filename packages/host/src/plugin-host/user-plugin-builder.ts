@@ -216,7 +216,11 @@ export async function buildUserPlugin(
       errorStage = 'freshness check failed'
       const newestSource = newestMtimeMs(pluginDir, new Set(['dist', 'node_modules']))
       const oldestDist = oldestMtimeMs(expectedDist)
-      if (clientDistFresh && oldestDist > 0 && newestSource > 0 && oldestDist >= newestSource) {
+      // Strictly newer, as documented above: an mtime TIE rebuilds. A
+      // same-millisecond tie is exactly what a cpSync'd source install
+      // produces, and treating it as fresh would execute shipped dist
+      // bytes that were never rebuilt from validated source.
+      if (clientDistFresh && oldestDist > 0 && newestSource > 0 && oldestDist > newestSource) {
         totalSpan?.end({ status: 'skipped', reason: 'fresh-dist', hasClient })
         return
       }

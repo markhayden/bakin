@@ -15,6 +15,21 @@
 import { getTask } from '../../../src/core/task-store'
 import { hasCompletion } from '../../../src/core/execution-ledger'
 
+/**
+ * Single identifier-fallback resolver for the mutation routes: path param
+ * first, then body.id, then the legacy title fallbacks. Update passes
+ * bodyTitleIsPayload because there body.title is the NEW title — never an
+ * identifier — and identifies by body.originalTitle instead. Previously each
+ * route inlined its own chain and update's had silently diverged.
+ */
+export function resolveTaskIdentifier(
+  paramsTaskId: string | undefined,
+  body: { id?: string; originalTitle?: string; title?: string },
+  opts: { bodyTitleIsPayload?: boolean } = {},
+): string | undefined {
+  return paramsTaskId || body.id || body.originalTitle || (opts.bodyTitleIsPayload ? undefined : body.title)
+}
+
 export function taskEditGuard(
   ctx: { activity: { audit: (event: string, agent: string, data?: Record<string, unknown>) => void } },
   identifier: string,

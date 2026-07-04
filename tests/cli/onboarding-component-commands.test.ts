@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import { setupTtyCliHarness } from './helpers/tty-cli-harness'
 
 const runtimeCheck = mock()
 
@@ -44,22 +45,11 @@ mock.module('../../src/core/onboarding/settings', () => ({
   },
 }))
 
+const harness = setupTtyCliHarness({ mockFetch: false })
+const { output } = harness
+
 describe('onboarding component CLI commands', () => {
-  const originalArgv = process.argv
-  const originalExit = process.exit
-  const originalStdoutIsTTY = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
-  let log: ReturnType<typeof spyOn>
-
-  function setStdoutIsTTY(value: boolean): void {
-    Object.defineProperty(process.stdout, 'isTTY', { value, configurable: true })
-  }
-
-  function output(): string {
-    return log.mock.calls.map((call: unknown[]) => String(call[0])).join('\n')
-  }
-
   beforeEach(() => {
-    mock.clearAllMocks()
     runtimeCheck.mockImplementation(async () => {
       const { createLogger } = await import('../../packages/core/src/logger')
       createLogger('settings').info('Runtime check log')
@@ -107,21 +97,6 @@ describe('onboarding component CLI commands', () => {
         durationMs: 5,
       }
     })
-    process.argv = originalArgv
-    log = spyOn(console, 'log').mockImplementation(() => {})
-    process.exit = ((code?: number) => {
-      if (code === 0) return undefined as never
-      throw new Error(`exit:${code}`)
-    }) as never
-    setStdoutIsTTY(true)
-  })
-
-  afterEach(() => {
-    process.argv = originalArgv
-    process.exit = originalExit
-    if (originalStdoutIsTTY) Object.defineProperty(process.stdout, 'isTTY', originalStdoutIsTTY)
-    else delete (process.stdout as { isTTY?: boolean }).isTTY
-    log.mockRestore()
   })
 
   it('renders single component checks with the shared TUI in a TTY', async () => {
@@ -244,7 +219,7 @@ describe('onboarding component CLI commands', () => {
     })
     expect(output()).not.toContain('Onboarding install')
 
-    log.mockClear()
+    harness.log.mockClear()
     process.argv = ['bun', 'cli/bakin.ts', 'settings', 'init', '--json']
     await main()
     body = JSON.parse(output())
