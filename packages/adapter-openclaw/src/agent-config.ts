@@ -5,7 +5,7 @@
  * and skills methods own the exec/validation and import these; reads/writes go
  * through the config + home + cron-store siblings, so no cycle back to runtime.
  */
-import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs'
 import { join, resolve, sep } from 'path'
 import type { RuntimeAgent } from '@bakin/core/adapters/runtime'
 import {
@@ -170,14 +170,34 @@ export function agentToRuntime(agent: NonNullable<ReturnType<typeof findAgentByI
   }
 }
 
+/**
+ * True when a configured workspace path lives under an `.openclaw` home
+ * DIFFERENT from the one this process resolves — e.g. host-side Bakin
+ * reading a container-onboarded config in the dockerized dev rig, where
+ * openclaw.json stores `/home/node/.openclaw/workspace`. Custom paths
+ * outside any `.openclaw` home are never flagged.
+ */
+function isForeignOpenClawPath(path: string): boolean {
+  if (!path.includes(`${sep}.openclaw${sep}`)) return false
+  const home = getOpenClawHome()
+  return path !== home && !path.startsWith(home + sep)
+}
+
 export function getWorkspacePath(agentId: string): string {
   const config = readOpenClawConfig()
+  const isMain = agentId === tryGetMainAgentId()
   const agent = config?.agents?.list?.find((entry) => entry.id === agentId)
-  if (agent?.workspace) return agent.workspace
-  if (agentId === tryGetMainAgentId()) {
-    return config?.agents?.defaults?.workspace ?? join(getOpenClawHome(), 'workspace')
+  const configured = agent?.workspace ?? (isMain ? config?.agents?.defaults?.workspace : undefined)
+  // Trust the configured path unless it belongs to a foreign OpenClaw home
+  // that doesn't exist here (the dockerized-rig scenario) — writes through
+  // this path must NOT silently land in the default workspace just because
+  // a legitimately configured directory hasn't been created yet.
+  if (configured && (existsSync(configured) || !isForeignOpenClawPath(configured))) {
+    return configured
   }
-  return join(getOpenClawHome(), 'workspaces', agentId)
+  return isMain
+    ? join(getOpenClawHome(), 'workspace')
+    : join(getOpenClawHome(), 'workspaces', agentId)
 }
 
 export function readGatewayToken(): string | null {
