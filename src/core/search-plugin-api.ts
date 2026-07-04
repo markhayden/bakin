@@ -19,7 +19,6 @@ import { enqueueIndex, enqueueRemove, enqueueTransform, nudgeOutboxPump } from '
 import { recordUsage } from './usage'
 import { resolvePhysicalTable } from './search-registry-core'
 import { registerSyncHook, registerUnlinkHook } from './watcher'
-import { getContentDir } from './content-dir'
 import { findMatchingMapper, matchesAnyPattern } from './search-file-patterns'
 import {
   adapterHitToPluginResult,

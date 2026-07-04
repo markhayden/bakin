@@ -25,19 +25,6 @@ import { createLogger } from '@bakin/core/logger'
 
 const log = createLogger('workflows')
 
-function stableStringify(value: unknown): string {
-  if (value === null || typeof value !== 'object') {
-    const primitive = JSON.stringify(value)
-    return primitive === undefined ? String(value) : primitive
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map((entry) => stableStringify(entry)).join(',')}]`
-  }
-  const entries = Object.entries(value as Record<string, unknown>)
-    .sort(([a], [b]) => a.localeCompare(b))
-  return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${stableStringify(entry)}`).join(',')}}`
-}
-
 /** Convert a workflow instance to a search document. */
 export function instanceToSearchDoc(inst: WorkflowInstance): Record<string, unknown> {
   const def = loadDefinition(inst.workflowId)

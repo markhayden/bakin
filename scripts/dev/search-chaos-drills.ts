@@ -9,7 +9,7 @@
  * ports, dev binary. Results are recorded in
  * .claude/knowledge/search-chaos-drills.md. A drill failure exits non-zero.
  */
-import { mkdtempSync, mkdirSync, openSync, rmSync, symlinkSync, existsSync, writeFileSync, renameSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, openSync, rmSync, symlinkSync, existsSync } from 'node:fs'
 import { tmpdir, homedir } from 'node:os'
 import { join } from 'node:path'
 import { spawn, type ChildProcess } from 'node:child_process'

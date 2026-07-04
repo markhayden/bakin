@@ -59,7 +59,7 @@ import {
   statOpenClawMemoryEntry,
 } from './memory'
 import {
-  readPath, deepMerge, cloneJson, parseJsonValue,
+  readPath, cloneJson, parseJsonValue,
   parseJsonObject, readJsonFile, truncate, slug,
   metadataValue, metadataFiles,
 } from './runtime-utils'
