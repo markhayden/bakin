@@ -84,10 +84,12 @@ Native request hardening (all in `packages/adapter-openclaw/src/runtime.ts`):
   human decides. Any gate approved via an `allow-always` decision logs a
   loud warning.
 - Prompt **delivery routing** is OpenClaw deployment config, not a request
-  field: without `approvals.plugin.targets` in the OpenClaw config, native
-  prompts default to approver DMs. To route gate prompts into a dedicated
-  channel: `approvals.plugin.targets: [{ channel: "discord", to: "<channel id>" }]`.
-  Bakin's `turnSourceChannel`/`turnSourceTo` are context hints only.
+  field: native prompts default to approver DMs. Routing to a channel needs
+  ALL of `approvals.plugin.{enabled: true, mode: "targets", targets: [...]}`
+  (enabled defaults false; the docs site omits enabled/mode — verified
+  against OpenClaw's runtime schema), and Discord channel destinations use
+  the `channel:<id>` prefix (bare ids parse as user DMs). Bakin's
+  `turnSourceChannel`/`turnSourceTo` are context hints only.
 
 ## Approval Store GC
 

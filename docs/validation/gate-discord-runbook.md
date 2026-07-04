@@ -24,13 +24,24 @@ Spec + acceptance criteria: `SPEC.md` (US1–US7). Plan: `tasks/gate-discord/pla
    `requireRejectReason: true`.
 4. **OpenClaw Discord channel** configured with `execApprovals.enabled: true`
    (native buttons need the interactive-approval capability).
-5. **Prompt routing (optional but recommended):** without
-   `approvals.plugin.targets` in the OpenClaw config, native approval prompts
-   go to approver DMs, not the approvals channel. To route them:
+5. **Prompt routing (optional but recommended):** without plugin-approval
+   forwarding in the OpenClaw config, native approval prompts go to approver
+   DMs, not the approvals channel. All three fields are required —
+   `enabled` defaults to false and `mode` must include targets (verified
+   against OpenClaw's runtime schema; the docs site omits `enabled`/`mode`).
+   Discord channel destinations use the `channel:<id>` prefix (a bare id is
+   parsed as a user/DM):
    ```json
-   "approvals": { "plugin": { "targets": [{ "channel": "discord", "to": "<approvals channel id>" }] } }
+   "approvals": {
+     "plugin": {
+       "enabled": true,
+       "mode": "targets",
+       "targets": [{ "channel": "discord", "to": "channel:<approvals channel id>" }]
+     }
+   }
    ```
-   Native buttons render as OpenClaw's "Allow once"/"Don't allow" (labels not
+   Restart the gateway after editing (`openclaw gateway restart`). Native
+   buttons render as OpenClaw's "Allow once"/"Don't allow" (labels not
    customizable); "Always allow" is suppressed via `allowedDecisions`.
 5. Operator watching the Discord approvals channel.
 
