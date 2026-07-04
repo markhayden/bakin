@@ -6,6 +6,7 @@ import fs from 'fs'
 import path from 'path'
 import { createLogger } from './logger'
 import { getContentDir } from './content-dir'
+import { deepMerge } from './merge'
 import { setStoredProviderKey } from './media/secret-store'
 
 const log = createLogger('settings')
@@ -413,28 +414,6 @@ function setCachedSettings(v: BakinSettings | null) { _g.__bakinSettingsCache = 
 
 function getSettingsPath(): string {
   return path.join(getContentDir(), 'settings.json')
-}
-
-function deepMerge(defaults: Record<string, unknown>, overrides: Record<string, unknown>): Record<string, unknown> {
-  const result = { ...defaults }
-  for (const key of Object.keys(overrides)) {
-    if (
-      overrides[key] !== null &&
-      typeof overrides[key] === 'object' &&
-      !Array.isArray(overrides[key]) &&
-      typeof defaults[key] === 'object' &&
-      !Array.isArray(defaults[key]) &&
-      defaults[key] !== null
-    ) {
-      result[key] = deepMerge(
-        defaults[key] as Record<string, unknown>,
-        overrides[key] as Record<string, unknown>
-      )
-    } else {
-      result[key] = overrides[key]
-    }
-  }
-  return result
 }
 
 export function getSettings(): BakinSettings {
