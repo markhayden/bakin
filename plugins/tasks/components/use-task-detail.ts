@@ -18,7 +18,7 @@ export interface Workflow {
 // Derived from the SDK wire types so the base shape (instanceId — NOT id — plus
 // workflowId/taskId/status/etc.) is single-sourced (WS1). The SDK leaves steps and
 // stepStates intentionally open; this component narrows them to the fields it reads.
-export interface WorkflowInstance extends SdkWorkflowInstance {
+interface WorkflowInstance extends SdkWorkflowInstance {
   workflowId: string
   taskId: string
   currentStepId: string
@@ -26,7 +26,7 @@ export interface WorkflowInstance extends SdkWorkflowInstance {
   stepStates: Record<string, { status: string; output?: Record<string, unknown>; childTaskId?: string }>
 }
 
-export interface WorkflowDefinition extends SdkWorkflowDefinition {
+interface WorkflowDefinition extends SdkWorkflowDefinition {
   steps: Array<{ id: string; label?: string; type: string }>
 }
 
