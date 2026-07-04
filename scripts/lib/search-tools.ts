@@ -15,6 +15,7 @@ import {
   getContentTypes,
   getTableForPlugin,
   getIndexNames,
+  resolvePhysicalTable,
   buildSearchAPI,
 } from '../../src/core/search-registry'
 
@@ -138,15 +139,14 @@ addExecTool({
     const resolved = resolvePluginTable(pluginId)
     if (!resolved.ok) return { ok: false, error: resolved.error }
     const search = getAppServices().search
-    const stats = await search.tables.stats(resolved.table)
+    // Raw-adapter calls target the blue/green physical table.
+    const physical = resolvePhysicalTable(resolved.table)
+    const stats = await search.tables.stats(physical)
     if (!stats) return { ok: false, error: `Table ${resolved.table} not found or search adapter unavailable` }
-    const result = await search.query(resolved.table, {
-      text: key,
-      limit: 1,
-      adapterOptions: { indexes: getIndexNames(resolved.table) },
-    })
-    const doc = result.hits.find(r => r.key === key)
-    return doc ? { ok: true, document: doc } : { ok: false, error: 'Document not found' }
+    // Exact get-by-key. Doc keys are not indexed as searchable text — the
+    // previous text-query-then-filter approach silently missed every time.
+    const doc = await search.documents.get(physical, key)
+    return doc ? { ok: true, key, document: doc } : { ok: false, error: 'Document not found' }
   },
 })
 

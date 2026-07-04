@@ -58,6 +58,12 @@ export interface SearchAdapter {
     remove(table: string, key: string): Promise<void>
     batchRemove(table: string, keys: string[]): Promise<number>
     transform(table: string, key: string, fn: TransformFn): Promise<void>
+    /**
+     * Exact fetch by document key; null when absent. Doc keys are NOT
+     * indexed as searchable text, so a text query can never substitute
+     * for this — bakin_exec_search_lookup shipped broken on that trick.
+     */
+    get(table: string, key: string): Promise<Document | null>
   }
 
   query(table: string, q: Query): Promise<QueryResult>

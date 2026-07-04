@@ -211,6 +211,15 @@ export class AntflySearchClient implements SearchAdapter {
       const result = await this.requestJson<WireBatchResponse>('POST', paths.batch(table), buildBatchDeletes(keys))
       return result?.deleted ?? 0
     },
+    get: async (table: string, key: string): Promise<Document | null> => {
+      try {
+        const doc = await this.requestJson<Document>('GET', paths.document(table, key))
+        return doc && typeof doc === 'object' ? doc : null
+      } catch (err) {
+        if (err instanceof SearchRequestRejectedError) return null // 404 — absent
+        throw err
+      }
+    },
     transform: async (table: string, key: string, fn: TransformFn): Promise<void> => {
       let current: Document | null = null
       try {

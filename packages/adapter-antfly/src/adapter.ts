@@ -102,6 +102,7 @@ export class AntflyAdapter implements SearchAdapter {
     remove: (table: string, key: string) => this.client.documents.remove(table, key),
     batchRemove: (table: string, keys: string[]) => this.client.documents.batchRemove(table, keys),
     transform: (table: string, key: string, fn: TransformFn) => this.client.documents.transform(table, key, fn),
+    get: (table: string, key: string) => this.client.documents.get(table, key),
   }
 
   query(table: string, q: Query): Promise<QueryResult> {

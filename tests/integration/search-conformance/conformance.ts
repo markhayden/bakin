@@ -173,6 +173,27 @@ export function runSearchConformanceSuite(name: string, getTarget: () => Conform
       expect(byValue.get('task')).toBe(1)
     })
 
+    it('documents.get returns the exact document by key, null for a miss', async () => {
+      // Exact-key fetch — the capability bakin_exec_search_lookup depends on.
+      // Doc keys are NOT indexed as searchable text, so a text query can
+      // never substitute for this (the bug that motivated the method).
+      const { adapter } = getTarget()
+      const table = t('get')
+      await adapter.tables.create(table, {
+        fields: { title: { type: 'text' }, status: { type: 'keyword' } },
+        legs: [{ name: 'full_text', capability: 'full-text', fields: ['title'] }],
+      })
+      await adapter.documents.index(table, 'g1', { title: 'target doc', status: 'live' })
+      await settle(table)
+
+      const doc = await adapter.documents.get(table, 'g1')
+      expect(doc).not.toBeNull()
+      expect(doc!.title).toBe('target doc')
+      expect(doc!.status).toBe('live')
+
+      expect(await adapter.documents.get(table, 'missing-key')).toBeNull()
+    })
+
     it('transform mutates a document without full reindex semantics changing', async () => {
       const { adapter } = getTarget()
       const table = t('transform')
