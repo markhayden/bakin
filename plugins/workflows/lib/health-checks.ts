@@ -18,6 +18,7 @@ import { healthOk as ok, healthWarn as warn, healthFixed as fixed } from '@makin
 import { splitFrontmatter } from '@bakin/core/format/frontmatter'
 
 import { listDefinitions } from './parser'
+import { workflowDefinitionSchema } from '@bakin/core/workflows/node-type-registry'
 import { getAgentPackageSkills } from '@bakin/core/workflows/agent-package-skill-registry'
 import { getPluginSkills } from '@bakin/core/skills/plugin-skill-registry'
 import { listInstances } from './runtime'
@@ -196,6 +197,20 @@ export async function checkWorkflowDefinitions(contentDir: string): Promise<Heal
     // definitions (user wins), so this set IS the resolvable-workflow universe.
     const knownWorkflowIds = new Set(defs.map((entry) => entry.name))
     for (const { name, definition } of defs) {
+      // Strict-schema drift: the CRUD boundary rejects unknown keys, but
+      // definitions loaded from disk or registered by plugins never pass
+      // through zod — surface stray keys here so silently-dead YAML fields
+      // (the on_approve/dependsOn pattern) can't accumulate unnoticed.
+      const { source: _s, pluginId: _p, packageId: _k, ...bare } = definition
+      const parsed = workflowDefinitionSchema.safeParse(bare)
+      if (!parsed.success) {
+        for (const issue of parsed.error.issues) {
+          if (issue.message.includes('Unrecognized key')) {
+            const at = issue.path.length ? ` at ${issue.path.join('.')}` : ''
+            results.push(warn('workflow-definitions', `Workflow "${name}" has unknown YAML keys${at}: ${issue.message}`))
+          }
+        }
+      }
       for (const step of definition.steps) {
         const skillName = (step as { skill?: string }).skill
         if (skillName && !skillExists(skillName)) {

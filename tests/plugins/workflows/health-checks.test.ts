@@ -246,6 +246,32 @@ describe('checkWorkflowDefinitions', () => {
     expect(results[0].message).toMatch(/All workflow references resolve/)
   })
 
+  it('warns when a definition carries unknown YAML keys (strict-schema drift)', async () => {
+    writeFileSync(
+      join(definitionsDir, 'stale-fields.yaml'),
+      `name: Stale fields
+description: carries a deleted field
+version: 1
+steps:
+  - id: s1
+    label: Step 1
+    type: agent
+    agent: main
+  - id: g1
+    label: Gate
+    type: gate
+    on_approve: done
+`,
+    )
+    const results = await checkWorkflowDefinitions(testDir)
+    expect(results.some(r =>
+      r.status === 'warn' &&
+      r.message.includes('stale-fields') &&
+      r.message.includes('unknown YAML keys') &&
+      r.message.includes('on_approve'),
+    )).toBe(true)
+  })
+
   it('warns when a definition references a missing nested workflow (#374)', async () => {
     writeFileSync(
       join(definitionsDir, 'orphan-parent.yaml'),

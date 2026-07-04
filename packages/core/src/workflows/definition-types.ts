@@ -32,6 +32,12 @@ export interface NotifyChannel {
   [k: string]: unknown
 }
 
+/**
+ * The index signature is for RUNTIME augmentation (rejectionReason,
+ * previousOutput, plugin node-kind config), not YAML freedom — the zod
+ * schemas in node-type-registry are strict, so unknown keys reject at the
+ * CRUD/save boundary.
+ */
 export interface BaseStep {
   id: string
   label: string
@@ -45,6 +51,8 @@ export interface AgentStep extends BaseStep {
   skill?: string
   description?: string
   outputs?: StepOutput[]
+  /** JSON-schema-ish shape injected into the dispatch prompt (step-format). */
+  output_schema?: Record<string, unknown>
   deny_tools?: string[]
 }
 
@@ -74,6 +82,8 @@ export interface OutputStep extends BaseStep {
   channels?: string[]
   content?: Record<string, string>
   schedule?: string
+  /** JSON-schema-ish shape injected into the dispatch prompt (step-format). */
+  output_schema?: Record<string, unknown>
   deny_tools?: string[]
 }
 
