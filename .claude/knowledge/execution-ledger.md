@@ -62,11 +62,16 @@ run_costs     run_id PK ← per-turn/-op cost attribution (#464, migration v3);
               orchestrator — and image ops, which get synthetic run_ids
               `turn:<uuid>` / `image:<uuid>`), agent, model,
               input/output/total_tokens (NULL for image ops),
+              cache_read/cache_write_tokens (#357, migration v4; NULL =
+              runtime reported none — pre-migration rows read back NULL,
+              never a fabricated zero),
               cost_usd_micros (NULL = unmetered), occurred_at. A billing
               fact, not content: written once on settle via recordRunCost
               (INSERT OR IGNORE → first write wins, so a transport retry of
               the same run can't double-count). Verbs: spendTotal({agent?,
-              sinceMs, untilMs?}), spendByAgent(sinceMs), spendByModel(sinceMs)
+              sinceMs, untilMs?}), spendByAgent(sinceMs), spendByModel(sinceMs),
+              recentRunsByAgent(agent, {sinceMs?, limit?}) — newest-first,
+              `run_id LIKE 'task:%'` only (context-report grounding, #357)
               — null costs coalesce to 0 (counted as runs, never dropped).
               Consumed by the models Spend view + dispatch budget gating.
 ```

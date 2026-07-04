@@ -7,7 +7,7 @@ All MCP tool calls, REST requests, and agent lifecycle events flow through **one
 ## Writing
 
 ```ts
-recordUsage({ kind, name, agent, durationMs, status, meta, tokensIn?, tokensOut?, costUsdMicros? })
+recordUsage({ kind, name, agent, durationMs, status, meta, tokensIn?, tokensOut?, tokensCacheRead?, tokensCacheWrite?, costUsdMicros? })
 ```
 
 | Field | Values |
@@ -18,6 +18,7 @@ recordUsage({ kind, name, agent, durationMs, status, meta, tokensIn?, tokensOut?
 | `durationMs` | numeric |
 | `status` | `'ok' \| 'error'` |
 | `tokensIn` / `tokensOut` | per-turn token counts (completed agent turns; #464) |
+| `tokensCacheRead` / `tokensCacheWrite` | provider-cache slices of the input when the runtime reported them (#357); absent = not reported, never zeroed |
 | `costUsdMicros` | estimated turn cost in micro-dollars; omitted when unmetered |
 | `meta` | free-form record for extra context |
 
