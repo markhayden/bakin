@@ -1,0 +1,65 @@
+## PREVIOUS ATTEMPT FAILED — READ FIRST
+Your previous attempt on this task died before completion: OpenClaw session interrupted after oversized model completion (692KB, truncated). The session was killed because ~692KB of output was emitted as chat text instead of being written to files — the runtime cannot deliver responses that large.
+A partial copy of that output was salvaged as asset asset-a1 — open it with bakin_exec_assets_open and REUSE it instead of regenerating from scratch.
+
+Do this attempt differently:
+- Produce deliverables ONE AT A TIME: write each to a workspace file, then immediately save it: bakin_exec_assets_save taskId=t-fix-2 type=<type> filePath="<path>" description="<what it is>"
+- Log progress after each save, then move to the next deliverable.
+- Keep every chat/completion message SHORT: status + asset ids only. NEVER put deliverable content in chat output.
+
+Work on this task: "Research report".
+
+Details:
+Six deliverables
+across two sections
+
+## Completed Dependency
+Your dependency task "Gather sources" (task t-dep) is now done. Review its outcome before resuming: `bakin_exec_tasks_get taskId=t-dep` shows its log and completion summary, and its saved assets are linked to that task. Continue this task from where it left off.
+
+## Attached Assets
+This task has 1 linked asset(s). Review them for context before starting:
+- asset-b2 — reference brief
+Open with bakin_exec_assets_open using the assetId to read the current content + metadata. AssetIds are stable identity — do not store raw disk paths.
+
+**Project:** id proj-9
+The project spec may contain detailed requirements. Call bakin_exec_projects_get to read it before starting work.
+
+## Lessons From Past Work
+- Keep image prompts under 60 words.
+
+## PROGRESS LOGGING — MANDATORY
+
+Log progress at EVERY major step (start, each step, decisions, blockers, completion; at least every 2 minutes). Full logging rules: "Bakin Execution Tools" in your AGENTS.md.
+
+## OUTPUT DISCIPLINE — MANDATORY
+
+Oversized chat output KILLS your runtime session. Deliverables larger than ~8KB go to workspace files, saved as assets ONE AT A TIME: `mcporter call bakin-jessica.bakin_exec_assets_save taskId=t-fix-2 type=<type> filePath="<path>" description="<what it is>"`
+Keep chat short — status + asset ids only. Numerous independent deliverables → split into subtasks. Full rules: "Bakin Execution Tools" in your AGENTS.md.
+
+## TASK COMMANDS — via mcporter (server `bakin-jessica`)
+
+```bash
+# log progress (mandatory at every major step)
+mcporter call bakin-jessica.bakin_exec_tasks_log_progress taskId=t-fix-2 message="<what you did or are doing>"
+# complete / block
+mcporter call bakin-jessica.bakin_exec_tasks_complete taskId=t-fix-2 summary="<what you accomplished>"
+mcporter call bakin-jessica.bakin_exec_tasks_block taskId=t-fix-2 reason="<what went wrong>"
+# subtask + dependency chain (then stop — you'll be re-dispatched)
+mcporter call bakin-jessica.bakin_exec_tasks_create title="<subtask>" assignee="<agent>" description="<brief>" parentId=t-fix-2
+mcporter call bakin-jessica.bakin_exec_tasks_set_dependency taskId=t-fix-2 dependsOn="<other-task-id>"
+# your task details
+mcporter call bakin-jessica.bakin_exec_tasks_get taskId=t-fix-2
+# execution tools — full reference: "Bakin Execution Tools" in your AGENTS.md
+mcporter call bakin-jessica.bakin_exec_assets_save taskId=t-fix-2 type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what it is>"
+mcporter call bakin-jessica.bakin_exec_images_recommend surface=instagram-feed-portrait objective="<goal>"
+mcporter call bakin-jessica.bakin_exec_images_generate --timeout 600000 taskId=t-fix-2 prompt="<text>" surface=instagram-feed-portrait provider=auto
+mcporter call bakin-jessica.bakin_exec_check_gates taskId=t-fix-2
+mcporter call bakin-jessica.bakin_exec_post_channel channel="<name>" content="<message>" taskId=t-fix-2
+
+# Project tools (this task is part of a project)
+mcporter call bakin-jessica.bakin_exec_projects_get projectId="proj-9"
+mcporter call bakin-jessica.bakin_exec_projects_mark_item projectId="proj-9" taskItemId="<itemId>" checked=true
+mcporter call bakin-jessica.bakin_exec_projects_add_item projectId="proj-9" title="<item title>"
+```
+
+Tool reference + dependency pattern: "Bakin Execution Tools" in your AGENTS.md.

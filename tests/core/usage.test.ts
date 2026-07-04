@@ -66,6 +66,19 @@ describe('usage recorder', () => {
       expect(feed.recent).toHaveLength(1)
     })
 
+    it('preserves cache token fields on agent-turn entries', () => {
+      recordUsage({
+        kind: 'agent', name: 'turn', agent: 'pixel', durationMs: null, status: 'ok',
+        tokensIn: 1000, tokensOut: 50, tokensCacheRead: 900, tokensCacheWrite: 40,
+      })
+      const feed = getUsageFeed({ kind: 'agent', window: '5m' })
+      expect(feed.recent[0]).toMatchObject({ tokensCacheRead: 900, tokensCacheWrite: 40 })
+      // Entries without cache usage keep the fields absent — never zeroed.
+      recordUsage({ kind: 'agent', name: 'turn', agent: 'pixel', durationMs: null, status: 'ok', tokensIn: 10 })
+      const feed2 = getUsageFeed({ kind: 'agent', window: '5m' })
+      expect('tokensCacheRead' in feed2.recent[feed2.recent.length - 1]).toBe(false)
+    })
+
     it('tracks errors and errorRate', () => {
       seed({ status: 'ok' })
       seed({ status: 'error' })

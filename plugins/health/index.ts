@@ -28,6 +28,7 @@ import { checkChannelApprovals } from './lib/system-checks/channel-approvals'
 import { checkChannelAliases } from './lib/system-checks/channel-aliases'
 import { checkRestartRecovery } from './lib/system-checks/restart-recovery'
 import { checkExecutionSafety } from './lib/system-checks/execution-safety'
+import { checkStartupContextSize } from './lib/system-checks/context-report'
 import { checkBudget } from './lib/system-checks/budget'
 import { checkSearchAdapter } from './lib/system-checks/search'
 import { checkSearchOutbox, searchOutboxRepair } from './lib/system-checks/search-outbox'
@@ -586,6 +587,11 @@ const healthPlugin: BakinPlugin = definePlugin({
       id: 'execution-safety',
       name: 'Duplicate-execution suppression + ledger health',
       run: () => checkExecutionSafety(),
+    })
+    ctx.registerHealthCheck({
+      id: 'context.startup-size',
+      name: 'Per-dispatch startup context budget',
+      run: () => checkStartupContextSize(ctx.runtime),
     })
     ctx.registerHealthCheck({
       id: 'budget',

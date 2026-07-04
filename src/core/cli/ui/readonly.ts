@@ -7,6 +7,7 @@
 export * from './reports/format'
 export * from './reports/command-meta'
 export * from './reports/runtime'
+export * from './reports/context'
 export * from './reports/settings'
 export * from './reports/tasks'
 export * from './reports/workflows'

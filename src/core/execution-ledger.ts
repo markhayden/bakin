@@ -28,6 +28,7 @@ export {
   putIdempotent,
   purgeTaskRows,
   recordRunCost,
+  recentRunsByAgent,
   spendTotal,
   spendByAgent,
   spendByModel,
@@ -45,6 +46,7 @@ export type {
   RecordCompletionResult,
   IdempotentResult,
   RunCostInput,
+  RunCostRow,
   SpendByAgentRow,
   SpendByModelRow,
 } from '../../packages/core/src/execution/ledger'

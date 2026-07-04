@@ -29,23 +29,17 @@ export function mcporterHelpers(agentName: string) {
  */
 export function sharedExecutionToolDocs(agentName: string, taskId: string, opts: { allowChannelPost: boolean }): string[] {
   const { mc, mcImage } = mcporterHelpers(agentName)
+  // Bare taskId-templated invocations only — the per-tool explanations live in
+  // the "Bakin Execution Tools" role-layer section of AGENTS.md (#357 trim).
   const lines = [
-    '# Save any file as a managed asset (handles naming + sidecar metadata)',
+    '# execution tools — full reference: "Bakin Execution Tools" in your AGENTS.md',
     mc('bakin_exec_assets_save', `taskId=${taskId} type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what it is>"`),
-    '',
-    '# Recommend and generate an image through the core images plugin',
     mc('bakin_exec_images_recommend', 'surface=instagram-feed-portrait objective="<goal>"'),
     mcImage('bakin_exec_images_generate', `taskId=${taskId} prompt="<text>" surface=instagram-feed-portrait provider=auto`),
-    '',
-    '# Check workflow gate statuses',
     mc('bakin_exec_check_gates', `taskId=${taskId}`),
   ]
   if (opts.allowChannelPost) {
-    lines.push(
-      '',
-      '# Post to a runtime channel (with optional image/video attachment)',
-      mc('bakin_exec_post_channel', `channel="<name>" content="<message>" taskId=${taskId}`),
-    )
+    lines.push(mc('bakin_exec_post_channel', `channel="<name>" content="<message>" taskId=${taskId}`))
   }
   return lines
 }
@@ -127,6 +121,118 @@ Steps:
 5. STOP. Do not start any subtask, do not draft content, do not call tasks_complete.`
 }
 
+/**
+ * One labeled piece of a dispatch prompt. `text` carries its exact separator
+ * prefix so sections concatenate byte-identically to the assembled message —
+ * the context-report diagnostics measure the same strings production sends.
+ */
+export interface PromptSection {
+  source: string
+  text: string
+}
+
+/** @internal Exported for testing and the context-report diagnostics. */
+export function buildDispatchSections(
+  task: { id: string; title: string; description?: string; agent?: string; projectId?: string },
+  agentName: string,
+  contentDir: string,
+  mainAgentId = 'main',
+  lessonBlock = '',
+  continuation: DispatchContinuationContext = {},
+  recovery?: SessionDeathState,
+  roster: DispatchRosterAgent[] = [],
+  assetsBlock = '',
+): PromptSection[] {
+  const sections: PromptSection[] = []
+  const add = (source: string, text: string) => {
+    if (text) sections.push({ source, text })
+  }
+
+  add('corrective', recovery?.stage === 'corrective' ? buildCorrectiveSection(task.id, recovery) : '')
+  const detailsBlock = task.description ? `\n\nDetails:\n${task.description}` : ''
+  const lessonSection = lessonBlock ? `\n\n${lessonBlock}` : ''
+  // Dependency continuations run in a fresh session — the prompt must carry
+  // the completion context the old shared-session resume nudge relied on.
+  const continuationBlock = continuation.completedDependency
+    ? `\n\n## Completed Dependency\nYour dependency task "${continuation.completedDependency.title}" (task ${continuation.completedDependency.id}) is now done. Review its outcome before resuming: \`bakin_exec_tasks_get taskId=${continuation.completedDependency.id}\` shows its log and completion summary, and its saved assets are linked to that task. Continue this task from where it left off.`
+    : ''
+  const contactsRef = `Reference info is in ${join(contentDir, 'team/CONTACTS.md')}.`
+
+  const { server, mc } = mcporterHelpers(agentName)
+
+  if (!task.agent) {
+    // Roster comes from the live runtime — never a hardcoded agent list
+    // (custom-agent installs broke against baked-in names).
+    const rosterAgents = roster.filter((a) => a.id !== mainAgentId)
+    const rosterText = rosterAgents.length > 0
+      ? ` (${rosterAgents.map((a) => (a.role ? `${a.id}=${a.role}` : a.id)).join(', ')})`
+      : ''
+    add('task-header', `Triage this task: "${task.title}".`)
+    add('description', detailsBlock)
+    add('continuation', continuationBlock)
+    add('assets', assetsBlock)
+    add('lessons', lessonSection)
+    add('triage-instructions', `\n\nEither handle it yourself or assign it to the right agent${rosterText} via \`${mc('bakin_exec_tasks_assign', `taskId=${task.id} agent="<agent>"`)}\`. ${contactsRef}\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``)
+    return sections
+  }
+
+  if (task.agent === mainAgentId) {
+    add('task-header', `Work on this task: "${task.title}".`)
+    add('description', detailsBlock)
+    add('continuation', continuationBlock)
+    add('assets', assetsBlock)
+    add('lessons', lessonSection)
+    add('main-instructions', `\n\n${contactsRef} When done: \`${mc('bakin_exec_tasks_complete', `taskId=${task.id} summary="<what you did>"`)}\`\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``)
+    return sections
+  }
+
+  add('task-header', `Work on this task: "${task.title}".`)
+  add('description', detailsBlock)
+  add('continuation', continuationBlock)
+  add('assets', assetsBlock)
+  // Project context — lightweight mention if task has a projectId
+  add('project', task.projectId
+    ? `\n\n**Project:** id ${task.projectId}\nThe project spec may contain detailed requirements. Call bakin_exec_projects_get to read it before starting work.`
+    : '')
+  add('lessons', lessonSection)
+  add('progress-logging', `
+
+## PROGRESS LOGGING — MANDATORY
+
+Log progress at EVERY major step (start, each step, decisions, blockers, completion; at least every 2 minutes). Full logging rules: "Bakin Execution Tools" in your AGENTS.md.`)
+  add('output-discipline', `
+
+${outputDisciplineSection(agentName, task.id, { subtasksAllowed: true }).join('\n')}`)
+  add('task-commands', `
+
+## TASK COMMANDS — via mcporter (server \`${server}\`)
+
+\`\`\`bash
+# log progress (mandatory at every major step)
+${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<what you did or are doing>"`)}
+# complete / block
+${mc('bakin_exec_tasks_complete', `taskId=${task.id} summary="<what you accomplished>"`)}
+${mc('bakin_exec_tasks_block', `taskId=${task.id} reason="<what went wrong>"`)}
+# subtask + dependency chain (then stop — you'll be re-dispatched)
+${mc('bakin_exec_tasks_create', `title="<subtask>" assignee="<agent>" description="<brief>" parentId=${task.id}`)}
+${mc('bakin_exec_tasks_set_dependency', `taskId=${task.id} dependsOn="<other-task-id>"`)}
+# your task details
+${mc('bakin_exec_tasks_get', `taskId=${task.id}`)}
+`)
+  add('shared-tool-docs', sharedExecutionToolDocs(agentName, task.id, { allowChannelPost: true }).join('\n'))
+  add('project-tools', task.projectId ? `
+
+# Project tools (this task is part of a project)
+${mc('bakin_exec_projects_get', `projectId="${task.projectId}"`)}
+${mc('bakin_exec_projects_mark_item', `projectId="${task.projectId}" taskItemId="<itemId>" checked=true`)}
+${mc('bakin_exec_projects_add_item', `projectId="${task.projectId}" title="<item title>"`)}` : '')
+  add('task-commands-close', `
+\`\`\`
+
+Tool reference + dependency pattern: "Bakin Execution Tools" in your AGENTS.md.`)
+  return sections
+}
+
 /** @internal Exported for testing. */
 export function buildDispatchMessage(
   task: { id: string; title: string; description?: string; agent?: string; projectId?: string },
@@ -139,72 +245,7 @@ export function buildDispatchMessage(
   roster: DispatchRosterAgent[] = [],
   assetsBlock = '',
 ): string {
-  const correctivePrefix = recovery?.stage === 'corrective' ? buildCorrectiveSection(task.id, recovery) : ''
-  const detailsBlock = task.description ? `\n\nDetails:\n${task.description}` : ''
-  const lessonSection = lessonBlock ? `\n\n${lessonBlock}` : ''
-  // Dependency continuations run in a fresh session — the prompt must carry
-  // the completion context the old shared-session resume nudge relied on.
-  const continuationBlock = continuation.completedDependency
-    ? `\n\n## Completed Dependency\nYour dependency task "${continuation.completedDependency.title}" (task ${continuation.completedDependency.id}) is now done. Review its outcome before resuming: \`bakin_exec_tasks_get taskId=${continuation.completedDependency.id}\` shows its log and completion summary, and its saved assets are linked to that task. Continue this task from where it left off.`
-    : ''
-
-  // Project context — lightweight mention if task has a projectId
-  let projectBlock = ''
-  if (task.projectId) {
-    projectBlock = `\n\n**Project:** id ${task.projectId}\nThe project spec may contain detailed requirements. Call bakin_exec_projects_get to read it before starting work.`
-  }
-  const contactsRef = `Reference info is in ${join(contentDir, 'team/CONTACTS.md')}.`
-
-  const { server, mc } = mcporterHelpers(agentName)
-
-  if (!task.agent) {
-    // Roster comes from the live runtime — never a hardcoded agent list
-    // (custom-agent installs broke against baked-in names).
-    const rosterAgents = roster.filter((a) => a.id !== mainAgentId)
-    const rosterText = rosterAgents.length > 0
-      ? ` (${rosterAgents.map((a) => (a.role ? `${a.id}=${a.role}` : a.id)).join(', ')})`
-      : ''
-    return `${correctivePrefix}Triage this task: "${task.title}".${detailsBlock}${continuationBlock}${assetsBlock}${lessonSection}\n\nEither handle it yourself or assign it to the right agent${rosterText} via \`${mc('bakin_exec_tasks_assign', `taskId=${task.id} agent="<agent>"`)}\`. ${contactsRef}\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``
-  }
-
-  if (task.agent === mainAgentId) {
-    return `${correctivePrefix}Work on this task: "${task.title}".${detailsBlock}${continuationBlock}${assetsBlock}${lessonSection}\n\n${contactsRef} When done: \`${mc('bakin_exec_tasks_complete', `taskId=${task.id} summary="<what you did>"`)}\`\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``
-  }
-
-  return `${correctivePrefix}Work on this task: "${task.title}".${detailsBlock}${continuationBlock}${assetsBlock}${projectBlock}${lessonSection}
-
-## PROGRESS LOGGING — MANDATORY
-
-Log progress at EVERY major step (start, each step, decisions, blockers, completion; at least every 2 minutes). Full logging rules: "Bakin Execution Tools" in your AGENTS.md.
-
-${outputDisciplineSection(agentName, task.id, { subtasksAllowed: true }).join('\n')}
-
-## TASK COMMANDS — via mcporter (server \`${server}\`)
-
-\`\`\`bash
-# Log progress (mandatory, every major step)
-${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<what you did or are doing>"`)}
-
-# Report complete (when finished — includes summary + notifies orchestrator)
-${mc('bakin_exec_tasks_complete', `taskId=${task.id} summary="<what you accomplished>"`)}
-
-# Block task (if stuck or cannot proceed)
-${mc('bakin_exec_tasks_block', `taskId=${task.id} reason="<what went wrong>"`)}
-
-# Create subtask + register dependency (then stop — you'll be re-dispatched)
-${mc('bakin_exec_tasks_create', `title="<subtask>" assignee="<agent>" description="<brief>" parentId=${task.id}`)}
-${mc('bakin_exec_tasks_set_dependency', `taskId=${task.id} dependsOn="<other-task-id>"`)}
-
-# Check your task details
-${mc('bakin_exec_tasks_get', `taskId=${task.id}`)}
-
-${sharedExecutionToolDocs(agentName, task.id, { allowChannelPost: true }).join('\n')}${task.projectId ? `
-
-# Project tools (this task is part of a project)
-${mc('bakin_exec_projects_get', `projectId="${task.projectId}"`)}
-${mc('bakin_exec_projects_mark_item', `projectId="${task.projectId}" taskItemId="<itemId>" checked=true`)}
-${mc('bakin_exec_projects_add_item', `projectId="${task.projectId}" title="<item title>"`)}` : ''}
-\`\`\`
-
-Tool reference + dependency pattern: "Bakin Execution Tools" in your AGENTS.md.`
+  return buildDispatchSections(task, agentName, contentDir, mainAgentId, lessonBlock, continuation, recovery, roster, assetsBlock)
+    .map((s) => s.text)
+    .join('')
 }

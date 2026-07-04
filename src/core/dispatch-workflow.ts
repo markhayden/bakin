@@ -15,7 +15,7 @@ import type { DispatchState, SessionDeathState } from './dispatch-types'
 import { getFailureRecord } from './dispatch-state'
 import { findDispatchTaskSnapshot } from './dispatch-board'
 import { buildDispatchLessonBlock, buildDispatchAssetBlock } from './dispatch-context-blocks'
-import { mcporterHelpers, sharedExecutionToolDocs, outputDisciplineSection, buildCorrectiveSection } from './dispatch-prompts'
+import { mcporterHelpers, sharedExecutionToolDocs, outputDisciplineSection, buildCorrectiveSection, type PromptSection } from './dispatch-prompts'
 import { concurrencyGate, deferForBudget, claimDispatchRun, auditDispatchSuppressed, fireDispatchTurn } from './dispatch-turns'
 
 const log = createLogger('dispatch-workflow')
@@ -104,7 +104,9 @@ export async function dispatchWorkflowTask(
     // Assets are linked to the PARENT task id (decomposition guidance tells
     // agents to save against the parent), so resolve by task.id, not contextTaskId.
     const wfAssetsBlock = await buildDispatchAssetBlock(task.id)
-    const message = buildWorkflowDispatchMessage({ ...task, id: contextTaskId }, ctx, agent, lessonBlock, wfRecovery, wfAssetsBlock)
+    const message = buildWorkflowDispatchMessage({ ...task, id: contextTaskId }, ctx, agent, lessonBlock, wfRecovery, wfAssetsBlock, {
+      maxWorkflowContextBytes: getSettings().dispatch.maxWorkflowContextBytes,
+    })
     const initialLogCount = findDispatchTaskSnapshot(task.id)?.task.log?.length ?? 0
 
     const gate = concurrencyGate(targetAgent, getSettings())
@@ -160,8 +162,88 @@ export async function dispatchWorkflowTask(
  *
  * Structure: identity frame → hard constraints → revision context → task → output → commands → stop.
  * Rules come BEFORE instructions (position primacy — LLMs weight early text more).
+ *
+ * @internal Exported for testing and the context-report diagnostics.
  */
-function buildWorkflowDispatchMessage(
+const WORKFLOW_CONTEXT_DEFAULT_BUDGET = 16384
+const WORKFLOW_CONTEXT_MIN_BUDGET = 1024
+
+/** @internal Clamp dispatch.maxWorkflowContextBytes: unset/0/invalid → default, floor at the minimum. */
+export function resolveWorkflowContextBudget(raw?: number): number {
+  if (raw === undefined || !Number.isFinite(raw) || raw <= 0) return WORKFLOW_CONTEXT_DEFAULT_BUDGET
+  return Math.max(Math.floor(raw), WORKFLOW_CONTEXT_MIN_BUDGET)
+}
+
+/**
+ * Render the WORKFLOW CONTEXT block under a byte budget (#357). Retention:
+ * newest step outputs first, whole outputs only (never mid-JSON truncation),
+ * the most recent output is ALWAYS kept (a cap that starves the current step
+ * of its direct input is worse than a soft overrun), __parentContext
+ * title/description lines are always kept and its JSON body is budgeted at
+ * the LOWEST priority. Omissions are visible markers pointing at
+ * bakin_exec_workflows_get_instance — never silent. Under the budget the
+ * output is byte-identical to the uncapped rendering (pinned by the
+ * workflow-full prompt fixture).
+ */
+function buildWorkflowContextGroupLines(
+  stepOutputs: Record<string, Record<string, unknown>>,
+  maxBytes: number,
+): string[] {
+  const intro = ['## WORKFLOW CONTEXT', '', 'All completed step outputs from this workflow. Use as context for your work:', '']
+  const bytesOf = (parts: string[]): number => Buffer.byteLength(parts.join('\n'), 'utf-8')
+
+  const entries = Object.entries(stepOutputs).map(([sid, output]) => {
+    if (sid === '__parentContext' && output && typeof output === 'object') {
+      const ctx = output as Record<string, unknown>
+      const head = ['### Parent Workflow (upstream handoff)']
+      if (ctx._parentTaskTitle) head.push(`**Parent Task:** ${ctx._parentTaskTitle}`)
+      if (ctx._parentTaskDescription) head.push(`**Description:** ${ctx._parentTaskDescription}`)
+      const rest = Object.fromEntries(Object.entries(ctx).filter(([k]) => !k.startsWith('_parent')))
+      const body = Object.keys(rest).length > 0 ? ['```json', JSON.stringify(rest, null, 2), '```'] : []
+      return { sid, parent: true, head, body }
+    }
+    const label = sid === '__parentContext' ? 'Parent Workflow (upstream handoff)' : `Step: ${sid}`
+    return { sid, parent: sid === '__parentContext', head: [`### ${label}`], body: ['```json', JSON.stringify(output, null, 2), '```'] }
+  })
+
+  const nonParent = entries.filter((e) => !e.parent)
+  const parent = entries.find((e) => e.parent)
+
+  let budget = maxBytes - bytesOf(intro)
+  if (parent) budget -= bytesOf([...parent.head, '']) // parent meta lines: always kept
+  const kept = new Set<string>()
+  for (let i = nonParent.length - 1; i >= 0; i--) {
+    const e = nonParent[i]
+    const cost = bytesOf([...e.head, ...e.body, ''])
+    if (i === nonParent.length - 1 || cost <= budget) {
+      kept.add(e.sid)
+      budget -= cost
+    }
+  }
+  const parentBodyKept = parent !== undefined && parent.body.length > 0 && bytesOf(parent.body) <= budget
+
+  const omitted = nonParent.length - kept.size
+  const lines = [...intro]
+  if (omitted > 0) {
+    lines.push(`(${omitted} earlier step output${omitted === 1 ? '' : 's'} omitted to fit the dispatch.maxWorkflowContextBytes budget — fetch the full history with bakin_exec_workflows_get_instance)`)
+    lines.push('')
+  }
+  for (const e of entries) {
+    if (e.parent) {
+      lines.push(...e.head)
+      if (e.body.length > 0) {
+        if (parentBodyKept) lines.push(...e.body)
+        else lines.push('(upstream handoff data omitted to fit the dispatch.maxWorkflowContextBytes budget — fetch it with bakin_exec_workflows_get_instance)')
+      }
+      lines.push('')
+    } else if (kept.has(e.sid)) {
+      lines.push(...e.head, ...e.body, '')
+    }
+  }
+  return lines
+}
+
+export function buildWorkflowDispatchSections(
   task: { id: string; title: string; description?: string },
   stepContext: {
     stepId: string
@@ -179,12 +261,24 @@ function buildWorkflowDispatchMessage(
   lessonBlock = '',
   recovery?: SessionDeathState,
   assetsBlock = '',
-): string {
-  const lines: string[] = []
+  opts: { maxWorkflowContextBytes?: number } = {},
+): PromptSection[] {
+  // Sections are groups of lines; the message is section texts joined by
+  // '\n', byte-identical to joining all lines directly (empty groups are
+  // skipped, so no boundary gains a stray newline).
+  const sections: PromptSection[] = []
+  let lines: string[] = []
+  const flush = (source: string) => {
+    if (lines.length > 0) {
+      sections.push({ source, text: lines.join('\n') })
+      lines = []
+    }
+  }
   if (recovery?.stage === 'corrective') {
     lines.push(buildCorrectiveSection(task.id, recovery).trimEnd())
     lines.push('')
   }
+  flush('corrective')
 
   // ─── Identity Frame ─────────────────────────────────────────────────
   lines.push('# WORKFLOW STEP ASSIGNMENT')
@@ -198,6 +292,7 @@ function buildWorkflowDispatchMessage(
   lines.push(`**Your step:** ${stepContext.label} (ID: ${stepContext.stepId})`)
   lines.push(`**Your agent name:** ${agentName}`)
   lines.push('')
+  flush('identity')
 
   // ─── Hard Constraints ───────────────────────────────────────────────
   lines.push('## HARD CONSTRAINTS — violations are rejected server-side')
@@ -211,8 +306,10 @@ function buildWorkflowDispatchMessage(
     lines.push(`6. **TOOL RESTRICTIONS:** Do NOT use: ${stepContext.deny_tools.join(', ')}. If this step requires those capabilities, BLOCK the task immediately.`)
   }
   lines.push('')
+  flush('hard-constraints')
   lines.push(...outputDisciplineSection(agentName, task.id, { subtasksAllowed: false }))
   lines.push('')
+  flush('output-discipline')
 
   // ─── Revision Context ───────────────────────────────────────────────
   if (stepContext.rejectionReason) {
@@ -230,40 +327,17 @@ function buildWorkflowDispatchMessage(
     lines.push('You MUST address this specific feedback. Do NOT resubmit unchanged output — the server detects near-duplicate resubmissions and rejects them.')
     lines.push('')
   }
+  flush('revision')
 
-  // ─── Workflow Context (all prior step outputs) ─────────────────────
+  // ─── Workflow Context (prior step outputs, byte-budgeted) ──────────
   if (stepContext.stepOutputs && Object.keys(stepContext.stepOutputs).length > 0) {
-    lines.push('## WORKFLOW CONTEXT')
-    lines.push('')
-    lines.push('All completed step outputs from this workflow. Use as context for your work:')
-    lines.push('')
-    for (const [sid, output] of Object.entries(stepContext.stepOutputs)) {
-      const label = sid === '__parentContext' ? 'Parent Workflow (upstream handoff)' : `Step: ${sid}`
-      lines.push(`### ${label}`)
-      // Surface parent task metadata prominently for child workflows
-      if (sid === '__parentContext' && output && typeof output === 'object') {
-        const ctx = output as Record<string, unknown>
-        if (ctx._parentTaskTitle) {
-          lines.push(`**Parent Task:** ${ctx._parentTaskTitle}`)
-        }
-        if (ctx._parentTaskDescription) {
-          lines.push(`**Description:** ${ctx._parentTaskDescription}`)
-        }
-        // Show remaining output data (excluding internal metadata keys)
-        const rest = Object.fromEntries(Object.entries(ctx).filter(([k]) => !k.startsWith('_parent')))
-        if (Object.keys(rest).length > 0) {
-          lines.push('```json')
-          lines.push(JSON.stringify(rest, null, 2))
-          lines.push('```')
-        }
-      } else {
-        lines.push('```json')
-        lines.push(JSON.stringify(output, null, 2))
-        lines.push('```')
-      }
-      lines.push('')
-    }
+    lines.push(...buildWorkflowContextGroupLines(
+      stepContext.stepOutputs,
+      resolveWorkflowContextBudget(opts.maxWorkflowContextBytes),
+    ))
   } else if (stepContext.priorStepOutput) {
+    // A single prior output IS the newest output — always kept whole, same
+    // rule the budgeted path applies to its most recent entry.
     lines.push('## PRIOR STEP OUTPUT')
     lines.push('')
     lines.push('The previous step in this workflow produced the following output. Use this as context for your work:')
@@ -272,16 +346,19 @@ function buildWorkflowDispatchMessage(
     lines.push('```')
     lines.push('')
   }
+  flush('workflow-context')
 
   if (lessonBlock) {
     lines.push(lessonBlock)
     lines.push('')
   }
+  flush('lessons')
 
   if (assetsBlock) {
     lines.push(assetsBlock.trim())
     lines.push('')
   }
+  flush('assets')
 
   // ─── Task Instructions ──────────────────────────────────────────────
   lines.push('## YOUR TASK')
@@ -290,6 +367,7 @@ function buildWorkflowDispatchMessage(
     lines.push(stepContext.instructions)
     lines.push('')
   }
+  flush('task-instructions')
 
   // ─── Required Output ────────────────────────────────────────────────
   if (stepContext.output_schema) {
@@ -301,22 +379,18 @@ function buildWorkflowDispatchMessage(
     lines.push('```')
     lines.push('')
   }
+  flush('output-schema')
 
   // ─── Progress Logging ──────────────────────────────────────────────
+  // Short reminder only — the full logging rules live in the role-layer
+  // "Bakin Execution Tools" section of AGENTS.md (#357 trim).
   lines.push('## PROGRESS LOGGING — MANDATORY')
   lines.push('')
   const { server: wfServer, mc: wfMc } = mcporterHelpers(agentName)
 
-  lines.push('You MUST log your progress throughout this workflow step. These updates appear in the live activity feed so humans can monitor your work in real-time.')
+  lines.push('Log progress at EVERY major step (start, each action, decisions, blockers, submission; at least every 2 minutes). Full logging rules: "Bakin Execution Tools" in your AGENTS.md.')
   lines.push('')
-  lines.push('**When to log:**')
-  lines.push('- IMMEDIATELY when you start working (what you are about to do and your approach)')
-  lines.push('- After each significant action (reading files, generating content, making API calls, reviewing output)')
-  lines.push('- Share your reasoning ("The brief calls for warm tones, going with golden hour lighting")')
-  lines.push('- If anything unexpected happens or you are blocked')
-  lines.push('- When you complete and submit your output (summary of what you produced)')
-  lines.push('- If more than 2 minutes have passed since your last log, send a status update — even if just "Still working on X, currently Y"')
-  lines.push('')
+  flush('progress-logging')
 
   // ─── Commands ───────────────────────────────────────────────────────
   lines.push('## COMMANDS')
@@ -333,21 +407,35 @@ function buildWorkflowDispatchMessage(
   lines.push(`# Check your current step details if needed`)
   lines.push(`${wfMc('bakin_exec_get_step', `taskId=${task.id}`)}`)
   lines.push('')
-  lines.push('# --- Execution tools for doing actual work ---')
-  lines.push('')
   // Channel posting only for output/publish steps (others have "NO SIDE EFFECTS")
   lines.push(...sharedExecutionToolDocs(agentName, task.id, { allowChannelPost: stepContext.type === 'output' }))
   lines.push('```')
   lines.push('')
+  flush('commands')
 
   // ─── Stop Instruction ───────────────────────────────────────────────
   lines.push('## AFTER SUBMITTING')
   lines.push('')
-  lines.push('After bakin_exec_submit_step returns success, your work is done. Do NOT:')
-  lines.push('- Generate additional outputs or deliverables')
-  lines.push('- Start work on what you think the next step might be')
-  lines.push('- Send messages about what should happen next')
-  lines.push('- Move the task to Done (the workflow engine handles this)')
+  lines.push('After bakin_exec_submit_step returns success, STOP — no further outputs, no next-step work, no messages, no task moves (hard constraints 4–5 apply until the session ends; the workflow engine owns all handoffs).')
+  flush('stop')
 
-  return lines.join('\n')
+  return sections
+}
+
+/**
+ * Build a workflow-step dispatch message.
+ * @internal Exported for testing and the context-report diagnostics.
+ */
+export function buildWorkflowDispatchMessage(
+  task: { id: string; title: string; description?: string },
+  stepContext: Parameters<typeof buildWorkflowDispatchSections>[1],
+  agentName: string,
+  lessonBlock = '',
+  recovery?: SessionDeathState,
+  assetsBlock = '',
+  opts: { maxWorkflowContextBytes?: number } = {},
+): string {
+  return buildWorkflowDispatchSections(task, stepContext, agentName, lessonBlock, recovery, assetsBlock, opts)
+    .map((s) => s.text)
+    .join('\n')
 }

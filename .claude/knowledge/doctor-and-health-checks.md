@@ -46,11 +46,14 @@ The orchestrator is intentionally trivial — it has no opinion about what's bei
 
 (Plus 3 workflow checks already migrated under #137: `definitions`, `stale-instances`, `skills`.)
 
-### System-owned (15 checks, registered by health plugin)
+### System-owned (17 checks, registered by health plugin)
 
 | File | Registered id |
 |---|---|
 | `plugins/health/lib/system-checks/content-dir.ts` | `content-dir` |
+| `plugins/health/lib/system-checks/execution-safety.ts` | `execution-safety` |
+| `plugins/health/lib/system-checks/budget.ts` | `budget` |
+| `plugins/health/lib/system-checks/context-report.ts` | `context.startup-size` (warn-only per-dispatch context budget vs `dispatch.contextBudgetBytes`; arithmetic shared with `src/core/context-report.ts` — see `.claude/knowledge/startup-context.md`) |
 | `plugins/health/lib/system-checks/service.ts` | `service` |
 | `plugins/health/lib/system-checks/mcporter.ts` | `mcporter` |
 | `plugins/health/lib/system-checks/runtime.ts` | `runtime` |

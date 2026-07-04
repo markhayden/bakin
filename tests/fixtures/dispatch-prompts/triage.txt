@@ -1,0 +1,8 @@
+Triage this task: "Untriaged thing".
+
+Details:
+Needs an owner
+
+Either handle it yourself or assign it to the right agent (ada=data analysis, bo) via `mcporter call bakin-main.bakin_exec_tasks_assign taskId=t-fix-3 agent="<agent>"`. Reference info is in /fixture/bakin-home/team/CONTACTS.md.
+
+Log progress: `mcporter call bakin-main.bakin_exec_tasks_log_progress taskId=t-fix-3 message="<update>"`
