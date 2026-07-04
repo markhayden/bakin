@@ -68,6 +68,7 @@ describe('OpenClaw runtime channels', () => {
     originalWebSocket = globalThis.WebSocket
     FakeWebSocket.instances.length = 0
     FakeWebSocket.failApprovalRequests = false
+    FakeWebSocket.preResolveApprovalRequests = false
     process.env.OPENCLAW_HOME = testDir
     mkdirSync(testDir, { recursive: true })
     writeFileSync(join(testDir, 'openclaw.json'), JSON.stringify({
@@ -270,6 +271,9 @@ describe('OpenClaw runtime channels', () => {
       turnSourceTo: 'channel-1',
       timeoutMs: 600000,
       twoPhase: true,
+      // Gates are one-shot human decisions — persistent trust (allow-always)
+      // must never be offered.
+      allowedDecisions: ['allow-once', 'deny'],
     }))
     expect(String((approvalRequest?.params as Record<string, unknown>).description)).toContain('Bakin fallback:')
   })
@@ -398,6 +402,124 @@ describe('OpenClaw runtime channels', () => {
     expect(messageArg(calls[0]!)).toContain('Open in Bakin:')
   })
 
+  it('falls back to a rendered message when OpenClaw pre-resolves the approval at request time', async () => {
+    writeFileSync(join(testDir, 'openclaw.json'), JSON.stringify({
+      gateway: { auth: { token: 'test-token' } },
+      channels: {
+        discord: {
+          token: 'discord-token',
+          execApprovals: { enabled: true, approvers: ['202168845362921483'], target: 'both' },
+        },
+      },
+    }), 'utf-8')
+    const recorder = installOpenClawCliRecorder(testDir)
+    globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket
+    FakeWebSocket.preResolveApprovalRequests = true
+    const warn = mock()
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: recorder.binaryPath } })
+    await runtime.initialize({
+      contentDir: testDir,
+      logger: { debug: mock(), info: mock(), warn, error: mock() },
+    })
+
+    const events: unknown[] = []
+    const unsubscribe = runtime.channels.subscribeApprovalResponses(event => events.push(event))
+    await tick()
+
+    await runtime.channels.createApproval({
+      approvalId: 'approval-1',
+      channels: ['discord:channel-1'],
+      request: {
+        title: 'Gate: Review',
+        body: 'Review the post.',
+        options: [
+          { id: 'approve', label: 'Approve' },
+          { id: 'reject', label: 'Reject' },
+        ],
+        context: {
+          approvalUrl: 'http://localhost:3737/api/plugins/workflows/gates/task-1/decision',
+        },
+      },
+    })
+
+    // Human-visible fallback rendered instead of trusting the auto-resolution.
+    const calls = recorder.calls()
+    expect(calls).toHaveLength(1)
+    expect(messageArg(calls[0]!)).toContain('Open in Bakin:')
+    expect(warn.mock.calls.some(call => String(call[0]).includes('pre-resolved'))).toBe(true)
+
+    // The phantom resolved event for the auto-resolution must not reach Bakin.
+    FakeWebSocket.instances[0]!.emitMessage({
+      type: 'event',
+      event: 'plugin.approval.resolved',
+      payload: {
+        id: 'plugin:test-approval',
+        decision: 'allow-always',
+        resolvedBy: null,
+        ts: Date.parse('2026-04-28T12:00:00Z'),
+        request: {
+          pluginId: 'bakin',
+          toolName: 'workflow.gate',
+          toolCallId: 'approval-1',
+          turnSourceChannel: 'discord',
+          turnSourceTo: 'channel-1',
+        },
+      },
+    })
+    unsubscribe()
+    expect(events).toEqual([])
+  })
+
+  it('warns when a gate is approved via an allow-always decision', async () => {
+    writeFileSync(join(testDir, 'openclaw.json'), JSON.stringify({
+      gateway: { auth: { token: 'test-token' } },
+      channels: {
+        discord: {
+          token: 'discord-token',
+          execApprovals: { enabled: true, approvers: ['202168845362921483'], target: 'both' },
+        },
+      },
+    }), 'utf-8')
+    globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket
+    const warn = mock()
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+    await runtime.initialize({
+      contentDir: testDir,
+      logger: { debug: mock(), info: mock(), warn, error: mock() },
+    })
+    const events: Array<{ response: { selectedOption: string } }> = []
+    const unsubscribe = runtime.channels.subscribeApprovalResponses(event => events.push(event))
+    await tick()
+
+    FakeWebSocket.instances[0]!.emitMessage({
+      type: 'event',
+      event: 'plugin.approval.resolved',
+      payload: {
+        id: 'plugin:test-approval',
+        decision: 'allow-always',
+        resolvedBy: 'Main Operator',
+        ts: Date.parse('2026-04-28T12:00:00Z'),
+        request: {
+          pluginId: 'bakin',
+          toolName: 'workflow.gate',
+          toolCallId: 'approval-1',
+          turnSourceChannel: 'discord',
+          turnSourceTo: 'channel-1',
+        },
+      },
+    })
+    unsubscribe()
+
+    expect(events).toEqual([expect.objectContaining({
+      response: expect.objectContaining({ selectedOption: 'approve' }),
+    })])
+    expect(warn.mock.calls.some(call => String(call[0]).includes('allow-always'))).toBe(true)
+  })
+
   it('maps OpenClaw plugin approval resolved events into Bakin approval events', async () => {
     writeFileSync(join(testDir, 'openclaw.json'), JSON.stringify({
       gateway: { auth: { token: 'test-token' } },
@@ -522,6 +644,7 @@ interface FakeGatewayFrame {
 class FakeWebSocket {
   static instances: FakeWebSocket[] = []
   static failApprovalRequests = false
+  static preResolveApprovalRequests = false
   readyState = 0
   sentFrames: FakeGatewayFrame[] = []
   private listeners = new Map<string, Set<(event: { data?: string }) => void>>()
@@ -557,6 +680,20 @@ class FakeWebSocket {
     } else if (frame.method === 'plugin.approval.request') {
       if (FakeWebSocket.failApprovalRequests) {
         this.emitMessage({ type: 'res', id: frame.id, ok: false, error: { message: 'no approval route' } })
+        return
+      }
+      if (FakeWebSocket.preResolveApprovalRequests) {
+        this.emitMessage({
+          type: 'res',
+          id: frame.id,
+          ok: true,
+          payload: {
+            status: 'resolved',
+            id: 'plugin:test-approval',
+            decision: 'allow-always',
+            createdAtMs: Date.parse('2026-04-28T12:00:00Z'),
+          },
+        })
         return
       }
       this.emitMessage({

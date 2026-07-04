@@ -195,6 +195,8 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   private chatGatewayClient: OpenClawGatewayRpcClient | null = null
   private emittedApprovalResponseKeys: string[] = []
   private emittedApprovalResponseKeySet = new Set<string>()
+  private preResolvedApprovalIdList: string[] = []
+  private preResolvedApprovalIds = new Set<string>()
   private lastModelListFailureMessage: string | null = null
 
   constructor(options: OpenClawRuntimeAdapterOptions = {}) {
@@ -602,6 +604,18 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       return this.approvalGateway().subscribeResolved((payload) => {
         const event = approvalEventFromOpenClawPayload(payload)
         if (!event) return
+        if (this.preResolvedApprovalIds.has(event.approvalId)) {
+          this.logger.warn('Ignoring resolve event for a pre-resolved OpenClaw approval; the Bakin fallback link decides this gate', {
+            approvalId: event.approvalId,
+          })
+          return
+        }
+        if (payload.decision === 'allow-always') {
+          this.logger.warn('Workflow gate approved via OpenClaw allow-always decision — check for persisted plugin allow rules that would auto-approve future gates', {
+            approvalId: event.approvalId,
+            resolvedBy: payload.resolvedBy ?? null,
+          })
+        }
         if (!this.markApprovalResponseEmitted(event)) return
         handler(event)
       })
@@ -628,11 +642,26 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         ...(ref.target ? { turnSourceTo: ref.target } : {}),
         timeoutMs: OPENCLAW_PLUGIN_APPROVAL_TIMEOUT_MS,
         twoPhase: true,
+        // Gates are one-shot human decisions; never offer persistent trust.
+        allowedDecisions: ['allow-once', 'deny'],
       })
       if (!result.id || result.decision === null) {
         this.logger.warn('OpenClaw native approval request had no approval route; falling back to render-only message', {
           approvalId: args.approvalId,
           channel,
+        })
+        return null
+      }
+      if (typeof result.decision === 'string') {
+        // OpenClaw resolved the request at creation time (e.g. a persisted
+        // allow rule) — no human saw a prompt. A workflow gate must not be
+        // decided that way: suppress the phantom resolve event and fall back
+        // to the rendered message + Bakin link so a human decides.
+        this.rememberPreResolvedApproval(args.approvalId)
+        this.logger.warn('OpenClaw pre-resolved the plugin approval without a human prompt (persisted allow rule?); falling back to render-only message', {
+          approvalId: args.approvalId,
+          channel,
+          decision: result.decision,
         })
         return null
       }
@@ -682,6 +711,16 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       })
     }
     return this.approvalGatewayClient
+  }
+
+  private rememberPreResolvedApproval(approvalId: string): void {
+    if (this.preResolvedApprovalIds.has(approvalId)) return
+    this.preResolvedApprovalIds.add(approvalId)
+    this.preResolvedApprovalIdList.push(approvalId)
+    while (this.preResolvedApprovalIdList.length > 1000) {
+      const old = this.preResolvedApprovalIdList.shift()
+      if (old) this.preResolvedApprovalIds.delete(old)
+    }
   }
 
   private markApprovalResponseEmitted(event: ApprovalResolveEvent): boolean {

@@ -18,6 +18,8 @@ export interface OpenClawPluginApprovalRequestParams {
   turnSourceThreadId?: string | number
   timeoutMs?: number
   twoPhase?: boolean
+  /** Restrict the decisions offered; omit allow-always when persistent trust is unsafe. */
+  allowedDecisions?: OpenClawPluginApprovalDecision[]
 }
 
 export interface OpenClawPluginApprovalRequestResult {

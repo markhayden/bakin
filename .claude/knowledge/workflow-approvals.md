@@ -72,6 +72,23 @@ native approval requests can expire before a workflow gate does, and provider
 events may be missed if Bakin is offline. The durable Bakin approval record and
 the Bakin fallback approval URL remain canonical.
 
+Native request hardening (all in `packages/adapter-openclaw/src/runtime.ts`):
+
+- Gate requests send `allowedDecisions: ['allow-once', 'deny']` so OpenClaw
+  never offers "Always allow" — gates are one-shot human decisions and
+  persistent trust must not exist for them. Button labels themselves
+  ("Allow once"/"Don't allow") are OpenClaw's UI and not customizable.
+- If OpenClaw returns a **pre-resolved** decision at request time (a persisted
+  allow rule — no human saw a prompt), the adapter suppresses the phantom
+  resolve event and falls back to the rendered message + Bakin link so a
+  human decides. Any gate approved via an `allow-always` decision logs a
+  loud warning.
+- Prompt **delivery routing** is OpenClaw deployment config, not a request
+  field: without `approvals.plugin.targets` in the OpenClaw config, native
+  prompts default to approver DMs. To route gate prompts into a dedicated
+  channel: `approvals.plugin.targets: [{ channel: "discord", to: "<channel id>" }]`.
+  Bakin's `turnSourceChannel`/`turnSourceTo` are context hints only.
+
 ## Approval Store GC
 
 Startup rehydration (`plugins/workflows/lib/approval-rehydration.ts`) garbage
