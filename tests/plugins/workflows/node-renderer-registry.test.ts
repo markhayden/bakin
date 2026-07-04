@@ -19,6 +19,10 @@ mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
+mock.module('../../../packages/core/src/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ root: testDir }),
+}))
 
 mock.module('@/core/task-store', () => ({
   getTask: mock(),

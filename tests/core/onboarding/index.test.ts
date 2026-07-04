@@ -150,6 +150,10 @@ mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => '/tmp/bakin-onboarding-orchestrator-test',
   getBakinPaths: () => ({}),
 }))
+mock.module('../../../packages/core/src/content-dir', () => ({
+  getContentDir: () => '/tmp/bakin-onboarding-orchestrator-test',
+  getBakinPaths: () => ({}),
+}))
 
 describe('runOnboard orchestrator', () => {
   let runOnboard: typeof import('../../../src/core/onboarding/index').runOnboard

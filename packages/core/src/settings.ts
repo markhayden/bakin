@@ -6,6 +6,7 @@ import fs from 'fs'
 import path from 'path'
 import { createLogger } from './logger'
 import { getContentDir } from './content-dir'
+import { setStoredProviderKey } from './media/secret-store'
 
 const log = createLogger('settings')
 
@@ -446,6 +447,24 @@ export function getSettings(): BakinSettings {
   return settings
 }
 
+/**
+ * settings.json must never carry secrets (GET /api/settings serves it
+ * unredacted). A write that smuggles the search auth password back in —
+ * the exact shape the boot-time migration relocates — is intercepted
+ * here: the password moves to the secret store and never lands in the
+ * file, instead of lingering until the next boot re-runs the migration.
+ */
+function relocateSecretsFromWrite(merged: Record<string, unknown>): void {
+  const search = merged.search as { settings?: { auth?: Record<string, unknown> } } | undefined
+  const auth = search?.settings?.auth
+  const password = typeof auth?.password === 'string' && auth.password.trim() !== '' ? auth.password : undefined
+  if (!auth || !password) return
+  setStoredProviderKey('antfly', password)
+  delete auth.password
+  if (Object.keys(auth).length === 0) delete search!.settings!.auth
+  log.info('Relocated search auth password from a settings write to the secret store')
+}
+
 export function updateSettings(partial: Record<string, unknown>): BakinSettings {
   const settingsPath = getSettingsPath()
   const dir = path.dirname(settingsPath)
@@ -462,6 +481,7 @@ export function updateSettings(partial: Record<string, unknown>): BakinSettings 
   }
 
   const merged = deepMerge(current, partial)
+  relocateSecretsFromWrite(merged)
   fs.writeFileSync(settingsPath, JSON.stringify(merged, null, 2), 'utf-8')
   log.info('Settings updated', { keys: Object.keys(partial) })
 

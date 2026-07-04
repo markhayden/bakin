@@ -36,6 +36,7 @@ import {
   resolveAntflyPassword,
   setStoredProviderKey,
 } from '../../packages/core/src/media/secret-store'
+import { updateSettings, resetSettingsCache } from '../../packages/core/src/settings'
 
 const settingsPath = join(testDir, 'settings.json')
 
@@ -97,6 +98,29 @@ describe('antfly password migration', () => {
     expect(migrateAntflyPasswordToSecretStore()).toBe(true)
     expect(resolveAntflyPassword()).toEqual({ password: 'STORE-FIRST', source: 'store' })
     expect(readFileSync(settingsPath, 'utf-8')).not.toContain('LEGACY-SECRET')
+  })
+
+  it('a settings WRITE cannot re-admit the password — it relocates to the store instead', () => {
+    resetSettingsCache()
+
+    // The exact re-admission shape: a POST /api/settings body carrying the
+    // legacy auth.password path after the boot migration already ran.
+    updateSettings({
+      search: { settings: { auth: { username: 'bakin', password: 'SMUGGLED-SECRET' } } },
+    })
+
+    const raw = readFileSync(settingsPath, 'utf-8')
+    expect(raw).not.toContain('SMUGGLED-SECRET')
+    expect(JSON.parse(raw).search.settings.auth).toEqual({ username: 'bakin' })
+    expect(resolveAntflyPassword()).toEqual({ password: 'SMUGGLED-SECRET', source: 'store' })
+
+    // Password-only write: the emptied auth object is dropped entirely.
+    updateSettings({ search: { settings: { auth: { password: 'AGAIN' } } } })
+    const after = JSON.parse(readFileSync(settingsPath, 'utf-8'))
+    // deepMerge keeps the earlier username; the password never lands.
+    expect(readFileSync(settingsPath, 'utf-8')).not.toContain('AGAIN')
+    expect(after.search.settings.auth?.password).toBeUndefined()
+    expect(resolveAntflyPassword()).toEqual({ password: 'AGAIN', source: 'store' })
   })
 
   it('resolution order: ANTFLY_PASSWORD env beats the store; empty when neither set', () => {

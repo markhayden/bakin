@@ -32,7 +32,7 @@ import {
 } from '../../../src/core/task-service'
 import { readTaskOutcome, readTaskRuns } from './runs-reader'
 import type { ColumnId } from '../types'
-import { taskEditGuard, guardResponse } from './edit-guard'
+import { taskEditGuard, guardResponse, resolveTaskIdentifier } from './edit-guard'
 import { indexTask } from './search-doc'
 import {
   taskIdParams,
@@ -163,7 +163,7 @@ export const tasksRoutes = [
     body: updateTaskBody,
     responses: { 200: okResponse, 400: errorResponse, 409: errorResponse, 500: errorResponse },
     handler: async (_req, ctx, { params, body }) => {
-      const identifier = params.taskId || body.id || body.originalTitle
+      const identifier = resolveTaskIdentifier(params.taskId, body, { bodyTitleIsPayload: true })
       if (!identifier) {
         return Response.json({ error: 'taskId required' }, { status: 400 })
       }
@@ -201,7 +201,7 @@ export const tasksRoutes = [
     handler: async (req, ctx, { params }) => {
       let body: any = {}
       try { body = await req.clone().json() } catch { /* no body is fine */ }
-      const identifier = params.taskId || body.id || body.title
+      const identifier = resolveTaskIdentifier(params.taskId, body)
       if (!identifier) {
         return Response.json({ error: 'taskId required' }, { status: 400 })
       }
@@ -225,7 +225,7 @@ export const tasksRoutes = [
     body: moveTaskBody,
     responses: { 200: okResponse, 400: errorResponse, 403: errorResponse, 409: errorResponse, 500: errorResponse },
     handler: async (_req, ctx, { params, body }) => {
-      const identifier = params.taskId || body.id || body.title
+      const identifier = resolveTaskIdentifier(params.taskId, body)
       if (!identifier) {
         return Response.json({ error: 'taskId and to required' }, { status: 400 })
       }
@@ -272,7 +272,7 @@ export const tasksRoutes = [
     body: assignTaskBody,
     responses: { 200: okResponse, 400: errorResponse, 409: errorResponse, 500: errorResponse },
     handler: async (_req, ctx, { params, body }) => {
-      const identifier = params.taskId || body.id || body.title
+      const identifier = resolveTaskIdentifier(params.taskId, body)
       if (!identifier) {
         return Response.json({ error: 'taskId required' }, { status: 400 })
       }
@@ -298,7 +298,7 @@ export const tasksRoutes = [
     body: logEntryBody,
     responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
     handler: async (_req, ctx, { params, body }) => {
-      const identifier = params.taskId || body.id || body.title
+      const identifier = resolveTaskIdentifier(params.taskId, body)
       if (!identifier) {
         return Response.json({ error: 'taskId required' }, { status: 400 })
       }
@@ -320,7 +320,7 @@ export const tasksRoutes = [
     body: blockTaskBody,
     responses: { 200: okResponse, 400: errorResponse, 409: errorResponse, 500: errorResponse },
     handler: async (_req, ctx, { params, body }) => {
-      const identifier = params.taskId || body.id || body.title
+      const identifier = resolveTaskIdentifier(params.taskId, body)
       if (!identifier) {
         return Response.json({ error: 'taskId required' }, { status: 400 })
       }

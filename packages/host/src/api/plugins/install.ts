@@ -715,6 +715,11 @@ export async function post(req: Request, _url: URL): Promise<Response> {
       // so the build step is skipped entirely.
       if (!installedFromArtifact) {
         try {
+          // A source install must never execute a dist/ it shipped with —
+          // only provenance-verified artifacts skip the rebuild. Deleting
+          // the copied dist also closes the freshness-check mtime race
+          // (cpSync stamps everything ~now; a tie would skip the compile).
+          rmSync(join(targetDir, 'dist'), { recursive: true, force: true })
           await buildUserPlugin(targetDir)
         } catch (buildErr) {
           // Build failed — clean up the installed files so the install

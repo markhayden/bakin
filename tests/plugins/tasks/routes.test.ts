@@ -36,6 +36,16 @@ mock.module('../../../src/core/content-dir', () => ({
   resetContentDir: () => {},
   initBakinHome: () => {},
 }))
+mock.module('../../../packages/core/src/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({
+    tasks: join(testDir, 'tasks'),
+    heartbeats: join(testDir, 'heartbeats'),
+  }),
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+  initBakinHome: () => {},
+}))
 
 mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({

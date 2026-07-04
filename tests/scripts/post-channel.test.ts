@@ -17,6 +17,7 @@ const contentDirMock = {
   isUsingBakinHome: () => false,
 }
 mock.module('../../src/core/content-dir', () => contentDirMock)
+mock.module('../../packages/core/src/content-dir', () => contentDirMock)
 mock.module('@/core/content-dir', () => contentDirMock)
 
 let mockChannelAliases: Record<string, string> = {}

@@ -33,6 +33,18 @@ mock.module('../../../src/core/content-dir', () => ({
     }
   },
 }))
+mock.module('../../../packages/core/src/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => {
+    const base = join(testDir, 'assets')
+    return {
+      assets: base,
+      'assets.store': join(base, 'store'),
+      'assets.inbox': join(base, 'inbox'),
+      'assets.trash': join(base, '.trash'),
+    }
+  },
+}))
 
 mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({

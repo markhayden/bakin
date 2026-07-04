@@ -24,6 +24,9 @@ mock.module('../../src/core/audit', () => ({
 mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => '/tmp/bakin-runtime-config-raw-test',
 }))
+mock.module('../../packages/core/src/content-dir', () => ({
+  getContentDir: () => '/tmp/bakin-runtime-config-raw-test',
+}))
 
 mock.module('../../src/core/logger', () => ({
   createLogger: () => ({

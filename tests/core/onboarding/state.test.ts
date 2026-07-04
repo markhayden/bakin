@@ -18,6 +18,12 @@ mock.module('../../../src/core/content-dir', () => ({
   resetContentDir: () => {},
   initBakinHome: () => {},
 }))
+mock.module('../../../packages/core/src/content-dir', () => ({
+  getContentDir: () => testDir,
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+  initBakinHome: () => {},
+}))
 
 mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({

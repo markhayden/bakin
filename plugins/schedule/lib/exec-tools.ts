@@ -126,7 +126,7 @@ export function registerScheduleExecTools(ctx: PluginContext): void {
 
       const fields = ['displayName', 'agentId', 'workflowId', 'taskPrompt', 'taskTitle']
       for (const f of fields) {
-        if (params[f] !== undefined) (meta as unknown as Record<string, unknown>)[f === 'name' ? 'displayName' : f] = params[f]
+        if (params[f] !== undefined) (meta as unknown as Record<string, unknown>)[f] = params[f]
       }
       if (params.name) meta.displayName = params.name as string
       upsertJob(meta)

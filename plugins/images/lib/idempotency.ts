@@ -79,14 +79,24 @@ const imageCallRegistry = createIdempotencyRegistry<ExecToolResult>()
 /**
  * The ledger holds coordination facts only — never content. The tool result
  * returned to the caller carries prompt text and provider commentary; the
- * persisted dedup row must not. Identity stays in promptHash (already part
- * of the call signature), so a replay still returns the right asset.
+ * persisted dedup row must not. The row is built from an ALLOWLIST so a
+ * future content-bearing result field cannot leak into the ledger by
+ * default (the previous denylist leaked-by-default). Identity stays in
+ * promptHash (already part of the call signature), so a replay still
+ * returns the right asset.
  */
-const CONTENT_FIELDS = ['prompt', 'providerText'] as const
+const COORDINATION_FIELDS = [
+  'ok', 'assetId', 'version', 'width', 'height', 'surface',
+  'provider', 'model', 'quality', 'routeSource', 'credentialSource',
+  'promptHash', 'reused', 'idempotency',
+] as const
 
 function coordinationOnly(result: ExecToolResult): ExecToolResult {
-  const row: Record<string, unknown> = { ...(result as Record<string, unknown>) }
-  for (const field of CONTENT_FIELDS) delete row[field]
+  const source = result as Record<string, unknown>
+  const row: Record<string, unknown> = {}
+  for (const field of COORDINATION_FIELDS) {
+    if (field in source) row[field] = source[field]
+  }
   return row as ExecToolResult
 }
 

@@ -39,6 +39,13 @@ mock.module('../../../src/core/content-dir', () => ({
   initBakinHome: mock(),
   isUsingBakinHome: () => false,
 }))
+mock.module('../../../packages/core/src/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({}),
+  resetContentDir: mock(),
+  initBakinHome: mock(),
+  isUsingBakinHome: () => false,
+}))
 mock.module('@/core/task-store', () => ({
   createTask: mock(),
   addTaskLog: mock(),

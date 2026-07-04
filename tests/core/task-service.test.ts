@@ -13,6 +13,7 @@ const contentDirMock = {
 }
 mock.module('@/core/content-dir', () => contentDirMock)
 mock.module('../../src/core/content-dir', () => contentDirMock)
+mock.module('../../packages/core/src/content-dir', () => contentDirMock)
 
 mock.module('@/core/audit', () => ({
   appendAudit: mock(),
