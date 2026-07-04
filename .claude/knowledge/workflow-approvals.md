@@ -83,13 +83,16 @@ Native request hardening (all in `packages/adapter-openclaw/src/runtime.ts`):
   resolve event and falls back to the rendered message + Bakin link so a
   human decides. Any gate approved via an `allow-always` decision logs a
   loud warning.
-- Prompt **delivery routing** is OpenClaw deployment config, not a request
-  field: native prompts default to approver DMs. Routing to a channel needs
-  ALL of `approvals.plugin.{enabled: true, mode: "targets", targets: [...]}`
-  (enabled defaults false; the docs site omits enabled/mode — verified
-  against OpenClaw's runtime schema), and Discord channel destinations use
-  the `channel:<id>` prefix (bare ids parse as user DMs). Bakin's
-  `turnSourceChannel`/`turnSourceTo` are context hints only.
+- Prompt **delivery routing** (verified against OpenClaw's shipped
+  `extensions/discord/src/approval-native.ts`): the native prompt posts into
+  a channel only when the request's `turnSourceTo` carries an explicit
+  `channel:`/`group:` prefix — a bare id silently falls back to approver
+  DMs. Bakin passes the resolved alias target through as `turnSourceTo`, so
+  Discord approval aliases MUST be fully qualified as
+  `discord:channel:<id>` in `notifications.channelAliases`.
+  `channels.discord.execApprovals.target` (`dm|channel|both`) controls the
+  DM copy. `approvals.plugin.*` forwarding is a separate plain-message
+  pipeline, not the native-buttons path — don't chase it for gates.
 
 ## Approval Store GC
 

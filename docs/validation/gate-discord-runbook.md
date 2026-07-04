@@ -11,12 +11,15 @@ Spec + acceptance criteria: `SPEC.md` (US1–US7). Plan: `tasks/gate-discord/pla
 
 1. **Server** running the branch/build under test on port 3737 (`bakin status`).
    Server code is not hot-reloaded — restart after checking out new code.
-2. **Settings** (`~/.bakin/settings.json`):
+2. **Settings** (`~/.bakin/settings.json`) — the approvals alias MUST use the
+   `channel:` prefix or OpenClaw's native approval prompts fall back to
+   approver DMs (its origin resolver requires an explicit `channel:`/`group:`
+   prefix on `turnSourceTo`; bare ids are ignored):
    ```json
    "notifications": {
      "channel": "discord",
      "target": "<general channel id>",
-     "channelAliases": { "approvals": "discord:<approvals channel id>" }
+     "channelAliases": { "approvals": "discord:channel:<approvals channel id>" }
    }
    ```
 3. **Workflows plugin settings** (`~/.bakin/plugin-settings/workflows.json`):
@@ -24,24 +27,16 @@ Spec + acceptance criteria: `SPEC.md` (US1–US7). Plan: `tasks/gate-discord/pla
    `requireRejectReason: true`.
 4. **OpenClaw Discord channel** configured with `execApprovals.enabled: true`
    (native buttons need the interactive-approval capability).
-5. **Prompt routing (optional but recommended):** without plugin-approval
-   forwarding in the OpenClaw config, native approval prompts go to approver
-   DMs, not the approvals channel. All three fields are required —
-   `enabled` defaults to false and `mode` must include targets (verified
-   against OpenClaw's runtime schema; the docs site omits `enabled`/`mode`).
-   Discord channel destinations use the `channel:<id>` prefix (a bare id is
-   parsed as a user/DM):
-   ```json
-   "approvals": {
-     "plugin": {
-       "enabled": true,
-       "mode": "targets",
-       "targets": [{ "channel": "discord", "to": "channel:<approvals channel id>" }]
-     }
-   }
-   ```
-   Restart the gateway after editing (`openclaw gateway restart`). Native
-   buttons render as OpenClaw's "Allow once"/"Don't allow" (labels not
+5. **Prompt routing:** where native approval prompts land is decided by
+   OpenClaw (`extensions/discord/src/approval-native.ts`), not Bakin:
+   - The prompt posts into a channel only when the request's `turnSourceTo`
+     carries an explicit `channel:`/`group:` prefix — hence the alias format
+     above. Bare ids silently fall back to approver DMs.
+   - `channels.discord.execApprovals.target` (`dm` | `channel` | `both`)
+     then controls whether the approvers also get a DM copy.
+   - `approvals.plugin.{enabled,mode,targets}` is a separate
+     forwarded-message pipeline and is NOT needed for native button prompts.
+   Native buttons render as OpenClaw's "Allow once"/"Don't allow" (labels not
    customizable); "Always allow" is suppressed via `allowedDecisions`.
 5. Operator watching the Discord approvals channel.
 
