@@ -6,6 +6,7 @@ import fs from 'fs'
 import path from 'path'
 import type { StorageAdapter } from '../plugin-types'
 import { getContentDir } from '../content-dir'
+import { walkFiles } from './walk'
 
 export class MarkdownStorageAdapter implements StorageAdapter {
   private contentDir: string
@@ -89,27 +90,17 @@ export class MarkdownStorageAdapter implements StorageAdapter {
 
   readAll(): Record<string, string> {
     const result: Record<string, string> = {}
-
-    function walk(dir: string, prefix: string = '') {
-      if (!fs.existsSync(dir)) return
-      const entries = fs.readdirSync(dir, { withFileTypes: true })
-      for (const entry of entries) {
-        if (entry.name.startsWith('.')) continue
-        const rel = prefix ? `${prefix}/${entry.name}` : entry.name
-        const full = path.join(dir, entry.name)
-        if (entry.isDirectory()) {
-          walk(full, rel)
-        } else if (/\.(md|json|jsonl)$/.test(entry.name)) {
-          try {
-            result[rel] = fs.readFileSync(full, 'utf-8')
-          } catch {
-            // skip unreadable files
-          }
-        }
+    const files = walkFiles(this.contentDir, {
+      skipDotEntries: true,
+      ext: ['.md', '.json', '.jsonl'],
+    })
+    for (const file of files) {
+      try {
+        result[file.relPath] = fs.readFileSync(file.path, 'utf-8')
+      } catch {
+        // skip unreadable files
       }
     }
-
-    walk(this.contentDir)
     return result
   }
 

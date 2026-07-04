@@ -1,8 +1,9 @@
 /**
  * Guard release/static browser assets from accidentally shipping dev output.
  */
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
+import { walkFiles as walkFileTree } from '../packages/core/src/storage/walk'
 
 const REPO_ROOT = resolve(import.meta.dir, '..')
 
@@ -10,19 +11,10 @@ export interface ProductionAssetAssertionOptions {
   rootDir: string
 }
 
+// Dirent-based (symlinks not followed) — fine here: these are build-output
+// trees (dist/vendor) that contain no symlinks.
 function walkFiles(dir: string): string[] {
-  if (!existsSync(dir)) return []
-  const out: string[] = []
-  for (const entry of readdirSync(dir)) {
-    const path = join(dir, entry)
-    const stat = statSync(path)
-    if (stat.isDirectory()) {
-      out.push(...walkFiles(path))
-    } else if (stat.isFile()) {
-      out.push(path)
-    }
-  }
-  return out
+  return Array.from(walkFileTree(dir), (file) => file.path)
 }
 
 export function assertProductionAssets(opts: ProductionAssetAssertionOptions): void {
