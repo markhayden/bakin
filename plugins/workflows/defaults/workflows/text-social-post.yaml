@@ -17,7 +17,6 @@ steps:
     label: Approve Copy
     description: Owner reviews the post copy before publishing
     approval_required: true
-    on_approve: publish
     on_reject:
       goto: write-copy
       note_to_agent: true

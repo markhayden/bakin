@@ -130,18 +130,27 @@ referenced workflow may ship in a plugin that has not activated yet:
 
 ## Runtime Execution Contract
 
-The current runtime is not a general DAG executor. It executes top-level steps in
-file order. `dependsOn` is preserved as metadata and validation, but it cannot
-pull a future step forward or express arbitrary graph branching.
+The current runtime is not a general DAG executor. It executes top-level steps
+strictly in file order. There is no step-level dependency or approval-routing
+surface: `dependsOn` and `gate.on_approve` were deleted (they were validated
+metadata the engine never read — approval always advances to the next step, or
+completes the workflow at a final gate).
 
 Validation enforces the current engine's real contract:
 
-- `dependsOn` can only reference earlier top-level steps.
-- `gate.on_approve` must advance to the next top-level step, or `done` for a final gate.
 - `gate.on_reject.goto` can only target the current or an earlier top-level step.
-- `parallel` groups can only contain agent child steps; gates, output steps, nested workflows, and child `dependsOn` are rejected.
+- `parallel` groups can only contain agent child steps (type, zod schema, and validator all agree).
 - `workflow` nested references cannot reference themselves (fatal everywhere). Existence is tiered (#374): not checked at plugin-default load, fatal at start time, advisory in the `workflow-definitions` health check.
 - `output` steps require an agent owner so channel-post authorization has a concrete principal.
+
+The builtin node-type zod schemas are **strict**: unknown YAML keys are
+rejected at the CRUD/save boundary with an error naming the key, and the
+`workflow-definitions` health check warns when an on-disk or registry
+definition carries stray keys (they never pass through zod at load). Step
+`output_schema` on agent/output steps is a declared field — it is injected
+into the dispatch prompt by step-format. The TS index signatures on step types
+exist for runtime augmentation (rejectionReason, plugin node-kind config), not
+YAML freedom.
 
 Agents are also gated at tool-use time. Workflow step reads and submissions use
 the actual MCP caller, not a caller-supplied `agentId`. Progress logs and task

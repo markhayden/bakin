@@ -88,19 +88,13 @@ describe('live workflow YAML round-trip', () => {
     expect(files.length).toBeGreaterThan(0)
   })
 
-  it('preserves YAML-backed fields outside the editor-owned field set', () => {
+  it('accepts every declared field, including step output_schema', () => {
     const parsed = workflowDefinitionSchema.safeParse({
       name: 'Round Trip',
-      description: 'Synthetic preserve-set fixture',
+      description: 'Synthetic known-field fixture',
       version: 1,
-      metadata: { owner: 'roundtrip-test' },
-      triggers: [{ type: 'manual', enabled: true }],
       inputs: {
-        topic: {
-          type: 'string',
-          description: 'Subject',
-          ui: { widget: 'longtext' },
-        },
+        topic: { type: 'string', description: 'Subject', required: true },
       },
       steps: [
         {
@@ -109,23 +103,49 @@ describe('live workflow YAML round-trip', () => {
           label: 'Write',
           agent: 'chef',
           output_schema: { type: 'object' },
-          plugin_config: { keep: true },
+          deny_tools: ['bakin_exec_git_push'],
         },
       ],
       layout: {
         positions: { write: { x: 1, y: 2 } },
-        viewport: { x: 10, y: 20, zoom: 0.8 },
       },
     })
 
     expect(parsed.success).toBe(true)
     if (!parsed.success) return
-    expect((parsed.data as Record<string, unknown>).metadata).toEqual({ owner: 'roundtrip-test' })
-    expect((parsed.data as Record<string, unknown>).triggers).toEqual([{ type: 'manual', enabled: true }])
-    expect((parsed.data.inputs?.topic as Record<string, unknown>).ui).toEqual({ widget: 'longtext' })
     expect((parsed.data.steps[0] as Record<string, unknown>).output_schema).toEqual({ type: 'object' })
-    expect((parsed.data.steps[0] as Record<string, unknown>).plugin_config).toEqual({ keep: true })
-    expect((parsed.data.layout as Record<string, unknown>).viewport).toEqual({ x: 10, y: 20, zoom: 0.8 })
+  })
+
+  it('rejects unknown keys with an error that names the key (strict schemas)', () => {
+    const base = {
+      name: 'Strict',
+      description: 'Unknown keys must reject, not silently persist',
+      version: 1,
+      steps: [
+        { id: 'write', type: 'agent', label: 'Write', agent: 'chef' },
+      ],
+    }
+
+    // Definition-level unknown key
+    const topLevel = workflowDefinitionSchema.safeParse({ ...base, metadata: { owner: 'x' } })
+    expect(topLevel.success).toBe(false)
+    if (!topLevel.success) {
+      expect(JSON.stringify(topLevel.error.issues)).toContain('metadata')
+    }
+
+    // Step-level unknown key — the deleted-field scenario. The error must
+    // name the offending key, not collapse to a generic invalid-step message.
+    const stepLevel = workflowDefinitionSchema.safeParse({
+      ...base,
+      steps: [
+        { id: 'write', type: 'agent', label: 'Write', agent: 'chef' },
+        { id: 'review', type: 'gate', label: 'Review', on_approve: 'done' },
+      ],
+    })
+    expect(stepLevel.success).toBe(false)
+    if (!stepLevel.success) {
+      expect(JSON.stringify(stepLevel.error.issues)).toContain('on_approve')
+    }
   })
 
   for (const file of files) {

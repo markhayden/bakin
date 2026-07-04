@@ -87,7 +87,7 @@ describe('node-type-registry', () => {
       expect(agentStepSchema.safeParse({ type: 'agent', id: 'x', agent: 'a' }).success).toBe(false)
     })
 
-    it('accepts optional fields (skill, task, dependsOn, outputs, deny_tools)', () => {
+    it('accepts optional fields (skill, task, outputs, deny_tools)', () => {
       const result = agentStepSchema.safeParse({
         id: 'step1',
         type: 'agent',
@@ -95,7 +95,6 @@ describe('node-type-registry', () => {
         agent: 'chef',
         skill: 'write-script',
         task: 'do the thing',
-        dependsOn: ['otherStep'],
         outputs: [{ id: 'script', type: 'string' }],
         deny_tools: ['post_channel'],
       })
@@ -109,33 +108,44 @@ describe('node-type-registry', () => {
         id: 'gate1',
         type: 'gate',
         label: 'Approve',
-        on_approve: 'next',
       })
       expect(result.success).toBe(true)
     })
 
-    it('rejects a gate step missing on_approve', () => {
+    it('rejects a gate step missing a label', () => {
       const result = gateStepSchema.safeParse({
         id: 'gate1',
         type: 'gate',
-        label: 'Approve',
       })
       expect(result.success).toBe(false)
     })
   })
 
   describe('parallelStepSchema', () => {
-    it('accepts a parallel step with nested agent + gate children', () => {
+    it('accepts a parallel step with agent children', () => {
       const result = parallelStepSchema.safeParse({
         id: 'p1',
         type: 'parallel',
         label: 'Parallel',
         steps: [
           { id: 'c1', type: 'agent', label: 'Child 1', agent: 'chef' },
-          { id: 'c2', type: 'gate', label: 'Child gate', on_approve: 'done' },
+          { id: 'c2', type: 'agent', label: 'Child 2', agent: 'pixel' },
         ],
       })
       expect(result.success).toBe(true)
+    })
+
+    it('rejects a parallel step with a gate child (agent-only, matching the validator)', () => {
+      const result = parallelStepSchema.safeParse({
+        id: 'p1',
+        type: 'parallel',
+        label: 'Parallel',
+        steps: [
+          { id: 'c1', type: 'agent', label: 'Child 1', agent: 'chef' },
+          { id: 'c2', type: 'gate', label: 'Child gate' },
+        ],
+      })
+      expect(result.success).toBe(false)
     })
 
     it('rejects a parallel step with no children', () => {
@@ -221,7 +231,7 @@ describe('node-type-registry', () => {
         version: 1,
         steps: [
           { id: 'write', type: 'agent', label: 'Write', agent: 'chef', skill: 'write-script' },
-          { id: 'gate', type: 'gate', label: 'Approve', on_approve: 'done' },
+          { id: 'gate', type: 'gate', label: 'Approve' },
         ],
       })
       expect(result.success).toBe(true)

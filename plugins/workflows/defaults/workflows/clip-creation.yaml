@@ -31,7 +31,6 @@ steps:
     label: Approve Frames
     description: Owner reviews start and end frame images
     approval_required: true
-    on_approve: generate-video
     on_reject:
       goto: generate-frames
       note_to_agent: true
@@ -47,7 +46,6 @@ steps:
     label: Approve Clip
     description: Owner reviews the final video clip
     approval_required: true
-    on_approve: done
     on_reject:
       goto: generate-video
       note_to_agent: true

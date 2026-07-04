@@ -100,7 +100,6 @@ steps:
     label: Review final post
     description: Human review
     approval_required: true
-    on_approve: done
     on_reject:
       goto: draft
       note_to_agent: true
@@ -128,7 +127,6 @@ steps:
     label: Final signoff
     description: Human signoff
     approval_required: true
-    on_approve: done
     on_reject:
       goto: draft
       note_to_agent: true

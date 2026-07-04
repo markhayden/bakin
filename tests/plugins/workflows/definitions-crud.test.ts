@@ -139,6 +139,28 @@ describe('workflows CRUD routes', () => {
       expect(onDisk.name).toBe('Original')
     })
 
+    it('rejects unknown YAML keys at save with an error naming the key (strict schemas)', async () => {
+      const activated = await activatePlugin(workflowsPlugin, testDir)
+      const route = findRoute(activated.routes, 'POST', '/definitions')!
+
+      const res = await callRoute(route, activated.ctx, {
+        body: {
+          id: 'stale-save',
+          name: 'Stale Save',
+          description: 'carries a deleted field',
+          version: 1,
+          steps: [
+            { id: 'write', type: 'agent', label: 'Write', agent: 'chef' },
+            { id: 'review', type: 'gate', label: 'Review', on_approve: 'done' },
+          ],
+        },
+      })
+
+      expect(res.status).toBe(400)
+      expect(JSON.stringify(res.body)).toContain('on_approve')
+      expect(existsSync(join(defsDir, 'stale-save.yaml'))).toBe(false)
+    })
+
     it('rejects unsafe workflow ids before writing to disk', async () => {
       const activated = await activatePlugin(workflowsPlugin, testDir)
       const route = findRoute(activated.routes, 'POST', '/definitions')!

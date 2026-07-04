@@ -277,7 +277,7 @@ const sampleDefinition: WorkflowDefinition = {
   version: 1,
   steps: [
     { id: 'write', type: 'agent', label: 'Write', agent: 'chef' },
-    { id: 'review', type: 'gate', label: 'Review', on_approve: 'done' },
+    { id: 'review', type: 'gate', label: 'Review' },
   ],
   layout: {
     positions: {
@@ -657,38 +657,34 @@ describe('WorkflowCanvasEditor', () => {
     expect(screen.getByTestId('edge-write-review')).toBeDefined()
   })
 
-  it('preserves dependsOn and YAML fields the editor does not own on save', async () => {
-    const withMetadata = {
+  it('preserves declared fields the editor does not render on save', async () => {
+    // Schemas are strict now — unknown keys reject at the CRUD boundary, so
+    // the preservation contract covers declared-but-uneditable fields
+    // (output_schema, deny_tools), not arbitrary YAML extensions.
+    const withUnrendered = {
       ...sampleDefinition,
-      metadata: { owner: 'workflow-audit' },
-      triggers: [{ type: 'manual', enabled: true }],
       steps: [
         {
           id: 'write',
           type: 'agent',
           label: 'Write',
           agent: 'chef',
-          model_policy: { maxCostUsd: 3 },
+          output_schema: { type: 'object', required: ['text'] },
+          deny_tools: ['bakin_exec_git_push'],
         },
         {
           id: 'review',
           type: 'gate',
           label: 'Review',
-          on_approve: 'done',
-          dependsOn: 'write',
         },
       ],
-      layout: {
-        ...sampleDefinition.layout,
-        viewport: { x: 12, y: 18, zoom: 0.75 },
-      },
     } as unknown as WorkflowDefinition
 
     render(
       <WorkflowCanvasEditor
         mode="edit"
         initialId="video-script"
-        initialDefinition={withMetadata}
+        initialDefinition={withUnrendered}
         source="user"
       />,
     )
@@ -698,11 +694,8 @@ describe('WorkflowCanvasEditor', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
     const [, init] = fetchMock.mock.calls[0]
     const body = JSON.parse(init.body as string) as WorkflowDefinition & Record<string, unknown>
-    expect(body.metadata).toEqual({ owner: 'workflow-audit' })
-    expect(body.triggers).toEqual([{ type: 'manual', enabled: true }])
-    expect((body.steps[0] as unknown as Record<string, unknown>).model_policy).toEqual({ maxCostUsd: 3 })
-    expect((body.steps[1] as unknown as Record<string, unknown>).dependsOn).toBe('write')
-    expect((body.layout as Record<string, unknown>).viewport).toEqual({ x: 12, y: 18, zoom: 0.75 })
+    expect((body.steps[0] as unknown as Record<string, unknown>).output_schema).toEqual({ type: 'object', required: ['text'] })
+    expect((body.steps[0] as unknown as Record<string, unknown>).deny_tools).toEqual(['bakin_exec_git_push'])
   })
 
   it('reorders the selected node and saves the new runtime order', async () => {

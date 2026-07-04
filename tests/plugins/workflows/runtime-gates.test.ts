@@ -115,6 +115,18 @@ describe('runtime — gates', () => {
       expect(instance!.status).toBe('in_progress')
     })
 
+    it('approveGate on the final step completes the workflow (advance is purely positional)', () => {
+      createInstance('task-gate-final', 'final-gate', testDir)
+      completeStep('task-gate-final', 'write-copy', { text: 'hello' }, undefined, testDir)
+
+      const approveResult = approveGate('task-gate-final', 'publish-gate', { contentDir: testDir })
+      expect(approveResult.success).toBe(true)
+
+      const instance = loadInstance('task-gate-final', testDir)
+      expect(instance!.status).toBe('complete')
+      expect(instance!.stepStates['publish-gate'].status).toBe('complete')
+    })
+
     it('rejectGate rewinds to target step', () => {
       createInstance('task-gate-r', 'gate', testDir)
       completeStep('task-gate-r', 'write-copy', { text: 'hello' }, undefined, testDir)

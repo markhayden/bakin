@@ -180,7 +180,6 @@ steps:
     label: Review
     description: Human review
     approval_required: true
-    on_approve: publish
     on_reject:
       goto: write-copy
       note_to_agent: true
@@ -189,6 +188,22 @@ steps:
     label: Publish
     agent: main
     description: Publish
+`
+
+// Workflow ending in an approval gate (advance is purely positional)
+export const finalGateWorkflow = `
+name: Final Gate
+description: Workflow ending in an approval gate
+version: 1
+steps:
+  - id: write-copy
+    type: agent
+    label: Write Copy
+    agent: chef
+  - id: publish-gate
+    type: gate
+    label: Publish approval
+    approval_required: true
 `
 
 // Workflow with skill references
@@ -274,6 +289,7 @@ export function seedWorkflowFixtures(testDir: string): void {
   writeFileSync(join(defsDir, 'parallel.yaml'), parallelWorkflow)
   writeFileSync(join(defsDir, 'preferred.yaml'), preferredWorkflow)
   writeFileSync(join(defsDir, 'gate.yaml'), gateWorkflow)
+  writeFileSync(join(defsDir, 'final-gate.yaml'), finalGateWorkflow)
   writeFileSync(join(defsDir, 'skill-test.yaml'), skillWorkflow)
   writeFileSync(join(defsDir, 'task-node.yaml'), taskNodeWorkflow)
   writeFileSync(join(skillsDir, 'test-skill.md'), testSkillMarkdown)

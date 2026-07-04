@@ -5,7 +5,7 @@
  *
  * The drawer reads from the node-type registry to know which form fields
  * to render per kind. These tests exercise one builtin kind per shape
- * (agent for agent-style picker, gate for the required on_approve
+ * (agent for agent-style picker, gate for approval fields
  * string, output for list fields) and confirm:
  *   1. Form renders from formFields metadata.
  *   2. Apply validates against the kind's Zod schema and surfaces errors.
@@ -84,7 +84,7 @@ describe('NodeConfigDrawer', () => {
     const onApply = mock()
     render(
       <NodeConfigDrawer
-        step={{ id: 'approve', type: 'gate', label: 'Approve', on_approve: 'done' }}
+        step={{ id: 'approve', type: 'gate', label: 'Approve' }}
         onApply={onApply}
         onClose={() => {}}
       />,
@@ -147,7 +147,6 @@ describe('NodeConfigDrawer', () => {
           type: 'agent',
           label: 'Write',
           agent: 'chef',
-          dependsOn: 'outline',
           output_schema: { type: 'object' },
         }}
         onApply={onApply}
@@ -160,7 +159,6 @@ describe('NodeConfigDrawer', () => {
     expect(onApply).toHaveBeenCalled()
     const patch = onApply.mock.calls[0][0] as Record<string, unknown>
     expect(patch.label).toBe('Write draft')
-    expect(patch.dependsOn).toBe('outline')
     expect(patch.output_schema).toEqual({ type: 'object' })
   })
 
@@ -253,7 +251,6 @@ describe('NodeConfigDrawer', () => {
           id: 'approve',
           type: 'gate',
           label: 'Approve',
-          on_approve: 'done',
           on_reject: { goto: 'write', note_to_agent: true },
         }}
         onApply={onApply}
@@ -332,7 +329,6 @@ describe('NodeConfigDrawer', () => {
           id: 'g',
           type: 'gate',
           label: 'G',
-          on_approve: 'done',
           approval_required: 'yes',
         }}
         onApply={onApply}
