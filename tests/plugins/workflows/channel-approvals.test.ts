@@ -44,35 +44,39 @@ const rejectGate = mock((..._args: unknown[]) => ({
   success: true,
   decision: { gateLabel: 'Review', requestedAt: '2026-04-11T10:00:00Z', decidedAt: '2026-04-11T10:05:00Z' },
 }))
+let currentInstance: unknown = null
 mock.module('@bakin/workflows/lib/runtime', () => ({
   approveGate: (...args: unknown[]) => approveGate(...args),
   rejectGate: (...args: unknown[]) => rejectGate(...args),
-  loadInstance: mock(() => null),
+  loadInstance: mock(() => currentInstance),
   saveInstance: mock(),
 }))
 
-const approvalRecord: DurableApprovalRecord = {
-  approvalId: 'workflow-gate:task-42:review-gate',
-  owner: {
-    workflowId: 'content-pipeline',
-    runId: 'wf_abc123',
-    taskId: 'task-42',
-    stepId: 'review-gate',
-  },
-  status: 'pending',
-  request: {
-    title: 'Gate: Review',
-    body: 'Review the draft',
-    options: [
-      { id: 'approve', label: 'Approve' },
-      { id: 'reject', label: 'Reject' },
-    ],
-    context: { requireRejectReason: true },
-  },
-  deliveries: [],
-  createdAt: '2026-04-11T10:00:00Z',
-  updatedAt: '2026-04-11T10:00:00Z',
+function makeApprovalRecord(): DurableApprovalRecord {
+  return {
+    approvalId: 'workflow-gate:task-42:review-gate',
+    owner: {
+      workflowId: 'content-pipeline',
+      runId: 'wf_abc123',
+      taskId: 'task-42',
+      stepId: 'review-gate',
+    },
+    status: 'pending',
+    request: {
+      title: 'Gate: Review',
+      body: 'Review the draft',
+      options: [
+        { id: 'approve', label: 'Approve' },
+        { id: 'reject', label: 'Reject' },
+      ],
+      context: { requireRejectReason: true },
+    },
+    deliveries: [],
+    createdAt: '2026-04-11T10:00:00Z',
+    updatedAt: '2026-04-11T10:00:00Z',
+  }
 }
+let approvalRecord: DurableApprovalRecord = makeApprovalRecord()
 mock.module('@bakin/workflows/lib/approval-store', () => ({
   getApprovalRecord: mock(() => approvalRecord),
   approvalRefFromRecord: (record: DurableApprovalRecord | null | undefined) =>
@@ -102,9 +106,11 @@ mock.module('@bakin/workflows/lib/search-sync', () => ({
 mock.module('@bakin/workflows/lib/trigger-dispatch', () => ({
   triggerDispatch: mock(),
 }))
+const resolveGateApproval = mock(async (..._args: unknown[]) => {})
+const sendGateDecisionSummary = mock(async (..._args: unknown[]) => {})
 mock.module('@bakin/workflows/lib/notifications', () => ({
-  resolveGateApproval: mock(async () => {}),
-  sendGateDecisionSummary: mock(async () => {}),
+  resolveGateApproval: (...args: unknown[]) => resolveGateApproval(...args),
+  sendGateDecisionSummary: (...args: unknown[]) => sendGateDecisionSummary(...args),
 }))
 mock.module('@bakin/workflows/lib/gate-audit', () => ({
   buildGateAuditPayload: mock(() => ({})),
@@ -148,8 +154,12 @@ describe('workflow channel approvals', () => {
     rmSync(testDir, { recursive: true, force: true })
     mkdirSync(testDir, { recursive: true })
     process.env.BAKIN_HOME = testDir
+    approvalRecord = makeApprovalRecord()
+    currentInstance = null
     approveGate.mockClear()
     rejectGate.mockClear()
+    resolveGateApproval.mockClear()
+    sendGateDecisionSummary.mockClear()
   })
 
   afterAll(() => {
@@ -180,6 +190,59 @@ describe('workflow channel approvals', () => {
 
     expect(rejectGate).toHaveBeenCalledTimes(1)
     expect(rejectGate.mock.calls[0]?.[2]).toBe('Needs a stronger hook')
+  })
+
+  it('treats a whitespace-only comment as no reason', async () => {
+    const capture: { handler?: (event: ApprovalResolveEvent) => Promise<void> | void } = {}
+    await wireChannelApprovals(makeCtx(capture))
+
+    await capture.handler!(rejectEvent('   '))
+
+    expect(rejectGate.mock.calls[0]?.[2]).toBe('Rejected via runtime channel (no reason provided)')
+  })
+
+  it('passes the default reason through to approval resolution and the decision summary', async () => {
+    currentInstance = {
+      instanceId: 'wf_abc123',
+      workflowId: 'content-pipeline',
+      taskId: 'task-42',
+      currentStepId: 'review-gate',
+      status: 'in_progress',
+      stepStates: {},
+      history: [],
+      createdAt: '2026-04-11T10:00:00Z',
+      updatedAt: '2026-04-11T10:05:00Z',
+    }
+    const capture: { handler?: (event: ApprovalResolveEvent) => Promise<void> | void } = {}
+    await wireChannelApprovals(makeCtx(capture))
+
+    await capture.handler!(rejectEvent())
+
+    expect(resolveGateApproval).toHaveBeenCalledTimes(1)
+    expect(resolveGateApproval.mock.calls[0]?.[1]).toBe('rejected')
+    expect(resolveGateApproval.mock.calls[0]?.[4]).toBe('Rejected via runtime channel (no reason provided)')
+    expect(sendGateDecisionSummary).toHaveBeenCalledTimes(1)
+    expect(sendGateDecisionSummary.mock.calls[0]?.[8]).toBe('Rejected via runtime channel (no reason provided)')
+  })
+
+  it('ignores channel responses for records that are no longer pending', async () => {
+    approvalRecord = { ...makeApprovalRecord(), status: 'cancelled' }
+    const capture: { handler?: (event: ApprovalResolveEvent) => Promise<void> | void } = {}
+    await wireChannelApprovals(makeCtx(capture))
+
+    await capture.handler!({
+      approvalId: 'workflow-gate:task-42:review-gate',
+      channelId: 'discord:channel-1',
+      response: {
+        selectedOption: 'approve',
+        respondedAt: '2026-04-11T10:05:00Z',
+        actor: { type: 'human', id: 'owner-1', displayName: 'Owner' },
+      },
+    })
+
+    expect(approveGate).not.toHaveBeenCalled()
+    expect(rejectGate).not.toHaveBeenCalled()
+    expect(resolveGateApproval).not.toHaveBeenCalled()
   })
 
   it('approves gates from channel approve responses', async () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
-import { mkdirSync, rmSync } from 'fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -116,6 +116,15 @@ function createPendingRecord(approvalId = 'workflow-gate:task-42:review-gate') {
     },
     createdAt: '2026-04-11T10:00:00Z',
   }, testDir)
+}
+
+function rewriteRecord(
+  approvalId: string,
+  transform: (record: Record<string, unknown>) => Record<string, unknown>,
+): void {
+  const path = join(testDir, 'workflows', 'approvals', `${encodeURIComponent(approvalId)}.json`)
+  const record = JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown>
+  writeFileSync(path, JSON.stringify(transform(record)), 'utf-8')
 }
 
 describe('workflow approval rehydration', () => {
@@ -296,6 +305,128 @@ describe('workflow approval rehydration', () => {
 
     expect(summary).toEqual(expect.objectContaining({ pending: 1, skipped: 1, cancelled: 0, pruned: 0 }))
     expect(getApprovalRecord('workflow-gate:task-42:review-gate', testDir)?.status).toBe('pending')
+  })
+
+  it('cancels pending records whose owner has no task/step identity', async () => {
+    createApprovalRecord({
+      approvalId: 'workflow-gate:malformed',
+      owner: { workflowId: 'content-pipeline', runId: 'wf_abc123', stepId: 'review-gate' },
+      request: { title: 'Gate', body: 'Review', options: [] },
+      createdAt: '2026-04-11T10:00:00Z',
+    }, testDir)
+
+    const summary = await rehydratePendingApprovals({
+      runtime: createMockRuntimeAdapter() as AgentRuntimeAdapter,
+      channel: 'approvals',
+      renderMissingDeliveries: true,
+      contentDir: testDir,
+    })
+
+    expect(summary).toEqual(expect.objectContaining({ pending: 1, cancelled: 1 }))
+    expect(getApprovalRecord('workflow-gate:malformed', testDir)).toEqual(expect.objectContaining({
+      status: 'cancelled',
+      response: expect.objectContaining({ comment: expect.stringContaining('orphaned') }),
+    }))
+  })
+
+  it('cancels only the stale run\'s record when a workflow was re-run at the same gate', async () => {
+    saveInstance(pendingInstance(), testDir) // live run: instanceId wf_abc123
+    // Stale record from a previous run of the same task/step.
+    createApprovalRecord({
+      approvalId: 'workflow-gate:task-42:review-gate:wf_previous',
+      owner: {
+        workflowId: 'content-pipeline',
+        runId: 'wf_previous',
+        taskId: 'task-42',
+        stepId: 'review-gate',
+      },
+      request: { title: 'Gate', body: 'Review', options: [] },
+      createdAt: '2026-04-10T10:00:00Z',
+    }, testDir)
+    createPendingRecord() // current run's record (runId wf_abc123)
+    updateApprovalDeliveries('workflow-gate:task-42:review-gate', [delivery], testDir)
+
+    const summary = await rehydratePendingApprovals({
+      runtime: createMockRuntimeAdapter() as AgentRuntimeAdapter,
+      channel: 'approvals',
+      renderMissingDeliveries: true,
+      contentDir: testDir,
+    })
+
+    expect(summary).toEqual(expect.objectContaining({ pending: 2, cancelled: 1, reattached: 1 }))
+    expect(getApprovalRecord('workflow-gate:task-42:review-gate:wf_previous', testDir)?.status).toBe('cancelled')
+    expect(getApprovalRecord('workflow-gate:task-42:review-gate', testDir)?.status).toBe('pending')
+  })
+
+  it('counts every delivery-less record as failed but resolves the channel only once', async () => {
+    mockChannelAliases = {}
+    saveInstance(pendingInstance(), testDir)
+    createPendingRecord()
+    const second = pendingInstance()
+    second.taskId = 'task-43'
+    second.instanceId = 'wf_def456'
+    saveInstance(second, testDir)
+    createApprovalRecord({
+      approvalId: 'workflow-gate:task-43:review-gate',
+      owner: {
+        workflowId: 'content-pipeline',
+        runId: 'wf_def456',
+        taskId: 'task-43',
+        stepId: 'review-gate',
+      },
+      request: { title: 'Gate', body: 'Review', options: [] },
+      createdAt: '2026-04-11T10:00:00Z',
+    }, testDir)
+
+    const logError = mock()
+    const summary = await rehydratePendingApprovals({
+      runtime: createMockRuntimeAdapter() as AgentRuntimeAdapter,
+      channel: 'approvals',
+      renderMissingDeliveries: true,
+      contentDir: testDir,
+      log: { error: logError },
+    })
+
+    expect(summary).toEqual(expect.objectContaining({ pending: 2, failed: 2 }))
+    expect(logError).toHaveBeenCalledTimes(1)
+  })
+
+  it('prunes aged cancelled orphans and tolerates malformed timestamps', async () => {
+    const old = new Date(Date.now() - 31 * 24 * 3600 * 1000).toISOString()
+
+    // Orphan cancelled 31 days ago -> pruned (GC composes with orphan-cancel).
+    createPendingRecord('workflow-gate:task-cancelled:review-gate')
+    resolveApprovalRecord('workflow-gate:task-cancelled:review-gate', {
+      selectedOption: 'reject',
+      respondedAt: old,
+      actor: { type: 'human', id: 'system' },
+    }, testDir)
+    rewriteRecord('workflow-gate:task-cancelled:review-gate', r => ({ ...r, status: 'cancelled', updatedAt: old }))
+
+    // Old record with a garbage resolvedAt -> kept forever rather than mis-pruned.
+    createPendingRecord('workflow-gate:task-garbage:review-gate')
+    rewriteRecord('workflow-gate:task-garbage:review-gate', r => ({
+      ...r, status: 'approved', resolvedAt: 'not-a-date', updatedAt: 'not-a-date',
+    }))
+
+    // No resolvedAt at all -> updatedAt fallback governs the age.
+    createPendingRecord('workflow-gate:task-fallback:review-gate')
+    rewriteRecord('workflow-gate:task-fallback:review-gate', r => {
+      const { resolvedAt: _drop, ...rest } = r as Record<string, unknown> & { resolvedAt?: string }
+      return { ...rest, status: 'approved', updatedAt: old }
+    })
+
+    const summary = await rehydratePendingApprovals({
+      runtime: createMockRuntimeAdapter() as AgentRuntimeAdapter,
+      channel: 'approvals',
+      renderMissingDeliveries: false,
+      contentDir: testDir,
+    })
+
+    expect(summary).toEqual(expect.objectContaining({ pruned: 2 }))
+    expect(getApprovalRecord('workflow-gate:task-cancelled:review-gate', testDir)).toBeNull()
+    expect(getApprovalRecord('workflow-gate:task-fallback:review-gate', testDir)).toBeNull()
+    expect(getApprovalRecord('workflow-gate:task-garbage:review-gate', testDir)?.status).toBe('approved')
   })
 
   it('prunes resolved records older than 30 days and keeps younger or pending ones', async () => {

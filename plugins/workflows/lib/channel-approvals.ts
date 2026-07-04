@@ -36,6 +36,15 @@ export async function wireChannelApprovals(ctx: PluginContext): Promise<() => vo
       log.warn('Channel approval response ignored: no durable approval record', { approvalId: event.approvalId })
       return
     }
+    if (approvalRecord.status !== 'pending') {
+      // Stale provider button: the record was already resolved, cancelled as
+      // an orphan, or expired. The durable record is canonical — ignore.
+      log.warn('Channel approval response ignored: approval record is not pending', {
+        approvalId: event.approvalId,
+        status: approvalRecord.status,
+      })
+      return
+    }
 
     const taskId = approvalRecord.owner.taskId
     const stepId = approvalRecord.owner.stepId
