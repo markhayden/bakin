@@ -251,14 +251,17 @@ async function cmdAgentPackagesSync(agentId: string | undefined, flags: AgentsCm
   }
 
   const action = flags.check ? 'checked' : 'synced'
+  const isFailure = (r: unknown): boolean =>
+    typeof r === 'object' && r !== null && (r as { ok?: unknown }).ok === false
 
   if (agentId) {
     const result = await syncOne(agentId)
     if (!flags.json && process.stdout.isTTY) {
       await printPackageActionTui({ action, scope: 'agent', target: agentId, result })
-      return
+    } else {
+      print(result)
     }
-    print(result)
+    if (isFailure(result)) process.exit(1)
     return
   }
 
@@ -268,10 +271,12 @@ async function cmdAgentPackagesSync(agentId: string | undefined, flags: AgentsCm
     agents: Array<{ agentId: string; state: string }>
   }
   const actions: PackageActionData[] = []
+  let anyFailed = false
   for (const a of list.agents) {
     if (a.state === 'absent') continue
     try {
       const result = await syncOne(a.agentId)
+      if (isFailure(result)) anyFailed = true
       if (!flags.json && process.stdout.isTTY) {
         actions.push({ action, scope: 'agent', target: a.agentId, result })
         continue
@@ -279,6 +284,7 @@ async function cmdAgentPackagesSync(agentId: string | undefined, flags: AgentsCm
       console.log(`${a.agentId}:`)
       print(result)
     } catch (err) {
+      anyFailed = true
       if (!flags.json && process.stdout.isTTY) {
         actions.push({
           action,
@@ -294,6 +300,7 @@ async function cmdAgentPackagesSync(agentId: string | undefined, flags: AgentsCm
   if (!flags.json && process.stdout.isTTY) {
     await printPackageActionTui(actions)
   }
+  if (anyFailed) process.exit(1)
 }
 
 async function cmdAgentPackagesLessonsList(agentId: string): Promise<void> {

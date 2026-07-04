@@ -485,6 +485,27 @@ export async function scanAgentSync(lockfile?: Lockfile): Promise<SyncScanReport
     for (const p of entry.projections ?? []) {
       if (p.kind === 'workspace-file' || p.kind === 'lesson-marker') continue
 
+      // Personas are seeded once and then user-owned: no .installedBy sidecar,
+      // edits are expected, uninstall leaves them behind. Only their absence is
+      // actionable (sync re-seeds a missing persona per the only-when-missing
+      // contract) — marker and drift checks would be permanent false positives.
+      if (p.kind === 'persona') {
+        if (!existsSync(p.target)) {
+          report.findings.push({
+            type: 'asset-missing',
+            severity: 'warn',
+            autoFixable: true,
+            packageId,
+            agentId: entry.agentId,
+            target: p.target,
+            message: `Persona file missing (sync will re-seed it): ${p.target}`,
+          })
+        } else {
+          report.projectionsOk++
+        }
+        continue
+      }
+
       const parsed = parseRuntimeTarget(p.target)
       if (parsed?.kind === 'agent-skill' || parsed?.kind === 'global-skill') {
         const agentId = parsed.kind === 'agent-skill' ? parsed.agentId : undefined
