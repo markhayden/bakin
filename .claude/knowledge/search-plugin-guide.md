@@ -176,7 +176,19 @@ registerPlugin({
 
 Renderers are plain data-mapping functions (title/subtitle/href/thumbnailUrl/
 icon), not components — the overlay owns layout, keyboard focus, and debug
-badges. Unknown types get a default renderer.
+badges. Unknown types get a default renderer with `href: null`, which the
+overlay renders **inert** (muted, `data-inert`, Enter is a no-op) — a hit
+must never look clickable while going nowhere.
+
+**Renderer contract (test-enforced):**
+- The renderer key MUST equal the bare table name (registered `table` minus
+  the `bakin_` prefix). A renderer keyed under anything else never matches —
+  the team plugin shipped this bug as `agents` vs table `team`.
+- `href` must be a non-null app path for a schema-shaped hit, and field
+  reads must use the schema's exact field names (`agent_id`, not `agent`).
+- `tests/plugins/search-hit-renderer-contract.test.ts` activates every core
+  plugin, imports every client entry, and fails on a missing renderer, a
+  mis-keyed renderer, or a null href — keep it green when adding types.
 
 ## Querying: `useSearch` and honest degradation
 

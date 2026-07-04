@@ -75,6 +75,8 @@ registerPlugin({
 | `asset` | string | asset path | Deep-link to open asset detail |
 | `taskId` | string | task id | Deep-link to open task detail drawer |
 | `jobId` | string | job id | Deep-link to open schedule job detail drawer |
+| `recordId` | string | memory rowId (`<tier>:<hash>`) | Deep-link to open memory detail drawer (resolved via `GET /record`) |
+| `lessonId` | string | lesson id | Highlight + scroll to a lesson on the team Lessons tab (`?tab=lessons`) |
 | `mode` | string | `create`, `edit`, `duplicate` | Form mode (schedule plugin) |
 | `page` | string | `1`, `2` | Pagination page number |
 | `sort` | string | `name`, `size`, `created`, `type` | Sort column (list view) |
@@ -162,6 +164,6 @@ Pattern: client-side filtering runs immediately (instant feedback), search fires
 | Workflows | ✅ Done | `q` on list; path-based `/workflows/[id]` for canvas detail, step drawer via node click |
 | Schedule | ✅ Done | `view`, `q`, `agent`, `jobId` (deep link), `mode` (create/edit/duplicate) |
 | Health | ❌ Pending | |
-| Memory | ✅ Done | `q` (search query), `tier` (multi-select), `agent` (single-select — shared avatar-strip `AgentFilter`), `kind` (multi-select, durable-only). Landing page is the search surface — no sub-routes. |
+| Memory | ✅ Done | `q` (search query), `tier` (multi-select), `agent` (single-select — shared avatar-strip `AgentFilter`), `kind` (multi-select, durable-only), `recordId` (deep link — detail drawer, ⌘K target). Landing page is the search surface — no sub-routes. |
 | Projects | ✅ Done | `status`, `q` on list; path-based `/projects/[id]` and `/projects/[id]/edit` for detail |
 | Models | ❌ Pending | |

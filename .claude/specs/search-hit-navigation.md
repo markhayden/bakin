@@ -1,6 +1,6 @@
 # Spec: Search Hit Navigation — every result has a home
 
-**Status:** Draft (pending approval)
+**Status:** Implemented (branch `fix/search-hit-navigation`)
 **Date:** 2026-07-03
 **Origin:** Audit of issue #70 ("Ask Bakin"). The issue itself is unbuilt and stays open/untouched. This spec covers the real gap the audit surfaced: three of seven registered search content types have broken or lossy click navigation in the ⌘K global search overlay, and nothing guards against the regression class.
 

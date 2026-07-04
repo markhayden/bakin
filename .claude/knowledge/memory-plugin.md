@@ -355,5 +355,14 @@ They're intentionally separate — a user debugging a search-quality issue wants
 - `?agent=<id>` — active agent filter (single-select; `all` / omitted means no agent filter). Rendered as the shared avatar-strip `AgentFilter` component (same widget as schedule/messaging/models/tasks), with a tooltip showing the display name per avatar.
 - `?kind=soul,skill` — active durable-kind filter (comma-separated, multi-select). Only rendered on `/memory` when `tier=durable` is the sole selected tier — filtering by kind outside durable silently matches nothing. A client effect auto-clears `?kind=` when the facet hides so a stale bookmark can't strip the feed invisibly.
 - `?debug=1` — page-local "System Logs" toggle. Distinct from the global `useDebug()` Zustand flag.
+- `?recordId=<rowId>` — exact-record deep link; opens `MemoryDetailDrawer` for that row (the ⌘K hit-renderer target). See "Exact-record deep link" below.
 
-All five are omitted when at their default (empty / `'0'`); `MemoryShell` wraps its content in `<Suspense>` per the hook contract. When a debug-only tier is currently selected via URL but the System Logs toggle is off, the tier chip stays visible so the user has a way to remove it — otherwise it would filter silently with no affordance to clear.
+All are omitted when at their default (empty / `'0'`); `MemoryShell` wraps its content in `<Suspense>` per the hook contract. When a debug-only tier is currently selected via URL but the System Logs toggle is off, the tier chip stays visible so the user has a way to remove it — otherwise it would filter silently with no affordance to clear.
+
+## Exact-record deep link (`/record` + `?recordId=`)
+
+⌘K memory hits deep-link to the exact clicked row (`/memory?recordId=<rowId>`), not a fuzzy re-search.
+
+- **Route** — `lib/routes/record.ts`: `GET /record?id=<rowId>` resolves a unified rowId (`<tier>:<hash>`; the `skill:` prefix maps to the **durable** tier, whose enumeration emits skill rows) by parsing the tier prefix and consuming the side-effect-free `enumerateTier()` generator until the key matches (lazy — stops at first hit). Deliberately search-engine-independent: the deep link resolves even when antfly is down. 400 on malformed/unknown-prefix ids, 404 on no match. Response is SearchResult-shaped (`{ result: { id, table, fields, score } }`) for direct drawer consumption.
+- **Client** — `components/use-record-deep-link.ts` (`useRecordDeepLink`): `?recordId=` drives `MemoryDetailDrawer`. Rows already on screen (or handed over by a list click via `open()`) skip the fetch; off-screen ids fetch `/record`; a miss renders an honest "Memory record not found — it may have been pruned." notice (`data-testid="memory-record-error"`) — never a silent fuzzy-search fallback. List clicks route through the same param, so refresh and back-button work everywhere the drawer opens.
+- **Settings extraction** — `lib/settings.ts` holds `MemorySettings`, `DEFAULTS`, and `resolveIndexerOptions(ctx)` shared by `activate()` and the route (avoids a routes → index import cycle and keeps retention filters identical between live indexing and record resolution).
