@@ -153,6 +153,32 @@ export function configuredDynamicCaps(): DynamicCap[] {
   ]
 }
 
+export interface TaskDispatchEstimate {
+  totalBytes: number
+  components: Array<{ source: string; bytes: number }>
+}
+
+/**
+ * Static task-dispatch sections + task-applicable dynamic caps — the ONE
+ * arithmetic behind both the report's estimatedMaxTaskBytes and the doctor's
+ * context.startup-size check (anti-drift, same pattern as evaluateBudget).
+ */
+export function estimateMaxTaskDispatchBytes(
+  agentId: string,
+  mainAgentId: string,
+  contentDir: string,
+): TaskDispatchEstimate {
+  const sections = estimate(
+    buildDispatchSections({ id: SYNTHETIC_TASK_ID, title: '', agent: agentId }, agentId, contentDir, mainAgentId),
+  )
+  const caps = configuredDynamicCaps().filter((c) => c.appliesTo !== 'workflow')
+  const components = [
+    ...sections.map((s) => ({ source: s.source, bytes: s.bytes })),
+    ...caps.map((c) => ({ source: `${c.source} (cap)`, bytes: c.maxBytes })),
+  ]
+  return { totalBytes: components.reduce((n, c) => n + c.bytes, 0), components }
+}
+
 async function collectWorkspace(
   runtime: Pick<AgentRuntimeAdapter, 'agents'>,
   agentId: string,
@@ -220,9 +246,7 @@ export async function buildAgentContextReport(
       task,
       workflow: { sections: sections.workflow, ...totals(sections.workflow) },
       dynamicCaps,
-      estimatedMaxTaskBytes:
-        task.totalBytes +
-        dynamicCaps.filter((c) => c.appliesTo !== 'workflow').reduce((n, c) => n + c.maxBytes, 0),
+      estimatedMaxTaskBytes: estimateMaxTaskDispatchBytes(agentId, mainAgentId, contentDir).totalBytes,
     },
     workspace: await collectWorkspace(runtime, agentId),
     observed: { label: OBSERVED_LABEL, runs: collectObserved(agentId) },

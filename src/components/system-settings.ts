@@ -95,6 +95,13 @@ export const SYSTEM_SETTINGS_SCHEMA: PluginSettingsSchema = {
       description: 'Byte budget for prior-step outputs injected into workflow dispatch prompts. Newest outputs are kept whole; older ones are omitted with a visible marker (agents fetch full history on demand). Default 16384; minimum 1024.',
       default: 16384,
     },
+    {
+      key: 'dispatch.contextBudgetBytes',
+      type: 'number',
+      label: 'Startup context warn budget (bytes)',
+      description: 'Doctor warn threshold for estimated Bakin-injected per-dispatch context per agent (static prompt sections + configured caps). Warn-only — dispatch is never blocked. Default 65536.',
+      default: 65536,
+    },
   ],
 }
 

@@ -158,6 +158,8 @@ mock.module('../../../src/core/search-registry', () => ({
   })),
   getContentTypes: mock(() => []),
   purgeContentType: mock(async () => {}),
+  // context.startup-size check → context-report → lesson-retrieval imports this.
+  crossTableSearch: mock(async () => ({ results: [] })),
   // plugin-registry.ts can be reached by core agent-rules when rendering
   // workflow catalog snapshots; provide a no-op search API stub.
   buildSearchAPI: () => ({
@@ -177,6 +179,8 @@ const taskStoreMock = {
   addTaskLog: mock(async () => {}),
   blockTask: mock(async () => {}),
   moveTask: mock(async () => {}),
+  // context.startup-size check → context-report → dispatch-workflow graph.
+  updateTask: mock(async () => {}),
 }
 // Defensive stub — the test isolation hook scans for plugin refs in text
 // and flags any mention of plugins/tasks even though we never import the
