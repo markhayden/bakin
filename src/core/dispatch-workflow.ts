@@ -104,7 +104,9 @@ export async function dispatchWorkflowTask(
     // Assets are linked to the PARENT task id (decomposition guidance tells
     // agents to save against the parent), so resolve by task.id, not contextTaskId.
     const wfAssetsBlock = await buildDispatchAssetBlock(task.id)
-    const message = buildWorkflowDispatchMessage({ ...task, id: contextTaskId }, ctx, agent, lessonBlock, wfRecovery, wfAssetsBlock)
+    const message = buildWorkflowDispatchMessage({ ...task, id: contextTaskId }, ctx, agent, lessonBlock, wfRecovery, wfAssetsBlock, {
+      maxWorkflowContextBytes: getSettings().dispatch.maxWorkflowContextBytes,
+    })
     const initialLogCount = findDispatchTaskSnapshot(task.id)?.task.log?.length ?? 0
 
     const gate = concurrencyGate(targetAgent, getSettings())
@@ -163,6 +165,84 @@ export async function dispatchWorkflowTask(
  *
  * @internal Exported for testing and the context-report diagnostics.
  */
+const WORKFLOW_CONTEXT_DEFAULT_BUDGET = 16384
+const WORKFLOW_CONTEXT_MIN_BUDGET = 1024
+
+/** @internal Clamp dispatch.maxWorkflowContextBytes: unset/0/invalid → default, floor at the minimum. */
+export function resolveWorkflowContextBudget(raw?: number): number {
+  if (raw === undefined || !Number.isFinite(raw) || raw <= 0) return WORKFLOW_CONTEXT_DEFAULT_BUDGET
+  return Math.max(Math.floor(raw), WORKFLOW_CONTEXT_MIN_BUDGET)
+}
+
+/**
+ * Render the WORKFLOW CONTEXT block under a byte budget (#357). Retention:
+ * newest step outputs first, whole outputs only (never mid-JSON truncation),
+ * the most recent output is ALWAYS kept (a cap that starves the current step
+ * of its direct input is worse than a soft overrun), __parentContext
+ * title/description lines are always kept and its JSON body is budgeted at
+ * the LOWEST priority. Omissions are visible markers pointing at
+ * bakin_exec_workflows_get_instance — never silent. Under the budget the
+ * output is byte-identical to the uncapped rendering (pinned by the
+ * workflow-full prompt fixture).
+ */
+function buildWorkflowContextGroupLines(
+  stepOutputs: Record<string, Record<string, unknown>>,
+  maxBytes: number,
+): string[] {
+  const intro = ['## WORKFLOW CONTEXT', '', 'All completed step outputs from this workflow. Use as context for your work:', '']
+  const bytesOf = (parts: string[]): number => Buffer.byteLength(parts.join('\n'), 'utf-8')
+
+  const entries = Object.entries(stepOutputs).map(([sid, output]) => {
+    if (sid === '__parentContext' && output && typeof output === 'object') {
+      const ctx = output as Record<string, unknown>
+      const head = ['### Parent Workflow (upstream handoff)']
+      if (ctx._parentTaskTitle) head.push(`**Parent Task:** ${ctx._parentTaskTitle}`)
+      if (ctx._parentTaskDescription) head.push(`**Description:** ${ctx._parentTaskDescription}`)
+      const rest = Object.fromEntries(Object.entries(ctx).filter(([k]) => !k.startsWith('_parent')))
+      const body = Object.keys(rest).length > 0 ? ['```json', JSON.stringify(rest, null, 2), '```'] : []
+      return { sid, parent: true, head, body }
+    }
+    const label = sid === '__parentContext' ? 'Parent Workflow (upstream handoff)' : `Step: ${sid}`
+    return { sid, parent: sid === '__parentContext', head: [`### ${label}`], body: ['```json', JSON.stringify(output, null, 2), '```'] }
+  })
+
+  const nonParent = entries.filter((e) => !e.parent)
+  const parent = entries.find((e) => e.parent)
+
+  let budget = maxBytes - bytesOf(intro)
+  if (parent) budget -= bytesOf([...parent.head, '']) // parent meta lines: always kept
+  const kept = new Set<string>()
+  for (let i = nonParent.length - 1; i >= 0; i--) {
+    const e = nonParent[i]
+    const cost = bytesOf([...e.head, ...e.body, ''])
+    if (i === nonParent.length - 1 || cost <= budget) {
+      kept.add(e.sid)
+      budget -= cost
+    }
+  }
+  const parentBodyKept = parent !== undefined && parent.body.length > 0 && bytesOf(parent.body) <= budget
+
+  const omitted = nonParent.length - kept.size
+  const lines = [...intro]
+  if (omitted > 0) {
+    lines.push(`(${omitted} earlier step output${omitted === 1 ? '' : 's'} omitted to fit the dispatch.maxWorkflowContextBytes budget — fetch the full history with bakin_exec_workflows_get_instance)`)
+    lines.push('')
+  }
+  for (const e of entries) {
+    if (e.parent) {
+      lines.push(...e.head)
+      if (e.body.length > 0) {
+        if (parentBodyKept) lines.push(...e.body)
+        else lines.push('(upstream handoff data omitted to fit the dispatch.maxWorkflowContextBytes budget — fetch it with bakin_exec_workflows_get_instance)')
+      }
+      lines.push('')
+    } else if (kept.has(e.sid)) {
+      lines.push(...e.head, ...e.body, '')
+    }
+  }
+  return lines
+}
+
 export function buildWorkflowDispatchSections(
   task: { id: string; title: string; description?: string },
   stepContext: {
@@ -181,6 +261,7 @@ export function buildWorkflowDispatchSections(
   lessonBlock = '',
   recovery?: SessionDeathState,
   assetsBlock = '',
+  opts: { maxWorkflowContextBytes?: number } = {},
 ): PromptSection[] {
   // Sections are groups of lines; the message is section texts joined by
   // '\n', byte-identical to joining all lines directly (empty groups are
@@ -248,39 +329,15 @@ export function buildWorkflowDispatchSections(
   }
   flush('revision')
 
-  // ─── Workflow Context (all prior step outputs) ─────────────────────
+  // ─── Workflow Context (prior step outputs, byte-budgeted) ──────────
   if (stepContext.stepOutputs && Object.keys(stepContext.stepOutputs).length > 0) {
-    lines.push('## WORKFLOW CONTEXT')
-    lines.push('')
-    lines.push('All completed step outputs from this workflow. Use as context for your work:')
-    lines.push('')
-    for (const [sid, output] of Object.entries(stepContext.stepOutputs)) {
-      const label = sid === '__parentContext' ? 'Parent Workflow (upstream handoff)' : `Step: ${sid}`
-      lines.push(`### ${label}`)
-      // Surface parent task metadata prominently for child workflows
-      if (sid === '__parentContext' && output && typeof output === 'object') {
-        const ctx = output as Record<string, unknown>
-        if (ctx._parentTaskTitle) {
-          lines.push(`**Parent Task:** ${ctx._parentTaskTitle}`)
-        }
-        if (ctx._parentTaskDescription) {
-          lines.push(`**Description:** ${ctx._parentTaskDescription}`)
-        }
-        // Show remaining output data (excluding internal metadata keys)
-        const rest = Object.fromEntries(Object.entries(ctx).filter(([k]) => !k.startsWith('_parent')))
-        if (Object.keys(rest).length > 0) {
-          lines.push('```json')
-          lines.push(JSON.stringify(rest, null, 2))
-          lines.push('```')
-        }
-      } else {
-        lines.push('```json')
-        lines.push(JSON.stringify(output, null, 2))
-        lines.push('```')
-      }
-      lines.push('')
-    }
+    lines.push(...buildWorkflowContextGroupLines(
+      stepContext.stepOutputs,
+      resolveWorkflowContextBudget(opts.maxWorkflowContextBytes),
+    ))
   } else if (stepContext.priorStepOutput) {
+    // A single prior output IS the newest output — always kept whole, same
+    // rule the budgeted path applies to its most recent entry.
     lines.push('## PRIOR STEP OUTPUT')
     lines.push('')
     lines.push('The previous step in this workflow produced the following output. Use this as context for your work:')
@@ -388,8 +445,9 @@ export function buildWorkflowDispatchMessage(
   lessonBlock = '',
   recovery?: SessionDeathState,
   assetsBlock = '',
+  opts: { maxWorkflowContextBytes?: number } = {},
 ): string {
-  return buildWorkflowDispatchSections(task, stepContext, agentName, lessonBlock, recovery, assetsBlock)
+  return buildWorkflowDispatchSections(task, stepContext, agentName, lessonBlock, recovery, assetsBlock, opts)
     .map((s) => s.text)
     .join('\n')
 }

@@ -93,11 +93,14 @@ describe('buildAgentContextReport', () => {
     const report = await buildAgentContextReport('jessica', { ...DEPS, runtime: fakeRuntime([]) })
     expect(report.dispatch.dynamicCaps).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ source: 'lessons', maxBytes: 8000, setting: 'agentPackages.lessonsRetrieval.maxCharacters' }),
+        expect.objectContaining({ source: 'lessons', maxBytes: 8000, setting: 'agentPackages.lessonsRetrieval.maxCharacters', appliesTo: 'both' }),
+        expect.objectContaining({ source: 'workflow-context', maxBytes: 16384, setting: 'dispatch.maxWorkflowContextBytes', appliesTo: 'workflow' }),
       ]),
     )
+    // Workflow-only caps never inflate the TASK dispatch estimate.
     expect(report.dispatch.estimatedMaxTaskBytes).toBe(
-      report.dispatch.task.totalBytes + report.dispatch.dynamicCaps.reduce((n, c) => n + c.maxBytes, 0),
+      report.dispatch.task.totalBytes +
+        report.dispatch.dynamicCaps.filter((c) => c.appliesTo !== 'workflow').reduce((n, c) => n + c.maxBytes, 0),
     )
   })
 

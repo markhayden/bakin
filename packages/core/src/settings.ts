@@ -101,6 +101,13 @@ export interface BakinSettings {
      * validates provider-gateway per-agent concurrency.
      */
     maxTurnsPerAgent: number
+    /**
+     * Byte budget for the WORKFLOW CONTEXT block (prior step outputs) in
+     * workflow-step dispatch prompts (#357). Newest outputs are kept whole;
+     * older ones are omitted with a visible marker. 0/unset → default;
+     * clamped to a 1024-byte minimum.
+     */
+    maxWorkflowContextBytes: number
   }
   watchdog: {
     intervalMs: number
@@ -264,6 +271,7 @@ export const DEFAULT_SETTINGS: BakinSettings = {
     oversizedOutputBytes: 128 * 1024,
     maxConcurrentTurns: 3,
     maxTurnsPerAgent: 1,
+    maxWorkflowContextBytes: 16 * 1024,
   },
   watchdog: {
     intervalMs: 5 * 60 * 1000,

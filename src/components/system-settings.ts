@@ -87,6 +87,14 @@ export const SYSTEM_SETTINGS_SCHEMA: PluginSettingsSchema = {
       description: 'Suppress duplicate MCP alerts within this window. Default 300000 (5 min).',
       default: 300000,
     },
+    // ── Startup context (#357) ────────────────────────────────────────
+    {
+      key: 'dispatch.maxWorkflowContextBytes',
+      type: 'number',
+      label: 'Workflow context budget (bytes)',
+      description: 'Byte budget for prior-step outputs injected into workflow dispatch prompts. Newest outputs are kept whole; older ones are omitted with a visible marker (agents fetch full history on demand). Default 16384; minimum 1024.',
+      default: 16384,
+    },
   ],
 }
 

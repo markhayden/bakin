@@ -21,7 +21,7 @@ import { createLogger } from './logger'
 import { getSettings } from './settings'
 import { getContentDir } from './content-dir'
 import { buildDispatchSections } from './dispatch-prompts'
-import { buildWorkflowDispatchSections } from './dispatch-workflow'
+import { buildWorkflowDispatchSections, resolveWorkflowContextBudget } from './dispatch-workflow'
 import { normalizeLessonRetrievalSettings } from './agent-packages/lesson-retrieval'
 import { readReceipt } from './agent-packages/receipts'
 import { recentRunsByAgent } from './execution-ledger'
@@ -48,6 +48,8 @@ export interface DynamicCap {
   maxBytes: number
   /** settings.json path that owns this cap. */
   setting: string
+  /** Which dispatch variant the capped block appears in. */
+  appliesTo: 'task' | 'workflow' | 'both'
 }
 
 export interface WorkspaceFileReport {
@@ -133,12 +135,20 @@ export function estimateDispatchSections(
 
 /** Configured caps for the dynamic prompt blocks (a cap of 0 = injection disabled). */
 export function configuredDynamicCaps(): DynamicCap[] {
-  const lessons = normalizeLessonRetrievalSettings(getSettings().agentPackages?.lessonsRetrieval)
+  const settings = getSettings()
+  const lessons = normalizeLessonRetrievalSettings(settings.agentPackages?.lessonsRetrieval)
   return [
     {
       source: 'lessons',
       maxBytes: lessons.enabled && lessons.injectIntoDispatch ? lessons.maxCharacters : 0,
       setting: 'agentPackages.lessonsRetrieval.maxCharacters',
+      appliesTo: 'both',
+    },
+    {
+      source: 'workflow-context',
+      maxBytes: resolveWorkflowContextBudget(settings.dispatch?.maxWorkflowContextBytes),
+      setting: 'dispatch.maxWorkflowContextBytes',
+      appliesTo: 'workflow',
     },
   ]
 }
@@ -210,7 +220,9 @@ export async function buildAgentContextReport(
       task,
       workflow: { sections: sections.workflow, ...totals(sections.workflow) },
       dynamicCaps,
-      estimatedMaxTaskBytes: task.totalBytes + dynamicCaps.reduce((n, c) => n + c.maxBytes, 0),
+      estimatedMaxTaskBytes:
+        task.totalBytes +
+        dynamicCaps.filter((c) => c.appliesTo !== 'workflow').reduce((n, c) => n + c.maxBytes, 0),
     },
     workspace: await collectWorkspace(runtime, agentId),
     observed: { label: OBSERVED_LABEL, runs: collectObserved(agentId) },
