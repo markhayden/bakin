@@ -521,9 +521,25 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
       }
     }
 
+    // Unmatched /api/* paths are hard 404s for every method — API clients
+    // must never receive the SPA shell with a 200, and non-GET requests must
+    // never fall through unanswered.
+    if (url.pathname.startsWith('/api/')) {
+      res.writeHead(404, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: 'Not found', path: url.pathname }))
+      return
+    }
+
     // Serve the packages/host client bundle + SPA fallback for any unmatched
-    // path. TanStack Router handles route dispatch client-side.
-    serveHostClient(req, res, url).catch((err) => {
+    // path. TanStack Router handles route dispatch client-side. serveHostClient
+    // declines non-GET/HEAD requests (returns false) — answer those with a 404
+    // instead of leaving the connection hanging.
+    serveHostClient(req, res, url).then((handled) => {
+      if (!handled && !res.headersSent) {
+        res.writeHead(404, { 'Content-Type': 'text/plain' })
+        res.end('Not found')
+      }
+    }).catch((err) => {
       log.error('Static serve failed', err, { path: url.pathname })
       if (!res.headersSent) {
         res.writeHead(500, { 'Content-Type': 'text/plain' })
