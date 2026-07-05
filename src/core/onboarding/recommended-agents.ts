@@ -1,8 +1,8 @@
-import curatedCatalog from '../../../packages/host/src/data/curated-agents.json'
 import { readLockfile } from '../../../packages/core/src/agent-packages/lockfile'
 import { getAgentState, type AgentState } from '../agent-packages/agent-state'
 import { installPackage } from '../agent-packages/installer'
-import { loadCuratedCatalog } from './curated-catalog'
+import { loadUnifiedCatalog, staticCuratedCatalog } from '../curated-catalog/load'
+import type { CatalogEntry } from '../curated-catalog/schema'
 import type { CheckResult, InstallResult, OnboardingComponent, OnboardingOptions } from './types'
 
 export interface RecommendedAgent {
@@ -16,49 +16,33 @@ export interface RecommendedAgent {
   defaultSelected: boolean
 }
 
-interface CuratedAgentRow {
-  id: string
-  name: string
-  description: string
-  tags?: string[]
-  source: string
-  ref?: string | null
-  trust?: 'official' | 'verified' | 'community'
-  defaultSelected?: boolean
-}
-
 interface AgentInstallCandidate {
   agent: RecommendedAgent
   state: AgentState
 }
 
-function normalizeCatalog(rows: readonly CuratedAgentRow[]): RecommendedAgent[] {
-  return rows
-    .filter(agent => agent.trust === undefined || agent.trust === 'official')
-    .map(agent => ({
-      id: agent.id,
-      name: agent.name,
-      description: agent.description,
-      tags: agent.tags ?? [],
-      source: agent.source,
-      ref: agent.ref ?? null,
-      trust: agent.trust ?? 'official',
-      defaultSelected: agent.defaultSelected === true,
+function normalizeCatalog(entries: readonly CatalogEntry[]): RecommendedAgent[] {
+  return entries
+    .filter(entry => entry.kind === 'agent' && !entry.builtin && entry.trust === 'official')
+    .filter(entry => entry.source !== undefined)
+    .map(entry => ({
+      id: entry.id,
+      name: entry.name,
+      description: entry.description,
+      tags: entry.tags,
+      source: entry.source!,
+      ref: entry.ref,
+      trust: entry.trust,
+      defaultSelected: entry.defaultSelected,
     }))
 }
 
 function staticCatalogAgents(): RecommendedAgent[] {
-  const rows = (curatedCatalog as { agents?: CuratedAgentRow[] }).agents ?? []
-  return normalizeCatalog(rows)
+  return normalizeCatalog(staticCuratedCatalog().entries)
 }
 
 async function catalogAgents(): Promise<RecommendedAgent[]> {
-  const catalog = await loadCuratedCatalog<{ agents?: CuratedAgentRow[] }>(
-    curatedCatalog,
-    '/data/curated-agents.json',
-    'agents',
-  )
-  return normalizeCatalog(catalog.agents ?? [])
+  return normalizeCatalog((await loadUnifiedCatalog()).entries)
 }
 
 function sourceWithRef(source: string, ref: string | null): string {

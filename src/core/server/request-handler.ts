@@ -47,7 +47,6 @@ import * as execToolsRoute from '../../../packages/host/src/api/exec-tools/[tool
 import * as packagesListRoute from '../../../packages/host/src/api/packages/list'
 import * as packagesInstallRoute from '../../../packages/host/src/api/packages/install'
 import * as packagesDynamicRoute from '../../../packages/host/src/api/packages/dynamic'
-import * as curatedListRoute from '../../../packages/host/src/api/curated/list'
 import * as pluginsMemoryAuditRoute from '../../../packages/host/src/api/plugins/memory/audit'
 import * as pluginsMemoryWorkspaceRoute from '../../../packages/host/src/api/plugins/memory/workspace'
 import * as stateRoute from '../../../packages/host/src/api/state'
@@ -340,12 +339,6 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
     }
     if (url.pathname.startsWith('/api/packages/') && url.pathname !== '/api/packages/install') {
       dispatchWebHandler(req, res, packagesDynamicRoute.handler)
-      return
-    }
-
-    // ─── Curated catalog (binary-embedded suggestions) ───────────────
-    if (url.pathname === '/api/curated' && req.method === 'GET') {
-      dispatchWebHandler(req, res, curatedListRoute.get)
       return
     }
 

@@ -1,0 +1,274 @@
+{
+  "version": 2,
+  "updatedAt": "2026-07-04T00:00:00Z",
+  "entries": [
+    {
+      "id": "pixel",
+      "kind": "agent",
+      "name": "Pixel",
+      "emoji": "🎨",
+      "description": "Image artist agent. Crafts prompts, iterates on outputs, owns visual quality.",
+      "category": "Creative",
+      "tags": ["creative", "image", "design"],
+      "useCases": [
+        "Generate on-brand social and marketing images",
+        "Iterate on visual concepts until they land",
+        "Own image quality across your asset library"
+      ],
+      "source": "github:markhayden/bakin-bits-official#agents/pixel",
+      "ref": null,
+      "trust": "official"
+    },
+    {
+      "id": "rolo",
+      "kind": "agent",
+      "name": "Rolo",
+      "emoji": "🎬",
+      "description": "Video producer agent. Generates video + audio, mixes finished assets.",
+      "category": "Creative",
+      "tags": ["creative", "video", "audio"],
+      "useCases": [
+        "Produce short-form video from a brief",
+        "Generate and mix audio tracks",
+        "Assemble finished cuts into your asset library"
+      ],
+      "source": "github:markhayden/bakin-bits-official#agents/rolo",
+      "ref": null,
+      "trust": "official"
+    },
+    {
+      "id": "jessica",
+      "kind": "agent",
+      "name": "Jessica",
+      "emoji": "🔎",
+      "description": "Research agent — multi-source discovery, evidence gathering, synthesis support.",
+      "category": "Research",
+      "tags": ["research", "synthesis"],
+      "useCases": [
+        "Deep-dive a market, competitor, or topic",
+        "Gather and cross-check evidence from many sources",
+        "Turn raw findings into a synthesized brief"
+      ],
+      "source": "github:markhayden/bakin-bits-official#agents/jessica",
+      "ref": null,
+      "trust": "official"
+    },
+    {
+      "id": "patch",
+      "kind": "agent",
+      "name": "Patch",
+      "emoji": "⚙️",
+      "description": "Developer agent — API integrations, automation, debugging, tool extensions.",
+      "category": "Engineering",
+      "tags": ["dev", "automation"],
+      "useCases": [
+        "Wire up API integrations and webhooks",
+        "Automate repetitive technical chores",
+        "Debug failures and extend agent tooling"
+      ],
+      "source": "github:markhayden/bakin-bits-official#agents/patch",
+      "ref": null,
+      "trust": "official"
+    },
+    {
+      "id": "enrich",
+      "kind": "agent",
+      "name": "H'enrich",
+      "emoji": "🔍",
+      "description": "Vision utility agent — captions, OCR, and tags for asset search. Powers zero-config enrichment; not dispatchable, no channels.",
+      "category": "Utilities",
+      "tags": ["utility", "vision", "enrichment"],
+      "useCases": [
+        "Auto-caption and tag every image you save",
+        "OCR screenshots so their text is searchable",
+        "Keep asset search rich without lifting a finger"
+      ],
+      "source": "github:markhayden/bakin-bits-official#agents/enrich",
+      "ref": null,
+      "trust": "official",
+      "defaultSelected": true
+    },
+    {
+      "id": "messaging",
+      "kind": "plugin",
+      "name": "Messaging",
+      "emoji": "✉️",
+      "description": "Content planning, calendar items, brainstorming sessions, approvals, and channel delivery.",
+      "category": "Content",
+      "tags": ["content", "calendar", "approvals"],
+      "useCases": [
+        "Plan a week of posts on a content calendar",
+        "Route drafts through an approval gate",
+        "Deliver approved content to channels"
+      ],
+      "source": "github:markhayden/bakin-bits-official#plugins/messaging",
+      "ref": null,
+      "trust": "official",
+      "dependencies": ["team", "workflows"],
+      "defaultSelected": true
+    },
+    {
+      "id": "projects",
+      "kind": "plugin",
+      "name": "Projects",
+      "emoji": "🗂️",
+      "description": "Project specs, checklists, task links, assets, and project-context agent tools.",
+      "category": "Operations",
+      "tags": ["projects", "specs", "checklists"],
+      "useCases": [
+        "Keep specs, checklists, and tasks in one place",
+        "Link agent work back to the project it serves",
+        "Give agents project context automatically"
+      ],
+      "source": "github:markhayden/bakin-bits-official#plugins/projects",
+      "ref": null,
+      "trust": "official",
+      "dependencies": ["tasks", "assets", "team"],
+      "defaultSelected": true
+    },
+    {
+      "id": "team",
+      "kind": "plugin",
+      "name": "Team",
+      "emoji": "🧑‍🤝‍🧑",
+      "description": "Your agent roster — identities, packages, lessons, teams, and live status.",
+      "category": "Platform",
+      "tags": ["agents", "roster"],
+      "useCases": [
+        "Meet your team and see who's working",
+        "Adopt existing agents under package management",
+        "Enable lessons that sharpen an agent's craft"
+      ],
+      "trust": "official",
+      "builtin": true
+    },
+    {
+      "id": "tasks",
+      "kind": "plugin",
+      "name": "Tasks",
+      "emoji": "✅",
+      "description": "Dispatch work to agents and track progress in real time.",
+      "category": "Platform",
+      "tags": ["tasks", "dispatch"],
+      "useCases": [
+        "Hand an agent a job and watch it run",
+        "Track everything in flight on one board",
+        "Review results and completions with full history"
+      ],
+      "trust": "official",
+      "builtin": true
+    },
+    {
+      "id": "memory",
+      "kind": "plugin",
+      "name": "Memory",
+      "emoji": "🧠",
+      "description": "Read-only observability over agent memory tiers plus targeted cleanup flows.",
+      "category": "Platform",
+      "tags": ["memory", "observability"],
+      "useCases": [
+        "See what your agents actually remember",
+        "Hunt down a stale fact across every tier",
+        "Dispatch cleanup tasks agents perform themselves"
+      ],
+      "trust": "official",
+      "builtin": true
+    },
+    {
+      "id": "models",
+      "kind": "plugin",
+      "name": "Models",
+      "emoji": "🤖",
+      "description": "Model configuration and aliases for every agent.",
+      "category": "Platform",
+      "tags": ["models", "config"],
+      "useCases": [
+        "Pick the right model per agent and per job",
+        "Manage aliases so upgrades are one edit",
+        "See which models are available right now"
+      ],
+      "trust": "official",
+      "builtin": true
+    },
+    {
+      "id": "assets",
+      "kind": "plugin",
+      "name": "Assets",
+      "emoji": "🖼️",
+      "description": "Versioned asset store with enrichment, exports, and search.",
+      "category": "Content",
+      "tags": ["assets", "files"],
+      "useCases": [
+        "Keep every deliverable versioned in one place",
+        "Auto-enrich images with captions, OCR, and tags",
+        "Export exactly the version you need"
+      ],
+      "trust": "official",
+      "builtin": true
+    },
+    {
+      "id": "workflows",
+      "kind": "plugin",
+      "name": "Workflows",
+      "emoji": "🔁",
+      "description": "Multi-step agent workflows with gates, approvals, and skills.",
+      "category": "Automation",
+      "tags": ["workflows", "automation"],
+      "useCases": [
+        "Chain agents through multi-step processes",
+        "Add human approval gates where it matters",
+        "Reuse workflow skills across projects"
+      ],
+      "trust": "official",
+      "builtin": true
+    },
+    {
+      "id": "schedule",
+      "kind": "plugin",
+      "name": "Schedule",
+      "emoji": "⏰",
+      "description": "Cron-scheduled Bakin tasks with a calendar view.",
+      "category": "Automation",
+      "tags": ["schedule", "cron"],
+      "useCases": [
+        "Run recurring jobs on a cron schedule",
+        "See the week's automated work at a glance",
+        "Fire exactly once — the execution ledger guarantees it"
+      ],
+      "trust": "official",
+      "builtin": true
+    },
+    {
+      "id": "health",
+      "kind": "plugin",
+      "name": "Health",
+      "emoji": "🩺",
+      "description": "System health dashboard — diagnostics, usage, and doctor repairs.",
+      "category": "Platform",
+      "tags": ["health", "diagnostics"],
+      "useCases": [
+        "Check the whole system's pulse in one page",
+        "Run doctor checks and apply safe repairs",
+        "Watch token usage and costs over time"
+      ],
+      "trust": "official",
+      "builtin": true
+    },
+    {
+      "id": "explore",
+      "kind": "plugin",
+      "name": "Explore",
+      "emoji": "🧭",
+      "description": "This storefront — discover and install official agents, plugins, and packs.",
+      "category": "Platform",
+      "tags": ["discovery", "install"],
+      "useCases": [
+        "Browse everything official by category",
+        "Install agents and plugins without a terminal",
+        "Spot update-available badges at a glance"
+      ],
+      "trust": "official",
+      "builtin": true
+    }
+  ]
+}

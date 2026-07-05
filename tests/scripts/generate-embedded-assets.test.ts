@@ -44,7 +44,7 @@ seed('plugins/alpha/dist/client.js')
 seed('plugins/alpha/dist/client.css')
 seed('plugins/alpha/dist/SKILL-abc123.md')             // stray server-build artifact
 seed('plugins/beta/dist/index.js')                     // server-only plugin
-seed('packages/host/src/data/curated-agents.json', '[]')
+seed('packages/host/src/data/curated-catalog.json', '[]')
 
 afterAll(() => rmSync(root, { recursive: true, force: true }))
 
@@ -58,7 +58,7 @@ describe('collectAssets', () => {
     expect(urls).toContain('/vendor/react.js')
     expect(urls).toContain('/api/plugins/alpha/assets/client.js')
     expect(urls).toContain('/api/plugins/alpha/assets/client.css')
-    expect(urls).toContain('/data/curated-agents.json')
+    expect(urls).toContain('/data/curated-catalog.json')
   })
 
   it('excludes core plugin server bundles and stray dist artifacts (#421 allowlist)', () => {
@@ -113,7 +113,7 @@ describe('collectAssets', () => {
       urls.indexOf('/globals.css'),
       urls.indexOf('/vendor/react.js'),
       urls.indexOf('/api/plugins/alpha/assets/client.js'),
-      urls.indexOf('/data/curated-agents.json'),
+      urls.indexOf('/data/curated-catalog.json'),
     ]
     expect(order.every(i => i >= 0)).toBe(true)
     expect([...order].sort((a, b) => a - b)).toEqual(order)
