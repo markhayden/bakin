@@ -113,17 +113,45 @@ function setWatchdogColumns(columns: Partial<WatchdogColumns>): void {
   currentWatchdogColumns = { ...emptyWatchdogColumns(), ...columns }
 }
 
+// getTask backs the orphan-turn sweep's store-existence check (#604): any
+// task present in ANY column exists; only missing ids are orphans.
+function lookupWatchdogTask(id: string): WatchdogTask | null {
+  for (const column of Object.values(currentWatchdogColumns)) {
+    const found = column.find((t) => t.id === id)
+    if (found) return found
+  }
+  return null
+}
+
 mock.module('../../src/core/task-store', () => ({
   readTaskboard: mock(() => ({ columns: currentWatchdogColumns })),
+  getTask: (id: string) => lookupWatchdogTask(id),
   addTaskLog: (...args: unknown[]) => mockStoreAddTaskLog(...args),
   blockTask: (...args: unknown[]) => mockStoreBlockTask(...args),
   moveTask: (...args: unknown[]) => mockStoreMoveTask(...args),
 }))
 mock.module('@/core/task-store', () => ({
   readTaskboard: mock(() => ({ columns: currentWatchdogColumns })),
+  getTask: (id: string) => lookupWatchdogTask(id),
   addTaskLog: (...args: unknown[]) => mockStoreAddTaskLog(...args),
   blockTask: (...args: unknown[]) => mockStoreBlockTask(...args),
   moveTask: (...args: unknown[]) => mockStoreMoveTask(...args),
+}))
+
+// In-flight turn registry mock for the orphan sweep (#604).
+type TurnSnapshot = { marker: string; agentId: string; taskId: string; threadId: string; startedAt: number; abortedAt?: number }
+let turnsSnapshot: TurnSnapshot[] = []
+let snapshotThrows = false
+const abortTurnsSpy = mock((_taskId: string, _reason: string) => 1)
+const forceReleaseSpy = mock((_marker: string) => true)
+mock.module('../../src/core/dispatch-turns', () => ({
+  getInFlightTurnsSnapshot: () => {
+    if (snapshotThrows) throw new Error('registry exploded')
+    return turnsSnapshot
+  },
+  abortTurnsForTask: (...args: unknown[]) => abortTurnsSpy(...(args as [string, string])),
+  forceReleaseTurn: (...args: unknown[]) => forceReleaseSpy(...(args as [string])),
+  ORPHAN_TURN_FORCE_RELEASE_GRACE_MS: 60_000,
 }))
 
 mock.module('../../src/core/plugin-registry', () => ({
@@ -162,6 +190,9 @@ describe('watchdog', () => {
     mockRuntimeSend.mockResolvedValue({ id: 'runtime-msg' })
     mockRuntimeChannelSend.mockResolvedValue({ deliveries: [] })
     setWatchdogColumns({})
+    turnsSnapshot = []
+    snapshotThrows = false
+    forceReleaseSpy.mockReturnValue(true)
   })
 
   afterEach(() => {
@@ -186,6 +217,87 @@ describe('watchdog', () => {
       start(tempDir)
       stop()
       expect(() => stop()).not.toThrow()
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // Orphan turn sweep (#604)
+  // -------------------------------------------------------------------------
+
+  describe('orphan turn sweep', () => {
+    const baseTurn = { agentId: 'pixel', threadId: 'task:ghost-1:d1', startedAt: 0 }
+
+    it('aborts a turn whose task no longer exists in the store', async () => {
+      turnsSnapshot = [{ ...baseTurn, marker: 'ghost-1', taskId: 'ghost-1' }]
+
+      start(tempDir)
+      await vi.advanceTimersByTimeAsync(1500)
+
+      expect(abortTurnsSpy).toHaveBeenCalledWith('ghost-1', 'orphan-sweep')
+      expect(forceReleaseSpy).not.toHaveBeenCalled()
+    })
+
+    it('leaves turns alone when their task exists anywhere in the store (done column included)', async () => {
+      setWatchdogColumns({ done: [{ id: 'finished-1', title: 'Done task' }] })
+      turnsSnapshot = [{ ...baseTurn, marker: 'finished-1', taskId: 'finished-1' }]
+
+      start(tempDir)
+      await vi.advanceTimersByTimeAsync(1500)
+
+      expect(abortTurnsSpy).not.toHaveBeenCalled()
+      expect(forceReleaseSpy).not.toHaveBeenCalled()
+    })
+
+    it('force-releases an aborted orphan only after the grace period, with audit', async () => {
+      turnsSnapshot = [{ ...baseTurn, marker: 'ghost-2', taskId: 'ghost-2', abortedAt: Date.now() - 61_000 }]
+
+      start(tempDir)
+      await vi.advanceTimersByTimeAsync(1500)
+
+      expect(abortTurnsSpy).not.toHaveBeenCalled()
+      expect(forceReleaseSpy).toHaveBeenCalledWith('ghost-2')
+      expect(vi.mocked(appendAudit)).toHaveBeenCalledWith(
+        tempDir,
+        'task.turn_force_released',
+        'watchdog',
+        expect.objectContaining({ id: 'ghost-2', agent: 'pixel' }),
+      )
+    })
+
+    it('does not force-release inside the grace window', async () => {
+      turnsSnapshot = [{ ...baseTurn, marker: 'ghost-3', taskId: 'ghost-3', abortedAt: Date.now() - 5_000 }]
+
+      start(tempDir)
+      await vi.advanceTimersByTimeAsync(1500)
+
+      expect(abortTurnsSpy).not.toHaveBeenCalled()
+      expect(forceReleaseSpy).not.toHaveBeenCalled()
+    })
+
+    it('a sweep failure never breaks the watchdog tick (board scan still runs)', async () => {
+      snapshotThrows = true
+      setWatchdogColumns({
+        inProgress: [
+          {
+            id: 'task-1',
+            title: 'Stuck task',
+            agent: 'pixel',
+            log: [{ message: 'Started', timestamp: '2020-01-01T00:00:00Z' }],
+          },
+        ],
+      })
+      vi.mocked(isStale).mockReturnValue(false)
+      mkdirSync(join(tempDir, 'heartbeats'), { recursive: true })
+      writeFileSync(
+        join(tempDir, 'heartbeats', 'pixel.json'),
+        JSON.stringify({ timestamp: new Date().toISOString() }),
+      )
+
+      start(tempDir)
+      await vi.advanceTimersByTimeAsync(1500)
+
+      // The stuck-task alert still fired despite the sweep throwing.
+      expect(vi.mocked(broadcast)).toHaveBeenCalled()
     })
   })
 
