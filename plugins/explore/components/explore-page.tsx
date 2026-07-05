@@ -1,5 +1,5 @@
 import { Suspense, useMemo, useState } from 'react'
-import { Compass, Plus } from 'lucide-react'
+import { Compass, Plus, RefreshCw, Sparkles } from 'lucide-react'
 import { PluginHeader, EmptyState, ErrorBanner, FacetFilter, UnderlineTabs } from '@makinbakin/sdk/components'
 import { useJsonFetch, useQueryState, useQueryArrayState } from '@makinbakin/sdk/hooks'
 import { Button } from '@makinbakin/sdk/ui'
@@ -23,8 +23,34 @@ function ExplorePageInner() {
   const [selectedKey, setSelectedKey] = useQueryState('item')
   const [installOpen, setInstallOpen] = useState(false)
   const [installEntry, setInstallEntry] = useState<ExploreCatalogEntry | null>(null)
+  // Probe/refresh responses carry state the base GET can't reproduce
+  // (agent update probes are never persisted) — they override until the
+  // next base refetch.
+  const [override, setOverride] = useState<ExploreCatalogResponse | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [busyAction, setBusyAction] = useState<'check' | 'refresh' | null>(null)
 
-  const entries = useMemo(() => data?.entries ?? [], [data])
+  const runAction = async (action: 'check' | 'refresh') => {
+    setBusyAction(action)
+    setActionError(null)
+    try {
+      const res = action === 'check'
+        ? await fetch('/api/plugins/explore/catalog?check=1')
+        : await fetch('/api/plugins/explore/catalog/refresh', { method: 'POST' })
+      const body = (await res.json()) as ExploreCatalogResponse & { ok: boolean; error?: string; reason?: string }
+      if (!res.ok || !body.ok) {
+        setActionError(body.error ?? `HTTP ${res.status}`)
+        return
+      }
+      setOverride(body)
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  const entries = useMemo(() => override?.entries ?? data?.entries ?? [], [override, data])
   const hasPacks = entries.some((entry) => PACK_KINDS.has(entry.kind))
 
   const tabs = useMemo(() => {
@@ -69,22 +95,47 @@ function ExplorePageInner() {
         count={entries.length}
         subtitle="Do more with Bakin — official agents, plugins, and packs"
         actions={
-          <Button
-            variant="outline"
-            size="sm"
-            data-testid="install-from-source"
-            onClick={() => {
-              setInstallEntry(null)
-              setInstallOpen(true)
-            }}
-          >
-            <Plus className="mr-1.5 size-3.5" />
-            Install from source…
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              data-testid="refresh-catalog"
+              disabled={busyAction !== null}
+              onClick={() => runAction('refresh')}
+              title="Fetch the latest official catalog from GitHub"
+            >
+              <RefreshCw className={`mr-1.5 size-3.5 ${busyAction === 'refresh' ? 'animate-spin' : ''}`} />
+              Refresh catalog
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              data-testid="check-updates"
+              disabled={busyAction !== null}
+              onClick={() => runAction('check')}
+              title="Probe installed plugins and agents for available updates"
+            >
+              <Sparkles className="mr-1.5 size-3.5" />
+              {busyAction === 'check' ? 'Checking…' : 'Check for updates'}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              data-testid="install-from-source"
+              onClick={() => {
+                setInstallEntry(null)
+                setInstallOpen(true)
+              }}
+            >
+              <Plus className="mr-1.5 size-3.5" />
+              Install from source…
+            </Button>
+          </div>
         }
       />
 
       {error && <ErrorBanner message={error} onRetry={refresh} />}
+      {actionError && <ErrorBanner message={actionError} onRetry={() => setActionError(null)} />}
 
       <div className="flex flex-wrap items-center gap-3">
         <UnderlineTabs
@@ -160,6 +211,7 @@ function ExplorePageInner() {
         entry={installEntry}
         onInstalled={() => {
           setSelectedKey('')
+          setOverride(null)
           refresh()
         }}
       />

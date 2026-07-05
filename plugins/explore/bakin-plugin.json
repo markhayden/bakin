@@ -12,7 +12,8 @@
   "tests": "tests/",
   "dependencies": [],
   "permissions": [
-    "storage.read"
+    "storage.read",
+    "storage.write"
   ],
   "contributes": {
     "apiRoutes": [
@@ -20,6 +21,11 @@
         "method": "GET",
         "path": "/catalog",
         "summary": "Merged curated catalog with install state"
+      },
+      {
+        "method": "POST",
+        "path": "/catalog/refresh",
+        "summary": "Fetch and cache the remote curated catalog"
       }
     ],
     "nav": [

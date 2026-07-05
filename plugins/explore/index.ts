@@ -6,11 +6,62 @@
 import type { BakinPlugin } from '@bakin/core/plugin-types'
 import { definePlugin, defineRoute } from '@bakin/core/routing'
 import { createLogger } from '../../src/core/logger'
+import { runChecks } from '../../src/core/plugins/upgrade-check'
+import { checkPackageUpdate } from '../../src/core/agent-packages/checker'
 import { mergedCatalog } from './lib/catalog'
 import { gatherInstallSources, joinInstallState } from './lib/install-state'
-import type { ExploreCatalogResponse } from './types'
+import { refreshRemoteCatalog } from './lib/refresh'
+import type { ExploreCatalogEntry, ExploreCatalogResponse } from './types'
 
 const log = createLogger('explore')
+
+/**
+ * Probe update state for installed user plugins (persists lockfile markers)
+ * and managed agents (probe-only — results are returned, never persisted
+ * upstream). Failures degrade to "unknown", never to an error response.
+ */
+async function runUpdateProbes(sources: ReturnType<typeof gatherInstallSources>): Promise<Map<string, boolean>> {
+  const userPluginIds = Object.keys(sources.pluginLock.plugins)
+  if (userPluginIds.length > 0) {
+    try {
+      await runChecks(userPluginIds)
+    } catch (err) {
+      log.warn('plugin update probe failed', { error: err instanceof Error ? err.message : String(err) })
+    }
+  }
+
+  const agentUpdates = new Map<string, boolean>()
+  for (const [key, entry] of Object.entries(sources.packageLock.packages)) {
+    if (entry.kind !== 'agent' || !entry.agentId) continue
+    try {
+      const status = checkPackageUpdate(key)
+      agentUpdates.set(entry.agentId, status.upgradeAvailable)
+    } catch (err) {
+      log.warn('agent update probe failed', { packageId: key, error: err instanceof Error ? err.message : String(err) })
+    }
+  }
+  return agentUpdates
+}
+
+async function buildCatalogResponse(check: boolean): Promise<ExploreCatalogResponse> {
+  const catalog = await mergedCatalog()
+  let sources = gatherInstallSources()
+  let agentUpdates = new Map<string, boolean>()
+
+  if (check) {
+    agentUpdates = await runUpdateProbes(sources)
+    // Re-read: runChecks persisted fresh plugin markers into the lockfile.
+    sources = gatherInstallSources()
+  }
+
+  const entries: ExploreCatalogEntry[] = joinInstallState(catalog.entries, sources).map((entry) =>
+    entry.kind === 'agent' && agentUpdates.has(entry.id)
+      ? { ...entry, updateAvailable: agentUpdates.get(entry.id)! }
+      : entry,
+  )
+
+  return { ok: true, updatedAt: catalog.updatedAt, remoteUpdatedAt: catalog.remoteUpdatedAt, entries }
+}
 
 const routes = [
   defineRoute({
@@ -18,20 +69,41 @@ const routes = [
     method: 'GET',
     summary: 'Merged curated catalog with install state',
     description:
-      'Embedded catalog merged with the cached remote catalog, joined against local lockfiles. No network I/O.',
-    handler: async () => {
+      'Embedded catalog merged with the cached remote catalog, joined against local lockfiles. ' +
+      'Offline by default; ?check=1 runs explicit update probes (plugin markers persist, agent results are per-response).',
+    handler: async (req) => {
+      const check = new URL(req.url).searchParams.get('check') === '1'
       try {
-        const catalog = await mergedCatalog()
-        const entries = joinInstallState(catalog.entries, gatherInstallSources())
-        const body: ExploreCatalogResponse = {
-          ok: true,
-          updatedAt: catalog.updatedAt,
-          remoteUpdatedAt: catalog.remoteUpdatedAt,
-          entries,
-        }
-        return Response.json(body)
+        return Response.json(await buildCatalogResponse(check))
       } catch (err) {
         log.error('catalog route failed', err instanceof Error ? err : new Error(String(err)))
+        return Response.json(
+          { ok: false, error: err instanceof Error ? err.message : String(err) },
+          { status: 500 },
+        )
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/catalog/refresh',
+    method: 'POST',
+    summary: 'Fetch and cache the remote curated catalog',
+    description:
+      'Explicit user action: fetches catalog.json from the official bits repo, validates it, caches it, ' +
+      'and returns the merged catalog. Failures leave the existing cache untouched.',
+    handler: async () => {
+      try {
+        const result = await refreshRemoteCatalog()
+        if (!result.ok) {
+          return Response.json(
+            { ok: false, reason: result.reason, error: result.error },
+            { status: result.reason === 'no-remote-catalog' ? 404 : 502 },
+          )
+        }
+        return Response.json(await buildCatalogResponse(false))
+      } catch (err) {
+        log.error('catalog refresh failed', err instanceof Error ? err : new Error(String(err)))
         return Response.json(
           { ok: false, error: err instanceof Error ? err.message : String(err) },
           { status: 500 },
