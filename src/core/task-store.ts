@@ -329,22 +329,31 @@ export function assignTask(identifier: string, agent: string): Promise<void> {
   }
 }
 
-export function deleteTask(identifier: string): Promise<void> {
+async function abortInFlightTurns(taskId: string): Promise<void> {
   try {
-    const task = requireTask(identifier)
-    getSharedBakinTaskStore().removeSync(task.id)
-    void cancelWorkflowInstance(task.id)
-    // Cascade the execution ledger: frees any live run claim and drops the
-    // task's runs/completions/watermarks. Advisory — a ledger hiccup must
-    // not block deletion (the boot sweep reaps stragglers).
-    try {
-      purgeTaskRows(task.id)
-    } catch (err) {
-      log.warn('Ledger purge failed for deleted task; boot sweep will reap', { taskId: task.id, err: err instanceof Error ? err.message : String(err) })
-    }
-    return Promise.resolve()
+    // Dynamic: dispatch-turns imports task-store — a static import would cycle.
+    const { abortTurnsForTask } = await import('./dispatch-turns')
+    abortTurnsForTask(taskId, 'task-deleted')
   } catch (err) {
-    return Promise.reject(err)
+    // Best effort: the ghost turn falls to the watchdog orphan sweep.
+    log.warn('Failed to abort in-flight turns for deleted task', { taskId, err: err instanceof Error ? err.message : String(err) })
+  }
+}
+
+export async function deleteTask(identifier: string): Promise<void> {
+  const task = requireTask(identifier)
+  // Abort FIRST, while the ledger/registry state is still coherent — the
+  // 'aborted' settle branch must not race a half-deleted task.
+  await abortInFlightTurns(task.id)
+  getSharedBakinTaskStore().removeSync(task.id)
+  void cancelWorkflowInstance(task.id)
+  // Cascade the execution ledger: frees any live run claim and drops the
+  // task's runs/completions/watermarks. Advisory — a ledger hiccup must
+  // not block deletion (the boot sweep reaps stragglers).
+  try {
+    purgeTaskRows(task.id)
+  } catch (err) {
+    log.warn('Ledger purge failed for deleted task; boot sweep will reap', { taskId: task.id, err: err instanceof Error ? err.message : String(err) })
   }
 }
 

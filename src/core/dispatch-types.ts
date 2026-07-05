@@ -118,6 +118,24 @@ export interface InFlightTurn {
   startedAt: number
   /** Full send + settle chain; resolves when reconciliation has finished. */
   settled: Promise<void>
+  /** Cancels the turn (MessageArgs.signal); fired by delete/orphan-sweep. */
+  abort: AbortController
+  /** Stamped by abortTurnsForTask — makes the abort idempotent and gives the
+   *  watchdog sweep its force-release grace anchor. */
+  abortedAt?: number
+  abortReason?: TurnAbortReason
+}
+
+export type TurnAbortReason = 'task-deleted' | 'orphan-sweep'
+
+/** Advisory registry view for the watchdog sweep and tests — no handles. */
+export interface InFlightTurnSnapshot {
+  marker: string
+  agentId: string
+  taskId: string
+  threadId: string
+  startedAt: number
+  abortedAt?: number
 }
 
 export type ConcurrencyGate = 'concurrency_cap' | 'agent_busy' | null

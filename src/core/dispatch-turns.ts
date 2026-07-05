@@ -15,7 +15,7 @@ import { createLogger } from './logger'
 import { getSettings } from './settings'
 import { appendAudit } from './audit'
 import { getAppServices } from './app-services'
-import { RuntimeTurnError, type MessageResult } from '@bakin/core/adapters/runtime'
+import { RuntimeError, RuntimeTurnError, type MessageResult } from '@bakin/core/adapters/runtime'
 import { claimNextRun, loseRun, settleRun, spendTotal, type ClaimNextRunResult } from './execution-ledger'
 import { meterAgentTurn } from './agent-cost'
 import { resolveTurnModel, type ResolvedTurn, type RoutingConfig } from './model-routing'
@@ -24,7 +24,7 @@ import { getBootId } from './boot-id'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { moveTask as moveStoredTask } from './task-store'
 import { formatDispatchError } from './dispatch-failures'
-import type { DispatchTask, InFlightTurn, ConcurrencyGate } from './dispatch-types'
+import type { DispatchTask, InFlightTurn, InFlightTurnSnapshot, TurnAbortReason, ConcurrencyGate } from './dispatch-types'
 import { withStateLock, loadDispatchState, saveDispatchState } from './dispatch-state'
 import { findDispatchTaskSnapshot, tryAddTaskLog } from './dispatch-board'
 import { reconcileRejectedDispatch } from './dispatch-session-death'
@@ -40,13 +40,14 @@ const hooks = () => getHookRegistry()
  * sends (orchestrator/watchdog/doctor) deliberately stay in the agent's
  * default session and don't go through here.
  */
-async function sendDispatchMessage(agentId: string, content: string, threadId: string, routing?: ResolvedTurn): Promise<MessageResult> {
+async function sendDispatchMessage(agentId: string, content: string, threadId: string, routing?: ResolvedTurn, signal?: AbortSignal): Promise<MessageResult> {
   return getAppServices().runtime.messaging.send({
     agentId,
     content,
     threadId,
     ...(routing?.model ? { model: routing.model } : {}),
     ...(routing?.thinking ? { thinking: routing.thinking } : {}),
+    ...(signal ? { signal } : {}),
     metadata: { oversizedOutputBytes: getSettings().dispatch.oversizedOutputBytes },
   })
 }
@@ -210,6 +211,55 @@ export function auditDispatchSuppressed(contentDir: string, task: { id: string; 
 
 const inFlightTurns = new Map<string, InFlightTurn>()
 
+/**
+ * A force-released orphan turn gets this long after its abort fired to
+ * settle on its own before the watchdog drops the registry entry (#604).
+ */
+export const ORPHAN_TURN_FORCE_RELEASE_GRACE_MS = 60_000
+
+/**
+ * Fire the abort controller of every in-flight turn belonging to `taskId`
+ * (regular markers and `taskId:stepId` workflow-step markers alike).
+ * Idempotent per turn — abortedAt is the guard. Returns the number of turns
+ * newly aborted. The 'aborted' settle branch in fireDispatchTurn does the
+ * audit/bookkeeping when the rejection lands.
+ */
+export function abortTurnsForTask(taskId: string, reason: TurnAbortReason): number {
+  let count = 0
+  for (const turn of inFlightTurns.values()) {
+    if (turn.taskId !== taskId || turn.abortedAt) continue
+    turn.abortedAt = Date.now()
+    turn.abortReason = reason
+    turn.abort.abort(reason)
+    count += 1
+  }
+  if (count > 0) log.info('Aborted in-flight turn(s) for task', { taskId, reason, count })
+  return count
+}
+
+/** Advisory view of the registry for the watchdog orphan sweep and tests. */
+export function getInFlightTurnsSnapshot(): InFlightTurnSnapshot[] {
+  return [...inFlightTurns.entries()].map(([marker, turn]) => ({
+    marker,
+    agentId: turn.agentId,
+    taskId: turn.taskId,
+    threadId: turn.threadId,
+    startedAt: turn.startedAt,
+    ...(turn.abortedAt ? { abortedAt: turn.abortedAt } : {}),
+  }))
+}
+
+/**
+ * Drop a registry entry outright, freeing the agent's dispatch slot. ONLY
+ * for the watchdog's orphan sweep, after an abort + grace period failed to
+ * settle the turn — the registry is advisory, so a hung provider turn must
+ * not hold the slot forever. If the zombie send ever settles, its handlers
+ * run normally (settleRun/audit are idempotent; unregister is a no-op).
+ */
+export function forceReleaseTurn(marker: string): boolean {
+  return inFlightTurns.delete(marker)
+}
+
 export function getInFlightTurnCount(agentId?: string): number {
   if (!agentId) return inFlightTurns.size
   let count = 0
@@ -294,6 +344,7 @@ export function fireDispatchTurn(opts: {
   // The registry entry is released only AFTER settle reconciliation
   // completes — awaitDispatchIdle() must mean "all bookkeeping done", and a
   // turn's slot shouldn't free until its outcome has been recorded.
+  const abort = new AbortController()
   const settled = resolveDispatchRouting(opts.task, opts.isRecovery ?? false)
     .then(async (routing) => {
       if (routing.model || routing.thinking) {
@@ -303,7 +354,7 @@ export function fireDispatchTurn(opts: {
           ...(routing.thinking ? { thinking: routing.thinking } : {}),
         })
       }
-      const result = await sendDispatchMessage(opts.targetAgent, opts.message, opts.threadId, routing)
+      const result = await sendDispatchMessage(opts.targetAgent, opts.message, opts.threadId, routing, abort.signal)
       // Free the live-run slot FIRST — the settle reconciliation below (and
       // any ladder re-dispatch it schedules) must be able to claim anew.
       try {
@@ -342,6 +393,30 @@ export function fireDispatchTurn(opts: {
       opts.onSettled?.('ok')
     })
     .catch(async (err) => {
+      // Intentional cancellation (task deleted / orphan sweep): clean exit.
+      // No recovery ladder — a corrective re-dispatch would resurrect work
+      // for a task that no longer exists — and no reconcile fail-noise. The
+      // ledger row is usually already purged by deleteTask; settleRun on a
+      // missing/settled row is a first-write-wins no-op by design.
+      if (err instanceof RuntimeError && err.kind === 'aborted') {
+        // The reason rides the closure-captured signal (abort.abort(reason)),
+        // which survives a force-released registry entry.
+        const reason = typeof abort.signal.reason === 'string' ? abort.signal.reason : 'unknown'
+        try {
+          settleRun(opts.threadId, `aborted: ${reason}`)
+        } catch (ledgerErr) {
+          log.debug('Ledger settle after abort was a no-op', { threadId: opts.threadId, err: ledgerErr instanceof Error ? ledgerErr.message : String(ledgerErr) })
+        }
+        appendAudit(opts.contentDir, 'task.turn_aborted', opts.targetAgent, {
+          id: opts.task.id,
+          title: opts.task.title,
+          runId: opts.threadId,
+          reason,
+        })
+        log.info(`${opts.logPrefix}: turn aborted for "${opts.task.title}" → ${opts.targetAgent}`, { id: opts.task.id, reason })
+        opts.onSettled?.('error', err)
+        return
+      }
       log.error(`${opts.logPrefix}: turn failed for "${opts.task.title}" → ${opts.targetAgent}`, err)
       // Free the slot before reconciliation — the recovery ladder's
       // re-dispatch claims a fresh run and must not be suppressed by the
@@ -384,5 +459,6 @@ export function fireDispatchTurn(opts: {
     threadId: opts.threadId,
     startedAt: Date.now(),
     settled,
+    abort,
   })
 }

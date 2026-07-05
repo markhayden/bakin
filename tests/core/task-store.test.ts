@@ -58,6 +58,13 @@ mock.module('../../plugins/workflows/lib/runtime', () => ({
   cancelInstance: mock(),
 }))
 
+// Spy on the dispatch registry abort — deleteTask reaches it via dynamic
+// import (static would cycle); mock.module intercepts both forms (#604).
+const abortTurnsForTaskSpy = mock((_taskId: string, _reason: string) => 0)
+mock.module('../../src/core/dispatch-turns', () => ({
+  abortTurnsForTask: abortTurnsForTaskSpy,
+}))
+
 // Suppress SSE broadcasts
 ;(globalThis as Record<string, unknown>).__bakinBroadcast = mock()
 
@@ -394,6 +401,17 @@ describe('deleteTask', () => {
 
   it('rejects non-existent task', async () => {
     await expect(deleteTask('ghost')).rejects.toThrow('Task not found')
+  })
+
+  it('aborts in-flight turns before removing state (#604)', async () => {
+    const task = await createTask('Dispatched then deleted')
+    abortTurnsForTaskSpy.mockClear()
+
+    await deleteTask(task.id)
+
+    expect(abortTurnsForTaskSpy).toHaveBeenCalledTimes(1)
+    expect(abortTurnsForTaskSpy).toHaveBeenCalledWith(task.id, 'task-deleted')
+    expect(getTask(task.id)).toBeNull()
   })
 })
 
