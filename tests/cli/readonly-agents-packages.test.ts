@@ -296,4 +296,67 @@ describe('read-only CLI TTY commands — agents and packages', () => {
     expect(output()).toContain('Write docs')
     expect(output()).not.toContain('id      title')
   })
+
+  it('renders the combined agent doctor report in a TTY (#385)', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    // cmdAgentsDoctor fires four GETs in order: scan, context, effort, timeline.
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      scannedAt: '2026-07-05T00:00:00Z',
+      findings: [{ type: 'block-stale', severity: 'warn', autoFixable: true, message: 'AGENTS.md managed block is stale', file: 'AGENTS.md', staleInputs: ['in-place-edit'] }],
+    }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      report: { dispatch: { estimatedMaxTaskBytes: 80_000 }, workspace: { available: true, totalBytes: 40_960 } },
+    }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      window: '24h',
+      scannedAt: null,
+      agents: [{
+        agent: 'pixel', windowTokens: 2_100_000, windowCostUsdMicros: 40_000, runs: 14, completions: 0,
+        tokensPerCompletion: null, totalObservedTokens: null, unattributedTokens: null,
+        flags: [{ kind: 'effort-no-outcome', message: "'pixel' used 2.1M tokens across 14 run(s) in 24h but completed no tasks — check its timeline" }],
+      }],
+    }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      agent: 'pixel',
+      window: '24h',
+      events: [{
+        type: 'run', ts: 1_750_000_000_000, runId: 'task:t1:d1', taskId: 't1', taskTitle: 'resize hero images',
+        seq: 1, status: 'settled', settleReason: 'turn-ok', startedAt: 1_750_000_000_000, settledAt: 1_750_000_192_000,
+        durationMs: 192_000, model: 'sonnet-5', inputTokens: 41_000, outputTokens: 2_100, totalTokens: 43_100,
+        costUsdMicros: 40_000, logs: [], logsTruncated: false,
+      }],
+    }))
+
+    process.argv = ['bun', 'cli/bakin.ts', 'agents', 'doctor', 'pixel']
+    await main()
+
+    expect(output()).toContain('Agent doctor — pixel')
+    expect(output()).toContain('block-stale')
+    expect(output()).toContain('effort-no-outcome')
+    expect(output()).toContain('resize hero images')
+    expect(output()).toContain('turn-ok')
+  })
+
+  it('agent doctor degrades per-section when endpoints fail, and --json prints raw', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    // All four endpoints unreachable.
+    for (let i = 0; i < 4; i++) fetchMock.mockRejectedValueOnce(new Error('connect ECONNREFUSED'))
+    process.argv = ['bun', 'cli/bakin.ts', 'agents', 'doctor', 'pixel']
+    await main()
+    expect(output()).toContain('Agent doctor — pixel')
+    expect(output()).toContain('unavailable')
+
+    harness.log.mockClear()
+    setStdoutIsTTY(false)
+    for (let i = 0; i < 4; i++) fetchMock.mockRejectedValueOnce(new Error('connect ECONNREFUSED'))
+    process.argv = ['bun', 'cli/bakin.ts', 'agents', 'doctor', 'pixel', '--json']
+    await main()
+    expect(output()).toContain('"agentId": "pixel"')
+    setStdoutIsTTY(true)
+  })
 })
