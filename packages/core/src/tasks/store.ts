@@ -13,6 +13,13 @@ export interface BakinTask {
   title: string
   description?: string
   agent?: string
+  /**
+   * Requested team assignment (#189). `team` alone = unresolved team task
+   * (the dispatch resolver picks a member); `team` + `agent` = resolved —
+   * team is retained so the record explains requested vs resolved.
+   * Exclusion semantics live in the app facade (src/core/task-store.ts).
+   */
+  team?: string
   createdBy?: string
   column: string
   order: number
@@ -54,6 +61,7 @@ export interface CreateBakinTaskInput {
   title: string
   description?: string
   agent?: string
+  team?: string
   createdBy?: string
   column?: string
   order?: number
@@ -73,6 +81,7 @@ export type BakinTaskPatch = Partial<Pick<
   | 'title'
   | 'description'
   | 'agent'
+  | 'team'
   | 'createdBy'
   | 'column'
   | 'order'
@@ -155,6 +164,7 @@ export function createEmptyBakinTask(input: CreateBakinTaskInput, now = new Date
     title: input.title,
     description: input.description,
     agent: input.agent,
+    team: input.team,
     createdBy: input.createdBy,
     column: input.column ?? 'todo',
     order: input.order ?? 0,
