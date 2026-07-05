@@ -103,7 +103,9 @@ export function useTaskDetail({ task, columnId, open, editing, onClose }: UseTas
     if (task && columnId) {
       setTitle(task.title)
       setDescription(task.description || '')
-      setAgent(task.agent || '')
+      // Unresolved team task → show the team selection; once resolved the
+      // concrete agent leads (the team rides along server-side).
+      setAgent(task.agent || (task.team ? `team:${task.team}` : ''))
       setColumn(columnId)
       setWorkflowId(task.workflowId || '')
       setDirty(false)
@@ -304,7 +306,9 @@ export function useTaskDetail({ task, columnId, open, editing, onClose }: UseTas
           title: title.trim(),
           description: description.trim() || undefined,
           column,
-          assignee: agent || undefined,
+          // `team:<id>` values come from the picker's Teams group (#189).
+          assignee: agent && !agent.startsWith('team:') ? agent : undefined,
+          team: agent.startsWith('team:') ? agent.slice(5) : undefined,
           workflowId: workflowId || undefined,
         }),
       })
@@ -333,7 +337,10 @@ export function useTaskDetail({ task, columnId, open, editing, onClose }: UseTas
           originalTitle: task!.title,
           title: title.trim(),
           description: description.trim(),
-          agent,
+          // `team:<id>` values come from the picker's Teams group (#189).
+          // Explicit Unassigned clears both.
+          agent: agent.startsWith('team:') ? undefined : agent,
+          team: agent.startsWith('team:') ? agent.slice(5) : (agent ? undefined : ''),
           column,
           workflowId: workflowId || undefined,
         }),

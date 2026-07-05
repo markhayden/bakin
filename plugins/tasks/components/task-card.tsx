@@ -2,7 +2,7 @@
 
 import { useEffect, type CSSProperties } from 'react'
 import { useSortable } from '@dnd-kit/react/sortable'
-import { AlertTriangle, X } from 'lucide-react'
+import { AlertTriangle, Users, X } from 'lucide-react'
 import { AgentAvatar } from "@makinbakin/sdk/components"
 import { STATUS_BADGE_STYLES } from '../constants'
 import { compactDispatchFailureLabel, getLatestDispatchFailure } from '../lib/dispatch-failure'
@@ -180,9 +180,18 @@ export function TaskCardContent({ task, columnId, className, gateLabel, childTas
         </div>
       )}
 
-      {/* Footer: avatar bottom-left, date right */}
+      {/* Footer: avatar bottom-left, date right. A team task shows a team
+          chip until dispatch resolves it, then avatar + small chip (#189). */}
       <div className="flex items-center justify-between mt-4">
-        {task.agent && <AgentAvatar agentId={task.agent} size="sm" />}
+        <span className="flex items-center gap-1.5">
+          {task.agent && <AgentAvatar agentId={task.agent} size="sm" />}
+          {task.team && (
+            <span className="inline-flex items-center gap-1 rounded-md border border-violet-500/20 bg-violet-500/10 px-1.5 py-0.5 text-[11px] font-medium text-violet-300">
+              <Users className="size-3" />
+              {task.team}
+            </span>
+          )}
+        </span>
         {task.date && (
           <span className="text-zinc-500 text-[11px] font-medium tracking-tight uppercase">
             {formatRelativeDate(task.date)}
