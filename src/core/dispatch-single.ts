@@ -24,6 +24,7 @@ import { formatDispatchError } from './dispatch-failures'
 import { concurrencyGate, deferForBudget, fireDispatchTurn } from './dispatch-turns'
 import { prepareRegularDispatch } from './dispatch-prepare'
 import { dispatchWorkflowTask } from './dispatch-workflow'
+import { resolveTeamAssignmentForDispatch } from './dispatch-team'
 
 const log = createLogger('dispatch-single')
 
@@ -96,6 +97,16 @@ export async function dispatchSingleTask(
       }
       if (Date.now() - failure.lastAttempt < cooldownForFailure(failure, settings)) {
         log.debug('dispatchSingleTask: task in cooldown', { taskId, kind: failure.kind })
+        return
+      }
+    }
+
+    // Team → agent resolution (#189): before the workflow branch so both
+    // paths see a concrete agent; persisted, so re-kicks never re-resolve.
+    if (task.team && !task.agent) {
+      const outcome = await resolveTeamAssignmentForDispatch(task, contentDir)
+      if (outcome.status !== 'resolved') {
+        log.debug('dispatchSingleTask: team resolution did not produce an agent', { taskId, status: outcome.status })
         return
       }
     }

@@ -9,6 +9,8 @@ export type DispatchTask = {
   id: string
   title: string
   agent?: string
+  /** Requested team (#189) — resolved to a concrete agent before dispatch. */
+  team?: string
   workflowId?: string
   description?: string
   projectId?: string

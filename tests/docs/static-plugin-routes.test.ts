@@ -85,6 +85,8 @@ mock.module('../../src/core/task-store', () => ({
   clearDependency: async () => {},
   reorderTasks: async () => {},
   moveTaskToInProgress: async () => {},
+  assignTaskToTeam: async () => {},
+  recordTeamResolution: async () => {},
   archiveOldTasks: () => 0,
   autoArchiveDoneTasks: () => 0,
   getSharedBakinTaskStore: () => ({ subscribe: () => () => {} }),

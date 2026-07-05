@@ -88,6 +88,8 @@ const taskStoreMock = () => ({
   clearDependency: mock(),
   reorderTasks: mock(),
   moveTaskToInProgress: mock(),
+  assignTaskToTeam: mock(),
+  recordTeamResolution: mock(),
   archiveOldTasks: mock().mockReturnValue(0),
   getArchivedCount: mock(() => 0),
   autoArchiveDoneTasks: mock().mockReturnValue(0),

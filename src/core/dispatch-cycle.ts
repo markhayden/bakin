@@ -26,6 +26,7 @@ import { readDispatchColumns, isTaskDispatchEligible, addTaskLog, moveTaskToInPr
 import { concurrencyGate, deferForBudget, fireDispatchTurn } from './dispatch-turns'
 import { prepareRegularDispatch } from './dispatch-prepare'
 import { dispatchWorkflowTask } from './dispatch-workflow'
+import { resolveTeamAssignmentForDispatch } from './dispatch-team'
 
 const log = createLogger('dispatch-cycle')
 const hooks = () => getHookRegistry()
@@ -166,6 +167,15 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
           continue
         }
         if (Date.now() - failure.lastAttempt < cooldownForFailure(failure, settings)) continue
+      }
+
+      // Team → agent resolution (#189): BEFORE the workflow branch and the
+      // concurrency/budget/claim sequence, so both paths downstream see a
+      // concrete agent. Resolution is persisted immediately — the routing
+      // LLM is billed at most once per task lifetime.
+      if (task.team && !task.agent) {
+        const outcome = await resolveTeamAssignmentForDispatch(task, contentDir)
+        if (outcome.status !== 'resolved') continue
       }
 
       // Workflow-aware dispatch path
