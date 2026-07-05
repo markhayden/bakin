@@ -13,16 +13,16 @@
  * exactly; `enrichmentProvider` narrows the pool.
  */
 import {
-  resolveVisionProviderKeySource,
-  type DirectVisionProviderId,
-} from '@bakin/core/media'
+  resolveProviderKeySource,
+  type DirectProviderId,
+} from '@bakin/core/llm/provider-keys'
 
 export type VisionCostTier = 'budget' | 'standard' | 'premium'
 
 export interface VisionModelDescriptor {
   /** Catalog id (plugins/models known-models), e.g. anthropic/claude-haiku-4-5. */
   id: string
-  provider: DirectVisionProviderId
+  provider: DirectProviderId
   /** Provider-native model id (catalog prefix stripped). */
   apiModel: string
   audioInput: boolean
@@ -41,7 +41,7 @@ const TIER_ORDER: Record<VisionCostTier, number> = { budget: 0, standard: 1, pre
 
 export interface EnrichmentSettings {
   enrichmentEnabled?: boolean
-  enrichmentProvider?: 'auto' | 'runtime' | DirectVisionProviderId
+  enrichmentProvider?: 'auto' | 'runtime' | DirectProviderId
   enrichmentModel?: string
   /**
    * Runtime agent for subscription-quota enrichment turns. Its CONFIGURED
@@ -79,7 +79,7 @@ export function resolveEnrichmentModel(
     const descriptor = known ?? inferDescriptor(override)
     if (!descriptor) return null
     if (opts.needsAudio && !descriptor.audioInput) return null
-    const key = resolveVisionProviderKeySource(descriptor.provider)
+    const key = resolveProviderKeySource(descriptor.provider)
     return key ? { descriptor, apiKey: key.apiKey, keySource: key.source } : null
   }
 
@@ -91,7 +91,7 @@ export function resolveEnrichmentModel(
     .sort((a, b) => TIER_ORDER[a.costTier] - TIER_ORDER[b.costTier])
 
   for (const descriptor of pool) {
-    const key = resolveVisionProviderKeySource(descriptor.provider)
+    const key = resolveProviderKeySource(descriptor.provider)
     if (key) return { descriptor, apiKey: key.apiKey, keySource: key.source }
   }
   return null

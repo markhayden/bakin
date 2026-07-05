@@ -20,6 +20,8 @@
     "./adapters/runtime/testing": "./src/adapters/runtime/testing.ts",
     "./media": "./src/media/index.ts",
     "./media/image-format": "./src/media/image-format.ts",
+    "./llm/provider-keys": "./src/llm/provider-keys.ts",
+    "./llm/direct-text-provider": "./src/llm/direct-text-provider.ts",
     "./adapters/search": "./src/adapters/search/index.ts",
     "./adapters/search/concepts": "./src/adapters/search/concepts.ts",
     "./adapters/search/errors": "./src/adapters/search/errors.ts",

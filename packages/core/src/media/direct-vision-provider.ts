@@ -10,35 +10,14 @@
  *     and validated is an ERROR — derived metadata is never fabricated and
  *     never guessed from a lossy parse (spec D8).
  *   - Credentials are Bakin-owned (env → secret store), resolved by the
- *     caller through `resolveVisionProviderKeySource` and passed in.
+ *     caller through `resolveProviderKeySource` (@bakin/core/llm) and passed in.
  *   - The transport is stateless and fetch-injectable for tests. Billed
  *     calls are the CALLER's idempotency problem (@bakin/core/media
  *     idempotency + the asset manifest's durable record).
  */
 import { readFileSync, statSync } from 'node:fs'
 import { z } from 'zod'
-import { getStoredProviderKey } from './secret-store'
-
-export type DirectVisionProviderId = 'openai' | 'google' | 'anthropic'
-
-export const VISION_PROVIDER_ENV_VARS: Record<DirectVisionProviderId, string[]> = {
-  openai: ['OPENAI_API_KEY'],
-  google: ['GEMINI_API_KEY', 'GOOGLE_AI_API_KEY'],
-  anthropic: ['ANTHROPIC_API_KEY'],
-}
-
-/** Env override → secret store, same precedence as every provider secret. */
-export function resolveVisionProviderKeySource(
-  provider: DirectVisionProviderId,
-): { apiKey: string; source: 'env' | 'store' } | null {
-  for (const envVar of VISION_PROVIDER_ENV_VARS[provider]) {
-    const value = process.env[envVar]?.trim()
-    if (value) return { apiKey: value, source: 'env' }
-  }
-  const stored = getStoredProviderKey(provider)
-  if (stored) return { apiKey: stored, source: 'store' }
-  return null
-}
+import type { DirectProviderId } from '../llm/provider-keys'
 
 /** ~20MB media cap — larger files are skipped, not truncated (lossy = lies). */
 const MAX_MEDIA_BYTES = 20 * 1024 * 1024
@@ -57,7 +36,7 @@ export const VisionEnrichmentResultSchema = z.object({
 export type VisionEnrichmentResult = z.infer<typeof VisionEnrichmentResultSchema>
 
 export interface DirectVisionRequest {
-  provider: DirectVisionProviderId
+  provider: DirectProviderId
   /** Provider-native model id (catalog prefix stripped by the caller). */
   model: string
   apiKey: string
