@@ -16,10 +16,25 @@ const TONE_CLASSES: Record<'builtin' | 'installed' | 'update', string> = {
   update: 'border-amber-500/30 bg-amber-500/10 text-amber-400',
 }
 
-/** Installed agents get their real headshot; everything else keeps the emoji. */
+/**
+ * Installed agents get their real headshot from the local agent store;
+ * uninstalled entries use the catalog's iconUrl when it ships one
+ * (bits-repo asset), else the emoji.
+ */
 export function EntryVisual({ entry, size = 'md' }: { entry: ExploreCatalogEntry; size?: 'md' | 'lg' }) {
   if (entry.kind === 'agent' && entry.installed) {
     return <AgentAvatar agentId={entry.id} size={size === 'lg' ? 'xl' : 'lg'} />
+  }
+  if (entry.iconUrl) {
+    return (
+      <img
+        src={entry.iconUrl}
+        alt={entry.name}
+        loading="lazy"
+        data-testid={`icon-${entry.kind}-${entry.id}`}
+        className={`${size === 'lg' ? 'size-12' : 'size-9'} shrink-0 rounded-full border border-border object-cover object-top`}
+      />
+    )
   }
   return <span className={size === 'lg' ? 'text-3xl leading-none' : 'text-2xl leading-none'}>{entry.emoji ?? '📦'}</span>
 }

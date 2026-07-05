@@ -118,4 +118,16 @@ describe('CatalogCard', () => {
     expect(screen.queryByTestId('avatar-pixel')).toBeNull()
     expect(screen.getByText('🎨')).toBeTruthy()
   })
+
+  it('uninstalled entries with a catalog iconUrl render the image instead of the emoji', () => {
+    render(<CatalogCard entry={entry({ iconUrl: 'https://example.com/pixel.png' })} onSelect={mock()} />)
+    expect(screen.getByTestId('icon-agent-pixel').getAttribute('src')).toBe('https://example.com/pixel.png')
+    expect(screen.queryByText('🎨')).toBeNull()
+  })
+
+  it('the local headshot wins over a catalog iconUrl once installed', () => {
+    render(<CatalogCard entry={entry({ installed: true, iconUrl: 'https://example.com/pixel.png' })} onSelect={mock()} />)
+    expect(screen.getByTestId('avatar-pixel')).toBeTruthy()
+    expect(screen.queryByTestId('icon-agent-pixel')).toBeNull()
+  })
 })
