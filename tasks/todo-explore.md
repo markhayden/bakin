@@ -12,6 +12,6 @@ Branch `feat/163-workshop` off `main`. One commit per slice; each green on
 - [x] S6 — feat(explore): remote refresh + update probes (e747bcfc)
 - [x] S7 — chore(team): delete orphaned install-dialog (bf714795)
 - [x] S8 — docs(knowledge): explore-plugin.md + CLAUDE.md/knowledge/generated docs
-- [ ] Final — /agent-skills:test coverage review; full suite; manual dev pass; bun run build sanity
+- [x] Final — coverage review (85a8d57c: merge rules, action buttons, install visibility); full suite 5586 pass / 0 fail; end-to-end verified against an isolated live server (manifest nav placement, catalog join, assets, live refresh 404, /api/curated gone)
 
 Rules: never `git add -A` (build-stamp trap); stage `_embedded-assets-static.ts` explicitly in S2/S3; all fs-touching tests mock both content-dir resolvers + openclaw home + logger.
