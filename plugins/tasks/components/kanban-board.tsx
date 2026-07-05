@@ -134,6 +134,7 @@ export function KanbanBoard() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const [boardData, setBoardData] = useState<{ columns: TaskColumns; timestamp?: string }>({ columns: emptyBoard })
+  const [boardLoaded, setBoardLoaded] = useState(false)
   const loading = useContentStore((s) => s.loading)
 
   const fetchBoard = useCallback(async () => {
@@ -142,6 +143,7 @@ export function KanbanBoard() {
       if (res.ok) {
         const data = await res.json()
         setBoardData({ columns: data.columns ?? emptyBoard, timestamp: data.timestamp })
+        setBoardLoaded(true)
       }
     } catch { /* SSE will eventually re-trigger */ }
   }, [])
@@ -349,10 +351,14 @@ export function KanbanBoard() {
 
   const taskIdHandled = useRef(false)
   useEffect(() => {
-    if (!taskIdParam || taskIdHandled.current) return
+    // Wait for the first board fetch — consuming the param against the empty
+    // initial board silently ate deep links on fresh page loads.
+    if (!taskIdParam || taskIdHandled.current || !boardLoaded) return
     taskIdHandled.current = true
 
-    for (const [colId, colTasks] of Object.entries(columns) as [ColumnId, Task[]][]) {
+    // Search the UNFILTERED board so active agent/search filters can't hide
+    // the deep-linked task.
+    for (const [colId, colTasks] of Object.entries(boardData.columns) as [ColumnId, Task[]][]) {
       const match = colTasks.find(t => t.id === taskIdParam)
       if (match) {
         setDetailTask({ task: match, columnId: colId })
@@ -363,7 +369,7 @@ export function KanbanBoard() {
     }
     toast('Task not found', 'error')
     setTaskIdParam('')
-  }, [taskIdParam, columns, setTaskIdParam])
+  }, [taskIdParam, boardLoaded, boardData.columns, setTaskIdParam])
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null)
 
   const confirmDelete = useCallback(async () => {
