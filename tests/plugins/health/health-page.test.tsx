@@ -43,6 +43,14 @@ mock.module('@makinbakin/sdk/components', () => ({
   UnderlineTabs: ({ tabs }: { tabs: Array<{ label: string }> }) => (
     <div>{tabs.map((tab) => <span key={tab.label}>{tab.label}</span>)}</div>
   ),
+  StackedColumnChart: ({ data }: { data: Array<{ x: string; values: Record<string, number> }> }) => (
+    <div data-testid="stacked-chart">
+      {data.map((d) => (
+        <span key={d.x} title={`${d.x}: ${Object.values(d.values).reduce((a, b) => a + b, 0)} tokens`} />
+      ))}
+    </div>
+  ),
+  ChartExplainer: ({ children }: { children: ReactNode }) => <p role="note">{children}</p>,
 }))
 
 import { HealthPage } from '../../../plugins/health/components/health-page'
