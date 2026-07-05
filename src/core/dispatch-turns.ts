@@ -4,7 +4,9 @@
  * fireDispatchTurn (fire a send + reconcile on settle). Extracted from
  * dispatch.ts.
  *
- * Owns the `inFlightTurns` registry and the `pendingLadderRedispatches`
+ * Owns turn REGISTRATION (the registry map itself lives in the leaf module
+ * `dispatch-registry.ts` so task-store/watchdog can reach the abort surface
+ * without importing this fire-core) and the `pendingLadderRedispatches`
  * counter — the counter is mutated ONLY here, via scheduleLadderRedispatch().
  * fireDispatchTurn's settle handlers serialize on the single withStateLock from
  * dispatch-state. turns ↔ session-death is an intentional runtime-only cycle
@@ -24,7 +26,7 @@ import { getBootId } from './boot-id'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { moveTask as moveStoredTask } from './task-store'
 import { formatDispatchError } from './dispatch-failures'
-import type { DispatchTask, InFlightTurn, InFlightTurnSnapshot, TurnAbortReason, ConcurrencyGate } from './dispatch-types'
+import type { DispatchTask, ConcurrencyGate } from './dispatch-types'
 import { withStateLock, loadDispatchState, saveDispatchState } from './dispatch-state'
 import { findDispatchTaskSnapshot, tryAddTaskLog } from './dispatch-board'
 import { reconcileRejectedDispatch } from './dispatch-session-death'
@@ -200,77 +202,15 @@ export function auditDispatchSuppressed(contentDir: string, task: { id: string; 
 
 // ─── In-flight turn registry (concurrent dispatch) ─────────────────────────
 //
-// Sends are fired and tracked, never awaited inside the dispatch cycle: one
-// 10-minute turn must not stall dispatching to every other agent (the
-// serial-await loop was why parallel task fan-out made no independent
-// progress). Reconciliation happens in per-turn settle handlers that take
-// the state lock themselves. The registry is advisory — caps + settle
-// bookkeeping — never a source of truth for task state; restart safety is
-// unchanged (in-flight promises die with the process, restart-recovery
-// handles orphaned inProgress tasks via heartbeats).
+// The registry itself lives in `dispatch-registry.ts` — a LEAF module so
+// task-store.deleteTask and the watchdog sweep can reach the abort surface
+// without importing the dispatch fire-core (task-store → dispatch-turns
+// would cycle). This module OWNS registration: only fireDispatchTurn
+// registers/unregisters turns. getInFlightTurnCount is re-exported for the
+// public dispatch barrel.
 
-const inFlightTurns = new Map<string, InFlightTurn>()
-
-/**
- * A force-released orphan turn gets this long after its abort fired to
- * settle on its own before the watchdog drops the registry entry (#604).
- */
-export const ORPHAN_TURN_FORCE_RELEASE_GRACE_MS = 60_000
-
-/**
- * Fire the abort controller of every in-flight turn belonging to `taskId`
- * (regular markers and `taskId:stepId` workflow-step markers alike). A
- * nested-workflow step turn is registered under the PARENT task but serves a
- * child board task (`childTaskId`) — deleting either one aborts it.
- * Idempotent per turn — abortedAt is the guard. Returns the number of turns
- * newly aborted. The 'aborted' settle branch in fireDispatchTurn does the
- * audit/bookkeeping when the rejection lands.
- */
-export function abortTurnsForTask(taskId: string, reason: TurnAbortReason): number {
-  let count = 0
-  for (const turn of inFlightTurns.values()) {
-    if ((turn.taskId !== taskId && turn.childTaskId !== taskId) || turn.abortedAt) continue
-    turn.abortedAt = Date.now()
-    turn.abortReason = reason
-    turn.abort.abort(reason)
-    count += 1
-  }
-  if (count > 0) log.info('Aborted in-flight turn(s) for task', { taskId, reason, count })
-  return count
-}
-
-/** Advisory view of the registry for the watchdog orphan sweep and tests. */
-export function getInFlightTurnsSnapshot(): InFlightTurnSnapshot[] {
-  return [...inFlightTurns.entries()].map(([marker, turn]) => ({
-    marker,
-    agentId: turn.agentId,
-    taskId: turn.taskId,
-    ...(turn.childTaskId ? { childTaskId: turn.childTaskId } : {}),
-    threadId: turn.threadId,
-    startedAt: turn.startedAt,
-    ...(turn.abortedAt ? { abortedAt: turn.abortedAt } : {}),
-  }))
-}
-
-/**
- * Drop a registry entry outright, freeing the agent's dispatch slot. ONLY
- * for the watchdog's orphan sweep, after an abort + grace period failed to
- * settle the turn — the registry is advisory, so a hung provider turn must
- * not hold the slot forever. If the zombie send ever settles, its handlers
- * run normally (settleRun/audit are idempotent; unregister is a no-op).
- */
-export function forceReleaseTurn(marker: string): boolean {
-  return inFlightTurns.delete(marker)
-}
-
-export function getInFlightTurnCount(agentId?: string): number {
-  if (!agentId) return inFlightTurns.size
-  let count = 0
-  for (const turn of inFlightTurns.values()) {
-    if (turn.agentId === agentId) count += 1
-  }
-  return count
-}
+export { getInFlightTurnCount } from './dispatch-registry'
+import { getInFlightTurnCount, getInFlightSettledPromises, registerTurn, unregisterTurn } from './dispatch-registry'
 
 /** Why a dispatch can't fire right now, or null when a slot is free. */
 export function concurrencyGate(
@@ -280,7 +220,7 @@ export function concurrencyGate(
   // two-phase cycle — invisible to the in-flight registry until phase 2.
   reserved?: { total: number; forAgent: number },
 ): ConcurrencyGate {
-  if (inFlightTurns.size + (reserved?.total ?? 0) >= settings.dispatch.maxConcurrentTurns) return 'concurrency_cap'
+  if (getInFlightTurnCount() + (reserved?.total ?? 0) >= settings.dispatch.maxConcurrentTurns) return 'concurrency_cap'
   if (getInFlightTurnCount(agentId) + (reserved?.forAgent ?? 0) >= settings.dispatch.maxTurnsPerAgent) return 'agent_busy'
   return null
 }
@@ -314,9 +254,10 @@ export function scheduleLadderRedispatch(run: () => Promise<unknown>, delayMs: n
  * synchronization point for tests and shutdown.
  */
 export async function awaitDispatchIdle(): Promise<void> {
-  while (inFlightTurns.size > 0 || pendingLadderRedispatches > 0) {
-    if (inFlightTurns.size > 0) {
-      await Promise.allSettled([...inFlightTurns.values()].map((turn) => turn.settled))
+  while (getInFlightTurnCount() > 0 || pendingLadderRedispatches > 0) {
+    const settled = getInFlightSettledPromises()
+    if (settled.length > 0) {
+      await Promise.allSettled(settled)
     } else {
       await new Promise((resolve) => setTimeout(resolve, 10))
     }
@@ -464,10 +405,10 @@ export function fireDispatchTurn(opts: {
       opts.onSettled?.('error', err)
     })
     .finally(() => {
-      inFlightTurns.delete(opts.marker)
+      unregisterTurn(opts.marker)
     })
 
-  inFlightTurns.set(opts.marker, {
+  registerTurn(opts.marker, {
     agentId: opts.targetAgent,
     taskId: opts.task.id,
     ...(opts.childTaskId ? { childTaskId: opts.childTaskId } : {}),

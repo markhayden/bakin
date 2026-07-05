@@ -124,12 +124,12 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 }))
 
 import { dispatchTasks, awaitDispatchIdle, getInFlightTurnCount } from '../../src/core/dispatch'
+import { fireDispatchTurn } from '../../src/core/dispatch-turns'
 import {
   abortTurnsForTask,
-  fireDispatchTurn,
   getInFlightTurnsSnapshot,
   forceReleaseTurn,
-} from '../../src/core/dispatch-turns'
+} from '../../src/core/dispatch-registry'
 import { closeDb } from '../../packages/core/src/storage/db'
 
 let tempDir: string

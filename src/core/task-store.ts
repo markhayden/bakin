@@ -18,6 +18,7 @@ import { generateTaskId } from '@bakin/core/ids'
 import { join } from 'path'
 import { getBakinPaths, getContentDir } from './content-dir'
 import { purgeTaskRows } from './execution-ledger'
+import { abortTurnsForTask } from './dispatch-registry'
 import { createLogger } from './logger'
 
 const log = createLogger('task-store')
@@ -333,17 +334,6 @@ export function assignTask(identifier: string, agent: string): Promise<void> {
   }
 }
 
-async function abortInFlightTurns(taskId: string): Promise<void> {
-  try {
-    // Dynamic: dispatch-turns imports task-store — a static import would cycle.
-    const { abortTurnsForTask } = await import('./dispatch-turns')
-    abortTurnsForTask(taskId, 'task-deleted')
-  } catch (err) {
-    // Best effort: the ghost turn falls to the watchdog orphan sweep.
-    log.warn('Failed to abort in-flight turns for deleted task', { taskId, err: err instanceof Error ? err.message : String(err) })
-  }
-}
-
 /**
  * The ONE canonical task-delete path — every entry point (REST, MCP exec
  * tool, plugin SDK) gets the full cascade (#604 T5):
@@ -359,7 +349,8 @@ export async function deleteTask(identifier: string): Promise<string> {
   const task = requireTask(identifier)
   // Abort FIRST, while the ledger/registry state is still coherent — the
   // 'aborted' settle branch must not race a half-deleted task.
-  await abortInFlightTurns(task.id)
+  // (dispatch-registry is a leaf module — no dispatch fire-core import cycle.)
+  abortTurnsForTask(task.id, 'task-deleted')
   await invokeWorkflowHook('workflows.cancelInstance', task.id)
   await invokeWorkflowHook('workflows.deleteInstance', task.id)
   // Cascade the execution ledger: frees any live run claim and drops the

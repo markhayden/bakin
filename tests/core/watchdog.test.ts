@@ -144,7 +144,7 @@ let turnsSnapshot: TurnSnapshot[] = []
 let snapshotThrows = false
 const abortTurnsSpy = mock((_taskId: string, _reason: string) => 1)
 const forceReleaseSpy = mock((_marker: string) => true)
-mock.module('../../src/core/dispatch-turns', () => ({
+mock.module('../../src/core/dispatch-registry', () => ({
   getInFlightTurnsSnapshot: () => {
     if (snapshotThrows) throw new Error('registry exploded')
     return turnsSnapshot

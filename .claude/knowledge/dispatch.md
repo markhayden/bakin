@@ -19,7 +19,8 @@ modules that import each other directly (never through the barrel):
 | `dispatch-failures.ts` | Pure RuntimeError→cooldown-class classification (kind-only, never message text) |
 | `dispatch-prompts.ts` | Synchronous prompt assembly (labeled sections; pure string builders) |
 | `dispatch-context-blocks.ts` | Async prompt-context builders (lessons via retrieval, assets via hook) + lessonBlockCache |
-| `dispatch-turns.ts` | The concurrent fire engine: budget gate, run claiming, in-flight registry + caps, `fireDispatchTurn` settle handlers |
+| `dispatch-registry.ts` | The in-flight turn registry (LEAF — types+logger only): counts, abort/snapshot/force-release surface for task-store + watchdog |
+| `dispatch-turns.ts` | The concurrent fire engine: budget gate, run claiming, turn registration + caps, `fireDispatchTurn` settle handlers |
 | `dispatch-prepare.ts` | Shared per-task fire prep (claim → lesson → assets → message → move → audit) for cycle + single |
 | `dispatch-cycle.ts` | The periodic two-phase collect-then-fire cycle, start/stop, `getDispatchInfo` |
 | `dispatch-single.ts` | Immediate single-task dispatch (kick / subtask / continuation / recovery) |

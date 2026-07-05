@@ -58,10 +58,10 @@ mock.module('../../plugins/workflows/lib/runtime', () => ({
   cancelInstance: mock(),
 }))
 
-// Spy on the dispatch registry abort — deleteTask reaches it via dynamic
-// import (static would cycle); mock.module intercepts both forms (#604).
+// Spy on the dispatch registry abort — deleteTask imports the leaf
+// dispatch-registry module statically (#604).
 const abortTurnsForTaskSpy = mock((_taskId: string, _reason: string) => 0)
-mock.module('../../src/core/dispatch-turns', () => ({
+mock.module('../../src/core/dispatch-registry', () => ({
   abortTurnsForTask: abortTurnsForTaskSpy,
 }))
 

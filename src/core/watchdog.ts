@@ -27,7 +27,7 @@ import {
   forceReleaseTurn,
   getInFlightTurnsSnapshot,
   ORPHAN_TURN_FORCE_RELEASE_GRACE_MS,
-} from './dispatch-turns'
+} from './dispatch-registry'
 
 const log = createLogger('watchdog')
 const hooks = () => getHookRegistry()
