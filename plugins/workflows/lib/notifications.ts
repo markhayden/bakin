@@ -461,13 +461,26 @@ export async function sendGateDecisionSummary(
     return
   }
 
+  // A tight receipt, not a re-announcement: who decided, how long it took,
+  // and the reject reason when there is one. The gate description belongs to
+  // the request-context message, not here.
+  const icon = decision === 'approved' ? '✅' : '❌'
+  const durationText = requestedAt ? humanizeDuration(Date.parse(decidedAt) - Date.parse(requestedAt)) : undefined
+  const body = [
+    `${icon} **Approval Gate: ${gateLabel}** — ${decisionLabel}`,
+    `By ${approverLabel}${durationText ? ` · took ${durationText}` : ''}`,
+    `Task \`${instance.taskId}\` · \`${instance.workflowId}\``,
+    ...(reason ? [`> ${reason}`] : []),
+  ].join('\n')
+
   try {
     await runtime.channels.sendNotification({
       channels: [resolvedChannel],
       notification: {
         severity: decision === 'approved' ? 'success' : 'warn',
-        title: `Gate ${decisionLabel}: ${gateLabel}`,
-        body: gateDescription ?? '',
+        // Empty title: a non-empty one forces a blank line before the body.
+        title: '',
+        body,
         fields,
         metadata: {
           instanceId: instance.instanceId,

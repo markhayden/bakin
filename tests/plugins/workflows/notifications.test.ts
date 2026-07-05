@@ -409,14 +409,34 @@ describe('runtime gate notifications', () => {
     )
 
     expect(sendNotification).toHaveBeenCalledTimes(1)
-    const [call] = sendNotification.mock.calls[0] as unknown as [Record<string, unknown>]
-    expect(call).toEqual(expect.objectContaining({
-      channels: ['discord:123'],
-      notification: expect.objectContaining({
-        severity: 'success',
-        title: 'Gate Approved: Review Draft',
-      }),
-    }))
+    const [call] = sendNotification.mock.calls[0] as unknown as [{ channels: string[]; notification: { severity: string; title: string; body: string } }]
+    expect(call.channels).toEqual(['discord:123'])
+    expect(call.notification.severity).toBe('success')
+    expect(call.notification.title).toBe('')
+    // Tight receipt: headline, actor + duration, identity — no gate description.
+    expect(call.notification.body).toContain('✅ **Approval Gate: Review Draft** — Approved\nBy main-operator (web) · took 5m')
+    expect(call.notification.body).toContain('Task `task-42` · `content-pipeline`')
+    expect(call.notification.body).not.toContain('Approve the draft')
+  })
+
+  it('includes the reject reason as a quote in the decision summary', async () => {
+    await sendGateDecisionSummary(
+      mockInstance,
+      'review-gate',
+      'Review Draft',
+      undefined,
+      'rejected',
+      { source: 'channel', id: 'owner-1', displayName: 'Owner' },
+      undefined,
+      '2026-04-11T10:05:00Z',
+      'Needs a stronger hook',
+      enabledSettings,
+    )
+
+    const [call] = sendNotification.mock.calls[0] as unknown as [{ notification: { severity: string; body: string } }]
+    expect(call.notification.severity).toBe('warn')
+    expect(call.notification.body).toContain('❌ **Approval Gate: Review Draft** — Rejected')
+    expect(call.notification.body).toContain('> Needs a stronger hook')
   })
 
   it('skips the decision summary and logs an error when the channel cannot be resolved', async () => {
