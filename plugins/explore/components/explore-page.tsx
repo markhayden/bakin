@@ -215,8 +215,6 @@ function ExplorePageInner() {
       {error && <ErrorBanner message={error} onRetry={refresh} />}
       {actionError && <ErrorBanner message={actionError} onRetry={() => setActionError(null)} />}
 
-      {/* Placeholder banner — swap for generated art later. Kept as a plain
-          block so the art drop-in is a one-file change. */}
       <div
         data-testid="explore-banner"
         className="relative flex min-h-32 flex-col justify-center overflow-hidden rounded-2xl border border-pink-500/20 bg-gradient-to-r from-pink-500/25 via-fuchsia-500/15 to-amber-400/20 px-8 py-6"
@@ -224,9 +222,6 @@ function ExplorePageInner() {
         <span className="text-lg font-semibold text-foreground">Make Bakin yours</span>
         <span className="max-w-xl text-sm text-foreground/70">
           Hire agents, bolt on plugins, and teach your team new tricks — everything here is official, curated, and one click away.
-        </span>
-        <span className="absolute right-4 top-3 rounded border border-dashed border-foreground/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-foreground/40">
-          banner art placeholder
         </span>
       </div>
 

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Loader2 } from 'lucide-react'
+import { ChevronDown, Loader2 } from 'lucide-react'
 import {
   Button,
   Dialog,
@@ -202,16 +202,19 @@ export function InstallDialog({
                 </div>
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="explore-install-kind">Kind</Label>
-                  <select
-                    id="explore-install-kind"
-                    value={customKind}
-                    onChange={(e) => setCustomKind(e.target.value as InstallKind)}
-                    className="h-9 rounded-md border border-border bg-background px-3 text-sm"
-                  >
-                    {KIND_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <select
+                      id="explore-install-kind"
+                      value={customKind}
+                      onChange={(e) => setCustomKind(e.target.value as InstallKind)}
+                      className="h-9 w-full appearance-none rounded-md border border-border bg-background pl-3 pr-9 text-sm"
+                    >
+                      {KIND_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  </div>
                 </div>
               </>
             )}
@@ -226,22 +229,38 @@ export function InstallDialog({
                   onChange={(e) => setInstallAs(e.target.value)}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Lockfile-key alias. Useful when two packages share an id.
+                  Lockfile-key alias. Useful when two packages share an id. You'll see this
+                  name in package listings and CLI commands — it does not change the
+                  {kind === 'agent' ? " agent's name or how it appears in the app" : ' installed content itself'}.
                 </p>
               </div>
             )}
 
             {kind === 'agent' && (
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={adopt} onChange={(e) => setAdopt(e.target.checked)} className="rounded" />
-                Adopt existing agent (preserve workspace files; only inject markers)
+              <label className="flex items-start gap-2.5 text-sm">
+                <input type="checkbox" checked={adopt} onChange={(e) => setAdopt(e.target.checked)} className="mt-1 rounded" />
+                <span className="flex flex-col gap-0.5">
+                  <span>Adopt existing agent</span>
+                  <span className="text-xs text-muted-foreground">
+                    Already have an agent with this name? Adopting brings it under package
+                    management without erasing anything — it keeps its memory, files, and
+                    personality, and just starts receiving updates from this package.
+                  </span>
+                </span>
               </label>
             )}
 
             {kind !== 'plugin' && (
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)} className="rounded" />
-                Replace on collision (overwrite an existing lockfile entry with the same id)
+              <label className="flex items-start gap-2.5 text-sm">
+                <input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)} className="mt-1 rounded" />
+                <span className="flex flex-col gap-0.5">
+                  <span>Replace on collision</span>
+                  <span className="text-xs text-muted-foreground">
+                    If something with this name is already installed, replace it with this
+                    one. Leave this off and Bakin will stop and warn you instead of
+                    overwriting — the safe default.
+                  </span>
+                </span>
               </label>
             )}
 
