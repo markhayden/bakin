@@ -7,7 +7,7 @@ import type { BakinPlugin } from '@bakin/core/plugin-types'
 import { definePlugin, defineRoute } from '@bakin/core/routing'
 import { createLogger } from '../../src/core/logger'
 import { runChecks } from '../../src/core/plugins/upgrade-check'
-import { checkPackageUpdate } from '../../src/core/agent-packages/checker'
+import { checkPackageUpdateAsync } from '../../src/core/agent-packages/checker'
 import { mergedCatalog } from './lib/catalog'
 import { gatherInstallSources, joinInstallState } from './lib/install-state'
 import { refreshRemoteCatalog } from './lib/refresh'
@@ -15,52 +15,86 @@ import type { ExploreCatalogEntry, ExploreCatalogResponse } from './types'
 
 const log = createLogger('explore')
 
+interface ProbeOutcome {
+  /** agentId → definitive update state. Failed probes are NOT included — unknown stays unknown. */
+  agentUpdates: Map<string, boolean>
+  /** Probes that could not reach/interpret their source (offline, bad remote, …). */
+  probeErrors: number
+}
+
 /**
  * Probe update state for installed user plugins (persists lockfile markers)
  * and managed agents (probe-only — results are returned, never persisted
- * upstream). Failures degrade to "unknown", never to an error response.
+ * upstream). Failed probes are counted and left UNKNOWN — a probe that
+ * couldn't reach the source must never report "up to date". All fetches run
+ * async and in parallel so a slow remote can't stall the event loop or
+ * serialize the sweep.
  */
-async function runUpdateProbes(sources: ReturnType<typeof gatherInstallSources>): Promise<Map<string, boolean>> {
-  const userPluginIds = Object.keys(sources.pluginLock.plugins)
-  if (userPluginIds.length > 0) {
-    try {
-      await runChecks(userPluginIds)
-    } catch (err) {
-      log.warn('plugin update probe failed', { error: err instanceof Error ? err.message : String(err) })
-    }
-  }
+async function runUpdateProbes(sources: ReturnType<typeof gatherInstallSources>): Promise<ProbeOutcome> {
+  const outcome: ProbeOutcome = { agentUpdates: new Map(), probeErrors: 0 }
 
-  const agentUpdates = new Map<string, boolean>()
-  for (const [key, entry] of Object.entries(sources.packageLock.packages)) {
-    if (entry.kind !== 'agent' || !entry.agentId) continue
+  const userPluginIds = Object.keys(sources.pluginLock.plugins)
+  const pluginSweep = userPluginIds.length === 0
+    ? Promise.resolve()
+    : runChecks(userPluginIds)
+        .then((results) => {
+          for (const result of results) {
+            if (result.error) {
+              outcome.probeErrors += 1
+              log.warn('plugin update probe failed', { pluginId: result.id, error: result.error })
+            }
+          }
+        })
+        .catch((err) => {
+          outcome.probeErrors += userPluginIds.length
+          log.warn('plugin update sweep failed', { error: err instanceof Error ? err.message : String(err) })
+        })
+
+  const agentEntries = Object.entries(sources.packageLock.packages)
+    .filter(([, entry]) => entry.kind === 'agent' && entry.agentId)
+  const agentSweep = Promise.all(agentEntries.map(async ([key, entry]) => {
     try {
-      const status = checkPackageUpdate(key)
-      agentUpdates.set(entry.agentId, status.upgradeAvailable)
+      const status = await checkPackageUpdateAsync(key)
+      if (status.error) {
+        outcome.probeErrors += 1
+        log.warn('agent update probe failed', { packageId: key, error: status.error })
+        return
+      }
+      outcome.agentUpdates.set(entry.agentId!, status.upgradeAvailable)
     } catch (err) {
+      outcome.probeErrors += 1
       log.warn('agent update probe failed', { packageId: key, error: err instanceof Error ? err.message : String(err) })
     }
-  }
-  return agentUpdates
+  }))
+
+  await Promise.all([pluginSweep, agentSweep])
+  return outcome
 }
 
 async function buildCatalogResponse(check: boolean): Promise<ExploreCatalogResponse> {
   const catalog = await mergedCatalog()
   let sources = gatherInstallSources()
-  let agentUpdates = new Map<string, boolean>()
+  let probes: ProbeOutcome | null = null
 
   if (check) {
-    agentUpdates = await runUpdateProbes(sources)
+    probes = await runUpdateProbes(sources)
     // Re-read: runChecks persisted fresh plugin markers into the lockfile.
     sources = gatherInstallSources()
   }
 
   const entries: ExploreCatalogEntry[] = joinInstallState(catalog.entries, sources).map((entry) =>
-    entry.kind === 'agent' && agentUpdates.has(entry.id)
-      ? { ...entry, updateAvailable: agentUpdates.get(entry.id)! }
+    entry.kind === 'agent' && probes?.agentUpdates.has(entry.id)
+      ? { ...entry, updateAvailable: probes.agentUpdates.get(entry.id)! }
       : entry,
   )
 
-  return { ok: true, updatedAt: catalog.updatedAt, remoteUpdatedAt: catalog.remoteUpdatedAt, entries }
+  return {
+    ok: true,
+    updatedAt: catalog.updatedAt,
+    remoteUpdatedAt: catalog.remoteUpdatedAt,
+    entries,
+    ...(probes ? { probeErrors: probes.probeErrors } : {}),
+  }
 }
 
 const routes = [

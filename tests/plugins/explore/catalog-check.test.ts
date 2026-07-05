@@ -36,6 +36,7 @@ const SHA_B = 'b'.repeat(40)
 const runChecksMock = mock(async (ids: readonly string[]) => {
   // Simulate the real behavior: persist a fresh remote marker for messaging.
   expect(ids).toEqual(['messaging'])
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const lockPath = join(testDir, 'plugins', 'lock.json')
   const lock = JSON.parse(require('fs').readFileSync(lockPath, 'utf-8'))
   lock.plugins.messaging.remoteHeadSha = SHA_B
@@ -46,14 +47,18 @@ mock.module('../../../src/core/plugins/upgrade-check', () => ({
   runChecks: runChecksMock,
 }))
 
-const checkPackageUpdateMock = mock((packageId: string) => {
+const checkPackageUpdateMock = mock(async (packageId: string) => {
   if (packageId === 'pixel@1.2.0') {
     return { currentVersion: '1.2.0', latestVersion: '2.0.0', currentCommitSha: SHA_A, latestCommitSha: SHA_B, upgradeAvailable: true, checkedAt: 'now' }
+  }
+  if (packageId === 'ghost@0.1.0') {
+    // Unreachable source: the checker reports the failure in-band.
+    return { currentVersion: '0.1.0', latestVersion: null, currentCommitSha: SHA_A, latestCommitSha: null, upgradeAvailable: false, checkedAt: 'now', error: 'clone failed: offline' }
   }
   throw new Error(`unexpected probe for ${packageId}`)
 })
 mock.module('../../../src/core/agent-packages/checker', () => ({
-  checkPackageUpdate: checkPackageUpdateMock,
+  checkPackageUpdateAsync: checkPackageUpdateMock,
 }))
 
 import explorePlugin from '../../../plugins/explore'
@@ -96,6 +101,16 @@ beforeAll(async () => {
         agentId: 'pixel',
         state: 'managed',
       },
+      'ghost@0.1.0': {
+        kind: 'agent',
+        version: '0.1.0',
+        source: 'github:markhayden/bakin-bits-official#agents/ghost',
+        ref: 'main',
+        commitSha: SHA_A,
+        installedAt: '2026-07-01T00:00:00Z',
+        agentId: 'ghost',
+        state: 'managed',
+      },
     },
   }))
 
@@ -131,5 +146,8 @@ describe('GET /catalog?check=1', () => {
     expect(byKey(entries, 'plugin', 'messaging')?.updateAvailable).toBe(true)
     // Agent probe result folded into the response
     expect(byKey(entries, 'agent', 'pixel')?.updateAvailable).toBe(true)
+    // Failed probes stay UNKNOWN and are counted — never reported as current
+    expect(byKey(entries, 'agent', 'ghost')).toBeUndefined() // not in catalog — but its failure still counts
+    expect(body.probeErrors).toBe(1)
   })
 })

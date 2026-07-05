@@ -31,7 +31,13 @@ export const CatalogEntrySchema = z
     useCases: z.array(z.string()).default([]),
     source: z.string().min(1).optional(),
     ref: z.string().nullable().default(null),
-    trust: z.enum(['official', 'verified', 'community']).default('community'),
+    /**
+     * REQUIRED, no default: the old readers treated a missing trust as
+     * official while the first v2 draft defaulted it to community — the
+     * silent divergence dropped entries from onboarding recommendations.
+     * Catalog authors must state trust explicitly.
+     */
+    trust: z.enum(['official', 'verified', 'community']),
     /** Ships inside the Bakin binary — always installed, never installable. */
     builtin: z.boolean().default(false),
     /** Plugin ids this entry depends on (plugin kind only). */

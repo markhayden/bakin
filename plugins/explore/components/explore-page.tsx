@@ -58,6 +58,14 @@ function ExplorePageInner() {
   const [searchDraft, setSearchDraft] = useState(query)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => () => { if (searchTimer.current) clearTimeout(searchTimer.current) }, [])
+  // Resync the draft when the URL param changes underneath us (sidebar
+  // re-click clears ?q=, back/forward, shared links) — otherwise the grid
+  // stays filtered by text the URL no longer claims. A pending debounced
+  // commit converges to the same value, so this never fights typing.
+  useEffect(() => {
+    setSearchDraft(query)
+    if (searchTimer.current) clearTimeout(searchTimer.current)
+  }, [query])
   const onSearchChange = (value: string) => {
     setSearchDraft(value)
     if (searchTimer.current) clearTimeout(searchTimer.current)
@@ -67,8 +75,11 @@ function ExplorePageInner() {
   const [installEntry, setInstallEntry] = useState<ExploreCatalogEntry | null>(null)
   // Probe/refresh responses carry state the base GET can't reproduce
   // (agent update probes are never persisted) — they override until the
-  // next base refetch.
+  // next base refetch delivers, then the fresher base data wins.
   const [override, setOverride] = useState<ExploreCatalogResponse | null>(null)
+  useEffect(() => {
+    setOverride(null)
+  }, [data])
   const [actionError, setActionError] = useState<string | null>(null)
   const [busyAction, setBusyAction] = useState<'check' | 'refresh' | null>(null)
 
@@ -87,12 +98,15 @@ function ExplorePageInner() {
       setOverride(body)
       if (action === 'check') {
         const updates = body.entries.filter((entry) => entry.updateAvailable === true)
-        toast(
-          updates.length === 0
-            ? 'Everything is up to date.'
-            : `${updates.length} update${updates.length === 1 ? '' : 's'} available: ${updates.map((u) => u.name).join(', ')}`,
-          'success',
-        )
+        const failed = body.probeErrors ?? 0
+        if (updates.length > 0) {
+          const suffix = failed > 0 ? ` (${failed} couldn't be checked)` : ''
+          toast(`${updates.length} update${updates.length === 1 ? '' : 's'} available: ${updates.map((u) => u.name).join(', ')}${suffix}`, 'success')
+        } else if (failed > 0) {
+          toast(`Couldn't check ${failed} item${failed === 1 ? '' : 's'} — network or source unreachable. Everything that could be checked is up to date.`, 'error')
+        } else {
+          toast('Everything is up to date.', 'success')
+        }
       } else {
         toast(
           body.remoteUpdatedAt

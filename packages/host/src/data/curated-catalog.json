@@ -255,6 +255,38 @@
       "builtin": true
     },
     {
+      "id": "images",
+      "kind": "plugin",
+      "name": "Images",
+      "emoji": "🎇",
+      "description": "Provider-routed image generation, import, export, and prompt routing.",
+      "category": "Creative",
+      "tags": ["images", "generation"],
+      "useCases": [
+        "Give agents image-generation tools out of the box",
+        "Route prompts to the right image provider",
+        "Import and export images through the asset store"
+      ],
+      "trust": "official",
+      "builtin": true
+    },
+    {
+      "id": "git",
+      "kind": "plugin",
+      "name": "Git",
+      "emoji": "🌿",
+      "description": "Git worktree isolation for agent code work.",
+      "category": "Engineering",
+      "tags": ["git", "worktrees"],
+      "useCases": [
+        "Let agents work on code in isolated worktrees",
+        "Keep agent changes off your main branch until reviewed",
+        "Clean up abandoned work automatically"
+      ],
+      "trust": "official",
+      "builtin": true
+    },
+    {
       "id": "explore",
       "kind": "plugin",
       "name": "Explore",

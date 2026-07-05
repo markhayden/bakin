@@ -11,6 +11,7 @@ import {
   Input,
   Label,
 } from '@makinbakin/sdk/ui'
+import { sourceWithRef } from '../../../src/lib/package-source'
 import { ConsentDialog, type ConsentRequest } from './consent-dialog'
 import type { ExploreCatalogEntry } from '../types'
 
@@ -67,7 +68,10 @@ export function InstallDialog({
   const [error, setError] = useState<string | null>(null)
   const [consent, setConsent] = useState<ConsentRequest | null>(null)
 
-  const source = preset ? (entry.source ?? '') : customSource
+  // Curated entries carry a ref pin — honor it exactly like onboarding does
+  // (agent/pack specs embed @ref into the source; plugin installs send ref).
+  const source = preset ? sourceWithRef(entry.source ?? '', entry.ref) : customSource
+  const presetRef = preset ? entry.ref : null
   const kind: InstallKind = preset ? (entry.kind as InstallKind) : customKind
 
   const close = (nextOpen: boolean) => {
@@ -92,7 +96,12 @@ export function InstallDialog({
   const installBody = (): Record<string, unknown> => {
     const trimmed = source.trim()
     if (kind === 'plugin') {
-      return { source: trimmed, type: inferSourceType(trimmed), accepted: false }
+      return {
+        source: trimmed,
+        type: inferSourceType(trimmed),
+        ref: presetRef ?? undefined,
+        accepted: false,
+      }
     }
     const base: Record<string, unknown> = {
       source: trimmed,
@@ -156,10 +165,13 @@ export function InstallDialog({
   }
 
   const handleConsentAccept = async (accepted: ConsentRequest) => {
+    // Must mirror the preflight body exactly — the consent token is bound to
+    // the (source, ref) identity server-side.
     const trimmed = source.trim()
     await postInstall({
       source: trimmed,
       type: inferSourceType(trimmed),
+      ref: presetRef ?? undefined,
       accepted: true,
       consentToken: accepted.consentToken,
     })

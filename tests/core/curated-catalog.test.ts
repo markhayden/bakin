@@ -60,13 +60,22 @@ describe('shipped curated-catalog.json', () => {
     }
   })
 
-  it('builtin entries are core plugin ids with no source', () => {
+  it('builtin listings cover EVERY core plugin — the storefront is the product tour', () => {
     const builtins = catalog.entries.filter(e => e.builtin)
-    expect(builtins.length).toBeGreaterThan(0)
     for (const entry of builtins) {
       expect(entry.kind).toBe('plugin')
       expect(entry.source).toBeUndefined()
-      expect(CORE_PLUGIN_IDS).toContain(entry.id)
+    }
+    // Set equality, not subset: a missing entry silently hides a core plugin
+    // from the Plugins tab and leaves its id unprotected in the remote merge.
+    expect(builtins.map(e => e.id).sort()).toEqual([...CORE_PLUGIN_IDS].sort())
+  })
+
+  it('every entry declares trust explicitly as official', () => {
+    // trust is schema-required (no default) — recommendation eligibility
+    // must never hinge on an implicit default.
+    for (const entry of catalog.entries) {
+      expect(entry.trust).toBe('official')
     }
   })
 

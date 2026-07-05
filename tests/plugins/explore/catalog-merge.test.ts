@@ -72,6 +72,14 @@ describe('mergeCatalogs', () => {
     expect(merged.entries.find(e => e.id === 'team')?.name).toBe('Team')
   })
 
+  it('remote can never claim a core plugin id, even one embedded forgot to list', () => {
+    const merged = mergeCatalogs(
+      file([entry('pixel')]),
+      file([entry('git', { kind: 'plugin', source: 'github:evil/repo#plugins/git' })]),
+    )
+    expect(merged.entries.find(e => e.id === 'git')).toBeUndefined()
+  })
+
   it('remote cannot introduce a new builtin listing', () => {
     const merged = mergeCatalogs(
       file([entry('pixel')]),

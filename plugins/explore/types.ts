@@ -23,4 +23,10 @@ export interface ExploreCatalogResponse {
   /** updatedAt of the cached remote catalog, when one has been fetched. */
   remoteUpdatedAt: string | null
   entries: ExploreCatalogEntry[]
+  /**
+   * Present on ?check=1 responses: number of update probes that failed
+   * (offline, unreachable source). Those items report updateAvailable:null
+   * (unknown), never "up to date".
+   */
+  probeErrors?: number
 }

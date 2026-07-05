@@ -222,6 +222,37 @@ describe('InstallDialog', () => {
     expect(lastCall().body.consentToken).toBe('token-fresh')
   })
 
+  it('curated agent installs embed the catalog ref pin into the source', async () => {
+    const onInstalled = mock()
+    render(<InstallDialog open onOpenChange={mock()} entry={{ ...agentEntry, ref: 'v1.2.0' }} onInstalled={onInstalled} />)
+    fireEvent.click(screen.getByTestId('install-submit'))
+    await waitFor(() => expect(onInstalled).toHaveBeenCalled())
+    expect(lastCall().body.source).toBe('github:markhayden/bakin-bits-official@v1.2.0#agents/pixel')
+  })
+
+  it('curated plugin installs carry the ref pin on preflight AND consent commit', async () => {
+    fetchMock = mock((_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { accepted?: boolean; ref?: string }
+      expect(body.ref).toBe('v2.0.0')
+      if (body.accepted !== true) {
+        return Promise.resolve(jsonResponse({
+          ok: false, awaitingConsent: true, id: 'messaging', version: '2.0.0',
+          permissions: ['storage.read'], consentToken: 'token-ref',
+        }))
+      }
+      return Promise.resolve(jsonResponse({ ok: true, id: 'messaging' }))
+    })
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+
+    const onInstalled = mock()
+    render(<InstallDialog open onOpenChange={mock()} entry={{ ...pluginEntry, ref: 'v2.0.0' }} onInstalled={onInstalled} />)
+    fireEvent.click(screen.getByTestId('install-submit'))
+    await waitFor(() => expect(screen.getByTestId('consent-permission-list')).toBeTruthy())
+    fireEvent.click(screen.getByTestId('consent-accept'))
+    await waitFor(() => expect(onInstalled).toHaveBeenCalled())
+    expect(fetchMock.mock.calls.length).toBe(2)
+  })
+
   it('custom source mode sends adopt with the chosen alias', async () => {
     const onInstalled = mock()
     render(<InstallDialog open onOpenChange={mock()} entry={null} onInstalled={onInstalled} />)

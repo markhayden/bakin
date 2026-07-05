@@ -12,7 +12,7 @@ import {
   readLockfile,
   type PackageEntry,
 } from '../../../packages/core/src/agent-packages/lockfile'
-import { fetchSource, sourceSpecWithRef, type FetchedSource } from './source-fetcher'
+import { fetchSource, fetchSourceAsync, sourceSpecWithRef, type FetchedSource } from './source-fetcher'
 
 export interface PackageUpdateStatus {
   currentVersion: string
@@ -47,6 +47,44 @@ function cleanupFetched(fetched: FetchedSource | null): void {
   }
 }
 
+function statusFromFetched(
+  packageId: string,
+  entry: PackageEntry,
+  fetched: FetchedSource,
+  checkedAt: string,
+): PackageUpdateStatus {
+  const manifestPath = join(fetched.stagingDir, 'bakin-package.json')
+  const manifest = parseManifest(JSON.parse(readFileSync(manifestPath, 'utf-8')))
+  if (manifest.id !== stripVersionFromKey(packageId)) {
+    throw new Error(`Source manifest id "${manifest.id}" does not match installed package "${packageId}".`)
+  }
+
+  const latestCommitSha = fetched.commitSha || null
+  const versionChanged = manifest.version !== entry.version
+  const commitChanged = Boolean(entry.commitSha && latestCommitSha && latestCommitSha !== entry.commitSha)
+
+  return {
+    currentVersion: entry.version,
+    latestVersion: manifest.version,
+    currentCommitSha: entry.commitSha,
+    latestCommitSha,
+    upgradeAvailable: versionChanged || commitChanged,
+    checkedAt,
+  }
+}
+
+function statusFromError(entry: PackageEntry, checkedAt: string, err: unknown): PackageUpdateStatus {
+  return {
+    currentVersion: entry.version,
+    latestVersion: null,
+    currentCommitSha: entry.commitSha,
+    latestCommitSha: null,
+    upgradeAvailable: false,
+    checkedAt,
+    error: err instanceof Error ? err.message : String(err),
+  }
+}
+
 export function checkPackageUpdate(
   packageId: string,
   options: CheckPackageUpdateOptions = {},
@@ -61,34 +99,36 @@ export function checkPackageUpdate(
   let fetched: FetchedSource | null = null
   try {
     fetched = fetchSource(sourceWithRef(entry))
-    const manifestPath = join(fetched.stagingDir, 'bakin-package.json')
-    const manifest = parseManifest(JSON.parse(readFileSync(manifestPath, 'utf-8')))
-    if (manifest.id !== stripVersionFromKey(packageId)) {
-      throw new Error(`Source manifest id "${manifest.id}" does not match installed package "${packageId}".`)
-    }
-
-    const latestCommitSha = fetched.commitSha || null
-    const versionChanged = manifest.version !== entry.version
-    const commitChanged = Boolean(entry.commitSha && latestCommitSha && latestCommitSha !== entry.commitSha)
-
-    return {
-      currentVersion: entry.version,
-      latestVersion: manifest.version,
-      currentCommitSha: entry.commitSha,
-      latestCommitSha,
-      upgradeAvailable: versionChanged || commitChanged,
-      checkedAt,
-    }
+    return statusFromFetched(packageId, entry, fetched, checkedAt)
   } catch (err) {
-    return {
-      currentVersion: entry.version,
-      latestVersion: null,
-      currentCommitSha: entry.commitSha,
-      latestCommitSha: null,
-      upgradeAvailable: false,
-      checkedAt,
-      error: err instanceof Error ? err.message : String(err),
-    }
+    return statusFromError(entry, checkedAt, err)
+  } finally {
+    cleanupFetched(fetched)
+  }
+}
+
+/**
+ * Async variant for request-path callers: the git/network fetch runs off the
+ * event loop (fetchSourceAsync), so a slow remote can't stall the server the
+ * way the execFileSync-backed sync path can.
+ */
+export async function checkPackageUpdateAsync(
+  packageId: string,
+  options: CheckPackageUpdateOptions = {},
+): Promise<PackageUpdateStatus> {
+  const checkedAt = (options.now ?? (() => new Date()))().toISOString()
+  const lock = readLockfile()
+  const entry = lock.packages[packageId]
+  if (!entry) {
+    throw new Error(`Package "${packageId}" is not installed.`)
+  }
+
+  let fetched: FetchedSource | null = null
+  try {
+    fetched = await fetchSourceAsync(sourceWithRef(entry))
+    return statusFromFetched(packageId, entry, fetched, checkedAt)
+  } catch (err) {
+    return statusFromError(entry, checkedAt, err)
   } finally {
     cleanupFetched(fetched)
   }

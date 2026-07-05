@@ -55,10 +55,15 @@ pair (both deleted, along with the `GET /api/curated` host route):
   Refinement: non-builtin entries MUST have a `source`. `screenshots[]`
   holds gallery image URLs (authored in the bits-repo catalog); the detail
   drawer renders placeholder frames until an entry ships real assets.
-- Loader: `src/core/curated-catalog/load.ts` — static import first (dev/test),
-  `EMBEDDED_ASSETS` fallback (compiled binary), degrades to an empty catalog
-  rather than throwing. `loadCatalogFile(staticJson)` is the injectable core;
-  `loadUnifiedCatalog()` is the app entry.
+- Loader: `src/core/curated-catalog/load.ts` — EMBEDDED-FIRST (fresh disk
+  read: dev edits show without a restart, matching the old /api/curated
+  request-time read; binary reads the compiler-embedded copy), static import
+  fallback (unit tests). Every degradation LOGS LOUDLY (no silent empty
+  storefront); the static path never throws so a bad catalog edit can't
+  crash server startup or the CLI via the module-load RECOMMENDED_* consts.
+  `loadCatalogFile(staticJson)` is the injectable core; `loadUnifiedCatalog()`
+  is the app entry. `trust` is schema-REQUIRED (no default) — recommendation
+  eligibility must never hinge on an implicit default.
 - Consumers: onboarding recommendations (`src/core/onboarding/recommended-agents.ts`
   filters `kind==='agent' && !builtin && trust==='official'`;
   `recommended-plugins.ts` same for `plugin`) and the explore plugin.
@@ -79,15 +84,21 @@ pair (both deleted, along with the `GET /api/curated` host route):
   `~/.bakin/plugins/lock.json` for plugins, `builtin` short-circuits to
   installed). Merge rule (embedded ⊕ cached remote): keyed `(kind, id)`,
   remote wins EXCEPT builtin listings, which are embedded-only — a remote
-  catalog can never override or create builtin entries.
-- `GET /catalog?check=1` — explicit update probes: `runChecks()`
+  catalog can never override or create builtin entries, and can never claim
+  a CORE_PLUGIN_IDS plugin id at all (even one the embedded catalog forgot
+  to list). The embedded catalog MUST list every core plugin as builtin —
+  set-equality gate in tests/core/curated-catalog.test.ts.
+- `GET /catalog?check=1` — explicit update probes, all ASYNC + parallel
+  (`checkPackageUpdateAsync` — the sync checker's execFileSync git fetch
+  would freeze the event loop on the request path): `runChecks()`
   (`src/core/plugins/upgrade-check.ts`) persists plugin lockfile markers
-  (lockfile re-read afterwards); `checkPackageUpdate()`
-  (`src/core/agent-packages/checker.ts`) results for managed agents are
-  folded into the response ONLY. **Agent update state is never persisted
-  anywhere upstream** — that's why the default response reports
-  `updateAvailable: null` (unknown) for agents while plugins get real
-  values from persisted markers.
+  (lockfile re-read afterwards); agent probe results fold into the response
+  ONLY. **Agent update state is never persisted anywhere upstream** — the
+  default response reports `updateAvailable: null` (unknown) for agents.
+  **Failed probes stay unknown, never "up to date"** — the checker reports
+  errors in-band (`status.error`, it does not throw), and the response
+  carries `probeErrors` so the client toast can say "couldn't check N"
+  instead of lying with "everything is up to date".
 - `POST /catalog/refresh` — user-triggered fetch of
   `https://raw.githubusercontent.com/markhayden/bakin-bits-official/main/catalog.json`
   (injectable fetcher for tests), zod-validated, atomically cached at
@@ -105,6 +116,10 @@ and explore's join share one implementation.
 `plugins/explore/components/install-dialog.tsx` routes by kind — **zero new
 mutation endpoints**:
 
+- Catalog `ref` pins are honored exactly like onboarding: agent/pack specs
+  embed `@ref` into the source via `sourceWithRef` (`src/lib/package-source.ts`,
+  shared with onboarding), plugin installs send `ref` in the body — on BOTH
+  the consent preflight and the commit (the token is bound to source+ref).
 - agent → `POST /api/agent-packages/install` (`installAs`, `adopt`, `replace`)
 - plugin → `POST /api/plugins/install` two-phase consent:
   preflight `accepted:false` → `{awaitingConsent, permissions, consentToken}`

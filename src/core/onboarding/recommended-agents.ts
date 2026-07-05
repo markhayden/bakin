@@ -2,6 +2,7 @@ import { readLockfile } from '../../../packages/core/src/agent-packages/lockfile
 import { getAgentState, type AgentState } from '../agent-packages/agent-state'
 import { installPackage } from '../agent-packages/installer'
 import { loadUnifiedCatalog, staticCuratedCatalog } from '../curated-catalog/load'
+import { sourceWithRef } from '../../lib/package-source'
 import type { CatalogEntry } from '../curated-catalog/schema'
 import type { CheckResult, InstallResult, OnboardingComponent, OnboardingOptions } from './types'
 
@@ -43,14 +44,6 @@ function staticCatalogAgents(): RecommendedAgent[] {
 
 async function catalogAgents(): Promise<RecommendedAgent[]> {
   return normalizeCatalog((await loadUnifiedCatalog()).entries)
-}
-
-function sourceWithRef(source: string, ref: string | null): string {
-  if (!ref) return source
-  if (!source.startsWith('github:')) return source
-  const hash = source.indexOf('#')
-  if (hash === -1) return `${source}@${ref}`
-  return `${source.slice(0, hash)}@${ref}${source.slice(hash)}`
 }
 
 function installedAgentIds(): Set<string> {

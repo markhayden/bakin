@@ -17,16 +17,22 @@ let fixtureEntries: unknown[] = []
 
 const toastMock = mock()
 
+let cachedData: unknown = null
+let cachedFor: unknown = null
+
 mock.module('@makinbakin/sdk/hooks', () => {
   const { useState } = require('react') as typeof import('react')
   return {
     toast: toastMock,
-    useJsonFetch: () => ({
-      data: { ok: true, updatedAt: 'now', remoteUpdatedAt: null, entries: fixtureEntries },
-      loading: false,
-      error: null,
-      refresh: mock(),
-    }),
+    // data must be referentially stable across renders (like the real
+    // hook's state) — the page clears probe overrides when data CHANGES.
+    useJsonFetch: () => {
+      if (cachedFor !== fixtureEntries) {
+        cachedFor = fixtureEntries
+        cachedData = { ok: true, updatedAt: 'now', remoteUpdatedAt: null, entries: fixtureEntries }
+      }
+      return { data: cachedData, loading: false, error: null, refresh: mock() }
+    },
     useQueryState: (_key: string, initial = '') => {
       const [value, setValue] = useState(initial)
       return [value, setValue, setValue]
