@@ -1,0 +1,119 @@
+# Explore Plugin — Discovery Storefront & Unified Curated Catalog
+
+Status: Shipped (issue #163 pivot — spec in the PR branch's `SPEC.md`; the
+management scope of #163 — update/remove/drift/`.userEdited` UI — was
+deliberately deferred and stays in Team/Health/CLI).
+
+Explore (`plugins/explore/`) is the "do more with Bakin" surface: browse
+everything formally supported (curated agents, addon plugins, packs) by
+category with use cases, one-click install through the existing host REST
+endpoints, and installed / built-in / update-available badges. It is a
+**discovery + relay** surface, not a management surface: it never updates,
+removes, syncs, or repairs anything.
+
+## IA / Nav
+
+- Route `/explore`; single page with tabs (Agents | Plugins | Packs) —
+  the Packs tab auto-hides while the catalog has no pack entries.
+- Nav is pinned to the sidebar bottom above Settings via the generic
+  `NavItem.placement: 'bottom'` field (added for this plugin):
+  - `packages/sdk/src/types/registration.ts` + `packages/core/src/plugin-types.ts`
+    (two-tier NavItem contract — both carry `placement`).
+  - Parsed by `parseNavItem` in `packages/core/src/plugins/manifest.ts`
+    (values other than `'bottom'` are rejected; an unparsed field would be
+    silently dropped, so the parser MUST know it).
+  - Rendered by `partitionNavItems` (`packages/host/src/components/layout/nav-placement.ts`)
+    + the bottom section in `app-sidebar.tsx`.
+- Tab, category filter, and selected item all live in URL params
+  (`?tab=`, `?category=`, `?item=<kind>:<id>`); detail view is a
+  right-side `BakinDrawer`.
+
+## Unified curated catalog (v2)
+
+ONE catalog file replaces the old `curated-agents.json` / `curated-plugins.json`
+pair (both deleted, along with the `GET /api/curated` host route):
+
+- Shipped file: `packages/host/src/data/curated-catalog.json` — embedded in
+  the binary via the data-dir walk in `scripts/generate-embedded-assets.ts`
+  (URL key `/data/curated-catalog.json`).
+- Schema: `src/core/curated-catalog/schema.ts` — `CatalogFileSchema`
+  (`version: 2`, `entries[]`). Entry fields: `id`, `kind`
+  (`agent | plugin | skill-pack | workflow-pack | lesson-pack`), `name`,
+  `emoji?`, `description`, `category`, `tags`, `useCases`, `source?`, `ref`,
+  `trust`, `builtin` (default false), `dependencies`, `defaultSelected`.
+  Refinement: non-builtin entries MUST have a `source`.
+- Loader: `src/core/curated-catalog/load.ts` — static import first (dev/test),
+  `EMBEDDED_ASSETS` fallback (compiled binary), degrades to an empty catalog
+  rather than throwing. `loadCatalogFile(staticJson)` is the injectable core;
+  `loadUnifiedCatalog()` is the app entry.
+- Consumers: onboarding recommendations (`src/core/onboarding/recommended-agents.ts`
+  filters `kind==='agent' && !builtin && trust==='official'`;
+  `recommended-plugins.ts` same for `plugin`) and the explore plugin.
+- `builtin: true` entries are store listings for the core plugins themselves
+  (product-tour value); they have no `source` and are never installable.
+- Gate test: `tests/core/curated-catalog.test.ts` validates the shipped file —
+  catalog edits fail CI if malformed.
+
+## Server routes (plugin-registered, served at `/api/plugins/explore/*`)
+
+- `GET /catalog` — merged catalog joined with install state. **Offline by
+  design**: no network I/O, no runtime adapter calls; lockfiles are the
+  ground truth (`~/.bakin/packages/lock.json` for agents + packs,
+  `~/.bakin/plugins/lock.json` for plugins, `builtin` short-circuits to
+  installed). Merge rule (embedded ⊕ cached remote): keyed `(kind, id)`,
+  remote wins EXCEPT builtin listings, which are embedded-only — a remote
+  catalog can never override or create builtin entries.
+- `GET /catalog?check=1` — explicit update probes: `runChecks()`
+  (`src/core/plugins/upgrade-check.ts`) persists plugin lockfile markers
+  (lockfile re-read afterwards); `checkPackageUpdate()`
+  (`src/core/agent-packages/checker.ts`) results for managed agents are
+  folded into the response ONLY. **Agent update state is never persisted
+  anywhere upstream** — that's why the default response reports
+  `updateAvailable: null` (unknown) for agents while plugins get real
+  values from persisted markers.
+- `POST /catalog/refresh` — user-triggered fetch of
+  `https://raw.githubusercontent.com/markhayden/bakin-bits-official/main/catalog.json`
+  (injectable fetcher for tests), zod-validated, atomically cached at
+  `~/.bakin/plugin-data/explore/catalog.json`. 404 → honest
+  "no remote catalog yet" (the bits repo may not have one); network/schema
+  failures leave the existing cache untouched. NEVER fetched automatically
+  (page load does zero network).
+
+`computeUpgradeAvailable(entry)` was extracted from the plugins manifest
+handler into `packages/core/src/plugins/lockfile.ts` so the manifest route
+and explore's join share one implementation.
+
+## Install flows (client)
+
+`plugins/explore/components/install-dialog.tsx` routes by kind — **zero new
+mutation endpoints**:
+
+- agent → `POST /api/agent-packages/install` (`installAs`, `adopt`, `replace`)
+- plugin → `POST /api/plugins/install` two-phase consent:
+  preflight `accepted:false` → `{awaitingConsent, permissions, consentToken}`
+  → consent dialog → re-POST `accepted:true + consentToken`. The
+  `manifestChanged: true` bounce (manifest drifted between preflight and
+  commit) re-prompts with the FRESH token + updated permission list and a
+  visible notice — the old token is never reused.
+- pack → `POST /api/packages/install`
+- "Install from source…" custom mode: source + kind + installAs/adopt/replace;
+  source-type inference matches the CLI heuristic (`inferSourceType`).
+
+Server-owned validation/consent is never re-implemented client-side; the
+dialogs render server responses (including errors) honestly.
+
+## Tests
+
+`tests/plugins/explore/` — route tests via `tests/plugins/test-helpers.ts`
+(real temp lockfiles), pure join tests, jsdom component tests (page, card,
+install/consent dialogs incl. the manifestChanged bounce), refresh failure
+modes with an injected fetcher (never real network). All follow the
+mandatory isolation-mock rules.
+
+## Boundaries (don't regress these)
+
+- No update/remove/sync/repair UI in Explore — deep-link to Team/Health.
+- No filesystem/provider mutations from UI code.
+- No auto-fetch of the remote catalog; refresh is a user action.
+- No provider-specific identifiers (adapter-neutral by construction — it
+  only reads lockfiles and calls host REST).

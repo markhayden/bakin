@@ -86,6 +86,7 @@ Any plugin can register a health check that surfaces here alongside the built-in
 | --- | --- | --- | --- |
 | Refresh interval (seconds) | `number` | `30` | How often to poll for updated metrics |
 | Detailed metrics | `boolean` | `true` | Show per-plugin and per-tool breakdowns |
+| Usage history scan interval (minutes) | `number` | `5` | How often session transcripts are swept into the durable usage history |
 
 </div>
 <!-- /docs:settings -->

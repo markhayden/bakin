@@ -748,6 +748,25 @@
                 }
               }
             }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -2159,6 +2178,66 @@
         ],
         "description": "Returns token + context usage per agent from runtime sessions.",
         "x-bakin-full-path": "/api/plugins/health/usage"
+      }
+    },
+    "/api/plugins/health/usage-history": {
+      "get": {
+        "operationId": "health.get.usage-history",
+        "summary": "Historical agent token usage",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Health"
+        ],
+        "description": "Durable per-agent and per-day token rollups from the usage-history store. Windows are day-aligned: a window includes every local calendar day it touches. Cost is runtime-reported only.",
+        "parameters": [
+          {
+            "name": "window",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": "24h",
+              "type": "string",
+              "enum": [
+                "24h",
+                "7d",
+                "30d"
+              ]
+            }
+          }
+        ],
+        "x-bakin-full-path": "/api/plugins/health/usage-history"
       }
     },
     "/api/plugins/health/registry": {
@@ -18067,30 +18146,6 @@
           }
         },
         "x-bakin-full-path": "/api/packages/:packageId/sync"
-      }
-    },
-    "/api/curated": {
-      "get": {
-        "operationId": "core.get.api-curated",
-        "summary": "List curated installable packages",
-        "responses": {
-          "200": {
-            "description": "Successful response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {},
-                  "additionalProperties": {}
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Core"
-        ],
-        "x-bakin-full-path": "/api/curated"
       }
     },
     "/api/plugin-settings/schemas": {

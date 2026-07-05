@@ -20,6 +20,13 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>none</td>
     </tr>
     <tr>
+      <td>Explore<br/><span>Discover and install official agents, plugins, and packs — the do-more-with-Bakin storefront</span></td>
+      <td><code>explore</code></td>
+      <td>Core</td>
+      <td><code>0.1.0</code></td>
+      <td>none</td>
+    </tr>
+    <tr>
       <td>Git<br/><span>Git worktree isolation for agent code work</span></td>
       <td><code>git</code></td>
       <td>Core</td>
@@ -30,7 +37,7 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Health<br/><span>System health dashboard — MCP stats, diagnostics, and uptime</span></td>
       <td><code>health</code></td>
       <td>Core</td>
-      <td><code>1.2.0</code></td>
+      <td><code>1.3.0</code></td>
       <td>none</td>
     </tr>
     <tr>

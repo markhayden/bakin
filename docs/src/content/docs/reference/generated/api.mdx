@@ -203,13 +203,6 @@ curl -sS \
 ```
 </OpenApiReference>
 
-<OpenApiReference operationId="core.get.api-curated">
-```sh frame="terminal" showLineNumbers
-curl -sS \
-  'http://localhost:3737/api/curated'
-```
-</OpenApiReference>
-
 <OpenApiReference operationId="core.get.api-dev-events">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
@@ -824,6 +817,13 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   'http://localhost:3737/api/plugins/health/usage-feed?kind=<kind>&window=<window>&agent=<agent>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="health.get.usage-history">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/health/usage-history?window=<window>'
 ```
 </OpenApiReference>
 

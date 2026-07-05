@@ -756,7 +756,7 @@ interface PluginSettingsSchema {
 }
 ```
 
-All 10 core plugins define `settingsSchema`. The settings page at
+Most core plugins define `settingsSchema` (explore ships none — no tunables yet). The settings page at
 `/settings` fetches schemas from `GET /api/plugin-settings/schemas` and
 renders them via `PluginSettingsRenderer`. Values persist at
 `~/.bakin/plugin-settings/{pluginId}.json` via
@@ -851,7 +851,7 @@ bytes instead of disk.
 
 ### Core plugins — `scripts/build-plugins.ts`
 
-For each of the 10 core plugins, **browser assets only** (`serverEntry:
+For each core plugin, **browser assets only** (`serverEntry:
 false` — core plugin server code is never bundled; `server.ts` reaches
 `plugins/<id>/index.ts` through the static import table in
 `src/lib/plugin-static-imports.ts`, #421):
