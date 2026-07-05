@@ -363,9 +363,10 @@ export function registerTaskExecTools(ctx: PluginContext): void {
       handler: async (params: Record<string, unknown>, agent: string) => {
         const taskId = params.taskId as string
         try {
-          await deleteTask(taskId)
-          ctx.activity.audit('deleted', agent, { taskId })
-          ctx.search.remove(taskId).catch(() => {})
+          // deleteTask resolves the identifier — audit/search key on the id.
+          const deletedId = await deleteTask(taskId)
+          ctx.activity.audit('deleted', agent, { taskId: deletedId })
+          ctx.search.remove(deletedId).catch(() => {})
           return { ok: true }
         } catch (err) {
           return { ok: false, error: (err as Error).message }

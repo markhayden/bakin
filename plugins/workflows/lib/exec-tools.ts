@@ -209,6 +209,9 @@ export function registerWorkflowExecTools(ctx: PluginContext): void {
         // Fetch current step to get schema
         const step = getCurrentStep(taskId, agent) as Record<string, unknown> | undefined
         if (!step) return { ok: false, error: 'No active step found for this task' }
+        if (step.status === 'cancelled') {
+          return { ok: false, error: 'Workflow is cancelled — do not submit output. Stop work on this task.' }
+        }
 
         const schema = step.output_schema as Record<string, unknown> | undefined
 

@@ -454,9 +454,12 @@ export function start(contentDir: string): void {
 function sweepOrphanedTurns(contentDir: string): void {
   const now = Date.now()
   for (const turn of getInFlightTurnsSnapshot()) {
-    if (getTask(turn.taskId)) continue
+    // A nested-workflow step turn serves a child board task too — either id
+    // missing makes the turn an orphan.
+    const childGone = turn.childTaskId ? !getTask(turn.childTaskId) : false
+    if (getTask(turn.taskId) && !childGone) continue
     if (!turn.abortedAt) {
-      abortTurnsForTask(turn.taskId, 'orphan-sweep')
+      abortTurnsForTask(childGone && turn.childTaskId ? turn.childTaskId : turn.taskId, 'orphan-sweep')
       continue
     }
     if (now - turn.abortedAt < ORPHAN_TURN_FORCE_RELEASE_GRACE_MS) continue

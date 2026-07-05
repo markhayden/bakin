@@ -67,7 +67,9 @@ mock.module('@/core/audit', () => ({ appendAudit: appendAuditMock }))
 mock.module('../../src/core/usage', () => ({ recordUsage: mock() }))
 
 const taskStoreMock = {
-  readTaskboard: mock(() => ({ columns: { backlog: [], todo: [], inProgress: [], review: [], done: [], archived: [], blocked: [] } })),
+  // t-e2e must exist on the board — fireDispatchTurn's fire-time existence
+  // guard (review F3) aborts turns whose task has vanished.
+  readTaskboard: mock(() => ({ columns: { backlog: [], todo: [], inProgress: [{ id: 't-e2e', title: 'E2E doomed task' }], review: [], done: [], archived: [], blocked: [] } })),
   addTaskLog: mock(async () => undefined),
   updateTask: mock(async () => undefined),
   moveTask: mock(async () => undefined),

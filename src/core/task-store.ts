@@ -351,8 +351,11 @@ async function abortInFlightTurns(taskId: string): Promise<void> {
  *   → purge ledger rows → remove the task file.
  * The task file goes LAST: a mid-delete crash leaves a visible task rather
  * than invisible half-cleaned debris. Every step before it is best-effort.
+ *
+ * Returns the RESOLVED task id — `identifier` may be a title, and callers'
+ * follow-up effects (audit, search-doc removal) must key on the real id.
  */
-export async function deleteTask(identifier: string): Promise<void> {
+export async function deleteTask(identifier: string): Promise<string> {
   const task = requireTask(identifier)
   // Abort FIRST, while the ledger/registry state is still coherent — the
   // 'aborted' settle branch must not race a half-deleted task.
@@ -368,6 +371,7 @@ export async function deleteTask(identifier: string): Promise<void> {
     log.warn('Ledger purge failed for deleted task; boot sweep will reap', { taskId: task.id, err: err instanceof Error ? err.message : String(err) })
   }
   getSharedBakinTaskStore().removeSync(task.id)
+  return task.id
 }
 
 export function addTaskLog(identifier: string, author: string, message: string, data?: Record<string, unknown>): Promise<void> {

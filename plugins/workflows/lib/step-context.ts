@@ -81,15 +81,17 @@ export function getCurrentStep(
   taskId: string,
   agentId?: string,
   contentDir?: string
-): StepContext | { status: 'complete' } | { status: 'pending_approval'; stepId: string; label: string } | null {
+): StepContext | { status: 'complete' } | { status: 'cancelled' } | { status: 'pending_approval'; stepId: string; label: string } | null {
   const dir = contentDir || getContentDir()
   const instance = loadInstance(taskId, dir)
   if (!instance) return null
 
-  // Cancelled is NOT complete: a cancelled instance (task deleted or moved
-  // off the board mid-flight) must fail closed — get_step/submit_step report
-  // "no active step" instead of a false "workflow finished" (#604 T6).
-  if (instance.status === 'cancelled') return null
+  // Cancelled is NOT complete: a cancelled instance (task cancelled/moved
+  // off the board mid-flight) reports its own honest terminal status — a
+  // graceful stop signal for the still-running agent, while completeStep
+  // fails closed against any late submission (#604 T6 + review F5).
+  // A DELETED task's instance file is gone entirely → null above.
+  if (instance.status === 'cancelled') return { status: 'cancelled' }
   if (instance.status === 'complete') {
     return { status: 'complete' }
   }

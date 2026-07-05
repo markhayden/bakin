@@ -114,6 +114,9 @@ export interface DispatchRosterAgent {
 export interface InFlightTurn {
   agentId: string
   taskId: string
+  /** Nested-workflow child board task the step actually serves (differs from
+   *  taskId, which is the top-level parent) — deleting EITHER aborts (#604). */
+  childTaskId?: string
   threadId: string
   startedAt: number
   /** Full send + settle chain; resolves when reconciliation has finished. */
@@ -133,6 +136,7 @@ export interface InFlightTurnSnapshot {
   marker: string
   agentId: string
   taskId: string
+  childTaskId?: string
   threadId: string
   startedAt: number
   abortedAt?: number

@@ -493,6 +493,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       model: args.model,
       thinking: args.thinking,
       oversizedOutputBytes: oversizedOutputBytesFrom(args.metadata),
+      signal: args.signal,
     }),
   }
 
@@ -1399,15 +1400,24 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     // RPC runs are NOT stopped server-side today. The frame is fail-open
     // forward-compat; the local rejection is the behavior Bakin depends on.
     const onCallerAbort = () => {
-      if (cliSessionId) {
-        const request = this.openClawChatGateway().request(
-          'chat.abort',
-          // The gateway keys explicit-sessionId sessions as
-          // agent:<agentId>:explicit:<sessionId> (verified via sessions.list).
-          { sessionKey: `agent:${opts.agentId}:explicit:${cliSessionId}` },
-          { timeoutMs: OPENCLAW_ABORT_RPC_TIMEOUT_MS, expectFinal: false },
-        )
-        request.catch(() => {})
+      // Never let a listener throw escape AbortController.abort(): the local
+      // rejection below is the load-bearing part and must always run.
+      try {
+        if (cliSessionId) {
+          const request = this.openClawChatGateway().request(
+            'chat.abort',
+            // The gateway keys explicit-sessionId sessions as
+            // agent:<agentId>:explicit:<sessionId> (verified via sessions.list).
+            { sessionKey: `agent:${opts.agentId}:explicit:${cliSessionId}` },
+            { timeoutMs: OPENCLAW_ABORT_RPC_TIMEOUT_MS, expectFinal: false },
+          )
+          request.catch(() => {})
+        }
+      } catch (err) {
+        this.logger.warn('chat.abort frame failed to send; relying on local rejection', {
+          agentId: opts.agentId,
+          err: err instanceof Error ? err.message : String(err),
+        })
       }
       requestAbort.abort()
     }
@@ -1434,6 +1444,13 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       const payload = deathWatch
         ? await Promise.race([request, deathWatch.promise])
         : await request
+      // Caller-abort dominance on the SUCCESS path too: if the final frame
+      // wins the race against the abort rejection, the turn must still
+      // surface as 'aborted' — otherwise dispatch runs full ok bookkeeping
+      // (cost row, state cleanup) for a task the caller just cancelled.
+      if (opts.signal?.aborted) {
+        throw new RuntimeError('OpenClaw agent turn aborted by caller', { kind: 'aborted', cause: opts.signal.reason })
+      }
       const content = extractOpenClawAgentText(payload)
       if (content) {
         // Prefer usage from the gateway payload (carries cache tokens, works

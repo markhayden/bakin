@@ -183,6 +183,7 @@ describe('abortTurnsForTask', () => {
   })
 
   it('matches workflow-step markers (taskId:stepId) by taskId', async () => {
+    setColumns({ inProgress: [{ id: 'wf-1', title: 'Workflow task' }] })
     fireDispatchTurn({
       marker: 'wf-1:step-2',
       task: { id: 'wf-1', title: 'Workflow task' } as never,
@@ -203,6 +204,59 @@ describe('abortTurnsForTask', () => {
     expect(getInFlightTurnCount()).toBe(0)
     const audit = auditEvents.find((e) => e.event === 'task.turn_aborted')
     expect(audit?.data.reason).toBe('orphan-sweep')
+  })
+
+  it('aborts a nested-workflow step turn by its CHILD task id (review F0)', async () => {
+    setColumns({ inProgress: [
+      { id: 'parent-1', title: 'Parent workflow task' },
+      { id: 'parent-1--sub', title: 'Child (sub-workflow)' },
+    ] })
+    fireDispatchTurn({
+      marker: 'parent-1:nested-step',
+      task: { id: 'parent-1', title: 'Parent workflow task' } as never,
+      targetAgent: 'pixel',
+      threadId: 'task:parent-1:step:nested-step:d1',
+      message: 'work the child step',
+      contentDir: tempDir,
+      port: 3737,
+      initialLogCount: 0,
+      logPrefix: 'test',
+      dispatchKind: 'workflow',
+      childTaskId: 'parent-1--sub',
+    })
+    await tick()
+    expect(getInFlightTurnCount('pixel')).toBe(1)
+
+    // Deleting the CHILD board task aborts the parent-registered step turn.
+    expect(abortTurnsForTask('parent-1--sub', 'task-deleted')).toBe(1)
+    await awaitDispatchIdle()
+    expect(getInFlightTurnCount()).toBe(0)
+    expect(auditEvents.filter((e) => e.event === 'task.turn_aborted').length).toBe(1)
+  })
+
+  it('fire-time guard: a turn for a task deleted between claim and fire never sends (review F3)', async () => {
+    // Task is NOT on the board — simulates deleteTask interleaving between
+    // the cycle's phase-1 claim and the phase-2 fire.
+    setColumns({})
+    fireDispatchTurn({
+      marker: 't-gone',
+      task: { id: 't-gone', title: 'Deleted before fire' } as never,
+      targetAgent: 'pixel',
+      threadId: 'task:t-gone:d1',
+      message: 'never sent',
+      contentDir: tempDir,
+      port: 3737,
+      initialLogCount: 0,
+      logPrefix: 'test',
+      dispatchKind: 'regular',
+    })
+    await awaitDispatchIdle()
+
+    expect(sendCalls.length).toBe(0)
+    expect(getInFlightTurnCount()).toBe(0)
+    const audit = auditEvents.find((e) => e.event === 'task.turn_aborted')
+    expect(audit?.data.id).toBe('t-gone')
+    expect(audit?.data.reason).toBe('task-deleted')
   })
 
   it('is idempotent: a second abort of the same turn is a no-op', async () => {

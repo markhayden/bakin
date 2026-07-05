@@ -534,7 +534,7 @@ describe('PUT /:taskId — Update Task', () => {
 
 describe('DELETE /:taskId — Delete Task', () => {
   it('deletes a task by taskId', async () => {
-    mockDeleteTask.mockResolvedValue(undefined)
+    mockDeleteTask.mockResolvedValue('task-del')
 
     const route = findRoute(activated.routes, 'DELETE', '/:taskId')!
     const { status, body } = await callRoute(route, activated.ctx, {
@@ -547,9 +547,24 @@ describe('DELETE /:taskId — Delete Task', () => {
     expect(activated.ctx.activity.audit).toHaveBeenCalledWith('deleted', 'system', { taskId: 'task-del' })
   })
 
+  it('audits and removes the search doc by the RESOLVED id when deleting by title (review F4)', async () => {
+    mockDeleteTask.mockResolvedValue('resolved-id-99')
+    const searchRemove = activated.ctx.search.remove as ReturnType<typeof mock>
+    searchRemove.mockClear()
+
+    const route = findRoute(activated.routes, 'DELETE', '/:taskId')!
+    const { status } = await callRoute(route, activated.ctx, {
+      searchParams: { taskId: 'Fix login bug' }, // title fallback, not an id
+    })
+
+    expect(status).toBe(200)
+    expect(activated.ctx.activity.audit).toHaveBeenCalledWith('deleted', 'system', { taskId: 'resolved-id-99' })
+    expect(searchRemove).toHaveBeenCalledWith('resolved-id-99')
+  })
+
 
   it('does NOT invoke workflow-instance cleanup itself — deleteTask owns the full cascade (#604 T5)', async () => {
-    mockDeleteTask.mockResolvedValue(undefined)
+    mockDeleteTask.mockResolvedValue('task-with-wf')
     const hooks = activated.ctx.hooks as unknown as {
       has: ReturnType<typeof mock>
       invoke: ReturnType<typeof mock>

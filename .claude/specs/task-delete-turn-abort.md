@@ -37,7 +37,7 @@ This machine is the only user. **No backwards compatibility, no shims** — dive
 | 2 | Adapter cancel API | `signal?: AbortSignal` on `MessageArgs` (no new interface method); adapter maps signal-abort → gateway `chat.abort` + local reject |
 | 3 | Abort trace | Audit event only (`task.turn_aborted`); `purgeTaskRows` semantics unchanged |
 | 4 | Orphan sweep | Watchdog cycle sweeps the registry; abort once, then **force-release after grace** (one cycle, hardcoded constant) if the entry survives |
-| 5 | Delete paths | Full unification into `deleteTask` (abort → cancel instance → delete instance file → purge → remove task file); `getCurrentStep` returns `null` for `cancelled` so step tools fail closed |
+| 5 | Delete paths | Full unification into `deleteTask` (abort → cancel instance → delete instance file → purge → remove task file); `getCurrentStep` returns `null` for `cancelled` so step tools fail closed. **Amended post-review (F5):** cancelled returns an honest `{status:'cancelled'}` terminal signal instead of null — graceful stop for agents on cancelled-but-not-deleted tasks — while `completeStep` itself refuses cancelled submissions (F1) so no surface can advance a cancelled workflow. Deleted tasks (file gone) still yield null → fail-closed error. |
 | 6 | Validation | Mock tests (Imitation Crab learns `chat.abort`) **plus** a live validation phase against real OpenClaw |
 | 7 | Config | No new settings; hardcoded grace constant, sweep rides the existing watchdog cadence |
 

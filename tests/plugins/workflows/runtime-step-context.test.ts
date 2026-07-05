@@ -143,11 +143,11 @@ describe('runtime — step-context', () => {
       expect(getCurrentStep('nonexistent', undefined, testDir)).toBeNull()
     })
 
-    it('returns null for a cancelled instance — fail closed, never a false "complete" (#604 T6)', () => {
+    it('returns status cancelled for a cancelled instance — honest terminal, never a false "complete" (#604 T6)', () => {
       createInstance('task-cancelled', 'linear', testDir)
       completeStep('task-cancelled', 'step-one', { result: 'a' }, undefined, testDir)
       cancelInstance('task-cancelled', testDir)
-      expect(getCurrentStep('task-cancelled', undefined, testDir)).toBeNull()
+      expect(getCurrentStep('task-cancelled', undefined, testDir)).toEqual({ status: 'cancelled' })
     })
   })
 

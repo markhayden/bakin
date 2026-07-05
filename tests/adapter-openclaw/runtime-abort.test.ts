@@ -132,6 +132,33 @@ describe('messaging.send with MessageArgs.signal', () => {
     expect(captured.filter((c) => c.method === 'chat.abort').length).toBe(0)
   })
 
+  it('abort dominates a racing success frame — never returns ok for a cancelled turn (review F2)', async () => {
+    const adapter = createOpenClawRuntimeAdapter({ settings: { binaryPath: join(testHome, 'bin', 'openclaw') } })
+    const controller = new AbortController()
+    // Gateway resolves successfully DESPITE the abort having fired — the
+    // race where the final frame wins over the local abort rejection.
+    const fakeClient = {
+      request: async (method: string) => {
+        if (method === 'agent') controller.abort('task-deleted')
+        return { result: { meta: { finalAssistantVisibleText: 'finished anyway' } } }
+      },
+    }
+    ;(adapter as unknown as { openClawChatGateway: () => unknown }).openClawChatGateway = () => fakeClient
+
+    expect.assertions(2)
+    try {
+      await adapter.messaging.send({
+        agentId: 'a1',
+        content: 'racing turn',
+        threadId: 'task:t3:d1',
+        signal: controller.signal,
+      })
+    } catch (err) {
+      expect(err).toBeInstanceOf(RuntimeError)
+      expect((err as RuntimeError).kind).toBe('aborted')
+    }
+  })
+
   it('natural settle with an unaborted signal returns content normally', async () => {
     const adapter = createOpenClawRuntimeAdapter({ settings: { binaryPath: join(testHome, 'bin', 'openclaw') } })
     const fakeClient = {

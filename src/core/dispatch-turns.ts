@@ -219,7 +219,9 @@ export const ORPHAN_TURN_FORCE_RELEASE_GRACE_MS = 60_000
 
 /**
  * Fire the abort controller of every in-flight turn belonging to `taskId`
- * (regular markers and `taskId:stepId` workflow-step markers alike).
+ * (regular markers and `taskId:stepId` workflow-step markers alike). A
+ * nested-workflow step turn is registered under the PARENT task but serves a
+ * child board task (`childTaskId`) — deleting either one aborts it.
  * Idempotent per turn — abortedAt is the guard. Returns the number of turns
  * newly aborted. The 'aborted' settle branch in fireDispatchTurn does the
  * audit/bookkeeping when the rejection lands.
@@ -227,7 +229,7 @@ export const ORPHAN_TURN_FORCE_RELEASE_GRACE_MS = 60_000
 export function abortTurnsForTask(taskId: string, reason: TurnAbortReason): number {
   let count = 0
   for (const turn of inFlightTurns.values()) {
-    if (turn.taskId !== taskId || turn.abortedAt) continue
+    if ((turn.taskId !== taskId && turn.childTaskId !== taskId) || turn.abortedAt) continue
     turn.abortedAt = Date.now()
     turn.abortReason = reason
     turn.abort.abort(reason)
@@ -243,6 +245,7 @@ export function getInFlightTurnsSnapshot(): InFlightTurnSnapshot[] {
     marker,
     agentId: turn.agentId,
     taskId: turn.taskId,
+    ...(turn.childTaskId ? { childTaskId: turn.childTaskId } : {}),
     threadId: turn.threadId,
     startedAt: turn.startedAt,
     ...(turn.abortedAt ? { abortedAt: turn.abortedAt } : {}),
@@ -336,6 +339,9 @@ export function fireDispatchTurn(opts: {
   initialLogCount: number
   logPrefix: string
   dispatchKind: 'regular' | 'workflow'
+  /** Nested-workflow child board task this step turn serves — deleting it
+   *  must abort the turn even though `task` is the parent (#604 review). */
+  childTaskId?: string
   /** True when this is a recovery-ladder re-dispatch (routes to the
    *  'recovery' origin policy regardless of the task's shape). */
   isRecovery?: boolean
@@ -347,6 +353,14 @@ export function fireDispatchTurn(opts: {
   const abort = new AbortController()
   const settled = resolveDispatchRouting(opts.task, opts.isRecovery ?? false)
     .then(async (routing) => {
+      // Fire-time existence check: a delete can interleave between the
+      // cycle's phase-1 claim and this fire (the turn is only registered —
+      // and thus abortable — below). If the task vanished, surface it as an
+      // abort instead of sending a turn for a deleted task (#604 review F3).
+      if (!findDispatchTaskSnapshot(opts.task.id) || (opts.childTaskId && !findDispatchTaskSnapshot(opts.childTaskId))) {
+        abort.abort('task-deleted')
+        throw new RuntimeError('Task deleted before dispatch turn fired', { kind: 'aborted' })
+      }
       if (routing.model || routing.thinking) {
         appendAudit(opts.contentDir, 'task.routed', opts.targetAgent, {
           id: opts.task.id,
@@ -413,7 +427,7 @@ export function fireDispatchTurn(opts: {
           runId: opts.threadId,
           reason,
         })
-        log.info(`${opts.logPrefix}: turn aborted for "${opts.task.title}" → ${opts.targetAgent}`, { id: opts.task.id, reason })
+        log.info(`Turn aborted for "${opts.task.title}" → ${opts.targetAgent}`, { id: opts.task.id, reason })
         opts.onSettled?.('error', err)
         return
       }
@@ -456,6 +470,7 @@ export function fireDispatchTurn(opts: {
   inFlightTurns.set(opts.marker, {
     agentId: opts.targetAgent,
     taskId: opts.task.id,
+    ...(opts.childTaskId ? { childTaskId: opts.childTaskId } : {}),
     threadId: opts.threadId,
     startedAt: Date.now(),
     settled,

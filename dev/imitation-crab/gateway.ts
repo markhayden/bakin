@@ -46,20 +46,27 @@ function sleep(ms: number): Promise<void> {
 // Pending slow turns by sessionId, cancellable via the chat.abort RPC —
 // mirrors the real gateway's {ok, aborted, runIds} response shape so the
 // adapter's best-effort abort frame can be exercised end-to-end in dev/tests.
-const pendingSlowTurns = new Map<string, () => void>()
+// A Set per session: concurrent slow turns on one session must not clobber
+// each other's cancel handles (review F7).
+const pendingSlowTurns = new Map<string, Set<() => void>>()
 
 /** Resolves false when the delay elapses, true when chat.abort cancels it. */
 function abortableSlowSleep(sessionId: string, ms: number): Promise<boolean> {
   return new Promise((resolve) => {
+    const forSession = pendingSlowTurns.get(sessionId) ?? new Set<() => void>()
+    pendingSlowTurns.set(sessionId, forSession)
+    const cancel = () => {
+      clearTimeout(timer)
+      forSession.delete(cancel)
+      if (forSession.size === 0) pendingSlowTurns.delete(sessionId)
+      resolve(true)
+    }
     const timer = setTimeout(() => {
-      pendingSlowTurns.delete(sessionId)
+      forSession.delete(cancel)
+      if (forSession.size === 0) pendingSlowTurns.delete(sessionId)
       resolve(false)
     }, ms)
-    pendingSlowTurns.set(sessionId, () => {
-      clearTimeout(timer)
-      pendingSlowTurns.delete(sessionId)
-      resolve(true)
-    })
+    forSession.add(cancel)
   })
 }
 
@@ -143,10 +150,10 @@ export async function handleGatewayRpcRequest(method: string, params: Record<str
     // resolves the trailing sessionId segment against its pending slow turns.
     const sessionKey = typeof params.sessionKey === 'string' ? params.sessionKey : ''
     const sessionId = sessionKey.split(':').pop() ?? ''
-    const cancel = pendingSlowTurns.get(sessionId)
-    console.log(`  → rpc=chat.abort sessionKey=${sessionKey} pending=${Boolean(cancel)}`)
-    if (cancel) {
-      cancel()
+    const pending = pendingSlowTurns.get(sessionId)
+    console.log(`  → rpc=chat.abort sessionKey=${sessionKey} pending=${pending?.size ?? 0}`)
+    if (pending && pending.size > 0) {
+      for (const cancel of [...pending]) cancel()
       return { ok: true, payload: { aborted: true, runIds: [sessionId] } }
     }
     return { ok: true, payload: { aborted: false, runIds: [] } }
