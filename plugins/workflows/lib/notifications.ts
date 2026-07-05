@@ -337,17 +337,30 @@ async function sendGateContextMessage(
     const base = process.env.BAKIN_URL || 'http://localhost:3737'
     const approvalUrl = typeof context?.approvalUrl === 'string' ? context.approvalUrl : buildGateApprovalUrl(instance.taskId, stepId)
     const taskUrl = `${base}/?taskId=${encodeURIComponent(instance.taskId)}`
+    const gateDescription = getGateDescription(instance.workflowId, stepId)
+
+    // Tight header block (single newlines), then breathing room around the
+    // reviewable content, then links and a divider separating this context
+    // from the provider's button card that follows.
+    const header = [
+      `🚦 **${label}** — \`${instance.workflowId}\``,
+      `Task \`${instance.taskId}\` · step \`${stepId}\``,
+      // The workflow author's gate description, quoted as the workflow's words.
+      ...(gateDescription ? [`> ${gateDescription}`] : []),
+    ].join('\n')
+
     const body = [
-      `Workflow **${instance.workflowId}** · task ${instance.taskId} · step ${stepId}`,
-      getGateDescription(instance.workflowId, stepId),
-      renderPriorOutput(priorOutput),
-      `[Approve or reject](${approvalUrl}) · [Open task](${taskUrl})`,
+      header,
+      renderPriorOutput(priorOutput, { markdown: true }),
+      `**[Review & Approve in Bakin](${approvalUrl})** · [View Task](${taskUrl})\n${'─'.repeat(30)}`,
     ].filter(Boolean).join('\n\n')
 
     await runtime.channels.deliverContent({
       channels: [resolvedChannel],
       content: {
-        title: `Gate: ${label} — ${instance.workflowId}`,
+        // Header lives in the body: a non-empty title forces a blank line
+        // between it and the body in the provider message rendering.
+        title: '',
         body,
         ...(files.length > 0 ? { files } : {}),
         metadata: {
@@ -479,9 +492,15 @@ function isScalar(value: unknown): value is string | number | boolean {
   return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
 }
 
+interface RenderOutputOptions {
+  /** Bold labels/headings for markdown surfaces (channel messages). */
+  markdown?: boolean
+}
+
 /** Render one output entry as `Label: value` prose; nested objects indent. */
-function renderOutputEntry(key: string, value: unknown, indent: string): string[] {
-  const label = `${indent}${humanizeKey(key)}:`
+function renderOutputEntry(key: string, value: unknown, indent: string, opts: RenderOutputOptions): string[] {
+  const name = humanizeKey(key)
+  const label = `${indent}${opts.markdown ? `**${name}:**` : `${name}:`}`
   if (value === null || value === undefined || value === '') return []
   if (isScalar(value)) {
     const text = String(value)
@@ -489,28 +508,29 @@ function renderOutputEntry(key: string, value: unknown, indent: string): string[
   }
   if (Array.isArray(value)) {
     if (value.every(isScalar)) return [`${label} ${value.map(String).join(', ')}`]
-    return [label, ...value.flatMap((entry, i) => renderOutputEntry(String(i + 1), entry, `${indent}  `))]
+    return [label, ...value.flatMap((entry, i) => renderOutputEntry(String(i + 1), entry, `${indent}  `, opts))]
   }
   if (typeof value === 'object') {
     const children = Object.entries(value as Record<string, unknown>)
-      .flatMap(([childKey, child]) => renderOutputEntry(childKey, child, `${indent}  `))
+      .flatMap(([childKey, child]) => renderOutputEntry(childKey, child, `${indent}  `, opts))
     return children.length > 0 ? [label, ...children] : []
   }
   return []
 }
 
 /**
- * Render prior step output as labeled prose (humans review this in channels
- * and on the decision page — never show them a JSON blob).
+ * Render the step output under review as labeled prose (humans read this in
+ * channels and on the decision page — never show them a JSON blob).
  */
-function renderPriorOutput(priorOutput: Record<string, unknown> | undefined): string {
+function renderPriorOutput(priorOutput: Record<string, unknown> | undefined, opts: RenderOutputOptions = {}): string {
   if (!priorOutput) return ''
   const lines = Object.entries(priorOutput)
-    .flatMap(([key, value]) => renderOutputEntry(key, value, ''))
+    .flatMap(([key, value]) => renderOutputEntry(key, value, '', opts))
   const rendered = lines.length > 0 ? lines.join('\n') : JSON.stringify(priorOutput, null, 2)
   if (!rendered) return ''
   const cap = 4000
-  return `Prior output:\n${rendered.length > cap ? `${rendered.slice(0, cap)}\n...[truncated]` : rendered}`
+  const heading = opts.markdown ? '**For review:**' : 'For review:'
+  return `${heading}\n${rendered.length > cap ? `${rendered.slice(0, cap)}\n...[truncated]` : rendered}`
 }
 
 function humanizeDuration(ms: number): string {

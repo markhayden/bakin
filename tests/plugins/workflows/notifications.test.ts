@@ -222,12 +222,16 @@ describe('runtime gate notifications', () => {
     expect(callOrder).toEqual(['context', 'approval'])
     const [call] = deliverContent.mock.calls[0] as unknown as [{ channels: string[]; content: { title: string; body: string; files?: unknown[] } }]
     expect(call.channels).toEqual(['discord:123'])
-    expect(call.content.title).toBe('Gate: Review Draft — content-pipeline')
-    expect(call.content.body).toContain('task task-42')
-    expect(call.content.body).toContain('Owner reviews the draft before publishing')
-    expect(call.content.body).toContain('Hello world')
-    expect(call.content.body).toMatch(/\[Approve or reject\]\(http.*\/gates\/task-42\/decision\?stepId=review-gate\)/)
-    expect(call.content.body).toMatch(/\[Open task\]\(http.*\/\?taskId=task-42\)/)
+    // Header lives in the body — a title would force a blank line before it.
+    expect(call.content.title).toBe('')
+    const body = call.content.body
+    // Tight header block: gate label, identity line, and the workflow
+    // author's gate description quoted — single newlines between them.
+    expect(body).toContain('🚦 **Review Draft** — `content-pipeline`\nTask `task-42` · step `review-gate`\n> Owner reviews the draft before publishing')
+    expect(body).toContain('Hello world')
+    expect(body).toMatch(/\*\*\[Review & Approve in Bakin\]\(http.*\/gates\/task-42\/decision\?stepId=review-gate\)\*\* · \[View Task\]\(http.*\/\?taskId=task-42\)/)
+    // Divider separates the context message from the provider's button card.
+    expect(body).toContain('─'.repeat(30))
     expect(call.content.files).toBeUndefined()
   })
 
@@ -247,12 +251,13 @@ describe('runtime gate notifications', () => {
 
     const [call] = deliverContent.mock.calls[0] as unknown as [{ content: { body: string } }]
     const body = call.content.body
-    expect(body).toContain('Caption:')
+    expect(body).toContain('**For review:**')
+    expect(body).toContain('**Caption:**')
     expect(body).toContain('Testing automation turns the slow')
-    expect(body).toContain('Target platform: LinkedIn')
-    expect(body).toContain('Hashtags: #TestingAutomation, #DevOps')
-    expect(body).toContain('Image brief:')
-    expect(body).toContain('Mood: calm')
+    expect(body).toContain('**Target platform:** LinkedIn')
+    expect(body).toContain('**Hashtags:** #TestingAutomation, #DevOps')
+    expect(body).toContain('**Image brief:**')
+    expect(body).toContain('**Mood:** calm')
     expect(body).not.toContain('{')
     expect(body).not.toContain('"caption"')
   })
