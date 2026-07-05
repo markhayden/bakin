@@ -79,6 +79,10 @@ Dispatch classifies on `RuntimeError.kind` only; an architecture test keeps
 See `.claude/knowledge/dispatch.md` § Session-death recovery ladder for the
 full mechanics. Summary: salvage → immediate corrective re-dispatch →
 decomposition into chained subtasks → block with an actionable diagnosis.
+**Aborted turns are exempt** (#604): a `RuntimeError` kind `'aborted'`
+(task deleted / orphan sweep) settles clean with a `task.turn_aborted`
+audit — no diagnosis, no salvage, no ladder; re-dispatching work for a
+deleted task would resurrect it.
 Salvaged output is written to `~/.bakin/tasks/salvage/<taskId>-d<seq>.md` and
 persisted via the `assets.saveFromSource` hook (tag `salvaged-output`) so the
 partial work is never lost and the corrective prompt can point at it.

@@ -51,10 +51,26 @@ the whole board behind one slow agent). Mechanics in
 `src/core/dispatch-turns.ts` (fire engine) + `dispatch-cycle.ts` (the scan):
 
 - `fireDispatchTurn()` registers each send in an in-flight turn registry
-  (`marker → { agentId, threadId, startedAt, settled }`) and attaches settle
-  handlers that re-load state under the lock and reconcile (success cleanup,
-  session-death ladder, or generic cooldown). The registry is advisory —
-  caps + bookkeeping, never task state; restart recovery is unchanged.
+  (`marker → { agentId, threadId, startedAt, settled, abort, abortedAt? }`)
+  and attaches settle handlers that re-load state under the lock and
+  reconcile (success cleanup, session-death ladder, or generic cooldown).
+  The registry is advisory — caps + bookkeeping, never task state; restart
+  recovery is unchanged.
+- **Turn abort (#604):** every entry carries an `AbortController` whose
+  signal is threaded to the runtime as `MessageArgs.signal`.
+  `abortTurnsForTask(taskId, reason)` cancels every turn for a task
+  (regular AND `taskId:stepId` workflow-step markers); `deleteTask`'s first
+  effect calls it with `'task-deleted'`. An aborted turn settles on a
+  dedicated branch: best-effort `settleRun` (a no-op after the delete's
+  ledger purge, by design), a `task.turn_aborted` audit carrying the
+  signal's reason, clean exit — **no recovery ladder, no reconcile
+  fail-noise** (a corrective re-dispatch would resurrect work for a deleted
+  task). The watchdog sweeps the registry each cycle for turns whose task no
+  longer exists in the store (board presence is NOT the test — done tasks
+  exist off-board): first sighting aborts (`'orphan-sweep'`); a turn still
+  registered `ORPHAN_TURN_FORCE_RELEASE_GRACE_MS` (60 s) after its abort is
+  dropped via `forceReleaseTurn` + `task.turn_force_released` audit so a
+  hung provider turn can never hold the agent's slot until restart.
 - **Caps:** `settings.dispatch.maxConcurrentTurns` (global, default 3) and
   `maxTurnsPerAgent` (default 1 pending rig validation of gateway per-agent
   concurrency). A capped task is deferred with no failure recorded.
@@ -108,6 +124,7 @@ dispatch modules** — an architecture test pins this.
 | `provider_cooldown` | structural | `provider_cooldown` / `auth_profile_unavailable` (via `providerInfo`) |
 | `runtime_failed` | structural | `runtime_adapter_failure` |
 | `session_death` | **recovery ladder** (below) | `runtime_turn_died` |
+| `aborted` | **none — terminal** (intentional cancel; audited `task.turn_aborted`, never retried, never diagnosed) | — |
 
 Non-RuntimeError fallback (mocks/unexpected): `TypeError`, `AbortError`, and
 `err.cause.code` socket codes are transient; everything else structural.
