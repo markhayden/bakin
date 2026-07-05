@@ -598,6 +598,12 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       const messageId = messageIdFromDeliveryRef(args.messageRef) ?? undefined
       const stdout = await this.exec(openClawThreadCreateArgs(ref, { messageId, name: args.name }))
       const threadId = threadIdFromOpenClawOutput(stdout)
+      if (!threadId) {
+        this.logger.warn('OpenClaw thread create output had no parseable thread id; callers fall back to flat messaging', {
+          channel: args.channel,
+          stdoutHead: stdout.slice(0, 300),
+        })
+      }
       return threadId ? { threadId } : null
     },
     editMessage: async (args: { channel: string; messageRef: string; body: string }): Promise<void> => {

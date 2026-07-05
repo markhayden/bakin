@@ -520,6 +520,21 @@ describe('OpenClaw runtime channels', () => {
     expect(warn.mock.calls.some(call => String(call[0]).includes('allow-always'))).toBe(true)
   })
 
+  it('parses thread ids from the CLI action envelope, including noisy pretty-printed output', async () => {
+    const { threadIdFromOpenClawOutput } = await import('../../packages/adapter-openclaw/src/channel-helpers')
+
+    const envelope = JSON.stringify({
+      action: 'thread-create',
+      channel: 'discord',
+      handledBy: 'gateway',
+      payload: { ok: true, thread: { id: '999888777', name: 'x — y' } },
+    }, null, 2)
+    expect(threadIdFromOpenClawOutput(envelope)).toBe('999888777')
+    // Log noise before pretty-printed JSON must not break parsing.
+    expect(threadIdFromOpenClawOutput(`[state-migrations] Legacy state migration warnings:\n- blah\n${envelope}`)).toBe('999888777')
+    expect(threadIdFromOpenClawOutput('not json at all')).toBeNull()
+  })
+
   it('creates threads and edits messages through the OpenClaw message CLI', async () => {
     const recorder = installOpenClawCliRecorder(testDir)
     const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')

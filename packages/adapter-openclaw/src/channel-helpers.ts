@@ -77,15 +77,21 @@ export function openClawMessageEditArgs(
 
 export function threadIdFromOpenClawOutput(stdout: string): string | null {
   const value = parseOpenClawDeliveryOutput(stdout)
+  // The CLI wraps action results in an envelope: { action, channel,
+  // handledBy, payload: { ok, thread: {...} } } — check payload paths first.
   return firstStringAtPaths(value, [
+    ['payload', 'thread', 'id'],
+    ['payload', 'threadId'],
+    ['payload', 'thread_id'],
+    ['payload', 'id'],
+    ['thread', 'id'],
     ['threadId'],
     ['thread_id'],
-    ['thread', 'id'],
-    ['id'],
+    ['result', 'thread', 'id'],
     ['result', 'threadId'],
     ['result', 'thread_id'],
-    ['result', 'thread', 'id'],
     ['result', 'id'],
+    ['id'],
   ])
 }
 
@@ -113,6 +119,8 @@ export function parseOpenClawDeliveryOutput(stdout: string): Record<string, unkn
   if (!text) return null
   return parseJsonObject(text)
     ?? parseJsonObject(text.split('\n').reverse().find(part => part.trim().startsWith('{') && part.trim().endsWith('}')) ?? '')
+    // Pretty-printed JSON preceded by log noise: slice the outermost braces.
+    ?? (text.includes('{') ? parseJsonObject(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)) : null)
 }
 
 export function readChannelInfos(): ChannelInfo[] {
