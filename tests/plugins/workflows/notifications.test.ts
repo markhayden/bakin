@@ -156,7 +156,7 @@ describe('runtime gate notifications', () => {
   })
 
   function threadedRuntime() {
-    const createThread = mock(async (..._args: unknown[]) => ({ threadId: '777' }))
+    const createThread = mock(async (..._args: unknown[]) => ({ threadId: '777', channelRef: 'discord:channel:777' }))
     const editMessage = mock(async (..._args: unknown[]) => {})
     const threadedDeliver = mock(async (..._args: unknown[]) => ({
       deliveries: [{ channelId: 'discord:123', ref: 'message:42', renderedAt: '2026-04-11T10:00:00Z' }],
@@ -257,6 +257,13 @@ describe('runtime gate notifications', () => {
     const [approvalCall] = createApproval.mock.calls[0] as unknown as [{ request: { context: { threadId?: string } } }]
     expect(approvalCall.request.context.threadId).toBeUndefined()
     expect(ref!.deliveries.map(d => d.ref)).not.toContainEqual(expect.stringContaining('thread:'))
+
+    // The root card promised details — they MUST still be delivered, flat,
+    // to the channel when the thread cannot be created.
+    expect(rt.deliverContent.mock.calls).toHaveLength(2)
+    const [fallbackCall] = rt.deliverContent.mock.calls[1] as unknown as [{ channels: string[]; content: { body: string } }]
+    expect(fallbackCall.channels).toEqual(['discord:123'])
+    expect(fallbackCall.content.body).toContain('Hello world')
   })
 
   it('edits the root card into a receipt and posts the summary inside the thread', async () => {
@@ -276,7 +283,7 @@ describe('runtime gate notifications', () => {
         approvalId: 'workflow-gate:task-42:review-gate',
         deliveries: [
           { channelId: 'discord:123', ref: 'message:42', renderedAt: '2026-04-11T10:00:00Z' },
-          { channelId: 'discord:123', ref: 'thread:777', renderedAt: '2026-04-11T10:00:00Z' },
+          { channelId: 'discord:channel:777', ref: 'thread:777', renderedAt: '2026-04-11T10:00:00Z' },
           { channelId: 'discord:123', ref: 'openclaw-plugin-approval:plugin:x', renderedAt: '2026-04-11T10:00:00Z' },
         ],
       },

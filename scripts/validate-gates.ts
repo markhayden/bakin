@@ -398,7 +398,9 @@ async function main(): Promise<void> {
     printReport(reportPath)
     rl.close()
   }
-  process.exit(checks.every(c => c.pass) ? 0 : 1)
+  // No checks recorded means the scenario aborted before proving anything —
+  // that is a failure, not a vacuous pass.
+  process.exit(checks.length > 0 && checks.every(c => c.pass) ? 0 : 1)
 }
 
 await main()

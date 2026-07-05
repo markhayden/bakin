@@ -593,7 +593,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         this.approvalResolveWarningLogged = true
       }
     },
-    createThread: async (args: { channel: string; messageRef?: string; name: string }): Promise<{ threadId: string } | null> => {
+    createThread: async (args: { channel: string; messageRef?: string; name: string }): Promise<{ threadId: string; channelRef: string } | null> => {
       const ref = splitChannelRef(args.channel, undefined)
       const messageId = messageIdFromDeliveryRef(args.messageRef) ?? undefined
       const stdout = await this.exec(openClawThreadCreateArgs(ref, { messageId, name: args.name }))
@@ -603,8 +603,10 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
           channel: args.channel,
           stdoutHead: stdout.slice(0, 300),
         })
+        return null
       }
-      return threadId ? { threadId } : null
+      // Provider target syntax stays here — callers treat channelRef as opaque.
+      return { threadId, channelRef: `${ref.channel}:channel:${threadId}` }
     },
     editMessage: async (args: { channel: string; messageRef: string; body: string }): Promise<void> => {
       const messageId = messageIdFromDeliveryRef(args.messageRef)

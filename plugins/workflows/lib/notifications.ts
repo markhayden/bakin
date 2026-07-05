@@ -267,6 +267,12 @@ export async function sendGateApprovalRequest(
   if (gateThread?.threadId) {
     request.context = { ...(request.context ?? {}), threadId: gateThread.threadId }
   }
+  // Persist context deliveries BEFORE the button card is attempted: if
+  // createApproval throws, the already-posted root card must be on the
+  // record or the next rehydration re-renders a duplicate gate card.
+  if (gateThread && gateThread.deliveries.length > 0) {
+    updateApprovalDeliveries(approvalId, gateThread.deliveries)
+  }
 
   try {
     const result = await runtime.channels.createApproval({
@@ -347,9 +353,8 @@ async function sendGateContextMessage(
       }
     }
 
-    const base = process.env.BAKIN_URL || 'http://localhost:3737'
     const approvalUrl = typeof context?.approvalUrl === 'string' ? context.approvalUrl : buildGateApprovalUrl(instance.taskId, stepId)
-    const taskUrl = `${base}/?taskId=${encodeURIComponent(instance.taskId)}`
+    const taskUrl = `${bakinBaseUrl()}/?taskId=${encodeURIComponent(instance.taskId)}`
 
     const header = [
       '🚦 **Task Needs Review**',
@@ -401,6 +406,7 @@ async function sendGateContextMessage(
     const deliveries: ApprovalDelivery[] = [...rootResult.deliveries]
 
     let threadId: string | undefined
+    let threadChannelRef: string | undefined
     if (rootDelivery?.ref) {
       try {
         const thread = await runtime.channels.createThread!({
@@ -409,25 +415,40 @@ async function sendGateContextMessage(
           name: `${instance.workflowId} — ${label}`,
         })
         threadId = thread?.threadId
+        threadChannelRef = thread?.channelRef
       } catch (err) {
-        log.warn('Gate thread creation failed; staying flat', err, { taskId: instance.taskId, stepId })
+        log.warn('Gate thread creation failed; posting details flat', err, { taskId: instance.taskId, stepId })
       }
     }
-    if (threadId) {
-      deliveries.push({ channelId: resolvedChannel, ref: `thread:${threadId}`, renderedAt: rootDelivery?.renderedAt ?? new Date().toISOString() })
+    const detailsBody = renderPriorOutput(priorOutput, { markdown: true, heading: '`Task Review Details`' })
+    if (threadId && threadChannelRef) {
+      // The thread marker's channelId IS the adapter-provided ref for posting
+      // into the thread — provider target syntax never leaves the adapter.
+      deliveries.push({ channelId: threadChannelRef, ref: `thread:${threadId}`, renderedAt: rootDelivery?.renderedAt ?? new Date().toISOString() })
       if (hasDetails) {
-        const provider = resolvedChannel.split(':')[0]
-        const threadBody = renderPriorOutput(priorOutput, { markdown: true, heading: '`Task Review Details`' })
         await runtime.channels.deliverContent({
-          channels: [`${provider}:channel:${threadId}`],
+          channels: [threadChannelRef],
           content: {
             title: '',
-            body: threadBody || 'No step output attached.',
+            body: detailsBody || 'No step output attached.',
             ...(files.length > 0 ? { files } : {}),
             metadata,
           },
         }).catch((err) => log.warn('Gate thread context post failed', err, { taskId: instance.taskId, stepId }))
       }
+    } else if (hasDetails) {
+      // Thread creation failed after the root card already promised details:
+      // the reviewable content must still be delivered — post it flat, right
+      // under the root card.
+      await runtime.channels.deliverContent({
+        channels: [resolvedChannel],
+        content: {
+          title: '',
+          body: detailsBody || 'No step output attached.',
+          ...(files.length > 0 ? { files } : {}),
+          metadata,
+        },
+      }).catch((err) => log.warn('Gate flat details post failed', err, { taskId: instance.taskId, stepId }))
     }
     return { deliveries, threadId }
   } catch (err) {
@@ -439,9 +460,12 @@ async function sendGateContextMessage(
 // Deliberately short: the native approval card caps descriptions at 256 chars
 // (upstream), so every character spent on the URL is context lost. The page
 // resolves the pending approval from task + step; no approvalId needed.
+function bakinBaseUrl(): string {
+  return process.env.BAKIN_URL || 'http://localhost:3737'
+}
+
 function buildGateApprovalUrl(taskId: string, stepId: string): string {
-  const base = process.env.BAKIN_URL || 'http://localhost:3737'
-  const url = new URL(`/api/plugins/workflows/gates/${encodeURIComponent(taskId)}/decision`, base)
+  const url = new URL(`/api/plugins/workflows/gates/${encodeURIComponent(taskId)}/decision`, bakinBaseUrl())
   url.searchParams.set('stepId', stepId)
   return url.toString()
 }
@@ -512,15 +536,6 @@ export async function sendGateDecisionSummary(
     ...(reason ? [{ label: 'Reason', value: reason }] : []),
   ]
 
-  const channel = settings.approvalChannel || 'general'
-  let resolvedChannel: string
-  try {
-    resolvedChannel = (await resolveRuntimeChannelRef(runtime, channel)).resolved
-  } catch (err) {
-    log.error('Gate decision summary channel resolution failed', err, { channel })
-    return
-  }
-
   // A tight receipt, not a re-announcement: who decided, how long it took,
   // and the reject reason when there is one.
   const icon = decision === 'approved' ? '✅' : '❌'
@@ -534,10 +549,14 @@ export async function sendGateDecisionSummary(
   ].join('\n')
 
   // Threaded gates: rewrite the root card into the receipt (the channel keeps
-  // exactly one card per gate) and post the summary inside the thread.
+  // exactly one card per gate) and post the summary inside the thread. The
+  // edit targets deliveries persisted at request time, so it must run BEFORE
+  // (and independent of) settings-channel resolution — and ONLY when a thread
+  // marker proves threaded mode: in flat mode the single message ref IS the
+  // gate's full context, and rewriting it would erase the reviewed content.
   const rootDelivery = approvalRef?.deliveries.find((d) => d.ref.startsWith('message:'))
   const threadDelivery = approvalRef?.deliveries.find((d) => d.ref.startsWith('thread:'))
-  if (rootDelivery && typeof runtime.channels.editMessage === 'function') {
+  if (rootDelivery && threadDelivery && typeof runtime.channels.editMessage === 'function') {
     const rootBody = [
       `🚦 **${gateLabel}** — \`${instance.workflowId}\``,
       `Task \`${instance.taskId}\` · step \`${stepId}\``,
@@ -551,10 +570,18 @@ export async function sendGateDecisionSummary(
     }).catch((err) => log.warn('Gate root card edit failed', err, { taskId: instance.taskId, stepId }))
   }
 
-  const threadId = threadDelivery?.ref.slice('thread:'.length)
-  const summaryChannel = threadId && threadDelivery
-    ? `${threadDelivery.channelId.split(':')[0]}:channel:${threadId}`
-    : resolvedChannel
+  // The thread marker's channelId is the adapter-provided ref for posting
+  // into the thread; without one, resolve the configured summary channel.
+  let summaryChannel = threadDelivery?.channelId
+  if (!summaryChannel) {
+    const channel = settings.approvalChannel || 'general'
+    try {
+      summaryChannel = (await resolveRuntimeChannelRef(runtime, channel)).resolved
+    } catch (err) {
+      log.error('Gate decision summary channel resolution failed', err, { channel })
+      return
+    }
+  }
 
   try {
     await runtime.channels.sendNotification({

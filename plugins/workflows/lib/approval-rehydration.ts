@@ -93,10 +93,17 @@ export async function rehydratePendingApprovals(
     }
 
     const instance = loadInstance(taskId, options.contentDir)
-    const stepState = instance?.stepStates[stepId]
+    if (!instance) {
+      // Missing is ambiguous (deleted task vs. transiently unreadable file at
+      // boot) — skip, never cancel: a false-positive cancel permanently kills
+      // the gate's buttons and 404s its decision link. Genuinely deleted
+      // tasks leave a cancelled instance file behind, caught below.
+      summary.skipped += 1
+      continue
+    }
+    const stepState = instance.stepStates[stepId]
     if (
-      !instance
-      || instance.instanceId !== runId
+      instance.instanceId !== runId
       || instance.currentStepId !== stepId
       || instance.status !== 'pending_approval'
       || stepState?.status !== 'pending_approval'

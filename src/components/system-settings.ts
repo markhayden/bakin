@@ -21,13 +21,8 @@ export const SYSTEM_SETTINGS_SCHEMA: PluginSettingsSchema = {
       description: 'Runtime channel ID for watchdog alerts, MCP/REST outage alerts, and gate approval reminders. Leave blank for in-app alerts only.',
       default: '',
     },
-    {
-      key: 'notifications.gateAlerts',
-      type: 'boolean',
-      label: 'Gate approval alerts',
-      description: 'Send a notification when a workflow step pauses for human approval.',
-      default: true,
-    },
+    // Gate approval alerts are owned by the workflows plugin
+    // (approvalChannelAlerts in its plugin settings), not by system settings.
     // ── Watchdog tunables ─────────────────────────────────────────────
     {
       key: 'watchdog.intervalMs',

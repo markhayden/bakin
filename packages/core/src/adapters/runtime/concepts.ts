@@ -210,6 +210,15 @@ export interface CreateThreadArgs {
   name: string
 }
 
+export interface CreatedThread {
+  threadId: string
+  /**
+   * Provider-addressable channel ref for posting INTO the thread (opaque to
+   * callers — provider target syntax stays inside the adapter).
+   */
+  channelRef: string
+}
+
 export interface EditChannelMessageArgs {
   /** Channel ref the message lives in (provider or provider:target). */
   channel: string
@@ -616,7 +625,7 @@ export interface AgentRuntimeAdapter {
      * threads or message editing omit them; callers MUST feature-detect and
      * fall back to flat channel messages — never error on absence.
      */
-    createThread?(args: CreateThreadArgs): Promise<{ threadId: string } | null>
+    createThread?(args: CreateThreadArgs): Promise<CreatedThread | null>
     editMessage?(args: EditChannelMessageArgs): Promise<void>
   }
 

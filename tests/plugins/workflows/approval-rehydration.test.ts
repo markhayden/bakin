@@ -278,7 +278,9 @@ describe('workflow approval rehydration', () => {
     expect(getApprovalRecord('workflow-gate:task-42:review-gate', testDir)?.status).toBe('cancelled')
   })
 
-  it('cancels pending records with no matching workflow instance', async () => {
+  it('skips (never cancels) pending records whose instance file is missing', async () => {
+    // Missing is ambiguous — a transiently unreadable instance at boot must
+    // not permanently kill a live gate's buttons and decision link.
     createPendingRecord()
 
     const summary = await rehydratePendingApprovals({
@@ -288,8 +290,8 @@ describe('workflow approval rehydration', () => {
       contentDir: testDir,
     })
 
-    expect(summary).toEqual(expect.objectContaining({ pending: 1, cancelled: 1 }))
-    expect(getApprovalRecord('workflow-gate:task-42:review-gate', testDir)?.status).toBe('cancelled')
+    expect(summary).toEqual(expect.objectContaining({ pending: 1, cancelled: 0, skipped: 1 }))
+    expect(getApprovalRecord('workflow-gate:task-42:review-gate', testDir)?.status).toBe('pending')
   })
 
   it('keeps live gates pending when deliveries cannot be rendered', async () => {
