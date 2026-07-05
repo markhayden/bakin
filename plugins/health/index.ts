@@ -6,7 +6,9 @@ import { totalmem } from 'os'
 import { z } from 'zod'
 import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { definePlugin, defineRoute } from '@bakin/core/routing'
-import { usageByAgentSince, usageByDaySince, toLocalDayKey } from '@bakin/core/usage-history/store'
+import { usageByAgentSince, usageByDaySince, usageByAgentDaySince, toLocalDayKey } from '@bakin/core/usage-history/store'
+import { listLiveRuns } from '../../src/core/execution-ledger'
+import { buildAgentBurnReports } from '../../src/core/agent-burn'
 import { getLastResults, runDiagnostics } from '../../src/core/doctor'
 import { createLogger } from '../../src/core/logger'
 import { getAllAgentUsage } from '../../src/core/agent-usage'
@@ -131,6 +133,16 @@ const usageFeedQuery = z.object({
 const usageHistoryQuery = z.object({
   window: z.enum(['24h', '7d', '30d']).default('24h'),
 })
+
+const agentEffortQuery = z.object({
+  window: z.enum(['24h', '7d', '30d']).default('24h'),
+})
+
+const AGENT_EFFORT_WINDOW_HOURS: Record<'24h' | '7d' | '30d', number> = {
+  '24h': 24,
+  '7d': 7 * 24,
+  '30d': 30 * 24,
+}
 
 const USAGE_HISTORY_WINDOW_MS: Record<'24h' | '7d' | '30d', number> = {
   '24h': 24 * 60 * 60 * 1000,
@@ -325,6 +337,52 @@ const routes = [
         scannedAt: lastScan ? new Date(lastScan.at).toISOString() : null,
         byAgent: usageByAgentSince(since),
         byDay: usageByDaySince(since),
+        byAgentDay: usageByAgentDaySince(since),
+      })
+    },
+  }),
+
+  defineRoute({
+    path: '/live-now',
+    method: 'GET',
+    summary: 'In-flight dispatch runs',
+    description: 'Every currently-running dispatch run across all agents (execution ledger), with running-for and heartbeat age. The honest answer to "is anything running right now".',
+    responses: { 200: passthrough },
+    handler: async (_req, ctx) => {
+      const now = Date.now()
+      const runs = await Promise.all(listLiveRuns().map(async (run) => {
+        let taskTitle: string | null = null
+        try {
+          taskTitle = (await ctx.tasks.get(run.taskId))?.title ?? null
+        } catch { /* task purged mid-flight — the run row still deserves display */ }
+        return {
+          agent: run.agent,
+          taskId: run.taskId,
+          taskTitle,
+          runId: run.runId,
+          startedAt: run.startedAt,
+          runningForMs: Math.max(0, now - run.startedAt),
+          heartbeatAgeMs: Math.max(0, now - run.heartbeatAt),
+        }
+      }))
+      return Response.json({ runs, generatedAt: new Date(now).toISOString() })
+    },
+  }),
+
+  defineRoute({
+    path: '/agent-effort',
+    method: 'GET',
+    summary: 'Per-agent effort vs outcome',
+    description: 'Token burn per agent joined with task completions and transcript-observed totals (Bakin-attributed vs total observed vs unattributed), plus warn-only burn flags. Same engine as the usage.agent-burn doctor check.',
+    query: agentEffortQuery,
+    responses: { 200: passthrough, 400: errorResponse },
+    handler: async (_req, _ctx, { query }) => {
+      const lastScan = getLastUsageScan()
+      const agents = buildAgentBurnReports(Date.now(), { windowHours: AGENT_EFFORT_WINDOW_HOURS[query.window] })
+      return Response.json({
+        window: query.window,
+        scannedAt: lastScan ? new Date(lastScan.at).toISOString() : null,
+        agents,
       })
     },
   }),

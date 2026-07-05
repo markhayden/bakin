@@ -142,8 +142,11 @@ function localDayStartMs(dayKey: string): number {
  * sides of the delta join: usage.db is day-granular, so the attributed sums
  * use the same local-midnight start for an apples-to-apples comparison.
  */
-export function buildAgentBurnReports(now = Date.now()): AgentBurnReport[] {
-  const config = getSettings().burn
+export function buildAgentBurnReports(
+  now = Date.now(),
+  opts: { windowHours?: number } = {},
+): AgentBurnReport[] {
+  const config = { ...getSettings().burn, ...(opts.windowHours ? { windowHours: opts.windowHours } : {}) }
   const windowSinceDay = toLocalDayKey(now - config.windowHours * 3_600_000)
   const dayAlignedSinceMs = localDayStartMs(windowSinceDay)
   const today = toLocalDayKey(now)
