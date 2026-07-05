@@ -16,7 +16,7 @@ import { join } from 'path'
 import { isCorePlugin, pluginRegistry } from '@/core/plugin-registry'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
-import { readPluginLockfile, type PluginLockEntry } from '@bakin/core/plugins/lockfile'
+import { computeUpgradeAvailable, readPluginLockfile, type PluginLockEntry } from '@bakin/core/plugins/lockfile'
 import { runChecks } from '@/core/plugins/upgrade'
 import { EMBEDDED_ASSETS } from '../_embedded-assets'
 import { APP_VERSION } from '@bakin/core/constants'
@@ -171,18 +171,7 @@ export async function get(req: Request): Promise<Response> {
 
       // Compute upgrade availability from persisted markers — same source of
       // truth whether or not --check ran this request.
-      let upgradeAvailable = false
-      if (installed && !isCore) {
-        if (installed.type === 'github' && installed.remoteArtifactVersion) {
-          // Whiskit artifact installs are version-based — `--check` records
-          // the latest published artifact version instead of a remote sha.
-          upgradeAvailable = installed.remoteArtifactVersion !== installed.version
-        } else if (installed.type === 'github' && installed.remoteHeadSha) {
-          upgradeAvailable = installed.remoteHeadSha !== installed.commitSha
-        } else if (installed.type === 'local' && installed.lastSourceTreeSha && installed.sourceTreeSha) {
-          upgradeAvailable = installed.lastSourceTreeSha !== installed.sourceTreeSha
-        }
-      }
+      const upgradeAvailable = installed && !isCore ? computeUpgradeAvailable(installed) : false
 
       const plugin: ManifestPlugin = {
         id: entry.id,

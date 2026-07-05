@@ -132,9 +132,10 @@ export function collectAssets(repoRoot: string): AssetSource[] {
     }
   }
 
-  // Host static-data files — served at /api/<filename> by per-route
-  // handlers (e.g. curated-agents.json → /api/curated). Walk just the
-  // top level; subdirectories don't get a default URL mapping.
+  // Host static-data files — mapped to /data/<filename> and read through
+  // EMBEDDED_ASSETS (e.g. curated-catalog.json, loaded by
+  // src/core/curated-catalog/load.ts). Walk just the top level;
+  // subdirectories don't get a default URL mapping.
   const dataDir = join(repoRoot, 'packages/host/src/data')
   if (existsSync(dataDir)) {
     for (const entry of readdirSync(dataDir, { withFileTypes: true })) {
@@ -152,7 +153,8 @@ export function collectAssets(repoRoot: string): AssetSource[] {
   // must not be bundled in the binary. Users install them via curated catalog
   // entries or `bakin agents install`. The walk paths above never enter
   // agents/, so a future regression that adds an `agents/` walker breaks the
-  // API curated-catalog test instead of silently shipping package bytes.
+  // embedded-assets-builder architecture test instead of silently shipping
+  // package bytes.
 
   return assets
 }

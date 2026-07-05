@@ -203,13 +203,6 @@ curl -sS \
 ```
 </OpenApiReference>
 
-<OpenApiReference operationId="core.get.api-curated">
-```sh frame="terminal" showLineNumbers
-curl -sS \
-  'http://localhost:3737/api/curated'
-```
-</OpenApiReference>
-
 <OpenApiReference operationId="core.get.api-dev-events">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
@@ -684,6 +677,25 @@ curl -sS \
   'http://localhost:3737/api/plugins/assets/versioned/<assetId>/version' \
   -H 'Content-Type: multipart/form-data' \
   --data '"value"'
+```
+</OpenApiReference>
+
+## Explore
+
+<OpenApiReference tag="Explore" summary />
+
+<OpenApiReference operationId="explore.get.catalog">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/explore/catalog'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="explore.post.catalog-refresh">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/explore/catalog/refresh'
 ```
 </OpenApiReference>
 
@@ -1777,5 +1789,5 @@ curl -sS \
 </OpenApiReference>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 4, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 5, 2026 · Bakin 0.0.0-dev</span>
 </aside>

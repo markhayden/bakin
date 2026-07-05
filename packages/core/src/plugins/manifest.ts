@@ -228,6 +228,12 @@ function parseNavItem(raw: unknown, label: string): NavItem {
     }
     item.alwaysExpanded = raw.alwaysExpanded
   }
+  if (raw.placement !== undefined) {
+    if (raw.placement !== 'bottom') {
+      throw new PluginManifestError(`${label}.placement must be "bottom" when present`)
+    }
+    item.placement = raw.placement
+  }
   if (raw.badge !== undefined) {
     if (!isRecord(raw.badge)) throw new PluginManifestError(`${label}.badge must be an object`)
     const badge: NavItem['badge'] = {}

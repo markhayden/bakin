@@ -17,8 +17,8 @@ import { Loader2 } from 'lucide-react'
 /**
  * Adopt-flow dialog — pre-targets a specific runtime agent. Used from
  * the team grid's "Adopt with package" button on unmanaged agents.
- * Equivalent to the install-dialog with `adopt: true` baked in but
- * with friendlier copy.
+ * Equivalent to the explore plugin's install dialog with `adopt: true`
+ * baked in but with friendlier copy.
  */
 
 export interface AdoptDialogProps {

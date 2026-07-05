@@ -45,6 +45,12 @@ export interface NavItem {
    * Most plugins leave this undefined and set badges purely at runtime.
    */
   badge?: NavBadge
+  /**
+   * Where the item renders in the sidebar. `'bottom'` pins it to the
+   * bottom section above Settings. Omit for the main nav list.
+   * Top-level items only — ignored on children.
+   */
+  placement?: 'bottom'
 }
 
 /** HTTP route handler registered by a plugin via `ctx.registerRoute()`. */

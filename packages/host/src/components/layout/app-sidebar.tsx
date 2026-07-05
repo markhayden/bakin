@@ -42,6 +42,7 @@ import {
   PopoverContent,
 } from '@/components/ui/popover'
 import { NavBadge, NavBadgeDot, navBadgeAriaSuffix } from './nav-badge'
+import { partitionNavItems } from './nav-placement'
 import {
   badgeIsActive,
   isNavActive,
@@ -126,147 +127,91 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
     })
   }
 
-  return (
-    <nav className="flex flex-col gap-0.5 px-2 py-3 flex-1">
-      {allNavItems.map((item) => {
-        const Icon = item.icon ? ICONS[item.icon] : undefined
-        const hasChildren = item.children && item.children.length > 0
-        const active = isNavActive(pathname, item.href)
+  const { main: mainNavItems, bottom: bottomNavItems } = partitionNavItems(allNavItems)
 
-        // Items with children: clickable parent with chevron toggle
-        if (hasChildren && !collapsed) {
-          const alwaysExpanded = item.alwaysExpanded === true
-          const expanded = alwaysExpanded || expandedIds.has(item.id)
-          const parentBadge = badgeFor(item)
-          return (
-            <div key={item.id} className="flex flex-col">
-              <div
-                className={`flex items-center rounded-md text-sm transition-colors duration-150 ${
-                  active
-                    ? 'text-foreground bg-[rgba(255,255,255,0.06)] shadow-[inset_2px_0_0_0_var(--color-pink-500)]'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.04)]'
-                }`}
+  const renderNavItem = (item: NavItem) => {
+    const Icon = item.icon ? ICONS[item.icon] : undefined
+    const hasChildren = item.children && item.children.length > 0
+    const active = isNavActive(pathname, item.href)
+
+    // Items with children: clickable parent with chevron toggle
+    if (hasChildren && !collapsed) {
+      const alwaysExpanded = item.alwaysExpanded === true
+      const expanded = alwaysExpanded || expandedIds.has(item.id)
+      const parentBadge = badgeFor(item)
+      return (
+        <div key={item.id} className="flex flex-col">
+          <div
+            className={`flex items-center rounded-md text-sm transition-colors duration-150 ${
+              active
+                ? 'text-foreground bg-[rgba(255,255,255,0.06)] shadow-[inset_2px_0_0_0_var(--color-pink-500)]'
+                : 'text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.04)]'
+            }`}
+          >
+            <Link
+              to={item.children![0].href}
+              onClick={onNavigate}
+              className="flex items-center gap-3 flex-1 min-w-0 px-3 py-1.5"
+            >
+              {Icon && <Icon className="size-4 shrink-0" />}
+              <span>{item.label}</span>
+              <NavBadge badge={parentBadge} />
+            </Link>
+            {!alwaysExpanded && (
+              <button
+                onClick={() => toggleExpand(item.id)}
+                className="shrink-0 mr-1.5 p-1 rounded hover:bg-[rgba(255,255,255,0.06)] transition-colors"
+                aria-label={expanded ? 'Collapse' : 'Expand'}
               >
-                <Link
-                  to={item.children![0].href}
-                  onClick={onNavigate}
-                  className="flex items-center gap-3 flex-1 min-w-0 px-3 py-1.5"
-                >
-                  {Icon && <Icon className="size-4 shrink-0" />}
-                  <span>{item.label}</span>
-                  <NavBadge badge={parentBadge} />
-                </Link>
-                {!alwaysExpanded && (
-                  <button
-                    onClick={() => toggleExpand(item.id)}
-                    className="shrink-0 mr-1.5 p-1 rounded hover:bg-[rgba(255,255,255,0.06)] transition-colors"
-                    aria-label={expanded ? 'Collapse' : 'Expand'}
+                <ChevronRight className={`size-3 transition-transform duration-150 ${expanded ? 'rotate-90' : ''}`} />
+              </button>
+            )}
+          </div>
+          {expanded && (
+            <div className="mt-1 mb-1 py-1 rounded-md bg-[rgba(255,255,255,0.04)] flex flex-col overflow-hidden">
+              {item.children!.map((child) => {
+                const ChildIcon = child.icon ? ICONS[child.icon] : undefined
+                const childActive = isNavActive(pathname, child.href)
+                const childBadge = badgeFor(child)
+                return (
+                  <Link
+                    key={child.id}
+                    to={child.href}
+                    onClick={onNavigate}
+                    className={`flex items-center gap-2.5 pl-6 pr-3 py-1.5 text-xs transition-colors duration-150 ${
+                      childActive
+                        ? 'text-foreground bg-[rgba(255,255,255,0.10)]'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.06)]'
+                    }`}
+                    aria-label={`${child.label}${navBadgeAriaSuffix(childBadge)}`}
                   >
-                    <ChevronRight className={`size-3 transition-transform duration-150 ${expanded ? 'rotate-90' : ''}`} />
-                  </button>
-                )}
-              </div>
-              {expanded && (
-                <div className="mt-1 mb-1 py-1 rounded-md bg-[rgba(255,255,255,0.04)] flex flex-col overflow-hidden">
-                  {item.children!.map((child) => {
-                    const ChildIcon = child.icon ? ICONS[child.icon] : undefined
-                    const childActive = isNavActive(pathname, child.href)
-                    const childBadge = badgeFor(child)
-                    return (
-                      <Link
-                        key={child.id}
-                        to={child.href}
-                        onClick={onNavigate}
-                        className={`flex items-center gap-2.5 pl-6 pr-3 py-1.5 text-xs transition-colors duration-150 ${
-                          childActive
-                            ? 'text-foreground bg-[rgba(255,255,255,0.10)]'
-                            : 'text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.06)]'
-                        }`}
-                        aria-label={`${child.label}${navBadgeAriaSuffix(childBadge)}`}
-                      >
-                        {ChildIcon && <ChildIcon className="size-3.5 shrink-0" />}
-                        <span>{child.label}</span>
-                        <NavBadge badge={childBadge} />
-                      </Link>
-                    )
-                  })}
-                </div>
-              )}
+                    {ChildIcon && <ChildIcon className="size-3.5 shrink-0" />}
+                    <span>{child.label}</span>
+                    <NavBadge badge={childBadge} />
+                  </Link>
+                )
+              })}
             </div>
-          )
-        }
+          )}
+        </div>
+      )
+    }
 
-        // Collapsed mode with children: show parent icon, tooltip with label
-        if (hasChildren && collapsed) {
-          const parentBadge = badgeFor(item)
-          const rollupTone = collapsedParentRollupTone(item, parentBadge, navBadges)
-          const rollupAriaSuffix = collapsedParentAriaSuffix(parentBadge, rollupTone)
-          // alwaysExpanded groups use a hover flyout so children remain reachable
-          if (item.alwaysExpanded) {
-            return (
-              <Popover key={item.id}>
-                <PopoverTrigger
-                  openOnHover
-                  delay={120}
-                  closeDelay={120}
-                  nativeButton={false}
-                  render={
-                    <Link
-                      to={item.children![0].href}
-                      onClick={onNavigate}
-                      className={`relative flex items-center justify-center px-0 py-1.5 rounded-md text-sm transition-colors duration-150 ${
-                        active
-                          ? 'text-foreground bg-[rgba(255,255,255,0.06)] shadow-[inset_2px_0_0_0_var(--color-pink-500)]'
-                          : 'text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.04)]'
-                      }`}
-                      aria-label={`${item.label}${rollupAriaSuffix}`}
-                    >
-                      {Icon && <Icon className="size-4 shrink-0" />}
-                      {rollupTone && <NavBadgeDot tone={rollupTone} />}
-                    </Link>
-                  }
-                />
-                <PopoverContent
-                  side="right"
-                  align="start"
-                  sideOffset={8}
-                  className="w-44 p-1"
-                >
-                  <div className="px-2 py-1 text-xs font-medium text-muted-foreground">
-                    {item.label}
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    {item.children!.map((child) => {
-                      const ChildIcon = child.icon ? ICONS[child.icon] : undefined
-                      const childActive = isNavActive(pathname, child.href)
-                      const childBadge = badgeFor(child)
-                      return (
-                        <Link
-                          key={child.id}
-                          to={child.href}
-                          onClick={onNavigate}
-                          className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors duration-150 ${
-                            childActive
-                              ? 'text-foreground bg-[rgba(255,255,255,0.06)]'
-                              : 'text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.04)]'
-                          }`}
-                          aria-label={`${child.label}${navBadgeAriaSuffix(childBadge)}`}
-                        >
-                          {ChildIcon && <ChildIcon className="size-3.5 shrink-0" />}
-                          <span>{child.label}</span>
-                          <NavBadge badge={childBadge} />
-                        </Link>
-                      )
-                    })}
-                  </div>
-                </PopoverContent>
-              </Popover>
-            )
-          }
-
-          return (
-            <Tooltip key={item.id}>
-              <TooltipTrigger render={<div />}>
+    // Collapsed mode with children: show parent icon, tooltip with label
+    if (hasChildren && collapsed) {
+      const parentBadge = badgeFor(item)
+      const rollupTone = collapsedParentRollupTone(item, parentBadge, navBadges)
+      const rollupAriaSuffix = collapsedParentAriaSuffix(parentBadge, rollupTone)
+      // alwaysExpanded groups use a hover flyout so children remain reachable
+      if (item.alwaysExpanded) {
+        return (
+          <Popover key={item.id}>
+            <PopoverTrigger
+              openOnHover
+              delay={120}
+              closeDelay={120}
+              nativeButton={false}
+              render={
                 <Link
                   to={item.children![0].href}
                   onClick={onNavigate}
@@ -275,59 +220,120 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
                       ? 'text-foreground bg-[rgba(255,255,255,0.06)] shadow-[inset_2px_0_0_0_var(--color-pink-500)]'
                       : 'text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.04)]'
                   }`}
-                  aria-label={`${item.label}${navBadgeAriaSuffix(parentBadge)}`}
+                  aria-label={`${item.label}${rollupAriaSuffix}`}
                 >
                   {Icon && <Icon className="size-4 shrink-0" />}
                   {rollupTone && <NavBadgeDot tone={rollupTone} />}
                 </Link>
-              </TooltipTrigger>
-              <TooltipContent side="right" sideOffset={8}>
+              }
+            />
+            <PopoverContent
+              side="right"
+              align="start"
+              sideOffset={8}
+              className="w-44 p-1"
+            >
+              <div className="px-2 py-1 text-xs font-medium text-muted-foreground">
                 {item.label}
-              </TooltipContent>
-            </Tooltip>
-          )
-        }
-
-        // Flat item (no children)
-        const flatBadge = badgeFor(item)
-        const flatTone = badgeIsActive(flatBadge) ? (flatBadge.tone ?? 'attention') : null
-        const linkContent = (
-          <Link
-            key={item.id}
-            to={item.href}
-            onClick={onNavigate}
-            className={`${collapsed ? 'relative justify-center px-0' : ''} flex items-center gap-3 px-3 py-1.5 rounded-md text-sm transition-colors duration-150 ${
-              active
-                ? 'text-foreground bg-[rgba(255,255,255,0.06)] shadow-[inset_2px_0_0_0_var(--color-pink-500)]'
-                : 'text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.04)]'
-            }`}
-            aria-label={collapsed ? `${item.label}${navBadgeAriaSuffix(flatBadge)}` : undefined}
-          >
-            {Icon && <Icon className="size-4 shrink-0" />}
-            {!collapsed && <span>{item.label}</span>}
-            {!collapsed && <NavBadge badge={flatBadge} />}
-            {collapsed && flatTone && <NavBadgeDot tone={flatTone} />}
-          </Link>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                {item.children!.map((child) => {
+                  const ChildIcon = child.icon ? ICONS[child.icon] : undefined
+                  const childActive = isNavActive(pathname, child.href)
+                  const childBadge = badgeFor(child)
+                  return (
+                    <Link
+                      key={child.id}
+                      to={child.href}
+                      onClick={onNavigate}
+                      className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors duration-150 ${
+                        childActive
+                          ? 'text-foreground bg-[rgba(255,255,255,0.06)]'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.04)]'
+                      }`}
+                      aria-label={`${child.label}${navBadgeAriaSuffix(childBadge)}`}
+                    >
+                      {ChildIcon && <ChildIcon className="size-3.5 shrink-0" />}
+                      <span>{child.label}</span>
+                      <NavBadge badge={childBadge} />
+                    </Link>
+                  )
+                })}
+              </div>
+            </PopoverContent>
+          </Popover>
         )
+      }
 
-        if (collapsed) {
-          return (
-            <Tooltip key={item.id}>
-              <TooltipTrigger render={<div />}>
-                {linkContent}
-              </TooltipTrigger>
-              <TooltipContent side="right" sideOffset={8}>
-                {item.label}
-              </TooltipContent>
-            </Tooltip>
-          )
-        }
+      return (
+        <Tooltip key={item.id}>
+          <TooltipTrigger render={<div />}>
+            <Link
+              to={item.children![0].href}
+              onClick={onNavigate}
+              className={`relative flex items-center justify-center px-0 py-1.5 rounded-md text-sm transition-colors duration-150 ${
+                active
+                  ? 'text-foreground bg-[rgba(255,255,255,0.06)] shadow-[inset_2px_0_0_0_var(--color-pink-500)]'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.04)]'
+              }`}
+              aria-label={`${item.label}${navBadgeAriaSuffix(parentBadge)}`}
+            >
+              {Icon && <Icon className="size-4 shrink-0" />}
+              {rollupTone && <NavBadgeDot tone={rollupTone} />}
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent side="right" sideOffset={8}>
+            {item.label}
+          </TooltipContent>
+        </Tooltip>
+      )
+    }
 
-        return linkContent
-      })}
+    // Flat item (no children)
+    const flatBadge = badgeFor(item)
+    const flatTone = badgeIsActive(flatBadge) ? (flatBadge.tone ?? 'attention') : null
+    const linkContent = (
+      <Link
+        key={item.id}
+        to={item.href}
+        onClick={onNavigate}
+        className={`${collapsed ? 'relative justify-center px-0' : ''} flex items-center gap-3 px-3 py-1.5 rounded-md text-sm transition-colors duration-150 ${
+          active
+            ? 'text-foreground bg-[rgba(255,255,255,0.06)] shadow-[inset_2px_0_0_0_var(--color-pink-500)]'
+            : 'text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.04)]'
+        }`}
+        aria-label={collapsed ? `${item.label}${navBadgeAriaSuffix(flatBadge)}` : undefined}
+      >
+        {Icon && <Icon className="size-4 shrink-0" />}
+        {!collapsed && <span>{item.label}</span>}
+        {!collapsed && <NavBadge badge={flatBadge} />}
+        {collapsed && flatTone && <NavBadgeDot tone={flatTone} />}
+      </Link>
+    )
 
-      {/* Settings — pinned to bottom */}
-      <div className="mt-auto border-t border-border -mx-2 px-2 pt-2">
+    if (collapsed) {
+      return (
+        <Tooltip key={item.id}>
+          <TooltipTrigger render={<div />}>
+            {linkContent}
+          </TooltipTrigger>
+          <TooltipContent side="right" sideOffset={8}>
+            {item.label}
+          </TooltipContent>
+        </Tooltip>
+      )
+    }
+
+    return linkContent
+  }
+
+  return (
+    <nav className="flex flex-col gap-0.5 px-2 py-3 flex-1">
+      {mainNavItems.map(renderNavItem)}
+
+      {/* Bottom section — placement:'bottom' items + Settings, pinned */}
+      <div className="mt-auto border-t border-border -mx-2 px-2 pt-2 flex flex-col gap-0.5">
+        {bottomNavItems.map(renderNavItem)}
         <Link
           to="/settings"
           onClick={onNavigate}

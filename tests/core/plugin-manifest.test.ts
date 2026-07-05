@@ -334,6 +334,29 @@ describe('plugin manifest declarative client contributions (lazy loading)', () =
     })).toThrow(/badge\.tone must be one of/)
   })
 
+  it('parses nav placement "bottom"', () => {
+    const manifest = parsePluginManifest({
+      ...baseManifest,
+      contributes: {
+        nav: [{ id: 'explore', label: 'Explore', icon: 'Compass', href: '/explore', placement: 'bottom' }],
+      },
+    })
+    expect(manifest.contributes?.nav?.[0]).toEqual({
+      id: 'explore',
+      label: 'Explore',
+      icon: 'Compass',
+      href: '/explore',
+      placement: 'bottom',
+    })
+  })
+
+  it('rejects nav placement values other than "bottom"', () => {
+    expect(() => parsePluginManifest({
+      ...baseManifest,
+      contributes: { nav: [{ id: 'x', label: 'X', placement: 'top' }] },
+    })).toThrow(/placement must be "bottom"/)
+  })
+
   it('rejects route patterns under /api and duplicates', () => {
     expect(() => parsePluginManifest({
       ...baseManifest,

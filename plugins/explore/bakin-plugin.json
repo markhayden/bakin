@@ -1,0 +1,44 @@
+{
+  "id": "explore",
+  "name": "Explore",
+  "version": "0.1.0",
+  "bakin": ">=1.0.0",
+  "description": "Discover and install official agents, plugins, and packs — the do-more-with-Bakin storefront",
+  "entry": {
+    "server": "index.ts"
+  },
+  "contentFiles": [],
+  "secrets": [],
+  "tests": "tests/",
+  "dependencies": [],
+  "permissions": [
+    "storage.read",
+    "storage.write"
+  ],
+  "contributes": {
+    "apiRoutes": [
+      {
+        "method": "GET",
+        "path": "/catalog",
+        "summary": "Merged curated catalog with install state"
+      },
+      {
+        "method": "POST",
+        "path": "/catalog/refresh",
+        "summary": "Fetch and cache the remote curated catalog"
+      }
+    ],
+    "nav": [
+      {
+        "id": "explore",
+        "label": "Extend Bakin",
+        "icon": "Compass",
+        "href": "/explore",
+        "placement": "bottom"
+      }
+    ],
+    "slots": [
+      "page:/explore"
+    ]
+  }
+}

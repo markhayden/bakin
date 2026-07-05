@@ -50,11 +50,11 @@ import asset_api_plugins_health_assets_client_js from '../../../../plugins/healt
 import asset_api_plugins_workflows_assets_client_js from '../../../../plugins/workflows/dist/client.js' with { type: 'file' }
 import asset_api_plugins_workflows_assets_client_css from '../../../../plugins/workflows/dist/client.css' with { type: 'file' }
 import asset_api_plugins_models_assets_client_js from '../../../../plugins/models/dist/client.js' with { type: 'file' }
+import asset_api_plugins_explore_assets_client_js from '../../../../plugins/explore/dist/client.js' with { type: 'file' }
 import asset_api_plugins_team_assets_client_js from '../../../../plugins/team/dist/client.js' with { type: 'file' }
 import asset_api_plugins_team_assets_client_css from '../../../../plugins/team/dist/client.css' with { type: 'file' }
 import asset_api_plugins_assets_assets_client_js from '../../../../plugins/assets/dist/client.js' with { type: 'file' }
-import asset_data_curated_plugins_json from '../data/curated-plugins.json' with { type: 'file' }
-import asset_data_curated_agents_json from '../data/curated-agents.json' with { type: 'file' }
+import asset_data_curated_catalog_json from '../data/curated-catalog.json' with { type: 'file' }
 
 /** URL path → embedded file path. Keys are the exact paths the HTTP
  *  handlers request (including leading slash). Both core static assets
@@ -95,11 +95,11 @@ export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
   ['/api/plugins/workflows/assets/client.js', asset_api_plugins_workflows_assets_client_js],
   ['/api/plugins/workflows/assets/client.css', asset_api_plugins_workflows_assets_client_css],
   ['/api/plugins/models/assets/client.js', asset_api_plugins_models_assets_client_js],
+  ['/api/plugins/explore/assets/client.js', asset_api_plugins_explore_assets_client_js],
   ['/api/plugins/team/assets/client.js', asset_api_plugins_team_assets_client_js],
   ['/api/plugins/team/assets/client.css', asset_api_plugins_team_assets_client_css],
   ['/api/plugins/assets/assets/client.js', asset_api_plugins_assets_assets_client_js],
-  ['/data/curated-plugins.json', asset_data_curated_plugins_json],
-  ['/data/curated-agents.json', asset_data_curated_agents_json],
+  ['/data/curated-catalog.json', asset_data_curated_catalog_json],
 ])
 
 export const EMBEDDED_ASSET_COUNT = 40

@@ -263,7 +263,9 @@ POST   /api/packages/install
 DELETE /api/packages/{packageId}
 POST   /api/packages/{packageId}/update
 
-GET    /api/curated  — static catalog from packages/host/src/data/curated-agents.json
+Curated browsing lives in the explore plugin: GET /api/plugins/explore/catalog
+(unified catalog at packages/host/src/data/curated-catalog.json; the old
+GET /api/curated host route was removed)
 ```
 
 Static-path routes are individual handler files (`install.ts` / `list.ts`); dynamic-path routes share one `dynamic.ts` handler that parses the path and dispatches internally. All bodies validated with zod; status codes follow obvious mapping (collisions + already-installed = 409, unknown = 404, otherwise 500).
@@ -348,18 +350,18 @@ packages/host/src/api/
 │   ├── install.ts
 │   ├── list.ts
 │   └── dynamic.ts
-└── curated/
-    └── list.ts             GET /api/curated
-
 packages/host/src/data/
-└── curated-agents.json     binary-embedded catalog
+└── curated-catalog.json    binary-embedded unified catalog (v2 — agents,
+                            plugins, packs; consumed by onboarding + the
+                            explore plugin)
 
 plugins/team/components/
 ├── package-state-badge.tsx
-├── install-dialog.tsx
 ├── adopt-dialog.tsx
-├── lesson-toggle-list.tsx
-└── curated-browser.tsx
+└── lesson-toggle-list.tsx
+
+plugins/explore/            discovery storefront (browse + install UI;
+                            see .claude/knowledge/explore-plugin.md)
 
 plugins/workflows/lib/
 ├── source-registry.ts      extended with agent-package tier

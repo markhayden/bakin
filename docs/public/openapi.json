@@ -16,6 +16,9 @@
       "name": "Assets"
     },
     {
+      "name": "Explore"
+    },
+    {
       "name": "Git"
     },
     {
@@ -732,6 +735,25 @@
           },
           "400": {
             "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1534,6 +1556,368 @@
           }
         ],
         "x-bakin-full-path": "/api/plugins/assets/search"
+      }
+    },
+    "/api/plugins/explore/catalog": {
+      "get": {
+        "operationId": "explore.get.catalog",
+        "summary": "Merged curated catalog with install state",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    },
+                    "remoteUpdatedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "entries": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "agent",
+                              "plugin",
+                              "skill-pack",
+                              "workflow-pack",
+                              "lesson-pack"
+                            ]
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "emoji": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "category": {
+                            "type": "string"
+                          },
+                          "tags": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "useCases": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "source": {
+                            "type": "string"
+                          },
+                          "ref": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "trust": {
+                            "type": "string",
+                            "enum": [
+                              "official",
+                              "verified",
+                              "community"
+                            ]
+                          },
+                          "builtin": {
+                            "type": "boolean"
+                          },
+                          "dependencies": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "defaultSelected": {
+                            "type": "boolean"
+                          },
+                          "iconUrl": {
+                            "type": "string"
+                          },
+                          "screenshots": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "installed": {
+                            "type": "boolean"
+                          },
+                          "updateAvailable": {
+                            "anyOf": [
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "installedVersion": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "name",
+                          "description",
+                          "category",
+                          "tags",
+                          "useCases",
+                          "ref",
+                          "trust",
+                          "builtin",
+                          "dependencies",
+                          "defaultSelected",
+                          "screenshots",
+                          "installed",
+                          "updateAvailable",
+                          "installedVersion"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "probeErrors": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "updatedAt",
+                    "remoteUpdatedAt",
+                    "entries"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Explore"
+        ],
+        "description": "Embedded catalog merged with the cached remote catalog, joined against local lockfiles. Offline by default; ?check=1 runs explicit update probes (plugin markers persist, agent results are per-response).",
+        "x-bakin-full-path": "/api/plugins/explore/catalog"
+      }
+    },
+    "/api/plugins/explore/catalog/refresh": {
+      "post": {
+        "operationId": "explore.post.catalog-refresh",
+        "summary": "Fetch and cache the remote curated catalog",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    },
+                    "remoteUpdatedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "entries": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "agent",
+                              "plugin",
+                              "skill-pack",
+                              "workflow-pack",
+                              "lesson-pack"
+                            ]
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "emoji": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "category": {
+                            "type": "string"
+                          },
+                          "tags": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "useCases": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "source": {
+                            "type": "string"
+                          },
+                          "ref": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "trust": {
+                            "type": "string",
+                            "enum": [
+                              "official",
+                              "verified",
+                              "community"
+                            ]
+                          },
+                          "builtin": {
+                            "type": "boolean"
+                          },
+                          "dependencies": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "defaultSelected": {
+                            "type": "boolean"
+                          },
+                          "iconUrl": {
+                            "type": "string"
+                          },
+                          "screenshots": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "installed": {
+                            "type": "boolean"
+                          },
+                          "updateAvailable": {
+                            "anyOf": [
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "installedVersion": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "name",
+                          "description",
+                          "category",
+                          "tags",
+                          "useCases",
+                          "ref",
+                          "trust",
+                          "builtin",
+                          "dependencies",
+                          "defaultSelected",
+                          "screenshots",
+                          "installed",
+                          "updateAvailable",
+                          "installedVersion"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "probeErrors": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "updatedAt",
+                    "remoteUpdatedAt",
+                    "entries"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Explore"
+        ],
+        "description": "Explicit user action: fetches catalog.json from the official bits repo, validates it, caches it, and returns the merged catalog. Failures leave the existing cache untouched.",
+        "x-bakin-full-path": "/api/plugins/explore/catalog/refresh"
       }
     },
     "/api/plugins/git/worktrees": {
@@ -18127,30 +18511,6 @@
           }
         },
         "x-bakin-full-path": "/api/packages/:packageId/sync"
-      }
-    },
-    "/api/curated": {
-      "get": {
-        "operationId": "core.get.api-curated",
-        "summary": "List curated installable packages",
-        "responses": {
-          "200": {
-            "description": "Successful response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {},
-                  "additionalProperties": {}
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Core"
-        ],
-        "x-bakin-full-path": "/api/curated"
       }
     },
     "/api/plugin-settings/schemas": {

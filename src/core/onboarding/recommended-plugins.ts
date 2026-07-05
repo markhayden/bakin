@@ -1,11 +1,11 @@
 import { existsSync } from 'fs'
 import { join } from 'path'
-import curatedCatalog from '../../../packages/host/src/data/curated-plugins.json'
 import { getContentDir } from '../content-dir'
 import { readPluginLockfile } from '@bakin/core/plugins/lockfile'
 import { getInstalledPluginIds, planPluginDependencyOrder } from '../plugins/dependencies'
 import { askYesNo } from './prompts'
-import { loadCuratedCatalog } from './curated-catalog'
+import { loadUnifiedCatalog, staticCuratedCatalog } from '../curated-catalog/load'
+import type { CatalogEntry } from '../curated-catalog/schema'
 import type { CheckResult, InstallResult, OnboardingComponent, OnboardingOptions } from './types'
 
 export interface RecommendedPlugin {
@@ -18,42 +18,27 @@ export interface RecommendedPlugin {
   defaultSelected: boolean
 }
 
-interface CuratedPluginRow {
-  id: string
-  name: string
-  source: string
-  description: string
-  dependencies?: string[]
-  trust?: 'official' | 'verified' | 'community'
-  defaultSelected?: boolean
-}
-
-function normalizeCatalog(rows: readonly CuratedPluginRow[]): RecommendedPlugin[] {
-  return rows
-    .filter(plugin => plugin.trust === undefined || plugin.trust === 'official')
-    .map(plugin => ({
-      id: plugin.id,
-      name: plugin.name,
-      source: plugin.source,
-      description: plugin.description,
-      dependencies: plugin.dependencies ?? [],
-      trust: plugin.trust ?? 'official',
-      defaultSelected: plugin.defaultSelected === true,
+function normalizeCatalog(entries: readonly CatalogEntry[]): RecommendedPlugin[] {
+  return entries
+    .filter(entry => entry.kind === 'plugin' && !entry.builtin && entry.trust === 'official')
+    .filter(entry => entry.source !== undefined)
+    .map(entry => ({
+      id: entry.id,
+      name: entry.name,
+      source: entry.source!,
+      description: entry.description,
+      dependencies: entry.dependencies,
+      trust: entry.trust,
+      defaultSelected: entry.defaultSelected,
     }))
 }
 
 function staticCatalogPlugins(): RecommendedPlugin[] {
-  const rows = (curatedCatalog as { plugins?: CuratedPluginRow[] }).plugins ?? []
-  return normalizeCatalog(rows)
+  return normalizeCatalog(staticCuratedCatalog().entries)
 }
 
 async function catalogPlugins(): Promise<RecommendedPlugin[]> {
-  const catalog = await loadCuratedCatalog<{ plugins?: CuratedPluginRow[] }>(
-    curatedCatalog,
-    '/data/curated-plugins.json',
-    'plugins',
-  )
-  return normalizeCatalog(catalog.plugins ?? [])
+  return normalizeCatalog((await loadUnifiedCatalog()).entries)
 }
 
 function isInstalled(id: string): boolean {

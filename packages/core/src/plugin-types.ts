@@ -87,6 +87,7 @@ export interface NavItem {
   order?: number
   children?: NavItem[]
   alwaysExpanded?: boolean
+  placement?: 'bottom'
 }
 
 export interface APIRoute {

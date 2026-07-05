@@ -10,7 +10,7 @@
     },
     "httpRoutes": {
       "status": "active",
-      "count": 60,
+      "count": 59,
       "withInputSchema": 0,
       "withOutputSchema": 0,
       "withExamples": 0,
@@ -23,7 +23,7 @@
     },
     "hookRegistrations": {
       "status": "audited",
-      "count": 48,
+      "count": 49,
       "source": "source scan"
     },
     "slots": {
@@ -39,12 +39,12 @@
     },
     "corePlugins": {
       "status": "active",
-      "count": 10,
+      "count": 11,
       "source": "plugins/*/bakin-plugin.json"
     },
     "settings": {
       "status": "active",
-      "count": 66,
+      "count": 65,
       "source": "packages/core/src/settings.ts"
     },
     "sdkSubpaths": {
