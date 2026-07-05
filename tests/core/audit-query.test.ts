@@ -46,6 +46,8 @@ beforeAll(() => {
     entry('task.runtime_session_died', 26 * 60 * 60 * 1000, { id: 't-old', completionBytes: 999 }), // outside 24h
     entry('task.runtime_session_died', 10 * 60 * 1000, { id: 't-200', completionBytes: 562593, oversizedOutput: true }),
     entry('task.completed', 5 * 60 * 1000, { id: 't-1' }),
+    entry('task.dispatched', 4 * 60 * 1000, { id: 't-2' }, 'pixel'),
+    entry('task.completed', 3 * 60 * 1000, { id: 't-2' }, 'pixel'),
   ].join('\n') + '\n')
 })
 
@@ -63,12 +65,36 @@ describe('queryAuditEvents', () => {
 
   it('returns everything without filters and respects limit', () => {
     const all = queryAuditEvents(testDir)
-    expect(all.length).toBe(5)
+    expect(all.length).toBe(7)
     expect(queryAuditEvents(testDir, { limit: 2 }).length).toBe(2)
   })
 
   it('returns [] for a missing audit file', () => {
     expect(queryAuditEvents(join(testDir, 'nope'))).toEqual([])
+  })
+
+  it('filters by agent on the full-read path (#385)', () => {
+    const pixel = queryAuditEvents(testDir, { agent: 'pixel' })
+    expect(pixel.map((e) => e.event)).toEqual(['task.dispatched', 'task.completed'])
+    expect(pixel.every((e) => e.agent === 'pixel')).toBe(true)
+    expect(queryAuditEvents(testDir, { agent: 'nobody' })).toEqual([])
+  })
+
+  it('filters by agent on the windowed tail path, composing with kinds (#385)', () => {
+    const pixel = queryAuditEvents(testDir, { agent: 'pixel', sinceMs: 24 * 60 * 60 * 1000 })
+    expect(pixel.map((e) => e.data.id)).toEqual(['t-2', 't-2'])
+
+    const completed = queryAuditEvents(testDir, {
+      agent: 'pixel',
+      kinds: ['task.completed'],
+      sinceMs: 24 * 60 * 60 * 1000,
+    })
+    expect(completed.length).toBe(1)
+    expect(completed[0]!.agent).toBe('pixel')
+
+    // jessica's events are untouched by pixel's filter
+    const jessica = queryAuditEvents(testDir, { agent: 'jessica', sinceMs: 24 * 60 * 60 * 1000 })
+    expect(jessica.length).toBe(4)
   })
 })
 

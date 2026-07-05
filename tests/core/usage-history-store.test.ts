@@ -35,6 +35,7 @@ import {
   getScanState,
   usageByAgentSince,
   usageByDaySince,
+  usageByAgentDaySince,
   type SessionDayUsage,
 } from '../../packages/core/src/usage-history/store'
 import { closeAllDbs } from '../../packages/core/src/storage/db'
@@ -183,5 +184,40 @@ describe('usage-history store', () => {
     closeAllDbs()
     const byAgent = usageByAgentSince(DAY1)
     expect(byAgent.find((a) => a.agent === 'basil')?.tokens.total).toBe(195)
+  })
+})
+
+describe('usageByAgentDaySince (#385)', () => {
+  it('preserves the agent×day cross-tab with per-cell sums', () => {
+    replaceSessionUsage(
+      'x1',
+      'pixel',
+      [row({ totalTokens: 100 }), row({ day: DAY2, totalTokens: 700, firstTs: T2, lastTs: T2 })],
+      { mtimeMs: 1, size: 1 },
+    )
+    // second session, same agent, same day — must sum into the same cell
+    replaceSessionUsage('x2', 'pixel', [row({ totalTokens: 40 })], { mtimeMs: 1, size: 1 })
+    replaceSessionUsage('x3', 'scout', [row({ totalTokens: 9, costUsdMicros: null, costedMessages: 0 })], {
+      mtimeMs: 1,
+      size: 1,
+    })
+
+    const cells = usageByAgentDaySince(DAY1)
+    const cell = (agent: string, day: string) => cells.find((c) => c.agent === agent && c.day === day)
+
+    expect(cell('pixel', DAY1)?.tokens.total).toBe(140)
+    expect(cell('pixel', DAY2)?.tokens.total).toBe(700)
+    expect(cell('scout', DAY1)?.tokens.total).toBe(9)
+    // NULL-honest: scout's only row carried no cost
+    expect(cell('scout', DAY1)?.costUsdMicros).toBeNull()
+    // ascending by day, then agent — stable for chart series assembly
+    const keys = cells.map((c) => `${c.day}|${c.agent}`)
+    expect(keys).toEqual([...keys].sort())
+  })
+
+  it('honors the sinceDay cutoff', () => {
+    const only2 = usageByAgentDaySince(DAY2)
+    expect(only2.every((c) => c.day >= DAY2)).toBe(true)
+    expect(only2.find((c) => c.agent === 'pixel' && c.day === DAY2)).toBeDefined()
   })
 })
