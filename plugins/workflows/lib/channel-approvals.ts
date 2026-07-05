@@ -12,7 +12,7 @@ import { rehydratePendingApprovals } from './approval-rehydration'
 import { activeGateSettings } from './gate-settings'
 import { getApprovalRecord, approvalRefFromRecord } from './approval-store'
 import { approveGate, rejectGate, loadInstance } from './runtime'
-import { buildGateAuditPayload, getGateDescription } from './gate-audit'
+import { buildGateAuditPayload } from './gate-audit'
 import { indexInstance } from './search-sync'
 import { triggerDispatch } from './trigger-dispatch'
 import { resolveGateApproval, sendGateDecisionSummary } from './notifications'
@@ -26,7 +26,7 @@ export async function wireChannelApprovals(ctx: PluginContext): Promise<() => vo
     renderMissingDeliveries: activeGateSettings().approvalChannelAlerts,
     log,
   })
-  if (approvalRehydration.pending > 0) {
+  if (approvalRehydration.pending > 0 || approvalRehydration.pruned > 0 || approvalRehydration.cancelled > 0) {
     log.info('Rehydrated pending workflow approvals', { ...approvalRehydration })
   }
 
@@ -34,6 +34,15 @@ export async function wireChannelApprovals(ctx: PluginContext): Promise<() => vo
     const approvalRecord = getApprovalRecord(event.approvalId)
     if (!approvalRecord) {
       log.warn('Channel approval response ignored: no durable approval record', { approvalId: event.approvalId })
+      return
+    }
+    if (approvalRecord.status !== 'pending') {
+      // Stale provider button: the record was already resolved, cancelled as
+      // an orphan, or expired. The durable record is canonical — ignore.
+      log.warn('Channel approval response ignored: approval record is not pending', {
+        approvalId: event.approvalId,
+        status: approvalRecord.status,
+      })
       return
     }
 
@@ -73,29 +82,18 @@ export async function wireChannelApprovals(ctx: PluginContext): Promise<() => vo
           instance,
           stepId,
           result.decision.gateLabel,
-          getGateDescription(instance.workflowId, stepId),
           'approved',
           approver,
           result.decision.requestedAt,
           result.decision.decidedAt,
           undefined,
           activeGateSettings(),
+          approvalRef,
         ).catch(() => {})
       }
     } else if (selected === 'reject') {
       const channelComment = event.response.comment?.trim()
-      const requiresRejectReason = approvalRecord.request.context?.requireRejectReason === true
-      if (requiresRejectReason && !channelComment) {
-        log.warn('Channel reject ignored: this gate requires a reject reason', {
-          approvalId: event.approvalId,
-          taskId,
-          stepId,
-          channelId: event.channelId,
-        })
-        ctx.activity.log('channel', `Gate "${stepId}" reject ignored because a reason is required. Use the Bakin approval link to reject with a reason.`, { taskId })
-        return
-      }
-      const rejectReason = channelComment || 'Rejected via runtime channel'
+      const rejectReason = channelComment || 'Rejected via runtime channel (no reason provided)'
       const approvalRef = approvalRefFromRecord(approvalRecord)
       const result = rejectGate(taskId, stepId, rejectReason, { approver })
       if (!result.success) {
@@ -121,13 +119,13 @@ export async function wireChannelApprovals(ctx: PluginContext): Promise<() => vo
           instance,
           stepId,
           result.decision.gateLabel,
-          getGateDescription(instance.workflowId, stepId),
           'rejected',
           approver,
           result.decision.requestedAt,
           result.decision.decidedAt,
           rejectReason,
           activeGateSettings(),
+          approvalRef,
         ).catch(() => {})
       }
     }

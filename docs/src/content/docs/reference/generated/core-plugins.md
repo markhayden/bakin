@@ -30,7 +30,7 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Health<br/><span>System health dashboard — MCP stats, diagnostics, and uptime</span></td>
       <td><code>health</code></td>
       <td>Core</td>
-      <td><code>1.2.0</code></td>
+      <td><code>1.3.0</code></td>
       <td>none</td>
     </tr>
     <tr>

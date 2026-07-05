@@ -43,7 +43,7 @@ Agents creating a task pick the workflow that fits, or skip with a reason. Bakin
 
 ### Approve a gate
 
-Gates pause the workflow until you decide. The task's detail panel shows the gate and the prior step's output for context. Approve and the workflow advances; reject and it rewinds. If notifications are configured, they ping you when one's waiting. Runtime channels that support interactive approvals can approve or reject straight from the message when a structured reject reason is not required; every gate alert also includes a Bakin approval link so provider button expiry does not expire the workflow gate.
+Gates pause the workflow until you decide. The task's detail panel shows the gate and the prior step's output for context. Approve and the workflow advances; reject and it rewinds. If notifications are configured, they ping you when one's waiting. Runtime channels that support interactive approvals can approve or reject straight from the message; a button reject records a default reason, and typed reject reasons are collected by the Bakin approval link included in every gate alert (provider button expiry never expires the workflow gate).
 
 ### Cancel a workflow
 
@@ -83,8 +83,8 @@ Definitions and instances both index into search (table `bakin_workflows`) on na
 | Max concurrent steps | `number` | `3` | Maximum steps running in parallel per workflow |
 | Notify on gate | `boolean` | `true` | Send notification when a gate needs approval |
 | Channel gate alerts | `boolean` | `false` | Send runtime channel approvals when gates need review |
-| Gate approval channel | `string` | `general` | Runtime channel ID for gate approval messages |
-| Require reject reason | `boolean` | `true` | Require a reason when rejecting from a channel approval |
+| Gate approval channel | `string` | `general` | Runtime channel id or notifications.channelAliases alias for gate approval messages |
+| Require reject reason | `boolean` | `true` | Require a typed reason in the Bakin UI and fallback page; channel button rejects record a default reason |
 
 </div>
 <!-- /docs:settings -->

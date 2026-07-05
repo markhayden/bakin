@@ -39,8 +39,14 @@ The shared type lives in `packages/core/src/plugin-types.ts`.
 
 When a gate enters `pending_approval` and channel gate alerts are enabled,
 workflows call `runtime.channels.createApproval()` through
-`plugins/workflows/lib/notifications.ts`. The adapter renders the approval in
-whatever provider it owns (buttons, commands, links, or plain text) and returns
+`plugins/workflows/lib/notifications.ts`. The `approvalChannel` setting is
+resolved through `resolveRuntimeChannelRef` (`src/core/channel-aliases.ts` —
+the same resolver `bakin_exec_post_channel` uses), so it may be an alias from
+`notifications.channelAliases`, a `provider:target` ref, or a bare runtime
+channel id. Resolution failure logs at **error** level and skips delivery; the
+durable approval record is created before resolution, so rehydration can retry
+once the config is fixed. The adapter renders the approval in whatever
+provider it owns (buttons, commands, links, or plain text) and returns
 delivery refs. Bakin persists those refs on the step state only so later
 resolve/cancel operations can target the same rendered message.
 
@@ -54,15 +60,75 @@ advertise `interactive-approval`. The OpenClaw adapter uses native
 `plugin.approval.*` gateway requests for those channels and maps provider
 decisions back to Bakin `approvalId` values. Channels without real runtime
 approval responses stay render-only and include a Bakin approval link.
-Requests that require a reject reason also stay on the Bakin fallback page
-unless the provider can collect a structured reason.
+Native buttons are used regardless of `requireRejectReason` — the reason
+requirement binds only surfaces that can collect one (Bakin UI and the
+fallback decision page, both of which enforce a typed reason
+unconditionally). A channel button reject with no comment records the
+provider-neutral default reason `Rejected via runtime channel (no reason
+provided)` (`plugins/workflows/lib/channel-approvals.ts`).
 
 Provider approval buttons are a convenience surface, not Bakin state. OpenClaw
 native approval requests can expire before a workflow gate does, and provider
 events may be missed if Bakin is offline. The durable Bakin approval record and
-the Bakin fallback approval URL remain canonical. Reject responses that require
-a reason must include one; no-reason channel rejects are ignored and the user is
-sent back to the Bakin approval link.
+the Bakin fallback approval URL remain canonical.
+
+**Threaded gate messaging:** because the native card is capped at 256 chars
+(upstream), `sendGateApprovalRequest` delivers gate context as normal rich
+messages. When the adapter exposes the optional `channels.createThread` /
+`channels.editMessage` capabilities (OpenClaw does, via `message thread
+create` / `message edit`), the channel gets ONE compact root card (header,
+output preview, links), a thread anchored to it carries the full labeled
+output + media (assetIds from prior output resolved through the
+`assets.resolveServe` hook), and the native button card is routed into the
+thread via `context.threadId` → `turnSourceThreadId`. On decision, the root
+card is edited in place into a receipt and the summary posts inside the
+thread — the channel stays one-card-per-gate. Without threading capabilities
+(mock adapters, other providers) everything falls back to the previous flat
+layout; callers MUST feature-detect, never error on absence. Delivery refs on
+the durable record encode the structure: `message:<id>` (root),
+`thread:<id>` (thread marker), `openclaw-plugin-approval:<id>` (native card).
+Best-effort throughout — context/thread failures log warns and never block
+the approval. Decision links omit the approvalId (the page resolves the
+newest pending record via `findPendingApprovalForGate`; explicit ids still
+bind). `BAKIN_URL` should be set to a network-reachable host (e.g. Tailscale
+hostname) or links render as localhost. The watchdog's per-gate
+general-channel ping was retired in favor of this.
+
+Native request hardening (all in `packages/adapter-openclaw/src/runtime.ts`):
+
+- Gate requests send `allowedDecisions: ['allow-once', 'deny']` so OpenClaw
+  never offers "Always allow" — gates are one-shot human decisions and
+  persistent trust must not exist for them. Button labels themselves
+  ("Allow once"/"Don't allow") are OpenClaw's UI and not customizable.
+- If OpenClaw returns a **pre-resolved** decision at request time (a persisted
+  allow rule — no human saw a prompt), the adapter suppresses the phantom
+  resolve event and falls back to the rendered message + Bakin link so a
+  human decides. Any gate approved via an `allow-always` decision logs a
+  loud warning.
+- Prompt **delivery routing** (verified against OpenClaw's shipped
+  `extensions/discord/src/approval-native.ts`): the native prompt posts into
+  a channel only when the request's `turnSourceTo` carries an explicit
+  `channel:`/`group:` prefix — a bare id silently falls back to approver
+  DMs. Bakin passes the resolved alias target through as `turnSourceTo`, so
+  Discord approval aliases MUST be fully qualified as
+  `discord:channel:<id>` in `notifications.channelAliases`.
+  `channels.discord.execApprovals.target` (`dm|channel|both`) controls the
+  DM copy. `approvals.plugin.*` forwarding is a separate plain-message
+  pipeline, not the native-buttons path — don't chase it for gates.
+
+## Approval Store GC
+
+Startup rehydration (`plugins/workflows/lib/approval-rehydration.ts`) garbage
+collects the durable store before reattaching deliveries: resolved records
+(`approved`/`rejected`/`cancelled`/`expired`) older than 30 days are deleted
+(`pruneResolvedApprovalRecords`), and pending records whose workflow instance
+is missing, mismatched, or no longer pending at that gate are cancelled with
+an `orphaned:` reason. Pending records for live gates are never pruned or
+cancelled — a live gate whose alert simply has not rendered yet stays pending
+so `findPendingApprovalForGate` and re-render keep working. The rehydration
+summary carries `pruned`/`cancelled` counts and is logged whenever GC did
+work. Consequence: a fallback decision link for a record pruned by age renders
+404 "Approval Not Found" instead of "already decided".
 
 ## Long Prior Outputs
 

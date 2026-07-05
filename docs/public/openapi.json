@@ -2161,6 +2161,66 @@
         "x-bakin-full-path": "/api/plugins/health/usage"
       }
     },
+    "/api/plugins/health/usage-history": {
+      "get": {
+        "operationId": "health.get.usage-history",
+        "summary": "Historical agent token usage",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Health"
+        ],
+        "description": "Durable per-agent and per-day token rollups from the usage-history store. Windows are day-aligned: a window includes every local calendar day it touches. Cost is runtime-reported only.",
+        "parameters": [
+          {
+            "name": "window",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": "24h",
+              "type": "string",
+              "enum": [
+                "24h",
+                "7d",
+                "30d"
+              ]
+            }
+          }
+        ],
+        "x-bakin-full-path": "/api/plugins/health/usage-history"
+      }
+    },
     "/api/plugins/health/registry": {
       "get": {
         "operationId": "health.get.registry",

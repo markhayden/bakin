@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from 'fs'
+import { existsSync, readdirSync, readFileSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import { atomicWriteJson } from '@bakin/core/storage/atomic-write'
 import type {
@@ -138,6 +138,31 @@ export function cancelApprovalRecord(
     resolvedAt: now,
     updatedAt: now,
   }, contentDir)
+}
+
+export function deleteApprovalRecord(approvalId: string, contentDir = getContentDir()): boolean {
+  const path = approvalPath(contentDir, approvalId)
+  if (!existsSync(path)) return false
+  unlinkSync(path)
+  return true
+}
+
+const PRUNABLE_STATUSES: ReadonlySet<ApprovalStatus> = new Set(['approved', 'rejected', 'cancelled', 'expired'])
+
+/**
+ * Delete resolved approval records older than maxAgeMs. Pending records are
+ * never pruned, regardless of age — orphan handling happens at rehydration.
+ */
+export function pruneResolvedApprovalRecords(maxAgeMs: number, contentDir = getContentDir()): number {
+  const cutoff = Date.now() - maxAgeMs
+  let pruned = 0
+  for (const record of listApprovalRecords(contentDir)) {
+    if (!PRUNABLE_STATUSES.has(record.status)) continue
+    const resolvedAt = Date.parse(record.resolvedAt ?? record.updatedAt)
+    if (Number.isNaN(resolvedAt) || resolvedAt >= cutoff) continue
+    if (deleteApprovalRecord(record.approvalId, contentDir)) pruned += 1
+  }
+  return pruned
 }
 
 export function findPendingApprovalForGate(
