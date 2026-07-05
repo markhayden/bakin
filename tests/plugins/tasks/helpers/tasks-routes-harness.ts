@@ -86,6 +86,12 @@ export const mockGetTaskDetails = mock()
 export const mockLogProgress = mock()
 export const mockTriggerDispatch = mock()
 
+/** Teams accepted by the mocked validateTeamRef (#189). */
+export const mockKnownTeams = new Set(['development'])
+export const mockValidateTeamRef = mock(async (teamId: string) => {
+  if (!mockKnownTeams.has(teamId)) throw new Error(`Unknown team: "${teamId}"`)
+})
+
 export const taskServiceMock = () => ({
   moveTaskWithEffects: (...args: unknown[]) => mockMoveTaskWithEffects(...args),
   blockTaskWithEffects: (...args: unknown[]) => mockBlockTaskWithEffects(...args),
@@ -95,6 +101,7 @@ export const taskServiceMock = () => ({
   getTaskDetails: (...args: unknown[]) => mockGetTaskDetails(...args),
   logProgress: (...args: unknown[]) => mockLogProgress(...args),
   triggerDispatch: (...args: unknown[]) => mockTriggerDispatch(...args),
+  validateTeamRef: (teamId: string) => mockValidateTeamRef(teamId),
 })
 
 /**

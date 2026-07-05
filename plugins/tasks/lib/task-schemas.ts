@@ -35,6 +35,8 @@ export const createTaskBody = z.object({
   description: z.string().optional(),
   column: z.enum(COLUMNS).optional(),
   assignee: z.string().optional(),
+  /** Team assignment (#189) — mutually exclusive with assignee (handler-enforced 400). */
+  team: z.string().optional(),
   workflowId: z.string().optional(),
   skipWorkflowReason: z.string().optional(),
   createdBy: z.string().optional(),
@@ -57,6 +59,8 @@ export const updateTaskBody = z.object({
   title: z.string().optional(),
   description: z.string().optional(),
   agent: z.string().optional(),
+  /** Team assignment (#189) — mutually exclusive with agent (handler-enforced 400). */
+  team: z.string().optional(),
   column: z.string().optional(),
   workflowId: z.string().optional(),
   availableAt: z.string().nullable().optional(),

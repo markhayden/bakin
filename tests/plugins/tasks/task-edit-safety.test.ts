@@ -79,6 +79,7 @@ mock.module('@/core/task-store', () => ({
 const mockSetDependencyWithEffects = mock(async () => {})
 const mockBlockTaskWithEffects = mock(async (): Promise<{ alreadyComplete: boolean }> => ({ alreadyComplete: false }))
 mock.module('../../../src/core/task-service', () => ({
+  validateTeamRef: async () => undefined,
   moveTaskWithEffects: mock(async () => ({ alreadyComplete: false })),
   blockTaskWithEffects: mockBlockTaskWithEffects,
   createTaskWithEffects: mock(async () => ({ id: 'new' })),

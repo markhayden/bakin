@@ -133,6 +133,9 @@ const mockListDefinitions = mock((): Array<{ name: string }> => [
 
 // Mock the hook registry for non-task side effects. Task metadata uses the
 // shared task-store mock above, not plugin hooks.
+let teamExistsHookRegistered = true
+let knownTeams: string[] = ['development']
+
 const hookHandlers: Record<string, (...args: unknown[]) => unknown> = {
   'workflows.loadInstance': (data: any) => mockLoadInstance(data),
   'workflows.createInstance': (data: any) => mockCreateInstance(data),
@@ -140,6 +143,7 @@ const hookHandlers: Record<string, (...args: unknown[]) => unknown> = {
   'workflows.loadDefinition': (data: any) => mockLoadDefinition(data),
   'workflows.definitions.list': () => mockListDefinitions(),
   'workflows.cancelInstance': (data: any) => mockCancelWorkflowInstance(data),
+  'team.exists': (data: any) => knownTeams.includes(data.teamId),
 }
 
 const mockHookRegistry = {
@@ -150,7 +154,7 @@ const mockHookRegistry = {
   }),
   callAll: mock(async () => undefined),
   register: mock(),
-  has: mock(() => false),
+  has: mock((name: string) => name === 'team.exists' && teamExistsHookRegistered),
 }
 
 const pluginRegistryMock = {
@@ -318,6 +322,57 @@ describe('task-service', () => {
         reason: 'Task blocked: Image provider unavailable',
         actor: { source: 'agent', id: 'pixel', displayName: 'pixel' },
       })
+    })
+  })
+
+  describe('createTaskWithEffects team assignment (#189)', () => {
+    it('creates a team-assigned task, validating the team via team.exists', async () => {
+      teamExistsHookRegistered = true
+      knownTeams = ['development']
+      const result = await service.createTaskWithEffects({
+        title: 'Review the auth PR',
+        team: 'development',
+        createdBy: 'chef',
+      })
+      expect(result.id).toBe('new-task-123')
+      expect(mockCreateTask).toHaveBeenCalledWith(
+        'Review the auth PR',
+        undefined,
+        undefined, // no concrete assignee
+        undefined,
+        undefined,
+        'chef',
+        undefined,
+        undefined,
+        undefined,
+        expect.objectContaining({ team: 'development' }),
+      )
+    })
+
+    it('rejects assignee and team together', async () => {
+      await expect(service.createTaskWithEffects({
+        title: 'Bad', assignee: 'pixel', team: 'development', createdBy: 'chef',
+      })).rejects.toThrow(/both/i)
+      expect(mockCreateTask).not.toHaveBeenCalled()
+    })
+
+    it('rejects an unknown team at write time', async () => {
+      knownTeams = ['development']
+      await expect(service.createTaskWithEffects({
+        title: 'Bad', team: 'nope-team', createdBy: 'chef',
+      })).rejects.toThrow(/unknown team/i)
+      expect(mockCreateTask).not.toHaveBeenCalled()
+    })
+
+    it('fails closed when the team.exists hook is not registered', async () => {
+      teamExistsHookRegistered = false
+      try {
+        await expect(service.createTaskWithEffects({
+          title: 'Bad', team: 'development', createdBy: 'chef',
+        })).rejects.toThrow(/unavailable/i)
+      } finally {
+        teamExistsHookRegistered = true
+      }
     })
   })
 

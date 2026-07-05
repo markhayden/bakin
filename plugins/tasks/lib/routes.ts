@@ -25,6 +25,7 @@ import {
   moveTaskWithEffects,
   blockTaskWithEffects,
   createTaskWithEffects,
+  validateTeamRef,
   reportComplete,
   setDependencyWithEffects,
   getTaskDetails,
@@ -127,14 +128,25 @@ export const tasksRoutes = [
     summary: 'Create a task',
     description: 'Creates a task on the kanban board. Auto-matches a workflow by title when workflowId is omitted.',
     body: createTaskBody,
-    responses: { 200: createTaskResponse, 500: errorResponse },
+    responses: { 200: createTaskResponse, 400: errorResponse, 500: errorResponse },
     handler: async (_req, ctx, { body }) => {
+      if (body.assignee && body.team) {
+        return Response.json({ error: 'Cannot set both assignee and team' }, { status: 400 })
+      }
+      if (body.team) {
+        try {
+          await validateTeamRef(body.team)
+        } catch (err) {
+          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 })
+        }
+      }
       try {
         const result = await createTaskWithEffects({
           id: body.id,
           title: body.title,
           column: body.column as ColumnId | undefined,
           assignee: body.assignee,
+          team: body.team,
           description: body.description,
           workflowId: body.workflowId,
           skipWorkflowReason: body.skipWorkflowReason,
@@ -169,11 +181,22 @@ export const tasksRoutes = [
       }
       const guard = taskEditGuard(ctx, identifier, { agent: body.agent, expectedVersion: body.expectedVersion })
       if (guard) return guardResponse(guard)
+      if (body.agent && body.team) {
+        return Response.json({ error: 'Cannot set both agent and team' }, { status: 400 })
+      }
+      if (body.team) {
+        try {
+          await validateTeamRef(body.team)
+        } catch (err) {
+          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 })
+        }
+      }
       try {
         await updateTask(identifier, {
           title: body.title,
           description: body.description,
           agent: body.agent,
+          team: body.team,
           column: body.column as ColumnId | undefined,
           workflowId: body.workflowId,
           availableAt: body.availableAt,
