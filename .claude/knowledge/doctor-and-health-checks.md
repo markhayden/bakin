@@ -46,13 +46,15 @@ The orchestrator is intentionally trivial — it has no opinion about what's bei
 
 (Plus 3 workflow checks already migrated under #137: `definitions`, `stale-instances`, `skills`.)
 
-### System-owned (17 checks, registered by health plugin)
+### System-owned (19 checks, registered by health plugin)
 
 | File | Registered id |
 |---|---|
 | `plugins/health/lib/system-checks/content-dir.ts` | `content-dir` |
 | `plugins/health/lib/system-checks/execution-safety.ts` | `execution-safety` |
 | `plugins/health/lib/system-checks/budget.ts` | `budget` |
+| `plugins/health/lib/system-checks/agent-burn.ts` | `usage.agent-burn` (warn-only token-burn heuristics — effort-no-outcome / spike / unattributed; arithmetic in `src/core/agent-burn.ts`, shared with `GET /agent-effort` — see `.claude/knowledge/agent-health-diagnostics.md`) |
+| `plugins/health/lib/system-checks/plugin-artifacts.ts` | `plugin-artifacts` |
 | `plugins/health/lib/system-checks/context-report.ts` | `context.startup-size` (warn-only per-dispatch context budget vs `dispatch.contextBudgetBytes`; arithmetic shared with `src/core/context-report.ts` — see `.claude/knowledge/startup-context.md`) |
 | `plugins/health/lib/system-checks/service.ts` | `service` |
 | `plugins/health/lib/system-checks/mcporter.ts` | `mcporter` |
@@ -106,6 +108,13 @@ The registry namespaces ids: a plugin with `id: 'team'` registering a check with
    ```
 4. If the check is repairable, expose a `HealthRepairHandler` with `plan()` and `apply()`. Diagnostics must not mutate state; `bakin doctor --fix` and delegated repair flows are the only callers that apply repairs.
 5. Don't catch your own errors — the orchestrator's try/catch handles them. Throw freely.
+6. **Per-agent findings must attach machine-readable attribution** (#385):
+   `HealthCheckResult.data` is an optional `Record<string, unknown>`; the
+   convention is `data: { agents: string[] }`. Dashboards (attention chips,
+   the drifted badge, Overview chips) read cached results by `data.agents` —
+   **never parse agent ids out of message text**. `team.agent-sync`,
+   `context.startup-size`, and `usage.agent-burn` are the reference
+   implementations.
 
 ## Authoring a system check (in the health plugin)
 
