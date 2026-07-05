@@ -548,7 +548,7 @@ describe('DELETE /:taskId — Delete Task', () => {
   })
 
 
-  it('removes the workflow instance via the cross-plugin hook when registered', async () => {
+  it('does NOT invoke workflow-instance cleanup itself — deleteTask owns the full cascade (#604 T5)', async () => {
     mockDeleteTask.mockResolvedValue(undefined)
     const hooks = activated.ctx.hooks as unknown as {
       has: ReturnType<typeof mock>
@@ -563,7 +563,8 @@ describe('DELETE /:taskId — Delete Task', () => {
     })
 
     expect(status).toBe(200)
-    expect(hooks.invoke).toHaveBeenCalledWith('workflows.deleteInstance', { taskId: 'task-with-wf' })
+    expect(mockDeleteTask).toHaveBeenCalledWith('task-with-wf')
+    expect(hooks.invoke).not.toHaveBeenCalledWith('workflows.deleteInstance', expect.anything())
     hooks.has.mockReturnValue(false)
   })
 
