@@ -28,6 +28,15 @@ import { syncConfig as syncMcporter } from '../../../../src/core/mcporter'
 import { getAllAgentUsage } from '../../../../src/core/agent-usage'
 import { getStatsByMs } from '../../../../src/core/usage'
 import { readLatestSessionTranscript } from '../session-reader'
+import { listRunsByAgent } from '../../../../src/core/execution-ledger'
+import { queryAuditEvents } from '../../../../src/core/audit'
+import {
+  assembleTimeline,
+  TIMELINE_AUDIT_KINDS,
+  TIMELINE_MAX_RUNS,
+  TIMELINE_MAX_EVENTS,
+  type TimelineTaskInfo,
+} from '../timeline'
 
 import {
   agentToMeta,
@@ -648,6 +657,49 @@ export function populateAgentRoutes(arr: any[], deps: TeamRouteDeps): void {
         return Response.json({ ok: true, activity: { windowMs, errors, sinceServerStart } })
       } catch (err) {
         log.error('Failed to compute recent activity', err, { agentId })
+        return Response.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }))
+
+  // GET /:agentId/timeline — Run spine + notable audit events (#385)
+  arr.push(defineRoute({
+    path: '/:agentId/timeline',
+    method: 'GET',
+    description: 'Per-agent activity timeline: dispatch runs with tokens/cost/outcome (execution ledger) interleaved with notable audit events, plus per-run progress-log lines',
+    summary: 'Per-agent activity timeline (runs + notable events)',
+    params: z.object({ agentId: z.string() }),
+    responses: { 200: passthroughTeam, 400: errorResponseTeam, 500: errorResponseTeam },
+    handler: async (req: Request, ctx: PluginContextLite) => {
+      const url = new URL(req.url)
+      const agentId = url.searchParams.get('agentId')
+      if (!agentId) return Response.json({ ok: false, error: 'agentId required' }, { status: 400 })
+      const windowParam = url.searchParams.get('window') ?? '24h'
+      const windowMs = windowParam === '7d' ? 7 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000
+      if (windowParam !== '24h' && windowParam !== '7d') {
+        return Response.json({ ok: false, error: 'window must be 24h or 7d' }, { status: 400 })
+      }
+
+      try {
+        const now = Date.now()
+        const runs = listRunsByAgent(agentId, { sinceMs: now - windowMs, limit: TIMELINE_MAX_RUNS })
+        const auditEvents = queryAuditEvents(getBakinPaths().home, {
+          agent: agentId,
+          kinds: [...TIMELINE_AUDIT_KINDS],
+          sinceMs: windowMs,
+          limit: TIMELINE_MAX_EVENTS,
+        })
+        const taskById = new Map<string, TimelineTaskInfo>()
+        for (const taskId of new Set(runs.map((r) => r.taskId))) {
+          try {
+            const task = await ctx.tasks.get(taskId)
+            if (task) taskById.set(taskId, { title: task.title, log: task.log ?? [] })
+          } catch { /* purged task — run row still renders without title/logs */ }
+        }
+        const events = assembleTimeline({ runs, auditEvents, taskById, now })
+        return Response.json({ ok: true, agent: agentId, window: windowParam, events })
+      } catch (err) {
+        log.error('Failed to assemble agent timeline', err, { agentId })
         return Response.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 })
       }
     },
