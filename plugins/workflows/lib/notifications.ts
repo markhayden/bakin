@@ -417,11 +417,12 @@ async function sendGateContextMessage(
       deliveries.push({ channelId: resolvedChannel, ref: `thread:${threadId}`, renderedAt: rootDelivery?.renderedAt ?? new Date().toISOString() })
       if (hasDetails) {
         const provider = resolvedChannel.split(':')[0]
+        const threadBody = renderPriorOutput(priorOutput, { markdown: true, heading: '`Task Review Details`' })
         await runtime.channels.deliverContent({
           channels: [`${provider}:channel:${threadId}`],
           content: {
             title: '',
-            body: fullOutput || 'No step output attached.',
+            body: threadBody || 'No step output attached.',
             ...(files.length > 0 ? { files } : {}),
             metadata,
           },
@@ -590,6 +591,8 @@ function isScalar(value: unknown): value is string | number | boolean {
 interface RenderOutputOptions {
   /** Bold labels/headings for markdown surfaces (channel messages). */
   markdown?: boolean
+  /** Override the section heading; rendered with a blank line after it. */
+  heading?: string
 }
 
 /** Render one output entry as `Label: value` prose; nested objects indent. */
@@ -626,8 +629,9 @@ function renderPriorOutput(priorOutput: Record<string, unknown> | undefined, opt
   if (lines.length === 0) return ''
   const rendered = lines.join('\n')
   const cap = 4000
-  const heading = opts.markdown ? '**Details:**' : 'Details:'
-  return `${heading}\n${rendered.length > cap ? `${rendered.slice(0, cap)}\n...[truncated]` : rendered}`
+  const body = rendered.length > cap ? `${rendered.slice(0, cap)}\n...[truncated]` : rendered
+  if (opts.heading) return `${opts.heading}\n\n${body}`
+  return `${opts.markdown ? '**Details:**' : 'Details:'}\n${body}`
 }
 
 function humanizeDuration(ms: number): string {

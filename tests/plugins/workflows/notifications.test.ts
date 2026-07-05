@@ -204,7 +204,8 @@ describe('runtime gate notifications', () => {
     // Full output posted in the thread, links not repeated there.
     const [threadCall] = rt.deliverContent.mock.calls[1] as unknown as [{ channels: string[]; content: { body: string } }]
     expect(threadCall.channels).toEqual(['discord:channel:777'])
-    expect(threadCall.content.body).toContain('**Details:**')
+    expect(threadCall.content.body).toContain('`Task Review Details`\n\n')
+    expect(threadCall.content.body).not.toContain('Details:\n')
     expect(threadCall.content.body).toContain('Hello world')
     expect(threadCall.content.body).not.toContain('[Review & Approve in Bakin]')
 
