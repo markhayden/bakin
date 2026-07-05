@@ -11,24 +11,45 @@
  * update state is probe-only upstream (never persisted), so agents report
  * `null` (unknown) until an explicit check runs (S6).
  */
+import { existsSync, readdirSync } from 'fs'
+import { join } from 'path'
 import {
   computeUpgradeAvailable,
   readPluginLockfile,
   type PluginLockfile,
 } from '@bakin/core/plugins/lockfile'
 import { readLockfile, type Lockfile, type PackageEntry } from '@bakin/core/agent-packages/lockfile'
+import { getContentDir } from '../../../src/core/content-dir'
 import type { CatalogEntry } from '../../../src/core/curated-catalog/schema'
 import type { ExploreCatalogEntry } from '../types'
 
 export interface InstallStateSources {
   pluginLock: PluginLockfile
   packageLock: Lockfile
+  /**
+   * Plugin ids present on disk under ~/.bakin/plugins/. Pre-lockfile-era
+   * installs (and seeded dev homes) have a directory but no lock entry —
+   * same dual check onboarding's recommended-plugins uses.
+   */
+  installedPluginDirs: ReadonlySet<string>
+}
+
+function scanInstalledPluginDirs(): Set<string> {
+  const dir = join(getContentDir(), 'plugins')
+  const found = new Set<string>()
+  if (!existsSync(dir)) return found
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (!entry.isDirectory() && !entry.isSymbolicLink()) continue
+    if (existsSync(join(dir, entry.name, 'bakin-plugin.json'))) found.add(entry.name)
+  }
+  return found
 }
 
 export function gatherInstallSources(): InstallStateSources {
   return {
     pluginLock: readPluginLockfile(),
     packageLock: readLockfile(),
+    installedPluginDirs: scanInstalledPluginDirs(),
   }
 }
 
@@ -71,7 +92,7 @@ export function joinInstallState(
       const installed = sources.pluginLock.plugins[entry.id] ?? null
       return {
         ...entry,
-        installed: installed !== null,
+        installed: installed !== null || sources.installedPluginDirs.has(entry.id),
         updateAvailable: installed ? computeUpgradeAvailable(installed) : null,
         installedVersion: installed?.version ?? null,
       }

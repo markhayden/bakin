@@ -132,6 +132,20 @@ describe('ExplorePage', () => {
     expect(screen.queryByText('Pixel')).toBeNull()
   })
 
+  it('a category selected on one tab never empties another tab', () => {
+    // Regression: tab switching used to reset categories via a second URL
+    // write that clobbered the tab change from stale params. Now stale
+    // category selections are simply inert on tabs where they don't exist.
+    fixtureEntries = [...AGENTS, ...PLUGINS]
+    render(<ExplorePage />)
+    fireEvent.click(screen.getByTestId('facet-Research'))
+    expect(screen.queryByText('Pixel')).toBeNull()
+    fireEvent.click(screen.getByTestId('tab-plugins'))
+    // 'Research' doesn't exist on the plugins tab — all plugin cards visible.
+    expect(screen.getByText('Messaging')).toBeTruthy()
+    expect(screen.getByText('Team')).toBeTruthy()
+  })
+
   it('opens the detail drawer with use cases on card click', () => {
     fixtureEntries = [...AGENTS, ...PLUGINS]
     render(<ExplorePage />)

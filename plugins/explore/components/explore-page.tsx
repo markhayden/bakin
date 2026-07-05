@@ -71,11 +71,20 @@ function ExplorePageInner() {
     return seen.map((category) => ({ value: category, label: category }))
   }, [tabEntries])
 
+  // Only apply category selections that exist on the current tab — a
+  // selection made on another tab stays in the URL but never filters this
+  // one down to nothing. (Also avoids a setTab+setCategories double URL
+  // write, where the second setter clobbers the first from stale params.)
+  const activeCategories = useMemo(
+    () => categories.filter((category) => tabEntries.some((entry) => entry.category === category)),
+    [categories, tabEntries],
+  )
+
   const visible = useMemo(
-    () => (categories.length === 0
+    () => (activeCategories.length === 0
       ? tabEntries
-      : tabEntries.filter((entry) => categories.includes(entry.category))),
-    [tabEntries, categories],
+      : tabEntries.filter((entry) => activeCategories.includes(entry.category))),
+    [tabEntries, activeCategories],
   )
 
   const selected = useMemo(
@@ -141,10 +150,7 @@ function ExplorePageInner() {
         <UnderlineTabs
           tabs={tabs}
           value={tab}
-          onValueChange={(id) => {
-            setTab(id)
-            setCategories([])
-          }}
+          onValueChange={setTab}
         />
         <FacetFilter
           label="Category"

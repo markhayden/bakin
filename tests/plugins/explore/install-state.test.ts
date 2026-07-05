@@ -46,6 +46,7 @@ const entry = (overrides: Partial<CatalogEntry> & Pick<CatalogEntry, 'id' | 'kin
 const sources = (over: Partial<InstallStateSources> = {}): InstallStateSources => ({
   pluginLock: { version: 1, plugins: {} },
   packageLock: { version: 1, packages: {} },
+  installedPluginDirs: new Set<string>(),
   ...over,
 })
 
@@ -108,6 +109,13 @@ describe('joinInstallState', () => {
     expect(fresh).toMatchObject({ installed: true, updateAvailable: false, installedVersion: '1.0.0' })
     expect(stale).toMatchObject({ installed: true, updateAvailable: true })
     expect(absent).toMatchObject({ installed: false, updateAvailable: null })
+  })
+
+  it('a plugin directory without a lock entry still counts as installed', () => {
+    // Pre-lockfile installs / seeded dev homes: dir exists, no ledger row.
+    const src = sources({ installedPluginDirs: new Set(['messaging']) })
+    const [messaging] = joinInstallState([entry({ id: 'messaging', kind: 'plugin' })], src)
+    expect(messaging).toMatchObject({ installed: true, updateAvailable: null, installedVersion: null })
   })
 
   it('packs match lockfile keys of the form id or id@version', () => {
