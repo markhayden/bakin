@@ -72,7 +72,7 @@ import {
 } from './image-inference'
 import {
   OPENCLAW_PLUGIN_ID, OPENCLAW_WORKFLOW_GATE_TOOL, OPENCLAW_PLUGIN_APPROVAL_REF_PREFIX,
-  renderNativeApprovalDescription, supportsNativeApprovalOptions, requiresRejectReason,
+  renderNativeApprovalDescription, supportsNativeApprovalOptions,
   approvalEventFromOpenClawPayload, openClawDecisionFromBakinOption,
   parseNativeApprovalRef, isExpectedNativeApprovalResolveMiss,
 } from './approval-helpers'
@@ -92,6 +92,8 @@ import {
   splitChannelRef, openClawMessageSendArgs, deliveryRefFromOpenClawOutput,
   readChannelInfos, hasAnyInteractiveApprovalChannel,
   channelHasInteractiveApproval, approvalNoticeForMessage,
+  openClawThreadCreateArgs, openClawMessageEditArgs,
+  threadIdFromOpenClawOutput, messageIdFromDeliveryRef,
 } from './channel-helpers'
 import {
   oversizedOutputBytesFrom, messagesToOpenClawPrompt, normalizeToolList,
@@ -195,6 +197,8 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   private chatGatewayClient: OpenClawGatewayRpcClient | null = null
   private emittedApprovalResponseKeys: string[] = []
   private emittedApprovalResponseKeySet = new Set<string>()
+  private preResolvedApprovalIdList: string[] = []
+  private preResolvedApprovalIds = new Set<string>()
   private lastModelListFailureMessage: string | null = null
 
   constructor(options: OpenClawRuntimeAdapterOptions = {}) {
@@ -537,7 +541,6 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       for (const channel of args.channels) {
         if (
           channelHasInteractiveApproval(channel)
-          && !requiresRejectReason(context)
           && supportsNativeApprovalOptions(args.request.options)
         ) {
           const delivery = await this.tryCreateNativeApproval(channel, args, renderedAt)
@@ -590,6 +593,27 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         this.approvalResolveWarningLogged = true
       }
     },
+    createThread: async (args: { channel: string; messageRef?: string; name: string }): Promise<{ threadId: string; channelRef: string } | null> => {
+      const ref = splitChannelRef(args.channel, undefined)
+      const messageId = messageIdFromDeliveryRef(args.messageRef) ?? undefined
+      const stdout = await this.exec(openClawThreadCreateArgs(ref, { messageId, name: args.name }))
+      const threadId = threadIdFromOpenClawOutput(stdout)
+      if (!threadId) {
+        this.logger.warn('OpenClaw thread create output had no parseable thread id; callers fall back to flat messaging', {
+          channel: args.channel,
+          stdoutHead: stdout.slice(0, 300),
+        })
+        return null
+      }
+      // Provider target syntax stays here — callers treat channelRef as opaque.
+      return { threadId, channelRef: `${ref.channel}:channel:${threadId}` }
+    },
+    editMessage: async (args: { channel: string; messageRef: string; body: string }): Promise<void> => {
+      const messageId = messageIdFromDeliveryRef(args.messageRef)
+      if (!messageId) throw new Error(`Not an editable message ref: ${args.messageRef}`)
+      const ref = splitChannelRef(args.channel, undefined)
+      await this.exec(openClawMessageEditArgs(ref, { messageId, body: args.body }))
+    },
     subscribeApprovalResponses: (handler: (event: ApprovalResolveEvent) => void) => {
       if (!hasAnyInteractiveApprovalChannel()) {
         if (!this.approvalResponsesWarningLogged) {
@@ -603,6 +627,18 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       return this.approvalGateway().subscribeResolved((payload) => {
         const event = approvalEventFromOpenClawPayload(payload)
         if (!event) return
+        if (this.preResolvedApprovalIds.has(event.approvalId)) {
+          this.logger.warn('Ignoring resolve event for a pre-resolved OpenClaw approval; the Bakin fallback link decides this gate', {
+            approvalId: event.approvalId,
+          })
+          return
+        }
+        if (payload.decision === 'allow-always') {
+          this.logger.warn('Workflow gate approved via OpenClaw allow-always decision — check for persisted plugin allow rules that would auto-approve future gates', {
+            approvalId: event.approvalId,
+            resolvedBy: payload.resolvedBy ?? null,
+          })
+        }
         if (!this.markApprovalResponseEmitted(event)) return
         handler(event)
       })
@@ -627,13 +663,33 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         toolCallId: args.approvalId,
         turnSourceChannel: ref.channel,
         ...(ref.target ? { turnSourceTo: ref.target } : {}),
+        // Route the button card into the gate's thread when the caller
+        // created one (threadId in the request context).
+        ...(typeof metadataValue(args.request.context, 'threadId') === 'string'
+          ? { turnSourceThreadId: metadataValue(args.request.context, 'threadId') as string }
+          : {}),
         timeoutMs: OPENCLAW_PLUGIN_APPROVAL_TIMEOUT_MS,
         twoPhase: true,
+        // Gates are one-shot human decisions; never offer persistent trust.
+        allowedDecisions: ['allow-once', 'deny'],
       })
       if (!result.id || result.decision === null) {
         this.logger.warn('OpenClaw native approval request had no approval route; falling back to render-only message', {
           approvalId: args.approvalId,
           channel,
+        })
+        return null
+      }
+      if (typeof result.decision === 'string') {
+        // OpenClaw resolved the request at creation time (e.g. a persisted
+        // allow rule) — no human saw a prompt. A workflow gate must not be
+        // decided that way: suppress the phantom resolve event and fall back
+        // to the rendered message + Bakin link so a human decides.
+        this.rememberPreResolvedApproval(args.approvalId)
+        this.logger.warn('OpenClaw pre-resolved the plugin approval without a human prompt (persisted allow rule?); falling back to render-only message', {
+          approvalId: args.approvalId,
+          channel,
+          decision: result.decision,
         })
         return null
       }
@@ -659,8 +715,13 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   ): Promise<{ deliveries: Array<{ channelId: string; ref: string; renderedAt: string }> }> {
     const optionText = args.request.options.map((option) => `- ${option.label} (${option.id})`).join('\n')
     const approvalUrl = metadataValue(context, 'approvalUrl') ?? metadataValue(context, 'approvalDecisionUrl')
+    // Render into the gate's thread when the caller created one.
+    const threadId = metadataValue(context, 'threadId')
+    const deliveryChannel = typeof threadId === 'string' && threadId
+      ? `${splitChannelRef(channel, undefined).channel}:channel:${threadId}`
+      : channel
     return this.channels.sendMessage({
-      channels: [channel],
+      channels: [deliveryChannel],
       message: {
         title: args.request.title,
         body: [
@@ -683,6 +744,16 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       })
     }
     return this.approvalGatewayClient
+  }
+
+  private rememberPreResolvedApproval(approvalId: string): void {
+    if (this.preResolvedApprovalIds.has(approvalId)) return
+    this.preResolvedApprovalIds.add(approvalId)
+    this.preResolvedApprovalIdList.push(approvalId)
+    while (this.preResolvedApprovalIdList.length > 1000) {
+      const old = this.preResolvedApprovalIdList.shift()
+      if (old) this.preResolvedApprovalIds.delete(old)
+    }
   }
 
   private markApprovalResponseEmitted(event: ApprovalResolveEvent): boolean {

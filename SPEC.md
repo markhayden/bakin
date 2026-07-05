@@ -1,315 +1,240 @@
-# SPEC — Explore: the "do more with Bakin" discovery plugin
+# SPEC — Workflow Gate Approvals & Discord Notifications: E2E Validation + Hardening
 
-**Issue:** [#163](https://github.com/markhayden/bakin/issues/163) (scope pivoted — see § Issue Hygiene)
-**Branch:** `feat/163-workshop`
-**Status:** Draft for approval
-
----
+Status: DRAFT — awaiting approval
+Date: 2026-07-04
+Owner: roscoe (single-user instance; no backwards-compatibility requirements)
 
 ## 1. Objective
 
-Bakin's extensibility surface (agents, plugins, skill/workflow/lesson packs) is
-powerful but terminal-shaped. A business user who is not comfortable with a CLI
-— or with tunneling into their claw machine — has no way to discover what
-official content exists, understand what it's for, or install it.
+Prove, on the live Bakin instance wired to the owner's Discord, that workflow
+approval gates and their notifications work end-to-end — and fix the defects
+that currently prevent that from being true. Deliver a reusable validation
+harness (driver script + runbook) so the same proof can be re-run after any
+future change.
 
-**Explore** is a new core plugin: an app-store-style storefront where the user
+### Defects already identified (root causes confirmed in code)
 
-- **browses** everything formally supported (curated agents, plugins, packs) by
-  category, with use cases and visuals;
-- **installs** any of it in one click through the existing host REST endpoints
-  (consent flows preserved, never bypassed);
-- **sees at a glance** what is already installed, built in, or has an update
-  available — and deep-links into Team/Health where lifecycle actions happen.
+| # | Defect | Root cause |
+|---|--------|-----------|
+| D1 | Gate approval requests silently never reach Discord | `sendGateApprovalRequest` (`plugins/workflows/lib/notifications.ts:213,251`) passes the raw `approvalChannel` setting (`"approvals"`) to `runtime.channels.createApproval` with **no alias resolution** — only `bakin_exec_post_channel` resolves aliases via `resolveRuntimeChannelRef`. The adapter execs `openclaw message send --channel approvals`, which matches no OpenClaw channel; the failure is swallowed as a `warn` log. |
+| D2 | Native Discord approve/reject buttons never used | `createApproval` (`packages/adapter-openclaw/src/runtime.ts:538-541`) skips the native path whenever the gate context has `requireRejectReason: true` — the live setting. All gates degrade to a rendered message + fallback link. |
+| D3 | Stale approval debris accumulates forever | Three records from 2026-05 in `~/.bakin/workflows/approvals/`; rehydration logs `pending: 1, reattached: 0, skipped: 1` on every boot. No expiry/GC exists in the approval store. |
 
-Explore is deliberately **not** a management surface. Update, remove, sync,
-drift repair, and `.userEdited` re-claim stay where they live today (Team,
-Health, CLI). Explore relays status; other plugins do the heavy lifting.
+## 2. User Stories & Acceptance Criteria
 
-### Decisions locked during interview
+All stories run against the **live instance** using the **real templates**
+`text-social-post-copy` (user-owned) and `image-social-post` (plugin-shipped),
+with real agents and real Discord delivery to the dedicated approvals channel.
 
-| Decision | Answer |
-|---|---|
-| V1 content scope | Full store: agents + plugins + packs (packs tab auto-hides when catalog empty) |
-| Plugin identity | New core plugin `explore` (11th core plugin) — team plugin untouched except deep-link targets |
-| Actions in Explore | Browse + install + relay status. No update/remove/repair UI |
-| Name / nav | "Explore", pinned to sidebar bottom above Settings via new generic `placement: 'bottom'` NavItem field |
-| Catalog data | Embedded in binary + optional user-triggered remote refresh from `bakin-bits-official`, cached under `~/.bakin/` |
-| Core plugins in store | Yes — showcased with "Built in" badge (education value), not installable |
-| Adapter neutrality | All agent state via existing adapter-backed REST; zero provider-specific code |
+### US1 — Gate reached → Discord approval request arrives
+As the owner, when a workflow task hits an approval gate, I receive an
+approval request in my dedicated Discord approvals channel.
 
----
+- AC1.1 Gate step enters `pending_approval`; board task moves to review column.
+- AC1.2 A Discord message arrives in channel `1492642521728290816` with the
+  gate title, task/step identity, prior step output, and a working Bakin
+  fallback decision link.
+- AC1.3 A durable approval record exists under `~/.bakin/workflows/approvals/`
+  with delivery refs recorded.
+- AC1.4 Delivery works because `"approvals"` resolved through
+  `notifications.channelAliases.approvals` → `discord:1492642521728290816`
+  (D1 fixed; same resolver as `post-channel`).
 
-## 2. User Stories
+### US2 — Approve via native Discord button → workflow advances
+As the owner, I click **Approve** on the Discord message and the workflow
+advances without touching the Bakin UI.
 
-**US-1 — Hire an agent without the terminal.**
-As a business user, I open Explore, filter agents by the "Marketing" category,
-read what Pixel does and the use cases it's good at, and click Install. The
-agent appears in my Team page ready to work. I never see a shell prompt.
-*Acceptance:* curated agent install from browser → agent visible in Team;
-errors from the install endpoint render human-readable in the dialog.
+- AC2.1 Native buttons render on the Discord approval message even though
+  `requireRejectReason: true` (D2 fixed — see §4 behavior change).
+- AC2.2 Clicking Approve advances the workflow to the next step within one
+  dispatch cycle; step state and audit (`gate.approved`) record a Discord
+  actor identity.
+- AC2.3 The original Discord approval is resolved/updated and a decision
+  summary is posted (`resolveGateApproval` + `sendGateDecisionSummary`).
 
-**US-2 — Extend Bakin with an official plugin.**
-As a user, I discover the Messaging plugin in Explore, see its description,
-category, and what it depends on, and click Install. Because it declares
-permissions, I'm shown a consent dialog listing exactly what it can do; after I
-accept, it live-activates — new nav item appears without a restart.
-*Acceptance:* `awaitingConsent` responses render a consent dialog; re-POST with
-`accepted: true` + `consentToken`; declined consent installs nothing.
+### US3 — Reject via Discord → default reason, rewind, revise, re-approve
+As the owner, I click **Reject** on the Discord message; the gate records a
+default reason, the workflow rewinds per `on_reject.goto`, the agent revises,
+and the gate re-fires.
 
-**US-3 — Understand what Bakin can already do.**
-As a new user, I browse Explore and see the ten built-in plugins presented
-like store listings — categories, use cases, screenshots-level descriptions —
-each badged "Built in". Explore doubles as the product tour.
-*Acceptance:* all core plugins render from the catalog with no Install button.
+- AC3.1 A native-button reject with no structured reason records the default
+  reason `Rejected via Discord (no reason provided)` — it is NOT blocked by
+  `requireRejectReason` (behavior change, §4).
+- AC3.2 `on_reject: { goto: write-copy, note_to_agent: true }` rewinds to the
+  copy step and the reject reason reaches the agent's corrective prompt.
+- AC3.3 The revised output re-triggers the gate; a fresh Discord approval
+  request arrives (new approval record, new message).
+- AC3.4 A reject via the **fallback decision page** with a typed reason still
+  works and carries the typed reason (requireRejectReason enforced on
+  surfaces that can collect one).
 
-**US-4 — Know when something is stale, fix it where it belongs.**
-As a user, I see an "Update available" badge on an installed item in Explore.
-Clicking it takes me to the right place (Team agent detail / Health) to act.
-Explore never mutates installed content beyond install itself.
-*Acceptance:* update-available state read from existing lockfile-backed
-endpoints (`/api/plugins/manifest?check=1`, `/api/agent-packages?check=1`);
-badge deep-links; a manual "Check for updates" button triggers the probes
-(no network on page load).
+### US4 — Approve from the Bakin UI → Discord mirrors the decision
+As the owner, when I approve a pending gate from the Bakin web UI, the
+Discord approval message is resolved and a decision summary posts.
 
-**US-5 — Grow an agent's knowledge.**
-As a user, I browse lesson packs (and skill/workflow packs) in Explore and
-install one. Enabling specific lessons for a specific agent stays in Team's
-Lessons tab, one deep-link away.
-*Acceptance:* pack install via `/api/packages/install`; Packs tab hidden when
-the catalog has no pack entries.
+- AC4.1 `POST /gates/:taskId/approve` advances the workflow.
+- AC4.2 The pending Discord approval is resolved (native) or a summary posts
+  (render-only); no orphaned "pending" message remains actionable.
 
-**US-6 — Power-user escape hatch.**
-As a developer, I use "Install from source…" in Explore to install from
-`github:user/repo` or a local path — same dialog capabilities the CLI offers
-(`installAs`, adopt, replace-on-collision), same server-owned validation.
-*Acceptance:* custom source round-trips through the same install endpoints.
+### US5 — Nested-gate flow (image-social-post)
+As the owner, gates inside the nested image-generation workflow notify and
+resolve identically to top-level gates.
 
----
+- AC5.1 The nested workflow's gate(s) produce Discord approval requests with
+  correct workflow/step identity.
+- AC5.2 Approvals advance the nested instance and, on completion, the parent
+  resumes; final publish posts the image to the `general` channel.
 
-## 3. Architecture & Design
+### US6 — Publish step completes the e2e story
+- AC6.1 At least one run per template publishes real content to Discord via
+  `bakin_exec_post_channel` and the workflow completes.
+- AC6.2 Test posts, test tasks, workflow instances, and billed assets are
+  cleaned up afterward (documented in the runbook; Discord deletes are
+  manual).
 
-### 3.1 New plugin: `plugins/explore/`
+### US7 — Approval store hygiene (D3)
+- AC7.1 The stuck `pending:1/skipped:1` record is diagnosed and its failure
+  mode documented.
+- AC7.2 Approval-store GC prunes (a) resolved records older than 30 days and
+  (b) pending records whose workflow instance no longer exists or is no
+  longer pending on that step, older than 7 days. GC runs during startup
+  rehydration; prunes are logged with counts.
+- AC7.3 After validation, `~/.bakin/workflows/approvals/` contains only
+  legitimately pending/current records and rehydration logs are clean.
+
+## 3. Scope
+
+### In scope (code changes)
+1. **C1 — Unify channel resolution (D1):** gate approval delivery
+   (`sendGateApprovalRequest`, `sendGateDecisionSummary`) resolves its channel
+   through `resolveRuntimeChannelRef` before calling `runtime.channels.*`.
+   Resolution failure logs at `error` (not `warn`) — silent delivery loss was
+   the sting of D1.
+2. **C2 — Native buttons + default reject reason (D2):** remove the
+   `!requiresRejectReason(context)` guard on the native-approval path; channel
+   rejects lacking a reason get the default reason
+   `Rejected via Discord (no reason provided)` in
+   `plugins/workflows/lib/channel-approvals.ts` (replacing the current
+   reject-blocked-without-reason behavior). `requireRejectReason` continues to
+   require a typed reason on the Bakin UI and fallback decision page.
+3. **C3 — Approval-store GC (D3):** expiry rules per AC7.2, wired into
+   `approval-rehydration.ts`.
+4. **C4 — Validation harness:** `scripts/validate-gates.ts` driver +
+   `docs/validation/gate-discord-runbook.md`. The script drives scenarios
+   against the live server: creates workflow tasks, polls
+   `/gates/pending`/instance state, verifies approval records + delivery
+   refs, pauses with "click X in Discord now" prompts at interactive points,
+   and prints a pass/fail report per acceptance criterion.
+5. **C5 — Config:** live `settings.json` gains
+   `notifications.channelAliases.approvals = "discord:1492642521728290816"`;
+   workflows plugin settings keep `approvalChannel: "approvals"`,
+   `approvalChannelAlerts: true`, `requireRejectReason: true`.
+
+### In scope (validation run)
+- Live interactive session (owner clicks Discord buttons/links): US1–US6
+  scenario matrix, both button and fallback-page decision paths.
+- Cleanup: test tasks archived/deleted, test Discord posts deleted (manual),
+  billed image assets removed, approvals dir left clean.
+
+### Out of scope
+- Server-restart/rehydration live scenario (explicitly declined).
+- video-social-post template.
+- Purpose-built synthetic test workflows (real templates only).
+- Any backwards-compatibility shims — this machine is the only user.
+- CLI gate-approval command; Slack/Telegram/other providers.
+
+## 4. Behavior Change (deliberate, owner-approved)
+
+`requireRejectReason: true` no longer suppresses native channel approval
+buttons. New semantics: **the reason requirement binds only surfaces capable
+of collecting a reason** (Bakin UI, fallback decision page). Channel button
+rejects auto-fill the default reason. The
+`REJECT_REASON_APPROVAL_NOTICE` copy in
+`packages/adapter-openclaw/src/channel-helpers.ts` and the
+`channelRequiresBakinFallbackForReject` logic are updated/removed
+accordingly; affected existing tests are rewritten to the new contract, not
+preserved.
+
+## 5. Commands
+
+```bash
+# build/test (existing)
+bun run test                      # full suite (CI-equivalent)
+bun test tests/path --isolate     # single file
+bun run dev                       # dev loop (client-side watch only)
+
+# harness (new)
+bun scripts/validate-gates.ts --scenario us1        # one scenario
+bun scripts/validate-gates.ts --all                 # full matrix
+bun scripts/validate-gates.ts --all --report out.md # write report
+```
+
+## 6. Project Structure (touched surfaces)
 
 ```
-plugins/explore/
-  bakin-plugin.json        # id "explore", nav, apiRoutes, clientRoutes
-  index.ts                 # activate(ctx): register catalog routes
-  client.tsx               # registerPlugin({ id, navItems, slots })
-  types.ts                 # CatalogEntry, CatalogFile, InstallState …
-  lib/
-    catalog.ts             # load embedded + cached remote, zod-validate, merge
-    refresh.ts             # fetch remote catalog.json → validate → cache
-    install-state.ts       # join catalog against lockfiles/manifest (server-side)
-  components/
-    explore-page.tsx       # tabs (Agents | Plugins | Packs) + category FacetFilter
-    catalog-card.tsx       # visual listing: emoji/icon, name, category, use cases
-    detail-panel.tsx       # expanded view: full use cases, deps, source, trust
-    install-dialog.tsx     # curated one-click + custom source form
-    consent-dialog.tsx     # renders permissions from awaitingConsent response
+plugins/workflows/lib/notifications.ts        # C1 — resolve alias before createApproval/sendNotification
+plugins/workflows/lib/channel-approvals.ts    # C2 — default reject reason for channel rejects
+plugins/workflows/lib/approval-store.ts       # C3 — GC verbs (listExpired, prune)
+plugins/workflows/lib/approval-rehydration.ts # C3 — GC invocation at startup
+packages/adapter-openclaw/src/runtime.ts      # C2 — drop requireRejectReason guard on native path
+packages/adapter-openclaw/src/channel-helpers.ts # C2 — notice copy update
+scripts/validate-gates.ts                     # C4 — driver
+docs/validation/gate-discord-runbook.md       # C4 — runbook
+tests/plugins/workflows/*                     # updated + new coverage
+tests/adapter-openclaw/runtime-channels.test.ts # rewritten native-path expectations
+.claude/knowledge/workflows-plugin.md         # docs: gate approvals section update
 ```
 
-- Added to `CORE_PLUGIN_IDS` (`src/lib/core-plugin-ids.ts`) and the build.
-- Client pages registered at `page:/explore` (single page, tab + filter state
-  in URL via `useQueryState`/`useQueryArrayState`; `<Suspense>`-wrapped).
-- No HookRegistry needs in V1: installed/update state comes from host REST the
-  client already may call. Server-side routes below exist so the client makes
-  one call, not four, and so state-joining logic is testable server-side.
+## 7. Testing Strategy
 
-### 3.2 Plugin-registered API routes
+- **Mocked integration tests (repo, permanent):**
+  - C1: gate notifier resolves `approvals` via `channelAliases`; unresolvable
+    alias logs error and creates no delivery; resolved `discord:<id>` reaches
+    the fake runtime's `createApproval`.
+  - C2: native approval attempted when channel supports it regardless of
+    `requireRejectReason`; channel reject without reason lands `rejectGate`
+    with the default reason; fallback-page reject still requires a typed
+    reason.
+  - C3: GC prunes per AC7.2 rules; pending-and-current records survive.
+  - All tests follow the repo's non-negotiable mock rules (content-dir both
+    paths, OpenClaw home, logger, temp dirs, cleanup).
+- **Live validation (harness-driven, interactive):** US1–US6 with the owner
+  clicking Discord. The harness verifies machine-checkable ACs; human-visible
+  ACs (message appearance, button render) are confirmed via y/n prompts and
+  recorded in the report.
 
-Under `/api/plugins/explore/`:
+## 8. Commit Strategy (natural rollback checkpoints)
 
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/catalog` | Merged catalog (embedded ⊕ cached remote) joined with install state: `installed`, `builtin`, `updateAvailable`, `installedVersion` per entry |
-| POST | `/catalog/refresh` | Fetch remote catalog from `bakin-bits-official`, zod-validate, cache to `~/.bakin/plugin-data/explore/catalog.json`, return merged result |
+Branch: `feat/gate-discord-validation` off `main`. One commit per concern,
+each independently revertible, tests green at every checkpoint:
 
-Installs go straight to the existing host endpoints — Explore adds **no** new
-mutation routes:
+1. `fix(workflows): resolve channel aliases in gate approval delivery` (C1 + tests)
+2. `feat(workflows): native channel approvals with default reject reason` (C2 + tests, includes adapter change)
+3. `feat(workflows): approval store GC for stale records` (C3 + tests)
+4. `feat(scripts): gate/Discord e2e validation harness + runbook` (C4)
+5. `docs(knowledge): update workflows-plugin gate approval semantics` (docs sweep: `.claude/knowledge/workflows-plugin.md`; README unaffected — verified during build)
 
-- agents → `POST /api/agent-packages/install`
-- plugins → `POST /api/plugins/install` (+ consent round-trip)
-- packs → `POST /api/packages/install`
+Config change C5 is live-instance state, not repo state — applied during the
+validation session and recorded in the runbook.
 
-Design rule (from #163, unchanged): the UI layer performs no filesystem or
-provider mutations; server-owned validation/consent is never re-implemented
-client-side.
+## 9. Boundaries
 
-### 3.3 Unified curated catalog (replaces two ad-hoc files)
+- **Always:** mock content-dir + OpenClaw home in every test; keep provider
+  specifics behind the adapter boundary (the default-reason text lives in
+  Bakin's workflows plugin, NOT the adapter — the adapter stays
+  provider-mechanical); log every swallowed delivery failure.
+- **Ask first:** deleting anything from Discord; touching
+  `~/.openclaw/` config; any spend beyond the agreed template runs (extra
+  image generations, video template).
+- **Never:** write test data to real `~/.bakin/` or `~/.openclaw/` from the
+  test suite; add a second channel-resolution path; fabricate validation
+  results — every AC in the report links to observed evidence (log line,
+  approval record, HTTP response, or owner confirmation).
 
-Today: `packages/host/src/data/curated-agents.json` (served by `/api/curated`)
-and `curated-plugins.json` (onboarding recommendations only). Tech-debt
-reduction: **unify into one file** with one zod schema.
+## 10. Open Items Carried to Planning
 
-`packages/host/src/data/curated-catalog.json` (embedded via the existing
-embedded-assets pipeline):
-
-```jsonc
-{
-  "version": 2,
-  "updatedAt": "2026-07-04",
-  "entries": [
-    {
-      "id": "pixel",
-      "kind": "agent",                    // agent | plugin | skill-pack | workflow-pack | lesson-pack
-      "name": "Pixel",
-      "emoji": "🎨",
-      "description": "…",
-      "category": "Marketing",            // single primary category
-      "tags": ["images", "brand"],
-      "useCases": ["Generate on-brand social images", "…"],
-      "source": "github:markhayden/bakin-bits-official#agents/pixel",
-      "ref": "main",
-      "trust": "official",
-      "builtin": false,                    // true for the 10 core plugins (no source)
-      "dependencies": ["assets"],          // plugin kinds only
-      "defaultSelected": true              // onboarding recommendation flag, carried over
-    }
-  ]
-}
-```
-
-Migration (single-user machine, no back-compat shims):
-
-- `src/core/onboarding/recommended-agents.ts` / `recommended-plugins.ts` read
-  the unified file (filtered by kind + `defaultSelected`).
-- `/api/curated` host route is **deleted**; the explore plugin's `/catalog`
-  route supersedes it. `tests/api/curated.test.ts` migrates accordingly.
-- The two old JSON files are deleted.
-- Companion (out of repo): author `catalog.json` at the root of
-  `bakin-bits-official` in the same schema for remote refresh. Explore works
-  fully without it (refresh reports "no remote catalog yet" cleanly).
-
-### 3.4 Sidebar: generic bottom placement
-
-- `NavItem` gains `placement?: 'bottom'` (`packages/sdk/src/types/registration.ts`).
-- `AppSidebar` renders bottom-placed items in the existing pinned-bottom
-  section, above the hardcoded Settings link. No other shell special-casing.
-- Explore registers `{ id: 'explore', label: 'Explore', icon: 'Compass', href: '/explore', placement: 'bottom' }`.
-- Team nav stays exactly where it is.
-
-### 3.5 Status relay (no polling, no page-load network)
-
-- Default catalog join uses **persisted** lockfile markers (`upgradeAvailable`,
-  `lastChecked`) — instant, offline-safe.
-- "Check for updates" button calls the existing `?check=1` probe endpoints,
-  then re-fetches the catalog join.
-- Badges deep-link: agents → `/team/{id}`, plugins → (stay in Explore detail
-  with CLI hint until a plugin-management UI exists), health issues → `/health`.
-
-### 3.6 Cleanup (tech-debt items folded in)
-
-- Delete orphaned `plugins/team/components/install-dialog.tsx` (never
-  imported); Explore owns install UI. Its isolation test moves/adapts to the
-  explore plugin.
-- Note: `curated-browser.tsx` referenced in #163 never existed — nothing to
-  migrate.
-- Correct stale comments pointing "Teams UI browse curated view" at the old
-  `/api/curated` route (route is deleted).
-
----
-
-## 4. Commands
-
-| Task | Command |
-|---|---|
-| Dev loop | `bun run dev` (plugin HMR covers `plugins/explore/`) |
-| Mock runtime | `bun run dev:mock` |
-| Build all | `bun run build` (never `git add -A` after — build stamp) |
-| Full tests | `bun run test` |
-| Single file | `bun test tests/plugins/explore/foo.test.ts --isolate` |
-
-No new CLI commands. No changes to existing `bakin` CLI surface.
-
-## 5. Code Style
-
-Repo conventions apply unchanged (CLAUDE.md): strict TS, zod at boundaries
-(catalog schema, refresh response), functional style, `createLogger('explore')`,
-kebab-case files, import order, URL-backed page state, SDK-only imports in
-client components (`@makinbakin/sdk/*`, never `packages/host/src/*`).
-
-## 6. Testing Strategy
-
-- **Plugin server tests** (`tests/plugins/explore/`): `activatePlugin` +
-  `callRoute` from `tests/plugins/test-helpers.ts`. Catalog merge (embedded ⊕
-  cached remote, version precedence), install-state join (installed / builtin /
-  updateAvailable), refresh failure modes (network down, invalid JSON → cached
-  copy untouched, honest error).
-- **Schema tests**: unified catalog zod schema; the shipped
-  `curated-catalog.json` must validate (regression gate for catalog PRs).
-- **Component isolation tests**: catalog-card, install-dialog (incl. consent
-  round-trip render), explore-page tab/filter URL state — mirroring existing
-  team-component test patterns.
-- **Onboarding regression**: recommended-agents/plugins still produce the same
-  selections from the unified file.
-- **Sidebar**: bottom-placement rendering test alongside existing sidebar tests.
-- **Mandatory isolation**: every fs-touching test mocks both content-dir
-  resolvers + OpenClaw home per CLAUDE.md; `rmSync` cleanup; logger/watcher
-  mocked. Remote refresh tests never hit the network (inject fetcher).
-
-## 7. Boundaries
-
-**Always**
-- Install through existing host REST; render server responses honestly.
-- Preserve consent gates exactly (`awaitingConsent` → dialog → token re-POST).
-- Adapter-neutral: agent data only via adapter-backed endpoints.
-- Catalog validated with zod at every boundary (embedded, remote, cache).
-
-**Ask first**
-- Any new mutation endpoint.
-- Any change to team/health plugin behavior beyond adding deep-link targets.
-- Schema changes to `bakin-plugin.json` / `bakin-package.json` manifests
-  (V1 keeps richness in the catalog, not the manifests).
-
-**Never**
-- Update/remove/sync/repair UI in Explore (stays Team/Health/CLI — future #163 follow-up).
-- Filesystem or provider mutations from UI code.
-- Bypassing consent, or auto-fetching the remote catalog without user action.
-- Provider-specific (OpenClaw) identifiers anywhere in the plugin.
-- Backwards-compat shims for the catalog migration (single-user machine).
-
-## 8. Out of Scope (V1)
-
-- Hosted registry / non-official third-party listings; ratings, screenshots.
-- Plugin update/remove UI; agent update/remove UI; drift repair UI;
-  `.userEdited` lock management (remainder of #163, later slice).
-- Per-agent lesson toggling inside Explore (lives in Team).
-- Scheduled/automatic catalog refresh.
-- `bakin-bits-official` catalog.json authoring (companion task, separate repo).
-
-## 9. Docs & Knowledge Updates
-
-- New `.claude/knowledge/explore-plugin.md` (catalog schema, merge/refresh
-  semantics, install-state join).
-- Update `.claude/knowledge/plugin-system.md` (11th core plugin),
-  `repo-architecture.md` (directory map), CLAUDE.md core-plugin count + nav
-  pattern (`placement: 'bottom'`), and onboarding knowledge if
-  recommended-* internals are documented there.
-- README / Astro docs: add Explore to feature overview if plugins are
-  enumerated there (verify during build phase).
-
-## 10. Issue Hygiene
-
-This spec supersedes the storefront/discovery portion of #163 and *defers* its
-management scope (lifecycle actions, drift repair, `.userEdited` re-claim —
-which stay in Team/Health when built). On approval: comment on #163 with the
-pivot summary + link to this spec; retitle or split so the remaining
-management scope keeps a clean home. Also note two factual corrections to the
-issue: `curated-browser.tsx` never existed, and the pack kind is `lesson-pack`
-(not `knowledge-pack`).
-
-## 11. Commit Strategy (checkpoints for rollback)
-
-Each lands green (typecheck + suite) and is independently revertable:
-
-1. `feat(sdk,host): NavItem placement:'bottom' + sidebar bottom section support`
-2. `feat(explore): scaffold explore core plugin (manifest, activate, empty page, nav)`
-3. `feat(explore): unified curated catalog schema + data file; migrate onboarding readers; delete /api/curated + old JSON files`
-4. `feat(explore): catalog route with install-state join + explore page (browse, tabs, categories)`
-5. `feat(explore): install flows — curated one-click, custom source, plugin consent dialog`
-6. `feat(explore): remote catalog refresh + update-available relay/deep-links`
-7. `chore(team): delete orphaned install-dialog; migrate its test to explore`
-8. `docs(knowledge): explore-plugin.md + CLAUDE.md/repo-architecture updates`
-
-(Granularity may split further during /plan; order is the dependency order.)
+- Exact GC thresholds (30d resolved / 7d orphaned) — confirm at plan review.
+- Whether `sendGateDecisionSummary` should also post to the approvals channel
+  (currently same channel as the request — keep).
+- Diagnosis of the specific stuck May record happens during build; if it
+  reveals a distinct bug, it becomes its own commit.

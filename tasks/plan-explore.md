@@ -2,7 +2,7 @@
 
 ## Context
 
-Bakin's extensibility (agents, plugins, packs) is terminal-shaped; a business user can't discover or install official content without the CLI. Per the approved **SPEC.md** (repo root), we build **Explore** — an 11th core plugin: an app-store-style storefront that browses a curated catalog (agents / plugins / packs) by category with use cases, installs via existing host REST (consent preserved), and relays installed / built-in / update-available status with deep-links into Team/Health. It is **not** a management surface — update/remove/repair stays in Team/Health/CLI (remaining #163 scope, deferred).
+Bakin's extensibility (agents, plugins, packs) is terminal-shaped; a business user can't discover or install official content without the CLI. Per the approved **tasks/spec-explore.md** (repo root), we build **Explore** — an 11th core plugin: an app-store-style storefront that browses a curated catalog (agents / plugins / packs) by category with use cases, installs via existing host REST (consent preserved), and relays installed / built-in / update-available status with deep-links into Team/Health. It is **not** a management surface — update/remove/repair stays in Team/Health/CLI (remaining #163 scope, deferred).
 
 Interview-locked decisions: new core plugin `explore`, nav pinned to sidebar bottom above Settings via a new generic `placement: 'bottom'` NavItem field; unified embedded catalog + user-triggered remote refresh from `bakin-bits-official`; core plugins showcased with "Built in" badges; packs tab auto-hides when empty.
 

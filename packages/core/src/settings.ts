@@ -190,7 +190,6 @@ export interface BakinSettings {
   notifications: {
     channel: string
     target: string
-    gateAlerts: boolean
     channelAliases: Record<string, string>
   }
   workflow: {
@@ -330,7 +329,6 @@ export const DEFAULT_SETTINGS: BakinSettings = {
   notifications: {
     channel: '',
     target: '',
-    gateAlerts: true,
     channelAliases: {},
   },
   workflow: {

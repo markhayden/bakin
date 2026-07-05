@@ -1,7 +1,7 @@
 # TODO — Explore plugin (issue #163 pivot)
 
 Branch `feat/163-workshop` off `main`. One commit per slice; each green on
-`bun run typecheck` + `bun run test`. Detail + decisions: `tasks/plan-explore.md`, `SPEC.md`.
+`bun run typecheck` + `bun run test`. Detail + decisions: `tasks/plan-explore.md`, `tasks/spec-explore.md`.
 
 - [x] S0 — docs checkpoint commit (db0a963e); pivot comment posted on #163
 - [x] S1 — feat(sdk,host): NavItem placement:'bottom' (8cd338cc)

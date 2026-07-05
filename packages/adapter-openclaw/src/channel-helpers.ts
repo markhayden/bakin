@@ -18,8 +18,8 @@ const RENDER_ONLY_APPROVAL_NOTICE = [
   'Use the Bakin approval link or approve/reject this gate in the Bakin UI.',
 ].join(' ')
 const REJECT_REASON_APPROVAL_NOTICE = [
-  'This gate requires a reject reason.',
-  'Use the Bakin approval link so reject decisions include the required reason.',
+  'Button rejects record a default reason.',
+  'Use the Bakin approval link to reject with a typed reason.',
 ].join(' ')
 const NATIVE_APPROVAL_PROVIDERS = new Set(['discord', 'telegram', 'slack', 'matrix', 'qqbot'])
 
@@ -46,6 +46,55 @@ export function openClawMessageSendArgs(
   return args
 }
 
+/** Strip the "message:" delivery-ref prefix down to the provider message id. */
+export function messageIdFromDeliveryRef(ref: string | undefined): string | null {
+  if (!ref?.startsWith('message:')) return null
+  const id = ref.slice('message:'.length)
+  return id || null
+}
+
+export function openClawThreadCreateArgs(
+  ref: { channel: string; target?: string },
+  opts: { messageId?: string; name: string },
+): string[] {
+  const args = ['message', 'thread', 'create', '--channel', ref.channel]
+  if (ref.target) args.push('--target', ref.target)
+  if (opts.messageId) args.push('--message-id', opts.messageId)
+  args.push('--thread-name', opts.name)
+  args.push('--json')
+  return args
+}
+
+export function openClawMessageEditArgs(
+  ref: { channel: string; target?: string },
+  opts: { messageId: string; body: string },
+): string[] {
+  const args = ['message', 'edit', '--channel', ref.channel]
+  if (ref.target) args.push('--target', ref.target)
+  args.push('--message-id', opts.messageId, '--message', opts.body, '--json')
+  return args
+}
+
+export function threadIdFromOpenClawOutput(stdout: string): string | null {
+  const value = parseOpenClawDeliveryOutput(stdout)
+  // The CLI wraps action results in an envelope: { action, channel,
+  // handledBy, payload: { ok, thread: {...} } } — check payload paths first.
+  return firstStringAtPaths(value, [
+    ['payload', 'thread', 'id'],
+    ['payload', 'threadId'],
+    ['payload', 'thread_id'],
+    ['payload', 'id'],
+    ['thread', 'id'],
+    ['threadId'],
+    ['thread_id'],
+    ['result', 'thread', 'id'],
+    ['result', 'threadId'],
+    ['result', 'thread_id'],
+    ['result', 'id'],
+    ['id'],
+  ])
+}
+
 export function deliveryRefFromOpenClawOutput(stdout: string): string | null {
   const value = parseOpenClawDeliveryOutput(stdout)
   const id = firstStringAtPaths(value, [
@@ -70,6 +119,8 @@ export function parseOpenClawDeliveryOutput(stdout: string): Record<string, unkn
   if (!text) return null
   return parseJsonObject(text)
     ?? parseJsonObject(text.split('\n').reverse().find(part => part.trim().startsWith('{') && part.trim().endsWith('}')) ?? '')
+    // Pretty-printed JSON preceded by log noise: slice the outermost braces.
+    ?? (text.includes('{') ? parseJsonObject(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)) : null)
 }
 
 export function readChannelInfos(): ChannelInfo[] {
@@ -93,7 +144,7 @@ export function readChannelInfos(): ChannelInfo[] {
         ...(interactive
           ? {
               approvalTimeoutMs: OPENCLAW_PLUGIN_APPROVAL_TIMEOUT_MS,
-              rejectReason: 'bakin-fallback-link',
+              rejectReason: 'native-default-reason',
             }
           : {}),
       },

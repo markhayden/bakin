@@ -5,10 +5,12 @@
  * through the active runtime adapter's channel surface so provider-specific
  * API details stay behind the adapter boundary.
  */
-import type { AgentRuntimeAdapter, ApprovalRenderRef, CreateApprovalArgs } from '@bakin/core/adapters/runtime'
+import type { AgentRuntimeAdapter, ApprovalDelivery, ApprovalRenderRef, CreateApprovalArgs } from '@bakin/core/adapters/runtime'
 import type { ApprovalActor, EventBus } from '@bakin/core/plugin-types'
 import type { WorkflowInstance } from '../types'
+import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { createLogger } from '../../../src/core/logger'
+import { resolveRuntimeChannelRef } from '../../../src/core/channel-aliases'
 import { createApprovalRecord, resolveApprovalRecord, updateApprovalDeliveries } from './approval-store'
 
 const log = createLogger('workflow-notifications')
@@ -231,7 +233,7 @@ export async function sendGateApprovalRequest(
       taskId: instance.taskId,
       stepId,
       requireRejectReason: settings.requireRejectReason,
-      approvalUrl: buildGateApprovalUrl(instance.taskId, stepId, approvalId),
+      approvalUrl: buildGateApprovalUrl(instance.taskId, stepId),
     },
   }
 
@@ -247,29 +249,224 @@ export async function sendGateApprovalRequest(
     createdAt: requestedAt,
   })
 
+  let resolvedChannel: string
+  try {
+    resolvedChannel = (await resolveRuntimeChannelRef(runtime, channel)).resolved
+  } catch (err) {
+    log.error('Gate approval channel resolution failed', err, { approvalId, channel })
+    return null
+  }
+
+  // Context first, buttons second: the native approval card is capped at 256
+  // chars upstream, so the reviewable substance (gate description, prior
+  // output, generated media) rides normal rich messages. When the adapter
+  // supports threads, the channel gets ONE compact card and everything else
+  // (full output, media, buttons) lives in a thread anchored to it.
+  // Best-effort — context failures never block the approval.
+  const gateThread = await sendGateContextMessage(instance, stepId, label, priorOutput, resolvedChannel, request.context)
+  if (gateThread?.threadId) {
+    request.context = { ...(request.context ?? {}), threadId: gateThread.threadId }
+  }
+  // Persist context deliveries BEFORE the button card is attempted: if
+  // createApproval throws, the already-posted root card must be on the
+  // record or the next rehydration re-renders a duplicate gate card.
+  if (gateThread && gateThread.deliveries.length > 0) {
+    updateApprovalDeliveries(approvalId, gateThread.deliveries)
+  }
+
   try {
     const result = await runtime.channels.createApproval({
       approvalId,
-      channels: [channel],
+      channels: [resolvedChannel],
       request,
     })
-    updateApprovalDeliveries(approvalId, result.deliveries)
+    const deliveries = [...(gateThread?.deliveries ?? []), ...result.deliveries]
+    updateApprovalDeliveries(approvalId, deliveries)
     log.info(`Gate approval alert sent for ${instance.taskId}:${stepId}`, {
       approvalId,
-      deliveryCount: result.deliveries.length,
+      deliveryCount: deliveries.length,
+      threaded: Boolean(gateThread?.threadId),
     })
-    return { approvalId, deliveries: result.deliveries }
+    return { approvalId, deliveries }
   } catch (err) {
     log.warn('Gate approval alert failed', err)
     return null
   }
 }
 
-function buildGateApprovalUrl(taskId: string, stepId: string, approvalId: string): string {
-  const base = process.env.BAKIN_URL || 'http://localhost:3737'
-  const url = new URL(`/api/plugins/workflows/gates/${encodeURIComponent(taskId)}/decision`, base)
+/** Recursively collect assetId-ish string values from a step output object. */
+export function extractAssetIds(value: unknown, found: string[] = []): string[] {
+  if (Array.isArray(value)) {
+    for (const entry of value) extractAssetIds(entry, found)
+  } else if (value && typeof value === 'object') {
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      if (/^asset_?ids?$/i.test(key)) {
+        for (const id of Array.isArray(entry) ? entry : [entry]) {
+          if (typeof id === 'string' && id && !found.includes(id)) found.push(id)
+        }
+      } else {
+        extractAssetIds(entry, found)
+      }
+    }
+  }
+  return found
+}
+
+interface ResolvedAssetFile {
+  match?: boolean
+  found?: boolean
+  absPath?: string
+  mimeType?: string
+}
+
+interface GateThreadInfo {
+  deliveries: ApprovalDelivery[]
+  threadId?: string
+}
+
+
+/**
+ * Post the human-readable gate context to the approvals channel. When the
+ * adapter supports threads: one compact card in the channel, full output +
+ * media in a thread anchored to it (the button card follows into the thread
+ * via context.threadId). Otherwise: one flat message with everything.
+ */
+async function sendGateContextMessage(
+  instance: WorkflowInstance,
+  stepId: string,
+  label: string,
+  priorOutput: Record<string, unknown> | undefined,
+  resolvedChannel: string,
+  context: CreateApprovalArgs['request']['context'],
+): Promise<GateThreadInfo | null> {
+  if (!runtime) return null
+  try {
+    const files: Array<{ name: string; path: string; contentType?: string }> = []
+    for (const assetId of extractAssetIds(priorOutput)) {
+      try {
+        const resolved = await getHookRegistry().invoke<ResolvedAssetFile>('assets.resolveServe', { segments: [assetId] })
+        if (resolved?.found && resolved.absPath) {
+          files.push({ name: assetId, path: resolved.absPath, ...(resolved.mimeType ? { contentType: resolved.mimeType } : {}) })
+        }
+      } catch {
+        // Assets plugin unavailable or unknown id — context ships without media.
+      }
+    }
+
+    const approvalUrl = typeof context?.approvalUrl === 'string' ? context.approvalUrl : buildGateApprovalUrl(instance.taskId, stepId)
+    const taskUrl = `${bakinBaseUrl()}/?taskId=${encodeURIComponent(instance.taskId)}`
+
+    const header = [
+      '🚦 **Task Needs Review**',
+      '',
+      `**${label}** — \`${instance.workflowId}\``,
+      `Task \`${instance.taskId}\` | Step \`${stepId}\``,
+    ].join('\n')
+    const links = `**[Review & Approve in Bakin](${approvalUrl})** · [View Task](${taskUrl})`
+    const fullOutput = renderPriorOutput(priorOutput, { markdown: true })
+
+    const metadata = {
+      instanceId: instance.instanceId,
+      workflowId: instance.workflowId,
+      taskId: instance.taskId,
+      stepId,
+    }
+    const canThread = typeof runtime.channels.createThread === 'function'
+
+    if (!canThread) {
+      // Flat mode: everything in one message, divider before the button card.
+      const result = await runtime.channels.deliverContent({
+        channels: [resolvedChannel],
+        content: {
+          title: '',
+          body: [header, fullOutput, `${links}\n${'─'.repeat(30)}`].filter(Boolean).join('\n\n'),
+          ...(files.length > 0 ? { files } : {}),
+          metadata,
+        },
+      })
+      return { deliveries: result.deliveries }
+    }
+
+    // Threaded mode: the root card is pure header — no output body at all.
+    // The full details live in the thread (Discord echoes the root card at
+    // the top of the thread, so any root body would read as a duplicate).
+    const hasDetails = Boolean(fullOutput) || files.length > 0
+    const pointer = hasDetails
+      ? '_Full output & decision buttons in the thread ↓_'
+      : '_Decision buttons in the thread ↓_'
+    const rootResult = await runtime.channels.deliverContent({
+      channels: [resolvedChannel],
+      content: {
+        title: '',
+        body: [header, `${pointer}\n${links}`].join('\n\n'),
+        metadata,
+      },
+    })
+    const rootDelivery = rootResult.deliveries[0]
+    const deliveries: ApprovalDelivery[] = [...rootResult.deliveries]
+
+    let threadId: string | undefined
+    let threadChannelRef: string | undefined
+    if (rootDelivery?.ref) {
+      try {
+        const thread = await runtime.channels.createThread!({
+          channel: resolvedChannel,
+          messageRef: rootDelivery.ref,
+          name: `${instance.workflowId} — ${label}`,
+        })
+        threadId = thread?.threadId
+        threadChannelRef = thread?.channelRef
+      } catch (err) {
+        log.warn('Gate thread creation failed; posting details flat', err, { taskId: instance.taskId, stepId })
+      }
+    }
+    const detailsBody = renderPriorOutput(priorOutput, { markdown: true, heading: '`Task Review Details`' })
+    if (threadId && threadChannelRef) {
+      // The thread marker's channelId IS the adapter-provided ref for posting
+      // into the thread — provider target syntax never leaves the adapter.
+      deliveries.push({ channelId: threadChannelRef, ref: `thread:${threadId}`, renderedAt: rootDelivery?.renderedAt ?? new Date().toISOString() })
+      if (hasDetails) {
+        await runtime.channels.deliverContent({
+          channels: [threadChannelRef],
+          content: {
+            title: '',
+            body: detailsBody || 'No step output attached.',
+            ...(files.length > 0 ? { files } : {}),
+            metadata,
+          },
+        }).catch((err) => log.warn('Gate thread context post failed', err, { taskId: instance.taskId, stepId }))
+      }
+    } else if (hasDetails) {
+      // Thread creation failed after the root card already promised details:
+      // the reviewable content must still be delivered — post it flat, right
+      // under the root card.
+      await runtime.channels.deliverContent({
+        channels: [resolvedChannel],
+        content: {
+          title: '',
+          body: detailsBody || 'No step output attached.',
+          ...(files.length > 0 ? { files } : {}),
+          metadata,
+        },
+      }).catch((err) => log.warn('Gate flat details post failed', err, { taskId: instance.taskId, stepId }))
+    }
+    return { deliveries, threadId }
+  } catch (err) {
+    log.warn('Gate context message failed', err, { taskId: instance.taskId, stepId })
+    return null
+  }
+}
+
+// Deliberately short: the native approval card caps descriptions at 256 chars
+// (upstream), so every character spent on the URL is context lost. The page
+// resolves the pending approval from task + step; no approvalId needed.
+function bakinBaseUrl(): string {
+  return process.env.BAKIN_URL || 'http://localhost:3737'
+}
+
+function buildGateApprovalUrl(taskId: string, stepId: string): string {
+  const url = new URL(`/api/plugins/workflows/gates/${encodeURIComponent(taskId)}/decision`, bakinBaseUrl())
   url.searchParams.set('stepId', stepId)
-  url.searchParams.set('approvalId', approvalId)
   return url.toString()
 }
 
@@ -312,13 +509,13 @@ export async function sendGateDecisionSummary(
   instance: WorkflowInstance,
   stepId: string,
   gateLabel: string,
-  gateDescription: string | undefined,
   decision: 'approved' | 'rejected',
   approver: ApprovalActor,
   requestedAt: string | undefined,
   decidedAt: string,
   reason: string | undefined,
   settings: GateNotificationSettings,
+  approvalRef?: ApprovalRenderRef,
 ): Promise<void> {
   if (!settings.approvalChannelAlerts) return
   if (!runtime) return
@@ -339,13 +536,61 @@ export async function sendGateDecisionSummary(
     ...(reason ? [{ label: 'Reason', value: reason }] : []),
   ]
 
+  // A tight receipt, not a re-announcement: who decided, how long it took,
+  // and the reject reason when there is one.
+  const icon = decision === 'approved' ? '✅' : '❌'
+  const durationText = requestedAt ? humanizeDuration(Date.parse(decidedAt) - Date.parse(requestedAt)) : undefined
+  const decisionLine = `${icon} **${decisionLabel}** by ${approverLabel}${durationText ? ` · took ${durationText}` : ''}`
+  const body = [
+    `${icon} **Approval Gate: ${gateLabel}** — ${decisionLabel}`,
+    `By ${approverLabel}${durationText ? ` · took ${durationText}` : ''}`,
+    `Task \`${instance.taskId}\` · \`${instance.workflowId}\``,
+    ...(reason ? [`> ${reason}`] : []),
+  ].join('\n')
+
+  // Threaded gates: rewrite the root card into the receipt (the channel keeps
+  // exactly one card per gate) and post the summary inside the thread. The
+  // edit targets deliveries persisted at request time, so it must run BEFORE
+  // (and independent of) settings-channel resolution — and ONLY when a thread
+  // marker proves threaded mode: in flat mode the single message ref IS the
+  // gate's full context, and rewriting it would erase the reviewed content.
+  const rootDelivery = approvalRef?.deliveries.find((d) => d.ref.startsWith('message:'))
+  const threadDelivery = approvalRef?.deliveries.find((d) => d.ref.startsWith('thread:'))
+  if (rootDelivery && threadDelivery && typeof runtime.channels.editMessage === 'function') {
+    const rootBody = [
+      `🚦 **${gateLabel}** — \`${instance.workflowId}\``,
+      `Task \`${instance.taskId}\` · step \`${stepId}\``,
+      decisionLine,
+      ...(reason ? [`> ${reason}`] : []),
+    ].join('\n')
+    await runtime.channels.editMessage({
+      channel: rootDelivery.channelId,
+      messageRef: rootDelivery.ref,
+      body: rootBody,
+    }).catch((err) => log.warn('Gate root card edit failed', err, { taskId: instance.taskId, stepId }))
+  }
+
+  // The thread marker's channelId is the adapter-provided ref for posting
+  // into the thread; without one, resolve the configured summary channel.
+  let summaryChannel = threadDelivery?.channelId
+  if (!summaryChannel) {
+    const channel = settings.approvalChannel || 'general'
+    try {
+      summaryChannel = (await resolveRuntimeChannelRef(runtime, channel)).resolved
+    } catch (err) {
+      log.error('Gate decision summary channel resolution failed', err, { channel })
+      return
+    }
+  }
+
   try {
     await runtime.channels.sendNotification({
-      channels: [settings.approvalChannel || 'general'],
+      channels: [summaryChannel],
       notification: {
         severity: decision === 'approved' ? 'success' : 'warn',
-        title: `Gate ${decisionLabel}: ${gateLabel}`,
-        body: gateDescription ?? '',
+        // Empty title: a non-empty one forces a blank line before the body.
+        title: '',
+        body,
         fields,
         metadata: {
           instanceId: instance.instanceId,
@@ -361,12 +606,59 @@ export async function sendGateDecisionSummary(
   }
 }
 
-function renderPriorOutput(priorOutput: Record<string, unknown> | undefined): string {
+function humanizeKey(key: string): string {
+  const spaced = key.replace(/[_-]+/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().trim()
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1)
+}
+
+function isScalar(value: unknown): value is string | number | boolean {
+  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+}
+
+interface RenderOutputOptions {
+  /** Bold labels/headings for markdown surfaces (channel messages). */
+  markdown?: boolean
+  /** Override the section heading; rendered with a blank line after it. */
+  heading?: string
+}
+
+/** Render one output entry as `Label: value` prose; nested objects indent. */
+function renderOutputEntry(key: string, value: unknown, indent: string, opts: RenderOutputOptions): string[] {
+  const name = humanizeKey(key)
+  const label = `${indent}${opts.markdown ? `**${name}:**` : `${name}:`}`
+  if (value === null || value === undefined || value === '') return []
+  if (isScalar(value)) {
+    const text = String(value)
+    return text.length > 80 ? [label, `${indent}${text}`] : [`${label} ${text}`]
+  }
+  if (Array.isArray(value)) {
+    if (value.every(isScalar)) return [`${label} ${value.map(String).join(', ')}`]
+    return [label, ...value.flatMap((entry, i) => renderOutputEntry(String(i + 1), entry, `${indent}  `, opts))]
+  }
+  if (typeof value === 'object') {
+    const children = Object.entries(value as Record<string, unknown>)
+      .flatMap(([childKey, child]) => renderOutputEntry(childKey, child, `${indent}  `, opts))
+    return children.length > 0 ? [label, ...children] : []
+  }
+  return []
+}
+
+/**
+ * Render the step output under review as labeled prose (humans read this in
+ * channels and on the decision page — never show them a JSON blob).
+ */
+function renderPriorOutput(priorOutput: Record<string, unknown> | undefined, opts: RenderOutputOptions = {}): string {
   if (!priorOutput) return ''
-  const rendered = JSON.stringify(priorOutput, null, 2)
-  if (!rendered) return ''
+  const lines = Object.entries(priorOutput)
+    .flatMap(([key, value]) => renderOutputEntry(key, value, '', opts))
+  // Nothing human-reviewable (empty or all-empty fields) → no Details
+  // section at all; never show reviewers a bare "{}".
+  if (lines.length === 0) return ''
+  const rendered = lines.join('\n')
   const cap = 4000
-  return `Prior output:\n${rendered.length > cap ? `${rendered.slice(0, cap)}\n...[truncated]` : rendered}`
+  const body = rendered.length > cap ? `${rendered.slice(0, cap)}\n...[truncated]` : rendered
+  if (opts.heading) return `${opts.heading}\n\n${body}`
+  return `${opts.markdown ? '**Details:**' : 'Details:'}\n${body}`
 }
 
 function humanizeDuration(ms: number): string {
