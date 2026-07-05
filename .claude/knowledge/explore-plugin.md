@@ -15,6 +15,13 @@ removes, syncs, or repairs anything.
 
 - Route `/explore`; single page with tabs (Agents | Plugins | Packs) —
   the Packs tab auto-hides while the catalog has no pack entries.
+- **Core plugin pages need an explicit host route file** —
+  `packages/host/src/routes/explore.tsx` renders `<Slot name="page:/explore">`
+  and is registered in `packages/host/src/router.ts`. The plugin catch-all
+  route only serves paths claimed via `registerPlugin({ routes })` /
+  manifest `contributes.routes`; a `page:/…` slot alone renders
+  "Page not found." (Every core plugin page works this way — see
+  `routes/models.tsx` etc.)
 - Nav is pinned to the sidebar bottom above Settings via the generic
   `NavItem.placement: 'bottom'` field (added for this plugin):
   - `packages/sdk/src/types/registration.ts` + `packages/core/src/plugin-types.ts`
