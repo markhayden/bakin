@@ -234,14 +234,15 @@ function ExplorePageInner() {
           filter-row convention of the other plugin pages). */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="relative">
+          {/* Grows on focus so there's room to type; collapses back on blur. */}
+          <div className="relative w-64 transition-[width] duration-200 ease-out focus-within:w-[36rem] max-w-full">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
               data-testid="explore-search"
               value={searchDraft}
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder="Search agents, plugins, lessons…"
-              className="h-8 w-64 pl-8 text-sm"
+              className="h-8 w-full pl-8 text-sm"
             />
           </div>
           <FacetFilter
