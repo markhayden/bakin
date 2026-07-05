@@ -1,0 +1,32 @@
+{
+  "id": "explore",
+  "name": "Explore",
+  "version": "0.1.0",
+  "bakin": ">=1.0.0",
+  "description": "Discover and install official agents, plugins, and packs — the do-more-with-Bakin storefront",
+  "entry": {
+    "server": "index.ts"
+  },
+  "contentFiles": [],
+  "secrets": [],
+  "tests": "tests/",
+  "dependencies": [],
+  "permissions": [
+    "storage.read"
+  ],
+  "contributes": {
+    "apiRoutes": [],
+    "nav": [
+      {
+        "id": "explore",
+        "label": "Explore",
+        "icon": "Compass",
+        "href": "/explore",
+        "placement": "bottom"
+      }
+    ],
+    "slots": [
+      "page:/explore"
+    ]
+  }
+}

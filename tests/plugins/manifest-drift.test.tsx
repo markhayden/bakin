@@ -59,6 +59,7 @@ import { checkPluginDrift } from '../../packages/host/src/plugin-host/drift-chec
 // Every core plugin that ships a client.tsx. git + images are server-only.
 const CLIENTFUL_CORE_PLUGINS = [
   'assets',
+  'explore',
   'health',
   'memory',
   'models',

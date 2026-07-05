@@ -1,0 +1,12 @@
+{
+  "name": "@bakin-core/explore",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./index.ts",
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "@makinbakin/sdk": "workspace:*"
+  }
+}

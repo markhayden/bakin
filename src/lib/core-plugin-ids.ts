@@ -1,5 +1,5 @@
 /**
- * The canonical list of core plugin ids — the 10 plugins under `plugins/<id>/`.
+ * The canonical list of core plugin ids — the plugins under `plugins/<id>/`.
  *
  * Single source of truth for the build/dev scripts that need to iterate the
  * core plugin set (`scripts/build-plugins.ts`, `scripts/dev.ts`). These lists
@@ -26,4 +26,5 @@ export const CORE_PLUGIN_IDS: readonly string[] = [
   'schedule',
   'health',
   'git',
+  'explore',
 ]

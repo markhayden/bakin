@@ -2,23 +2,15 @@ import { existsSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { getContentDir } from '../content-dir'
 import { readPluginLockfile } from '@bakin/core/plugins/lockfile'
+import { CORE_PLUGIN_IDS as CANONICAL_CORE_PLUGIN_IDS } from '../../lib/core-plugin-ids'
 
 /**
- * Core plugin ids that ship with the Bakin binary. This mirrors
- * `bakin.config.ts` but intentionally avoids importing plugin modules or
- * server-only static imports from install/onboarding paths.
+ * Core plugin ids that ship with the Bakin binary. Derived from the
+ * canonical list in `src/lib/core-plugin-ids.ts` (a plain string array with
+ * no imports, safe for install/onboarding paths). A hand-maintained copy
+ * here previously drifted — it was missing `images`.
  */
-export const CORE_PLUGIN_IDS = new Set([
-  'team',
-  'tasks',
-  'memory',
-  'models',
-  'workflows',
-  'assets',
-  'schedule',
-  'health',
-  'git',
-])
+export const CORE_PLUGIN_IDS = new Set(CANONICAL_CORE_PLUGIN_IDS)
 
 export interface DependencyPlanInput {
   id: string
