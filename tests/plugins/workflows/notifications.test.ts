@@ -155,6 +155,119 @@ describe('runtime gate notifications', () => {
     }
   })
 
+  function threadedRuntime() {
+    const createThread = mock(async (..._args: unknown[]) => ({ threadId: '777' }))
+    const editMessage = mock(async (..._args: unknown[]) => {})
+    const threadedDeliver = mock(async (..._args: unknown[]) => ({
+      deliveries: [{ channelId: 'discord:123', ref: 'message:42', renderedAt: '2026-04-11T10:00:00Z' }],
+    }))
+    setNotificationRuntime({
+      channels: {
+        createApproval,
+        resolveApproval,
+        sendNotification,
+        deliverContent: threadedDeliver,
+        list: listChannels,
+        createThread,
+        editMessage,
+      },
+    } as unknown as AgentRuntimeAdapter)
+    return { createThread, editMessage, deliverContent: threadedDeliver }
+  }
+
+  it('threads the gate: compact root card, full output in thread, buttons routed to the thread', async () => {
+    const rt = threadedRuntime()
+
+    const ref = await sendGateApprovalRequest(
+      mockInstance,
+      'review-gate',
+      'Review Draft',
+      { draft: { caption: 'Hello world' } },
+      enabledSettings,
+    )
+
+    // Root card: compact, no files, points into the thread.
+    const [rootCall] = rt.deliverContent.mock.calls[0] as unknown as [{ channels: string[]; content: { body: string; files?: unknown[] } }]
+    expect(rootCall.channels).toEqual(['discord:123'])
+    expect(rootCall.content.body).toContain('_Full output & decision buttons in the thread ↓_')
+    expect(rootCall.content.files).toBeUndefined()
+
+    // Thread anchored to the root message.
+    expect(rt.createThread).toHaveBeenCalledWith({
+      channel: 'discord:123',
+      messageRef: 'message:42',
+      name: 'content-pipeline — Review Draft',
+    })
+
+    // Full output posted inside the thread.
+    const [threadCall] = rt.deliverContent.mock.calls[1] as unknown as [{ channels: string[]; content: { body: string } }]
+    expect(threadCall.channels).toEqual(['discord:channel:777'])
+    expect(threadCall.content.body).toContain('**For review:**')
+    expect(threadCall.content.body).toContain('Hello world')
+
+    // Button card routed into the thread via context.threadId.
+    const [approvalCall] = createApproval.mock.calls[0] as unknown as [{ request: { context: { threadId?: string } } }]
+    expect(approvalCall.request.context.threadId).toBe('777')
+
+    // Durable deliveries carry root + thread marker + native refs.
+    const refs = ref!.deliveries.map(d => d.ref)
+    expect(refs).toContain('message:42')
+    expect(refs).toContain('thread:777')
+    expect(refs).toContain('message:1')
+  })
+
+  it('falls back to a flat channel message when thread creation fails', async () => {
+    const rt = threadedRuntime()
+    rt.createThread.mockImplementationOnce(async () => { throw new Error('threads unavailable') })
+
+    const ref = await sendGateApprovalRequest(
+      mockInstance,
+      'review-gate',
+      'Review Draft',
+      { draft: { caption: 'Hello world' } },
+      enabledSettings,
+    )
+
+    expect(ref).not.toBeNull()
+    expect(createApproval).toHaveBeenCalledTimes(1)
+    const [approvalCall] = createApproval.mock.calls[0] as unknown as [{ request: { context: { threadId?: string } } }]
+    expect(approvalCall.request.context.threadId).toBeUndefined()
+    expect(ref!.deliveries.map(d => d.ref)).not.toContainEqual(expect.stringContaining('thread:'))
+  })
+
+  it('edits the root card into a receipt and posts the summary inside the thread', async () => {
+    const rt = threadedRuntime()
+
+    await sendGateDecisionSummary(
+      mockInstance,
+      'review-gate',
+      'Review Draft',
+      'approved',
+      { source: 'channel', id: 'owner-1', displayName: 'Owner' },
+      '2026-04-11T10:00:00Z',
+      '2026-04-11T10:05:00Z',
+      undefined,
+      enabledSettings,
+      {
+        approvalId: 'workflow-gate:task-42:review-gate',
+        deliveries: [
+          { channelId: 'discord:123', ref: 'message:42', renderedAt: '2026-04-11T10:00:00Z' },
+          { channelId: 'discord:123', ref: 'thread:777', renderedAt: '2026-04-11T10:00:00Z' },
+          { channelId: 'discord:123', ref: 'openclaw-plugin-approval:plugin:x', renderedAt: '2026-04-11T10:00:00Z' },
+        ],
+      },
+    )
+
+    expect(rt.editMessage).toHaveBeenCalledTimes(1)
+    const [editCall] = rt.editMessage.mock.calls[0] as unknown as [{ channel: string; messageRef: string; body: string }]
+    expect(editCall.messageRef).toBe('message:42')
+    expect(editCall.body).toContain('🚦 **Review Draft** — `content-pipeline`')
+    expect(editCall.body).toContain('✅ **Approved** by Owner (channel) · took 5m')
+
+    const [summaryCall] = sendNotification.mock.calls[0] as unknown as [{ channels: string[] }]
+    expect(summaryCall.channels).toEqual(['discord:channel:777'])
+  })
+
   it('builds parseable gate approval IDs', () => {
     const id = buildGateApprovalId('task:42', 'review gate', 'wf 1', '2026-04-11T10:00:00Z')
     expect(parseGateApprovalId(id)).toEqual({ taskId: 'task:42', stepId: 'review gate' })
@@ -399,7 +512,6 @@ describe('runtime gate notifications', () => {
       mockInstance,
       'review-gate',
       'Review Draft',
-      'Approve the draft',
       'approved',
       { source: 'web', id: 'main-operator', displayName: 'main-operator' },
       '2026-04-11T10:00:00Z',
@@ -424,7 +536,6 @@ describe('runtime gate notifications', () => {
       mockInstance,
       'review-gate',
       'Review Draft',
-      undefined,
       'rejected',
       { source: 'channel', id: 'owner-1', displayName: 'Owner' },
       undefined,
@@ -446,7 +557,6 @@ describe('runtime gate notifications', () => {
       mockInstance,
       'review-gate',
       'Review Draft',
-      undefined,
       'approved',
       { source: 'web', id: 'main-operator' },
       undefined,

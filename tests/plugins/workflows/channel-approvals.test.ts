@@ -222,7 +222,7 @@ describe('workflow channel approvals', () => {
     expect(resolveGateApproval.mock.calls[0]?.[1]).toBe('rejected')
     expect(resolveGateApproval.mock.calls[0]?.[4]).toBe('Rejected via runtime channel (no reason provided)')
     expect(sendGateDecisionSummary).toHaveBeenCalledTimes(1)
-    expect(sendGateDecisionSummary.mock.calls[0]?.[8]).toBe('Rejected via runtime channel (no reason provided)')
+    expect(sendGateDecisionSummary.mock.calls[0]?.[7]).toBe('Rejected via runtime channel (no reason provided)')
   })
 
   it('ignores channel responses for records that are no longer pending', async () => {

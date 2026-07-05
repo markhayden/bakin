@@ -202,6 +202,22 @@ export interface ContentDeliveryArgs {
   }
 }
 
+export interface CreateThreadArgs {
+  /** Channel ref the anchor message lives in (provider or provider:target). */
+  channel: string
+  /** Delivery ref of the message to anchor the thread to (e.g. "message:<id>"). */
+  messageRef?: string
+  name: string
+}
+
+export interface EditChannelMessageArgs {
+  /** Channel ref the message lives in (provider or provider:target). */
+  channel: string
+  /** Delivery ref of the message to edit (e.g. "message:<id>"). */
+  messageRef: string
+  body: string
+}
+
 export interface ApprovalOption {
   id: string
   label: string
@@ -595,6 +611,13 @@ export interface AgentRuntimeAdapter {
     cancelApproval(args: CancelApprovalArgs): Promise<void>
     resolveApproval(args: ResolveApprovalArgs): Promise<void>
     subscribeApprovalResponses(handler: (event: ApprovalResolveEvent) => void): Unsubscribe
+    /**
+     * Optional threading/editing capabilities. Adapters for providers without
+     * threads or message editing omit them; callers MUST feature-detect and
+     * fall back to flat channel messages — never error on absence.
+     */
+    createThread?(args: CreateThreadArgs): Promise<{ threadId: string } | null>
+    editMessage?(args: EditChannelMessageArgs): Promise<void>
   }
 
   skills: {

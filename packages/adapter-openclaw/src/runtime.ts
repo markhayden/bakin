@@ -92,6 +92,8 @@ import {
   splitChannelRef, openClawMessageSendArgs, deliveryRefFromOpenClawOutput,
   readChannelInfos, hasAnyInteractiveApprovalChannel,
   channelHasInteractiveApproval, approvalNoticeForMessage,
+  openClawThreadCreateArgs, openClawMessageEditArgs,
+  threadIdFromOpenClawOutput, messageIdFromDeliveryRef,
 } from './channel-helpers'
 import {
   oversizedOutputBytesFrom, messagesToOpenClawPrompt, normalizeToolList,
@@ -591,6 +593,19 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         this.approvalResolveWarningLogged = true
       }
     },
+    createThread: async (args: { channel: string; messageRef?: string; name: string }): Promise<{ threadId: string } | null> => {
+      const ref = splitChannelRef(args.channel, undefined)
+      const messageId = messageIdFromDeliveryRef(args.messageRef) ?? undefined
+      const stdout = await this.exec(openClawThreadCreateArgs(ref, { messageId, name: args.name }))
+      const threadId = threadIdFromOpenClawOutput(stdout)
+      return threadId ? { threadId } : null
+    },
+    editMessage: async (args: { channel: string; messageRef: string; body: string }): Promise<void> => {
+      const messageId = messageIdFromDeliveryRef(args.messageRef)
+      if (!messageId) throw new Error(`Not an editable message ref: ${args.messageRef}`)
+      const ref = splitChannelRef(args.channel, undefined)
+      await this.exec(openClawMessageEditArgs(ref, { messageId, body: args.body }))
+    },
     subscribeApprovalResponses: (handler: (event: ApprovalResolveEvent) => void) => {
       if (!hasAnyInteractiveApprovalChannel()) {
         if (!this.approvalResponsesWarningLogged) {
@@ -640,6 +655,11 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         toolCallId: args.approvalId,
         turnSourceChannel: ref.channel,
         ...(ref.target ? { turnSourceTo: ref.target } : {}),
+        // Route the button card into the gate's thread when the caller
+        // created one (threadId in the request context).
+        ...(typeof metadataValue(args.request.context, 'threadId') === 'string'
+          ? { turnSourceThreadId: metadataValue(args.request.context, 'threadId') as string }
+          : {}),
         timeoutMs: OPENCLAW_PLUGIN_APPROVAL_TIMEOUT_MS,
         twoPhase: true,
         // Gates are one-shot human decisions; never offer persistent trust.
@@ -687,8 +707,13 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   ): Promise<{ deliveries: Array<{ channelId: string; ref: string; renderedAt: string }> }> {
     const optionText = args.request.options.map((option) => `- ${option.label} (${option.id})`).join('\n')
     const approvalUrl = metadataValue(context, 'approvalUrl') ?? metadataValue(context, 'approvalDecisionUrl')
+    // Render into the gate's thread when the caller created one.
+    const threadId = metadataValue(context, 'threadId')
+    const deliveryChannel = typeof threadId === 'string' && threadId
+      ? `${splitChannelRef(channel, undefined).channel}:channel:${threadId}`
+      : channel
     return this.channels.sendMessage({
-      channels: [channel],
+      channels: [deliveryChannel],
       message: {
         title: args.request.title,
         body: [

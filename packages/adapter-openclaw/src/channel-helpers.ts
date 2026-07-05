@@ -46,6 +46,49 @@ export function openClawMessageSendArgs(
   return args
 }
 
+/** Strip the "message:" delivery-ref prefix down to the provider message id. */
+export function messageIdFromDeliveryRef(ref: string | undefined): string | null {
+  if (!ref?.startsWith('message:')) return null
+  const id = ref.slice('message:'.length)
+  return id || null
+}
+
+export function openClawThreadCreateArgs(
+  ref: { channel: string; target?: string },
+  opts: { messageId?: string; name: string },
+): string[] {
+  const args = ['message', 'thread', 'create', '--channel', ref.channel]
+  if (ref.target) args.push('--target', ref.target)
+  if (opts.messageId) args.push('--message-id', opts.messageId)
+  args.push('--thread-name', opts.name)
+  args.push('--json')
+  return args
+}
+
+export function openClawMessageEditArgs(
+  ref: { channel: string; target?: string },
+  opts: { messageId: string; body: string },
+): string[] {
+  const args = ['message', 'edit', '--channel', ref.channel]
+  if (ref.target) args.push('--target', ref.target)
+  args.push('--message-id', opts.messageId, '--message', opts.body, '--json')
+  return args
+}
+
+export function threadIdFromOpenClawOutput(stdout: string): string | null {
+  const value = parseOpenClawDeliveryOutput(stdout)
+  return firstStringAtPaths(value, [
+    ['threadId'],
+    ['thread_id'],
+    ['thread', 'id'],
+    ['id'],
+    ['result', 'threadId'],
+    ['result', 'thread_id'],
+    ['result', 'thread', 'id'],
+    ['result', 'id'],
+  ])
+}
+
 export function deliveryRefFromOpenClawOutput(stdout: string): string | null {
   const value = parseOpenClawDeliveryOutput(stdout)
   const id = firstStringAtPaths(value, [

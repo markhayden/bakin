@@ -12,7 +12,7 @@ import { rehydratePendingApprovals } from './approval-rehydration'
 import { activeGateSettings } from './gate-settings'
 import { getApprovalRecord, approvalRefFromRecord } from './approval-store'
 import { approveGate, rejectGate, loadInstance } from './runtime'
-import { buildGateAuditPayload, getGateDescription } from './gate-audit'
+import { buildGateAuditPayload } from './gate-audit'
 import { indexInstance } from './search-sync'
 import { triggerDispatch } from './trigger-dispatch'
 import { resolveGateApproval, sendGateDecisionSummary } from './notifications'
@@ -82,13 +82,13 @@ export async function wireChannelApprovals(ctx: PluginContext): Promise<() => vo
           instance,
           stepId,
           result.decision.gateLabel,
-          getGateDescription(instance.workflowId, stepId),
           'approved',
           approver,
           result.decision.requestedAt,
           result.decision.decidedAt,
           undefined,
           activeGateSettings(),
+          approvalRef,
         ).catch(() => {})
       }
     } else if (selected === 'reject') {
@@ -119,13 +119,13 @@ export async function wireChannelApprovals(ctx: PluginContext): Promise<() => vo
           instance,
           stepId,
           result.decision.gateLabel,
-          getGateDescription(instance.workflowId, stepId),
           'rejected',
           approver,
           result.decision.requestedAt,
           result.decision.decidedAt,
           rejectReason,
           activeGateSettings(),
+          approvalRef,
         ).catch(() => {})
       }
     }

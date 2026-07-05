@@ -5,7 +5,7 @@
  * through the active runtime adapter's channel surface so provider-specific
  * API details stay behind the adapter boundary.
  */
-import type { AgentRuntimeAdapter, ApprovalRenderRef, CreateApprovalArgs } from '@bakin/core/adapters/runtime'
+import type { AgentRuntimeAdapter, ApprovalDelivery, ApprovalRenderRef, CreateApprovalArgs } from '@bakin/core/adapters/runtime'
 import type { ApprovalActor, EventBus } from '@bakin/core/plugin-types'
 import type { WorkflowInstance } from '../types'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
@@ -260,9 +260,14 @@ export async function sendGateApprovalRequest(
 
   // Context first, buttons second: the native approval card is capped at 256
   // chars upstream, so the reviewable substance (gate description, prior
-  // output, generated media) rides a normal rich message posted just before
-  // the card. Best-effort — a context failure never blocks the approval.
-  await sendGateContextMessage(instance, stepId, label, priorOutput, resolvedChannel, request.context)
+  // output, generated media) rides normal rich messages. When the adapter
+  // supports threads, the channel gets ONE compact card and everything else
+  // (full output, media, buttons) lives in a thread anchored to it.
+  // Best-effort — context failures never block the approval.
+  const gateThread = await sendGateContextMessage(instance, stepId, label, priorOutput, resolvedChannel, request.context)
+  if (gateThread?.threadId) {
+    request.context = { ...(request.context ?? {}), threadId: gateThread.threadId }
+  }
 
   try {
     const result = await runtime.channels.createApproval({
@@ -270,12 +275,14 @@ export async function sendGateApprovalRequest(
       channels: [resolvedChannel],
       request,
     })
-    updateApprovalDeliveries(approvalId, result.deliveries)
+    const deliveries = [...(gateThread?.deliveries ?? []), ...result.deliveries]
+    updateApprovalDeliveries(approvalId, deliveries)
     log.info(`Gate approval alert sent for ${instance.taskId}:${stepId}`, {
       approvalId,
-      deliveryCount: result.deliveries.length,
+      deliveryCount: deliveries.length,
+      threaded: Boolean(gateThread?.threadId),
     })
-    return { approvalId, deliveries: result.deliveries }
+    return { approvalId, deliveries }
   } catch (err) {
     log.warn('Gate approval alert failed', err)
     return null
@@ -307,10 +314,18 @@ interface ResolvedAssetFile {
   mimeType?: string
 }
 
+interface GateThreadInfo {
+  deliveries: ApprovalDelivery[]
+  threadId?: string
+}
+
+const GATE_OUTPUT_PREVIEW_CHARS = 300
+
 /**
- * Post the human-readable gate context (description, prior output, generated
- * media, links) to the approvals channel as a normal rich message. The native
- * approval card that follows carries only the decision buttons.
+ * Post the human-readable gate context to the approvals channel. When the
+ * adapter supports threads: one compact card in the channel, full output +
+ * media in a thread anchored to it (the button card follows into the thread
+ * via context.threadId). Otherwise: one flat message with everything.
  */
 async function sendGateContextMessage(
   instance: WorkflowInstance,
@@ -319,8 +334,8 @@ async function sendGateContextMessage(
   priorOutput: Record<string, unknown> | undefined,
   resolvedChannel: string,
   context: CreateApprovalArgs['request']['context'],
-): Promise<void> {
-  if (!runtime) return
+): Promise<GateThreadInfo | null> {
+  if (!runtime) return null
   try {
     const files: Array<{ name: string; path: string; contentType?: string }> = []
     for (const assetId of extractAssetIds(priorOutput)) {
@@ -339,40 +354,87 @@ async function sendGateContextMessage(
     const taskUrl = `${base}/?taskId=${encodeURIComponent(instance.taskId)}`
     const gateDescription = getGateDescription(instance.workflowId, stepId)
 
-    // Tight header block (single newlines), then breathing room around the
-    // reviewable content, then links and a divider separating this context
-    // from the provider's button card that follows.
     const header = [
       `🚦 **${label}** — \`${instance.workflowId}\``,
       `Task \`${instance.taskId}\` · step \`${stepId}\``,
       // The workflow author's gate description, quoted as the workflow's words.
       ...(gateDescription ? [`> ${gateDescription}`] : []),
     ].join('\n')
+    const links = `**[Review & Approve in Bakin](${approvalUrl})** · [View Task](${taskUrl})`
+    const fullOutput = renderPriorOutput(priorOutput, { markdown: true })
 
-    const body = [
-      header,
-      renderPriorOutput(priorOutput, { markdown: true }),
-      `**[Review & Approve in Bakin](${approvalUrl})** · [View Task](${taskUrl})\n${'─'.repeat(30)}`,
-    ].filter(Boolean).join('\n\n')
+    const metadata = {
+      instanceId: instance.instanceId,
+      workflowId: instance.workflowId,
+      taskId: instance.taskId,
+      stepId,
+    }
+    const canThread = typeof runtime.channels.createThread === 'function'
 
-    await runtime.channels.deliverContent({
+    if (!canThread) {
+      // Flat mode: everything in one message, divider before the button card.
+      const result = await runtime.channels.deliverContent({
+        channels: [resolvedChannel],
+        content: {
+          title: '',
+          body: [header, fullOutput, `${links}\n${'─'.repeat(30)}`].filter(Boolean).join('\n\n'),
+          ...(files.length > 0 ? { files } : {}),
+          metadata,
+        },
+      })
+      return { deliveries: result.deliveries }
+    }
+
+    // Threaded mode: compact card in the channel...
+    const preview = fullOutput.length > GATE_OUTPUT_PREVIEW_CHARS
+      ? `${fullOutput.slice(0, GATE_OUTPUT_PREVIEW_CHARS)}…`
+      : fullOutput
+    const rootResult = await runtime.channels.deliverContent({
       channels: [resolvedChannel],
       content: {
-        // Header lives in the body: a non-empty title forces a blank line
-        // between it and the body in the provider message rendering.
         title: '',
-        body,
-        ...(files.length > 0 ? { files } : {}),
-        metadata: {
-          instanceId: instance.instanceId,
-          workflowId: instance.workflowId,
-          taskId: instance.taskId,
-          stepId,
-        },
+        body: [
+          header,
+          preview,
+          `_Full output & decision buttons in the thread ↓_\n${links}`,
+        ].filter(Boolean).join('\n\n'),
+        metadata,
       },
     })
+    const rootDelivery = rootResult.deliveries[0]
+    const deliveries: ApprovalDelivery[] = [...rootResult.deliveries]
+
+    // ...then a thread anchored to it carrying the full output + media.
+    let threadId: string | undefined
+    if (rootDelivery?.ref) {
+      try {
+        const thread = await runtime.channels.createThread!({
+          channel: resolvedChannel,
+          messageRef: rootDelivery.ref,
+          name: `${instance.workflowId} — ${label}`,
+        })
+        threadId = thread?.threadId
+      } catch (err) {
+        log.warn('Gate thread creation failed; staying flat', err, { taskId: instance.taskId, stepId })
+      }
+    }
+    if (threadId) {
+      deliveries.push({ channelId: resolvedChannel, ref: `thread:${threadId}`, renderedAt: rootDelivery?.renderedAt ?? new Date().toISOString() })
+      const provider = resolvedChannel.split(':')[0]
+      await runtime.channels.deliverContent({
+        channels: [`${provider}:channel:${threadId}`],
+        content: {
+          title: '',
+          body: [fullOutput || 'No step output attached.', links].join('\n\n'),
+          ...(files.length > 0 ? { files } : {}),
+          metadata,
+        },
+      }).catch((err) => log.warn('Gate thread context post failed', err, { taskId: instance.taskId, stepId }))
+    }
+    return { deliveries, threadId }
   } catch (err) {
     log.warn('Gate context message failed', err, { taskId: instance.taskId, stepId })
+    return null
   }
 }
 
@@ -425,13 +487,13 @@ export async function sendGateDecisionSummary(
   instance: WorkflowInstance,
   stepId: string,
   gateLabel: string,
-  gateDescription: string | undefined,
   decision: 'approved' | 'rejected',
   approver: ApprovalActor,
   requestedAt: string | undefined,
   decidedAt: string,
   reason: string | undefined,
   settings: GateNotificationSettings,
+  approvalRef?: ApprovalRenderRef,
 ): Promise<void> {
   if (!settings.approvalChannelAlerts) return
   if (!runtime) return
@@ -462,10 +524,10 @@ export async function sendGateDecisionSummary(
   }
 
   // A tight receipt, not a re-announcement: who decided, how long it took,
-  // and the reject reason when there is one. The gate description belongs to
-  // the request-context message, not here.
+  // and the reject reason when there is one.
   const icon = decision === 'approved' ? '✅' : '❌'
   const durationText = requestedAt ? humanizeDuration(Date.parse(decidedAt) - Date.parse(requestedAt)) : undefined
+  const decisionLine = `${icon} **${decisionLabel}** by ${approverLabel}${durationText ? ` · took ${durationText}` : ''}`
   const body = [
     `${icon} **Approval Gate: ${gateLabel}** — ${decisionLabel}`,
     `By ${approverLabel}${durationText ? ` · took ${durationText}` : ''}`,
@@ -473,9 +535,32 @@ export async function sendGateDecisionSummary(
     ...(reason ? [`> ${reason}`] : []),
   ].join('\n')
 
+  // Threaded gates: rewrite the root card into the receipt (the channel keeps
+  // exactly one card per gate) and post the summary inside the thread.
+  const rootDelivery = approvalRef?.deliveries.find((d) => d.ref.startsWith('message:'))
+  const threadDelivery = approvalRef?.deliveries.find((d) => d.ref.startsWith('thread:'))
+  if (rootDelivery && typeof runtime.channels.editMessage === 'function') {
+    const rootBody = [
+      `🚦 **${gateLabel}** — \`${instance.workflowId}\``,
+      `Task \`${instance.taskId}\` · step \`${stepId}\``,
+      decisionLine,
+      ...(reason ? [`> ${reason}`] : []),
+    ].join('\n')
+    await runtime.channels.editMessage({
+      channel: rootDelivery.channelId,
+      messageRef: rootDelivery.ref,
+      body: rootBody,
+    }).catch((err) => log.warn('Gate root card edit failed', err, { taskId: instance.taskId, stepId }))
+  }
+
+  const threadId = threadDelivery?.ref.slice('thread:'.length)
+  const summaryChannel = threadId && threadDelivery
+    ? `${threadDelivery.channelId.split(':')[0]}:channel:${threadId}`
+    : resolvedChannel
+
   try {
     await runtime.channels.sendNotification({
-      channels: [resolvedChannel],
+      channels: [summaryChannel],
       notification: {
         severity: decision === 'approved' ? 'success' : 'warn',
         // Empty title: a non-empty one forces a blank line before the body.

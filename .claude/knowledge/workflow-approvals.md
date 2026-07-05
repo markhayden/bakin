@@ -72,19 +72,27 @@ native approval requests can expire before a workflow gate does, and provider
 events may be missed if Bakin is offline. The durable Bakin approval record and
 the Bakin fallback approval URL remain canonical.
 
-**Gate context companion message:** because the native card is capped at 256
-chars (upstream), `sendGateApprovalRequest` posts a rich context message to
-the same resolved channel immediately before `createApproval` — workflow,
-task, gate description, prior-step output, generated assets attached as media
-(assetIds extracted from prior output, resolved through the
-`assets.resolveServe` hook), plus the decision link and a task-board link.
-Best-effort: context failure logs a warn and never blocks the approval card.
-Decision links omit the approvalId (the page resolves the newest pending
-record via `findPendingApprovalForGate`; explicit ids still bind) so the card
-description has room for the workflow/task/step line. `BAKIN_URL` should be
-set to a network-reachable host (e.g. Tailscale hostname) or links render as
-localhost. The watchdog's per-gate general-channel ping was retired in favor
-of this.
+**Threaded gate messaging:** because the native card is capped at 256 chars
+(upstream), `sendGateApprovalRequest` delivers gate context as normal rich
+messages. When the adapter exposes the optional `channels.createThread` /
+`channels.editMessage` capabilities (OpenClaw does, via `message thread
+create` / `message edit`), the channel gets ONE compact root card (header,
+output preview, links), a thread anchored to it carries the full labeled
+output + media (assetIds from prior output resolved through the
+`assets.resolveServe` hook), and the native button card is routed into the
+thread via `context.threadId` → `turnSourceThreadId`. On decision, the root
+card is edited in place into a receipt and the summary posts inside the
+thread — the channel stays one-card-per-gate. Without threading capabilities
+(mock adapters, other providers) everything falls back to the previous flat
+layout; callers MUST feature-detect, never error on absence. Delivery refs on
+the durable record encode the structure: `message:<id>` (root),
+`thread:<id>` (thread marker), `openclaw-plugin-approval:<id>` (native card).
+Best-effort throughout — context/thread failures log warns and never block
+the approval. Decision links omit the approvalId (the page resolves the
+newest pending record via `findPendingApprovalForGate`; explicit ids still
+bind). `BAKIN_URL` should be set to a network-reachable host (e.g. Tailscale
+hostname) or links render as localhost. The watchdog's per-gate
+general-channel ping was retired in favor of this.
 
 Native request hardening (all in `packages/adapter-openclaw/src/runtime.ts`):
 

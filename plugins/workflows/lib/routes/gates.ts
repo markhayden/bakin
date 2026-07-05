@@ -17,7 +17,7 @@ import { approvalRefFromRecord, findPendingApprovalForGate, getApprovalRecord } 
 import { resolveGateApproval, sendGateDecisionSummary } from '../notifications'
 import { indexInstance } from '../search-sync'
 import { triggerDispatch } from '../trigger-dispatch'
-import { getGateDescription, buildGateAuditPayload } from '../gate-audit'
+import { buildGateAuditPayload } from '../gate-audit'
 import { activeGateSettings } from '../gate-settings'
 import { formValue, gateDecisionHtmlResponse, escapeHtml } from '../gate-html'
 import { passthroughWf, errorResponseWf, htmlResponseWf } from '../route-schemas'
@@ -80,13 +80,13 @@ const approveHandler = async (req: Request, ctx: PluginContextLite) => {
         instance,
         stepId,
         result.decision.gateLabel,
-        getGateDescription(instance.workflowId, stepId),
         'approved',
         approver,
         result.decision.requestedAt,
         result.decision.decidedAt,
         undefined,
         settings,
+        approvalRef,
       ).catch(() => {})
     }
   }
@@ -142,13 +142,13 @@ const rejectHandler = async (req: Request, ctx: PluginContextLite) => {
         instance,
         stepId,
         result.decision.gateLabel,
-        getGateDescription(instance.workflowId, stepId),
         'rejected',
         approver,
         result.decision.requestedAt,
         result.decision.decidedAt,
         reason,
         settings,
+        approvalRef,
       ).catch(() => {})
     }
   }
@@ -252,13 +252,13 @@ const gateDecisionActionHandler = async (req: Request, ctx: PluginContextLite) =
         instance,
         stepId,
         result.decision.gateLabel,
-        getGateDescription(instance.workflowId, stepId),
         'approved',
         approver,
         result.decision.requestedAt,
         result.decision.decidedAt,
         undefined,
         settings,
+        approvalRef,
       ).catch(() => {})
     }
 
@@ -288,13 +288,13 @@ const gateDecisionActionHandler = async (req: Request, ctx: PluginContextLite) =
         instance,
         stepId,
         result.decision.gateLabel,
-        getGateDescription(instance.workflowId, stepId),
         'rejected',
         approver,
         result.decision.requestedAt,
         result.decision.decidedAt,
         reason,
         settings,
+        approvalRef,
       ).catch(() => {})
     }
 

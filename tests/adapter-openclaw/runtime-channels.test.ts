@@ -520,6 +520,81 @@ describe('OpenClaw runtime channels', () => {
     expect(warn.mock.calls.some(call => String(call[0]).includes('allow-always'))).toBe(true)
   })
 
+  it('creates threads and edits messages through the OpenClaw message CLI', async () => {
+    const recorder = installOpenClawCliRecorder(testDir)
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: recorder.binaryPath } })
+    await runtime.initialize({ contentDir: testDir })
+
+    await runtime.channels.createThread!({
+      channel: 'discord:channel:111',
+      messageRef: 'message:42',
+      name: 'image-generation — Approve Prompt',
+    })
+    await runtime.channels.editMessage!({
+      channel: 'discord:channel:111',
+      messageRef: 'message:42',
+      body: 'updated card',
+    })
+
+    expect(recorder.calls()).toEqual([
+      [
+        'message', 'thread', 'create',
+        '--channel', 'discord',
+        '--target', 'channel:111',
+        '--message-id', '42',
+        '--thread-name', 'image-generation — Approve Prompt',
+        '--json',
+      ],
+      [
+        'message', 'edit',
+        '--channel', 'discord',
+        '--target', 'channel:111',
+        '--message-id', '42',
+        '--message', 'updated card',
+        '--json',
+      ],
+    ])
+  })
+
+  it('routes the native approval card into a thread when the context carries a threadId', async () => {
+    writeFileSync(join(testDir, 'openclaw.json'), JSON.stringify({
+      gateway: { auth: { token: 'test-token' } },
+      channels: {
+        discord: {
+          token: 'discord-token',
+          execApprovals: { enabled: true, approvers: ['202168845362921483'], target: 'both' },
+        },
+      },
+    }), 'utf-8')
+    globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+    await runtime.initialize({ contentDir: testDir })
+
+    await runtime.channels.createApproval({
+      approvalId: 'approval-1',
+      channels: ['discord:channel-1'],
+      request: {
+        title: 'Gate: Review',
+        body: 'Review the post.',
+        options: [
+          { id: 'approve', label: 'Approve' },
+          { id: 'reject', label: 'Reject' },
+        ],
+        context: { threadId: '777' },
+      },
+    })
+
+    const approvalRequest = FakeWebSocket.instances[0]!.sentFrames.find(frame => frame.method === 'plugin.approval.request')
+    expect(approvalRequest?.params).toEqual(expect.objectContaining({
+      turnSourceChannel: 'discord',
+      turnSourceTo: 'channel-1',
+      turnSourceThreadId: '777',
+    }))
+  })
+
   it('maps OpenClaw plugin approval resolved events into Bakin approval events', async () => {
     writeFileSync(join(testDir, 'openclaw.json'), JSON.stringify({
       gateway: { auth: { token: 'test-token' } },
