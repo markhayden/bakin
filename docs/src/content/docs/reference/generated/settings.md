@@ -139,10 +139,6 @@ description: Generated reference for Bakin core settings defaults.
       <td><code>&quot;&quot;</code></td>
     </tr>
     <tr>
-      <td><code>notifications.gateAlerts</code></td>
-      <td><code>true</code></td>
-    </tr>
-    <tr>
       <td><code>notifications.target</code></td>
       <td><code>&quot;&quot;</code></td>
     </tr>
@@ -403,5 +399,5 @@ description: Generated reference for Bakin core settings defaults.
 
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 4, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 5, 2026 · Bakin 0.0.0-dev</span>
 </aside>
