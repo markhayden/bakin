@@ -165,6 +165,26 @@ export interface BakinSettings {
       minScore: number
     }
   }
+  /**
+   * Agent token-burn heuristics (#385): effort-vs-outcome, spike vs own
+   * baseline, and unattributed (outside Bakin-managed tasks) usage. Consumed
+   * by the usage.agent-burn doctor check and the /agent-effort endpoint —
+   * warn-only signals, never enforcement.
+   */
+  burn: {
+    /** Rolling window (hours) for effort-vs-outcome and unattributed checks. */
+    windowHours: number
+    /** Minimum attributed tokens in the window before any effort flag fires. */
+    minTokensFloor: number
+    /** Today's observed tokens must exceed baseline-average × this to count as a spike. */
+    spikeMultiplier: number
+    /** Trailing days (excluding today) that form the spike baseline. */
+    baselineDays: number
+    /** Unattributed fraction of observed tokens above which the flag fires. */
+    unattributedShare: number
+    /** Minimum unattributed tokens before the unattributed flag fires. */
+    unattributedFloorTokens: number
+  }
   doctor: {
     intervalMs: number
     /**
@@ -312,6 +332,14 @@ export const DEFAULT_SETTINGS: BakinSettings = {
       maxCharacters: 8000,
       minScore: 0,
     },
+  },
+  burn: {
+    windowHours: 24,
+    minTokensFloor: 500_000,
+    spikeMultiplier: 3,
+    baselineDays: 7,
+    unattributedShare: 0.5,
+    unattributedFloorTokens: 100_000,
   },
   doctor: {
     intervalMs: 30 * 60 * 1000, // 30 minutes

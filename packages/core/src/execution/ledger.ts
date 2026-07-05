@@ -906,6 +906,31 @@ export function recentRunsByAgent(agent: string, opts: { sinceMs?: number; limit
   })
 }
 
+export interface AgentTokenRollup {
+  agent: string
+  /** SUM over nullable columns — null when no run in the window was metered. */
+  totalTokens: number | null
+  costUsdMicros: number | null
+  runs: number
+}
+
+/**
+ * Per-agent token/cost sums since a timestamp — the attributed side of the
+ * effort-vs-outcome view (#385). Unlike spendByAgent this keeps token sums
+ * and stays NULL-honest on cost.
+ */
+export function runTokensByAgentSince(sinceMs: number): AgentTokenRollup[] {
+  return guard('runTokensByAgentSince', () => {
+    return ledger()
+      .prepare<{ agent: string; tokens: number | null; micros: number | null; runs: number }, [number]>(
+        `SELECT agent, SUM(total_tokens) AS tokens, SUM(cost_usd_micros) AS micros, COUNT(*) AS runs
+           FROM run_costs WHERE occurred_at >= ? GROUP BY agent`,
+      )
+      .all(sinceMs)
+      .map((r) => ({ agent: r.agent, totalTokens: r.tokens, costUsdMicros: r.micros, runs: r.runs }))
+  })
+}
+
 /** One dispatch attempt with its billing facts — the timeline's run spine (#385). */
 export interface RunWithCostRow extends RunRow {
   model: string | null

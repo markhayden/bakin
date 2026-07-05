@@ -14,6 +14,7 @@ export {
   listLiveRuns,
   listRunsByAgent,
   completionsByAgentSince,
+  runTokensByAgentSince,
   nextSeq,
   currentSeq,
   setSeqWatermark,
@@ -51,6 +52,7 @@ export type {
   RunCostInput,
   RunCostRow,
   RunWithCostRow,
+  AgentTokenRollup,
   SpendByAgentRow,
   SpendByModelRow,
 } from '../../packages/core/src/execution/ledger'

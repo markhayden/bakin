@@ -38,6 +38,7 @@ import {
   listLiveRuns,
   listRunsByAgent,
   completionsByAgentSince,
+  runTokensByAgentSince,
 } from '../../src/core/execution-ledger'
 import { closeDb } from '../../packages/core/src/storage/db'
 
@@ -120,6 +121,21 @@ describe('listRunsByAgent', () => {
     expect(listRunsByAgent('joiner', { sinceMs: T0 + 9000 }).map((r) => r.taskId)).toEqual(['j2'])
     expect(listRunsByAgent('joiner', { limit: 1 }).map((r) => r.taskId)).toEqual(['j2'])
     expect(listRunsByAgent('nobody')).toEqual([])
+  })
+})
+
+describe('runTokensByAgentSince', () => {
+  it('sums tokens per agent, NULL-honest on unmetered cost', () => {
+    recordRunCost({ runId: 'turn:r1', agent: 'meter', totalTokens: 100, costUsdMicros: 5, occurredAt: T0 + 1 })
+    recordRunCost({ runId: 'turn:r2', agent: 'meter', totalTokens: 40, costUsdMicros: null, occurredAt: T0 + 2 })
+    recordRunCost({ runId: 'turn:r3', agent: 'ghost', totalTokens: null, costUsdMicros: null, occurredAt: T0 + 3 })
+
+    const rows = runTokensByAgentSince(T0)
+    const meter = rows.find((r) => r.agent === 'meter')
+    expect(meter).toMatchObject({ totalTokens: 140, costUsdMicros: 5, runs: 2 })
+    const ghost = rows.find((r) => r.agent === 'ghost')
+    expect(ghost).toMatchObject({ totalTokens: null, costUsdMicros: null, runs: 1 })
+    expect(runTokensByAgentSince(T0 + 60_000).find((r) => r.agent === 'meter')).toBeUndefined()
   })
 })
 
