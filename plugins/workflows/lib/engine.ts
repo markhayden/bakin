@@ -145,7 +145,7 @@ export interface CompleteStepResult {
    * error-message text.
    */
   code?: 'rejection_repeat'
-  nextStep?: StepContext | { status: 'complete' } | { status: 'pending_approval'; stepId: string; label: string }
+  nextStep?: StepContext | { status: 'complete' } | { status: 'cancelled' } | { status: 'pending_approval'; stepId: string; label: string }
   workflowComplete?: boolean
 }
 
@@ -162,6 +162,12 @@ export function completeStep(
   const dir = contentDir || getContentDir()
   const instance = loadInstance(taskId, dir)
   if (!instance) return { success: false, errors: ['Workflow instance not found'] }
+  // Fail closed on every submission surface (REST, exec tool, hooks): a
+  // cancelled instance keeps its stepStates at in_progress, so without this
+  // guard a late submission would advance a cancelled workflow (#604 review).
+  if (instance.status === 'cancelled') {
+    return { success: false, errors: ['Workflow is cancelled — no further submissions are accepted. Stop work on this task.'] }
+  }
 
   const def = loadDefinition(instance.workflowId, dir)
   if (!def) return { success: false, errors: ['Workflow definition not found'] }

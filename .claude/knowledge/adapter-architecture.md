@@ -255,6 +255,17 @@ Messaging callers pass stable Bakin `threadId` values through
   doctor, agents API, UI chat `messaging:<sessionId>:<agentId>`): default or
   durable conversational sessions — never per-attempt.
 
+**Turn cancellation (#604):** `MessageArgs.signal?: AbortSignal` is the
+adapter-neutral best-effort cancel. Contract: on abort the adapter MUST
+reject the local awaiter promptly with `RuntimeError` kind `'aborted'`
+(terminal — dispatch never retries or diagnoses it) and SHOULD cancel the
+provider-side run where the runtime supports it. Fail-open: the OpenClaw
+gateway's `chat.abort` registry only tracks channel auto-reply runs (probed
+live on 2026.6.11 — backend `agent` RPC runs are NOT stopped server-side),
+so the adapter fires the canonical-key `chat.abort` frame as forward-compat
+and relies on the local rejection; the residual ghost run is bounded by the
+runtime's own turn timeout with every Bakin tool failing closed.
+
 The OpenClaw adapter maps threadIds to provider session ids and tails the
 provider transcript while the Gateway request is pending so tool
 calls/results become `ChatChunk { type: 'tool' }` events before final

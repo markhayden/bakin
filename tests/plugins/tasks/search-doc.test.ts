@@ -110,7 +110,7 @@ beforeEach(() => {
 
 describe('Search index side effects', () => {
   it('removes task from search on delete', async () => {
-    mockDeleteTask.mockResolvedValue(undefined)
+    mockDeleteTask.mockResolvedValue('task-rm')
 
     const route = findRoute(activated.routes, 'DELETE', '/:taskId')!
     await callRoute(route, activated.ctx, {

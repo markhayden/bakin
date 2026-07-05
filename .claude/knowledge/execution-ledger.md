@@ -97,6 +97,11 @@ exactly preserving legacy threadId semantics.
 | Run history (read-only) | `plugins/tasks` task drawer via `GET /:taskId/runs` (per-task attempts + task outcome: `readTaskOutcome` joins the completions row with the task column — completion wins, else blocked/archived/in_progress; the boot backfill retired the done-without-row legacy branch (#482); the column fallback is gated on dispatch history so unknown ids never trigger the task store's shard walk, #476); `plugins/schedule` job drawer (per-schedule fires) | `listRunsByTask`, `getCompletion`, `listCronFires` |
 | Cleanup | `task-store.deleteTask` + `task-store.archiveOldTasks` (both advisory) | `purgeTaskRows` (cron_fires kept — they dedupe the job, not the task) |
 
+Delete-vs-settle ordering (#604): `deleteTask` aborts the task's in-flight
+turns first, then purges — so the aborted turn's later `settleRun` finds no
+row and no-ops silently, **by design**. The abort's durable trace is the
+`task.turn_aborted` audit event, not a ledger row; delete means delete.
+
 ## Semantics
 
 - **Cron:** the Bakin scheduler claims each occurrence (runId

@@ -4,7 +4,9 @@
  * fireDispatchTurn (fire a send + reconcile on settle). Extracted from
  * dispatch.ts.
  *
- * Owns the `inFlightTurns` registry and the `pendingLadderRedispatches`
+ * Owns turn REGISTRATION (the registry map itself lives in the leaf module
+ * `dispatch-registry.ts` so task-store/watchdog can reach the abort surface
+ * without importing this fire-core) and the `pendingLadderRedispatches`
  * counter — the counter is mutated ONLY here, via scheduleLadderRedispatch().
  * fireDispatchTurn's settle handlers serialize on the single withStateLock from
  * dispatch-state. turns ↔ session-death is an intentional runtime-only cycle
@@ -15,7 +17,7 @@ import { createLogger } from './logger'
 import { getSettings } from './settings'
 import { appendAudit } from './audit'
 import { getAppServices } from './app-services'
-import { RuntimeTurnError, type MessageResult } from '@bakin/core/adapters/runtime'
+import { RuntimeError, RuntimeTurnError, type MessageResult } from '@bakin/core/adapters/runtime'
 import { claimNextRun, loseRun, settleRun, spendTotal, type ClaimNextRunResult } from './execution-ledger'
 import { meterAgentTurn } from './agent-cost'
 import { resolveTurnModel, type ResolvedTurn, type RoutingConfig } from './model-routing'
@@ -24,7 +26,7 @@ import { getBootId } from './boot-id'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { moveTask as moveStoredTask } from './task-store'
 import { formatDispatchError } from './dispatch-failures'
-import type { DispatchTask, InFlightTurn, ConcurrencyGate } from './dispatch-types'
+import type { DispatchTask, ConcurrencyGate } from './dispatch-types'
 import { withStateLock, loadDispatchState, saveDispatchState } from './dispatch-state'
 import { findDispatchTaskSnapshot, tryAddTaskLog } from './dispatch-board'
 import { reconcileRejectedDispatch } from './dispatch-session-death'
@@ -40,13 +42,14 @@ const hooks = () => getHookRegistry()
  * sends (orchestrator/watchdog/doctor) deliberately stay in the agent's
  * default session and don't go through here.
  */
-async function sendDispatchMessage(agentId: string, content: string, threadId: string, routing?: ResolvedTurn): Promise<MessageResult> {
+async function sendDispatchMessage(agentId: string, content: string, threadId: string, routing?: ResolvedTurn, signal?: AbortSignal): Promise<MessageResult> {
   return getAppServices().runtime.messaging.send({
     agentId,
     content,
     threadId,
     ...(routing?.model ? { model: routing.model } : {}),
     ...(routing?.thinking ? { thinking: routing.thinking } : {}),
+    ...(signal ? { signal } : {}),
     metadata: { oversizedOutputBytes: getSettings().dispatch.oversizedOutputBytes },
   })
 }
@@ -199,25 +202,15 @@ export function auditDispatchSuppressed(contentDir: string, task: { id: string; 
 
 // ─── In-flight turn registry (concurrent dispatch) ─────────────────────────
 //
-// Sends are fired and tracked, never awaited inside the dispatch cycle: one
-// 10-minute turn must not stall dispatching to every other agent (the
-// serial-await loop was why parallel task fan-out made no independent
-// progress). Reconciliation happens in per-turn settle handlers that take
-// the state lock themselves. The registry is advisory — caps + settle
-// bookkeeping — never a source of truth for task state; restart safety is
-// unchanged (in-flight promises die with the process, restart-recovery
-// handles orphaned inProgress tasks via heartbeats).
+// The registry itself lives in `dispatch-registry.ts` — a LEAF module so
+// task-store.deleteTask and the watchdog sweep can reach the abort surface
+// without importing the dispatch fire-core (task-store → dispatch-turns
+// would cycle). This module OWNS registration: only fireDispatchTurn
+// registers/unregisters turns. getInFlightTurnCount is re-exported for the
+// public dispatch barrel.
 
-const inFlightTurns = new Map<string, InFlightTurn>()
-
-export function getInFlightTurnCount(agentId?: string): number {
-  if (!agentId) return inFlightTurns.size
-  let count = 0
-  for (const turn of inFlightTurns.values()) {
-    if (turn.agentId === agentId) count += 1
-  }
-  return count
-}
+export { getInFlightTurnCount } from './dispatch-registry'
+import { getInFlightTurnCount, getInFlightSettledPromises, registerTurn, unregisterTurn } from './dispatch-registry'
 
 /** Why a dispatch can't fire right now, or null when a slot is free. */
 export function concurrencyGate(
@@ -227,7 +220,7 @@ export function concurrencyGate(
   // two-phase cycle — invisible to the in-flight registry until phase 2.
   reserved?: { total: number; forAgent: number },
 ): ConcurrencyGate {
-  if (inFlightTurns.size + (reserved?.total ?? 0) >= settings.dispatch.maxConcurrentTurns) return 'concurrency_cap'
+  if (getInFlightTurnCount() + (reserved?.total ?? 0) >= settings.dispatch.maxConcurrentTurns) return 'concurrency_cap'
   if (getInFlightTurnCount(agentId) + (reserved?.forAgent ?? 0) >= settings.dispatch.maxTurnsPerAgent) return 'agent_busy'
   return null
 }
@@ -261,9 +254,10 @@ export function scheduleLadderRedispatch(run: () => Promise<unknown>, delayMs: n
  * synchronization point for tests and shutdown.
  */
 export async function awaitDispatchIdle(): Promise<void> {
-  while (inFlightTurns.size > 0 || pendingLadderRedispatches > 0) {
-    if (inFlightTurns.size > 0) {
-      await Promise.allSettled([...inFlightTurns.values()].map((turn) => turn.settled))
+  while (getInFlightTurnCount() > 0 || pendingLadderRedispatches > 0) {
+    const settled = getInFlightSettledPromises()
+    if (settled.length > 0) {
+      await Promise.allSettled(settled)
     } else {
       await new Promise((resolve) => setTimeout(resolve, 10))
     }
@@ -286,6 +280,9 @@ export function fireDispatchTurn(opts: {
   initialLogCount: number
   logPrefix: string
   dispatchKind: 'regular' | 'workflow'
+  /** Nested-workflow child board task this step turn serves — deleting it
+   *  must abort the turn even though `task` is the parent (#604 review). */
+  childTaskId?: string
   /** True when this is a recovery-ladder re-dispatch (routes to the
    *  'recovery' origin policy regardless of the task's shape). */
   isRecovery?: boolean
@@ -294,8 +291,17 @@ export function fireDispatchTurn(opts: {
   // The registry entry is released only AFTER settle reconciliation
   // completes — awaitDispatchIdle() must mean "all bookkeeping done", and a
   // turn's slot shouldn't free until its outcome has been recorded.
+  const abort = new AbortController()
   const settled = resolveDispatchRouting(opts.task, opts.isRecovery ?? false)
     .then(async (routing) => {
+      // Fire-time existence check: a delete can interleave between the
+      // cycle's phase-1 claim and this fire (the turn is only registered —
+      // and thus abortable — below). If the task vanished, surface it as an
+      // abort instead of sending a turn for a deleted task (#604 review F3).
+      if (!findDispatchTaskSnapshot(opts.task.id) || (opts.childTaskId && !findDispatchTaskSnapshot(opts.childTaskId))) {
+        abort.abort('task-deleted')
+        throw new RuntimeError('Task deleted before dispatch turn fired', { kind: 'aborted' })
+      }
       if (routing.model || routing.thinking) {
         appendAudit(opts.contentDir, 'task.routed', opts.targetAgent, {
           id: opts.task.id,
@@ -303,7 +309,7 @@ export function fireDispatchTurn(opts: {
           ...(routing.thinking ? { thinking: routing.thinking } : {}),
         })
       }
-      const result = await sendDispatchMessage(opts.targetAgent, opts.message, opts.threadId, routing)
+      const result = await sendDispatchMessage(opts.targetAgent, opts.message, opts.threadId, routing, abort.signal)
       // Free the live-run slot FIRST — the settle reconciliation below (and
       // any ladder re-dispatch it schedules) must be able to claim anew.
       try {
@@ -342,6 +348,30 @@ export function fireDispatchTurn(opts: {
       opts.onSettled?.('ok')
     })
     .catch(async (err) => {
+      // Intentional cancellation (task deleted / orphan sweep): clean exit.
+      // No recovery ladder — a corrective re-dispatch would resurrect work
+      // for a task that no longer exists — and no reconcile fail-noise. The
+      // ledger row is usually already purged by deleteTask; settleRun on a
+      // missing/settled row is a first-write-wins no-op by design.
+      if (err instanceof RuntimeError && err.kind === 'aborted') {
+        // The reason rides the closure-captured signal (abort.abort(reason)),
+        // which survives a force-released registry entry.
+        const reason = typeof abort.signal.reason === 'string' ? abort.signal.reason : 'unknown'
+        try {
+          settleRun(opts.threadId, `aborted: ${reason}`)
+        } catch (ledgerErr) {
+          log.debug('Ledger settle after abort was a no-op', { threadId: opts.threadId, err: ledgerErr instanceof Error ? ledgerErr.message : String(ledgerErr) })
+        }
+        appendAudit(opts.contentDir, 'task.turn_aborted', opts.targetAgent, {
+          id: opts.task.id,
+          title: opts.task.title,
+          runId: opts.threadId,
+          reason,
+        })
+        log.info(`Turn aborted for "${opts.task.title}" → ${opts.targetAgent}`, { id: opts.task.id, reason })
+        opts.onSettled?.('error', err)
+        return
+      }
       log.error(`${opts.logPrefix}: turn failed for "${opts.task.title}" → ${opts.targetAgent}`, err)
       // Free the slot before reconciliation — the recovery ladder's
       // re-dispatch claims a fresh run and must not be suppressed by the
@@ -375,14 +405,16 @@ export function fireDispatchTurn(opts: {
       opts.onSettled?.('error', err)
     })
     .finally(() => {
-      inFlightTurns.delete(opts.marker)
+      unregisterTurn(opts.marker)
     })
 
-  inFlightTurns.set(opts.marker, {
+  registerTurn(opts.marker, {
     agentId: opts.targetAgent,
     taskId: opts.task.id,
+    ...(opts.childTaskId ? { childTaskId: opts.childTaskId } : {}),
     threadId: opts.threadId,
     startedAt: Date.now(),
     settled,
+    abort,
   })
 }

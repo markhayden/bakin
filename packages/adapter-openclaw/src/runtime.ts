@@ -137,6 +137,8 @@ const OPENCLAW_AGENT_TIMEOUT_MS = 600000
 const OPENCLAW_AGENT_TIMEOUT_SECONDS = Math.ceil(OPENCLAW_AGENT_TIMEOUT_MS / 1000)
 // Transport must outlast the server-side agent budget so the Gateway can deliver its own timeout.
 const OPENCLAW_AGENT_TRANSPORT_TIMEOUT_MS = OPENCLAW_AGENT_TIMEOUT_MS + 30_000
+/** Best-effort chat.abort frame — short: the local rejection never waits on it. */
+const OPENCLAW_ABORT_RPC_TIMEOUT_MS = 5_000
 const OPENCLAW_CRON_PROCESS_TIMEOUT_MS = OPENCLAW_CRON_TIMEOUT_MS + 5000
 const OPENCLAW_IMAGE_PROCESS_TIMEOUT_MS = 600000
 const BAKIN_MCPORTER_CALL_TIMEOUT_MS = 600000
@@ -159,6 +161,8 @@ interface OpenClawAgentTurnOptions {
   thinking?: string
   /** Oversized-output threshold for session-death diagnoses (core policy). */
   oversizedOutputBytes?: number
+  /** Best-effort caller cancellation (MessageArgs.signal). */
+  signal?: AbortSignal
 }
 
 /** Result of one OpenClaw agent turn: the assistant text plus token usage
@@ -465,6 +469,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         model: args.model,
         thinking: args.thinking,
         oversizedOutputBytes: oversizedOutputBytesFrom(args.metadata),
+        signal: args.signal,
       })
       // Threaded sends expose the real (deterministic) provider session id
       // so callers can correlate the turn with forensics, usage, and audit.
@@ -488,6 +493,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       model: args.model,
       thinking: args.thinking,
       oversizedOutputBytes: oversizedOutputBytesFrom(args.metadata),
+      signal: args.signal,
     }),
   }
 
@@ -1336,6 +1342,9 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   private async runOpenClawAgentGateway(opts: OpenClawAgentTurnOptions): Promise<OpenClawTurnResult> {
+    if (opts.signal?.aborted) {
+      throw new RuntimeError('OpenClaw agent turn aborted before send', { kind: 'aborted', cause: opts.signal.reason })
+    }
     const cliSessionId = opts.sessionKey ? openClawCliSessionId(opts.agentId, opts.sessionKey) : null
     const prompt = messagesToOpenClawPrompt(opts.messages)
     const params: Record<string, unknown> = {
@@ -1384,6 +1393,35 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     // deliver a final frame — without this, the caller waits out the full
     // 630s transport timer to learn what the trajectory knew in 200ms.
     const requestAbort = new AbortController()
+    // Caller cancellation (MessageArgs.signal): reject the local awaiter via
+    // requestAbort and fire a best-effort chat.abort at the gateway. Live
+    // probes (2026.6.11, spec task-delete-turn-abort) show the gateway's
+    // abort registry only tracks channel auto-reply runs — backend `agent`
+    // RPC runs are NOT stopped server-side today. The frame is fail-open
+    // forward-compat; the local rejection is the behavior Bakin depends on.
+    const onCallerAbort = () => {
+      // Never let a listener throw escape AbortController.abort(): the local
+      // rejection below is the load-bearing part and must always run.
+      try {
+        if (cliSessionId) {
+          const request = this.openClawChatGateway().request(
+            'chat.abort',
+            // The gateway keys explicit-sessionId sessions as
+            // agent:<agentId>:explicit:<sessionId> (verified via sessions.list).
+            { sessionKey: `agent:${opts.agentId}:explicit:${cliSessionId}` },
+            { timeoutMs: OPENCLAW_ABORT_RPC_TIMEOUT_MS, expectFinal: false },
+          )
+          request.catch(() => {})
+        }
+      } catch (err) {
+        this.logger.warn('chat.abort frame failed to send; relying on local rejection', {
+          agentId: opts.agentId,
+          err: err instanceof Error ? err.message : String(err),
+        })
+      }
+      requestAbort.abort()
+    }
+    opts.signal?.addEventListener('abort', onCallerAbort, { once: true })
     const deathWatch = trajectoryFile
       ? watchTrajectoryForDeath({
           trajectoryFile,
@@ -1406,6 +1444,13 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       const payload = deathWatch
         ? await Promise.race([request, deathWatch.promise])
         : await request
+      // Caller-abort dominance on the SUCCESS path too: if the final frame
+      // wins the race against the abort rejection, the turn must still
+      // surface as 'aborted' — otherwise dispatch runs full ok bookkeeping
+      // (cost row, state cleanup) for a task the caller just cancelled.
+      if (opts.signal?.aborted) {
+        throw new RuntimeError('OpenClaw agent turn aborted by caller', { kind: 'aborted', cause: opts.signal.reason })
+      }
       const content = extractOpenClawAgentText(payload)
       if (content) {
         // Prefer usage from the gateway payload (carries cache tokens, works
@@ -1433,6 +1478,11 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       }
       throw new RuntimeError('OpenClaw chat failed: agent response did not include assistant text', { kind: 'runtime_failed' })
     } catch (err) {
+      // Intentional caller cancel dominates every other outcome — a deleted
+      // task has no use for recovered content or a death diagnosis.
+      if (opts.signal?.aborted) {
+        throw new RuntimeError('OpenClaw agent turn aborted by caller', { kind: 'aborted', cause: err })
+      }
       if (err instanceof TrajectoryRecoveredTurn) {
         // The run succeeded on disk but the gateway frame never arrived
         // within the grace window — surface the recovered content as a
@@ -1471,6 +1521,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       if (verdict?.kind === 'death') throw verdict.error
       throw typed
     } finally {
+      opts.signal?.removeEventListener('abort', onCallerAbort)
       deathWatch?.stop()
     }
   }

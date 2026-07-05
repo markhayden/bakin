@@ -45,6 +45,14 @@ export function formatStepContext(step: Record<string, unknown>): string {
     ].join('\n')
   }
 
+  if (step.status === 'cancelled') {
+    return [
+      'STATUS: cancelled',
+      'WORKFLOW CANCELLED',
+      'Stop work on this task. Do not submit output; no further steps will be dispatched.',
+    ].join('\n')
+  }
+
   const sections: string[] = []
   sections.push(`STEP: ${step.stepId}`)
   sections.push(`STATUS: ${step.status}`)

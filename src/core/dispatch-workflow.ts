@@ -74,7 +74,7 @@ export async function dispatchWorkflowTask(
     // For nested workflows, use the child's taskId for step context resolution
     const contextTaskId = effectiveTaskId || task.id
     const stepContext = await hooks().invoke<Record<string, unknown>>('workflows.getCurrentStep', { taskId: contextTaskId, agentId: agent })
-    if (!stepContext || 'status' in stepContext && (stepContext.status === 'complete' || stepContext.status === 'pending_approval')) {
+    if (!stepContext || 'status' in stepContext && (stepContext.status === 'complete' || stepContext.status === 'cancelled' || stepContext.status === 'pending_approval')) {
       continue
     }
 
@@ -152,6 +152,9 @@ export async function dispatchWorkflowTask(
       initialLogCount,
       logPrefix: `Workflow dispatch failed for step "${stepId}"`,
       dispatchKind: 'workflow',
+      // Nested step: the agent serves a child board task — deleting that
+      // child must abort this turn even though `task` is the parent (#604).
+      ...(contextTaskId !== task.id ? { childTaskId: contextTaskId } : {}),
     })
   }
 }

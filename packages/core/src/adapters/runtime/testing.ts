@@ -1,4 +1,5 @@
 import type { AgentRuntimeAdapter, RuntimeAgent } from './concepts'
+import { RuntimeError } from './errors'
 
 async function* emptyStream(): AsyncIterable<never> {
   const items: never[] = []
@@ -53,7 +54,12 @@ export function createMockRuntimeAdapter(
     },
 
     messaging: {
-      send: async () => ({ id: `msg-${Date.now()}` }),
+      send: async (args) => {
+        if (args.signal?.aborted) {
+          throw new RuntimeError('mock send aborted', { kind: 'aborted' })
+        }
+        return { id: `msg-${Date.now()}` }
+      },
       stream: () => emptyStream(),
     },
 

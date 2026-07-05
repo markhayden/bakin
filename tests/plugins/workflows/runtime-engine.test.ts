@@ -530,11 +530,18 @@ steps:
       expect(childAfter!.status).toBe('cancelled')
     })
 
-    it('getCurrentStep returns complete for cancelled instances', () => {
+    it('getCurrentStep returns status cancelled for cancelled instances — honest terminal, not a false complete (#604 T6)', () => {
       createInstance('task-nested8', 'parent-wf', testDir)
       cancelInstance('task-nested8', testDir)
-      const step = getCurrentStep('task-nested8', undefined, testDir) as { status: string }
-      expect(step.status).toBe('complete')
+      expect(getCurrentStep('task-nested8', undefined, testDir)).toEqual({ status: 'cancelled' })
+    })
+
+    it('completeStep refuses submissions against a cancelled instance (#604 review F1)', () => {
+      createInstance('task-cancelled-submit', 'linear', testDir)
+      cancelInstance('task-cancelled-submit', testDir)
+      const result = completeStep('task-cancelled-submit', 'step-one', { result: 'late output' }, undefined, testDir)
+      expect(result.success).toBe(false)
+      expect(result.errors?.[0]).toContain('cancelled')
     })
 
     it('getActiveAgents returns empty for cancelled instances', () => {

@@ -17,10 +17,17 @@ import { getStatsByMs } from './usage'
 import {
   addTaskLog,
   blockTask,
+  getTask,
   moveTask,
   readTaskboard,
 } from './task-store'
 import { getLiveRun, supersedeStaleRun } from './execution-ledger'
+import {
+  abortTurnsForTask,
+  forceReleaseTurn,
+  getInFlightTurnsSnapshot,
+  ORPHAN_TURN_FORCE_RELEASE_GRACE_MS,
+} from './dispatch-registry'
 
 const log = createLogger('watchdog')
 const hooks = () => getHookRegistry()
@@ -137,6 +144,16 @@ export function start(contentDir: string): void {
     // take effect without a server restart. updateSettings() busts the cache,
     // so this is just one JSON read per interval.
     const settings = getSettings()
+
+    // #604: turns whose task was deleted mid-flight are invisible to the
+    // board scan below — sweep the in-flight registry directly. Isolated
+    // try/catch: a sweep failure must never break the stuck-task scan.
+    try {
+      sweepOrphanedTurns(contentDir)
+    } catch (err) {
+      log.error('Orphan turn sweep failed', err)
+    }
+
     try {
       type WdTask = { id: string; title: string; agent?: string; workflowId?: string; updatedAt?: number; log?: Array<{ message: string; timestamp: string }> }
       const board = readTaskboard() as unknown as { columns: Record<string, WdTask[]> }
@@ -423,6 +440,40 @@ export function start(contentDir: string): void {
   }, initialSettings.watchdog.intervalMs)
 
   log.info('Watchdog started', { intervalMs: initialSettings.watchdog.intervalMs, thresholdMs: initialSettings.watchdog.stuckThresholdMs })
+}
+
+/**
+ * Abort in-flight turns whose task no longer exists, and force-release any
+ * that survive their abort past the grace period (#604). Store lookup, not
+ * board-column presence — done/archived tasks still exist and are never
+ * orphans. First sighting fires the turn's AbortController (the 'aborted'
+ * settle branch in dispatch-turns does the bookkeeping); a turn still
+ * registered a full grace period later is dropped from the advisory registry
+ * so a hung provider turn can't hold the agent's dispatch slot until restart.
+ */
+function sweepOrphanedTurns(contentDir: string): void {
+  const now = Date.now()
+  for (const turn of getInFlightTurnsSnapshot()) {
+    // A nested-workflow step turn serves a child board task too — either id
+    // missing makes the turn an orphan.
+    const childGone = turn.childTaskId ? !getTask(turn.childTaskId) : false
+    if (getTask(turn.taskId) && !childGone) continue
+    if (!turn.abortedAt) {
+      abortTurnsForTask(childGone && turn.childTaskId ? turn.childTaskId : turn.taskId, 'orphan-sweep')
+      continue
+    }
+    if (now - turn.abortedAt < ORPHAN_TURN_FORCE_RELEASE_GRACE_MS) continue
+    if (forceReleaseTurn(turn.marker)) {
+      appendAudit(contentDir, 'task.turn_force_released', 'watchdog', {
+        id: turn.taskId,
+        agent: turn.agentId,
+        runId: turn.threadId,
+        marker: turn.marker,
+        abortedAt: turn.abortedAt,
+      })
+      log.warn('Force-released hung orphan turn', { taskId: turn.taskId, agent: turn.agentId, runId: turn.threadId })
+    }
+  }
 }
 
 /** Scan recent task log entries for bypass pattern language */

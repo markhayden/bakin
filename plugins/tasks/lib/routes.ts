@@ -206,16 +206,14 @@ export const tasksRoutes = [
         return Response.json({ error: 'taskId required' }, { status: 400 })
       }
       try {
-        await deleteTask(identifier as string)
-        ctx.activity.audit('deleted', 'system', { taskId: identifier })
-        ctx.activity.log('system', `Deleted task "${identifier}"`, { taskId: identifier as string })
-        ctx.search.remove(identifier as string).catch(() => {})
-        // Take the task's workflow instance file with it — an orphaned
-        // instance would otherwise linger forever. Best-effort via the
-        // cross-plugin hook: workflows being inactive must not fail the delete.
-        if (ctx.hooks.has('workflows.deleteInstance')) {
-          await ctx.hooks.invoke('workflows.deleteInstance', { taskId: identifier }).catch(() => {})
-        }
+        // deleteTask owns the full cascade (abort in-flight turns, cancel +
+        // delete the workflow instance, purge ledger rows) — #604 T5. It
+        // returns the RESOLVED id: `identifier` may be a title (body
+        // fallback), and search docs/audit are keyed by id (review F4).
+        const deletedId = await deleteTask(identifier as string)
+        ctx.activity.audit('deleted', 'system', { taskId: deletedId })
+        ctx.activity.log('system', `Deleted task "${deletedId}"`, { taskId: deletedId })
+        ctx.search.remove(deletedId).catch(() => {})
         return Response.json({ ok: true as const })
       } catch (err) {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })

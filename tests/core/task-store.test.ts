@@ -58,6 +58,27 @@ mock.module('../../plugins/workflows/lib/runtime', () => ({
   cancelInstance: mock(),
 }))
 
+// Spy on the dispatch registry abort — deleteTask imports the leaf
+// dispatch-registry module statically (#604).
+const abortTurnsForTaskSpy = mock((_taskId: string, _reason: string) => 0)
+mock.module('../../src/core/dispatch-registry', () => ({
+  abortTurnsForTask: abortTurnsForTaskSpy,
+}))
+
+// Spy hook registry — deleteTask owns the full workflow-instance cleanup
+// (cancel + delete file) as the ONE canonical delete path (#604 T5).
+const hookInvocations: Array<{ hook: string; data: Record<string, unknown> }> = []
+mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
+  getHookRegistry: () => ({
+    invoke: async (hook: string, data: Record<string, unknown>) => {
+      hookInvocations.push({ hook, data })
+      return undefined
+    },
+    has: () => true,
+    register: mock(),
+  }),
+}))
+
 // Suppress SSE broadcasts
 ;(globalThis as Record<string, unknown>).__bakinBroadcast = mock()
 
@@ -394,6 +415,30 @@ describe('deleteTask', () => {
 
   it('rejects non-existent task', async () => {
     await expect(deleteTask('ghost')).rejects.toThrow('Task not found')
+  })
+
+  it('aborts in-flight turns before removing state (#604)', async () => {
+    const task = await createTask('Dispatched then deleted')
+    abortTurnsForTaskSpy.mockClear()
+
+    await deleteTask(task.id)
+
+    expect(abortTurnsForTaskSpy).toHaveBeenCalledTimes(1)
+    expect(abortTurnsForTaskSpy).toHaveBeenCalledWith(task.id, 'task-deleted')
+    expect(getTask(task.id)).toBeNull()
+  })
+
+  it('owns the full workflow-instance cleanup: cancel then delete-file, by task id (#604 T5)', async () => {
+    const task = await createTask('Workflow task to delete')
+    hookInvocations.length = 0
+
+    await deleteTask(task.id)
+
+    const workflowHooks = hookInvocations.filter((h) => h.hook.startsWith('workflows.'))
+    expect(workflowHooks.map((h) => h.hook)).toEqual(['workflows.cancelInstance', 'workflows.deleteInstance'])
+    // Always the resolved task id — never a title identifier.
+    expect(workflowHooks.every((h) => h.data.taskId === task.id)).toBe(true)
+    expect(getTask(task.id)).toBeNull()
   })
 })
 

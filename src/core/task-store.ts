@@ -18,6 +18,7 @@ import { generateTaskId } from '@bakin/core/ids'
 import { join } from 'path'
 import { getBakinPaths, getContentDir } from './content-dir'
 import { purgeTaskRows } from './execution-ledger'
+import { abortTurnsForTask } from './dispatch-registry'
 import { createLogger } from './logger'
 
 const log = createLogger('task-store')
@@ -192,13 +193,17 @@ function assertTransitionAllowed(task: BakinTask, toCol: ColumnId, isHuman: bool
   }
 }
 
-async function cancelWorkflowInstance(taskId: string): Promise<void> {
+async function invokeWorkflowHook(hook: 'workflows.cancelInstance' | 'workflows.deleteInstance', taskId: string): Promise<void> {
   try {
     const { getHookRegistry } = await import('@bakin/core/hooks/hook-registry-singleton')
-    await getHookRegistry().invoke('workflows.cancelInstance', { taskId })
+    await getHookRegistry().invoke(hook, { taskId })
   } catch {
     // Best effort: workflows may not be activated in tests or early boot.
   }
+}
+
+async function cancelWorkflowInstance(taskId: string): Promise<void> {
+  return invokeWorkflowHook('workflows.cancelInstance', taskId)
 }
 
 export function readTaskboard(): TaskBoard {
@@ -329,23 +334,35 @@ export function assignTask(identifier: string, agent: string): Promise<void> {
   }
 }
 
-export function deleteTask(identifier: string): Promise<void> {
+/**
+ * The ONE canonical task-delete path — every entry point (REST, MCP exec
+ * tool, plugin SDK) gets the full cascade (#604 T5):
+ *   abort in-flight turns → cancel workflow instance → delete instance file
+ *   → purge ledger rows → remove the task file.
+ * The task file goes LAST: a mid-delete crash leaves a visible task rather
+ * than invisible half-cleaned debris. Every step before it is best-effort.
+ *
+ * Returns the RESOLVED task id — `identifier` may be a title, and callers'
+ * follow-up effects (audit, search-doc removal) must key on the real id.
+ */
+export async function deleteTask(identifier: string): Promise<string> {
+  const task = requireTask(identifier)
+  // Abort FIRST, while the ledger/registry state is still coherent — the
+  // 'aborted' settle branch must not race a half-deleted task.
+  // (dispatch-registry is a leaf module — no dispatch fire-core import cycle.)
+  abortTurnsForTask(task.id, 'task-deleted')
+  await invokeWorkflowHook('workflows.cancelInstance', task.id)
+  await invokeWorkflowHook('workflows.deleteInstance', task.id)
+  // Cascade the execution ledger: frees any live run claim and drops the
+  // task's runs/completions/watermarks. Advisory — a ledger hiccup must
+  // not block deletion (the boot sweep reaps stragglers).
   try {
-    const task = requireTask(identifier)
-    getSharedBakinTaskStore().removeSync(task.id)
-    void cancelWorkflowInstance(task.id)
-    // Cascade the execution ledger: frees any live run claim and drops the
-    // task's runs/completions/watermarks. Advisory — a ledger hiccup must
-    // not block deletion (the boot sweep reaps stragglers).
-    try {
-      purgeTaskRows(task.id)
-    } catch (err) {
-      log.warn('Ledger purge failed for deleted task; boot sweep will reap', { taskId: task.id, err: err instanceof Error ? err.message : String(err) })
-    }
-    return Promise.resolve()
+    purgeTaskRows(task.id)
   } catch (err) {
-    return Promise.reject(err)
+    log.warn('Ledger purge failed for deleted task; boot sweep will reap', { taskId: task.id, err: err instanceof Error ? err.message : String(err) })
   }
+  getSharedBakinTaskStore().removeSync(task.id)
+  return task.id
 }
 
 export function addTaskLog(identifier: string, author: string, message: string, data?: Record<string, unknown>): Promise<void> {

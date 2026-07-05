@@ -19,6 +19,12 @@ export type RuntimeErrorKind =
   | 'provider_cooldown'
   /** Structured runtime failure (HTTP-status class, CLI exit, protocol). */
   | 'runtime_failed'
+  /**
+   * The caller intentionally cancelled the turn (MessageArgs.signal) —
+   * terminal: never retried, never diagnosed, never enters the recovery
+   * ladder.
+   */
+  | 'aborted'
 
 /**
  * Structured provider metadata for `provider_cooldown` failures, extracted by
