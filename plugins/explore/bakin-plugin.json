@@ -31,7 +31,7 @@
     "nav": [
       {
         "id": "explore",
-        "label": "Explore",
+        "label": "Extend Bakin",
         "icon": "Compass",
         "href": "/explore",
         "placement": "bottom"

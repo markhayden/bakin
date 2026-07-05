@@ -183,7 +183,7 @@ function ExplorePageInner() {
   return (
     <div className="p-6 flex flex-col flex-1 gap-6">
       <PluginHeader
-        title="Explore"
+        title="Extend Bakin"
         count={entries.length}
         subtitle="Do more with Bakin — official agents, plugins, and packs"
         actions={

@@ -26,7 +26,9 @@ removes, syncs, or repairs anything.
   manifest `contributes.routes`; a `page:/…` slot alone renders
   "Page not found." (Every core plugin page works this way — see
   `routes/models.tsx` etc.)
-- Nav is pinned to the sidebar bottom above Settings via the generic
+- Nav label is **"Extend Bakin"** (plugin id stays `explore`; "Explore"
+  undersold the add-on angle). Pinned to the sidebar bottom above Settings
+  via the generic
   `NavItem.placement: 'bottom'` field (added for this plugin):
   - `packages/sdk/src/types/registration.ts` + `packages/core/src/plugin-types.ts`
     (two-tier NavItem contract — both carry `placement`).
