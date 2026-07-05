@@ -13,13 +13,15 @@ import { MarkdownEditTab } from './markdown-edit-tab'
 import { HeartbeatTab } from './heartbeat-tab'
 import { ActiveContextTab } from './active-context-tab'
 import { OverviewTab } from './overview-tab'
+import { DiagnosticsTab } from './diagnostics-tab'
 import { EmptyState, ConfirmDialog } from '@makinbakin/sdk/components'
 import type { AgentProfile, SkillSummary, PackageStateRow } from '../types'
 
-type Tab = 'overview' | 'identity' | 'soul' | 'memory' | 'heartbeat' | 'rules' | 'tools' | 'skills' | 'lessons' | 'active-context'
+type Tab = 'overview' | 'diagnostics' | 'identity' | 'soul' | 'memory' | 'heartbeat' | 'rules' | 'tools' | 'skills' | 'lessons' | 'active-context'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
+  { id: 'diagnostics', label: 'Diagnostics' },
   { id: 'identity', label: 'Identity' },
   { id: 'soul', label: 'Soul' },
   { id: 'memory', label: 'Memory' },
@@ -239,6 +241,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
             savingModel={savingModel}
           />
         )}
+        {activeTab === 'diagnostics' && <DiagnosticsTab agentId={agentId} />}
         {activeTab === 'memory' && <MemoryTab agentId={agentId} />}
         {activeTab === 'heartbeat' && <HeartbeatTab agentId={agentId} />}
         {activeTab === 'identity' && <MarkdownEditTab agentId={agentId} filename="IDENTITY.md" initialContent={profile.identity} />}
