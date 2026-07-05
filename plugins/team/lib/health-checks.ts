@@ -195,31 +195,46 @@ export async function checkAgentSync(): Promise<HealthCheckResult[]> {
   const fixable = report.findings.filter((f) => f.severity === 'warn' && f.autoFixable)
   const locked = report.findings.filter((f) => f.type === 'user-edited')
   const migration = report.findings.filter((f) => f.type === 'migration-needed')
+  // Machine-readable attribution for dashboards (#385) — never parse messages.
+  const agentsOf = (findings: typeof report.findings) =>
+    [...new Set(findings.map((f) => f.agentId).filter((a): a is string => Boolean(a)))]
 
   if (errors.length > 0) {
-    results.push(error(
-      'agent-sync',
-      `${errors.length} structural issue(s): ${errors.slice(0, 3).map((f) => f.message).join('; ')}${errors.length > 3 ? '; …' : ''}`,
-    ))
+    results.push({
+      ...error(
+        'agent-sync',
+        `${errors.length} structural issue(s): ${errors.slice(0, 3).map((f) => f.message).join('; ')}${errors.length > 3 ? '; …' : ''}`,
+      ),
+      data: { agents: agentsOf(errors) },
+    })
   }
   if (fixable.length > 0) {
-    results.push(warn(
-      'agent-sync',
-      `${fixable.length} stale item(s): ${fixable.slice(0, 3).map((f) => f.message).join('; ')}${fixable.length > 3 ? '; …' : ''}`,
-      true,
-    ))
+    results.push({
+      ...warn(
+        'agent-sync',
+        `${fixable.length} stale item(s): ${fixable.slice(0, 3).map((f) => f.message).join('; ')}${fixable.length > 3 ? '; …' : ''}`,
+        true,
+      ),
+      data: { agents: agentsOf(fixable) },
+    })
   }
   if (migration.length > 0) {
-    results.push(warn(
-      'agent-sync',
-      `${migration.length} package(s) need the one-time block migration — run \`bakin agents sync\` and confirm`,
-    ))
+    results.push({
+      ...warn(
+        'agent-sync',
+        `${migration.length} package(s) need the one-time block migration — run \`bakin agents sync\` and confirm`,
+      ),
+      data: { agents: agentsOf(migration) },
+    })
   }
   if (locked.length > 0) {
-    results.push(warn(
-      'agent-sync',
-      `${locked.length} user-edited file(s) locked from sync: ${locked.map((f) => f.target).join(', ')}`,
-    ))
+    results.push({
+      ...warn(
+        'agent-sync',
+        `${locked.length} user-edited file(s) locked from sync: ${locked.map((f) => f.target).join(', ')}`,
+      ),
+      data: { agents: agentsOf(locked) },
+    })
   }
   return results
 }

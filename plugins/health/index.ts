@@ -32,6 +32,7 @@ import { checkRestartRecovery } from './lib/system-checks/restart-recovery'
 import { checkExecutionSafety } from './lib/system-checks/execution-safety'
 import { checkStartupContextSize } from './lib/system-checks/context-report'
 import { checkBudget } from './lib/system-checks/budget'
+import { checkAgentBurn } from './lib/system-checks/agent-burn'
 import { checkSearchAdapter } from './lib/system-checks/search'
 import { checkSearchOutbox, searchOutboxRepair } from './lib/system-checks/search-outbox'
 import { checkSearchConsistency, searchConsistencyRepair } from './lib/system-checks/search-consistency'
@@ -637,6 +638,11 @@ const healthPlugin: BakinPlugin = definePlugin({
       id: 'budget',
       name: 'Spend vs budget caps',
       run: () => checkBudget(),
+    })
+    ctx.registerHealthCheck({
+      id: 'usage.agent-burn',
+      name: 'Agent token burn (effort, spikes, unattributed)',
+      run: () => checkAgentBurn(),
     })
     ctx.registerHealthCheck({
       id: 'search',
