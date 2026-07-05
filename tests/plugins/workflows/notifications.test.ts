@@ -186,10 +186,12 @@ describe('runtime gate notifications', () => {
       enabledSettings,
     )
 
-    // Root card: compact, no files, points into the thread.
+    // Root card: pure header + links, no Details body, no files.
     const [rootCall] = rt.deliverContent.mock.calls[0] as unknown as [{ channels: string[]; content: { body: string; files?: unknown[] } }]
     expect(rootCall.channels).toEqual(['discord:123'])
-    expect(rootCall.content.body).toContain('_Decision buttons in the thread ↓_')
+    expect(rootCall.content.body).toContain('_Full output & decision buttons in the thread ↓_')
+    expect(rootCall.content.body).not.toContain('Details:')
+    expect(rootCall.content.body).not.toContain('Hello world')
     expect(rootCall.content.files).toBeUndefined()
 
     // Thread anchored to the root message.
@@ -199,9 +201,12 @@ describe('runtime gate notifications', () => {
       name: 'content-pipeline — Review Draft',
     })
 
-    // Short output fits the root preview — no duplicate post in the thread
-    // (Discord echoes the root card at the top of the thread already).
-    expect(rt.deliverContent.mock.calls).toHaveLength(1)
+    // Full output posted in the thread, links not repeated there.
+    const [threadCall] = rt.deliverContent.mock.calls[1] as unknown as [{ channels: string[]; content: { body: string } }]
+    expect(threadCall.channels).toEqual(['discord:channel:777'])
+    expect(threadCall.content.body).toContain('**Details:**')
+    expect(threadCall.content.body).toContain('Hello world')
+    expect(threadCall.content.body).not.toContain('[Review & Approve in Bakin]')
 
     // Button card routed into the thread via context.threadId.
     const [approvalCall] = createApproval.mock.calls[0] as unknown as [{ request: { context: { threadId?: string } } }]
@@ -225,27 +230,13 @@ describe('runtime gate notifications', () => {
     expect(rt.deliverContent.mock.calls).toHaveLength(1)
   })
 
-  it('posts the full output in the thread only when the root preview truncates it', async () => {
+  it('uses the buttons-only pointer when there is no output to post', async () => {
     const rt = threadedRuntime()
-    const longCaption = 'A very considered caption. '.repeat(80)
 
-    await sendGateApprovalRequest(
-      mockInstance,
-      'review-gate',
-      'Review Draft',
-      { caption: longCaption },
-      enabledSettings,
-    )
+    await sendGateApprovalRequest(mockInstance, 'review-gate', 'Review Draft', {}, enabledSettings)
 
     const [rootCall] = rt.deliverContent.mock.calls[0] as unknown as [{ content: { body: string } }]
-    expect(rootCall.content.body).toContain('…')
-    expect(rootCall.content.body).toContain('_Full output & decision buttons in the thread ↓_')
-
-    const [threadCall] = rt.deliverContent.mock.calls[1] as unknown as [{ channels: string[]; content: { body: string } }]
-    expect(threadCall.channels).toEqual(['discord:channel:777'])
-    expect(threadCall.content.body).toContain(longCaption.trim())
-    // No duplicated links inside the thread — the echoed root card has them.
-    expect(threadCall.content.body).not.toContain('[Review & Approve in Bakin]')
+    expect(rootCall.content.body).toContain('_Decision buttons in the thread ↓_')
   })
 
   it('falls back to a flat channel message when thread creation fails', async () => {

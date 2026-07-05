@@ -318,11 +318,6 @@ interface GateThreadInfo {
   threadId?: string
 }
 
-// Generous: typical gate outputs (captions, briefs) should render WHOLE on
-// the root card so the thread never near-duplicates it. Only genuinely long
-// outputs truncate here and get the full copy posted in the thread.
-// Discord bot messages cap at ~2000 chars; leave room for header + links.
-const GATE_OUTPUT_PREVIEW_CHARS = 1200
 
 /**
  * Post the human-readable gate context to the approvals channel. When the
@@ -387,26 +382,24 @@ async function sendGateContextMessage(
       return { deliveries: result.deliveries }
     }
 
-    // Threaded mode: compact card in the channel...
-    const truncated = fullOutput.length > GATE_OUTPUT_PREVIEW_CHARS
-    const preview = truncated ? `${fullOutput.slice(0, GATE_OUTPUT_PREVIEW_CHARS)}…` : fullOutput
-    const pointer = truncated
+    // Threaded mode: the root card is pure header — no output body at all.
+    // The full details live in the thread (Discord echoes the root card at
+    // the top of the thread, so any root body would read as a duplicate).
+    const hasDetails = Boolean(fullOutput) || files.length > 0
+    const pointer = hasDetails
       ? '_Full output & decision buttons in the thread ↓_'
       : '_Decision buttons in the thread ↓_'
     const rootResult = await runtime.channels.deliverContent({
       channels: [resolvedChannel],
       content: {
         title: '',
-        body: [header, preview, `${pointer}\n${links}`].filter(Boolean).join('\n\n'),
+        body: [header, `${pointer}\n${links}`].join('\n\n'),
         metadata,
       },
     })
     const rootDelivery = rootResult.deliveries[0]
     const deliveries: ApprovalDelivery[] = [...rootResult.deliveries]
 
-    // ...then a thread anchored to it. Discord echoes the root card at the
-    // top of the thread, so only post there when the thread ADDS something:
-    // output the preview truncated, or media attachments.
     let threadId: string | undefined
     if (rootDelivery?.ref) {
       try {
@@ -422,7 +415,7 @@ async function sendGateContextMessage(
     }
     if (threadId) {
       deliveries.push({ channelId: resolvedChannel, ref: `thread:${threadId}`, renderedAt: rootDelivery?.renderedAt ?? new Date().toISOString() })
-      if (truncated || files.length > 0) {
+      if (hasDetails) {
         const provider = resolvedChannel.split(':')[0]
         await runtime.channels.deliverContent({
           channels: [`${provider}:channel:${threadId}`],
