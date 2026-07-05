@@ -5,7 +5,7 @@
  * file. Everything here is parameterized by a contentDir and carries no
  * workflow semantics — pure persistence.
  */
-import { readFileSync, readdirSync, existsSync, mkdirSync } from 'fs'
+import { readFileSync, readdirSync, existsSync, mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { randomBytes } from 'crypto'
 import { atomicWriteJson } from '@bakin/core/storage/atomic-write'
@@ -41,6 +41,15 @@ export function saveInstance(instance: WorkflowInstance, contentDir?: string): v
   // Atomic: this is the engine's state file — a crash mid-write must never
   // leave a truncated instance behind.
   atomicWriteJson(getInstancePath(dir, instance.taskId), instance)
+}
+
+/** Delete a task's workflow instance file. Returns whether one existed. */
+export function deleteInstance(taskId: string, contentDir?: string): boolean {
+  const dir = contentDir || getContentDir()
+  const path = getInstancePath(dir, taskId)
+  if (!existsSync(path)) return false
+  rmSync(path, { force: true })
+  return true
 }
 
 /**

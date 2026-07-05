@@ -33,6 +33,31 @@ const ProjectionKindSchema = z.enum([
 ])
 
 /**
+ * Per-kind lifecycle policy for plain file projections — the ONE declaration
+ * of seed-once / sidecar / uninstall semantics, consulted by the projector
+ * (uninstall) and the sync-scanner (drift expectations) instead of each
+ * special-casing kinds inline. workspace-file and lesson-marker rows are NOT
+ * plain file drops (managed-block surgery) and keep their structural
+ * branches; their entries here document the semantics all the same.
+ */
+export interface ProjectionKindPolicy {
+  /** Written only when absent — the file is user territory from then on: no drift checks, no reclaim. */
+  seedOnce: boolean
+  /** No .installedBy sidecar accompanies the projection; a scan must not demand one. */
+  sidecarless: boolean
+  /** Package removal leaves the projected file behind. */
+  survivesUninstall: boolean
+}
+
+export const PROJECTION_KIND_POLICY: Record<ProjectionKind, ProjectionKindPolicy> = {
+  skill: { seedOnce: false, sidecarless: false, survivesUninstall: false },
+  asset: { seedOnce: false, sidecarless: false, survivesUninstall: false },
+  'workspace-file': { seedOnce: false, sidecarless: true, survivesUninstall: true },
+  persona: { seedOnce: true, sidecarless: true, survivesUninstall: true },
+  'lesson-marker': { seedOnce: false, sidecarless: true, survivesUninstall: true },
+}
+
+/**
  * Per-input shas recorded for composed workspace-file projections so drift
  * findings can attribute staleness to the layer that changed
  * (package template / global context / team context / lessons).

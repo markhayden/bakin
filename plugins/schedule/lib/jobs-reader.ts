@@ -147,7 +147,19 @@ export function storeJobToSnapshot(meta: BakinJobMeta): RuntimeCronJobSnapshot {
  *  the schedule store; only genuinely-orphaned NON-Bakin sidecar entries (a
  *  native cron deleted out-of-band) are swept. */
 export async function readMergedJobs(cron: RuntimeCronReader, defaultOwner: string): Promise<MergedJob[]> {
-  const runtimeJobs = (await cron.list()).map(runtimeCronToScheduleJob)
+  // Runtime cron jobs are a read-only surfacing; an unreachable runtime
+  // (no openclaw binary on PATH, gateway down) must not take the whole
+  // schedule plugin with it — Bakin-owned schedules keep working regardless.
+  let runtimeJobs: ReturnType<typeof runtimeCronToScheduleJob>[] = []
+  let runtimeAvailable = true
+  try {
+    runtimeJobs = (await cron.list()).map(runtimeCronToScheduleJob)
+  } catch (err) {
+    runtimeAvailable = false
+    log.warn('Runtime cron unavailable — surfacing Bakin-owned schedules only', {
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
   const runtimeIds = new Set(runtimeJobs.map(j => j.id))
   const sidecar = readSidecar()
 
@@ -161,15 +173,18 @@ export async function readMergedJobs(cron: RuntimeCronReader, defaultOwner: stri
 
   // Sweep only NON-Bakin sidecar orphans (a native cron removed out-of-band).
   // Store-owned Bakin schedules intentionally have no runtime cron and must be
-  // kept; they are deleted only through the explicit delete route.
-  let dirty = false
-  for (const [jobId, meta] of Object.entries(sidecar.jobs)) {
-    if (runtimeIds.has(jobId) || meta.isBakinJob) continue
-    log.info('Removing stale non-Bakin sidecar entry', { jobId })
-    delete sidecar.jobs[jobId]
-    dirty = true
+  // kept; they are deleted only through the explicit delete route. NEVER sweep
+  // after a failed runtime read — every non-Bakin entry would look orphaned.
+  if (runtimeAvailable) {
+    let dirty = false
+    for (const [jobId, meta] of Object.entries(sidecar.jobs)) {
+      if (runtimeIds.has(jobId) || meta.isBakinJob) continue
+      log.info('Removing stale non-Bakin sidecar entry', { jobId })
+      delete sidecar.jobs[jobId]
+      dirty = true
+    }
+    if (dirty) writeSidecar(sidecar)
   }
-  if (dirty) writeSidecar(sidecar)
 
   return merged
 }

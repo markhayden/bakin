@@ -9,7 +9,6 @@ import type {
   ScannedDocument,
   SearchAdapterCapabilities,
   TableConfig,
-  TableHealth,
   TableInfo,
   TableLegHealth,
   TableStats,

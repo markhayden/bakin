@@ -302,6 +302,26 @@ describe('schedule/jobs-reader', () => {
       expect(sidecar.jobs.bakinOwned).toBeDefined()
     })
 
+    it('degrades to Bakin-owned schedules when the runtime cron read fails', async () => {
+      writeSidecarFile({
+        version: 1,
+        jobs: {
+          bakinOwned: makeMeta({ jobId: 'bakinOwned', displayName: 'Survivor', schedule: { kind: 'cron', expr: '0 9 * * *' } }),
+          // Non-Bakin sidecar entry: looks orphaned when the runtime read
+          // fails, but must NOT be swept on a failed read.
+          nativeEntry: makeMeta({ jobId: 'nativeEntry', isBakinJob: false }),
+        },
+      })
+
+      const failingReader = { list: async () => { throw new Error('OpenClaw command failed (ENOENT): openclaw cron list') } }
+      const jobs = await readMergedJobs(failingReader as Parameters<typeof readMergedJobs>[0], defaultOwner)
+      expect(jobs).toHaveLength(1)
+      expect(jobs[0].id).toBe('bakinOwned')
+
+      const sidecar = JSON.parse(readFileSync(sidecarPath, 'utf-8')) as ScheduleSidecar
+      expect(sidecar.jobs.nativeEntry).toBeDefined()
+    })
+
     it('surfaces store-owned Bakin schedules that have no runtime cron', async () => {
       writeSidecarFile({
         version: 1,

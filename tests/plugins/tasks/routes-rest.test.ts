@@ -548,6 +548,25 @@ describe('DELETE /:taskId — Delete Task', () => {
   })
 
 
+  it('removes the workflow instance via the cross-plugin hook when registered', async () => {
+    mockDeleteTask.mockResolvedValue(undefined)
+    const hooks = activated.ctx.hooks as unknown as {
+      has: ReturnType<typeof mock>
+      invoke: ReturnType<typeof mock>
+    }
+    hooks.has.mockReturnValue(true)
+    hooks.invoke.mockClear()
+
+    const route = findRoute(activated.routes, 'DELETE', '/:taskId')!
+    const { status } = await callRoute(route, activated.ctx, {
+      searchParams: { taskId: 'task-with-wf' },
+    })
+
+    expect(status).toBe(200)
+    expect(hooks.invoke).toHaveBeenCalledWith('workflows.deleteInstance', { taskId: 'task-with-wf' })
+    hooks.has.mockReturnValue(false)
+  })
+
   it('returns 500 on delete error', async () => {
     mockDeleteTask.mockRejectedValue(new Error('delete failed'))
 

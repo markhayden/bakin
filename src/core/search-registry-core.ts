@@ -8,7 +8,6 @@
  * Uses globalThis so every reach into this module shares one registry.
  */
 import type {
-  FileBackedContentTypeDefinition,
   SearchContentTypeDefinition,
   SearchIndexDefinition,
   SearchQueryParams,

@@ -210,6 +210,12 @@ export const tasksRoutes = [
         ctx.activity.audit('deleted', 'system', { taskId: identifier })
         ctx.activity.log('system', `Deleted task "${identifier}"`, { taskId: identifier as string })
         ctx.search.remove(identifier as string).catch(() => {})
+        // Take the task's workflow instance file with it — an orphaned
+        // instance would otherwise linger forever. Best-effort via the
+        // cross-plugin hook: workflows being inactive must not fail the delete.
+        if (ctx.hooks.has('workflows.deleteInstance')) {
+          await ctx.hooks.invoke('workflows.deleteInstance', { taskId: identifier }).catch(() => {})
+        }
         return Response.json({ ok: true as const })
       } catch (err) {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })

@@ -10,7 +10,7 @@ import { rmSync, writeFileSync } from 'fs'
 import { randomUUID } from 'crypto'
 
 const testDir = join(tmpdir(), `bakin-test-multidb-${Date.now()}-${randomUUID()}`)
-let coordPath = join(testDir, 'bakin.db')
+const coordPath = join(testDir, 'bakin.db')
 let namedPath = join(testDir, 'search.db')
 
 const contentDirMock = () => ({

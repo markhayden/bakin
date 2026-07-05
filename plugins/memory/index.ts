@@ -40,7 +40,6 @@ import { createMemoryGetSessionTool } from './mcp/get-session'
 import { createMemoryGetTurnTool } from './mcp/get-turn'
 import { createMemoryListAgentsTool } from './mcp/list-agents'
 import { createMemoryStatusTool } from './mcp/status'
-import type { MemoryTier } from './lib/types'
 import { DEFAULTS, indexerOptionsFrom, resolveSettings } from './lib/settings'
 import { startTtlTimer, stopTtlTimer } from './lib/ttl-prune'
 import { checkSearchTables } from './lib/health-checks'
@@ -52,7 +51,6 @@ const log = createLogger('memory')
 // so watcher events can short-circuit until the table is guaranteed to
 // exist.
 let deferredBackfill: (() => Promise<void>) | null = null
-let activeIndexer: MemoryIndexer | null = null
 let ready = false
 let eventDisposers: Array<() => void> = []
 
@@ -152,7 +150,6 @@ const memoryPlugin: BakinPlugin = definePlugin({
 
     // ─── Indexer ────────────────────────────────────────────────────────────
     const indexer = new MemoryIndexer(ctx, indexerOptionsFrom(settings))
-    activeIndexer = indexer
 
     // ─── Search: unified bakin_memory table ─────────────────────────────────
     ctx.search.registerContentType({
@@ -276,7 +273,6 @@ const memoryPlugin: BakinPlugin = definePlugin({
   async onShutdown() {
     ready = false
     deferredBackfill = null
-    activeIndexer = null
     clearEventSubscriptions()
     stopTtlTimer()
   },

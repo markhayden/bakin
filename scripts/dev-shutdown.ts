@@ -70,7 +70,7 @@ export function registerDevShutdown({ proc, killTailwind, warn, forceKill }: Dev
     // Guarantee termination even if the graceful chain hangs OR proc.exit()
     // doesn't actually terminate (Bun + a live spawned child). A SINGLE Ctrl-C
     // is then always enough — no second signal needed.
-    const backstop = setTimeout(() => {
+    setTimeout(() => {
       warn('graceful shutdown took too long — forcing exit')
       hardKill()
     }, DEV_SHUTDOWN_GRACE_MS)

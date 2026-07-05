@@ -7,7 +7,7 @@
  * fix). Repair revives quarantined rows for one more attempt — useful
  * after an engine upgrade or a doc-shape fix.
  */
-import { healthOk, healthWarn, healthError } from '@makinbakin/sdk/utils'
+import { healthOk, healthWarn } from '@makinbakin/sdk/utils'
 import type { HealthCheckResult, HealthRepairHandler } from '../../../../packages/core/src/plugin-types'
 
 /** Pending rows older than this suggest the engine has been down a while. */

@@ -20,13 +20,6 @@ import { healthOk as ok, healthWarn as warn, healthError as error } from '@makin
 // ─── Result constructors (inlined; matches workflows precedent) ─────────────
 
 
-function documentCountFromStats(stats: Record<string, unknown> | null | undefined): number | null {
-  if (!stats) return null
-  const value = stats.documents ?? stats.num_docs ?? stats.documentCount
-  const count = typeof value === 'number' ? value : Number(value)
-  return Number.isFinite(count) ? count : null
-}
-
 // ─── Search tables: registered content types have stats / non-empty docs ──
 
 /**

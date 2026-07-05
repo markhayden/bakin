@@ -74,9 +74,14 @@ describe('usage recorder', () => {
       const feed = getUsageFeed({ kind: 'agent', window: '5m' })
       expect(feed.recent[0]).toMatchObject({ tokensCacheRead: 900, tokensCacheWrite: 40 })
       // Entries without cache usage keep the fields absent — never zeroed.
+      // Find by content, not position: recent[] is ts-DESC sorted, and the
+      // two entries only keep insertion order when they tie on the same
+      // millisecond — a positional index is a coin flip on slower runners.
       recordUsage({ kind: 'agent', name: 'turn', agent: 'pixel', durationMs: null, status: 'ok', tokensIn: 10 })
       const feed2 = getUsageFeed({ kind: 'agent', window: '5m' })
-      expect('tokensCacheRead' in feed2.recent[feed2.recent.length - 1]).toBe(false)
+      const noCacheEntry = feed2.recent.find((e) => e.tokensIn === 10)
+      expect(noCacheEntry).toBeDefined()
+      expect('tokensCacheRead' in noCacheEntry!).toBe(false)
     })
 
     it('tracks errors and errorRate', () => {

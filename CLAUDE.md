@@ -65,7 +65,7 @@ Core plugins build to `plugins/<id>/dist/`. User plugins build to `~/.bakin/plug
 
 Routes registered as `/api/plugins/{pluginId}/{path}`. Exec tools naming: `bakin_exec_{pluginId}_{action}`.
 
-Deep references: `.claude/knowledge/plugin-system.md`, `.claude/knowledge/workflows-plugin.md`, `docs/plugin-authoring.md`.
+Deep references: `.claude/knowledge/plugin-system.md`, `.claude/knowledge/workflows-plugin.md`, `docs/src/content/docs/extending/plugins/`.
 
 ## Agent Packages
 
@@ -75,7 +75,7 @@ Lockfile at `~/.bakin/packages/lock.json` is the canonical install ledger; every
 
 CLI: `bakin agents {install,list,remove,sync,lessons}` and `bakin packages {install,list,remove,sync}` — sync fetches the package source, recomposes managed blocks (global/role/team/package/lessons), re-projects skills/assets, verifies, and writes a receipt (`~/.bakin/packages/receipts/`); `--check` reports without writing; `--reclaim` is the confirmed path past `.userEdited` sentinels. REST: `/api/agent-packages/*` and `/api/packages/*` (top-level, distinct from runtime `/api/agents/*`). Doctor surfaces drift via the `team.agent-sync` check / `bakin check agent-sync` / `bakin install agent-sync`.
 
-Deep references: `.claude/knowledge/agent-packages.md`, `docs/agent-packages-authoring.md`.
+Deep references: `.claude/knowledge/agent-packages.md`, `docs/src/content/docs/extending/agents/packages.md`.
 
 ## Code Conventions
 
@@ -151,7 +151,7 @@ process.env.BAKIN_HOME = testDir
 import { ... } from '...'
 ```
 
-Run the full suite with `bun run test` (CI) or `bun run test:watch` (dev) — both pass `--path-ignore-patterns "**/dev/**"` so the dockerized-rig's disposable home (`dev/bakin-instances/`, gitignored) doesn't leak stray test files into the run. Individual file: `bun test tests/path/to/foo.test.ts --isolate`. `--isolate` gives each test file a fresh global so `mock.module` overlays don't leak across files. Integration tests that do REAL HTTP must use `Bun.fetch` — the happy-dom preload replaces global `fetch` with a browser emulation that breaks on real sockets.
+Run the full suite with `bun run test` (CI) or `bun run test:watch` (dev) — both pass `--path-ignore-patterns "dev/**"` so the dockerized-rig's disposable home (`dev/bakin-instances/`, gitignored) doesn't leak stray test files into the run (the pattern is root-anchored — `tests/dev/` still runs; an unanchored `**/dev/**` once hid those tests from every local run). Individual file: `bun test tests/path/to/foo.test.ts --isolate`. `--isolate` gives each test file a fresh global so `mock.module` overlays don't leak across files. Integration tests that do REAL HTTP must use `Bun.fetch` — the happy-dom preload replaces global `fetch` with a browser emulation that breaks on real sockets.
 
 Additional mandatory rules:
 - **Always clean up:** `afterAll(() => rmSync(testDir, { recursive: true, force: true }))`
@@ -194,8 +194,8 @@ If a test does not mock the content-dir resolvers, it **will** eventually write 
 ## Reference
 
 - **Contributing:** `CONTRIBUTING.md` — Bun setup, build pipeline, dev loop
-- **Plugin authoring:** `docs/plugin-authoring.md`
-- **Agent-package authoring:** `docs/agent-packages-authoring.md`
+- **Plugin authoring:** `docs/src/content/docs/extending/plugins/` (Astro docs site)
+- **Agent-package authoring:** `docs/src/content/docs/extending/agents/packages.md`
 - **Specs:** `.claude/specs/` — detailed specs for each hardening phase
 - **Knowledge:** `.claude/knowledge/` — deep dives on every system above
 - **Skills:** `.claude/skills/` — reusable Claude Code operations (create-plugin, audit-plugin, add-component)
