@@ -24,12 +24,11 @@
  */
 import { readdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import { homedir } from 'os'
 import { createInterface } from 'readline/promises'
+import { getContentDir } from '../packages/core/src/content-dir'
 
 const BAKIN_URL = process.env.BAKIN_URL || 'http://localhost:3737'
-const BAKIN_HOME = process.env.BAKIN_HOME || join(homedir(), '.bakin')
-const APPROVALS_DIR = join(BAKIN_HOME, 'workflows', 'approvals')
+const APPROVALS_DIR = join(getContentDir(), 'workflows', 'approvals')
 
 const GATE_WAIT_MS = 15 * 60 * 1000 // real agent turn precedes the gate
 const DECISION_WAIT_MS = 10 * 60 * 1000
