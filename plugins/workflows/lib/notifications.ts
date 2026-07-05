@@ -354,8 +354,8 @@ async function sendGateContextMessage(
 
     const header = [
       '🚦 **Task Needs Review**',
-      `**${label}** — \`${instance.workflowId}\``,
       '',
+      `**${label}** — \`${instance.workflowId}\``,
       `Task \`${instance.taskId}\` | Step \`${stepId}\``,
     ].join('\n')
     const links = `**[Review & Approve in Bakin](${approvalUrl})** · [View Task](${taskUrl})`
@@ -624,8 +624,10 @@ function renderPriorOutput(priorOutput: Record<string, unknown> | undefined, opt
   if (!priorOutput) return ''
   const lines = Object.entries(priorOutput)
     .flatMap(([key, value]) => renderOutputEntry(key, value, '', opts))
-  const rendered = lines.length > 0 ? lines.join('\n') : JSON.stringify(priorOutput, null, 2)
-  if (!rendered) return ''
+  // Nothing human-reviewable (empty or all-empty fields) → no Details
+  // section at all; never show reviewers a bare "{}".
+  if (lines.length === 0) return ''
+  const rendered = lines.join('\n')
   const cap = 4000
   const heading = opts.markdown ? '**Details:**' : 'Details:'
   return `${heading}\n${rendered.length > cap ? `${rendered.slice(0, cap)}\n...[truncated]` : rendered}`

@@ -214,6 +214,17 @@ describe('runtime gate notifications', () => {
     expect(refs).toContain('message:1')
   })
 
+  it('omits the Details section entirely when the step output is empty', async () => {
+    const rt = threadedRuntime()
+
+    await sendGateApprovalRequest(mockInstance, 'review-gate', 'Review Draft', {}, enabledSettings)
+
+    const [rootCall] = rt.deliverContent.mock.calls[0] as unknown as [{ content: { body: string } }]
+    expect(rootCall.content.body).not.toContain('Details:')
+    expect(rootCall.content.body).not.toContain('{}')
+    expect(rt.deliverContent.mock.calls).toHaveLength(1)
+  })
+
   it('posts the full output in the thread only when the root preview truncates it', async () => {
     const rt = threadedRuntime()
     const longCaption = 'A very considered caption. '.repeat(30)
@@ -361,7 +372,7 @@ describe('runtime gate notifications', () => {
     const body = call.content.body
     // Tight header block: gate label, identity line, and the workflow
     // author's gate description quoted — single newlines between them.
-    expect(body).toContain('🚦 **Task Needs Review**\n**Review Draft** — `content-pipeline`\n\nTask `task-42` | Step `review-gate`')
+    expect(body).toContain('🚦 **Task Needs Review**\n\n**Review Draft** — `content-pipeline`\nTask `task-42` | Step `review-gate`')
     expect(body).not.toContain('Owner reviews the draft before publishing')
     expect(body).toContain('Hello world')
     expect(body).toMatch(/\*\*\[Review & Approve in Bakin\]\(http.*\/gates\/task-42\/decision\?stepId=review-gate\)\*\* · \[View Task\]\(http.*\/\?taskId=task-42\)/)
