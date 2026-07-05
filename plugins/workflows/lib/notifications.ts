@@ -318,7 +318,11 @@ interface GateThreadInfo {
   threadId?: string
 }
 
-const GATE_OUTPUT_PREVIEW_CHARS = 300
+// Generous: typical gate outputs (captions, briefs) should render WHOLE on
+// the root card so the thread never near-duplicates it. Only genuinely long
+// outputs truncate here and get the full copy posted in the thread.
+// Discord bot messages cap at ~2000 chars; leave room for header + links.
+const GATE_OUTPUT_PREVIEW_CHARS = 1200
 
 /**
  * Post the human-readable gate context to the approvals channel. When the

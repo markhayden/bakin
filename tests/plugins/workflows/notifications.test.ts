@@ -227,7 +227,7 @@ describe('runtime gate notifications', () => {
 
   it('posts the full output in the thread only when the root preview truncates it', async () => {
     const rt = threadedRuntime()
-    const longCaption = 'A very considered caption. '.repeat(30)
+    const longCaption = 'A very considered caption. '.repeat(80)
 
     await sendGateApprovalRequest(
       mockInstance,
