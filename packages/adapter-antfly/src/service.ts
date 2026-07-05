@@ -238,6 +238,32 @@ export interface EnsureResult {
   action: 'unchanged' | 'provisioned' | 'restarted' | 'skipped'
 }
 
+/** The --data-dir argument in a rendered plist/unit, for repoint detection. */
+function extractDataDir(unitContent: string): string | null {
+  const plist = /<string>--data-dir<\/string>\s*<string>([^<]+)<\/string>/.exec(unitContent)
+  if (plist) return plist[1]
+  const flat = /--data-dir\s+(\S+)/.exec(unitContent)
+  return flat ? flat[1] : null
+}
+
+/**
+ * The OS service is MACHINE-GLOBAL but its data dir follows whichever
+ * BAKIN_HOME ran the install — an isolated/dev home can silently hijack the
+ * service away from the production home. Rewrites that change the data dir
+ * get a loud warning naming both sides so the repoint is never invisible.
+ */
+function warnOnDataDirRepoint(current: string | null, nextDataDir: string): void {
+  if (current === null) return
+  const previous = extractDataDir(current)
+  if (previous && previous !== nextDataDir) {
+    log.warn('search service data-dir REPOINTED — the OS service is machine-global and now serves a different Bakin home', {
+      from: previous,
+      to: nextDataDir,
+      hint: 'run `bakin install search` from the home that should own the service to point it back',
+    })
+  }
+}
+
 /**
  * Idempotent provisioning: byte-compare the rendered unit with on-disk.
  * Identical → nothing (the whole boot-time cost is one file read). Drift →
@@ -258,6 +284,7 @@ export async function ensureProvisioned(settings: AntflySettings, io: ServiceIo 
     const desired = renderLaunchdPlist(argv, paths.logFile)
     const current = existsSync(plistPath) ? readFileSync(plistPath, 'utf-8') : null
     if (current === desired) return { mode, action: 'unchanged' }
+    warnOnDataDirRepoint(current, paths.dataDir)
     mkdirSync(dirname(plistPath), { recursive: true })
     writeFileSync(plistPath, desired)
     const uid = typeof process.getuid === 'function' ? process.getuid() : 501
@@ -281,6 +308,7 @@ export async function ensureProvisioned(settings: AntflySettings, io: ServiceIo 
   const desired = renderSystemdUnit(argv, paths.logFile)
   const current = existsSync(unitPath) ? readFileSync(unitPath, 'utf-8') : null
   if (current === desired) return { mode, action: 'unchanged' }
+  warnOnDataDirRepoint(current, paths.dataDir)
   mkdirSync(dirname(unitPath), { recursive: true })
   writeFileSync(unitPath, desired)
   await io.exec('systemctl', ['--user', 'daemon-reload'])

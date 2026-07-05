@@ -1,6 +1,6 @@
 # Agent Packages — Deep Reference
 
-> **For:** future Claude sessions or human contributors needing to understand the agent-packages internals end-to-end. The author-facing surface lives in `docs/agent-packages-authoring.md`; this doc covers what's INSIDE the system.
+> **For:** future Claude sessions or human contributors needing to understand the agent-packages internals end-to-end. The author-facing surface lives in `docs/src/content/docs/extending/agents/packages.md`; this doc covers what's INSIDE the system.
 
 ## Why this primitive exists
 
