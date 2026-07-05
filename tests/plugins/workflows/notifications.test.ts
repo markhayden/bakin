@@ -189,7 +189,7 @@ describe('runtime gate notifications', () => {
     // Root card: compact, no files, points into the thread.
     const [rootCall] = rt.deliverContent.mock.calls[0] as unknown as [{ channels: string[]; content: { body: string; files?: unknown[] } }]
     expect(rootCall.channels).toEqual(['discord:123'])
-    expect(rootCall.content.body).toContain('_Full output & decision buttons in the thread ↓_')
+    expect(rootCall.content.body).toContain('_Decision buttons in the thread ↓_')
     expect(rootCall.content.files).toBeUndefined()
 
     // Thread anchored to the root message.
@@ -199,11 +199,9 @@ describe('runtime gate notifications', () => {
       name: 'content-pipeline — Review Draft',
     })
 
-    // Full output posted inside the thread.
-    const [threadCall] = rt.deliverContent.mock.calls[1] as unknown as [{ channels: string[]; content: { body: string } }]
-    expect(threadCall.channels).toEqual(['discord:channel:777'])
-    expect(threadCall.content.body).toContain('**For review:**')
-    expect(threadCall.content.body).toContain('Hello world')
+    // Short output fits the root preview — no duplicate post in the thread
+    // (Discord echoes the root card at the top of the thread already).
+    expect(rt.deliverContent.mock.calls).toHaveLength(1)
 
     // Button card routed into the thread via context.threadId.
     const [approvalCall] = createApproval.mock.calls[0] as unknown as [{ request: { context: { threadId?: string } } }]
@@ -214,6 +212,29 @@ describe('runtime gate notifications', () => {
     expect(refs).toContain('message:42')
     expect(refs).toContain('thread:777')
     expect(refs).toContain('message:1')
+  })
+
+  it('posts the full output in the thread only when the root preview truncates it', async () => {
+    const rt = threadedRuntime()
+    const longCaption = 'A very considered caption. '.repeat(30)
+
+    await sendGateApprovalRequest(
+      mockInstance,
+      'review-gate',
+      'Review Draft',
+      { caption: longCaption },
+      enabledSettings,
+    )
+
+    const [rootCall] = rt.deliverContent.mock.calls[0] as unknown as [{ content: { body: string } }]
+    expect(rootCall.content.body).toContain('…')
+    expect(rootCall.content.body).toContain('_Full output & decision buttons in the thread ↓_')
+
+    const [threadCall] = rt.deliverContent.mock.calls[1] as unknown as [{ channels: string[]; content: { body: string } }]
+    expect(threadCall.channels).toEqual(['discord:channel:777'])
+    expect(threadCall.content.body).toContain(longCaption.trim())
+    // No duplicated links inside the thread — the echoed root card has them.
+    expect(threadCall.content.body).not.toContain('[Review & Approve in Bakin]')
   })
 
   it('falls back to a flat channel message when thread creation fails', async () => {
@@ -340,7 +361,8 @@ describe('runtime gate notifications', () => {
     const body = call.content.body
     // Tight header block: gate label, identity line, and the workflow
     // author's gate description quoted — single newlines between them.
-    expect(body).toContain('🚦 **Review Draft** — `content-pipeline`\nTask `task-42` · step `review-gate`\n> Owner reviews the draft before publishing')
+    expect(body).toContain('🚦 **Task Needs Review**\n**Review Draft** — `content-pipeline`\n\nTask `task-42` | Step `review-gate`')
+    expect(body).not.toContain('Owner reviews the draft before publishing')
     expect(body).toContain('Hello world')
     expect(body).toMatch(/\*\*\[Review & Approve in Bakin\]\(http.*\/gates\/task-42\/decision\?stepId=review-gate\)\*\* · \[View Task\]\(http.*\/\?taskId=task-42\)/)
     // Divider separates the context message from the provider's button card.
@@ -364,7 +386,7 @@ describe('runtime gate notifications', () => {
 
     const [call] = deliverContent.mock.calls[0] as unknown as [{ content: { body: string } }]
     const body = call.content.body
-    expect(body).toContain('**For review:**')
+    expect(body).toContain('**Details:**')
     expect(body).toContain('**Caption:**')
     expect(body).toContain('Testing automation turns the slow')
     expect(body).toContain('**Target platform:** LinkedIn')

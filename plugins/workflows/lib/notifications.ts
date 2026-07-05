@@ -12,7 +12,6 @@ import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { createLogger } from '../../../src/core/logger'
 import { resolveRuntimeChannelRef } from '../../../src/core/channel-aliases'
 import { createApprovalRecord, resolveApprovalRecord, updateApprovalDeliveries } from './approval-store'
-import { getGateDescription } from './gate-audit'
 
 const log = createLogger('workflow-notifications')
 
@@ -352,13 +351,12 @@ async function sendGateContextMessage(
     const base = process.env.BAKIN_URL || 'http://localhost:3737'
     const approvalUrl = typeof context?.approvalUrl === 'string' ? context.approvalUrl : buildGateApprovalUrl(instance.taskId, stepId)
     const taskUrl = `${base}/?taskId=${encodeURIComponent(instance.taskId)}`
-    const gateDescription = getGateDescription(instance.workflowId, stepId)
 
     const header = [
-      `🚦 **${label}** — \`${instance.workflowId}\``,
-      `Task \`${instance.taskId}\` · step \`${stepId}\``,
-      // The workflow author's gate description, quoted as the workflow's words.
-      ...(gateDescription ? [`> ${gateDescription}`] : []),
+      '🚦 **Task Needs Review**',
+      `**${label}** — \`${instance.workflowId}\``,
+      '',
+      `Task \`${instance.taskId}\` | Step \`${stepId}\``,
     ].join('\n')
     const links = `**[Review & Approve in Bakin](${approvalUrl})** · [View Task](${taskUrl})`
     const fullOutput = renderPriorOutput(priorOutput, { markdown: true })
@@ -386,25 +384,25 @@ async function sendGateContextMessage(
     }
 
     // Threaded mode: compact card in the channel...
-    const preview = fullOutput.length > GATE_OUTPUT_PREVIEW_CHARS
-      ? `${fullOutput.slice(0, GATE_OUTPUT_PREVIEW_CHARS)}…`
-      : fullOutput
+    const truncated = fullOutput.length > GATE_OUTPUT_PREVIEW_CHARS
+    const preview = truncated ? `${fullOutput.slice(0, GATE_OUTPUT_PREVIEW_CHARS)}…` : fullOutput
+    const pointer = truncated
+      ? '_Full output & decision buttons in the thread ↓_'
+      : '_Decision buttons in the thread ↓_'
     const rootResult = await runtime.channels.deliverContent({
       channels: [resolvedChannel],
       content: {
         title: '',
-        body: [
-          header,
-          preview,
-          `_Full output & decision buttons in the thread ↓_\n${links}`,
-        ].filter(Boolean).join('\n\n'),
+        body: [header, preview, `${pointer}\n${links}`].filter(Boolean).join('\n\n'),
         metadata,
       },
     })
     const rootDelivery = rootResult.deliveries[0]
     const deliveries: ApprovalDelivery[] = [...rootResult.deliveries]
 
-    // ...then a thread anchored to it carrying the full output + media.
+    // ...then a thread anchored to it. Discord echoes the root card at the
+    // top of the thread, so only post there when the thread ADDS something:
+    // output the preview truncated, or media attachments.
     let threadId: string | undefined
     if (rootDelivery?.ref) {
       try {
@@ -420,16 +418,18 @@ async function sendGateContextMessage(
     }
     if (threadId) {
       deliveries.push({ channelId: resolvedChannel, ref: `thread:${threadId}`, renderedAt: rootDelivery?.renderedAt ?? new Date().toISOString() })
-      const provider = resolvedChannel.split(':')[0]
-      await runtime.channels.deliverContent({
-        channels: [`${provider}:channel:${threadId}`],
-        content: {
-          title: '',
-          body: [fullOutput || 'No step output attached.', links].join('\n\n'),
-          ...(files.length > 0 ? { files } : {}),
-          metadata,
-        },
-      }).catch((err) => log.warn('Gate thread context post failed', err, { taskId: instance.taskId, stepId }))
+      if (truncated || files.length > 0) {
+        const provider = resolvedChannel.split(':')[0]
+        await runtime.channels.deliverContent({
+          channels: [`${provider}:channel:${threadId}`],
+          content: {
+            title: '',
+            body: fullOutput || 'No step output attached.',
+            ...(files.length > 0 ? { files } : {}),
+            metadata,
+          },
+        }).catch((err) => log.warn('Gate thread context post failed', err, { taskId: instance.taskId, stepId }))
+      }
     }
     return { deliveries, threadId }
   } catch (err) {
@@ -627,7 +627,7 @@ function renderPriorOutput(priorOutput: Record<string, unknown> | undefined, opt
   const rendered = lines.length > 0 ? lines.join('\n') : JSON.stringify(priorOutput, null, 2)
   if (!rendered) return ''
   const cap = 4000
-  const heading = opts.markdown ? '**For review:**' : 'For review:'
+  const heading = opts.markdown ? '**Details:**' : 'Details:'
   return `${heading}\n${rendered.length > cap ? `${rendered.slice(0, cap)}\n...[truncated]` : rendered}`
 }
 
