@@ -41,6 +41,40 @@ description: Generated reference for Bakin core settings defaults.
   </tbody>
 </table>
 
+## Burn
+
+<table class="settings-defaults-table">
+  <thead>
+    <tr><th>Key</th><th>Default</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>burn.baselineDays</code></td>
+      <td><code>7</code></td>
+    </tr>
+    <tr>
+      <td><code>burn.minTokensFloor</code></td>
+      <td><code>500000</code></td>
+    </tr>
+    <tr>
+      <td><code>burn.spikeMultiplier</code></td>
+      <td><code>3</code></td>
+    </tr>
+    <tr>
+      <td><code>burn.unattributedFloorTokens</code></td>
+      <td><code>100000</code></td>
+    </tr>
+    <tr>
+      <td><code>burn.unattributedShare</code></td>
+      <td><code>0.5</code></td>
+    </tr>
+    <tr>
+      <td><code>burn.windowHours</code></td>
+      <td><code>24</code></td>
+    </tr>
+  </tbody>
+</table>
+
 ## Diagnostics
 
 <table class="settings-defaults-table">

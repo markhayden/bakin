@@ -129,7 +129,7 @@ mcporter call bakin-<agent>.bakin_exec_assets_scan_unmanaged
 <p class="mcp-section-description">MCP tools discovered from registered exec tool definitions.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="check-gates" name="bakin_exec_check_gates" label="Checked workflow gates" description="Get a human-readable overview of all gate statuses in a workflow. Shows which gates are approved, waiting, or pending." source="plugins/workflows/lib/exec-tools.ts:249" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID (or workflow instance ID)"}]}>
+<McpToolCard id="check-gates" name="bakin_exec_check_gates" label="Checked workflow gates" description="Get a human-readable overview of all gate statuses in a workflow. Shows which gates are approved, waiting, or pending." source="plugins/workflows/lib/exec-tools.ts:252" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID (or workflow instance ID)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_check_gates --args '{
   "taskId": "value"
@@ -184,14 +184,14 @@ mcporter call bakin-<agent>.bakin_exec_git_status
 <p class="mcp-section-description">Health tools let agents check whether Bakin is running correctly before or during work.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="health-doctor" name="bakin_exec_health_doctor" label="Ran diagnostics" description="Run system diagnostics (agent roster, skill sync, runtime, taskboard, assets, etc.). Returns detailed check results. Use fresh=true to force a full re-check instead of returning cached results." source="plugins/health/index.ts:555" parameters={[{"name":"fresh","type":"boolean","required":false,"description":"Force fresh diagnostics instead of cached results"}]}>
+<McpToolCard id="health-doctor" name="bakin_exec_health_doctor" label="Ran diagnostics" description="Run system diagnostics (agent roster, skill sync, runtime, taskboard, assets, etc.). Returns detailed check results. Use fresh=true to force a full re-check instead of returning cached results." source="plugins/health/index.ts:614" parameters={[{"name":"fresh","type":"boolean","required":false,"description":"Force fresh diagnostics instead of cached results"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_health_doctor --args '{
   "fresh": true
 }'
 ```
 </McpToolCard>
-<McpToolCard id="health-status" name="bakin_exec_health_status" label="Checked system health" description="Get a quick system health summary — uptime, memory, active MCP sessions, and doctor error/warning counts. Useful for checking system state before starting work." source="plugins/health/index.ts:526">
+<McpToolCard id="health-status" name="bakin_exec_health_status" label="Checked system health" description="Get a quick system health summary — uptime, memory, active MCP sessions, and doctor error/warning counts. Useful for checking system state before starting work." source="plugins/health/index.ts:585">
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_health_status
 ```
@@ -932,7 +932,7 @@ mcporter call bakin-<agent>.bakin_exec_submit_step --args '{
 <p class="mcp-section-description">Task tools are the main agent interface for creating, reading, moving, logging, blocking, and completing work.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="tasks-assign" name="bakin_exec_tasks_assign" label="Assigned a task" description="Assign a task to an agent." source="plugins/tasks/lib/exec-tools.ts:377" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"},{"name":"agent","type":"string","required":true,"description":"Agent to assign the task to"}]}>
+<McpToolCard id="tasks-assign" name="bakin_exec_tasks_assign" label="Assigned a task" description="Assign a task to an agent." source="plugins/tasks/lib/exec-tools.ts:378" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"},{"name":"agent","type":"string","required":true,"description":"Agent to assign the task to"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_tasks_assign --args '{
   "taskId": "value",
