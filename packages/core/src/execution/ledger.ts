@@ -438,6 +438,20 @@ export function listRunsByTask(taskId: string, limit = 50): RunRow[] {
   })
 }
 
+/**
+ * Every currently-running run across all agents, oldest first — backs the
+ * health dashboard's live-now panel (#385). Trustworthy because
+ * markPriorBootRunsLost sweeps stale rows from dead boots at startup.
+ */
+export function listLiveRuns(): RunRow[] {
+  return guard('listLiveRuns', () => {
+    return ledger()
+      .prepare<RawRunRow, []>("SELECT * FROM runs WHERE status = 'running' ORDER BY started_at ASC")
+      .all()
+      .map(toRunRow)
+  })
+}
+
 function computeNextSeq(taskId: string): number {
   const row = ledger()
     .prepare<{ max_seq: number | null }, [string, string]>(
@@ -682,6 +696,21 @@ export function getCompletion(taskId: string): CompletionRow | null {
   })
 }
 
+/**
+ * Completed-task counts per agent since a timestamp — the outcome side of the
+ * effort-vs-outcome view (#385). Full scan; the table is one row per
+ * completed task, tiny at single-user scale.
+ */
+export function completionsByAgentSince(sinceMs: number): { agent: string; completions: number }[] {
+  return guard('completionsByAgentSince', () => {
+    return ledger()
+      .prepare<{ agent: string; completions: number }, [number]>(
+        'SELECT agent, COUNT(*) AS completions FROM completions WHERE completed_at >= ? GROUP BY agent',
+      )
+      .all(sinceMs)
+  })
+}
+
 /** Reopen: the ONLY path that unfreezes a completed task (audited by the caller). */
 export function deleteCompletion(taskId: string): boolean {
   return guard(`deleteCompletion(${taskId})`, () => {
@@ -873,6 +902,59 @@ export function recentRunsByAgent(agent: string, opts: { sinceMs?: number; limit
         cacheWriteTokens: r.cache_write_tokens,
         costUsdMicros: r.cost_usd_micros,
         occurredAt: r.occurred_at,
+      }))
+  })
+}
+
+/** One dispatch attempt with its billing facts — the timeline's run spine (#385). */
+export interface RunWithCostRow extends RunRow {
+  model: string | null
+  inputTokens: number | null
+  outputTokens: number | null
+  totalTokens: number | null
+  cacheReadTokens: number | null
+  cacheWriteTokens: number | null
+  costUsdMicros: number | null
+}
+
+/**
+ * Every dispatch attempt for one agent, newest first, joined with its cost
+ * row when one was metered (LEFT JOIN — unmetered runs keep null tokens/cost,
+ * never fabricated zeros).
+ */
+export function listRunsByAgent(agent: string, opts: { sinceMs?: number; limit?: number } = {}): RunWithCostRow[] {
+  return guard('listRunsByAgent', () => {
+    const limit = Math.min(Math.max(Math.floor(opts.limit ?? 50), 1), 200)
+    const clauses = ['r.agent = ?']
+    const params: (string | number)[] = [agent]
+    if (opts.sinceMs !== undefined) { clauses.push('r.started_at >= ?'); params.push(opts.sinceMs) }
+    params.push(limit)
+    return ledger()
+      .prepare<RawRunRow & {
+        model: string | null
+        input_tokens: number | null
+        output_tokens: number | null
+        total_tokens: number | null
+        cache_read_tokens: number | null
+        cache_write_tokens: number | null
+        cost_usd_micros: number | null
+      }, (string | number)[]>(
+        `SELECT r.*, c.model, c.input_tokens, c.output_tokens, c.total_tokens,
+                c.cache_read_tokens, c.cache_write_tokens, c.cost_usd_micros
+           FROM runs r LEFT JOIN run_costs c ON c.run_id = r.run_id
+          WHERE ${clauses.join(' AND ')}
+          ORDER BY r.started_at DESC LIMIT ?`,
+      )
+      .all(...params)
+      .map((r) => ({
+        ...toRunRow(r),
+        model: r.model,
+        inputTokens: r.input_tokens,
+        outputTokens: r.output_tokens,
+        totalTokens: r.total_tokens,
+        cacheReadTokens: r.cache_read_tokens,
+        cacheWriteTokens: r.cache_write_tokens,
+        costUsdMicros: r.cost_usd_micros,
       }))
   })
 }

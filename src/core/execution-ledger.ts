@@ -11,6 +11,9 @@ export {
   getLiveRun,
   getLiveRunByKey,
   listRunsByTask,
+  listLiveRuns,
+  listRunsByAgent,
+  completionsByAgentSince,
   nextSeq,
   currentSeq,
   setSeqWatermark,
@@ -47,6 +50,7 @@ export type {
   IdempotentResult,
   RunCostInput,
   RunCostRow,
+  RunWithCostRow,
   SpendByAgentRow,
   SpendByModelRow,
 } from '../../packages/core/src/execution/ledger'
