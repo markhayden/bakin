@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 
 // Pure client-component test — the isolation mocks are belt-and-braces per
@@ -40,7 +40,12 @@ mock.module('@makinbakin/sdk/ui', () => ({
 }))
 
 mock.module('@makinbakin/sdk/components', () => ({
-  PluginHeader: ({ title }: { title: string }) => <h1>{title}</h1>,
+  PluginHeader: ({ title, actions }: { title: string; actions?: ReactNode }) => (
+    <div>
+      <h1>{title}</h1>
+      {actions}
+    </div>
+  ),
   EmptyState: ({ title }: { title: string }) => <div data-testid="empty-state">{title}</div>,
   ErrorBanner: ({ message }: { message: string }) => <div role="alert">{message}</div>,
   UnderlineTabs: ({ tabs, onValueChange }: { tabs: Array<{ id: string; label: string }>; onValueChange: (id: string) => void }) => (
@@ -133,5 +138,73 @@ describe('ExplorePage', () => {
     fireEvent.click(screen.getByTestId('catalog-card-agent-pixel'))
     expect(screen.getByTestId('drawer')).toBeTruthy()
     expect(screen.getByText('Make images')).toBeTruthy()
+  })
+
+  it('shows the drawer Install button only for available entries', () => {
+    fixtureEntries = [...AGENTS, ...PLUGINS]
+    render(<ExplorePage />)
+    // Available agent → Install present
+    fireEvent.click(screen.getByTestId('catalog-card-agent-pixel'))
+    expect(screen.getByTestId('drawer-install')).toBeTruthy()
+  })
+
+  it('never shows Install for builtin entries', () => {
+    fixtureEntries = [...AGENTS, ...PLUGINS]
+    render(<ExplorePage />)
+    fireEvent.click(screen.getByTestId('tab-plugins'))
+    fireEvent.click(screen.getByTestId('catalog-card-plugin-team'))
+    expect(screen.getByTestId('drawer')).toBeTruthy()
+    expect(screen.queryByTestId('drawer-install')).toBeNull()
+  })
+
+  it('never shows Install for already-installed entries', () => {
+    fixtureEntries = [{ ...AGENTS[0], installed: true, installedVersion: '1.0.0' }]
+    render(<ExplorePage />)
+    fireEvent.click(screen.getByTestId('catalog-card-agent-pixel'))
+    expect(screen.getByTestId('drawer')).toBeTruthy()
+    expect(screen.queryByTestId('drawer-install')).toBeNull()
+  })
+})
+
+describe('ExplorePage update/refresh actions', () => {
+  const originalFetch = globalThis.fetch
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  it('Check for updates fetches ?check=1 and overrides displayed entries', async () => {
+    fixtureEntries = [...AGENTS]
+    const probed = [{ ...AGENTS[0], installed: true, updateAvailable: true, installedVersion: '1.0.0' }]
+    const fetchMock = mock((url: string) => {
+      expect(url).toBe('/api/plugins/explore/catalog?check=1')
+      return Promise.resolve(new Response(JSON.stringify({
+        ok: true, updatedAt: 'now', remoteUpdatedAt: null, entries: probed,
+      }), { headers: { 'Content-Type': 'application/json' } }))
+    })
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+
+    render(<ExplorePage />)
+    expect(screen.queryByText('Update available')).toBeNull()
+    fireEvent.click(screen.getByTestId('check-updates'))
+    await waitFor(() => expect(screen.getByText('Update available')).toBeTruthy())
+  })
+
+  it('Refresh catalog POSTs and surfaces failures as an error banner', async () => {
+    fixtureEntries = [...AGENTS]
+    const fetchMock = mock((url: string, init?: RequestInit) => {
+      expect(url).toBe('/api/plugins/explore/catalog/refresh')
+      expect(init?.method).toBe('POST')
+      return Promise.resolve(new Response(JSON.stringify({
+        ok: false, reason: 'no-remote-catalog', error: 'The official bits repo has no catalog.json yet.',
+      }), { status: 404, headers: { 'Content-Type': 'application/json' } }))
+    })
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+
+    render(<ExplorePage />)
+    fireEvent.click(screen.getByTestId('refresh-catalog'))
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('no catalog.json yet'))
+    // Catalog still rendered from the base fetch — failure is non-destructive
+    expect(screen.getByText('Pixel')).toBeTruthy()
   })
 })
