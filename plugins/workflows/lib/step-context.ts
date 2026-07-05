@@ -86,7 +86,11 @@ export function getCurrentStep(
   const instance = loadInstance(taskId, dir)
   if (!instance) return null
 
-  if (instance.status === 'complete' || instance.status === 'cancelled') {
+  // Cancelled is NOT complete: a cancelled instance (task deleted or moved
+  // off the board mid-flight) must fail closed — get_step/submit_step report
+  // "no active step" instead of a false "workflow finished" (#604 T6).
+  if (instance.status === 'cancelled') return null
+  if (instance.status === 'complete') {
     return { status: 'complete' }
   }
 

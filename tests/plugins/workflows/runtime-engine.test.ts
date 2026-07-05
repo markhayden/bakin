@@ -530,11 +530,10 @@ steps:
       expect(childAfter!.status).toBe('cancelled')
     })
 
-    it('getCurrentStep returns complete for cancelled instances', () => {
+    it('getCurrentStep returns null for cancelled instances — fail closed, not a false complete (#604 T6)', () => {
       createInstance('task-nested8', 'parent-wf', testDir)
       cancelInstance('task-nested8', testDir)
-      const step = getCurrentStep('task-nested8', undefined, testDir) as { status: string }
-      expect(step.status).toBe('complete')
+      expect(getCurrentStep('task-nested8', undefined, testDir)).toBeNull()
     })
 
     it('getActiveAgents returns empty for cancelled instances', () => {

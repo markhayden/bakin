@@ -74,6 +74,7 @@ import {
   createInstance,
   getCurrentStep,
   completeStep,
+  cancelInstance,
   getActiveAgents,
   authorizeWorkflowToolUse,
 } from '@bakin/workflows/lib/runtime'
@@ -140,6 +141,13 @@ describe('runtime — step-context', () => {
 
     it('returns null for unknown task', () => {
       expect(getCurrentStep('nonexistent', undefined, testDir)).toBeNull()
+    })
+
+    it('returns null for a cancelled instance — fail closed, never a false "complete" (#604 T6)', () => {
+      createInstance('task-cancelled', 'linear', testDir)
+      completeStep('task-cancelled', 'step-one', { result: 'a' }, undefined, testDir)
+      cancelInstance('task-cancelled', testDir)
+      expect(getCurrentStep('task-cancelled', undefined, testDir)).toBeNull()
     })
   })
 
