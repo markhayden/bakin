@@ -15,7 +15,13 @@
     "storage.read"
   ],
   "contributes": {
-    "apiRoutes": [],
+    "apiRoutes": [
+      {
+        "method": "GET",
+        "path": "/catalog",
+        "summary": "Merged curated catalog with install state"
+      }
+    ],
     "nav": [
       {
         "id": "explore",

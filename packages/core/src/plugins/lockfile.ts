@@ -364,3 +364,23 @@ export function addLinkedPlugin(
 export function isLinked(entry: PluginLockEntry): boolean {
   return entry.linked === true && typeof entry.linkedSource === 'string' && entry.linkedSource.length > 0
 }
+
+/**
+ * Compute upgrade availability from the persisted probe markers written by
+ * `bakin plugins list --check` — same source of truth whether or not a check
+ * ran this request. Never true for core plugins (they have no lock entry).
+ */
+export function computeUpgradeAvailable(entry: PluginLockEntry): boolean {
+  if (entry.type === 'github' && entry.remoteArtifactVersion) {
+    // Whiskit artifact installs are version-based — `--check` records the
+    // latest published artifact version instead of a remote sha.
+    return entry.remoteArtifactVersion !== entry.version
+  }
+  if (entry.type === 'github' && entry.remoteHeadSha) {
+    return entry.remoteHeadSha !== entry.commitSha
+  }
+  if (entry.type === 'local' && entry.lastSourceTreeSha && entry.sourceTreeSha) {
+    return entry.lastSourceTreeSha !== entry.sourceTreeSha
+  }
+  return false
+}
