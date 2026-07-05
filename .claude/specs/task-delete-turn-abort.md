@@ -117,6 +117,15 @@ Installed: **2026.6.9**; latest stable: **2026.6.11**; 2026.7.1 in beta.
 - **`chat.abort` / `sessions.abort` surface is stable.** The 2026.7.1-beta abort work (openclaw#99753 "consolidate abort primitives") is an internal refactor with explicitly no intended behavior change; no gateway protocol changes to the abort RPCs in 2026.6.10/6.11 release notes.
 - **2026.6.11 ships an abort-reliability fix** (openclaw#96201, related #88838): "/stop and abort commands now keep stopping active runs, clearing queued followups, and ending related subagents promptly even when session keys need canonicalizing or abort metadata cannot be saved." On 2026.6.9 an abort can partially fail on session-key canonicalization edge cases. **Action: upgrade OpenClaw to 2026.6.11 (`brew upgrade --cask openclaw`) before the live validation phase**, and run live validation against 2026.6.11. Bakin's session keys (`task:<id>:d<seq>`-derived, lowercase) likely avoid the canonicalization path, but validating on the fixed release removes the variable.
 
+## T2 gate outcome (live probes, 2026-07-05, OpenClaw 2026.6.11)
+
+**Backend `agent` RPC runs are NOT server-side abortable on current OpenClaw.** Probed against a live run (real turn on a scratch `explicit:` session):
+- `chat.abort` / `sessions.abort` returned `aborted:false` / `no-active-run` for every key form (raw session UUID, canonical `agent:<id>:explicit:<uuid>`, runId=idempotencyKey) while the run was verifiably in flight — the abort registry only tracks channel auto-reply runs.
+- `/stop` sent via the `agent` RPC is serialized *behind* the active run by the command queue (probe essay completed in full, 12k chars).
+- `tasks.cancel` is documented registry-intent-only for CLI-tracked runs ("the running agent operation continues independently").
+
+**Re-scope per the plan's T2 checkpoint:** WS1 = local-reject (the deadlock/slot fix, fully effective) + a best-effort `chat.abort` frame with the canonical explicit session key (no-op today, auto-heals if upstream starts tracking embedded runs; consider filing an OpenClaw issue). Residual ghost spend is bounded by OpenClaw's own turn timeout with every Bakin tool failing closed — exactly the issue's stated fallback.
+
 ## Risks / open verification items
 
 1. **`chat.abort` session-key form** — protocol doc says `sessionKey`; the adapter sends `sessionId` (= `openClawCliSessionId(...)`) on the `agent` RPC. Verify the exact param the gateway resolves during WS1 against the live gateway (`openclaw gateway call chat.abort --params ...`). If mismatch, `sessions.abort` (`key` or `runId`) is the fallback.

@@ -43,6 +43,26 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+// Pending slow turns by sessionId, cancellable via the chat.abort RPC —
+// mirrors the real gateway's {ok, aborted, runIds} response shape so the
+// adapter's best-effort abort frame can be exercised end-to-end in dev/tests.
+const pendingSlowTurns = new Map<string, () => void>()
+
+/** Resolves false when the delay elapses, true when chat.abort cancels it. */
+function abortableSlowSleep(sessionId: string, ms: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      pendingSlowTurns.delete(sessionId)
+      resolve(false)
+    }, ms)
+    pendingSlowTurns.set(sessionId, () => {
+      clearTimeout(timer)
+      pendingSlowTurns.delete(sessionId)
+      resolve(true)
+    })
+  })
+}
+
 /**
  * Simulate OpenClaw recording an oversized-interrupted run: the trajectory
  * gets a session.started → tool.call → oversized model.completed →
@@ -118,6 +138,20 @@ type GatewayRpcResponse = {
 }
 
 export async function handleGatewayRpcRequest(method: string, params: Record<string, unknown>): Promise<GatewayRpcResponse> {
+  if (method === 'chat.abort') {
+    // Real-gateway key form: agent:<agentId>:explicit:<sessionId> — the mock
+    // resolves the trailing sessionId segment against its pending slow turns.
+    const sessionKey = typeof params.sessionKey === 'string' ? params.sessionKey : ''
+    const sessionId = sessionKey.split(':').pop() ?? ''
+    const cancel = pendingSlowTurns.get(sessionId)
+    console.log(`  → rpc=chat.abort sessionKey=${sessionKey} pending=${Boolean(cancel)}`)
+    if (cancel) {
+      cancel()
+      return { ok: true, payload: { aborted: true, runIds: [sessionId] } }
+    }
+    return { ok: true, payload: { aborted: false, runIds: [] } }
+  }
+
   if (method === 'connect') {
     return {
       ok: true,
@@ -168,10 +202,16 @@ export async function handleGatewayRpcRequest(method: string, params: Record<str
         }, 150)
         return { ok: true, payload: { status: 'accepted' } }
       }
-      case 'slow':
-        await sleep(getChatDelayMs())
+      case 'slow': {
+        const slowSessionId = typeof params.sessionId === 'string' ? params.sessionId : `anon-${Date.now()}`
+        const aborted = await abortableSlowSleep(slowSessionId, getChatDelayMs())
+        if (aborted) {
+          console.log(`  → rpc=agent agent=${agentId} mode=slow session=${slowSessionId} ABORTED`)
+          return { ok: false, error: { message: 'mock run aborted', code: 'aborted' } }
+        }
         reply = `[mock:${agentName}] Acknowledged after a slow turn.`
         break
+      }
       case 'canned':
       default:
         reply = `[mock:${agentName}] Acknowledged. Task understood — working on it.`
