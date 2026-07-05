@@ -109,6 +109,13 @@ export interface MessageArgs extends RuntimeMessageToolPolicy {
    * Per-turn thinking level. Omit to use the runtime/agent default.
    */
   thinking?: string
+  /**
+   * Best-effort turn cancellation. On abort, adapters MUST reject the send
+   * promptly with RuntimeError kind 'aborted' and SHOULD cancel the
+   * provider-side run where the runtime supports it (fail-open: a provider
+   * that can't cancel still gets the local rejection).
+   */
+  signal?: AbortSignal
   metadata?: RuntimeMetadata
 }
 
