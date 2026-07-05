@@ -1,9 +1,11 @@
-import { Suspense, useMemo } from 'react'
-import { Compass } from 'lucide-react'
+import { Suspense, useMemo, useState } from 'react'
+import { Compass, Plus } from 'lucide-react'
 import { PluginHeader, EmptyState, ErrorBanner, FacetFilter, UnderlineTabs } from '@makinbakin/sdk/components'
 import { useJsonFetch, useQueryState, useQueryArrayState } from '@makinbakin/sdk/hooks'
+import { Button } from '@makinbakin/sdk/ui'
 import { CatalogCard } from './catalog-card'
 import { DetailDrawer } from './detail-drawer'
+import { InstallDialog } from './install-dialog'
 import type { ExploreCatalogEntry, ExploreCatalogResponse } from '../types'
 
 const PACK_KINDS = new Set(['skill-pack', 'workflow-pack', 'lesson-pack'])
@@ -19,6 +21,8 @@ function ExplorePageInner() {
   const [tab, setTab] = useQueryState('tab', 'agents')
   const [categories, setCategories] = useQueryArrayState('category')
   const [selectedKey, setSelectedKey] = useQueryState('item')
+  const [installOpen, setInstallOpen] = useState(false)
+  const [installEntry, setInstallEntry] = useState<ExploreCatalogEntry | null>(null)
 
   const entries = useMemo(() => data?.entries ?? [], [data])
   const hasPacks = entries.some((entry) => PACK_KINDS.has(entry.kind))
@@ -64,6 +68,20 @@ function ExplorePageInner() {
         title="Explore"
         count={entries.length}
         subtitle="Do more with Bakin — official agents, plugins, and packs"
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            data-testid="install-from-source"
+            onClick={() => {
+              setInstallEntry(null)
+              setInstallOpen(true)
+            }}
+          >
+            <Plus className="mr-1.5 size-3.5" />
+            Install from source…
+          </Button>
+        }
       />
 
       {error && <ErrorBanner message={error} onRetry={refresh} />}
@@ -120,6 +138,29 @@ function ExplorePageInner() {
         installedPluginIds={installedPluginIds}
         onOpenChange={(open) => {
           if (!open) setSelectedKey('')
+        }}
+        actions={
+          selected && !selected.builtin && !selected.installed ? (
+            <Button
+              data-testid="drawer-install"
+              onClick={() => {
+                setInstallEntry(selected)
+                setInstallOpen(true)
+              }}
+            >
+              Install
+            </Button>
+          ) : undefined
+        }
+      />
+
+      <InstallDialog
+        open={installOpen}
+        onOpenChange={setInstallOpen}
+        entry={installEntry}
+        onInstalled={() => {
+          setSelectedKey('')
+          refresh()
         }}
       />
     </div>
