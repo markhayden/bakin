@@ -680,6 +680,25 @@ curl -sS \
 ```
 </OpenApiReference>
 
+## Explore
+
+<OpenApiReference tag="Explore" summary />
+
+<OpenApiReference operationId="explore.get.catalog">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/explore/catalog'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="explore.post.catalog-refresh">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/explore/catalog/refresh'
+```
+</OpenApiReference>
+
 ## Git
 
 <OpenApiReference tag="Git" summary />

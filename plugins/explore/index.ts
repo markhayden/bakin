@@ -3,6 +3,7 @@
  * Curated-catalog discovery: browse and install official agents, plugins,
  * and packs. Discovery only — lifecycle management stays in Team/Health.
  */
+import { z } from 'zod'
 import type { BakinPlugin } from '@bakin/core/plugin-types'
 import { definePlugin, defineRoute } from '@bakin/core/routing'
 import { createLogger } from '../../src/core/logger'
@@ -14,6 +15,36 @@ import { refreshRemoteCatalog } from './lib/refresh'
 import type { ExploreCatalogEntry, ExploreCatalogResponse } from './types'
 
 const log = createLogger('explore')
+
+const catalogEntryResponse = z.object({
+  id: z.string(),
+  kind: z.enum(['agent', 'plugin', 'skill-pack', 'workflow-pack', 'lesson-pack']),
+  name: z.string(),
+  emoji: z.string().optional(),
+  description: z.string(),
+  category: z.string(),
+  tags: z.array(z.string()),
+  useCases: z.array(z.string()),
+  source: z.string().optional(),
+  ref: z.string().nullable(),
+  trust: z.enum(['official', 'verified', 'community']),
+  builtin: z.boolean(),
+  dependencies: z.array(z.string()),
+  defaultSelected: z.boolean(),
+  iconUrl: z.string().optional(),
+  screenshots: z.array(z.string()),
+  installed: z.boolean(),
+  updateAvailable: z.boolean().nullable(),
+  installedVersion: z.string().nullable(),
+})
+
+const catalogResponse = z.object({
+  ok: z.literal(true),
+  updatedAt: z.string(),
+  remoteUpdatedAt: z.string().nullable(),
+  entries: z.array(catalogEntryResponse),
+  probeErrors: z.number().optional(),
+})
 
 interface ProbeOutcome {
   /** agentId → definitive update state. Failed probes are NOT included — unknown stays unknown. */
@@ -105,6 +136,7 @@ const routes = [
     description:
       'Embedded catalog merged with the cached remote catalog, joined against local lockfiles. ' +
       'Offline by default; ?check=1 runs explicit update probes (plugin markers persist, agent results are per-response).',
+    responses: { 200: catalogResponse },
     handler: async (req) => {
       const check = new URL(req.url).searchParams.get('check') === '1'
       try {
@@ -126,6 +158,7 @@ const routes = [
     description:
       'Explicit user action: fetches catalog.json from the official bits repo, validates it, caches it, ' +
       'and returns the merged catalog. Failures leave the existing cache untouched.',
+    responses: { 200: catalogResponse },
     handler: async () => {
       try {
         const result = await refreshRemoteCatalog()
