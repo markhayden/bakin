@@ -168,7 +168,7 @@ export function InstallDialog({
   return (
     <>
       <Dialog open={open && consent === null} onOpenChange={close}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>{preset ? `Install ${entry.name}` : 'Install from source'}</DialogTitle>
             <DialogDescription>

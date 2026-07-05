@@ -15,9 +15,12 @@ mock.module('../../../packages/core/src/content-dir', contentDirMock)
 
 let fixtureEntries: unknown[] = []
 
+const toastMock = mock()
+
 mock.module('@makinbakin/sdk/hooks', () => {
   const { useState } = require('react') as typeof import('react')
   return {
+    toast: toastMock,
     useJsonFetch: () => ({
       data: { ok: true, updatedAt: 'now', remoteUpdatedAt: null, entries: fixtureEntries },
       loading: false,
@@ -37,13 +40,23 @@ mock.module('@makinbakin/sdk/hooks', () => {
 
 mock.module('@makinbakin/sdk/ui', () => ({
   Badge: ({ children }: { children: ReactNode }) => <span>{children}</span>,
+  Button: ({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props}>{children}</button>,
+  Input: (props: React.InputHTMLAttributes<HTMLInputElement>) => <input {...props} />,
 }))
 
 mock.module('@makinbakin/sdk/components', () => ({
   AgentAvatar: ({ agentId }: { agentId: string }) => <span data-testid={`avatar-${agentId}`} />,
-  PluginHeader: ({ title, actions }: { title: string; actions?: ReactNode }) => (
+  PluginHeader: ({ title, actions, search }: { title: string; actions?: ReactNode; search?: { value: string; onChange: (v: string) => void; placeholder?: string } }) => (
     <div>
       <h1>{title}</h1>
+      {search && (
+        <input
+          data-testid="header-search"
+          value={search.value}
+          placeholder={search.placeholder}
+          onChange={(e) => search.onChange(e.target.value)}
+        />
+      )}
       {actions}
     </div>
   ),
@@ -105,6 +118,30 @@ describe('ExplorePage', () => {
     render(<ExplorePage />)
     expect(screen.getByText('Pixel')).toBeTruthy()
     expect(screen.queryByText('Messaging')).toBeNull()
+  })
+
+  it('alphabetizes entries within each tab', () => {
+    // Fixture order is Pixel then Jessica — display must be A→Z.
+    fixtureEntries = [...AGENTS, ...PLUGINS]
+    render(<ExplorePage />)
+    const names = screen.getAllByTestId(/^catalog-card-agent-/).map((card) => card.getAttribute('data-testid'))
+    expect(names).toEqual(['catalog-card-agent-jessica', 'catalog-card-agent-pixel'])
+  })
+
+  it('search filters the active tab across name, description, tags, and use cases', () => {
+    fixtureEntries = [...AGENTS, ...PLUGINS]
+    render(<ExplorePage />)
+    // Filtering reads the draft synchronously; only the URL write debounces.
+    fireEvent.change(screen.getByTestId('explore-search'), { target: { value: 'dig deep' } })
+    expect(screen.queryByText('Pixel')).toBeNull()
+    expect(screen.getByText('Jessica')).toBeTruthy()
+  })
+
+  it('search with no matches shows an honest empty state naming the query', () => {
+    fixtureEntries = [...AGENTS, ...PLUGINS]
+    render(<ExplorePage />)
+    fireEvent.change(screen.getByTestId('explore-search'), { target: { value: 'zebra' } })
+    expect(screen.getByTestId('empty-state').textContent).toContain('No matches')
   })
 
   it('hides the Packs tab when the catalog has no pack entries', () => {
@@ -228,8 +265,26 @@ describe('ExplorePage update/refresh actions', () => {
 
     render(<ExplorePage />)
     expect(screen.queryByText('Update available')).toBeNull()
+    toastMock.mockClear()
     fireEvent.click(screen.getByTestId('check-updates'))
     await waitFor(() => expect(screen.getByText('Update available')).toBeTruthy())
+    // Result feedback is a toast naming the updatable entries
+    expect(String(toastMock.mock.calls[0][0])).toContain('1 update available: Pixel')
+  })
+
+  it('check with everything current toasts an up-to-date confirmation', async () => {
+    fixtureEntries = [...AGENTS]
+    const fetchMock = mock(() => Promise.resolve(new Response(JSON.stringify({
+      ok: true, updatedAt: 'now', remoteUpdatedAt: null,
+      entries: [{ ...AGENTS[0], installed: true, updateAvailable: false }],
+    }), { headers: { 'Content-Type': 'application/json' } })))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+
+    render(<ExplorePage />)
+    toastMock.mockClear()
+    fireEvent.click(screen.getByTestId('check-updates'))
+    await waitFor(() => expect(toastMock).toHaveBeenCalled())
+    expect(String(toastMock.mock.calls[0][0])).toContain('Everything is up to date')
   })
 
   it('Refresh catalog POSTs and surfaces failures as an error banner', async () => {

@@ -58,7 +58,7 @@ export function ConsentDialog({
   if (!consent) return null
   return (
     <Dialog open={consent !== null} onOpenChange={(open) => { if (!open) onDecline() }}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>
             {consent.id} v{consent.version} wants permission to:

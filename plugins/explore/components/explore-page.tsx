@@ -1,8 +1,8 @@
-import { Suspense, useMemo, useState } from 'react'
-import { Compass, Plus, RefreshCw, Sparkles } from 'lucide-react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { Compass, Plus, RefreshCw, Search, Sparkles } from 'lucide-react'
 import { PluginHeader, EmptyState, ErrorBanner, FacetFilter, UnderlineTabs } from '@makinbakin/sdk/components'
-import { useJsonFetch, useQueryState, useQueryArrayState } from '@makinbakin/sdk/hooks'
-import { Button } from '@makinbakin/sdk/ui'
+import { toast, useJsonFetch, useQueryState, useQueryArrayState } from '@makinbakin/sdk/hooks'
+import { Button, Input } from '@makinbakin/sdk/ui'
 import { CatalogCard } from './catalog-card'
 import { DetailDrawer } from './detail-drawer'
 import { InstallDialog } from './install-dialog'
@@ -51,6 +51,18 @@ function ExplorePageInner() {
   const [tab, setTab] = useQueryState('tab', 'agents')
   const [categories, setCategories] = useQueryArrayState('category')
   const [selectedKey, setSelectedKey] = useQueryState('item')
+  const [query, setQuery] = useQueryState('q')
+  // Filtering reads the local draft for instant feedback; only the URL
+  // write is debounced (same reason PluginHeader's search debounces —
+  // the param is for deep-linking, keystrokes aren't).
+  const [searchDraft, setSearchDraft] = useState(query)
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => { if (searchTimer.current) clearTimeout(searchTimer.current) }, [])
+  const onSearchChange = (value: string) => {
+    setSearchDraft(value)
+    if (searchTimer.current) clearTimeout(searchTimer.current)
+    searchTimer.current = setTimeout(() => setQuery(value), 200)
+  }
   const [installOpen, setInstallOpen] = useState(false)
   const [installEntry, setInstallEntry] = useState<ExploreCatalogEntry | null>(null)
   // Probe/refresh responses carry state the base GET can't reproduce
@@ -73,6 +85,22 @@ function ExplorePageInner() {
         return
       }
       setOverride(body)
+      if (action === 'check') {
+        const updates = body.entries.filter((entry) => entry.updateAvailable === true)
+        toast(
+          updates.length === 0
+            ? 'Everything is up to date.'
+            : `${updates.length} update${updates.length === 1 ? '' : 's'} available: ${updates.map((u) => u.name).join(', ')}`,
+          'success',
+        )
+      } else {
+        toast(
+          body.remoteUpdatedAt
+            ? `Catalog refreshed — remote version from ${body.remoteUpdatedAt.slice(0, 10)}.`
+            : 'Catalog refreshed.',
+          'success',
+        )
+      }
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -96,7 +124,9 @@ function ExplorePageInner() {
   }, [hasPacks])
 
   const tabEntries = useMemo(
-    () => entries.filter((entry) => tabOf(entry) === tab),
+    () => entries
+      .filter((entry) => tabOf(entry) === tab)
+      .sort((a, b) => a.name.localeCompare(b.name)),
     [entries, tab],
   )
 
@@ -114,12 +144,17 @@ function ExplorePageInner() {
     [categories, tabEntries],
   )
 
-  const visible = useMemo(
-    () => (activeCategories.length === 0
+  const visible = useMemo(() => {
+    const byCategory = activeCategories.length === 0
       ? tabEntries
-      : tabEntries.filter((entry) => activeCategories.includes(entry.category))),
-    [tabEntries, activeCategories],
-  )
+      : tabEntries.filter((entry) => activeCategories.includes(entry.category))
+    const needle = searchDraft.trim().toLowerCase()
+    if (!needle) return byCategory
+    return byCategory.filter((entry) =>
+      [entry.name, entry.description, entry.category, ...entry.tags, ...entry.useCases]
+        .some((haystack) => haystack.toLowerCase().includes(needle)),
+    )
+  }, [tabEntries, activeCategories, searchDraft])
 
   const selected = useMemo(
     () => entries.find((entry) => `${entry.kind}:${entry.id}` === selectedKey) ?? null,
@@ -195,17 +230,31 @@ function ExplorePageInner() {
         </span>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
+      {/* Toolbar: search + facets left, section tabs right (matches the
+          filter-row convention of the other plugin pages). */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              data-testid="explore-search"
+              value={searchDraft}
+              onChange={(e) => onSearchChange(e.target.value)}
+              placeholder="Search agents, plugins, lessons…"
+              className="h-8 w-64 pl-8 text-sm"
+            />
+          </div>
+          <FacetFilter
+            label="Category"
+            options={categoryOptions}
+            selected={categories}
+            onChange={setCategories}
+          />
+        </div>
         <UnderlineTabs
           tabs={tabs}
           value={tab}
           onValueChange={setTab}
-        />
-        <FacetFilter
-          label="Category"
-          options={categoryOptions}
-          selected={categories}
-          onChange={setCategories}
         />
       </div>
 
@@ -227,12 +276,16 @@ function ExplorePageInner() {
       {!loading && !error && visible.length === 0 && (
         <EmptyState
           icon={Compass}
-          title={tab === 'lessons' ? 'Lesson packs are coming' : 'Nothing here yet'}
-          description={activeCategories.length > 0
-            ? 'No entries match the selected categories.'
-            : tab === 'lessons'
-              ? 'Official lesson packs will appear here as they\'re published. Agents you install often ship their own lessons — manage those from the agent\'s Team page.'
-              : 'The catalog has no entries for this tab yet.'}
+          title={searchDraft.trim()
+            ? 'No matches'
+            : tab === 'lessons' ? 'Lesson packs are coming' : 'Nothing here yet'}
+          description={searchDraft.trim()
+            ? `Nothing on this tab matches "${searchDraft.trim()}" — try another tab or clear the search.`
+            : activeCategories.length > 0
+              ? 'No entries match the selected categories.'
+              : tab === 'lessons'
+                ? 'Official lesson packs will appear here as they\'re published. Agents you install often ship their own lessons — manage those from the agent\'s Team page.'
+                : 'The catalog has no entries for this tab yet.'}
         />
       )}
 
