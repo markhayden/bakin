@@ -13,8 +13,12 @@ removes, syncs, or repairs anything.
 
 ## IA / Nav
 
-- Route `/explore`; single page with tabs (Agents | Plugins | Packs) —
-  the Packs tab auto-hides while the catalog has no pack entries.
+- Route `/explore`; single page with a placeholder hero banner (swap for
+  generated art in `explore-page.tsx`), tabs (Agents | Plugins | Lessons |
+  Packs), and a per-tab intro (`TAB_INTROS`) that explains what the items
+  are for first-time users. Lessons (lesson-packs) is ALWAYS visible with
+  an educational empty state; Packs (skill/workflow packs) auto-hides
+  while the catalog has none.
 - **Core plugin pages need an explicit host route file** —
   `packages/host/src/routes/explore.tsx` renders `<Slot name="page:/explore">`
   and is registered in `packages/host/src/router.ts`. The plugin catch-all
@@ -48,7 +52,9 @@ pair (both deleted, along with the `GET /api/curated` host route):
   (`agent | plugin | skill-pack | workflow-pack | lesson-pack`), `name`,
   `emoji?`, `description`, `category`, `tags`, `useCases`, `source?`, `ref`,
   `trust`, `builtin` (default false), `dependencies`, `defaultSelected`.
-  Refinement: non-builtin entries MUST have a `source`.
+  Refinement: non-builtin entries MUST have a `source`. `screenshots[]`
+  holds gallery image URLs (authored in the bits-repo catalog); the detail
+  drawer renders placeholder frames until an entry ships real assets.
 - Loader: `src/core/curated-catalog/load.ts` — static import first (dev/test),
   `EMBEDDED_ASSETS` fallback (compiled binary), degrades to an empty catalog
   rather than throwing. `loadCatalogFile(staticJson)` is the injectable core;
@@ -58,6 +64,10 @@ pair (both deleted, along with the `GET /api/curated` host route):
   `recommended-plugins.ts` same for `plugin`) and the explore plugin.
 - `builtin: true` entries are store listings for the core plugins themselves
   (product-tour value); they have no `source` and are never installable.
+  Their displayed version comes from the live plugin registry
+  (`builtinVersions` in the install-state join). Installed agents render
+  their real headshot via `AgentAvatar` (`EntryVisual` in catalog-card);
+  uninstalled entries keep the catalog emoji.
 - Gate test: `tests/core/curated-catalog.test.ts` validates the shipped file —
   catalog edits fail CI if malformed.
 

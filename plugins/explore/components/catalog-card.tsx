@@ -1,3 +1,5 @@
+import { Check, Plus } from 'lucide-react'
+import { AgentAvatar } from '@makinbakin/sdk/components'
 import { Badge } from '@makinbakin/sdk/ui'
 import type { ExploreCatalogEntry } from '../types'
 
@@ -14,14 +16,26 @@ const TONE_CLASSES: Record<'builtin' | 'installed' | 'update', string> = {
   update: 'border-amber-500/30 bg-amber-500/10 text-amber-400',
 }
 
+/** Installed agents get their real headshot; everything else keeps the emoji. */
+export function EntryVisual({ entry, size = 'md' }: { entry: ExploreCatalogEntry; size?: 'md' | 'lg' }) {
+  if (entry.kind === 'agent' && entry.installed) {
+    return <AgentAvatar agentId={entry.id} size={size === 'lg' ? 'xl' : 'lg'} />
+  }
+  return <span className={size === 'lg' ? 'text-3xl leading-none' : 'text-2xl leading-none'}>{entry.emoji ?? '📦'}</span>
+}
+
 export function CatalogCard({
   entry,
   onSelect,
+  onInstall,
 }: {
   entry: ExploreCatalogEntry
   onSelect: (entry: ExploreCatalogEntry) => void
+  /** Renders an Install button directly on available cards. */
+  onInstall?: (entry: ExploreCatalogEntry) => void
 }) {
   const status = entryStatusBadge(entry)
+  const installable = !entry.builtin && !entry.installed && onInstall !== undefined
   return (
     <button
       type="button"
@@ -29,8 +43,8 @@ export function CatalogCard({
       data-testid={`catalog-card-${entry.kind}-${entry.id}`}
       className="flex flex-col gap-2 rounded-xl border border-border bg-card p-4 text-left transition-colors hover:border-foreground/20 hover:bg-accent/40"
     >
-      <div className="flex items-center gap-2">
-        <span className="text-2xl leading-none">{entry.emoji ?? '📦'}</span>
+      <div className="flex items-center gap-2.5">
+        <EntryVisual entry={entry} />
         <span className="font-medium text-foreground">{entry.name}</span>
         <Badge variant="outline" className="ml-auto shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">
           {entry.category}
@@ -40,13 +54,40 @@ export function CatalogCard({
       {entry.useCases[0] && (
         <p className="line-clamp-1 text-xs text-muted-foreground/80">e.g. {entry.useCases[0]}</p>
       )}
-      <div className="mt-auto flex items-center gap-2 pt-1">
+      <div className="mt-auto flex items-center gap-2 pt-1.5">
         {status && (
-          <span className={`rounded-full border px-2 py-0.5 text-[11px] ${TONE_CLASSES[status.tone]}`}>
+          <span className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] ${TONE_CLASSES[status.tone]}`}>
+            {status.tone === 'installed' && <Check className="size-3" />}
             {status.label}
           </span>
         )}
-        {!status && <span className="text-[11px] text-muted-foreground/60">Tap for details</span>}
+        {installable && (
+          <span
+            role="button"
+            tabIndex={0}
+            data-testid={`card-install-${entry.kind}-${entry.id}`}
+            onClick={(event) => {
+              event.stopPropagation()
+              onInstall(entry)
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                event.stopPropagation()
+                onInstall(entry)
+              }
+            }}
+            className="flex items-center gap-1 rounded-full border border-pink-500/40 bg-pink-500/10 px-2.5 py-0.5 text-[11px] font-medium text-pink-400 transition-colors hover:bg-pink-500/20"
+          >
+            <Plus className="size-3" />
+            Install
+          </span>
+        )}
+        {entry.installedVersion && (
+          <span className="ml-auto text-[11px] text-muted-foreground/60" data-testid="card-version">
+            v{entry.installedVersion}
+          </span>
+        )}
       </div>
     </button>
   )

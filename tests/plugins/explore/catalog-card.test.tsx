@@ -17,6 +17,10 @@ mock.module('@makinbakin/sdk/ui', () => ({
   Badge: ({ children }: { children: ReactNode }) => <span>{children}</span>,
 }))
 
+mock.module('@makinbakin/sdk/components', () => ({
+  AgentAvatar: ({ agentId }: { agentId: string }) => <span data-testid={`avatar-${agentId}`} />,
+}))
+
 import { CatalogCard, entryStatusBadge } from '../../../plugins/explore/components/catalog-card'
 import type { ExploreCatalogEntry } from '../../../plugins/explore/types'
 
@@ -35,6 +39,7 @@ const entry = (over: Partial<ExploreCatalogEntry> = {}): ExploreCatalogEntry => 
   builtin: false,
   dependencies: [],
   defaultSelected: false,
+  screenshots: [],
   installed: false,
   updateAvailable: null,
   installedVersion: null,
@@ -77,5 +82,40 @@ describe('CatalogCard', () => {
     render(<CatalogCard entry={item} onSelect={onSelect} />)
     fireEvent.click(screen.getByTestId('catalog-card-agent-pixel'))
     expect(onSelect).toHaveBeenCalledWith(item)
+  })
+
+  it('shows the installed version bottom-right when known', () => {
+    render(<CatalogCard entry={entry({ installed: true, installedVersion: '1.2.0' })} onSelect={mock()} />)
+    expect(screen.getByTestId('card-version').textContent).toBe('v1.2.0')
+  })
+
+  it('available entries get an on-card Install button that does not open the drawer', () => {
+    const onSelect = mock()
+    const onInstall = mock()
+    const item = entry()
+    render(<CatalogCard entry={item} onSelect={onSelect} onInstall={onInstall} />)
+    fireEvent.click(screen.getByTestId('card-install-agent-pixel'))
+    expect(onInstall).toHaveBeenCalledWith(item)
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('installed and builtin entries never show the on-card Install button', () => {
+    render(<CatalogCard entry={entry({ installed: true })} onSelect={mock()} onInstall={mock()} />)
+    expect(screen.queryByTestId('card-install-agent-pixel')).toBeNull()
+    cleanup()
+    render(<CatalogCard entry={entry({ builtin: true, installed: true, source: undefined })} onSelect={mock()} onInstall={mock()} />)
+    expect(screen.queryByTestId('card-install-agent-pixel')).toBeNull()
+  })
+
+  it('installed agents render the real headshot avatar instead of the emoji', () => {
+    render(<CatalogCard entry={entry({ installed: true })} onSelect={mock()} />)
+    expect(screen.getByTestId('avatar-pixel')).toBeTruthy()
+    expect(screen.queryByText('🎨')).toBeNull()
+  })
+
+  it('uninstalled agents keep the emoji', () => {
+    render(<CatalogCard entry={entry()} onSelect={mock()} />)
+    expect(screen.queryByTestId('avatar-pixel')).toBeNull()
+    expect(screen.getByText('🎨')).toBeTruthy()
   })
 })

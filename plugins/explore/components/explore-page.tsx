@@ -8,12 +8,42 @@ import { DetailDrawer } from './detail-drawer'
 import { InstallDialog } from './install-dialog'
 import type { ExploreCatalogEntry, ExploreCatalogResponse } from '../types'
 
-const PACK_KINDS = new Set(['skill-pack', 'workflow-pack', 'lesson-pack'])
-
-function tabOf(entry: ExploreCatalogEntry): 'agents' | 'plugins' | 'packs' {
+function tabOf(entry: ExploreCatalogEntry): 'agents' | 'plugins' | 'lessons' | 'packs' {
   if (entry.kind === 'agent') return 'agents'
   if (entry.kind === 'plugin') return 'plugins'
+  if (entry.kind === 'lesson-pack') return 'lessons'
   return 'packs'
+}
+
+/**
+ * Section intros — most users are meeting agents, plugins, and lessons for
+ * the first time. Each tab explains what its items are and why they exist.
+ */
+const TAB_INTROS: Record<string, { title: string; blurb: string }> = {
+  agents: {
+    title: 'Hire your team',
+    blurb:
+      'Agents are ready-made teammates — each ships with an identity, skills, and a job it’s great at. ' +
+      'Install one and it shows up on your Team page, ready for work. Official agents are maintained by Bakin and safe to try.',
+  },
+  plugins: {
+    title: 'Extend the platform',
+    blurb:
+      'Plugins add whole new capabilities to Bakin — new pages, tools your agents can use, and automations. ' +
+      'Built-in ones are already part of your install; the rest are one click away and activate without a restart.',
+  },
+  lessons: {
+    title: 'Level up your agents',
+    blurb:
+      'Lessons teach the agents you already have — domain knowledge, house style, sharper judgment. ' +
+      'Install a lesson pack here, then enable individual lessons per agent from their Team page.',
+  },
+  packs: {
+    title: 'Reusable building blocks',
+    blurb:
+      'Skill and workflow packs bundle proven processes you can drop into your own automations — ' +
+      'install once, reuse everywhere.',
+  },
 }
 
 function ExplorePageInner() {
@@ -51,12 +81,16 @@ function ExplorePageInner() {
   }
 
   const entries = useMemo(() => override?.entries ?? data?.entries ?? [], [override, data])
-  const hasPacks = entries.some((entry) => PACK_KINDS.has(entry.kind))
+  // Lessons are a first-class section even while the catalog has none —
+  // the intro/empty state teaches users what lessons are. Skill/workflow
+  // packs stay hidden until content exists.
+  const hasPacks = entries.some((entry) => entry.kind === 'skill-pack' || entry.kind === 'workflow-pack')
 
   const tabs = useMemo(() => {
     const base = [
       { id: 'agents', label: 'Agents' },
       { id: 'plugins', label: 'Plugins' },
+      { id: 'lessons', label: 'Lessons' },
     ]
     return hasPacks ? [...base, { id: 'packs', label: 'Packs' }] : base
   }, [hasPacks])
@@ -146,6 +180,21 @@ function ExplorePageInner() {
       {error && <ErrorBanner message={error} onRetry={refresh} />}
       {actionError && <ErrorBanner message={actionError} onRetry={() => setActionError(null)} />}
 
+      {/* Placeholder banner — swap for generated art later. Kept as a plain
+          block so the art drop-in is a one-file change. */}
+      <div
+        data-testid="explore-banner"
+        className="relative flex min-h-32 flex-col justify-center overflow-hidden rounded-2xl border border-pink-500/20 bg-gradient-to-r from-pink-500/25 via-fuchsia-500/15 to-amber-400/20 px-8 py-6"
+      >
+        <span className="text-lg font-semibold text-foreground">Make Bakin yours</span>
+        <span className="max-w-xl text-sm text-foreground/70">
+          Hire agents, bolt on plugins, and teach your team new tricks — everything here is official, curated, and one click away.
+        </span>
+        <span className="absolute right-4 top-3 rounded border border-dashed border-foreground/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-foreground/40">
+          banner art placeholder
+        </span>
+      </div>
+
       <div className="flex flex-wrap items-center gap-3">
         <UnderlineTabs
           tabs={tabs}
@@ -160,6 +209,13 @@ function ExplorePageInner() {
         />
       </div>
 
+      {TAB_INTROS[tab] && (
+        <div data-testid="tab-intro" className="max-w-3xl">
+          <h2 className="text-sm font-semibold text-foreground">{TAB_INTROS[tab].title}</h2>
+          <p className="text-sm text-muted-foreground">{TAB_INTROS[tab].blurb}</p>
+        </div>
+      )}
+
       {loading && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: 8 }).map((_, i) => (
@@ -171,10 +227,12 @@ function ExplorePageInner() {
       {!loading && !error && visible.length === 0 && (
         <EmptyState
           icon={Compass}
-          title="Nothing here yet"
-          description={categories.length > 0
+          title={tab === 'lessons' ? 'Lesson packs are coming' : 'Nothing here yet'}
+          description={activeCategories.length > 0
             ? 'No entries match the selected categories.'
-            : 'The catalog has no entries for this tab yet.'}
+            : tab === 'lessons'
+              ? 'Official lesson packs will appear here as they\'re published. Agents you install often ship their own lessons — manage those from the agent\'s Team page.'
+              : 'The catalog has no entries for this tab yet.'}
         />
       )}
 
@@ -185,6 +243,10 @@ function ExplorePageInner() {
               key={`${entry.kind}:${entry.id}`}
               entry={entry}
               onSelect={(selectedEntry) => setSelectedKey(`${selectedEntry.kind}:${selectedEntry.id}`)}
+              onInstall={(installTarget) => {
+                setInstallEntry(installTarget)
+                setInstallOpen(true)
+              }}
             />
           ))}
         </div>

@@ -39,6 +39,12 @@ export const CatalogEntrySchema = z
     /** Pre-selected during onboarding recommendation flows. */
     defaultSelected: z.boolean().default(false),
     iconUrl: z.string().optional(),
+    /**
+     * Gallery image URLs (screenshots, promo art) rendered in the Explore
+     * detail drawer. Authored in the bits-repo catalog; the UI shows
+     * placeholder frames until entries ship real assets.
+     */
+    screenshots: z.array(z.string()).default([]),
   })
   .refine((entry) => entry.builtin || entry.source !== undefined, {
     message: 'non-builtin entries must declare a source',

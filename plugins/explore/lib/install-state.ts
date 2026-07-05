@@ -32,6 +32,8 @@ export interface InstallStateSources {
    * same dual check onboarding's recommended-plugins uses.
    */
   installedPluginDirs: ReadonlySet<string>
+  /** Core plugin id → manifest version (from the live plugin registry). */
+  builtinVersions?: ReadonlyMap<string, string>
 }
 
 function scanInstalledPluginDirs(): Set<string> {
@@ -45,11 +47,29 @@ function scanInstalledPluginDirs(): Set<string> {
   return found
 }
 
+function scanBuiltinVersions(): Map<string, string> {
+  const versions = new Map<string, string>()
+  try {
+    // Lazy require keeps unit tests free of the registry's import graph.
+    const { pluginRegistry, isCorePlugin } = require('../../../src/core/plugin-registry') as
+      typeof import('../../../src/core/plugin-registry')
+    for (const id of pluginRegistry.getPluginIds()) {
+      if (!isCorePlugin(id)) continue
+      const version = pluginRegistry.getPluginState(id)?.manifest?.version
+      if (version) versions.set(id, version)
+    }
+  } catch {
+    // Registry unavailable (unit tests, early boot) — versions stay unknown.
+  }
+  return versions
+}
+
 export function gatherInstallSources(): InstallStateSources {
   return {
     pluginLock: readPluginLockfile(),
     packageLock: readLockfile(),
     installedPluginDirs: scanInstalledPluginDirs(),
+    builtinVersions: scanBuiltinVersions(),
   }
 }
 
@@ -75,7 +95,12 @@ export function joinInstallState(
 ): ExploreCatalogEntry[] {
   return entries.map((entry) => {
     if (entry.builtin) {
-      return { ...entry, installed: true, updateAvailable: null, installedVersion: null }
+      return {
+        ...entry,
+        installed: true,
+        updateAvailable: null,
+        installedVersion: sources.builtinVersions?.get(entry.id) ?? null,
+      }
     }
 
     if (entry.kind === 'agent') {

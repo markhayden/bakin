@@ -39,6 +39,7 @@ const entry = (overrides: Partial<CatalogEntry> & Pick<CatalogEntry, 'id' | 'kin
   builtin: false,
   dependencies: [],
   defaultSelected: false,
+  screenshots: [],
   source: overrides.builtin ? undefined : `github:markhayden/bakin-bits-official#x/${overrides.id}`,
   ...overrides,
 })

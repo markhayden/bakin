@@ -43,6 +43,7 @@ const agentEntry: ExploreCatalogEntry = {
   builtin: false,
   dependencies: [],
   defaultSelected: false,
+  screenshots: [],
   installed: false,
   updateAvailable: null,
   installedVersion: null,

@@ -1,6 +1,7 @@
-import { ArrowUpRight, Check } from 'lucide-react'
+import { ArrowUpRight, Check, Image as ImageIcon } from 'lucide-react'
 import { BakinDrawer } from '@makinbakin/sdk/components'
 import { Badge } from '@makinbakin/sdk/ui'
+import { EntryVisual } from './catalog-card'
 import type { ExploreCatalogEntry } from '../types'
 
 const KIND_LABELS: Record<ExploreCatalogEntry['kind'], string> = {
@@ -31,8 +32,8 @@ export function DetailDrawer({
       onOpenChange={onOpenChange}
       storageKey="explore-detail"
       title={
-        <span className="flex items-center gap-2">
-          <span className="text-xl">{entry.emoji ?? '📦'}</span>
+        <span className="flex items-center gap-2.5">
+          <EntryVisual entry={entry} />
           <span>{entry.name}</span>
           {entry.trust === 'official' && (
             <Badge variant="outline" className="text-[10px] text-muted-foreground">official ✓</Badge>
@@ -43,6 +44,33 @@ export function DetailDrawer({
     >
       <div className="flex flex-col gap-5 p-4" data-testid="detail-drawer-body">
         <p className="text-sm text-foreground/90">{entry.description}</p>
+
+        {/* Gallery — real screenshots once the bits-repo catalog ships them;
+            placeholder frames until then so the layout is ready. */}
+        <div data-testid="drawer-gallery" className="grid grid-cols-3 gap-2">
+          {entry.screenshots.length > 0
+            ? entry.screenshots.slice(0, 6).map((src) => (
+                <img
+                  key={src}
+                  src={src}
+                  alt={`${entry.name} screenshot`}
+                  loading="lazy"
+                  className="aspect-video w-full rounded-lg border border-border object-cover"
+                />
+              ))
+            : Array.from({ length: 3 }).map((_, i) => (
+                <div
+                  key={i}
+                  data-testid="gallery-placeholder"
+                  className="flex aspect-video w-full items-center justify-center rounded-lg border border-dashed border-border bg-[rgba(255,255,255,0.03)]"
+                >
+                  <ImageIcon className="size-5 text-muted-foreground/40" />
+                </div>
+              ))}
+        </div>
+        {entry.screenshots.length === 0 && (
+          <p className="-mt-3 text-[11px] text-muted-foreground/50">Screenshots coming soon</p>
+        )}
 
         {entry.useCases.length > 0 && (
           <div>

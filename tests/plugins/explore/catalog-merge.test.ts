@@ -37,6 +37,7 @@ const entry = (id: string, over: Partial<CatalogEntry> = {}): CatalogEntry => ({
   builtin: false,
   dependencies: [],
   defaultSelected: false,
+  screenshots: [],
   ...over,
 })
 

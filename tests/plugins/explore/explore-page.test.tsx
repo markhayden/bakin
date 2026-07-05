@@ -40,6 +40,7 @@ mock.module('@makinbakin/sdk/ui', () => ({
 }))
 
 mock.module('@makinbakin/sdk/components', () => ({
+  AgentAvatar: ({ agentId }: { agentId: string }) => <span data-testid={`avatar-${agentId}`} />,
   PluginHeader: ({ title, actions }: { title: string; actions?: ReactNode }) => (
     <div>
       <h1>{title}</h1>
@@ -74,6 +75,7 @@ import { ExplorePage } from '../../../plugins/explore/components/explore-page'
 
 const baseEntry = {
   tags: [],
+  screenshots: [],
   ref: null,
   trust: 'official',
   builtin: false,
@@ -93,6 +95,7 @@ const PLUGINS = [
   { ...baseEntry, id: 'team', kind: 'plugin', name: 'Team', description: 'Roster', category: 'Platform', useCases: ['Meet the team'], builtin: true, installed: true },
 ]
 const PACK = { ...baseEntry, id: 'writing', kind: 'lesson-pack', name: 'Writing', description: 'Lessons', category: 'Content', useCases: ['Write better'], source: 'github:x#packs/writing' }
+const SKILL_PACK = { ...baseEntry, id: 'ops-skills', kind: 'skill-pack', name: 'Ops Skills', description: 'Skills', category: 'Operations', useCases: ['Automate ops'], source: 'github:x#packs/ops-skills' }
 
 afterEach(cleanup)
 
@@ -110,8 +113,33 @@ describe('ExplorePage', () => {
     expect(screen.queryByTestId('tab-packs')).toBeNull()
   })
 
-  it('shows the Packs tab when pack entries exist', () => {
+  it('always shows the Lessons tab with an educational empty state', () => {
+    fixtureEntries = [...AGENTS, ...PLUGINS]
+    render(<ExplorePage />)
+    fireEvent.click(screen.getByTestId('tab-lessons'))
+    expect(screen.getByTestId('empty-state').textContent).toContain('Lesson packs are coming')
+  })
+
+  it('renders the banner placeholder and a per-tab intro', () => {
+    fixtureEntries = [...AGENTS, ...PLUGINS]
+    render(<ExplorePage />)
+    expect(screen.getByTestId('explore-banner')).toBeTruthy()
+    expect(screen.getByTestId('tab-intro').textContent).toContain('Hire your team')
+    fireEvent.click(screen.getByTestId('tab-plugins'))
+    expect(screen.getByTestId('tab-intro').textContent).toContain('Extend the platform')
+  })
+
+  it('lesson packs land on the Lessons tab', () => {
     fixtureEntries = [...AGENTS, ...PLUGINS, PACK]
+    render(<ExplorePage />)
+    // A lesson-pack alone does not surface the skill/workflow Packs tab.
+    expect(screen.queryByTestId('tab-packs')).toBeNull()
+    fireEvent.click(screen.getByTestId('tab-lessons'))
+    expect(screen.getByText('Writing')).toBeTruthy()
+  })
+
+  it('shows the Packs tab when skill/workflow pack entries exist', () => {
+    fixtureEntries = [...AGENTS, ...PLUGINS, SKILL_PACK]
     render(<ExplorePage />)
     expect(screen.getByTestId('tab-packs')).toBeTruthy()
   })
