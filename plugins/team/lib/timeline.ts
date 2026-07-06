@@ -91,6 +91,18 @@ function humanize(entry: AuditEvent): string {
   if (entry.event === 'task.runtime_session_died' || entry.event === 'task.runtime_failed_blocked') {
     return summarizeDeath(entry.event, entry.data)
   }
+  // Kinds mapAuditMessage has no sentence for (it echoes the event name).
+  if (entry.event === 'task.bypass_detected') {
+    const pattern = typeof entry.data.pattern === 'string' ? ` (matched "${entry.data.pattern}")` : ''
+    return `Bypassed the preferred tool path${pattern} — check the task's output route`
+  }
+  if (entry.event === 'agent_pkg.lessons_retrieved') {
+    const count = Array.isArray(entry.data.lessons) ? entry.data.lessons.length : undefined
+    return `Retrieved ${count !== undefined ? `${count} ` : ''}lesson(s) for this dispatch`
+  }
+  if (entry.event === 'agent_pkg.lessons_retrieval_failed') {
+    return 'Lesson retrieval failed for this dispatch'
+  }
   return mapAuditMessage(entry.event, entry.data)
 }
 

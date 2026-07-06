@@ -213,8 +213,11 @@ describe('GET /:agentId/timeline route', () => {
     expect(claimRun({ runId: 'task:other:d1', taskId: 'other', seq: 1, agent: 'scout', bootId: 'b' })).toEqual({ claimed: true })
 
     writeFileSync(join(testDir, 'audit.jsonl'), [
-      JSON.stringify({ ts: new Date(Date.now() - 20_000).toISOString(), event: 'task.bypass_detected', agent: 'pixel', data: { id: task.id } }),
-      JSON.stringify({ ts: new Date(Date.now() - 10_000).toISOString(), event: 'task.bypass_detected', agent: 'scout', data: { id: 'other' } }),
+      // watchdog-actor bypass: top-level agent is 'watchdog', the offending
+      // agent lives in data.agent — the production emit shape (watchdog.ts).
+      JSON.stringify({ ts: new Date(Date.now() - 20_000).toISOString(), event: 'task.bypass_detected', agent: 'watchdog', data: { id: task.id, agent: 'pixel', pattern: 'native image' } }),
+      JSON.stringify({ ts: new Date(Date.now() - 15_000).toISOString(), event: 'task.bypass_detected', agent: 'watchdog', data: { id: 'other', agent: 'scout' } }),
+      JSON.stringify({ ts: new Date(Date.now() - 10_000).toISOString(), event: 'agent_pkg.lessons_retrieved', agent: 'pixel', data: { taskId: task.id, lessons: [{ lessonId: 'style' }] } }),
       JSON.stringify({ ts: new Date(Date.now() - 5_000).toISOString(), event: 'task.completed', agent: 'pixel', data: { id: task.id } }), // not a timeline kind
     ].join('\n') + '\n')
 
@@ -226,8 +229,13 @@ describe('GET /:agentId/timeline route', () => {
     const auditEvents = events.filter((e) => e.type === 'event')
     expect(runEvents).toHaveLength(1)
     expect(runEvents[0]).toMatchObject({ taskTitle: 'render pdf', totalTokens: 12_345, model: 'sonnet-5', status: 'settled' })
-    expect(auditEvents).toHaveLength(1)
-    expect(auditEvents[0]!.event).toBe('task.bypass_detected')
+    // pixel's watchdog-attributed bypass + its lessons event; scout's bypass excluded
+    expect(auditEvents).toHaveLength(2)
+    const bypass = auditEvents.find((e) => e.event === 'task.bypass_detected')!
+    expect(bypass.message).toContain('Bypassed the preferred tool path')
+    expect(bypass.message).toContain('native image')
+    const lessons = auditEvents.find((e) => e.event === 'agent_pkg.lessons_retrieved')!
+    expect(lessons.message).toContain('Retrieved 1 lesson(s)')
   })
 
   it('rejects a bad window', async () => {

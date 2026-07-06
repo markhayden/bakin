@@ -689,6 +689,14 @@ export function populateAgentRoutes(arr: any[], deps: TeamRouteDeps): void {
           sinceMs: windowMs,
           limit: TIMELINE_MAX_EVENTS,
         })
+        // Bypass events are written by the WATCHDOG actor (top-level agent =
+        // 'watchdog'; the offending agent is in data.agent) — fetch them
+        // separately and filter by attribution.
+        const bypassEvents = queryAuditEvents(getBakinPaths().home, {
+          kinds: ['task.bypass_detected'],
+          sinceMs: windowMs,
+          limit: TIMELINE_MAX_EVENTS,
+        }).filter((e) => e.agent !== agentId && e.data.agent === agentId)
         const taskById = new Map<string, TimelineTaskInfo>()
         for (const taskId of new Set(runs.map((r) => r.taskId))) {
           try {
@@ -696,7 +704,7 @@ export function populateAgentRoutes(arr: any[], deps: TeamRouteDeps): void {
             if (task) taskById.set(taskId, { title: task.title, log: task.log ?? [] })
           } catch { /* purged task — run row still renders without title/logs */ }
         }
-        const events = assembleTimeline({ runs, auditEvents, taskById, now })
+        const events = assembleTimeline({ runs, auditEvents: [...auditEvents, ...bypassEvents], taskById, now })
         return Response.json({ ok: true, agent: agentId, window: windowParam, events })
       } catch (err) {
         log.error('Failed to assemble agent timeline', err, { agentId })
