@@ -221,6 +221,16 @@ import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/componen
 | `UnderlineTabs` | Tab list with animated underline indicator. |
 | `UnderlineTab` | — |
 | `ChannelIcon` | Icon component for a notification channel (Discord, Slack, email, etc.). |
+| `StackedColumnChart` | Stacked column chart with legend toggle + per-column hover breakdown. |
+| `StackedColumnChartProps` | — |
+| `StackedColumnDatum` | — |
+| `Sparkline` | Tiny inline SVG trend line for embedding beside a stat. |
+| `SparklineProps` | — |
+| `ChartExplainer` | One-line "what am I looking at / when to worry" chart footer. |
+| `CHART_SERIES_COLORS` | CVD-validated series palette + deterministic entity→color assignment. |
+| `CHART_OTHER_COLOR` | CVD-validated series palette + deterministic entity→color assignment. |
+| `CHART_MAX_SERIES` | CVD-validated series palette + deterministic entity→color assignment. |
+| `assignSeriesColors` | CVD-validated series palette + deterministic entity→color assignment. |
 
 ## `@makinbakin/sdk/ui`
 

@@ -93,3 +93,16 @@ export type { UnderlineTab } from '@/components/underline-tabs'
 
 /** Icon component for a notification channel (Discord, Slack, email, etc.). */
 export { ChannelIcon } from '@bakin/workflows/hooks/channel-icon'
+
+// Chart kit (#385) — hand-rolled, validated palette, no chart library.
+
+/** Stacked column chart with legend toggle + per-column hover breakdown. */
+export { StackedColumnChart } from '@/components/charts/stacked-column-chart'
+export type { StackedColumnChartProps, StackedColumnDatum } from '@/components/charts/stacked-column-chart'
+/** Tiny inline SVG trend line for embedding beside a stat. */
+export { Sparkline } from '@/components/charts/sparkline'
+export type { SparklineProps } from '@/components/charts/sparkline'
+/** One-line "what am I looking at / when to worry" chart footer. */
+export { ChartExplainer } from '@/components/charts/chart-explainer'
+/** CVD-validated series palette + deterministic entity→color assignment. */
+export { CHART_SERIES_COLORS, CHART_OTHER_COLOR, CHART_MAX_SERIES, assignSeriesColors } from '@/components/charts/palette'

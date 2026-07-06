@@ -27,7 +27,7 @@ export interface AuditEvent {
  */
 export function queryAuditEvents(
   contentDir: string,
-  opts: { kinds?: string[]; sinceMs?: number; limit?: number } = {},
+  opts: { kinds?: string[]; sinceMs?: number; limit?: number; agent?: string } = {},
 ): AuditEvent[] {
   const auditFile = join(contentDir, 'audit.jsonl')
   if (!existsSync(auditFile)) return []
@@ -36,7 +36,7 @@ export function queryAuditEvents(
   const cutoff = opts.sinceMs !== undefined ? Date.now() - opts.sinceMs : null
 
   if (cutoff !== null) {
-    return queryAuditEventsTail(auditFile, cutoff, kinds, opts.limit)
+    return queryAuditEventsTail(auditFile, cutoff, kinds, opts.limit, opts.agent)
   }
 
   const results: AuditEvent[] = []
@@ -52,6 +52,7 @@ export function queryAuditEvents(
     const entry = parseAuditLine(line)
     if (!entry) continue
     if (kinds && !kinds.has(entry.event)) continue
+    if (opts.agent !== undefined && entry.agent !== opts.agent) continue
     results.push(entry)
   }
 
@@ -93,6 +94,7 @@ function queryAuditEventsTail(
   cutoffMs: number,
   kinds: Set<string> | null,
   limit?: number,
+  agent?: string,
 ): AuditEvent[] {
   const collected: AuditEvent[] = [] // reverse file order while scanning backwards
   let fd: number | null = null
@@ -134,6 +136,7 @@ function queryAuditEventsTail(
         if (tsMs < cutoffMs) continue
         sawInWindow = true
         if (kinds && !kinds.has(entry.event)) continue
+        if (agent !== undefined && entry.agent !== agent) continue
         collected.push(entry)
         if (limit !== undefined && collected.length >= limit) {
           stop = true

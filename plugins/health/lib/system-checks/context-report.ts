@@ -22,8 +22,12 @@ import type { HealthCheckResult } from '../../../../packages/core/src/plugin-typ
 const CHECK = 'context.startup-size'
 const DEFAULT_BUDGET_BYTES = 64 * 1024
 
-function result(status: HealthCheckResult['status'], message: string): HealthCheckResult {
-  return { check: CHECK, status, message, autoFixable: false }
+function result(
+  status: HealthCheckResult['status'],
+  message: string,
+  data?: Record<string, unknown>,
+): HealthCheckResult {
+  return { check: CHECK, status, message, autoFixable: false, ...(data ? { data } : {}) }
 }
 
 export async function checkStartupContextSize(runtime: AgentRuntimeAdapter): Promise<HealthCheckResult[]> {
@@ -46,6 +50,7 @@ export async function checkStartupContextSize(runtime: AgentRuntimeAdapter): Pro
   const mainAgentId = await getRuntimeMainAgentId(runtime)
   const contentDir = getContentDir()
   const over: string[] = []
+  const overAgents: string[] = []
   for (const agent of agents) {
     const est = estimateMaxTaskDispatchBytes(agent.id, mainAgentId, contentDir)
     if (est.totalBytes > budget) {
@@ -55,6 +60,7 @@ export async function checkStartupContextSize(runtime: AgentRuntimeAdapter): Pro
         .map((c) => `${c.source}=${c.bytes}B`)
         .join(', ')
       over.push(`${agent.id} ~${est.totalBytes}B (top: ${top})`)
+      overAgents.push(agent.id)
     }
   }
 
@@ -66,5 +72,6 @@ export async function checkStartupContextSize(runtime: AgentRuntimeAdapter): Pro
     `${over.length} agent(s) exceed the ${budget}B per-dispatch context budget: ${over.join('; ')}. `
     + 'Warn-only — dispatch is never blocked. Inspect with `bakin agents context <id>`; '
     + 'tune caps or raise dispatch.contextBudgetBytes.',
+    { agents: overAgents },
   )]
 }

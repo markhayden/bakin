@@ -50,6 +50,7 @@ let ledgerDown = false
 mock.module('../../../src/core/execution-ledger', () => ({
   LedgerUnavailableError: FakeLedgerUnavailableError,
   purgeTaskRows: () => 0,
+  listRunsByAgent: () => [],
   getLiveRun: (taskId: string) => {
     if (ledgerDown) throw new FakeLedgerUnavailableError('ledger op failed: getLiveRun')
     const run = liveRuns.get(taskId)
@@ -65,6 +66,7 @@ mock.module('../../../src/core/audit', () => ({
   appendAudit: (_dir: string, event: string, agent: string, data: Record<string, unknown>) => {
     audits.push({ event, agent, data })
   },
+  queryAuditEvents: () => [],
 }))
 
 import { activatePlugin, findTool, callTool } from '../test-helpers'

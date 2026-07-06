@@ -235,6 +235,35 @@ export function usageByAgentSince(sinceDay: string): AgentUsageRollup[] {
   }
 }
 
+export interface AgentDayUsageRollup {
+  agent: string
+  day: string
+  tokens: UsageTokenSums
+  costUsdMicros: number | null
+  costedMessages: number
+  messageCount: number
+}
+
+/**
+ * Per-(agent, day) cells for calendar days >= sinceDay — the cross-tab behind
+ * the per-agent stacked daily chart (#385). Ascending (day, agent) so chart
+ * series assemble deterministically.
+ */
+export function usageByAgentDaySince(sinceDay: string): AgentDayUsageRollup[] {
+  try {
+    return db()
+      .prepare<RollupRow & { agent: string }, [string]>(
+        `SELECT agent, day AS key, ${ROLLUP_SUMS}
+           FROM session_usage_days WHERE day >= ? GROUP BY agent, day ORDER BY day ASC, agent ASC`,
+      )
+      .all(sinceDay)
+      .map((r) => ({ agent: r.agent, day: r.key, ...toRollup(r) }))
+  } catch (err) {
+    log.error('usageByAgentDaySince failed', err, { sinceDay })
+    return []
+  }
+}
+
 /** Per-day sums for calendar days >= sinceDay, ascending by day. */
 export function usageByDaySince(sinceDay: string): DayUsageRollup[] {
   try {

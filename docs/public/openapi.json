@@ -2605,6 +2605,91 @@
         "x-bakin-full-path": "/api/plugins/health/usage-history"
       }
     },
+    "/api/plugins/health/live-now": {
+      "get": {
+        "operationId": "health.get.live-now",
+        "summary": "In-flight dispatch runs",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Health"
+        ],
+        "description": "Every currently-running dispatch run across all agents (execution ledger), with running-for and heartbeat age. The honest answer to \"is anything running right now\".",
+        "x-bakin-full-path": "/api/plugins/health/live-now"
+      }
+    },
+    "/api/plugins/health/agent-effort": {
+      "get": {
+        "operationId": "health.get.agent-effort",
+        "summary": "Per-agent effort vs outcome",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Health"
+        ],
+        "description": "Token burn per agent joined with task completions and transcript-observed totals (Bakin-attributed vs total observed vs unattributed), plus warn-only burn flags. Same engine as the usage.agent-burn doctor check.",
+        "parameters": [
+          {
+            "name": "window",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": "24h",
+              "type": "string",
+              "enum": [
+                "24h",
+                "7d",
+                "30d"
+              ]
+            }
+          }
+        ],
+        "x-bakin-full-path": "/api/plugins/health/agent-effort"
+      }
+    },
     "/api/plugins/health/registry": {
       "get": {
         "operationId": "health.get.registry",
@@ -6369,6 +6454,16 @@
                     "type": "string"
                   },
                   "agentId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "teamId": {
                     "anyOf": [
                       {
                         "type": "string"
@@ -11731,6 +11826,79 @@
           }
         ],
         "x-bakin-full-path": "/api/plugins/team/:agentId/recent-activity"
+      }
+    },
+    "/api/plugins/team/{agentId}/timeline": {
+      "get": {
+        "operationId": "team.get.agent-id-timeline",
+        "summary": "Per-agent activity timeline (runs + notable events)",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Team"
+        ],
+        "description": "Per-agent activity timeline: dispatch runs with tokens/cost/outcome (execution ledger) interleaved with notable audit events, plus per-run progress-log lines",
+        "parameters": [
+          {
+            "name": "agentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-bakin-full-path": "/api/plugins/team/:agentId/timeline"
       }
     },
     "/api/plugins/team/{agentId}/start": {

@@ -101,6 +101,65 @@ async function cmdAgentsContext(agentId: string | undefined, opts: { json?: bool
   }
 }
 
+async function printAgentDoctorTui(data: import('../../core/cli/ui/reports/agent-doctor').AgentDoctorData): Promise<void> {
+  return renderInkReport(() => import('../../core/cli/ui/readonly'), (m) => m.AgentDoctorReport, { data })
+}
+
+/**
+ * `bakin agents doctor <id>` (#385) — thin aggregator over the same four
+ * endpoints the web Diagnostics tab uses (drift scan, context report,
+ * agent-effort, timeline). Each section degrades independently: an
+ * unreachable endpoint renders as "unavailable", never a hard exit.
+ */
+async function cmdAgentsDoctor(agentId: string, opts: { json?: boolean } = {}): Promise<void> {
+  const tryGet = async <T,>(path: string): Promise<T | null> => {
+    try {
+      return await apiGet(path) as T
+    } catch {
+      return null
+    }
+  }
+
+  const [scan, context, effort, timeline] = await Promise.all([
+    tryGet<{ findings: import('../../core/cli/ui/reports/agent-doctor').AgentDoctorFindingData[]; scannedAt: string }>(
+      `/api/agent-packages/${agentId}/scan`,
+    ),
+    tryGet<{ report: { dispatch: { estimatedMaxTaskBytes: number }; workspace: { available: boolean; totalBytes: number } } }>(
+      `/api/context-report/${agentId}`,
+    ),
+    tryGet<{ agents: Array<import('../../core/cli/ui/reports/agent-doctor').AgentDoctorEffortData & { agent: string }> }>(
+      '/api/plugins/health/agent-effort?window=24h',
+    ),
+    tryGet<{ events: import('../../core/cli/ui/reports/agent-doctor').AgentDoctorTimelineEventData[] }>(
+      `/api/plugins/team/${agentId}/timeline?window=24h`,
+    ),
+  ])
+
+  const data: import('../../core/cli/ui/reports/agent-doctor').AgentDoctorData = {
+    agentId,
+    scan: scan ? { findings: scan.findings, scannedAt: scan.scannedAt } : null,
+    context: context?.report
+      ? {
+          estimatedMaxTaskBytes: context.report.dispatch.estimatedMaxTaskBytes,
+          workspaceAvailable: context.report.workspace.available,
+          workspaceTotalBytes: context.report.workspace.totalBytes,
+        }
+      : null,
+    effort: effort?.agents.find((row) => row.agent === agentId) ?? null,
+    timeline: timeline?.events ?? null,
+  }
+
+  if (opts.json) {
+    print(data)
+    return
+  }
+  if (process.stdout.isTTY) {
+    await printAgentDoctorTui(data)
+    return
+  }
+  print(data)
+}
+
 async function cmdAgentsSend(agentId: string, message: string): Promise<void> {
   const result = await apiPost(`/api/agents/${agentId}/message`, { message })
   if (process.stdout.isTTY) {
@@ -412,6 +471,9 @@ export async function run(args: string[]): Promise<void> {
     // `bakin agents context` (no id) = per-agent summary; `<id>` = full breakdown
     const id = args[2] && !args[2].startsWith('--') ? args[2] : undefined
     await cmdAgentsContext(id, { json: args.includes('--json') })
+  } else if (sub === 'doctor') {
+    if (!args[2] || args[2].startsWith('--')) await exitUsage('bakin agents doctor <id> [--json]')
+    await cmdAgentsDoctor(args[2], { json: args.includes('--json') })
   } else if (sub === 'send') {
     if (!args[2] || !args[3]) await exitUsage('bakin agents send <id> <message>')
     await cmdAgentsSend(args[2], args.slice(3).join(' '))
@@ -444,6 +506,6 @@ export async function run(args: string[]): Promise<void> {
       await exitUnknownSubcommand('agents lessons', lessonSub, ['list', 'enable', 'disable'])
     }
   } else {
-    await exitUnknownSubcommand('agents', sub, ['list', 'status', 'tasks', 'context', 'send', 'install', 'orphan', 'delete', 'remove', 'update', 'lessons'])
+    await exitUnknownSubcommand('agents', sub, ['list', 'status', 'tasks', 'context', 'doctor', 'send', 'install', 'orphan', 'delete', 'remove', 'sync', 'lessons'])
   }
 }

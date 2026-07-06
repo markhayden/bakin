@@ -22,6 +22,7 @@ import { removePackageById } from '@/core/agent-packages/uninstaller'
 import { MigrationRequiredError, syncAgent } from '@/core/agent-packages/sync'
 import { migrateToManagedBlocks } from '@/core/agent-packages/migration'
 import { readReceipt } from '@/core/agent-packages/receipts'
+import { scanAgentSync } from '@/core/agent-packages/sync-scanner'
 import { reloadAgentPackageRegistries } from '@/core/agent-packages/post-sync-reload'
 import {
   listLessons,
@@ -97,6 +98,11 @@ export async function handler(req: Request, url: URL): Promise<Response> {
     return Response.json({ ok: true, receipt })
   }
 
+  // /api/agent-packages/{agentId}/scan <- GET (read-only live drift scan, #385)
+  if (segments.length === 4 && segments[3] === 'scan' && req.method === 'GET') {
+    return handleScan(agentId)
+  }
+
   // /api/agent-packages/{agentId}/lessons <- GET
   if (segments.length === 4 && segments[3] === 'lessons' && req.method === 'GET') {
     return handleLessonsList(agentId)
@@ -108,6 +114,36 @@ export async function handler(req: Request, url: URL): Promise<Response> {
   }
 
   return Response.json({ ok: false, error: 'Not found' }, { status: 404 })
+}
+
+/**
+ * Live single-agent drift scan (#385) — always-fresh findings for the
+ * Diagnostics tab. Runs the same read-only scanner as the team.agent-sync
+ * doctor check, filtered to one agent (the verifyAgent pattern); ZERO writes,
+ * no upstream fetch. Also matches findings by owning package so
+ * package-scoped issues (source-missing etc.) aren't hidden.
+ */
+async function handleScan(agentId: string): Promise<Response> {
+  try {
+    const packageId = resolvePackageIdForAgent(agentId) ?? undefined
+    const report = await scanAgentSync()
+    const findings = report.findings.filter(
+      (f) => f.agentId === agentId || (packageId !== undefined && f.packageId === packageId),
+    )
+    return Response.json({
+      ok: true,
+      agentId,
+      packageId: packageId ?? null,
+      findings,
+      scannedAt: new Date().toISOString(),
+    })
+  } catch (err) {
+    log.error('agent-packages scan failed', err, { agentId })
+    return Response.json(
+      { ok: false, error: err instanceof Error ? err.message : String(err) },
+      { status: 500 },
+    )
+  }
 }
 
 async function handleRemove(req: Request, agentId: string): Promise<Response> {

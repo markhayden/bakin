@@ -14,8 +14,10 @@ import { Loader2, Sparkles, BookOpen, MessageSquare, Coins, Database, Activity }
 import { ModelSelect } from '@makinbakin/sdk/components'
 import { useAgentStore, useAgentColor } from '@makinbakin/sdk/hooks'
 import type { AgentUsage, AvailableModel } from '@makinbakin/sdk/types'
+import { useQueryState } from '@makinbakin/sdk/hooks'
 import type { AgentProfile, PackageStateRow, RecentActivity } from '../types'
 import { PackageCardBody } from './package-card'
+import { useAgentAttention, DiagnosticsChipsView } from './diagnostics-tab'
 
 export interface OverviewTabProps {
   agentId: string
@@ -123,6 +125,14 @@ export function OverviewTab({
   const reload = useAgentStore((s) => s.load)
   const accentColor = useAgentColor(agentId)
   const currentTeamId = displaySettings[agentId]?.teamId ?? ''
+  const attention = useAgentAttention(agentId)
+  const [, setTabParam] = useQueryState('tab', 'overview')
+  // The dead-until-now 'drifted' badge state (#385): layered on from the
+  // cached doctor result, same source as the dashboard attention chips.
+  const effectivePackageState: PackageStateRow | undefined =
+    packageState && attention.drift && packageState.state === 'managed'
+      ? { ...packageState, state: 'drifted' }
+      : packageState
 
   const [usage, setUsage] = useState<AgentUsage | null>(null)
   const [activity, setActivity] = useState<RecentActivity | null>(null)
@@ -225,9 +235,15 @@ export function OverviewTab({
           {/* PACKAGE */}
           <div className="px-6 py-5 space-y-3">
             <SectionLabel>Agent Package</SectionLabel>
-            <PackageCardBody agentId={agentId} packageState={packageState} />
+            <PackageCardBody agentId={agentId} packageState={effectivePackageState} />
           </div>
         </div>
+      </section>
+
+      {/* DIAGNOSTICS STATUS — drift / context / burn chips (#385) */}
+      <section>
+        <SectionLabel>Diagnostics</SectionLabel>
+        <DiagnosticsChipsView attention={attention} onOpen={() => setTabParam('diagnostics')} />
       </section>
 
       {/* TELEMETRY — 4 metric tiles, color-coded, with icons */}

@@ -3,6 +3,7 @@
 import { Card, CardHeader, CardTitle, CardContent } from '@makinbakin/sdk/ui'
 import { Badge } from '@makinbakin/sdk/ui'
 import { useQueryState } from '@makinbakin/sdk/hooks'
+import { StackedColumnChart } from '@makinbakin/sdk/components'
 import type { UsageHistoryData, UsageHistoryWindow } from '../types'
 import { formatTokenCount, formatRuntimeCost } from '../lib/format'
 import { usePolledJson, HEALTH_POLL_MS } from './use-health-data'
@@ -83,7 +84,7 @@ export function UsageHistorySection({ refreshNonce }: { refreshNonce: number }) 
           </p>
         ) : (
           <div className="space-y-4">
-            <DailyTotalsChart days={data.byDay} />
+            <PerAgentDailyChart byAgentDay={data.byAgentDay ?? []} byDay={data.byDay} />
 
             <div className="space-y-1.5">
               <div className="flex items-center text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-white/5">
@@ -145,31 +146,35 @@ function CostCell({ costUsdMicros, costedMessages, messageCount }: {
 }
 
 /**
- * Single-series daily-totals column chart. One hue (identity is carried by
- * the section title, no legend needed); bars are baseline-anchored with
- * rounded data-ends and a per-bar hover tooltip; grid is recessive (just the
- * baseline). Text stays in text tokens, never the series color.
+ * Per-agent stacked daily columns (#385) — one column per local calendar day,
+ * stacked by agent (usage.db's agent×day cross-tab). Falls back to the byDay
+ * totals when the cross-tab is empty. Needs ≥2 days to be a trend.
  */
-function DailyTotalsChart({ days }: { days: UsageHistoryData['byDay'] }) {
+function PerAgentDailyChart({
+  byAgentDay,
+  byDay,
+}: {
+  byAgentDay: UsageHistoryData['byAgentDay']
+  byDay: UsageHistoryData['byDay']
+}) {
+  const days = [...new Set(byDay.map((d) => d.day))].sort()
   if (days.length < 2) return null
-  const max = Math.max(...days.map((d) => d.tokens.total), 1)
 
-  return (
-    <div>
-      <div className="flex items-end gap-0.5 h-20 border-b border-white/10">
-        {days.map((d) => (
-          <div
-            key={d.day}
-            className="flex-1 min-w-[3px] bg-blue-500 hover:bg-blue-400 rounded-t-[4px] transition-colors"
-            style={{ height: `${Math.max((d.tokens.total / max) * 100, d.tokens.total > 0 ? 3 : 0)}%` }}
-            title={`${d.day}: ${formatTokenCount(d.tokens.total)} tokens`}
-          />
-        ))}
-      </div>
-      <div className="flex justify-between mt-1 text-[10px] font-mono text-muted-foreground">
-        <span>{days[0].day}</span>
-        <span>{days[days.length - 1].day}</span>
-      </div>
-    </div>
-  )
+  const cellsByDay = new Map<string, Record<string, number>>()
+  for (const day of days) cellsByDay.set(day, {})
+  for (const cell of byAgentDay) {
+    const bucket = cellsByDay.get(cell.day)
+    if (bucket) bucket[cell.agent] = cell.tokens.total
+  }
+  // Cross-tab absent (older payloads / empty) → single "all agents" series.
+  const haveCells = byAgentDay.length > 0
+  const data = days.map((day) => ({
+    x: day,
+    xLabel: day.slice(5), // MM-DD
+    values: haveCells
+      ? cellsByDay.get(day)!
+      : { 'all agents': byDay.find((d) => d.day === day)?.tokens.total ?? 0 },
+  }))
+
+  return <StackedColumnChart data={data} height={112} formatValue={formatTokenCount} />
 }

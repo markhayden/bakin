@@ -55,25 +55,11 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>none</td>
     </tr>
     <tr>
-      <td>Messaging<br/><span>Content messaging with scheduling, brainstorming, and multi-agent content pipeline</span></td>
-      <td><code>messaging</code></td>
-      <td>Official</td>
-      <td><code>0.5.1</code></td>
-      <td><code>team</code> <code>workflows</code></td>
-    </tr>
-    <tr>
       <td>Models<br/><span>Agent model configuration — per-agent models, aliases, available models, per-turn model/thinking routing, and spend/budget tracking</span></td>
       <td><code>models</code></td>
       <td>Core</td>
       <td><code>2.1.0</code></td>
       <td><code>team</code></td>
-    </tr>
-    <tr>
-      <td>Projects<br/><span>Project management with specs, checklists, task linking, and agent access via MCP tools</span></td>
-      <td><code>projects</code></td>
-      <td>Official</td>
-      <td><code>0.5.1</code></td>
-      <td><code>tasks</code> <code>assets</code> <code>team</code></td>
     </tr>
     <tr>
       <td>Schedule<br/><span>Cron job scheduling through the runtime adapter with task creation</span></td>

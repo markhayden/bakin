@@ -93,3 +93,21 @@ composition and what's actually in the block, attributed per input.
   Lockfile workspace projections record `composedSha` + per-input shas.
 - Package authors write PLAIN markdown templates — markers are projection
   machinery, never authoring syntax.
+
+## Live drift surfacing (#385)
+
+Beyond the cron'd `team.agent-sync` doctor check, drift is surfaced live:
+
+- `GET /api/agent-packages/{agentId}/scan` — read-only single-agent scan
+  (full `scanAgentSync()` filtered by `agentId`/owning `packageId`, the
+  `verifyAgent` pattern). Zero writes, no upstream fetch.
+- The Team agent-detail **Diagnostics tab** renders those findings (per-file,
+  per-input `staleInputs` attribution, `.userEdited` locks with reclaim hints)
+  with a Sync-now button over the existing sync POST + receipt display.
+- The previously dead `'drifted'` package badge state is now assigned: the
+  Overview tab and the health dashboard attention chips derive it from the
+  CACHED doctor results via `HealthCheckResult.data.agents` (the agent-sync
+  check attaches per-bucket agent ids). Fresh where you're looking (tab scan),
+  cheap where you're not (doctor cache).
+
+Deep dive: `.claude/knowledge/agent-health-diagnostics.md`.

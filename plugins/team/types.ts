@@ -152,3 +152,50 @@ export interface HeartbeatRaw {
   content: string
   lastUpdated: string | null
 }
+
+// ─── Agent diagnostics (#385) ────────────────────────────────────────────────
+
+/** Client mirror of a sync-scanner finding (GET /api/agent-packages/{id}/scan). */
+export interface ScanFinding {
+  type: string
+  severity: 'warn' | 'error'
+  autoFixable: boolean
+  message: string
+  agentId?: string
+  packageId?: string
+  file?: string
+  target?: string
+  staleInputs?: string[]
+  hint?: string
+}
+
+/** Client mirror of one timeline event (GET /:agentId/timeline). */
+export type TimelineEventView =
+  | {
+      type: 'run'
+      ts: number
+      runId: string
+      taskId: string
+      taskTitle: string | null
+      seq: number
+      status: 'running' | 'settled' | 'superseded' | 'lost'
+      settleReason: string | null
+      startedAt: number
+      settledAt: number | null
+      durationMs: number | null
+      model: string | null
+      inputTokens: number | null
+      outputTokens: number | null
+      totalTokens: number | null
+      costUsdMicros: number | null
+      logs: Array<{ ts: string; message: string }>
+      logsTruncated: boolean
+    }
+  | {
+      type: 'event'
+      ts: number
+      event: string
+      severity: 'info' | 'warn'
+      message: string
+      taskId: string | null
+    }
