@@ -14,7 +14,7 @@
 
 ---
 
-It gives teams a self-hosted dashboard, backend, CLI, and plugin system for managing tasks, schedules, assets, workflows, memory, models, health checks, and automation.
+It gives teams a self-hosted dashboard, backend, CLI, and plugin system for managing tasks, schedules, assets, workflows, memory, models, health checks, automation, and direct agent chat.
 
 The product is local-first: Bakin' owns its data under `~/.bakin/`, talks to the configured runtime through adapters, and serves the browser UI from one Bun-powered process.
 
