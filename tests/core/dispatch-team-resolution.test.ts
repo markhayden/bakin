@@ -278,7 +278,7 @@ describe('dispatch cycle wiring', () => {
 
     await dispatchTasks(tempDir, 3737)
     expect(hookInvokeSpy).not.toHaveBeenCalled() // pre-pass respects the exhausted ladder
-    expect(blockTaskSpy).toHaveBeenCalledWith('task-t', expect.stringContaining('re-assign this task'))
+    expect(blockTaskSpy).toHaveBeenCalledWith('task-t', expect.stringContaining('repeatedly'))
     const exhaustLog = addTaskLogSpy.mock.calls.map((c) => String(c[2])).join('\n')
     expect(exhaustLog).toContain('3 times')
     expect(prepareSpy).not.toHaveBeenCalled()
@@ -337,6 +337,22 @@ describe('round-3 guards', () => {
     expect(hookInvokeSpy).toHaveBeenCalledTimes(1) // treated as satisfied, mirrors isTaskDispatchEligible
   })
 
+  it('a joined transient failure records exactly ONE ladder entry (round-5)', async () => {
+    columns.todo.push({ id: 'task-once', title: 'Once', team: 'development' })
+    hookInvokeSpy.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, 40))
+      return { ok: false, kind: 'transient', message: 'rate limited' }
+    })
+    await Promise.all([
+      dispatchTasks(tempDir, 3737),
+      resolveTeamAssignmentForSingle('task-once', tempDir, 'kick'),
+    ])
+    expect(hookInvokeSpy).toHaveBeenCalledTimes(1)
+    const state = loadDispatchState(tempDir)
+    expect(state.failedDispatches['task-once']).toMatchObject({ count: 1, kind: 'transient' })
+    hookInvokeSpy.mockImplementation(async () => hookResult)
+  })
+
   it('a joined kick proceeds when the in-flight resolution succeeds (round-4)', async () => {
     columns.todo.push({ id: 'task-join', title: 'Join', team: 'development' })
     hookInvokeSpy.mockImplementation(async () => {
@@ -365,7 +381,7 @@ describe('round-3 guards', () => {
 
     await dispatchTasks(tempDir, 3737)
     expect(hookInvokeSpy).not.toHaveBeenCalled()
-    expect(blockTaskSpy).toHaveBeenCalledWith('task-sd', expect.stringContaining('re-assign this task'))
+    expect(blockTaskSpy).toHaveBeenCalledWith('task-sd', expect.stringContaining('repeatedly'))
     const sdLog = addTaskLogSpy.mock.calls.map((c) => String(c[2])).join('\n')
     expect(sdLog).toContain('3 times')
   })

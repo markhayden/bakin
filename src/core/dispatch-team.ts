@@ -30,14 +30,13 @@ import {
   getFailureRecord,
   cooldownForFailure,
 } from './dispatch-state'
-import { TEAM_ROUTING_BLOCK_REASON } from './dispatch-types'
+import { TEAM_ROUTING_BLOCK_REASON, TEAM_ROUTING_EXHAUSTED_REASON } from './dispatch-types'
 import type { DispatchState, DispatchTask } from './dispatch-types'
 
 const log = createLogger('dispatch-team')
 
 export const TEAM_RESOLVE_HOOK = 'team.resolveAssignment'
 
-export { TEAM_ROUTING_BLOCK_REASON } from './dispatch-types'
 
 /** Structural mirror of the team plugin's ResolveAssignmentResult — typed at
  * the call site per the HookRegistry contract (core must not import plugin
@@ -159,7 +158,7 @@ export function recordTeamResolutionFailure(state: DispatchState, taskId: string
   }
 }
 
-type LadderGate = 'cooldown' | 'exhausted' | null
+type LadderGate = { gate: 'cooldown' | 'exhausted' | null; count: number }
 
 /** Pacing gate shared by both resolution paths. sessionDeath records are
  * NOT exempt here (round-3 finding): that exemption exists for the recovery
@@ -171,9 +170,10 @@ function ladderGate(
   settings: ReturnType<typeof getSettings>,
 ): LadderGate {
   const failure = getFailureRecord(state.failedDispatches?.[taskId])
-  if (!failure) return null
-  if (failure.count >= settings.dispatch.maxRetries) return 'exhausted'
-  return Date.now() - failure.lastAttempt < cooldownForFailure(failure, settings) ? 'cooldown' : null
+  if (!failure) return { gate: null, count: 0 }
+  if (failure.count >= settings.dispatch.maxRetries) return { gate: 'exhausted', count: failure.count }
+  const cooling = Date.now() - failure.lastAttempt < cooldownForFailure(failure, settings)
+  return { gate: cooling ? 'cooldown' : null, count: failure.count }
 }
 
 /** Escalate an exhausted team task to blocked — the pre-pass owns this for
@@ -186,7 +186,11 @@ async function escalateExhaustedResolution(task: DispatchTask, contentDir: strin
       id: task.id, title: task.title, team: task.team, kind: 'structural',
       message: `exhausted after ${count} transient routing failures`,
     })
-    await blockTask(task.id, TEAM_ROUTING_BLOCK_REASON)
+    // Exhaustion uses its OWN reason (round-5): unlike a structural triage
+    // block, it means repeated BILLED routing calls failed — the schedule
+    // outcome check must count it, or a broken provider bills maxRetries
+    // calls per occurrence forever with no auto-pause backstop.
+    await blockTask(task.id, TEAM_ROUTING_EXHAUSTED_REASON)
     await addTaskLog(task.id, 'system', `Team routing failed ${count} times — check the routing provider/key (Team settings), then re-assign or unblock to retry`).catch((err) => log.debug('Could not append routing-exhaustion detail', { id: task.id, err: String(err) }))
     log.warn('Team task blocked after exhausting routing retries', { id: task.id, team: task.team, count })
   } catch (err) {
@@ -205,12 +209,24 @@ const resolvingTasks = new Map<string, Promise<TeamResolutionOutcome>>()
 let prePassRunning = false
 
 /** Start (or join) the resolution for a task — exactly one routing call per
- * task is in flight at any moment. */
+ * task is in flight at any moment, and a 'skipped' outcome records its
+ * ladder failure exactly ONCE here, inside the shared promise (round-5:
+ * recording in the callers let a joiner double-count one billed call,
+ * halving the effective retry budget). */
 function resolveShared(task: DispatchTask, contentDir: string): Promise<TeamResolutionOutcome> {
   const existing = resolvingTasks.get(task.id)
   if (existing) return existing
-  const promise = resolveTeamAssignmentForDispatch(task, contentDir)
-    .finally(() => resolvingTasks.delete(task.id))
+  const promise = (async () => {
+    const outcome = await resolveTeamAssignmentForDispatch(task, contentDir)
+    if (outcome.status === 'skipped') {
+      await withStateLock(async () => {
+        const fresh = loadDispatchState(contentDir)
+        recordTeamResolutionFailure(fresh, task.id)
+        saveDispatchState(contentDir, fresh)
+      })
+    }
+    return outcome
+  })().finally(() => resolvingTasks.delete(task.id))
   resolvingTasks.set(task.id, promise)
   return promise
 }
@@ -281,9 +297,9 @@ export async function resolveTeamAssignmentsPrePass(contentDir: string): Promise
     const state = loadDispatchState(contentDir)
     const toResolve: DispatchTask[] = []
     for (const task of candidates) {
-      const gate = ladderGate(state, task.id, settings)
+      const { gate, count } = ladderGate(state, task.id, settings)
       if (gate === 'exhausted') {
-        await escalateExhaustedResolution(task, contentDir, getFailureRecord(state.failedDispatches?.[task.id])?.count ?? settings.dispatch.maxRetries)
+        await escalateExhaustedResolution(task, contentDir, count)
         continue
       }
       if (gate === 'cooldown') continue
@@ -291,19 +307,8 @@ export async function resolveTeamAssignmentsPrePass(contentDir: string): Promise
     }
     if (toResolve.length === 0) return
 
-    const skippedIds: string[] = []
-    await Promise.all(toResolve.map(async (task) => {
-      const outcome = await resolveShared(task, contentDir)
-      if (outcome.status === 'skipped') skippedIds.push(task.id)
-    }))
-
-    if (skippedIds.length > 0) {
-      await withStateLock(async () => {
-        const fresh = loadDispatchState(contentDir)
-        for (const id of skippedIds) recordTeamResolutionFailure(fresh, id)
-        saveDispatchState(contentDir, fresh)
-      })
-    }
+    // Failure recording happens exactly once inside resolveShared.
+    await Promise.all(toResolve.map((task) => resolveShared(task, contentDir)))
   } finally {
     prePassRunning = false
   }
@@ -340,9 +345,9 @@ export async function resolveTeamAssignmentForSingle(
 
   const settings = getSettings()
   const state = loadDispatchState(contentDir)
-  const gate = ladderGate(state, taskId, settings)
+  const { gate, count } = ladderGate(state, taskId, settings)
   if (gate === 'exhausted') {
-    await escalateExhaustedResolution(task, contentDir, getFailureRecord(state.failedDispatches?.[taskId])?.count ?? settings.dispatch.maxRetries)
+    await escalateExhaustedResolution(task, contentDir, count)
     return false
   }
   if (gate === 'cooldown') {
@@ -351,15 +356,8 @@ export async function resolveTeamAssignmentForSingle(
   }
 
   const outcome = await resolveShared(task, contentDir)
-  if (outcome.status === 'skipped') {
-    await withStateLock(async () => {
-      const fresh = loadDispatchState(contentDir)
-      recordTeamResolutionFailure(fresh, taskId)
-      saveDispatchState(contentDir, fresh)
-    })
-    return false
-  }
-  // 'stale' means someone else won the race and may have resolved it —
-  // let the caller proceed; its locked re-read decides.
+  // Failure recording happens exactly once inside resolveShared. 'stale'
+  // means someone else won the race and may have resolved it — let the
+  // caller proceed; its locked re-read decides.
   return outcome.status === 'resolved' || outcome.status === 'stale'
 }

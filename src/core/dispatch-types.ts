@@ -14,6 +14,13 @@ import type { DispatchFailureKind } from './dispatch-failures'
  * the dispatch runtime graph. */
 export const TEAM_ROUTING_BLOCK_REASON = 'team routing failed — re-assign this task'
 
+/** `blockedReason` for a task blocked after EXHAUSTING billed routing
+ * retries (round-5). Deliberately NOT excluded from the schedule outcome
+ * check: repeated billed failures must count toward a job's auto-pause,
+ * or a broken routing provider bills maxRetries calls per occurrence
+ * forever. */
+export const TEAM_ROUTING_EXHAUSTED_REASON = 'team routing failed repeatedly — check the routing provider, then re-assign'
+
 export type DispatchTask = {
   id: string
   title: string

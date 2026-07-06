@@ -71,10 +71,10 @@ class MockTaskValidationError extends Error {
   readonly code: string
   constructor(message: string, code: string) { super(message); this.name = 'TaskValidationError'; this.code = code }
 }
-const mockValidateTeamRefImpl = async (teamId: string) => {
+const mockValidateTeamRefImpl = mock(async (teamId: string) => {
   if (teamId === 'ghost-team') throw new MockTaskValidationError(`Unknown team: "${teamId}"`, 'unknown_team')
   if (teamId === 'unavailable-team') throw new MockTaskValidationError('team plugin unavailable', 'validation_unavailable')
-}
+})
 mock.module('../../../src/core/task-service', () => ({
   // Faithful to the real service (round-4 review): create RE-VALIDATES the
   // team unless the internal skip flag is set — a hollow mock here masked
@@ -84,10 +84,7 @@ mock.module('../../../src/core/task-service', () => ({
     if (o.team && !o.skipAssignmentValidation) await mockValidateTeamRefImpl(o.team)
     return mockCreateTask(opts)
   },
-  validateTeamRef: async (teamId: string) => {
-    if (teamId === 'ghost-team') throw new MockTaskValidationError(`Unknown team: "${teamId}"`, 'unknown_team')
-    if (teamId === 'unavailable-team') throw new MockTaskValidationError('team plugin unavailable', 'validation_unavailable')
-  },
+  validateTeamRef: mockValidateTeamRefImpl,
   validateTeamAssignment: async () => undefined,
   TaskValidationError: MockTaskValidationError,
 }))
@@ -117,6 +114,7 @@ mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
 import { upsertJob, getJob } from '@bakin/schedule/lib/sidecar'
 import { __scheduleTestInternals, MISSED_WINDOW_REASON } from '@bakin/schedule/index'
 import { TEAM_ROUTING_BLOCK_REASON } from '@bakin/schedule/lib/fire-engine'
+import { TEAM_ROUTING_EXHAUSTED_REASON } from '../../../src/core/dispatch-types'
 import { closeDb } from '../../../packages/core/src/storage/db'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 
@@ -390,6 +388,39 @@ describe('team assignment passthrough (#189)', () => {
 
     expect(createdTaskOpts[0]?.team).toBeUndefined()
     expect(createdTaskOpts[0]?.assignee).toBeUndefined()
+  })
+})
+
+describe('round-5 fire semantics', () => {
+  it('a successful team fire validates the team exactly once (skip flag on success)', async () => {
+    upsertJob(makeMeta({ agentId: undefined, teamId: 'development' }))
+    mockValidateTeamRefImpl.mockClear()
+    const result = await fireScheduledRunFromPayload({
+      jobId: 'release-notes', runId: 'run-once-1', timestamp: '2026-06-08T07:00:00Z',
+    })
+    expect(result.body.taskId).toBe(createdTasks[0])
+    expect(createdTaskOpts[0]?.team).toBe('development')
+    expect(mockValidateTeamRefImpl).toHaveBeenCalledTimes(1)
+  })
+
+  it('legacy both-set meta: agent wins, no both-set task minted', async () => {
+    upsertJob(makeMeta({ agentId: 'chef', teamId: 'development' }))
+    const result = await fireScheduledRunFromPayload({
+      jobId: 'release-notes', runId: 'run-both-1', timestamp: '2026-06-08T07:00:00Z',
+    })
+    expect(result.body.taskId).toBe(createdTasks[0])
+    expect(createdTaskOpts[0]?.assignee).toBe('chef')
+    expect(createdTaskOpts[0]?.team).toBeUndefined()
+  })
+
+  it('a routing-EXHAUSTED blocked occurrence DOES count toward auto-pause (round-5)', async () => {
+    upsertJob(makeMeta({ agentId: undefined, teamId: 'development', lastTaskId: 'task-exhausted', consecutiveFailures: 0 }))
+    emptyBoard.columns.blocked.push({ id: 'task-exhausted', blockedReason: TEAM_ROUTING_EXHAUSTED_REASON })
+
+    await fireScheduledRunFromPayload({
+      jobId: 'release-notes', runId: 'run-exh-1', timestamp: '2026-06-09T07:00:00Z',
+    })
+    expect(getJob('release-notes')!.consecutiveFailures).toBe(1)
   })
 })
 

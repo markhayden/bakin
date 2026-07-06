@@ -221,9 +221,20 @@ export async function runClaimedFire(
   let blockedReason = opts.blockedReason
   let danglingTeamDetail: string | undefined
   let skipAssignmentValidation = false
+  if (fireTeam && meta.agentId && !defaults.requireTriage) {
+    // Legacy/hand-edited sidecar carrying BOTH: the agent wins (pre-#189
+    // behavior) — never mint a both-set task through the skip flag (round-5).
+    log.warn('Schedule meta has both agentId and teamId; agent wins for this fire', { jobId, agentId: meta.agentId, teamId: fireTeam })
+    fireTeam = undefined
+  }
   if (fireTeam) {
     try {
       await validateTeamRef(fireTeam)
+      // Fire-time validation is authoritative — skip the redundant
+      // re-validation inside createTaskWithEffects (round-5: the second
+      // team.exists call re-opened the unavailable-window race this flag
+      // was added to close, and doubled the hook traffic per fire).
+      skipAssignmentValidation = true
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       const validation = err instanceof TaskValidationError ? err : null
