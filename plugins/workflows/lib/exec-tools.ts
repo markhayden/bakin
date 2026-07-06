@@ -12,7 +12,7 @@ import type { PluginContext } from '@bakin/core/plugin-types'
 import type { WorkflowDefinition } from '../types'
 import { buildTemplateList, resolveSubWorkflows } from './template-list'
 import { loadDefinition, findStep } from './parser'
-import { getCurrentStep, completeStep, listInstances, loadInstance } from './runtime'
+import { getCurrentStep, completeStep, listInstances, loadInstance, retryMapChild, cancelMapChild } from './runtime'
 import { createValidatedInstance } from './start-validation'
 import { indexInstance } from './search-sync'
 import { triggerDispatch } from './trigger-dispatch'
@@ -164,6 +164,56 @@ export function registerWorkflowExecTools(ctx: PluginContext): void {
       }
 
       return { ok: true, workflowComplete: result.workflowComplete, nextStep: result.nextStep }
+    },
+  })
+
+  ctx.registerExecTool({
+    name: 'bakin_exec_workflows_retry_map_child',
+    label: 'Retried map child',
+    activityDuplicate: true,
+    description: 'Retry one fan-out child of a map_workflow step. Live children reopen in place; dead/cancelled children are re-created under the same child task id with their original item context. Unblocks a blocked map join without rewinding the parent.',
+    parameters: {
+      taskId: z.string().describe('PARENT task ID (the instance holding the map step)'),
+      stepId: z.string().describe('The map_workflow step ID'),
+      index: z.number().int().min(0).describe('Child index within the fan-out (0-based)'),
+      reason: z.string().optional().describe('Why this child is being retried'),
+    },
+    handler: async (params: Record<string, unknown>, agent: string) => {
+      const taskId = params.taskId as string
+      const stepId = params.stepId as string
+      const index = params.index as number
+
+      const result = retryMapChild(taskId, stepId, index, { reason: params.reason as string | undefined })
+      if (!result.success) return { ok: false, error: 'Map child retry failed', errors: result.errors }
+
+      ctx.activity.audit('map_child.retried', agent, { taskId, stepId, index, reason: params.reason })
+      indexInstance(taskId).catch(() => {})
+      triggerDispatch()
+      return { ok: true, childTaskId: `${taskId}--${stepId}--${index}` }
+    },
+  })
+
+  ctx.registerExecTool({
+    name: 'bakin_exec_workflows_cancel_map_child',
+    label: 'Cancelled map child',
+    activityDuplicate: true,
+    description: 'Cancel one fan-out child of a map_workflow step. The map join stays blocked until the child is retried or the whole parent is cancelled — children are never silently skipped.',
+    parameters: {
+      taskId: z.string().describe('PARENT task ID (the instance holding the map step)'),
+      stepId: z.string().describe('The map_workflow step ID'),
+      index: z.number().int().min(0).describe('Child index within the fan-out (0-based)'),
+    },
+    handler: async (params: Record<string, unknown>, agent: string) => {
+      const taskId = params.taskId as string
+      const stepId = params.stepId as string
+      const index = params.index as number
+
+      const result = cancelMapChild(taskId, stepId, index)
+      if (!result.success) return { ok: false, error: 'Map child cancel failed', errors: result.errors }
+
+      ctx.activity.audit('map_child.cancelled', agent, { taskId, stepId, index })
+      indexInstance(taskId).catch(() => {})
+      return { ok: true }
     },
   })
 

@@ -10,7 +10,7 @@ import { z } from 'zod'
 import { defineRoute } from '@bakin/core/routing'
 import type { PluginContextLite } from '@bakin/core/routing'
 import { getTask, updateTask } from '../../../../src/core/task-store'
-import { getCurrentStep, completeStep, listInstances, loadInstance } from '../runtime'
+import { getCurrentStep, completeStep, listInstances, loadInstance, retryMapChild, cancelMapChild, listMapChildren } from '../runtime'
 import { createValidatedInstance } from '../start-validation'
 import { getWorkflowPluginContext } from '../plugin-context'
 import { indexInstance } from '../search-sync'
@@ -130,6 +130,64 @@ const startHandler = async (req: Request, ctx: PluginContextLite) => {
   }
 }
 
+// Shared param plumbing for the map-child routes: the router surfaces path
+// params via searchParams (see /steps/:taskId above).
+const readMapChildParams = (req: Request): { taskId: string; stepId: string; index?: number } | null => {
+  const url = new URL(req.url)
+  const taskId = url.searchParams.get('taskId')
+  const stepId = url.searchParams.get('stepId')
+  if (!taskId || !stepId) return null
+  const rawIndex = url.searchParams.get('index')
+  const index = rawIndex === null ? undefined : Number(rawIndex)
+  if (index !== undefined && !Number.isInteger(index)) return null
+  return { taskId, stepId, index }
+}
+
+const listMapChildrenHandler = async (req: Request, _ctx: PluginContextLite) => {
+  const params = readMapChildParams(req)
+  if (!params) return Response.json({ error: 'taskId and stepId are required' }, { status: 400 })
+  const result = listMapChildren(params.taskId, params.stepId)
+  if (!result.success) return Response.json({ error: result.errors[0], errors: result.errors }, { status: 404 })
+  return Response.json({ children: result.children })
+}
+
+const retryMapChildHandler = async (req: Request, ctx: PluginContextLite) => {
+  const params = readMapChildParams(req)
+  if (!params || params.index === undefined) {
+    return Response.json({ error: 'taskId, stepId, and index are required' }, { status: 400 })
+  }
+  let body: { reason?: string } = {}
+  try { body = await req.json() } catch { /* empty body is fine */ }
+
+  const result = retryMapChild(params.taskId, params.stepId, params.index, { reason: body.reason })
+  if (!result.success) {
+    return Response.json({ error: 'Map child retry failed', errors: result.errors }, { status: 400 })
+  }
+
+  ctx.activity.audit('map_child.retried', 'user', { taskId: params.taskId, stepId: params.stepId, index: params.index, reason: body.reason })
+  ctx.activity.log('user', `Retried map child ${params.index} of "${params.stepId}"`, { taskId: params.taskId })
+  indexInstance(params.taskId).catch(() => {})
+  triggerDispatch()
+  return Response.json(result)
+}
+
+const cancelMapChildHandler = async (req: Request, ctx: PluginContextLite) => {
+  const params = readMapChildParams(req)
+  if (!params || params.index === undefined) {
+    return Response.json({ error: 'taskId, stepId, and index are required' }, { status: 400 })
+  }
+
+  const result = cancelMapChild(params.taskId, params.stepId, params.index)
+  if (!result.success) {
+    return Response.json({ error: 'Map child cancel failed', errors: result.errors }, { status: 400 })
+  }
+
+  ctx.activity.audit('map_child.cancelled', 'user', { taskId: params.taskId, stepId: params.stepId, index: params.index })
+  ctx.activity.log('user', `Cancelled map child ${params.index} of "${params.stepId}"`, { taskId: params.taskId })
+  indexInstance(params.taskId).catch(() => {})
+  return Response.json(result)
+}
+
 export const instanceRoutes = [
   defineRoute({ path: '/steps/:taskId', method: 'GET', description: 'Get current workflow step for a task', summary: 'Get current workflow step for a task', params: z.object({ taskId: z.string() }), responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: getStepHandler }),
   defineRoute({ path: '/steps/:taskId/complete', method: 'POST', description: 'Submit step output, validates against schema, advances workflow', summary: 'Submit step output, validates against schema, advances workflow', params: z.object({ taskId: z.string() }), responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: completeStepHandler }),
@@ -148,4 +206,7 @@ export const instanceRoutes = [
   }),
   defineRoute({ path: '/instances/:taskId', method: 'GET', description: 'Get full workflow instance state for a task', summary: 'Get full workflow instance state for a task', params: z.object({ taskId: z.string() }), responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: getInstanceHandler }),
   defineRoute({ path: '/instances/start', method: 'POST', description: 'Start a workflow instance for a task', summary: 'Start a workflow instance for a task', responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: startHandler }),
+  defineRoute({ path: '/instances/:taskId/map/:stepId/children', method: 'GET', description: 'List a map step\'s fan-out children with live child-instance statuses', summary: 'List map children with live statuses', params: z.object({ taskId: z.string(), stepId: z.string() }), responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: listMapChildrenHandler }),
+  defineRoute({ path: '/instances/:taskId/map/:stepId/children/:index/retry', method: 'POST', description: 'Retry one map child: live children reopen in place, dead ones re-create under the same child task id', summary: 'Retry a map child', params: z.object({ taskId: z.string(), stepId: z.string(), index: z.string() }), responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: retryMapChildHandler }),
+  defineRoute({ path: '/instances/:taskId/map/:stepId/children/:index/cancel', method: 'POST', description: 'Cancel one map child; the join stays blocked until it is retried or the parent is cancelled', summary: 'Cancel a map child', params: z.object({ taskId: z.string(), stepId: z.string(), index: z.string() }), responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: cancelMapChildHandler }),
 ]
