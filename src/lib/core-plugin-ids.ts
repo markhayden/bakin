@@ -27,4 +27,5 @@ export const CORE_PLUGIN_IDS: readonly string[] = [
   'health',
   'git',
   'explore',
+  'chat',
 ]

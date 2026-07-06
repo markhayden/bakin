@@ -1,0 +1,63 @@
+{
+  "id": "chat",
+  "name": "Chat",
+  "version": "0.1.0",
+  "bakin": ">=1.0.0",
+  "description": "Direct conversations with your agents — streamed multi-chat sessions from the Bakin UI, runtime-agnostic via the adapter layer",
+  "entry": {
+    "server": "index.ts"
+  },
+  "contentFiles": [],
+  "secrets": [],
+  "tests": "tests/",
+  "dependencies": [],
+  "permissions": [
+    "storage.read",
+    "storage.write",
+    "events.emit",
+    "runtime.read",
+    "runtime.agents",
+    "runtime.messaging"
+  ],
+  "contributes": {
+    "apiRoutes": [
+      {
+        "method": "GET",
+        "path": "/chats",
+        "summary": "List chats (optionally filtered by agent)"
+      },
+      {
+        "method": "POST",
+        "path": "/chats",
+        "summary": "Create a new chat with an agent"
+      },
+      {
+        "method": "GET",
+        "path": "/chats/:chatId",
+        "summary": "Get a chat and its messages"
+      },
+      {
+        "method": "DELETE",
+        "path": "/chats/:chatId",
+        "summary": "Delete a chat and its transcript"
+      },
+      {
+        "method": "POST",
+        "path": "/chats/:chatId/messages",
+        "summary": "Send a message; reply streams over the SSE bus as chat.chunk events"
+      }
+    ],
+    "nav": [
+      {
+        "id": "chat",
+        "label": "Chat",
+        "icon": "MessageCircle",
+        "href": "/chat",
+        "order": 15
+      }
+    ],
+    "slots": [
+      "page:/chat"
+    ]
+  }
+}
