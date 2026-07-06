@@ -82,6 +82,49 @@ export const SYSTEM_SETTINGS_SCHEMA: PluginSettingsSchema = {
       description: 'Suppress duplicate MCP alerts within this window. Default 300000 (5 min).',
       default: 300000,
     },
+    // ── Agent token burn (#385) ───────────────────────────────────────
+    {
+      key: 'burn.windowHours',
+      type: 'number',
+      label: 'Burn check window (hours)',
+      description: 'Rolling window for the agent token-burn checks (effort-vs-outcome and unattributed usage). Default 24.',
+      default: 24,
+    },
+    {
+      key: 'burn.minTokensFloor',
+      type: 'number',
+      label: 'Burn floor (tokens)',
+      description: 'An agent must burn at least this many Bakin-attributed tokens in the window before the "lots of effort, no completed tasks" flag can fire. Default 500000.',
+      default: 500000,
+    },
+    {
+      key: 'burn.spikeMultiplier',
+      type: 'number',
+      label: 'Spike multiplier',
+      description: "Today's observed tokens must exceed the agent's own trailing daily average by this factor to be flagged as a spike. Default 3.",
+      default: 3,
+    },
+    {
+      key: 'burn.baselineDays',
+      type: 'number',
+      label: 'Spike baseline (days)',
+      description: 'Trailing days (excluding today) that form the spike baseline. Default 7.',
+      default: 7,
+    },
+    {
+      key: 'burn.unattributedShare',
+      type: 'number',
+      label: 'Unattributed share threshold',
+      description: 'Fraction of an agent\'s observed tokens that happened outside Bakin-managed tasks above which the unattributed flag fires. 0.5 = 50%. Default 0.5.',
+      default: 0.5,
+    },
+    {
+      key: 'burn.unattributedFloorTokens',
+      type: 'number',
+      label: 'Unattributed floor (tokens)',
+      description: 'Minimum unattributed tokens in the window before the unattributed flag fires. Default 100000.',
+      default: 100000,
+    },
     // ── Startup context (#357) ────────────────────────────────────────
     {
       key: 'dispatch.maxWorkflowContextBytes',

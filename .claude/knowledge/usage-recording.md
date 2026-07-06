@@ -85,3 +85,24 @@ plugin-returned data.
 
 The local recorder in this file remains the single source of truth for Health's
 usage view. Do not introduce a parallel hidden tracking path for remote metrics.
+
+## Per-agent supervision queries (#385)
+
+The agent-health surfaces added read-only rollups over the EXISTING stores —
+no fourth tracking system:
+
+- Ledger (`run_costs`/`runs`/`completions`): `runTokensByAgentSince`
+  (NULL-honest token/cost sums), `listRunsByAgent` (runs LEFT JOIN run_costs —
+  the timeline run spine), `listLiveRuns` (status='running' snapshot behind
+  `GET /api/plugins/health/live-now`), `completionsByAgentSince`.
+- usage.db: `usageByAgentDaySince` — the (agent × day) cross-tab, exposed as
+  `byAgentDay` on `GET /usage-history` (stacked chart) and joined day-aligned
+  against run_costs by `src/core/agent-burn.ts` to compute UNATTRIBUTED usage
+  (transcript-observed minus Bakin-metered — the "activity outside
+  Bakin-managed tasks" signal on `GET /agent-effort` and the
+  `usage.agent-burn` doctor check).
+
+The two token stores intentionally differ in coverage (run_costs = Bakin
+dispatches only; usage.db = everything in transcripts); the delta is a
+feature, not a reconciliation bug. Deep dive:
+`.claude/knowledge/agent-health-diagnostics.md`.

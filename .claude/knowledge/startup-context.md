@@ -106,3 +106,14 @@ and numbers only — never prompt or file content.
 - `.claude/knowledge/dispatch.md` — dispatch mechanics, prompt construction
 - `.claude/knowledge/layered-context.md` — managed blocks / role layer
 - `.claude/knowledge/usage-recording.md`, `.claude/knowledge/execution-ledger.md` — observability planes
+
+## Web UI consumer (#385)
+
+The context report finally has a web surface: the Team agent-detail
+**Diagnostics tab** (`plugins/team/components/diagnostics-tab.tsx`) renders
+`GET /api/context-report/{id}` — budget meter vs
+`dispatch.contextBudgetBytes` (fetched from `/api/settings`), top static
+sections, workspace files with managed-block bytes, and an observed-input
+sparkline. `bakin agents doctor <id>` includes the summary numbers.
+`context.startup-size` doctor rows now attach `data.agents` so the dashboard
+attention chips can point at the over-budget agents without message parsing.

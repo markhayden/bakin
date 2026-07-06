@@ -734,6 +734,13 @@ curl -sS \
 
 <OpenApiReference tag="Health" summary />
 
+<OpenApiReference operationId="health.get.agent-effort">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/health/agent-effort?window=<window>'
+```
+</OpenApiReference>
+
 <OpenApiReference operationId="health.get.checks">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
@@ -794,6 +801,13 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   'http://localhost:3737/api/plugins/health/doctor/repair/plan'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="health.get.live-now">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/health/live-now'
 ```
 </OpenApiReference>
 
@@ -1546,6 +1560,13 @@ curl -sS \
 curl -sS \
   -X PUT \
   'http://localhost:3737/api/plugins/team/<agentId>/team'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="team.get.agent-id-timeline">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/team/<agentId>/timeline'
 ```
 </OpenApiReference>
 

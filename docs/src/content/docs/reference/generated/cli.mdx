@@ -838,6 +838,18 @@ bakin agents context [agent-id] [--json]
     </tbody>
   </table>
 </CliCommandCard>
+<CliCommandCard id="agents-doctor" name="agents doctor" summary="Combined per-agent health report." description="One view of an agent's health: live drift scan findings, startup-context budget summary, token-burn flags (effort vs outcome, unattributed usage), and the recent activity timeline. A thin client over the same endpoints as the web Diagnostics tab; each section degrades independently when an endpoint is unavailable.">
+```sh frame="terminal"
+bakin agents doctor <agent-id> [--json]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;agent-id&gt;</code></td><td>argument</td><td>yes</td><td>Agent id to install, update, remove, or inspect.</td></tr>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
 <CliCommandCard id="agents-sync" name="agents sync" summary="Sync agents with their packages + context layers." description="Fetches package updates, recomposes managed blocks (global/role/team/package/lessons), re-projects skills and assets, verifies, and writes a receipt. --check reports without writing. --reclaim discards local edits on a sentineled skill/asset after confirmation.">
 ```sh frame="terminal"
 bakin agents sync [agent-id] [--check] [--reclaim <target>] [--reclaim-all] [--yes]

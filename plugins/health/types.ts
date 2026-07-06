@@ -201,4 +201,54 @@ export interface UsageHistoryData {
   scannedAt: string | null
   byAgent: Array<UsageHistoryRollup & { agent: string }>
   byDay: Array<UsageHistoryRollup & { day: string }>
+  /** (agent × day) cells — the per-agent stacked chart series (#385). */
+  byAgentDay: Array<UsageHistoryRollup & { agent: string; day: string }>
+}
+
+// ─── Live-now (GET /live-now, #385) ──────────────────────────────────────────
+
+export interface LiveRunEntry {
+  agent: string
+  taskId: string
+  /** Task title when the task still exists; null for freshly purged tasks. */
+  taskTitle: string | null
+  runId: string
+  startedAt: number
+  runningForMs: number
+  heartbeatAgeMs: number
+}
+
+export interface LiveNowData {
+  runs: LiveRunEntry[]
+  generatedAt: string
+}
+
+// ─── Agent effort (GET /agent-effort, #385) ──────────────────────────────────
+
+export type AgentEffortWindow = '24h' | '7d' | '30d'
+
+export interface AgentEffortFlag {
+  kind: 'effort-no-outcome' | 'spike' | 'unattributed'
+  message: string
+}
+
+export interface AgentEffortRow {
+  agent: string
+  /** Bakin-attributed tokens in the window (execution ledger). */
+  windowTokens: number
+  windowCostUsdMicros: number | null
+  runs: number
+  completions: number
+  tokensPerCompletion: number | null
+  /** Transcript-observed tokens; null when the usage scanner has no coverage. */
+  totalObservedTokens: number | null
+  unattributedTokens: number | null
+  flags: AgentEffortFlag[]
+}
+
+export interface AgentEffortData {
+  window: AgentEffortWindow
+  /** ISO time of the last usage scan; observed columns are only as fresh as this. */
+  scannedAt: string | null
+  agents: AgentEffortRow[]
 }

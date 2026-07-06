@@ -221,6 +221,12 @@ export interface HealthCheckResult {
   message: string
   /** Whether the issue can be auto-fixed by an attached repair handler. */
   autoFixable: boolean
+  /**
+   * Optional machine-readable detail for UI consumers (#385). Convention:
+   * per-agent findings set `agents: string[]` so dashboards can attribute a
+   * result without parsing the message text.
+   */
+  data?: Record<string, unknown>
 }
 
 /** Repair safety tier: safe (auto), manual (needs review), destructive (data-affecting). */

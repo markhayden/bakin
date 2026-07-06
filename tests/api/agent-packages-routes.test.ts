@@ -456,3 +456,59 @@ describe('agent-packages dynamic — 404 fallthrough', () => {
     expect(res.status).toBe(404)
   })
 })
+
+describe('GET /api/agent-packages/{agentId}/scan (#385)', () => {
+  async function scan(agentId: string) {
+    const { req, url } = makeRequest('GET', `/api/agent-packages/${agentId}/scan`)
+    const res = await dynamicRoute.handler(req, url)
+    return { status: res.status, body: await res.json() }
+  }
+
+  it('is clean after sync and reports live drift after an in-place edit — zero writes', async () => {
+    const src = seedAgentPackage()
+    {
+      const { req, url } = makeRequest('POST', '/api/agent-packages/install', { source: src })
+      await installRoute.post(req, url)
+    }
+    {
+      // Recompose against current context layers (install-time shas can lag
+      // the lazily-seeded role context) so the baseline scan is clean.
+      const { req, url } = makeRequest('POST', '/api/agent-packages/pixel/sync', {})
+      const res = await dynamicRoute.handler(req, url)
+      expect(res.status).toBe(200)
+    }
+
+    const clean = await scan('pixel')
+    expect(clean.status).toBe(200)
+    expect(clean.body.ok).toBe(true)
+    expect(clean.body.packageId).toBe('pixel')
+    expect(clean.body.findings).toEqual([])
+    expect(typeof clean.body.scannedAt).toBe('string')
+
+    // Drift: clobber the projected workspace file (managed block gone).
+    const soulPath = join(openClawDir, 'workspaces', 'pixel', 'SOUL.md')
+    writeFileSync(soulPath, '# rogue content — managed block deleted\n')
+    const lockBefore = readFileSync(join(testDir, 'packages', 'lock.json'), 'utf-8')
+
+    const drifted = await scan('pixel')
+    expect(drifted.status).toBe(200)
+    expect(drifted.body.findings.length).toBeGreaterThan(0)
+    expect(
+      (drifted.body.findings as Array<{ agentId?: string; packageId?: string }>).every(
+        (f) => f.agentId === 'pixel' || f.packageId === 'pixel',
+      ),
+    ).toBe(true)
+
+    // Read-only guarantee: the scan changed nothing.
+    expect(readFileSync(join(testDir, 'packages', 'lock.json'), 'utf-8')).toBe(lockBefore)
+    expect(readFileSync(soulPath, 'utf-8')).toBe('# rogue content — managed block deleted\n')
+  })
+
+  it('unknown agent scans to an empty findings list (not an error)', async () => {
+    const { status, body } = await scan('nobody')
+    expect(status).toBe(200)
+    expect(body.ok).toBe(true)
+    expect(body.packageId).toBeNull()
+    expect(body.findings).toEqual([])
+  })
+})
