@@ -125,6 +125,44 @@ describe('versioned exec tools', () => {
     expect((await callTool(tool('bakin_exec_assets_get'), { assetId: id }, 'main')).asset).toMatchObject({ type: 'research' })
   })
 
+  it('consolidate absorbs losers into the winner and is re-call safe', async () => {
+    const winner = seedVersioned('20260530-winn-11112222', { type: 'text', versions: [{ text: 'winner body' }] })
+    const loser = seedVersioned('20260530-lose-33334444', { type: 'text', versions: [{ text: 'loser body' }] })
+
+    const first = await callTool(tool('bakin_exec_assets_consolidate'), {
+      winnerAssetId: winner, loserAssetIds: [loser], taskId: 't1',
+    }, 'main')
+    expect(first.ok).toBe(true)
+    expect(first.absorbed).toEqual([loser])
+
+    const asset = (await callTool(tool('bakin_exec_assets_get'), { assetId: winner }, 'main')).asset as { versions: Array<{ consolidatedFrom?: { assetId: string } }>; currentVersion: number }
+    expect(asset.versions).toHaveLength(2)
+    expect(asset.versions[1].consolidatedFrom?.assetId).toBe(loser)
+    expect(asset.currentVersion).toBe(1)
+    expect((await callTool(tool('bakin_exec_assets_get'), { assetId: loser }, 'main')).ok).toBe(false)
+
+    const rerun = await callTool(tool('bakin_exec_assets_consolidate'), {
+      winnerAssetId: winner, loserAssetIds: [loser], taskId: 't1',
+    }, 'main')
+    expect(rerun.ok).toBe(true)
+    expect(rerun.skipped).toEqual([loser])
+    expect(rerun.absorbed).toEqual([])
+  })
+
+  it('consolidate reports typed failures without throwing', async () => {
+    const bad = await callTool(tool('bakin_exec_assets_consolidate'), {
+      winnerAssetId: 'not-an-id', loserAssetIds: ['20260530-anyy-99990000'], taskId: 't1',
+    }, 'main')
+    expect(bad.ok).toBe(false)
+
+    const winner = seedVersioned('20260530-winf-55556666', { type: 'text', versions: [{}] })
+    const r = await callTool(tool('bakin_exec_assets_consolidate'), {
+      winnerAssetId: winner, loserAssetIds: ['20260530-ghos-77778888'], taskId: 't1',
+    }, 'main')
+    expect(r.ok).toBe(false)
+    expect(r.failed).toEqual([{ assetId: '20260530-ghos-77778888', code: 'loser_not_found' }])
+  })
+
   it('audit reports versioned health results', async () => {
     seedVersioned('20260530-aud-aaaabbbb', { versions: [{}, {}] })
     const r = await callTool(tool('bakin_exec_assets_audit'), {}, 'main')

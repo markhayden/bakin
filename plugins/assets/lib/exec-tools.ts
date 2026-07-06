@@ -1,10 +1,10 @@
 /**
  * Assets plugin MCP exec tools.
  *
- * Extracted from index.ts. `registerAssetsExecTools` registers all 14 asset
- * exec tools (scan_unmanaged/import/list/get/open/save/delete/link/retype/
- * list_trash/restore/empty_trash/permanent_delete/audit) against the plugin
- * context. bakin_exec_assets_save upserts by source path — the OUTPUT
+ * Extracted from index.ts. `registerAssetsExecTools` registers all 15 asset
+ * exec tools (scan_unmanaged/import/list/get/open/save/delete/consolidate/
+ * link/retype/list_trash/restore/empty_trash/permanent_delete/audit) against
+ * the plugin context. bakin_exec_assets_save upserts by source path — the OUTPUT
  * DISCIPLINE deliverable path every dispatch prompt points agents at.
  * Tool names, parameter schemas, and result shapes are agent-facing
  * contracts — bodies moved verbatim.
@@ -18,6 +18,7 @@ import {
   getAsset, upsertFromSource, resolveFile as resolveVersionedFile,
   listAssets as listVersionedAssets,
   relink as relinkVersioned, retype as retypeVersioned,
+  consolidateAssets,
 } from './asset-service'
 import {
   deleteAsset as deleteVersionedAsset,
@@ -182,6 +183,40 @@ export function registerAssetsExecTools(ctx: PluginContext): void {
         const { trashName } = await deleteVersionedAsset(assetId)
         ctx.activity.audit('asset.deleted', agent, { assetId })
         return { ok: true, assetId, trashName }
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+  })
+
+  ctx.registerExecTool({
+    name: 'bakin_exec_assets_consolidate',
+    label: 'Consolidated variant assets',
+    activityDuplicate: true,
+    description: 'Absorb variant assets as versions of a winner asset (select-best flows): each loser\'s current file becomes a new version of the winner with consolidatedFrom provenance, the winner\'s pre-call current version stays promoted, and the losers move to trash. End state: ONE asset, every variant preserved as version history. Safe to re-call — already-absorbed losers are skipped and the version pointer is never moved by a retry.',
+    parameters: {
+      winnerAssetId: z.string().describe('The selected (winning) asset id — absorbs the others'),
+      loserAssetIds: z.array(z.string()).min(1).describe('The variant asset ids to absorb, in display order'),
+      taskId: z.string().describe('Task ID this consolidation belongs to'),
+    },
+    handler: async (params: Record<string, unknown>, agent: string) => {
+      const winnerAssetId = params.winnerAssetId as string
+      const loserAssetIds = params.loserAssetIds as string[]
+      if (!isValidAssetId(winnerAssetId)) return { ok: false, error: 'Invalid winnerAssetId' }
+      try {
+        const result = await consolidateAssets({
+          winnerAssetId,
+          loserAssetIds,
+          taskId: params.taskId as string,
+        })
+        const ok = result.failed.length === 0 && !result.failed.some((f) => f.assetId === winnerAssetId)
+        ctx.activity.audit('asset.consolidated', agent, {
+          winnerAssetId,
+          absorbed: result.absorbed,
+          skipped: result.skipped,
+          failed: result.failed,
+        })
+        return { ok, ...result }
       } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : String(err) }
       }
