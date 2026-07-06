@@ -30,8 +30,15 @@ const isOpenClawDevRig = (rel: string) =>
 const DENYLIST = [
   {
     label: 'concrete adapter import outside adapter factories',
-    regex: /@bakin\/adapter-(?:antfly|openclaw)/,
+    regex: /@bakin\/adapter-(?:antfly|openclaw|pi)/,
     allow: (rel: string) => rel === 'src/core/search-adapter-factory.ts' || rel === 'src/core/runtime-adapter-factory.ts',
+  },
+  {
+    label: 'raw Pi home/path/SDK access outside adapter-pi',
+    // Same treatment OpenClaw gets: Pi's home dir, env override, path
+    // helpers, and the Pi SDK package must never leak upstream — a second
+    // (third) runtime must require zero changes above the factory.
+    regex: /(?:~\/\.pi\b|PI_HOME|getPiHome|getPiPath|@earendil-works)/,
   },
   {
     label: 'legacy core Antfly facade import',
@@ -109,7 +116,7 @@ const DENYLIST = [
   },
   {
     label: 'provider setup URL outside adapter factory',
-    regex: /openclaw\.ai/,
+    regex: /(?:openclaw\.ai|pi\.dev)/,
     allow: (rel: string) => rel === 'src/core/runtime-adapter-factory.ts',
   },
 ]

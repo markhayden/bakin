@@ -53,6 +53,8 @@ const adapterBoundaryImportRestrictions = {
         "@bakin/adapter-openclaw/*",
         "@bakin/adapter-antfly",
         "@bakin/adapter-antfly/*",
+        "@bakin/adapter-pi",
+        "@bakin/adapter-pi/*",
       ],
       message: "Concrete adapter packages may only be imported by adapter factories. Use @bakin/core adapter interfaces, ctx.runtime, ctx.search, or AppServices.",
     },
