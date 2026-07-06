@@ -34,6 +34,9 @@ export interface BakinJobMeta {
   displayName?: string
   description?: string
   agentId?: string
+  /** Team assignment (#189) — mutually exclusive with agentId; fired tasks
+   * carry the team and dispatch resolves the member per occurrence. */
+  teamId?: string
   owner?: string // agent who receives alerts/briefings (defaults to the main agent)
   requireTriage?: boolean // true = create task unassigned, owner triages first
   workflowId?: string
@@ -115,6 +118,8 @@ export interface MergedJob {
   displayName: string
   description?: string
   agentId?: string
+  /** Team assignment (#189). */
+  teamId?: string
   owner: string
   requireTriage: boolean
   workflowId?: string

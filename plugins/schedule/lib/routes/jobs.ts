@@ -24,6 +24,7 @@ import {
   readMergedRuntimeJobs,
   updateScheduleJob,
 } from '../job-service'
+import { validateTeamRef } from '../../../../src/core/task-service'
 
 // ─── Schemas ─────────────────────────────────────────────────────────────
 
@@ -36,6 +37,8 @@ const createJobBody = z.object({
   name: z.string().min(1),
   schedule: z.string().min(1),
   agentId: z.string().optional(),
+  /** Team assignment (#189) — mutually exclusive with agentId (handler-enforced 400). */
+  teamId: z.string().optional(),
   workflowId: z.string().optional(),
   taskPrompt: z.string().optional(),
   taskTitle: z.string().optional(),
@@ -115,6 +118,16 @@ export const scheduleRoutes = [
     body: createJobBody,
     responses: { 200: passthrough, 400: errorResponse, 500: errorResponse },
     handler: async (_req, ctx, { body }) => {
+      if (body.agentId && body.teamId) {
+        return json({ error: 'Cannot set both an agent and a team on a schedule' }, 400)
+      }
+      if (body.teamId) {
+        try {
+          await validateTeamRef(body.teamId)
+        } catch (err) {
+          return json({ error: err instanceof Error ? err.message : String(err) }, 400)
+        }
+      }
       const result = await createScheduleJob(ctx, body)
       if (!result.ok) return json({ error: result.error }, 400)
       ctx.activity.audit('job.created', body.owner ?? 'system', { jobId: result.jobId, name: body.name })
@@ -137,8 +150,19 @@ export const scheduleRoutes = [
       const guard = await guardBakinMutation(jobId)
       if (!guard.ok) return json({ error: guard.error }, guard.status)
       const meta = guard.meta
-      const result = updateScheduleJob(meta, body as Record<string, unknown>, [
-        'displayName', 'description', 'agentId', 'owner', 'requireTriage',
+      const updates = body as Record<string, unknown>
+      if (typeof updates.agentId === 'string' && updates.agentId && typeof updates.teamId === 'string' && updates.teamId) {
+        return json({ error: 'Cannot set both an agent and a team on a schedule' }, 400)
+      }
+      if (typeof updates.teamId === 'string' && updates.teamId) {
+        try {
+          await validateTeamRef(updates.teamId)
+        } catch (err) {
+          return json({ error: err instanceof Error ? err.message : String(err) }, 400)
+        }
+      }
+      const result = updateScheduleJob(meta, updates, [
+        'displayName', 'description', 'agentId', 'teamId', 'owner', 'requireTriage',
         'workflowId', 'taskPrompt', 'taskTitle', 'allowOverlap', 'maxFailures',
       ])
       if (!result.ok) return json({ error: result.error }, 400)

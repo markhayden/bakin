@@ -190,7 +190,7 @@ export async function runClaimedFire(
     date: new Intl.DateTimeFormat('en-CA', {
       timeZone: labelTz, year: 'numeric', month: '2-digit', day: '2-digit',
     }).format(labelDate), // en-CA → YYYY-MM-DD
-    agent: meta.agentId ?? 'unassigned',
+    agent: meta.agentId ?? (meta.teamId ? `team:${meta.teamId}` : 'unassigned'),
     jobName: meta.displayName ?? jobId,
   }
 
@@ -216,6 +216,9 @@ export async function runClaimedFire(
       column,
       blockedReason: opts.blockedReason,
       assignee: defaults.requireTriage ? undefined : meta.agentId,
+      // Team-assigned schedules (#189): each occurrence is a fresh task, so
+      // dispatch re-resolves the best member per fire. requireTriage wins.
+      team: defaults.requireTriage ? undefined : meta.teamId,
       workflowId: meta.workflowId,
       createdBy: 'schedule',
       scheduleJobId: jobId,

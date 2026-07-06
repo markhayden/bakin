@@ -78,6 +78,9 @@ const mockCreateTask = mock((opts?: unknown) => {
 })
 mock.module('../../../src/core/task-service', () => ({
   createTaskWithEffects: (opts: unknown) => mockCreateTask(opts),
+  validateTeamRef: async (teamId: string) => {
+    if (teamId !== 'development') throw new Error(`Unknown team: "${teamId}"`)
+  },
 }))
 
 // Mock plugin-registry (hook registry used by bridge — not under test here but must be present)
@@ -255,6 +258,35 @@ describe('schedule routes', () => {
       // Verify audit
       expect(plugin.ctx.activity.audit).toHaveBeenCalled()
       expect(plugin.ctx.activity.log).toHaveBeenCalled()
+    })
+
+    it('creates a team-assigned job (#189)', async () => {
+      const route = findRoute(plugin.routes, 'POST', '/')!
+      const { status, body } = await callRoute(route, plugin.ctx, {
+        body: { name: 'Team Sweep', schedule: '0 9 * * *', teamId: 'development', taskPrompt: 'Sweep it' },
+      })
+      expect(status).toBe(200)
+      const meta = getJob(body.jobId as string)
+      expect(meta!.teamId).toBe('development')
+      expect(meta!.agentId).toBeUndefined()
+    })
+
+    it('rejects agentId + teamId together with 400 (#189)', async () => {
+      const route = findRoute(plugin.routes, 'POST', '/')!
+      const { status, body } = await callRoute(route, plugin.ctx, {
+        body: { name: 'Bad', schedule: '0 9 * * *', agentId: 'chef', teamId: 'development' },
+      })
+      expect(status).toBe(400)
+      expect(String(body.error)).toContain('both')
+    })
+
+    it('rejects an unknown teamId with 400 (#189)', async () => {
+      const route = findRoute(plugin.routes, 'POST', '/')!
+      const { status, body } = await callRoute(route, plugin.ctx, {
+        body: { name: 'Bad', schedule: '0 9 * * *', teamId: 'ghost-team' },
+      })
+      expect(status).toBe(400)
+      expect(String(body.error)).toContain('Unknown team')
     })
 
     it('returns a transport danger-zone warning for a no-split prompt', async () => {

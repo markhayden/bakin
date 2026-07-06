@@ -69,6 +69,7 @@ const mockCreateTask = mock(async (opts?: unknown) => {
 })
 mock.module('../../../src/core/task-service', () => ({
   createTaskWithEffects: (opts: unknown) => mockCreateTask(opts),
+  validateTeamRef: async () => undefined,
 }))
 
 interface BoardTask { id: string; blockedReason?: string }
@@ -340,5 +341,33 @@ describe('FR4: blocked triage task does not suppress the next real fire', () => 
     expect(createdTaskOpts[0]?.title).toBe('Release notes 2026-06-08')
     expect(getJob('release-notes')!.consecutiveFailures).toBe(0)
     expect(getJob('release-notes')!.paused).toBeFalsy()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// #189 — team-assigned schedule jobs pass team through to task creation
+// ---------------------------------------------------------------------------
+describe('team assignment passthrough (#189)', () => {
+  it('a teamId job creates a team-assigned task (no concrete agent)', async () => {
+    upsertJob(makeMeta({ agentId: undefined, teamId: 'development' }))
+
+    const result = await fireScheduledRunFromPayload({
+      jobId: 'release-notes', runId: 'run-team-1', timestamp: '2026-06-08T07:00:00Z',
+    })
+
+    expect(result.body.taskId).toBe(createdTasks[0])
+    expect(createdTaskOpts[0]?.team).toBe('development')
+    expect(createdTaskOpts[0]?.assignee).toBeUndefined()
+  })
+
+  it('requireTriage wins: task created unassigned even with a teamId', async () => {
+    upsertJob(makeMeta({ agentId: undefined, teamId: 'development', requireTriage: true }))
+
+    await fireScheduledRunFromPayload({
+      jobId: 'release-notes', runId: 'run-team-2', timestamp: '2026-06-08T07:00:00Z',
+    })
+
+    expect(createdTaskOpts[0]?.team).toBeUndefined()
+    expect(createdTaskOpts[0]?.assignee).toBeUndefined()
   })
 })

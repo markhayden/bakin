@@ -96,6 +96,7 @@ export async function ensureBakinJob(ctx: PluginContext, input: Record<string, u
     owner,
     requireTriage: typeof input.requireTriage === 'boolean' ? input.requireTriage : existing?.requireTriage ?? false,
     agentId: typeof input.agentId === 'string' ? input.agentId : existing?.agentId,
+    teamId: typeof input.teamId === 'string' ? input.teamId : existing?.teamId,
     workflowId: typeof input.workflowId === 'string' ? input.workflowId : existing?.workflowId,
     taskPrompt: typeof input.taskPrompt === 'string' ? input.taskPrompt : existing?.taskPrompt ?? command,
     taskTitle: typeof input.taskTitle === 'string' ? input.taskTitle : existing?.taskTitle,
@@ -116,6 +117,8 @@ export interface CreateScheduleJobInput {
   name: string
   schedule: string
   agentId?: string
+  /** Team assignment (#189) — mutually exclusive with agentId. */
+  teamId?: string
   workflowId?: string
   taskPrompt?: string
   taskTitle?: string
@@ -150,6 +153,7 @@ export async function createScheduleJob(
     enabled: true,
     displayName: input.name,
     agentId: input.agentId,
+    teamId: input.teamId,
     owner,
     requireTriage: input.requireTriage ?? false,
     workflowId: input.workflowId,
@@ -231,6 +235,12 @@ export function updateScheduleJob(
       ;(meta as unknown as Record<string, unknown>)[field] = updates[field]
     }
   }
+  // agentId/teamId are mutually exclusive (#189): whichever this update set
+  // to a non-empty value wins; empty-string updates just clear their field.
+  if (typeof updates.agentId === 'string' && updates.agentId) meta.teamId = undefined
+  if (typeof updates.teamId === 'string' && updates.teamId) meta.agentId = undefined
+  if (meta.agentId === '') meta.agentId = undefined
+  if (meta.teamId === '') meta.teamId = undefined
   upsertJob(meta)
   return { ok: true, warnings: checkSchedulePrompt(meta.taskPrompt) }
 }
@@ -248,6 +258,7 @@ export async function projectJobDetail(
     id: meta.jobId,
     name: meta.displayName,
     agent: meta.agentId,
+    team: meta.teamId,
     // When the job runs — the list projection carries these; a client on the
     // detail endpoint alone must be able to display the schedule too.
     schedule: meta.schedule,
