@@ -29,6 +29,7 @@ import {
   mergeDisplayDefaults,
 } from '../team-settings'
 import { getTeamMembers } from '../agent-status'
+import { readTaskboard } from '../../../../src/core/task-store'
 import type { OrgTeam } from '../../types'
 import { passthroughTeam, errorResponseTeam } from './shared'
 
@@ -126,6 +127,23 @@ export function populateOrgTeamRoutes(arr: any[]): void {
       const teams = readTeams()
       const filtered = teams.filter((t) => t.id !== teamId)
       if (filtered.length === teams.length) return Response.json({ error: 'Team not found' }, { status: 404 })
+
+      // Refuse while ACTIVE tasks still reference this team (review R6):
+      // unresolved team tasks would structurally block at dispatch, and
+      // resolved ones would lose their requested-team context. Schedule
+      // jobs referencing a deleted team are handled at fire time instead —
+      // the occurrence lands blocked with an honest reason.
+      const { columns } = readTaskboard()
+      const activeColumns = ['backlog', 'todo', 'inProgress', 'review', 'blocked'] as const
+      const referencing = activeColumns.flatMap(
+        (col) => (columns[col] ?? []).filter((t) => t.team === teamId),
+      )
+      if (referencing.length > 0) {
+        return Response.json({
+          error: `Team "${teamId}" is still assigned to ${referencing.length} active task(s) — re-assign or complete them first`,
+          taskIds: referencing.map((t) => t.id),
+        }, { status: 409 })
+      }
 
       writeTeams(filtered)
 

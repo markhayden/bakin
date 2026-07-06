@@ -142,6 +142,18 @@ describe('checkTeamRouting', () => {
     columns: { [column]: teams.map((team, i) => ({ id: `t${i}`, team })) },
   })
 
+  it('ignores RESOLVED team tasks — no warn when only team+agent tasks exist without a key (R7)', async () => {
+    const readBoard = () => ({
+      columns: { inProgress: [{ id: 't0', team: 'development', agent: 'reviewer' }] },
+    })
+    const results = await checkTeamRouting({
+      routingProvider: 'anthropic',
+      readBoard,
+      keySource: () => null,
+    })
+    expect(results[0].status).toBe('ok')
+  })
+
   it('passes quietly when no team-assigned tasks exist', async () => {
     const results = await checkTeamRouting({
       routingProvider: 'anthropic',

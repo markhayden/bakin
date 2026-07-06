@@ -26,6 +26,13 @@ process.env.OPENCLAW_HOME = testDir + "-openclaw"
 
 // ---------------------------------------------------------------------------
 // Mandatory mocks — declared before any plugin import
+
+// Mutable board for the DELETE /teams/:teamId active-task guard (review R6).
+type GuardTask = { id: string; team?: string; agent?: string }
+const guardBoard: { columns: Record<string, GuardTask[]> } = { columns: { backlog: [], todo: [], inProgress: [], review: [], blocked: [], done: [], archived: [] } }
+const taskStoreGuardMock = () => ({ readTaskboard: () => guardBoard })
+mock.module('../../../src/core/task-store', taskStoreGuardMock)
+mock.module('@/core/task-store', taskStoreGuardMock)
 // ---------------------------------------------------------------------------
 
 mock.module('@bakin/core/main-agent', () => ({
@@ -927,5 +934,39 @@ describe('team plugin — GET /:agentId/recent-activity', () => {
     expect(activity.windowMs).toEqual({ '5m': 1, '1h': 5, '24h': 12 })
     expect(activity.errors).toEqual({ '5m': 0, '1h': 1, '24h': 2 })
     expect(activity.sinceServerStart).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// DELETE /teams/:teamId — active-task guard (review R6)
+// ---------------------------------------------------------------------------
+
+describe('team plugin — DELETE /teams/:teamId guard (review R6)', () => {
+  beforeEach(() => {
+    for (const col of Object.values(guardBoard.columns)) col.length = 0
+  })
+
+  it('refuses with 409 while active tasks reference the team', async () => {
+    const activated = await activatePlugin(teamPlugin, testDir)
+    const create = findRoute(activated.routes, 'POST', '/teams')!
+    await callRoute(create, activated.ctx, { body: { id: 'growth', label: 'Growth' } })
+
+    guardBoard.columns.todo.push({ id: 'task-1', team: 'growth' })
+    const del = findRoute(activated.routes, 'DELETE', '/teams/:teamId')!
+    const { status, body } = await callRoute(del, activated.ctx, { searchParams: { teamId: 'growth' } })
+    expect(status).toBe(409)
+    expect(String(body.error)).toContain('growth')
+    expect(body.taskIds).toEqual(['task-1'])
+  })
+
+  it('deletes cleanly when no active tasks reference the team', async () => {
+    const activated = await activatePlugin(teamPlugin, testDir)
+    const create = findRoute(activated.routes, 'POST', '/teams')!
+    await callRoute(create, activated.ctx, { body: { id: 'growth2', label: 'Growth 2' } })
+
+    guardBoard.columns.done.push({ id: 'task-done', team: 'growth2' }) // done does not block
+    const del = findRoute(activated.routes, 'DELETE', '/teams/:teamId')!
+    const { status } = await callRoute(del, activated.ctx, { searchParams: { teamId: 'growth2' } })
+    expect(status).toBe(200)
   })
 })
