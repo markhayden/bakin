@@ -7,6 +7,7 @@ import {
 import { appendAudit } from './audit'
 import { getContentDir } from './content-dir'
 import { createLogger } from './logger'
+import { createRuntimeExecToolProvider } from './exec-tools/provider'
 import { createRuntimeAdapter } from './runtime-adapter-factory'
 import { createSearchAdapter } from './search-adapter-factory'
 import { getSettings, resetSettingsCache } from './settings'
@@ -58,7 +59,13 @@ export async function createAppServices(): Promise<AppServices> {
     },
   }
 
-  await runtime.initialize({ ...adapterInit, settings: settings.runtime.settings })
+  await runtime.initialize({
+    ...adapterInit,
+    settings: settings.runtime.settings,
+    // In-process tool delivery for runtimes that register Bakin exec tools
+    // directly in agent sessions (Pi). OpenClaw ignores this (MCP/mcporter).
+    execTools: createRuntimeExecToolProvider(),
+  })
   await search.initialize({ ...adapterInit, settings: withAntflyAuthSecret(settings.search.settings) })
 
   const services: AppServices = {

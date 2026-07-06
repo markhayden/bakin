@@ -15,11 +15,43 @@ export interface AdapterAuditEvent {
   at?: string
 }
 
+/**
+ * One Bakin exec tool as offered across the adapter boundary. The zod
+ * shapes stay core-side; adapters receive plain JSON Schema so no
+ * validation library leaks into the contract.
+ */
+export interface RuntimeExecToolDescriptor {
+  name: string
+  description: string
+  /** JSON Schema (object) for the tool's parameters. */
+  parametersSchema: Record<string, unknown>
+}
+
+export interface RuntimeExecToolInvokeResult {
+  ok: boolean
+  /** Model-facing result text (JSON on success, `ERROR: …` on failure). */
+  text: string
+}
+
+/**
+ * Bakin's exec-tool registry offered to runtimes that deliver tools
+ * in-process (Pi registers these as native session tools). Out-of-band
+ * runtimes (OpenClaw reaches the same registry over HTTP MCP/mcporter)
+ * ignore it. `list()` reads the LIVE registry — call it at session build
+ * time so late plugin registrations and hot reloads are visible.
+ * Usage recording + audit happen inside `invoke`; adapters add nothing.
+ */
+export interface RuntimeExecToolProvider {
+  list(): RuntimeExecToolDescriptor[]
+  invoke(name: string, params: Record<string, unknown>, agentId: string): Promise<RuntimeExecToolInvokeResult>
+}
+
 export interface AdapterInitOpts {
   contentDir: string
   settings?: Record<string, unknown>
   logger?: AdapterLogger
   audit?: (event: AdapterAuditEvent) => void
+  execTools?: RuntimeExecToolProvider
 }
 
 export interface AdapterHealthCheckResult {
