@@ -434,8 +434,16 @@ export async function createTaskWithEffects(opts: {
   channel?: Channel
   /** When creating directly into the blocked column, the reason shown to the user. */
   blockedReason?: string
+  /** INTERNAL (schedule fire path): the caller already ran — or has
+   * deliberately deferred — assignment validation (round-4 review: the
+   * fire-time validation_unavailable defer was dead because this function
+   * re-validated against the same unavailable plugin and threw). API
+   * surfaces must never set this. */
+  skipAssignmentValidation?: boolean
 }): Promise<{ id: string; workflowId?: string; suggestedWorkflow?: string }> {
-  await validateTeamAssignment({ assignee: opts.assignee, team: opts.team })
+  if (!opts.skipAssignmentValidation) {
+    await validateTeamAssignment({ assignee: opts.assignee, team: opts.team })
+  }
 
   // Auto-match workflow if none was explicitly provided
   const suggested = !opts.workflowId ? (await hooks().invoke<string | null>('workflows.matchWorkflow', { title: opts.title, description: opts.description }) || undefined) : undefined

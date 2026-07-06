@@ -550,6 +550,18 @@ describe('schedule routes', () => {
       expect(meta!.agentId).toBeUndefined()
     })
 
+    it("adopting with agentId '' explicitly clears the existing agent (round-4)", async () => {
+      upsertJob(makeMeta({ jobId: 'native-clear', isBakinJob: false, agentId: 'chef' }))
+      mockRuntimeCronJobs.push({ id: 'native-clear', name: 'Native', schedule: '0 9 * * *', command: 'do it', enabled: true })
+      const route = findRoute(plugin.routes, 'POST', '/:jobId/adopt')!
+      const { status } = await callRoute(route, plugin.ctx, {
+        searchParams: { jobId: 'native-clear' },
+        body: { agentId: '' },
+      })
+      expect(status).toBe(200)
+      expect(getJob('native-clear')!.agentId).toBeUndefined()
+    })
+
     it('adopting with agentId + teamId is rejected with 400', async () => {
       mockRuntimeCronJobs.push({ id: 'native-both', name: 'Native', schedule: '0 9 * * *', command: 'do it', enabled: true })
       const route = findRoute(plugin.routes, 'POST', '/:jobId/adopt')!

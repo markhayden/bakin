@@ -21,7 +21,7 @@ import { createLogger } from './logger'
 import { appendAudit } from './audit'
 import { getSettings } from './settings'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
-import { addTaskLog, blockTask, getTask, recordTeamResolution } from './task-store'
+import { addTaskLog, blockTask, getTaskWithColumn, recordTeamResolution } from './task-store'
 import { readDispatchColumns } from './dispatch-board'
 import {
   withStateLock,
@@ -30,11 +30,14 @@ import {
   getFailureRecord,
   cooldownForFailure,
 } from './dispatch-state'
+import { TEAM_ROUTING_BLOCK_REASON } from './dispatch-types'
 import type { DispatchState, DispatchTask } from './dispatch-types'
 
 const log = createLogger('dispatch-team')
 
 export const TEAM_RESOLVE_HOOK = 'team.resolveAssignment'
+
+export { TEAM_ROUTING_BLOCK_REASON } from './dispatch-types'
 
 /** Structural mirror of the team plugin's ResolveAssignmentResult — typed at
  * the call site per the HookRegistry contract (core must not import plugin
@@ -71,7 +74,10 @@ export async function resolveTeamAssignmentForDispatch(
     appendAudit(contentDir, 'task.team_resolution_failed', 'system', {
       id: task.id, title: task.title, team, kind: 'structural', message,
     })
-    await blockTask(task.id, `Team routing failed: ${message}`)
+    // Sentinel reason (schedule outcome checks compare against it exactly);
+    // the human detail goes to the task log.
+    await blockTask(task.id, TEAM_ROUTING_BLOCK_REASON)
+    await addTaskLog(task.id, 'system', `Team routing failed: ${message}`).catch((err) => log.debug('Could not append routing-failure detail', { id: task.id, err: String(err) }))
     return { status: 'blocked' }
   }
 
@@ -93,10 +99,10 @@ export async function resolveTeamAssignmentForDispatch(
       // unlocked — if the task was meanwhile resolved elsewhere, re-assigned,
       // or deleted, discard this result instead of overwriting a possibly
       // already-dispatched task's agent.
-      const current = getTask(task.id)
-      if (!current || current.agent || current.team !== team) {
+      const current = getTaskWithColumn(task.id)
+      if (!current || current.column !== 'todo' || current.task.agent || current.task.team !== team) {
         log.warn('Team resolution result discarded — task changed while routing', {
-          id: task.id, team, pick: result.agentId,
+          id: task.id, team, pick: result.agentId, column: current?.column,
         })
         return { status: 'stale' }
       }
@@ -131,7 +137,7 @@ export async function resolveTeamAssignmentForDispatch(
     appendAudit(contentDir, 'task.team_resolution_failed', 'system', {
       id: task.id, title: task.title, team, kind: 'transient', message,
     })
-    await addTaskLogOnce(task, `Team routing deferred (will retry): ${message}`).catch(() => {})
+    await addTaskLogOnce(task, `Team routing deferred (will retry): ${message}`).catch((err) => log.debug('Could not append routing-deferral detail', { id: task.id, err: String(err) }))
     return { status: 'skipped' }
   }
 }
@@ -180,32 +186,69 @@ async function escalateExhaustedResolution(task: DispatchTask, contentDir: strin
       id: task.id, title: task.title, team: task.team, kind: 'structural',
       message: `exhausted after ${count} transient routing failures`,
     })
-    await blockTask(task.id, `Team routing failed ${count} times — check the routing provider/key (Team settings), then re-assign or unblock to retry`)
+    await blockTask(task.id, TEAM_ROUTING_BLOCK_REASON)
+    await addTaskLog(task.id, 'system', `Team routing failed ${count} times — check the routing provider/key (Team settings), then re-assign or unblock to retry`).catch((err) => log.debug('Could not append routing-exhaustion detail', { id: task.id, err: String(err) }))
     log.warn('Team task blocked after exhausting routing retries', { id: task.id, team: task.team, count })
   } catch (err) {
     log.error('Failed to block routing-exhausted task', err, { id: task.id })
   }
 }
 
-/** Task ids with a routing call in flight RIGHT NOW. A kick racing the
+/** Routing calls in flight RIGHT NOW, keyed by task id. A kick racing the
  * cycle — or a force-released dispatch mutex starting an overlapping
  * cycle — must never double-bill the router or double-write the pick
- * (round-3 finding). Single-process module state is sufficient: dispatch
+ * (round-3 finding). A Map of promises (not a Set) so a racing kick can
+ * JOIN the in-flight resolution instead of being silently swallowed
+ * (round-4 finding). Single-process module state is sufficient: dispatch
  * runs in one server process behind the singleton lock. */
-const resolvingTaskIds = new Set<string>()
+const resolvingTasks = new Map<string, Promise<TeamResolutionOutcome>>()
 let prePassRunning = false
+
+/** Start (or join) the resolution for a task — exactly one routing call per
+ * task is in flight at any moment. */
+function resolveShared(task: DispatchTask, contentDir: string): Promise<TeamResolutionOutcome> {
+  const existing = resolvingTasks.get(task.id)
+  if (existing) return existing
+  const promise = resolveTeamAssignmentForDispatch(task, contentDir)
+    .finally(() => resolvingTasks.delete(task.id))
+  resolvingTasks.set(task.id, promise)
+  return promise
+}
+
+interface ResolutionEligibilityContext {
+  completedTaskIds: Set<string>
+  /** Every task id on the board — a dependsOn pointing NOWHERE is treated
+   * as satisfied, mirroring isTaskDispatchEligible's stranding guard
+   * (round-4 finding: diverging here stranded team tasks forever). */
+  knownTaskIds: Set<string>
+  nowMs: number
+  /** Explicit user kicks bypass the schedule gate, like dispatch does. */
+  ignoreAvailableAt?: boolean
+}
 
 /** Resolution-time eligibility (round-3 finding): a task that cannot
  * dispatch yet (future availableAt, unmet dependency) must not bill the
- * router — the pick could go stale long before the task fires. Mirrors the
- * relevant gates of isTaskDispatchEligible without needing the roster. */
-function isResolutionEligible(task: DispatchTask, completedTaskIds: Set<string>, nowMs: number): boolean {
-  if (task.availableAt) {
+ * router — the pick could go stale long before the task fires. Mirrors
+ * isTaskDispatchEligible's gates without needing the roster. */
+function isResolutionEligible(task: DispatchTask, ctx: ResolutionEligibilityContext): boolean {
+  if (!ctx.ignoreAvailableAt && task.availableAt) {
     const availableMs = Date.parse(task.availableAt)
-    if (!Number.isNaN(availableMs) && availableMs > nowMs) return false
+    if (!Number.isNaN(availableMs) && availableMs > ctx.nowMs) return false
   }
-  if (task.dependsOn && !completedTaskIds.has(task.dependsOn)) return false
+  if (task.dependsOn && !ctx.completedTaskIds.has(task.dependsOn) && ctx.knownTaskIds.has(task.dependsOn)) {
+    return false
+  }
   return true
+}
+
+/** Build the eligibility context from a board snapshot. */
+function eligibilityContext(columns: Awaited<ReturnType<typeof readDispatchColumns>>, ignoreAvailableAt = false): ResolutionEligibilityContext {
+  return {
+    completedTaskIds: new Set([...columns.done, ...columns.archived].map((t) => t.id)),
+    knownTaskIds: new Set(Object.values(columns).flatMap((column) => column.map((t) => t.id))),
+    nowMs: Date.now(),
+    ignoreAvailableAt,
+  }
 }
 
 /**
@@ -228,10 +271,9 @@ export async function resolveTeamAssignmentsPrePass(contentDir: string): Promise
   prePassRunning = true
   try {
     const columns = await readDispatchColumns()
-    const nowMs = Date.now()
-    const completedTaskIds = new Set([...columns.done, ...columns.archived].map((t) => t.id))
+    const ctx = eligibilityContext(columns)
     const candidates = columns.todo.filter((t) =>
-      t.team && !t.agent && !resolvingTaskIds.has(t.id) && isResolutionEligible(t, completedTaskIds, nowMs))
+      t.team && !t.agent && !resolvingTasks.has(t.id) && isResolutionEligible(t, ctx))
     if (candidates.length === 0) return
 
     const settings = getSettings()
@@ -251,14 +293,8 @@ export async function resolveTeamAssignmentsPrePass(contentDir: string): Promise
 
     const skippedIds: string[] = []
     await Promise.all(toResolve.map(async (task) => {
-      if (resolvingTaskIds.has(task.id)) return
-      resolvingTaskIds.add(task.id)
-      try {
-        const outcome = await resolveTeamAssignmentForDispatch(task, contentDir)
-        if (outcome.status === 'skipped') skippedIds.push(task.id)
-      } finally {
-        resolvingTaskIds.delete(task.id)
-      }
+      const outcome = await resolveShared(task, contentDir)
+      if (outcome.status === 'skipped') skippedIds.push(task.id)
     }))
 
     if (skippedIds.length > 0) {
@@ -274,24 +310,39 @@ export async function resolveTeamAssignmentsPrePass(contentDir: string): Promise
 }
 
 /** dispatchSingleTask's pre-lock counterpart of the cycle pre-pass.
- * Returns true when the caller may proceed into its locked section. */
+ * Returns true when the caller may proceed into its locked section.
+ * A racing kick JOINS an in-flight resolution instead of being swallowed
+ * (round-4 finding), and eligibility mirrors dispatch's per-source
+ * semantics: explicit kicks bypass availableAt, nothing bypasses an unmet
+ * (existing) dependency. */
 export async function resolveTeamAssignmentForSingle(
   taskId: string,
   contentDir: string,
+  source: 'kick' | 'subtask' | 'continuation' | 'recovery' = 'kick',
 ): Promise<boolean> {
   const columns = await readDispatchColumns()
   const task = columns.todo.find((t) => t.id === taskId)
   if (!task || !task.team || task.agent) return true
 
-  if (resolvingTaskIds.has(taskId)) {
-    log.debug('Single-task team resolution already in flight elsewhere; skipping', { taskId })
+  const inFlight = resolvingTasks.get(taskId)
+  if (inFlight) {
+    // Join it — if the other path resolved the task, this kick proceeds.
+    const outcome = await inFlight
+    return outcome.status === 'resolved' || outcome.status === 'stale'
+  }
+
+  if (!isResolutionEligible(task, eligibilityContext(columns, source === 'kick'))) {
+    // Not dispatchable yet — dispatch's own eligibility check will report
+    // the reason; billing the router now would freeze a stale pick.
+    log.debug('Single-task team resolution deferred — task not dispatch-eligible yet', { taskId, source })
     return false
   }
 
   const settings = getSettings()
-  const gate = ladderGate(loadDispatchState(contentDir), taskId, settings)
+  const state = loadDispatchState(contentDir)
+  const gate = ladderGate(state, taskId, settings)
   if (gate === 'exhausted') {
-    await escalateExhaustedResolution(task, contentDir, settings.dispatch.maxRetries)
+    await escalateExhaustedResolution(task, contentDir, getFailureRecord(state.failedDispatches?.[taskId])?.count ?? settings.dispatch.maxRetries)
     return false
   }
   if (gate === 'cooldown') {
@@ -299,19 +350,16 @@ export async function resolveTeamAssignmentForSingle(
     return false
   }
 
-  resolvingTaskIds.add(taskId)
-  try {
-    const outcome = await resolveTeamAssignmentForDispatch(task, contentDir)
-    if (outcome.status === 'skipped') {
-      await withStateLock(async () => {
-        const fresh = loadDispatchState(contentDir)
-        recordTeamResolutionFailure(fresh, taskId)
-        saveDispatchState(contentDir, fresh)
-      })
-      return false
-    }
-    return outcome.status === 'resolved'
-  } finally {
-    resolvingTaskIds.delete(taskId)
+  const outcome = await resolveShared(task, contentDir)
+  if (outcome.status === 'skipped') {
+    await withStateLock(async () => {
+      const fresh = loadDispatchState(contentDir)
+      recordTeamResolutionFailure(fresh, taskId)
+      saveDispatchState(contentDir, fresh)
+    })
+    return false
   }
+  // 'stale' means someone else won the race and may have resolved it —
+  // let the caller proceed; its locked re-read decides.
+  return outcome.status === 'resolved' || outcome.status === 'stale'
 }

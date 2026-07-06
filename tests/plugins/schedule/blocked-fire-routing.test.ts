@@ -71,8 +71,19 @@ class MockTaskValidationError extends Error {
   readonly code: string
   constructor(message: string, code: string) { super(message); this.name = 'TaskValidationError'; this.code = code }
 }
+const mockValidateTeamRefImpl = async (teamId: string) => {
+  if (teamId === 'ghost-team') throw new MockTaskValidationError(`Unknown team: "${teamId}"`, 'unknown_team')
+  if (teamId === 'unavailable-team') throw new MockTaskValidationError('team plugin unavailable', 'validation_unavailable')
+}
 mock.module('../../../src/core/task-service', () => ({
-  createTaskWithEffects: (opts: unknown) => mockCreateTask(opts),
+  // Faithful to the real service (round-4 review): create RE-VALIDATES the
+  // team unless the internal skip flag is set — a hollow mock here masked
+  // the dead validation_unavailable defer.
+  createTaskWithEffects: async (opts: unknown) => {
+    const o = (opts ?? {}) as { team?: string; skipAssignmentValidation?: boolean }
+    if (o.team && !o.skipAssignmentValidation) await mockValidateTeamRefImpl(o.team)
+    return mockCreateTask(opts)
+  },
   validateTeamRef: async (teamId: string) => {
     if (teamId === 'ghost-team') throw new MockTaskValidationError(`Unknown team: "${teamId}"`, 'unknown_team')
     if (teamId === 'unavailable-team') throw new MockTaskValidationError('team plugin unavailable', 'validation_unavailable')

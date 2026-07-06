@@ -159,6 +159,15 @@ export async function createScheduleJob(
   const parsed = parseSchedule(input.schedule)
   if (!parsed) return { ok: false, error: 'Could not parse schedule expression' }
 
+  // Assignment validation lives HERE, not at each surface (round-4 review):
+  // every caller — REST, exec tool, future bulk/import — inherits it.
+  try {
+    await validateTeamAssignment({ assignee: input.agentId, team: input.teamId })
+  } catch (err) {
+    if (err instanceof TaskValidationError) return { ok: false, error: err.message }
+    throw err
+  }
+
   const tz = input.tz || getSystemTimezone()
   const jobId = newScheduleId()
   const owner = input.owner ?? await getRuntimeMainAgentId(ctx.runtime)
@@ -235,11 +244,21 @@ export function applyPauseAction(
  * before the field loop, so an explicit `displayName` in `updates` wins —
  * both surfaces now share that precedence. Callers own re-indexing + audit.
  */
-export function updateScheduleJob(
+export async function updateScheduleJob(
   meta: BakinJobMeta,
   updates: Record<string, unknown>,
   fields: readonly string[],
-): { ok: true; warnings: PromptWarning[] } | { ok: false; error: string } {
+): Promise<{ ok: true; warnings: PromptWarning[] } | { ok: false; error: string }> {
+  // Assignment validation lives HERE, not at each surface (round-4 review).
+  try {
+    await validateTeamAssignment({
+      assignee: typeof updates.agentId === 'string' && updates.agentId ? updates.agentId : undefined,
+      team: typeof updates.teamId === 'string' && updates.teamId ? updates.teamId : undefined,
+    })
+  } catch (err) {
+    if (err instanceof TaskValidationError) return { ok: false, error: err.message }
+    throw err
+  }
   if (updates.schedule && typeof updates.schedule === 'string') {
     const parsed = parseSchedule(updates.schedule)
     if (!parsed) return { ok: false, error: 'Could not parse schedule' }

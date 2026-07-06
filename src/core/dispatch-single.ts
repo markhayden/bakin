@@ -45,7 +45,7 @@ export async function dispatchSingleTask(
   // Team → agent resolution BEFORE the lock (review R3) — mirrors the
   // cycle's pre-pass; a slow router must not block other kicks or the
   // cycle. Transient failures join the failedDispatches ladder (review R2).
-  if (!(await resolveTeamAssignmentForSingle(taskId, contentDir))) {
+  if (!(await resolveTeamAssignmentForSingle(taskId, contentDir, source))) {
     log.debug('dispatchSingleTask: team resolution did not produce an agent', { taskId })
     return
   }

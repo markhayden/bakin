@@ -119,12 +119,6 @@ export const scheduleRoutes = [
     body: createJobBody,
     responses: { 200: passthrough, 400: errorResponse, 500: errorResponse },
     handler: async (_req, ctx, { body }) => {
-      try {
-        await validateTeamAssignment({ assignee: body.agentId, team: body.teamId })
-      } catch (err) {
-        if (err instanceof TaskValidationError) return json({ error: err.message }, 400)
-        throw err
-      }
       const result = await createScheduleJob(ctx, body)
       if (!result.ok) return json({ error: result.error }, 400)
       ctx.activity.audit('job.created', body.owner ?? 'system', { jobId: result.jobId, name: body.name })
@@ -148,16 +142,7 @@ export const scheduleRoutes = [
       if (!guard.ok) return json({ error: guard.error }, guard.status)
       const meta = guard.meta
       const updates = body as Record<string, unknown>
-      try {
-        await validateTeamAssignment({
-          assignee: typeof updates.agentId === 'string' ? updates.agentId : undefined,
-          team: typeof updates.teamId === 'string' ? updates.teamId : undefined,
-        })
-      } catch (err) {
-        if (err instanceof TaskValidationError) return json({ error: err.message }, 400)
-        throw err
-      }
-      const result = updateScheduleJob(meta, updates, [
+      const result = await updateScheduleJob(meta, updates, [
         'displayName', 'description', 'agentId', 'teamId', 'owner', 'requireTriage',
         'workflowId', 'taskPrompt', 'taskTitle', 'allowOverlap', 'maxFailures',
       ])
@@ -232,8 +217,10 @@ export const scheduleRoutes = [
       // Assignment merge + exclusion, mirroring ensureBakinJob (round-3):
       // a body-provided side wins and clears the other; validated before
       // any sidecar write.
-      let adoptAgentId = body.agentId === null ? undefined : (body.agentId || undefined) ?? existing?.agentId
-      let adoptTeamId = body.teamId === null ? undefined : (body.teamId || undefined) ?? existing?.teamId
+      // null and '' are both explicit clears; only ABSENT falls back to the
+      // existing value (round-4 review — '' must not silently preserve).
+      let adoptAgentId = body.agentId === null || body.agentId === '' ? undefined : body.agentId ?? existing?.agentId
+      let adoptTeamId = body.teamId === null || body.teamId === '' ? undefined : body.teamId ?? existing?.teamId
       if (typeof body.agentId === 'string' && body.agentId) adoptTeamId = typeof body.teamId === 'string' && body.teamId ? adoptTeamId : undefined
       if (typeof body.teamId === 'string' && body.teamId) adoptAgentId = typeof body.agentId === 'string' && body.agentId ? adoptAgentId : undefined
       try {

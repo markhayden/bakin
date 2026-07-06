@@ -70,9 +70,15 @@ Round-3 concurrency shape: the pre-pass is **re-entrant-guarded** (a
 force-released dispatch mutex cannot start a second billing pass), tasks
 resolve **concurrently** (N slow routing calls cost one ~60s timeout, not
 N), a **per-task in-flight set** keeps kicks and cycles off each other's
-tasks, and a **stale-write guard** re-reads the task before persisting so
-a slow result never overwrites a re-assigned/dispatched task (returns
-`'stale'`, records nothing). Resolution is also **eligibility-gated**: a
+tasks, and a **stale-write guard** re-reads the task (id + COLUMN — must
+still be in todo) before persisting so a slow result never overwrites a
+re-assigned/dispatched/blocked task (returns `'stale'`, records nothing).
+Round-4: the in-flight registry is a Map of promises — a racing kick JOINS
+the in-flight resolution and proceeds when it lands, never silently
+swallowed; the kick path applies the same eligibility gate (kicks bypass
+availableAt like dispatch does; nothing bypasses an unmet EXISTING
+dependency, and a dangling dependency target counts as satisfied,
+mirroring isTaskDispatchEligible). Resolution is also **eligibility-gated**: a
 task with a future `availableAt` or unmet `dependsOn` never bills the
 router (the pick could go stale before the task fires). The locked loop
 then only skips still-unresolved team tasks.
@@ -105,7 +111,11 @@ branch on instanceof + code, never message text. Mutual exclusion +
 `team.exists` lookup, failing CLOSED when the team plugin/hook is
 unavailable; routes map to 400 **by instanceof**.
 `createTaskWithEffects` calls it internally — the tasks create route has
-no duplicate pre-check (one `team.exists` round-trip per create).
+no duplicate pre-check (one `team.exists` round-trip per create). Round-4:
+schedule validation lives in the job-service verbs (`createScheduleJob`,
+now-async `updateScheduleJob`, `ensureBakinJob`, adopt handler) — surfaces
+carry no guard copies; adopt treats `''` and `null` both as explicit
+clears (only ABSENT preserves the existing value).
 
 - **REST** `POST/PUT /api/plugins/tasks/` — `team` field. The PUT is a
   true PARTIAL update (post-review R1): only keys present in the body are
@@ -126,11 +136,15 @@ no duplicate pre-check (one `team.exists` round-trip per create).
   `createTaskWithEffects`, so each occurrence re-resolves; `requireTriage`
   still wins. **Dangling team** (deleted after job creation): the fire
   creates the occurrence as a BLOCKED task with the
-  `TEAM_ROUTING_BLOCK_REASON` sentinel (detail in the task log) — a triage
-  marker the next fire's outcome check excludes from failure counting, so
-  no lost occurrences and no auto-pause (round-3). A
-  `validation_unavailable` error (team plugin momentarily down) instead
-  defers: the occurrence keeps its team and dispatch re-checks honestly.
+  `TEAM_ROUTING_BLOCK_REASON` sentinel (single-sourced in
+  `src/core/dispatch-types.ts`; detail in the task log). Round-4: EVERY
+  team-routing block uses this sentinel — dispatch-side resolver blocks and
+  exhaustion included — so the outcome check excludes routing problems
+  from auto-pause no matter where they were detected. A
+  `validation_unavailable` error (team plugin momentarily down) defers:
+  the occurrence keeps its team via createTaskWithEffects'
+  INTERNAL `skipAssignmentValidation` flag (fire path only — API surfaces
+  never set it) and dispatch re-checks honestly.
   Adopt (route + UI) and `bakin_exec_schedule_create`/`_update` carry
   `teamId` with the same exclusion + validation; `jobs-reader` merges
   `teamId` into the UI projection so edits round-trip it (round-3).

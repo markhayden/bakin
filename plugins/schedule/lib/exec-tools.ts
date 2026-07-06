@@ -23,7 +23,6 @@ import {
   updateScheduleJob,
   type PauseAction,
 } from './job-service'
-import { validateTeamAssignment, TaskValidationError } from '../../../src/core/task-service'
 
 export function registerScheduleExecTools(ctx: PluginContext): void {
   ctx.registerExecTool({
@@ -72,15 +71,6 @@ export function registerScheduleExecTools(ctx: PluginContext): void {
       if (!params.name || !params.schedule) {
         return { ok: false, error: 'name and schedule are required' }
       }
-      try {
-        await validateTeamAssignment({
-          assignee: params.agentId as string | undefined,
-          team: params.teamId as string | undefined,
-        })
-      } catch (err) {
-        if (err instanceof TaskValidationError) return { ok: false, error: err.message }
-        throw err
-      }
       const result = await createScheduleJob(ctx, {
         name: params.name as string,
         schedule: params.schedule as string,
@@ -116,16 +106,7 @@ export function registerScheduleExecTools(ctx: PluginContext): void {
       const guard = await guardBakinMutation(params.jobId as string)
       if (!guard.ok) return { ok: false, error: guard.error }
 
-      try {
-        await validateTeamAssignment({
-          assignee: params.agentId as string | undefined,
-          team: params.teamId as string | undefined,
-        })
-      } catch (err) {
-        if (err instanceof TaskValidationError) return { ok: false, error: err.message }
-        throw err
-      }
-      const result = updateScheduleJob(guard.meta, params, [
+      const result = await updateScheduleJob(guard.meta, params, [
         'displayName', 'agentId', 'teamId', 'workflowId', 'taskPrompt', 'taskTitle',
       ])
       if (!result.ok) return result

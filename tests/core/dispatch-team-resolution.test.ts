@@ -93,6 +93,13 @@ const taskStoreMock = () => ({
     }
     return null
   },
+  getTaskWithColumn: (id: string) => {
+    for (const [column, col] of Object.entries(columns)) {
+      const t = col.find((x) => x.id === id)
+      if (t) return { task: t, column }
+    }
+    return null
+  },
   addTaskLog: (...args: [string, string, string]) => addTaskLogSpy(...args),
   updateTask: mock(async () => undefined),
   moveTask: mock(async () => undefined),
@@ -203,7 +210,9 @@ describe('resolveTeamAssignmentForDispatch (helper)', () => {
     columns.todo.push(task)
     const outcome = await resolveTeamAssignmentForDispatch(task, tempDir)
     expect(outcome).toEqual({ status: 'blocked' })
-    expect(blockTaskSpy).toHaveBeenCalledWith('task-1', expect.stringContaining('no API key configured'))
+    expect(blockTaskSpy).toHaveBeenCalledWith('task-1', 'team routing failed — re-assign this task')
+    const structLog = addTaskLogSpy.mock.calls.map((c) => String(c[2])).join('\n')
+    expect(structLog).toContain('no API key configured')
   })
 
   it('hook not registered → blocked (structural)', async () => {
@@ -269,7 +278,9 @@ describe('dispatch cycle wiring', () => {
 
     await dispatchTasks(tempDir, 3737)
     expect(hookInvokeSpy).not.toHaveBeenCalled() // pre-pass respects the exhausted ladder
-    expect(blockTaskSpy).toHaveBeenCalledWith('task-t', expect.stringContaining('3 times'))
+    expect(blockTaskSpy).toHaveBeenCalledWith('task-t', expect.stringContaining('re-assign this task'))
+    const exhaustLog = addTaskLogSpy.mock.calls.map((c) => String(c[2])).join('\n')
+    expect(exhaustLog).toContain('3 times')
     expect(prepareSpy).not.toHaveBeenCalled()
   })
 
@@ -313,10 +324,32 @@ describe('round-3 guards', () => {
     expect(hookInvokeSpy).not.toHaveBeenCalled()
   })
 
-  it('pre-pass skips tasks with an unmet dependency', async () => {
+  it('pre-pass skips tasks with an unmet dependency on an EXISTING task', async () => {
+    columns.inProgress.push({ id: 'task-parent', title: 'Parent' })
     columns.todo.push({ id: 'task-dep', title: 'Dependent', team: 'development', dependsOn: 'task-parent' } as TestTask & { dependsOn: string })
     await dispatchTasks(tempDir, 3737)
     expect(hookInvokeSpy).not.toHaveBeenCalled()
+  })
+
+  it('a dangling dependency (target deleted) does NOT strand resolution (round-4)', async () => {
+    columns.todo.push({ id: 'task-dangling', title: 'Dangling dep', team: 'development', dependsOn: 'task-gone' } as TestTask & { dependsOn: string })
+    await dispatchTasks(tempDir, 3737)
+    expect(hookInvokeSpy).toHaveBeenCalledTimes(1) // treated as satisfied, mirrors isTaskDispatchEligible
+  })
+
+  it('a joined kick proceeds when the in-flight resolution succeeds (round-4)', async () => {
+    columns.todo.push({ id: 'task-join', title: 'Join', team: 'development' })
+    hookInvokeSpy.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, 40))
+      return { ok: true, agentId: 'reviewer', reason: 'fit', model: 'anthropic/haiku' }
+    })
+    const [, kickOk] = await Promise.all([
+      dispatchTasks(tempDir, 3737),
+      resolveTeamAssignmentForSingle('task-join', tempDir, 'kick'),
+    ])
+    expect(hookInvokeSpy).toHaveBeenCalledTimes(1)
+    expect(kickOk).toBe(true) // the kick is NOT swallowed — it may proceed to dispatch
+    hookInvokeSpy.mockImplementation(async () => hookResult)
   })
 
   it('sessionDeath records are NOT exempt: exhausted ladder blocks without billing', async () => {
@@ -332,7 +365,9 @@ describe('round-3 guards', () => {
 
     await dispatchTasks(tempDir, 3737)
     expect(hookInvokeSpy).not.toHaveBeenCalled()
-    expect(blockTaskSpy).toHaveBeenCalledWith('task-sd', expect.stringContaining('Team routing failed 3 times'))
+    expect(blockTaskSpy).toHaveBeenCalledWith('task-sd', expect.stringContaining('re-assign this task'))
+    const sdLog = addTaskLogSpy.mock.calls.map((c) => String(c[2])).join('\n')
+    expect(sdLog).toContain('3 times')
   })
 
   it('sessionDeath records are NOT exempt: cooldown pacing applies', async () => {

@@ -24,6 +24,7 @@ import {
 } from './sidecar'
 import { claimCronFire, attachCronTask, markCronFireSkipped, findHealableCronClaims } from '../../../src/core/execution-ledger'
 import { createTaskWithEffects, validateTeamRef, TaskValidationError } from '../../../src/core/task-service'
+import { TEAM_ROUTING_BLOCK_REASON } from '../../../src/core/dispatch-types'
 import { addTaskLog, readTaskboard } from '../../../src/core/task-store'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { createLogger } from '../../../src/core/logger'
@@ -38,11 +39,11 @@ const log = createLogger('schedule')
  *  healthy job's auto-pause counter. */
 export const MISSED_WINDOW_REASON = 'missed schedule window'
 
-/** `blockedReason` sentinel for an occurrence whose schedule references a
- *  team that no longer exists (round-3 review). Like MISSED_WINDOW_REASON it
- *  marks TRIAGE, not failure — the outcome check must not count it toward
- *  auto-pause. The human detail (which team, why) goes to the task log. */
-export const TEAM_ROUTING_BLOCK_REASON = 'team routing failed — re-assign this task'
+/** Re-exported from dispatch-team (round-4 review): ONE sentinel for every
+ *  team-routing block — fire-time dangling teams AND dispatch-side resolver
+ *  blocks — so the outcome check below never counts either toward
+ *  auto-pause, no matter where the routing problem was detected. */
+export { TEAM_ROUTING_BLOCK_REASON }
 
 export interface ProcessRunResult {
   status: number
@@ -219,6 +220,7 @@ export async function runClaimedFire(
   let column = opts.column ?? 'todo'
   let blockedReason = opts.blockedReason
   let danglingTeamDetail: string | undefined
+  let skipAssignmentValidation = false
   if (fireTeam) {
     try {
       await validateTeamRef(fireTeam)
@@ -231,6 +233,10 @@ export async function runClaimedFire(
         // occurrence WITH the team — dispatch's resolver re-checks and
         // blocks honestly if the team is truly gone (round-3 review).
         log.warn('Team validation unavailable at fire time; deferring to dispatch', { jobId, team: fireTeam, message })
+        // Without this flag createTaskWithEffects re-validates against the
+        // same unavailable plugin and throws — the defer would be dead and
+        // the fire charged as a failure (round-4 review).
+        skipAssignmentValidation = true
       } else {
         // Confirmed dangling team: land the occurrence blocked (triage, not
         // a job failure) so no run is lost and the job never auto-pauses.
@@ -259,6 +265,7 @@ export async function runClaimedFire(
       // Team-assigned schedules (#189): each occurrence is a fresh task, so
       // dispatch re-resolves the best member per fire. requireTriage wins.
       team: fireTeam,
+      skipAssignmentValidation,
       workflowId: meta.workflowId,
       createdBy: 'schedule',
       scheduleJobId: jobId,
