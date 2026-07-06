@@ -59,6 +59,8 @@ export interface AssetVersionInput {
   promptHash?: string | null
   description?: string
   generation?: AssetGeneration | null
+  /** Provenance when this version was absorbed from another asset (consolidate). */
+  consolidatedFrom?: { assetId: string; version: number }
 }
 
 /** Append a new version derived from the current version; advances the pointer. */
@@ -90,6 +92,7 @@ export async function addVersion(assetId: string, input: AssetVersionInput): Pro
       op: input.op ?? 'edit', parentVersion, tool: input.tool ?? null,
       prompt: input.prompt ?? null, promptHash: input.promptHash ?? null,
       generation: input.generation ?? null,
+      ...(input.consolidatedFrom ? { consolidatedFrom: input.consolidatedFrom } : {}),
     }
     manifest.versions.push(version)
     manifest.currentVersion = nextVersion
