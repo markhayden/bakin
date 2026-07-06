@@ -86,6 +86,13 @@ const recordTeamResolutionSpy = mock(async (taskId: string, agent: string) => {
 })
 const taskStoreMock = () => ({
   readTaskboard: () => ({ columns }),
+  getTask: (id: string) => {
+    for (const col of Object.values(columns)) {
+      const t = col.find((x) => x.id === id)
+      if (t) return t
+    }
+    return null
+  },
   addTaskLog: (...args: [string, string, string]) => addTaskLogSpy(...args),
   updateTask: mock(async () => undefined),
   moveTask: mock(async () => undefined),
@@ -131,7 +138,7 @@ mock.module('../../src/core/execution-ledger', () => ({
 }))
 
 import { dispatchTasks } from '../../src/core/dispatch-cycle'
-import { resolveTeamAssignmentForDispatch } from '../../src/core/dispatch-team'
+import { resolveTeamAssignmentForDispatch, resolveTeamAssignmentForSingle } from '../../src/core/dispatch-team'
 import { loadDispatchState, saveDispatchState } from '../../src/core/dispatch-state'
 
 let tempDir: string
@@ -296,5 +303,78 @@ describe('hook-throw visibility (R8)', () => {
     }))
     const logged = addTaskLogSpy.mock.calls.map((c) => String(c[2])).join('\n')
     expect(logged).toContain('heartbeats corrupted')
+  })
+})
+
+describe('round-3 guards', () => {
+  it('pre-pass skips tasks not yet dispatch-eligible — future availableAt bills nothing', async () => {
+    columns.todo.push({ id: 'task-later', title: 'Later', team: 'development', availableAt: new Date(Date.now() + 86_400_000).toISOString() } as TestTask & { availableAt: string })
+    await dispatchTasks(tempDir, 3737)
+    expect(hookInvokeSpy).not.toHaveBeenCalled()
+  })
+
+  it('pre-pass skips tasks with an unmet dependency', async () => {
+    columns.todo.push({ id: 'task-dep', title: 'Dependent', team: 'development', dependsOn: 'task-parent' } as TestTask & { dependsOn: string })
+    await dispatchTasks(tempDir, 3737)
+    expect(hookInvokeSpy).not.toHaveBeenCalled()
+  })
+
+  it('sessionDeath records are NOT exempt: exhausted ladder blocks without billing', async () => {
+    columns.todo.push({ id: 'task-sd', title: 'Was dead', team: 'development' })
+    const state = loadDispatchState(tempDir)
+    state.failedDispatches['task-sd'] = {
+      count: 3,
+      lastAttempt: Date.now() - 10 * 60 * 1000,
+      kind: 'transient',
+      sessionDeath: { kind: 'session_death' } as never,
+    }
+    saveDispatchState(tempDir, state)
+
+    await dispatchTasks(tempDir, 3737)
+    expect(hookInvokeSpy).not.toHaveBeenCalled()
+    expect(blockTaskSpy).toHaveBeenCalledWith('task-sd', expect.stringContaining('Team routing failed 3 times'))
+  })
+
+  it('sessionDeath records are NOT exempt: cooldown pacing applies', async () => {
+    columns.todo.push({ id: 'task-sd2', title: 'Was dead', team: 'development' })
+    const state = loadDispatchState(tempDir)
+    state.failedDispatches['task-sd2'] = {
+      count: 1,
+      lastAttempt: Date.now(), // fresh — inside transientCooldownMs
+      kind: 'transient',
+      sessionDeath: { kind: 'session_death' } as never,
+    }
+    saveDispatchState(tempDir, state)
+
+    await dispatchTasks(tempDir, 3737)
+    expect(hookInvokeSpy).not.toHaveBeenCalled()
+    expect(blockTaskSpy).not.toHaveBeenCalled()
+  })
+
+  it('a kick racing the cycle resolves the task exactly once (in-flight guard)', async () => {
+    columns.todo.push({ id: 'task-race', title: 'Race', team: 'development' })
+    hookInvokeSpy.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, 50))
+      return { ok: true, agentId: 'reviewer', reason: 'fit', model: 'anthropic/haiku' }
+    })
+    await Promise.all([
+      dispatchTasks(tempDir, 3737),
+      resolveTeamAssignmentForSingle('task-race', tempDir),
+    ])
+    expect(hookInvokeSpy).toHaveBeenCalledTimes(1)
+    hookInvokeSpy.mockImplementation(async () => hookResult)
+  })
+
+  it('a stale routing result is discarded, never overwriting a changed task', async () => {
+    const task: TestTask = { id: 'task-stale', title: 'Stale', team: 'development' }
+    columns.todo.push(task)
+    hookInvokeSpy.mockImplementationOnce(async () => {
+      // Task gets directly assigned while the router is thinking.
+      task.agent = 'someone-else'
+      return { ok: true, agentId: 'reviewer', reason: 'fit', model: 'anthropic/haiku' }
+    })
+    const outcome = await resolveTeamAssignmentForDispatch({ ...task, agent: undefined }, tempDir)
+    expect(outcome).toEqual({ status: 'stale' })
+    expect(recordTeamResolutionSpy).not.toHaveBeenCalled()
   })
 })

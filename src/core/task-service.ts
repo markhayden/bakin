@@ -371,10 +371,15 @@ export async function blockTaskWithEffects(
  * Write-time assignment validation failure (#189, review R10). API surfaces
  * map this to a 400 by TYPE — never by message text (house rule).
  */
+export type TaskValidationCode = 'both_set' | 'unknown_team' | 'validation_unavailable'
+
 export class TaskValidationError extends Error {
-  constructor(message: string) {
+  /** Typed classification — consumers branch on this, never message text. */
+  readonly code: TaskValidationCode
+  constructor(message: string, code: TaskValidationCode) {
     super(message)
     this.name = 'TaskValidationError'
+    this.code = code
   }
 }
 
@@ -386,11 +391,11 @@ export class TaskValidationError extends Error {
 export async function validateTeamRef(teamId: string): Promise<void> {
   const registry = hooks()
   if (!registry.has('team.exists')) {
-    throw new TaskValidationError(`Cannot validate team "${teamId}": team plugin unavailable`)
+    throw new TaskValidationError(`Cannot validate team "${teamId}": team plugin unavailable`, 'validation_unavailable')
   }
   const exists = await registry.invoke<boolean>('team.exists', { teamId })
   if (!exists) {
-    throw new TaskValidationError(`Unknown team: "${teamId}"`)
+    throw new TaskValidationError(`Unknown team: "${teamId}"`, 'unknown_team')
   }
 }
 
@@ -400,7 +405,7 @@ export async function validateTeamRef(teamId: string): Promise<void> {
  */
 export async function validateTeamAssignment(opts: { assignee?: string; team?: string }): Promise<void> {
   if (opts.assignee && opts.team) {
-    throw new TaskValidationError('Cannot set both an agent and a team')
+    throw new TaskValidationError('Cannot set both an agent and a team', 'both_set')
   }
   if (opts.team) {
     await validateTeamRef(opts.team)
