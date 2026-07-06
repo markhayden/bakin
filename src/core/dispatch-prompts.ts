@@ -3,8 +3,18 @@
  * dispatch.ts — no dispatch state, no I/O. Async/cached context blocks
  * (lessons, assets) live in dispatch-context-blocks.ts and are passed in here
  * as already-resolved strings.
+ *
+ * The ONE non-pure touch: tool-call lines render per the active runtime's
+ * declared tool access (`describeToolAccess`) — mcporter shell commands for
+ * OpenClaw, bare native tool calls for in-process runtimes (Pi). Resolved
+ * via `resolveToolInvocation()` so the context-report measurement path and
+ * production dispatch render identically; every builder also accepts the
+ * style explicitly for pure/testable use.
  */
 import { join } from 'path'
+// Namespace import: suites mock.module() app-services with partial export
+// sets; a named import would break the whole import graph under those mocks.
+import * as appServices from './app-services'
 import type {
   DispatchContinuationContext,
   DispatchRosterAgent,
@@ -13,10 +23,28 @@ import type {
 
 const IMAGE_MCPORTER_TIMEOUT_MS = 600000
 
-export function mcporterHelpers(agentName: string) {
+export type ToolInvocation = 'native' | 'mcporter-cli'
+
+/** Tool-invocation style of the ACTIVE runtime; 'mcporter-cli' when unset (legacy default). */
+export function resolveToolInvocation(): ToolInvocation {
+  try {
+    if (typeof appServices.maybeGetAppServices !== 'function') return 'mcporter-cli'
+    return appServices.maybeGetAppServices()?.runtime.describeToolAccess?.().invocation ?? 'mcporter-cli'
+  } catch {
+    return 'mcporter-cli'
+  }
+}
+
+export function mcporterHelpers(agentName: string, invocation: ToolInvocation = resolveToolInvocation()) {
   const server = `bakin-${agentName}`
+  if (invocation === 'native') {
+    // Exec tools are first-class session tools — render bare calls.
+    const call = (tool: string, args: string) => `${tool} ${args}`
+    return { server, invocation, mc: call, mcImage: call }
+  }
   return {
     server,
+    invocation,
     mc: (tool: string, args: string) => `mcporter call ${server}.${tool} ${args}`,
     mcImage: (tool: string, args: string) => `mcporter call ${server}.${tool} --timeout ${IMAGE_MCPORTER_TIMEOUT_MS} ${args}`,
   }
@@ -100,8 +128,7 @@ export function buildDecompositionMessage(
   agentName: string,
   recovery: SessionDeathState,
 ): string {
-  const server = `bakin-${agentName}`
-  const mc = (tool: string, args: string) => `mcporter call ${server}.${tool} ${args}`
+  const { mc } = mcporterHelpers(agentName)
   const d = recovery.lastDiagnosis
   const detailsBlock = task.description ? `\n\nOriginal task details:\n${task.description}` : ''
   const salvageBlock = recovery.salvagedAssetIds.length > 0
@@ -158,7 +185,7 @@ export function buildDispatchSections(
     : ''
   const contactsRef = `Reference info is in ${join(contentDir, 'team/CONTACTS.md')}.`
 
-  const { server, mc } = mcporterHelpers(agentName)
+  const { server, mc, invocation } = mcporterHelpers(agentName)
 
   if (!task.agent) {
     // Roster comes from the live runtime — never a hardcoded agent list
@@ -205,7 +232,9 @@ Log progress at EVERY major step (start, each step, decisions, blockers, complet
 ${outputDisciplineSection(agentName, task.id, { subtasksAllowed: true }).join('\n')}`)
   add('task-commands', `
 
-## TASK COMMANDS — via mcporter (server \`${server}\`)
+${invocation === 'native'
+    ? '## TASK COMMANDS — call these tools directly (they are available in your session)'
+    : `## TASK COMMANDS — via mcporter (server \`${server}\`)`}
 
 \`\`\`bash
 # log progress (mandatory at every major step)

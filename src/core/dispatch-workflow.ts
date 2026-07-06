@@ -389,7 +389,7 @@ export function buildWorkflowDispatchSections(
   // "Bakin Execution Tools" section of AGENTS.md (#357 trim).
   lines.push('## PROGRESS LOGGING — MANDATORY')
   lines.push('')
-  const { server: wfServer, mc: wfMc } = mcporterHelpers(agentName)
+  const { server: wfServer, mc: wfMc, invocation: wfInvocation } = mcporterHelpers(agentName)
 
   lines.push('Log progress at EVERY major step (start, each action, decisions, blockers, submission; at least every 2 minutes). Full logging rules: "Bakin Execution Tools" in your AGENTS.md.')
   lines.push('')
@@ -398,7 +398,9 @@ export function buildWorkflowDispatchSections(
   // ─── Commands ───────────────────────────────────────────────────────
   lines.push('## COMMANDS')
   lines.push('')
-  lines.push(`Your Bakin MCP server is \`${wfServer}\`. Use mcporter for all interactions:`)
+  lines.push(wfInvocation === 'native'
+    ? 'These Bakin tools are available directly in your session — call them for all interactions:'
+    : `Your Bakin MCP server is \`${wfServer}\`. Use mcporter for all interactions:`)
   lines.push('')
   lines.push('```bash')
   lines.push(`# Submit your output (must match the schema above)`)

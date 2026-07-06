@@ -109,6 +109,9 @@ export function createMockRuntimeAdapter(
     // Conservative default; tests override per-case ({...mock, capabilities}).
     capabilities: async (_opts?: { agentId?: string }) => ({ imageInput: false, audioInput: false }),
 
+    // Legacy default so prompt-fixture bytes stay stable for mock-driven suites.
+    describeToolAccess: () => ({ invocation: 'mcporter-cli' as const }),
+
     cron: {
       list: async () => [],
       get: async () => null,
