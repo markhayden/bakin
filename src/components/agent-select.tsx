@@ -84,7 +84,11 @@ export function AgentSelect({
     if (!includeTeams) return
     fetch('/api/plugins/team/teams')
       .then((r) => r.json())
-      .then((data) => { if (Array.isArray(data)) setTeams(data as SelectableTeam[]) })
+      .then((data) => {
+        // Route responds { teams: [...] }; accept a bare array defensively.
+        const list = Array.isArray(data) ? data : (data as { teams?: SelectableTeam[] })?.teams
+        if (Array.isArray(list)) setTeams(list)
+      })
       .catch(() => {})
   }, [includeTeams])
 
