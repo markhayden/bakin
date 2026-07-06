@@ -120,7 +120,9 @@ describe('DiagnosticsTab', () => {
     const syncButton = await screen.findByRole('button', { name: /Sync now/ })
     fireEvent.click(syncButton)
     await waitFor(() => {
-      const calls = fetchMock.mock.calls.map((c) => [c[0], (c[1] as RequestInit | undefined)?.method ?? 'GET'])
+      const calls = (fetchMock.mock.calls as unknown as Array<[string, RequestInit | undefined]>).map(
+        (c) => [c[0], c[1]?.method ?? 'GET'] as const,
+      )
       expect(calls.some(([url, method]) => url === '/api/agent-packages/pixel/sync' && method === 'POST')).toBe(true)
     })
   })

@@ -43,7 +43,7 @@ describe('assignSeriesColors', () => {
 })
 
 describe('StackedColumnChart', () => {
-  const data = [
+  const data: import('../../src/components/charts/stacked-column-chart').StackedColumnDatum[] = [
     { x: '2026-07-01', xLabel: 'Jul 1', values: { pixel: 100, scout: 50 } },
     { x: '2026-07-02', xLabel: 'Jul 2', values: { pixel: 700 } },
   ]
