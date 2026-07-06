@@ -114,6 +114,40 @@ describe('workflow context cap', () => {
     expect(msg).toContain('"marker": "newest"')
   })
 
+  it('budgets a map_workflow aggregate like any step output — trimmed with a marker when fat (#203)', () => {
+    // A map join writes { outputs: [...] } as ordinary stepState.output, so a
+    // wide fan-out's aggregate must ride the same budget as everything else.
+    const stepOutputs = {
+      'generate-variants': {
+        outputs: [bigOutput('variant-0', 2500), bigOutput('variant-1', 2500), bigOutput('variant-2', 2500)],
+      },
+      'select-best': bigOutput('winner', 300),
+    }
+    const msg = buildWorkflowDispatchMessage(
+      task, { ...step, stepOutputs }, 'jessica', '', undefined, '',
+      { maxWorkflowContextBytes: 1024 },
+    )
+    // Newest (post-map) output survives; the fat aggregate is dropped whole
+    // with the visible recovery marker — never silently, never mid-JSON.
+    expect(msg).toContain('"marker": "winner"')
+    expect(msg).not.toContain('"marker": "variant-0"')
+    expect(msg).not.toContain('### Step: generate-variants')
+    expect(msg).toContain('step output omitted')
+    expect(msg).toContain('bakin_exec_workflows_get_instance')
+  })
+
+  it('keeps a map_workflow aggregate intact when the budget allows it', () => {
+    const stepOutputs = {
+      'generate-variants': { outputs: [{ assetId: 'a-0' }, { assetId: 'a-1' }, { assetId: 'a-2' }] },
+      'select-best': { assetId: 'a-1', rationale: 'best composition' },
+    }
+    const msg = buildWorkflowDispatchMessage(task, { ...step, stepOutputs }, 'jessica')
+    expect(msg).toContain('"assetId": "a-0"')
+    expect(msg).toContain('"assetId": "a-2"')
+    expect(msg).toContain('"rationale": "best composition"')
+    expect(msg).not.toContain('omitted')
+  })
+
   it('keeps the parent JSON body when the budget allows it', () => {
     const stepOutputs = {
       'step-a': bigOutput('newest', 200),
