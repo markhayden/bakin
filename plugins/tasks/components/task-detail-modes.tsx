@@ -113,8 +113,14 @@ export function TaskDetailForm({ m, task, columnId, open, onClose, onCancelEdit 
               onValueChange={(v) => { setAgent(v ?? ''); markDirty() }}
               allowNone
               noneLabel="Unassigned"
+              includeTeams
               className="w-full bg-surface"
             />
+            {task?.team && task?.agent && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Routed from team <span className="font-medium">{task.team}</span> — the activity log records why.
+              </p>
+            )}
           </div>
 
           <div>

@@ -76,8 +76,19 @@ const mockCreateTask = mock((opts?: unknown) => {
   void opts
   return Promise.resolve({ id: 'task-new', workflowId: undefined })
 })
+class MockTaskValidationError extends Error {
+  constructor(message: string) { super(message); this.name = 'TaskValidationError' }
+}
 mock.module('../../../src/core/task-service', () => ({
   createTaskWithEffects: (opts: unknown) => mockCreateTask(opts),
+  TaskValidationError: MockTaskValidationError,
+  validateTeamRef: async (teamId: string) => {
+    if (teamId !== 'development') throw new MockTaskValidationError(`Unknown team: "${teamId}"`)
+  },
+  validateTeamAssignment: async (opts: { assignee?: string; team?: string }) => {
+    if (opts.assignee && opts.team) throw new MockTaskValidationError('Cannot set both an agent and a team')
+    if (opts.team && opts.team !== 'development') throw new MockTaskValidationError(`Unknown team: "${opts.team}"`)
+  },
 }))
 
 // Mock plugin-registry (hook registry used by bridge — not under test here but must be present)
@@ -257,6 +268,35 @@ describe('schedule routes', () => {
       expect(plugin.ctx.activity.log).toHaveBeenCalled()
     })
 
+    it('creates a team-assigned job (#189)', async () => {
+      const route = findRoute(plugin.routes, 'POST', '/')!
+      const { status, body } = await callRoute(route, plugin.ctx, {
+        body: { name: 'Team Sweep', schedule: '0 9 * * *', teamId: 'development', taskPrompt: 'Sweep it' },
+      })
+      expect(status).toBe(200)
+      const meta = getJob(body.jobId as string)
+      expect(meta!.teamId).toBe('development')
+      expect(meta!.agentId).toBeUndefined()
+    })
+
+    it('rejects agentId + teamId together with 400 (#189)', async () => {
+      const route = findRoute(plugin.routes, 'POST', '/')!
+      const { status, body } = await callRoute(route, plugin.ctx, {
+        body: { name: 'Bad', schedule: '0 9 * * *', agentId: 'chef', teamId: 'development' },
+      })
+      expect(status).toBe(400)
+      expect(String(body.error)).toContain('both')
+    })
+
+    it('rejects an unknown teamId with 400 (#189)', async () => {
+      const route = findRoute(plugin.routes, 'POST', '/')!
+      const { status, body } = await callRoute(route, plugin.ctx, {
+        body: { name: 'Bad', schedule: '0 9 * * *', teamId: 'ghost-team' },
+      })
+      expect(status).toBe(400)
+      expect(String(body.error)).toContain('Unknown team')
+    })
+
     it('returns a transport danger-zone warning for a no-split prompt', async () => {
       const route = findRoute(plugin.routes, 'POST', '/')!
       const { body } = await callRoute(route, plugin.ctx, {
@@ -367,6 +407,49 @@ describe('schedule routes', () => {
       expect(meta!.taskPrompt).toBe('New prompt')
     })
 
+    it('re-assigning to a team clears agentId (#189)', async () => {
+      upsertJob(makeMeta({ jobId: 'job-mx1', agentId: 'chef' }))
+
+      const route = findRoute(plugin.routes, 'PUT', '/:jobId')!
+      const { status } = await callRoute(route, plugin.ctx, {
+        searchParams: { jobId: 'job-mx1' },
+        body: { teamId: 'development' },
+      })
+
+      expect(status).toBe(200)
+      const meta = getJob('job-mx1')
+      expect(meta!.teamId).toBe('development')
+      expect(meta!.agentId).toBeUndefined()
+    })
+
+    it('re-assigning to an agent clears teamId (#189)', async () => {
+      upsertJob(makeMeta({ jobId: 'job-mx2', agentId: undefined, teamId: 'development' }))
+
+      const route = findRoute(plugin.routes, 'PUT', '/:jobId')!
+      const { status } = await callRoute(route, plugin.ctx, {
+        searchParams: { jobId: 'job-mx2' },
+        body: { agentId: 'chef' },
+      })
+
+      expect(status).toBe(200)
+      const meta = getJob('job-mx2')
+      expect(meta!.agentId).toBe('chef')
+      expect(meta!.teamId).toBeUndefined()
+    })
+
+    it('rejects agentId + teamId together on update with 400 (#189)', async () => {
+      upsertJob(makeMeta({ jobId: 'job-mx3' }))
+
+      const route = findRoute(plugin.routes, 'PUT', '/:jobId')!
+      const { status, body } = await callRoute(route, plugin.ctx, {
+        searchParams: { jobId: 'job-mx3' },
+        body: { agentId: 'chef', teamId: 'development' },
+      })
+
+      expect(status).toBe(400)
+      expect(String(body.error)).toContain('both')
+    })
+
     // Legacy hand-validation: pre-T8 the handler returned 400 when neither
     // url.searchParams.get('jobId') nor body.jobId was set. T8+ routing
     // requires :jobId in the path, so this case never reaches the handler.
@@ -452,6 +535,45 @@ describe('schedule routes', () => {
   })
 
   // -----------------------------------------------------------------------
+  describe('POST /:jobId/adopt — team assignment (round-3 review)', () => {
+    it('adopting with a teamId persists it (and no agent)', async () => {
+      mockRuntimeCronJobs.push({ id: 'native-team', name: 'Native', schedule: '0 9 * * *', command: 'do it', enabled: true })
+      const route = findRoute(plugin.routes, 'POST', '/:jobId/adopt')!
+      const { status, body } = await callRoute(route, plugin.ctx, {
+        searchParams: { jobId: 'native-team' },
+        body: { teamId: 'development' },
+      })
+      expect(status).toBe(200)
+      void body
+      const meta = getJob('native-team')
+      expect(meta!.teamId).toBe('development')
+      expect(meta!.agentId).toBeUndefined()
+    })
+
+    it("adopting with agentId '' explicitly clears the existing agent (round-4)", async () => {
+      upsertJob(makeMeta({ jobId: 'native-clear', isBakinJob: false, agentId: 'chef' }))
+      mockRuntimeCronJobs.push({ id: 'native-clear', name: 'Native', schedule: '0 9 * * *', command: 'do it', enabled: true })
+      const route = findRoute(plugin.routes, 'POST', '/:jobId/adopt')!
+      const { status } = await callRoute(route, plugin.ctx, {
+        searchParams: { jobId: 'native-clear' },
+        body: { agentId: '' },
+      })
+      expect(status).toBe(200)
+      expect(getJob('native-clear')!.agentId).toBeUndefined()
+    })
+
+    it('adopting with agentId + teamId is rejected with 400', async () => {
+      mockRuntimeCronJobs.push({ id: 'native-both', name: 'Native', schedule: '0 9 * * *', command: 'do it', enabled: true })
+      const route = findRoute(plugin.routes, 'POST', '/:jobId/adopt')!
+      const { status, body } = await callRoute(route, plugin.ctx, {
+        searchParams: { jobId: 'native-both' },
+        body: { agentId: 'chef', teamId: 'development' },
+      })
+      expect(status).toBe(400)
+      expect(String(body.error)).toContain('both')
+    })
+  })
+
   // POST /:jobId/adopt and /:jobId/restore-native
   // -----------------------------------------------------------------------
   describe('POST /:jobId/adopt', () => {

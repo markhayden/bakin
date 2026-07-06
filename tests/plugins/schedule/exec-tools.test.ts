@@ -76,8 +76,17 @@ const mockCreateTask = mock((opts?: unknown) => {
   void opts
   return Promise.resolve({ id: 'task-new', workflowId: undefined })
 })
+class MockTaskValidationError extends Error {
+  constructor(message: string) { super(message); this.name = 'TaskValidationError' }
+}
 mock.module('../../../src/core/task-service', () => ({
   createTaskWithEffects: (opts: unknown) => mockCreateTask(opts),
+  validateTeamRef: async () => undefined,
+  validateTeamAssignment: async (opts: { assignee?: string; team?: string }) => {
+    if (opts.assignee && opts.team) throw new MockTaskValidationError('Cannot set both an agent and a team')
+    if (opts.team && opts.team !== 'development') throw new MockTaskValidationError(`Unknown team: "${opts.team}"`)
+  },
+  TaskValidationError: MockTaskValidationError,
 }))
 
 // Mock plugin-registry (hook registry used by bridge — not under test here but must be present)
@@ -341,6 +350,34 @@ describe('schedule exec tools', () => {
       expect(meta!.displayName).toBe('Renamed')
       expect(meta!.agentId).toBe('pixel')
       expect(meta!.taskPrompt).toBe('Updated prompt')
+    })
+
+    it('re-assigns a job to a team, clearing the agent (round-3 review)', async () => {
+      upsertJob(makeMeta({ jobId: 'job-team-upd', agentId: 'chef' }))
+
+      const tool = findTool(plugin.execTools, 'bakin_exec_schedule_update')!
+      const result = await callTool(tool, { jobId: 'job-team-upd', teamId: 'development' })
+      expect(result.ok).toBe(true)
+
+      const meta = getJob('job-team-upd')
+      expect(meta!.teamId).toBe('development')
+      expect(meta!.agentId).toBeUndefined()
+    })
+
+    it('rejects agentId + teamId together (round-3 review)', async () => {
+      upsertJob(makeMeta({ jobId: 'job-team-both' }))
+      const tool = findTool(plugin.execTools, 'bakin_exec_schedule_update')!
+      const result = await callTool(tool, { jobId: 'job-team-both', agentId: 'chef', teamId: 'development' })
+      expect(result.ok).toBe(false)
+      expect(String(result.error)).toContain('both')
+    })
+
+    it('rejects an unknown teamId (round-3 review)', async () => {
+      upsertJob(makeMeta({ jobId: 'job-team-ghost' }))
+      const tool = findTool(plugin.execTools, 'bakin_exec_schedule_update')!
+      const result = await callTool(tool, { jobId: 'job-team-ghost', teamId: 'ghost-team' })
+      expect(result.ok).toBe(false)
+      expect(String(result.error)).toContain('Unknown team')
     })
 
     it('updates the stored schedule definition when changed', async () => {

@@ -26,6 +26,7 @@ import { readDispatchColumns, isTaskDispatchEligible, addTaskLog, moveTaskToInPr
 import { concurrencyGate, deferForBudget, fireDispatchTurn } from './dispatch-turns'
 import { prepareRegularDispatch } from './dispatch-prepare'
 import { dispatchWorkflowTask } from './dispatch-workflow'
+import { resolveTeamAssignmentsPrePass } from './dispatch-team'
 
 const log = createLogger('dispatch-cycle')
 const hooks = () => getHookRegistry()
@@ -49,6 +50,12 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
   const settings = getSettings()
 
   try {
+    // Team → agent resolution runs BEFORE the state lock (review R3): a
+    // routing LLM call can take up to a minute, and holding the cycle lock
+    // through it would stall all dispatch, kicks included. Failures land in
+    // the failedDispatches ladder (review R2) read by the loop below.
+    await resolveTeamAssignmentsPrePass(contentDir)
+
     // Acquire state lock for the entire cycle to prevent races with dispatchSingleTask
     await withStateLock(async () => {
     const state = loadDispatchState(contentDir)
@@ -167,6 +174,11 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
         }
         if (Date.now() - failure.lastAttempt < cooldownForFailure(failure, settings)) continue
       }
+
+      // Team tasks the pre-lock pass could not resolve this round sit out
+      // the cycle; the ladder check above escalates to blocked at
+      // maxRetries and paces retries via the transient cooldown (#189).
+      if (task.team && !task.agent) continue
 
       // Workflow-aware dispatch path
       const taskWithWorkflow = task as typeof task & { workflowId?: string }

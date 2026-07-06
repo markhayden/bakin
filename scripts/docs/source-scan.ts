@@ -172,9 +172,11 @@ export function extractExecTools(): ExecTool[] {
   return tools.sort((a, b) => a.name.localeCompare(b.name) || a.file.localeCompare(b.file))
 }
 
-export function renderExecToolsSnippet(marker: string): string {
+export function renderExecToolsSnippet(marker: string): string | null {
   const tools = extractExecTools().filter(t => t.name.startsWith(`bakin_exec_${marker}_`))
-  if (!tools.length) return ''
+  // External plugins (bits-shipped messaging/projects) have no in-repo
+  // tools — keep the committed block instead of erasing it (round-5 merge).
+  if (!tools.length) return null
   const lines = [`<!-- docs:exec-tools ${marker} -->`]
   for (const tool of tools) {
     const desc = tool.description?.trim()

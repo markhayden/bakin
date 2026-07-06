@@ -25,6 +25,8 @@ import {
   moveTaskWithEffects,
   blockTaskWithEffects,
   createTaskWithEffects,
+  validateTeamAssignment,
+  TaskValidationError,
   reportComplete,
   setDependencyWithEffects,
   getTaskDetails,
@@ -127,14 +129,17 @@ export const tasksRoutes = [
     summary: 'Create a task',
     description: 'Creates a task on the kanban board. Auto-matches a workflow by title when workflowId is omitted.',
     body: createTaskBody,
-    responses: { 200: createTaskResponse, 500: errorResponse },
+    responses: { 200: createTaskResponse, 400: errorResponse, 500: errorResponse },
     handler: async (_req, ctx, { body }) => {
+      // Assignment validation happens ONCE inside createTaskWithEffects
+      // (review R10) — the typed TaskValidationError maps to 400 below.
       try {
         const result = await createTaskWithEffects({
           id: body.id,
           title: body.title,
           column: body.column as ColumnId | undefined,
           assignee: body.assignee,
+          team: body.team,
           description: body.description,
           workflowId: body.workflowId,
           skipWorkflowReason: body.skipWorkflowReason,
@@ -150,7 +155,8 @@ export const tasksRoutes = [
         indexTask(ctx, result.id).catch(() => {})
         return Response.json({ ok: true as const, id: result.id, workflowId: result.workflowId, suggestedWorkflow: result.suggestedWorkflow })
       } catch (err) {
-        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+        const status = err instanceof TaskValidationError ? 400 : 500
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status })
       }
     },
   }),
@@ -170,15 +176,28 @@ export const tasksRoutes = [
       const guard = taskEditGuard(ctx, identifier, { agent: body.agent, expectedVersion: body.expectedVersion })
       if (guard) return guardResponse(guard)
       try {
+        await validateTeamAssignment({ assignee: body.agent, team: body.team })
+      } catch (err) {
+        if (err instanceof TaskValidationError) {
+          return Response.json({ error: err.message }, { status: 400 })
+        }
+        throw err
+      }
+      try {
+        // Partial-update semantics (review R1): only forward keys the client
+        // actually sent. updateTask clears fields on KEY PRESENCE
+        // ('team' in updates), so passing `team: undefined` for an omitted
+        // field would silently wipe stored team/agent on unrelated edits.
         await updateTask(identifier, {
-          title: body.title,
-          description: body.description,
-          agent: body.agent,
-          column: body.column as ColumnId | undefined,
-          workflowId: body.workflowId,
-          availableAt: body.availableAt,
-          dueAt: body.dueAt,
-          source: body.source,
+          ...(body.title !== undefined ? { title: body.title } : {}),
+          ...(body.description !== undefined ? { description: body.description } : {}),
+          ...(body.agent !== undefined ? { agent: body.agent } : {}),
+          ...(body.team !== undefined ? { team: body.team } : {}),
+          ...(body.column !== undefined ? { column: body.column as ColumnId } : {}),
+          ...(body.workflowId !== undefined ? { workflowId: body.workflowId } : {}),
+          ...(body.availableAt !== undefined ? { availableAt: body.availableAt } : {}),
+          ...(body.dueAt !== undefined ? { dueAt: body.dueAt } : {}),
+          ...(body.source !== undefined ? { source: body.source } : {}),
         })
         const agent = body.agent || 'system'
         ctx.activity.audit('updated', agent, { taskId: identifier })

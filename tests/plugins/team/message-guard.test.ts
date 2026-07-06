@@ -49,6 +49,7 @@ const liveRuns = new Map<string, { runId: string; agent: string; startedAt: numb
 let ledgerDown = false
 mock.module('../../../src/core/execution-ledger', () => ({
   LedgerUnavailableError: FakeLedgerUnavailableError,
+  purgeTaskRows: () => 0,
   listRunsByAgent: () => [],
   getLiveRun: (taskId: string) => {
     if (ledgerDown) throw new FakeLedgerUnavailableError('ledger op failed: getLiveRun')

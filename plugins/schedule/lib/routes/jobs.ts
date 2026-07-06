@@ -24,6 +24,7 @@ import {
   readMergedRuntimeJobs,
   updateScheduleJob,
 } from '../job-service'
+import { validateTeamAssignment, TaskValidationError } from '../../../../src/core/task-service'
 
 // ─── Schemas ─────────────────────────────────────────────────────────────
 
@@ -36,6 +37,8 @@ const createJobBody = z.object({
   name: z.string().min(1),
   schedule: z.string().min(1),
   agentId: z.string().optional(),
+  /** Team assignment (#189) — mutually exclusive with agentId (handler-enforced 400). */
+  teamId: z.string().optional(),
   workflowId: z.string().optional(),
   taskPrompt: z.string().optional(),
   taskTitle: z.string().optional(),
@@ -78,6 +81,7 @@ const adoptJobBody = z.object({
   name: z.string().optional(),
   schedule: z.string().optional(),
   agentId: z.string().nullable().optional(),
+  teamId: z.string().nullable().optional(),
   workflowId: z.string().nullable().optional(),
   taskPrompt: z.string().nullable().optional(),
   taskTitle: z.string().nullable().optional(),
@@ -137,8 +141,9 @@ export const scheduleRoutes = [
       const guard = await guardBakinMutation(jobId)
       if (!guard.ok) return json({ error: guard.error }, guard.status)
       const meta = guard.meta
-      const result = updateScheduleJob(meta, body as Record<string, unknown>, [
-        'displayName', 'description', 'agentId', 'owner', 'requireTriage',
+      const updates = body as Record<string, unknown>
+      const result = await updateScheduleJob(meta, updates, [
+        'displayName', 'description', 'agentId', 'teamId', 'owner', 'requireTriage',
         'workflowId', 'taskPrompt', 'taskTitle', 'allowOverlap', 'maxFailures',
       ])
       if (!result.ok) return json({ error: result.error }, 400)
@@ -209,6 +214,22 @@ export const scheduleRoutes = [
       const owner = (body.owner ?? undefined) || existing?.owner || await getRuntimeMainAgentId(ctx.runtime)
       const taskPrompt = (body.taskPrompt ?? undefined) || existing?.taskPrompt || runtimeJob.command
 
+      // Assignment merge + exclusion, mirroring ensureBakinJob (round-3):
+      // a body-provided side wins and clears the other; validated before
+      // any sidecar write.
+      // null and '' are both explicit clears; only ABSENT falls back to the
+      // existing value (round-4 review — '' must not silently preserve).
+      let adoptAgentId = body.agentId === null || body.agentId === '' ? undefined : body.agentId ?? existing?.agentId
+      let adoptTeamId = body.teamId === null || body.teamId === '' ? undefined : body.teamId ?? existing?.teamId
+      if (typeof body.agentId === 'string' && body.agentId) adoptTeamId = typeof body.teamId === 'string' && body.teamId ? adoptTeamId : undefined
+      if (typeof body.teamId === 'string' && body.teamId) adoptAgentId = typeof body.agentId === 'string' && body.agentId ? adoptAgentId : undefined
+      try {
+        await validateTeamAssignment({ assignee: adoptAgentId, team: typeof body.teamId === 'string' && body.teamId ? body.teamId : undefined })
+      } catch (err) {
+        if (err instanceof TaskValidationError) return json({ error: err.message }, 400)
+        throw err
+      }
+
       const meta: BakinJobMeta = {
         ...(existing ?? {}),
         jobId,
@@ -217,7 +238,8 @@ export const scheduleRoutes = [
         schedule: { kind: 'cron', expr: parsed.cron },
         enabled: runtimeJob.enabled ?? true,
         displayName,
-        agentId: body.agentId === null ? undefined : body.agentId ?? existing?.agentId,
+        agentId: adoptAgentId,
+        teamId: adoptTeamId,
         owner,
         requireTriage: body.requireTriage ?? existing?.requireTriage ?? false,
         workflowId: body.workflowId === null ? undefined : body.workflowId ?? existing?.workflowId,

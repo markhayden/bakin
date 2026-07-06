@@ -218,6 +218,8 @@ function taskStoreMock() {
     setDependency: mock(async (..._args: unknown[]) => undefined),
     clearDependency: mock(async (..._args: unknown[]) => undefined),
     reorderTasks: mock(async (..._args: unknown[]) => undefined),
+    assignTaskToTeam: mock(async (..._args: unknown[]) => undefined),
+    recordTeamResolution: mock(async (..._args: unknown[]) => undefined),
     archiveOldTasks: mock(() => 0),
     autoArchiveDoneTasks: mock(() => 0),
   }
@@ -298,6 +300,8 @@ describe('T2.3 agent usage wiring', () => {
     mock.module('@/core/task-store', () => ({
       moveTaskToInProgress: mock().mockResolvedValue(undefined),
       addTaskLog: mock().mockResolvedValue(undefined),
+      recordTeamResolution: mock().mockResolvedValue(undefined),
+      blockTask: mock().mockResolvedValue(undefined),
     }))
 
     // State file is written under testDir — provide an empty file ok.

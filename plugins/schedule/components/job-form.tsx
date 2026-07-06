@@ -6,7 +6,7 @@ import { Button } from "@makinbakin/sdk/ui"
 import { Input } from "@makinbakin/sdk/ui"
 import { Label } from "@makinbakin/sdk/ui"
 import { Textarea } from "@makinbakin/sdk/ui"
-import { AgentSelect } from "@makinbakin/sdk/components"
+import { AgentSelect, TEAM_VALUE_PREFIX, isTeamValue, teamIdFromValue } from "@makinbakin/sdk/components"
 import { useMainAgentId } from "@makinbakin/sdk/hooks"
 import { ScheduleInput } from './schedule-input'
 import { checkSchedulePrompt } from '../lib/prompt-guard'
@@ -15,6 +15,8 @@ export interface JobFormData {
   name: string
   schedule: string
   agentId?: string
+  /** Team assignment (#189) — mutually exclusive with agentId. */
+  teamId?: string
   workflowId?: string
   taskPrompt?: string
   taskTitle?: string
@@ -40,7 +42,8 @@ export function JobForm({
   const mainAgentId = useMainAgentId()
   const [name, setName] = useState(initial?.name ?? '')
   const [schedule, setSchedule] = useState(initial?.schedule ?? '')
-  const [agentId, setAgentId] = useState<string>(initial?.agentId ?? '')
+  // Single string state; teams ride as `team:<id>` values from AgentSelect (#189).
+  const [agentId, setAgentId] = useState<string>(initial?.agentId ?? (initial?.teamId ? `${TEAM_VALUE_PREFIX}${initial.teamId}` : ''))
   const [prompt, setPrompt] = useState(initial?.taskPrompt ?? '')
   const [advanced, setAdvanced] = useState(false)
   const [workflowId, setWorkflowId] = useState(initial?.workflowId ?? '')
@@ -56,7 +59,7 @@ export function JobForm({
     if (initial) {
       setName(initial.name ?? '')
       setSchedule(initial.schedule ?? '')
-      setAgentId(initial.agentId ?? '')
+      setAgentId(initial.agentId ?? (initial.teamId ? `${TEAM_VALUE_PREFIX}${initial.teamId}` : ''))
       setPrompt(initial.taskPrompt ?? '')
       setWorkflowId(initial.workflowId ?? '')
       setTaskTitle(initial.taskTitle ?? '')
@@ -90,7 +93,8 @@ export function JobForm({
     await onSubmit({
       name: name.trim(),
       schedule: schedule.trim(),
-      agentId: agentId || undefined,
+      agentId: agentId && !isTeamValue(agentId) ? agentId : undefined,
+      teamId: isTeamValue(agentId) ? teamIdFromValue(agentId) : undefined,
       taskPrompt: prompt.trim() || undefined,
       workflowId: workflowId.trim() || undefined,
       taskTitle: taskTitle.trim() || undefined,
@@ -133,6 +137,7 @@ export function JobForm({
           allowNone
           noneLabel="None (triage later)"
           placeholder="Select agent (optional)"
+          includeTeams
           className="text-sm"
         />
       </div>

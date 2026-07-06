@@ -88,6 +88,7 @@ export function mergeJob(
     displayName: meta?.displayName ?? job.name,
     description: meta?.description,
     agentId: meta?.agentId,  // null for orphans — don't guess, flag for triage
+    teamId: meta?.teamId,    // team-routed jobs (#189) — UI edit/list read this
     owner: meta?.owner ?? defaultOwner,
     requireTriage: meta?.requireTriage ?? (!meta), // orphans need triage
     workflowId: meta?.workflowId,

@@ -79,21 +79,21 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Schedule<br/><span>Cron job scheduling through the runtime adapter with task creation</span></td>
       <td><code>schedule</code></td>
       <td>Core</td>
-      <td><code>1.0.1</code></td>
+      <td><code>1.0.2</code></td>
       <td><code>tasks</code></td>
     </tr>
     <tr>
       <td>Tasks<br/><span>Kanban task management with Bakin task-store persistence, agent assignment, and dependency tracking</span></td>
       <td><code>tasks</code></td>
       <td>Core</td>
-      <td><code>2.1.0</code></td>
+      <td><code>2.2.0</code></td>
       <td>none</td>
     </tr>
     <tr>
       <td>Team<br/><span>Agent team management — adapter layer over runtime agent workspaces</span></td>
       <td><code>team</code></td>
       <td>Core</td>
-      <td><code>1.0.2</code></td>
+      <td><code>1.1.0</code></td>
       <td>none</td>
     </tr>
     <tr>

@@ -27,6 +27,7 @@ import {
 import {
   getTaskDetails,
   createTaskWithEffects,
+  validateTeamAssignment,
   moveTaskWithEffects,
   blockTaskWithEffects,
   reportComplete,
@@ -128,7 +129,8 @@ export function registerTaskExecTools(ctx: PluginContext): void {
       description: 'Create a new task on the task board. Workflows are auto-matched by title when workflowId is not provided. Provide workflowId to force a specific workflow, or skipWorkflowReason to explicitly skip.',
       parameters: {
         title: z.string().describe('Task title'),
-        assignee: z.string().optional().describe('Agent to assign (chef, pixel, rolo, patch, trainer, etc.)'),
+        assignee: z.string().optional().describe('Agent to assign (chef, pixel, rolo, patch, trainer, etc.). Mutually exclusive with team.'),
+        team: z.string().optional().describe('Team to assign — Bakin routes the task to the best-suited member at dispatch (use bakin_exec_team_org to see teams). Mutually exclusive with assignee.'),
         description: z.string().optional().describe('Task description and context'),
         parentId: z.string().optional().describe('Parent task ID if this is a subtask'),
         workflowId: z.string().optional().describe('Workflow to start (e.g. image-social-post, video-script). Use bakin_exec_workflows_list to see options.'),
@@ -143,10 +145,10 @@ export function registerTaskExecTools(ctx: PluginContext): void {
       },
       handler: async (params: Record<string, unknown>, agent: string) => {
         const {
-          title, assignee, description, parentId, workflowId, skipWorkflowReason, projectId,
+          title, assignee, team, description, parentId, workflowId, skipWorkflowReason, projectId,
           availableAt, dueAt, sourcePluginId, sourceEntityType, sourceEntityId, sourcePurpose,
         } = params as {
-          title: string; assignee?: string; description?: string; parentId?: string
+          title: string; assignee?: string; team?: string; description?: string; parentId?: string
           workflowId?: string; skipWorkflowReason?: string; projectId?: string
           availableAt?: string; dueAt?: string
           sourcePluginId?: string; sourceEntityType?: string; sourceEntityId?: string; sourcePurpose?: string
@@ -154,14 +156,14 @@ export function registerTaskExecTools(ctx: PluginContext): void {
 
         try {
           const result = await createTaskWithEffects({
-            title, assignee, description, workflowId, skipWorkflowReason,
+            title, assignee, team, description, workflowId, skipWorkflowReason,
             createdBy: agent, parentId, projectId, availableAt, dueAt,
             source: sourcePluginId || sourceEntityType || sourceEntityId || sourcePurpose
               ? { pluginId: sourcePluginId, entityType: sourceEntityType, entityId: sourceEntityId, purpose: sourcePurpose }
               : undefined,
             channel: 'mcp',
           })
-          if (parentId || assignee) triggerDispatch()
+          if (parentId || assignee || team) triggerDispatch()
           indexTask(ctx, result.id).catch(() => {})
 
           const notices: string[] = []
@@ -318,17 +320,19 @@ export function registerTaskExecTools(ctx: PluginContext): void {
         taskId: z.string().describe('Task ID'),
         title: z.string().optional().describe('New task title'),
         description: z.string().optional().describe('New task description'),
-        agent: z.string().optional().describe('New assigned agent'),
+        agent: z.string().optional().describe('New assigned agent. Mutually exclusive with team.'),
+        team: z.string().optional().describe('New team assignment — clears any concrete agent; Bakin re-routes at dispatch. Mutually exclusive with agent.'),
         availableAt: z.string().nullable().optional().describe('ISO timestamp before which dispatch should not pick up the task'),
         dueAt: z.string().nullable().optional().describe('ISO timestamp representing the task deadline or target delivery time'),
         expectedVersion: z.number().optional().describe('Optimistic-concurrency check: fail if the task version has moved past this'),
       },
       handler: async (params: Record<string, unknown>, agent: string) => {
-        const { taskId, title, description, agent: assignee, availableAt, dueAt, expectedVersion } = params as {
+        const { taskId, title, description, agent: assignee, team, availableAt, dueAt, expectedVersion } = params as {
           taskId: string
           title?: string
           description?: string
           agent?: string
+          team?: string
           availableAt?: string | null
           dueAt?: string | null
           expectedVersion?: number
@@ -336,10 +340,16 @@ export function registerTaskExecTools(ctx: PluginContext): void {
         const guard = taskEditGuard(ctx, taskId, { agent, expectedVersion })
         if (guard) return { ok: false, error: guard.error }
         try {
+          await validateTeamAssignment({ assignee, team })
+        } catch (err) {
+          return { ok: false, error: (err as Error).message }
+        }
+        try {
           const updates: Record<string, unknown> = {}
           if (title !== undefined) updates.title = title
           if (description !== undefined) updates.description = description
           if (assignee !== undefined) updates.agent = assignee
+          if (team !== undefined) updates.team = team
           if (availableAt !== undefined) updates.availableAt = availableAt
           if (dueAt !== undefined) updates.dueAt = dueAt
           const result = await updateTask(taskId, updates)

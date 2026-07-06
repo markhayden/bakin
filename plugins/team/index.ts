@@ -20,7 +20,7 @@ import { getLiveRun, LedgerUnavailableError } from '../../src/core/execution-led
 import { appendAudit } from '../../src/core/audit'
 import { retrieveAgentPackageLessons } from '../../src/core/agent-packages/lesson-retrieval'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
-import { agentSyncRepair, checkAgentRoster, checkPersonas, checkAgentSync, personaRepair } from './lib/health-checks'
+import { agentSyncRepair, checkAgentRoster, checkPersonas, checkAgentSync, checkTeamRouting, personaRepair } from './lib/health-checks'
 import {
   agentToMeta,
   listRuntimeAgentMetas,
@@ -53,6 +53,10 @@ import {
   getTeamMembers,
   getOrgStructure,
 } from './lib/agent-status'
+import {
+  resolveTeamAssignment,
+  type ResolveAssignmentRequest,
+} from './lib/assignment-resolver'
 import { populateAgentRoutes } from './lib/routes/agents'
 import { populateContextRoutes } from './lib/routes/context'
 import { populateOrgTeamRoutes } from './lib/routes/teams'
@@ -118,6 +122,23 @@ const teamPlugin: BakinPlugin = definePlugin({
         label: 'Heartbeat stale threshold (minutes)',
         description: 'Mark agents as offline after this many minutes without a heartbeat or audit activity',
         default: 15,
+      },
+      {
+        key: 'routingProvider',
+        type: 'select',
+        label: 'Task routing provider',
+        description: 'LLM provider for resolving team-assigned tasks to the best-suited member (key from env or secret store)',
+        options: ['anthropic', 'openai', 'google'],
+        default: 'anthropic',
+      },
+      {
+        key: 'routingModel',
+        type: 'string',
+        label: 'Task routing model',
+        description: 'Provider-native model id for assignment routing — a cheap/fast model is right; this is a classification call',
+        // Literal (not DEFAULT_ROUTING_MODEL) so the docs settings-table
+        // generator can read it; keep in sync with assignment-resolver.ts.
+        default: 'claude-haiku-4-5-20251001',
       },
     ],
   },
@@ -285,6 +306,19 @@ const teamPlugin: BakinPlugin = definePlugin({
     ctx.hooks.register('team.getOrgStructure', () => {
       return getOrgStructure(ctx.runtime)
     }, { label: 'Get org structure.', summary: 'Returns the current organization structure for teams and agents. Use it when a plugin needs the full hierarchy instead of individual team or agent records.', hookKind: 'rpc' })
+    ctx.hooks.register('team.exists', (d: Record<string, unknown>) => {
+      return readTeams().some((t) => t.id === (d.teamId as string))
+    }, { label: 'Check team exists.', summary: 'Returns true when the given teamId is a configured team. Use it for write-time validation of team assignments.', hookKind: 'rpc' })
+    ctx.hooks.register('team.resolveAssignment', async (d: Record<string, unknown>) => {
+      const settings = ctx.getSettings<{ routingProvider?: string; routingModel?: string }>()
+      const heartbeats = readHeartbeats()
+      const lastAuditActivity = getLastAuditActivity()
+      return resolveTeamAssignment({
+        runtime: ctx.runtime,
+        settings: { routingProvider: settings.routingProvider, routingModel: settings.routingModel },
+        getStatus: (agentId) => resolveAgentStatus(agentId, heartbeats, lastAuditActivity).status,
+      }, d as unknown as ResolveAssignmentRequest)
+    }, { label: 'Resolve team assignment.', summary: 'Resolves a team-assigned task to the best-suited member via the routing LLM (#189). Returns {ok:true, agentId, reason, model} or {ok:false, kind: transient|structural, message} — dispatch classifies by kind. Use it from dispatch or any surface that must turn a teamId into a concrete agent.', hookKind: 'rpc' })
 
     // routes registered at module scope via the lib/routes/* populate functions (T20+).
 
@@ -710,6 +744,13 @@ const teamPlugin: BakinPlugin = definePlugin({
       name: 'Agent sync (managed blocks + projections)',
       run: () => checkAgentSync(),
       repair: agentSyncRepair(),
+    })
+    ctx.registerHealthCheck({
+      id: 'routing',
+      name: 'Task routing readiness (#189)',
+      run: () => checkTeamRouting({
+        routingProvider: ctx.getSettings<{ routingProvider?: string }>().routingProvider,
+      }),
     })
   },
 

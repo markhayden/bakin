@@ -173,7 +173,10 @@ import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/componen
 | --- | --- |
 | `AgentAvatar` | Round avatar image for an agent, falls back to initials. |
 | `AgentFilter` | Multi-select facet filter scoped to agents. |
-| `AgentSelect` | Single-agent picker dropdown for form fields. |
+| `AgentSelect` | Single-agent (or team, #189) picker dropdown for form fields. |
+| `TEAM_VALUE_PREFIX` | Single-agent (or team, #189) picker dropdown for form fields. |
+| `isTeamValue` | Single-agent (or team, #189) picker dropdown for form fields. |
+| `teamIdFromValue` | Single-agent (or team, #189) picker dropdown for form fields. |
 | `AgentDot` | Small status dot showing an agent's online/offline state. |
 | `AgentStatus` | Compound agent status (dot + label + last-seen timestamp). |
 | `BakinDrawer` | Right-side slide-out drawer with backdrop and focus trap. |

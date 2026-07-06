@@ -13,6 +13,8 @@ export interface Task {
   id: string
   title: string
   agent?: string
+  /** Requested team (#189); present alongside agent once dispatch resolves. */
+  team?: string
   createdBy?: string
   checked: boolean
   column: ColumnId
