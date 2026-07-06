@@ -19,9 +19,18 @@
  */
 import { createLogger } from './logger'
 import { appendAudit } from './audit'
+import { getSettings } from './settings'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { addTaskLog, blockTask, recordTeamResolution } from './task-store'
-import type { DispatchTask } from './dispatch-types'
+import { readDispatchColumns } from './dispatch-board'
+import {
+  withStateLock,
+  loadDispatchState,
+  saveDispatchState,
+  getFailureRecord,
+  cooldownForFailure,
+} from './dispatch-state'
+import type { DispatchState, DispatchTask } from './dispatch-types'
 
 const log = createLogger('dispatch-team')
 
@@ -100,8 +109,102 @@ export async function resolveTeamAssignmentForDispatch(
     return { status: 'skipped' }
   } catch (err) {
     // A throwing hook is treated as transient — the resolver itself returns
-    // typed failures; an exception here is infrastructure, not policy.
+    // typed failures; an exception here is infrastructure, not policy. It
+    // still gets the SAME board-visible signal as a typed transient failure
+    // (review R8): a task-log line + audit, never just a server-log entry.
+    const message = err instanceof Error ? err.message : String(err)
     log.error('Team resolution hook threw; skipping this cycle', err, { id: task.id, team })
+    appendAudit(contentDir, 'task.team_resolution_failed', 'system', {
+      id: task.id, title: task.title, team, kind: 'transient', message,
+    })
+    await addTaskLogOnce(task, `Team routing deferred (will retry): ${message}`).catch(() => {})
     return { status: 'skipped' }
   }
+}
+
+/** Record a transient team-resolution failure in the SAME failedDispatches
+ * ladder every other dispatch failure uses (review R2): the cycle's cooldown
+ * gate spaces retries and its maxRetries gate escalates to blocked, so a
+ * persistently confused router cannot bill LLM calls every cycle forever. */
+export function recordTeamResolutionFailure(state: DispatchState, taskId: string): void {
+  const prev = state.failedDispatches[taskId]
+  state.failedDispatches[taskId] = {
+    ...(prev ?? {}),
+    count: (prev?.count ?? 0) + 1,
+    lastAttempt: Date.now(),
+    kind: 'transient',
+  }
+}
+
+/** Gate shared by both dispatch paths: skip resolution while the ladder is
+ * cooling down or exhausted (the cycle loop owns the escalate-to-blocked). */
+function ladderBlocksResolution(
+  state: DispatchState,
+  taskId: string,
+  settings: ReturnType<typeof getSettings>,
+): boolean {
+  const failure = getFailureRecord(state.failedDispatches?.[taskId])
+  if (!failure || failure.sessionDeath) return false
+  if (failure.count >= settings.dispatch.maxRetries) return true
+  return Date.now() - failure.lastAttempt < cooldownForFailure(failure, settings)
+}
+
+/**
+ * Resolve every unresolved team task BEFORE the dispatch state lock is
+ * taken (review R3): a routing call can take up to a minute, and holding the
+ * cycle lock through it would stall ALL dispatch — including kicks. The
+ * resolver writes only task-store state; the ladder bookkeeping for skipped
+ * tasks takes the state lock briefly at the end.
+ */
+export async function resolveTeamAssignmentsPrePass(contentDir: string): Promise<void> {
+  const columns = await readDispatchColumns()
+  const unresolved = columns.todo.filter((t) => t.team && !t.agent)
+  if (unresolved.length === 0) return
+
+  const settings = getSettings()
+  // Lock-free advisory read — gating only; mutations happen under the lock.
+  const state = loadDispatchState(contentDir)
+  const skippedIds: string[] = []
+
+  for (const task of unresolved) {
+    if (ladderBlocksResolution(state, task.id, settings)) continue
+    const outcome = await resolveTeamAssignmentForDispatch(task, contentDir)
+    if (outcome.status === 'skipped') skippedIds.push(task.id)
+  }
+
+  if (skippedIds.length > 0) {
+    await withStateLock(async () => {
+      const fresh = loadDispatchState(contentDir)
+      for (const id of skippedIds) recordTeamResolutionFailure(fresh, id)
+      saveDispatchState(contentDir, fresh)
+    })
+  }
+}
+
+/** dispatchSingleTask's pre-lock counterpart of the cycle pre-pass.
+ * Returns true when the caller may proceed into its locked section. */
+export async function resolveTeamAssignmentForSingle(
+  taskId: string,
+  contentDir: string,
+): Promise<boolean> {
+  const columns = await readDispatchColumns()
+  const task = columns.todo.find((t) => t.id === taskId)
+  if (!task || !task.team || task.agent) return true
+
+  const settings = getSettings()
+  if (ladderBlocksResolution(loadDispatchState(contentDir), taskId, settings)) {
+    log.debug('Single-task team resolution gated by failure ladder', { taskId })
+    return false
+  }
+
+  const outcome = await resolveTeamAssignmentForDispatch(task, contentDir)
+  if (outcome.status === 'skipped') {
+    await withStateLock(async () => {
+      const fresh = loadDispatchState(contentDir)
+      recordTeamResolutionFailure(fresh, taskId)
+      saveDispatchState(contentDir, fresh)
+    })
+    return false
+  }
+  return outcome.status === 'resolved'
 }

@@ -24,7 +24,7 @@ import { formatDispatchError } from './dispatch-failures'
 import { concurrencyGate, deferForBudget, fireDispatchTurn } from './dispatch-turns'
 import { prepareRegularDispatch } from './dispatch-prepare'
 import { dispatchWorkflowTask } from './dispatch-workflow'
-import { resolveTeamAssignmentForDispatch } from './dispatch-team'
+import { resolveTeamAssignmentForSingle } from './dispatch-team'
 
 const log = createLogger('dispatch-single')
 
@@ -41,6 +41,14 @@ export async function dispatchSingleTask(
   continuation: DispatchContinuationContext = {},
 ): Promise<void> {
   const settings = getSettings()
+
+  // Team → agent resolution BEFORE the lock (review R3) — mirrors the
+  // cycle's pre-pass; a slow router must not block other kicks or the
+  // cycle. Transient failures join the failedDispatches ladder (review R2).
+  if (!(await resolveTeamAssignmentForSingle(taskId, contentDir))) {
+    log.debug('dispatchSingleTask: team resolution did not produce an agent', { taskId })
+    return
+  }
 
   await withStateLock(async () => {
     const columns = await readDispatchColumns()
@@ -101,14 +109,11 @@ export async function dispatchSingleTask(
       }
     }
 
-    // Team → agent resolution (#189): before the workflow branch so both
-    // paths see a concrete agent; persisted, so re-kicks never re-resolve.
+    // Resolution ran before the lock (resolveTeamAssignmentForSingle); a
+    // task still unresolved here raced a concurrent un-assignment — skip.
     if (task.team && !task.agent) {
-      const outcome = await resolveTeamAssignmentForDispatch(task, contentDir)
-      if (outcome.status !== 'resolved') {
-        log.debug('dispatchSingleTask: team resolution did not produce an agent', { taskId, status: outcome.status })
-        return
-      }
+      log.debug('dispatchSingleTask: team task unresolved after pre-pass; skipping', { taskId })
+      return
     }
 
     // Workflow-aware dispatch path

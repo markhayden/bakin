@@ -132,6 +132,7 @@ mock.module('../../src/core/execution-ledger', () => ({
 
 import { dispatchTasks } from '../../src/core/dispatch-cycle'
 import { resolveTeamAssignmentForDispatch } from '../../src/core/dispatch-team'
+import { loadDispatchState, saveDispatchState } from '../../src/core/dispatch-state'
 
 let tempDir: string
 
@@ -226,13 +227,43 @@ describe('dispatch cycle wiring', () => {
     expect(hookInvokeSpy).toHaveBeenCalledTimes(1)
   })
 
-  it('transient failure skips dispatch this cycle and retries next cycle', async () => {
+  it('transient failure skips dispatch, joins the failure ladder, and cools down (R2)', async () => {
     hookResult = { ok: false, kind: 'transient', message: 'rate limited' }
     columns.todo.push({ id: 'task-t', title: 'Team work', team: 'development' })
     await dispatchTasks(tempDir, 3737)
     expect(prepareSpy).not.toHaveBeenCalled()
+    expect(hookInvokeSpy).toHaveBeenCalledTimes(1)
+
+    // A failure record was written to the ladder…
+    const state = loadDispatchState(tempDir)
+    expect(state.failedDispatches['task-t']).toMatchObject({ count: 1, kind: 'transient' })
+
+    // …so an immediate next cycle does NOT re-bill the router (cooldown).
     await dispatchTasks(tempDir, 3737)
-    expect(hookInvokeSpy).toHaveBeenCalledTimes(2) // retried
+    expect(hookInvokeSpy).toHaveBeenCalledTimes(1)
+
+    // After the cooldown elapses, the next cycle retries.
+    state.failedDispatches['task-t'].lastAttempt = Date.now() - 10 * 60 * 1000
+    saveDispatchState(tempDir, state)
+    await dispatchTasks(tempDir, 3737)
+    expect(hookInvokeSpy).toHaveBeenCalledTimes(2)
+  })
+
+  it('resolution failures escalate to blocked at maxRetries without re-billing (R2)', async () => {
+    hookResult = { ok: false, kind: 'transient', message: 'rate limited' }
+    columns.todo.push({ id: 'task-t', title: 'Team work', team: 'development' })
+    const state = loadDispatchState(tempDir)
+    state.failedDispatches['task-t'] = {
+      count: 3, // == mocked settings.dispatch.maxRetries
+      lastAttempt: Date.now() - 10 * 60 * 1000,
+      kind: 'transient',
+    }
+    saveDispatchState(tempDir, state)
+
+    await dispatchTasks(tempDir, 3737)
+    expect(hookInvokeSpy).not.toHaveBeenCalled() // pre-pass respects the exhausted ladder
+    expect(blockTaskSpy).toHaveBeenCalledWith('task-t', expect.stringContaining('3 times'))
+    expect(prepareSpy).not.toHaveBeenCalled()
   })
 
   it('structural failure blocks the task and does not dispatch', async () => {
@@ -249,5 +280,21 @@ describe('dispatch cycle wiring', () => {
     expect(hookInvokeSpy).not.toHaveBeenCalled()
     expect(prepareSpy).toHaveBeenCalledTimes(1)
     expect(prepareSpy.mock.calls[0][0].targetAgent).toBe('dev')
+  })
+})
+
+describe('hook-throw visibility (R8)', () => {
+  it('a throwing hook writes a task-log line and an audit event, not just a server log', async () => {
+    hookInvokeSpy.mockImplementationOnce(async () => { throw new Error('heartbeats corrupted') })
+    const task: TestTask = { id: 'task-x', title: 'Team work', team: 'development' }
+    columns.todo.push(task)
+    const outcome = await resolveTeamAssignmentForDispatch(task, tempDir)
+    expect(outcome).toEqual({ status: 'skipped' })
+    expect(auditSpy).toHaveBeenCalledWith(tempDir, 'task.team_resolution_failed', 'system', expect.objectContaining({
+      kind: 'transient',
+      message: expect.stringContaining('heartbeats corrupted'),
+    }))
+    const logged = addTaskLogSpy.mock.calls.map((c) => String(c[2])).join('\n')
+    expect(logged).toContain('heartbeats corrupted')
   })
 })
