@@ -240,7 +240,12 @@ export function EffortSection({ refreshNonce }: { refreshNonce: number }) {
               <tr className="text-left text-xs text-muted-foreground">
                 <th className="pb-2 font-medium">Agent</th>
                 <th className="pb-2 font-medium text-right">Runs</th>
-                <th className="pb-2 font-medium text-right">Done</th>
+                <th
+                  className="pb-2 font-medium text-right"
+                  title="Tasks whose completion this agent reported. If another agent (or the orchestrator) reports the completion, it counts there — an agent can do the work while the completion lands elsewhere."
+                >
+                  Done*
+                </th>
                 <th className="pb-2 font-medium text-right">Bakin tokens</th>
                 <th className="pb-2 font-medium text-right">Total observed</th>
                 <th className="pb-2 font-medium text-right">Unattributed</th>
@@ -285,6 +290,7 @@ export function EffortSection({ refreshNonce }: { refreshNonce: number }) {
           Bakin-managed tasks — worth a look at its recent sessions.
           {!anyObserved && ' Observed columns show — until the usage scanner has covered this window.'}
           {' '}High tokens with few completions can mean an agent is spinning — open its timeline.
+          {' '}*Done counts completions the agent itself recorded.
         </ChartExplainer>
       </CardContent>
     </Card>

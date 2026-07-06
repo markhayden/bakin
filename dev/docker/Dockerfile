@@ -6,7 +6,10 @@
 #
 # Used by all services (gateway/cli/sandbox). The Bakin repo is mounted at
 # runtime, not copied, so the build context stays tiny.
-ARG OPENCLAW_IMAGE_TAG=latest
+# Pinned (#385 follow-up): `:latest` drifted 5 weeks stale unnoticed. Keep
+# this tag matched to the production Mac mini's OpenClaw and bump both
+# together (override per-run via OPENCLAW_IMAGE_TAG in dev/docker/.env).
+ARG OPENCLAW_IMAGE_TAG=2026.5.28
 FROM ghcr.io/openclaw/openclaw:${OPENCLAW_IMAGE_TAG}
 
 USER root

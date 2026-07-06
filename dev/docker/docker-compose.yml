@@ -11,7 +11,7 @@ x-bakin-build: &bakin-build
   context: .
   dockerfile: Dockerfile
   args:
-    OPENCLAW_IMAGE_TAG: ${OPENCLAW_IMAGE_TAG:-latest}
+    OPENCLAW_IMAGE_TAG: ${OPENCLAW_IMAGE_TAG:-2026.5.28}
 
 services:
   openclaw-gateway:
