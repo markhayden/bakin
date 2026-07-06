@@ -91,6 +91,9 @@ describe('provider request shapes', () => {
     const body = JSON.parse(String(calls[0].init.body))
     expect(body.messages[0]).toEqual({ role: 'system', content: 'You are a router.' })
     expect(body.messages[1]).toEqual({ role: 'user', content: 'Pick the best agent.' })
+    // Reasoning/GPT-5-family models 400 on max_tokens (review R4).
+    expect(body.max_completion_tokens).toBe(1024)
+    expect(body.max_tokens).toBeUndefined()
   })
 
   it('google: POST generateContent with key in query and system_instruction', async () => {
@@ -101,6 +104,7 @@ describe('provider request shapes', () => {
     const body = JSON.parse(String(calls[0].init.body))
     expect(body.system_instruction.parts[0].text).toBe('You are a router.')
     expect(body.contents[0].parts[0].text).toBe('Pick the best agent.')
+    expect(body.generationConfig.maxOutputTokens).toBe(1024)
   })
 })
 

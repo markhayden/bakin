@@ -81,7 +81,9 @@ async function callProvider<T>(request: DirectTextRequest<T>): Promise<string> {
         headers: { 'content-type': 'application/json', Authorization: `Bearer ${request.apiKey}` },
         body: JSON.stringify({
           model: request.model,
-          max_tokens: maxTokens,
+          // NOT max_tokens: reasoning/GPT-5-family chat models 400 on it,
+          // which we'd classify structural and block every caller (R4).
+          max_completion_tokens: maxTokens,
           messages: [
             ...(request.system ? [{ role: 'system', content: request.system }] : []),
             { role: 'user', content: request.prompt },
@@ -98,6 +100,7 @@ async function callProvider<T>(request: DirectTextRequest<T>): Promise<string> {
           body: JSON.stringify({
             ...(request.system ? { system_instruction: { parts: [{ text: request.system }] } } : {}),
             contents: [{ parts: [{ text: request.prompt }] }],
+            generationConfig: { maxOutputTokens: maxTokens },
           }),
           signal,
         },
