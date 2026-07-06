@@ -149,6 +149,7 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
 }
 
 export const mcporterComponent: OnboardingComponent = {
+  supportedAdapters: ['openclaw'],
   name: 'mcporter',
   check,
   install,

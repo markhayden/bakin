@@ -110,6 +110,7 @@ async function install(): Promise<InstallResult> {
 }
 
 export const openClawIntegrationComponent: OnboardingComponent = {
+  supportedAdapters: ['openclaw'],
   name: 'openclaw-integration',
   check,
   install,

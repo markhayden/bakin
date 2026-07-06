@@ -59,6 +59,20 @@ import type { ComponentStatus } from './state'
 
 const log = createLogger('onboarding:orchestrator')
 
+/**
+ * Adapter applicability gate: a component that declares supportedAdapters
+ * runs only when the ACTIVE runtime adapter is in its list.
+ */
+function componentApplies(component: OnboardingComponent): boolean {
+  if (!component.supportedAdapters) return true
+  try {
+    const { getSettings } = require('../settings') as typeof import('../settings')
+    return component.supportedAdapters.includes(getSettings().runtime.adapter)
+  } catch {
+    return true
+  }
+}
+
 export { isOnboarded, loadState, saveState, clearMarker, ONBOARDING_VERSION } from './state'
 export type { CheckResult, InstallResult, OnboardingOptions, OnboardingComponent, CheckStatus, InstallStatus } from './types'
 export type { OnboardingState, ComponentStatus } from './state'
@@ -331,6 +345,14 @@ async function runRuntimeInline(component: OnboardingComponent, onProgress?: (me
 export async function checkAll(): Promise<CheckResult[]> {
   const results: CheckResult[] = []
   for (const component of COMPONENT_ORDER) {
+    if (!componentApplies(component)) {
+      results.push({
+        name: component.name,
+        status: 'ok',
+        message: 'not applicable to the configured runtime adapter (skipped)',
+      })
+      continue
+    }
     try {
       results.push(await component.check())
     } catch (err) {
@@ -361,6 +383,21 @@ export async function runOnboard(opts: OnboardingOptions): Promise<RunOnboardRes
 
   for (let i = 0; i < COMPONENT_ORDER.length; i++) {
     const component = COMPONENT_ORDER[i]
+
+    // Adapter applicability: never check/install components that don't
+    // apply to the configured runtime (e.g. mcporter on Pi).
+    if (!componentApplies(component)) {
+      const skip: ComponentOutcome = {
+        name: component.name,
+        finalStatus: 'skipped',
+        check: { name: component.name, status: 'ok', message: 'not applicable to the configured runtime adapter' },
+        message: 'not applicable to the configured runtime adapter (skipped)',
+        durationMs: 0,
+      }
+      outcomes.push(skip)
+      opts.onOutcome?.({ name: skip.name, finalStatus: 'skipped', message: skip.message })
+      continue
+    }
 
     // Cascade skip: if search is not ok, search-models has nothing to pull with.
     // Skip it before even calling check().
