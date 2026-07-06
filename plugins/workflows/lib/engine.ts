@@ -10,10 +10,12 @@ import type {
   WorkflowDefinition,
   WorkflowInstance,
   StepState,
+  MapChildEntry,
   ParallelStep,
   AgentStep,
   OutputStep,
   NestedWorkflowStep,
+  MapWorkflowStep,
   CreateTaskStep,
 } from '../types'
 import { loadDefinition, validateWorkflowId, flattenSteps, findStep, getTopLevelIndex } from './parser'
@@ -30,7 +32,7 @@ import {
 import { getContentDir } from './content-dir'
 import { isPluginKind } from '@bakin/core/workflows/node-type-registry'
 import { createLogger } from '@bakin/core/logger'
-import { loadInstance, saveInstance, generateId } from './instance-store'
+import { loadInstance, saveInstance, generateId, listInstances } from './instance-store'
 import {
   createBoardTaskForChild,
   completeTaskViaHooks,
@@ -42,6 +44,9 @@ import { dispatchPluginNode, dispatchCreateTaskNode } from './node-dispatch'
 import { resolveAgent, getCurrentStep, type StepContext } from './step-context'
 
 const log = createLogger('workflow-runtime')
+
+/** Fan-out width guardrail when a map step declares no max_children. */
+const DEFAULT_MAX_CHILDREN = 32
 
 // ─── Instance Creation ──────────────────────────────────────────────────────
 
@@ -124,6 +129,12 @@ export function createInstance(
     // Create a board task so the child workflow's gates are visible in the UI
     const childDef = loadDefinition(nested.workflow_id, dir)
     createBoardTaskForChild(childTaskId, taskId, nested, childDef, assignee)
+  } else if (firstStep.type === 'map_workflow') {
+    // Statically illegal (source must name an EARLIER step, so validation
+    // rejects a first-step map) — but createInstance is reachable without
+    // validation, so fail typed instead of dangling in_progress forever.
+    fanOutMapStep(instance, firstStep as MapWorkflowStep, def, dir, now)
+    saveInstance(instance, dir)
   } else if (isPluginKind(firstStep.type)) {
     // First step is a plugin-owned kind — fire its executeNode hook.
     dispatchPluginNode(instance, firstStep, dir)
@@ -132,6 +143,104 @@ export function createInstance(
   }
 
   return instance
+}
+
+// ─── Map Fan-out ────────────────────────────────────────────────────────────
+
+/**
+ * Fan out a map_workflow step: one child workflow instance per element of the
+ * source step's output array. Invalid sources fail typed (map_source_invalid)
+ * with zero children spawned; empty arrays complete immediately and advance.
+ * Children are ordinary nested-workflow instances — gates, cycle detection,
+ * and board visibility come from the existing machinery.
+ * See .claude/specs/workflow-map-fanout-design.md.
+ */
+function fanOutMapStep(
+  instance: WorkflowInstance,
+  mapStep: MapWorkflowStep,
+  def: WorkflowDefinition,
+  contentDir: string,
+  now: string,
+): void {
+  const failTyped = (error: string): void => {
+    instance.stepStates[mapStep.id] = {
+      status: 'failed',
+      startedAt: now,
+      code: 'map_source_invalid',
+      error,
+    }
+    instance.history.push({ stepId: mapStep.id, status: 'failed', completedAt: now })
+    instance.status = 'failed'
+  }
+
+  const dotIdx = mapStep.source.indexOf('.')
+  const sourceStepId = dotIdx > 0 ? mapStep.source.slice(0, dotIdx) : mapStep.source
+  const sourceKey = dotIdx > 0 ? mapStep.source.slice(dotIdx + 1) : ''
+  const sourceOutput = instance.stepStates[sourceStepId]?.output
+  const value = sourceOutput?.[sourceKey]
+
+  if (!Array.isArray(value)) {
+    const detail = sourceOutput
+      ? `key "${sourceKey}" is ${value === undefined ? 'missing' : `a ${typeof value}, not an array`}`
+      : `step "${sourceStepId}" has no output`
+    failTyped(`source "${mapStep.source}" must resolve to an array; ${detail}`)
+    return
+  }
+
+  const maxChildren = mapStep.max_children ?? DEFAULT_MAX_CHILDREN
+  if (value.length > maxChildren) {
+    failTyped(`source array has ${value.length} items, exceeding max_children (${maxChildren}); no children were spawned`)
+    return
+  }
+
+  if (value.length === 0) {
+    // An empty segmentation is a valid outcome — complete and move on.
+    const output = { outputs: [] }
+    instance.stepStates[mapStep.id] = { status: 'complete', startedAt: now, completedAt: now, output }
+    instance.history.push({ stepId: mapStep.id, status: 'complete', completedAt: now, output })
+    advanceWorkflow(instance, def, contentDir)
+    return
+  }
+
+  // Sweep stale live children from a prior fan-out of this step (source-step
+  // rewind wiped children[]): cancel them before re-creating over the same
+  // ids; orphans beyond the new width also leave the board.
+  const childIdPrefix = `${instance.taskId}--${mapStep.id}--`
+  const staleChildren = listInstances(undefined, contentDir).filter(
+    (inst) => inst.parentTaskId === instance.taskId && inst.parentStepId === mapStep.id &&
+      inst.status !== 'complete' && inst.status !== 'cancelled',
+  )
+  for (const stale of staleChildren) {
+    cancelInstance(stale.taskId, contentDir)
+    const staleIndex = Number(stale.taskId.slice(childIdPrefix.length))
+    if (!(staleIndex >= 0 && staleIndex < value.length)) {
+      // Not being re-created — retire its board task too.
+      moveTaskInStore(stale.taskId, 'done').catch((err) => {
+        log.warn('Failed to retire stale map child task', err)
+      })
+    }
+  }
+
+  const itemKey = mapStep.item_key ?? 'item'
+  const total = value.length
+  const childDef = loadDefinition(mapStep.workflow_id, contentDir)
+  const children: MapChildEntry[] = []
+  for (let i = 0; i < total; i++) {
+    const childTaskId = `${childIdPrefix}${i}`
+    const childParentContext: Record<string, unknown> = {
+      ...(sourceOutput || {}),
+      [itemKey]: value[i],
+      mapIndex: i,
+      mapTotal: total,
+    }
+    const childInstance = createInstance(childTaskId, mapStep.workflow_id, contentDir, instance.resolvedAgent, childParentContext, instance.availableAgents)
+    childInstance.parentTaskId = instance.taskId
+    childInstance.parentStepId = mapStep.id
+    saveInstance(childInstance, contentDir)
+    createBoardTaskForChild(childTaskId, instance.taskId, mapStep, childDef, instance.resolvedAgent, { index: i, total })
+    children.push({ index: i, childTaskId, status: 'in_progress' })
+  }
+  instance.stepStates[mapStep.id] = { status: 'in_progress', startedAt: now, children }
 }
 
 // ─── Step Completion ────────────────────────────────────────────────────────
@@ -267,6 +376,11 @@ export function propagateChildCompletion(childInstance: WorkflowInstance, conten
   const stepId = childInstance.parentStepId!
   const stepState = parentInstance.stepStates[stepId]
   if (!stepState || stepState.status !== 'in_progress') return
+
+  // Map steps join on ALL children — the map-aware branch (entry update +
+  // stable-order aggregation) lands with fan-in; a single completing child
+  // must never complete the whole step. (T1.4 replaces this guard.)
+  if (findStep(parentDef, stepId)?.type === 'map_workflow') return
 
   // Collect child workflow outputs in definition order.
   // `finalOutput` is the last agent step's output (gates don't produce output).
@@ -406,6 +520,9 @@ export function advanceWorkflow(instance: WorkflowInstance, def: WorkflowDefinit
     // Create a board task so the child workflow's gates are visible in the UI
     const childDef = loadDefinition(nested.workflow_id, contentDir)
     createBoardTaskForChild(childTaskId, instance.taskId, nested, childDef, instance.resolvedAgent)
+  } else if (nextStep.type === 'map_workflow') {
+    // Dynamic fan-out — one child instance per source-array element.
+    fanOutMapStep(instance, nextStep as MapWorkflowStep, def, contentDir, now)
   } else if (nextStep.type === 'gate') {
     // Gates go to pending_approval and record requestedAt so the decision
     // timeline can be computed later.

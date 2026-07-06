@@ -249,6 +249,62 @@ steps:
     description: Continue after task creation
 `
 
+// Map fan-out parent: source agent step → map_workflow → after
+export const mapWorkflow = `
+name: Map Flow
+description: Dynamic fan-out test workflow
+version: 1
+steps:
+  - id: source-step
+    type: agent
+    label: Segment
+    agent: chef
+    description: Produce the items array
+  - id: produce-items
+    type: map_workflow
+    label: Produce Items
+    source: source-step.items
+    workflow_id: map-child
+    item_key: brief
+    max_children: 4
+  - id: after-map
+    type: agent
+    label: After Map
+    agent: main
+    description: Consume the aggregate
+`
+
+// Minimal child workflow for map fan-out
+export const mapChildWorkflow = `
+name: Map Child
+description: Single-step map child
+version: 1
+steps:
+  - id: do-work
+    type: agent
+    label: Do Work
+    agent: pixel
+    description: Work one item
+`
+
+// Statically illegal (map at index 0 has no earlier source step) — exercises
+// the defensive createInstance branch on non-validating paths.
+export const mapFirstWorkflow = `
+name: Map First
+description: Defensive first-step map
+version: 1
+steps:
+  - id: fan
+    type: map_workflow
+    label: Fan
+    source: ghost.items
+    workflow_id: map-child
+  - id: after
+    type: agent
+    label: After
+    agent: main
+`
+
 export const testSkillMarkdown = `---
 name: Test Skill
 output_schema:
@@ -292,5 +348,8 @@ export function seedWorkflowFixtures(testDir: string): void {
   writeFileSync(join(defsDir, 'final-gate.yaml'), finalGateWorkflow)
   writeFileSync(join(defsDir, 'skill-test.yaml'), skillWorkflow)
   writeFileSync(join(defsDir, 'task-node.yaml'), taskNodeWorkflow)
+  writeFileSync(join(defsDir, 'map-flow.yaml'), mapWorkflow)
+  writeFileSync(join(defsDir, 'map-child.yaml'), mapChildWorkflow)
+  writeFileSync(join(defsDir, 'map-first.yaml'), mapFirstWorkflow)
   writeFileSync(join(skillsDir, 'test-skill.md'), testSkillMarkdown)
 }
