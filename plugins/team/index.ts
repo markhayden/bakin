@@ -20,7 +20,7 @@ import { getLiveRun, LedgerUnavailableError } from '../../src/core/execution-led
 import { appendAudit } from '../../src/core/audit'
 import { retrieveAgentPackageLessons } from '../../src/core/agent-packages/lesson-retrieval'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
-import { agentSyncRepair, checkAgentRoster, checkPersonas, checkAgentSync, personaRepair } from './lib/health-checks'
+import { agentSyncRepair, checkAgentRoster, checkPersonas, checkAgentSync, checkTeamRouting, personaRepair } from './lib/health-checks'
 import {
   agentToMeta,
   listRuntimeAgentMetas,
@@ -743,6 +743,13 @@ const teamPlugin: BakinPlugin = definePlugin({
       name: 'Agent sync (managed blocks + projections)',
       run: () => checkAgentSync(),
       repair: agentSyncRepair(),
+    })
+    ctx.registerHealthCheck({
+      id: 'routing',
+      name: 'Task routing readiness (#189)',
+      run: () => checkTeamRouting({
+        routingProvider: ctx.getSettings<{ routingProvider?: string }>().routingProvider,
+      }),
     })
   },
 

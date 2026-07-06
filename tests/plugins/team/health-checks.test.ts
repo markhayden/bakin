@@ -106,6 +106,7 @@ import {
   checkAgentRoster,
   checkPersonas,
   checkAgentSync,
+  checkTeamRouting,
   personaRepair,
 } from '../../../plugins/team/lib/health-checks'
 
@@ -132,6 +133,52 @@ beforeEach(() => {
   runtimeAgentStore.clear()
   runtimeWorkspaceFiles.clear()
   runtimeError = null
+})
+
+// ─── checkTeamRouting (#189) ────────────────────────────────────────────────
+
+describe('checkTeamRouting', () => {
+  const board = (teams: Array<string | undefined>, column = 'todo') => () => ({
+    columns: { [column]: teams.map((team, i) => ({ id: `t${i}`, team })) },
+  })
+
+  it('passes quietly when no team-assigned tasks exist', async () => {
+    const results = await checkTeamRouting({
+      routingProvider: 'anthropic',
+      readBoard: board([undefined, undefined]),
+      keySource: () => null,
+    })
+    expect(results).toHaveLength(1)
+    expect(results[0].status).toBe('ok')
+  })
+
+  it('warns when team tasks exist but no routing key resolves', async () => {
+    const results = await checkTeamRouting({
+      routingProvider: 'anthropic',
+      readBoard: board(['development', undefined]),
+      keySource: () => null,
+    })
+    expect(results[0].status).toBe('warn')
+    expect(results[0].message).toContain('anthropic')
+  })
+
+  it('passes when team tasks exist and the key resolves', async () => {
+    const results = await checkTeamRouting({
+      routingProvider: 'anthropic',
+      readBoard: board(['development']),
+      keySource: () => ({ apiKey: 'k', source: 'env' as const }),
+    })
+    expect(results[0].status).toBe('ok')
+  })
+
+  it('ignores done/archived team tasks', async () => {
+    const results = await checkTeamRouting({
+      routingProvider: 'anthropic',
+      readBoard: board(['development'], 'done'),
+      keySource: () => null,
+    })
+    expect(results[0].status).toBe('ok')
+  })
 })
 
 // ─── checkAgentRoster ──────────────────────────────────────────────────────

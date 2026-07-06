@@ -15,6 +15,8 @@ import { join } from 'path'
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import { healthOk as ok, healthWarn as warn, healthError as error } from '@makinbakin/sdk/utils'
 
+import { resolveProviderKeySource, type DirectProviderId } from '@bakin/core/llm/provider-keys'
+import { readTaskboard } from '../../../src/core/task-store'
 import { scanAgentSync, type SyncScanReport } from '../../../src/core/agent-packages/sync-scanner'
 import { syncAllAgents } from '../../../src/core/agent-packages/sync'
 import { migrateToManagedBlocks } from '../../../src/core/agent-packages/migration'
@@ -30,6 +32,46 @@ type RuntimeAgentReader = Pick<AgentRuntimeAdapter['agents'], 'list'>
 
 // ─── Result constructors (inlined; matches workflows precedent) ─────────────
 
+
+// ─── Team routing readiness (#189) ──────────────────────────────────────────
+
+const ACTIVE_COLUMNS = ['backlog', 'todo', 'inProgress', 'review', 'blocked'] as const
+
+/**
+ * Warn-only: team-assigned tasks exist but the routing LLM key is missing —
+ * every one of them will hit the dispatch resolver's structural failure and
+ * block. Local-only (settings + board + key presence; no network).
+ */
+export async function checkTeamRouting(opts: {
+  routingProvider?: string
+  readBoard?: () => { columns: Record<string, Array<{ team?: string }>> }
+  keySource?: (provider: DirectProviderId) => { apiKey: string; source: 'env' | 'store' } | null
+}): Promise<HealthCheckResult[]> {
+  const readBoard = opts.readBoard ?? readTaskboard
+  const keySource = opts.keySource ?? resolveProviderKeySource
+  const provider: DirectProviderId =
+    opts.routingProvider === 'openai' || opts.routingProvider === 'google' ? opts.routingProvider : 'anthropic'
+
+  let teamTaskCount = 0
+  try {
+    const { columns } = readBoard()
+    for (const col of ACTIVE_COLUMNS) {
+      for (const task of columns[col] ?? []) {
+        if (task.team) teamTaskCount++
+      }
+    }
+  } catch (err) {
+    return [warn('routing', `Could not inspect the task board for team assignments: ${err}`, true)]
+  }
+
+  if (teamTaskCount === 0) {
+    return [ok('routing', 'No active team-assigned tasks — routing idle')]
+  }
+  if (!keySource(provider)) {
+    return [warn('routing', `${teamTaskCount} team-assigned task(s) but no API key for routing provider "${provider}" — they will block at dispatch. Set the provider key (env or secret store) or change the Task routing provider in Team settings.`)]
+  }
+  return [ok('routing', `${teamTaskCount} team-assigned task(s); routing ready via ${provider}`)]
+}
 
 // ─── Agent roster: runtime agents exposed to Bakin ─────────────────────────
 
