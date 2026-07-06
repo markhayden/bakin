@@ -371,6 +371,43 @@ describe('runtime — map_workflow', () => {
     })
   })
 
+  describe('join-blocking (failures never cascade)', () => {
+    const completeChild = (taskId: string, i: number) =>
+      completeStep(`${taskId}--produce-items--${i}`, 'do-work', { made: items[i] }, undefined, testDir)
+
+    it('a cancelled child blocks the join without failing the parent or siblings', () => {
+      startAndFan('task-block')
+      cancelInstance('task-block--produce-items--1', testDir)
+      completeChild('task-block', 0)
+      completeChild('task-block', 2)
+
+      const parent = loadInstance('task-block', testDir)!
+      const state = parent.stepStates['produce-items']
+      // Join waits: the map step and the parent stay honestly in_progress.
+      expect(parent.status).toBe('in_progress')
+      expect(state.status).toBe('in_progress')
+      expect(state.output).toBeUndefined()
+      expect(parent.currentStepId).toBe('produce-items')
+      // Completed siblings recorded; nothing cascaded to them.
+      expect(state.children![0].status).toBe('complete')
+      expect(state.children![2].status).toBe('complete')
+      expect(loadInstance('task-block--produce-items--0', testDir)!.status).toBe('complete')
+    })
+
+    it('refuses late submissions to a cancelled child and keeps the join intact', () => {
+      startAndFan('task-late')
+      cancelInstance('task-late--produce-items--1', testDir)
+      const late = completeStep('task-late--produce-items--1', 'do-work', { made: 'zombie' }, undefined, testDir)
+      expect(late.success).toBe(false)
+
+      completeChild('task-late', 0)
+      completeChild('task-late', 2)
+      const state = loadInstance('task-late', testDir)!.stepStates['produce-items']
+      expect(state.status).toBe('in_progress')
+      expect(state.children![1].output).toBeUndefined()
+    })
+  })
+
   describe('child-aware surfaces', () => {
     const completeChild = (taskId: string, i: number) =>
       completeStep(`${taskId}--produce-items--${i}`, 'do-work', { made: items[i] }, undefined, testDir)
