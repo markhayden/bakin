@@ -63,18 +63,24 @@ Fetch-injectable; NO live calls in tests.
 
 ## Dispatch integration
 
-`src/core/dispatch-team.ts` (`resolveTeamAssignmentForDispatch`), invoked
-by BOTH `dispatch-cycle.ts` and `dispatch-single.ts` when
-`task.team && !task.agent`, BEFORE the workflow branch and the
-concurrency/budget/claim sequence (so workflow tasks with a team also
-resolve first, and no ledger run is claimed for an unresolvable task).
+`src/core/dispatch-team.ts`. Resolution runs as a **pre-lock pre-pass**
+(post-review R3): `resolveTeamAssignmentsPrePass` (cycle) /
+`resolveTeamAssignmentForSingle` (kick) execute BEFORE `withStateLock`, so
+a slow routing call (up to ~60s per provider attempt) can never stall the
+dispatch cycle or queued kicks. The locked loop then only skips
+still-unresolved team tasks. Resolution still happens before the workflow
+branch and the concurrency/budget/claim sequence.
 
 - ok → `recordTeamResolution` persists the pick **immediately** → the LLM
-  bills at most once per task lifetime (retries/re-dispatches see a plain
-  agent task); task log line + `task.team_resolved` audit
-  `{team, agent, reason, model}`.
-- transient → skip this cycle, retried next tick; the failure reason is
-  task-logged ONCE (dedupe against the last log entry) + audited.
+  bills at most once per successful task lifetime; task log line +
+  `task.team_resolved` audit `{team, agent, reason, model}`.
+- transient (provider hiccup, out-of-pool pick, throwing hook) → recorded
+  in the SAME `failedDispatches` ladder as every other dispatch failure
+  (post-review R2): transient cooldown between retries, escalation to
+  blocked at `dispatch.maxRetries` — a persistently confused router cannot
+  bill LLM calls every cycle forever. Reason is task-logged ONCE (dedupe
+  against the last log entry) + audited, including the throwing-hook path
+  (post-review R8).
 - structural (no key / unknown team / empty pool / hook missing) → task
   **blocked** with `Team routing failed: <reason>` + audit — never a
   silent fallback pick (matches the ledger/search fail-closed style).
@@ -84,30 +90,47 @@ task to unresolved — the next dispatch re-resolves (one new LLM call).
 
 ## Surfaces (identical semantics everywhere)
 
-- **REST** `POST/PUT /api/plugins/tasks/` — `team` field; 400 on both-set
-  or unknown team (validated via `validateTeamRef` in
-  `src/core/task-service.ts`, which fails CLOSED when the team plugin/hook
-  is unavailable).
+Validation is ONE shared guard (post-review R10):
+`validateTeamAssignment({assignee, team})` in `src/core/task-service.ts`
+throws the typed `TaskValidationError` (mutual exclusion + `team.exists`
+lookup, failing CLOSED when the team plugin/hook is unavailable). Routes
+map it to 400 **by instanceof**, never by message text.
+`createTaskWithEffects` calls it internally — the tasks create route has
+no duplicate pre-check (one `team.exists` round-trip per create).
+
+- **REST** `POST/PUT /api/plugins/tasks/` — `team` field. The PUT is a
+  true PARTIAL update (post-review R1): only keys present in the body are
+  forwarded, because `updateTask` clears on key presence — an omitted
+  field never wipes stored team/agent. Clients clear explicitly with `''`;
+  the task dialog sends assignment keys only when the picker changed.
 - **MCP** `bakin_exec_tasks_create` / `_update` — `team` param.
 - **CLI** `bakin tasks create <title> [agent] [--team=<id>]`.
 - **UI** — `AgentSelect includeTeams` renders a Teams group; `team:<id>`
-  is a UI-only value encoding (helpers `isTeamValue`/`teamIdFromValue`
-  exported from `@makinbakin/sdk/components`); board cards show a team
-  chip (violet, Users icon) until resolved, then avatar + chip; the detail
-  form notes "Routed from team X".
+  is a UI-only value encoding via `TEAM_VALUE_PREFIX` /
+  `isTeamValue` / `teamIdFromValue` from `@makinbakin/sdk/components`
+  (the ONLY parsing — no hand-rolled prefix slicing; post-review R9);
+  board cards show a team chip (violet, Users icon) until resolved, then
+  avatar + chip; the detail form notes "Routed from team X".
 - **Schedule** — `teamId` on job meta (mutex with `agentId`, validated at
-  save); `fire-engine.ts` passes `team` into `createTaskWithEffects`, so
-  each occurrence re-resolves; `requireTriage` still wins (task created
-  unassigned).
+  save AND in `ensureBakinJob` for the hook path — an input-provided side
+  clears the other; post-review R5); `fire-engine.ts` passes `team` into
+  `createTaskWithEffects`, so each occurrence re-resolves; `requireTriage`
+  still wins. **Dangling team** (deleted after job creation): the fire
+  creates the occurrence as a BLOCKED task with an honest reason instead
+  of failing — no lost occurrences, no auto-pause (post-review R6).
+- **Team deletion** — `DELETE /teams/:teamId` refuses with 409 while
+  ACTIVE tasks still reference the team (post-review R6).
 
 Workflow steps are explicitly deferred — the follow-up issue consumes the
 same `team.resolveAssignment` hook.
 
 ## Doctor
 
-`team.routing` (warn-only, local-only): active team-assigned tasks exist
-but no key resolves for the configured routing provider — they will all
-block at dispatch. `plugins/team/lib/health-checks.ts::checkTeamRouting`.
+`team.routing` (warn-only, local-only): active **unresolved** team tasks
+(`team && !agent` — resolved tasks never re-invoke the router; post-review
+R7) exist but no key resolves for the configured routing provider — they
+will all block at dispatch.
+`plugins/team/lib/health-checks.ts::checkTeamRouting`.
 
 ## Testing map
 
