@@ -55,7 +55,6 @@ import {
 } from './lib/agent-status'
 import {
   resolveTeamAssignment,
-  DEFAULT_ROUTING_MODEL,
   type ResolveAssignmentRequest,
 } from './lib/assignment-resolver'
 import { populateAgentRoutes } from './lib/routes/agents'
@@ -137,7 +136,9 @@ const teamPlugin: BakinPlugin = definePlugin({
         type: 'string',
         label: 'Task routing model',
         description: 'Provider-native model id for assignment routing — a cheap/fast model is right; this is a classification call',
-        default: DEFAULT_ROUTING_MODEL,
+        // Literal (not DEFAULT_ROUTING_MODEL) so the docs settings-table
+        // generator can read it; keep in sync with assignment-resolver.ts.
+        default: 'claude-haiku-4-5-20251001',
       },
     ],
   },

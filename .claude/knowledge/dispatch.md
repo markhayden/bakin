@@ -22,6 +22,7 @@ modules that import each other directly (never through the barrel):
 | `dispatch-registry.ts` | The in-flight turn registry (LEAF — types+logger only): counts, abort/snapshot/force-release surface for task-store + watchdog |
 | `dispatch-turns.ts` | The concurrent fire engine: budget gate, run claiming, turn registration + caps, `fireDispatchTurn` settle handlers |
 | `dispatch-prepare.ts` | Shared per-task fire prep (claim → lesson → assets → message → move → audit) for cycle + single |
+| `dispatch-team.ts` | Team → agent resolution via the `team.resolveAssignment` hook (#189) — see `.claude/knowledge/team-aware-assignment.md` |
 | `dispatch-cycle.ts` | The periodic two-phase collect-then-fire cycle, start/stop, `getDispatchInfo` |
 | `dispatch-single.ts` | Immediate single-task dispatch (kick / subtask / continuation / recovery) |
 | `dispatch-workflow.ts` | Workflow-step dispatch + workflow prompt builder |
@@ -237,6 +238,20 @@ warning + task-log note — load-bearing for decomposition chains.
 Invalid `availableAt` values are treated as unscheduled so malformed metadata
 does not permanently strand a task. Explicit user kick dispatches can bypass the
 schedule gate, but automatic dispatch and automatic subtasks cannot.
+
+## Team assignment resolution (#189)
+
+A task carrying `team` but no `agent` resolves to a concrete member BEFORE
+the workflow branch and the concurrency/budget/claim sequence, in both the
+cycle and `dispatchSingleTask` (`resolveTeamAssignmentForDispatch` in
+`dispatch-team.ts` → the team plugin's `team.resolveAssignment` RPC hook).
+The pick is persisted immediately (`recordTeamResolution` — retains `team`
+for audit) so the routing LLM bills at most once per task lifetime.
+Transient failures skip the cycle (retried next tick, reason task-logged
+once); structural failures (no key, empty pool, hook missing) BLOCK the
+task with an honest reason — never a silent fallback pick. Audit:
+`task.team_resolved` / `task.team_resolution_failed`. Deep reference:
+`.claude/knowledge/team-aware-assignment.md`.
 
 ## Prompt construction
 
