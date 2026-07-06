@@ -19,8 +19,10 @@ import { createMemorySurface } from './memory'
 import { createMessagingSurface } from './messaging'
 import { capabilitiesForModel, createModelsSurface, resetModelRegistry } from './models'
 import { readRegistry } from './registry'
+import { createHealthChecks } from './health-checks'
 import { createSessionsSurface } from './sessions'
 import { createSkillsSurface } from './skills'
+import { createChannelsSurface, createCronSurface, createToolsSurface } from './unsupported'
 
 export interface PiRuntimeAdapterOptions {
   settings?: Record<string, unknown>
@@ -74,7 +76,7 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   getHealthChecks(): ReturnType<AgentRuntimeAdapter['getHealthChecks']> {
-    return []
+    return createHealthChecks()
   }
 
   agents: AgentRuntimeAdapter['agents'] = createAgentsSurface()
@@ -85,21 +87,9 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
     getSettings: () => this.initOpts?.settings ?? this.options.settings,
   })
 
-  tools: AgentRuntimeAdapter['tools'] = {
-    invoke: async () => notImplemented('tools.invoke'),
-  }
+  tools: AgentRuntimeAdapter['tools'] = createToolsSurface()
 
-  channels: AgentRuntimeAdapter['channels'] = {
-    list: async () => notImplemented('channels.list'),
-    sendNotification: async () => notImplemented('channels.sendNotification'),
-    sendMessage: async () => notImplemented('channels.sendMessage'),
-    deliverContent: async () => notImplemented('channels.deliverContent'),
-    createApproval: async () => notImplemented('channels.createApproval'),
-    editApproval: async () => notImplemented('channels.editApproval'),
-    cancelApproval: async () => notImplemented('channels.cancelApproval'),
-    resolveApproval: async () => notImplemented('channels.resolveApproval'),
-    subscribeApprovalResponses: () => notImplemented('channels.subscribeApprovalResponses'),
-  }
+  channels: AgentRuntimeAdapter['channels'] = createChannelsSurface()
 
   skills: AgentRuntimeAdapter['skills'] = createSkillsSurface()
 
@@ -109,17 +99,7 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
 
   models: AgentRuntimeAdapter['models'] = createModelsSurface()
 
-  cron: AgentRuntimeAdapter['cron'] = {
-    list: async () => notImplemented('cron.list'),
-    get: async () => notImplemented('cron.get'),
-    create: async () => notImplemented('cron.create'),
-    update: async () => notImplemented('cron.update'),
-    remove: async () => notImplemented('cron.remove'),
-    runNow: async () => notImplemented('cron.runNow'),
-    listRuns: async () => notImplemented('cron.listRuns'),
-    getRaw: async () => notImplemented('cron.getRaw'),
-    restoreRaw: async () => notImplemented('cron.restoreRaw'),
-  }
+  cron: AgentRuntimeAdapter['cron'] = createCronSurface()
 
   config: AgentRuntimeAdapter['config'] = createConfigSurface()
 }
