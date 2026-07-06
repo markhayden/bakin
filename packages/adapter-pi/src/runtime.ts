@@ -15,6 +15,7 @@ import type { RuntimeCapabilities, RuntimeToolAccessHint } from '@bakin/core/ada
 import { createAgentsSurface } from './agents'
 import { createConfigSurface } from './config'
 import { MAIN_AGENT_ID, seedMainAgentIfEmpty } from './main-agent'
+import { createMemorySurface } from './memory'
 import { createMessagingSurface } from './messaging'
 import { capabilitiesForModel, createModelsSurface, resetModelRegistry } from './models'
 import { readRegistry } from './registry'
@@ -104,16 +105,7 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
 
   sessions: AgentRuntimeAdapter['sessions'] = createSessionsSurface()
 
-  memory: AgentRuntimeAdapter['memory'] = {
-    listTiers: async () => notImplemented('memory.listTiers'),
-    listEntries: async () => notImplemented('memory.listEntries'),
-    getEntry: async () => notImplemented('memory.getEntry'),
-    statEntry: async () => notImplemented('memory.statEntry'),
-    readEntryRange: async () => notImplemented('memory.readEntryRange'),
-    resolvePath: async () => notImplemented('memory.resolvePath'),
-    watchPaths: async () => notImplemented('memory.watchPaths'),
-    search: async () => notImplemented('memory.search'),
-  }
+  memory: AgentRuntimeAdapter['memory'] = createMemorySurface()
 
   models: AgentRuntimeAdapter['models'] = createModelsSurface()
 
