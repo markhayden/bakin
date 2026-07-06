@@ -93,6 +93,22 @@ export interface NestedWorkflowStep extends BaseStep {
   description?: string
 }
 
+/**
+ * Dynamic fan-out: one child workflow instance per element of an earlier
+ * step's output array. `source` is `<stepId>.<outputKey>` where stepId names
+ * an earlier top-level step. See .claude/specs/workflow-map-fanout-design.md.
+ */
+export interface MapWorkflowStep extends BaseStep {
+  type: 'map_workflow'
+  source: string
+  workflow_id: string
+  /** Key the child sees its item under in parentContext (default: "item"). */
+  item_key?: string
+  /** Fan-out width guardrail — wider source arrays fail typed (default: 32). */
+  max_children?: number
+  description?: string
+}
+
 export interface CreateTaskStep extends BaseStep {
   type: 'createTask'
   taskId?: string
@@ -115,7 +131,7 @@ export interface CreateTaskStep extends BaseStep {
   skipWorkflowReason?: string
 }
 
-export type WorkflowStep = AgentStep | GateStep | ParallelStep | OutputStep | NestedWorkflowStep | CreateTaskStep
+export type WorkflowStep = AgentStep | GateStep | ParallelStep | OutputStep | NestedWorkflowStep | MapWorkflowStep | CreateTaskStep
 
 export interface NodePosition {
   x: number

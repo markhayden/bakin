@@ -36,19 +36,20 @@ import {
   outputStepSchema,
   nestedWorkflowStepSchema,
   createTaskStepSchema,
+  mapWorkflowStepSchema,
   type NodeTypeDef,
 } from '@bakin/core/workflows/node-type-registry'
 import { z } from 'zod'
 
 describe('node-type-registry', () => {
   describe('builtin registration', () => {
-    it('registers all 6 builtin node types at module load', () => {
+    it('registers all 7 builtin node types at module load', () => {
       const kinds = listNodeTypes().map(n => n.kind).sort()
-      expect(kinds).toEqual(['agent', 'createTask', 'gate', 'output', 'parallel', 'workflow'])
+      expect(kinds).toEqual(['agent', 'createTask', 'gate', 'map_workflow', 'output', 'parallel', 'workflow'])
     })
 
     it('exposes each builtin via getNodeType()', () => {
-      for (const kind of ['agent', 'createTask', 'gate', 'output', 'parallel', 'workflow']) {
+      for (const kind of ['agent', 'createTask', 'gate', 'output', 'parallel', 'workflow', 'map_workflow']) {
         const def = getNodeType(kind)
         expect(def, `expected ${kind} to be registered`).toBeDefined()
         expect(def!.kind).toBe(kind)
@@ -148,6 +149,19 @@ describe('node-type-registry', () => {
       expect(result.success).toBe(false)
     })
 
+    it('rejects a parallel step with a map_workflow child (agent-only)', () => {
+      const result = parallelStepSchema.safeParse({
+        id: 'p1',
+        type: 'parallel',
+        label: 'Parallel',
+        steps: [
+          { id: 'c1', type: 'agent', label: 'Child 1', agent: 'chef' },
+          { id: 'c2', type: 'map_workflow', label: 'Map', source: 'c1.items', workflow_id: 'x' },
+        ],
+      })
+      expect(result.success).toBe(false)
+    })
+
     it('rejects a parallel step with no children', () => {
       const result = parallelStepSchema.safeParse({
         id: 'p1',
@@ -193,6 +207,79 @@ describe('node-type-registry', () => {
     })
   })
 
+  describe('mapWorkflowStepSchema', () => {
+    it('accepts the full design-doc YAML surface', () => {
+      const result = mapWorkflowStepSchema.safeParse({
+        id: 'produce-clips',
+        type: 'map_workflow',
+        label: 'Produce clips',
+        source: 'segment-script.clips',
+        workflow_id: 'clip-creation',
+        item_key: 'clip',
+        max_children: 24,
+        description: 'One child per clip brief',
+      })
+      expect(result.success).toBe(true)
+    })
+
+    it('accepts a minimal map step (source + workflow_id only)', () => {
+      const result = mapWorkflowStepSchema.safeParse({
+        id: 'fan',
+        type: 'map_workflow',
+        label: 'Fan out',
+        source: 'prev.items',
+        workflow_id: 'child-wf',
+      })
+      expect(result.success).toBe(true)
+    })
+
+    it('rejects a map step missing source', () => {
+      const result = mapWorkflowStepSchema.safeParse({
+        id: 'fan',
+        type: 'map_workflow',
+        label: 'Fan out',
+        workflow_id: 'child-wf',
+      })
+      expect(result.success).toBe(false)
+    })
+
+    it('rejects a map step missing workflow_id', () => {
+      const result = mapWorkflowStepSchema.safeParse({
+        id: 'fan',
+        type: 'map_workflow',
+        label: 'Fan out',
+        source: 'prev.items',
+      })
+      expect(result.success).toBe(false)
+    })
+
+    it('rejects unknown keys (strict, like every builtin)', () => {
+      const result = mapWorkflowStepSchema.safeParse({
+        id: 'fan',
+        type: 'map_workflow',
+        label: 'Fan out',
+        source: 'prev.items',
+        workflow_id: 'child-wf',
+        on_child_failure: 'ignore',
+      })
+      expect(result.success).toBe(false)
+    })
+
+    it('rejects non-positive or fractional max_children', () => {
+      for (const bad of [0, -1, 2.5]) {
+        const result = mapWorkflowStepSchema.safeParse({
+          id: 'fan',
+          type: 'map_workflow',
+          label: 'Fan out',
+          source: 'prev.items',
+          workflow_id: 'child-wf',
+          max_children: bad,
+        })
+        expect(result.success, `max_children=${bad}`).toBe(false)
+      }
+    })
+  })
+
   describe('createTaskStepSchema', () => {
     it('accepts a scheduled source-linked task creation step', () => {
       const result = createTaskStepSchema.safeParse({
@@ -235,6 +322,32 @@ describe('node-type-registry', () => {
         ],
       })
       expect(result.success).toBe(true)
+    })
+
+    it('accepts a definition containing a map_workflow step', () => {
+      const result = workflowDefinitionSchema.safeParse({
+        name: 'Fan Out',
+        description: 'x',
+        version: 1,
+        steps: [
+          { id: 'seg', type: 'agent', label: 'Segment', agent: 'chef' },
+          { id: 'fan', type: 'map_workflow', label: 'Fan', source: 'seg.items', workflow_id: 'child' },
+        ],
+      })
+      expect(result.success).toBe(true)
+    })
+
+    it('rejects a map_workflow step with unknown keys at the definition level', () => {
+      const result = workflowDefinitionSchema.safeParse({
+        name: 'Fan Out',
+        description: 'x',
+        version: 1,
+        steps: [
+          { id: 'seg', type: 'agent', label: 'Segment', agent: 'chef' },
+          { id: 'fan', type: 'map_workflow', label: 'Fan', source: 'seg.items', workflow_id: 'child', dependsOn: 'seg' },
+        ],
+      })
+      expect(result.success).toBe(false)
     })
 
     it('rejects a definition with an unknown step type', () => {
@@ -302,8 +415,8 @@ describe('node-type-registry', () => {
   })
 
   describe('edgeRules (builtin defaults)', () => {
-    it('sets maxOutbound=1 for agent/gate/parallel/workflow/createTask kinds', () => {
-      for (const kind of ['agent', 'gate', 'parallel', 'workflow', 'createTask']) {
+    it('sets maxOutbound=1 for agent/gate/parallel/workflow/createTask/map_workflow kinds', () => {
+      for (const kind of ['agent', 'gate', 'parallel', 'workflow', 'createTask', 'map_workflow']) {
         expect(getNodeType(kind)?.edgeRules?.maxOutbound, `${kind}`).toBe(1)
       }
     })

@@ -26,6 +26,7 @@ export type {
   ParallelStep,
   OutputStep,
   NestedWorkflowStep,
+  MapWorkflowStep,
   CreateTaskStep,
   WorkflowStep,
   NodePosition,
@@ -102,6 +103,23 @@ export type InstanceStatus =
   | 'failed'
   | 'cancelled'
 
+/**
+ * Typed step-failure codes. UIs and agents branch on these — never on error
+ * message text (architecture-test enforced convention).
+ */
+export type StepErrorCode = 'map_source_invalid'
+
+export type MapChildStatus = 'in_progress' | 'complete' | 'failed' | 'cancelled'
+
+/** One fanned-out map_workflow child, in source-array order. */
+export interface MapChildEntry {
+  index: number
+  childTaskId: string
+  status: MapChildStatus
+  /** The child's finalOutput, recorded at completion; aggregated on join. */
+  output?: Record<string, unknown>
+}
+
 export interface StepState {
   status: StepStatus
   startedAt?: string
@@ -111,6 +129,12 @@ export interface StepState {
   rejectionReason?: string
   /** For nested workflow steps — the child instance's task ID (used as instance key) */
   childTaskId?: string
+  /** For map_workflow steps — one entry per fanned-out child, in source-array order */
+  children?: MapChildEntry[]
+  /** Typed failure code — set with status 'failed' where no CompleteStepResult carries it */
+  code?: StepErrorCode
+  /** Human-readable failure detail accompanying `code` */
+  error?: string
   /** Runtime-rendered gate approval reference used to resolve the rendered approval after a decision */
   approvalRef?: ApprovalRenderRef
   /** Gate decision metadata — set when a gate enters pending_approval and when a decision is recorded */
