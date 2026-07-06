@@ -545,6 +545,37 @@ describe('runtime — map_workflow', () => {
       expect(hookTasks.get('task-sweep--produce-items--1')!.column).toBe('done')
     })
 
+    it('cancel-parent with mixed child states sweeps only the live ones', async () => {
+      // Gated children: child 0 runs to completion, child 1 parks at its gate
+      // (pending_approval), child 2 (map-flow fixture is ungated, so use the
+      // gated parent with 3 items) is cancelled per-child beforehand.
+      createInstance('task-mixed', 'map-gated', testDir)
+      completeStep('task-mixed', 'source-step', { items: ['a', 'b', 'c'] }, undefined, testDir)
+      await settle()
+
+      // Child 0 → complete.
+      completeStep('task-mixed--produce-items--0', 'work', { draft: 0 }, undefined, testDir)
+      approveGate('task-mixed--produce-items--0', 'check', { contentDir: testDir, approver: { id: 'mark', source: 'web' } })
+      completeStep('task-mixed--produce-items--0', 'finish', { final: 0 }, undefined, testDir)
+      // Child 1 → parked at its gate.
+      completeStep('task-mixed--produce-items--1', 'work', { draft: 1 }, undefined, testDir)
+      expect(loadInstance('task-mixed--produce-items--1', testDir)!.status).toBe('pending_approval')
+      // Child 2 → already cancelled per-child.
+      cancelMapChild('task-mixed', 'produce-items', 2, testDir)
+
+      cancelInstance('task-mixed', testDir)
+      await settle()
+
+      const parent = loadInstance('task-mixed', testDir)!
+      expect(parent.status).toBe('cancelled')
+      expect(parent.stepStates['produce-items'].children!.map((c) => c.status)).toEqual([
+        'complete', 'cancelled', 'cancelled',
+      ])
+      expect(loadInstance('task-mixed--produce-items--0', testDir)!.status).toBe('complete')
+      expect(loadInstance('task-mixed--produce-items--1', testDir)!.status).toBe('cancelled')
+      expect(loadInstance('task-mixed--produce-items--2', testDir)!.status).toBe('cancelled')
+    })
+
     it('getActiveAgents unions the live children with effectiveTaskIds', () => {
       startAndFan('task-agents')
       const before = getActiveAgents('task-agents', testDir)
