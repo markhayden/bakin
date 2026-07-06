@@ -164,6 +164,7 @@ export function SchedulePage() {
           name: data.name,
           schedule: data.schedule,
           agentId: data.agentId || null,
+          teamId: data.teamId || null,
           taskPrompt: data.taskPrompt || null,
           taskTitle: data.taskTitle || null,
           workflowId: data.workflowId || null,

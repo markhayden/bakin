@@ -67,13 +67,18 @@ const mockCreateTask = mock(async (opts?: unknown) => {
   createdTaskOpts.push(o)
   return { id, workflowId: undefined }
 })
+class MockTaskValidationError extends Error {
+  readonly code: string
+  constructor(message: string, code: string) { super(message); this.name = 'TaskValidationError'; this.code = code }
+}
 mock.module('../../../src/core/task-service', () => ({
   createTaskWithEffects: (opts: unknown) => mockCreateTask(opts),
   validateTeamRef: async (teamId: string) => {
-    if (teamId === 'ghost-team') throw new Error(`Unknown team: "${teamId}"`)
+    if (teamId === 'ghost-team') throw new MockTaskValidationError(`Unknown team: "${teamId}"`, 'unknown_team')
+    if (teamId === 'unavailable-team') throw new MockTaskValidationError('team plugin unavailable', 'validation_unavailable')
   },
   validateTeamAssignment: async () => undefined,
-  TaskValidationError: class extends Error {},
+  TaskValidationError: MockTaskValidationError,
 }))
 
 interface BoardTask { id: string; blockedReason?: string }
@@ -83,8 +88,8 @@ const emptyBoard = {
     blocked: [] as BoardTask[], done: [] as BoardTask[], archived: [] as BoardTask[], backlog: [] as BoardTask[],
   },
 }
-mock.module('@/core/task-store', () => ({ readTaskboard: mock(() => emptyBoard) }))
-mock.module('../../../src/core/task-store', () => ({ readTaskboard: mock(() => emptyBoard) }))
+mock.module('@/core/task-store', () => ({ readTaskboard: mock(() => emptyBoard), addTaskLog: mock(async () => undefined) }))
+mock.module('../../../src/core/task-store', () => ({ readTaskboard: mock(() => emptyBoard), addTaskLog: mock(async () => undefined) }))
 
 const mockHookRegistry = {
   invoke: mock(async () => undefined),
@@ -100,6 +105,7 @@ mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
 
 import { upsertJob, getJob } from '@bakin/schedule/lib/sidecar'
 import { __scheduleTestInternals, MISSED_WINDOW_REASON } from '@bakin/schedule/index'
+import { TEAM_ROUTING_BLOCK_REASON } from '@bakin/schedule/lib/fire-engine'
 import { closeDb } from '../../../packages/core/src/storage/db'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 
@@ -389,9 +395,36 @@ describe('dangling teamId fires gracefully (review R6)', () => {
     expect(result.body.taskId).toBe(createdTasks[0])
     expect(getJob('release-notes')!.consecutiveFailures).toBe(0)
 
-    // The task lands blocked with an honest reason, with no team attached.
+    // The task lands blocked with the TRIAGE sentinel, with no team attached.
     expect(createdTaskOpts[0]?.team).toBeUndefined()
     expect(createdTaskOpts[0]?.column).toBe('blocked')
-    expect(String(createdTaskOpts[0]?.blockedReason)).toContain('Team routing failed')
+    expect(createdTaskOpts[0]?.blockedReason).toBe(TEAM_ROUTING_BLOCK_REASON)
+  })
+
+  it('a dangling-team blocked occurrence does NOT count as a failure on the next fire (round-3)', async () => {
+    upsertJob(makeMeta({ agentId: undefined, teamId: 'ghost-team', lastTaskId: 'task-prev-ghost' }))
+    emptyBoard.columns.blocked.push({ id: 'task-prev-ghost', blockedReason: TEAM_ROUTING_BLOCK_REASON })
+
+    const result = await fireScheduledRunFromPayload({
+      jobId: 'release-notes', runId: 'run-ghost-2', timestamp: '2026-06-09T07:00:00Z',
+    })
+
+    expect(result.body.skipped).toBeUndefined()
+    expect(result.body.taskId).toBe(createdTasks[0])
+    expect(getJob('release-notes')!.consecutiveFailures).toBe(0)
+    expect(getJob('release-notes')!.paused).toBeFalsy()
+  })
+
+  it('validation_unavailable defers to dispatch: the occurrence keeps its team (round-3)', async () => {
+    upsertJob(makeMeta({ agentId: undefined, teamId: 'unavailable-team' }))
+
+    const result = await fireScheduledRunFromPayload({
+      jobId: 'release-notes', runId: 'run-unavail-1', timestamp: '2026-06-08T07:00:00Z',
+    })
+
+    expect(result.body.taskId).toBe(createdTasks[0])
+    expect(createdTaskOpts[0]?.team).toBe('unavailable-team')
+    expect(createdTaskOpts[0]?.column).toBe('todo')
+    expect(createdTaskOpts[0]?.blockedReason).toBeUndefined()
   })
 })

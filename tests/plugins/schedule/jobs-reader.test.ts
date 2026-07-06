@@ -177,6 +177,14 @@ describe('schedule/jobs-reader', () => {
       expect(merged.owner).toBe('main')
     })
 
+    it('carries teamId from the sidecar into the merged view (round-3 review)', () => {
+      const job = makeRuntimeJob({ id: 'j-team', name: 'Team Job' })
+      const sidecar = makeMeta({ jobId: 'j-team', isBakinJob: true, agentId: undefined, teamId: 'development' })
+      const merged = mergeJob(job, sidecar, defaultOwner)
+      expect(merged.teamId).toBe('development')
+      expect(merged.agentId).toBeUndefined()
+    })
+
     it('does not flag Bakin sidecar jobs missing runtime cron toolsAllow', () => {
       const job = makeRuntimeJob({ id: 'j1', toolsAllowMissing: true })
       const sidecar = makeMeta({ jobId: 'j1', isBakinJob: true })

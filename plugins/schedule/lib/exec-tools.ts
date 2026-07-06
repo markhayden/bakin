@@ -23,6 +23,7 @@ import {
   updateScheduleJob,
   type PauseAction,
 } from './job-service'
+import { validateTeamAssignment, TaskValidationError } from '../../../src/core/task-service'
 
 export function registerScheduleExecTools(ctx: PluginContext): void {
   ctx.registerExecTool({
@@ -61,7 +62,8 @@ export function registerScheduleExecTools(ctx: PluginContext): void {
     parameters: {
       name: z.string().describe('Job name (required)'),
       schedule: z.string().describe('Schedule expression: NL ("every day at 9am") or raw cron ("0 9 * * *") (required)'),
-      agentId: z.string().optional().describe('Agent to assign tasks to'),
+      agentId: z.string().optional().describe('Agent to assign tasks to. Mutually exclusive with teamId.'),
+      teamId: z.string().optional().describe('Team to assign — each occurrence is routed to the best-suited member at fire time (#189). Mutually exclusive with agentId.'),
       workflowId: z.string().optional().describe('Workflow to attach to tasks'),
       taskPrompt: z.string().optional().describe('Task description template'),
       taskTitle: z.string().optional().describe('Task title template (supports {date}, {agent})'),
@@ -70,10 +72,20 @@ export function registerScheduleExecTools(ctx: PluginContext): void {
       if (!params.name || !params.schedule) {
         return { ok: false, error: 'name and schedule are required' }
       }
+      try {
+        await validateTeamAssignment({
+          assignee: params.agentId as string | undefined,
+          team: params.teamId as string | undefined,
+        })
+      } catch (err) {
+        if (err instanceof TaskValidationError) return { ok: false, error: err.message }
+        throw err
+      }
       const result = await createScheduleJob(ctx, {
         name: params.name as string,
         schedule: params.schedule as string,
         agentId: params.agentId as string | undefined,
+        teamId: params.teamId as string | undefined,
         workflowId: params.workflowId as string | undefined,
         taskPrompt: params.taskPrompt as string | undefined,
         taskTitle: params.taskTitle as string | undefined,
@@ -92,7 +104,8 @@ export function registerScheduleExecTools(ctx: PluginContext): void {
       jobId: z.string().describe('Job ID (required)'),
       name: z.string().optional().describe('New job name'),
       schedule: z.string().optional().describe('New schedule expression'),
-      agentId: z.string().optional().describe('New agent assignment'),
+      agentId: z.string().optional().describe('New agent assignment. Setting a non-empty agent clears any team; mutually exclusive with teamId.'),
+      teamId: z.string().optional().describe('New team assignment (#189). Setting a non-empty team clears any agent; mutually exclusive with agentId.'),
       workflowId: z.string().optional().describe('New workflow binding'),
       taskPrompt: z.string().optional().describe('New task prompt template'),
       taskTitle: z.string().optional().describe('New task title template'),
@@ -103,8 +116,17 @@ export function registerScheduleExecTools(ctx: PluginContext): void {
       const guard = await guardBakinMutation(params.jobId as string)
       if (!guard.ok) return { ok: false, error: guard.error }
 
+      try {
+        await validateTeamAssignment({
+          assignee: params.agentId as string | undefined,
+          team: params.teamId as string | undefined,
+        })
+      } catch (err) {
+        if (err instanceof TaskValidationError) return { ok: false, error: err.message }
+        throw err
+      }
       const result = updateScheduleJob(guard.meta, params, [
-        'displayName', 'agentId', 'workflowId', 'taskPrompt', 'taskTitle',
+        'displayName', 'agentId', 'teamId', 'workflowId', 'taskPrompt', 'taskTitle',
       ])
       if (!result.ok) return result
       indexJob(params.jobId as string)

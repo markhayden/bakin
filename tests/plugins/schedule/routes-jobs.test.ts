@@ -535,6 +535,33 @@ describe('schedule routes', () => {
   })
 
   // -----------------------------------------------------------------------
+  describe('POST /:jobId/adopt — team assignment (round-3 review)', () => {
+    it('adopting with a teamId persists it (and no agent)', async () => {
+      mockRuntimeCronJobs.push({ id: 'native-team', name: 'Native', schedule: '0 9 * * *', command: 'do it', enabled: true })
+      const route = findRoute(plugin.routes, 'POST', '/:jobId/adopt')!
+      const { status, body } = await callRoute(route, plugin.ctx, {
+        searchParams: { jobId: 'native-team' },
+        body: { teamId: 'development' },
+      })
+      expect(status).toBe(200)
+      void body
+      const meta = getJob('native-team')
+      expect(meta!.teamId).toBe('development')
+      expect(meta!.agentId).toBeUndefined()
+    })
+
+    it('adopting with agentId + teamId is rejected with 400', async () => {
+      mockRuntimeCronJobs.push({ id: 'native-both', name: 'Native', schedule: '0 9 * * *', command: 'do it', enabled: true })
+      const route = findRoute(plugin.routes, 'POST', '/:jobId/adopt')!
+      const { status, body } = await callRoute(route, plugin.ctx, {
+        searchParams: { jobId: 'native-both' },
+        body: { agentId: 'chef', teamId: 'development' },
+      })
+      expect(status).toBe(400)
+      expect(String(body.error)).toContain('both')
+    })
+  })
+
   // POST /:jobId/adopt and /:jobId/restore-native
   // -----------------------------------------------------------------------
   describe('POST /:jobId/adopt', () => {
