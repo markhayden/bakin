@@ -19,6 +19,7 @@ import { GateNode } from './components/nodes/gate-node'
 import { ParallelNode } from './components/nodes/parallel-node'
 import { OutputNode } from './components/nodes/output-node'
 import { WorkflowNode } from './components/nodes/workflow-node'
+import { MapWorkflowNode } from './components/nodes/map-workflow-node'
 import { CreateTaskNode } from './components/nodes/create-task-node'
 import { SubflowGroupNode } from './components/nodes/subflow-group-node'
 import { WorkflowsPage } from './components/workflows-page'
@@ -63,6 +64,7 @@ registerNodeRenderer('gate', GateNode)
 registerNodeRenderer('parallel', ParallelNode)
 registerNodeRenderer('output', OutputNode)
 registerNodeRenderer('workflow', WorkflowNode)
+registerNodeRenderer('map_workflow', MapWorkflowNode)
 registerNodeRenderer('createTask', CreateTaskNode)
 registerNodeRenderer('subflowGroup', SubflowGroupNode)
 
