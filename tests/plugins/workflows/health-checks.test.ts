@@ -293,6 +293,97 @@ steps:
     )).toBe(true)
   })
 
+  it('warns when a map_workflow step references a missing child workflow', async () => {
+    writeFileSync(
+      join(definitionsDir, 'map-orphan.yaml'),
+      `name: Map orphan
+description: test
+version: 1
+steps:
+  - id: seg
+    label: Segment
+    type: agent
+    agent: main
+  - id: fan
+    label: Fan
+    type: map_workflow
+    source: seg.items
+    workflow_id: ghost-map-child
+`,
+    )
+    const results = await checkWorkflowDefinitions(testDir)
+    expect(results.some(r =>
+      r.status === 'warn' &&
+      r.message.includes('map-orphan') &&
+      r.message.includes('ghost-map-child'),
+    )).toBe(true)
+  })
+
+  it('warns when a map child workflow itself contains a map_workflow step (nested maps unsupported)', async () => {
+    writeFileSync(
+      join(definitionsDir, 'map-parent.yaml'),
+      `name: Map parent
+description: test
+version: 1
+steps:
+  - id: seg
+    label: Segment
+    type: agent
+    agent: main
+  - id: fan
+    label: Fan
+    type: map_workflow
+    source: seg.items
+    workflow_id: map-inner
+`,
+    )
+    writeFileSync(
+      join(definitionsDir, 'map-inner.yaml'),
+      `name: Map inner
+description: test
+version: 1
+steps:
+  - id: seg2
+    label: Segment
+    type: agent
+    agent: main
+  - id: fan2
+    label: Fan again
+    type: map_workflow
+    source: seg2.items
+    workflow_id: map-leaf
+  - id: done
+    label: Done
+    type: agent
+    agent: main
+`,
+    )
+    writeFileSync(
+      join(definitionsDir, 'map-leaf.yaml'),
+      `name: Map leaf
+description: test
+version: 1
+steps:
+  - id: go
+    label: Go
+    type: agent
+    agent: main
+`,
+    )
+    const results = await checkWorkflowDefinitions(testDir)
+    expect(results.some(r =>
+      r.status === 'warn' &&
+      r.message.includes('map-parent') &&
+      r.message.includes('nested map'),
+    )).toBe(true)
+    // The leaf-level map (map-inner -> map-leaf) is fine — only one map deep.
+    expect(results.some(r =>
+      r.status === 'warn' &&
+      r.message.startsWith('Workflow "map-inner"') &&
+      r.message.includes('nested map'),
+    )).toBe(false)
+  })
+
   it('does not warn when the nested workflow exists on disk or in the registry', async () => {
     const { registerPluginDefinition, clearSourceRegistry } = await import('@bakin/core/workflows/source-registry')
     writeFileSync(

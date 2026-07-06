@@ -320,6 +320,82 @@ steps:
     })
   })
 
+  describe('validateDefinition — map_workflow steps', () => {
+    const mapDef = (source: string, extra: Partial<WorkflowDefinition> = {}): WorkflowDefinition => ({
+      name: 'Map Flow',
+      description: 'Fan out',
+      version: 1,
+      steps: [
+        { id: 'seg', type: 'agent', label: 'Segment', agent: 'chef' },
+        { id: 'fan', type: 'map_workflow', label: 'Fan', source, workflow_id: 'map-child' },
+        { id: 'after', type: 'agent', label: 'After', agent: 'chef' },
+      ],
+      ...extra,
+    })
+
+    it('accepts a map step sourcing an earlier top-level step', () => {
+      expect(validateDefinition(mapDef('seg.items'), { knownWorkflowIds: ['map-child'] })).toEqual([])
+    })
+
+    it('rejects a source without the <stepId>.<outputKey> shape', () => {
+      const errors = validateDefinition(mapDef('segitems'), { knownWorkflowIds: ['map-child'] })
+      expect(errors.some(e => e.includes('"fan"') && e.includes('<stepId>.<outputKey>'))).toBe(true)
+    })
+
+    it('rejects a source referencing a nonexistent step', () => {
+      const errors = validateDefinition(mapDef('ghost.items'), { knownWorkflowIds: ['map-child'] })
+      expect(errors.some(e => e.includes('nonexistent step "ghost"'))).toBe(true)
+    })
+
+    it('rejects a source referencing a parallel child (not top-level)', () => {
+      const def: WorkflowDefinition = {
+        name: 'Map Flow',
+        description: 'x',
+        version: 1,
+        steps: [
+          {
+            id: 'par', type: 'parallel', label: 'Par',
+            steps: [{ id: 'inner', type: 'agent', label: 'Inner', agent: 'chef' }],
+          },
+          { id: 'fan', type: 'map_workflow', label: 'Fan', source: 'inner.items', workflow_id: 'map-child' },
+        ],
+      }
+      const errors = validateDefinition(def, { knownWorkflowIds: ['map-child'] })
+      expect(errors.some(e => e.includes('top-level'))).toBe(true)
+    })
+
+    it('rejects a source referencing a later step', () => {
+      const errors = validateDefinition(mapDef('after.items'), { knownWorkflowIds: ['map-child'] })
+      expect(errors.some(e => e.includes('earlier'))).toBe(true)
+    })
+
+    it('rejects a source referencing the map step itself', () => {
+      const errors = validateDefinition(mapDef('fan.items'), { knownWorkflowIds: ['map-child'] })
+      expect(errors.some(e => e.includes('earlier'))).toBe(true)
+    })
+
+    it('rejects a map step whose workflow_id references its own workflow', () => {
+      const def = mapDef('seg.items')
+      ;(def.steps[1] as { workflow_id: string }).workflow_id = 'map-flow'
+      const errors = validateDefinition(def, { definitionId: 'map-flow', knownWorkflowIds: ['map-flow'] })
+      expect(errors.some(e => e.includes('cannot reference its own workflow'))).toBe(true)
+    })
+
+    it('rejects an unknown map child workflow_id', () => {
+      const errors = validateDefinition(mapDef('seg.items'))
+      expect(errors.some(e => e.includes('"map-child" not found'))).toBe(true)
+    })
+
+    it('accepts a map child workflow_id that exists on disk', () => {
+      writeFileSync(join(defsDir, 'map-child.yaml'), 'name: Map Child\ndescription: x\nversion: 1\nsteps:\n  - id: go\n    type: agent\n    label: Go\n    agent: chef\n')
+      expect(validateDefinition(mapDef('seg.items'), { contentDir: testDir })).toEqual([])
+    })
+
+    it('skips the existence check when validateNestedWorkflowRefs is false', () => {
+      expect(validateDefinition(mapDef('seg.items'), { validateNestedWorkflowRefs: false })).toEqual([])
+    })
+  })
+
   describe('loadDefinition / listDefinitions', () => {
     it('loads a definition from file', () => {
       writeFileSync(join(defsDir, 'test.yaml'), `

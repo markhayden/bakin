@@ -217,10 +217,21 @@ export async function checkWorkflowDefinitions(contentDir: string): Promise<Heal
           results.push(warn('workflow-definitions', `Workflow "${name}" step "${(step as { id: string }).id}" references skill "${skillName}" which does not exist`))
         }
         const stepType = (step as { type?: string }).type
-        if (stepType === 'workflow') {
+        if (stepType === 'workflow' || stepType === 'map_workflow') {
           const workflowId = (step as { workflow_id?: string }).workflow_id
           if (workflowId && !knownWorkflowIds.has(workflowId)) {
             results.push(warn('workflow-definitions', `Workflow "${name}" step "${(step as { id: string }).id}" references nested workflow "${workflowId}" which does not exist`))
+          }
+          // Nested maps (a map child whose workflow contains another map) are
+          // structurally legal but unsupported/untested in v1 — advisory only.
+          if (stepType === 'map_workflow' && workflowId) {
+            const child = defs.find((entry) => entry.name === workflowId)
+            const childHasMap = child?.definition.steps.some(
+              (childStep) => (childStep as { type?: string }).type === 'map_workflow',
+            )
+            if (childHasMap) {
+              results.push(warn('workflow-definitions', `Workflow "${name}" step "${(step as { id: string }).id}" fans out to "${workflowId}" which itself contains a map_workflow step — nested maps are unsupported in v1`))
+            }
           }
         }
         // Check parallel children too
