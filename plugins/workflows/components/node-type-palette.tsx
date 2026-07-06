@@ -16,6 +16,7 @@ import {
   ChevronRight,
   ClipboardPlus,
   GitBranch,
+  Layers,
   Puzzle,
   Radio,
   UserRound,
@@ -80,6 +81,12 @@ const BUILTIN_DISPLAY: Record<string, {
     description: 'Run another workflow as a step in this one.',
     icon: WorkflowIcon,
     toneClass: 'bg-zinc-700/60 text-zinc-300',
+  },
+  map_workflow: {
+    label: 'Map Fan-out',
+    description: "Run a child workflow per element of an earlier step's output array.",
+    icon: Layers,
+    toneClass: 'bg-violet-500/10 text-violet-300',
   },
   createTask: {
     label: 'Create Task',
