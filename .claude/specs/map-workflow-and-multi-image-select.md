@@ -227,6 +227,25 @@ support (warn only), cross-child communication, silent skip of a failed child
 (join waits — explicit user action or cancel-parent only), backwards-compat shims,
 writes to real `~/.bakin`/`~/.openclaw` from tests or the rig.
 
+## 9a. Implementation status (2026-07-05)
+
+All four PRs built and unit/integration tested (5800+ tests green per commit):
+PR1 #617 (engine), PR2 #620 (recovery), PR3 #621 (UI), PR4 (consolidate +
+workflows + harness). Two build-time deviations, both improvements:
+- The canvas rollup moved to the task detail panel (`MapChildrenPanel`) — the
+  canvas is definition-only by design; a new `POST /instances/:taskId/reopen`
+  route backs the failed-state recovery affordance.
+- Consolidate restores the PRE-CALL pointer on every run (not just first),
+  so re-runs never clobber a manual re-promote.
+
+**Live rig validation: PENDING** — run per `docs/validation/map-select-runbook.md`
+(operator-present, billed) and record results below.
+
+## 9b. Live validation results
+
+_To be recorded after the rig session (scenarios: happy, reject-prompt,
+retry-child, cancel-parent)._
+
 ## 9. Risks / open items tracked into the plan
 
 - Codex-served image generation is confirmed working on the user's main Bakin

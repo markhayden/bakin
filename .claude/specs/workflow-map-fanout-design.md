@@ -1,6 +1,6 @@
 # Design: `map_workflow` — Dynamic Fan-out / Fan-in
 
-**Status:** Design approved for future implementation (not scheduled)
+**Status:** IMPLEMENTED (2026-07-05, PRs #617/#620/#621 + the multi-image-select PR; build spec: `.claude/specs/map-workflow-and-multi-image-select.md`)
 **Issue:** #203 (this doc is its buildable core; the issue is re-scoped to reference it)
 **Prereqs shipped:** #374 order-independent nested refs; dead-surface deletions (`dependsOn`, `on_approve`); strict builtin schemas (see `.claude/specs/workflows-hardening.md`)
 

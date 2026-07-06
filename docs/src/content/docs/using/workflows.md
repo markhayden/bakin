@@ -30,6 +30,7 @@ A workflow is any number of ordered steps. Every step has a type:
 - **Parallel**: groups agent child steps that run side by side. The workflow waits for every child to finish before it continues.
 - **Output**: the terminal step. Optionally publishes the final result to channels like Discord, Slack, or email. Channel posting is allowed only from the active output owner.
 - **Sub-workflow**: runs another workflow inline, with its own task on the board so you can watch it move.
+- **Map fan-out**: runs a child workflow once per element of an earlier step's output array — the width is decided at runtime. Each child gets its own board task; the workflow waits for every child before continuing, and the results come back in source order. A failed or cancelled child never fails the others: retry or cancel it individually from the parent task's detail panel. The shipped `Multi-Image Select` workflow is the working example — one brief, three image variants generated in parallel, an agent picks the best, and the variants collapse into versions of a single asset.
 
 ## Managing workflows
 
