@@ -76,9 +76,19 @@ const mockCreateTask = mock((opts?: unknown) => {
   void opts
   return Promise.resolve({ id: 'task-new', workflowId: undefined })
 })
+class MockTaskValidationError extends Error {
+  constructor(message: string) { super(message); this.name = 'TaskValidationError' }
+}
 mock.module('../../../src/core/task-service', () => ({
   createTaskWithEffects: (opts: unknown) => mockCreateTask(opts),
-  validateTeamRef: async () => undefined,
+  validateTeamRef: async (teamId: string) => {
+    if (teamId !== 'development') throw new MockTaskValidationError(`Unknown team: "${teamId}"`)
+  },
+  validateTeamAssignment: async (opts: { assignee?: string; team?: string }) => {
+    if (opts.assignee && opts.team) throw new MockTaskValidationError('Cannot set both an agent and a team')
+    if (opts.team && opts.team !== 'development') throw new MockTaskValidationError(`Unknown team: "${opts.team}"`)
+  },
+  TaskValidationError: MockTaskValidationError,
 }))
 
 // Mock plugin-registry (hook registry used by bridge — not under test here but must be present)
@@ -324,6 +334,49 @@ describe('schedule plugin activation', () => {
       logicalJobId: 'plugin-nightly-sync',
       schedule: { kind: 'cron', expr: '*/5 * * * *' },
     }))
+  })
+
+  it('ensureBakinJob: input teamId replaces an existing agentId (exclusion, review R5)', async () => {
+    const activated = await activatePlugin(schedulePlugin, testDir)
+    const registerMock = activated.ctx.hooks.register as unknown as {
+      mock: { calls: Array<[string, (data: Record<string, unknown>) => Promise<Record<string, unknown>>, Record<string, unknown>]> }
+    }
+    const handler = registerMock.mock.calls.find(([name]) => name === 'schedule.ensureBakinJob')![1]
+
+    await handler({ jobId: 'r5-job', name: 'R5', schedule: '*/5 * * * *', command: 'x', agentId: 'chef' })
+    expect(getJob('r5-job')).toEqual(expect.objectContaining({ agentId: 'chef' }))
+
+    const result = await handler({ jobId: 'r5-job', name: 'R5', schedule: '*/5 * * * *', command: 'x', teamId: 'development' })
+    expect(result.ok).toBe(true)
+    const meta = getJob('r5-job')!
+    expect(meta.teamId).toBe('development')
+    expect(meta.agentId).toBeUndefined() // never both (review R5)
+  })
+
+  it('ensureBakinJob: rejects agentId + teamId together (review R5)', async () => {
+    const activated = await activatePlugin(schedulePlugin, testDir)
+    const registerMock = activated.ctx.hooks.register as unknown as {
+      mock: { calls: Array<[string, (data: Record<string, unknown>) => Promise<Record<string, unknown>>, Record<string, unknown>]> }
+    }
+    const handler = registerMock.mock.calls.find(([name]) => name === 'schedule.ensureBakinJob')![1]
+
+    const result = await handler({ jobId: 'r5-both', name: 'R5', schedule: '*/5 * * * *', command: 'x', agentId: 'chef', teamId: 'development' })
+    expect(result.ok).toBe(false)
+    expect(String(result.error)).toContain('both')
+    expect(getJob('r5-both')).toBeNull()
+  })
+
+  it('ensureBakinJob: rejects an unknown teamId (review R5)', async () => {
+    const activated = await activatePlugin(schedulePlugin, testDir)
+    const registerMock = activated.ctx.hooks.register as unknown as {
+      mock: { calls: Array<[string, (data: Record<string, unknown>) => Promise<Record<string, unknown>>, Record<string, unknown>]> }
+    }
+    const handler = registerMock.mock.calls.find(([name]) => name === 'schedule.ensureBakinJob')![1]
+
+    const result = await handler({ jobId: 'r5-ghost', name: 'R5', schedule: '*/5 * * * *', command: 'x', teamId: 'ghost-team' })
+    expect(result.ok).toBe(false)
+    expect(String(result.error)).toContain('Unknown team')
+    expect(getJob('r5-ghost')).toBeNull()
   })
 
   it('updates an existing Bakin schedule by logical id after a rename', async () => {

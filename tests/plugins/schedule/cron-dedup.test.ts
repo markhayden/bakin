@@ -69,6 +69,8 @@ const mockCreateTask = mock(async (opts?: unknown) => {
 mock.module('../../../src/core/task-service', () => ({
   createTaskWithEffects: (opts: unknown) => mockCreateTask(opts),
   validateTeamRef: async () => undefined,
+  validateTeamAssignment: async () => undefined,
+  TaskValidationError: class extends Error {},
 }))
 
 const emptyBoard = {

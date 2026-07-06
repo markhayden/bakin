@@ -23,6 +23,7 @@ import { checkSchedulePrompt, type PromptWarning } from './prompt-guard'
 import { getLastRun } from './runs-reader'
 import { getSystemTimezone } from './schedule-util'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
+import { validateTeamAssignment, TaskValidationError } from '../../../src/core/task-service'
 import { createLogger } from '../../../src/core/logger'
 
 const log = createLogger('schedule')
@@ -83,6 +84,23 @@ export async function ensureBakinJob(ctx: PluginContext, input: Record<string, u
     ? input.owner.trim()
     : existing?.owner ?? await getRuntimeMainAgentId(ctx.runtime)
 
+  // Assignment merge with the same exclusion + validation the REST routes
+  // enforce (review R5): an input-provided side wins and clears the other
+  // (including a carried-over existing value); '' clears its own side; a
+  // both-set input or an unknown team rejects the provisioning call.
+  const inputAgentId = typeof input.agentId === 'string' ? (input.agentId || undefined) : undefined
+  const inputTeamId = typeof input.teamId === 'string' ? (input.teamId || undefined) : undefined
+  let agentId = typeof input.agentId === 'string' ? inputAgentId : existing?.agentId
+  let teamId = typeof input.teamId === 'string' ? inputTeamId : existing?.teamId
+  if (inputAgentId && !inputTeamId) teamId = undefined
+  if (inputTeamId && !inputAgentId) agentId = undefined
+  try {
+    await validateTeamAssignment({ assignee: agentId, team: inputTeamId })
+  } catch (err) {
+    if (err instanceof TaskValidationError) return { ok: false, error: err.message }
+    throw err
+  }
+
   const meta: BakinJobMeta = {
     ...(existing ?? {}),
     jobId,
@@ -95,8 +113,8 @@ export async function ensureBakinJob(ctx: PluginContext, input: Record<string, u
     description: typeof input.description === 'string' ? input.description : existing?.description,
     owner,
     requireTriage: typeof input.requireTriage === 'boolean' ? input.requireTriage : existing?.requireTriage ?? false,
-    agentId: typeof input.agentId === 'string' ? input.agentId : existing?.agentId,
-    teamId: typeof input.teamId === 'string' ? input.teamId : existing?.teamId,
+    agentId,
+    teamId,
     workflowId: typeof input.workflowId === 'string' ? input.workflowId : existing?.workflowId,
     taskPrompt: typeof input.taskPrompt === 'string' ? input.taskPrompt : existing?.taskPrompt ?? command,
     taskTitle: typeof input.taskTitle === 'string' ? input.taskTitle : existing?.taskTitle,

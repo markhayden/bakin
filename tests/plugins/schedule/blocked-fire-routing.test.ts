@@ -69,7 +69,11 @@ const mockCreateTask = mock(async (opts?: unknown) => {
 })
 mock.module('../../../src/core/task-service', () => ({
   createTaskWithEffects: (opts: unknown) => mockCreateTask(opts),
-  validateTeamRef: async () => undefined,
+  validateTeamRef: async (teamId: string) => {
+    if (teamId === 'ghost-team') throw new Error(`Unknown team: "${teamId}"`)
+  },
+  validateTeamAssignment: async () => undefined,
+  TaskValidationError: class extends Error {},
 }))
 
 interface BoardTask { id: string; blockedReason?: string }
@@ -369,5 +373,25 @@ describe('team assignment passthrough (#189)', () => {
 
     expect(createdTaskOpts[0]?.team).toBeUndefined()
     expect(createdTaskOpts[0]?.assignee).toBeUndefined()
+  })
+})
+
+describe('dangling teamId fires gracefully (review R6)', () => {
+  it('a deleted team turns the occurrence into a BLOCKED task, not a job failure', async () => {
+    upsertJob(makeMeta({ agentId: undefined, teamId: 'ghost-team' }))
+
+    const result = await fireScheduledRunFromPayload({
+      jobId: 'release-notes', runId: 'run-ghost-1', timestamp: '2026-06-08T07:00:00Z',
+    })
+
+    // The occurrence is NOT lost and the fire is NOT a failure.
+    expect(result.status).toBe(200)
+    expect(result.body.taskId).toBe(createdTasks[0])
+    expect(getJob('release-notes')!.consecutiveFailures).toBe(0)
+
+    // The task lands blocked with an honest reason, with no team attached.
+    expect(createdTaskOpts[0]?.team).toBeUndefined()
+    expect(createdTaskOpts[0]?.column).toBe('blocked')
+    expect(String(createdTaskOpts[0]?.blockedReason)).toContain('Team routing failed')
   })
 })

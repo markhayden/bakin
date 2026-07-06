@@ -76,10 +76,18 @@ const mockCreateTask = mock((opts?: unknown) => {
   void opts
   return Promise.resolve({ id: 'task-new', workflowId: undefined })
 })
+class MockTaskValidationError extends Error {
+  constructor(message: string) { super(message); this.name = 'TaskValidationError' }
+}
 mock.module('../../../src/core/task-service', () => ({
   createTaskWithEffects: (opts: unknown) => mockCreateTask(opts),
+  TaskValidationError: MockTaskValidationError,
   validateTeamRef: async (teamId: string) => {
-    if (teamId !== 'development') throw new Error(`Unknown team: "${teamId}"`)
+    if (teamId !== 'development') throw new MockTaskValidationError(`Unknown team: "${teamId}"`)
+  },
+  validateTeamAssignment: async (opts: { assignee?: string; team?: string }) => {
+    if (opts.assignee && opts.team) throw new MockTaskValidationError('Cannot set both an agent and a team')
+    if (opts.team && opts.team !== 'development') throw new MockTaskValidationError(`Unknown team: "${opts.team}"`)
   },
 }))
 

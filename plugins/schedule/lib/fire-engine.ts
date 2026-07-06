@@ -23,7 +23,7 @@ import {
   withDefaults,
 } from './sidecar'
 import { claimCronFire, attachCronTask, markCronFireSkipped, findHealableCronClaims } from '../../../src/core/execution-ledger'
-import { createTaskWithEffects } from '../../../src/core/task-service'
+import { createTaskWithEffects, validateTeamRef } from '../../../src/core/task-service'
 import { readTaskboard } from '../../../src/core/task-store'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { createLogger } from '../../../src/core/logger'
@@ -202,11 +202,30 @@ export async function runClaimedFire(
     ? expandTemplate(meta.taskPrompt, templateVars)
     : undefined
 
+  // Dangling-team guard (review R6): the team may have been deleted after
+  // the job was configured, and createTaskWithEffects would then THROW on
+  // every fire — occurrences lost, failures accumulating until auto-pause.
+  // Instead, the occurrence lands as a BLOCKED task with an honest reason
+  // (not a job failure): the user re-assigns it and fixes the schedule.
+  let fireTeam = defaults.requireTriage ? undefined : meta.teamId
+  let column = opts.column ?? 'todo'
+  let blockedReason = opts.blockedReason
+  if (fireTeam) {
+    try {
+      await validateTeamRef(fireTeam)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      log.warn('Schedule job references a missing team; creating the occurrence blocked', { jobId, team: fireTeam, message })
+      blockedReason = `Team routing failed: ${message}. Re-assign this task, and fix the schedule's team assignment.`
+      column = 'blocked'
+      fireTeam = undefined
+    }
+  }
+
   // Pre-mint the task id so that if a post-create effect throws (e.g. the
   // workflow-start hook fails AFTER the row is written), we can still attach the
   // existing task to the claim. Otherwise the claim stays `pending`, the healer
   // re-drives it, and a *second* task is minted for the same occurrence (#472).
-  const column = opts.column ?? 'todo'
   const taskId = `task-${randomUUID()}`
   try {
     await createTaskWithEffects({
@@ -214,11 +233,11 @@ export async function runClaimedFire(
       title,
       description,
       column,
-      blockedReason: opts.blockedReason,
+      blockedReason,
       assignee: defaults.requireTriage ? undefined : meta.agentId,
       // Team-assigned schedules (#189): each occurrence is a fresh task, so
       // dispatch re-resolves the best member per fire. requireTriage wins.
-      team: defaults.requireTriage ? undefined : meta.teamId,
+      team: fireTeam,
       workflowId: meta.workflowId,
       createdBy: 'schedule',
       scheduleJobId: jobId,

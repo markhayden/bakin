@@ -79,6 +79,8 @@ const mockCreateTask = mock((opts?: unknown) => {
 mock.module('../../../src/core/task-service', () => ({
   createTaskWithEffects: (opts: unknown) => mockCreateTask(opts),
   validateTeamRef: async () => undefined,
+  validateTeamAssignment: async () => undefined,
+  TaskValidationError: class extends Error {},
 }))
 
 // Mock plugin-registry (hook registry used by bridge — not under test here but must be present)

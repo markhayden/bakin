@@ -24,7 +24,7 @@ import {
   readMergedRuntimeJobs,
   updateScheduleJob,
 } from '../job-service'
-import { validateTeamRef } from '../../../../src/core/task-service'
+import { validateTeamAssignment, TaskValidationError } from '../../../../src/core/task-service'
 
 // ─── Schemas ─────────────────────────────────────────────────────────────
 
@@ -118,15 +118,11 @@ export const scheduleRoutes = [
     body: createJobBody,
     responses: { 200: passthrough, 400: errorResponse, 500: errorResponse },
     handler: async (_req, ctx, { body }) => {
-      if (body.agentId && body.teamId) {
-        return json({ error: 'Cannot set both an agent and a team on a schedule' }, 400)
-      }
-      if (body.teamId) {
-        try {
-          await validateTeamRef(body.teamId)
-        } catch (err) {
-          return json({ error: err instanceof Error ? err.message : String(err) }, 400)
-        }
+      try {
+        await validateTeamAssignment({ assignee: body.agentId, team: body.teamId })
+      } catch (err) {
+        if (err instanceof TaskValidationError) return json({ error: err.message }, 400)
+        throw err
       }
       const result = await createScheduleJob(ctx, body)
       if (!result.ok) return json({ error: result.error }, 400)
@@ -151,15 +147,14 @@ export const scheduleRoutes = [
       if (!guard.ok) return json({ error: guard.error }, guard.status)
       const meta = guard.meta
       const updates = body as Record<string, unknown>
-      if (typeof updates.agentId === 'string' && updates.agentId && typeof updates.teamId === 'string' && updates.teamId) {
-        return json({ error: 'Cannot set both an agent and a team on a schedule' }, 400)
-      }
-      if (typeof updates.teamId === 'string' && updates.teamId) {
-        try {
-          await validateTeamRef(updates.teamId)
-        } catch (err) {
-          return json({ error: err instanceof Error ? err.message : String(err) }, 400)
-        }
+      try {
+        await validateTeamAssignment({
+          assignee: typeof updates.agentId === 'string' ? updates.agentId : undefined,
+          team: typeof updates.teamId === 'string' ? updates.teamId : undefined,
+        })
+      } catch (err) {
+        if (err instanceof TaskValidationError) return json({ error: err.message }, 400)
+        throw err
       }
       const result = updateScheduleJob(meta, updates, [
         'displayName', 'description', 'agentId', 'teamId', 'owner', 'requireTriage',
