@@ -10,7 +10,7 @@ import { z } from 'zod'
 import { defineRoute } from '@bakin/core/routing'
 import type { PluginContextLite } from '@bakin/core/routing'
 import { getTask, updateTask } from '../../../../src/core/task-store'
-import { getCurrentStep, completeStep, listInstances, loadInstance, retryMapChild, cancelMapChild, listMapChildren } from '../runtime'
+import { getCurrentStep, completeStep, listInstances, loadInstance, retryMapChild, cancelMapChild, listMapChildren, reopenFromStep } from '../runtime'
 import { createValidatedInstance } from '../start-validation'
 import { getWorkflowPluginContext } from '../plugin-context'
 import { indexInstance } from '../search-sync'
@@ -188,6 +188,32 @@ const cancelMapChildHandler = async (req: Request, ctx: PluginContextLite) => {
   return Response.json(result)
 }
 
+// POST /instances/:taskId/reopen — reopen a workflow at a prior actionable
+// step (recovery surface for failed instances, e.g. map_source_invalid).
+const reopenHandler = async (req: Request, ctx: PluginContextLite) => {
+  const url = new URL(req.url)
+  const taskId = url.searchParams.get('taskId')
+  if (!taskId) return Response.json({ error: 'taskId param required' }, { status: 400 })
+
+  let body: { stepId?: string; reason?: string } = {}
+  try { body = await req.json() } catch { /* empty body is fine */ }
+
+  const result = reopenFromStep(taskId, {
+    stepId: body.stepId,
+    reason: body.reason || 'Reopened from task detail',
+    actor: { id: 'user', source: 'web' },
+  })
+  if (!result.success) {
+    return Response.json({ error: 'Reopen failed', errors: result.errors }, { status: 400 })
+  }
+
+  ctx.activity.audit('reopened', 'user', { taskId, stepId: result.reopenedStepId, reason: body.reason })
+  ctx.activity.log('user', `Reopened workflow at "${result.reopenedStepId}"`, { taskId })
+  indexInstance(taskId).catch(() => {})
+  triggerDispatch()
+  return Response.json(result)
+}
+
 export const instanceRoutes = [
   defineRoute({ path: '/steps/:taskId', method: 'GET', description: 'Get current workflow step for a task', summary: 'Get current workflow step for a task', params: z.object({ taskId: z.string() }), responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: getStepHandler }),
   defineRoute({ path: '/steps/:taskId/complete', method: 'POST', description: 'Submit step output, validates against schema, advances workflow', summary: 'Submit step output, validates against schema, advances workflow', params: z.object({ taskId: z.string() }), responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: completeStepHandler }),
@@ -206,6 +232,7 @@ export const instanceRoutes = [
   }),
   defineRoute({ path: '/instances/:taskId', method: 'GET', description: 'Get full workflow instance state for a task', summary: 'Get full workflow instance state for a task', params: z.object({ taskId: z.string() }), responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: getInstanceHandler }),
   defineRoute({ path: '/instances/start', method: 'POST', description: 'Start a workflow instance for a task', summary: 'Start a workflow instance for a task', responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: startHandler }),
+  defineRoute({ path: '/instances/:taskId/reopen', method: 'POST', description: 'Reopen a workflow at a prior actionable step (recovery for failed instances)', summary: 'Reopen a workflow at a prior step', params: z.object({ taskId: z.string() }), responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: reopenHandler }),
   defineRoute({ path: '/instances/:taskId/map/:stepId/children', method: 'GET', description: 'List a map step\'s fan-out children with live child-instance statuses', summary: 'List map children with live statuses', params: z.object({ taskId: z.string(), stepId: z.string() }), responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: listMapChildrenHandler }),
   defineRoute({ path: '/instances/:taskId/map/:stepId/children/:index/retry', method: 'POST', description: 'Retry one map child: live children reopen in place, dead ones re-create under the same child task id', summary: 'Retry a map child', params: z.object({ taskId: z.string(), stepId: z.string(), index: z.string() }), responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: retryMapChildHandler }),
   defineRoute({ path: '/instances/:taskId/map/:stepId/children/:index/cancel', method: 'POST', description: 'Cancel one map child; the join stays blocked until it is retried or the parent is cancelled', summary: 'Cancel a map child', params: z.object({ taskId: z.string(), stepId: z.string(), index: z.string() }), responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: cancelMapChildHandler }),

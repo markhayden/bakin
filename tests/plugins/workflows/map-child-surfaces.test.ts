@@ -151,6 +151,39 @@ describe('map-child REST routes', () => {
   })
 })
 
+describe('reopen route', () => {
+  it('POST reopen recovers a map_source_invalid instance at the source step', async () => {
+    const taskId = `task-surface-reopen-${++seq}`
+    createInstance(taskId, 'map-flow', testDir)
+    completeStep(taskId, 'source-step', { wrong: [] }, undefined, testDir)
+    expect(loadInstance(taskId, testDir)!.status).toBe('failed')
+
+    const route = findRoute(activated.routes, 'POST', '/instances/:taskId/reopen')!
+    const res = await callRoute(route, activated.ctx, {
+      searchParams: { taskId },
+      body: { stepId: 'source-step', reason: 'fix the array' },
+    })
+    expect(res.status).toBe(200)
+    const reopened = loadInstance(taskId, testDir)!
+    expect(reopened.status).toBe('in_progress')
+    expect(reopened.currentStepId).toBe('source-step')
+    expect(reopened.stepStates['produce-items'].code).toBeUndefined()
+  })
+
+  it('POST reopen 400s with typed errors on a cancelled instance', async () => {
+    const taskId = fanned()
+    const { cancelInstance } = await import('../../../plugins/workflows/lib/runtime')
+    cancelInstance(taskId, testDir)
+
+    const route = findRoute(activated.routes, 'POST', '/instances/:taskId/reopen')!
+    const res = await callRoute(route, activated.ctx, {
+      searchParams: { taskId },
+      body: { stepId: 'source-step', reason: 'nope' },
+    })
+    expect(res.status).toBe(400)
+  })
+})
+
 describe('map-child exec tools', () => {
   const tool = (name: string) => {
     const found = activated.execTools.find((t) => t.name === name)
