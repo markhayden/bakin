@@ -11,11 +11,13 @@
 import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { definePlugin } from '@bakin/core/routing'
 
+import { chatRoutes } from './lib/routes'
+
 const chatPlugin: BakinPlugin = definePlugin({
   id: 'chat',
   name: 'Chat',
   version: '0.1.0',
-  // routes land in C2 (lib/routes.ts) once the store-backed handlers exist
+  routes: chatRoutes,
 
   activate(_ctx: PluginContext) {
     // Routes are declarative; nothing to register imperatively yet.
