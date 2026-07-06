@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useAgent } from "@makinbakin/sdk/hooks"
+import { TEAM_VALUE_PREFIX, isTeamValue, teamIdFromValue } from '@makinbakin/sdk/components'
 import { useJsonFetch } from "@makinbakin/sdk/hooks"
 import { toast } from "@makinbakin/sdk/hooks"
 import type { Task, ColumnId } from '../types'
@@ -105,7 +106,7 @@ export function useTaskDetail({ task, columnId, open, editing, onClose }: UseTas
       setDescription(task.description || '')
       // Unresolved team task → show the team selection; once resolved the
       // concrete agent leads (the team rides along server-side).
-      setAgent(task.agent || (task.team ? `team:${task.team}` : ''))
+      setAgent(task.agent || (task.team ? `${TEAM_VALUE_PREFIX}${task.team}` : ''))
       setColumn(columnId)
       setWorkflowId(task.workflowId || '')
       setDirty(false)
@@ -306,9 +307,9 @@ export function useTaskDetail({ task, columnId, open, editing, onClose }: UseTas
           title: title.trim(),
           description: description.trim() || undefined,
           column,
-          // `team:<id>` values come from the picker's Teams group (#189).
-          assignee: agent && !agent.startsWith('team:') ? agent : undefined,
-          team: agent.startsWith('team:') ? agent.slice(5) : undefined,
+          // Team values come from the picker's Teams group (#189).
+          assignee: agent && !isTeamValue(agent) ? agent : undefined,
+          team: isTeamValue(agent) ? teamIdFromValue(agent) : undefined,
           workflowId: workflowId || undefined,
         }),
       })
@@ -329,6 +330,18 @@ export function useTaskDetail({ task, columnId, open, editing, onClose }: UseTas
     if (isCreate) return handleCreate()
     setSaving(true)
     try {
+      // The route treats ABSENT keys as "don't touch" (partial update), so
+      // assignment keys are sent only when the picker value changed — an
+      // untouched resave must never wipe the retained team on a resolved
+      // task. Explicit Unassigned clears both with empty strings (#189).
+      const initialAssign = task!.agent || (task!.team ? `${TEAM_VALUE_PREFIX}${task!.team}` : '')
+      const assignPatch = agent === initialAssign
+        ? {}
+        : isTeamValue(agent)
+          ? { team: teamIdFromValue(agent) }
+          : agent
+            ? { agent }
+            : { agent: '', team: '' }
       const res = await fetch('/api/plugins/tasks/' + task!.id, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -337,12 +350,9 @@ export function useTaskDetail({ task, columnId, open, editing, onClose }: UseTas
           originalTitle: task!.title,
           title: title.trim(),
           description: description.trim(),
-          // `team:<id>` values come from the picker's Teams group (#189).
-          // Explicit Unassigned clears both.
-          agent: agent.startsWith('team:') ? undefined : agent,
-          team: agent.startsWith('team:') ? agent.slice(5) : (agent ? undefined : ''),
+          ...assignPatch,
           column,
-          workflowId: workflowId || undefined,
+          workflowId, // '' detaches; the route only clears on present keys
         }),
       })
       if (!res.ok) {

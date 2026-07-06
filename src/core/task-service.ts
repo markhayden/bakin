@@ -368,6 +368,17 @@ export async function blockTaskWithEffects(
  * Returns the created task.
  */
 /**
+ * Write-time assignment validation failure (#189, review R10). API surfaces
+ * map this to a 400 by TYPE — never by message text (house rule).
+ */
+export class TaskValidationError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'TaskValidationError'
+  }
+}
+
+/**
  * Write-time validation for a team reference (#189). Fails closed: an
  * unknown team OR an unavailable team plugin rejects the write — a bad
  * team id must never be stored and discovered at dispatch.
@@ -375,11 +386,24 @@ export async function blockTaskWithEffects(
 export async function validateTeamRef(teamId: string): Promise<void> {
   const registry = hooks()
   if (!registry.has('team.exists')) {
-    throw new Error(`Cannot validate team "${teamId}": team plugin unavailable`)
+    throw new TaskValidationError(`Cannot validate team "${teamId}": team plugin unavailable`)
   }
   const exists = await registry.invoke<boolean>('team.exists', { teamId })
   if (!exists) {
-    throw new Error(`Unknown team: "${teamId}"`)
+    throw new TaskValidationError(`Unknown team: "${teamId}"`)
+  }
+}
+
+/**
+ * The ONE agent/team assignment guard every write surface uses (review
+ * R10): mutual exclusion + team existence, throwing TaskValidationError.
+ */
+export async function validateTeamAssignment(opts: { assignee?: string; team?: string }): Promise<void> {
+  if (opts.assignee && opts.team) {
+    throw new TaskValidationError('Cannot set both an agent and a team')
+  }
+  if (opts.team) {
+    await validateTeamRef(opts.team)
   }
 }
 
@@ -406,12 +430,7 @@ export async function createTaskWithEffects(opts: {
   /** When creating directly into the blocked column, the reason shown to the user. */
   blockedReason?: string
 }): Promise<{ id: string; workflowId?: string; suggestedWorkflow?: string }> {
-  if (opts.team) {
-    if (opts.assignee) {
-      throw new Error('Cannot set both an agent and a team on a task')
-    }
-    await validateTeamRef(opts.team)
-  }
+  await validateTeamAssignment({ assignee: opts.assignee, team: opts.team })
 
   // Auto-match workflow if none was explicitly provided
   const suggested = !opts.workflowId ? (await hooks().invoke<string | null>('workflows.matchWorkflow', { title: opts.title, description: opts.description }) || undefined) : undefined

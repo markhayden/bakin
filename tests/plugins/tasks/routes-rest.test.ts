@@ -565,6 +565,39 @@ describe('PUT /:taskId — Update Task', () => {
     expect(body.error).toContain('update failed')
   })
 
+  it('title-only update does NOT clear stored team/agent (partial update, review R1)', async () => {
+    mockUpdateTask.mockResolvedValue(undefined)
+
+    const route = findRoute(activated.routes, 'PUT', '/:taskId')!
+    const { status } = await callRoute(route, activated.ctx, {
+      searchParams: { taskId: 'task-1' },
+      body: { title: 'Just a rename' },
+    })
+
+    expect(status).toBe(200)
+    const updates = mockUpdateTask.mock.calls[0][1] as Record<string, unknown>
+    // Absent body fields must be absent KEYS — updateTask clears on key
+    // presence ('team' in updates), so a passthrough undefined wipes data.
+    expect('team' in updates).toBe(false)
+    expect('agent' in updates).toBe(false)
+    expect('description' in updates).toBe(false)
+    expect(updates.title).toBe('Just a rename')
+  })
+
+  it('explicit empty-string team/agent still clear (partial update, review R1)', async () => {
+    mockUpdateTask.mockResolvedValue(undefined)
+
+    const route = findRoute(activated.routes, 'PUT', '/:taskId')!
+    await callRoute(route, activated.ctx, {
+      searchParams: { taskId: 'task-1' },
+      body: { agent: '', team: '' },
+    })
+
+    const updates = mockUpdateTask.mock.calls[0][1] as Record<string, unknown>
+    expect('team' in updates).toBe(true)
+    expect('agent' in updates).toBe(true)
+  })
+
   it('re-assigns to a team through update (#189)', async () => {
     mockUpdateTask.mockResolvedValue(undefined)
 

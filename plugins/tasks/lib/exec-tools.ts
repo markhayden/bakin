@@ -27,7 +27,7 @@ import {
 import {
   getTaskDetails,
   createTaskWithEffects,
-  validateTeamRef,
+  validateTeamAssignment,
   moveTaskWithEffects,
   blockTaskWithEffects,
   reportComplete,
@@ -339,13 +339,10 @@ export function registerTaskExecTools(ctx: PluginContext): void {
         }
         const guard = taskEditGuard(ctx, taskId, { agent, expectedVersion })
         if (guard) return { ok: false, error: guard.error }
-        if (assignee && team) return { ok: false, error: 'Cannot set both agent and team' }
-        if (team) {
-          try {
-            await validateTeamRef(team)
-          } catch (err) {
-            return { ok: false, error: (err as Error).message }
-          }
+        try {
+          await validateTeamAssignment({ assignee, team })
+        } catch (err) {
+          return { ok: false, error: (err as Error).message }
         }
         try {
           const updates: Record<string, unknown> = {}

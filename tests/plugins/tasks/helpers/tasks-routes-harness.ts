@@ -88,20 +88,36 @@ export const mockTriggerDispatch = mock()
 
 /** Teams accepted by the mocked validateTeamRef (#189). */
 export const mockKnownTeams = new Set(['development'])
+/** Same class shape as the real task-service export — routes match by instanceof. */
+export class MockTaskValidationError extends Error {
+  constructor(message: string) { super(message); this.name = 'TaskValidationError' }
+}
 export const mockValidateTeamRef = mock(async (teamId: string) => {
-  if (!mockKnownTeams.has(teamId)) throw new Error(`Unknown team: "${teamId}"`)
+  if (!mockKnownTeams.has(teamId)) throw new MockTaskValidationError(`Unknown team: "${teamId}"`)
+})
+export const mockValidateTeamAssignment = mock(async (opts: { assignee?: string; team?: string }) => {
+  if (opts.assignee && opts.team) throw new MockTaskValidationError('Cannot set both an agent and a team')
+  if (opts.team) await mockValidateTeamRef(opts.team)
 })
 
 export const taskServiceMock = () => ({
   moveTaskWithEffects: (...args: unknown[]) => mockMoveTaskWithEffects(...args),
   blockTaskWithEffects: (...args: unknown[]) => mockBlockTaskWithEffects(...args),
-  createTaskWithEffects: (...args: unknown[]) => mockCreateTaskWithEffects(...args),
+  createTaskWithEffects: async (...args: unknown[]) => {
+    // Mirror the real service: assignment validation happens inside create
+    // (review R10), so route tests exercise the typed-400 path.
+    const opts = (args[0] ?? {}) as { assignee?: string; team?: string }
+    await mockValidateTeamAssignment({ assignee: opts.assignee, team: opts.team })
+    return mockCreateTaskWithEffects(...args)
+  },
   reportComplete: (...args: unknown[]) => mockReportComplete(...args),
   setDependencyWithEffects: (...args: unknown[]) => mockSetDependencyWithEffects(...args),
   getTaskDetails: (...args: unknown[]) => mockGetTaskDetails(...args),
   logProgress: (...args: unknown[]) => mockLogProgress(...args),
   triggerDispatch: (...args: unknown[]) => mockTriggerDispatch(...args),
   validateTeamRef: (teamId: string) => mockValidateTeamRef(teamId),
+  validateTeamAssignment: (opts: { assignee?: string; team?: string }) => mockValidateTeamAssignment(opts),
+  TaskValidationError: MockTaskValidationError,
 })
 
 /**
