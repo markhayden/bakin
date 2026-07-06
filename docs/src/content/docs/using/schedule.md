@@ -21,7 +21,7 @@ As close to telling the future as it gets. Four view modes from the header: **Li
   <img src="/docs/media/screenshots/using-schedule--job-form.webp" alt="The job form with cron expression, agent picker, task title and prompt, and optional workflow." loading="lazy">
 </figure>
 
-`+ New Job` opens a side drawer. Type the cadence in plain English ("every day at 9am", "weekdays at noon", "first of the month") and Bakin translates it into cron. Or drop in a raw cron expression if you've got one. Pick the agent who runs it — or a team, in which case Bakin routes each occurrence to the best-suited member at fire time (see [Tasks → Assign to a team](/using/tasks/#assign-to-a-team)) — give the task a title and a prompt, optionally attach a workflow.
+`+ New Job` opens a side drawer. Type the cadence in plain English ("every day at 9am", "weekdays at noon", "first of the month") and Bakin translates it into cron. Or drop in a raw cron expression if you've got one. Pick the agent who runs it — or a team, in which case Bakin routes each occurrence to the best-suited member at fire time (see [Tasks → Assign to a team](/docs/using/tasks/#assign-to-a-team)) — give the task a title and a prompt, optionally attach a workflow.
 
 ### Pause, run now, duplicate
 

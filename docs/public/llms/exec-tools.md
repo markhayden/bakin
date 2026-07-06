@@ -1596,7 +1596,8 @@ Purpose: Create a new scheduled job that creates tasks on the board
 | --- | --- | --- | --- |
 | `name` | string | yes | Job name (required) |
 | `schedule` | string | yes | Schedule expression: NL ("every day at 9am") or raw cron ("0 9 * * *") (required) |
-| `agentId` | string | no | Agent to assign tasks to |
+| `agentId` | string | no | Agent to assign tasks to. Mutually exclusive with teamId. |
+| `teamId` | string | no | Team to assign — each occurrence is routed to the best-suited member at fire time (#189). Mutually exclusive with agentId. |
 | `workflowId` | string | no | Workflow to attach to tasks |
 | `taskPrompt` | string | no | Task description template |
 | `taskTitle` | string | no | Task title template (supports {date}, {agent}) |
@@ -1608,6 +1609,7 @@ mcporter call bakin-<agent>.bakin_exec_schedule_create --args '{
   "name": "value",
   "schedule": "value",
   "agentId": "value",
+  "teamId": "value",
   "workflowId": "value",
   "taskPrompt": "value",
   "taskTitle": "value"
@@ -1753,7 +1755,8 @@ Purpose: Update an existing scheduled job
 | `jobId` | string | yes | Job ID (required) |
 | `name` | string | no | New job name |
 | `schedule` | string | no | New schedule expression |
-| `agentId` | string | no | New agent assignment |
+| `agentId` | string | no | New agent assignment. Setting a non-empty agent clears any team; mutually exclusive with teamId. |
+| `teamId` | string | no | New team assignment (#189). Setting a non-empty team clears any agent; mutually exclusive with agentId. |
 | `workflowId` | string | no | New workflow binding |
 | `taskPrompt` | string | no | New task prompt template |
 | `taskTitle` | string | no | New task title template |
@@ -1766,6 +1769,7 @@ mcporter call bakin-<agent>.bakin_exec_schedule_update --args '{
   "name": "value",
   "schedule": "value",
   "agentId": "value",
+  "teamId": "value",
   "workflowId": "value",
   "taskPrompt": "value",
   "taskTitle": "value"
