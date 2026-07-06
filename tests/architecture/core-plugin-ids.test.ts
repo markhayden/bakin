@@ -41,4 +41,14 @@ describe('canonical core-plugin id list', () => {
     expect(keys.length).toBeGreaterThan(0)
     expect(sorted(CORE_PLUGIN_IDS)).toEqual(sorted(keys))
   })
+
+  it('matches the bakin.config.ts load list (the set the server actually activates)', () => {
+    // The registry loads plugins from bakin.config.ts — a plugin present in
+    // the other three sources but missing here builds fine yet never
+    // activates (chat was silently dropped this way when it was added).
+    const src = readFileSync(join(ROOT, 'bakin.config.ts'), 'utf-8')
+    const keys = [...src.matchAll(/path:\s*['"]plugins\/([a-z0-9-]+)['"]/g)].map((m) => m[1])
+    expect(keys.length).toBeGreaterThan(0)
+    expect(sorted(CORE_PLUGIN_IDS)).toEqual(sorted(keys))
+  })
 })
