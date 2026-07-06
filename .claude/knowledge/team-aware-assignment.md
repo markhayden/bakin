@@ -65,22 +65,29 @@ Fetch-injectable; NO live calls in tests.
 
 `src/core/dispatch-team.ts`. Resolution runs as a **pre-lock pre-pass**
 (post-review R3): `resolveTeamAssignmentsPrePass` (cycle) /
-`resolveTeamAssignmentForSingle` (kick) execute BEFORE `withStateLock`, so
-a slow routing call (up to ~60s per provider attempt) can never stall the
-dispatch cycle or queued kicks. The locked loop then only skips
-still-unresolved team tasks. Resolution still happens before the workflow
-branch and the concurrency/budget/claim sequence.
+`resolveTeamAssignmentForSingle` (kick) execute BEFORE `withStateLock`.
+Round-3 concurrency shape: the pre-pass is **re-entrant-guarded** (a
+force-released dispatch mutex cannot start a second billing pass), tasks
+resolve **concurrently** (N slow routing calls cost one ~60s timeout, not
+N), a **per-task in-flight set** keeps kicks and cycles off each other's
+tasks, and a **stale-write guard** re-reads the task before persisting so
+a slow result never overwrites a re-assigned/dispatched task (returns
+`'stale'`, records nothing). Resolution is also **eligibility-gated**: a
+task with a future `availableAt` or unmet `dependsOn` never bills the
+router (the pick could go stale before the task fires). The locked loop
+then only skips still-unresolved team tasks.
 
 - ok → `recordTeamResolution` persists the pick **immediately** → the LLM
   bills at most once per successful task lifetime; task log line +
   `task.team_resolved` audit `{team, agent, reason, model}`.
 - transient (provider hiccup, out-of-pool pick, throwing hook) → recorded
   in the SAME `failedDispatches` ladder as every other dispatch failure
-  (post-review R2): transient cooldown between retries, escalation to
-  blocked at `dispatch.maxRetries` — a persistently confused router cannot
-  bill LLM calls every cycle forever. Reason is task-logged ONCE (dedupe
-  against the last log entry) + audited, including the throwing-hook path
-  (post-review R8).
+  (post-review R2): transient cooldown between retries; at
+  `dispatch.maxRetries` the PRE-PASS itself escalates to blocked
+  (round-3: sessionDeath records are NOT exempt from pacing/escalation
+  here — recording a resolution failure drops the stale sessionDeath
+  context). Reason is task-logged ONCE (dedupe against the last log
+  entry) + audited, including the throwing-hook path (post-review R8).
 - structural (no key / unknown team / empty pool / hook missing) → task
   **blocked** with `Team routing failed: <reason>` + audit — never a
   silent fallback pick (matches the ledger/search fail-closed style).
@@ -92,9 +99,11 @@ task to unresolved — the next dispatch re-resolves (one new LLM call).
 
 Validation is ONE shared guard (post-review R10):
 `validateTeamAssignment({assignee, team})` in `src/core/task-service.ts`
-throws the typed `TaskValidationError` (mutual exclusion + `team.exists`
-lookup, failing CLOSED when the team plugin/hook is unavailable). Routes
-map it to 400 **by instanceof**, never by message text.
+throws the typed `TaskValidationError` carrying a `code`
+(`both_set` | `unknown_team` | `validation_unavailable`) — consumers
+branch on instanceof + code, never message text. Mutual exclusion +
+`team.exists` lookup, failing CLOSED when the team plugin/hook is
+unavailable; routes map to 400 **by instanceof**.
 `createTaskWithEffects` calls it internally — the tasks create route has
 no duplicate pre-check (one `team.exists` round-trip per create).
 
@@ -116,8 +125,15 @@ no duplicate pre-check (one `team.exists` round-trip per create).
   clears the other; post-review R5); `fire-engine.ts` passes `team` into
   `createTaskWithEffects`, so each occurrence re-resolves; `requireTriage`
   still wins. **Dangling team** (deleted after job creation): the fire
-  creates the occurrence as a BLOCKED task with an honest reason instead
-  of failing — no lost occurrences, no auto-pause (post-review R6).
+  creates the occurrence as a BLOCKED task with the
+  `TEAM_ROUTING_BLOCK_REASON` sentinel (detail in the task log) — a triage
+  marker the next fire's outcome check excludes from failure counting, so
+  no lost occurrences and no auto-pause (round-3). A
+  `validation_unavailable` error (team plugin momentarily down) instead
+  defers: the occurrence keeps its team and dispatch re-checks honestly.
+  Adopt (route + UI) and `bakin_exec_schedule_create`/`_update` carry
+  `teamId` with the same exclusion + validation; `jobs-reader` merges
+  `teamId` into the UI projection so edits round-trip it (round-3).
 - **Team deletion** — `DELETE /teams/:teamId` refuses with 409 while
   ACTIVE tasks still reference the team (post-review R6).
 

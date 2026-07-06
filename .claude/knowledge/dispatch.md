@@ -245,8 +245,10 @@ A task carrying `team` but no `agent` resolves to a concrete member via a
 PRE-LOCK pre-pass (`resolveTeamAssignmentsPrePass` for the cycle,
 `resolveTeamAssignmentForSingle` for kicks — `dispatch-team.ts` → the team
 plugin's `team.resolveAssignment` RPC hook): the routing LLM call (up to
-~60s per attempt) runs before `withStateLock`, so it can never stall the
-cycle or queued kicks. The pick is persisted immediately
+~60s per attempt) runs before `withStateLock`, re-entrant-guarded,
+CONCURRENT across tasks, deduped by a per-task in-flight set, gated on
+dispatch eligibility (future availableAt / unmet dependsOn never bill),
+and stale-write-guarded before persisting (round-3 review). The pick is persisted immediately
 (`recordTeamResolution` — retains `team` for audit) so the routing LLM
 bills at most once per successful task lifetime. Transient failures
 (including a throwing hook) are recorded in the SAME `failedDispatches`
