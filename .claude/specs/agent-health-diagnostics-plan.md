@@ -146,6 +146,45 @@ Setup: `bun run instance up --mode isolated` (isolated mode — never native; po
 7. **CLI:** `bakin agents doctor <id>` renders all sections; `--json` parses.
 8. **Regression:** full `bun run test`; `bun test tests/dev/` explicitly (crab/rig tests are CI-only locally).
 
+## 3.1 Validation record (2026-07-05/06)
+
+**Isolated boot smoke** (temp BAKIN_HOME, seeded ledgers, server from source):
+every #385 endpoint validated — live-now (incl. boot-sweep eviction of
+pre-boot runs), agent-effort (all three flag kinds with correct numbers,
+null-honest cost/observed), timeline (run spine, expandable logs, plain-language
+death summaries), usage-history byAgentDay, read-only scan, doctor rows with
+data.agents+kinds, CLI --json. Found+fixed: bypass events are watchdog-actor
+(top-level agent 'watchdog', real agent in data.agent) — timeline now queries
+them by attribution; bypass/lesson events get plain-language messages.
+
+**Dockerized rig, isolated mode, real OpenClaw 2026.5.28** (real Codex turns):
+1. ✅ Real dispatch appeared in live-now within seconds (agent/title/running-for/
+   heartbeat) and vanished on settle (~35s turn).
+2. ✅ Timeline showed the settled run with real model (openai/gpt-5.5), real
+   tokens (165 in / 20 out / 43.6k total incl. cache), null cost (no catalog
+   pricing — never $0), 2 progress-log lines.
+3. ✅ Drift loop: in-place edit inside the container's managed block →
+   live scan `block-stale [in-place-edit]` → doctor row with
+   data.agents ['main','enrich'] → Sync now recomposed exactly AGENTS.md
+   (verification ok) → rescan clean.
+4. ✅ Burn: effort-no-outcome fired (lowered floor) with honest message.
+5. ✅ Unattributed (D11): direct `openclaw agent` turns (no Bakin dispatch) →
+   after the 5-min usage scan, observed 169.7k vs attributed 43.6k →
+   126.1k unattributed → flag fired: "'enrich' used 126k tokens outside
+   Bakin-managed tasks in 24h". At 48% share the flag correctly held.
+6. ✅ `bakin agents doctor enrich` against the rig: all four sections
+   (TTY render validated in smoke/unit tests; non-TTY prints JSON).
+
+**Observations for the follow-up UX issue:**
+- Completions attribute to the REPORTER: the rig task's completion was
+  recorded by 'main' while 'enrich' did the work — the effort card's "Done"
+  column counts completions reported by that agent. Fine for production
+  (agents complete their own tasks) but worth a column tooltip.
+- The rig image floats `:latest` and was 5 weeks stale (2026.5.28 vs
+  upstream 2026.6.11) — pin `OPENCLAW_IMAGE_TAG` and bump alongside prod.
+- The onboarding `llm` check warned "no provider configured" even though
+  container-side Codex auth works — pre-existing check blind spot, not #385.
+
 ## 4. Risks / notes
 
 - **Burn false positives** accepted per spec (long-running legit work) — defaults tuned, settings exposed, message says "check its timeline" not "broken".
