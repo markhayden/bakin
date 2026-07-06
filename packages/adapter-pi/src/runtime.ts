@@ -10,6 +10,9 @@ import type {
   AdapterInitOpts,
 } from '@bakin/core/adapters/runtime'
 
+import { createAgentsSurface } from './agents'
+import { seedMainAgentIfEmpty } from './main-agent'
+
 export interface PiRuntimeAdapterOptions {
   settings?: Record<string, unknown>
 }
@@ -23,36 +26,31 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
   readonly version = '0.1.0'
   readonly requiredCoreVersion = '>=1.0.0'
 
+  private initOpts: AdapterInitOpts | null = null
+
   constructor(private readonly options: PiRuntimeAdapterOptions = {}) {}
 
-  async initialize(_opts: AdapterInitOpts): Promise<void> {
-    notImplemented('initialize')
+  async initialize(opts: AdapterInitOpts): Promise<void> {
+    this.initOpts = opts
+    await seedMainAgentIfEmpty(opts.logger)
   }
 
   async shutdown(): Promise<void> {}
+
+  /** In-process runtime: alive iff initialized (deep probes are health checks). */
   async ping(): Promise<boolean> {
-    return false
+    return this.initOpts !== null
   }
+
   async restart(): Promise<void> {
-    notImplemented('restart')
+    // No external process to bounce; session-pool disposal lands with P7.
   }
+
   getHealthChecks(): ReturnType<AgentRuntimeAdapter['getHealthChecks']> {
     return []
   }
 
-  agents: AgentRuntimeAdapter['agents'] = {
-    list: async () => notImplemented('agents.list'),
-    get: async () => notImplemented('agents.get'),
-    create: async () => notImplemented('agents.create'),
-    update: async () => notImplemented('agents.update'),
-    remove: async () => notImplemented('agents.remove'),
-    listWorkspaceFiles: async () => notImplemented('agents.listWorkspaceFiles'),
-    readWorkspaceFile: async () => notImplemented('agents.readWorkspaceFile'),
-    writeWorkspaceFile: async () => notImplemented('agents.writeWorkspaceFile'),
-    removeWorkspaceFile: async () => notImplemented('agents.removeWorkspaceFile'),
-    updatePermissions: async () => notImplemented('agents.updatePermissions'),
-    updateAllowlist: async () => notImplemented('agents.updateAllowlist'),
-  }
+  agents: AgentRuntimeAdapter['agents'] = createAgentsSurface()
 
   messaging: AgentRuntimeAdapter['messaging'] = {
     send: async () => notImplemented('messaging.send'),
