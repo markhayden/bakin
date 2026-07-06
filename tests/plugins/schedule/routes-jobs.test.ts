@@ -399,6 +399,49 @@ describe('schedule routes', () => {
       expect(meta!.taskPrompt).toBe('New prompt')
     })
 
+    it('re-assigning to a team clears agentId (#189)', async () => {
+      upsertJob(makeMeta({ jobId: 'job-mx1', agentId: 'chef' }))
+
+      const route = findRoute(plugin.routes, 'PUT', '/:jobId')!
+      const { status } = await callRoute(route, plugin.ctx, {
+        searchParams: { jobId: 'job-mx1' },
+        body: { teamId: 'development' },
+      })
+
+      expect(status).toBe(200)
+      const meta = getJob('job-mx1')
+      expect(meta!.teamId).toBe('development')
+      expect(meta!.agentId).toBeUndefined()
+    })
+
+    it('re-assigning to an agent clears teamId (#189)', async () => {
+      upsertJob(makeMeta({ jobId: 'job-mx2', agentId: undefined, teamId: 'development' }))
+
+      const route = findRoute(plugin.routes, 'PUT', '/:jobId')!
+      const { status } = await callRoute(route, plugin.ctx, {
+        searchParams: { jobId: 'job-mx2' },
+        body: { agentId: 'chef' },
+      })
+
+      expect(status).toBe(200)
+      const meta = getJob('job-mx2')
+      expect(meta!.agentId).toBe('chef')
+      expect(meta!.teamId).toBeUndefined()
+    })
+
+    it('rejects agentId + teamId together on update with 400 (#189)', async () => {
+      upsertJob(makeMeta({ jobId: 'job-mx3' }))
+
+      const route = findRoute(plugin.routes, 'PUT', '/:jobId')!
+      const { status, body } = await callRoute(route, plugin.ctx, {
+        searchParams: { jobId: 'job-mx3' },
+        body: { agentId: 'chef', teamId: 'development' },
+      })
+
+      expect(status).toBe(400)
+      expect(String(body.error)).toContain('both')
+    })
+
     // Legacy hand-validation: pre-T8 the handler returned 400 when neither
     // url.searchParams.get('jobId') nor body.jobId was set. T8+ routing
     // requires :jobId in the path, so this case never reaches the handler.
