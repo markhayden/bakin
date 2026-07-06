@@ -9,6 +9,7 @@ import { z } from 'zod'
 import { defineRoute } from '@bakin/core/routing'
 
 import { createChat, deleteChat, getChatSummary, listChats, readTranscript } from './store'
+import { isTurnInFlight, startChatTurn } from './stream-bridge'
 
 const errorResponse = z.object({ error: z.string() }).passthrough()
 const passthrough = z.object({}).passthrough()
@@ -18,6 +19,10 @@ const chatIdParams = z.object({ chatId: z.string().min(1) })
 const createChatBody = z.object({
   agentId: z.string().min(1, 'agentId required'),
   title: z.string().max(200).optional(),
+})
+
+const sendMessageBody = z.object({
+  content: z.string().min(1, 'content required').max(64_000),
 })
 
 export const chatRoutes = [
@@ -60,6 +65,22 @@ export const chatRoutes = [
       const chat = getChatSummary(params.chatId)
       if (!chat) return Response.json({ error: 'chat not found' }, { status: 404 })
       return Response.json({ chat, messages: readTranscript(params.chatId) })
+    },
+  }),
+
+  defineRoute({
+    path: '/chats/:chatId/messages',
+    method: 'POST',
+    summary: 'Send a message to the chat agent',
+    description: 'Returns 202 immediately; the reply streams as chat.chunk SSE events, closed by chat.done or chat.error. One in-flight turn per chat (409 otherwise).',
+    params: chatIdParams,
+    body: sendMessageBody,
+    responses: { 202: passthrough, 404: errorResponse, 409: errorResponse },
+    handler: async (_req, ctx, { params, body }) => {
+      const result = await startChatTurn(ctx, params.chatId, body.content)
+      if (result === 'not_found') return Response.json({ error: 'chat not found' }, { status: 404 })
+      if (result === 'busy') return Response.json({ error: 'a turn is already in flight for this chat' }, { status: 409 })
+      return Response.json({ accepted: true, streaming: isTurnInFlight(params.chatId) }, { status: 202 })
     },
   }),
 
