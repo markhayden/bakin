@@ -1,0 +1,252 @@
+/**
+ * adapter-pi P9 (checkpoint γ) — REAL Pi SDK turns against the fake
+ * OpenAI-compatible provider: send/stream, usage, tool bridge round-trip,
+ * thread resume, abort, provider cooldown. Zero LLM tokens.
+ */
+import { describe, test, expect, beforeAll, afterAll, mock } from 'bun:test'
+import { join } from 'path'
+import { tmpdir } from 'os'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs'
+import { randomUUID } from 'crypto'
+
+// The Pi SDK calls global fetch; the happy-dom preload replaces it with a
+// browser emulation that breaks real sockets — restore Bun's native fetch.
+globalThis.fetch = (Bun as unknown as { fetch: typeof fetch }).fetch
+
+const testDir = join(tmpdir(), `bakin-test-pi-turn-${Date.now()}-${randomUUID()}`)
+process.env.PI_HOME = join(testDir, 'pi')
+process.env.BAKIN_HOME = join(testDir, 'bakin')
+
+const contentDirMock = () => ({
+  getContentDir: () => join(testDir, 'bakin'),
+  getBakinPaths: () => ({ home: join(testDir, 'bakin'), db: join(testDir, 'bakin', 'bakin.db') }),
+})
+mock.module('../../../src/core/content-dir', contentDirMock)
+mock.module('../../../packages/core/src/content-dir', contentDirMock)
+mock.module('../../../src/core/logger', () => ({
+  createLogger: () => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }),
+}))
+
+import type { RuntimeError, RuntimeExecToolProvider, ChatChunk } from '../../../packages/core/src/adapters/runtime'
+import { createPiRuntimeAdapter } from '../../../packages/adapter-pi/src/index'
+import { resetPiHome } from '../../../packages/adapter-pi/src/home'
+import { resetModelRegistry } from '../../../packages/adapter-pi/src/models'
+import { getThreadSessionFile } from '../../../packages/adapter-pi/src/sessions'
+import { startFakeProvider, type FakeProvider, type FakeTurnScript } from './fake-provider'
+
+const invocations: Array<{ name: string; params: Record<string, unknown>; agentId: string }> = []
+const execToolProvider: RuntimeExecToolProvider = {
+  list: () => [{
+    name: 'bakin_exec_test_echo',
+    description: 'Echo a message',
+    parametersSchema: {
+      type: 'object',
+      properties: { message: { type: 'string' } },
+      required: ['message'],
+    },
+  }],
+  invoke: async (name, params, agentId) => {
+    invocations.push({ name, params, agentId })
+    return { ok: true, text: JSON.stringify({ ok: true, echoed: params.message }) }
+  },
+}
+
+let provider: FakeProvider
+const adapter = createPiRuntimeAdapter()
+
+function seedProvider(scripts: FakeTurnScript[]): FakeProvider {
+  provider?.stop()
+  provider = startFakeProvider(scripts)
+  // Point the fixture model at the fresh server (port changes per start).
+  const agentDir = join(testDir, 'pi', 'agent')
+  writeFileSync(join(agentDir, 'models.json'), JSON.stringify({
+    providers: {
+      fakeai: {
+        name: 'FakeAI',
+        baseUrl: provider.url,
+        api: 'openai-completions',
+        models: [{
+          id: 'fake-model',
+          name: 'Fake Model',
+          input: ['text'],
+          reasoning: false,
+          contextWindow: 100000,
+          maxTokens: 8000,
+          cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
+        }],
+      },
+    },
+  }))
+  resetModelRegistry()
+  return provider
+}
+
+beforeAll(async () => {
+  resetPiHome()
+  const agentDir = join(testDir, 'pi', 'agent')
+  mkdirSync(agentDir, { recursive: true })
+  writeFileSync(join(agentDir, 'auth.json'), JSON.stringify({
+    fakeai: { type: 'api_key', key: 'fake-key' },
+  }))
+  await adapter.initialize({
+    contentDir: join(testDir, 'bakin'),
+    execTools: execToolProvider,
+    // Bakin's dispatch owns retries — disable Pi's inner auto-retry so
+    // provider-failure tests settle immediately.
+    settings: { retry: { enabled: false } },
+  })
+  await adapter.agents.update('main', { model: 'fakeai/fake-model' })
+  await adapter.agents.writeWorkspaceFile('main', { path: 'SOUL.md', content: 'You are the test soul.' })
+})
+
+afterAll(() => {
+  provider?.stop()
+  rmSync(testDir, { recursive: true, force: true })
+})
+
+describe('messaging.send', () => {
+  test('text turn returns content + usage delta + sessionId; canonical files enter the system prompt', async () => {
+    const fake = seedProvider([
+      { steps: [{ text: 'Hello ' }, { text: 'from Pi' }], usage: { prompt: 42, completion: 7 } },
+    ])
+    const result = await adapter.messaging.send({ agentId: 'main', content: 'hi', threadId: 'task:t1:d1' })
+    expect(result.content).toBe('Hello from Pi')
+    expect(result.metadata?.sessionId).toBeDefined()
+    expect(result.usage?.output).toBe(7)
+    expect(result.usage?.input).toBe(42)
+    expect(result.usage?.model).toBe('fakeai/fake-model')
+
+    // System prompt carried the canonical workspace file.
+    const req = fake.requests[0] as { messages: Array<{ role: string; content: unknown }> }
+    const system = req.messages.find((m) => m.role === 'system')
+    expect(JSON.stringify(system?.content)).toContain('You are the test soul.')
+
+    // Thread mapping recorded for resume.
+    expect(getThreadSessionFile('main', 'task:t1:d1')).not.toBeNull()
+  })
+
+  test('same threadId resumes the same session (history grows)', async () => {
+    const fake = seedProvider([
+      { steps: [{ text: 'first' }] },
+      { steps: [{ text: 'second' }] },
+    ])
+    await adapter.messaging.send({ agentId: 'main', content: 'one', threadId: 'chat:resume-1' })
+    await adapter.messaging.send({ agentId: 'main', content: 'two', threadId: 'chat:resume-1' })
+    const first = fake.requests[0] as { messages: unknown[] }
+    const second = fake.requests[1] as { messages: unknown[] }
+    expect(second.messages.length).toBeGreaterThan(first.messages.length)
+    const flat = JSON.stringify(second.messages)
+    expect(flat).toContain('one')
+    expect(flat).toContain('first')
+    expect(flat).toContain('two')
+  })
+
+  test('exec-tool round trip: model calls bakin tool, result feeds the next request', async () => {
+    invocations.length = 0
+    const fake = seedProvider([
+      { steps: [{ toolCall: { name: 'bakin_exec_test_echo', args: { message: 'ping' } } }] },
+      { steps: [{ text: 'tool replied' }] },
+    ])
+    const result = await adapter.messaging.send({ agentId: 'main', content: 'use the tool', threadId: 'task:tool:d1' })
+    expect(invocations).toEqual([{ name: 'bakin_exec_test_echo', params: { message: 'ping' }, agentId: 'main' }])
+    expect(result.content).toBe('tool replied')
+    // Tool result travelled back to the provider on the second request.
+    expect(JSON.stringify(fake.requests[1])).toContain('echoed')
+  })
+
+  test('toolsMode none exposes no bakin tools to the model', async () => {
+    const fake = seedProvider([{ steps: [{ text: 'no tools here' }] }])
+    await adapter.messaging.send({ agentId: 'main', content: 'plain', toolsMode: 'none' })
+    const req = fake.requests[0] as { tools?: unknown[] }
+    expect(req.tools ?? []).toHaveLength(0)
+  })
+
+  test('provider 429 maps to provider_cooldown', async () => {
+    seedProvider([
+      { status: 429, errorBody: { error: { message: 'rate limited, slow down' } } },
+      { status: 429, errorBody: { error: { message: 'rate limited, slow down' } } },
+      { status: 429, errorBody: { error: { message: 'rate limited, slow down' } } },
+      { status: 429, errorBody: { error: { message: 'rate limited, slow down' } } },
+    ])
+    try {
+      await adapter.messaging.send({ agentId: 'main', content: 'hi' })
+      throw new Error('expected send to reject')
+    } catch (err) {
+      expect((err as RuntimeError).kind).toBe('provider_cooldown')
+    }
+  }, 30_000)
+
+  test('abort mid-turn settles kind aborted', async () => {
+    seedProvider([
+      { steps: [{ text: 'slow ' }, { delayMs: 3_000, text: 'never delivered' }] },
+    ])
+    const controller = new AbortController()
+    const pending = adapter.messaging.send({ agentId: 'main', content: 'hi', signal: controller.signal })
+    setTimeout(() => controller.abort(), 250)
+    try {
+      await pending
+      throw new Error('expected send to reject')
+    } catch (err) {
+      expect((err as RuntimeError).kind).toBe('aborted')
+    }
+  }, 15_000)
+
+  test('unknown agent is a typed runtime_failed', async () => {
+    try {
+      await adapter.messaging.send({ agentId: 'ghost', content: 'hi' })
+      throw new Error('expected send to reject')
+    } catch (err) {
+      expect((err as RuntimeError).kind).toBe('runtime_failed')
+    }
+  })
+})
+
+describe('messaging.stream', () => {
+  test('ordered chunks: status/text/tool → done', async () => {
+    invocations.length = 0
+    seedProvider([
+      { steps: [{ toolCall: { name: 'bakin_exec_test_echo', args: { message: 'streamed' } } }] },
+      { steps: [{ text: 'after tool' }] },
+    ])
+    const chunks: ChatChunk[] = []
+    for await (const chunk of adapter.messaging.stream({ agentId: 'main', content: 'go', threadId: 'chat:stream-1' })) {
+      chunks.push(chunk)
+    }
+    const kinds = chunks.map((c) => c.type)
+    expect(kinds.at(-1)).toBe('done')
+    expect(kinds).toContain('tool')
+    expect(kinds).toContain('text')
+    const toolPhases = chunks.filter((c) => c.type === 'tool').map((c) => (c.data as { phase: string }).phase)
+    expect(toolPhases).toEqual(['call', 'result'])
+    const text = chunks.filter((c) => c.type === 'text').map((c) => c.content).join('')
+    expect(text).toBe('after tool')
+  })
+
+  test('provider failure surfaces as an error chunk, never a throw from iteration', async () => {
+    seedProvider([
+      { status: 500, errorBody: { error: { message: 'exploded' } } },
+      { status: 500, errorBody: { error: { message: 'exploded' } } },
+      { status: 500, errorBody: { error: { message: 'exploded' } } },
+      { status: 500, errorBody: { error: { message: 'exploded' } } },
+    ])
+    const chunks: ChatChunk[] = []
+    for await (const chunk of adapter.messaging.stream({ agentId: 'main', content: 'go' })) {
+      chunks.push(chunk)
+    }
+    expect(chunks.at(-1)?.type).toBe('error')
+  }, 30_000)
+})
+
+describe('sessions surface', () => {
+  test('sessions.list surfaces persisted sessions with store stats', async () => {
+    const sessions = await adapter.sessions.list('main')
+    expect(sessions.length).toBeGreaterThan(0)
+    expect(sessions[0].agentId).toBe('main')
+    expect(existsSync(String(sessions[0].metadata?.path))).toBe(true)
+
+    const stats = await adapter.sessions.storeStats!()
+    const main = stats.find((s) => s.agentId === 'main')
+    expect(main!.storeEntries).toBeGreaterThan(0)
+    expect(main!.diskBytes).toBeGreaterThan(0)
+  })
+})

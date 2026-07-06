@@ -15,8 +15,10 @@ import type { RuntimeCapabilities, RuntimeToolAccessHint } from '@bakin/core/ada
 import { createAgentsSurface } from './agents'
 import { createConfigSurface } from './config'
 import { MAIN_AGENT_ID, seedMainAgentIfEmpty } from './main-agent'
+import { createMessagingSurface } from './messaging'
 import { capabilitiesForModel, createModelsSurface, resetModelRegistry } from './models'
 import { readRegistry } from './registry'
+import { createSessionsSurface } from './sessions'
 import { createSkillsSurface } from './skills'
 
 export interface PiRuntimeAdapterOptions {
@@ -76,10 +78,11 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
 
   agents: AgentRuntimeAdapter['agents'] = createAgentsSurface()
 
-  messaging: AgentRuntimeAdapter['messaging'] = {
-    send: async () => notImplemented('messaging.send'),
-    stream: () => notImplemented('messaging.stream'),
-  }
+  messaging: AgentRuntimeAdapter['messaging'] = createMessagingSurface({
+    getExecTools: () => this.initOpts?.execTools,
+    getLogger: () => this.initOpts?.logger,
+    getSettings: () => this.initOpts?.settings ?? this.options.settings,
+  })
 
   tools: AgentRuntimeAdapter['tools'] = {
     invoke: async () => notImplemented('tools.invoke'),
@@ -99,10 +102,7 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
 
   skills: AgentRuntimeAdapter['skills'] = createSkillsSurface()
 
-  sessions: AgentRuntimeAdapter['sessions'] = {
-    list: async () => notImplemented('sessions.list'),
-    get: async () => notImplemented('sessions.get'),
-  }
+  sessions: AgentRuntimeAdapter['sessions'] = createSessionsSurface()
 
   memory: AgentRuntimeAdapter['memory'] = {
     listTiers: async () => notImplemented('memory.listTiers'),

@@ -4,6 +4,9 @@ export type {
   AdapterHealthCheckResult,
   AdapterInitOpts,
   AdapterLogger,
+  RuntimeExecToolDescriptor,
+  RuntimeExecToolInvokeResult,
+  RuntimeExecToolProvider,
   Unsubscribe,
 } from '../shared'
 
