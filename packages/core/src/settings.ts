@@ -11,7 +11,7 @@ import { setStoredProviderKey } from './media/secret-store'
 
 const log = createLogger('settings')
 
-export type RuntimeAdapterName = 'openclaw'
+export type RuntimeAdapterName = 'openclaw' | 'pi'
 export type SearchAdapterName = 'antfly'
 
 export type RuntimeAdapterSettings = Record<string, unknown>
