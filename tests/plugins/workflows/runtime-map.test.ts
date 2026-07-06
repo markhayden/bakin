@@ -276,4 +276,95 @@ describe('runtime — map_workflow', () => {
       expect(instance.stepStates['fan'].code).toBe('map_source_invalid')
     })
   })
+
+  describe('fan-in (join)', () => {
+    const completeChild = (taskId: string, i: number, output?: Record<string, unknown>) =>
+      completeStep(`${taskId}--produce-items--${i}`, 'do-work', output ?? { made: items[i] }, undefined, testDir)
+
+    it('aggregates child outputs in source order regardless of completion order', () => {
+      startAndFan('task-join')
+      for (const i of [2, 0, 1]) {
+        expect(completeChild('task-join', i).success).toBe(true)
+      }
+
+      const parent = loadInstance('task-join', testDir)!
+      const state = parent.stepStates['produce-items']
+      expect(state.status).toBe('complete')
+      expect(state.output).toEqual({
+        outputs: [{ made: 'clip-a' }, { made: 'clip-b' }, { made: 'clip-c' }],
+      })
+      expect(parent.currentStepId).toBe('after-map')
+      expect(parent.stepStates['after-map'].status).toBe('in_progress')
+      expect(parent.history.at(-1)).toMatchObject({ stepId: 'produce-items', status: 'complete' })
+    })
+
+    it('leaves the map step in_progress until every child completes', () => {
+      startAndFan('task-partial')
+      completeChild('task-partial', 0, { made: 'a' })
+
+      const parent = loadInstance('task-partial', testDir)!
+      const state = parent.stepStates['produce-items']
+      expect(state.status).toBe('in_progress')
+      expect(state.children![0].status).toBe('complete')
+      expect(state.children![0].output).toEqual({ made: 'a' })
+      expect(state.children![1].status).toBe('in_progress')
+      expect(state.children![2].status).toBe('in_progress')
+      expect(parent.currentStepId).toBe('produce-items')
+    })
+
+    it('moves each completed child board task to done as it finishes', async () => {
+      startAndFan('task-board-done')
+      await settle()
+      completeChild('task-board-done', 1)
+      await settle()
+      expect(hookTasks.get('task-board-done--produce-items--1')!.column).toBe('done')
+      expect(hookTasks.get('task-board-done--produce-items--0')!.column).toBe('inProgress')
+    })
+
+    it('completes the parent workflow after the map when the remaining steps finish', () => {
+      startAndFan('task-full')
+      for (const i of [0, 1, 2]) completeChild('task-full', i)
+      const result = completeStep('task-full', 'after-map', { done: true }, undefined, testDir)
+      expect(result.success).toBe(true)
+      expect(result.workflowComplete).toBe(true)
+      expect(loadInstance('task-full', testDir)!.status).toBe('complete')
+    })
+
+    it('propagates a map join upward through nested workflow recursion', () => {
+      // Grandparent (map-wrapper) → child (map-flow, spawned as first step) →
+      // grandchildren (map-child ×N).
+      createInstance('task-grand', 'map-wrapper', testDir)
+      const childTaskId = 'task-grand--run-map-flow'
+      expect(loadInstance(childTaskId, testDir)).not.toBeNull()
+
+      completeStep(childTaskId, 'source-step', { items: ['x', 'y'] }, undefined, testDir)
+      for (const i of [1, 0]) {
+        completeStep(`${childTaskId}--produce-items--${i}`, 'do-work', { made: i }, undefined, testDir)
+      }
+      // Child's map joined; finish the child's tail step → child completes →
+      // propagation marks the grandparent's nested step complete and advances.
+      completeStep(childTaskId, 'after-map', { wrapped: true }, undefined, testDir)
+
+      const grand = loadInstance('task-grand', testDir)!
+      expect(grand.stepStates['run-map-flow'].status).toBe('complete')
+      expect(grand.currentStepId).toBe('wrap-after')
+      const child = loadInstance(childTaskId, testDir)!
+      expect(child.status).toBe('complete')
+      expect(child.stepStates['produce-items'].output).toEqual({ outputs: [{ made: 0 }, { made: 1 }] })
+    })
+
+    it('is idempotent on duplicate child-completion propagation', () => {
+      startAndFan('task-dup')
+      completeChild('task-dup', 0)
+      const afterFirst = loadInstance('task-dup', testDir)!
+      // A second submission against the already-complete child step is refused
+      // upstream, and the parent entry stays complete either way.
+      const dup = completeStep('task-dup--produce-items--0', 'do-work', { made: 'again' }, undefined, testDir)
+      expect(dup.success).toBe(false)
+      const parent = loadInstance('task-dup', testDir)!
+      expect(parent.stepStates['produce-items'].children![0]).toEqual(
+        afterFirst.stepStates['produce-items'].children![0],
+      )
+    })
+  })
 })

@@ -287,6 +287,22 @@ steps:
     description: Work one item
 `
 
+// Nested recursion: a parent whose child workflow (map-flow) contains the map
+export const mapWrapperWorkflow = `
+name: Map Wrapper
+description: Nested workflow whose child contains a map step
+version: 1
+steps:
+  - id: run-map-flow
+    type: workflow
+    label: Run Map Flow
+    workflow_id: map-flow
+  - id: wrap-after
+    type: agent
+    label: Wrap After
+    agent: main
+`
+
 // Statically illegal (map at index 0 has no earlier source step) — exercises
 // the defensive createInstance branch on non-validating paths.
 export const mapFirstWorkflow = `
@@ -351,5 +367,6 @@ export function seedWorkflowFixtures(testDir: string): void {
   writeFileSync(join(defsDir, 'map-flow.yaml'), mapWorkflow)
   writeFileSync(join(defsDir, 'map-child.yaml'), mapChildWorkflow)
   writeFileSync(join(defsDir, 'map-first.yaml'), mapFirstWorkflow)
+  writeFileSync(join(defsDir, 'map-wrapper.yaml'), mapWrapperWorkflow)
   writeFileSync(join(skillsDir, 'test-skill.md'), testSkillMarkdown)
 }

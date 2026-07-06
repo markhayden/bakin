@@ -377,11 +377,6 @@ export function propagateChildCompletion(childInstance: WorkflowInstance, conten
   const stepState = parentInstance.stepStates[stepId]
   if (!stepState || stepState.status !== 'in_progress') return
 
-  // Map steps join on ALL children — the map-aware branch (entry update +
-  // stable-order aggregation) lands with fan-in; a single completing child
-  // must never complete the whole step. (T1.4 replaces this guard.)
-  if (findStep(parentDef, stepId)?.type === 'map_workflow') return
-
   // Collect child workflow outputs in definition order.
   // `finalOutput` is the last agent step's output (gates don't produce output).
   const childDef = loadDefinition(childInstance.workflowId, contentDir)
@@ -399,21 +394,54 @@ export function propagateChildCompletion(childInstance: WorkflowInstance, conten
   }
 
   const now = new Date().toISOString()
-  stepState.status = 'complete'
-  stepState.completedAt = now
-  stepState.output = { childWorkflowId: childInstance.workflowId, finalOutput, outputs: childOutputs }
+  const moveChildBoardTaskDone = (): void => {
+    addTaskLogToStore(childInstance.taskId, 'workflow', `Sub-workflow "${childInstance.workflowId}" completed.`)
+      .then(() => moveTaskInStore(childInstance.taskId, 'done'))
+      .catch((err) => { log.warn('Failed to complete child workflow task', err) })
+  }
 
-  parentInstance.history.push({
-    stepId,
-    status: 'complete',
-    completedAt: now,
-    output: stepState.output,
-  })
+  if (findStep(parentDef, stepId)?.type === 'map_workflow') {
+    // Map join: update THIS child's entry; the step only completes when every
+    // sibling is complete, aggregating in stable source order regardless of
+    // completion order. Failed/cancelled siblings block the join — no cascade.
+    const children = stepState.children ?? []
+    const entry = children.find((c) => c.childTaskId === childInstance.taskId)
+    if (!entry || entry.status === 'complete') return
+    entry.status = 'complete'
+    entry.output = finalOutput
+    moveChildBoardTaskDone()
 
-  // Move the child's board task to Done.
-  addTaskLogToStore(childInstance.taskId, 'workflow', `Sub-workflow "${childInstance.workflowId}" completed.`)
-    .then(() => moveTaskInStore(childInstance.taskId, 'done'))
-    .catch((err) => { log.warn('Failed to complete child workflow task', err) })
+    if (!children.every((c) => c.status === 'complete')) {
+      saveInstance(parentInstance, contentDir)
+      return
+    }
+
+    stepState.status = 'complete'
+    stepState.completedAt = now
+    stepState.output = {
+      outputs: [...children].sort((a, b) => a.index - b.index).map((c) => c.output ?? {}),
+    }
+    parentInstance.history.push({
+      stepId,
+      status: 'complete',
+      completedAt: now,
+      output: stepState.output,
+    })
+  } else {
+    stepState.status = 'complete'
+    stepState.completedAt = now
+    stepState.output = { childWorkflowId: childInstance.workflowId, finalOutput, outputs: childOutputs }
+
+    parentInstance.history.push({
+      stepId,
+      status: 'complete',
+      completedAt: now,
+      output: stepState.output,
+    })
+
+    // Move the child's board task to Done.
+    moveChildBoardTaskDone()
+  }
 
   advanceWorkflow(parentInstance, parentDef, contentDir)
   saveInstance(parentInstance, contentDir)
