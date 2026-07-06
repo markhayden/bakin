@@ -60,6 +60,15 @@ export {
   type CompleteStepResult,
 } from './engine'
 
+// ─── Map-child recovery (per-child retry/cancel/list) ───────────────────────
+export {
+  retryMapChild,
+  cancelMapChild,
+  listMapChildren,
+  type MapChildOpResult,
+  type MapChildInfo,
+} from './map-children'
+
 // ─── Gate operations (human approval) ───────────────────────────────────────
 export {
   approveGate,

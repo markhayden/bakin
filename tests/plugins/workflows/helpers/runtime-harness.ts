@@ -287,6 +287,47 @@ steps:
     description: Work one item
 `
 
+// Map child WITH a gate — proves child gate approvals flow to the join
+export const mapGatedChildWorkflow = `
+name: Map Gated Child
+description: Map child containing a gate
+version: 1
+steps:
+  - id: work
+    type: agent
+    label: Work
+    agent: pixel
+  - id: check
+    type: gate
+    label: Check
+    approval_required: true
+  - id: finish
+    type: agent
+    label: Finish
+    agent: pixel
+`
+
+// Map parent whose children carry gates
+export const mapGatedWorkflow = `
+name: Map Gated Flow
+description: Fan-out into gated children
+version: 1
+steps:
+  - id: source-step
+    type: agent
+    label: Segment
+    agent: chef
+  - id: produce-items
+    type: map_workflow
+    label: Produce Items
+    source: source-step.items
+    workflow_id: map-gated-child
+  - id: after-map
+    type: agent
+    label: After Map
+    agent: main
+`
+
 // Nested recursion: a parent whose child workflow (map-flow) contains the map
 export const mapWrapperWorkflow = `
 name: Map Wrapper
@@ -368,5 +409,7 @@ export function seedWorkflowFixtures(testDir: string): void {
   writeFileSync(join(defsDir, 'map-child.yaml'), mapChildWorkflow)
   writeFileSync(join(defsDir, 'map-first.yaml'), mapFirstWorkflow)
   writeFileSync(join(defsDir, 'map-wrapper.yaml'), mapWrapperWorkflow)
+  writeFileSync(join(defsDir, 'map-gated-child.yaml'), mapGatedChildWorkflow)
+  writeFileSync(join(defsDir, 'map-gated.yaml'), mapGatedWorkflow)
   writeFileSync(join(skillsDir, 'test-skill.md'), testSkillMarkdown)
 }

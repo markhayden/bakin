@@ -148,6 +148,31 @@ export function createInstance(
 // ─── Map Fan-out ────────────────────────────────────────────────────────────
 
 /**
+ * Rebuild the parentContext a map child at `index` receives: the source
+ * step's full output plus the item under item_key and its map coordinates.
+ * Shared by fan-out and per-child retry (map-children.ts) so a re-created
+ * child always sees exactly what the original spawn saw. Returns null when
+ * the source no longer resolves an array containing `index`.
+ */
+export function buildMapChildContext(
+  instance: WorkflowInstance,
+  mapStep: MapWorkflowStep,
+  index: number,
+): Record<string, unknown> | null {
+  const dotIdx = mapStep.source.indexOf('.')
+  if (dotIdx <= 0) return null
+  const sourceOutput = instance.stepStates[mapStep.source.slice(0, dotIdx)]?.output
+  const items = sourceOutput?.[mapStep.source.slice(dotIdx + 1)]
+  if (!Array.isArray(items) || index < 0 || index >= items.length) return null
+  return {
+    ...(sourceOutput || {}),
+    [mapStep.item_key ?? 'item']: items[index],
+    mapIndex: index,
+    mapTotal: items.length,
+  }
+}
+
+/**
  * Fan out a map_workflow step: one child workflow instance per element of the
  * source step's output array. Invalid sources fail typed (map_source_invalid)
  * with zero children spawned; empty arrays complete immediately and advance.
@@ -221,18 +246,12 @@ function fanOutMapStep(
     }
   }
 
-  const itemKey = mapStep.item_key ?? 'item'
   const total = value.length
   const childDef = loadDefinition(mapStep.workflow_id, contentDir)
   const children: MapChildEntry[] = []
   for (let i = 0; i < total; i++) {
     const childTaskId = `${childIdPrefix}${i}`
-    const childParentContext: Record<string, unknown> = {
-      ...(sourceOutput || {}),
-      [itemKey]: value[i],
-      mapIndex: i,
-      mapTotal: total,
-    }
+    const childParentContext = buildMapChildContext(instance, mapStep, i) ?? {}
     const childInstance = createInstance(childTaskId, mapStep.workflow_id, contentDir, instance.resolvedAgent, childParentContext, instance.availableAgents)
     childInstance.parentTaskId = instance.taskId
     childInstance.parentStepId = mapStep.id

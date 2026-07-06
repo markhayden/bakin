@@ -73,7 +73,13 @@ import {
   cancelInstance,
   getCurrentStep,
   getActiveAgents,
+  approveGate,
 } from '@bakin/workflows/lib/runtime'
+import {
+  retryMapChild,
+  cancelMapChild,
+  listMapChildren,
+} from '@bakin/workflows/lib/map-children'
 import { invalidateSkillCache } from '@bakin/workflows/lib/skill-loader'
 import { setEventBus } from '@bakin/workflows/lib/notifications'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
@@ -405,6 +411,116 @@ describe('runtime — map_workflow', () => {
       const state = loadInstance('task-late', testDir)!.stepStates['produce-items']
       expect(state.status).toBe('in_progress')
       expect(state.children![1].output).toBeUndefined()
+    })
+  })
+
+  describe('per-child recovery', () => {
+    const completeChild = (taskId: string, i: number) =>
+      completeStep(`${taskId}--produce-items--${i}`, 'do-work', { made: items[i] }, undefined, testDir)
+
+    it('cancelMapChild blocks the join; retryMapChild re-creates the same id and unblocks it', async () => {
+      startAndFan('task-recover-cycle')
+      await settle()
+
+      const cancelled = cancelMapChild('task-recover-cycle', 'produce-items', 1, testDir)
+      expect(cancelled.success).toBe(true)
+      await settle()
+
+      expect(loadInstance('task-recover-cycle--produce-items--1', testDir)!.status).toBe('cancelled')
+      let state = loadInstance('task-recover-cycle', testDir)!.stepStates['produce-items']
+      expect(state.children![1].status).toBe('cancelled')
+      expect(hookTasks.get('task-recover-cycle--produce-items--1')!.column).toBe('done')
+
+      // Complete the siblings — join must stay blocked on the cancelled child.
+      completeChild('task-recover-cycle', 0)
+      completeChild('task-recover-cycle', 2)
+      state = loadInstance('task-recover-cycle', testDir)!.stepStates['produce-items']
+      expect(state.status).toBe('in_progress')
+
+      // Retry re-creates a fresh instance under the SAME childTaskId with the
+      // same item context, revives the board task, and resets the entry.
+      const retried = retryMapChild('task-recover-cycle', 'produce-items', 1, { reason: 'try again', contentDir: testDir })
+      expect(retried.success).toBe(true)
+      await settle()
+
+      const revived = loadInstance('task-recover-cycle--produce-items--1', testDir)!
+      expect(revived.status).toBe('in_progress')
+      expect(revived.parentContext).toMatchObject({ brief: 'clip-b', mapIndex: 1, mapTotal: 3 })
+      expect(revived.parentTaskId).toBe('task-recover-cycle')
+      expect(hookTasks.get('task-recover-cycle--produce-items--1')!.column).toBe('inProgress')
+
+      // Completing the retried child completes the join in source order.
+      completeChild('task-recover-cycle', 1)
+      const joined = loadInstance('task-recover-cycle', testDir)!
+      expect(joined.stepStates['produce-items'].status).toBe('complete')
+      expect(joined.stepStates['produce-items'].output).toEqual({
+        outputs: [{ made: 'clip-a' }, { made: 'clip-b' }, { made: 'clip-c' }],
+      })
+      expect(joined.currentStepId).toBe('after-map')
+    })
+
+    it('retryMapChild reopens a LIVE child in place (reason lands as rejection context)', () => {
+      startAndFan('task-retry-live')
+      const retried = retryMapChild('task-retry-live', 'produce-items', 0, { reason: 'redo this one', contentDir: testDir })
+      expect(retried.success).toBe(true)
+
+      const child = loadInstance('task-retry-live--produce-items--0', testDir)!
+      expect(child.status).toBe('in_progress')
+      expect(child.stepStates['do-work'].rejectionReason).toBe('redo this one')
+      // Same instance reopened, not re-created — history carries the reopen.
+      expect(child.history.some((h) => (h.output as { reopened?: boolean } | undefined)?.reopened)).toBe(true)
+    })
+
+    it('refuses to retry or cancel a completed child', () => {
+      startAndFan('task-refuse')
+      completeChild('task-refuse', 0)
+      const retry = retryMapChild('task-refuse', 'produce-items', 0, { reason: 'nope', contentDir: testDir })
+      expect(retry.success).toBe(false)
+      const cancel = cancelMapChild('task-refuse', 'produce-items', 0, testDir)
+      expect(cancel.success).toBe(false)
+    })
+
+    it('returns typed errors for unknown parent, step, or index', () => {
+      expect(retryMapChild('ghost-task', 'produce-items', 0, { reason: 'x', contentDir: testDir }).success).toBe(false)
+      startAndFan('task-bad-args')
+      expect(retryMapChild('task-bad-args', 'not-a-map', 0, { reason: 'x', contentDir: testDir }).success).toBe(false)
+      expect(retryMapChild('task-bad-args', 'produce-items', 9, { reason: 'x', contentDir: testDir }).success).toBe(false)
+      expect(cancelMapChild('task-bad-args', 'produce-items', 9, testDir).success).toBe(false)
+    })
+
+    it('listMapChildren reports LIVE child statuses, not just the cached entries', () => {
+      startAndFan('task-list')
+      // Cancel one child OUT OF BAND — the parent entry still says in_progress.
+      cancelInstance('task-list--produce-items--2', testDir)
+
+      const listed = listMapChildren('task-list', 'produce-items', testDir)
+      expect(listed.success).toBe(true)
+      if (!listed.success) throw new Error('unreachable')
+      const children = listed.children
+      expect(children).toHaveLength(3)
+      expect(children[0]).toMatchObject({ index: 0, entryStatus: 'in_progress', liveStatus: 'in_progress' })
+      expect(children[2]).toMatchObject({ index: 2, entryStatus: 'in_progress', liveStatus: 'cancelled' })
+    })
+
+    it('child gate approvals flow through to the join', () => {
+      createInstance('task-gated', 'map-gated', testDir)
+      completeStep('task-gated', 'source-step', { items: ['x', 'y'] }, undefined, testDir)
+
+      for (const i of [0, 1]) {
+        const childId = `task-gated--produce-items--${i}`
+        completeStep(childId, 'work', { draft: i }, undefined, testDir)
+        expect(loadInstance(childId, testDir)!.status).toBe('pending_approval')
+        const approval = approveGate(childId, 'check', { contentDir: testDir, approver: { id: 'mark', source: 'web' } })
+        expect(approval.success).toBe(true)
+        completeStep(childId, 'finish', { final: i }, undefined, testDir)
+      }
+
+      const parent = loadInstance('task-gated', testDir)!
+      expect(parent.stepStates['produce-items'].status).toBe('complete')
+      expect(parent.stepStates['produce-items'].output).toEqual({
+        outputs: [{ final: 0 }, { final: 1 }],
+      })
+      expect(parent.currentStepId).toBe('after-map')
     })
   })
 
