@@ -10,8 +10,14 @@ import type {
   AdapterInitOpts,
 } from '@bakin/core/adapters/runtime'
 
+import type { RuntimeCapabilities, RuntimeToolAccessHint } from '@bakin/core/adapters/runtime'
+
 import { createAgentsSurface } from './agents'
-import { seedMainAgentIfEmpty } from './main-agent'
+import { createConfigSurface } from './config'
+import { MAIN_AGENT_ID, seedMainAgentIfEmpty } from './main-agent'
+import { capabilitiesForModel, createModelsSurface, resetModelRegistry } from './models'
+import { readRegistry } from './registry'
+import { createSkillsSurface } from './skills'
 
 export interface PiRuntimeAdapterOptions {
   settings?: Record<string, unknown>
@@ -43,7 +49,25 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   async restart(): Promise<void> {
-    // No external process to bounce; session-pool disposal lands with P7.
+    // No external process to bounce: drop cached SDK state so the next call
+    // re-reads auth/models from disk. Session-pool disposal lands with P7.
+    resetModelRegistry()
+  }
+
+  /** Pi agents call Bakin exec tools natively (in-process tool bridge). */
+  describeToolAccess = (): RuntimeToolAccessHint => ({ invocation: 'native' })
+
+  /** Conservative modality probe from the agent's effective Pi model. */
+  capabilities = async (opts?: { agentId?: string }): Promise<RuntimeCapabilities> => {
+    const agents = readRegistry().agents
+    const requested = opts?.agentId?.trim()
+    if (requested) {
+      const record = agents.find((a) => a.id === requested)
+      if (!record) return { imageInput: false, audioInput: false }
+      return capabilitiesForModel(record.model)
+    }
+    const main = agents.find((a) => a.id === MAIN_AGENT_ID) ?? agents[0]
+    return capabilitiesForModel(main?.model)
   }
 
   getHealthChecks(): ReturnType<AgentRuntimeAdapter['getHealthChecks']> {
@@ -73,12 +97,7 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
     subscribeApprovalResponses: () => notImplemented('channels.subscribeApprovalResponses'),
   }
 
-  skills: AgentRuntimeAdapter['skills'] = {
-    list: async () => notImplemented('skills.list'),
-    get: async () => notImplemented('skills.get'),
-    write: async () => notImplemented('skills.write'),
-    remove: async () => notImplemented('skills.remove'),
-  }
+  skills: AgentRuntimeAdapter['skills'] = createSkillsSurface()
 
   sessions: AgentRuntimeAdapter['sessions'] = {
     list: async () => notImplemented('sessions.list'),
@@ -96,9 +115,7 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
     search: async () => notImplemented('memory.search'),
   }
 
-  models: AgentRuntimeAdapter['models'] = {
-    listAvailable: async () => notImplemented('models.listAvailable'),
-  }
+  models: AgentRuntimeAdapter['models'] = createModelsSurface()
 
   cron: AgentRuntimeAdapter['cron'] = {
     list: async () => notImplemented('cron.list'),
@@ -112,9 +129,5 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
     restoreRaw: async () => notImplemented('cron.restoreRaw'),
   }
 
-  config: AgentRuntimeAdapter['config'] = {
-    get: async () => notImplemented('config.get'),
-    replace: async () => notImplemented('config.replace'),
-    raw: async () => notImplemented('config.raw'),
-  }
+  config: AgentRuntimeAdapter['config'] = createConfigSurface()
 }
