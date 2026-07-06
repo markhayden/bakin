@@ -70,6 +70,9 @@ import {
   loadInstance,
   completeStep,
   reopenFromStep,
+  cancelInstance,
+  getCurrentStep,
+  getActiveAgents,
 } from '@bakin/workflows/lib/runtime'
 import { invalidateSkillCache } from '@bakin/workflows/lib/skill-loader'
 import { setEventBus } from '@bakin/workflows/lib/notifications'
@@ -365,6 +368,74 @@ describe('runtime — map_workflow', () => {
       expect(parent.stepStates['produce-items'].children![0]).toEqual(
         afterFirst.stepStates['produce-items'].children![0],
       )
+    })
+  })
+
+  describe('child-aware surfaces', () => {
+    const completeChild = (taskId: string, i: number) =>
+      completeStep(`${taskId}--produce-items--${i}`, 'do-work', { made: items[i] }, undefined, testDir)
+
+    it('cancel-parent sweeps live children and leaves completed ones untouched', async () => {
+      startAndFan('task-sweep')
+      await settle() // board tasks are fire-and-forget; let them land before cancelling
+      completeChild('task-sweep', 0)
+      cancelInstance('task-sweep', testDir)
+      await settle()
+
+      expect(loadInstance('task-sweep', testDir)!.status).toBe('cancelled')
+      expect(loadInstance('task-sweep--produce-items--0', testDir)!.status).toBe('complete')
+      expect(loadInstance('task-sweep--produce-items--1', testDir)!.status).toBe('cancelled')
+      expect(loadInstance('task-sweep--produce-items--2', testDir)!.status).toBe('cancelled')
+
+      const entries = loadInstance('task-sweep', testDir)!.stepStates['produce-items'].children!
+      expect(entries.map((e) => e.status)).toEqual(['complete', 'cancelled', 'cancelled'])
+      expect(hookTasks.get('task-sweep--produce-items--1')!.column).toBe('done')
+    })
+
+    it('getActiveAgents unions the live children with effectiveTaskIds', () => {
+      startAndFan('task-agents')
+      const before = getActiveAgents('task-agents', testDir)
+      expect(before).toHaveLength(3)
+      for (let i = 0; i < 3; i++) {
+        expect(before[i]).toEqual({
+          agent: 'pixel',
+          stepId: 'do-work',
+          effectiveTaskId: `task-agents--produce-items--${i}`,
+        })
+      }
+
+      completeChild('task-agents', 1)
+      const after = getActiveAgents('task-agents', testDir)
+      expect(after.map((a) => a.effectiveTaskId)).toEqual([
+        'task-agents--produce-items--0',
+        'task-agents--produce-items--2',
+      ])
+    })
+
+    it('getCurrentStep returns null mid-map and a typed failed context after map_source_invalid', () => {
+      startAndFan('task-ctx')
+      expect(getCurrentStep('task-ctx', undefined, testDir)).toBeNull()
+
+      createInstance('task-ctx-fail', 'map-flow', testDir)
+      const result = completeStep('task-ctx-fail', 'source-step', { wrong: [] }, undefined, testDir)
+      expect(result.success).toBe(true)
+      expect(result.nextStep).toMatchObject({ status: 'failed', stepId: 'produce-items', code: 'map_source_invalid' })
+
+      const ctx = getCurrentStep('task-ctx-fail', undefined, testDir)
+      expect(ctx).toMatchObject({ status: 'failed', stepId: 'produce-items', code: 'map_source_invalid' })
+    })
+
+    it('refuses to reopen AT a map step — recovery is the source step or per-child retry', () => {
+      startAndFan('task-noreopen')
+      const result = reopenFromStep('task-noreopen', {
+        stepId: 'produce-items',
+        reason: 'nope',
+        contentDir: testDir,
+      })
+      expect(result.success).toBe(false)
+      expect((result as { errors: string[] }).errors[0]).toContain('source step')
+      // Nothing was reset.
+      expect(loadInstance('task-noreopen', testDir)!.stepStates['produce-items'].children).toHaveLength(3)
     })
   })
 })

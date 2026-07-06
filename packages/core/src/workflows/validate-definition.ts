@@ -158,6 +158,8 @@ export function validateDefinition(def: WorkflowDefinition, opts: ValidateDefini
         errors.push(`Step "${step.id}": on_reject.goto must target a top-level step`)
       } else if (getTopLevelStepIndex(def.steps, step.on_reject.goto) > idx) {
         errors.push(`Step "${step.id}": on_reject.goto must rewind to this or an earlier step`)
+      } else if (def.steps[getTopLevelStepIndex(def.steps, step.on_reject.goto)]?.type === 'map_workflow') {
+        errors.push(`Step "${step.id}": on_reject.goto cannot target a map_workflow step — target its source step instead`)
       }
     }
 

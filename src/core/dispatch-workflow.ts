@@ -74,7 +74,7 @@ export async function dispatchWorkflowTask(
     // For nested workflows, use the child's taskId for step context resolution
     const contextTaskId = effectiveTaskId || task.id
     const stepContext = await hooks().invoke<Record<string, unknown>>('workflows.getCurrentStep', { taskId: contextTaskId, agentId: agent })
-    if (!stepContext || 'status' in stepContext && (stepContext.status === 'complete' || stepContext.status === 'cancelled' || stepContext.status === 'pending_approval')) {
+    if (!stepContext || 'status' in stepContext && (stepContext.status === 'complete' || stepContext.status === 'cancelled' || stepContext.status === 'failed' || stepContext.status === 'pending_approval')) {
       continue
     }
 

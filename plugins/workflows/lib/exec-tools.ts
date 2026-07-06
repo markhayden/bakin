@@ -212,6 +212,9 @@ export function registerWorkflowExecTools(ctx: PluginContext): void {
         if (step.status === 'cancelled') {
           return { ok: false, error: 'Workflow is cancelled — do not submit output. Stop work on this task.' }
         }
+        if (step.status === 'failed') {
+          return { ok: false, error: `Workflow is in a failed state${step.code ? ` (${String(step.code)})` : ''} — it must be recovered (reopen the failing step's source) before submissions are accepted.` }
+        }
 
         const schema = step.output_schema as Record<string, unknown> | undefined
 

@@ -394,6 +394,21 @@ steps:
     it('skips the existence check when validateNestedWorkflowRefs is false', () => {
       expect(validateDefinition(mapDef('seg.items'), { validateNestedWorkflowRefs: false })).toEqual([])
     })
+
+    it('rejects a gate on_reject.goto that targets a map step (not an actionable reopen target)', () => {
+      const def: WorkflowDefinition = {
+        name: 'Map Flow',
+        description: 'x',
+        version: 1,
+        steps: [
+          { id: 'seg', type: 'agent', label: 'Segment', agent: 'chef' },
+          { id: 'fan', type: 'map_workflow', label: 'Fan', source: 'seg.items', workflow_id: 'map-child' },
+          { id: 'check', type: 'gate', label: 'Check', on_reject: { goto: 'fan' } },
+        ],
+      }
+      const errors = validateDefinition(def, { knownWorkflowIds: ['map-child'] })
+      expect(errors.some(e => e.includes('"check"') && e.includes('map_workflow'))).toBe(true)
+    })
   })
 
   describe('loadDefinition / listDefinitions', () => {

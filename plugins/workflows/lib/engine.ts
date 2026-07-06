@@ -41,7 +41,7 @@ import {
   moveTaskInStore,
 } from './task-bridge'
 import { dispatchPluginNode, dispatchCreateTaskNode } from './node-dispatch'
-import { resolveAgent, getCurrentStep, type StepContext } from './step-context'
+import { resolveAgent, getCurrentStep } from './step-context'
 
 const log = createLogger('workflow-runtime')
 
@@ -254,7 +254,8 @@ export interface CompleteStepResult {
    * error-message text.
    */
   code?: 'rejection_repeat'
-  nextStep?: StepContext | { status: 'complete' } | { status: 'cancelled' } | { status: 'pending_approval'; stepId: string; label: string }
+  /** Mirrors getCurrentStep's union (StepContext or a typed status object). */
+  nextStep?: Exclude<ReturnType<typeof getCurrentStep>, null>
   workflowComplete?: boolean
 }
 
@@ -626,6 +627,15 @@ export function cancelInstance(taskId: string, contentDir?: string): void {
       // Remove the child from active work.
       moveTaskInStore(state.childTaskId, 'done').catch((err) => {
         log.warn('Failed to move cancelled child workflow task', err)
+      })
+    }
+    // Map fan-out children: sweep every still-live entry.
+    for (const child of state.children ?? []) {
+      if (child.status !== 'in_progress') continue
+      cancelInstance(child.childTaskId, dir)
+      child.status = 'cancelled'
+      moveTaskInStore(child.childTaskId, 'done').catch((err) => {
+        log.warn('Failed to move cancelled map child task', err)
       })
     }
   }
