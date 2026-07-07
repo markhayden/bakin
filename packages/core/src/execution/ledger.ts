@@ -164,6 +164,21 @@ const MIGRATIONS = [
       db.exec('ALTER TABLE run_costs ADD COLUMN cache_write_tokens INTEGER')
     },
   },
+  {
+    // Cost-control v2 (#464): billing attribution. `provider` denormalizes
+    // the model id's provider segment so spend rolls up per provider in one
+    // GROUP BY; `lane` records how the turn was billed ('metered' — API-key
+    // dollars — vs 'subscription' — plan-quota tokens). Backfill derives
+    // provider from `provider/model`-shaped ids only; bare ids resolve at
+    // read time and lane stays NULL on legacy rows ("unknown", readers treat
+    // as metered — never a fabricated value).
+    version: 5,
+    up: (db: Db) => {
+      db.exec('ALTER TABLE run_costs ADD COLUMN provider TEXT')
+      db.exec('ALTER TABLE run_costs ADD COLUMN lane TEXT')
+      db.exec("UPDATE run_costs SET provider = substr(model, 1, instr(model, '/') - 1) WHERE model IS NOT NULL AND instr(model, '/') > 1")
+    },
+  },
 ]
 
 /** Open the db with this module's schema applied. Every verb goes through here. */
@@ -752,12 +767,23 @@ export function putIdempotent(key: string, kind: string, result: unknown, now?: 
 // run costs (per-run billing facts)
 // ---------------------------------------------------------------------------
 
+/**
+ * How a turn was billed: 'metered' = pay-per-token/image API key (real
+ * dollars); 'subscription' = plan-included quota (tokens are the unit; a
+ * dollar figure would be fiction).
+ */
+export type BillingLane = 'metered' | 'subscription'
+
 export interface RunCostInput {
   runId: string
   /** Null for non-dispatch turns (watchdog/doctor/orchestrator sends). */
   taskId?: string | null
   agent: string
   model?: string
+  /** Provider segment of the model id (e.g. 'anthropic'); null when unknown. */
+  provider?: string | null
+  /** Billing lane; null when undetectable (readers treat as metered). */
+  lane?: BillingLane | null
   inputTokens?: number | null
   outputTokens?: number | null
   totalTokens?: number | null
@@ -792,14 +818,16 @@ export function recordRunCost(input: RunCostInput): void {
     ledger()
       .prepare(
         `INSERT OR IGNORE INTO run_costs
-           (run_id, task_id, agent, model, input_tokens, output_tokens, total_tokens, cache_read_tokens, cache_write_tokens, cost_usd_micros, occurred_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (run_id, task_id, agent, model, provider, lane, input_tokens, output_tokens, total_tokens, cache_read_tokens, cache_write_tokens, cost_usd_micros, occurred_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         input.runId,
         input.taskId ?? null,
         input.agent,
         input.model ?? null,
+        input.provider ?? null,
+        input.lane ?? null,
         input.inputTokens ?? null,
         input.outputTokens ?? null,
         input.totalTokens ?? null,
@@ -850,6 +878,46 @@ export function spendByModel(sinceMs: number): SpendByModelRow[] {
       )
       .all(sinceMs)
       .map((r) => ({ model: r.model ?? '', costUsdMicros: r.micros, runs: r.runs }))
+  })
+}
+
+export interface RunCostSpendRow {
+  runId: string
+  agent: string
+  model: string | null
+  provider: string | null
+  lane: BillingLane | null
+  totalTokens: number | null
+  costUsdMicros: number | null
+  occurredAt: number
+}
+
+/**
+ * Raw cost rows since a timestamp — the spend engine's attributed input. No
+ * SQL-side day bucketing (local-day semantics live in ONE place, the
+ * TypeScript engine, matching usage-history's toLocalDayKey exactly).
+ */
+export function listRunCostsSince(sinceMs: number): RunCostSpendRow[] {
+  return guard('listRunCostsSince', () => {
+    return ledger()
+      .prepare<{
+        run_id: string; agent: string; model: string | null; provider: string | null
+        lane: string | null; total_tokens: number | null; cost_usd_micros: number | null; occurred_at: number
+      }, [number]>(
+        `SELECT run_id, agent, model, provider, lane, total_tokens, cost_usd_micros, occurred_at
+           FROM run_costs WHERE occurred_at >= ?`,
+      )
+      .all(sinceMs)
+      .map((r) => ({
+        runId: r.run_id,
+        agent: r.agent,
+        model: r.model,
+        provider: r.provider,
+        lane: r.lane === 'metered' || r.lane === 'subscription' ? r.lane : null,
+        totalTokens: r.total_tokens,
+        costUsdMicros: r.cost_usd_micros,
+        occurredAt: r.occurred_at,
+      }))
   })
 }
 

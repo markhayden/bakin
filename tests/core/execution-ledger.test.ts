@@ -61,6 +61,7 @@ import {
   putIdempotent,
   purgeTaskRows,
   recordRunCost,
+  listRunCostsSince,
   recentRunsByAgent,
   spendTotal,
   spendByAgent,
@@ -416,6 +417,28 @@ describe('run costs', () => {
     recordRunCost({ runId: 'task:rc-unm:d1', taskId: 'rc-unm', agent: 'patch', model: 'mystery/x', inputTokens: 100, outputTokens: 50, totalTokens: 150, costUsdMicros: null, occurredAt: T0 + 5000 })
     const patch = spendByAgent(T0 - 1).find(r => r.agent === 'patch')
     expect(patch).toEqual({ agent: 'patch', costUsdMicros: 0, runs: 1 })
+  })
+
+  it('persists provider and lane and lists raw rows for the spend engine', () => {
+    recordRunCost({ runId: 'task:rc-lane1:d1', taskId: 'rc-lane1', agent: 'lane-a', model: 'google/gemini-3-flash', provider: 'google', lane: 'metered', inputTokens: 100, outputTokens: 20, totalTokens: 120, costUsdMicros: 300, occurredAt: T0 + 50_000 })
+    recordRunCost({ runId: 'task:rc-lane2:d1', taskId: 'rc-lane2', agent: 'lane-a', model: 'openai-codex/gpt-5.5-codex', provider: 'openai-codex', lane: 'subscription', inputTokens: 900, outputTokens: 80, totalTokens: 980, costUsdMicros: null, occurredAt: T0 + 51_000 })
+
+    const rows = listRunCostsSince(T0 + 49_000).filter((r) => r.agent === 'lane-a')
+    expect(rows).toHaveLength(2)
+    const byRun = new Map(rows.map((r) => [r.runId, r]))
+    expect(byRun.get('task:rc-lane1:d1')).toMatchObject({
+      agent: 'lane-a', model: 'google/gemini-3-flash', provider: 'google', lane: 'metered',
+      totalTokens: 120, costUsdMicros: 300, occurredAt: T0 + 50_000,
+    })
+    expect(byRun.get('task:rc-lane2:d1')).toMatchObject({
+      provider: 'openai-codex', lane: 'subscription', totalTokens: 980, costUsdMicros: null,
+    })
+  })
+
+  it('listRunCostsSince returns rows without provider/lane as NULLs (never fabricated)', () => {
+    recordRunCost({ runId: 'task:rc-nolane:d1', taskId: 'rc-nolane', agent: 'lane-b', model: 'm', inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsdMicros: 10, occurredAt: T0 + 52_000 })
+    const row = listRunCostsSince(T0 + 51_500).find((r) => r.agent === 'lane-b')
+    expect(row).toMatchObject({ provider: null, lane: null })
   })
 
   it('recentRunsByAgent returns dispatch runs newest-first with token detail', () => {

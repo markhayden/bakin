@@ -36,6 +36,7 @@ export {
   spendTotal,
   spendByAgent,
   spendByModel,
+  listRunCostsSince,
   LedgerUnavailableError,
 } from '../../packages/core/src/execution/ledger'
 export type {
@@ -51,6 +52,8 @@ export type {
   IdempotentResult,
   RunCostInput,
   RunCostRow,
+  RunCostSpendRow,
+  BillingLane,
   RunWithCostRow,
   AgentTokenRollup,
   SpendByAgentRow,
