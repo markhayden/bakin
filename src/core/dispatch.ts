@@ -17,7 +17,7 @@ export { loadDispatchState, clearDispatchMarker } from './dispatch-state'
 export { isTaskDispatchEligible } from './dispatch-board'
 export { __resetLessonBlockCache, buildDispatchLessonBlock, buildDispatchAssetBlock } from './dispatch-context-blocks'
 export { buildDispatchMessage } from './dispatch-prompts'
-export { budgetGate, getInFlightTurnCount, awaitDispatchIdle } from './dispatch-turns'
+export { budgetGate, deferForBudget, dispatchPaused, getInFlightTurnCount, awaitDispatchIdle } from './dispatch-turns'
 export { dispatchTasks, start, stop, getDispatchInfo } from './dispatch-cycle'
 export { dispatchSingleTask }
 

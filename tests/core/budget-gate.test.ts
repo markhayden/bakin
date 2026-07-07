@@ -98,12 +98,19 @@ mock.module('../../packages/core/src/usage-history/store', () => ({
   },
 }))
 
-import { budgetGate } from '../../src/core/dispatch'
+// Settings: real defaults except the kill switch, which tests toggle.
+let dispatchPausedSetting = false
+mock.module('../../src/core/settings', () => ({
+  getSettings: () => ({ dispatch: { paused: dispatchPausedSetting, maxConcurrentTurns: 3, maxTurnsPerAgent: 1, oversizedOutputBytes: 131072 } }),
+}))
+
+import { budgetGate, deferForBudget } from '../../src/core/dispatch'
 
 beforeEach(() => {
   budgetPolicy = {}
   billingImpl = () => undefined
   spendThrows = false
+  dispatchPausedSetting = false
   auditCalls.length = 0
   costRows.length = 0
   usageCells.length = 0
@@ -207,6 +214,20 @@ describe('budgetGate', () => {
     expect((await budgetGate('pixel', dir)).action).toBe('defer')
     costRows.length = 0 // window rolled / spend cleared — defer-mode incidents don't hold
     expect((await budgetGate('pixel', dir)).action).toBe('allow')
+  })
+
+  it('KILL SWITCH: dispatch.paused defers everything, even with no budget policy', async () => {
+    dispatchPausedSetting = true
+    expect(await deferForBudget('pixel', dir)).toBe(true)
+    expect(await deferForBudget('rolo', dir)).toBe(true)
+    // Audited once per activation, not per task.
+    expect(auditCalls.filter((c) => c[1] === 'dispatch.paused')).toHaveLength(1)
+    // Unpause restores dispatch and re-arms the audit latch.
+    dispatchPausedSetting = false
+    expect(await deferForBudget('pixel', dir)).toBe(false)
+    dispatchPausedSetting = true
+    expect(await deferForBudget('pixel', dir)).toBe(true)
+    expect(auditCalls.filter((c) => c[1] === 'dispatch.paused')).toHaveLength(2)
   })
 
   it('a warn threshold opens a warn incident and audits budget.warn once', async () => {

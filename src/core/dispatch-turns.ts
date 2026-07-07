@@ -61,6 +61,27 @@ async function sendDispatchMessage(agentId: string, content: string, threadId: s
 // debounces durably via the budget_incidents UNIQUE instead.
 const failClosedAuditedWindows = new Set<number>()
 
+// Kill-switch audit latch: one `dispatch.paused` row per activation (the
+// transition matters, not every deferred task). Re-arms on unpause; a
+// restart re-audits an active switch — harmless and honest.
+let killSwitchAudited = false
+
+/**
+ * The global kill switch (settings.dispatch.paused): pauses ALL Bakin-
+ * initiated task dispatch (and billed media via gateBilledMediaCall). The
+ * operator's break-glass control — independent of budget caps. Watchdog/
+ * doctor health probes stay allowed (documented boundary).
+ */
+export function dispatchPaused(contentDir: string): boolean {
+  const paused = getSettings().dispatch.paused
+  if (paused && !killSwitchAudited) {
+    killSwitchAudited = true
+    appendAudit(contentDir, 'dispatch.paused', 'system', { reason: 'dispatch_paused' })
+  }
+  if (!paused) killSwitchAudited = false
+  return paused
+}
+
 /**
  * Per-cycle memo for the spend engine: the facets are identical for every
  * task evaluated in one dispatch cycle (costs are only recorded on settle,
@@ -222,13 +243,17 @@ function recordBudgetBreach(
   }
 }
 
-/** True when budget says defer — the shared shape all three dispatch paths use. */
+/**
+ * True when the turn must not fire: the kill switch is on, or budget says
+ * defer — the shared shape all three dispatch paths use.
+ */
 export async function deferForBudget(
   agentId: string,
   contentDir: string,
   spendMemo?: BudgetSpendMemo,
   prospect?: { model?: string },
 ): Promise<boolean> {
+  if (dispatchPaused(contentDir)) return true
   return (await budgetGate(agentId, contentDir, spendMemo, prospect)).action === 'defer'
 }
 

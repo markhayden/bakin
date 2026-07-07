@@ -78,6 +78,13 @@ export interface BakinSettings {
     settings: SearchAdapterSettings
   }
   dispatch: {
+    /**
+     * Kill switch (cost-control v2): true pauses ALL Bakin-initiated task
+     * dispatch and billed media calls (typed reason `dispatch_paused`).
+     * Bakin's own health probes (watchdog/doctor sends) stay allowed.
+     * In-flight turns finish; nothing new fires until unpaused.
+     */
+    paused: boolean
     intervalMs: number
     /** Cooldown after a structural failure (4xx/5xx from the runtime). */
     failureCooldownMs: number
@@ -290,6 +297,7 @@ export const DEFAULT_SETTINGS: BakinSettings = {
     },
   },
   dispatch: {
+    paused: false,
     intervalMs: 5 * 60 * 1000,
     failureCooldownMs: 30 * 60 * 1000,
     transientCooldownMs: 60 * 1000,
