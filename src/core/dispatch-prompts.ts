@@ -88,7 +88,7 @@ export function outputDisciplineSection(agentName: string, taskId: string, opts:
     '',
     `Oversized chat output KILLS your runtime session. Deliverables larger than ~8KB go to workspace files, saved as assets ONE AT A TIME: \`${mc('bakin_exec_assets_save', `taskId=${taskId} type=<type> filePath="<path>" description="<what it is>"`)}\``,
     opts.subtasksAllowed
-      ? 'Keep chat short — status + asset ids only. Numerous independent deliverables → split into subtasks. Full rules: "Bakin Execution Tools" in your AGENTS.md.'
+      ? 'Keep chat short — status + asset ids only. Split into subtasks ONLY for several genuinely independent deliverables; a single deliverable (one image, one document) stays in THIS turn — never spawn a subtask for it. Full rules: "Bakin Execution Tools" in your AGENTS.md.'
       : 'Keep chat short — status + asset ids only. Large step output → save as asset, reference the asset id in your submitted output. Full rules: "Bakin Execution Tools" in your AGENTS.md.',
   ]
 }

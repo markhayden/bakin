@@ -170,7 +170,7 @@ The runtime cannot deliver large completions. Hard rules:
 - Any deliverable or output larger than ~8KB MUST be written to a workspace file and saved as an asset BEFORE you continue (\`bakin_exec_assets_save\`) — UNLESS it is already a managed asset (anything \`bakin_exec_images_*\` returned an assetId for): report that assetId, never re-save it
 - Multiple deliverables = a checklist. Produce them ONE AT A TIME: write the file → save it as an asset → log progress → start the next. NEVER draft several deliverables in a single response.
 - Keep every chat/completion message short: status, decisions, and asset ids — never deliverable content.
-- Numerous independent deliverables → split into subtasks (see the Dependency Pattern section) instead of doing them all in one turn. In a workflow step, save large output as an asset and reference the asset id in your submitted step output.
+- SEVERAL genuinely independent deliverables → split into subtasks (see the Dependency Pattern section) instead of doing them all in one turn. A single self-contained deliverable (one image, one document) stays in the current turn — do NOT create a subtask for it. In a workflow step, save large output as an asset and reference the asset id in your submitted step output.
 
 ### Tool Reference
 
