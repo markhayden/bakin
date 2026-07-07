@@ -76,7 +76,15 @@ mock.module('../../src/core/execution-ledger', () => ({
     return { opened: true, id }
   },
   resolveExpiredBudgetIncidents: () => 0,
-  findOpenCapIncident: () => null,
+  findOpenCapIncident: (key: { scope: string; scopeId?: string; lane: string }) => {
+    for (const [k, v] of incidentKeys) {
+      const [scope, scopeId, lane, , , kind] = k.split(':')
+      if (kind === 'cap' && v.status !== 'resolved' && scope === key.scope && scopeId === (key.scopeId ?? '') && lane === key.lane) {
+        return { id: v.id, scope, scopeId, lane, window: 'daily', windowStartMs: 0, kind, unit: 'usd_micros', capValue: 1, spentValue: 2, atCap: v.atCap, openedAt: 0, status: v.status, resolvedAt: null, resolution: null }
+      }
+    }
+    return null
+  },
 }))
 
 // The spend engine's observed-usage side (usage.db) — empty unless a test seeds it.
@@ -176,6 +184,29 @@ describe('budgetGate', () => {
     const deferAudits = auditCalls.filter((c) => c[1] === 'budget.deferred')
     expect(deferAudits).toHaveLength(1)
     expect((deferAudits[0][3] as Record<string, unknown>).incidentId).toBe(incidentOpens[0].id)
+  })
+
+  it('PAUSE mode: an open cap incident keeps blocking even when spend is back under cap', async () => {
+    budgetPolicy = { rules: [{ scope: 'agent', scopeId: 'pixel', lane: 'metered', dailyCap: 10, atCap: 'pause' }] }
+    // Breach once (opens the pause-mode incident)…
+    costRows.push({ runId: 'r1', agent: 'pixel', model: 'google/g', provider: 'google', lane: 'metered', totalTokens: 1, costUsdMicros: 10_000_000, occurredAt: Date.now() })
+    expect((await budgetGate('pixel', dir)).action).toBe('defer')
+    // …then simulate the window rolling over (no spend anymore): still blocked.
+    costRows.length = 0
+    expect((await budgetGate('pixel', dir)).action).toBe('defer')
+    // Other agents are not blocked by pixel's pause incident.
+    expect((await budgetGate('rolo', dir)).action).toBe('allow')
+    // Resolving the incident (human raise/resume) unblocks.
+    for (const [k, v] of incidentKeys) if (k.startsWith('agent:pixel:')) incidentKeys.set(k, { ...v, status: 'resolved' })
+    expect((await budgetGate('pixel', dir)).action).toBe('allow')
+  })
+
+  it('DEFER mode does not block once spend clears (regression)', async () => {
+    budgetPolicy = GLOBAL_10
+    costRows.push({ runId: 'r1', agent: 'pixel', model: 'google/g', provider: 'google', lane: 'metered', totalTokens: 1, costUsdMicros: 10_000_000, occurredAt: Date.now() })
+    expect((await budgetGate('pixel', dir)).action).toBe('defer')
+    costRows.length = 0 // window rolled / spend cleared — defer-mode incidents don't hold
+    expect((await budgetGate('pixel', dir)).action).toBe('allow')
   })
 
   it('a warn threshold opens a warn incident and audits budget.warn once', async () => {

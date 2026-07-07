@@ -18,10 +18,10 @@ import { getSettings } from './settings'
 import { appendAudit } from './audit'
 import { getAppServices } from './app-services'
 import { RuntimeError, RuntimeTurnError, type MessageResult } from '@bakin/core/adapters/runtime'
-import { claimNextRun, loseRun, settleRun, openBudgetIncident, resolveExpiredBudgetIncidents, type ClaimNextRunResult } from './execution-ledger'
+import { claimNextRun, loseRun, settleRun, openBudgetIncident, resolveExpiredBudgetIncidents, findOpenCapIncident, type ClaimNextRunResult } from './execution-ledger'
 import { meterAgentTurn } from './agent-cost'
 import { resolveTurnModel, type ResolvedTurn, type RoutingConfig } from './model-routing'
-import { evaluateBudget, dayStartMs, type BudgetPolicy, type BudgetDecision, type TurnBillingContext } from './budget'
+import { evaluateBudget, ruleMatchesTurn, dayStartMs, monthStartMs, type BudgetPolicy, type BudgetDecision, type TurnBillingContext } from './budget'
 import { assembleBudgetSpend, type BudgetSpendFacets } from './budget-spend'
 import { getBootId } from './boot-id'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
@@ -123,6 +123,40 @@ export async function budgetGate(
   }
 
   const now = Date.now()
+
+  // Lazy window rollover: defer-mode incidents whose window ended resolve
+  // here (the UPDATE is a no-op when nothing expired).
+  try {
+    resolveExpiredBudgetIncidents({ dailyWindowStartMs: dayStartMs(now), monthlyWindowStartMs: monthStartMs(now), now })
+  } catch (err) {
+    log.warn('Budget incident rollover sweep failed', { err: err instanceof Error ? err.message : String(err) })
+  }
+
+  // PAUSE mode: a matching rule whose cap incident is still live blocks the
+  // turn regardless of current spend — the rollover sweep above never
+  // touches pause-mode rows, so this holds past the window until a human
+  // resolves (raise / resume). Checked before the spend assembly: post-
+  // rollover spend is under cap by definition.
+  for (const rule of policy.rules) {
+    if (rule.atCap !== 'pause' || !ruleMatchesTurn(rule, turn)) continue
+    try {
+      const blocking = findOpenCapIncident({ scope: rule.scope, scopeId: rule.scopeId, lane: rule.lane })
+      if (blocking) {
+        return {
+          action: 'defer',
+          rule,
+          window: blocking.window,
+          unit: blocking.unit,
+          spentValue: blocking.spentValue,
+          capValue: blocking.capValue,
+        }
+      }
+    } catch (err) {
+      log.error('Pause-incident probe failed; deferring (fail-closed)', err, { agentId })
+      return FAIL_CLOSED_DECISION
+    }
+  }
+
   let facets: BudgetSpendFacets
   try {
     const pending = spendMemo?.facets ?? assembleBudgetSpend(now)
@@ -136,14 +170,6 @@ export async function budgetGate(
       appendAudit(contentDir, 'budget.deferred', agentId, { scope: 'global', window: 'daily', reason: 'ledger-unavailable' })
     }
     return FAIL_CLOSED_DECISION
-  }
-
-  // Lazy window rollover: defer-mode incidents whose window ended resolve
-  // here (once per gate pass; the UPDATE is a no-op when nothing expired).
-  try {
-    resolveExpiredBudgetIncidents({ dailyWindowStartMs: facets.daily.startMs, monthlyWindowStartMs: facets.monthly.startMs, now })
-  } catch (err) {
-    log.warn('Budget incident rollover sweep failed', { err: err instanceof Error ? err.message : String(err) })
   }
 
   const decision = evaluateBudget({ policy, turn, facets })
