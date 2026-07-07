@@ -1,14 +1,16 @@
 /**
- * images.* — Pi serves nothing natively; generation routes to Bakin's
- * SHARED direct-provider shim (@bakin/core/media), the same code path
- * OpenClaw falls back to when its native route isn't configured. Keys
- * resolve env → secret store (OPENAI_API_KEY / providers.<id>.apiKey);
- * Pi's own auth.json is never touched (codex chat credential ≠ images
- * API credential).
+ * images.* — codex-native primary, direct-provider shim fallback.
  *
- * The images plugin owns idempotency/billing and asset persistence — this
- * surface only performs the provider call and returns the temp file path.
- * Edit stays unsupported: the shim is generate-only (no input images).
+ * PRIMARY: the existing openai-codex OAuth drives the ChatGPT backend's
+ * hosted image_generation tool (gpt-image-2) — generation AND edits with
+ * input images, zero API keys (codex-images.ts). providers() reports it
+ * configured so the images plugin routes servedBy 'runtime'.
+ *
+ * FALLBACK: requests explicitly routed to a direct provider (openai,
+ * google) with a Bakin-side key still ride the SHARED core shim —
+ * generate-only, no input images.
+ *
+ * The images plugin owns idempotency/billing and asset persistence.
  */
 import {
   generateDirectImage,
@@ -16,15 +18,24 @@ import {
   resolveProviderApiKeySource,
 } from '@bakin/core/media'
 import type {
+  RuntimeImageEditInput,
   RuntimeImageGenerateInput,
   RuntimeImageGenerationResult,
+  RuntimeImageProvider,
 } from '@bakin/core/adapters/runtime'
 import { RuntimeError } from '@bakin/core/adapters/runtime'
+import {
+  CODEX_IMAGE_MODEL,
+  CODEX_IMAGE_PROVIDER,
+  codexImageAuth,
+  generateViaCodex,
+  type CodexImageOptions,
+} from './codex-images'
 
 type PiImagesSurface = {
-  providers(): Promise<never[]>
+  providers(): Promise<RuntimeImageProvider[]>
   generate(input: RuntimeImageGenerateInput): Promise<RuntimeImageGenerationResult>
-  edit(): Promise<RuntimeImageGenerationResult>
+  edit(input: RuntimeImageEditInput): Promise<RuntimeImageGenerationResult>
 }
 
 function qualityFromMetadata(metadata: Record<string, unknown> | undefined): 'draft' | 'standard' | 'premium' {
@@ -32,72 +43,87 @@ function qualityFromMetadata(metadata: Record<string, unknown> | undefined): 'dr
   return quality === 'draft' || quality === 'premium' ? quality : 'standard'
 }
 
-export function createImagesSurface(): PiImagesSurface {
+/** The keyed shim path for explicit direct-provider routes (generate-only). */
+async function generateViaShim(input: RuntimeImageGenerateInput): Promise<RuntimeImageGenerationResult> {
+  const provider = input.provider as string
+  if (!isDirectImageProvider(provider)) {
+    throw new RuntimeError(
+      `adapter-pi: image provider "${provider}" is neither codex-served nor a direct provider (openai, google)`,
+      { kind: 'runtime_failed' },
+    )
+  }
+  const resolved = resolveProviderApiKeySource(provider)
+  if (!resolved) {
+    throw new RuntimeError(
+      `adapter-pi: no Bakin-side key for image provider "${provider}" — the codex route needs no key (leave provider unset or use ${CODEX_IMAGE_PROVIDER}); for ${provider} directly, set ${provider === 'openai' ? 'OPENAI_API_KEY' : 'GEMINI_API_KEY'} or store providers.${provider}.apiKey`,
+      { kind: 'runtime_failed' },
+    )
+  }
+  const model = input.model ?? ''
+  const result = await generateDirectImage({
+    provider,
+    model,
+    prompt: input.prompt,
+    width: input.width ?? 1024,
+    height: input.height ?? 1024,
+    quality: qualityFromMetadata(input.metadata),
+    apiKey: resolved.apiKey,
+    ...(input.count !== undefined ? { count: input.count } : {}),
+    ...(input.aspectRatio !== undefined ? { aspectRatio: input.aspectRatio } : {}),
+    ...(input.resolution !== undefined ? { resolution: input.resolution } : {}),
+    ...(input.background !== undefined ? { background: input.background } : {}),
+    ...(input.outputFormat !== undefined ? { outputFormat: input.outputFormat } : {}),
+    ...(input.size !== undefined ? { size: input.size } : {}),
+  })
   return {
-    // Nothing served natively — the images plugin derives shim availability
-    // from Bakin-side keys itself; an empty native roster is the honest one.
-    async providers() {
-      return []
+    images: [{ filePath: result.filePath, mimeType: result.mimeType, width: result.width, height: result.height, provider, ...(model ? { model } : {}) }],
+    provider,
+    ...(model ? { model } : {}),
+    ...(result.providerText ? { providerText: result.providerText } : {}),
+    metadata: {
+      source: 'bakin.direct-image-provider',
+      servedBy: 'shim',
+      credentialSource: resolved.source === 'env' ? 'bakin-env' : 'bakin-store',
+    },
+  }
+}
+
+/** Codex serves any request not explicitly routed to a DIFFERENT direct provider. */
+function isCodexRoute(provider: string | undefined): boolean {
+  return !provider || provider === CODEX_IMAGE_PROVIDER || provider === CODEX_IMAGE_MODEL
+}
+
+export function createImagesSurface(codexOptions: CodexImageOptions = {}): PiImagesSurface {
+  return {
+    async providers(): Promise<RuntimeImageProvider[]> {
+      const auth = await codexImageAuth()
+      return [{
+        id: CODEX_IMAGE_PROVIDER,
+        label: 'OpenAI Codex (ChatGPT login)',
+        defaultModel: CODEX_IMAGE_MODEL,
+        models: [CODEX_IMAGE_MODEL],
+        available: auth !== null,
+        configured: auth !== null,
+        selected: auth !== null,
+        capabilities: {
+          generate: { maxCount: 1 },
+          edit: { enabled: true, maxCount: 1 },
+          output: { formats: ['png', 'jpeg', 'webp'] },
+        },
+      }]
     },
 
     async generate(input: RuntimeImageGenerateInput): Promise<RuntimeImageGenerationResult> {
-      const provider = input.provider
-      if (!provider || !isDirectImageProvider(provider)) {
-        throw new RuntimeError(
-          `adapter-pi: image provider "${provider ?? '(none)'}" is not shim-servable — the pi runtime generates images only via Bakin's direct providers (openai, google)`,
-          { kind: 'runtime_failed' },
-        )
+      if (isCodexRoute(input.provider)) {
+        return generateViaCodex(input, input.referenceImages ?? [], codexOptions)
       }
-      const resolved = resolveProviderApiKeySource(provider)
-      if (!resolved) {
-        throw new RuntimeError(
-          `adapter-pi: no Bakin-side key for image provider "${provider}" — set ${provider === 'openai' ? 'OPENAI_API_KEY' : 'GEMINI_API_KEY'} or store providers.${provider}.apiKey in the secret store`,
-          { kind: 'runtime_failed' },
-        )
-      }
-      const model = input.model ?? ''
-      const result = await generateDirectImage({
-        provider,
-        model,
-        prompt: input.prompt,
-        width: input.width ?? 1024,
-        height: input.height ?? 1024,
-        quality: qualityFromMetadata(input.metadata),
-        apiKey: resolved.apiKey,
-        // Forward the full option surface so the shim's guardrail rejects
-        // what it can't honor BEFORE the billed call (#379 discipline).
-        ...(input.count !== undefined ? { count: input.count } : {}),
-        ...(input.aspectRatio !== undefined ? { aspectRatio: input.aspectRatio } : {}),
-        ...(input.resolution !== undefined ? { resolution: input.resolution } : {}),
-        ...(input.background !== undefined ? { background: input.background } : {}),
-        ...(input.outputFormat !== undefined ? { outputFormat: input.outputFormat } : {}),
-        ...(input.size !== undefined ? { size: input.size } : {}),
-      })
-      return {
-        images: [{
-          filePath: result.filePath,
-          mimeType: result.mimeType,
-          width: result.width,
-          height: result.height,
-          provider,
-          ...(model ? { model } : {}),
-        }],
-        provider,
-        ...(model ? { model } : {}),
-        ...(result.providerText ? { providerText: result.providerText } : {}),
-        metadata: {
-          source: 'bakin.direct-image-provider',
-          servedBy: 'shim',
-          credentialSource: resolved.source === 'env' ? 'bakin-env' : 'bakin-store',
-        },
-      }
+      return generateViaShim(input)
     },
 
-    async edit(): Promise<RuntimeImageGenerationResult> {
-      throw new RuntimeError(
-        'adapter-pi: image editing with input files is not supported by the pi runtime (the direct-provider shim is generate-only)',
-        { kind: 'runtime_failed' },
-      )
+    async edit(input: RuntimeImageEditInput): Promise<RuntimeImageGenerationResult> {
+      // Edit is codex-only (the direct shim cannot take input images).
+      // `files` already carries base asset + references, per the contract.
+      return generateViaCodex(input, input.files, codexOptions)
     },
   }
 }

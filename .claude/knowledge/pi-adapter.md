@@ -24,7 +24,8 @@ Pi is a minimal single-session coding harness — it has no agent roster, channe
 | `config.ts` | `<pi-home>/agent/settings.json` + onboarding raw-key synthesis (authProfiles presence-only, `channels` → `{}`) |
 | `skills.ts` | Pi-native skill dirs: global `agent/skills/` + per-agent `<workspace>/.pi/skills/` |
 | `unsupported.ts` | Honest-empty channels/cron/tools.invoke (typed `runtime_failed`, never silent) |
-| `images.ts` | generation via the shared direct-provider shim (Bakin keys, shim provenance tags); edit typed-unsupported |
+| `images.ts` | route: codex-native primary, direct-provider shim fallback for explicit keyed routes |
+| `codex-images.ts` | the codex image wire: OAuth token via Pi's ModelRegistry (refresh SDK-owned), account-id from the JWT claim, SSE `image_generation_call` → temp file; carrier model gpt-5.5 (settings-overridable via images.carrierModel) |
 | `health-checks.ts` | Doctor: pi home/registry, agents-root writable, auth providers, models available |
 
 ## Load-bearing SDK facts (0.80.3, probed — do not trust docs over these)
@@ -50,7 +51,7 @@ Pi is a minimal single-session coding harness — it has no agent roster, channe
 |---|---|
 | channels | `list() → []`; sends/approvals throw typed `runtime_failed` ("not supported by the pi runtime"); the Chat plugin is the conversational surface |
 | cron | empty reads, typed failure on mutation (Bakin-owned task scheduling unaffected) |
-| images | `runtime.images` IS implemented (`images.ts`): generation routes to Bakin's SHARED direct-provider shim (@bakin/core/media — same fallback OpenClaw uses), key from `OPENAI_API_KEY`/`GEMINI_API_KEY` env or secret store `providers.<id>.apiKey`; no key = typed guidance. `providers()` returns `[]` (nothing native). **Edit is typed-unsupported** (shim is generate-only — no input images) |
+| images | **FULLY SUPPORTED, ZERO KEYS** (`images.ts` + `codex-images.ts`): the existing openai-codex OAuth drives the ChatGPT backend's hosted `image_generation` tool (gpt-image-2) — generation AND edits with input images (both probed live 2026-07-07). `providers()` reports `openai-codex` configured → plugin routes `servedBy: 'runtime'`. Explicit `provider: openai/google` routes still ride the shared direct-provider shim with a Bakin key (generate-only fallback). Caveats: the hosted tool takes no size params (`sizingHonored: false` — plugin probes real dims, exports own geometry); the endpoint is reverse-engineered (`chatgpt.com/backend-api/codex/responses`), so failures classify typed and the shim remains the keyed escape hatch |
 | media / createThread / editMessage | members genuinely absent — callers skip |
 | tools.invoke | typed failure (zero production callers) |
 
