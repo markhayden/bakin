@@ -254,7 +254,10 @@ function fanOutMapStep(
   // cancel the prior fan-out's live children whether the new source is valid,
   // empty, oversized, or garbage — otherwise a discarded fan-out keeps
   // running (and billing) with its completions dead-ending at the join.
-  sweepLiveMapChildren(instance.taskId, mapStep.id, Array.isArray(value) ? value.length : 0, contentDir)
+  // keepBelow (board tasks kept for id reuse) applies ONLY when this fan-out
+  // will actually spawn — every failure branch retires all board tasks.
+  const willSpawn = Array.isArray(value) && value.length > 0 && value.length <= (mapStep.max_children ?? DEFAULT_MAX_CHILDREN)
+  sweepLiveMapChildren(instance.taskId, mapStep.id, willSpawn ? value.length : 0, contentDir)
 
   if (!Array.isArray(value)) {
     const detail = sourceOutput
@@ -346,6 +349,13 @@ export function completeStep(
   // Resolve output schema for validation
   const step = findStep(def, stepId)
   if (!step) return { success: false, errors: [`Step not found in definition: ${stepId}`] }
+
+  // Container steps complete only through their own machinery — a direct
+  // submission against a map step would bypass the join while its children
+  // keep running (their outputs then silently discarded).
+  if (step.type === 'map_workflow') {
+    return { success: false, errors: [`Step "${stepId}" is a map fan-out — it completes when all of its children complete. Work the child tasks instead.`] }
+  }
 
   // Agent-scoping: verify the caller is the agent assigned to this step
   if (callerAgentId) {
@@ -699,15 +709,23 @@ export function cancelInstance(taskId: string, contentDir?: string): void {
   // children[] while the child instances keep running — the bookkeeping
   // loops above can't see those. Sweep anything in the store still claiming
   // this instance as parent so cancellation never orphans live children.
-  const strays = listInstances(undefined, dir).filter(
-    (child) => child.parentTaskId === taskId &&
-      child.status !== 'complete' && child.status !== 'cancelled',
-  )
-  for (const stray of strays) {
-    cancelInstance(stray.taskId, dir)
-    moveTaskInStore(stray.taskId, 'done').catch((err) => {
-      log.warn('Failed to retire stray child task on cancel', err)
-    })
+  // Gated on the definition actually containing a map step: cancelInstance
+  // is on the common path (every done/blocked/deleted task) and the store
+  // scan would otherwise run for every plain workflow — and once per child
+  // in a fan-out's own recursive cancellation.
+  const def = loadDefinition(instance.workflowId, dir)
+  const mayHaveMapChildren = !def || def.steps.some((s) => s.type === 'map_workflow')
+  if (mayHaveMapChildren) {
+    const strays = listInstances(undefined, dir).filter(
+      (child) => child.parentTaskId === taskId &&
+        child.status !== 'complete' && child.status !== 'cancelled',
+    )
+    for (const stray of strays) {
+      cancelInstance(stray.taskId, dir)
+      moveTaskInStore(stray.taskId, 'done').catch((err) => {
+        log.warn('Failed to retire stray child task on cancel', err)
+      })
+    }
   }
 
   saveInstance(instance, dir)

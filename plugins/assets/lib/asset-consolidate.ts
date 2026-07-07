@@ -11,25 +11,23 @@
  * Idempotency & crash safety:
  * - Each absorbed version carries `consolidatedFrom` provenance; a re-run
  *   (mcporter timeout retry, double-click) skips already-absorbed losers.
- * - The restore target is DURABLE: the first absorbed version's
- *   parentVersion is the pointer at first absorb — i.e. the winner's
- *   original version — recorded immutably by addVersion. Retries after a
- *   mid-run crash restore that, never whatever loser version the crash left
- *   the pointer on.
- * - The pointer is restored after EVERY absorb (not once at the end) so a
- *   crash leaves at most a milliseconds-wide wrong-pointer window.
- * - A run that absorbs nothing NEVER touches the pointer — a deliberate
- *   re-promote of an absorbed variant (the selection-gate re-select flow)
- *   survives pure-no-op retries.
+ * - Pointer semantics: consolidation NEVER changes which version is current.
+ *   Each absorb captures the pointer immediately before its addVersion and
+ *   restores it immediately after — so the pre-existing pointer always
+ *   survives, whether that's the winner's original (normal flow) or a
+ *   deliberately re-promoted absorbed variant (the selection-gate re-select
+ *   flow). Under per-winner serialization the wrong-pointer crash window is
+ *   the single addVersion→promote gap.
  * - Concurrent invocations for the same winner are serialized in-process
  *   (single-server box) so the check-then-act absorb loop cannot double-add
  *   a loser when a client-side timeout triggers an overlapping retry.
- * - Failures are typed per-loser, never thrown.
+ * - Failures are typed per-loser, never thrown; only a winner-side failure
+ *   (winner_not_found) is fatal to the operation as a whole.
  */
 import { join } from 'node:path'
 import { existsSync } from 'node:fs'
 import { assetDirAbs } from './asset-id'
-import { readManifest, type AssetManifest } from './manifest'
+import { readManifest } from './manifest'
 import { addVersion } from './asset-mutations'
 import { promoteVersion } from './asset-mutations'
 import { deleteAsset } from './asset-trash'
@@ -71,18 +69,6 @@ export async function consolidateAssets(input: ConsolidateInput): Promise<Consol
   }
 }
 
-/**
- * The winner's original version: the pointer at the moment of the FIRST
- * absorb, recorded immutably as that version's parentVersion. Null when no
- * consolidation has happened yet.
- */
-function canonicalOriginalVersion(manifest: AssetManifest): number | null {
-  const absorbed = manifest.versions
-    .filter((v) => v.consolidatedFrom)
-    .sort((a, b) => a.version - b.version)
-  return absorbed.length > 0 ? absorbed[0].parentVersion : null
-}
-
 async function consolidateSerialized(input: ConsolidateInput): Promise<ConsolidateResult> {
   const { winnerAssetId, loserAssetIds, taskId } = input
   const result: ConsolidateResult = { winnerAssetId, absorbed: [], skipped: [], failed: [] }
@@ -93,8 +79,6 @@ async function consolidateSerialized(input: ConsolidateInput): Promise<Consolida
     result.failed.push({ assetId: winnerAssetId, code: 'winner_not_found' })
     return result
   }
-
-  const restoreTarget = canonicalOriginalVersion(winner) ?? winner.currentVersion
 
   for (const loserId of loserAssetIds) {
     if (loserId === winnerAssetId) {
@@ -127,6 +111,10 @@ async function consolidateSerialized(input: ConsolidateInput): Promise<Consolida
       continue
     }
 
+    // Capture the pointer THIS absorb is about to move, restore it right
+    // after — the pre-existing pointer (original or a deliberate re-select)
+    // always survives consolidation.
+    const pointerBeforeAbsorb = currentWinner?.currentVersion ?? winner.currentVersion
     await addVersion(winnerAssetId, {
       sourceFilePath: join(loserDir, loserCurrent.file),
       op: 'import',
@@ -137,8 +125,7 @@ async function consolidateSerialized(input: ConsolidateInput): Promise<Consolida
       generation: loserCurrent.generation,
       consolidatedFrom: { assetId: loserId, version: loserCurrent.version },
     })
-    // Restore immediately — addVersion advanced the pointer onto the loser.
-    await promoteVersion(winnerAssetId, restoreTarget)
+    await promoteVersion(winnerAssetId, pointerBeforeAbsorb)
     result.absorbed.push(loserId)
     await trashQuietly(loserId, taskId)
   }

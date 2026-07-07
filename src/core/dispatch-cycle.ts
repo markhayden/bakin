@@ -105,7 +105,7 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
 
       // Check if the current workflow step agent has been dispatched
       const activeAgents = await hooks().invoke<Array<{ agent: string; stepId: string; effectiveTaskId?: string }>>('workflows.getActiveAgents', { taskId: task.id }) ?? []
-      const needsDispatch = activeAgents.some(({ stepId }) => !dispatchedSet.has(`${task.id}:${stepId}`))
+      const needsDispatch = activeAgents.some(({ stepId, effectiveTaskId }) => !dispatchedSet.has(`${effectiveTaskId || task.id}:${stepId}`))
       if (!needsDispatch) continue
 
       try {

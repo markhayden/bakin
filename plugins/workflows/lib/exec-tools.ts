@@ -8,6 +8,7 @@
  * start-validation / search-sync / step-format lib modules.
  */
 import { z } from 'zod'
+import { createLogger } from '@bakin/core/logger'
 import type { PluginContext } from '@bakin/core/plugin-types'
 import type { WorkflowDefinition } from '../types'
 import { buildTemplateList, resolveSubWorkflows } from './template-list'
@@ -19,6 +20,8 @@ import { triggerDispatch } from './trigger-dispatch'
 import { formatStepContext } from './step-format'
 import { validateStepOutput } from './schema-validator'
 import { getTask, updateTask } from '../../../src/core/task-store'
+
+const log = createLogger('workflow-exec-tools')
 
 export function registerWorkflowExecTools(ctx: PluginContext): void {
   ctx.registerExecTool({
@@ -187,7 +190,7 @@ export function registerWorkflowExecTools(ctx: PluginContext): void {
       if (!result.success) return { ok: false, error: 'Map child retry failed', errors: result.errors }
 
       ctx.activity.audit('map_child.retried', agent, { taskId, stepId, index, reason: params.reason })
-      indexInstance(taskId).catch(() => {})
+      indexInstance(taskId).catch((err) => { log.warn('Failed to reindex instance after map-child retry', err) })
       triggerDispatch()
       return { ok: true, childTaskId: `${taskId}--${stepId}--${index}` }
     },
@@ -212,7 +215,7 @@ export function registerWorkflowExecTools(ctx: PluginContext): void {
       if (!result.success) return { ok: false, error: 'Map child cancel failed', errors: result.errors }
 
       ctx.activity.audit('map_child.cancelled', agent, { taskId, stepId, index })
-      indexInstance(taskId).catch(() => {})
+      indexInstance(taskId).catch((err) => { log.warn('Failed to reindex instance after map-child cancel', err) })
       return { ok: true }
     },
   })
@@ -264,6 +267,9 @@ export function registerWorkflowExecTools(ctx: PluginContext): void {
         }
         if (step.status === 'failed') {
           return { ok: false, error: `Workflow is in a failed state${step.code ? ` (${String(step.code)})` : ''} — it must be recovered (reopen the failing step's source) before submissions are accepted.` }
+        }
+        if (step.status === 'fanned_out') {
+          return { ok: false, error: 'This task is mid fan-out — the map step completes when all of its children complete. Submit against your CHILD task id, not the parent.' }
         }
 
         const schema = step.output_schema as Record<string, unknown> | undefined

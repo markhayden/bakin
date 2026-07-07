@@ -209,10 +209,12 @@ export function registerAssetsExecTools(ctx: PluginContext): void {
           loserAssetIds,
           taskId: params.taskId as string,
         })
-        // Only a winner-side failure is fatal — per-loser failures (e.g. a
-        // stale id) are reported in failed[] while the consolidation of the
-        // remaining variants stands, so retries don't loop forever.
-        const ok = !result.failed.some((f) => f.assetId === winnerAssetId)
+        // Only a winner-side failure is fatal — per-loser failures (a stale
+        // id, or the winner mistakenly listed among the losers) are reported
+        // in failed[] while the consolidation of the remaining variants
+        // stands, so retries don't loop forever. Match on the CODE: a
+        // self_reference failure also carries the winner's assetId.
+        const ok = !result.failed.some((f) => f.code === 'winner_not_found')
         ctx.activity.audit('asset.consolidated', agent, {
           winnerAssetId,
           absorbed: result.absorbed,

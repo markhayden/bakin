@@ -94,17 +94,16 @@ describe('consolidateAssets', () => {
     expect(m.currentVersion).toBe(2)
   })
 
-  it('crash-retry restores the winner\'s ORIGINAL version, never a loser the crash left current', async () => {
-    // Simulates run 1 dying between absorbing loser1 (pointer advanced onto
-    // it) and the restore: the pointer sits on the absorbed loser (v2) when
-    // the retry arrives with the remaining loser. The retry must restore the
-    // DURABLE original (first absorbed version's parentVersion = v1) — not
-    // whatever version the crash left current.
+  it('a deliberate re-promote of an absorbed variant survives retries that absorb new losers', async () => {
+    // The selection-gate re-select flow: after consolidation the user
+    // promotes an absorbed variant (v2). A later retry that absorbs a NEW
+    // loser must not clobber that choice — consolidation never changes which
+    // version is current; each absorb restores the pointer it moved.
     const winner = await variant('win-c', 'v0.png')
     const loser1 = await variant('lose-c1', 'v1.png')
     const loser2 = await variant('lose-c2', 'v2.png')
     await consolidateAssets({ winnerAssetId: winner.assetId, loserAssetIds: [loser1.assetId], taskId: 't' })
-    await promoteVersion(winner.assetId, 2) // pointer parked on the absorbed loser, as a mid-run crash leaves it
+    await promoteVersion(winner.assetId, 2) // user re-selects the absorbed variant
 
     const result = await consolidateAssets({
       winnerAssetId: winner.assetId,
@@ -116,7 +115,7 @@ describe('consolidateAssets', () => {
 
     const m = getAsset(winner.assetId)!
     expect(m.versions).toHaveLength(3)
-    expect(m.currentVersion).toBe(1) // the winner's original, from durable provenance
+    expect(m.currentVersion).toBe(2) // the user's re-select stands
   })
 
   it('serializes concurrent invocations — an overlapping retry cannot double-absorb', async () => {
@@ -157,5 +156,20 @@ describe('consolidateAssets', () => {
     })
     expect(result.failed).toEqual([{ assetId: winner.assetId, code: 'self_reference' }])
     expect(getAsset(winner.assetId)!.versions).toHaveLength(1)
+  })
+
+  it('a winner mistakenly listed among losers absorbs the real losers anyway', async () => {
+    // The agent prompt says "the other assetIds" — a slip that includes the
+    // winner must not make the whole call (and every retry) fail.
+    const winner = await variant('win-g', 'v0.png')
+    const loser = await variant('lose-g', 'v1.png')
+    const result = await consolidateAssets({
+      winnerAssetId: winner.assetId,
+      loserAssetIds: [winner.assetId, loser.assetId],
+      taskId: 't',
+    })
+    expect(result.failed).toEqual([{ assetId: winner.assetId, code: 'self_reference' }])
+    expect(result.absorbed).toEqual([loser.assetId])
+    expect(getAsset(winner.assetId)!.versions).toHaveLength(2)
   })
 })

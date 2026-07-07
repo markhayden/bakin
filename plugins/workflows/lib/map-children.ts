@@ -130,6 +130,15 @@ export function retryMapChild(
     saveInstance(childInstance, dir)
     const total = parent.stepStates[stepId].children?.length ?? index + 1
     createBoardTaskForChild(entry.childTaskId, parent.taskId, mapStep, loadDefinition(mapStep.workflow_id, dir), parent.resolvedAgent, { index, total })
+    // The re-created child can fail synchronously inside createInstance
+    // (defensive first-step failures) — record an honest entry. The in-spawn
+    // markMapChildFailed no-ops there because linkage is assigned after.
+    if (childInstance.status === 'failed') {
+      entry.status = 'failed'
+      parent.updatedAt = new Date().toISOString()
+      saveInstance(parent, dir)
+      return { success: false, errors: ['Retried child failed during spawn — inspect the child task'] }
+    }
   }
 
   entry.status = 'in_progress'

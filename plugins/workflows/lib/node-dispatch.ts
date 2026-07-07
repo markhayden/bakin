@@ -48,6 +48,19 @@ export function failSystemNode(
   instance.status = 'failed'
   instance.history.push({ stepId, status: 'failed', completedAt: now, output: { error: message } })
   saveInstance(instance, contentDir)
+  // If this instance is a map fan-out child, surface the failure on the
+  // parent's join entry — otherwise the join blocks showing in_progress.
+  // (Mirrors engine.markMapChildFailed, inlined here because engine imports
+  // this module — importing back would manufacture a cycle.)
+  if (instance.parentTaskId && instance.parentStepId) {
+    const parent = loadInstance(instance.parentTaskId, contentDir)
+    const entry = parent?.stepStates[instance.parentStepId]?.children
+      ?.find((c) => c.childTaskId === instance.taskId)
+    if (parent && entry && entry.status === 'in_progress') {
+      entry.status = 'failed'
+      saveInstance(parent, contentDir)
+    }
+  }
   addTaskLogToStore(taskId, 'workflow', `Workflow node "${stepId}" failed: ${message}`)
     .catch((err) => { log.warn('Failed to log workflow node failure', err) })
 }

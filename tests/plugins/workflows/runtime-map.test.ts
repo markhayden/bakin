@@ -292,6 +292,33 @@ describe('runtime — map_workflow', () => {
       }
     })
 
+    it('re-fan-out that fails on max_children retires ALL prior board tasks (keepBelow=0 on failure)', async () => {
+      startAndFan('task-over-sweep')
+      await settle()
+      reopenFromStep('task-over-sweep', { stepId: 'source-step', reason: 'redo', contentDir: testDir })
+      // Resubmit WIDER than max_children (4) — the fan-out fails typed; the
+      // prior children's board tasks must not be kept for reuse that never comes.
+      completeStep('task-over-sweep', 'source-step', { items: ['a', 'b', 'c', 'd', 'e'] }, undefined, testDir)
+      await settle()
+
+      expect(loadInstance('task-over-sweep', testDir)!.status).toBe('failed')
+      for (let i = 0; i < 3; i++) {
+        expect(loadInstance(`task-over-sweep--produce-items--${i}`, testDir)!.status).toBe('cancelled')
+        expect(hookTasks.get(`task-over-sweep--produce-items--${i}`)!.column).toBe('done')
+      }
+    })
+
+    it('refuses direct completion of a fanned-out map step (join bypass)', () => {
+      startAndFan('task-bypass')
+      const result = completeStep('task-bypass', 'produce-items', { outputs: ['fabricated'] }, undefined, testDir)
+      expect(result.success).toBe(false)
+      expect(result.errors?.[0]).toContain('map fan-out')
+
+      const parent = loadInstance('task-bypass', testDir)!
+      expect(parent.stepStates['produce-items'].status).toBe('in_progress')
+      expect(parent.currentStepId).toBe('produce-items')
+    })
+
     it('persists fan-out state across a reload (crash-restart)', () => {
       startAndFan('task-map-reload')
       // Fresh read from disk — nothing held in memory.
@@ -497,6 +524,39 @@ describe('runtime — map_workflow', () => {
       expect(child.stepStates['do-work'].rejectionReason).toBe('redo this one')
       // Same instance reopened, not re-created — history carries the reopen.
       expect(child.history.some((h) => (h.output as { reopened?: boolean } | undefined)?.reopened)).toBe(true)
+    })
+
+    it('retry of a child that fails during re-spawn records an honest failed entry', () => {
+      // Point the map at a child workflow whose spawn fails synchronously
+      // (map-first's defensive first-step failure), cancel a child, retry it.
+      const { writeFileSync } = require('fs') as typeof import('fs')
+      const { join: j } = require('path') as typeof import('path')
+      writeFileSync(j(testDir, 'workflows', 'definitions', 'map-respawn-parent.yaml'), `name: Map Respawn Parent
+description: retried children fail at spawn
+version: 1
+steps:
+  - id: source-step
+    type: agent
+    label: Segment
+    agent: chef
+  - id: produce-items
+    type: map_workflow
+    label: Produce Items
+    source: source-step.items
+    workflow_id: map-first
+  - id: after-map
+    type: agent
+    label: After
+    agent: main
+`)
+      createInstance('task-respawn', 'map-respawn-parent', testDir)
+      completeStep('task-respawn', 'source-step', { items: ['a'] }, undefined, testDir)
+      // Spawn already failed (map-first fails in createInstance) — entry honest.
+      expect(loadInstance('task-respawn', testDir)!.stepStates['produce-items'].children![0].status).toBe('failed')
+
+      const retried = retryMapChild('task-respawn', 'produce-items', 0, { reason: 'again', contentDir: testDir })
+      expect(retried.success).toBe(false)
+      expect(loadInstance('task-respawn', testDir)!.stepStates['produce-items'].children![0].status).toBe('failed')
     })
 
     it('refuses to retry or cancel a completed child', () => {

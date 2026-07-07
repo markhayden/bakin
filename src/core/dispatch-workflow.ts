@@ -121,16 +121,21 @@ export async function dispatchWorkflowTask(
       continue
     }
 
-    // Claim the step's live-run slot (exec key taskId:stepId — parallel
-    // step agents on one task are legitimate concurrent runs).
-    const claim = claimDispatchRun(task.id, targetAgent, stepId)
+    // Claim the step's live-run slot. The exec key is CONTEXT taskId:stepId:
+    // parallel-step agents on one task are legitimate concurrent runs, and
+    // map fan-out siblings all share the child workflow's stepId — keying by
+    // the parent would make siblings collide on one claim (false duplicate
+    // suppressions + only one child ever dispatching). Keying by the child
+    // task id also unifies with the child's own board-task dispatch path, so
+    // the ledger dedupes across both instead of double-dispatching.
+    const claim = claimDispatchRun(contextTaskId, targetAgent, stepId)
     if (!claim.claimed) {
       auditDispatchSuppressed(contentDir, task, targetAgent, claim.liveRunId, 'workflow')
       continue
     }
 
     const threadId = claim.runId
-    dispatchedSet.add(`${task.id}:${stepId}`)
+    dispatchedSet.add(`${contextTaskId}:${stepId}`)
     appendAudit(contentDir, 'task.dispatched', targetAgent, {
       id: task.id,
       title: task.title,

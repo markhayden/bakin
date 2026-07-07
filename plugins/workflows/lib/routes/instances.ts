@@ -158,8 +158,13 @@ const retryBodySchema = z.object({ reason: z.string().optional() }).passthrough(
 const reopenBodySchema = z.object({ stepId: z.string().optional(), reason: z.string().optional() }).passthrough()
 
 async function parseBody<T>(req: Request, schema: z.ZodType<T>, empty: T): Promise<T | null> {
+  // An absent/empty body is fine (all fields optional); MALFORMED JSON is a
+  // client error — silently treating it as empty would drop the caller's
+  // intended fields (e.g. a reopen stepId) and act from the wrong state.
+  const text = await req.text()
+  if (!text.trim()) return empty
   let raw: unknown
-  try { raw = await req.json() } catch { return empty /* empty body is fine */ }
+  try { raw = JSON.parse(text) } catch { return null }
   const parsed = schema.safeParse(raw)
   return parsed.success ? parsed.data : null
 }
