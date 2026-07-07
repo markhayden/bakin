@@ -130,7 +130,7 @@ export function bootstrapCommands(): string[][] {
 }
 
 /** Default tag pinned to match production (see dev/docker/Dockerfile). */
-export const OPENCLAW_DEFAULT_IMAGE_TAG = '2026.5.28'
+export const OPENCLAW_DEFAULT_IMAGE_TAG = '2026.6.11'
 
 function openclawImage(deps: LifecycleDeps): string {
   return `ghcr.io/openclaw/openclaw:${deps.env.OPENCLAW_IMAGE_TAG || OPENCLAW_DEFAULT_IMAGE_TAG}`
