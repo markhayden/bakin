@@ -18,10 +18,11 @@ import { getSettings } from './settings'
 import { appendAudit } from './audit'
 import { getAppServices } from './app-services'
 import { RuntimeError, RuntimeTurnError, type MessageResult } from '@bakin/core/adapters/runtime'
-import { claimNextRun, loseRun, settleRun, spendTotal, type ClaimNextRunResult } from './execution-ledger'
+import { claimNextRun, loseRun, settleRun, type ClaimNextRunResult } from './execution-ledger'
 import { meterAgentTurn } from './agent-cost'
 import { resolveTurnModel, type ResolvedTurn, type RoutingConfig } from './model-routing'
-import { evaluateBudget, dayStartMs, monthStartMs, type BudgetPolicy, type BudgetSpend, type BudgetDecision } from './budget'
+import { evaluateBudget, dayStartMs, type BudgetPolicy, type BudgetSpend, type BudgetDecision } from './budget'
+import { assembleBudgetSpend, type BudgetSpendFacets } from './budget-spend'
 import { getBootId } from './boot-id'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { moveTask as moveStoredTask } from './task-store'
@@ -68,12 +69,23 @@ function auditBudgetOnce(contentDir: string, event: 'budget.warn' | 'budget.defe
 }
 
 /**
- * Consult the budget policy before a dispatch claims a run. allow / warn /
- * defer; warn and defer are audited (debounced per window). FAIL-CLOSED: if
- * the spend ledger can't be read, defer — consistent with the ledger's
- * existing fail-closed posture. No policy (plugin absent / empty) → allow.
+ * Per-cycle memo for the spend engine: the facets are identical for every
+ * task evaluated in one dispatch cycle (costs are only recorded on settle,
+ * after the loop), so one assembly serves the whole cycle.
  */
-export async function budgetGate(agentId: string, contentDir: string, spendCache?: Map<string, number>): Promise<BudgetDecision> {
+export interface BudgetSpendMemo {
+  facets?: Promise<BudgetSpendFacets>
+}
+
+/**
+ * Consult the budget policy before a dispatch claims a run. allow / warn /
+ * defer; warn and defer are audited (debounced per window). Spend comes from
+ * the shared engine (assembleBudgetSpend) — attributed run_costs PLUS the
+ * unattributed usage.db delta (total-observed basis, spec V4). FAIL-CLOSED:
+ * if the spend ledger can't be read, defer — consistent with the ledger's
+ * existing posture. No policy (plugin absent / empty) → allow.
+ */
+export async function budgetGate(agentId: string, contentDir: string, spendMemo?: BudgetSpendMemo): Promise<BudgetDecision> {
   let policy: BudgetPolicy | undefined
   try {
     policy = (await hooks().invoke<BudgetPolicy>('models.getBudgetPolicy', {})) ?? undefined
@@ -84,38 +96,30 @@ export async function budgetGate(agentId: string, contentDir: string, spendCache
   if (!policy || (!policy.global && !policy.perAgent)) return { action: 'allow' }
 
   const now = Date.now()
-  const dayStart = dayStartMs(now)
-  const monthStart = monthStartMs(now)
-  // Memoize spend reads within a dispatch cycle: the two GLOBAL totals are
-  // identical for every task in the cycle, and costs are only recorded on
-  // settle (after the loop), so a per-cycle cache is safe and saves ~2 SQL
-  // aggregates per task. Cache key includes the window start so it can't
-  // bleed across a day/month boundary.
-  const spendAt = (agent: string | undefined, sinceMs: number): number => {
-    const key = `${agent ?? '*'}:${sinceMs}`
-    const hit = spendCache?.get(key)
-    if (hit !== undefined) return hit
-    const v = spendTotal(agent ? { agent, sinceMs } : { sinceMs })
-    spendCache?.set(key, v)
-    return v
-  }
-  let spend: BudgetSpend
+  let facets: BudgetSpendFacets
   try {
-    spend = {
-      globalDayMicros: spendAt(undefined, dayStart),
-      globalMonthMicros: spendAt(undefined, monthStart),
-      agentDayMicros: spendAt(agentId, dayStart),
-      agentMonthMicros: spendAt(agentId, monthStart),
-    }
+    const pending = spendMemo?.facets ?? assembleBudgetSpend(now)
+    if (spendMemo) spendMemo.facets = pending
+    facets = await pending
   } catch (err) {
     log.error('Budget spend read failed; deferring (fail-closed)', err, { agentId })
-    auditBudgetOnce(contentDir, 'budget.deferred', agentId, { scope: 'global', window: 'daily', reason: 'ledger-unavailable' }, dayStart)
+    auditBudgetOnce(contentDir, 'budget.deferred', agentId, { scope: 'global', window: 'daily', reason: 'ledger-unavailable' }, dayStartMs(now))
     return { action: 'defer', scope: 'global', window: 'daily', spentUsdMicros: 0, capUsdMicros: 0 }
+  }
+
+  // Dollar-cap basis: metered spend + the unattributed metered delta.
+  const dollars = (scope: { meteredUsdMicros: number; unattributed: { meteredUsdMicros: number } } | undefined): number =>
+    scope ? scope.meteredUsdMicros + scope.unattributed.meteredUsdMicros : 0
+  const spend: BudgetSpend = {
+    globalDayMicros: dollars(facets.daily.global),
+    globalMonthMicros: dollars(facets.monthly.global),
+    agentDayMicros: dollars(facets.daily.byAgent[agentId]),
+    agentMonthMicros: dollars(facets.monthly.byAgent[agentId]),
   }
 
   const decision = evaluateBudget({ policy, agent: agentId, spend })
   if (decision.action !== 'allow') {
-    const windowStart = decision.window === 'monthly' ? monthStart : dayStart
+    const windowStart = decision.window === 'monthly' ? facets.monthly.startMs : facets.daily.startMs
     const event = decision.action === 'defer' ? 'budget.deferred' : 'budget.warn'
     auditBudgetOnce(contentDir, event, agentId, {
       scope: decision.scope, window: decision.window,
@@ -126,8 +130,8 @@ export async function budgetGate(agentId: string, contentDir: string, spendCache
 }
 
 /** True when budget says defer — the shared shape all three dispatch paths use. */
-export async function deferForBudget(agentId: string, contentDir: string, spendCache?: Map<string, number>): Promise<boolean> {
-  return (await budgetGate(agentId, contentDir, spendCache)).action === 'defer'
+export async function deferForBudget(agentId: string, contentDir: string, spendMemo?: BudgetSpendMemo): Promise<boolean> {
+  return (await budgetGate(agentId, contentDir, spendMemo)).action === 'defer'
 }
 
 /**

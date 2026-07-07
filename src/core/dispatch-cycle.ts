@@ -23,7 +23,7 @@ import {
   trimDispatched,
 } from './dispatch-state'
 import { readDispatchColumns, isTaskDispatchEligible, addTaskLog, moveTaskToInProgress, tryAddTaskLog } from './dispatch-board'
-import { concurrencyGate, deferForBudget, fireDispatchTurn } from './dispatch-turns'
+import { concurrencyGate, deferForBudget, fireDispatchTurn, type BudgetSpendMemo } from './dispatch-turns'
 import { prepareRegularDispatch } from './dispatch-prepare'
 import { dispatchWorkflowTask } from './dispatch-workflow'
 import { resolveTeamAssignmentsPrePass } from './dispatch-team'
@@ -135,9 +135,9 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
     // not fired yet, and unfired seqs re-mint identically next cycle.
     const pendingTurns: Array<Parameters<typeof fireDispatchTurn>[0]> = []
     const pendingByAgent = new Map<string, number>()
-    // Per-cycle memo for budget spend reads (global totals are identical for
-    // every task in this cycle; costs only land on settle, after the loop).
-    const budgetSpendCache = new Map<string, number>()
+    // Per-cycle memo for the spend engine (facets are identical for every
+    // task in this cycle; costs only land on settle, after the loop).
+    const budgetSpendCache: BudgetSpendMemo = {}
 
     for (const task of todoTasks) {
       if (dispatchedSet.has(task.id)) continue

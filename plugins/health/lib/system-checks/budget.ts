@@ -9,8 +9,9 @@
  */
 import { queryAuditEvents } from '../../../../src/core/audit'
 import { getContentDir } from '../../../../src/core/content-dir'
-import { spendTotal, LedgerUnavailableError } from '../../../../src/core/execution-ledger'
-import { evaluateBudget, dayStartMs, monthStartMs, type BudgetPolicy } from '../../../../src/core/budget'
+import { LedgerUnavailableError } from '../../../../src/core/execution-ledger'
+import { assembleBudgetSpend, type ScopeSpend } from '../../../../src/core/budget-spend'
+import { evaluateBudget, type BudgetPolicy } from '../../../../src/core/budget'
 import { getHookRegistry } from '../../../../packages/core/src/hooks/hook-registry-singleton'
 import type { HealthCheckResult } from '../../../../packages/core/src/plugin-types'
 
@@ -40,8 +41,12 @@ export async function checkBudget(): Promise<HealthCheckResult[]> {
   let dayMicros: number
   let monthMicros: number
   try {
-    dayMicros = spendTotal({ sinceMs: dayStartMs(now) })
-    monthMicros = spendTotal({ sinceMs: monthStartMs(now) })
+    // Same engine the dispatch gate reads (total-observed basis: attributed
+    // metered spend + the unattributed usage.db delta) — no parallel math.
+    const facets = await assembleBudgetSpend(now)
+    const dollars = (scope: ScopeSpend): number => scope.meteredUsdMicros + scope.unattributed.meteredUsdMicros
+    dayMicros = dollars(facets.daily.global)
+    monthMicros = dollars(facets.monthly.global)
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err)
     const kind = err instanceof LedgerUnavailableError ? 'unreachable' : 'failing'
