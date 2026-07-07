@@ -42,6 +42,21 @@ const KNOWN_CYCLES = new Set<string>([
   key(['plugins/assets/lib/enrichment/engine.ts', 'plugins/assets/lib/enrichment/runtime.ts']),
   // Workflows engine ↔ node-dispatch: dynamic import('./engine') back-edge
   key(['plugins/workflows/lib/engine.ts', 'plugins/workflows/lib/node-dispatch.ts']),
+  // Exec-tool provider seam (#624 Pi adapter): app-services constructs the
+  // RuntimeExecToolProvider, which wraps the exec-tool registry; the registry
+  // + dispatch/search graph reach back to app-services via getAppServices()
+  // (a runtime-lazy accessor, not module-load coupling). The proper fix —
+  // splitting the app-services accessors into a leaf store so the composition
+  // root isn't imported for a services READ — lands in the Runtime Capability
+  // Foundation refactor (.claude/specs/runtime-capabilities). Allowlisted
+  // here to keep the Pi-adapter PR scoped; ratchet these out in that work.
+  key(['src/core/app-services.ts', 'src/core/exec-tools/provider.ts', 'src/core/exec-tools/registry.ts']),
+  key(['src/core/app-services.ts', 'src/core/exec-tools/provider.ts', 'src/core/exec-tools/registry.ts', 'src/core/search-registry.ts', 'src/core/search-plugin-api.ts', 'src/core/search-registry-core.ts']),
+  key(['src/core/app-services.ts', 'src/core/exec-tools/provider.ts', 'src/core/exec-tools/registry.ts', 'src/lib/plugin-context-services.ts', 'src/core/task-service.ts']),
+  key(['src/core/app-services.ts', 'src/core/exec-tools/provider.ts', 'src/core/exec-tools/registry.ts', 'src/lib/plugin-context-services.ts', 'src/core/task-service.ts', 'src/core/continuation.ts', 'src/core/dispatch.ts', 'src/core/dispatch-cycle.ts']),
+  key(['src/core/app-services.ts', 'src/core/exec-tools/provider.ts', 'src/core/exec-tools/registry.ts', 'src/lib/plugin-context-services.ts', 'src/core/task-service.ts', 'src/core/continuation.ts', 'src/core/dispatch.ts', 'src/core/dispatch-cycle.ts', 'src/core/dispatch-prepare.ts', 'src/core/dispatch-prompts.ts']),
+  key(['src/core/app-services.ts', 'src/core/exec-tools/provider.ts', 'src/core/exec-tools/registry.ts', 'src/lib/plugin-context-services.ts', 'src/core/task-service.ts', 'src/core/continuation.ts', 'src/core/dispatch.ts', 'src/core/dispatch-cycle.ts', 'src/core/dispatch-prepare.ts', 'src/core/dispatch-turns.ts']),
+  key(['src/core/app-services.ts', 'src/core/exec-tools/provider.ts', 'src/core/exec-tools/registry.ts', 'src/lib/plugin-context-services.ts', 'src/core/task-service.ts', 'src/core/continuation.ts', 'src/core/dispatch.ts', 'src/core/dispatch-cycle.ts', 'src/core/dispatch-prepare.ts', 'src/core/dispatch-turns.ts', 'src/core/dispatch-session-death.ts', 'src/core/dispatch-single.ts']),
 ])
 
 
