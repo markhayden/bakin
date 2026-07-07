@@ -47,6 +47,41 @@ function writeRawTask(taskId: string, patch: Partial<BakinTask>) {
 // Mocks
 // ---------------------------------------------------------------------------
 
+// Explicit content-dir mocks (both the app facade and the package module —
+// consumers import either path; see CLAUDE.md testing rules). BAKIN_HOME above
+// covers env-time reads; these cover module-time resolver calls.
+function testBakinPaths() {
+  const assets = join(testHome, 'assets')
+  return {
+    home: testHome,
+    memoryLog: join(testHome, 'MEMORY-LOG.md'),
+    audit: join(testHome, 'audit.jsonl'),
+    assets,
+    'assets.store': join(assets, 'store'),
+    'assets.inbox': join(assets, 'inbox'),
+    'assets.trash': join(assets, '.trash'),
+    agents: join(testHome, 'agents'),
+    personas: join(testHome, 'team', 'personas'),
+    team: join(testHome, 'team'),
+    heartbeats: join(testHome, 'heartbeats'),
+    inbox: join(testHome, 'inbox'),
+    tasks: tasksDir,
+    workflows: join(testHome, 'workflows'),
+    settings: join(testHome, 'settings.json'),
+    logs: join(testHome, 'logs'),
+    antfly: join(testHome, 'antfly'),
+    db: join(testHome, 'bakin.db'),
+  }
+}
+mock.module('../../src/core/content-dir', () => ({
+  getContentDir: () => testHome,
+  getBakinPaths: testBakinPaths,
+}))
+mock.module('../../packages/core/src/content-dir', () => ({
+  getContentDir: () => testHome,
+  getBakinPaths: testBakinPaths,
+}))
+
 mock.module('@bakin/core/main-agent', () => ({
   getMainAgentId: () => 'main',
   tryGetMainAgentId: () => 'main',
@@ -99,6 +134,8 @@ import {
   clearDependency,
   reorderTasks,
   moveTaskToInProgress,
+  assignTaskToTeam,
+  recordTeamResolution,
   archiveOldTasks,
   getTask,
   getTaskWithColumn,
@@ -902,5 +939,107 @@ describe('order-based ordering', () => {
       getTask(t3.id)?.order,
     ]
     expect(orders).toEqual([0, 1, 2])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Team assignment (T1, #189)
+//
+// Invariant: `team` is the requested group, `agent` the concrete assignee.
+// States: neither (unassigned) / agent only (direct) / team only (unresolved
+// team task) / team+agent (resolved — the dispatch resolver fills agent and
+// team is RETAINED for audit).
+//
+// Exclusion rules live in this app facade, not the raw store, because
+// dispatch legitimately re-writes {agent} on resolved team tasks
+// (moveTaskToInProgress) and must not erase the requested team:
+//  - create: both assignee + team → reject
+//  - update/assign: agent set to a DIFFERENT value than current → clears team
+//  - update/assign: agent re-written with the SAME value → team retained
+//  - update/assign: agent cleared → team retained (back to unresolved)
+//  - team set → clears agent; both in one call → reject
+//  - recordTeamResolution: writes agent, retains team (dispatch-only path)
+// ---------------------------------------------------------------------------
+
+describe('team assignment', () => {
+  const teamOpts = { team: 'development' }
+  const createTeamTask = () =>
+    createTask('Team task', 'todo', undefined, undefined, undefined, undefined, undefined, undefined, undefined, teamOpts)
+
+  it('createTask persists team and exposes it on the board view', async () => {
+    const task = await createTeamTask()
+    expect(task.team).toBe('development')
+    expect(task.agent).toBeUndefined()
+    expect(getTask(task.id)?.team).toBe('development')
+  })
+
+  it('createTask rejects assignee and team together', async () => {
+    await expect(
+      createTask('Bad', 'todo', 'dev-agent', undefined, undefined, undefined, undefined, undefined, undefined, teamOpts),
+    ).rejects.toThrow(/both/i)
+  })
+
+  it('updateTask({team}) clears a direct agent assignment', async () => {
+    const task = await createTask('T', 'todo', 'dev-agent')
+    await updateTask(task.id, { team: 'development' })
+    const after = getTask(task.id)
+    expect(after?.team).toBe('development')
+    expect(after?.agent).toBeUndefined()
+  })
+
+  it('updateTask rejects agent and team set together', async () => {
+    const task = await createTask('T', 'todo')
+    await expect(updateTask(task.id, { agent: 'dev-agent', team: 'development' })).rejects.toThrow(/both/i)
+  })
+
+  it('updateTask({agent}) to a different agent clears team (re-assignment intent)', async () => {
+    const task = await createTeamTask()
+    await updateTask(task.id, { agent: 'reviewer' })
+    const after = getTask(task.id)
+    expect(after?.agent).toBe('reviewer')
+    expect(after?.team).toBeUndefined()
+  })
+
+  it('same-agent re-write retains team (dispatch move path)', async () => {
+    const task = await createTeamTask()
+    await recordTeamResolution(task.id, 'reviewer')
+    await moveTaskToInProgress(task.id, 'reviewer')
+    const after = getTask(task.id)
+    expect(after?.agent).toBe('reviewer')
+    expect(after?.team).toBe('development')
+  })
+
+  it('clearing agent retains team (back to unresolved)', async () => {
+    const task = await createTeamTask()
+    await recordTeamResolution(task.id, 'reviewer')
+    await assignTask(task.id, '')
+    const after = getTask(task.id)
+    expect(after?.agent).toBeUndefined()
+    expect(after?.team).toBe('development')
+  })
+
+  it('assignTask to a different agent clears team', async () => {
+    const task = await createTeamTask()
+    await recordTeamResolution(task.id, 'reviewer')
+    await assignTask(task.id, 'architect')
+    const after = getTask(task.id)
+    expect(after?.agent).toBe('architect')
+    expect(after?.team).toBeUndefined()
+  })
+
+  it('assignTaskToTeam sets team and clears any agent', async () => {
+    const task = await createTask('T', 'todo', 'dev-agent')
+    await assignTaskToTeam(task.id, 'development')
+    const after = getTask(task.id)
+    expect(after?.team).toBe('development')
+    expect(after?.agent).toBeUndefined()
+  })
+
+  it('recordTeamResolution fills agent while retaining team', async () => {
+    const task = await createTeamTask()
+    await recordTeamResolution(task.id, 'reviewer')
+    const after = getTask(task.id)
+    expect(after?.agent).toBe('reviewer')
+    expect(after?.team).toBe('development')
   })
 })

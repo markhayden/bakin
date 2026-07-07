@@ -68,13 +68,16 @@ const mockCreateTask = mock(async (opts?: unknown) => {
 })
 mock.module('../../../src/core/task-service', () => ({
   createTaskWithEffects: (opts: unknown) => mockCreateTask(opts),
+  validateTeamRef: async () => undefined,
+  validateTeamAssignment: async () => undefined,
+  TaskValidationError: class extends Error {},
 }))
 
 const emptyBoard = {
   columns: { todo: [], inProgress: [], review: [], blocked: [], done: [], archived: [], backlog: [] },
 }
-mock.module('@/core/task-store', () => ({ readTaskboard: mock(() => emptyBoard) }))
-mock.module('../../../src/core/task-store', () => ({ readTaskboard: mock(() => emptyBoard) }))
+mock.module('@/core/task-store', () => ({ readTaskboard: mock(() => emptyBoard), addTaskLog: mock(async () => undefined) }))
+mock.module('../../../src/core/task-store', () => ({ readTaskboard: mock(() => emptyBoard), addTaskLog: mock(async () => undefined) }))
 
 const mockHookRegistry = {
   invoke: mock(async () => undefined),

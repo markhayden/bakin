@@ -417,6 +417,42 @@ describe('POST / — Create Task', () => {
     expect(body.error).toBe('invalid input')
   })
 
+  it('creates a team-assigned task (#189)', async () => {
+    mockCreateTaskWithEffects.mockResolvedValue({ id: 'team-1' })
+
+    const route = findRoute(activated.routes, 'POST', '/')!
+    const { status } = await callRoute(route, activated.ctx, {
+      body: { title: 'Team task', team: 'development' },
+    })
+
+    expect(status).toBe(200)
+    expect(mockCreateTaskWithEffects).toHaveBeenCalledWith(
+      expect.objectContaining({ team: 'development' })
+    )
+  })
+
+  it('rejects assignee + team together with 400 (#189)', async () => {
+    const route = findRoute(activated.routes, 'POST', '/')!
+    const { status, body } = await callRoute(route, activated.ctx, {
+      body: { title: 'Bad', assignee: 'pixel', team: 'development' },
+    })
+
+    expect(status).toBe(400)
+    expect(body.error).toContain('both')
+    expect(mockCreateTaskWithEffects).not.toHaveBeenCalled()
+  })
+
+  it('rejects an unknown team with 400 (#189)', async () => {
+    const route = findRoute(activated.routes, 'POST', '/')!
+    const { status, body } = await callRoute(route, activated.ctx, {
+      body: { title: 'Bad', team: 'ghost-team' },
+    })
+
+    expect(status).toBe(400)
+    expect(body.error).toContain('Unknown team')
+    expect(mockCreateTaskWithEffects).not.toHaveBeenCalled()
+  })
+
   it('defaults createdBy to system', async () => {
     mockCreateTaskWithEffects.mockResolvedValue({ id: 'new-2' })
 
@@ -527,6 +563,76 @@ describe('PUT /:taskId — Update Task', () => {
 
     expect(status).toBe(500)
     expect(body.error).toContain('update failed')
+  })
+
+  it('title-only update does NOT clear stored team/agent (partial update, review R1)', async () => {
+    mockUpdateTask.mockResolvedValue(undefined)
+
+    const route = findRoute(activated.routes, 'PUT', '/:taskId')!
+    const { status } = await callRoute(route, activated.ctx, {
+      searchParams: { taskId: 'task-1' },
+      body: { title: 'Just a rename' },
+    })
+
+    expect(status).toBe(200)
+    const updates = mockUpdateTask.mock.calls[0][1] as Record<string, unknown>
+    // Absent body fields must be absent KEYS — updateTask clears on key
+    // presence ('team' in updates), so a passthrough undefined wipes data.
+    expect('team' in updates).toBe(false)
+    expect('agent' in updates).toBe(false)
+    expect('description' in updates).toBe(false)
+    expect(updates.title).toBe('Just a rename')
+  })
+
+  it('explicit empty-string team/agent still clear (partial update, review R1)', async () => {
+    mockUpdateTask.mockResolvedValue(undefined)
+
+    const route = findRoute(activated.routes, 'PUT', '/:taskId')!
+    await callRoute(route, activated.ctx, {
+      searchParams: { taskId: 'task-1' },
+      body: { agent: '', team: '' },
+    })
+
+    const updates = mockUpdateTask.mock.calls[0][1] as Record<string, unknown>
+    expect('team' in updates).toBe(true)
+    expect('agent' in updates).toBe(true)
+  })
+
+  it('re-assigns to a team through update (#189)', async () => {
+    mockUpdateTask.mockResolvedValue(undefined)
+
+    const route = findRoute(activated.routes, 'PUT', '/:taskId')!
+    const { status } = await callRoute(route, activated.ctx, {
+      searchParams: { taskId: 'task-1' },
+      body: { team: 'development' },
+    })
+
+    expect(status).toBe(200)
+    expect(mockUpdateTask).toHaveBeenCalledWith('task-1', expect.objectContaining({ team: 'development' }))
+  })
+
+  it('rejects agent + team together on update with 400 (#189)', async () => {
+    const route = findRoute(activated.routes, 'PUT', '/:taskId')!
+    const { status, body } = await callRoute(route, activated.ctx, {
+      searchParams: { taskId: 'task-1' },
+      body: { agent: 'pixel', team: 'development' },
+    })
+
+    expect(status).toBe(400)
+    expect(body.error).toContain('both')
+    expect(mockUpdateTask).not.toHaveBeenCalled()
+  })
+
+  it('rejects an unknown team on update with 400 (#189)', async () => {
+    const route = findRoute(activated.routes, 'PUT', '/:taskId')!
+    const { status, body } = await callRoute(route, activated.ctx, {
+      searchParams: { taskId: 'task-1' },
+      body: { team: 'ghost-team' },
+    })
+
+    expect(status).toBe(400)
+    expect(body.error).toContain('Unknown team')
+    expect(mockUpdateTask).not.toHaveBeenCalled()
   })
 })
 

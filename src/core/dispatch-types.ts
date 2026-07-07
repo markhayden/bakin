@@ -5,10 +5,28 @@
  */
 import type { DispatchFailureKind } from './dispatch-failures'
 
+/** `blockedReason` sentinel for EVERY team-routing block (#189, round-4
+ * review) — dispatch-side resolver blocks, routing exhaustion, and
+ * fire-time dangling teams alike. The schedule outcome check compares
+ * against this exact value to exclude routing problems from auto-pause
+ * failure counting; the human detail always rides the task log. Lives in
+ * this leaf module so the schedule plugin can import it without pulling
+ * the dispatch runtime graph. */
+export const TEAM_ROUTING_BLOCK_REASON = 'team routing failed — re-assign this task'
+
+/** `blockedReason` for a task blocked after EXHAUSTING billed routing
+ * retries (round-5). Deliberately NOT excluded from the schedule outcome
+ * check: repeated billed failures must count toward a job's auto-pause,
+ * or a broken routing provider bills maxRetries calls per occurrence
+ * forever. */
+export const TEAM_ROUTING_EXHAUSTED_REASON = 'team routing failed repeatedly — check the routing provider, then re-assign'
+
 export type DispatchTask = {
   id: string
   title: string
   agent?: string
+  /** Requested team (#189) — resolved to a concrete agent before dispatch. */
+  team?: string
   workflowId?: string
   description?: string
   projectId?: string

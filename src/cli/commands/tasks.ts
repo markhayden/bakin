@@ -60,9 +60,10 @@ async function cmdTasksList(column?: string): Promise<void> {
   }
 }
 
-async function cmdTasksCreate(title: string, assignee?: string, workflowId?: string, skipWorkflowReason?: string): Promise<void> {
+async function cmdTasksCreate(title: string, assignee?: string, workflowId?: string, skipWorkflowReason?: string, team?: string): Promise<void> {
   const body: Record<string, string> = { title }
   if (assignee) body.assignee = assignee
+  if (team) body.team = team
   if (workflowId) body.workflowId = workflowId
   if (skipWorkflowReason) body.skipWorkflowReason = skipWorkflowReason
   const result = await apiPost('/api/plugins/tasks/', body) as { ok?: boolean; id?: string; workflowId?: string; suggestedWorkflow?: string; error?: string }
@@ -83,7 +84,7 @@ async function cmdTasksCreate(title: string, assignee?: string, workflowId?: str
       action: 'created',
       taskId: result.id,
       title,
-      agent: assignee,
+      agent: assignee ?? (team ? `team:${team}` : undefined),
       workflowId: result.workflowId ?? workflowId,
       suggestedWorkflow,
     })
@@ -205,18 +206,22 @@ export async function run(args: string[]): Promise<void> {
     if (!args[2]) await exitUsage('bakin tasks get <id>')
     await cmdTasksGet(args[2], { json: args.includes('--json') })
   } else if (sub === 'create') {
-    if (!args[2]) await exitUsage('bakin tasks create <title> [agent] [--workflow=<id>] [--no-workflow="<reason>"]')
+    const createUsage = 'bakin tasks create <title> [agent] [--team=<id>] [--workflow=<id>] [--no-workflow="<reason>"]'
+    if (!args[2]) await exitUsage(createUsage)
     // Parse flags from remaining args
     const createArgs = args.slice(2)
     const wfFlag = createArgs.find(a => a.startsWith('--workflow='))
     const noWfFlag = createArgs.find(a => a.startsWith('--no-workflow='))
+    const teamFlag = createArgs.find(a => a.startsWith('--team='))
     const positional = createArgs.filter(a => !a.startsWith('--'))
     const createTitle = positional[0]
     const createAssignee = positional[1]
     const createWorkflowId = wfFlag?.split('=').slice(1).join('=')
     const createSkipReason = noWfFlag?.split('=').slice(1).join('=')
-    if (!createTitle) await exitUsage('bakin tasks create <title> [agent] [--workflow=<id>] [--no-workflow="<reason>"]')
-    await cmdTasksCreate(createTitle, createAssignee, createWorkflowId, createSkipReason)
+    const createTeam = teamFlag?.split('=').slice(1).join('=')
+    if (!createTitle) await exitUsage(createUsage)
+    if (createAssignee && createTeam) await exitUsage(`${createUsage}\n(agent and --team are mutually exclusive)`)
+    await cmdTasksCreate(createTitle, createAssignee, createWorkflowId, createSkipReason, createTeam)
   } else if (sub === 'move') {
     if (!args[2] || !args[3]) await exitUsage('bakin tasks move <id> <column>')
     await cmdTasksMove(args[2], args[3])

@@ -30,6 +30,8 @@ export interface Task {
   id: string
   title: string
   agent?: string
+  /** Requested team (#189); present alongside agent once resolved. */
+  team?: string
   createdBy?: string
   checked: boolean
   date?: string
@@ -131,6 +133,7 @@ function taskToView(task: BakinTask): Task {
     id: task.id,
     title: task.title,
     agent: task.agent,
+    team: task.team,
     createdBy: task.createdBy,
     checked: column === 'done' || column === 'archived',
     date: task.date,
@@ -266,9 +269,14 @@ export function createTask(
     source?: TaskSource
     scheduleJobId?: string
     dependsOn?: string
+    /** Team assignment (#189) — mutually exclusive with assignee. */
+    team?: string
   },
 ): Promise<Task> {
   try {
+    if (assignee && options?.team) {
+      throw new Error('Cannot set both an agent and a team on a task')
+    }
     const colId = column ? (normalizeColumn(column) || 'todo') : 'todo'
     const store = getSharedBakinTaskStore()
     const task = store.createSync({
@@ -276,6 +284,7 @@ export function createTask(
       title,
       description,
       agent: assignee,
+      team: options?.team,
       createdBy,
       parentId,
       workflowId,
@@ -327,7 +336,39 @@ export function moveTask(identifier: string, to: string, _from?: string, channel
 export function assignTask(identifier: string, agent: string): Promise<void> {
   try {
     const task = requireTask(identifier)
-    getSharedBakinTaskStore().updateSync(task.id, { agent: agent || undefined })
+    // Direct re-assignment intent clears the requested team; a same-value
+    // re-write (dispatch move of a resolved team task) and an unassign both
+    // retain it — see the team-assignment invariant in the tests.
+    const clearsTeam = !!agent && agent !== task.agent
+    getSharedBakinTaskStore().updateSync(task.id, {
+      agent: agent || undefined,
+      ...(clearsTeam ? { team: undefined } : {}),
+    })
+    return Promise.resolve()
+  } catch (err) {
+    return Promise.reject(err)
+  }
+}
+
+/** Assign a task to a team (#189): sets `team`, clears any concrete agent so
+ * the dispatch resolver picks a member fresh. */
+export function assignTaskToTeam(identifier: string, team: string): Promise<void> {
+  try {
+    const task = requireTask(identifier)
+    getSharedBakinTaskStore().updateSync(task.id, { team: team || undefined, agent: undefined })
+    return Promise.resolve()
+  } catch (err) {
+    return Promise.reject(err)
+  }
+}
+
+/** Dispatch-only (#189): persist the resolver's pick into `agent` while
+ * RETAINING `team` — the record must keep explaining requested vs resolved.
+ * Assignment-intent surfaces must use assignTask/updateTask instead. */
+export function recordTeamResolution(identifier: string, agent: string): Promise<void> {
+  try {
+    const task = requireTask(identifier)
+    getSharedBakinTaskStore().updateSync(task.id, { agent })
     return Promise.resolve()
   } catch (err) {
     return Promise.reject(err)
@@ -403,6 +444,7 @@ export function updateTask(
     title?: string
     description?: string
     agent?: string
+    team?: string
     column?: ColumnId
     workflowId?: string
     projectId?: string
@@ -421,9 +463,23 @@ export function updateTask(
     const isHuman = updates.channel === 'human'
     const patch: BakinTaskPatch = {}
 
+    if (updates.agent && updates.team) {
+      throw new Error('Cannot set both an agent and a team on a task')
+    }
+
     if ('title' in updates && updates.title !== undefined) patch.title = updates.title
     if ('description' in updates) patch.description = updates.description || undefined
-    if ('agent' in updates) patch.agent = updates.agent || undefined
+    if ('agent' in updates) {
+      patch.agent = updates.agent || undefined
+      // Direct re-assignment to a DIFFERENT agent clears the requested team;
+      // same-value re-writes (dispatch move) and unassigns retain it.
+      if (updates.agent && updates.agent !== task.agent) patch.team = undefined
+    }
+    if ('team' in updates) {
+      patch.team = updates.team || undefined
+      // Assigning to a team resets any concrete agent → unresolved state.
+      if (updates.team) patch.agent = undefined
+    }
     if ('workflowId' in updates) patch.workflowId = updates.workflowId || undefined
     if ('projectId' in updates) patch.projectId = updates.projectId || undefined
     if ('availableAt' in updates) patch.availableAt = updates.availableAt || undefined

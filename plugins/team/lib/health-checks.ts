@@ -15,6 +15,8 @@ import { join } from 'path'
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import { healthOk as ok, healthWarn as warn, healthError as error } from '@makinbakin/sdk/utils'
 
+import { resolveProviderKeySource, type DirectProviderId } from '@bakin/core/llm/provider-keys'
+import { readTaskboard } from '../../../src/core/task-store'
 import { scanAgentSync, type SyncScanReport } from '../../../src/core/agent-packages/sync-scanner'
 import { syncAllAgents } from '../../../src/core/agent-packages/sync'
 import { migrateToManagedBlocks } from '../../../src/core/agent-packages/migration'
@@ -30,6 +32,48 @@ type RuntimeAgentReader = Pick<AgentRuntimeAdapter['agents'], 'list'>
 
 // ─── Result constructors (inlined; matches workflows precedent) ─────────────
 
+
+// ─── Team routing readiness (#189) ──────────────────────────────────────────
+
+const ACTIVE_COLUMNS = ['backlog', 'todo', 'inProgress', 'review', 'blocked'] as const
+
+/**
+ * Warn-only: UNRESOLVED team tasks exist but the routing LLM key is
+ * missing — every one of them will hit the dispatch resolver's structural
+ * failure and block. Resolved team tasks (team retained alongside agent by
+ * design) never re-invoke the router, so they don't count (review R7).
+ * Local-only (settings + board + key presence; no network).
+ */
+export async function checkTeamRouting(opts: {
+  routingProvider?: string
+  readBoard?: () => { columns: Record<string, Array<{ team?: string; agent?: string }>> }
+  keySource?: (provider: DirectProviderId) => { apiKey: string; source: 'env' | 'store' } | null
+}): Promise<HealthCheckResult[]> {
+  const readBoard = opts.readBoard ?? readTaskboard
+  const keySource = opts.keySource ?? resolveProviderKeySource
+  const provider: DirectProviderId =
+    opts.routingProvider === 'openai' || opts.routingProvider === 'google' ? opts.routingProvider : 'anthropic'
+
+  let unresolvedCount = 0
+  try {
+    const { columns } = readBoard()
+    for (const col of ACTIVE_COLUMNS) {
+      for (const task of columns[col] ?? []) {
+        if (task.team && !task.agent) unresolvedCount++
+      }
+    }
+  } catch (err) {
+    return [warn('routing', `Could not inspect the task board for team assignments: ${err}`, true)]
+  }
+
+  if (unresolvedCount === 0) {
+    return [ok('routing', 'No unresolved team-assigned tasks — routing idle')]
+  }
+  if (!keySource(provider)) {
+    return [warn('routing', `${unresolvedCount} unresolved team-assigned task(s) but no API key for routing provider "${provider}" — they will block at dispatch. Set the provider key (env or secret store) or change the Task routing provider in Team settings.`)]
+  }
+  return [ok('routing', `${unresolvedCount} unresolved team-assigned task(s); routing ready via ${provider}`)]
+}
 
 // ─── Agent roster: runtime agents exposed to Bakin ─────────────────────────
 

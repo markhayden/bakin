@@ -28,6 +28,7 @@ import {
   mockGetTaskDetails,
   mockLogProgress,
   mockTriggerDispatch,
+  mockUpdateTask,
 } from './helpers/tasks-routes-harness'
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
@@ -308,6 +309,29 @@ describe('bakin_exec_tasks_create', () => {
     expect(result.notice ?? '').not.toContain('separate message')
   })
 
+  it('creates a team-assigned task and triggers dispatch (#189)', async () => {
+    mockCreateTaskWithEffects.mockResolvedValue({ id: 'team-t' })
+
+    const tool = findTool(activated.execTools, 'bakin_exec_tasks_create')!
+    const result = await callTool(tool, { title: 'Team task', team: 'development', skipWorkflowReason: 'n/a' }, 'main')
+
+    expect(result.ok).toBe(true)
+    expect(mockCreateTaskWithEffects).toHaveBeenCalledWith(
+      expect.objectContaining({ team: 'development' })
+    )
+    expect(mockTriggerDispatch).toHaveBeenCalled()
+  })
+
+  it('surfaces createTaskWithEffects team validation errors (#189)', async () => {
+    mockCreateTaskWithEffects.mockRejectedValue(new Error('Unknown team: "ghost-team"'))
+
+    const tool = findTool(activated.execTools, 'bakin_exec_tasks_create')!
+    const result = await callTool(tool, { title: 'Bad', team: 'ghost-team', skipWorkflowReason: 'n/a' }, 'main')
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('Unknown team')
+  })
+
   it('creates a task with workflow', async () => {
     mockCreateTaskWithEffects.mockResolvedValue({ id: 'new-t', workflowId: 'wf-1' })
 
@@ -329,6 +353,30 @@ describe('bakin_exec_tasks_create', () => {
         channel: 'mcp',
       })
     )
+  })
+
+  it('bakin_exec_tasks_update re-assigns to a team (#189)', async () => {
+    mockUpdateTask.mockResolvedValue(undefined)
+    const tool = findTool(activated.execTools, 'bakin_exec_tasks_update')!
+    const result = await callTool(tool, { taskId: 'task-1', team: 'development' }, 'main')
+    expect(result.ok).toBe(true)
+    expect(mockUpdateTask).toHaveBeenCalledWith('task-1', expect.objectContaining({ team: 'development' }))
+  })
+
+  it('bakin_exec_tasks_update rejects agent + team together (#189)', async () => {
+    const tool = findTool(activated.execTools, 'bakin_exec_tasks_update')!
+    const result = await callTool(tool, { taskId: 'task-1', agent: 'pixel', team: 'development' }, 'main')
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('both')
+    expect(mockUpdateTask).not.toHaveBeenCalled()
+  })
+
+  it('bakin_exec_tasks_update rejects an unknown team (#189)', async () => {
+    const tool = findTool(activated.execTools, 'bakin_exec_tasks_update')!
+    const result = await callTool(tool, { taskId: 'task-1', team: 'ghost-team' }, 'main')
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('Unknown team')
+    expect(mockUpdateTask).not.toHaveBeenCalled()
   })
 
   it('creates a scheduled source-linked task from MCP parameters', async () => {

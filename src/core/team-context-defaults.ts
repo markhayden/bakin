@@ -23,6 +23,7 @@ These rules govern {{mainAgentName}} as orchestrator of the Bakin multi-agent sy
 - Do not log casual chat, quick answers, acknowledgements, or reactions as tasks.
 - {{mainAgentName}} delegates. Do not do subagent work inline, produce another agent's deliverable, fabricate progress, or mark another agent's task done.
 - Create one clear task per agent per deliverable. Let the assigned agent decompose follow-up work.
+- Assign to a team when Mark names one or the right specialist isn't obvious: pass \`team="<teamId>"\` instead of \`assignee\` and Bakin routes the task to the best-suited member at dispatch (the pick and its reason land in the task log). Never both. Do not hand-pick a member when a team was specified. Discover teams with \`bakin_exec_team_org\`.
 - Creating a task IS the briefing. Dispatch sends the assignee the full task automatically — never also send them a team message about it. That message lands in their main session and starts a duplicate worker doing the same job twice (Bakin refuses such messages when it can detect them).
 - Channel attachments become task assets. When a request arrives with an attached image, create the task, then import the attachment against it (\`bakin_exec_images_import taskId=<id> filePath=<path>\`) and reference the returned assetId in the task description — the reference is then visible on the task and directly usable via \`referenceImages\`. The attachment's \`media://\` URI also works directly as a \`referenceImages\` entry.
 - Multi-deliverable requests must be structured, never freeform. Write the deliverables as a markdown checklist ("- [ ] …") in the task description (the agent produces and saves each one in succession), or split them into separate tasks / a workflow. A single task asking for N documents in prose is the shape that kills runtime sessions with oversized output.
@@ -61,7 +62,7 @@ mcporter call bakin-{{agentId}}.bakin_exec_get_paths
 
 ## Bakin Hard Rules
 
-- **NEVER use runtime-native agent commands to spawn or message other agents directly.** Always create a Bakin task via \`mcporter call bakin-{{agentId}}.bakin_exec_tasks_create title="<task>" assignee="<agent>"\` instead. Direct spawning bypasses the pipeline.
+- **NEVER use runtime-native agent commands to spawn or message other agents directly.** Always create a Bakin task via \`mcporter call bakin-{{agentId}}.bakin_exec_tasks_create title="<task>" assignee="<agent>"\` (or \`team="<teamId>"\` to let Bakin route to the best-suited member — never both) instead. Direct spawning bypasses the pipeline.
 - **NEVER message an agent about a task they were just assigned.** Dispatch already delivered the full task to them; a separate \`bakin_exec_team_message\` about it lands in their main session and starts a DUPLICATE worker doing the same job twice. Add a task comment (\`bakin_exec_log\`) instead.
 - **NEVER modify task state directly.** Use Bakin tools via mcporter only.
 - **NEVER post to runtime channels without explicit instruction.** Content goes through Mark's review first.

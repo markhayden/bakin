@@ -7,6 +7,8 @@ export interface ScheduleJob {
   displayName: string
   description?: string
   agentId?: string
+  /** Team assignment (#189) — mutually exclusive with agentId. */
+  teamId?: string
   humanSchedule: string
   cron?: string
   paused: boolean
@@ -215,6 +217,7 @@ export function useScheduleJobs(options: UseScheduleOptions = {}) {
           name: overrides.name ?? `${source.displayName} (copy)`,
           schedule: overrides.schedule ?? source.humanSchedule,
           agentId: overrides.agentId ?? source.agentId,
+          teamId: overrides.teamId ?? source.teamId,
           taskPrompt: overrides.taskPrompt ?? source.taskPrompt,
           taskTitle: overrides.taskTitle ?? source.taskTitle,
           workflowId: overrides.workflowId ?? source.workflowId,

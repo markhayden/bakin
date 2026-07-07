@@ -46,7 +46,16 @@ const docsSnippetBlocks = {
   },
 } satisfies Record<string, { file: string; language: string }>
 
-function renderCommandSnippet(marker: string): string {
+/** External-plugin markers (e.g. bits-shipped messaging) have no in-repo
+ * source to regenerate from — warn and leave the committed block as-is
+ * rather than failing the whole docs build (this broke `docs:generate` on
+ * main once messaging.md landed with markers). */
+function warnMissingSnippetSource(message: string): null {
+  console.warn(`[docs] ${message} — leaving the existing block unchanged`)
+  return null
+}
+
+function renderCommandSnippet(marker: string): string | null {
   // 1. Manifest-first: plugins that declare contributes.cliCommands win.
   const manifestCommands = getCliCommands(marker)
   if (manifestCommands.length) {
@@ -64,7 +73,7 @@ function renderCommandSnippet(marker: string): string {
 
   // 2. Legacy hardcoded grouping for in-repo plugins that haven't backfilled.
   const names = commandSnippets[marker as keyof typeof commandSnippets]
-  if (!names) throw new Error(`Unknown CLI command snippet: ${marker}`)
+  if (!names) return warnMissingSnippetSource(`cli-commands snippet "${marker}" has no in-repo source`)
 
   const byName = new Map(CLI_COMMANDS.map(command => [command.name, command]))
   const lines = [
@@ -83,9 +92,9 @@ function renderCommandSnippet(marker: string): string {
   return lines.join('\n')
 }
 
-function renderApiRoutesSnippet(marker: string): string {
+function renderApiRoutesSnippet(marker: string): string | null {
   const routes = getApiRoutes(marker)
-  if (!routes.length) throw new Error(`No api-routes for marker: ${marker}`)
+  if (!routes.length) return warnMissingSnippetSource(`api-routes snippet "${marker}" has no in-repo source`)
   const lines = [
     `<!-- docs:api-routes ${marker} -->`,
     '| Method | Path | Purpose |',
@@ -98,9 +107,9 @@ function renderApiRoutesSnippet(marker: string): string {
   return lines.join('\n')
 }
 
-function renderSettingsSnippet(marker: string): string {
+function renderSettingsSnippet(marker: string): string | null {
   const fields = extractPluginSettings(marker)
-  if (!fields.length) throw new Error(`No settings for marker: ${marker}`)
+  if (!fields.length) return warnMissingSnippetSource(`settings snippet "${marker}" has no in-repo source`)
   const lines = [
     `<!-- docs:settings ${marker} -->`,
     '<div class="settings-table">',
@@ -176,11 +185,11 @@ export function updateGeneratedContentBlocks(): void {
   for (const file of markdownFiles) {
     const text = readFileSync(file, 'utf8')
     const next = text
-      .replace(commandMarkerPattern, (_match, marker: string) => renderCommandSnippet(marker))
+      .replace(commandMarkerPattern, (match, marker: string) => renderCommandSnippet(marker) ?? match)
       .replace(snippetMarkerPattern, (_match, marker: string) => renderDocsSnippetBlock(marker))
-      .replace(execToolsMarkerPattern, (_match, marker: string) => renderExecToolsSnippet(marker))
-      .replace(apiRoutesMarkerPattern, (_match, marker: string) => renderApiRoutesSnippet(marker))
-      .replace(settingsMarkerPattern, (_match, marker: string) => renderSettingsSnippet(marker))
+      .replace(execToolsMarkerPattern, (match, marker: string) => renderExecToolsSnippet(marker) ?? match)
+      .replace(apiRoutesMarkerPattern, (match, marker: string) => renderApiRoutesSnippet(marker) ?? match)
+      .replace(settingsMarkerPattern, (match, marker: string) => renderSettingsSnippet(marker) ?? match)
       .replace(pluginPermissionsMarkerPattern, renderPluginPermissionsSnippet())
     if (next !== text) writeStableFile(file, next)
   }

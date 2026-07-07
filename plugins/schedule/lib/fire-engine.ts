@@ -23,8 +23,9 @@ import {
   withDefaults,
 } from './sidecar'
 import { claimCronFire, attachCronTask, markCronFireSkipped, findHealableCronClaims } from '../../../src/core/execution-ledger'
-import { createTaskWithEffects } from '../../../src/core/task-service'
-import { readTaskboard } from '../../../src/core/task-store'
+import { createTaskWithEffects, validateTeamRef, TaskValidationError } from '../../../src/core/task-service'
+import { TEAM_ROUTING_BLOCK_REASON } from '../../../src/core/dispatch-types'
+import { addTaskLog, readTaskboard } from '../../../src/core/task-store'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { createLogger } from '../../../src/core/logger'
 
@@ -37,6 +38,12 @@ const log = createLogger('schedule')
  *  compares against this constant so a slept-through fire doesn't penalize a
  *  healthy job's auto-pause counter. */
 export const MISSED_WINDOW_REASON = 'missed schedule window'
+
+/** Re-exported from dispatch-team (round-4 review): ONE sentinel for every
+ *  team-routing block — fire-time dangling teams AND dispatch-side resolver
+ *  blocks — so the outcome check below never counts either toward
+ *  auto-pause, no matter where the routing problem was detected. */
+export { TEAM_ROUTING_BLOCK_REASON }
 
 export interface ProcessRunResult {
   status: number
@@ -169,7 +176,9 @@ export async function runClaimedFire(
       // ran — penalizing the job for it would auto-pause a healthy schedule
       // just because the server slept through a fire (see SPEC FR2).
       const blockedTask = (board.columns.blocked ?? []).find(t => t.id === meta.lastTaskId)
-      if (blockedTask && blockedTask.blockedReason !== MISSED_WINDOW_REASON) {
+      const isTriageBlock = blockedTask?.blockedReason === MISSED_WINDOW_REASON
+        || blockedTask?.blockedReason === TEAM_ROUTING_BLOCK_REASON
+      if (blockedTask && !isTriageBlock) {
         const autoPaused = recordFailure(meta)
         if (autoPaused) {
           upsertJob(meta)
@@ -190,7 +199,7 @@ export async function runClaimedFire(
     date: new Intl.DateTimeFormat('en-CA', {
       timeZone: labelTz, year: 'numeric', month: '2-digit', day: '2-digit',
     }).format(labelDate), // en-CA → YYYY-MM-DD
-    agent: meta.agentId ?? 'unassigned',
+    agent: meta.agentId ?? (meta.teamId ? `team:${meta.teamId}` : 'unassigned'),
     jobName: meta.displayName ?? jobId,
   }
 
@@ -202,11 +211,59 @@ export async function runClaimedFire(
     ? expandTemplate(meta.taskPrompt, templateVars)
     : undefined
 
+  // Dangling-team guard (review R6): the team may have been deleted after
+  // the job was configured, and createTaskWithEffects would then THROW on
+  // every fire — occurrences lost, failures accumulating until auto-pause.
+  // Instead, the occurrence lands as a BLOCKED task with an honest reason
+  // (not a job failure): the user re-assigns it and fixes the schedule.
+  let fireTeam = defaults.requireTriage ? undefined : meta.teamId
+  let column = opts.column ?? 'todo'
+  let blockedReason = opts.blockedReason
+  let danglingTeamDetail: string | undefined
+  let skipAssignmentValidation = false
+  if (fireTeam && meta.agentId && !defaults.requireTriage) {
+    // Legacy/hand-edited sidecar carrying BOTH: the agent wins (pre-#189
+    // behavior) — never mint a both-set task through the skip flag (round-5).
+    log.warn('Schedule meta has both agentId and teamId; agent wins for this fire', { jobId, agentId: meta.agentId, teamId: fireTeam })
+    fireTeam = undefined
+  }
+  if (fireTeam) {
+    try {
+      await validateTeamRef(fireTeam)
+      // Fire-time validation is authoritative — skip the redundant
+      // re-validation inside createTaskWithEffects (round-5: the second
+      // team.exists call re-opened the unavailable-window race this flag
+      // was added to close, and doubled the hook traffic per fire).
+      skipAssignmentValidation = true
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      const validation = err instanceof TaskValidationError ? err : null
+      if (!validation || validation.code === 'validation_unavailable') {
+        // NOT a dangling team: the team plugin is momentarily unavailable
+        // (hot reload, boot order) or validation infra threw. Create the
+        // occurrence WITH the team — dispatch's resolver re-checks and
+        // blocks honestly if the team is truly gone (round-3 review).
+        log.warn('Team validation unavailable at fire time; deferring to dispatch', { jobId, team: fireTeam, message })
+        // Without this flag createTaskWithEffects re-validates against the
+        // same unavailable plugin and throws — the defer would be dead and
+        // the fire charged as a failure (round-4 review).
+        skipAssignmentValidation = true
+      } else {
+        // Confirmed dangling team: land the occurrence blocked (triage, not
+        // a job failure) so no run is lost and the job never auto-pauses.
+        log.warn('Schedule job references a missing team; creating the occurrence blocked', { jobId, team: fireTeam, message })
+        blockedReason = TEAM_ROUTING_BLOCK_REASON
+        danglingTeamDetail = `Team routing failed: ${message}. Re-assign this task, and fix the schedule's team assignment.`
+        column = 'blocked'
+        fireTeam = undefined
+      }
+    }
+  }
+
   // Pre-mint the task id so that if a post-create effect throws (e.g. the
   // workflow-start hook fails AFTER the row is written), we can still attach the
   // existing task to the claim. Otherwise the claim stays `pending`, the healer
   // re-drives it, and a *second* task is minted for the same occurrence (#472).
-  const column = opts.column ?? 'todo'
   const taskId = `task-${randomUUID()}`
   try {
     await createTaskWithEffects({
@@ -214,8 +271,12 @@ export async function runClaimedFire(
       title,
       description,
       column,
-      blockedReason: opts.blockedReason,
+      blockedReason,
       assignee: defaults.requireTriage ? undefined : meta.agentId,
+      // Team-assigned schedules (#189): each occurrence is a fresh task, so
+      // dispatch re-resolves the best member per fire. requireTriage wins.
+      team: fireTeam,
+      skipAssignmentValidation,
       workflowId: meta.workflowId,
       createdBy: 'schedule',
       scheduleJobId: jobId,
@@ -245,14 +306,25 @@ export async function runClaimedFire(
   attachCronTask(jobId, runId, taskId)
   upsertJob(meta)
 
-  // Audit + activity feed
+  // The human-readable dangling-team detail rides the task log (the
+  // blockedReason itself is the triage sentinel the outcome check matches).
+  if (danglingTeamDetail) {
+    try {
+      await addTaskLog(taskId, 'system', danglingTeamDetail)
+    } catch (err) {
+      log.warn('Could not append dangling-team detail to task log', { taskId, err: err instanceof Error ? err.message : String(err) })
+    }
+  }
+
+  // Audit + activity feed — uses the EFFECTIVE blockedReason (the
+  // dangling-team guard may have rewritten it; round-3 review).
   const auditCtx = getPluginCtx()
   if (auditCtx) {
     auditCtx.activity.audit('task_created', 'system', {
-      jobId, runId, taskId, agent: meta.agentId, owner: defaults.owner,
-      ...(column !== 'todo' ? { column, blockedReason: opts.blockedReason } : {}),
+      jobId, runId, taskId, agent: meta.agentId, team: meta.teamId, owner: defaults.owner,
+      ...(column !== 'todo' ? { column, blockedReason } : {}),
     })
-    const where = column === 'blocked' ? ` (blocked — ${opts.blockedReason ?? MISSED_WINDOW_REASON})` : ''
+    const where = column === 'blocked' ? ` (blocked — ${blockedReason ?? MISSED_WINDOW_REASON})` : ''
     auditCtx.activity.log('system', `Schedule "${meta.displayName ?? jobId}" created task ${taskId}${meta.agentId ? ` for ${meta.agentId}` : ''}${where}`, { taskId })
   }
 

@@ -23,6 +23,7 @@ import { checkSchedulePrompt, type PromptWarning } from './prompt-guard'
 import { getLastRun } from './runs-reader'
 import { getSystemTimezone } from './schedule-util'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
+import { validateTeamAssignment, TaskValidationError } from '../../../src/core/task-service'
 import { createLogger } from '../../../src/core/logger'
 
 const log = createLogger('schedule')
@@ -83,6 +84,23 @@ export async function ensureBakinJob(ctx: PluginContext, input: Record<string, u
     ? input.owner.trim()
     : existing?.owner ?? await getRuntimeMainAgentId(ctx.runtime)
 
+  // Assignment merge with the same exclusion + validation the REST routes
+  // enforce (review R5): an input-provided side wins and clears the other
+  // (including a carried-over existing value); '' clears its own side; a
+  // both-set input or an unknown team rejects the provisioning call.
+  const inputAgentId = typeof input.agentId === 'string' ? (input.agentId || undefined) : undefined
+  const inputTeamId = typeof input.teamId === 'string' ? (input.teamId || undefined) : undefined
+  let agentId = typeof input.agentId === 'string' ? inputAgentId : existing?.agentId
+  let teamId = typeof input.teamId === 'string' ? inputTeamId : existing?.teamId
+  if (inputAgentId && !inputTeamId) teamId = undefined
+  if (inputTeamId && !inputAgentId) agentId = undefined
+  try {
+    await validateTeamAssignment({ assignee: agentId, team: inputTeamId })
+  } catch (err) {
+    if (err instanceof TaskValidationError) return { ok: false, error: err.message }
+    throw err
+  }
+
   const meta: BakinJobMeta = {
     ...(existing ?? {}),
     jobId,
@@ -95,7 +113,8 @@ export async function ensureBakinJob(ctx: PluginContext, input: Record<string, u
     description: typeof input.description === 'string' ? input.description : existing?.description,
     owner,
     requireTriage: typeof input.requireTriage === 'boolean' ? input.requireTriage : existing?.requireTriage ?? false,
-    agentId: typeof input.agentId === 'string' ? input.agentId : existing?.agentId,
+    agentId,
+    teamId,
     workflowId: typeof input.workflowId === 'string' ? input.workflowId : existing?.workflowId,
     taskPrompt: typeof input.taskPrompt === 'string' ? input.taskPrompt : existing?.taskPrompt ?? command,
     taskTitle: typeof input.taskTitle === 'string' ? input.taskTitle : existing?.taskTitle,
@@ -116,6 +135,8 @@ export interface CreateScheduleJobInput {
   name: string
   schedule: string
   agentId?: string
+  /** Team assignment (#189) — mutually exclusive with agentId. */
+  teamId?: string
   workflowId?: string
   taskPrompt?: string
   taskTitle?: string
@@ -138,6 +159,15 @@ export async function createScheduleJob(
   const parsed = parseSchedule(input.schedule)
   if (!parsed) return { ok: false, error: 'Could not parse schedule expression' }
 
+  // Assignment validation lives HERE, not at each surface (round-4 review):
+  // every caller — REST, exec tool, future bulk/import — inherits it.
+  try {
+    await validateTeamAssignment({ assignee: input.agentId, team: input.teamId })
+  } catch (err) {
+    if (err instanceof TaskValidationError) return { ok: false, error: err.message }
+    throw err
+  }
+
   const tz = input.tz || getSystemTimezone()
   const jobId = newScheduleId()
   const owner = input.owner ?? await getRuntimeMainAgentId(ctx.runtime)
@@ -150,6 +180,7 @@ export async function createScheduleJob(
     enabled: true,
     displayName: input.name,
     agentId: input.agentId,
+    teamId: input.teamId,
     owner,
     requireTriage: input.requireTriage ?? false,
     workflowId: input.workflowId,
@@ -213,11 +244,21 @@ export function applyPauseAction(
  * before the field loop, so an explicit `displayName` in `updates` wins —
  * both surfaces now share that precedence. Callers own re-indexing + audit.
  */
-export function updateScheduleJob(
+export async function updateScheduleJob(
   meta: BakinJobMeta,
   updates: Record<string, unknown>,
   fields: readonly string[],
-): { ok: true; warnings: PromptWarning[] } | { ok: false; error: string } {
+): Promise<{ ok: true; warnings: PromptWarning[] } | { ok: false; error: string }> {
+  // Assignment validation lives HERE, not at each surface (round-4 review).
+  try {
+    await validateTeamAssignment({
+      assignee: typeof updates.agentId === 'string' && updates.agentId ? updates.agentId : undefined,
+      team: typeof updates.teamId === 'string' && updates.teamId ? updates.teamId : undefined,
+    })
+  } catch (err) {
+    if (err instanceof TaskValidationError) return { ok: false, error: err.message }
+    throw err
+  }
   if (updates.schedule && typeof updates.schedule === 'string') {
     const parsed = parseSchedule(updates.schedule)
     if (!parsed) return { ok: false, error: 'Could not parse schedule' }
@@ -231,6 +272,12 @@ export function updateScheduleJob(
       ;(meta as unknown as Record<string, unknown>)[field] = updates[field]
     }
   }
+  // agentId/teamId are mutually exclusive (#189): whichever this update set
+  // to a non-empty value wins; empty-string updates just clear their field.
+  if (typeof updates.agentId === 'string' && updates.agentId) meta.teamId = undefined
+  if (typeof updates.teamId === 'string' && updates.teamId) meta.agentId = undefined
+  if (meta.agentId === '') meta.agentId = undefined
+  if (meta.teamId === '') meta.teamId = undefined
   upsertJob(meta)
   return { ok: true, warnings: checkSchedulePrompt(meta.taskPrompt) }
 }
@@ -248,6 +295,7 @@ export async function projectJobDetail(
     id: meta.jobId,
     name: meta.displayName,
     agent: meta.agentId,
+    team: meta.teamId,
     // When the job runs — the list projection carries these; a client on the
     // detail endpoint alone must be able to display the schedule too.
     schedule: meta.schedule,

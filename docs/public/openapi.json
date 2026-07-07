@@ -5915,6 +5915,9 @@
                   "agentId": {
                     "type": "string"
                   },
+                  "teamId": {
+                    "type": "string"
+                  },
                   "workflowId": {
                     "type": "string"
                   },
@@ -6451,6 +6454,16 @@
                     "type": "string"
                   },
                   "agentId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "teamId": {
                     "anyOf": [
                       {
                         "type": "string"
@@ -7315,7 +7328,7 @@
             }
           },
           "400": {
-            "description": "Invalid input — params, query, or body did not match the declared schema.",
+            "description": "Invalid input.",
             "content": {
               "application/json": {
                 "schema": {
@@ -7323,10 +7336,6 @@
                   "properties": {
                     "error": {
                       "type": "string"
-                    },
-                    "issues": {
-                      "type": "array",
-                      "items": {}
                     }
                   },
                   "required": [
@@ -7414,6 +7423,9 @@
                     ]
                   },
                   "assignee": {
+                    "type": "string"
+                  },
+                  "team": {
                     "type": "string"
                   },
                   "workflowId": {
@@ -7754,6 +7766,9 @@
                     "type": "string"
                   },
                   "agent": {
+                    "type": "string"
+                  },
+                  "team": {
                     "type": "string"
                   },
                   "column": {

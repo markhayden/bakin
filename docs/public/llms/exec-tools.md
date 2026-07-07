@@ -1619,7 +1619,8 @@ Purpose: Create a new scheduled job that creates tasks on the board
 | --- | --- | --- | --- |
 | `name` | string | yes | Job name (required) |
 | `schedule` | string | yes | Schedule expression: NL ("every day at 9am") or raw cron ("0 9 * * *") (required) |
-| `agentId` | string | no | Agent to assign tasks to |
+| `agentId` | string | no | Agent to assign tasks to. Mutually exclusive with teamId. |
+| `teamId` | string | no | Team to assign — each occurrence is routed to the best-suited member at fire time (#189). Mutually exclusive with agentId. |
 | `workflowId` | string | no | Workflow to attach to tasks |
 | `taskPrompt` | string | no | Task description template |
 | `taskTitle` | string | no | Task title template (supports {date}, {agent}) |
@@ -1631,6 +1632,7 @@ mcporter call bakin-<agent>.bakin_exec_schedule_create --args '{
   "name": "value",
   "schedule": "value",
   "agentId": "value",
+  "teamId": "value",
   "workflowId": "value",
   "taskPrompt": "value",
   "taskTitle": "value"
@@ -1776,7 +1778,8 @@ Purpose: Update an existing scheduled job
 | `jobId` | string | yes | Job ID (required) |
 | `name` | string | no | New job name |
 | `schedule` | string | no | New schedule expression |
-| `agentId` | string | no | New agent assignment |
+| `agentId` | string | no | New agent assignment. Setting a non-empty agent clears any team; mutually exclusive with teamId. |
+| `teamId` | string | no | New team assignment (#189). Setting a non-empty team clears any agent; mutually exclusive with agentId. |
 | `workflowId` | string | no | New workflow binding |
 | `taskPrompt` | string | no | New task prompt template |
 | `taskTitle` | string | no | New task title template |
@@ -1789,6 +1792,7 @@ mcporter call bakin-<agent>.bakin_exec_schedule_update --args '{
   "name": "value",
   "schedule": "value",
   "agentId": "value",
+  "teamId": "value",
   "workflowId": "value",
   "taskPrompt": "value",
   "taskTitle": "value"
@@ -2028,7 +2032,8 @@ Purpose: Create a new task on the task board. Workflows are auto-matched by titl
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
 | `title` | string | yes | Task title |
-| `assignee` | string | no | Agent to assign (chef, pixel, rolo, patch, trainer, etc.) |
+| `assignee` | string | no | Agent to assign (chef, pixel, rolo, patch, trainer, etc.). Mutually exclusive with team. |
+| `team` | string | no | Team to assign — Bakin routes the task to the best-suited member at dispatch (use bakin_exec_team_org to see teams). Mutually exclusive with assignee. |
 | `description` | string | no | Task description and context |
 | `parentId` | string | no | Parent task ID if this is a subtask |
 | `workflowId` | string | no | Workflow to start (e.g. image-social-post, video-script). Use bakin_exec_workflows_list to see options. |
@@ -2047,6 +2052,7 @@ Example:
 mcporter call bakin-<agent>.bakin_exec_tasks_create --args '{
   "title": "value",
   "assignee": "value",
+  "team": "value",
   "description": "value",
   "parentId": "value",
   "workflowId": "value",
@@ -2183,7 +2189,8 @@ Purpose: Update a task on the board — change title, description, or assigned a
 | `taskId` | string | yes | Task ID |
 | `title` | string | no | New task title |
 | `description` | string | no | New task description |
-| `agent` | string | no | New assigned agent |
+| `agent` | string | no | New assigned agent. Mutually exclusive with team. |
+| `team` | string | no | New team assignment — clears any concrete agent; Bakin re-routes at dispatch. Mutually exclusive with agent. |
 | `availableAt` | string | no | ISO timestamp before which dispatch should not pick up the task |
 | `dueAt` | string | no | ISO timestamp representing the task deadline or target delivery time |
 | `expectedVersion` | number | no | Optimistic-concurrency check: fail if the task version has moved past this |
@@ -2196,6 +2203,7 @@ mcporter call bakin-<agent>.bakin_exec_tasks_update --args '{
   "title": "value",
   "description": "value",
   "agent": "value",
+  "team": "value",
   "availableAt": "value",
   "dueAt": "value",
   "expectedVersion": 20

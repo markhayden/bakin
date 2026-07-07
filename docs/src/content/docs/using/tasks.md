@@ -28,6 +28,12 @@ The board is the home view. Each column is a state, each card is a task. Drag ca
 
 Hit `+ New Task` in the top right of the board. Give it a title, pick an owner (an agent or yourself), and optionally attach a workflow. Workflows tell the assigned agent what kind of work this is.
 
+### Assign to a team
+
+The assignee picker also lists your teams (from the Team page). Assign a task to a team and Bakin picks the best-suited member at dispatch time: a small routing model reads the task against each member's role and profile and records its pick — and why — in the task's activity log. The card shows a team chip until the pick lands, then the chosen agent's avatar alongside it.
+
+Routing uses the provider and model configured under Team settings ("Task routing"), with the API key from your environment or secret store. If no key is configured, team tasks move to `Blocked` with a clear reason instead of guessing — the doctor's `team.routing` check will point at it. Re-assigning a resolved task to a different agent or team resets the routing; scheduled jobs can also target a team, and each occurrence is routed fresh.
+
 ### Edit task details
 
 <figure class="screenshot-frame">

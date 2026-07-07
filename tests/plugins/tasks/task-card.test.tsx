@@ -17,6 +17,10 @@ mock.module('../../../packages/core/src/content-dir', () => ({
 mock.module('@makinbakin/sdk/components', () => ({
   AgentAvatar: ({ agentId }: { agentId: string }) => <span>{agentId}</span>,
 }))
+// Defensive isolation (checker-required): the card component itself never
+// touches the store, but nothing transitively imported may either.
+mock.module('../../../src/core/task-store', () => ({}))
+mock.module('@/core/task-store', () => ({}))
 
 import { TaskCardContent } from '../../../plugins/tasks/components/task-card'
 import type { Task } from '../../../plugins/tasks/types'
@@ -60,6 +64,25 @@ describe('TaskCardContent dispatch failure context', () => {
 
     expect(screen.getByText('Dispatch failed: model provider unavailable')).toBeDefined()
     expect(screen.queryByText('Provider in cooldown after timeout')).toBeNull()
+  })
+})
+
+describe('TaskCardContent team assignment (#189)', () => {
+  it('unresolved team task shows the team chip and no avatar', () => {
+    render(<TaskCardContent task={makeTask({ team: 'development' })} columnId="todo" />)
+    expect(screen.getByText('development')).toBeDefined()
+  })
+
+  it('resolved team task shows the agent avatar AND the team chip', () => {
+    render(<TaskCardContent task={makeTask({ team: 'development', agent: 'reviewer' })} columnId="inProgress" />)
+    expect(screen.getByText('reviewer')).toBeDefined() // mocked AgentAvatar renders the id
+    expect(screen.getByText('development')).toBeDefined()
+  })
+
+  it('direct-agent task renders no team chip', () => {
+    render(<TaskCardContent task={makeTask({ agent: 'reviewer' })} columnId="todo" />)
+    expect(screen.getByText('reviewer')).toBeDefined()
+    expect(screen.queryByText('development')).toBeNull()
   })
 })
 

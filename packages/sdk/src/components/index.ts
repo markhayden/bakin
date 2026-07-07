@@ -11,8 +11,8 @@
 export { AgentAvatar } from '@/components/agent-avatar'
 /** Multi-select facet filter scoped to agents. */
 export { AgentFilter } from '@/components/agent-filter'
-/** Single-agent picker dropdown for form fields. */
-export { AgentSelect } from '@/components/agent-select'
+/** Single-agent (or team, #189) picker dropdown for form fields. */
+export { AgentSelect, TEAM_VALUE_PREFIX, isTeamValue, teamIdFromValue } from '@/components/agent-select'
 /** Small status dot showing an agent's online/offline state. */
 export { AgentDot } from '@/components/agent-status'
 /** Compound agent status (dot + label + last-seen timestamp). */

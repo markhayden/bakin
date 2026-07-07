@@ -367,11 +367,58 @@ export async function blockTaskWithEffects(
  * Create a task with audit logging.
  * Returns the created task.
  */
+/**
+ * Write-time assignment validation failure (#189, review R10). API surfaces
+ * map this to a 400 by TYPE — never by message text (house rule).
+ */
+export type TaskValidationCode = 'both_set' | 'unknown_team' | 'validation_unavailable'
+
+export class TaskValidationError extends Error {
+  /** Typed classification — consumers branch on this, never message text. */
+  readonly code: TaskValidationCode
+  constructor(message: string, code: TaskValidationCode) {
+    super(message)
+    this.name = 'TaskValidationError'
+    this.code = code
+  }
+}
+
+/**
+ * Write-time validation for a team reference (#189). Fails closed: an
+ * unknown team OR an unavailable team plugin rejects the write — a bad
+ * team id must never be stored and discovered at dispatch.
+ */
+export async function validateTeamRef(teamId: string): Promise<void> {
+  const registry = hooks()
+  if (!registry.has('team.exists')) {
+    throw new TaskValidationError(`Cannot validate team "${teamId}": team plugin unavailable`, 'validation_unavailable')
+  }
+  const exists = await registry.invoke<boolean>('team.exists', { teamId })
+  if (!exists) {
+    throw new TaskValidationError(`Unknown team: "${teamId}"`, 'unknown_team')
+  }
+}
+
+/**
+ * The ONE agent/team assignment guard every write surface uses (review
+ * R10): mutual exclusion + team existence, throwing TaskValidationError.
+ */
+export async function validateTeamAssignment(opts: { assignee?: string; team?: string }): Promise<void> {
+  if (opts.assignee && opts.team) {
+    throw new TaskValidationError('Cannot set both an agent and a team', 'both_set')
+  }
+  if (opts.team) {
+    await validateTeamRef(opts.team)
+  }
+}
+
 export async function createTaskWithEffects(opts: {
   id?: string
   title: string
   column?: string
   assignee?: string
+  /** Team assignment (#189) — mutually exclusive with assignee. */
+  team?: string
   description?: string
   workflowId?: string
   skipWorkflowReason?: string
@@ -387,7 +434,17 @@ export async function createTaskWithEffects(opts: {
   channel?: Channel
   /** When creating directly into the blocked column, the reason shown to the user. */
   blockedReason?: string
+  /** INTERNAL (schedule fire path): the caller already ran — or has
+   * deliberately deferred — assignment validation (round-4 review: the
+   * fire-time validation_unavailable defer was dead because this function
+   * re-validated against the same unavailable plugin and threw). API
+   * surfaces must never set this. */
+  skipAssignmentValidation?: boolean
 }): Promise<{ id: string; workflowId?: string; suggestedWorkflow?: string }> {
+  if (!opts.skipAssignmentValidation) {
+    await validateTeamAssignment({ assignee: opts.assignee, team: opts.team })
+  }
+
   // Auto-match workflow if none was explicitly provided
   const suggested = !opts.workflowId ? (await hooks().invoke<string | null>('workflows.matchWorkflow', { title: opts.title, description: opts.description }) || undefined) : undefined
   const effectiveWorkflowId = opts.workflowId || undefined
@@ -423,6 +480,7 @@ export async function createTaskWithEffects(opts: {
       source: opts.source,
       scheduleJobId: opts.scheduleJobId,
       dependsOn: opts.dependsOn,
+      team: opts.team,
     },
   )
 
@@ -451,6 +509,7 @@ export async function createTaskWithEffects(opts: {
     id: task.id,
     title: opts.title,
     assignee: opts.assignee,
+    team: opts.team,
     workflowId: effectiveWorkflowId,
     availableAt: opts.availableAt,
     dueAt: opts.dueAt,

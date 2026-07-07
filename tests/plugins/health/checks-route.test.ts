@@ -74,6 +74,8 @@ const taskStoreMock = {
   clearDependency: mock(async () => {}),
   reorderTasks: mock(async () => {}),
   moveTaskToInProgress: mock(async () => {}),
+  assignTaskToTeam: mock(async () => {}),
+  recordTeamResolution: mock(async () => {}),
   archiveOldTasks: mock(async () => {}),
   localDateString: () => '2026-01-01',
   VALID_TRANSITIONS: {},
