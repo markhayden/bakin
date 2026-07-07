@@ -187,6 +187,17 @@ detection, and board visibility come from the existing nested machinery.
   `{ status: 'failed', code }` context; recovery = `reopenFromStep` on the
   SOURCE step (reopening AT a map step is refused everywhere). Empty array →
   step completes with `{ outputs: [] }` and the workflow advances.
+- **Mid-fan-out status:** `getCurrentStep` on the parent returns a typed
+  `{ status: 'fanned_out', childrenTotal, childrenComplete }` context — never
+  null (null means "no instance" on the REST/tool surfaces) — and the
+  dispatch loop skips it explicitly. Children that fail during spawn record
+  an honest `failed` entry; a map-child's own typed failure propagates to its
+  parent entry via `markMapChildFailed`.
+- **Stale-child sweep:** `sweepLiveMapChildren` rediscovers live children from
+  the INSTANCE STORE (never the parent's cached `children[]`, which a
+  source-step reopen wipes) and runs before EVERY fan-out outcome — valid,
+  empty, or invalid — and again inside `cancelInstance` (stray rediscovery),
+  so reopen/cancel sequences can never orphan running children.
 - **Join:** `propagateChildCompletion`'s map branch updates the child's entry
   in `StepState.children[]` with the child's finalOutput; when ALL entries are
   complete it aggregates `{ outputs: [...] }` in stable source order and

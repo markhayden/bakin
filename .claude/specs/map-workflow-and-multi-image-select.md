@@ -238,8 +238,19 @@ workflows + harness). Two build-time deviations, both improvements:
 - Consolidate restores the PRE-CALL pointer on every run (not just first),
   so re-runs never clobber a manual re-promote.
 
+A high-effort multi-agent code review (2026-07-07) confirmed 10 findings —
+all fixed in `af6e1aac`: fan-out sweep before every outcome branch,
+cancel-time stray-child rediscovery, durable consolidate restore target +
+per-winner serialization, winner-fatal-only tool ok, typed `fanned_out`
+context, spawn/typed child-failure propagation, canvas-editor map support,
+source-array omission from child context, Dockerfile tag pin.
+
 **Live rig validation: PENDING** — run per `docs/validation/map-select-runbook.md`
-(operator-present, billed) and record results below.
+(operator-present, billed) and record results below. First live session
+(2026-07-06/07) validated: real dispatch through the prompt gate, Discord
+gate delivery (after the runbook §2 config), the spend guard, and 3-child
+fan-out with per-child dispatch; image generation was blocked by the rig's
+OpenClaw 2026.5.28 lacking image.generate → tag bumped to 2026.6.11.
 
 ## 9b. Live validation results
 

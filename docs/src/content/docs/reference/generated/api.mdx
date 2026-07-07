@@ -1762,6 +1762,37 @@ curl -sS \
 ```
 </OpenApiReference>
 
+<OpenApiReference operationId="workflows.get.instances-task-id-map-step-id-children">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/workflows/instances/<taskId>/map/<stepId>/children'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="workflows.post.instances-task-id-map-step-id-children-index-cancel">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/workflows/instances/<taskId>/map/<stepId>/children/<index>/cancel'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="workflows.post.instances-task-id-map-step-id-children-index-retry">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/workflows/instances/<taskId>/map/<stepId>/children/<index>/retry'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="workflows.post.instances-task-id-reopen">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/workflows/instances/<taskId>/reopen'
+```
+</OpenApiReference>
+
 <OpenApiReference operationId="workflows.post.instances-start">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
@@ -1810,5 +1841,5 @@ curl -sS \
 </OpenApiReference>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 5, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 7, 2026 · Bakin 0.0.0-dev</span>
 </aside>

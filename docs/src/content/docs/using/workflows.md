@@ -112,12 +112,14 @@ HTTP API surface for this plugin: see the [API reference](/docs/reference/genera
 Agents work the workflow surface through MCP exec tools. The full set covers definitions, instances, steps, and gates:
 
 <!-- docs:exec-tools workflows -->
+- `bakin_exec_workflows_cancel_map_child`: Cancel one fan-out child of a map_workflow step. The map join stays blocked until the child is retried or the whole parent is cancelled — children are never silently skipped.
 - `bakin_exec_workflows_complete_step`: Complete a workflow step with output. Validates output against the step schema, advances the workflow to the next step. Returns success status and whether the workflow is complete.
 - `bakin_exec_workflows_get_definition`: Get a workflow definition by filename. Returns the full definition with steps, inputs, and resolved sub-workflows.
 - `bakin_exec_workflows_get_instance`: Get the full state of a workflow instance for a task, including step states and history.
 - `bakin_exec_workflows_get_step`: Get the current workflow step for a task. Returns only the current step (information gating — future steps are hidden). Critical for agents to know what to do next.
 - `bakin_exec_workflows_list`: List all workflow definitions (templates). Returns name, filename, description, and step count for each.
 - `bakin_exec_workflows_list_instances`: List workflow instances. Optionally filter by status (in_progress, pending_approval, complete, failed, cancelled).
+- `bakin_exec_workflows_retry_map_child`: Retry one fan-out child of a map_workflow step. Live children reopen in place; dead/cancelled children are re-created under the same child task id with their original item context. Unblocks a blocked map join without rewinding the parent.
 - `bakin_exec_workflows_start`: Start a workflow instance for a task. The task must exist on the board. Returns the created instance.
 <!-- /docs:exec-tools -->
 
