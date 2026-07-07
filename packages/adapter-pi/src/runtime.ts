@@ -20,6 +20,7 @@ import { createMessagingSurface } from './messaging'
 import { capabilitiesForModel, createModelsSurface, resetModelRegistry } from './models'
 import { readRegistry } from './registry'
 import { createHealthChecks } from './health-checks'
+import { createImagesSurface } from './images'
 import { createSessionsSurface } from './sessions'
 import { createSkillsSurface } from './skills'
 import { createChannelsSurface, createCronSurface, createToolsSurface } from './unsupported'
@@ -88,6 +89,9 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
   })
 
   tools: AgentRuntimeAdapter['tools'] = createToolsSurface()
+
+  /** Generation via Bakin's shared direct-provider shim; edit is typed-unsupported. */
+  images: AgentRuntimeAdapter['images'] = createImagesSurface()
 
   channels: AgentRuntimeAdapter['channels'] = createChannelsSurface()
 

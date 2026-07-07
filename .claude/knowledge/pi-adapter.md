@@ -24,6 +24,7 @@ Pi is a minimal single-session coding harness — it has no agent roster, channe
 | `config.ts` | `<pi-home>/agent/settings.json` + onboarding raw-key synthesis (authProfiles presence-only, `channels` → `{}`) |
 | `skills.ts` | Pi-native skill dirs: global `agent/skills/` + per-agent `<workspace>/.pi/skills/` |
 | `unsupported.ts` | Honest-empty channels/cron/tools.invoke (typed `runtime_failed`, never silent) |
+| `images.ts` | generation via the shared direct-provider shim (Bakin keys, shim provenance tags); edit typed-unsupported |
 | `health-checks.ts` | Doctor: pi home/registry, agents-root writable, auth providers, models available |
 
 ## Load-bearing SDK facts (0.80.3, probed — do not trust docs over these)
@@ -49,7 +50,8 @@ Pi is a minimal single-session coding harness — it has no agent roster, channe
 |---|---|
 | channels | `list() → []`; sends/approvals throw typed `runtime_failed` ("not supported by the pi runtime"); the Chat plugin is the conversational surface |
 | cron | empty reads, typed failure on mutation (Bakin-owned task scheduling unaffected) |
-| images / media / createThread / editMessage | members genuinely absent — callers skip. **Image GENERATION still works on Pi** via the images plugin's Bakin-side shim (direct provider call; key from `OPENAI_API_KEY`/`GEMINI_API_KEY` env or secret store `providers.<id>.apiKey`). Runtime-gated remainder: reference-image edits (shim can't take input files) |
+| images | `runtime.images` IS implemented (`images.ts`): generation routes to Bakin's SHARED direct-provider shim (@bakin/core/media — same fallback OpenClaw uses), key from `OPENAI_API_KEY`/`GEMINI_API_KEY` env or secret store `providers.<id>.apiKey`; no key = typed guidance. `providers()` returns `[]` (nothing native). **Edit is typed-unsupported** (shim is generate-only — no input images) |
+| media / createThread / editMessage | members genuinely absent — callers skip |
 | tools.invoke | typed failure (zero production callers) |
 
 Fast-follows on record: Discord bridge (reuse existing bot token), in-app approval channel.
