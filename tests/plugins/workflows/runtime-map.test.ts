@@ -131,13 +131,14 @@ describe('runtime — map_workflow', () => {
         expect(child.parentTaskId).toBe('task-map')
         expect(child.parentStepId).toBe('produce-items')
         expect(child.status).toBe('in_progress')
-        // item under item_key, plus map coordinates, plus the source output
+        // item under item_key + map coordinates + the source output MINUS the
+        // array itself (spreading it would grow quadratically with width).
         expect(child.parentContext).toMatchObject({
           brief: items[i],
           mapIndex: i,
           mapTotal: 3,
-          items,
         })
+        expect(child.parentContext).not.toHaveProperty('items')
       }
     })
 
@@ -262,6 +263,31 @@ describe('runtime — map_workflow', () => {
 
       // The orphaned third child was cancelled by the sweep.
       expect(loadInstance('task-map-refan--produce-items--2', testDir)!.status).toBe('cancelled')
+    })
+
+    it('re-fan-out that resolves EMPTY still sweeps the prior fan-out\'s live children', () => {
+      startAndFan('task-empty-sweep')
+      reopenFromStep('task-empty-sweep', { stepId: 'source-step', reason: 'redo', contentDir: testDir })
+      // Old children are live; the source now legitimately produces nothing.
+      completeStep('task-empty-sweep', 'source-step', { items: [] }, undefined, testDir)
+
+      const parent = loadInstance('task-empty-sweep', testDir)!
+      expect(parent.stepStates['produce-items'].status).toBe('complete')
+      expect(parent.currentStepId).toBe('after-map')
+      for (let i = 0; i < 3; i++) {
+        expect(loadInstance(`task-empty-sweep--produce-items--${i}`, testDir)!.status).toBe('cancelled')
+      }
+    })
+
+    it('re-fan-out that fails typed still sweeps the prior fan-out\'s live children', () => {
+      startAndFan('task-fail-sweep')
+      reopenFromStep('task-fail-sweep', { stepId: 'source-step', reason: 'redo', contentDir: testDir })
+      completeStep('task-fail-sweep', 'source-step', { wrong: true }, undefined, testDir)
+
+      expect(loadInstance('task-fail-sweep', testDir)!.status).toBe('failed')
+      for (let i = 0; i < 3; i++) {
+        expect(loadInstance(`task-fail-sweep--produce-items--${i}`, testDir)!.status).toBe('cancelled')
+      }
     })
 
     it('persists fan-out state across a reload (crash-restart)', () => {
@@ -576,6 +602,50 @@ describe('runtime — map_workflow', () => {
       expect(loadInstance('task-mixed--produce-items--2', testDir)!.status).toBe('cancelled')
     })
 
+    it('cancel-parent AFTER a source reopen still sweeps the orphaned live children', () => {
+      // A source-step reopen wipes children[] while the child instances keep
+      // running — cancellation must rediscover them from the store.
+      startAndFan('task-orphan-sweep')
+      reopenFromStep('task-orphan-sweep', { stepId: 'source-step', reason: 'redo', contentDir: testDir })
+      expect(loadInstance('task-orphan-sweep', testDir)!.stepStates['produce-items'].children).toBeUndefined()
+      expect(loadInstance('task-orphan-sweep--produce-items--1', testDir)!.status).toBe('in_progress')
+
+      cancelInstance('task-orphan-sweep', testDir)
+      for (let i = 0; i < 3; i++) {
+        expect(loadInstance(`task-orphan-sweep--produce-items--${i}`, testDir)!.status).toBe('cancelled')
+      }
+    })
+
+    it('a child that fails during spawn gets an honest failed entry, not in_progress', () => {
+      // map-broken-child fans out into map-first, whose defensive first-step
+      // map fails at createInstance time.
+      const { writeFileSync } = require('fs') as typeof import('fs')
+      const { join: j } = require('path') as typeof import('path')
+      writeFileSync(j(testDir, 'workflows', 'definitions', 'map-broken-parent.yaml'), `name: Map Broken Parent
+description: children fail at spawn
+version: 1
+steps:
+  - id: source-step
+    type: agent
+    label: Segment
+    agent: chef
+  - id: produce-items
+    type: map_workflow
+    label: Produce Items
+    source: source-step.items
+    workflow_id: map-first
+  - id: after-map
+    type: agent
+    label: After
+    agent: main
+`)
+      createInstance('task-spawn-fail', 'map-broken-parent', testDir)
+      completeStep('task-spawn-fail', 'source-step', { items: ['a', 'b'] }, undefined, testDir)
+
+      const entries = loadInstance('task-spawn-fail', testDir)!.stepStates['produce-items'].children!
+      expect(entries.map((e) => e.status)).toEqual(['failed', 'failed'])
+    })
+
     it('getActiveAgents unions the live children with effectiveTaskIds', () => {
       startAndFan('task-agents')
       const before = getActiveAgents('task-agents', testDir)
@@ -596,9 +666,15 @@ describe('runtime — map_workflow', () => {
       ])
     })
 
-    it('getCurrentStep returns null mid-map and a typed failed context after map_source_invalid', () => {
+    it('getCurrentStep reports fanned_out mid-map and a typed failed context after map_source_invalid', () => {
       startAndFan('task-ctx')
-      expect(getCurrentStep('task-ctx', undefined, testDir)).toBeNull()
+      // Not null — null means "no workflow instance" on the REST/tool surfaces.
+      expect(getCurrentStep('task-ctx', undefined, testDir)).toMatchObject({
+        status: 'fanned_out',
+        stepId: 'produce-items',
+        childrenTotal: 3,
+        childrenComplete: 0,
+      })
 
       createInstance('task-ctx-fail', 'map-flow', testDir)
       const result = completeStep('task-ctx-fail', 'source-step', { wrong: [] }, undefined, testDir)

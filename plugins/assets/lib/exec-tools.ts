@@ -209,7 +209,10 @@ export function registerAssetsExecTools(ctx: PluginContext): void {
           loserAssetIds,
           taskId: params.taskId as string,
         })
-        const ok = result.failed.length === 0 && !result.failed.some((f) => f.assetId === winnerAssetId)
+        // Only a winner-side failure is fatal — per-loser failures (e.g. a
+        // stale id) are reported in failed[] while the consolidation of the
+        // remaining variants stands, so retries don't loop forever.
+        const ok = !result.failed.some((f) => f.assetId === winnerAssetId)
         ctx.activity.audit('asset.consolidated', agent, {
           winnerAssetId,
           absorbed: result.absorbed,

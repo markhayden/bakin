@@ -161,15 +161,59 @@ export function buildMapChildContext(
 ): Record<string, unknown> | null {
   const dotIdx = mapStep.source.indexOf('.')
   if (dotIdx <= 0) return null
+  const sourceKey = mapStep.source.slice(dotIdx + 1)
   const sourceOutput = instance.stepStates[mapStep.source.slice(0, dotIdx)]?.output
-  const items = sourceOutput?.[mapStep.source.slice(dotIdx + 1)]
+  const items = sourceOutput?.[sourceKey]
   if (!Array.isArray(items) || index < 0 || index >= items.length) return null
+  // The source array itself is OMITTED from the child context — spreading it
+  // would persist every sibling's item into every child (quadratic growth
+  // with width) and crowd the child's own item out of the byte-budgeted
+  // dispatch prompt. Children see their item + the rest of the source output.
+  const { [sourceKey]: _sourceArray, ...sourceContext } = sourceOutput || {}
   return {
-    ...(sourceOutput || {}),
+    ...sourceContext,
     [mapStep.item_key ?? 'item']: items[index],
     mapIndex: index,
     mapTotal: items.length,
   }
+}
+
+/**
+ * Cancel every still-live child instance parented to (taskId, stepId),
+ * retiring board tasks for children at index >= keepBelow (the ones a
+ * re-fan-out is NOT about to re-create). Children are rediscovered from the
+ * instance store, never the parent's cached children[] — a source-step
+ * reopen wipes that array while the child instances keep running.
+ */
+function sweepLiveMapChildren(taskId: string, stepId: string, keepBelow: number, contentDir: string): void {
+  const childIdPrefix = `${taskId}--${stepId}--`
+  const live = listInstances(undefined, contentDir).filter(
+    (inst) => inst.parentTaskId === taskId && inst.parentStepId === stepId &&
+      inst.status !== 'complete' && inst.status !== 'cancelled',
+  )
+  for (const stale of live) {
+    cancelInstance(stale.taskId, contentDir)
+    const staleIndex = Number(stale.taskId.slice(childIdPrefix.length))
+    if (!(staleIndex >= 0 && staleIndex < keepBelow)) {
+      moveTaskInStore(stale.taskId, 'done').catch((err) => {
+        log.warn('Failed to retire stale map child task', err)
+      })
+    }
+  }
+}
+
+/**
+ * Reflect a child instance's failure on its parent's map entry so the join
+ * shows an honest 'failed' instead of a silently blocked 'in_progress'.
+ */
+export function markMapChildFailed(childInstance: WorkflowInstance, contentDir: string): void {
+  if (!childInstance.parentTaskId || !childInstance.parentStepId) return
+  const parent = loadInstance(childInstance.parentTaskId, contentDir)
+  const entry = parent?.stepStates[childInstance.parentStepId]?.children
+    ?.find((c) => c.childTaskId === childInstance.taskId)
+  if (!parent || !entry || entry.status !== 'in_progress') return
+  entry.status = 'failed'
+  saveInstance(parent, contentDir)
 }
 
 /**
@@ -196,6 +240,8 @@ function fanOutMapStep(
     }
     instance.history.push({ stepId: mapStep.id, status: 'failed', completedAt: now })
     instance.status = 'failed'
+    // If this instance is itself a map child, surface the failure upward.
+    markMapChildFailed(instance, contentDir)
   }
 
   const dotIdx = mapStep.source.indexOf('.')
@@ -203,6 +249,12 @@ function fanOutMapStep(
   const sourceKey = dotIdx > 0 ? mapStep.source.slice(dotIdx + 1) : ''
   const sourceOutput = instance.stepStates[sourceStepId]?.output
   const value = sourceOutput?.[sourceKey]
+
+  // Sweep BEFORE any outcome branch: a re-fan-out after a source rewind must
+  // cancel the prior fan-out's live children whether the new source is valid,
+  // empty, oversized, or garbage — otherwise a discarded fan-out keeps
+  // running (and billing) with its completions dead-ending at the join.
+  sweepLiveMapChildren(instance.taskId, mapStep.id, Array.isArray(value) ? value.length : 0, contentDir)
 
   if (!Array.isArray(value)) {
     const detail = sourceOutput
@@ -227,25 +279,7 @@ function fanOutMapStep(
     return
   }
 
-  // Sweep stale live children from a prior fan-out of this step (source-step
-  // rewind wiped children[]): cancel them before re-creating over the same
-  // ids; orphans beyond the new width also leave the board.
   const childIdPrefix = `${instance.taskId}--${mapStep.id}--`
-  const staleChildren = listInstances(undefined, contentDir).filter(
-    (inst) => inst.parentTaskId === instance.taskId && inst.parentStepId === mapStep.id &&
-      inst.status !== 'complete' && inst.status !== 'cancelled',
-  )
-  for (const stale of staleChildren) {
-    cancelInstance(stale.taskId, contentDir)
-    const staleIndex = Number(stale.taskId.slice(childIdPrefix.length))
-    if (!(staleIndex >= 0 && staleIndex < value.length)) {
-      // Not being re-created — retire its board task too.
-      moveTaskInStore(stale.taskId, 'done').catch((err) => {
-        log.warn('Failed to retire stale map child task', err)
-      })
-    }
-  }
-
   const total = value.length
   const childDef = loadDefinition(mapStep.workflow_id, contentDir)
   const children: MapChildEntry[] = []
@@ -257,7 +291,9 @@ function fanOutMapStep(
     childInstance.parentStepId = mapStep.id
     saveInstance(childInstance, contentDir)
     createBoardTaskForChild(childTaskId, instance.taskId, mapStep, childDef, instance.resolvedAgent, { index: i, total })
-    children.push({ index: i, childTaskId, status: 'in_progress' })
+    // A child can fail during its own createInstance (e.g. a defensive
+    // first-step map failure) — record an honest entry, never in_progress.
+    children.push({ index: i, childTaskId, status: childInstance.status === 'failed' ? 'failed' : 'in_progress' })
   }
   instance.stepStates[mapStep.id] = { status: 'in_progress', startedAt: now, children }
 }
@@ -657,6 +693,21 @@ export function cancelInstance(taskId: string, contentDir?: string): void {
         log.warn('Failed to move cancelled map child task', err)
       })
     }
+  }
+
+  // Stray-child rediscovery: a source-step reopen wipes the map step's
+  // children[] while the child instances keep running — the bookkeeping
+  // loops above can't see those. Sweep anything in the store still claiming
+  // this instance as parent so cancellation never orphans live children.
+  const strays = listInstances(undefined, dir).filter(
+    (child) => child.parentTaskId === taskId &&
+      child.status !== 'complete' && child.status !== 'cancelled',
+  )
+  for (const stray of strays) {
+    cancelInstance(stray.taskId, dir)
+    moveTaskInStore(stray.taskId, 'done').catch((err) => {
+      log.warn('Failed to retire stray child task on cancel', err)
+    })
   }
 
   saveInstance(instance, dir)

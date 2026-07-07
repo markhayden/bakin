@@ -82,7 +82,7 @@ export function getCurrentStep(
   taskId: string,
   agentId?: string,
   contentDir?: string
-): StepContext | { status: 'complete' } | { status: 'cancelled' } | { status: 'failed'; stepId: string; code?: StepErrorCode; error?: string } | { status: 'pending_approval'; stepId: string; label: string } | null {
+): StepContext | { status: 'complete' } | { status: 'cancelled' } | { status: 'failed'; stepId: string; code?: StepErrorCode; error?: string } | { status: 'pending_approval'; stepId: string; label: string } | { status: 'fanned_out'; stepId: string; label: string; childrenTotal: number; childrenComplete: number } | null {
   const dir = contentDir || getContentDir()
   const instance = loadInstance(taskId, dir)
   if (!instance) return null
@@ -133,10 +133,19 @@ export function getCurrentStep(
     return null
   }
 
-  // Map fan-out — no single delegate is honest for N children; agents work
-  // their child board tasks (getActiveAgents unions them with effectiveTaskIds).
+  // Map fan-out — no single delegate is honest for N children (agents work
+  // their child board tasks; getActiveAgents unions them). Returning null
+  // here would collide with null's "no workflow instance" meaning on the
+  // REST/tool surfaces, so the fan-out reports itself as a typed status.
   if (step.type === 'map_workflow') {
-    return null
+    const entries = instance.stepStates[currentId]?.children ?? []
+    return {
+      status: 'fanned_out',
+      stepId: currentId,
+      label: step.label,
+      childrenTotal: entries.length,
+      childrenComplete: entries.filter((c) => c.status === 'complete').length,
+    }
   }
 
   // Parallel step — find the right child for this agent

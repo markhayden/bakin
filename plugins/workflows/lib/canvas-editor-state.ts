@@ -26,6 +26,7 @@ export const BUILTIN_STEP_LABELS: Record<string, string> = {
   parallel: 'Parallel Group',
   output: 'Completion',
   workflow: 'Nested Workflow',
+  map_workflow: 'Map Fan-out',
   createTask: 'Create Task',
 }
 
@@ -51,6 +52,11 @@ export function stepNodeData(step: WorkflowStep): Record<string, unknown> {
   } else if (step.type === 'workflow') {
     data.description = step.description
     data.workflow_id = step.workflow_id
+  } else if (step.type === 'map_workflow') {
+    data.description = step.description
+    data.workflow_id = step.workflow_id
+    data.source = step.source
+    data.max_children = step.max_children
   } else if (step.type === 'createTask') {
     data.agent = step.agent
     data.title = step.title
@@ -78,6 +84,7 @@ export function defaultStepBody(id: string, kind: string): WorkflowStep {
   if (kind === 'gate') return { id, type: 'gate', label }
   if (kind === 'output') return { id, type: 'output', label }
   if (kind === 'workflow') return { id, type: 'workflow', label, workflow_id: '' }
+  if (kind === 'map_workflow') return { id, type: 'map_workflow', label, source: '', workflow_id: '' }
   if (kind === 'parallel') return { id, type: 'parallel', label, steps: [] }
   if (kind === 'createTask') return { id, type: 'createTask', label, title: '' }
   // Plugin kind — preserve `type` as-is; the drawer will validate against the

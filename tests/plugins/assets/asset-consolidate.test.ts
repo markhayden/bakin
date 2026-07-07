@@ -94,12 +94,17 @@ describe('consolidateAssets', () => {
     expect(m.currentVersion).toBe(2)
   })
 
-  it('partial re-run absorbs only the missing loser and does not re-promote', async () => {
+  it('crash-retry restores the winner\'s ORIGINAL version, never a loser the crash left current', async () => {
+    // Simulates run 1 dying between absorbing loser1 (pointer advanced onto
+    // it) and the restore: the pointer sits on the absorbed loser (v2) when
+    // the retry arrives with the remaining loser. The retry must restore the
+    // DURABLE original (first absorbed version's parentVersion = v1) — not
+    // whatever version the crash left current.
     const winner = await variant('win-c', 'v0.png')
     const loser1 = await variant('lose-c1', 'v1.png')
     const loser2 = await variant('lose-c2', 'v2.png')
     await consolidateAssets({ winnerAssetId: winner.assetId, loserAssetIds: [loser1.assetId], taskId: 't' })
-    await promoteVersion(winner.assetId, 2)
+    await promoteVersion(winner.assetId, 2) // pointer parked on the absorbed loser, as a mid-run crash leaves it
 
     const result = await consolidateAssets({
       winnerAssetId: winner.assetId,
@@ -111,7 +116,22 @@ describe('consolidateAssets', () => {
 
     const m = getAsset(winner.assetId)!
     expect(m.versions).toHaveLength(3)
-    expect(m.currentVersion).toBe(2) // untouched on any re-run
+    expect(m.currentVersion).toBe(1) // the winner's original, from durable provenance
+  })
+
+  it('serializes concurrent invocations — an overlapping retry cannot double-absorb', async () => {
+    const winner = await variant('win-f', 'v0.png')
+    const loser = await variant('lose-f', 'v1.png')
+    const [a, b] = await Promise.all([
+      consolidateAssets({ winnerAssetId: winner.assetId, loserAssetIds: [loser.assetId], taskId: 't' }),
+      consolidateAssets({ winnerAssetId: winner.assetId, loserAssetIds: [loser.assetId], taskId: 't' }),
+    ])
+    // Exactly one run absorbed; the other skipped.
+    expect([...a.absorbed, ...b.absorbed]).toEqual([loser.assetId])
+    expect([...a.skipped, ...b.skipped]).toEqual([loser.assetId])
+    const m = getAsset(winner.assetId)!
+    expect(m.versions).toHaveLength(2)
+    expect(m.currentVersion).toBe(1)
   })
 
   it('reports a typed per-loser failure for missing assets instead of throwing', async () => {

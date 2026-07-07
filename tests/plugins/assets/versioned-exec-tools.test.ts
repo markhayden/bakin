@@ -149,17 +149,19 @@ describe('versioned exec tools', () => {
     expect(rerun.absorbed).toEqual([])
   })
 
-  it('consolidate reports typed failures without throwing', async () => {
+  it('consolidate reports typed failures — fatal only when the WINNER fails', async () => {
     const bad = await callTool(tool('bakin_exec_assets_consolidate'), {
       winnerAssetId: 'not-an-id', loserAssetIds: ['20260530-anyy-99990000'], taskId: 't1',
     }, 'main')
     expect(bad.ok).toBe(false)
 
+    // A stale loser id is reported in failed[] but does NOT flip ok — the
+    // consolidation of the remaining variants stands, so retries don't loop.
     const winner = seedVersioned('20260530-winf-55556666', { type: 'text', versions: [{}] })
     const r = await callTool(tool('bakin_exec_assets_consolidate'), {
       winnerAssetId: winner, loserAssetIds: ['20260530-ghos-77778888'], taskId: 't1',
     }, 'main')
-    expect(r.ok).toBe(false)
+    expect(r.ok).toBe(true)
     expect(r.failed).toEqual([{ assetId: '20260530-ghos-77778888', code: 'loser_not_found' }])
   })
 
