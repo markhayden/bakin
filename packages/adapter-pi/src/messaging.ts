@@ -17,6 +17,7 @@ import {
   SettingsManager,
   type AgentSession,
   type AgentSessionEvent,
+  type LoadExtensionsResult,
 } from '@earendil-works/pi-coding-agent'
 
 import type {
@@ -39,6 +40,24 @@ import { buildAppendSystemPrompt } from './system-prompt'
 import { bridgeExecTools, filterExecToolDescriptors } from './tool-bridge'
 
 const THINKING_LEVELS = new Set(['off', 'minimal', 'low', 'medium', 'high', 'xhigh'])
+
+/**
+ * Pi extension loading policy (settings.runtime.settings.piExtensions).
+ * Extensions are arbitrary code executing inside the Bakin server process
+ * and many are TUI-coupled — 'all' honors whatever `pi install` set up
+ * (the default: users who installed packages for terminal pi expect them
+ * here too, #626); 'allowlist' loads only name/path matches; 'none'
+ * restores the v1 lockout. extension_error events are contained per-turn.
+ */
+export interface PiExtensionsPolicy {
+  mode?: 'none' | 'allowlist' | 'all'
+  allow?: string[]
+}
+
+function extensionsPolicy(settings: Record<string, unknown> | undefined): Required<PiExtensionsPolicy> {
+  const raw = (settings?.piExtensions ?? {}) as PiExtensionsPolicy
+  return { mode: raw.mode ?? 'all', allow: raw.allow ?? [] }
+}
 
 export interface PiMessagingDeps {
   getExecTools: () => RuntimeExecToolProvider | undefined
@@ -85,19 +104,31 @@ async function openTurnSession(args: MessageArgs, deps: PiMessagingDeps): Promis
   const { auth, registry: modelRegistry } = getModelRegistry()
 
   const settingsManager = SettingsManager.create(workspace, agentDir, { projectTrusted: true })
-  const retry = deps.getSettings?.()?.retry
+  const adapterSettings = deps.getSettings?.()
+  const retry = adapterSettings?.retry
   if (retry && typeof retry === 'object') {
     // Bakin's dispatch owns the outer retry ladder; installs can tune or
     // disable Pi's inner auto-retry via settings.runtime.settings.retry.
     settingsManager.applyOverrides({ retry: retry as never })
   }
+  const extPolicy = extensionsPolicy(adapterSettings)
   const resourceLoader = new DefaultResourceLoader({
     cwd: workspace,
     agentDir,
     settingsManager,
-    // v1: Pi TUI extensions/themes/templates stay out of the server process;
-    // skills + AGENTS.md context files are the personality surface.
-    noExtensions: true,
+    // Extensions load per policy (#626); themes/prompt-templates are
+    // TUI-only and stay out of the server process.
+    noExtensions: extPolicy.mode === 'none',
+    ...(extPolicy.mode === 'allowlist'
+      ? {
+          extensionsOverride: (base: LoadExtensionsResult): LoadExtensionsResult => ({
+            ...base,
+            extensions: base.extensions.filter((ext) =>
+              extPolicy.allow.some((pattern) => ext.path.includes(pattern)),
+            ),
+          }),
+        }
+      : {}),
     noThemes: true,
     noPromptTemplates: true,
     appendSystemPrompt: buildAppendSystemPrompt(record.id),

@@ -15,7 +15,7 @@ Pi is a minimal single-session coding harness — it has no agent roster, channe
 | `main-agent.ts` | Seeds `main` (orchestrator) on first `initialize()` when the registry is empty |
 | `agents.ts` | agents.* contract: identity, workspace file CRUD (traversal-guarded), `workspaceFileStats` (canonical/skill/memory) |
 | `sessions.ts` | threadId → session-file map (`bakin-threads.json`), per-thread turn mutex, sessions.list/get/storeStats |
-| `messaging.ts` | send/stream: session assembly, event→ChatChunk mapping, usage delta, abort, terminal-failure detection |
+| `messaging.ts` | send/stream: session assembly, event→ChatChunk mapping, usage delta, abort, terminal-failure detection, Pi extension policy (#626) |
 | `tool-bridge.ts` | Exec-tool seam descriptors → Pi `defineTool()` (native tools); per-turn policy + agent allowlist filtering |
 | `system-prompt.ts` | Canonical workspace files (SOUL/IDENTITY/TOOLS/…) → `appendSystemPrompt` sections; AGENTS.md rides Pi's native cwd discovery |
 | `errors.ts` | THE classification point → `RuntimeError` kinds + stream-death diagnoses with salvage |
@@ -29,6 +29,7 @@ Pi is a minimal single-session coding harness — it has no agent roster, channe
 ## Load-bearing SDK facts (0.80.3, probed — do not trust docs over these)
 
 - **`session.prompt()` RESOLVES on terminal provider failure.** Failure evidence is the final `agent_end` event: last assistant message `stopReason: 'error'` + `errorMessage`, `willRetry: false` after auto-retries exhaust. `TurnObserver` in messaging.ts reads this; without it every failed turn would look successful.
+- **Pi extensions load in Bakin turns per policy** (`settings.runtime.settings.piExtensions: { mode: 'none'|'allowlist'|'all', allow?: [] }`, default `'all'` — honors whatever `pi install` set up, #626). Allowlist matches extension path substrings and filters AFTER discovery (non-matching extension modules still evaluate at load; use `'none'` for a hard lockout). Extensions are arbitrary code in the server process — treat installs as trusted. Themes/prompt-templates stay TUI-only.
 - No `systemPrompt` option on `createAgentSession` — system prompt goes through `DefaultResourceLoader` (`appendSystemPrompt`); **`await loader.reload()` before use**.
 - No AbortSignal on `prompt()` — cancellation is `session.abort()`; the adapter wires `MessageArgs.signal` to it and maps to kind `'aborted'`.
 - Tool failures are THROWN from `execute()` (no `isError` field on `AgentToolResult`; `details` is required — pass `undefined`).
@@ -48,7 +49,7 @@ Pi is a minimal single-session coding harness — it has no agent roster, channe
 |---|---|
 | channels | `list() → []`; sends/approvals throw typed `runtime_failed` ("not supported by the pi runtime"); the Chat plugin is the conversational surface |
 | cron | empty reads, typed failure on mutation (Bakin-owned task scheduling unaffected) |
-| images / media / createThread / editMessage | members genuinely absent — callers skip |
+| images / media / createThread / editMessage | members genuinely absent — callers skip. **Image GENERATION still works on Pi** via the images plugin's Bakin-side shim (direct provider call; key from `OPENAI_API_KEY`/`GEMINI_API_KEY` env or secret store `providers.<id>.apiKey`). Runtime-gated remainder: reference-image edits (shim can't take input files) |
 | tools.invoke | typed failure (zero production callers) |
 
 Fast-follows on record: Discord bridge (reuse existing bot token), in-app approval channel.
