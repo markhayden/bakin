@@ -1,0 +1,162 @@
+/**
+ * Chat plugin — stream bridge tests (C3).
+ * runtime.messaging.stream is mocked with scripted chunk generators; the
+ * bridge must persist durable rows, emit chat.chunk/done/error on the
+ * event bus, and enforce one in-flight turn per chat.
+ */
+import { describe, test, expect, beforeAll, afterAll, mock } from 'bun:test'
+import { join } from 'path'
+import { tmpdir } from 'os'
+import { rmSync } from 'fs'
+
+const testDir = join(tmpdir(), `bakin-test-chat-stream-${Date.now()}`)
+
+function testPaths() {
+  return {
+    home: testDir,
+    memoryLog: join(testDir, 'MEMORY-LOG.md'),
+    audit: join(testDir, 'audit.jsonl'),
+    assets: join(testDir, 'assets'),
+    'assets.store': join(testDir, 'assets', 'store'),
+    'assets.inbox': join(testDir, 'assets', 'inbox'),
+    'assets.trash': join(testDir, 'assets', '.trash'),
+    agents: join(testDir, 'agents'),
+    personas: join(testDir, 'team', 'personas'),
+    team: join(testDir, 'team'),
+    heartbeats: join(testDir, 'heartbeats'),
+    inbox: join(testDir, 'inbox'),
+    tasks: join(testDir, 'tasks'),
+    workflows: join(testDir, 'workflows'),
+    chat: join(testDir, 'chat'),
+    settings: join(testDir, 'settings.json'),
+    logs: join(testDir, 'logs'),
+    antfly: join(testDir, 'antfly'),
+    db: join(testDir, 'bakin.db'),
+  }
+}
+
+const contentDirMock = () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: testPaths,
+})
+mock.module('../../../src/core/content-dir', contentDirMock)
+mock.module('../../../packages/core/src/content-dir', contentDirMock)
+mock.module('../../../src/core/logger', () => ({
+  createLogger: () => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }),
+}))
+
+import chatPlugin from '../../../plugins/chat'
+import { createChat, readTranscript } from '../../../plugins/chat/lib/store'
+import { startChatTurn, waitForTurn } from '../../../plugins/chat/lib/stream-bridge'
+import { activatePlugin, callRoute, findRoute, type ActivatedPlugin } from '../test-helpers'
+import type { ChatChunk, MessageArgs } from '../../../packages/core/src/adapters/runtime/concepts'
+
+let activated: ActivatedPlugin
+
+function scriptStream(script: () => AsyncIterable<ChatChunk>, capture?: MessageArgs[]) {
+  activated.ctx.runtime.messaging.stream = ((args: MessageArgs) => {
+    capture?.push(args)
+    return script()
+  }) as typeof activated.ctx.runtime.messaging.stream
+}
+
+beforeAll(async () => {
+  activated = await activatePlugin(chatPlugin, testDir)
+  await activated.ctx.runtime.agents.create({ id: 'main', name: 'Main' })
+})
+
+afterAll(() => {
+  rmSync(testDir, { recursive: true, force: true })
+})
+
+describe('chat stream bridge', () => {
+  test('happy path: chunks broadcast in order, durable rows persisted, chat.done emitted', async () => {
+    const chat = await createChat({ agentId: 'main' })
+    const events: Array<{ event: string; data: Record<string, unknown> }> = []
+    const off = activated.ctx.events.on('chat.*', (event, data) => events.push({ event, data }))
+
+    const seenArgs: MessageArgs[] = []
+    scriptStream(async function* () {
+      yield { type: 'status', content: 'thinking' } as ChatChunk
+      yield { type: 'text', content: 'Hello ' } as ChatChunk
+      yield { type: 'tool', data: { phase: 'call', toolName: 'bash' } } as ChatChunk
+      yield { type: 'tool', data: { phase: 'result', toolName: 'bash', summary: 'ls -la' } } as ChatChunk
+      yield { type: 'text', content: 'world' } as ChatChunk
+      yield { type: 'done' } as ChatChunk
+    }, seenArgs)
+
+    expect(await startChatTurn(activated.ctx, chat.id, 'hi')).toBe('accepted')
+    await waitForTurn(chat.id)
+    off()
+
+    // threadId contract: chat:<chatId>
+    expect(seenArgs[0]?.threadId).toBe(`chat:${chat.id}`)
+    expect(seenArgs[0]?.agentId).toBe('main')
+
+    // SSE: every chunk relayed, then done
+    const chunkEvents = events.filter((e) => e.event === 'chat.chunk')
+    expect(chunkEvents.length).toBe(6)
+    expect(events.at(-1)?.event).toBe('chat.done')
+
+    // Durable transcript: user + completed tool + aggregated assistant text
+    const rows = readTranscript(chat.id)
+    expect(rows.map((r) => r.kind)).toEqual(['user', 'tool', 'assistant'])
+    expect(rows[1]).toMatchObject({ summary: 'bash: ls -la' })
+    expect(rows[2]).toMatchObject({ content: 'Hello world' })
+  })
+
+  test('stream failure: partial text kept, error row persisted, chat.error emitted', async () => {
+    const chat = await createChat({ agentId: 'main' })
+    const events: Array<{ event: string }> = []
+    const off = activated.ctx.events.on('chat.*', (event) => events.push({ event }))
+
+    scriptStream(async function* () {
+      yield { type: 'text', content: 'partial answer' } as ChatChunk
+      throw new Error('session died')
+    })
+
+    expect(await startChatTurn(activated.ctx, chat.id, 'hi')).toBe('accepted')
+    await waitForTurn(chat.id)
+    off()
+
+    expect(events.at(-1)?.event).toBe('chat.error')
+    const rows = readTranscript(chat.id)
+    expect(rows.map((r) => r.kind)).toEqual(['user', 'assistant', 'error'])
+    expect(rows[1]).toMatchObject({ content: 'partial answer' })
+    expect(rows[2]).toMatchObject({ message: 'session died' })
+  })
+
+  test('one in-flight turn per chat: second send gets busy/409', async () => {
+    const chat = await createChat({ agentId: 'main' })
+    let release!: () => void
+    const gate = new Promise<void>((r) => { release = r })
+
+    scriptStream(async function* () {
+      yield { type: 'text', content: 'slow' } as ChatChunk
+      await gate
+      yield { type: 'done' } as ChatChunk
+    })
+
+    expect(await startChatTurn(activated.ctx, chat.id, 'first')).toBe('accepted')
+
+    const send = findRoute(activated.routes, 'POST', '/chats/:chatId/messages')!
+    const busy = await callRoute(send, activated.ctx, { path: `/chats/${chat.id}/messages`, body: { content: 'second' } })
+    expect(busy.status).toBe(409)
+
+    release()
+    await waitForTurn(chat.id)
+
+    const done = await callRoute(send, activated.ctx, { path: `/chats/${chat.id}/messages`, body: { content: 'third' } })
+    expect(done.status).toBe(202)
+    await waitForTurn(chat.id)
+  })
+
+  test('unknown chat: 404 through the route', async () => {
+    const send = findRoute(activated.routes, 'POST', '/chats/:chatId/messages')!
+    const res = await callRoute(send, activated.ctx, {
+      path: '/chats/00000000-0000-0000-0000-000000000000/messages',
+      body: { content: 'hello?' },
+    })
+    expect(res.status).toBe(404)
+  })
+})

@@ -109,6 +109,8 @@ export interface BakinPaths {
   inbox: string
   tasks: string
   workflows: string
+  /** Chat plugin transcripts + index (Bakin-owned UI data). */
+  chat: string
   settings: string
   logs: string
   /** Data dir for Bakin's private antfly instance (created on demand by the adapter). */
@@ -134,6 +136,7 @@ export function getBakinPaths(): BakinPaths {
     inbox: join(home, 'inbox'),
     tasks: join(home, 'tasks'),
     workflows: join(home, 'workflows'),
+    chat: join(home, 'chat'),
     settings: join(home, 'settings.json'),
     logs: join(home, 'logs'),
     antfly: join(home, 'antfly'),

@@ -18,6 +18,7 @@ import { Route as WorkflowsIdIndexRoute } from './routes/workflows.$id.index'
 import { Route as WorkflowsIdEditRoute } from './routes/workflows.$id.edit'
 import { Route as AssetsRoute } from './routes/assets'
 import { Route as AssetDetailRoute } from './routes/assets.$assetId'
+import { Route as ChatRoute } from './routes/chat'
 import { Route as ExploreRoute } from './routes/explore'
 import { Route as HealthRoute } from './routes/health'
 import { Route as MemoryRoute } from './routes/memory'
@@ -38,6 +39,7 @@ const routeTree = RootRoute.addChildren([
   WorkflowsIdEditRoute,
   AssetsRoute,
   AssetDetailRoute,
+  ChatRoute,
   ExploreRoute,
   HealthRoute,
   MemoryRoute,

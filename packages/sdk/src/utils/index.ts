@@ -89,3 +89,6 @@ export type {
 
 /** Read an SSE response stream into brainstorm activity events. */
 export { readBrainstormSseResponse } from '../../../../src/components/integrated-brainstorm/sse'
+
+/** Structured-value (JSON → human) renderers — labeled prose, one-line summary, tool-envelope unwrap. */
+export { humanizeKey, formatStructured, summarizeStructured, unwrapToolResult, type FormatStructuredOptions } from '@bakin/core/format'

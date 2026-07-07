@@ -25,6 +25,7 @@ import schedulePlugin from '../../plugins/schedule'
 import healthPlugin from '../../plugins/health'
 import gitPlugin from '../../plugins/git'
 import explorePlugin from '../../plugins/explore'
+import chatPlugin from '../../plugins/chat'
 
 import teamManifestJson from '../../plugins/team/bakin-plugin.json'
 import tasksManifestJson from '../../plugins/tasks/bakin-plugin.json'
@@ -37,6 +38,7 @@ import scheduleManifestJson from '../../plugins/schedule/bakin-plugin.json'
 import healthManifestJson from '../../plugins/health/bakin-plugin.json'
 import gitManifestJson from '../../plugins/git/bakin-plugin.json'
 import exploreManifestJson from '../../plugins/explore/bakin-plugin.json'
+import chatManifestJson from '../../plugins/chat/bakin-plugin.json'
 
 import { readPluginManifestJson } from '../../packages/core/src/plugins/manifest'
 import type { CorePluginRegistration } from '../core/plugin-registry'
@@ -61,4 +63,5 @@ export const CORE_PLUGIN_IMPORTS: Readonly<Record<string, CorePluginRegistration
   'plugins/health': corePlugin(healthPlugin, healthManifestJson),
   'plugins/git': corePlugin(gitPlugin, gitManifestJson),
   'plugins/explore': corePlugin(explorePlugin, exploreManifestJson),
+  'plugins/chat': corePlugin(chatPlugin, chatManifestJson),
 }
