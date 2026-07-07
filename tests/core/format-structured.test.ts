@@ -49,11 +49,15 @@ describe('summarizeStructured', () => {
   test('prefers a meaningful field; flags errors', () => {
     expect(summarizeStructured({ ok: true, assetId: '20260707-abc' })).toBe('20260707-abc')
     expect(summarizeStructured({ ok: false, error: 'boom' })).toBe('error: boom')
+    expect(summarizeStructured({ ok: true, id: 'a9bd0025', notice: 'Task assigned — dispatch will notify pixel' }))
+      .toBe('Task assigned — dispatch will notify pixel') // notice beats id
   })
 
-  test('falls back to scalar key/value join then key list', () => {
-    expect(summarizeStructured({ width: 1080, height: 1350 })).toBe('Width: 1080, Height: 1350')
-    expect(summarizeStructured({ nested: { a: 1 } })).toBe('{ nested }')
+  test('never emits useless "Ok: true"; describes collections by count', () => {
+    // The exact papercut: {ok:true, templates:[...]} used to render "Ok: true".
+    expect(summarizeStructured({ ok: true, templates: [{ name: 'a' }, { name: 'b' }] })).toBe('2 templates')
+    expect(summarizeStructured({ ok: true })).toBe('done')
+    expect(summarizeStructured({ ok: true, width: 1080, height: 1350 })).toBe('Width: 1080, Height: 1350')
   })
 
   test('caps long output with an ellipsis', () => {
@@ -78,8 +82,16 @@ describe('unwrapToolResult', () => {
     expect(unwrapToolResult(envelope)).toBe('{not valid')
   })
 
+  test('peels a DOUBLE-wrapped envelope (bash → mcporter stdout → MCP content)', () => {
+    const inner = JSON.stringify({ ok: true, templates: [{ name: 'a' }, { name: 'b' }, { name: 'c' }] })
+    const mcporterStdout = JSON.stringify({ content: [{ type: 'text', text: inner }] })
+    const bashEnvelope = { content: [{ type: 'text', text: mcporterStdout }] }
+    expect(unwrapToolResult(bashEnvelope)).toEqual({ ok: true, templates: [{ name: 'a' }, { name: 'b' }, { name: 'c' }] })
+    expect(summarizeStructured(bashEnvelope)).toBe('3 templates')
+  })
+
   test('end-to-end: ugly tool dump → clean chip summary', () => {
     const ugly = { content: [{ type: 'text', text: '{"ok":true,"assetId":"20260707-instagram-square-image-b8cd5674","version":1}' }] }
-    expect(summarizeStructured(unwrapToolResult(ugly))).toBe('20260707-instagram-square-image-b8cd5674')
+    expect(summarizeStructured(ugly)).toBe('20260707-instagram-square-image-b8cd5674')
   })
 })
