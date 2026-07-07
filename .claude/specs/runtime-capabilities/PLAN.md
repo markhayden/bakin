@@ -37,6 +37,12 @@ Bottom-up: contract types first, then the pieces that consume them. Riskiest ear
 
 ## Phase 1 — Foundation
 
+### P1.0 — Decouple the app-services composition root (ratchet out the #624 allowlist)
+**Description:** Split the globalThis-backed accessors (`getAppServices`/`maybeGetAppServices`/`setAppServices`) out of `src/core/app-services.ts` into a leaf `app-services-store.ts` (type-only `AppServices` import). Repoint every consumer that only READS services to the leaf so nothing imports the composition root just for a services read. Remove the 7 exec-tool-provider-seam cycles allowlisted in `scripts/check-cycles.ts` (#624). Tests that `mock.module('.../app-services')` for `getAppServices` move the stub to the store.
+**Acceptance:** `check:cycles` shows those 7 entries gone (ratcheted down, not re-allowlisted); full suite green.
+**Verify:** `bun run check:cycles` (no stale-allowlist error) + full suite.
+**Files:** `app-services.ts`, new `app-services-store.ts`, ~6 core modules (registry/task-service/dispatch-cycle/dispatch-turns/dispatch-single/search-registry-core) + ~15 test files' mocks. **Size:** M. **Note:** proven approach during the #624 CI fix — this is the "proper fix" that allowlist comment points to.
+
 ### P1.1 — Contract: CapabilitySet + RuntimeToolAccess
 **Description:** Add `CapabilitySet` (every runtime-provided capability, mode `native|shimmed|unavailable`) + `RuntimeToolAccess` (`style: 'in-process'|'mcp'|'cli-shim'` + `mcpServerTemplate?`/`shimCommand?`/`example?`) to `concepts.ts`. Fold `describeToolAccess` into `capabilities().toolCalling.access`. Mock + both adapters return valid sets (Pi `in-process`, OpenClaw `mcp` w/ `mcpServerTemplate: 'bakin-<agent>'`).
 **Acceptance:** contract compiles; `capabilities()` returns a full `CapabilitySet` from Pi, OpenClaw, mock; conformance test asserts every member present.
