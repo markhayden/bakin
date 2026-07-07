@@ -50,6 +50,10 @@ mock.module('../../src/core/plugin-registry', hookRegistryMock)
 let spendThrows = false
 type CostRow = { runId: string; agent: string; model: string | null; provider: string | null; lane: 'metered' | 'subscription' | null; totalTokens: number | null; costUsdMicros: number | null; occurredAt: number }
 const costRows: CostRow[] = []
+// In-memory emulation of the budget_incidents UNIQUE (the durable debounce).
+const incidentKeys = new Map<string, { id: number; status: string; atCap: string }>()
+const incidentOpens: Array<Record<string, unknown>> = []
+let nextIncidentId = 1
 mock.module('../../src/core/execution-ledger', () => ({
   // dispatch imports several verbs at load; only the spend reads matter here.
   claimNextRun: () => ({ claimed: false }),
@@ -62,6 +66,17 @@ mock.module('../../src/core/execution-ledger', () => ({
     if (spendThrows) throw new Error('ledger down')
     return costRows.filter((r) => r.occurredAt >= sinceMs)
   },
+  openBudgetIncident: (input: Record<string, unknown>) => {
+    const key = `${input.scope}:${input.scopeId ?? ''}:${input.lane}:${input.window}:${input.windowStartMs}:${input.kind}`
+    const existing = incidentKeys.get(key)
+    if (existing && existing.status !== 'resolved') return { opened: false, id: existing.id }
+    const id = existing?.id ?? nextIncidentId++
+    incidentKeys.set(key, { id, status: 'open', atCap: String(input.atCap) })
+    incidentOpens.push({ ...input, id })
+    return { opened: true, id }
+  },
+  resolveExpiredBudgetIncidents: () => 0,
+  findOpenCapIncident: () => null,
 }))
 
 // The spend engine's observed-usage side (usage.db) — empty unless a test seeds it.
@@ -84,6 +99,8 @@ beforeEach(() => {
   auditCalls.length = 0
   costRows.length = 0
   usageCells.length = 0
+  incidentKeys.clear()
+  incidentOpens.length = 0
 })
 
 const GLOBAL_10: unknown = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 10 }] }
@@ -146,5 +163,28 @@ describe('budgetGate', () => {
     billingImpl = () => ({ provider: 'openai-codex', lane: 'subscription', model: 'openai-codex/gpt-5.5-codex' })
     costRows.push({ runId: 'r-m', agent: 'pixel', model: 'google/gemini-3-flash', provider: 'google', lane: 'metered', totalTokens: 10, costUsdMicros: 99_000_000, occurredAt: Date.now() })
     expect((await budgetGate('pixel', dir)).action).toBe('allow')
+  })
+
+  it('a breach opens ONE incident and ONE audit across repeated gate calls (durable debounce)', async () => {
+    budgetPolicy = GLOBAL_10
+    costRows.push({ runId: 'r1', agent: 'pixel', model: 'google/g', provider: 'google', lane: 'metered', totalTokens: 100, costUsdMicros: 10_000_000, occurredAt: Date.now() })
+    expect((await budgetGate('pixel', dir)).action).toBe('defer')
+    expect((await budgetGate('pixel', dir)).action).toBe('defer')
+    expect((await budgetGate('rolo', dir)).action).toBe('defer') // same GLOBAL rule identity — no second incident
+    expect(incidentOpens).toHaveLength(1)
+    expect(incidentOpens[0]).toMatchObject({ scope: 'global', lane: 'metered', window: 'daily', kind: 'cap', unit: 'usd_micros', atCap: 'defer' })
+    const deferAudits = auditCalls.filter((c) => c[1] === 'budget.deferred')
+    expect(deferAudits).toHaveLength(1)
+    expect((deferAudits[0][3] as Record<string, unknown>).incidentId).toBe(incidentOpens[0].id)
+  })
+
+  it('a warn threshold opens a warn incident and audits budget.warn once', async () => {
+    budgetPolicy = GLOBAL_10
+    costRows.push({ runId: 'r1', agent: 'pixel', model: 'google/g', provider: 'google', lane: 'metered', totalTokens: 100, costUsdMicros: 8_500_000, occurredAt: Date.now() })
+    expect((await budgetGate('pixel', dir)).action).toBe('warn')
+    expect((await budgetGate('pixel', dir)).action).toBe('warn')
+    expect(incidentOpens).toHaveLength(1)
+    expect(incidentOpens[0]).toMatchObject({ kind: 'warn' })
+    expect(auditCalls.filter((c) => c[1] === 'budget.warn')).toHaveLength(1)
   })
 })

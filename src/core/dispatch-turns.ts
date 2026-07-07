@@ -18,7 +18,7 @@ import { getSettings } from './settings'
 import { appendAudit } from './audit'
 import { getAppServices } from './app-services'
 import { RuntimeError, RuntimeTurnError, type MessageResult } from '@bakin/core/adapters/runtime'
-import { claimNextRun, loseRun, settleRun, type ClaimNextRunResult } from './execution-ledger'
+import { claimNextRun, loseRun, settleRun, openBudgetIncident, resolveExpiredBudgetIncidents, type ClaimNextRunResult } from './execution-ledger'
 import { meterAgentTurn } from './agent-cost'
 import { resolveTurnModel, type ResolvedTurn, type RoutingConfig } from './model-routing'
 import { evaluateBudget, dayStartMs, type BudgetPolicy, type BudgetDecision, type TurnBillingContext } from './budget'
@@ -55,19 +55,11 @@ async function sendDispatchMessage(agentId: string, content: string, threadId: s
   })
 }
 
-// Budget warn/defer audits fire once per (event, rule identity, window,
-// window-start) so a cap sitting at 85% — or a deferred task re-evaluated
-// every cycle — doesn't spam the audit log. Keyed by window start, so it
-// auto-rolls when the day/month turns over. In-memory; resets on restart
-// (acceptable until T8 replaces this with the durable incident UNIQUE).
-const budgetAuditedWindows = new Set<string>()
-
-function auditBudgetOnce(contentDir: string, event: 'budget.warn' | 'budget.deferred', agent: string, detail: Record<string, unknown>, windowStartMs: number): void {
-  const key = `${event}:${detail.scope}:${detail.scopeId ?? ''}:${detail.lane ?? ''}:${detail.window}:${windowStartMs}`
-  if (budgetAuditedWindows.has(key)) return
-  budgetAuditedWindows.add(key)
-  appendAudit(contentDir, event, agent, detail)
-}
+// Fail-closed (ledger unreadable) can't write a durable incident — the
+// ledger IS the incident store — so its audit keeps a small in-memory
+// once-per-window latch to avoid per-task spam. Every readable-ledger breach
+// debounces durably via the budget_incidents UNIQUE instead.
+const failClosedAuditedWindows = new Set<number>()
 
 /**
  * Per-cycle memo for the spend engine: the facets are identical for every
@@ -138,15 +130,59 @@ export async function budgetGate(
     facets = await pending
   } catch (err) {
     log.error('Budget spend read failed; deferring (fail-closed)', err, { agentId })
-    auditBudgetOnce(contentDir, 'budget.deferred', agentId, { scope: 'global', window: 'daily', reason: 'ledger-unavailable' }, dayStartMs(now))
+    const windowStart = dayStartMs(now)
+    if (!failClosedAuditedWindows.has(windowStart)) {
+      failClosedAuditedWindows.add(windowStart)
+      appendAudit(contentDir, 'budget.deferred', agentId, { scope: 'global', window: 'daily', reason: 'ledger-unavailable' })
+    }
     return FAIL_CLOSED_DECISION
+  }
+
+  // Lazy window rollover: defer-mode incidents whose window ended resolve
+  // here (once per gate pass; the UPDATE is a no-op when nothing expired).
+  try {
+    resolveExpiredBudgetIncidents({ dailyWindowStartMs: facets.daily.startMs, monthlyWindowStartMs: facets.monthly.startMs, now })
+  } catch (err) {
+    log.warn('Budget incident rollover sweep failed', { err: err instanceof Error ? err.message : String(err) })
   }
 
   const decision = evaluateBudget({ policy, turn, facets })
   if (decision.action !== 'allow') {
+    recordBudgetBreach(contentDir, agentId, decision, facets)
+  }
+  return decision
+}
+
+/**
+ * Open (idempotently) the durable incident for a breach and audit it exactly
+ * once per (rule identity, window, kind) — the budget_incidents UNIQUE is
+ * the restart-safe debounce. Never throws into the gate.
+ */
+function recordBudgetBreach(
+  contentDir: string,
+  agentId: string,
+  decision: Extract<BudgetDecision, { action: 'warn' | 'defer' }>,
+  facets: BudgetSpendFacets,
+): void {
+  try {
     const windowStart = decision.window === 'monthly' ? facets.monthly.startMs : facets.daily.startMs
+    const incident = openBudgetIncident({
+      scope: decision.rule.scope,
+      scopeId: decision.rule.scopeId,
+      lane: decision.rule.lane,
+      window: decision.window,
+      windowStartMs: windowStart,
+      kind: decision.action === 'defer' ? 'cap' : 'warn',
+      unit: decision.unit,
+      capValue: decision.capValue,
+      spentValue: decision.spentValue,
+      atCap: decision.rule.atCap ?? 'defer',
+      openedAt: Date.now(),
+    })
+    if (!incident.opened) return
     const event = decision.action === 'defer' ? 'budget.deferred' : 'budget.warn'
-    auditBudgetOnce(contentDir, event, agentId, {
+    appendAudit(contentDir, event, agentId, {
+      incidentId: incident.id,
       scope: decision.rule.scope,
       ...(decision.rule.scopeId ? { scopeId: decision.rule.scopeId } : {}),
       lane: decision.rule.lane,
@@ -154,9 +190,10 @@ export async function budgetGate(
       unit: decision.unit,
       spentValue: decision.spentValue,
       capValue: decision.capValue,
-    }, windowStart)
+    })
+  } catch (err) {
+    log.error('Failed to record budget breach incident', err, { agentId })
   }
-  return decision
 }
 
 /** True when budget says defer — the shared shape all three dispatch paths use. */
