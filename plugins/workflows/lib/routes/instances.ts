@@ -7,6 +7,7 @@
  * and the search indexer; no gate-specific helpers.
  */
 import { z } from 'zod'
+import { createLogger } from '@bakin/core/logger'
 import { defineRoute } from '@bakin/core/routing'
 import type { PluginContextLite } from '@bakin/core/routing'
 import { getTask, updateTask } from '../../../../src/core/task-store'
@@ -16,6 +17,8 @@ import { getWorkflowPluginContext } from '../plugin-context'
 import { indexInstance } from '../search-sync'
 import { triggerDispatch } from '../trigger-dispatch'
 import { passthroughWf, errorResponseWf } from '../route-schemas'
+
+const log = createLogger('workflow-routes')
 
 // GET /steps/:taskId — get current step for a task
 const getStepHandler = async (req: Request, _ctx: PluginContextLite) => {
@@ -151,13 +154,23 @@ const listMapChildrenHandler = async (req: Request, _ctx: PluginContextLite) => 
   return Response.json({ children: result.children })
 }
 
+const retryBodySchema = z.object({ reason: z.string().optional() }).passthrough()
+const reopenBodySchema = z.object({ stepId: z.string().optional(), reason: z.string().optional() }).passthrough()
+
+async function parseBody<T>(req: Request, schema: z.ZodType<T>, empty: T): Promise<T | null> {
+  let raw: unknown
+  try { raw = await req.json() } catch { return empty /* empty body is fine */ }
+  const parsed = schema.safeParse(raw)
+  return parsed.success ? parsed.data : null
+}
+
 const retryMapChildHandler = async (req: Request, ctx: PluginContextLite) => {
   const params = readMapChildParams(req)
   if (!params || params.index === undefined) {
     return Response.json({ error: 'taskId, stepId, and index are required' }, { status: 400 })
   }
-  let body: { reason?: string } = {}
-  try { body = await req.json() } catch { /* empty body is fine */ }
+  const body = await parseBody(req, retryBodySchema, {})
+  if (!body) return Response.json({ error: 'Invalid body — expected { reason?: string }' }, { status: 400 })
 
   const result = retryMapChild(params.taskId, params.stepId, params.index, { reason: body.reason })
   if (!result.success) {
@@ -166,7 +179,7 @@ const retryMapChildHandler = async (req: Request, ctx: PluginContextLite) => {
 
   ctx.activity.audit('map_child.retried', 'user', { taskId: params.taskId, stepId: params.stepId, index: params.index, reason: body.reason })
   ctx.activity.log('user', `Retried map child ${params.index} of "${params.stepId}"`, { taskId: params.taskId })
-  indexInstance(params.taskId).catch(() => {})
+  indexInstance(params.taskId).catch((err) => { log.warn('Failed to reindex instance after map-child retry', err) })
   triggerDispatch()
   return Response.json(result)
 }
@@ -184,7 +197,7 @@ const cancelMapChildHandler = async (req: Request, ctx: PluginContextLite) => {
 
   ctx.activity.audit('map_child.cancelled', 'user', { taskId: params.taskId, stepId: params.stepId, index: params.index })
   ctx.activity.log('user', `Cancelled map child ${params.index} of "${params.stepId}"`, { taskId: params.taskId })
-  indexInstance(params.taskId).catch(() => {})
+  indexInstance(params.taskId).catch((err) => { log.warn('Failed to reindex instance after map-child cancel', err) })
   return Response.json(result)
 }
 
@@ -195,8 +208,8 @@ const reopenHandler = async (req: Request, ctx: PluginContextLite) => {
   const taskId = url.searchParams.get('taskId')
   if (!taskId) return Response.json({ error: 'taskId param required' }, { status: 400 })
 
-  let body: { stepId?: string; reason?: string } = {}
-  try { body = await req.json() } catch { /* empty body is fine */ }
+  const body = await parseBody(req, reopenBodySchema, {})
+  if (!body) return Response.json({ error: 'Invalid body — expected { stepId?: string, reason?: string }' }, { status: 400 })
 
   const result = reopenFromStep(taskId, {
     stepId: body.stepId,
@@ -209,7 +222,7 @@ const reopenHandler = async (req: Request, ctx: PluginContextLite) => {
 
   ctx.activity.audit('reopened', 'user', { taskId, stepId: result.reopenedStepId, reason: body.reason })
   ctx.activity.log('user', `Reopened workflow at "${result.reopenedStepId}"`, { taskId })
-  indexInstance(taskId).catch(() => {})
+  indexInstance(taskId).catch((err) => { log.warn('Failed to reindex instance after reopen', err) })
   triggerDispatch()
   return Response.json(result)
 }

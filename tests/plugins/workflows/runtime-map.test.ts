@@ -25,16 +25,18 @@ mock.module('@bakin/core/main-agent', () => ({
   getMainAgentName: () => 'Main',
 }))
 
+// getBakinPaths includes `db` — CLAUDE.md warns that ledger-touching imports
+// throw/leak without it, and partial mocks rot as imports grow.
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
-  getBakinPaths: () => ({}),
+  getBakinPaths: () => ({ db: join(testDir, 'bakin.db'), workflows: join(testDir, 'workflows') }),
   resetContentDir: mock(),
   initBakinHome: mock(),
   isUsingBakinHome: () => false,
 }))
 mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
-  getBakinPaths: () => ({}),
+  getBakinPaths: () => ({ db: join(testDir, 'bakin.db'), workflows: join(testDir, 'workflows') }),
   resetContentDir: mock(),
   initBakinHome: mock(),
   isUsingBakinHome: () => false,
