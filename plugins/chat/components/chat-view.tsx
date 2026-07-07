@@ -4,19 +4,24 @@
 import { useEffect, useRef } from 'react'
 import { AlertTriangle, Loader2, Wrench } from 'lucide-react'
 import { AgentAvatar, EmptyState, MarkdownContent } from '@makinbakin/sdk/components'
+import { summarizeStructured, unwrapToolResult } from '@makinbakin/sdk/utils'
 
 import { Composer } from './composer'
 import { useChatStream, type LiveToolChip, type TranscriptRowDto } from './use-chat-data'
 
 function ToolChip(props: { toolName: string; summary?: string; status: LiveToolChip['status'] }) {
   const { toolName, summary, status } = props
+  // Defensive across runtimes: peel any tool-result envelope + JSON blob to
+  // a clean one-line summary (the Pi adapter already does this at source,
+  // but OpenClaw or a future runtime may still hand us raw JSON).
+  const clean = summary ? summarizeStructured(unwrapToolResult(summary)) : ''
   return (
     <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
       {status === 'running'
         ? <Loader2 className="size-3 animate-spin" />
         : <Wrench className={`size-3 ${status === 'failed' ? 'text-destructive' : ''}`} />}
       <span className="font-mono">{toolName}</span>
-      {summary ? <span className="truncate">— {summary}</span> : null}
+      {clean ? <span className="truncate">— {clean}</span> : null}
     </div>
   )
 }
