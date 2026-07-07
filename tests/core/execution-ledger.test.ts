@@ -62,6 +62,11 @@ import {
   purgeTaskRows,
   recordRunCost,
   listRunCostsSince,
+  openBudgetIncident,
+  resolveBudgetIncident,
+  listBudgetIncidents,
+  resolveExpiredBudgetIncidents,
+  findOpenCapIncident,
   recentRunsByAgent,
   spendTotal,
   spendByAgent,
@@ -472,6 +477,82 @@ describe('run costs', () => {
   it('recentRunsByAgent honors sinceMs and limit', () => {
     expect(recentRunsByAgent('nova', { sinceMs: T0 + 1000 }).map((r) => r.runId)).toEqual(['task:rr2:d1'])
     expect(recentRunsByAgent('nova', { limit: 1 }).map((r) => r.runId)).toEqual(['task:rr2:d1'])
+  })
+})
+
+describe('budget incidents', () => {
+  const W0 = 1_700_000_000_000 // a window start
+
+  it('opens once per (rule identity, window, kind) — the UNIQUE is the debounce', () => {
+    const input = {
+      scope: 'global' as const, lane: 'metered' as const, window: 'daily' as const,
+      windowStartMs: W0, kind: 'cap' as const, unit: 'usd_micros' as const,
+      capValue: 10_000_000, spentValue: 11_000_000, atCap: 'defer' as const, openedAt: W0 + 1000,
+    }
+    const first = openBudgetIncident(input)
+    expect(first.opened).toBe(true)
+    const second = openBudgetIncident({ ...input, spentValue: 12_000_000 })
+    expect(second.opened).toBe(false)
+    expect(second.id).toBe(first.id)
+    expect(listBudgetIncidents({}).filter((i) => i.scope === 'global' && i.windowStartMs === W0)).toHaveLength(1)
+  })
+
+  it('distinct rule identities and windows open their own incidents (NULL-free scope key)', () => {
+    const base = { lane: 'metered' as const, window: 'daily' as const, windowStartMs: W0, kind: 'cap' as const, unit: 'usd_micros' as const, capValue: 1, spentValue: 2, atCap: 'defer' as const, openedAt: W0 }
+    expect(openBudgetIncident({ ...base, scope: 'agent', scopeId: 'pixel' }).opened).toBe(true)
+    expect(openBudgetIncident({ ...base, scope: 'agent', scopeId: 'rolo' }).opened).toBe(true)
+    expect(openBudgetIncident({ ...base, scope: 'agent', scopeId: 'pixel' }).opened).toBe(false) // same identity
+    expect(openBudgetIncident({ ...base, scope: 'agent', scopeId: 'pixel', windowStartMs: W0 + 86_400_000 }).opened).toBe(true) // next window
+  })
+
+  it('resolve transitions: acknowledged keeps the row live; resolved clears it', () => {
+    const input = {
+      scope: 'provider' as const, scopeId: 'google', lane: 'metered' as const, window: 'daily' as const,
+      windowStartMs: W0, kind: 'cap' as const, unit: 'usd_micros' as const,
+      capValue: 5_000_000, spentValue: 5_500_000, atCap: 'pause' as const, openedAt: W0,
+    }
+    const { id } = openBudgetIncident(input)
+    expect(resolveBudgetIncident({ id, status: 'acknowledged', resolution: 'acknowledged' })).toBe(true)
+    expect(listBudgetIncidents({ openOnly: true }).some((i) => i.id === id)).toBe(true) // acknowledged is still live
+    expect(resolveBudgetIncident({ id, status: 'resolved', resolution: 'raised' })).toBe(true)
+    const row = listBudgetIncidents({}).find((i) => i.id === id)
+    expect(row?.status).toBe('resolved')
+    expect(row?.resolution).toBe('raised')
+    expect(listBudgetIncidents({ openOnly: true }).some((i) => i.id === id)).toBe(false)
+  })
+
+  it('a breach after a raise-resolution REOPENS the same identity (new event, notifies again)', () => {
+    const input = {
+      scope: 'agent' as const, scopeId: 'reopen-a', lane: 'metered' as const, window: 'daily' as const,
+      windowStartMs: W0, kind: 'cap' as const, unit: 'usd_micros' as const,
+      capValue: 1_000_000, spentValue: 1_100_000, atCap: 'defer' as const, openedAt: W0,
+    }
+    const { id } = openBudgetIncident(input)
+    resolveBudgetIncident({ id, status: 'resolved', resolution: 'raised' })
+    const reopened = openBudgetIncident({ ...input, capValue: 2_000_000, spentValue: 2_100_000, openedAt: W0 + 500 })
+    expect(reopened.opened).toBe(true)
+    expect(reopened.id).toBe(id)
+    const row = listBudgetIncidents({ openOnly: true }).find((i) => i.id === id)
+    expect(row?.capValue).toBe(2_000_000)
+    expect(row?.status).toBe('open')
+  })
+
+  it('resolveExpiredBudgetIncidents rolls over defer-mode incidents but leaves pause-mode blocking', () => {
+    const base = { lane: 'metered' as const, window: 'daily' as const, windowStartMs: W0, kind: 'cap' as const, unit: 'usd_micros' as const, capValue: 1, spentValue: 2, openedAt: W0 }
+    const deferInc = openBudgetIncident({ ...base, scope: 'agent', scopeId: 'roll-defer', atCap: 'defer' })
+    const pauseInc = openBudgetIncident({ ...base, scope: 'agent', scopeId: 'roll-pause', atCap: 'pause' })
+    // Next day: the defer incident's window has ended.
+    const resolved = resolveExpiredBudgetIncidents({ dailyWindowStartMs: W0 + 86_400_000, monthlyWindowStartMs: W0, now: W0 + 86_400_000 + 1 })
+    expect(resolved).toBeGreaterThanOrEqual(1)
+    expect(listBudgetIncidents({ openOnly: true }).some((i) => i.id === deferInc.id)).toBe(false)
+    const still = listBudgetIncidents({ openOnly: true }).find((i) => i.id === pauseInc.id)
+    expect(still?.status).toBe('open')
+    expect(listBudgetIncidents({}).find((i) => i.id === deferInc.id)?.resolution).toBe('window_rollover')
+  })
+
+  it('findOpenCapIncident locates the blocking row for pause-mode gating', () => {
+    expect(findOpenCapIncident({ scope: 'agent', scopeId: 'roll-pause', lane: 'metered' })?.atCap).toBe('pause')
+    expect(findOpenCapIncident({ scope: 'agent', scopeId: 'roll-defer', lane: 'metered' })).toBeNull()
   })
 })
 

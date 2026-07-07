@@ -179,6 +179,38 @@ const MIGRATIONS = [
       db.exec("UPDATE run_costs SET provider = substr(model, 1, instr(model, '/') - 1) WHERE model IS NOT NULL AND instr(model, '/') > 1")
     },
   },
+  {
+    // Budget incidents (cost-control v2, #464): one durable row per breach
+    // of a cap rule per window. The UNIQUE constraint IS the alert debounce —
+    // it replaced the in-memory audited-windows set, which forgot on restart.
+    // scope_id is '' (never NULL) for global rules: SQLite treats NULLs as
+    // distinct in UNIQUE, which would break the idempotent open. `win` avoids
+    // the WINDOW keyword. Coordination facts only.
+    version: 6,
+    up: (db: Db) => {
+      db.exec(
+        `CREATE TABLE budget_incidents (
+           id              INTEGER PRIMARY KEY AUTOINCREMENT,
+           scope           TEXT NOT NULL,
+           scope_id        TEXT NOT NULL DEFAULT '',
+           lane            TEXT NOT NULL,
+           win             TEXT NOT NULL,
+           window_start_ms INTEGER NOT NULL,
+           kind            TEXT NOT NULL,
+           unit            TEXT NOT NULL,
+           cap_value       INTEGER NOT NULL,
+           spent_value     INTEGER NOT NULL,
+           at_cap          TEXT NOT NULL DEFAULT 'defer',
+           opened_at       INTEGER NOT NULL,
+           status          TEXT NOT NULL DEFAULT 'open',
+           resolved_at     INTEGER,
+           resolution      TEXT,
+           UNIQUE(scope, scope_id, lane, win, window_start_ms, kind)
+         )`,
+      )
+      db.exec("CREATE INDEX budget_incidents_live ON budget_incidents(status) WHERE status IN ('open','acknowledged')")
+    },
+  },
 ]
 
 /** Open the db with this module's schema applied. Every verb goes through here. */
@@ -918,6 +950,182 @@ export function listRunCostsSince(sinceMs: number): RunCostSpendRow[] {
         costUsdMicros: r.cost_usd_micros,
         occurredAt: r.occurred_at,
       }))
+  })
+}
+
+// ---------------------------------------------------------------------------
+// budget incidents (durable breach records — cost-control v2)
+// ---------------------------------------------------------------------------
+
+export type BudgetIncidentKind = 'warn' | 'cap'
+export type BudgetIncidentStatus = 'open' | 'acknowledged' | 'resolved'
+export type BudgetIncidentResolution = 'raised' | 'acknowledged' | 'window_rollover' | 'killswitch_cleared'
+
+export interface BudgetIncidentInput {
+  scope: string
+  /** Agent/provider/model id; omit for global (stored as ''). */
+  scopeId?: string
+  lane: BillingLane
+  window: 'daily' | 'monthly'
+  windowStartMs: number
+  kind: BudgetIncidentKind
+  unit: 'usd_micros' | 'tokens'
+  capValue: number
+  spentValue: number
+  /** The rule's enforcement mode at open time ('pause' blocks past rollover). */
+  atCap: 'defer' | 'pause'
+  openedAt: number
+}
+
+export interface BudgetIncidentRow {
+  id: number
+  scope: string
+  scopeId: string
+  lane: BillingLane
+  window: 'daily' | 'monthly'
+  windowStartMs: number
+  kind: BudgetIncidentKind
+  unit: 'usd_micros' | 'tokens'
+  capValue: number
+  spentValue: number
+  atCap: 'defer' | 'pause'
+  openedAt: number
+  status: BudgetIncidentStatus
+  resolvedAt: number | null
+  resolution: BudgetIncidentResolution | null
+}
+
+interface RawIncidentRow {
+  id: number; scope: string; scope_id: string; lane: string; win: string
+  window_start_ms: number; kind: string; unit: string; cap_value: number
+  spent_value: number; at_cap: string; opened_at: number; status: string
+  resolved_at: number | null; resolution: string | null
+}
+
+function toIncidentRow(r: RawIncidentRow): BudgetIncidentRow {
+  return {
+    id: r.id,
+    scope: r.scope,
+    scopeId: r.scope_id,
+    lane: r.lane as BillingLane,
+    window: r.win as 'daily' | 'monthly',
+    windowStartMs: r.window_start_ms,
+    kind: r.kind as BudgetIncidentKind,
+    unit: r.unit as 'usd_micros' | 'tokens',
+    capValue: r.cap_value,
+    spentValue: r.spent_value,
+    atCap: r.at_cap as 'defer' | 'pause',
+    openedAt: r.opened_at,
+    status: r.status as BudgetIncidentStatus,
+    resolvedAt: r.resolved_at,
+    resolution: r.resolution as BudgetIncidentResolution | null,
+  }
+}
+
+const INCIDENT_COLUMNS = 'id, scope, scope_id, lane, win, window_start_ms, kind, unit, cap_value, spent_value, at_cap, opened_at, status, resolved_at, resolution'
+
+/**
+ * Open (or find) the incident for a breach. Idempotent per (rule identity,
+ * window, kind) via the UNIQUE — `opened: true` means this call created a NEW
+ * alertable event (fresh insert, or the reopen of a raise-resolved incident
+ * that breached again). live (open/acknowledged) → `opened: false`, no
+ * re-alert.
+ */
+export function openBudgetIncident(input: BudgetIncidentInput): { opened: boolean; id: number } {
+  return guard('openBudgetIncident', () => {
+    const db = ledger()
+    return db.transaction(() => {
+      const inserted = db
+        .prepare(
+          `INSERT INTO budget_incidents (scope, scope_id, lane, win, window_start_ms, kind, unit, cap_value, spent_value, at_cap, opened_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(scope, scope_id, lane, win, window_start_ms, kind) DO NOTHING`,
+        )
+        .run(input.scope, input.scopeId ?? '', input.lane, input.window, input.windowStartMs, input.kind, input.unit, input.capValue, input.spentValue, input.atCap, input.openedAt)
+      const existing = db
+        .prepare<RawIncidentRow, (string | number)[]>(
+          `SELECT ${INCIDENT_COLUMNS} FROM budget_incidents WHERE scope = ? AND scope_id = ? AND lane = ? AND win = ? AND window_start_ms = ? AND kind = ?`,
+        )
+        .get(input.scope, input.scopeId ?? '', input.lane, input.window, input.windowStartMs, input.kind)!
+      if (inserted.changes > 0) return { opened: true, id: existing.id }
+      if (existing.status === 'resolved') {
+        // A raise-resolved incident that breached again is a NEW event.
+        db.prepare(
+          `UPDATE budget_incidents SET status = 'open', spent_value = ?, cap_value = ?, at_cap = ?, opened_at = ?, resolved_at = NULL, resolution = NULL WHERE id = ?`,
+        ).run(input.spentValue, input.capValue, input.atCap, input.openedAt, existing.id)
+        return { opened: true, id: existing.id }
+      }
+      return { opened: false, id: existing.id }
+    })()
+  })
+}
+
+/** Move an incident to acknowledged (still live) or resolved (cleared). */
+export function resolveBudgetIncident(input: {
+  id: number
+  status: 'acknowledged' | 'resolved'
+  resolution: BudgetIncidentResolution
+  resolvedAt?: number
+}): boolean {
+  return guard('resolveBudgetIncident', () => {
+    const res = ledger()
+      .prepare(`UPDATE budget_incidents SET status = ?, resolution = ?, resolved_at = ? WHERE id = ? AND status != 'resolved'`)
+      .run(input.status, input.resolution, input.resolvedAt ?? Date.now(), input.id)
+    return res.changes > 0
+  })
+}
+
+/** Incidents, newest first. `openOnly` = live rows (open + acknowledged). */
+export function listBudgetIncidents(opts: { openOnly?: boolean; sinceMs?: number } = {}): BudgetIncidentRow[] {
+  return guard('listBudgetIncidents', () => {
+    const clauses: string[] = []
+    const params: (string | number)[] = []
+    if (opts.openOnly) clauses.push(`status IN ('open','acknowledged')`)
+    if (opts.sinceMs !== undefined) { clauses.push('opened_at >= ?'); params.push(opts.sinceMs) }
+    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''
+    return ledger()
+      .prepare<RawIncidentRow, (string | number)[]>(
+        `SELECT ${INCIDENT_COLUMNS} FROM budget_incidents ${where} ORDER BY opened_at DESC, id DESC`,
+      )
+      .all(...params)
+      .map(toIncidentRow)
+  })
+}
+
+/**
+ * Auto-resolve DEFER-mode incidents whose window has rolled over (their
+ * enforcement ended with the window). Pause-mode incidents persist until a
+ * human resolves them — that is the point of pause. Returns resolved count.
+ */
+export function resolveExpiredBudgetIncidents(input: {
+  dailyWindowStartMs: number
+  monthlyWindowStartMs: number
+  now: number
+}): number {
+  return guard('resolveExpiredBudgetIncidents', () => {
+    const res = ledger()
+      .prepare(
+        `UPDATE budget_incidents
+            SET status = 'resolved', resolution = 'window_rollover', resolved_at = ?
+          WHERE status IN ('open','acknowledged') AND at_cap = 'defer'
+            AND ((win = 'daily' AND window_start_ms < ?) OR (win = 'monthly' AND window_start_ms < ?))`,
+      )
+      .run(input.now, input.dailyWindowStartMs, input.monthlyWindowStartMs)
+    return res.changes
+  })
+}
+
+/** The live cap incident blocking a rule identity (pause-mode gate check). */
+export function findOpenCapIncident(key: { scope: string; scopeId?: string; lane: BillingLane }): BudgetIncidentRow | null {
+  return guard('findOpenCapIncident', () => {
+    const row = ledger()
+      .prepare<RawIncidentRow, (string | number)[]>(
+        `SELECT ${INCIDENT_COLUMNS} FROM budget_incidents
+          WHERE scope = ? AND scope_id = ? AND lane = ? AND kind = 'cap' AND status IN ('open','acknowledged')
+          ORDER BY opened_at DESC LIMIT 1`,
+      )
+      .get(key.scope, key.scopeId ?? '', key.lane)
+    return row ? toIncidentRow(row) : null
   })
 }
 

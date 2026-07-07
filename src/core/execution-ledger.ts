@@ -37,6 +37,11 @@ export {
   spendByAgent,
   spendByModel,
   listRunCostsSince,
+  openBudgetIncident,
+  resolveBudgetIncident,
+  listBudgetIncidents,
+  resolveExpiredBudgetIncidents,
+  findOpenCapIncident,
   LedgerUnavailableError,
 } from '../../packages/core/src/execution/ledger'
 export type {
@@ -54,6 +59,11 @@ export type {
   RunCostRow,
   RunCostSpendRow,
   BillingLane,
+  BudgetIncidentInput,
+  BudgetIncidentRow,
+  BudgetIncidentKind,
+  BudgetIncidentStatus,
+  BudgetIncidentResolution,
   RunWithCostRow,
   AgentTokenRollup,
   SpendByAgentRow,
