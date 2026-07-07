@@ -79,8 +79,8 @@ describe('honest-empty surfaces', () => {
     await expectUnsupported(adapter.tools.invoke('main', 'anything', {}))
   })
 
-  test('optional members are genuinely absent (callers must skip)', () => {
-    expect(adapter.images).toBeUndefined()
+  test('optional members: images present (shim-backed, #627); the rest genuinely absent', () => {
+    expect(adapter.images).toBeDefined()
     expect(adapter.media).toBeUndefined()
     expect(adapter.channels.createThread).toBeUndefined()
     expect(adapter.channels.editMessage).toBeUndefined()
