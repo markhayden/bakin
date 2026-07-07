@@ -86,10 +86,15 @@ function stepNodeData(step: WorkflowStep, skillDrift?: WorkflowSkillDriftSummary
     channels: step.type === 'output' ? step.channels : undefined,
     description: step.type === 'gate' ? step.description
       : step.type === 'workflow' ? step.description
+      : step.type === 'map_workflow' ? step.description
       : step.type === 'output' ? step.description
       : step.type === 'createTask' ? step.description
       : undefined,
-    workflow_id: step.type === 'workflow' ? (step as { workflow_id?: string }).workflow_id : undefined,
+    workflow_id: step.type === 'workflow' || step.type === 'map_workflow'
+      ? (step as { workflow_id?: string }).workflow_id
+      : undefined,
+    source: step.type === 'map_workflow' ? (step as { source?: string }).source : undefined,
+    max_children: step.type === 'map_workflow' ? (step as { max_children?: number }).max_children : undefined,
   }
 }
 

@@ -58,6 +58,13 @@ export const AssetVersionSchema = z.object({
   prompt: z.string().nullable(),
   promptHash: z.string().nullable(),
   generation: GenerationSchema.nullable(),
+  // Provenance for versions absorbed from another asset by consolidateAssets
+  // (#203): names the source asset + version. Doubles as the idempotency
+  // marker — re-consolidating an already-absorbed loser is a typed no-op.
+  consolidatedFrom: z.object({
+    assetId: z.string(),
+    version: z.number().int().positive(),
+  }).optional(),
 })
 
 export const AssetExportSchema = z.object({

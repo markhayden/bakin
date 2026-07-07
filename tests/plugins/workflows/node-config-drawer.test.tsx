@@ -80,6 +80,44 @@ describe('NodeConfigDrawer', () => {
     expect(screen.getByPlaceholderText('Write a concise post caption for the approved brief.')).toBeDefined()
   })
 
+  it('renders map_workflow fields purely from registry metadata (no special-casing)', () => {
+    render(
+      <NodeConfigDrawer
+        step={{
+          id: 'fan', type: 'map_workflow', label: 'Fan',
+          source: 'seg.items', workflow_id: 'child-wf', item_key: 'clip', max_children: 8,
+        }}
+        onApply={() => {}}
+        onClose={() => {}}
+      />,
+    )
+    expect(screen.getByText('Map fan-out')).toBeDefined()
+    expect(screen.getByDisplayValue('seg.items')).toBeDefined()
+    expect(screen.getByDisplayValue('child-wf')).toBeDefined()
+    expect(screen.getByDisplayValue('clip')).toBeDefined()
+    expect(screen.getByDisplayValue('8')).toBeDefined()
+  })
+
+  it('applies edited map_workflow fields as a typed patch', () => {
+    const onApply = mock()
+    render(
+      <NodeConfigDrawer
+        step={{ id: 'fan', type: 'map_workflow', label: 'Fan', source: 'seg.items', workflow_id: 'child-wf' }}
+        onApply={onApply}
+        onClose={() => {}}
+      />,
+    )
+    // workflow_id renders the workflow-picker Select (shared with nested
+    // steps); the plain string field `source` proves the patch round-trip.
+    fireEvent.change(screen.getByDisplayValue('seg.items'), { target: { value: 'seg.clips' } })
+    fireEvent.click(screen.getByRole('button', { name: /apply/i }))
+    expect(onApply).toHaveBeenCalled()
+    const patch = onApply.mock.calls[0][0] as Record<string, unknown>
+    expect(patch.type).toBe('map_workflow')
+    expect(patch.source).toBe('seg.clips')
+    expect(patch.workflow_id).toBe('child-wf')
+  })
+
   it('calls onApply with the merged patch when Apply is clicked on valid input', () => {
     const onApply = mock()
     render(

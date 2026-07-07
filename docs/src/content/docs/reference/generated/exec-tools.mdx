@@ -15,31 +15,42 @@ import McpToolCard from '../../../../components/McpToolCard.astro'
 <p class="mcp-section-description">Asset tools let agents list, inspect, save, link, restore, and clean up files managed by Bakin.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="assets-audit" name="bakin_exec_assets_audit" label="Audited assets" description="Audit versioned-asset health: manifest integrity, current-pointer resolution, and missing version files." source="plugins/assets/lib/exec-tools.ts:290">
+<McpToolCard id="assets-audit" name="bakin_exec_assets_audit" label="Audited assets" description="Audit versioned-asset health: manifest integrity, current-pointer resolution, and missing version files." source="plugins/assets/lib/exec-tools.ts:328">
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_audit
 ```
 </McpToolCard>
-<McpToolCard id="assets-delete" name="bakin_exec_assets_delete" label="Deleted an asset" description="Soft-delete a whole asset (all versions) to trash, restorable until trash is emptied." source="plugins/assets/lib/exec-tools.ts:173" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id"}]}>
+<McpToolCard id="assets-consolidate" name="bakin_exec_assets_consolidate" label="Consolidated variant assets" description="Absorb variant assets as versions of a winner asset (select-best flows): each loser's current file becomes a new version of the winner with consolidatedFrom provenance, the winner's pre-call current version stays promoted, and the losers move to trash. End state: ONE asset, every variant preserved as version history. Safe to re-call — already-absorbed losers are skipped and the version pointer is never moved by a retry." source="plugins/assets/lib/exec-tools.ts:193" parameters={[{"name":"winnerAssetId","type":"string","required":true,"description":"The selected (winning) asset id — absorbs the others"},{"name":"loserAssetIds","type":"array","required":true,"description":"The variant asset ids to absorb, in display order"},{"name":"taskId","type":"string","required":true,"description":"Task ID this consolidation belongs to"}]}>
+```sh frame="terminal"
+mcporter call bakin-<agent>.bakin_exec_assets_consolidate --args '{
+  "winnerAssetId": "value",
+  "loserAssetIds": [
+    "value"
+  ],
+  "taskId": "value"
+}'
+```
+</McpToolCard>
+<McpToolCard id="assets-delete" name="bakin_exec_assets_delete" label="Deleted an asset" description="Soft-delete a whole asset (all versions) to trash, restorable until trash is emptied." source="plugins/assets/lib/exec-tools.ts:174" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_delete --args '{
   "assetId": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="assets-empty-trash" name="bakin_exec_assets_empty_trash" label="Emptied asset trash" description="Permanently delete all trashed assets. This cannot be undone." source="plugins/assets/lib/exec-tools.ts:263">
+<McpToolCard id="assets-empty-trash" name="bakin_exec_assets_empty_trash" label="Emptied asset trash" description="Permanently delete all trashed assets. This cannot be undone." source="plugins/assets/lib/exec-tools.ts:301">
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_empty_trash
 ```
 </McpToolCard>
-<McpToolCard id="assets-get" name="bakin_exec_assets_get" label="Read asset details" description="Retrieve an asset manifest (versions, current pointer, exports) by assetId." source="plugins/assets/lib/exec-tools.ts:112" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id, e.g. \"20260401-hero-a1b2c3d4\""}]}>
+<McpToolCard id="assets-get" name="bakin_exec_assets_get" label="Read asset details" description="Retrieve an asset manifest (versions, current pointer, exports) by assetId." source="plugins/assets/lib/exec-tools.ts:113" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id, e.g. \"20260401-hero-a1b2c3d4\""}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_get --args '{
   "assetId": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="assets-import" name="bakin_exec_assets_import" label="Imported unmanaged files" description="Explicitly import unmanaged files into managed versioned assets. Pass path (content-dir relative, e.g. assets/inbox/pic.png) or all: true. Optional type override and taskId link." source="plugins/assets/lib/exec-tools.ts:62" parameters={[{"name":"path","type":"string","required":false,"description":"One unmanaged file to import (content-dir relative)"},{"name":"all","type":"boolean","required":false,"description":"Import every unmanaged file"},{"name":"type","type":"choice","required":false,"description":"Override the suggested asset type"},{"name":"taskId","type":"string","required":false,"description":"Link the imported asset(s) to this task"}]}>
+<McpToolCard id="assets-import" name="bakin_exec_assets_import" label="Imported unmanaged files" description="Explicitly import unmanaged files into managed versioned assets. Pass path (content-dir relative, e.g. assets/inbox/pic.png) or all: true. Optional type override and taskId link." source="plugins/assets/lib/exec-tools.ts:63" parameters={[{"name":"path","type":"string","required":false,"description":"One unmanaged file to import (content-dir relative)"},{"name":"all","type":"boolean","required":false,"description":"Import every unmanaged file"},{"name":"type","type":"choice","required":false,"description":"Override the suggested asset type"},{"name":"taskId","type":"string","required":false,"description":"Link the imported asset(s) to this task"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_import --args '{
   "path": "value",
@@ -49,7 +60,7 @@ mcporter call bakin-<agent>.bakin_exec_assets_import --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="assets-link" name="bakin_exec_assets_link" label="Linked an asset" description="Link an asset to a different task, or unlink it (set taskId to null)." source="plugins/assets/lib/exec-tools.ts:192" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id"},{"name":"taskId","type":"string","required":true,"description":"Target task ID, or null to unlink"}]}>
+<McpToolCard id="assets-link" name="bakin_exec_assets_link" label="Linked an asset" description="Link an asset to a different task, or unlink it (set taskId to null)." source="plugins/assets/lib/exec-tools.ts:230" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id"},{"name":"taskId","type":"string","required":true,"description":"Target task ID, or null to unlink"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_link --args '{
   "assetId": "value",
@@ -57,7 +68,7 @@ mcporter call bakin-<agent>.bakin_exec_assets_link --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="assets-list" name="bakin_exec_assets_list" label="Listed assets" description="List managed assets (one entry per asset, current-version view). Optional type, task, and tag filters. Tags are the UI &quot;folders&quot; — pass tags to list a folder, e.g. [&quot;brand&quot;]." source="plugins/assets/lib/exec-tools.ts:93" parameters={[{"name":"type","type":"choice","required":false,"description":"Filter by asset type"},{"name":"taskId","type":"string","required":false,"description":"Filter to assets linked to this task id"},{"name":"tags","type":"array","required":false,"description":"Filter to assets carrying ALL of these tags (the UI \"folders\")."}]}>
+<McpToolCard id="assets-list" name="bakin_exec_assets_list" label="Listed assets" description="List managed assets (one entry per asset, current-version view). Optional type, task, and tag filters. Tags are the UI &quot;folders&quot; — pass tags to list a folder, e.g. [&quot;brand&quot;]." source="plugins/assets/lib/exec-tools.ts:94" parameters={[{"name":"type","type":"choice","required":false,"description":"Filter by asset type"},{"name":"taskId","type":"string","required":false,"description":"Filter to assets linked to this task id"},{"name":"tags","type":"array","required":false,"description":"Filter to assets carrying ALL of these tags (the UI \"folders\")."}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_list --args '{
   "type": "value",
@@ -68,33 +79,33 @@ mcporter call bakin-<agent>.bakin_exec_assets_list --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="assets-list-trash" name="bakin_exec_assets_list_trash" label="Listed trashed assets" description="List trashed assets (whole-asset deletions) with deletion time and version count." source="plugins/assets/lib/exec-tools.ts:236">
+<McpToolCard id="assets-list-trash" name="bakin_exec_assets_list_trash" label="Listed trashed assets" description="List trashed assets (whole-asset deletions) with deletion time and version count." source="plugins/assets/lib/exec-tools.ts:274">
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_list_trash
 ```
 </McpToolCard>
-<McpToolCard id="assets-open" name="bakin_exec_assets_open" label="Opened an asset" description="Open an asset by assetId: returns its manifest plus the current version’s extracted text for text-like assets." source="plugins/assets/lib/exec-tools.ts:125" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id"}]}>
+<McpToolCard id="assets-open" name="bakin_exec_assets_open" label="Opened an asset" description="Open an asset by assetId: returns its manifest plus the current version’s extracted text for text-like assets." source="plugins/assets/lib/exec-tools.ts:126" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_open --args '{
   "assetId": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="assets-permanent-delete" name="bakin_exec_assets_permanent_delete" label="Permanently deleted an asset" description="Permanently delete a specific trashed asset. This cannot be undone." source="plugins/assets/lib/exec-tools.ts:276" parameters={[{"name":"trashName","type":"string","required":true,"description":"Trash name (includes __deleted- suffix)"}]}>
+<McpToolCard id="assets-permanent-delete" name="bakin_exec_assets_permanent_delete" label="Permanently deleted an asset" description="Permanently delete a specific trashed asset. This cannot be undone." source="plugins/assets/lib/exec-tools.ts:314" parameters={[{"name":"trashName","type":"string","required":true,"description":"Trash name (includes __deleted- suffix)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_permanent_delete --args '{
   "trashName": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="assets-restore" name="bakin_exec_assets_restore" label="Restored an asset" description="Restore a trashed asset by its trash name (from bakin_exec_assets_list_trash)." source="plugins/assets/lib/exec-tools.ts:247" parameters={[{"name":"trashName","type":"string","required":true,"description":"Trash name (includes __deleted- suffix)"}]}>
+<McpToolCard id="assets-restore" name="bakin_exec_assets_restore" label="Restored an asset" description="Restore a trashed asset by its trash name (from bakin_exec_assets_list_trash)." source="plugins/assets/lib/exec-tools.ts:285" parameters={[{"name":"trashName","type":"string","required":true,"description":"Trash name (includes __deleted- suffix)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_restore --args '{
   "trashName": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="assets-retype" name="bakin_exec_assets_retype" label="Retyped an asset" description="Change an asset type classification." source="plugins/assets/lib/exec-tools.ts:214" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id"},{"name":"type","type":"choice","required":true}]}>
+<McpToolCard id="assets-retype" name="bakin_exec_assets_retype" label="Retyped an asset" description="Change an asset type classification." source="plugins/assets/lib/exec-tools.ts:252" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id"},{"name":"type","type":"choice","required":true}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_retype --args '{
   "assetId": "value",
@@ -102,7 +113,7 @@ mcporter call bakin-<agent>.bakin_exec_assets_retype --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="assets-save" name="bakin_exec_assets_save" label="Saved an asset" description="Save an agent-created file as a managed, versioned asset. Re-saving the SAME source file appends a new version to the existing asset (or no-ops if unchanged) instead of creating a duplicate — so an evolving doc stays one asset with a version history. Returns the asset id." source="plugins/assets/lib/exec-tools.ts:142" parameters={[{"name":"filePath","type":"string","required":true,"description":"Absolute path to the source file to save. Re-saving the same path versions the existing asset."},{"name":"taskId","type":"string","required":true,"description":"Task ID to link the asset."},{"name":"type","type":"choice","required":true},{"name":"description","type":"string","required":false,"description":"One-sentence summary visible in the asset grid and search. Be specific."},{"name":"tags","type":"array","required":false,"description":"Lowercase hyphenated tags for filtering."},{"name":"tool","type":"string","required":false,"description":"Tool used to generate or import the asset."},{"name":"slug","type":"string","required":false,"description":"Custom slug for the asset id. Auto-derived from source filename if omitted."}]}>
+<McpToolCard id="assets-save" name="bakin_exec_assets_save" label="Saved an asset" description="Save an agent-created file as a managed, versioned asset. Re-saving the SAME source file appends a new version to the existing asset (or no-ops if unchanged) instead of creating a duplicate — so an evolving doc stays one asset with a version history. Returns the asset id." source="plugins/assets/lib/exec-tools.ts:143" parameters={[{"name":"filePath","type":"string","required":true,"description":"Absolute path to the source file to save. Re-saving the same path versions the existing asset."},{"name":"taskId","type":"string","required":true,"description":"Task ID to link the asset."},{"name":"type","type":"choice","required":true},{"name":"description","type":"string","required":false,"description":"One-sentence summary visible in the asset grid and search. Be specific."},{"name":"tags","type":"array","required":false,"description":"Lowercase hyphenated tags for filtering."},{"name":"tool","type":"string","required":false,"description":"Tool used to generate or import the asset."},{"name":"slug","type":"string","required":false,"description":"Custom slug for the asset id. Auto-derived from source filename if omitted."}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_save --args '{
   "filePath": "value",
@@ -117,7 +128,7 @@ mcporter call bakin-<agent>.bakin_exec_assets_save --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="assets-scan-unmanaged" name="bakin_exec_assets_scan_unmanaged" label="Scanned for unmanaged files" description="List files under assets/ that are NOT managed assets (inbox drops, loose files). Nothing is imported automatically — use bakin_exec_assets_import to import." source="plugins/assets/lib/exec-tools.ts:48">
+<McpToolCard id="assets-scan-unmanaged" name="bakin_exec_assets_scan_unmanaged" label="Scanned for unmanaged files" description="List files under assets/ that are NOT managed assets (inbox drops, loose files). Nothing is imported automatically — use bakin_exec_assets_import to import." source="plugins/assets/lib/exec-tools.ts:49">
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_scan_unmanaged
 ```
@@ -129,7 +140,7 @@ mcporter call bakin-<agent>.bakin_exec_assets_scan_unmanaged
 <p class="mcp-section-description">MCP tools discovered from registered exec tool definitions.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="check-gates" name="bakin_exec_check_gates" label="Checked workflow gates" description="Get a human-readable overview of all gate statuses in a workflow. Shows which gates are approved, waiting, or pending." source="plugins/workflows/lib/exec-tools.ts:252" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID (or workflow instance ID)"}]}>
+<McpToolCard id="check-gates" name="bakin_exec_check_gates" label="Checked workflow gates" description="Get a human-readable overview of all gate statuses in a workflow. Shows which gates are approved, waiting, or pending." source="plugins/workflows/lib/exec-tools.ts:305" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID (or workflow instance ID)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_check_gates --args '{
   "taskId": "value"
@@ -148,7 +159,7 @@ mcporter call bakin-<agent>.bakin_exec_check_gates --args '{
 mcporter call bakin-<agent>.bakin_exec_get_paths
 ```
 </McpToolCard>
-<McpToolCard id="get-step" name="bakin_exec_get_step" label="Read workflow step" description="Get the current workflow step as human-readable formatted text. Includes instructions, prior outputs, schema, and rejection context in a clear structure." source="plugins/workflows/lib/exec-tools.ts:174" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"}]}>
+<McpToolCard id="get-step" name="bakin_exec_get_step" label="Read workflow step" description="Get the current workflow step as human-readable formatted text. Includes instructions, prior outputs, schema, and rejection context in a clear structure." source="plugins/workflows/lib/exec-tools.ts:224" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_get_step --args '{
   "taskId": "value"
@@ -916,7 +927,7 @@ mcporter call bakin-<agent>.bakin_exec_search_table --args '{
 <p class="mcp-section-description">Workflow submission tools let agents submit step output back to the workflow engine.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="submit-step" name="bakin_exec_submit_step" label="Submitted workflow step" description="Submit workflow step output with local pre-validation. Validates against the step schema BEFORE hitting the server, giving you detailed field-level errors without a round trip." source="plugins/workflows/lib/exec-tools.ts:194" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"},{"name":"stepId","type":"string","required":true,"description":"Step ID to submit for"},{"name":"output","type":"record","required":true,"description":"JSON output matching the step schema"}]}>
+<McpToolCard id="submit-step" name="bakin_exec_submit_step" label="Submitted workflow step" description="Submit workflow step output with local pre-validation. Validates against the step schema BEFORE hitting the server, giving you detailed field-level errors without a round trip." source="plugins/workflows/lib/exec-tools.ts:244" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"},{"name":"stepId","type":"string","required":true,"description":"Step ID to submit for"},{"name":"output","type":"record","required":true,"description":"JSON output matching the step schema"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_submit_step --args '{
   "taskId": "value",
@@ -1158,6 +1169,15 @@ mcporter call bakin-<agent>.bakin_exec_team_update_identity --args '{
 <p class="mcp-section-description">Workflow tools expose workflow definitions, active instances, current steps, and step completion.</p>
 
 <div class="mcp-tool-list">
+<McpToolCard id="workflows-cancel-map-child" name="bakin_exec_workflows_cancel_map_child" label="Cancelled map child" description="Cancel one fan-out child of a map_workflow step. The map join stays blocked until the child is retried or the whole parent is cancelled — children are never silently skipped." source="plugins/workflows/lib/exec-tools.ts:197" parameters={[{"name":"taskId","type":"string","required":true,"description":"PARENT task ID (the instance holding the map step)"},{"name":"stepId","type":"string","required":true,"description":"The map_workflow step ID"},{"name":"index","type":"number","required":true,"description":"Child index within the fan-out (0-based)"}]}>
+```sh frame="terminal"
+mcporter call bakin-<agent>.bakin_exec_workflows_cancel_map_child --args '{
+  "taskId": "value",
+  "stepId": "value",
+  "index": 20
+}'
+```
+</McpToolCard>
 <McpToolCard id="workflows-complete-step" name="bakin_exec_workflows_complete_step" label="Completed workflow step" description="Complete a workflow step with output. Validates output against the step schema, advances the workflow to the next step. Returns success status and whether the workflow is complete." source="plugins/workflows/lib/exec-tools.ts:138" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"},{"name":"stepId","type":"string","required":true,"description":"Step ID to complete"},{"name":"output","type":"record","required":true,"description":"Step output object"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_workflows_complete_step --args '{
@@ -1202,6 +1222,16 @@ mcporter call bakin-<agent>.bakin_exec_workflows_list_instances --args '{
 }'
 ```
 </McpToolCard>
+<McpToolCard id="workflows-retry-map-child" name="bakin_exec_workflows_retry_map_child" label="Retried map child" description="Retry one fan-out child of a map_workflow step. Live children reopen in place; dead/cancelled children are re-created under the same child task id with their original item context. Unblocks a blocked map join without rewinding the parent." source="plugins/workflows/lib/exec-tools.ts:171" parameters={[{"name":"taskId","type":"string","required":true,"description":"PARENT task ID (the instance holding the map step)"},{"name":"stepId","type":"string","required":true,"description":"The map_workflow step ID"},{"name":"index","type":"number","required":true,"description":"Child index within the fan-out (0-based)"},{"name":"reason","type":"string","required":false,"description":"Why this child is being retried"}]}>
+```sh frame="terminal"
+mcporter call bakin-<agent>.bakin_exec_workflows_retry_map_child --args '{
+  "taskId": "value",
+  "stepId": "value",
+  "index": 20,
+  "reason": "value"
+}'
+```
+</McpToolCard>
 <McpToolCard id="workflows-start" name="bakin_exec_workflows_start" label="Started a workflow" description="Start a workflow instance for a task. The task must exist on the board. Returns the created instance." source="plugins/workflows/lib/exec-tools.ts:62" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID to start workflow for"},{"name":"workflowId","type":"string","required":true,"description":"Workflow definition filename"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_workflows_start --args '{
@@ -1213,5 +1243,5 @@ mcporter call bakin-<agent>.bakin_exec_workflows_start --args '{
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 5, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 7, 2026 · Bakin 0.0.0-dev</span>
 </aside>

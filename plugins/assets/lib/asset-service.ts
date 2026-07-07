@@ -48,3 +48,10 @@ export {
   upsertFromSource,
   resolveStoreFile,
 } from './asset-upsert'
+
+export {
+  consolidateAssets,
+  type ConsolidateInput,
+  type ConsolidateResult,
+  type ConsolidateFailureCode,
+} from './asset-consolidate'

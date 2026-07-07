@@ -541,7 +541,7 @@ Workflow hooks expose workflow definitions, instances, steps, gates, and notific
 Label: Approve workflow gate.
 Purpose: Approves a pending workflow gate and advances the instance. Use it from plugins that own an external review surface for workflow-backed tasks.
 Kind: rpc
-Source: plugins/workflows/lib/register-hooks.ts:40
+Source: plugins/workflows/lib/register-hooks.ts:43
 
 Example:
 
@@ -557,7 +557,7 @@ const result = await ctx.hooks.invoke(
 Label: Authorize workflow tool use.
 Purpose: Checks whether an agent may perform a workflow-scoped tool action for a task. Use it before executing workflow-sensitive automation.
 Kind: rpc
-Source: plugins/workflows/lib/register-hooks.ts:66
+Source: plugins/workflows/lib/register-hooks.ts:69
 
 Example:
 
@@ -573,7 +573,7 @@ const result = await ctx.hooks.invoke(
 Label: Cancel workflow instance.
 Purpose: Cancels the workflow instance attached to a task. Use it when task state changes make the workflow no longer relevant or safe to continue.
 Kind: event
-Source: plugins/workflows/lib/register-hooks.ts:70
+Source: plugins/workflows/lib/register-hooks.ts:79
 
 Example:
 
@@ -586,12 +586,28 @@ await ctx.hooks.callAll(
 )
 ```
 
+### workflows.cancelMapChild
+
+Label: Cancel map child.
+Purpose: Cancels one fan-out child of a map_workflow step. The join stays blocked until the child is retried or the parent is cancelled — silently skipping children is never the default.
+Kind: rpc
+Source: plugins/workflows/lib/register-hooks.ts:77
+
+Example:
+
+```ts
+const result = await ctx.hooks.invoke(
+  'workflows.cancelMapChild',
+  {},
+)
+```
+
 ### workflows.clearSkillCache
 
 Label: Clear workflow skill cache.
 Purpose: Drops the in-memory workflow-skill resolution cache so the next lookup re-reads disk and the registries. Use it after agent-package sync, migration, install, or removal changes which skills resolve.
 Kind: event
-Source: plugins/workflows/lib/register-hooks.ts:73
+Source: plugins/workflows/lib/register-hooks.ts:82
 
 Example:
 
@@ -607,7 +623,7 @@ await ctx.hooks.callAll(
 Label: Complete workflow step.
 Purpose: Submits output for a workflow step and advances the instance when validation passes. Use it from agents or tools that finish a workflow action.
 Kind: rpc
-Source: plugins/workflows/lib/register-hooks.ts:58
+Source: plugins/workflows/lib/register-hooks.ts:61
 
 Example:
 
@@ -629,7 +645,7 @@ const result = await ctx.hooks.invoke(
 Label: Create workflow instance.
 Purpose: Creates a workflow instance for a task and optional assignee context. Use it when task creation or routing should immediately attach a workflow.
 Kind: rpc
-Source: plugins/workflows/lib/register-hooks.ts:38
+Source: plugins/workflows/lib/register-hooks.ts:41
 
 Example:
 
@@ -649,7 +665,7 @@ const result = await ctx.hooks.invoke(
 Label: List workflow definitions.
 Purpose: Returns available workflow definitions from the configured content directory. Use it to populate workflow selectors or validate workflow ids before creating instances.
 Kind: rpc
-Source: plugins/workflows/lib/register-hooks.ts:60
+Source: plugins/workflows/lib/register-hooks.ts:63
 
 Example:
 
@@ -665,7 +681,7 @@ const result = await ctx.hooks.invoke(
 Label: Delete workflow instance.
 Purpose: Removes the workflow instance file attached to a task. Use it when the task itself is deleted so no orphaned instance state is left behind.
 Kind: rpc
-Source: plugins/workflows/lib/register-hooks.ts:39
+Source: plugins/workflows/lib/register-hooks.ts:42
 
 Example:
 
@@ -681,7 +697,7 @@ const result = await ctx.hooks.invoke(
 Label: List active workflow agents.
 Purpose: Returns agents currently active in a workflow task. Use it for coordination, notification, or assignment views that need live workflow participants.
 Kind: rpc
-Source: plugins/workflows/lib/register-hooks.ts:65
+Source: plugins/workflows/lib/register-hooks.ts:68
 
 Example:
 
@@ -699,7 +715,7 @@ const result = await ctx.hooks.invoke(
 Label: Get current step.
 Purpose: Returns the current workflow step for a task, optionally scoped to an agent. Use it when a plugin needs to know what work is currently actionable.
 Kind: rpc
-Source: plugins/workflows/lib/register-hooks.ts:57
+Source: plugins/workflows/lib/register-hooks.ts:60
 
 Example:
 
@@ -718,7 +734,7 @@ const result = await ctx.hooks.invoke(
 Label: Get notification channel.
 Purpose: Returns one workflow notification channel by id. Use it before sending or configuring alerts that depend on a specific channel implementation.
 Kind: rpc
-Source: plugins/workflows/lib/register-hooks.ts:79
+Source: plugins/workflows/lib/register-hooks.ts:88
 
 Example:
 
@@ -736,7 +752,7 @@ const result = await ctx.hooks.invoke(
 Label: List workflow instances.
 Purpose: Returns workflow instances, optionally filtered by status. Use it for dashboards, queues, and maintenance flows that need a broad view of active workflow state.
 Kind: rpc
-Source: plugins/workflows/lib/register-hooks.ts:56
+Source: plugins/workflows/lib/register-hooks.ts:59
 
 Example:
 
@@ -754,7 +770,7 @@ const result = await ctx.hooks.invoke(
 Label: Check gate notification.
 Purpose: Checks whether a workflow gate notification has already been sent. Use it to avoid duplicate alerts for the same task and gate step.
 Kind: rpc
-Source: plugins/workflows/lib/register-hooks.ts:67
+Source: plugins/workflows/lib/register-hooks.ts:70
 
 Example:
 
@@ -768,12 +784,28 @@ const result = await ctx.hooks.invoke(
 )
 ```
 
+### workflows.listMapChildren
+
+Label: List map children.
+Purpose: Lists a map_workflow step's fan-out children with LIVE instance statuses (the parent's cached entries can lag out-of-band changes). Use it to drive recovery UIs.
+Kind: rpc
+Source: plugins/workflows/lib/register-hooks.ts:78
+
+Example:
+
+```ts
+const result = await ctx.hooks.invoke(
+  'workflows.listMapChildren',
+  {},
+)
+```
+
 ### workflows.loadDefinition
 
 Label: Load workflow definition.
 Purpose: Loads one workflow definition by name. Use it when a plugin needs the template shape, steps, or metadata behind a workflow id.
 Kind: rpc
-Source: plugins/workflows/lib/register-hooks.ts:61
+Source: plugins/workflows/lib/register-hooks.ts:64
 
 Example:
 
@@ -791,7 +823,7 @@ const result = await ctx.hooks.invoke(
 Label: Load workflow instance.
 Purpose: Loads the workflow instance attached to a task. Use it when a plugin needs current workflow state without reading workflow files directly.
 Kind: rpc
-Source: plugins/workflows/lib/register-hooks.ts:36
+Source: plugins/workflows/lib/register-hooks.ts:39
 
 Example:
 
@@ -809,7 +841,7 @@ const result = await ctx.hooks.invoke(
 Label: Mark gate notified.
 Purpose: Records that a workflow gate notification was sent. Use it immediately after notifying a reviewer or channel so future checks can suppress duplicates.
 Kind: rpc
-Source: plugins/workflows/lib/register-hooks.ts:68
+Source: plugins/workflows/lib/register-hooks.ts:71
 
 Example:
 
@@ -828,7 +860,7 @@ const result = await ctx.hooks.invoke(
 Label: Match workflow.
 Purpose: Suggests a workflow based on a task title and description. Use it when creating tasks that should automatically pick the most relevant workflow template.
 Kind: rpc
-Source: plugins/workflows/lib/register-hooks.ts:59
+Source: plugins/workflows/lib/register-hooks.ts:62
 
 Example:
 
@@ -847,7 +879,7 @@ const result = await ctx.hooks.invoke(
 Label: List notification channels.
 Purpose: Returns workflow notification channels registered by core or plugins. Use it to show available delivery targets for gate and workflow alerts.
 Kind: rpc
-Source: plugins/workflows/lib/register-hooks.ts:78
+Source: plugins/workflows/lib/register-hooks.ts:87
 
 Example:
 
@@ -863,7 +895,7 @@ const result = await ctx.hooks.invoke(
 Label: Reject workflow gate.
 Purpose: Rejects a pending workflow gate, records the reason, and rewinds the instance per the workflow gate policy. Use it from plugins that own an external review surface for workflow-backed tasks.
 Kind: rpc
-Source: plugins/workflows/lib/register-hooks.ts:44
+Source: plugins/workflows/lib/register-hooks.ts:47
 
 Example:
 
@@ -879,7 +911,7 @@ const result = await ctx.hooks.invoke(
 Label: Reopen workflow from step.
 Purpose: Reopens an existing workflow instance at a prior actionable step. Use it when a plugin needs explicit user recovery without creating a replacement workflow task.
 Kind: rpc
-Source: plugins/workflows/lib/register-hooks.ts:49
+Source: plugins/workflows/lib/register-hooks.ts:52
 
 Example:
 
@@ -890,12 +922,28 @@ const result = await ctx.hooks.invoke(
 )
 ```
 
+### workflows.retryMapChild
+
+Label: Retry map child.
+Purpose: Retries one fan-out child of a map_workflow step: live children reopen in place, dead ones re-create under the same child task id. Use it to unblock a map join without rewinding the parent.
+Kind: rpc
+Source: plugins/workflows/lib/register-hooks.ts:73
+
+Example:
+
+```ts
+const result = await ctx.hooks.invoke(
+  'workflows.retryMapChild',
+  {},
+)
+```
+
 ### workflows.saveInstance
 
 Label: Save workflow instance.
 Purpose: Persists a workflow instance after a plugin has changed its state. Use it to keep workflow updates routed through the workflow plugin storage layer.
 Kind: rpc
-Source: plugins/workflows/lib/register-hooks.ts:37
+Source: plugins/workflows/lib/register-hooks.ts:40
 
 Example:
 
@@ -916,7 +964,7 @@ const result = await ctx.hooks.invoke(
 Label: Validate step output.
 Purpose: Validates workflow step output against the step schema. Use it before accepting agent or tool output that should advance a workflow.
 Kind: rpc
-Source: plugins/workflows/lib/register-hooks.ts:69
+Source: plugins/workflows/lib/register-hooks.ts:72
 
 Example:
 

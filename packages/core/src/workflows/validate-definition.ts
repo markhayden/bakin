@@ -7,7 +7,7 @@
  */
 import { existsSync } from 'fs'
 import { join } from 'path'
-import type { WorkflowDefinition, WorkflowStep, ParallelStep, NestedWorkflowStep } from './definition-types'
+import type { WorkflowDefinition, WorkflowStep, ParallelStep, NestedWorkflowStep, MapWorkflowStep } from './definition-types'
 import { getContentDir } from '../content-dir'
 import { getDefinition as getRegistryDefinition, type DefinitionSource } from './source-registry'
 
@@ -158,6 +158,8 @@ export function validateDefinition(def: WorkflowDefinition, opts: ValidateDefini
         errors.push(`Step "${step.id}": on_reject.goto must target a top-level step`)
       } else if (getTopLevelStepIndex(def.steps, step.on_reject.goto) > idx) {
         errors.push(`Step "${step.id}": on_reject.goto must rewind to this or an earlier step`)
+      } else if (def.steps[getTopLevelStepIndex(def.steps, step.on_reject.goto)]?.type === 'map_workflow') {
+        errors.push(`Step "${step.id}": on_reject.goto cannot target a map_workflow step — target its source step instead`)
       }
     }
 
@@ -166,23 +168,44 @@ export function validateDefinition(def: WorkflowDefinition, opts: ValidateDefini
     // gated by validateNestedWorkflowRefs because plugin-default loading runs
     // before every plugin has activated (#374) — there, existence is enforced
     // at start time and surfaced by the workflow-definitions health check.
-    if (step.type === 'workflow') {
-      const nested = step as NestedWorkflowStep
-      if (!nested.workflow_id) {
-        errors.push(`Step "${step.id}": workflow step requires workflow_id`)
-      } else if (opts.definitionId && nested.workflow_id === opts.definitionId) {
-        errors.push(`Step "${step.id}": workflow_id "${nested.workflow_id}" cannot reference its own workflow`)
+    // map_workflow child references follow the exact same three-tier model.
+    if (step.type === 'workflow' || step.type === 'map_workflow') {
+      const workflowId = (step as NestedWorkflowStep | MapWorkflowStep).workflow_id
+      if (!workflowId) {
+        errors.push(`Step "${step.id}": ${step.type} step requires workflow_id`)
+      } else if (opts.definitionId && workflowId === opts.definitionId) {
+        errors.push(`Step "${step.id}": workflow_id "${workflowId}" cannot reference its own workflow`)
       } else if (validateNestedWorkflowRefs) {
         // Referenced workflow must exist in the current validation set, on
         // disk, or in the registry.
-        const inKnownSet = knownWorkflowIds?.has(nested.workflow_id) ?? false
+        const inKnownSet = knownWorkflowIds?.has(workflowId) ?? false
         const defsDir = join(opts.contentDir || getContentDir(), 'workflows', 'definitions')
-        const nestedYaml = join(defsDir, `${nested.workflow_id}.yaml`)
-        const nestedYml = join(defsDir, `${nested.workflow_id}.yml`)
+        const nestedYaml = join(defsDir, `${workflowId}.yaml`)
+        const nestedYml = join(defsDir, `${workflowId}.yml`)
         const onDisk = existsSync(nestedYaml) || existsSync(nestedYml)
-        const inRegistry = !!getRegistryDefinition(nested.workflow_id)
+        const inRegistry = !!getRegistryDefinition(workflowId)
         if (!inKnownSet && !onDisk && !inRegistry) {
-          errors.push(`Step "${step.id}": workflow_id "${nested.workflow_id}" not found in definitions`)
+          errors.push(`Step "${step.id}": workflow_id "${workflowId}" not found in definitions`)
+        }
+      }
+    }
+
+    // Validate map_workflow source references: positional, statically
+    // checkable — same rule shape the deleted dependsOn validator used
+    // (exists / top-level / strictly earlier).
+    if (step.type === 'map_workflow') {
+      const map = step as MapWorkflowStep
+      const match = typeof map.source === 'string' ? /^([^.\s]+)\.(\S+)$/.exec(map.source) : null
+      if (!match) {
+        errors.push(`Step "${step.id}": source must be "<stepId>.<outputKey>"; got "${map.source}"`)
+      } else {
+        const sourceStepId = match[1]
+        if (!idSet.has(sourceStepId)) {
+          errors.push(`Step "${step.id}": source references nonexistent step "${sourceStepId}"`)
+        } else if (!topLevelIds.has(sourceStepId)) {
+          errors.push(`Step "${step.id}": source must reference a top-level step`)
+        } else if (getTopLevelStepIndex(def.steps, sourceStepId) >= idx) {
+          errors.push(`Step "${step.id}": source must reference an earlier top-level step`)
         }
       }
     }

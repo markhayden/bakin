@@ -32,6 +32,7 @@ import type {
   OutputStep,
   ParallelStep,
   NestedWorkflowStep,
+  MapWorkflowStep,
   WorkflowSkillDriftSummary,
 } from '../types'
 import type { WorkflowSkillDriftReport } from '../lib/workflow-skill-drift'
@@ -43,6 +44,7 @@ function StepTypeBadge({ type }: { type: string }) {
     output: 'bg-purple-500/20 text-purple-400',
     parallel: 'bg-blue-500/20 text-blue-400',
     workflow: 'bg-cyan-500/20 text-cyan-400',
+    map_workflow: 'bg-violet-500/20 text-violet-400',
   }
   return (
     <Badge className={`text-[10px] border-0 ${colors[type] || ''}`}>
@@ -381,6 +383,42 @@ function WorkflowStepDetail({ step }: { step: NestedWorkflowStep }) {
   )
 }
 
+function MapWorkflowStepDetail({ step }: { step: MapWorkflowStep }) {
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-3">
+        <MetadataCard icon={RefreshCw} label="Child Workflow">
+          <span className="font-mono">{step.workflow_id}</span>
+        </MetadataCard>
+        <MetadataCard icon={Zap} label="Source Array">
+          <span className="font-mono">{step.source}</span>
+        </MetadataCard>
+        <MetadataCard icon={Package} label="Item Key">
+          <span className="font-mono">{step.item_key || 'item'}</span>
+        </MetadataCard>
+        <MetadataCard icon={AlertTriangle} label="Max Children">
+          <span className="font-mono">{step.max_children ?? 32}</span>
+        </MetadataCard>
+      </div>
+
+      <p className="text-[11px] text-muted-foreground leading-relaxed">
+        Fans out one child workflow per element of the source array at runtime.
+        Live children appear as sub-tasks on the board; per-child retry and
+        cancel live on the parent task's detail panel.
+      </p>
+
+      {step.description && (
+        <div>
+          <SectionLabel>Description</SectionLabel>
+          <div className="text-sm text-foreground/90 rounded-lg p-4 border-l-2 border-violet-500/40 bg-surface whitespace-pre-wrap leading-relaxed">
+            {step.description}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Drawer Shell ──────────────────────────────────────────────────
 
 interface StepDetailDrawerProps {
@@ -607,6 +645,7 @@ export function StepDetailDrawer({
           {step.type === 'output' && <OutputStepDetail step={step as OutputStep} />}
           {step.type === 'parallel' && <ParallelStepDetail step={step as ParallelStep} />}
           {step.type === 'workflow' && <WorkflowStepDetail step={step as NestedWorkflowStep} />}
+          {step.type === 'map_workflow' && <MapWorkflowStepDetail step={step as MapWorkflowStep} />}
           <SkillDriftSection
             reports={driftReports}
             repairingSkill={repairingSkill}

@@ -1,7 +1,7 @@
 'use client'
 
 import { Button } from "@makinbakin/sdk/ui"
-import { Check, X, RefreshCw } from 'lucide-react'
+import { Check, X, RefreshCw, AlertTriangle } from 'lucide-react'
 import { StepOutputViewer } from './step-output-viewer'
 import type { TaskDetail } from './use-task-detail'
 
@@ -49,6 +49,116 @@ export function WorkflowProgressPanel({ m }: { m: TaskDetail }) {
             </div>
           )
         })}
+      </div>
+    </div>
+  )
+}
+
+const CHILD_STATUS_COLORS: Record<string, string> = {
+  complete: 'text-green-400',
+  in_progress: 'text-blue-400',
+  pending_approval: 'text-amber-400',
+  failed: 'text-red-400',
+  cancelled: 'text-zinc-500',
+  missing: 'text-red-400',
+}
+
+/**
+ * Map fan-out children panel: live rollup + per-child retry/cancel for the
+ * active map_workflow step, and a typed-failure banner (map_source_invalid)
+ * with a re-run-source affordance for failed instances.
+ */
+export function MapChildrenPanel({ m }: { m: TaskDetail }) {
+  const { wfInstance, wfDefinition, mapStepId, mapChildren, mapActionLoading, handleMapChildAction, failedStep, handleReopenWorkflow } = m
+
+  // Typed-failure banner (the source step is the recovery unit).
+  if (failedStep?.code === 'map_source_invalid') {
+    const failedDefStep = wfDefinition?.steps.find(s => s.id === failedStep.stepId)
+    const sourceStepId = (failedDefStep as { source?: string } | undefined)?.source?.split('.')[0]
+    return (
+      <div className="rounded-lg border-2 border-red-500/30 bg-red-500/5 p-4 space-y-2">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="size-4 text-red-400" />
+          <h3 className="text-sm font-semibold text-red-400">Fan-out failed</h3>
+          <span className="text-[10px] font-mono text-red-400/70 bg-red-500/10 rounded px-1.5 py-0.5">map_source_invalid</span>
+        </div>
+        {failedStep.error && <p className="text-xs text-zinc-400">{failedStep.error}</p>}
+        <div className="flex justify-end">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={mapActionLoading || !sourceStepId}
+            onClick={() => handleReopenWorkflow(sourceStepId)}
+            className="border-red-500/30 text-red-400 hover:bg-red-500/10"
+          >
+            <RefreshCw className="size-3 mr-1" />
+            Re-run source step
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  if (!wfInstance || !mapStepId) return null
+  const entries = wfInstance.stepStates[mapStepId]?.children
+  if (!entries || entries.length === 0) return null
+
+  const mapStepLabel = wfDefinition?.steps.find(s => s.id === mapStepId)?.label || mapStepId
+  // Live statuses win over cached entries when available.
+  const liveByIndex = new Map(mapChildren.map(c => [c.index, c.liveStatus]))
+  const rows = entries.map(e => ({ ...e, status: liveByIndex.get(e.index) ?? e.status }))
+  const counts = rows.reduce<Record<string, number>>((acc, r) => {
+    acc[r.status] = (acc[r.status] || 0) + 1
+    return acc
+  }, {})
+  const rollup = [
+    `${counts.complete || 0}/${rows.length} complete`,
+    counts.failed ? `${counts.failed} failed` : null,
+    counts.cancelled ? `${counts.cancelled} cancelled` : null,
+  ].filter(Boolean).join(' · ')
+
+  return (
+    <div className="rounded-lg border border-violet-500/30 bg-violet-500/5 p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <h3 className="text-[11px] text-violet-400 uppercase tracking-wider font-semibold">{mapStepLabel}</h3>
+        <span className="text-[11px] text-muted-foreground">{rollup}</span>
+      </div>
+      <div className="space-y-1">
+        {rows.map((row) => (
+          <div key={row.childTaskId} className="flex items-center gap-2 text-xs">
+            <span className={`font-mono ${CHILD_STATUS_COLORS[row.status] || 'text-zinc-500'}`}>
+              {row.index + 1}/{rows.length}
+            </span>
+            <span className="font-mono text-[10px] text-zinc-500 truncate flex-1">
+              {row.childTaskId}
+            </span>
+            <span className={`text-[10px] ${CHILD_STATUS_COLORS[row.status] || 'text-zinc-500'}`}>
+              {row.status}
+            </span>
+            {row.status !== 'complete' && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-5 px-1.5 text-[10px] text-blue-400 hover:text-blue-300"
+                disabled={mapActionLoading}
+                onClick={() => handleMapChildAction('retry', row.index)}
+              >
+                <RefreshCw className="size-2.5 mr-0.5" /> Retry
+              </Button>
+            )}
+            {(row.status === 'in_progress' || row.status === 'pending_approval') && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-5 px-1.5 text-[10px] text-red-400 hover:text-red-300"
+                disabled={mapActionLoading}
+                onClick={() => handleMapChildAction('cancel', row.index)}
+              >
+                <X className="size-2.5 mr-0.5" /> Cancel
+              </Button>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   )

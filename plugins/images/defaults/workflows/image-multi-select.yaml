@@ -1,0 +1,132 @@
+id: image-multi-select
+name: Multi-Image Select
+description: >
+  One brief, three concurrently generated image variants (map fan-out), an
+  agent picks the best with vision, the variants consolidate into versions of
+  a single winning asset, and a human approves the selection. The first
+  production exercise of the map_workflow step type (#203).
+version: 1
+
+steps:
+  - id: develop-prompt
+    type: agent
+    label: Develop Prompt, Route, And Variants
+    agent: $preferred(pixel,$assigned)
+    description: >
+      Develop an image prompt packet from the creative brief in
+      priorStepOutput or stepOutputs.__parentContext.
+
+      Build a provider-neutral prompt packet that follows this framework:
+      subject, audience/use, platform surface, composition, lighting, style,
+      color/material cues, required text, exclusion constraints, brand-safety
+      constraints, and accessibility notes. Front-load the subject and the
+      most important visual outcome. Avoid resolution words like 2K/4K and
+      raw aspect-ratio instructions; use an images surface profile instead.
+
+      Call bakin_exec_images_recommend before submitting — pass surface,
+      objective, and quality "draft" (variants are cheap explorations; the
+      selected image can be re-rolled at higher quality later if needed).
+      Include the returned route in your output.
+
+      Then produce EXACTLY 3 variant directives: each a one-or-two-sentence
+      uniqueness instruction that makes its variant diverge on composition,
+      style, or mood while preserving the subject, required text, and brand
+      constraints. Make the three directives clearly distinct from each
+      other. Do not generate any images in this step.
+    output_schema:
+      prompt:
+        type: string
+        description: Provider-neutral prompt compiled from promptPacket
+      promptPacket:
+        type: object
+        description: Structured prompt packet for the generation tool
+      route:
+        type: object
+        description: Recommended provider/model/surface/quality route from bakin_exec_images_recommend
+      variants:
+        type: array
+        description: Exactly 3 short uniqueness directives, one per variant
+
+  - id: prompt-gate
+    type: gate
+    label: Approve Prompt And Variant Plan
+    description: >
+      Guards the 3x generation spend. Review the prompt packet, the
+      provider/model route, and the three variant directives before any
+      image is generated. Reject with notes if the prompt is vague, the
+      route is wrong, or the directives are not meaningfully distinct.
+    approval_required: true
+    on_reject:
+      goto: develop-prompt
+      note_to_agent: true
+
+  - id: generate-variants
+    type: map_workflow
+    label: Generate Variants
+    source: develop-prompt.variants
+    workflow_id: image-variant
+    item_key: variant
+    max_children: 3
+
+  - id: select-best
+    type: agent
+    label: Select Best Variant
+    agent: $preferred(pixel,$assigned)
+    description: >
+      priorStepOutput.outputs holds one entry per variant, each with the
+      assetId it produced. Judge them with your own eyes: download each
+      image over HTTP from the Bakin server (the same base URL your Bakin
+      tools talk to) at /api/assets/{assetId} into your workspace, view all
+      of them with vision, and pick the single best against the approved
+      brief. Write a short rationale naming what the winner does better.
+
+      Then call bakin_exec_assets_consolidate with winnerAssetId, the other
+      assetIds as loserAssetIds, and taskId — the losers become versions of
+      the winner and leave the asset list. The tool is safe to re-call if it
+      times out. Finally DELETE the downloaded image copies from your
+      workspace — the managed assets are the storage, your copies are not.
+
+      If this step was rejected and reopened: all variants live as versions
+      on the one consolidated asset now — review them again, and if a
+      different version should win, promote it via the assets API and submit
+      that version instead. No regeneration.
+    output_schema:
+      assetId:
+        type: string
+        description: The single consolidated asset id (the winner)
+      selectedVersion:
+        type: number
+        description: The winning version on the consolidated asset
+      rationale:
+        type: string
+        description: Why this variant won, in one or two sentences
+
+  - id: selection-gate
+    type: gate
+    label: Approve Selection
+    description: >
+      Confirm the agent picked the right variant. All variants are preserved
+      as versions on the one asset — rejecting re-runs select-best, which
+      re-judges and can promote a different version without regenerating.
+    approval_required: true
+    on_reject:
+      goto: select-best
+      note_to_agent: true
+
+  - id: deliver
+    type: output
+    label: Deliver Selected Image
+    agent: $preferred(pixel,$assigned)
+    description: >
+      Report the final consolidated assetId, the selected version, and the
+      selection rationale as the workflow deliverable.
+    output_schema:
+      assetId:
+        type: string
+        description: Final consolidated asset id
+      selectedVersion:
+        type: number
+        description: Delivered version
+      summary:
+        type: string
+        description: One-line delivery summary

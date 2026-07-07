@@ -12,6 +12,7 @@ import type {
   ParallelStep,
   AgentStep,
   OutputStep,
+  StepErrorCode,
 } from '../types'
 import { loadDefinition, parsePreferredAgentExpression, findStep } from './parser'
 import { loadSkill } from './skill-loader'
@@ -81,7 +82,7 @@ export function getCurrentStep(
   taskId: string,
   agentId?: string,
   contentDir?: string
-): StepContext | { status: 'complete' } | { status: 'cancelled' } | { status: 'pending_approval'; stepId: string; label: string } | null {
+): StepContext | { status: 'complete' } | { status: 'cancelled' } | { status: 'failed'; stepId: string; code?: StepErrorCode; error?: string } | { status: 'pending_approval'; stepId: string; label: string } | { status: 'fanned_out'; stepId: string; label: string; childrenTotal: number; childrenComplete: number } | null {
   const dir = contentDir || getContentDir()
   const instance = loadInstance(taskId, dir)
   if (!instance) return null
@@ -94,6 +95,17 @@ export function getCurrentStep(
   if (instance.status === 'cancelled') return { status: 'cancelled' }
   if (instance.status === 'complete') {
     return { status: 'complete' }
+  }
+  // Failed carries the typed code from the failing step (map_source_invalid
+  // today) so agents/UIs branch on code, never on error text.
+  if (instance.status === 'failed') {
+    const failedState = instance.stepStates[instance.currentStepId]
+    return {
+      status: 'failed',
+      stepId: instance.currentStepId,
+      code: failedState?.code,
+      error: failedState?.error,
+    }
   }
 
   const def = loadDefinition(instance.workflowId, dir)
@@ -119,6 +131,21 @@ export function getCurrentStep(
       return getCurrentStep(stepState.childTaskId, agentId, dir)
     }
     return null
+  }
+
+  // Map fan-out — no single delegate is honest for N children (agents work
+  // their child board tasks; getActiveAgents unions them). Returning null
+  // here would collide with null's "no workflow instance" meaning on the
+  // REST/tool surfaces, so the fan-out reports itself as a typed status.
+  if (step.type === 'map_workflow') {
+    const entries = instance.stepStates[currentId]?.children ?? []
+    return {
+      status: 'fanned_out',
+      stepId: currentId,
+      label: step.label,
+      childrenTotal: entries.length,
+      childrenComplete: entries.filter((c) => c.status === 'complete').length,
+    }
   }
 
   // Parallel step — find the right child for this agent
@@ -331,6 +358,17 @@ export function getActiveAgents(
       }))
     }
     return []
+  } else if (currentStep.type === 'map_workflow') {
+    // Union over every live fan-out child, each under its own child taskId.
+    const out: { agent: string; stepId: string; effectiveTaskId?: string }[] = []
+    for (const entry of instance.stepStates[currentStep.id]?.children ?? []) {
+      if (entry.status !== 'in_progress') continue
+      out.push(...getActiveAgents(entry.childTaskId, dir).map(a => ({
+        ...a,
+        effectiveTaskId: a.effectiveTaskId || entry.childTaskId,
+      })))
+    }
+    return out
   } else if (currentStep.type === 'parallel') {
     for (const child of (currentStep as ParallelStep).steps) {
       if (child.type === 'agent' && instance.stepStates[child.id]?.status === 'in_progress') {

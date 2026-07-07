@@ -24,7 +24,25 @@ interface WorkflowInstance extends SdkWorkflowInstance {
   taskId: string
   currentStepId: string
   status: string
-  stepStates: Record<string, { status: string; output?: Record<string, unknown>; childTaskId?: string }>
+  stepStates: Record<string, {
+    status: string
+    output?: Record<string, unknown>
+    childTaskId?: string
+    /** map_workflow fan-out entries (join bookkeeping) */
+    children?: Array<{ index: number; childTaskId: string; status: string }>
+    /** Typed failure code (e.g. map_source_invalid) — branch on this, never on error text */
+    code?: string
+    error?: string
+  }>
+}
+
+export interface MapChildInfo {
+  index: number
+  childTaskId: string
+  entryStatus: string
+  liveStatus: string
+  currentStepId?: string
+  workflowId?: string
 }
 
 interface WorkflowDefinition extends SdkWorkflowDefinition {
@@ -146,6 +164,80 @@ export function useTaskDetail({ task, columnId, open, editing, onClose }: UseTas
 
   // Derived workflow state
   const isGatePending = wfInstance?.status === 'pending_approval'
+
+  // ─── Map fan-out children (live statuses + retry/cancel) ────────
+  const [mapChildren, setMapChildren] = useState<MapChildInfo[]>([])
+  const [mapActionLoading, setMapActionLoading] = useState(false)
+
+  const mapStepId = useMemo(() => {
+    if (!wfInstance) return null
+    for (const [stepId, state] of Object.entries(wfInstance.stepStates)) {
+      if (state.children && state.children.length > 0 && state.status !== 'complete') return stepId
+    }
+    return null
+  }, [wfInstance])
+
+  const refreshWfInstance = useCallback(async (taskId: string) => {
+    const d = await fetch(`/api/plugins/workflows/instances/${taskId}`).then(r => r.ok ? r.json() : null).catch(() => null)
+    if (d?.instance) setWfInstance(d.instance)
+  }, [])
+
+  useEffect(() => {
+    if (!wfInstance || !mapStepId) { setMapChildren([]); return }
+    fetch(`/api/plugins/workflows/instances/${wfInstance.taskId}/map/${mapStepId}/children`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.children) setMapChildren(d.children) })
+      .catch(() => {})
+  }, [wfInstance, mapStepId])
+
+  const handleMapChildAction = useCallback(async (action: 'retry' | 'cancel', index: number, reason?: string) => {
+    if (!wfInstance || !mapStepId) return
+    setMapActionLoading(true)
+    try {
+      const res = await fetch(`/api/plugins/workflows/instances/${wfInstance.taskId}/map/${mapStepId}/children/${index}/${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(reason ? { reason } : {}),
+      })
+      if (res.ok) {
+        toast(action === 'retry' ? `Retrying child ${index + 1}` : `Cancelled child ${index + 1}`, 'success')
+        await refreshWfInstance(wfInstance.taskId)
+      } else {
+        const data = await res.json().catch(() => ({ error: 'Unknown error' }))
+        toast(data.error || `Failed to ${action} child`, 'error')
+      }
+    } catch {
+      toast('Network error', 'error')
+    }
+    setMapActionLoading(false)
+  }, [wfInstance, mapStepId, refreshWfInstance])
+
+  // Failed-instance recovery (e.g. map_source_invalid): reopen at a prior step.
+  const failedStep = wfInstance?.status === 'failed'
+    ? { stepId: wfInstance.currentStepId, ...wfInstance.stepStates[wfInstance.currentStepId] }
+    : null
+
+  const handleReopenWorkflow = useCallback(async (stepId?: string) => {
+    if (!wfInstance) return
+    setMapActionLoading(true)
+    try {
+      const res = await fetch(`/api/plugins/workflows/instances/${wfInstance.taskId}/reopen`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stepId, reason: 'Re-run requested from task detail' }),
+      })
+      if (res.ok) {
+        toast('Workflow reopened', 'success')
+        await refreshWfInstance(wfInstance.taskId)
+      } else {
+        const data = await res.json().catch(() => ({ error: 'Unknown error' }))
+        toast(data.error || 'Failed to reopen workflow', 'error')
+      }
+    } catch {
+      toast('Network error', 'error')
+    }
+    setMapActionLoading(false)
+  }, [wfInstance, refreshWfInstance])
 
   const fetchPriorOutput = useCallback(async () => {
     if (!wfInstance || !wfDefinition || !isGatePending) {
@@ -469,6 +561,9 @@ export function useTaskDetail({ task, columnId, open, editing, onClose }: UseTas
     wfInstance, wfDefinition, rejectReason, setRejectReason, showRejectInput, setShowRejectInput,
     gateLoading, isGatePending, gateStep, activeWorkflowId,
     priorStepOutput, outputLoading, outputUnavailable, fetchPriorOutput,
+    // map fan-out
+    mapStepId, mapChildren, mapActionLoading, handleMapChildAction,
+    failedStep, handleReopenWorkflow,
     // agent
     taskAgentMeta,
     // handlers

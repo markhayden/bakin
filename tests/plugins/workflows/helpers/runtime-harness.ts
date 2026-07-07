@@ -249,6 +249,119 @@ steps:
     description: Continue after task creation
 `
 
+// Map fan-out parent: source agent step → map_workflow → after
+export const mapWorkflow = `
+name: Map Flow
+description: Dynamic fan-out test workflow
+version: 1
+steps:
+  - id: source-step
+    type: agent
+    label: Segment
+    agent: chef
+    description: Produce the items array
+  - id: produce-items
+    type: map_workflow
+    label: Produce Items
+    source: source-step.items
+    workflow_id: map-child
+    item_key: brief
+    max_children: 4
+  - id: after-map
+    type: agent
+    label: After Map
+    agent: main
+    description: Consume the aggregate
+`
+
+// Minimal child workflow for map fan-out
+export const mapChildWorkflow = `
+name: Map Child
+description: Single-step map child
+version: 1
+steps:
+  - id: do-work
+    type: agent
+    label: Do Work
+    agent: pixel
+    description: Work one item
+`
+
+// Map child WITH a gate — proves child gate approvals flow to the join
+export const mapGatedChildWorkflow = `
+name: Map Gated Child
+description: Map child containing a gate
+version: 1
+steps:
+  - id: work
+    type: agent
+    label: Work
+    agent: pixel
+  - id: check
+    type: gate
+    label: Check
+    approval_required: true
+  - id: finish
+    type: agent
+    label: Finish
+    agent: pixel
+`
+
+// Map parent whose children carry gates
+export const mapGatedWorkflow = `
+name: Map Gated Flow
+description: Fan-out into gated children
+version: 1
+steps:
+  - id: source-step
+    type: agent
+    label: Segment
+    agent: chef
+  - id: produce-items
+    type: map_workflow
+    label: Produce Items
+    source: source-step.items
+    workflow_id: map-gated-child
+  - id: after-map
+    type: agent
+    label: After Map
+    agent: main
+`
+
+// Nested recursion: a parent whose child workflow (map-flow) contains the map
+export const mapWrapperWorkflow = `
+name: Map Wrapper
+description: Nested workflow whose child contains a map step
+version: 1
+steps:
+  - id: run-map-flow
+    type: workflow
+    label: Run Map Flow
+    workflow_id: map-flow
+  - id: wrap-after
+    type: agent
+    label: Wrap After
+    agent: main
+`
+
+// Statically illegal (map at index 0 has no earlier source step) — exercises
+// the defensive createInstance branch on non-validating paths.
+export const mapFirstWorkflow = `
+name: Map First
+description: Defensive first-step map
+version: 1
+steps:
+  - id: fan
+    type: map_workflow
+    label: Fan
+    source: ghost.items
+    workflow_id: map-child
+  - id: after
+    type: agent
+    label: After
+    agent: main
+`
+
 export const testSkillMarkdown = `---
 name: Test Skill
 output_schema:
@@ -292,5 +405,11 @@ export function seedWorkflowFixtures(testDir: string): void {
   writeFileSync(join(defsDir, 'final-gate.yaml'), finalGateWorkflow)
   writeFileSync(join(defsDir, 'skill-test.yaml'), skillWorkflow)
   writeFileSync(join(defsDir, 'task-node.yaml'), taskNodeWorkflow)
+  writeFileSync(join(defsDir, 'map-flow.yaml'), mapWorkflow)
+  writeFileSync(join(defsDir, 'map-child.yaml'), mapChildWorkflow)
+  writeFileSync(join(defsDir, 'map-first.yaml'), mapFirstWorkflow)
+  writeFileSync(join(defsDir, 'map-wrapper.yaml'), mapWrapperWorkflow)
+  writeFileSync(join(defsDir, 'map-gated-child.yaml'), mapGatedChildWorkflow)
+  writeFileSync(join(defsDir, 'map-gated.yaml'), mapGatedWorkflow)
   writeFileSync(join(skillsDir, 'test-skill.md'), testSkillMarkdown)
 }

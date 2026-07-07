@@ -174,6 +174,7 @@ Agents create, version, link, and curate assets through MCP exec tools. The head
 
 <!-- docs:exec-tools assets -->
 - `bakin_exec_assets_audit`: Audit versioned-asset health: manifest integrity, current-pointer resolution, and missing version files.
+- `bakin_exec_assets_consolidate`: Absorb variant assets as versions of a winner asset (select-best flows): each loser's current file becomes a new version of the winner with consolidatedFrom provenance, the winner's pre-call current version stays promoted, and the losers move to trash. End state: ONE asset, every variant preserved as version history. Safe to re-call — already-absorbed losers are skipped and the version pointer is never moved by a retry.
 - `bakin_exec_assets_delete`: Soft-delete a whole asset (all versions) to trash, restorable until trash is emptied.
 - `bakin_exec_assets_empty_trash`: Permanently delete all trashed assets. This cannot be undone.
 - `bakin_exec_assets_get`: Retrieve an asset manifest (versions, current pointer, exports) by assetId.

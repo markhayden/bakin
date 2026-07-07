@@ -275,19 +275,25 @@ export function rejectGate(
 function resolveReopenStep(def: WorkflowDefinition, requestedStepId: string): { stepId: string } | { errors: string[] } {
   const requestedStep = findStep(def, requestedStepId)
   if (!requestedStep) return { errors: [`Step not found: ${requestedStepId}`] }
+  if (requestedStep.type === 'map_workflow') {
+    return { errors: [`Reopen target "${requestedStepId}" is a map fan-out — reopen its source step or retry individual children instead`] }
+  }
   if (requestedStep.type !== 'gate') return { stepId: requestedStepId }
 
   const gateStep = requestedStep as GateStep
   if (gateStep.on_reject?.goto) {
     const targetStep = findStep(def, gateStep.on_reject.goto)
     if (!targetStep) return { errors: [`Gate reopen target step not found: ${gateStep.on_reject.goto}`] }
+    if (targetStep.type === 'map_workflow') {
+      return { errors: [`Gate reopen target "${gateStep.on_reject.goto}" is a map fan-out — target its source step instead`] }
+    }
     return { stepId: gateStep.on_reject.goto }
   }
 
   const gateTopIdx = getTopLevelIndex(def, requestedStepId)
   for (let index = gateTopIdx - 1; index >= 0; index--) {
     const candidate = def.steps[index]
-    if (candidate.type !== 'gate') return { stepId: candidate.id }
+    if (candidate.type !== 'gate' && candidate.type !== 'map_workflow') return { stepId: candidate.id }
   }
 
   return { errors: [`Gate "${requestedStepId}" has no actionable previous step`] }

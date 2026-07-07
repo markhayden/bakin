@@ -6,7 +6,7 @@
  * board tasks — lives here. CLAUDE.md flags this as the natural place to later
  * swap direct core imports for ctx.tasks / hook calls.
  */
-import type { WorkflowInstance, WorkflowDefinition, AgentStep, NestedWorkflowStep } from '../types'
+import type { WorkflowInstance, WorkflowDefinition, AgentStep, NestedWorkflowStep, MapWorkflowStep } from '../types'
 import { getContentDir } from './content-dir'
 import { createLogger } from '@bakin/core/logger'
 import {
@@ -135,17 +135,30 @@ export async function completeTaskViaHooks(instance: WorkflowInstance, from: str
 export function createBoardTaskForChild(
   childTaskId: string,
   parentTaskId: string,
-  nestedStep: NestedWorkflowStep,
+  nestedStep: NestedWorkflowStep | MapWorkflowStep,
   childDef: WorkflowDefinition | null,
   assignee?: string,
+  /** Map fan-out children: fraction titles + board-task revive on id reuse. */
+  mapMeta?: { index: number; total: number },
 ) {
   void (async () => {
     if (await findTaskFromStore(childTaskId)) {
+      if (mapMeta) {
+        // Reused map-child id (re-fan-out after a source rewind) — pull the
+        // existing board task back into active work instead of duplicating.
+        await moveTaskInStore(childTaskId, 'inProgress')
+        return
+      }
       log.debug(`Skipping duplicate child task for ${childTaskId} — already on board`)
       return
     }
 
-    const title = `${nestedStep.label || nestedStep.workflow_id} (sub-workflow)`
+    let title = `${nestedStep.label || nestedStep.workflow_id} (sub-workflow)`
+    if (mapMeta) {
+      const parentTask = await findTaskFromStore(parentTaskId)
+      const fraction = `${nestedStep.label || nestedStep.workflow_id} ${mapMeta.index + 1}/${mapMeta.total}`
+      title = parentTask?.title ? `${parentTask.title} — ${fraction}` : `${fraction} (sub-workflow)`
+    }
     const description = nestedStep.description || childDef?.description || undefined
     // Find the first agent step in the child workflow for the assignee
     const childAgent = childDef?.steps.find(s => s.type === 'agent')

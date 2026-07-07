@@ -140,6 +140,8 @@ describe('loadDefaultWorkflows', () => {
     expect(imagesResult.skipped).toEqual([])
     expect(workflowsResult.skipped).toEqual([])
     expect(registered).toContain('image-generation')
+    expect(registered).toContain('image-multi-select')
+    expect(registered).toContain('image-variant')
     expect(registered).toContain('text-social-post')
     expect(registered).toContain('image-social-post')
     expect(registered).toContain('video-social-post')

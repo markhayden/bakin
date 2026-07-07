@@ -22,6 +22,9 @@ import {
   isGateNotified,
   markGateNotified,
   cancelInstance,
+  retryMapChild,
+  cancelMapChild,
+  listMapChildren,
   type WorkflowToolUseAction,
 } from './runtime'
 import { createValidatedInstance } from './start-validation'
@@ -67,6 +70,12 @@ export function registerWorkflowHooks(ctx: PluginContext): void {
   ctx.hooks.register('workflows.isGateNotified', (d: Record<string, unknown>) => isGateNotified(d.taskId as string, d.stepId as string, d.contentDir as string | undefined), { label: 'Check gate notification.', summary: 'Checks whether a workflow gate notification has already been sent. Use it to avoid duplicate alerts for the same task and gate step.', hookKind: 'rpc' })
   ctx.hooks.register('workflows.markGateNotified', (d: Record<string, unknown>) => markGateNotified(d.taskId as string, d.stepId as string, d.contentDir as string | undefined), { label: 'Mark gate notified.', summary: 'Records that a workflow gate notification was sent. Use it immediately after notifying a reviewer or channel so future checks can suppress duplicates.', hookKind: 'rpc' })
   ctx.hooks.register('workflows.validateStepOutput', (d: Record<string, unknown>) => validateStepOutput(d.schema as Record<string, unknown> | undefined, d.output as Record<string, unknown>), { label: 'Validate step output.', summary: 'Validates workflow step output against the step schema. Use it before accepting agent or tool output that should advance a workflow.', hookKind: 'rpc' })
+  ctx.hooks.register('workflows.retryMapChild', (d: Record<string, unknown>) => retryMapChild(d.taskId as string, d.stepId as string, d.index as number, {
+    reason: d.reason as string | undefined,
+    contentDir: d.contentDir as string | undefined,
+  }), { label: 'Retry map child.', summary: 'Retries one fan-out child of a map_workflow step: live children reopen in place, dead ones re-create under the same child task id. Use it to unblock a map join without rewinding the parent.', hookKind: 'rpc' })
+  ctx.hooks.register('workflows.cancelMapChild', (d: Record<string, unknown>) => cancelMapChild(d.taskId as string, d.stepId as string, d.index as number, d.contentDir as string | undefined), { label: 'Cancel map child.', summary: 'Cancels one fan-out child of a map_workflow step. The join stays blocked until the child is retried or the parent is cancelled — silently skipping children is never the default.', hookKind: 'rpc' })
+  ctx.hooks.register('workflows.listMapChildren', (d: Record<string, unknown>) => listMapChildren(d.taskId as string, d.stepId as string, d.contentDir as string | undefined), { label: 'List map children.', summary: 'Lists a map_workflow step\'s fan-out children with LIVE instance statuses (the parent\'s cached entries can lag out-of-band changes). Use it to drive recovery UIs.', hookKind: 'rpc' })
   ctx.hooks.register('workflows.cancelInstance', (d: Record<string, unknown>) => {
     cancelInstance(d.taskId as string, d.contentDir as string | undefined)
   }, { label: 'Cancel workflow instance.', summary: 'Cancels the workflow instance attached to a task. Use it when task state changes make the workflow no longer relevant or safe to continue.', hookKind: 'event' })

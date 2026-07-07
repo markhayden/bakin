@@ -109,6 +109,29 @@ consumes this hook (`buildDispatchAssetBlock` in `src/core/dispatch.ts`) and
 renders assetIds; no search dependency, and core never walks `assets/store/`
 directly.
 
+## Consolidation (`consolidateAssets`, #203)
+
+`lib/asset-consolidate.ts` — built for select-best flows (image-multi-select):
+N variant assets collapse into ONE. Each loser's current file is absorbed as a
+new version of the winner (`op: 'import'`, `tool: 'consolidate'`, the loser's
+generation record travels), the winner's ORIGINAL version is restored as the
+pointer, and the losers are soft-trashed. Absorbed versions carry
+`consolidatedFrom: { assetId, version }` — that provenance field IS the
+idempotency marker: re-runs skip already-absorbed losers. Consolidation NEVER
+changes which version is current: each absorb captures the pointer
+immediately before its addVersion and restores it immediately after, so the
+pre-existing pointer always survives — the winner's original in the normal
+flow, or a deliberately re-promoted absorbed variant (the selection-gate
+re-select flow) across later retries. Concurrent invocations per winner are
+serialized in-process, so timeout-retry overlap cannot double-absorb.
+Failures are typed per-loser (`loser_not_found`, `self_reference`,
+`winner_not_found`), never thrown; the exec tool's `ok` is winner-fatal only
+(matched on the `winner_not_found` CODE — a self_reference failure carries
+the winner's id but is not fatal).
+Agent surface: `bakin_exec_assets_consolidate` (the 15th assets exec tool).
+Enrichment runs once per absorbed version (`done+forVersion` guard) — a
+vision-LLM call, not a re-bill of generation.
+
 ## HTTP addressing (path segments)
 
 ```

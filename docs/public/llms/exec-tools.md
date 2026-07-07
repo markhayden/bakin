@@ -31,6 +31,29 @@ Example:
 mcporter call bakin-<agent>.bakin_exec_assets_audit
 ```
 
+### bakin_exec_assets_consolidate
+
+Label: Consolidated variant assets
+Purpose: Absorb variant assets as versions of a winner asset (select-best flows): each loser's current file becomes a new version of the winner with consolidatedFrom provenance, the winner's pre-call current version stays promoted, and the losers move to trash. End state: ONE asset, every variant preserved as version history. Safe to re-call — already-absorbed losers are skipped and the version pointer is never moved by a retry.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `winnerAssetId` | string | yes | The selected (winning) asset id — absorbs the others |
+| `loserAssetIds` | array | yes | The variant asset ids to absorb, in display order |
+| `taskId` | string | yes | Task ID this consolidation belongs to |
+
+Example:
+
+```sh
+mcporter call bakin-<agent>.bakin_exec_assets_consolidate --args '{
+  "winnerAssetId": "value",
+  "loserAssetIds": [
+    "value"
+  ],
+  "taskId": "value"
+}'
+```
+
 ### bakin_exec_assets_delete
 
 Label: Deleted an asset
@@ -2439,6 +2462,27 @@ mcporter call bakin-<agent>.bakin_exec_team_update_identity --args '{
 
 Workflow tools expose workflow definitions, active instances, current steps, and step completion.
 
+### bakin_exec_workflows_cancel_map_child
+
+Label: Cancelled map child
+Purpose: Cancel one fan-out child of a map_workflow step. The map join stays blocked until the child is retried or the whole parent is cancelled — children are never silently skipped.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `taskId` | string | yes | PARENT task ID (the instance holding the map step) |
+| `stepId` | string | yes | The map_workflow step ID |
+| `index` | number | yes | Child index within the fan-out (0-based) |
+
+Example:
+
+```sh
+mcporter call bakin-<agent>.bakin_exec_workflows_cancel_map_child --args '{
+  "taskId": "value",
+  "stepId": "value",
+  "index": 20
+}'
+```
+
 ### bakin_exec_workflows_complete_step
 
 Label: Completed workflow step
@@ -2540,6 +2584,29 @@ Example:
 ```sh
 mcporter call bakin-<agent>.bakin_exec_workflows_list_instances --args '{
   "status": "value"
+}'
+```
+
+### bakin_exec_workflows_retry_map_child
+
+Label: Retried map child
+Purpose: Retry one fan-out child of a map_workflow step. Live children reopen in place; dead/cancelled children are re-created under the same child task id with their original item context. Unblocks a blocked map join without rewinding the parent.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `taskId` | string | yes | PARENT task ID (the instance holding the map step) |
+| `stepId` | string | yes | The map_workflow step ID |
+| `index` | number | yes | Child index within the fan-out (0-based) |
+| `reason` | string | no | Why this child is being retried |
+
+Example:
+
+```sh
+mcporter call bakin-<agent>.bakin_exec_workflows_retry_map_child --args '{
+  "taskId": "value",
+  "stepId": "value",
+  "index": 20,
+  "reason": "value"
 }'
 ```
 

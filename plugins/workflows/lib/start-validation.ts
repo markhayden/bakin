@@ -14,7 +14,7 @@
  * the old module-scope guard.
  */
 import type { PluginContext } from '@bakin/core/plugin-types'
-import type { WorkflowDefinition, NestedWorkflowStep } from '../types'
+import type { WorkflowDefinition, NestedWorkflowStep, MapWorkflowStep } from '../types'
 import { listDefinitions, loadDefinition, validateDefinition, validateWorkflowId } from './parser'
 import { createInstance } from './runtime'
 
@@ -31,8 +31,8 @@ export async function getRuntimeAgentNames(ctx: PluginContext | null): Promise<S
 
 function collectNestedWorkflowIds(def: WorkflowDefinition, out: Set<string>): void {
   for (const step of def.steps) {
-    if (step.type === 'workflow') {
-      out.add((step as NestedWorkflowStep).workflow_id)
+    if (step.type === 'workflow' || step.type === 'map_workflow') {
+      out.add((step as NestedWorkflowStep | MapWorkflowStep).workflow_id)
     }
   }
 }

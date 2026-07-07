@@ -97,6 +97,22 @@ describe('WorkflowCanvas', () => {
     expect(screen.getByTestId('node-denoise').getAttribute('data-node-type')).toBe('media.noise-gate')
   })
 
+  it('renders a map_workflow step as its own node type', () => {
+    const definition: WorkflowDefinition = {
+      name: 'Map workflow',
+      description: 'Fan out',
+      version: 1,
+      steps: [
+        { id: 'seg', type: 'agent', label: 'Segment', agent: 'chef' },
+        { id: 'fan', type: 'map_workflow', label: 'Fan', source: 'seg.items', workflow_id: 'child' } as unknown as WorkflowStep,
+      ],
+    }
+
+    render(<WorkflowCanvas definition={definition} />)
+
+    expect(screen.getByTestId('node-fan').getAttribute('data-node-type')).toBe('map_workflow')
+  })
+
   it('passes stale skill drift through node data for highlighted steps', () => {
     const definition: WorkflowDefinition = {
       name: 'Image workflow',

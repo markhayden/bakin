@@ -138,10 +138,12 @@ completes the workflow at a final gate).
 
 Validation enforces the current engine's real contract:
 
-- `gate.on_reject.goto` can only target the current or an earlier top-level step.
+- `gate.on_reject.goto` can only target the current or an earlier top-level step, and never a `map_workflow` step (target its source step instead).
 - `parallel` groups can only contain agent child steps (type, zod schema, and validator all agree).
-- `workflow` nested references cannot reference themselves (fatal everywhere). Existence is tiered (#374): not checked at plugin-default load, fatal at start time, advisory in the `workflow-definitions` health check.
+- `workflow` nested references cannot reference themselves (fatal everywhere). Existence is tiered (#374): not checked at plugin-default load, fatal at start time, advisory in the `workflow-definitions` health check. `map_workflow.workflow_id` follows the identical tiering and joins start-time cycle detection.
+- `map_workflow.source` must be `<stepId>.<outputKey>` naming a strictly EARLIER top-level step (the deleted `dependsOn` validator's rule shape) — which makes a first-step map statically illegal.
 - `output` steps require an agent owner so channel-post authorization has a concrete principal.
+- Nested maps (a map child whose workflow contains another map) are unsupported in v1 — the `workflow-definitions` health check warns.
 
 The builtin node-type zod schemas are **strict**: unknown YAML keys are
 rejected at the CRUD/save boundary with an error naming the key, and the
@@ -167,6 +169,61 @@ completion row and re-completion records a fresh one. A blocked board task must 
 instance behind. Recovery should happen through explicit reopen/retry flows
 such as `workflows.reopenFromStep`, not by silently continuing the canceled
 instance.
+
+## Map Fan-out (`map_workflow`, #203)
+
+The one dynamic-width primitive in the otherwise ordered-list executor
+(design: `.claude/specs/workflow-map-fanout-design.md`). When the sequence
+reaches a `map_workflow` step, `fanOutMapStep` (engine.ts) spawns one ordinary
+nested-workflow instance per element of the source step's output array:
+`childTaskId = {taskId}--{stepId}--{i}`, parentContext = the source step's
+full output + the item under `item_key` (default `item`) + `mapIndex`/`mapTotal`,
+one fraction-titled board task per child. Gates inside children, cycle
+detection, and board visibility come from the existing nested machinery.
+
+- **Typed failure:** missing key / non-array / over `max_children` (default 32)
+  → `StepState.code = 'map_source_invalid'` + `status: 'failed'` + instance
+  `failed`, zero children spawned. `getCurrentStep` returns a
+  `{ status: 'failed', code }` context; recovery = `reopenFromStep` on the
+  SOURCE step (reopening AT a map step is refused everywhere). Empty array →
+  step completes with `{ outputs: [] }` and the workflow advances.
+- **Mid-fan-out status:** `getCurrentStep` on the parent returns a typed
+  `{ status: 'fanned_out', childrenTotal, childrenComplete }` context — never
+  null (null means "no instance" on the REST/tool surfaces) — and the
+  dispatch loop skips it explicitly. Children that fail during spawn record
+  an honest `failed` entry; a map-child's own typed failure propagates to its
+  parent entry via `markMapChildFailed`.
+- **Stale-child sweep:** `sweepLiveMapChildren` rediscovers live children from
+  the INSTANCE STORE (never the parent's cached `children[]`, which a
+  source-step reopen wipes) and runs before EVERY fan-out outcome — valid,
+  empty, or invalid — and again inside `cancelInstance` (stray rediscovery),
+  so reopen/cancel sequences can never orphan running children.
+- **Join:** `propagateChildCompletion`'s map branch updates the child's entry
+  in `StepState.children[]` with the child's finalOutput; when ALL entries are
+  complete it aggregates `{ outputs: [...] }` in stable source order and
+  advances. Failed/cancelled children block the join — never cascade.
+- **Per-child recovery** (`lib/map-children.ts`): `retryMapChild` (live child
+  reopens in place; dead/missing child re-creates under the same id via the
+  shared `buildMapChildContext`), `cancelMapChild`, `listMapChildren` (LIVE
+  child statuses — cached entries can lag out-of-band changes). Surfaces:
+  `workflows.{retryMapChild,cancelMapChild,listMapChildren}` hooks,
+  `GET/POST /instances/:taskId/map/:stepId/children[...]` routes,
+  `bakin_exec_workflows_{retry,cancel}_map_child` exec tools. There is also
+  `POST /instances/:taskId/reopen` (REST surface over `reopenFromStep`).
+- **Re-fan-out** after a source rewind sweeps stale live children before
+  reusing ids; orphans beyond the new width are retired from the board.
+- **UI:** the canvas node is definitional only (children are runtime
+  instances); the live rollup + per-child retry/cancel live on the task
+  detail panel (`plugins/tasks/components/task-workflow-panels.tsx`
+  `MapChildrenPanel`).
+- **Budget:** the aggregated outputs ride the existing
+  `dispatch.maxWorkflowContextBytes` cap like any step output (pinned by
+  `tests/core/dispatch-workflow-context.test.ts`).
+- First production consumer: `image-multi-select` + `image-variant`
+  (`plugins/images/defaults/workflows/`), validated live via
+  `scripts/validate-map-select.ts` + `docs/validation/map-select-runbook.md`.
+- Engine tests: `tests/plugins/workflows/runtime-map.test.ts`,
+  `map-child-surfaces.test.ts`, `image-multi-select-flow.test.ts`.
 
 ## Node-Type Registry
 

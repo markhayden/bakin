@@ -111,8 +111,8 @@ describe('route registration', () => {
 // ===========================================================================
 
 describe('exec tool registration', () => {
-  it('registers all 14 exec tools', () => {
-    expect(plugin.execTools.length).toBe(14)
+  it('registers all 15 exec tools', () => {
+    expect(plugin.execTools.length).toBe(15)
   })
 
   it.each([

@@ -1,0 +1,43 @@
+id: image-variant
+name: Image Variant
+description: >
+  Generate ONE image variant from a parent-supplied prompt packet and
+  uniqueness directive. Designed to run as a map_workflow child of
+  image-multi-select — it reads its brief from stepOutputs.__parentContext
+  and returns the managed assetId it produced.
+version: 1
+
+steps:
+  - id: generate-variant
+    type: agent
+    label: Generate Variant
+    agent: $preferred(pixel,$assigned)
+    description: >
+      Read stepOutputs.__parentContext: it carries the approved prompt packet
+      (prompt, promptPacket, route), YOUR uniqueness directive under
+      "variant", and your position as mapIndex of mapTotal. Apply the variant
+      directive to the packet — diverge on composition, style, or mood as the
+      directive says — WITHOUT changing the subject, required text, platform
+      surface, or brand-safety constraints.
+
+      Call bakin_exec_images_generate with taskId, promptPacket, prompt, and
+      the parent route's provider, model, surface, and quality. If invoking
+      through mcporter, use --timeout 600000 for the generation call. Do not
+      write files manually; the images and assets plugins handle persistence.
+      Submit the identifiers the tool returns.
+    output_schema:
+      assetId:
+        type: string
+        description: Managed image asset id returned by the generate tool (not a filename or path)
+      version:
+        type: number
+        description: Asset version produced (1 for a fresh generate)
+      provider:
+        type: string
+        description: Provider used for generation
+      model:
+        type: string
+        description: Model used for generation
+      promptHash:
+        type: string
+        description: Hash of the generated prompt text

@@ -293,6 +293,40 @@ steps:
     ).rejects.toThrow('cycle detected')
   })
 
+  it('start validation detects cycles through map_workflow child references', async () => {
+    writeFileSync(join(defsDir, 'map-cycle-a.yaml'), `name: Map Cycle A
+description: A
+version: 1
+steps:
+  - id: seg
+    type: agent
+    label: Segment
+    agent: $assigned
+  - id: fan
+    type: map_workflow
+    label: Fan
+    source: seg.items
+    workflow_id: map-cycle-b
+`)
+    writeFileSync(join(defsDir, 'map-cycle-b.yaml'), `name: Map Cycle B
+description: B
+version: 1
+steps:
+  - id: nest-a
+    type: workflow
+    label: Run A
+    workflow_id: map-cycle-a
+`)
+    const hooks = await activateWithHooks()
+    await expect(
+      hooks.get('workflows.createInstance')!({
+        taskId: 'task-map-cycle-hook',
+        workflowId: 'map-cycle-a',
+        contentDir: testDir,
+      }),
+    ).rejects.toThrow('cycle detected')
+  })
+
   it('workflows.reopenFromStep reopens the same workflow instance', async () => {
     const hooks = await activateWithHooks()
     createPendingGate('task-reopen-hook')

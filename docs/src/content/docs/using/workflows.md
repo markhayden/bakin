@@ -30,6 +30,7 @@ A workflow is any number of ordered steps. Every step has a type:
 - **Parallel**: groups agent child steps that run side by side. The workflow waits for every child to finish before it continues.
 - **Output**: the terminal step. Optionally publishes the final result to channels like Discord, Slack, or email. Channel posting is allowed only from the active output owner.
 - **Sub-workflow**: runs another workflow inline, with its own task on the board so you can watch it move.
+- **Map fan-out**: runs a child workflow once per element of an earlier step's output array — the width is decided at runtime. Each child gets its own board task; the workflow waits for every child before continuing, and the results come back in source order. A failed or cancelled child never fails the others: retry or cancel it individually from the parent task's detail panel. The shipped `Multi-Image Select` workflow is the working example — one brief, three image variants generated in parallel, an agent picks the best, and the variants collapse into versions of a single asset.
 
 ## Managing workflows
 
@@ -111,12 +112,14 @@ HTTP API surface for this plugin: see the [API reference](/docs/reference/genera
 Agents work the workflow surface through MCP exec tools. The full set covers definitions, instances, steps, and gates:
 
 <!-- docs:exec-tools workflows -->
+- `bakin_exec_workflows_cancel_map_child`: Cancel one fan-out child of a map_workflow step. The map join stays blocked until the child is retried or the whole parent is cancelled — children are never silently skipped.
 - `bakin_exec_workflows_complete_step`: Complete a workflow step with output. Validates output against the step schema, advances the workflow to the next step. Returns success status and whether the workflow is complete.
 - `bakin_exec_workflows_get_definition`: Get a workflow definition by filename. Returns the full definition with steps, inputs, and resolved sub-workflows.
 - `bakin_exec_workflows_get_instance`: Get the full state of a workflow instance for a task, including step states and history.
 - `bakin_exec_workflows_get_step`: Get the current workflow step for a task. Returns only the current step (information gating — future steps are hidden). Critical for agents to know what to do next.
 - `bakin_exec_workflows_list`: List all workflow definitions (templates). Returns name, filename, description, and step count for each.
 - `bakin_exec_workflows_list_instances`: List workflow instances. Optionally filter by status (in_progress, pending_approval, complete, failed, cancelled).
+- `bakin_exec_workflows_retry_map_child`: Retry one fan-out child of a map_workflow step. Live children reopen in place; dead/cancelled children are re-created under the same child task id with their original item context. Unblocks a blocked map join without rewinding the parent.
 - `bakin_exec_workflows_start`: Start a workflow instance for a task. The task must exist on the board. Returns the created instance.
 <!-- /docs:exec-tools -->
 

@@ -199,6 +199,17 @@ export const nestedWorkflowStepSchema = z.object({
   description: z.string().optional(),
 }).strict()
 
+export const mapWorkflowStepSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal('map_workflow'),
+  label: z.string().min(1),
+  source: z.string().min(1),
+  workflow_id: z.string().min(1),
+  item_key: z.string().min(1).optional(),
+  max_children: z.number().int().positive().optional(),
+  description: z.string().optional(),
+}).strict()
+
 const taskSourceSchema = z.object({
   pluginId: z.string().optional(),
   entityType: z.string().optional(),
@@ -269,6 +280,14 @@ const nestedWorkflowFormFields: FormField[] = [
   { name: 'description', type: 'text' },
 ]
 
+const mapWorkflowFormFields: FormField[] = [
+  { name: 'source', type: 'string', required: true, description: 'Array source as <stepId>.<outputKey> — one child per element' },
+  { name: 'workflow_id', type: 'string', required: true, description: 'Id of the child workflow to run per item' },
+  { name: 'item_key', type: 'string', description: 'Parent-context key the child sees its item under (default: item)' },
+  { name: 'max_children', type: 'number', description: 'Fan-out width guardrail (default: 32)' },
+  { name: 'description', type: 'text' },
+]
+
 const createTaskFormFields: FormField[] = [
   { name: 'title', type: 'string', required: true, description: 'Task title' },
   { name: 'description', type: 'text', description: 'Task description' },
@@ -320,6 +339,13 @@ registerNodeType({
   edgeRules: { maxOutbound: 1 },
 })
 registerNodeType({
+  kind: 'map_workflow',
+  runtime: 'builtin',
+  zodSchema: mapWorkflowStepSchema,
+  formFields: mapWorkflowFormFields,
+  edgeRules: { maxOutbound: 1 },
+})
+registerNodeType({
   kind: 'createTask',
   runtime: 'builtin',
   zodSchema: createTaskStepSchema,
@@ -329,7 +355,7 @@ registerNodeType({
 
 // ─── Top-level workflow schema ──────────────────────────────────────────────
 
-const BUILTIN_KINDS = new Set(['agent', 'gate', 'parallel', 'output', 'workflow', 'createTask'])
+const BUILTIN_KINDS = new Set(['agent', 'gate', 'parallel', 'output', 'workflow', 'map_workflow', 'createTask'])
 
 const builtinStepSchema = z.discriminatedUnion('type', [
   agentStepSchema,
@@ -337,6 +363,7 @@ const builtinStepSchema = z.discriminatedUnion('type', [
   parallelStepSchema,
   outputStepSchema,
   nestedWorkflowStepSchema,
+  mapWorkflowStepSchema,
   createTaskStepSchema,
 ])
 
