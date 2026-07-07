@@ -30,6 +30,7 @@ import type {
   RuntimeExecToolProvider,
 } from '@bakin/core/adapters/runtime'
 import { RuntimeError } from '@bakin/core/adapters/runtime'
+import { summarizeStructured, unwrapToolResult } from '@bakin/core/format'
 
 import { buildStreamDeathError, toRuntimeError } from './errors'
 import { getAgentWorkspaceDir, getPiAgentDir } from './home'
@@ -328,7 +329,9 @@ export function createMessagingSurface(deps: PiMessagingDeps): AgentRuntimeAdapt
                 callId: event.toolCallId,
                 toolName: event.toolName,
                 status: event.isError ? 'failed' : 'completed',
-                summary: safePreview(event.result),
+                // Clean one-line summary (peel the tool-result envelope,
+                // parse inner JSON) instead of an escaped raw dump (#608).
+                summary: summarizeStructured(unwrapToolResult(event.result)) || undefined,
               },
             })
           }

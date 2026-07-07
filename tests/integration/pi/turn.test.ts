@@ -220,6 +220,14 @@ describe('messaging.stream', () => {
     expect(toolPhases).toEqual(['call', 'result'])
     const text = chunks.filter((c) => c.type === 'text').map((c) => c.content).join('')
     expect(text).toBe('after tool')
+
+    // Tool result summary is a clean one-liner (#608), not the escaped
+    // {content:[{type:text,text:"{...}"}]} envelope dump.
+    const resultChunk = chunks.find((c) => c.type === 'tool' && (c.data as { phase: string }).phase === 'result')
+    const summary = (resultChunk!.data as { summary?: string }).summary ?? ''
+    expect(summary).toContain('streamed')
+    expect(summary).not.toContain('"content"')
+    expect(summary).not.toContain('\\n')
   })
 
   test('provider failure surfaces as an error chunk, never a throw from iteration', async () => {
