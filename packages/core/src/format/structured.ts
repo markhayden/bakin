@@ -78,40 +78,69 @@ export function formatStructured(value: unknown, opts: FormatStructuredOptions =
   return body
 }
 
+/** Fields that describe a result, in preference order (highest signal first). */
+const SUMMARY_FIELDS = ['notice', 'summary', 'message', 'title', 'name', 'assetId', 'id']
+/** Status/bookkeeping keys that carry no content for a one-line summary. */
+const NOISE_KEYS = new Set(['ok', 'success', 'status', 'version', 'taskid', 'via', 'duplicate'])
+
 /**
- * ONE compact line for chips/badges: prefers a status/summary field, else a
- * `key: value, …` join of scalar fields, else a length-capped fallback.
+ * ONE compact line for chips/badges. Skips status noise (`ok: true` is shown
+ * by the chip's color, not its text), prefers a descriptive field, and
+ * describes collections by count rather than dropping them.
  */
 export function summarizeStructured(value: unknown, cap = 120): string {
   const clip = (text: string) => (text.length > cap ? `${text.slice(0, cap - 1)}…` : text)
-  if (value === null || value === undefined) return ''
-  if (isScalar(value)) return clip(String(value))
-  if (Array.isArray(value)) return clip(`${value.length} item${value.length === 1 ? '' : 's'}`)
+  const v = unwrapToolResult(value) // peel any (double-)wrapped envelope first
+  if (v === null || v === undefined) return ''
+  if (isScalar(v)) return clip(String(v))
+  if (Array.isArray(v)) return clip(`${v.length} item${v.length === 1 ? '' : 's'}`)
 
-  const obj = value as Record<string, unknown>
-  // A common tool shape: { ok: true, ...one meaningful field }.
-  for (const key of ['summary', 'message', 'title', 'name', 'id', 'assetId', 'error']) {
-    if (isScalar(obj[key]) && obj[key] !== '') {
-      const prefix = obj.ok === false || key === 'error' ? 'error: ' : ''
-      return clip(`${prefix}${obj[key]}`)
-    }
+  const obj = v as Record<string, unknown>
+
+  // Errors first: surface the message, not the shape.
+  if (obj.ok === false || obj.success === false) {
+    const err = obj.error ?? obj.message ?? obj.reason
+    if (isScalar(err) && err !== '') return clip(`error: ${err}`)
+    return 'error'
   }
-  const scalars = Object.entries(obj)
-    .filter(([, v]) => isScalar(v) && v !== '')
-    .map(([k, v]) => `${humanizeKey(k)}: ${v}`)
-  if (scalars.length > 0) return clip(scalars.join(', '))
-  return clip(Object.keys(obj).length > 0 ? `{ ${Object.keys(obj).join(', ')} }` : '')
+  if (isScalar(obj.error) && obj.error !== '') return clip(`error: ${obj.error}`)
+
+  // Highest-signal descriptive field.
+  for (const key of SUMMARY_FIELDS) {
+    if (isScalar(obj[key]) && obj[key] !== '') return clip(String(obj[key]))
+  }
+
+  // Describe content fields (collections by count), skipping status noise.
+  const parts: string[] = []
+  for (const [k, val] of Object.entries(obj)) {
+    if (NOISE_KEYS.has(k.toLowerCase())) continue
+    if (val === null || val === undefined || val === '') continue
+    if (Array.isArray(val)) parts.push(`${val.length} ${humanizeKey(k).toLowerCase()}`)
+    else if (isScalar(val)) parts.push(`${humanizeKey(k)}: ${val}`)
+    else parts.push(humanizeKey(k).toLowerCase())
+  }
+  if (parts.length > 0) return clip(parts.join(', '))
+
+  // Nothing but status noise → the operation simply succeeded.
+  return obj.ok === true || obj.success === true ? 'done' : ''
 }
 
 /**
  * Peel a runtime tool-result envelope to its meaningful payload:
  *   { content: [{ type:'text', text }] } → the joined text, JSON-parsed when
  *   the text is itself a JSON document (bakin exec tools return JSON strings).
+ * Peels REPEATEDLY — an agent that shells a tool via bash/mcporter produces a
+ * doubly-wrapped envelope (runtime content → mcporter stdout → MCP content).
  * Non-envelope values pass through unchanged. Never throws.
  */
-export function unwrapToolResult(value: unknown): unknown {
-  if (typeof value === 'string') return maybeParseJson(value)
-  if (!value || typeof value !== 'object') return value
+export function unwrapToolResult(value: unknown, depth = 6): unknown {
+  if (depth <= 0) return value
+  if (typeof value === 'string') {
+    const parsed = maybeParseJson(value)
+    // If the string WAS json (parsed to an object/array), keep peeling.
+    return parsed === value ? value : unwrapToolResult(parsed, depth - 1)
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value
 
   const content = (value as { content?: unknown }).content
   if (Array.isArray(content)) {
@@ -121,7 +150,7 @@ export function unwrapToolResult(value: unknown): unknown {
         : ''))
       .join('')
       .trim()
-    if (text) return maybeParseJson(text)
+    if (text) return unwrapToolResult(text, depth - 1)
   }
   return value
 }
