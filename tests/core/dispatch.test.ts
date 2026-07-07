@@ -929,7 +929,7 @@ describe('dispatch', () => {
       setDispatchColumns({ todo: [{ id: 't-budget', title: 'Over budget', agent: 'pixel' }] })
       vi.mocked(getHookRegistry).mockReturnValue({
         invoke: mock(async (hook: string) => {
-          if (hook === 'models.getBudgetPolicy') return { global: { dailyUsd: 1 } }
+          if (hook === 'models.getBudgetPolicy') return { rules: [{ scope: 'global', lane: 'metered', dailyCap: 1 }] }
           return undefined
         }),
         has: mock().mockReturnValue(false),

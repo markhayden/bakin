@@ -339,7 +339,7 @@ export const modelsRoutes = [
     handler: async (_req, ctx, { body }) => {
       try {
         (ctx as unknown as PluginContext).updateSettings({ budget: body })
-        ctx.activity.audit('budget.updated', 'system', { hasGlobal: !!body.global, perAgent: Object.keys(body.perAgent ?? {}).length })
+        ctx.activity.audit('budget.updated', 'system', { rules: body.rules?.length ?? 0 })
         ctx.activity.log('system', 'Updated budget policy', { category: 'models' })
         return Response.json({ ok: true })
       } catch (err) {

@@ -13,6 +13,8 @@ import { definePlugin } from '@bakin/core/routing'
 import { modelsRoutes } from './lib/routes'
 import { registerModelsHooks } from './lib/register-hooks'
 import { registerModelsExecTools } from './lib/exec-tools'
+import { isLegacyBudget, migrateLegacyBudget } from './lib/budget-migration'
+import type { ModelsPluginSettings } from './types'
 
 // ---------------------------------------------------------------------------
 // Plugin definition
@@ -32,6 +34,14 @@ const modelsPlugin: BakinPlugin = definePlugin({
   // Nav items registered in client.tsx (order: 70) — no server-side duplication
 
   activate(ctx: PluginContext) {
+    // One-shot budget-shape migration (PR #500 {global, perAgent} → v2 rule
+    // list). Runs before hooks register so models.getBudgetPolicy never
+    // serves the legacy shape.
+    const budget = ctx.getSettings<ModelsPluginSettings>().budget
+    if (isLegacyBudget(budget)) {
+      ctx.updateSettings({ budget: migrateLegacyBudget(budget) })
+    }
+
     // Hooks — cross-plugin communication
     registerModelsHooks(ctx)
 

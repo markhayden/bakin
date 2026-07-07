@@ -1,47 +1,73 @@
 /**
- * Budget policy + evaluation — the spend ceiling dispatch consults before
- * claiming a run. Pure logic: the caller supplies the spend in each (scope,
- * window) from the ledger, and this decides allow / warn / defer. Bakin owns
- * the gate (it's dispatch coordination); the models plugin owns the policy
- * storage + UI (read via a hook).
+ * Budget policy + evaluation — the spend ceiling dispatch (and the billed-
+ * media gate) consults before spending. Pure logic: the caller supplies the
+ * spend facets from the engine (budget-spend.ts) and the turn's billing
+ * context, and this decides allow / warn / defer. Bakin owns the gate; the
+ * models plugin owns policy storage + UI (read via hook).
  *
- * Diverges from paperclip deliberately: a breach DEFERS the run (the task
- * stays claimable and resumes when the window rolls over or the cap is
- * raised) rather than pausing the agent — no work is lost, spend just
- * throttles. Windows are calendar day + calendar month in LOCAL time: daily
- * catches a runaway night fast; monthly roughly tracks a billing month but is
- * NOT invoice-exact — it resets at local (not UTC) midnight and the cost is an
- * estimate that omits cached-token discounts, so it reads slightly high.
+ * A policy is a list of scoped cap RULES (cost-control v2, #464):
+ * global | agent | provider — 'model' is accepted by the evaluator today so
+ * extending the UI later is one picker, not a rebuild. Unit-per-lane (V8):
+ * a 'metered' rule caps estimated dollars (attributed + unattributed delta);
+ * a 'subscription' rule caps tokens (plan quota — dollars there would be
+ * fiction). A rule gates a turn only when the turn's scope AND lane match.
+ *
+ * Diverges from paperclip deliberately: a breach DEFERS the run by default
+ * (the task stays claimable and resumes when the window rolls over or the
+ * cap is raised); `atCap: 'pause'` opts a rule into paperclip-style
+ * hold-until-resolved semantics (enforced at the gate via open incidents).
+ * Windows are calendar day + month in LOCAL time: daily catches a runaway
+ * night fast; monthly roughly tracks a billing month but is NOT
+ * invoice-exact.
  */
+import type { BillingLane } from '../../packages/core/src/execution/ledger'
+import type { BudgetSpendFacets, LaneSums, ScopeSpend, UnattributedSums, WindowSpend } from './budget-spend'
 
-export interface BudgetCaps {
-  /** Cap in whole US dollars; omit for unlimited on that window. */
-  dailyUsd?: number
-  monthlyUsd?: number
+export type BudgetScope = 'global' | 'agent' | 'provider' | 'model'
+export type BudgetWindow = 'daily' | 'monthly'
+export type BudgetUnit = 'usd_micros' | 'tokens'
+
+export interface BudgetRule {
+  scope: BudgetScope
+  /** Agent id / provider id / model id; absent for global. */
+  scopeId?: string
+  /** The billing lane this rule caps — determines the unit (V8). */
+  lane: BillingLane
+  /** Cap per local calendar day: whole USD (metered) or tokens (subscription). */
+  dailyCap?: number
+  /** Cap per local calendar month, same unit. */
+  monthlyCap?: number
+  /** Warn threshold as a fraction of the cap (default 0.8). */
+  warnPct?: number
+  /** At 100%: 'defer' (resumes at window rollover) or 'pause' (holds until resolved). */
+  atCap?: 'defer' | 'pause'
 }
 
 export interface BudgetPolicy {
-  /** Caps applied to total spend across all agents, plus the warn threshold. */
-  global?: BudgetCaps & { warnPct?: number }
-  /** Per-agent caps, keyed by agent id. */
-  perAgent?: Record<string, BudgetCaps>
+  rules?: BudgetRule[]
 }
 
-/** Ledger-sourced spend (micro-dollars) for each scope × window. */
-export interface BudgetSpend {
-  globalDayMicros: number
-  globalMonthMicros: number
-  agentDayMicros: number
-  agentMonthMicros: number
+/** Billing context of the turn (or billed call) being gated. */
+export interface TurnBillingContext {
+  agent: string
+  /** Provider the turn will spend on (from models.resolveBilling); unknown = matches no provider rule. */
+  provider?: string
+  /** Normalized model id; unknown = matches no model rule. */
+  model?: string
+  /** The turn's billing lane; unknown defaults to metered (conservative). */
+  lane?: BillingLane
 }
-
-export type BudgetScope = 'global' | 'agent'
-export type BudgetWindow = 'daily' | 'monthly'
 
 export type BudgetDecision =
   | { action: 'allow' }
-  | { action: 'warn'; scope: BudgetScope; window: BudgetWindow; spentUsdMicros: number; capUsdMicros: number }
-  | { action: 'defer'; scope: BudgetScope; window: BudgetWindow; spentUsdMicros: number; capUsdMicros: number }
+  | {
+      action: 'warn' | 'defer'
+      rule: BudgetRule
+      window: BudgetWindow
+      unit: BudgetUnit
+      spentValue: number
+      capValue: number
+    }
 
 export const DEFAULT_WARN_PCT = 0.8
 
@@ -60,43 +86,73 @@ export function monthStartMs(now: number): number {
   return d.getTime()
 }
 
-interface Cap {
-  scope: BudgetScope
-  window: BudgetWindow
-  capUsdMicros: number
-  spentUsdMicros: number
+/** True when the rule applies to this turn (scope + lane both match). */
+export function ruleMatchesTurn(rule: BudgetRule, turn: TurnBillingContext): boolean {
+  const turnLane: BillingLane = turn.lane ?? 'metered'
+  if (rule.lane !== turnLane) return false
+  switch (rule.scope) {
+    case 'global':
+      return true
+    case 'agent':
+      return rule.scopeId === turn.agent
+    case 'provider':
+      return turn.provider !== undefined && rule.scopeId === turn.provider
+    case 'model':
+      return turn.model !== undefined && rule.scopeId === turn.model
+  }
 }
 
+/** The rule's scope spend within one window, in the rule's unit. */
+function ruleSpentValue(rule: BudgetRule, w: WindowSpend): number {
+  const bucket: ScopeSpend | LaneSums | undefined =
+    rule.scope === 'global' ? w.global
+    : rule.scope === 'agent' ? w.byAgent[rule.scopeId ?? '']
+    : rule.scope === 'provider' ? w.byProvider[rule.scopeId ?? '']
+    : w.byModel[rule.scopeId ?? '']
+  if (!bucket) return 0
+  const unattributed: UnattributedSums | undefined = (bucket as Partial<ScopeSpend>).unattributed
+  return rule.lane === 'subscription'
+    ? bucket.subscriptionTokens + (unattributed?.subscriptionTokens ?? 0)
+    : bucket.meteredUsdMicros + (unattributed?.meteredUsdMicros ?? 0)
+}
+
+/** The rule's cap for a window, converted to the spend unit (micros for USD). */
+function ruleCapValue(rule: BudgetRule, window: BudgetWindow): number | null {
+  const cap = window === 'daily' ? rule.dailyCap : rule.monthlyCap
+  if (typeof cap !== 'number' || cap <= 0) return null
+  return rule.lane === 'metered' ? Math.round(cap * 1_000_000) : Math.round(cap)
+}
+
+const WINDOWS: BudgetWindow[] = ['daily', 'monthly']
+
 /**
- * Decide whether a turn may dispatch. defer (any cap met or exceeded) beats
- * warn (any cap at/over the warn threshold) beats allow. The returned breach
- * is the worst one, for the audit reason. No caps set → always allow.
+ * Decide whether a turn may proceed. Every matching rule is checked across
+ * both windows; defer (any cap met or exceeded) beats warn (any cap at/over
+ * its warn threshold) beats allow. The returned breach identifies the rule,
+ * for the incident/audit. No rules → always allow.
  */
 export function evaluateBudget(input: {
   policy: BudgetPolicy
-  agent: string
-  spend: BudgetSpend
+  turn: TurnBillingContext
+  facets: BudgetSpendFacets
 }): BudgetDecision {
-  const { policy, spend } = input
-  const warnPct = policy.global?.warnPct ?? DEFAULT_WARN_PCT
-  const agentCaps = policy.perAgent?.[input.agent]
-
-  const caps: Cap[] = []
-  const push = (usd: number | undefined, scope: BudgetScope, window: BudgetWindow, spentUsdMicros: number) => {
-    if (typeof usd === 'number' && usd > 0) caps.push({ scope, window, capUsdMicros: Math.round(usd * 1_000_000), spentUsdMicros })
+  const rules = input.policy.rules ?? []
+  let worstWarn: BudgetDecision | null = null
+  for (const rule of rules) {
+    if (!ruleMatchesTurn(rule, input.turn)) continue
+    for (const window of WINDOWS) {
+      const capValue = ruleCapValue(rule, window)
+      if (capValue === null) continue
+      const spentValue = ruleSpentValue(rule, window === 'daily' ? input.facets.daily : input.facets.monthly)
+      const unit: BudgetUnit = rule.lane === 'metered' ? 'usd_micros' : 'tokens'
+      if (spentValue >= capValue) {
+        return { action: 'defer', rule, window, unit, spentValue, capValue }
+      }
+      const warnPct = rule.warnPct ?? DEFAULT_WARN_PCT
+      if (!worstWarn && spentValue >= capValue * warnPct) {
+        worstWarn = { action: 'warn', rule, window, unit, spentValue, capValue }
+      }
+    }
   }
-  push(policy.global?.dailyUsd, 'global', 'daily', spend.globalDayMicros)
-  push(policy.global?.monthlyUsd, 'global', 'monthly', spend.globalMonthMicros)
-  push(agentCaps?.dailyUsd, 'agent', 'daily', spend.agentDayMicros)
-  push(agentCaps?.monthlyUsd, 'agent', 'monthly', spend.agentMonthMicros)
-
-  const exceeded = caps.find((c) => c.spentUsdMicros >= c.capUsdMicros)
-  if (exceeded) {
-    return { action: 'defer', scope: exceeded.scope, window: exceeded.window, spentUsdMicros: exceeded.spentUsdMicros, capUsdMicros: exceeded.capUsdMicros }
-  }
-  const warning = caps.find((c) => c.spentUsdMicros >= c.capUsdMicros * warnPct)
-  if (warning) {
-    return { action: 'warn', scope: warning.scope, window: warning.window, spentUsdMicros: warning.spentUsdMicros, capUsdMicros: warning.capUsdMicros }
-  }
-  return { action: 'allow' }
+  return worstWarn ?? { action: 'allow' }
 }

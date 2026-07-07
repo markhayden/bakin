@@ -10,7 +10,7 @@
 import { queryAuditEvents } from '../../../../src/core/audit'
 import { getContentDir } from '../../../../src/core/content-dir'
 import { LedgerUnavailableError } from '../../../../src/core/execution-ledger'
-import { assembleBudgetSpend, type ScopeSpend } from '../../../../src/core/budget-spend'
+import { assembleBudgetSpend } from '../../../../src/core/budget-spend'
 import { evaluateBudget, type BudgetPolicy } from '../../../../src/core/budget'
 import { getHookRegistry } from '../../../../packages/core/src/hooks/hook-registry-singleton'
 import type { HealthCheckResult } from '../../../../packages/core/src/plugin-types'
@@ -33,20 +33,16 @@ export async function checkBudget(): Promise<HealthCheckResult[]> {
   } catch {
     policy = undefined
   }
-  if (!policy || (!policy.global && !policy.perAgent)) {
+  if (!policy?.rules?.length) {
     return [result('ok', 'No budget caps configured — spend is unrestricted.')]
   }
 
   const now = Date.now()
-  let dayMicros: number
-  let monthMicros: number
+  let facets: Awaited<ReturnType<typeof assembleBudgetSpend>>
   try {
     // Same engine the dispatch gate reads (total-observed basis: attributed
     // metered spend + the unattributed usage.db delta) — no parallel math.
-    const facets = await assembleBudgetSpend(now)
-    const dollars = (scope: ScopeSpend): number => scope.meteredUsdMicros + scope.unattributed.meteredUsdMicros
-    dayMicros = dollars(facets.daily.global)
-    monthMicros = dollars(facets.monthly.global)
+    facets = await assembleBudgetSpend(now)
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err)
     const kind = err instanceof LedgerUnavailableError ? 'unreachable' : 'failing'
@@ -57,19 +53,23 @@ export async function checkBudget(): Promise<HealthCheckResult[]> {
 
   // Reuse the SAME cap arithmetic the dispatch gate uses (evaluateBudget) so
   // the doctor can't drift from what dispatch actually enforces. Evaluate the
-  // GLOBAL scope only (agent spend zeroed, no per-agent caps).
-  const decision = evaluateBudget({
-    policy: { global: policy.global },
-    agent: '',
-    spend: { globalDayMicros: dayMicros, globalMonthMicros: monthMicros, agentDayMicros: 0, agentMonthMicros: 0 },
-  })
+  // GLOBAL rules for both lanes (per-agent/provider rule surfacing lands with
+  // the rule-aware check in T17).
+  const globalRules = policy.rules.filter((r) => r.scope === 'global')
+  const decisions = (['metered', 'subscription'] as const).map((lane) =>
+    evaluateBudget({ policy: { rules: globalRules }, turn: { agent: '', lane }, facets }),
+  )
+  const decision =
+    decisions.find((d) => d.action === 'defer') ?? decisions.find((d) => d.action === 'warn') ?? { action: 'allow' as const }
   const deferNote = deferred ? ` ${deferred} run(s) deferred in the last 24h.` : ''
+  const fmt = (d: Extract<typeof decision, { action: 'warn' | 'defer' }>, v: number): string =>
+    d.unit === 'usd_micros' ? fmtUsd(v) : `${v.toLocaleString()} tokens`
 
   if (decision.action === 'defer') {
-    return [result('error', `Global ${decision.window} spend ${fmtUsd(decision.spentUsdMicros)} is at/over the ${fmtUsd(decision.capUsdMicros)} cap — dispatch is deferring.${deferNote}`)]
+    return [result('error', `Global ${decision.window} ${decision.rule.lane} spend ${fmt(decision, decision.spentValue)} is at/over the ${fmt(decision, decision.capValue)} cap — dispatch is deferring.${deferNote}`)]
   }
   if (decision.action === 'warn' || deferred > 0) {
-    const util = decision.action === 'warn' ? ` Global ${decision.window} at ${Math.round((decision.spentUsdMicros / decision.capUsdMicros) * 100)}% of ${fmtUsd(decision.capUsdMicros)}.` : ''
+    const util = decision.action === 'warn' ? ` Global ${decision.window} ${decision.rule.lane} at ${Math.round((decision.spentValue / decision.capValue) * 100)}% of ${fmt(decision, decision.capValue)}.` : ''
     return [result('warn', `Spend approaching budget.${util}${deferNote}`)]
   }
   return [result('ok', 'Spend within budget.')]

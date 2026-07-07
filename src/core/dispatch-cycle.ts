@@ -23,7 +23,7 @@ import {
   trimDispatched,
 } from './dispatch-state'
 import { readDispatchColumns, isTaskDispatchEligible, addTaskLog, moveTaskToInProgress, tryAddTaskLog } from './dispatch-board'
-import { concurrencyGate, deferForBudget, fireDispatchTurn, type BudgetSpendMemo } from './dispatch-turns'
+import { concurrencyGate, deferForBudget, fireDispatchTurn, resolveDispatchRouting, type BudgetSpendMemo } from './dispatch-turns'
 import { prepareRegularDispatch } from './dispatch-prepare'
 import { dispatchWorkflowTask } from './dispatch-workflow'
 import { resolveTeamAssignmentsPrePass } from './dispatch-team'
@@ -205,10 +205,15 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
         continue
       }
 
+      // Resolve routing BEFORE the budget gate: provider-scoped rules need
+      // to know which model/provider the turn would spend on, and the fire
+      // reuses this exact resolution (one resolve per dispatch).
+      const routing = await resolveDispatchRouting(task, !!failure?.sessionDeath)
+
       // Spend ceiling: defer (leave in todo) when a budget cap is hit. Runs
       // before the claim so we don't reserve a run we won't fire. The
       // per-cycle cache collapses the redundant global spend reads.
-      if (await deferForBudget(targetAgent, contentDir, budgetSpendCache)) {
+      if (await deferForBudget(targetAgent, contentDir, budgetSpendCache, { model: routing.model })) {
         log.debug('Dispatch deferred by budget gate', { id: task.id, agent: targetAgent })
         continue
       }
@@ -234,6 +239,7 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
         // to a restart or budget-deferred). Route it to the 'recovery' origin
         // just like dispatchSingleTask(...,'recovery').
         isRecovery: !!failure?.sessionDeath,
+        routing,
         path: 'cycle',
       })
       if (prepared.status === 'suppressed') continue

@@ -21,7 +21,7 @@ import { RuntimeError, RuntimeTurnError, type MessageResult } from '@bakin/core/
 import { claimNextRun, loseRun, settleRun, type ClaimNextRunResult } from './execution-ledger'
 import { meterAgentTurn } from './agent-cost'
 import { resolveTurnModel, type ResolvedTurn, type RoutingConfig } from './model-routing'
-import { evaluateBudget, dayStartMs, type BudgetPolicy, type BudgetSpend, type BudgetDecision } from './budget'
+import { evaluateBudget, dayStartMs, type BudgetPolicy, type BudgetDecision, type TurnBillingContext } from './budget'
 import { assembleBudgetSpend, type BudgetSpendFacets } from './budget-spend'
 import { getBootId } from './boot-id'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
@@ -55,14 +55,15 @@ async function sendDispatchMessage(agentId: string, content: string, threadId: s
   })
 }
 
-// Budget warn/defer audits fire once per (event, scope, window, window-start)
-// so a cap sitting at 85% — or a deferred task re-evaluated every cycle —
-// doesn't spam the audit log. Keyed by window start, so it auto-rolls when
-// the day/month turns over. In-memory; resets on restart (acceptable).
+// Budget warn/defer audits fire once per (event, rule identity, window,
+// window-start) so a cap sitting at 85% — or a deferred task re-evaluated
+// every cycle — doesn't spam the audit log. Keyed by window start, so it
+// auto-rolls when the day/month turns over. In-memory; resets on restart
+// (acceptable until T8 replaces this with the durable incident UNIQUE).
 const budgetAuditedWindows = new Set<string>()
 
 function auditBudgetOnce(contentDir: string, event: 'budget.warn' | 'budget.deferred', agent: string, detail: Record<string, unknown>, windowStartMs: number): void {
-  const key = `${event}:${detail.scope}:${detail.window}:${windowStartMs}`
+  const key = `${event}:${detail.scope}:${detail.scopeId ?? ''}:${detail.lane ?? ''}:${detail.window}:${windowStartMs}`
   if (budgetAuditedWindows.has(key)) return
   budgetAuditedWindows.add(key)
   appendAudit(contentDir, event, agent, detail)
@@ -85,7 +86,23 @@ export interface BudgetSpendMemo {
  * if the spend ledger can't be read, defer — consistent with the ledger's
  * existing posture. No policy (plugin absent / empty) → allow.
  */
-export async function budgetGate(agentId: string, contentDir: string, spendMemo?: BudgetSpendMemo): Promise<BudgetDecision> {
+/** The fail-closed pseudo-rule when the spend ledger is unreadable. */
+const FAIL_CLOSED_DECISION: BudgetDecision = {
+  action: 'defer',
+  rule: { scope: 'global', lane: 'metered' },
+  window: 'daily',
+  unit: 'usd_micros',
+  spentValue: 0,
+  capValue: 0,
+}
+
+export async function budgetGate(
+  agentId: string,
+  contentDir: string,
+  spendMemo?: BudgetSpendMemo,
+  /** Model the turn is routed to (explicit override); omit = agent default. */
+  prospect?: { model?: string },
+): Promise<BudgetDecision> {
   let policy: BudgetPolicy | undefined
   try {
     policy = (await hooks().invoke<BudgetPolicy>('models.getBudgetPolicy', {})) ?? undefined
@@ -93,7 +110,25 @@ export async function budgetGate(agentId: string, contentDir: string, spendMemo?
     log.error('Budget policy read failed; allowing (no policy)', err, { agentId })
     return { action: 'allow' }
   }
-  if (!policy || (!policy.global && !policy.perAgent)) return { action: 'allow' }
+  if (!policy?.rules?.length) return { action: 'allow' }
+
+  // Billing context of the prospective turn — provider + lane let provider-
+  // scoped and subscription-lane rules match. Unresolvable (plugin absent /
+  // hook error) → metered lane, no provider: dollar rules still gate.
+  const turn: TurnBillingContext = { agent: agentId, model: prospect?.model }
+  try {
+    const billing = await hooks().invoke<{ provider?: string; lane?: 'metered' | 'subscription'; model?: string | null }>(
+      'models.resolveBilling',
+      { agentId, ...(prospect?.model ? { model: prospect.model } : {}) },
+    )
+    if (billing) {
+      turn.provider = billing.provider
+      turn.lane = billing.lane
+      turn.model = billing.model ?? turn.model
+    }
+  } catch (err) {
+    log.warn('Billing resolution failed; gating as metered', { agentId, err: err instanceof Error ? err.message : String(err) })
+  }
 
   const now = Date.now()
   let facets: BudgetSpendFacets
@@ -104,34 +139,34 @@ export async function budgetGate(agentId: string, contentDir: string, spendMemo?
   } catch (err) {
     log.error('Budget spend read failed; deferring (fail-closed)', err, { agentId })
     auditBudgetOnce(contentDir, 'budget.deferred', agentId, { scope: 'global', window: 'daily', reason: 'ledger-unavailable' }, dayStartMs(now))
-    return { action: 'defer', scope: 'global', window: 'daily', spentUsdMicros: 0, capUsdMicros: 0 }
+    return FAIL_CLOSED_DECISION
   }
 
-  // Dollar-cap basis: metered spend + the unattributed metered delta.
-  const dollars = (scope: { meteredUsdMicros: number; unattributed: { meteredUsdMicros: number } } | undefined): number =>
-    scope ? scope.meteredUsdMicros + scope.unattributed.meteredUsdMicros : 0
-  const spend: BudgetSpend = {
-    globalDayMicros: dollars(facets.daily.global),
-    globalMonthMicros: dollars(facets.monthly.global),
-    agentDayMicros: dollars(facets.daily.byAgent[agentId]),
-    agentMonthMicros: dollars(facets.monthly.byAgent[agentId]),
-  }
-
-  const decision = evaluateBudget({ policy, agent: agentId, spend })
+  const decision = evaluateBudget({ policy, turn, facets })
   if (decision.action !== 'allow') {
     const windowStart = decision.window === 'monthly' ? facets.monthly.startMs : facets.daily.startMs
     const event = decision.action === 'defer' ? 'budget.deferred' : 'budget.warn'
     auditBudgetOnce(contentDir, event, agentId, {
-      scope: decision.scope, window: decision.window,
-      spentUsdMicros: decision.spentUsdMicros, capUsdMicros: decision.capUsdMicros,
+      scope: decision.rule.scope,
+      ...(decision.rule.scopeId ? { scopeId: decision.rule.scopeId } : {}),
+      lane: decision.rule.lane,
+      window: decision.window,
+      unit: decision.unit,
+      spentValue: decision.spentValue,
+      capValue: decision.capValue,
     }, windowStart)
   }
   return decision
 }
 
 /** True when budget says defer — the shared shape all three dispatch paths use. */
-export async function deferForBudget(agentId: string, contentDir: string, spendMemo?: BudgetSpendMemo): Promise<boolean> {
-  return (await budgetGate(agentId, contentDir, spendMemo)).action === 'defer'
+export async function deferForBudget(
+  agentId: string,
+  contentDir: string,
+  spendMemo?: BudgetSpendMemo,
+  prospect?: { model?: string },
+): Promise<boolean> {
+  return (await budgetGate(agentId, contentDir, spendMemo, prospect)).action === 'defer'
 }
 
 /**
@@ -140,7 +175,7 @@ export async function deferForBudget(agentId: string, contentDir: string, spendM
  * inherit, unchanged dispatch — when no plugin/config/match applies or the
  * read fails. Never throws into the dispatch path.
  */
-async function resolveDispatchRouting(task: DispatchTask, isRecovery: boolean): Promise<ResolvedTurn> {
+export async function resolveDispatchRouting(task: DispatchTask, isRecovery: boolean): Promise<ResolvedTurn> {
   try {
     const config = await hooks().invoke<RoutingConfig>('models.getRoutingConfig', {})
     if (!config) return {}
@@ -290,13 +325,17 @@ export function fireDispatchTurn(opts: {
   /** True when this is a recovery-ladder re-dispatch (routes to the
    *  'recovery' origin policy regardless of the task's shape). */
   isRecovery?: boolean
+  /** Routing pre-resolved by the caller (also consulted by the budget gate);
+   *  when present the fire path reuses it instead of re-resolving — one
+   *  resolution per dispatch, so the gated model IS the fired model. */
+  routing?: ResolvedTurn
   onSettled?: (outcome: 'ok' | 'error', err?: unknown) => void
 }): void {
   // The registry entry is released only AFTER settle reconciliation
   // completes — awaitDispatchIdle() must mean "all bookkeeping done", and a
   // turn's slot shouldn't free until its outcome has been recorded.
   const abort = new AbortController()
-  const settled = resolveDispatchRouting(opts.task, opts.isRecovery ?? false)
+  const settled = (opts.routing ? Promise.resolve(opts.routing) : resolveDispatchRouting(opts.task, opts.isRecovery ?? false))
     .then(async (routing) => {
       // Fire-time existence check: a delete can interleave between the
       // cycle's phase-1 claim and this fire (the turn is only registered —

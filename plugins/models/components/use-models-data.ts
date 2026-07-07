@@ -11,7 +11,34 @@ import type { AgentModelConfig, AvailableModel, ModelsConfigResponse } from '../
 export interface RoutingPolicyRow { origin: string; model?: string; thinking?: string }
 export interface TagOverrideRow { tag: string; model?: string; thinking?: string }
 export interface RoutingConfigShape { policies: RoutingPolicyRow[]; tagOverrides: TagOverrideRow[] }
-export interface BudgetShape { global?: { dailyUsd?: number; monthlyUsd?: number; warnPct?: number }; perAgent?: Record<string, { dailyUsd?: number; monthlyUsd?: number }> }
+/** Wire shape of one budget cap rule (cost-control v2). */
+export interface BudgetRuleWire {
+  scope: 'global' | 'agent' | 'provider' | 'model'
+  scopeId?: string
+  lane: 'metered' | 'subscription'
+  dailyCap?: number
+  monthlyCap?: number
+  warnPct?: number
+  atCap?: 'defer' | 'pause'
+}
+/** View model the current caps editor binds to (global metered rule only —
+ *  the full rule editor lands in T16). */
+export interface BudgetShape { global?: { dailyUsd?: number; monthlyUsd?: number; warnPct?: number } }
+
+function isGlobalMetered(r: BudgetRuleWire): boolean {
+  return r.scope === 'global' && r.lane === 'metered'
+}
+function rulesToView(rules: BudgetRuleWire[]): BudgetShape {
+  const g = rules.find(isGlobalMetered)
+  if (!g) return {}
+  return {
+    global: {
+      ...(g.dailyCap ? { dailyUsd: g.dailyCap } : {}),
+      ...(g.monthlyCap ? { monthlyUsd: g.monthlyCap } : {}),
+      ...(g.warnPct ? { warnPct: g.warnPct } : {}),
+    },
+  }
+}
 
 export interface SpendRowAgent { agent: string; costUsdMicros: number; runs: number }
 export interface SpendRowModel { model: string; costUsdMicros: number; runs: number }
@@ -61,6 +88,9 @@ export function useModelsData() {
   const [pendingRouting, setPendingRouting] = useState<RoutingConfigShape | null>(null)
   const [budget, setBudget] = useState<BudgetShape>({})
   const [pendingBudget, setPendingBudget] = useState<BudgetShape | null>(null)
+  // Full rule list as fetched — non-global rules are preserved verbatim on
+  // save (the editor only owns the global metered rule until T16).
+  const [budgetRules, setBudgetRules] = useState<BudgetRuleWire[]>([])
 
   // -------------------------------------------------------------------------
   // Data fetching
@@ -158,7 +188,10 @@ export function useModelsData() {
     try {
       const res = await fetch('/api/plugins/models/budget')
       if (!res.ok) throw new Error(`Budget fetch failed (${res.status})`)
-      setBudget(await res.json() as BudgetShape)
+      const policy = (await res.json()) as { rules?: BudgetRuleWire[] }
+      const rules = policy.rules ?? []
+      setBudgetRules(rules)
+      setBudget(rulesToView(rules))
     } catch (err) {
       console.error('Failed to fetch budget:', err)
     }
@@ -168,19 +201,25 @@ export function useModelsData() {
     if (!pendingBudget) return
     setSaving('budget')
     try {
-      // Drop blank/zero caps so an empty field clears the limit.
+      // Rebuild the global metered rule from the inputs (blank field clears
+      // that cap); every other rule round-trips untouched.
       const g = pendingBudget.global ?? {}
-      const global: BudgetShape['global'] = {
-        ...(g.dailyUsd ? { dailyUsd: g.dailyUsd } : {}),
-        ...(g.monthlyUsd ? { monthlyUsd: g.monthlyUsd } : {}),
-        ...(g.warnPct ? { warnPct: g.warnPct } : {}),
-      }
-      const clean: BudgetShape = Object.keys(global).length ? { global } : {}
+      const others = budgetRules.filter((r) => !isGlobalMetered(r))
+      const globalRule: BudgetRuleWire | null = g.dailyUsd || g.monthlyUsd
+        ? {
+            scope: 'global',
+            lane: 'metered',
+            ...(g.dailyUsd ? { dailyCap: g.dailyUsd } : {}),
+            ...(g.monthlyUsd ? { monthlyCap: g.monthlyUsd } : {}),
+            ...(g.warnPct ? { warnPct: g.warnPct } : {}),
+          }
+        : null
+      const rules = globalRule ? [globalRule, ...others] : others
       const res = await fetch('/api/plugins/models/budget', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(clean),
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rules }),
       })
       const data = await res.json()
-      if (data.ok) { setBudget(clean); setPendingBudget(null) }
+      if (data.ok) { setBudgetRules(rules); setBudget(rulesToView(rules)); setPendingBudget(null) }
     } catch (err) {
       console.error('Failed to save budget:', err)
     } finally {

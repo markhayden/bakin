@@ -629,9 +629,16 @@ describe('budget policy', () => {
     expect(body).toEqual({})
   })
 
-  it('PUT /budget validates and persists caps', async () => {
+  it('PUT /budget validates and persists the FULL rule list (agent/provider rules round-trip)', async () => {
     const route = findRoute(activated.routes, 'PUT', '/budget')!
-    const policy = { global: { dailyUsd: 25, monthlyUsd: 500, warnPct: 0.8 }, perAgent: { pixel: { dailyUsd: 5 } } }
+    const policy = {
+      rules: [
+        { scope: 'global', lane: 'metered', dailyCap: 25, monthlyCap: 500, warnPct: 0.8 },
+        { scope: 'agent', scopeId: 'pixel', lane: 'metered', dailyCap: 5 },
+        { scope: 'provider', scopeId: 'google', lane: 'metered', dailyCap: 5, atCap: 'pause' },
+        { scope: 'agent', scopeId: 'main', lane: 'subscription', dailyCap: 5_000_000 },
+      ],
+    }
     const { status, body } = await callRoute(route, activated.ctx, { body: policy })
     expect(status).toBe(200)
     expect(body.ok).toBe(true)
@@ -640,7 +647,13 @@ describe('budget policy', () => {
 
   it('PUT /budget rejects a negative cap', async () => {
     const route = findRoute(activated.routes, 'PUT', '/budget')!
-    const { status } = await callRoute(route, activated.ctx, { body: { global: { dailyUsd: -5 } } })
+    const { status } = await callRoute(route, activated.ctx, { body: { rules: [{ scope: 'global', lane: 'metered', dailyCap: -5 }] } })
+    expect(status).toBe(400)
+  })
+
+  it('PUT /budget rejects a scoped rule without a scopeId', async () => {
+    const route = findRoute(activated.routes, 'PUT', '/budget')!
+    const { status } = await callRoute(route, activated.ctx, { body: { rules: [{ scope: 'provider', lane: 'metered', dailyCap: 5 }] } })
     expect(status).toBe(400)
   })
 })

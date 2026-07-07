@@ -94,9 +94,16 @@ export function registerModelsHooks(ctx: PluginContext): void {
   // metered (conservative default).
   ctx.hooks.register('models.resolveBilling', async (data: Record<string, unknown>) => {
     const agentId = data.agentId as string | undefined
-    const model = typeof data.model === 'string' ? data.model : undefined
-    return resolveBilling(ctx as unknown as PluginContext, { agentId, model })
-  }, { label: 'Resolve billing.', summary: 'Returns the provider and billing lane (metered vs subscription) for an agent/model pair. Use it to attribute or gate prospective spend before a turn or billed media call.', hookKind: 'rpc' })
+    let model = typeof data.model === 'string' ? normalizeModelId(data.model) : undefined
+    // No explicit model = the turn will run on the agent's effective model —
+    // resolve it so provider/model-scoped rules see the real target.
+    if (!model && agentId) {
+      const agents = await resolveAgents(ctx as unknown as PluginContext)
+      model = agents.find((a) => a.agentId === agentId)?.effectiveModel ?? undefined
+    }
+    const billing = await resolveBilling(ctx as unknown as PluginContext, { agentId, model })
+    return { ...billing, model: model ?? null }
+  }, { label: 'Resolve billing.', summary: 'Returns the provider, billing lane (metered vs subscription), and normalized model for an agent/model pair — falling back to the agent’s effective model when none is given. Use it to attribute or gate prospective spend before a turn or billed media call.', hookKind: 'rpc' })
 
   // Expose the per-turn routing policy to core dispatch, which resolves the
   // model/thinking for each turn before sending. Returns an empty config

@@ -33,8 +33,15 @@ mock.module('@bakin/adapter-openclaw/home', () => ({ getOpenClawHome: () => dir,
 
 // The two seams under test.
 let budgetPolicy: unknown = {}
+let billingImpl: (data: Record<string, unknown>) => unknown = () => undefined
 const hookRegistryMock = () => ({
-  getHookRegistry: () => ({ invoke: async (name: string) => (name === 'models.getBudgetPolicy' ? budgetPolicy : undefined) }),
+  getHookRegistry: () => ({
+    invoke: async (name: string, data: Record<string, unknown>) => {
+      if (name === 'models.getBudgetPolicy') return budgetPolicy
+      if (name === 'models.resolveBilling') return billingImpl(data)
+      return undefined
+    },
+  }),
 })
 // getHookRegistry lives in the leaf module post-WS2 K1; mock the leaf + legacy facade.
 mock.module('@bakin/core/hooks/hook-registry-singleton', hookRegistryMock)
@@ -72,11 +79,14 @@ import { budgetGate } from '../../src/core/dispatch'
 
 beforeEach(() => {
   budgetPolicy = {}
+  billingImpl = () => undefined
   spendThrows = false
   auditCalls.length = 0
   costRows.length = 0
   usageCells.length = 0
 })
+
+const GLOBAL_10: unknown = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 10 }] }
 
 describe('budgetGate', () => {
   it('allows when no policy is configured', async () => {
@@ -84,12 +94,12 @@ describe('budgetGate', () => {
   })
 
   it('allows when caps are set but spend is zero', async () => {
-    budgetPolicy = { global: { dailyUsd: 10 } }
+    budgetPolicy = GLOBAL_10
     expect((await budgetGate('pixel', dir)).action).toBe('allow')
   })
 
   it('FAIL-CLOSED: defers and audits when the spend read throws', async () => {
-    budgetPolicy = { global: { dailyUsd: 10 } }
+    budgetPolicy = GLOBAL_10
     spendThrows = true
     const decision = await budgetGate('pixel', dir)
     expect(decision.action).toBe('defer')
@@ -97,13 +107,13 @@ describe('budgetGate', () => {
   })
 
   it('defers on attributed spend at the cap (parity with the pre-engine gate)', async () => {
-    budgetPolicy = { global: { dailyUsd: 10 } }
+    budgetPolicy = GLOBAL_10
     costRows.push({ runId: 'r1', agent: 'pixel', model: 'google/gemini-3-flash', provider: 'google', lane: 'metered', totalTokens: 100, costUsdMicros: 10_000_000, occurredAt: Date.now() })
     expect((await budgetGate('pixel', dir)).action).toBe('defer')
   })
 
   it('counts UNATTRIBUTED observed spend toward the cap (total-observed basis, V4)', async () => {
-    budgetPolicy = { global: { dailyUsd: 10 } }
+    budgetPolicy = GLOBAL_10
     const now = Date.now()
     const d = new Date(now)
     const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -115,5 +125,26 @@ describe('budgetGate', () => {
     })
     const decision = await budgetGate('pixel', dir)
     expect(decision.action).toBe('defer')
+  })
+
+  it('provider rule defers only turns bound for that provider', async () => {
+    budgetPolicy = { rules: [{ scope: 'provider', scopeId: 'google', lane: 'metered', dailyCap: 5 }] }
+    billingImpl = (d) => {
+      const model = (d.model as string | undefined) ?? 'anthropic/claude-sonnet-4-6'
+      return { provider: model.split('/')[0], lane: 'metered', model }
+    }
+    costRows.push({ runId: 'r-g', agent: 'pixel', model: 'google/gemini-3-flash', provider: 'google', lane: 'metered', totalTokens: 10, costUsdMicros: 5_000_000, occurredAt: Date.now() })
+
+    // Turn routed to a Google model → provider rule matches → defer.
+    expect((await budgetGate('pixel', dir, undefined, { model: 'google/gemini-3-flash' })).action).toBe('defer')
+    // Turn on the agent's default (anthropic) → rule does not match → allow.
+    expect((await budgetGate('pixel', dir)).action).toBe('allow')
+  })
+
+  it('subscription-lane turns are not blocked by metered rules', async () => {
+    budgetPolicy = GLOBAL_10
+    billingImpl = () => ({ provider: 'openai-codex', lane: 'subscription', model: 'openai-codex/gpt-5.5-codex' })
+    costRows.push({ runId: 'r-m', agent: 'pixel', model: 'google/gemini-3-flash', provider: 'google', lane: 'metered', totalTokens: 10, costUsdMicros: 99_000_000, occurredAt: Date.now() })
+    expect((await budgetGate('pixel', dir)).action).toBe('allow')
   })
 })

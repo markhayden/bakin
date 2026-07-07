@@ -58,35 +58,35 @@ describe('budget health check', () => {
   })
 
   it('is ok when spend is well under the cap', async () => {
-    budgetPolicy = { global: { dailyUsd: 100 } }
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 100 }] }
     seedSpend(5_000_000) // $5 of $100
     const [r] = await checkBudget()
     expect(r.status).toBe('ok')
   })
 
   it('warns as spend approaches the cap (>= warnPct)', async () => {
-    budgetPolicy = { global: { dailyUsd: 10 } }
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 10 }] }
     seedSpend(8_500_000) // $8.50 of $10 = 85%
     const [r] = await checkBudget()
     expect(r.status).toBe('warn')
   })
 
   it('errors at/over the cap (dispatch blocked)', async () => {
-    budgetPolicy = { global: { dailyUsd: 10 } }
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 10 }] }
     seedSpend(10_000_000)
     const [r] = await checkBudget()
     expect(r.status).toBe('error')
   })
 
   it('warns when runs were deferred even if utilization looks ok', async () => {
-    budgetPolicy = { global: { dailyUsd: 1000 } }
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 1000 }] }
     appendFileSync(join(testDir, 'audit.jsonl'), JSON.stringify({ ts: new Date().toISOString(), event: 'budget.deferred', agent: 'pixel', data: {} }) + '\n', 'utf-8')
     const [r] = await checkBudget()
     expect(r.status).toBe('warn')
   })
 
   it('errors when the ledger is unreachable', async () => {
-    budgetPolicy = { global: { dailyUsd: 10 } }
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 10 }] }
     closeDb()
     mkdirSync(join(testDir, 'blocked.db'), { recursive: true }) // a dir where the db file should be
     dbPath = join(testDir, 'blocked.db')
