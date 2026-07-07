@@ -3,7 +3,7 @@
   "name": "Chat",
   "version": "0.1.0",
   "bakin": ">=1.0.0",
-  "description": "Direct conversations with your agents — streamed multi-chat sessions from the Bakin UI, runtime-agnostic via the adapter layer",
+  "description": "Direct conversations with your agents \u2014 streamed multi-chat sessions from the Bakin UI, runtime-agnostic via the adapter layer",
   "entry": {
     "server": "index.ts"
   },
@@ -51,7 +51,7 @@
       {
         "id": "chat",
         "label": "Chat",
-        "icon": "MessageCircle",
+        "icon": "MessageSquare",
         "href": "/chat",
         "order": 15
       }
