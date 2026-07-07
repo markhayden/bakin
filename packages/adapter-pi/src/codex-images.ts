@@ -30,7 +30,14 @@ import { getModelRegistry } from './models'
 
 const CODEX_RESPONSES_URL = 'https://chatgpt.com/backend-api/codex/responses'
 const JWT_CLAIM_PATH = 'https://api.openai.com/auth'
-const DEFAULT_CARRIER_MODEL = 'gpt-5.5'
+// The carrier chat model only EMITS the image_generation tool call — the
+// backend's gpt-image-2 does the actual rendering, so carrier quality is
+// irrelevant to the image. Codex-subscription image turns burn the rolling
+// usage window ~3-5x faster than chat turns, so default to the CHEAPEST
+// carrier that the ChatGPT account accepts for this call (probed: 5.4-mini
+// works and is marginally faster; 5.3-codex-spark is rejected by the
+// account). Override via settings.runtime.settings.images.carrierModel.
+const DEFAULT_CARRIER_MODEL = 'gpt-5.4-mini'
 /** What the backend's image_generation tool actually runs (per OpenAI's announcement + reference impl). */
 export const CODEX_IMAGE_MODEL = 'gpt-image-2'
 export const CODEX_IMAGE_PROVIDER = 'openai-codex'

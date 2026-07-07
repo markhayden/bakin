@@ -58,6 +58,7 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
     // No external process to bounce: drop cached SDK state so the next call
     // re-reads auth/models from disk. Session-pool disposal lands with P7.
     resetModelRegistry()
+    this._images = null
   }
 
   /** Pi agents call Bakin exec tools natively (in-process tool bridge). */
@@ -90,8 +91,21 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
 
   tools: AgentRuntimeAdapter['tools'] = createToolsSurface()
 
-  /** Generation via Bakin's shared direct-provider shim; edit is typed-unsupported. */
-  images: AgentRuntimeAdapter['images'] = createImagesSurface()
+  /**
+   * Codex-native image generation (primary) + direct-provider shim
+   * (fallback). Built lazily so the carrier-model override from
+   * settings.runtime.settings.images.carrierModel (init-time) is honored.
+   */
+  private _images: AgentRuntimeAdapter['images'] | null = null
+  get images(): AgentRuntimeAdapter['images'] {
+    if (!this._images) {
+      const imagesSettings = (this.initOpts?.settings?.images ?? this.options.settings?.images) as
+        | { carrierModel?: string }
+        | undefined
+      this._images = createImagesSurface({ carrierModel: imagesSettings?.carrierModel })
+    }
+    return this._images
+  }
 
   channels: AgentRuntimeAdapter['channels'] = createChannelsSurface()
 

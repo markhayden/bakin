@@ -94,7 +94,7 @@ describe('codex-native images (primary route)', () => {
     expect(headers.Authorization).toBe(`Bearer ${FAKE_JWT}`)
     expect(headers['chatgpt-account-id']).toBe('acct-123')
     const body = JSON.parse(call.init.body as string)
-    expect(body.model).toBe('gpt-5.5')
+    expect(body.model).toBe('gpt-5.4-mini') // cheapest working carrier — burn control
     expect(body.tools).toEqual([{ type: 'image_generation', output_format: 'png' }])
 
     expect(existsSync(result.images[0].filePath)).toBe(true)
@@ -136,6 +136,13 @@ describe('codex-native images (primary route)', () => {
       expect((err as RuntimeError).kind).toBe('runtime_failed')
       expect((err as Error).message).toContain('without returning an image')
     }
+  })
+
+  test('carrier model is overridable via settings (burn control)', async () => {
+    codexCalls.length = 0
+    const surface = createImagesSurface({ fetchImpl: fakeFetch, carrierModel: 'gpt-5.4' })
+    await surface.generate({ prompt: 'x' })
+    expect(JSON.parse(codexCalls[0].init.body as string).model).toBe('gpt-5.4')
   })
 
   test('providers() reports codex configured; plugin readiness routes servedBy runtime', async () => {

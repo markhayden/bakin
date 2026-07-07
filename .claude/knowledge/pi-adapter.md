@@ -57,6 +57,17 @@ Pi is a minimal single-session coding harness — it has no agent roster, channe
 
 Fast-follows on record: Discord bridge (reuse existing bot token), in-app approval channel.
 
+## Codex image generation — burn + stability
+
+The codex image path bills against the **ChatGPT subscription's rolling usage window**, and image turns burn it **~3-5x faster than chat turns**. Controls in place:
+
+- **Cheap carrier by default.** Each image call is a carrier chat turn that only EMITS the `image_generation` tool call — the backend's gpt-image-2 does the rendering, so carrier quality is irrelevant to the image. Default carrier is `gpt-5.4-mini` (cheapest the ChatGPT account accepts; `gpt-5.3-codex-spark` is rejected for image calls). Override: `settings.runtime.settings.images.carrierModel`.
+- **No double-bill.** The images plugin wraps every generate/edit in `runBilledImageCall` (execution-ledger dedup, first-write-wins, no TTL) ABOVE the adapter — a client timeout/retry with the same call key never re-bills, on any runtime.
+- **Tight request.** `parallel_tool_calls: false`, `tool_choice: auto`, `text.verbosity: low`, no reasoning effort, instructions pinning "call the tool exactly once" — the carrier does no extra work.
+- **No failed-retry loops.** Image exec tools ship a `surface` zod enum (valid ids in the schema) so the model can't guess a bad surface and retry; codex-primary routing removes the old keyless "no key" bounce.
+
+**Stability caveat (no more official path exists — researched 2026-07-07):** the public OpenAI Images/Responses APIs are API-key-only (platform-billed); keyless subscription image gen is available ONLY through `chatgpt.com/backend-api/codex/responses` (the undocumented subscription mirror of the Responses API — the same path OpenAI's own Codex CLI, pi-codex-image-gen, and the codex-imagen skill all use). The `/codex` path segment is load-bearing: the legacy `/backend-api/responses` was retired ~2026-04 and now 403s. Failures classify typed (403 endpoint-moved → runtime_failed; 429 window-exhausted → provider_cooldown) and the keyed direct-provider shim is the escape hatch if the backend breaks. Do not power a public/multi-user image service off one subscription token — against OpenAI usage policy.
+
 ## Testing
 
 - `tests/adapter-pi/*` — module suites under temp `PI_HOME` (set env vars BEFORE imports; call `resetPiHome()` + `resetModelRegistry()`).
