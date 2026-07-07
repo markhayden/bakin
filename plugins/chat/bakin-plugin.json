@@ -53,7 +53,7 @@
         "label": "Chat",
         "icon": "MessageSquare",
         "href": "/chat",
-        "order": 15
+        "order": 5
       }
     ],
     "slots": [

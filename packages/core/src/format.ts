@@ -58,3 +58,12 @@ export function formatSize(bytes: number): string {
 export function isStale(timestamp: string, thresholdMs = 15 * 60 * 1000): boolean {
   return Date.now() - new Date(timestamp).getTime() > thresholdMs
 }
+
+// Structured-value rendering (JSON → human) — the shared #608 home.
+export {
+  humanizeKey,
+  formatStructured,
+  summarizeStructured,
+  unwrapToolResult,
+  type FormatStructuredOptions,
+} from './format/structured'
