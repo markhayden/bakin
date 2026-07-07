@@ -46,6 +46,12 @@ fall back to approver DMs (`.claude/knowledge/workflow-approvals.md`).
 { "approvalChannelAlerts": true, "approvalChannel": "approvals", "requireRejectReason": true }
 ```
 
+**Restart `bun run instance dev` after writing these files directly** — the
+workflows plugin snapshots gate-notification settings at activation and on
+API-driven settings saves, not on external file edits. A gate that parked
+BEFORE the config existed will not retro-send its alert; drive it from the
+Bakin UI and validate Discord delivery on the next gate (or a fresh run).
+
 Set `BAKIN_URL` to a hostname reachable from your Discord devices (Tailscale
 name) if you want fallback decision links to work off-box.
 
@@ -93,8 +99,12 @@ variants per run, and the prompt gate blocks generation until you approve.
 4. `cancel-parent` — parent cancel sweeps every live child.
 
 ```bash
-bun scripts/validate-map-select.ts --scenario happy --report docs/validation/map-select-happy.md
+BAKIN_HOME=dev/bakin-instances/isolated/home \
+  bun scripts/validate-map-select.ts --scenario happy --report docs/validation/map-select-happy.md
 ```
+
+`BAKIN_HOME` must point at the SERVER's home so the harness reads the same
+approval records the server writes (it warns when unset).
 
 Each scenario exits non-zero if any machine check or operator confirmation
 failed; reports go next to this runbook. Record results in

@@ -354,7 +354,11 @@ async function main(): Promise<void> {
     console.error(`Workflow "${WORKFLOW_ID}" not available on the server — is this build running the images plugin defaults?`)
     process.exit(1)
   }
-  console.log(`Bakin server: ${BAKIN_URL}\nAgent: ${agent}\nScenario: ${scenario}`)
+  console.log(`Bakin server: ${BAKIN_URL}\nApprovals dir: ${APPROVALS_DIR}\nAgent: ${agent}\nScenario: ${scenario}`)
+  if (!process.env.BAKIN_HOME) {
+    console.log('  ⚠ BAKIN_HOME is not set — approval-record checks read ~/.bakin. For the isolated rig run:')
+    console.log('    BAKIN_HOME=dev/bakin-instances/isolated/home bun scripts/validate-map-select.ts ...')
+  }
   console.log('Pre-flight reminders (see docs/validation/map-select-runbook.md):')
   console.log('  - image route usable? Ask the agent to run bakin_exec_images_recommend, or check the images health check')
   console.log('  - asset bytes reachable from the agent container? curl $BAKIN_URL/api/assets/<known-id> from inside the rig')
