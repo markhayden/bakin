@@ -84,6 +84,19 @@ describe('meterAgentTurn', () => {
     expect(costRows[0].model).toBe('modelY')
   })
 
+  it('persists the billing attribution (provider + lane) from the pricing hook', async () => {
+    priceTurnImpl = () => ({ model: 'openai-codex/gpt-5.5-codex', provider: 'openai-codex', lane: 'subscription', costUsdMicros: null })
+    await meterAgentTurn({ agent: 'main', result: { id: 'm', usage: { input: 10, output: 5 } } })
+    expect(costRows[0]).toMatchObject({ provider: 'openai-codex', lane: 'subscription' })
+  })
+
+  it('records null provider/lane when the hook does not attribute billing', async () => {
+    priceTurnImpl = () => ({ model: 'm', costUsdMicros: 10 })
+    await meterAgentTurn({ agent: 'main', result: { id: 'm', usage: { input: 1, output: 1 } } })
+    expect(costRows[0].provider ?? null).toBeNull()
+    expect(costRows[0].lane ?? null).toBeNull()
+  })
+
   it('records null cost (unmetered) when pricing is unavailable, never throws', async () => {
     priceTurnImpl = () => { throw new Error('boom') }
     await meterAgentTurn({ agent: 'pixel', result: { id: 'm', usage: { input: 1, output: 1 } } })
@@ -107,5 +120,11 @@ describe('meterImageTurn', () => {
     await meterImageTurn({ agent: 'pixel', model: 'openai/gpt-image-2', count: 1 })
     expect(costRows[0].costUsdMicros).toBeNull()
     expect(costRows[0].taskId).toBeNull()
+  })
+
+  it('persists the billing attribution from priceImage', async () => {
+    priceImageImpl = () => ({ model: 'google/nanobanana', provider: 'google', lane: 'metered', costUsdMicros: 55_000 })
+    await meterImageTurn({ agent: 'pixel', model: 'google/nanobanana', count: 1 })
+    expect(costRows[0]).toMatchObject({ provider: 'google', lane: 'metered' })
   })
 })

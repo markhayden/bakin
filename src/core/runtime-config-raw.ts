@@ -9,6 +9,7 @@ export type RuntimeConfigRawReason =
   | 'onboarding.runtime.integrity'
   | 'onboarding.llm.check'
   | 'onboarding.channels.check'
+  | 'models.billing-lane'
 
 interface RawConfigAllowlistEntry {
   reason: RuntimeConfigRawReason
@@ -31,6 +32,14 @@ export const RAW_RUNTIME_CONFIG_ALLOWLIST: RawConfigAllowlistEntry[] = [
     reason: 'onboarding.channels.check',
     key: 'channels',
     tracking: 'adapter-layer:onboarding-credential-checks',
+  },
+  {
+    // Billing-lane detection (cost-control v2): the models plugin reads the
+    // credential SHAPE (apiKey vs OAuth token fields) to classify a provider
+    // as metered vs subscription. Values are never surfaced.
+    reason: 'models.billing-lane',
+    key: /^agents\.[^.]+\.authProfiles$/,
+    tracking: 'models-plugin:billing-lane-detection',
   },
 ]
 
