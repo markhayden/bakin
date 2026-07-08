@@ -138,6 +138,11 @@ export async function main(): Promise<void> {
         await (await import('../src/cli/commands/schedule')).run(args)
         break
 
+      case 'spend':
+      case 'budget':
+        await (await import('../src/cli/commands/budget')).run(args)
+        break
+
       default: {
         let pluginLookupError: string | undefined
         if (!BINARY_ONLY_COMMANDS.has(cmd)) {
