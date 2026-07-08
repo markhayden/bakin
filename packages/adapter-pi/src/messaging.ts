@@ -146,7 +146,9 @@ async function openTurnSession(args: MessageArgs, deps: PiMessagingDeps): Promis
   await resourceLoader.reload()
 
   const execProvider = deps.getExecTools()
-  const descriptors = execProvider ? filterExecToolDescriptors(execProvider.list(), args, record.allowlist) : []
+  // record.allowlist is the SUBAGENT dispatch allowlist (agent ids) — never
+  // a tool filter. Tool exposure is policy-driven only (args.tools*).
+  const descriptors = execProvider ? filterExecToolDescriptors(execProvider.list(), args) : []
   const customTools = execProvider ? bridgeExecTools(execProvider, record.id, descriptors) : []
 
   const model = findPiModel(resolveModelRef(args.model, record.model))

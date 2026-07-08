@@ -46,21 +46,18 @@ export function bridgeExecTools(
 }
 
 /**
- * Apply the per-turn tool policy + the agent's recorded allowlist to the
- * Bakin exec-tool set. Built-in Pi tools (read/bash/edit/…) are governed
- * separately at session build (noTools when toolsMode is 'none').
+ * Apply the per-turn tool policy to the Bakin exec-tool set. Built-in Pi
+ * tools (read/bash/edit/…) are governed separately at session build
+ * (noTools when toolsMode is 'none'). The agent's registry `allowlist` is
+ * the SUBAGENT dispatch allowlist (agent ids) and must never be applied
+ * here — filtering tool names against agent ids strips every exec tool.
  */
 export function filterExecToolDescriptors(
   descriptors: RuntimeExecToolDescriptor[],
   policy: RuntimeMessageToolPolicy,
-  agentAllowlist?: string[],
 ): RuntimeExecToolDescriptor[] {
   if (policy.toolsMode === 'none') return []
   let out = descriptors
-  if (agentAllowlist && agentAllowlist.length > 0) {
-    const allowed = new Set(agentAllowlist)
-    out = out.filter((d) => allowed.has(d.name))
-  }
   if (policy.toolsAllow && policy.toolsAllow.length > 0) {
     const allowed = new Set(policy.toolsAllow)
     out = out.filter((d) => allowed.has(d.name))

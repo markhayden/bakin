@@ -110,11 +110,12 @@ describe('workspace files', () => {
     expect(await adapter.agents.readWorkspaceFile('main', 'notes/scratch.txt')).toBeNull()
   })
 
+  // allowlist = SUBAGENT dispatch allowlist (agent ids) — never tool names.
   test('allowlist + permissions patches persist on the record', async () => {
-    await adapter.agents.updateAllowlist('main', { add: ['bakin_exec_tasks_get', 'bakin_exec_assets_save'] })
-    await adapter.agents.updateAllowlist('main', { remove: ['bakin_exec_assets_save'] })
+    await adapter.agents.updateAllowlist('main', { add: ['scout', 'pixel'] })
+    await adapter.agents.updateAllowlist('main', { remove: ['pixel'] })
     let main = await adapter.agents.get('main')
-    expect(main?.metadata?.allowlist).toEqual(['bakin_exec_tasks_get'])
+    expect(main?.metadata?.allowlist).toEqual(['scout'])
 
     await adapter.agents.updateAllowlist('main', { replace: [] })
     main = await adapter.agents.get('main')
