@@ -1,6 +1,5 @@
 import type { RoutingConfig } from '../../src/core/model-routing'
 import type { BudgetPolicy } from '../../src/core/budget'
-import type { BillingOverride } from './lib/billing'
 // AvailableModel is single-homed in the SDK (the wire shape this plugin's
 // /available route produces and the team plugin consumes).
 import type { AvailableModel } from '@makinbakin/sdk/types'
@@ -39,6 +38,13 @@ export interface AvailableModelsResponse {
 
 export interface AliasesResponse {
   aliases: Record<string, string>
+}
+
+/** Manual billing-lane override; most-specific match wins (agent+provider → agent → provider). */
+export interface BillingOverride {
+  agentId?: string
+  provider?: string
+  lane: 'metered' | 'subscription'
 }
 
 /** Shape of models plugin settings */

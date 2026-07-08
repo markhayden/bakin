@@ -10,7 +10,8 @@ import { effectiveImageSettings, getImageProvider, providerReadiness } from './p
 import { resolveImageRoute } from './routing'
 import { getImageProfile } from './platform-profiles'
 import { runBilledImageCall, type ImageCallKey } from './idempotency'
-import { meterImageTurn, gateBilledMediaCall } from '../../../src/core/agent-cost'
+import { meterImageTurn } from '../../../src/core/agent-cost'
+import { gateBilledMediaCall } from '../../../src/core/media-gate'
 
 /** Largest edge we send to a provider / feed into sharp, to bound cost. */
 const MAX_IMAGE_EDGE = 2048

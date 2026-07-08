@@ -21,7 +21,48 @@
  * invoice-exact.
  */
 import type { BillingLane } from '../../packages/core/src/execution/ledger'
-import type { BudgetSpendFacets, LaneSums, ScopeSpend, UnattributedSums, WindowSpend } from './budget-spend'
+
+// Spend-facet shapes (produced by budget-spend.ts, consumed by the evaluator
+// and every surface). Declared HERE so the policy module is import-acyclic —
+// budget-spend re-exports them.
+export interface LaneSums {
+  /** Estimated metered-lane spend (micro-dollars) — priced rows only. */
+  meteredUsdMicros: number
+  /** All metered-lane tokens (priced + unpriced). */
+  meteredTokens: number
+  /** Subscription-lane tokens (the lane's unit; never dollars). */
+  subscriptionTokens: number
+  /** Metered-lane tokens from rows that carried no dollar estimate. */
+  unpricedMeteredTokens: number
+}
+
+export interface UnattributedSums {
+  meteredUsdMicros: number
+  meteredTokens: number
+  subscriptionTokens: number
+}
+
+export interface ScopeSpend extends LaneSums {
+  /** Observed-minus-attributed delta (usage.db vs run_costs), clamped ≥ 0 per agent/day/lane. */
+  unattributed: UnattributedSums
+}
+
+export interface WindowSpend {
+  startMs: number
+  global: ScopeSpend
+  byAgent: Record<string, ScopeSpend>
+  /** Attributed-only rollups (see module header). */
+  byProvider: Record<string, LaneSums>
+  byModel: Record<string, LaneSums>
+}
+
+export interface BudgetSpendFacets {
+  computedAt: number
+  daily: WindowSpend
+  monthly: WindowSpend
+}
+
+
 
 export type BudgetScope = 'global' | 'agent' | 'provider' | 'model'
 export type BudgetWindow = 'daily' | 'monthly'

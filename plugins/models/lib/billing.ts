@@ -26,18 +26,14 @@ import {
   normalizeAuthProfileEntries,
 } from '../../../src/core/runtime-auth-profiles'
 import { normalizeModelId, providerFromId } from './model-id'
-import type { ModelsPluginSettings } from '../types'
+import type { BillingOverride, ModelsPluginSettings } from '../types'
 
 const log = createLogger('models:billing')
 
 export type { BillingLane }
-
-/** Manual lane override; most-specific match wins (agent+provider → agent → provider). */
-export interface BillingOverride {
-  agentId?: string
-  provider?: string
-  lane: BillingLane
-}
+// Single-homed in ../types (the settings shape owns it); re-exported here
+// for the detection API surface.
+export type { BillingOverride } from '../types'
 
 /** Provider → lane map detected from one agent's auth profiles. */
 export function detectLanesFromProfiles(parsed: unknown): Record<string, BillingLane> {

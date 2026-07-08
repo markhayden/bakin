@@ -105,7 +105,7 @@ mock.module('../../src/core/settings', () => ({
 }))
 
 import { budgetGate, deferForBudget } from '../../src/core/dispatch'
-import { gateBilledMediaCall } from '../../src/core/agent-cost'
+import { gateBilledMediaCall } from '../../src/core/media-gate'
 
 beforeEach(() => {
   budgetPolicy = {}
