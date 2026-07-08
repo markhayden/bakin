@@ -42,3 +42,39 @@ describe('migrateLegacyBudget', () => {
     expect(migrateLegacyBudget({ global: {} }).rules).toEqual([])
   })
 })
+
+describe('activate() wiring — one-shot migration', () => {
+  function makeCtx(budget: unknown) {
+    const writes: Array<Record<string, unknown>> = []
+    const ctx = {
+      getSettings: () => ({ budget }),
+      updateSettings: (patch: Record<string, unknown>) => { writes.push(patch) },
+      hooks: { register: () => {} },
+      registerExecTool: () => {},
+    }
+    return { ctx: ctx as never, writes }
+  }
+
+  it('migrates a legacy-shaped budget once at activation', async () => {
+    const plugin = (await import('../../../plugins/models')).default as { activate(ctx: unknown): void }
+    const { ctx, writes } = makeCtx({ global: { dailyUsd: 10 }, perAgent: { pixel: { monthlyUsd: 5 } } })
+    plugin.activate(ctx)
+    expect(writes).toEqual([{
+      budget: {
+        rules: [
+          { scope: 'global', lane: 'metered', dailyCap: 10 },
+          { scope: 'agent', scopeId: 'pixel', lane: 'metered', monthlyCap: 5 },
+        ],
+      },
+    }])
+  })
+
+  it('leaves an already-migrated (rules) or absent budget untouched', async () => {
+    const plugin = (await import('../../../plugins/models')).default as { activate(ctx: unknown): void }
+    for (const budget of [{ rules: [] }, undefined]) {
+      const { ctx, writes } = makeCtx(budget)
+      plugin.activate(ctx)
+      expect(writes).toEqual([])
+    }
+  })
+})

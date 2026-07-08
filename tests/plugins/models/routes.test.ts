@@ -685,6 +685,25 @@ describe('budget status + incidents routes (cost-control v2)', () => {
     expect(body.perAgent).toEqual({})
   })
 
+  it('REGRESSION: /budget/status degrades (200, empty perAgent) when the runtime config is unreadable', async () => {
+    // Found live at checkpoint E: resolveAgents threw (no runtime installed)
+    // and the status poll 500'd — killing task badges + the pause banner.
+    const originalGetSettings = activated.ctx.getSettings
+    const originalConfigGet = activated.ctx.runtime.config.get
+    activated.ctx.getSettings = (() => ({ budget: { rules: [{ scope: 'global', lane: 'metered', dailyCap: 10 }] } })) as typeof activated.ctx.getSettings
+    activated.ctx.runtime.config.get = (async () => { throw new Error('runtime down') }) as typeof activated.ctx.runtime.config.get
+    try {
+      const route = findRoute(activated.routes, 'GET', '/budget/status')!
+      const { status, body } = await callRoute(route, activated.ctx)
+      expect(status).toBe(200)
+      expect(body.configured).toBe(true)
+      expect(body.perAgent).toEqual({})
+    } finally {
+      activated.ctx.getSettings = originalGetSettings
+      activated.ctx.runtime.config.get = originalConfigGet
+    }
+  })
+
   it('GET /budget/incidents lists open incidents', async () => {
     incidentsList = [{ id: 1, scope: 'global', scopeId: '', lane: 'metered', window: 'daily', kind: 'cap', status: 'open' }]
     const route = findRoute(activated.routes, 'GET', '/budget/incidents')!
