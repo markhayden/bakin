@@ -116,6 +116,9 @@ export async function main(): Promise<void> {
       case 'assets':
         await (await import('../src/cli/commands/assets')).run(args)
         break
+      case 'brands':
+        await (await import('../src/cli/commands/brands')).run(args)
+        break
 
       case 'reindex':
         await (await import('../src/cli/commands/search')).run(args)
