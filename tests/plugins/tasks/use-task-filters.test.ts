@@ -185,6 +185,26 @@ describe('filterBoardColumns', () => {
     expect(filtered.backlog).toEqual([])
   })
 
+  it('filters by brand including the no-brand sentinel (#419)', () => {
+    const cols = emptyColumns()
+    cols.todo = [
+      task('b1', { title: 'branded', brandId: 'acme' }),
+      task('b2', { title: 'other-brand', brandId: 'loaf' }),
+      task('b3', { title: 'unbranded' }),
+    ]
+    const acmeOnly = filterBoardColumns(cols, '', 'all', undefined, ['acme'])
+    expect(acmeOnly.todo.map(t => t.id)).toEqual(['b1'])
+
+    const noBrand = filterBoardColumns(cols, '', 'all', undefined, ['__none__'])
+    expect(noBrand.todo.map(t => t.id)).toEqual(['b3'])
+
+    const both = filterBoardColumns(cols, '', 'all', undefined, ['acme', '__none__'])
+    expect(both.todo.map(t => t.id)).toEqual(['b1', 'b3'])
+
+    const all = filterBoardColumns(cols, '', 'all', undefined, [])
+    expect(all.todo).toHaveLength(3)
+  })
+
   it('filters by matchIds when search results are provided', () => {
     const cols = makeColumns()
     const filtered = filterBoardColumns(cols, 'foo', 'all', [

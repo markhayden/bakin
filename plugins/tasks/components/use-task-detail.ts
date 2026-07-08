@@ -74,6 +74,7 @@ export function useTaskDetail({ task, columnId, open, editing, onClose }: UseTas
   const [agent, setAgent] = useState('')
   const [column, setColumn] = useState<ColumnId>('todo')
   const [workflowId, setWorkflowId] = useState('')
+  const [brandId, setBrandId] = useState('')
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [pasting, setPasting] = useState(false)
@@ -101,6 +102,9 @@ export function useTaskDetail({ task, columnId, open, editing, onClose }: UseTas
   // Clean single-GET on mount — migrated from a fetch-in-useEffect to useJsonFetch (WS3).
   const { data: workflowDefs } = useJsonFetch<{ templates?: Workflow[] }>('/api/plugins/workflows/definitions')
   const workflows = useMemo(() => workflowDefs?.templates ?? [], [workflowDefs])
+  // Published brands for the picker (#419) — drafts never appear.
+  const { data: brandsData } = useJsonFetch<{ brands?: Array<{ id: string; name: string; draft?: boolean }> }>('/api/plugins/brands/')
+  const brands = useMemo(() => (brandsData?.brands ?? []).filter(b => !b.draft), [brandsData])
 
   // Populate form when entering edit mode
   useEffect(() => {
@@ -112,6 +116,7 @@ export function useTaskDetail({ task, columnId, open, editing, onClose }: UseTas
       setAgent('')
       setColumn('todo')
       setWorkflowId('')
+      setBrandId('')
       setDirty(false)
       setLogMessage('')
       setShowAllNotes(false)
@@ -127,6 +132,7 @@ export function useTaskDetail({ task, columnId, open, editing, onClose }: UseTas
       setAgent(task.agent || (task.team ? `${TEAM_VALUE_PREFIX}${task.team}` : ''))
       setColumn(columnId)
       setWorkflowId(task.workflowId || '')
+      setBrandId(task.brandId || '')
       setDirty(false)
       setLogMessage('')
       setShowRejectInput(false)
@@ -403,6 +409,7 @@ export function useTaskDetail({ task, columnId, open, editing, onClose }: UseTas
           assignee: agent && !isTeamValue(agent) ? agent : undefined,
           team: isTeamValue(agent) ? teamIdFromValue(agent) : undefined,
           workflowId: workflowId || undefined,
+          brandId: brandId || undefined,
         }),
       })
       if (!res.ok) {
@@ -445,6 +452,7 @@ export function useTaskDetail({ task, columnId, open, editing, onClose }: UseTas
           ...assignPatch,
           column,
           workflowId, // '' detaches; the route only clears on present keys
+          brandId,    // '' clears (#419); the route only clears on present keys
         }),
       })
       if (!res.ok) {
@@ -554,7 +562,7 @@ export function useTaskDetail({ task, columnId, open, editing, onClose }: UseTas
   return {
     // form draft
     title, setTitle, description, setDescription, agent, setAgent, column, setColumn,
-    workflowId, setWorkflowId, workflows, saving, dirty, pasting, descriptionRef,
+    workflowId, setWorkflowId, workflows, brandId, setBrandId, brands, saving, dirty, pasting, descriptionRef,
     logMessage, setLogMessage, addingLog, showAllNotes, setShowAllNotes,
     isCreate,
     // workflow / gate

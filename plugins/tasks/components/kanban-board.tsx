@@ -17,6 +17,7 @@ import { filterBoardColumns, useTaskFilters } from '../hooks/use-task-filters'
 import { countVisibleTasks } from '../lib/scheduled'
 import { useContentStore } from "@makinbakin/sdk/hooks"
 import { usePluginEvent } from "@makinbakin/sdk/hooks"
+import { useJsonFetch } from "@makinbakin/sdk/hooks"
 import { useDebug } from "@makinbakin/sdk/hooks"
 import { useQueryState, useQueryArrayState } from "@makinbakin/sdk/hooks"
 import { toast } from "@makinbakin/sdk/hooks"
@@ -166,6 +167,7 @@ export function KanbanBoard() {
   const [agentFilter, setAgentFilter] = useQueryState('agent', 'all')
   const [scheduledView, setScheduledView] = useQueryState('scheduled', 'show')
   const [statusFilter, setStatusFilter] = useQueryArrayState('status')
+  const [brandFilter, setBrandFilter] = useQueryArrayState('brand')
   const showScheduled = scheduledView !== 'hide'
 
   const displayColumns = useMemo(() => {
@@ -182,11 +184,20 @@ export function KanbanBoard() {
   }, [columns, view])
 
   const [taskIdParam, setTaskIdParam] = useQueryState('taskId', '')
-  const hasBoardFilters = Boolean(search) || agentFilter !== 'all'
+  const hasBoardFilters = Boolean(search) || agentFilter !== 'all' || brandFilter.length > 0
 
   const { filteredColumns, allTasksFlat, aggregations, searchResults } = useTaskFilters(displayColumns, {
-    search, agentFilter, statusFilter,
+    search, agentFilter, statusFilter, brandFilter,
   })
+
+  // Brand facet options + the opt-in unbranded nudge flag ride the brands
+  // list response (#419) — no separate settings fetch from the tasks plugin.
+  const { data: brandsData } = useJsonFetch<{ brands?: Array<{ id: string; name: string; draft?: boolean }>; warnUnbranded?: boolean }>('/api/plugins/brands/')
+  const brandOptions = useMemo(
+    () => (brandsData?.brands ?? []).filter(b => !b.draft).map(b => ({ id: b.id, name: b.name })),
+    [brandsData],
+  )
+  const warnUnbranded = Boolean(brandsData?.warnUnbranded)
 
   const [debug] = useDebug()
 
@@ -482,6 +493,9 @@ export function KanbanBoard() {
             showScheduled={showScheduled}
             onShowScheduledChange={(show) => setScheduledView(show ? 'show' : 'hide')}
             statusCounts={aggregations?.status ? Object.fromEntries(aggregations.status.map(a => [a.value, a.count])) : undefined}
+            brandFilter={brandFilter}
+            onBrandChange={setBrandFilter}
+            brandOptions={brandOptions}
           />
         </div>
 
@@ -502,6 +516,7 @@ export function KanbanBoard() {
                       gateLabels={gateLabels}
                       childTaskLabels={childTaskLabels}
                       budgetHolds={budgetHolds}
+                      warnUnbranded={warnUnbranded}
                       scoreMap={scoreMap}
                       onDelete={setDeleteTarget}
                       onTaskClick={(task, columnId) => { setDetailTask({ task, columnId }); setEditing(false) }}

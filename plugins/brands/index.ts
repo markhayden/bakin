@@ -22,6 +22,19 @@ const brandsPlugin: BakinPlugin = definePlugin({
   version: '1.0.0',
   routes: brandRoutes,
 
+  settingsSchema: {
+    fields: [
+      {
+        key: 'warnUnbranded',
+        type: 'boolean' as const,
+        label: 'Warn on unbranded tasks',
+        description:
+          'Adds a subtle "no brand" badge to board cards without a brand (their output has no brand guardrails). Visibility only — nothing blocks.',
+        default: false,
+      },
+    ],
+  },
+
   async activate(ctx: PluginContext) {
     registerBrandsHooks(ctx)
     log.info('Brands plugin activated')

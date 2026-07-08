@@ -77,9 +77,18 @@ export const brandRoutes = [
     path: '/',
     method: 'GET',
     summary: 'List brands',
-    description: 'All brand manifests plus honestly-surfaced invalid entries (never silently skipped).',
+    description:
+      'All brand manifests plus honestly-surfaced invalid entries (never silently skipped). Carries the effective warnUnbranded flag so the tasks UI needs no separate settings fetch.',
     responses: { 200: passthrough },
-    handler: async () => Response.json(listBrands()),
+    handler: async (_req, ctx) => {
+      let warnUnbranded = false
+      try {
+        warnUnbranded = Boolean(ctx.getSettings<{ warnUnbranded?: boolean }>().warnUnbranded)
+      } catch {
+        log.warn('brands settings unavailable; warnUnbranded defaults off')
+      }
+      return Response.json({ ...listBrands(), warnUnbranded })
+    },
   }),
 
   defineRoute({
