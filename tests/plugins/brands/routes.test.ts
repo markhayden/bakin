@@ -361,6 +361,33 @@ describe('builder flow (#419 §9.1)', () => {
   })
 })
 
+describe('brands.integrity doctor check (#419 §10)', () => {
+  it('warns with structured data on dangling refs + ghost-brand tasks; ok when clean', async () => {
+    const { checkBrandsIntegrity } = await import('../../../plugins/brands/lib/health-checks')
+
+    // Clean state: one healthy brand, no ghost tasks
+    await createAcme()
+    const assetsMock = activated.ctx.assets as unknown as { getAsset: (id: string) => Promise<unknown> }
+    assetsMock.getAsset = async () => ({ assetId: 'x' })
+    const clean = await checkBrandsIntegrity(activated.ctx)
+    expect(clean.status).toBe('ok')
+
+    // Break it: dangling logo ref + a todo task pointing at a ghost brand
+    await callRoute(route('PUT', '/:brandId'), activated.ctx, {
+      searchParams: { brandId: 'acme' },
+      body: { name: 'Acme', palette: [], logos: [{ assetId: 'gone', variant: 'dark' }], assetGroups: [] },
+    })
+    assetsMock.getAsset = async () => null
+    await activated.ctx.tasks.create({ title: 'Stuck', brandId: 'ghost', column: 'todo' } as never)
+
+    const broken = await checkBrandsIntegrity(activated.ctx)
+    expect(broken.status).toBe('warn')
+    const data = broken.data as { dangling: Array<{ brandId: string }>; ghostTasks: Array<{ brandId: string }> }
+    expect(data.dangling[0].brandId).toBe('acme')
+    expect(data.ghostTasks[0].brandId).toBe('ghost')
+  })
+})
+
 describe('exec tools', () => {
   function tool(name: string) {
     const t = activated.execTools.find((t) => t.name === name)

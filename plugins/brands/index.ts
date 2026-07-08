@@ -15,6 +15,7 @@ import { brandRoutes } from './lib/routes'
 import { registerBrandsHooks } from './lib/register-hooks'
 import { registerBrandExecTools } from './lib/exec-tools'
 import { registerBrandsSearch } from './lib/search-sync'
+import { checkBrandsIntegrity } from './lib/health-checks'
 
 const log = createLogger('brands')
 
@@ -41,6 +42,13 @@ const brandsPlugin: BakinPlugin = definePlugin({
     registerBrandsHooks(ctx)
     registerBrandExecTools(ctx)
     registerBrandsSearch(ctx)
+
+    ctx.registerHealthCheck({
+      id: 'brands.integrity',
+      name: 'Brand integrity (dangling refs, ghost-brand tasks, drafts)',
+      run: async () => [await checkBrandsIntegrity(ctx)],
+    })
+
     log.info('Brands plugin activated')
   },
 }) as unknown as BakinPlugin
