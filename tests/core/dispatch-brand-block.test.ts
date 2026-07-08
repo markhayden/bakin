@@ -46,11 +46,19 @@ mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
   }),
 }))
 
-import { resolveEffectiveBrandId, buildDispatchBrandBlock } from '../../src/core/dispatch-context-blocks'
+import {
+  resolveEffectiveBrandId,
+  buildDispatchBrandBlock,
+  deferForMissingBrand,
+  __resetBrandBlockNotifications,
+} from '../../src/core/dispatch-context-blocks'
+import { appendAudit } from '../../src/core/audit'
 
 beforeEach(() => {
   tasksById.clear()
   hookHandlers.clear()
+  __resetBrandBlockNotifications()
+  ;(appendAudit as ReturnType<typeof mock>).mockClear()
 })
 
 describe('resolveEffectiveBrandId', () => {
@@ -106,6 +114,30 @@ describe('buildDispatchBrandBlock', () => {
       expect(result.block).toContain('Acme')
       expect(result.meta.brandFingerprint).toBe('sha256:x')
     }
+  })
+
+  it('defer gate: unbranded passes, published passes, missing/draft defers with notify-once', async () => {
+    const task = { id: 't1', title: 'Launch tweet', brandId: 'acme' }
+
+    // Unbranded → never defers
+    expect(await deferForMissingBrand({ id: 'plain', title: 'Plain' }, '/tmp/x')).toBe(false)
+
+    // Missing brand (hook absent) → defers + audits ONCE across cycles
+    expect(await deferForMissingBrand(task, '/tmp/x')).toEqual({ brandId: 'acme' })
+    expect(await deferForMissingBrand(task, '/tmp/x')).toEqual({ brandId: 'acme' })
+    const auditCalls = (appendAudit as ReturnType<typeof mock>).mock.calls.filter((c: unknown[]) => c[1] === 'brand.dispatch_blocked')
+    expect(auditCalls.length).toBe(1)
+
+    // Brand restored → passes and clears the incident
+    hookHandlers.set('brands.get', () => ({ manifest: { id: 'acme' } }))
+    expect(await deferForMissingBrand(task, '/tmp/x')).toBe(false)
+
+    // Draft brands defer too
+    hookHandlers.set('brands.get', () => ({ manifest: { id: 'acme', draft: true } }))
+    expect(await deferForMissingBrand(task, '/tmp/x')).toEqual({ brandId: 'acme' })
+    // ...and the cleared incident re-notifies (second deletion is a new event)
+    const again = (appendAudit as ReturnType<typeof mock>).mock.calls.filter((c: unknown[]) => c[1] === 'brand.dispatch_blocked')
+    expect(again.length).toBe(2)
   })
 
   it('fails closed: missing when the brand is notFound, the hook is absent, or it throws', async () => {

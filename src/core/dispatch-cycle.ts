@@ -25,6 +25,7 @@ import {
 import { readDispatchColumns, isTaskDispatchEligible, addTaskLog, moveTaskToInProgress, tryAddTaskLog } from './dispatch-board'
 import { concurrencyGate, deferForBudget, fireDispatchTurn, resolveDispatchRouting, type BudgetSpendMemo } from './dispatch-turns'
 import { prepareRegularDispatch } from './dispatch-prepare'
+import { deferForMissingBrand } from './dispatch-context-blocks'
 import { dispatchWorkflowTask } from './dispatch-workflow'
 import { resolveTeamAssignmentsPrePass } from './dispatch-team'
 
@@ -215,6 +216,15 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
       // per-cycle cache collapses the redundant global spend reads.
       if (await deferForBudget(targetAgent, contentDir, budgetSpendCache, { model: routing.model })) {
         log.debug('Dispatch deferred by budget gate', { id: task.id, agent: targetAgent })
+        continue
+      }
+
+      // Brand gate (#419): a task linked to a missing/draft brand stays in
+      // todo (no claim) and resumes the cycle the brand exists — never
+      // dispatched brandless, never silently.
+      const brandHold = await deferForMissingBrand(task, contentDir)
+      if (brandHold) {
+        log.debug('Dispatch deferred by brand gate', { id: task.id, brandId: brandHold.brandId })
         continue
       }
 

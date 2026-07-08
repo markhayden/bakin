@@ -25,6 +25,13 @@ export function mapAuditMessage(event: string, data: Record<string, unknown>): s
       return `A session error arrived after "${data.title || data.id}" had already moved to ${data.column || 'done'} — no action needed.`
     case 'team.message_blocked':
       return `Blocked a message to ${data.agentId} — they are already running task ${data.taskId}.`
+    // Brands (#419)
+    case 'brand.injected': return `Brand '${data.brandId}' injected into dispatch${data.cardBytes ? ` (${data.cardBytes} B card)` : ''}`
+    case 'brand.dispatch_blocked': return typeof data.message === 'string' ? data.message : `Task waiting on missing brand '${data.brandId}'`
+    case 'brand.asset_missing': return `Brand '${data.brandId}' has missing asset references`
+    case 'brand.created': return `Created brand '${data.brandId}'`
+    case 'brand.updated': return `Updated brand '${data.brandId}'`
+    case 'brand.deleted': return `Deleted brand '${data.brandId}'`
     case 'system.init': return 'Bakin started'
     case 'system.dispatch_error': return `Dispatch failed: ${data.error || 'unknown error'}`
     case 'workflow.step_dispatched': return `Step "${data.label || 'unknown'}" dispatched to ${data.agent || 'agent'}`

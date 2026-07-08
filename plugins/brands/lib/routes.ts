@@ -112,6 +112,31 @@ export const brandRoutes = [
   }),
 
   defineRoute({
+    path: '/blocked-tasks',
+    method: 'GET',
+    summary: 'Todo tasks currently deferring on a missing/draft brand',
+    description:
+      'Derived state for the board badge (#419) — effective brand resolved server-side (own → ancestry → project hook), never task metadata. Side-effect free.',
+    responses: { 200: passthrough },
+    handler: async (_req, ctx) => {
+      const { resolveEffectiveBrandId } = await import('../../../src/core/dispatch-context-blocks')
+      const todo = await ctx.tasks.list({ column: 'todo' })
+      const perTask: Record<string, string> = {}
+      for (const task of todo) {
+        try {
+          const brandId = await resolveEffectiveBrandId(task)
+          if (!brandId) continue
+          const read = getBrand(brandId)
+          if (read.status !== 'ok' || read.manifest.draft) perTask[task.id] = brandId
+        } catch {
+          // Resolution failure for one task must not break the whole badge poll.
+        }
+      }
+      return Response.json({ perTask })
+    },
+  }),
+
+  defineRoute({
     path: '/:brandId',
     method: 'GET',
     summary: 'Get a brand',

@@ -6,6 +6,7 @@ import { TaskCard, type TaskScoreInfo } from './task-card'
 import { COLUMN_CONFIG, STATUS_DOT_COLORS } from '../constants'
 import { splitScheduledTasks } from '../lib/scheduled'
 import type { BudgetHold } from '../hooks/use-budget-status'
+import type { BrandHold } from '../hooks/use-brand-status'
 import type { Task, ColumnId } from '../types'
 
 interface KanbanColumnProps {
@@ -14,6 +15,7 @@ interface KanbanColumnProps {
   gateLabels?: Record<string, string>
   childTaskLabels?: Record<string, string>
   budgetHolds?: Record<string, BudgetHold>
+  brandHolds?: Record<string, BrandHold>
   warnUnbranded?: boolean
   /** Per-task search score info, keyed by task id. Only set when debug + active search. */
   scoreMap?: Map<string, TaskScoreInfo>
@@ -27,7 +29,7 @@ interface KanbanColumnProps {
   onHeaderClick?: () => void
 }
 
-export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, budgetHolds, warnUnbranded, scoreMap, onDelete, onTaskClick, onAddTask, footer, compact, totalCount, showScheduled = true, onHeaderClick }: KanbanColumnProps) {
+export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, budgetHolds, brandHolds, warnUnbranded, scoreMap, onDelete, onTaskClick, onAddTask, footer, compact, totalCount, showScheduled = true, onHeaderClick }: KanbanColumnProps) {
   const { ref, isDropTarget } = useDroppable({
     id,
     accept: 'item',
@@ -124,6 +126,7 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, budgetHol
                 gateLabel={gateLabels?.[task.id]}
                 childTaskId={childTaskLabels?.[task.id]}
                 budgetHold={budgetHolds?.[task.id]}
+                brandHold={brandHolds?.[task.id]}
                 warnUnbranded={warnUnbranded}
                 scoreInfo={scoreMap?.get(task.id)}
                 onDelete={onDelete}
@@ -151,6 +154,7 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, budgetHol
                       gateLabel={gateLabels?.[task.id]}
                       childTaskId={childTaskLabels?.[task.id]}
                       budgetHold={budgetHolds?.[task.id]}
+                brandHold={brandHolds?.[task.id]}
                 warnUnbranded={warnUnbranded}
                       scoreInfo={scoreMap?.get(task.id)}
                       onDelete={onDelete}

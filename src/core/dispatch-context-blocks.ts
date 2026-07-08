@@ -107,6 +107,62 @@ export async function resolveEffectiveBrandId(task: {
   return undefined
 }
 
+// Notify-once per (taskId, brandId) incident. In-memory by design: a server
+// restart re-notifies, which is acceptable (the durable option is a ledger
+// UNIQUE like budget incidents if this ever needs to survive restarts).
+// Cleared when the brand resolves again so a REPEAT deletion re-notifies.
+const brandBlockNotified = new Set<string>()
+
+/** @internal Test-only. */
+export function __resetBrandBlockNotifications(): void {
+  brandBlockNotified.clear()
+}
+
+/**
+ * Pre-claim brand gate (#419, spec §5.3) — mirrors deferForBudget: a task
+ * whose effective brand doesn't resolve to a published brand stays in todo
+ * and is skipped WITHOUT claiming a run, resuming automatically the cycle
+ * the brand exists again. First skip per incident audits
+ * `brand.dispatch_blocked` and broadcasts the plugin-event that drives the
+ * browser notification + board badge.
+ */
+export async function deferForMissingBrand(
+  task: { id: string; title: string; brandId?: string; parentId?: string | null; projectId?: string },
+  contentDir: string,
+): Promise<{ brandId: string } | false> {
+  const brandId = await resolveEffectiveBrandId(task)
+  if (!brandId) return false
+
+  let available = false
+  if (hooks().has('brands.get')) {
+    try {
+      const brand = await hooks().invoke<{ manifest?: { draft?: boolean } } | undefined>('brands.get', { brandId })
+      available = !!brand?.manifest && !brand.manifest.draft
+    } catch (err) {
+      log.warn('brands.get failed during brand gate; failing closed', { taskId: task.id, brandId, error: formatDispatchError(err) })
+    }
+  }
+
+  const key = `${task.id}:${brandId}`
+  if (available) {
+    brandBlockNotified.delete(key)
+    return false
+  }
+
+  if (!brandBlockNotified.has(key)) {
+    brandBlockNotified.add(key)
+    const message = `Task "${task.title}" is waiting on brand '${brandId}' — it will not dispatch until the brand exists (recreate it or relink the task).`
+    appendAudit(contentDir, 'brand.dispatch_blocked', 'system', { taskId: task.id, title: task.title, brandId, message })
+    try {
+      const { broadcast } = await import('./sse')
+      broadcast({ type: 'plugin-event', event: 'brand.dispatch_blocked', taskId: task.id, brandId, message, timestamp: new Date().toISOString() })
+    } catch {
+      log.warn('brand.dispatch_blocked broadcast unavailable', { taskId: task.id, brandId })
+    }
+  }
+  return { brandId }
+}
+
 /**
  * Build the per-dispatch brand block by invoking brands.getContext. Returns
  * `none` for unbranded tasks, `missing` when the effective brand does not

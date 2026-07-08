@@ -23,6 +23,7 @@ import { readDispatchColumns, isTaskDispatchEligible, addTaskLog, moveTaskToInPr
 import { formatDispatchError } from './dispatch-failures'
 import { concurrencyGate, deferForBudget, fireDispatchTurn, resolveDispatchRouting } from './dispatch-turns'
 import { prepareRegularDispatch } from './dispatch-prepare'
+import { deferForMissingBrand } from './dispatch-context-blocks'
 import { dispatchWorkflowTask } from './dispatch-workflow'
 import { resolveTeamAssignmentForSingle } from './dispatch-team'
 
@@ -176,6 +177,13 @@ export async function dispatchSingleTask(
     // Spend ceiling — defer (leave in todo) when a budget cap is hit.
     if (await deferForBudget(targetAgent, contentDir, undefined, { model: routing.model })) {
       log.debug('Single-task dispatch deferred by budget gate', { id: task.id, agent: targetAgent, source })
+      return
+    }
+
+    // Brand gate (#419) — same defer-in-todo semantics as the cycle.
+    const brandHold = await deferForMissingBrand(task, contentDir)
+    if (brandHold) {
+      log.debug('Single-task dispatch deferred by brand gate', { id: task.id, brandId: brandHold.brandId, source })
       return
     }
 

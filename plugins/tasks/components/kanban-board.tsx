@@ -23,6 +23,7 @@ import { useQueryState, useQueryArrayState } from "@makinbakin/sdk/hooks"
 import { toast } from "@makinbakin/sdk/hooks"
 import { useGateStatus } from '../hooks/use-gate-status'
 import { useBudgetStatus, budgetHoldReason, type BudgetHold } from '../hooks/use-budget-status'
+import { useBrandStatus, brandHoldReason, type BrandHold } from '../hooks/use-brand-status'
 import { Button, Skeleton } from "@makinbakin/sdk/ui"
 import { Kanban, Table2, Plus } from 'lucide-react'
 import type { TaskScoreInfo } from './task-card'
@@ -254,6 +255,18 @@ export function KanbanBoard() {
     }
     return holds
   }, [columns.todo, budgetStatus])
+
+  // Brand-blocked badges (#419): todo tasks deferring on a missing/draft
+  // brand — same derived-state pattern as budget holds.
+  const brandStatus = useBrandStatus()
+  const brandHolds = useMemo(() => {
+    const holds: Record<string, BrandHold> = {}
+    for (const task of columns.todo) {
+      const hold = brandHoldReason(brandStatus, task)
+      if (hold) holds[task.id] = hold
+    }
+    return holds
+  }, [columns.todo, brandStatus])
 
   const dragStartColumnsRef = useRef<TaskColumns | null>(null)
   const dragFromColRef = useRef<ColumnId | null>(null)
@@ -516,6 +529,7 @@ export function KanbanBoard() {
                       gateLabels={gateLabels}
                       childTaskLabels={childTaskLabels}
                       budgetHolds={budgetHolds}
+                      brandHolds={brandHolds}
                       warnUnbranded={warnUnbranded}
                       scoreMap={scoreMap}
                       onDelete={setDeleteTarget}

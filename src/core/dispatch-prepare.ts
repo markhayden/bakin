@@ -123,6 +123,11 @@ export async function prepareRegularDispatch(input: {
         taskId: task.id, runId: threadId, brandId: brandBlock.brandId, ...brandBlock.meta,
         ...(brandBlock.warnings.length ? { warnings: brandBlock.warnings } : {}),
       })
+      if (brandBlock.warnings.length) {
+        appendAudit(contentDir, 'brand.asset_missing', 'system', {
+          taskId: task.id, brandId: brandBlock.brandId, warnings: brandBlock.warnings,
+        })
+      }
     }
     log.info('Task dispatched', { id: task.id, title: task.title, agent: targetAgent, threadId, path })
 
