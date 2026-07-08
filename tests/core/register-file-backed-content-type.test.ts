@@ -19,13 +19,17 @@ mock.module('@/core/watcher', () => ({
   }),
 }))
 
-mock.module('@/core/content-dir', () => ({
+const contentDirFactory = () => ({
   getContentDir: () => '/tmp/bakin-test-helper',
   getBakinPaths: () => ({
     contentDir: '/tmp/bakin-test-helper',
     settingsPath: '/tmp/bakin-test-helper/settings.json',
   }),
-}))
+})
+mock.module('@/core/content-dir', contentDirFactory)
+// The search outbox reads packages/core/src/content-dir directly — mock BOTH
+// resolvers (CLAUDE.md § Testing Rules), else the real one hits ~/.bakin.
+mock.module('../../packages/core/src/content-dir', contentDirFactory)
 
 mock.module('@/core/settings', () => ({
   resetSettingsCache: () => {},

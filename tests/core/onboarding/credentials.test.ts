@@ -43,6 +43,10 @@ mock.module('../../../src/core/app-services', () => ({
   maybeGetAppServices: () => ({ runtime }),
   createAppServices: async () => ({ runtime }),
 }))
+mock.module('../../../src/core/app-services-store', () => ({
+  maybeGetAppServices: () => ({ runtime }),
+  createAppServices: async () => ({ runtime }),
+}))
 
 mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({

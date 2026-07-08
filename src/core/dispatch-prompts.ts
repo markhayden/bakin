@@ -14,7 +14,7 @@
 import { join } from 'path'
 // Namespace import: suites mock.module() app-services with partial export
 // sets; a named import would break the whole import graph under those mocks.
-import * as appServices from './app-services'
+import * as appServices from './app-services-store'
 import type {
   DispatchContinuationContext,
   DispatchRosterAgent,

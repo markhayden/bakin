@@ -94,6 +94,33 @@ mock.module('../../../src/core/app-services', () => ({
     },
   }),
 }))
+mock.module('../../../src/core/app-services-store', () => ({
+  getAppServices: () => ({
+    runtime: {
+      agents: {
+        list: async () => runtimeAgents,
+        get: async (agentId: string) => runtimeAgentStore.get(agentId) ?? runtimeAgents.find((agent) => agent.id === agentId) ?? null,
+        create: async (input: { id?: string; name: string; role?: string; model?: string; metadata?: Record<string, unknown> }) => {
+          const agent: RuntimeAgent = { id: input.id ?? input.name.toLowerCase(), name: input.name, role: input.role, model: input.model, status: 'active', metadata: input.metadata }
+          runtimeAgentStore.set(agent.id, agent)
+          runtimeAgents = [...runtimeAgents.filter((existing) => existing.id !== agent.id), agent]
+          return agent
+        },
+        updateAllowlist: async () => {},
+        listWorkspaceFiles: async (agentId: string) => Array.from(runtimeWorkspaceFiles.entries())
+          .filter(([key]) => key.startsWith(`${agentId}/`))
+          .map(([, file]) => file),
+        readWorkspaceFile: async (agentId: string, path: string) => runtimeWorkspaceFiles.get(`${agentId}/${path}`) ?? null,
+        writeWorkspaceFile: async (agentId: string, file: { path: string; content: string; metadata?: Record<string, unknown> }) => {
+          runtimeWorkspaceFiles.set(`${agentId}/${file.path}`, { path: file.path, content: file.content, metadata: file.metadata })
+        },
+        removeWorkspaceFile: async (agentId: string, path: string) => {
+          runtimeWorkspaceFiles.delete(`${agentId}/${path}`)
+        },
+      },
+    },
+  }),
+}))
 
 mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),

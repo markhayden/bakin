@@ -19,7 +19,7 @@ import { clearSearchAdapter, createSearchAdapterHarness, installSearchAdapter } 
 
 const testDir = join(tmpdir(), `bakin-test-search-autoreg-${Date.now()}`)
 
-mock.module('@/core/content-dir', () => ({
+const contentDirFactory = () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({
     root: testDir,
@@ -29,7 +29,11 @@ mock.module('@/core/content-dir', () => ({
     audit: join(testDir, 'audit.jsonl'),
     logs: join(testDir, 'logs'),
   }),
-}))
+})
+mock.module('@/core/content-dir', contentDirFactory)
+// The search outbox reads packages/core/src/content-dir directly — mock BOTH
+// resolvers (CLAUDE.md § Testing Rules), else the real one hits ~/.bakin.
+mock.module('../../packages/core/src/content-dir', contentDirFactory)
 
 mock.module('@/core/logger', () => ({
   createLogger: () => ({

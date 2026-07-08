@@ -11,10 +11,9 @@ import { createRuntimeExecToolProvider } from './exec-tools/provider'
 import { createRuntimeAdapter } from './runtime-adapter-factory'
 import { createSearchAdapter } from './search-adapter-factory'
 import { getSettings, resetSettingsCache } from './settings'
-
-type AppServicesGlobal = typeof globalThis & {
-  __bakinAppServices?: AppServices
-}
+// Accessors live in a leaf module (breaks the composition-root import cycle);
+// re-exported below so existing `from './app-services'` imports are unchanged.
+import { getAppServices, maybeGetAppServices, setAppServices } from './app-services-store'
 
 const log = createLogger('app-services')
 
@@ -82,18 +81,6 @@ export async function createAppServices(): Promise<AppServices> {
   return services
 }
 
-export function setAppServices(services: AppServices): void {
-  ;(globalThis as AppServicesGlobal).__bakinAppServices = services
-}
-
-export function getAppServices(): AppServices {
-  const services = maybeGetAppServices()
-  if (!services) {
-    throw new Error('Bakin AppServices have not been initialized')
-  }
-  return services
-}
-
-export function maybeGetAppServices(): AppServices | undefined {
-  return (globalThis as AppServicesGlobal).__bakinAppServices
-}
+// Re-exported from the leaf store so `import { getAppServices } from
+// './app-services'` keeps working across the codebase.
+export { getAppServices, maybeGetAppServices, setAppServices }

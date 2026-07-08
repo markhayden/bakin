@@ -61,7 +61,9 @@ const mockAppServices = {
   },
 }
 mock.module('../../src/core/app-services', () => ({ getAppServices: () => mockAppServices }))
+mock.module('../../src/core/app-services-store', () => ({ getAppServices: () => mockAppServices }))
 mock.module('@/core/app-services', () => ({ getAppServices: () => mockAppServices }))
+mock.module('@/core/app-services-store', () => ({ getAppServices: () => mockAppServices }))
 
 type Columns = { backlog: unknown[]; todo: unknown[]; inProgress: unknown[]; review: unknown[]; done: unknown[]; archived: unknown[]; blocked: unknown[] }
 let currentColumns: Columns = empty()

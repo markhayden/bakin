@@ -121,6 +121,26 @@ mock.module('../../../src/core/app-services', () => ({
     health: {},
   }),
 }))
+mock.module('../../../src/core/app-services-store', () => ({
+  getAppServices: () => ({
+    runtime: {},
+    search: {},
+    tasks: {},
+    health: {},
+  }),
+  maybeGetAppServices: () => ({
+    runtime: {},
+    search: {},
+    tasks: {},
+    health: {},
+  }),
+  createAppServices: async () => ({
+    runtime: {},
+    search: {},
+    tasks: {},
+    health: {},
+  }),
+}))
 mock.module('../../../src/core/app-services.ts', () => ({
   getAppServices: () => ({
     runtime: {},

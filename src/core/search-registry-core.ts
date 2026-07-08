@@ -32,7 +32,7 @@ import {
   queryTarget,
   type TableEnsureDef,
 } from '@bakin/core/search/tables'
-import { getAppServices } from './app-services'
+import { getAppServices } from './app-services-store'
 
 const log = createLogger('search-registry-core')
 

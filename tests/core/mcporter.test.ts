@@ -34,6 +34,22 @@ mock.module('../../src/core/app-services', () => ({
     },
   }),
 }))
+mock.module('../../src/core/app-services-store', () => ({
+  maybeGetAppServices: () => ({
+    runtime: {
+      agents: {
+        list: async () => runtimeAgents(),
+      },
+    },
+  }),
+  createAppServices: async () => ({
+    runtime: {
+      agents: {
+        list: async () => runtimeAgents(),
+      },
+    },
+  }),
+}))
 
 mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => '/tmp/mcporter-test-bakin',

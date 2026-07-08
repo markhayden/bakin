@@ -37,6 +37,11 @@ mock.module('../../src/core/app-services', () => ({
   maybeGetAppServices: () => ({ runtime: runtime() }),
   createAppServices: async () => ({ runtime: runtime() }),
 }))
+mock.module('../../src/core/app-services-store', () => ({
+  getAppServices: () => ({ runtime: runtime() }),
+  maybeGetAppServices: () => ({ runtime: runtime() }),
+  createAppServices: async () => ({ runtime: runtime() }),
+}))
 
 describe('OpenClaw native Bakin integration', () => {
   let syncOpenClawMcpConfig: typeof import('../../src/core/openclaw-integration').syncOpenClawMcpConfig

@@ -11,7 +11,7 @@ mock.module('@bakin/core/main-agent', () => ({
   getMainAgentName: () => 'Main',
 }))
 
-mock.module('@/core/content-dir', () => ({
+const contentDirFactory = () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({
     root: testDir,
@@ -21,7 +21,11 @@ mock.module('@/core/content-dir', () => ({
     audit: join(testDir, 'audit.jsonl'),
     logs: join(testDir, 'logs'),
   }),
-}))
+})
+mock.module('@/core/content-dir', contentDirFactory)
+// The search outbox reads packages/core/src/content-dir directly — mock BOTH
+// resolvers (CLAUDE.md § Testing Rules), else the real one hits ~/.bakin.
+mock.module('../../packages/core/src/content-dir', contentDirFactory)
 
 mock.module('@/core/settings', () => ({
   resetSettingsCache: () => {},

@@ -39,6 +39,13 @@ mock.module('../../../src/core/app-services', () => ({
     return { runtime }
   },
 }))
+mock.module('../../../src/core/app-services-store', () => ({
+  maybeGetAppServices: () => (useExistingServices ? { runtime } : undefined),
+  createAppServices: async () => {
+    if (initError) throw initError
+    return { runtime }
+  },
+}))
 
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,

@@ -143,6 +143,15 @@ mock.module('../../../src/core/app-services', () => ({
     },
   }),
 }))
+mock.module('../../../src/core/app-services-store', () => ({
+  maybeGetAppServices: () => ({
+    runtime: {
+      agents: {
+        list: async () => mockKnownAgents.map(id => ({ id, name: id })),
+      },
+    },
+  }),
+}))
 
 // Hook registry remains available for plugin activation tests, but task
 // metadata checks read the shared task-store service directly.

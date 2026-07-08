@@ -198,6 +198,26 @@ mock.module('../../../src/core/app-services', () => ({
     health: {},
   }),
 }))
+mock.module('../../../src/core/app-services-store', () => ({
+  getAppServices: () => ({
+    runtime: mockRuntime,
+    search: { available: async () => mockSearchAvailable, tables: { stats: async () => ({ table: 't', documents: 1 }) } },
+    tasks: {},
+    health: {},
+  }),
+  maybeGetAppServices: () => ({
+    runtime: mockRuntime,
+    search: { available: async () => mockSearchAvailable },
+    tasks: {},
+    health: {},
+  }),
+  createAppServices: async () => ({
+    runtime: mockRuntime,
+    search: { available: async () => mockSearchAvailable },
+    tasks: {},
+    health: {},
+  }),
+}))
 mock.module('../../../src/core/app-services.ts', () => ({
   getAppServices: () => ({
     runtime: mockRuntime,
@@ -219,6 +239,26 @@ mock.module('../../../src/core/app-services.ts', () => ({
   }),
 }))
 mock.module('@/core/app-services', () => ({
+  getAppServices: () => ({
+    runtime: mockRuntime,
+    search: { available: async () => mockSearchAvailable },
+    tasks: {},
+    health: {},
+  }),
+  maybeGetAppServices: () => ({
+    runtime: mockRuntime,
+    search: { available: async () => mockSearchAvailable },
+    tasks: {},
+    health: {},
+  }),
+  createAppServices: async () => ({
+    runtime: mockRuntime,
+    search: { available: async () => mockSearchAvailable },
+    tasks: {},
+    health: {},
+  }),
+}))
+mock.module('@/core/app-services-store', () => ({
   getAppServices: () => ({
     runtime: mockRuntime,
     search: { available: async () => mockSearchAvailable },

@@ -29,6 +29,9 @@ mock.module('@/core/task-store', () => ({
 mock.module('../../src/core/app-services', () => ({
   maybeGetAppServices: () => null,
 }))
+mock.module('../../src/core/app-services-store', () => ({
+  maybeGetAppServices: () => null,
+}))
 
 import { queryAuditEvents } from '../../src/core/audit'
 import { checkSessionDeathIncidents } from '../../plugins/tasks/lib/health-checks'

@@ -69,6 +69,12 @@ mock.module('../../src/core/app-services', () => ({
   setAppServices: () => {},
   createAppServices: async () => mockAppServices,
 }))
+mock.module('../../src/core/app-services-store', () => ({
+  maybeGetAppServices: () => mockAppServices,
+  getAppServices: () => mockAppServices,
+  setAppServices: () => {},
+  createAppServices: async () => mockAppServices,
+}))
 
 const mockReleaseServerLock = mock()
 mock.module('../../src/core/server-lock', () => ({
