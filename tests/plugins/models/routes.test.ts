@@ -99,11 +99,25 @@ mock.module('../../../src/core/logger', () => ({
 // Spend route reads the ledger facade; mock it with canned rollups so the
 // route test doesn't need a real db.
 class FakeLedgerUnavailable extends Error {}
+let incidentsList: unknown[] = []
+const incidentResolves: Array<Record<string, unknown>> = []
 mock.module('../../../src/core/execution-ledger', () => ({
   spendTotal: mock(() => 150_000),
   spendByAgent: mock(() => [{ agent: 'pixel', costUsdMicros: 100_000, runs: 4 }, { agent: 'patch', costUsdMicros: 0, runs: 2 }]),
   spendByModel: mock(() => [{ model: 'anthropic/claude-sonnet-4-6', costUsdMicros: 100_000, runs: 4 }, { model: '', costUsdMicros: 0, runs: 2 }]),
+  listRunCostsSince: mock(() => [{ runId: 'r1', agent: 'pixel', model: 'anthropic/claude-sonnet-4-6', provider: 'anthropic', lane: 'metered', totalTokens: 100, costUsdMicros: 150_000, occurredAt: Date.now() }]),
+  listBudgetIncidents: mock(() => incidentsList),
+  resolveBudgetIncident: mock((input: unknown) => { incidentResolves.push(input as Record<string, unknown>); return true }),
+  findOpenCapIncident: mock(() => null),
   LedgerUnavailableError: FakeLedgerUnavailable,
+}))
+// The spend engine's observed side — empty for route tests.
+mock.module('../../../packages/core/src/usage-history/store', () => ({
+  usageByAgentModelDaySince: () => [],
+  toLocalDayKey: (tsMs: number) => {
+    const d = new Date(tsMs)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  },
 }))
 
 // ---------------------------------------------------------------------------
@@ -153,11 +167,14 @@ describe('Models Plugin Activation', () => {
       'GET /aliases',
       'GET /available',
       'GET /budget',
+      'GET /budget/incidents',
+      'GET /budget/status',
       'GET /config',
       'GET /routing',
       'GET /runtime/status',
       'GET /spend',
       'POST /aliases',
+      'POST /budget/incidents/:id/resolve',
       'POST /config',
       'POST /defaults',
       'POST /refresh',
@@ -658,7 +675,76 @@ describe('budget policy', () => {
   })
 })
 
+describe('budget status + incidents routes (cost-control v2)', () => {
+  it('GET /budget/status is side-effect-free and reports configured=false with no rules', async () => {
+    const route = findRoute(activated.routes, 'GET', '/budget/status')!
+    const { status, body } = await callRoute(route, activated.ctx)
+    expect(status).toBe(200)
+    expect(body.configured).toBe(false)
+    expect(body.paused).toBe(false)
+    expect(body.perAgent).toEqual({})
+  })
+
+  it('GET /budget/incidents lists open incidents', async () => {
+    incidentsList = [{ id: 1, scope: 'global', scopeId: '', lane: 'metered', window: 'daily', kind: 'cap', status: 'open' }]
+    const route = findRoute(activated.routes, 'GET', '/budget/incidents')!
+    const { status, body } = await callRoute(route, activated.ctx)
+    expect(status).toBe(200)
+    expect((body.incidents as unknown[]).length).toBe(1)
+    incidentsList = []
+  })
+
+  it('POST resolve ack acknowledges without touching settings', async () => {
+    incidentsList = [{ id: 4, scope: 'global', scopeId: '', lane: 'metered', window: 'daily', kind: 'cap', status: 'open' }]
+    const route = findRoute(activated.routes, 'POST', '/budget/incidents/:id/resolve')!
+    const { status, body } = await callRoute(route, activated.ctx, { searchParams: { id: '4' }, body: { action: 'ack' } })
+    expect(status).toBe(200)
+    expect(body.ok).toBe(true)
+    expect(incidentResolves.at(-1)).toMatchObject({ id: 4, status: 'acknowledged' })
+    incidentsList = []
+  })
+
+  it('POST resolve raise validates the new cap against current spend and updates the rule', async () => {
+    // Rule + settings: global metered $0.10 daily cap; attributed spend is 150_000 micros ($0.15).
+    const originalGetSettings = activated.ctx.getSettings
+    activated.ctx.getSettings = (() => ({ budget: { rules: [{ scope: 'global', lane: 'metered', dailyCap: 0.1 }] } })) as typeof activated.ctx.getSettings
+    incidentsList = [{ id: 9, scope: 'global', scopeId: '', lane: 'metered', window: 'daily', kind: 'cap', status: 'open' }]
+    const route = findRoute(activated.routes, 'POST', '/budget/incidents/:id/resolve')!
+    try {
+      // Too low (≤ current $0.15 spend) → 400.
+      const low = await callRoute(route, activated.ctx, { searchParams: { id: '9' }, body: { action: 'raise', cap: 0.12 } })
+      expect(low.status).toBe(400)
+      expect(String(low.body.error)).toContain('must exceed current')
+
+      // High enough → rule updated + incident resolved.
+      const ok = await callRoute(route, activated.ctx, { searchParams: { id: '9' }, body: { action: 'raise', cap: 5 } })
+      expect(ok.status).toBe(200)
+      expect(activated.ctx.updateSettings).toHaveBeenCalledWith({ budget: { rules: [{ scope: 'global', lane: 'metered', dailyCap: 5 }] } })
+      expect(incidentResolves.at(-1)).toMatchObject({ id: 9, status: 'resolved', resolution: 'raised' })
+    } finally {
+      incidentsList = []
+      activated.ctx.getSettings = originalGetSettings
+    }
+  })
+
+  it('POST resolve 404s for an unknown incident', async () => {
+    const route = findRoute(activated.routes, 'POST', '/budget/incidents/:id/resolve')!
+    const { status } = await callRoute(route, activated.ctx, { searchParams: { id: '999' }, body: { action: 'ack' } })
+    expect(status).toBe(404)
+  })
+})
+
 describe('GET /spend', () => {
+  it('exposes cap-window facets + pace alongside the rolling rollups', async () => {
+    const route = findRoute(activated.routes, 'GET', '/spend')!
+    const { status, body } = await callRoute(route, activated.ctx)
+    expect(status).toBe(200)
+    const facets = body.facets as { daily: { global: Record<string, unknown> } }
+    expect(facets.daily.global.meteredUsdMicros).toBe(150_000)
+    expect(body.pace).toHaveProperty('daily')
+    expect(body.pace).toHaveProperty('monthly')
+  })
+
   it('returns windowed spend rollups (total, byAgent, byModel)', async () => {
     const route = findRoute(activated.routes, 'GET', '/spend')!
     const { status, body } = await callRoute(route, activated.ctx, { searchParams: { window: '24h' } })

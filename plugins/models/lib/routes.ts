@@ -19,6 +19,8 @@ import {
   clearPersistedCache,
 } from './models-cache'
 import { spendTotal, spendByAgent, spendByModel, LedgerUnavailableError } from '../../../src/core/execution-ledger'
+import { assembleBudgetSpend, paceProjection, dayEndMs, monthEndMs } from '../../../src/core/budget-spend'
+import { budgetStatusRoutes } from './budget-routes'
 import {
   getRuntimeSync,
   markConfigDirty,
@@ -359,12 +361,31 @@ export const modelsRoutes = [
         const window = parseSpendWindow(new URL(req.url).searchParams.get('window'))
         const sinceMs = window === 'all' ? 0 : Date.now() - SPEND_WINDOW_MS[window]
         const byModel = spendByModel(sinceMs).map((r) => ({ ...r, model: r.model || 'unknown' }))
+        // Cap-window facets from the shared engine (lane/provider split +
+        // pace) ride alongside the rolling browse rollups — utilization
+        // always computes on calendar cap windows, whatever the selector.
+        const now = Date.now()
+        const facets = await assembleBudgetSpend(now)
+        const pace = {
+          daily: {
+            meteredUsdMicros: paceProjection(facets.daily.global.meteredUsdMicros + facets.daily.global.unattributed.meteredUsdMicros, facets.daily.startMs, dayEndMs(now), now),
+            subscriptionTokens: paceProjection(facets.daily.global.subscriptionTokens + facets.daily.global.unattributed.subscriptionTokens, facets.daily.startMs, dayEndMs(now), now),
+            endsMs: dayEndMs(now),
+          },
+          monthly: {
+            meteredUsdMicros: paceProjection(facets.monthly.global.meteredUsdMicros + facets.monthly.global.unattributed.meteredUsdMicros, facets.monthly.startMs, monthEndMs(now), now),
+            subscriptionTokens: paceProjection(facets.monthly.global.subscriptionTokens + facets.monthly.global.unattributed.subscriptionTokens, facets.monthly.startMs, monthEndMs(now), now),
+            endsMs: monthEndMs(now),
+          },
+        }
         return Response.json({
           window,
           estimated: true,
           totalUsdMicros: spendTotal({ sinceMs }),
           byAgent: spendByAgent(sinceMs),
           byModel,
+          facets,
+          pace,
         })
       } catch (err) {
         // A reporting read must not crash the page when the ledger is down.
@@ -410,4 +431,7 @@ export const modelsRoutes = [
       }
     },
   }),
+
+  // Budget status + incident routes (cost-control v2) — see budget-routes.ts.
+  ...budgetStatusRoutes,
 ]
