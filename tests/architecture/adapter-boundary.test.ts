@@ -110,17 +110,12 @@ const DENYLIST = [
     regex: /(?:discord(?:app)?\.com|discord\.gg|discord\/api)/,
   },
   {
-    label: 'raw runtime config access outside allowlisted gate',
-    regex: /(?:config\.raw|\.raw<)/,
-    allow: (rel: string) => rel === 'src/core/runtime-config-raw.ts',
-  },
-  {
-    // Whole-config reads/replaces are scope-typed + mutation-audited via the
-    // governed wrapper; direct adapter calls bypass that (the audit's
-    // config-surface finding). update(patch) no longer exists at all.
-    label: 'whole runtime-config access outside the governed wrapper',
-    regex: /\.config\.(?:get|replace|update)\s*(?:<[^>]*>)?\s*\(/,
-    allow: (rel: string) => rel === 'src/core/runtime-config.ts',
+    // The contract's config surface is DELETED (P2.5): runtime config is
+    // adapter-private. Nothing upstream may reach for a `runtime.config`
+    // member (it no longer exists — this catches casts/any escapes) or the
+    // deleted governed wrappers.
+    label: 'runtime config access (surface deleted in P2.5 — use the neutral contract methods)',
+    regex: /runtime\.config\.|readRuntimeConfig|replaceRuntimeConfig|readAllowedRuntimeConfigRaw/,
   },
   {
     label: 'provider setup URL outside adapter factory',

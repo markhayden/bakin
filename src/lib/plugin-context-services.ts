@@ -312,10 +312,5 @@ export function createPluginRuntimeFacade(runtime: AgentRuntimeAdapter): AgentRu
           },
         }
       : {}),
-    config: {
-      get: async () => { throw new Error('Runtime config is not exposed to plugins') },
-      replace: async () => { throw new Error('Runtime config is not exposed to plugins') },
-      raw: async () => { throw new Error('Runtime config is not exposed to plugins') },
-    },
   }
 }

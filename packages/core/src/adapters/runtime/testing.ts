@@ -224,11 +224,6 @@ export function createMockRuntimeAdapter(
       },
     },
 
-    config: {
-      get: async <T = Record<string, unknown>>() => ({}) as T,
-      replace: async () => {},
-      raw: async <T = unknown>() => undefined as T,
-    },
   }
 
   return { ...adapter, ...overrides }

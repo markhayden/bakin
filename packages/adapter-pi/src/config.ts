@@ -1,15 +1,12 @@
 /**
- * config.* contract implementation over <pi-home>/agent/settings.json.
+ * Pi-private settings helpers over <pi-home>/agent/settings.json.
  *
- * The raw-key surface additionally answers the two onboarding-check keys
- * the credentials component reads through the governed gate:
- *   - `agents.<id>.authProfiles` — synthesized presence-only view of Pi's
- *     auth.json (provider names only, NEVER credential material).
- *   - `channels` — Pi has no channel layer: honest `{}`.
+ * The contract's config surface is GONE (P2.5) — these helpers back the
+ * adapter-internal reads: credentialStatus() provider names from auth.json
+ * and the routing.defaultModel knob (P2.3).
  */
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs'
 
-import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import { getPiAgentDir, getPiPath } from './home'
 
 function settingsPath(): string {
@@ -68,45 +65,4 @@ export function writeRoutingDefaultModel(defaultModel: string): void {
     : {}
   routing.defaultModel = defaultModel
   writePiSettings({ ...settings, routing })
-}
-
-function lookupKeyPath(config: Record<string, unknown>, key: string): unknown {
-  let node: unknown = config
-  for (const part of key.split('.')) {
-    if (node === null || typeof node !== 'object') return undefined
-    node = (node as Record<string, unknown>)[part]
-  }
-  return node
-}
-
-export function createConfigSurface(): AgentRuntimeAdapter['config'] {
-  return {
-    async get<T = Record<string, unknown>>(): Promise<T> {
-      return readPiSettings() as T
-    },
-
-    async replace<T = Record<string, unknown>>(next: T, _reason: string): Promise<void> {
-      mkdirSync(getPiAgentDir(), { recursive: true })
-      const tmp = `${settingsPath()}.tmp`
-      writeFileSync(tmp, JSON.stringify(next, null, 2))
-      renameSync(tmp, settingsPath())
-    },
-
-    async raw<T = unknown>(key: string, _reason: string): Promise<T> {
-      // Onboarding-check synthesis (see module doc).
-      const authProfilesMatch = /^agents\.[^.]+\.authProfiles$/.exec(key)
-      if (authProfilesMatch) {
-        const providers = listAuthProviders()
-        // Same shape idea as OpenClaw's authProfiles map: provider → marker.
-        return Object.fromEntries(providers.map((p) => [p, { provider: p, configured: true }])) as T
-      }
-      if (key === 'channels') {
-        return {} as T
-      }
-      if (key === '*') {
-        return readPiSettings() as T
-      }
-      return lookupKeyPath(readPiSettings(), key) as T
-    },
-  }
 }

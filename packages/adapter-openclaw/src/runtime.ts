@@ -1331,34 +1331,6 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     },
   }
 
-  config = {
-    get: async <T = Record<string, unknown>>() => {
-      // Populate agents.list (synthesizing an implicit `main` for minimal
-      // configs) so consumers like the models plugin can rely on it.
-      const config = readOpenClawConfig()
-      if (!config) return {} as T
-      const list = config.agents?.list
-      if (Array.isArray(list) && list.length > 0) return config as T
-      return { ...config, agents: { ...config.agents, list: agentListFrom(config) } } as T
-    },
-    replace: async <T = Record<string, unknown>>(next: T, reason: string): Promise<void> => {
-      if (!reason) throw new Error('config.replace requires a reason')
-      writeOpenClawConfig(next as Record<string, unknown>)
-    },
-    raw: async <T = unknown>(key: string, reason: string): Promise<T> => {
-      if (!key) throw new Error('config.raw requires a key')
-      if (!reason) throw new Error('config.raw requires a reason')
-      const authProfilesMatch = key.match(/^agents\.([^.]+)\.authProfiles$/)
-      if (authProfilesMatch) {
-        const profilePath = getOpenClawPath('agents', authProfilesMatch[1], 'agent', 'auth-profiles.json')
-        if (!existsSync(profilePath)) return null as T
-        return JSON.parse(readFileSync(profilePath, 'utf-8')) as T
-      }
-      const config = readOpenClawConfig()
-      if (!config) return null as T
-      return (key === '*' ? config : readPath(config as Record<string, unknown>, key)) as T
-    },
-  }
 
   private async listCronJobs(): Promise<CronJob[]> {
     const stdout = await this.execCron(['cron', 'list', '--all', '--json', '--timeout', String(OPENCLAW_CRON_TIMEOUT_MS)])

@@ -13,7 +13,7 @@ import type {
 import type { CapabilitySet, RuntimeCapabilities, RuntimeCredentialStatus, RuntimeToolAccess, ToolAccessProvisioningStatus } from '@bakin/core/adapters/runtime'
 
 import { createAgentsSurface } from './agents'
-import { createConfigSurface, listAuthProviders } from './config'
+import { listAuthProviders } from './config'
 import { MAIN_AGENT_ID, seedMainAgentIfEmpty } from './main-agent'
 import { createMemorySurface } from './memory'
 import { createMessagingSurface } from './messaging'
@@ -154,5 +154,4 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
 
   models: AgentRuntimeAdapter['models'] = createModelsSurface()
 
-  config: AgentRuntimeAdapter['config'] = createConfigSurface()
 }

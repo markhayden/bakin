@@ -67,7 +67,6 @@ export type {
   RuntimeRoutingPolicy,
   RuntimeRoutingSupport,
   CapabilitySet,
-  RuntimeConfigAccess,
   RuntimeImageBackground,
   RuntimeImageEditInput,
   RuntimeImageFile,

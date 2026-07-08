@@ -59,25 +59,8 @@ afterAll(() => {
 })
 
 describe('config surface', () => {
-  test('get/replace round-trip settings.json', async () => {
-    await adapter.config.replace({ theme: 'dark', defaultProvider: 'openai-codex' }, 'test')
-    const cfg = await adapter.config.get<Record<string, unknown>>()
-    expect(cfg.theme).toBe('dark')
-  })
-
-  test('raw synthesizes onboarding keys: authProfiles presence-only, channels empty', async () => {
-    const profiles = await adapter.config.raw<Record<string, { configured: boolean; key?: string }>>('agents.main.authProfiles', 'onboarding.llm.check')
-    expect(profiles['openai-codex']?.configured).toBe(true)
-    // NEVER credential material:
-    expect(JSON.stringify(profiles)).not.toContain('sk-test-not-real')
-
-    const channels = await adapter.config.raw<Record<string, unknown>>('channels', 'onboarding.channels.check')
-    expect(channels).toEqual({})
-
-    const whole = await adapter.config.raw<Record<string, unknown>>('*', 'onboarding.runtime.integrity')
-    expect(whole.theme).toBe('dark')
-
-    expect(await adapter.config.raw<string>('defaultProvider', 'onboarding.runtime.integrity')).toBe('openai-codex')
+  test('the contract config surface is GONE (P2.5) — adapter-internal reads only', () => {
+    expect((adapter as unknown as Record<string, unknown>).config).toBeUndefined()
   })
 
   test('credentialStatus reports provider names only — never secrets, no channels (P2.2)', async () => {
