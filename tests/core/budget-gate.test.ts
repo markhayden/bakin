@@ -105,6 +105,7 @@ mock.module('../../src/core/settings', () => ({
 }))
 
 import { budgetGate, deferForBudget } from '../../src/core/dispatch'
+import { gateBilledMediaCall } from '../../src/core/agent-cost'
 
 beforeEach(() => {
   budgetPolicy = {}
@@ -228,6 +229,41 @@ describe('budgetGate', () => {
     dispatchPausedSetting = true
     expect(await deferForBudget('pixel', dir)).toBe(true)
     expect(auditCalls.filter((c) => c[1] === 'dispatch.paused')).toHaveLength(2)
+  })
+
+  it('MEDIA GATE: refuses a billed call on the exhausted provider with a typed refusal', async () => {
+    budgetPolicy = { rules: [{ scope: 'provider', scopeId: 'google', lane: 'metered', dailyCap: 5 }] }
+    billingImpl = (d) => {
+      const model = (d.model as string | undefined) ?? ''
+      return { provider: model.split('/')[0] || undefined, lane: 'metered', model }
+    }
+    costRows.push({ runId: 'img-1', agent: 'pixel', model: 'google/nanobanana', provider: 'google', lane: 'metered', totalTokens: 0, costUsdMicros: 5_000_000, occurredAt: Date.now() })
+
+    const refused = await gateBilledMediaCall({ agent: 'pixel', model: 'google/nanobanana' })
+    expect(refused.allowed).toBe(false)
+    if (!refused.allowed) {
+      expect(refused.refusal.code).toBe('budget_exceeded')
+      expect(refused.refusal.scope).toBe('provider')
+      expect(refused.refusal.scopeId).toBe('google')
+      expect(refused.refusal.message).toContain('cap')
+    }
+    // The breach opened an incident (via the shared gate).
+    expect(incidentOpens.some((i) => i.scope === 'provider' && i.scopeId === 'google')).toBe(true)
+
+    // A different provider is unaffected.
+    const allowed = await gateBilledMediaCall({ agent: 'pixel', model: 'black-forest-labs/flux-pro' })
+    expect(allowed.allowed).toBe(true)
+  })
+
+  it('MEDIA GATE: warn does not block; kill switch does', async () => {
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 10 }] }
+    costRows.push({ runId: 'img-2', agent: 'pixel', model: 'google/nanobanana', provider: 'google', lane: 'metered', totalTokens: 0, costUsdMicros: 8_500_000, occurredAt: Date.now() })
+    expect((await gateBilledMediaCall({ agent: 'pixel', model: 'google/nanobanana' })).allowed).toBe(true)
+
+    dispatchPausedSetting = true
+    const refused = await gateBilledMediaCall({ agent: 'pixel', model: 'google/nanobanana' })
+    expect(refused.allowed).toBe(false)
+    if (!refused.allowed) expect(refused.refusal.code).toBe('dispatch_paused')
   })
 
   it('a warn threshold opens a warn incident and audits budget.warn once', async () => {

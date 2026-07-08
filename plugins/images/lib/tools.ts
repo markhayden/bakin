@@ -10,7 +10,7 @@ import { effectiveImageSettings, getImageProvider, providerReadiness } from './p
 import { resolveImageRoute } from './routing'
 import { getImageProfile } from './platform-profiles'
 import { runBilledImageCall, type ImageCallKey } from './idempotency'
-import { meterImageTurn } from '../../../src/core/agent-cost'
+import { meterImageTurn, gateBilledMediaCall } from '../../../src/core/agent-cost'
 
 /** Largest edge we send to a provider / feed into sharp, to bound cost. */
 const MAX_IMAGE_EDGE = 2048
@@ -486,6 +486,12 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
   if (!ctx.runtime.images) return fail('The active runtime does not provide an image generation capability')
   const runGenerate = ctx.runtime.images.generate
 
+  // Budget/kill-switch gate BEFORE the idempotency row and the provider call
+  // (cost-control v2): a capped provider refuses with a typed reason the
+  // agent can relay — nothing is billed, nothing is cached.
+  const generateGate = await gateBilledMediaCall({ agent, model: `${req.route.provider}/${req.route.model}` })
+  if (!generateGate.allowed) return { ok: false, error: generateGate.refusal.message, budget: generateGate.refusal }
+
   // Idempotent: a client (mcporter) timeout that retries this identical billed
   // call must not bill twice. Reference identity participates so the same prompt
   // with different references is not treated as a duplicate (#418); versionOf
@@ -537,6 +543,10 @@ export async function editImage(ctx: PluginContext, params: ImagesEditParams, ag
   // Edit is runtime-only — the shared shim does generation, not editing.
   if (!ctx.runtime.images?.edit) return fail('The active runtime does not provide an image edit capability')
   const runEdit = ctx.runtime.images.edit
+
+  // Same budget/kill-switch gate as generate — before billing or idempotency.
+  const editGate = await gateBilledMediaCall({ agent, model: `${req.route.provider}/${req.route.model}` })
+  if (!editGate.allowed) return { ok: false, error: editGate.refusal.message, budget: editGate.refusal }
 
   const key: ImageCallKey = {
     taskId: params.taskId, op: 'edit', source: params.assetId,
