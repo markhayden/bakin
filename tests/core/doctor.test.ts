@@ -126,23 +126,6 @@ mock.module('@/core/onboarding/plugin-assets', () => ({
   },
 }))
 
-// Mock mcporter (avoid install/config in tests)
-mock.module('@/core/mcporter', () => ({
-  isMcporterInstalled: mock(() => true),
-  installMcporter: mock(() => true),
-  verifyConfig: mock(() => ({
-    installed: true,
-    configExists: true,
-    agentEntries: [
-      { agent: 'main', name: 'bakin-main', url: 'http://localhost:3737/mcp?agent=main', correct: true },
-      { agent: 'patch', name: 'bakin-patch', url: 'http://localhost:3737/mcp?agent=patch', correct: true },
-      { agent: 'pixel', name: 'bakin-pixel', url: 'http://localhost:3737/mcp?agent=pixel', correct: true },
-    ],
-    staleEntries: [],
-  })),
-  syncConfig: mock(() => []),
-}))
-
 describe('doctor', () => {
   let tempDir: string
   let contentDir: string

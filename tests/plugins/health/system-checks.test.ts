@@ -3,8 +3,7 @@
  *
  * Migrated out of src/core/doctor.ts (#139 C6+). This file grows over
  * commits C6-C8 to cover all 9 system-level checks plus the
- * system checks. For C6 it covers content-dir, service,
- * and mcporter.
+ * system checks. For C6 it covers content-dir and service.
  */
 import { tmpdir } from 'os'
 import { join as pathJoin } from 'path'
@@ -56,23 +55,6 @@ let mockServiceEnabled = false
 let mockNotificationChannel = ''
 let mockNotificationTarget = ''
 let mockChannelAliases: Record<string, string> = {}
-
-let mockMcporterInstalled = true
-let mockInstallMcporterReturn = true
-let mockAgentEntries: Array<{ agent: string; correct: boolean }> = []
-let mockStaleEntries: string[] = []
-let syncConfigCalls = 0
-mock.module('../../../src/core/mcporter', () => ({
-  isMcporterInstalled: () => mockMcporterInstalled,
-  installMcporter: () => mockInstallMcporterReturn,
-  verifyConfig: async () => ({
-    installed: true,
-    configExists: true,
-    agentEntries: mockAgentEntries,
-    staleEntries: mockStaleEntries,
-  }),
-  syncConfig: async () => { syncConfigCalls++; return ['updated'] },
-}))
 
 let mockSearchEnabled = false
 let mockSearchUrl = 'http://127.0.0.1:8765/api/v1'
@@ -297,7 +279,6 @@ mock.module('@/core/exec-tools/registry', () => ({
 
 import { checkContentDir } from '../../../plugins/health/lib/system-checks/content-dir'
 import { checkService } from '../../../plugins/health/lib/system-checks/service'
-import { checkMcporter, mcporterRepair } from '../../../plugins/health/lib/system-checks/mcporter'
 import { checkRuntime } from '../../../plugins/health/lib/system-checks/runtime'
 import { checkChannelApprovals } from '../../../plugins/health/lib/system-checks/channel-approvals'
 import { checkChannelAliases } from '../../../plugins/health/lib/system-checks/channel-aliases'
@@ -343,11 +324,6 @@ beforeEach(() => {
   mockNotificationChannel = ''
   mockNotificationTarget = ''
   mockChannelAliases = {}
-  mockMcporterInstalled = true
-  mockInstallMcporterReturn = true
-  mockAgentEntries = []
-  mockStaleEntries = []
-  syncConfigCalls = 0
   mockSearchEnabled = false
   mockSearchInstalled = true
   mockSearchUrl = 'http://127.0.0.1:8765/api/v1'
@@ -457,71 +433,6 @@ describe('checkService', () => {
       if (previousHome === undefined) delete process.env.HOME
       else process.env.HOME = previousHome
     }
-  })
-})
-
-// ─── checkMcporter ────────────────────────────────────────────────────────
-
-describe('checkMcporter', () => {
-  it('warns when mcporter is not installed (no autoFix)', async () => {
-    mockMcporterInstalled = false
-    const results = await checkMcporter()
-    expect(results).toHaveLength(1)
-    expect(results[0].status).toBe('warn')
-    expect(results[0].autoFixable).toBe(true)
-    expect(results[0].message).toMatch(/not installed/)
-  })
-
-  it('does not install mcporter during diagnostics', async () => {
-    mockMcporterInstalled = false
-    mockAgentEntries = [{ agent: 'main', correct: true }]
-    const results = await checkMcporter()
-    expect(results.some(r => r.status === 'warn' && r.message.includes('not installed'))).toBe(true)
-    expect(mockMcporterInstalled).toBe(false)
-  })
-
-  it('installs mcporter through explicit repair when missing', async () => {
-    mockMcporterInstalled = false
-    const results = await checkMcporter()
-    const repair = mcporterRepair()
-    const plan = await repair.plan(results)
-    expect(plan).toHaveLength(1)
-    const applied = await repair.apply(plan)
-    expect(applied[0].status).toBe('applied')
-    expect(applied[0].message).toMatch(/Installed mcporter/)
-  })
-
-  it('returns a failed repair result when install fails', async () => {
-    mockMcporterInstalled = false
-    mockInstallMcporterReturn = false
-    const results = await checkMcporter()
-    const applied = await mcporterRepair().apply(await mcporterRepair().plan(results))
-    expect(applied[0].status).toBe('failed')
-    expect(applied[0].message).toMatch(/Failed to install mcporter/)
-  })
-
-  it('reports ok when all agent entries are correct', async () => {
-    mockAgentEntries = [
-      { agent: 'main', correct: true },
-      { agent: 'patch', correct: true },
-    ]
-    const results = await checkMcporter()
-    expect(results.some(r => r.status === 'ok' && r.message.includes('All 2 agent entries'))).toBe(true)
-  })
-
-  it('warns when agent entries are missing or outdated (no autoFix)', async () => {
-    mockAgentEntries = [{ agent: 'main', correct: false }]
-    const results = await checkMcporter()
-    expect(results.some(r => r.status === 'warn' && r.message.includes('1 agent(s) missing or outdated'))).toBe(true)
-  })
-
-  it('runs syncConfig through explicit repair when entries are wrong', async () => {
-    mockAgentEntries = [{ agent: 'main', correct: false }]
-    const results = await checkMcporter()
-    const applied = await mcporterRepair().apply(await mcporterRepair().plan(results))
-    expect(syncConfigCalls).toBeGreaterThanOrEqual(1)
-    expect(applied[0].status).toBe('applied')
-    expect(applied[0].message).toMatch(/Config updated/)
   })
 })
 
@@ -910,10 +821,9 @@ describe('plugin registration', () => {
     }
     await healthPlugin.activate(ctx as unknown as Parameters<typeof healthPlugin.activate>[0])
 
-    // 13 health checks: 11 health-owned checks plus the 2 core managed-block scopes.
+    // Health-owned checks plus the 2 core managed-block scopes.
     expect(registeredIds).toContain('content-dir')
     expect(registeredIds).toContain('service')
-    expect(registeredIds).toContain('mcporter')
     expect(registeredIds).toContain('runtime')
     expect(registeredIds).toContain('channel-approvals')
     expect(registeredIds).toContain('channel-aliases')

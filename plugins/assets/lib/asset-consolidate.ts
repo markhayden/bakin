@@ -10,7 +10,7 @@
  *
  * Idempotency & crash safety:
  * - Each absorbed version carries `consolidatedFrom` provenance; a re-run
- *   (mcporter timeout retry, double-click) skips already-absorbed losers.
+ *   (client timeout retry, double-click) skips already-absorbed losers.
  * - Pointer semantics: consolidation NEVER changes which version is current.
  *   Each absorb captures the pointer immediately before its addVersion and
  *   restores it immediately after — so the pre-existing pointer always

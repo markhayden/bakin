@@ -150,7 +150,6 @@ const OPENCLAW_AGENT_TRANSPORT_TIMEOUT_MS = OPENCLAW_AGENT_TIMEOUT_MS + 30_000
 const OPENCLAW_ABORT_RPC_TIMEOUT_MS = 5_000
 const OPENCLAW_CRON_PROCESS_TIMEOUT_MS = OPENCLAW_CRON_TIMEOUT_MS + 5000
 const OPENCLAW_IMAGE_PROCESS_TIMEOUT_MS = 600000
-const BAKIN_MCPORTER_CALL_TIMEOUT_MS = 600000
 const OPENCLAW_IMAGE_OUTPUT_MAX_BUFFER = 16 * 1024 * 1024
 const OPENCLAW_IMAGE_PROVIDERS_TTL_MS = 5000
 const OPENCLAW_MODELS_LIST_MAX_BUFFER = 16 * 1024 * 1024
@@ -373,6 +372,8 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       removeOpenClawAgentConfig(agentId)
       removeOpenClawAgentArtifacts(agentId, workspace)
       removeOpenClawAgentCronArtifacts(agentId)
+      // Prune the departed agent's MCP server entry so no stale routing lingers.
+      await this.provisionToolAccess()
     },
     listWorkspaceFiles: async (agentId: string): Promise<string[]> => {
       const root = getWorkspacePath(agentId)
@@ -1744,7 +1745,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
   private async exec(args: string[], opts: { maxBuffer?: number; timeout?: number } = {}): Promise<string> {
     try {
-      const { stdout } = await execFileAsync(this.settings.binaryPath, args, { timeout: 15000, ...opts, env: openClawChildEnv() })
+      const { stdout } = await execFileAsync(this.settings.binaryPath, args, { timeout: 15000, ...opts })
       return stdout
     } catch (err) {
       throw new OpenClawCommandError(args, err)
@@ -1809,16 +1810,6 @@ function findOpenClawBinary(): string | null {
 function resolveOpenClawBinary(requested: string): string {
   if (isExecutable(requested)) return requested
   return findOpenClawBinary() ?? requested
-}
-
-function openClawChildEnv(): NodeJS.ProcessEnv {
-  return {
-    ...process.env,
-    // Agents invoke Bakin tools through mcporter. Image generation routinely
-    // exceeds mcporter's 60s default, so keep the transport aligned with the
-    // adapter's image process budget while respecting explicit operator config.
-    MCPORTER_CALL_TIMEOUT: process.env.MCPORTER_CALL_TIMEOUT || String(BAKIN_MCPORTER_CALL_TIMEOUT_MS),
-  }
 }
 
 function gatewayWebSocketUrl(settings: OpenClawSettings): string {

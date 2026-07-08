@@ -24,7 +24,6 @@ import { readHeartbeats } from '../../../../src/lib/content-files'
 import { getBakinPaths } from '../../../../packages/core/src/content-dir'
 import { startAgent, stopAgent } from '../../../../src/lib/agents'
 import { resetSettingsCache } from '../../../../src/core/settings'
-import { syncConfig as syncMcporter } from '../../../../src/core/mcporter'
 import { getAllAgentUsage } from '../../../../src/core/agent-usage'
 import { getStatsByMs } from '../../../../src/core/usage'
 import { readLatestSessionTranscript } from '../session-reader'
@@ -73,7 +72,6 @@ import type {
 import { passthroughTeam, errorResponseTeam } from './shared'
 
 const log = createLogger('team')
-const BAKIN_PORT = Number(process.env.PORT || 3737)
 
 export interface TeamRouteDeps {
   /** Fire-and-forget search-index upsert for an agent (plugin-context-backed). */
@@ -178,9 +176,9 @@ export function populateAgentRoutes(arr: any[], deps: TeamRouteDeps): void {
         ctx.activity.audit('agent.created', 'system', { agent: id, name: body.name as string })
         deps.indexAgentStatic(id, { id, name: body.name as string }, body.model as string || '', 'offline')
 
-        // Bust settings cache and sync mcporter so new agent gets an MCP entry
+        // The runtime adapter provisions the new agent's tool-access wiring
+        // during create (OpenClaw MCP entry / Pi no-op) — nothing to sync here.
         resetSettingsCache()
-        try { await syncMcporter(BAKIN_PORT) } catch { /* non-fatal */ }
 
         // Restart the active runtime unless caller opted out
         const url = new URL(req.url)
@@ -241,8 +239,9 @@ export function populateAgentRoutes(arr: any[], deps: TeamRouteDeps): void {
 
         ctx.activity.audit('agent.deleted', 'system', { agent: agentId })
         ctx.search.remove(agentId).catch(() => {})
+        // The runtime adapter prunes the departed agent's tool-access wiring
+        // during remove (stale OpenClaw MCP entry / Pi no-op).
         resetSettingsCache()
-        try { await syncMcporter(BAKIN_PORT) } catch { /* non-fatal */ }
 
         // Restart the active runtime
         ctx.runtime.restart().then(() => {

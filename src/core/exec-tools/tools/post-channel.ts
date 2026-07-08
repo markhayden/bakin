@@ -141,7 +141,7 @@ export async function postChannel(
   ].filter((file): file is { name: string; path: string } => Boolean(file))
 
   // Identical-retry dedup runs FIRST: a verbatim retry of a post we already
-  // sent (mcporter timeout — the caller never saw the success) must return
+  // sent (client timeout — the caller never saw the success) must return
   // the cached result, never a refusal whose error text invites repost=true.
   const signature = postSignature({ ...params, channel, files })
   const existing = postInflight.get(signature)

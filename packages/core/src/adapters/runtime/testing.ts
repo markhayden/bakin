@@ -107,8 +107,6 @@ export function createMockRuntimeAdapter(
     },
 
     // Conservative default; tests override per-case ({...mock, capabilities}).
-    // 'cli-shim' keeps prompt-fixture bytes stable for mock-driven suites
-    // (maps to the legacy mcporter rendering until P1.4 swaps the builders).
     capabilities: async (_opts?: { agentId?: string }) => ({
       toolCalling: { mode: 'native' as const, access: { style: 'cli-shim' as const } },
       delivery: { mode: 'native' as const },

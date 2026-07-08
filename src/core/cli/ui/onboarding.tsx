@@ -430,7 +430,6 @@ function formatOnboardingMessage(message: string): string {
     .replace(/^Bakin home directory is initialized at (.+)$/, 'Bakin home ready: $1')
     .replace(/^settings\.json is present and parses at (.+)$/, 'settings.json ready: $1')
     .replace(/^All (\d+) Termite models present at (.+)$/, '$1 Termite models ready: $2')
-    .replace(/^mcporter is installed and configured at (.+)$/, 'mcporter ready: $1')
     .replace(/^0 plugin assets to install \(no plugin ships defaults\/runtime-skills\/\)$/, 'No plugin assets to install')
     .replace(/^0 agent-package projections \(no agent or pack installed yet\)$/, 'No agent-package projections yet')
 }

@@ -99,11 +99,6 @@ mock.module('../../../packages/adapter-openclaw/src/main-agent', () => ({
   getMainAgentName: () => 'Main',
 }))
 
-// mcporter — would otherwise spawn child processes
-mock.module('../../../src/core/mcporter', () => ({
-  syncConfig: mock(() => []),
-}))
-
 // agents — sendMessageToAgent is the only thing imported by team
 mock.module('../../../src/core/agents', () => ({
   sendMessageToAgent: mock(async () => ({ ok: true })),

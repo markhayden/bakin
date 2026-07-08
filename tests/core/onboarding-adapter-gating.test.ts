@@ -28,7 +28,6 @@ mock.module('../../src/core/settings', () => ({
   resetSettingsCache: () => {},
 }))
 
-import { mcporterComponent } from '../../src/core/onboarding/mcporter'
 import { openClawIntegrationComponent } from '../../src/core/onboarding/openclaw-integration'
 import { mkdirComponent } from '../../src/core/onboarding/mkdir'
 import { checkAll } from '../../src/core/onboarding/index'
@@ -39,7 +38,6 @@ afterAll(() => {
 
 describe('onboarding adapter gating', () => {
   test('openclaw-only components declare supportedAdapters', () => {
-    expect(mcporterComponent.supportedAdapters).toEqual(['openclaw'])
     expect(openClawIntegrationComponent.supportedAdapters).toEqual(['openclaw'])
     expect(mkdirComponent.supportedAdapters).toBeUndefined()
   })
@@ -47,11 +45,9 @@ describe('onboarding adapter gating', () => {
   test("checkAll on adapter 'pi' skips openclaw-only components without calling them", async () => {
     adapterName = 'pi'
     const results = await checkAll()
-    const mcporter = results.find((r) => r.name === 'mcporter')
     const openclaw = results.find((r) => r.name === 'openclaw-integration')
-    expect(mcporter?.message).toContain('not applicable')
-    expect(mcporter?.status).toBe('ok')
     expect(openclaw?.message).toContain('not applicable')
+    expect(openclaw?.status).toBe('ok')
     // Generic components still genuinely ran (mkdir reports on real temp home).
     const mkdir = results.find((r) => r.name === 'mkdir')
     expect(mkdir?.message ?? '').not.toContain('not applicable')
@@ -60,7 +56,7 @@ describe('onboarding adapter gating', () => {
   test("checkAll on adapter 'openclaw' does NOT skip them", async () => {
     adapterName = 'openclaw'
     const results = await checkAll()
-    const mcporter = results.find((r) => r.name === 'mcporter')
-    expect(mcporter?.message ?? '').not.toContain('not applicable')
+    const openclaw = results.find((r) => r.name === 'openclaw-integration')
+    expect(openclaw?.message ?? '').not.toContain('not applicable')
   })
 })

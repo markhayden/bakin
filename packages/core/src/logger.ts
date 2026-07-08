@@ -186,7 +186,6 @@ function suppressPrettyInfo(entry: LogEntry): boolean {
     'search-cleanup',
     'search-startup',
     'hot-reload-coordinator',
-    'mcporter',
     'dispatch',
     'dispatch-state',
     'dispatch-turns',

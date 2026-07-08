@@ -25,7 +25,6 @@ import {
 } from '../../src/core/health-check-registry'
 import { checkContentDir } from './lib/system-checks/content-dir'
 import { checkService } from './lib/system-checks/service'
-import { checkMcporter, mcporterRepair } from './lib/system-checks/mcporter'
 import { checkRuntime } from './lib/system-checks/runtime'
 import { checkSessionStore } from './lib/system-checks/session-store'
 import { checkChannelApprovals } from './lib/system-checks/channel-approvals'
@@ -650,12 +649,6 @@ const healthPlugin: BakinPlugin = definePlugin({
       id: 'service',
       name: 'macOS LaunchAgent plist',
       run: () => Promise.resolve(checkService(process.cwd())),
-    })
-    ctx.registerHealthCheck({
-      id: 'mcporter',
-      name: 'mcporter install + per-agent config',
-      run: () => checkMcporter(),
-      repair: mcporterRepair(),
     })
     ctx.registerHealthCheck({
       id: 'runtime',

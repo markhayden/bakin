@@ -40,7 +40,6 @@ import { generateDocs } from './src/core/api-docs'
 import type { buildOpenApiDocument } from './packages/host/src/api/docs-runtime'
 import { collectOpenApiSources as collectTypedOpenApiSources } from './packages/host/src/api/openapi-sources'
 import { startSearchEngine } from './src/core/search-startup'
-import * as mcporter from './src/core/mcporter'
 import { buildAllUserPlugins } from './packages/host/src/plugin-host/user-plugin-builder'
 import { dispatchCli } from './src/core/cli'
 import { setEmbeddedAssets } from './packages/host/src/api/_embedded-assets'
@@ -167,13 +166,6 @@ const eventBus = new BakinEventBus(broadcast)
   })
 
   const server = createServer(createRequestHandler({ port, CONTENT_DIR, collectOpenApiSources }))
-
-  // Setup mcporter (install if needed + sync per-agent config)
-  try {
-    await mcporter.setup(port)
-  } catch (err) {
-    log.warn('mcporter setup failed — agents can still use REST/CLI', err)
-  }
 
   // Start file watching before the server loops. Dispatch/watchdog wait until
   // restart recovery has taken the first look at stale in-progress tasks.

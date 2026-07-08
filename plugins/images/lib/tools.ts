@@ -486,7 +486,7 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
   if (!ctx.runtime.images) return fail('The active runtime does not provide an image generation capability')
   const runGenerate = ctx.runtime.images.generate
 
-  // Idempotent: a client (mcporter) timeout that retries this identical billed
+  // Idempotent: a client timeout that retries this identical billed
   // call must not bill twice. Reference identity participates so the same prompt
   // with different references is not treated as a duplicate (#418); versionOf
   // participates so a re-roll into an asset is distinct from a fresh generate.

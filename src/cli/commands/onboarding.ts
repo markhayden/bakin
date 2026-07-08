@@ -174,7 +174,6 @@ async function cmdOnboardingInstallSingle(target: string, args: string[]): Promi
   const componentMap: Record<string, () => Promise<import('../../core/onboarding/types').OnboardingComponent>> = {
     search: async () => (await import('../../core/onboarding/search')).searchComponent,
     'search-models': async () => (await import('../../core/onboarding/search-models')).searchModelsComponent,
-    mcporter: async () => (await import('../../core/onboarding/mcporter')).mcporterComponent,
     'plugin-assets': async () => (await import('../../core/onboarding/plugin-assets')).pluginAssetsComponent,
     'agent-sync': async () => (await import('../../core/onboarding/agent-sync')).agentSyncComponent,
     'recommended-plugins': async () => (await import('../../core/onboarding/recommended-plugins')).recommendedPluginsComponent,
@@ -366,10 +365,10 @@ export async function run(args: string[]): Promise<void> {
       await exitUnknownSubcommand('check', sub, ['runtime', 'search', 'search-models', 'llm', 'channels', 'plugin-assets', 'agent-sync', 'recommended-plugins', 'recommended-agents', 'all'])
     }
   } else if (cmd === 'install') {
-    if (sub === 'search' || sub === 'search-models' || sub === 'mcporter' || sub === 'plugin-assets' || sub === 'agent-sync' || sub === 'recommended-plugins' || sub === 'recommended-agents') {
+    if (sub === 'search' || sub === 'search-models' || sub === 'plugin-assets' || sub === 'agent-sync' || sub === 'recommended-plugins' || sub === 'recommended-agents') {
       await cmdOnboardingInstallSingle(sub, args)
     } else {
-      await exitUnknownSubcommand('install', sub, ['search', 'search-models', 'mcporter', 'plugin-assets', 'agent-sync', 'recommended-plugins', 'recommended-agents'])
+      await exitUnknownSubcommand('install', sub, ['search', 'search-models', 'plugin-assets', 'agent-sync', 'recommended-plugins', 'recommended-agents'])
     }
   } else {
     await cmdOnboard(args)

@@ -120,13 +120,6 @@ export function summarizeOpenClawToolPurpose(name: string, args: unknown): strin
 export function summarizeShellCommandPurpose(command: string): string | undefined {
   if (!command) return undefined
   const first = command.split(/\r?\n/)[0]?.trim() ?? ''
-  if (/\bmcporter\s+call\s+--help\b/.test(first)) return 'Checking Bakin tool call syntax'
-  const mcporterCall = first.match(/\bmcporter\s+call\s+([^\s]+)/)
-  if (mcporterCall) {
-    const tool = mcporterCall[1].split('.').pop() ?? mcporterCall[1]
-    return summarizeToolNamePurpose(tool) ?? 'Calling a Bakin tool'
-  }
-  if (/\bmcporter\s+list\b/.test(first)) return 'Inspecting available Bakin tools'
   if (/\bgh\s+issue\b/.test(first)) return 'Checking GitHub issues'
   if (/\bgh\s+pr\b/.test(first)) return 'Checking GitHub pull requests'
   const bxContextSummary = summarizeBxContextCommand(first)

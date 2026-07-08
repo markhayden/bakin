@@ -793,7 +793,7 @@ describe('OpenClaw runtime Gateway chat', () => {
               type: 'toolCall',
               id: 'call-explicit',
               name: 'exec',
-              arguments: { command: 'mcporter call bakin-main.bakin_exec_messaging_session_get --args {"sessionId":"session-explicit"}' },
+              arguments: { command: 'gh issue list' },
             }],
           },
         })}\n`)
@@ -822,14 +822,14 @@ describe('OpenClaw runtime Gateway chat', () => {
     if (first !== 'timeout') {
       expect(first.value).toEqual({
         type: 'tool',
-        content: 'exec: mcporter call bakin-main.bakin_exec_messaging_session_get --args {"sessionId":"session-explicit"}',
+        content: 'exec: gh issue list',
         data: {
           phase: 'call',
           callId: 'call-explicit',
           toolName: 'exec',
           status: 'running',
-          summary: 'Updating messaging content',
-          inputPreview: '{"command":"mcporter call bakin-main.bakin_exec_messaging_session_get --args {\\"sessionId\\":\\"session-explicit\\"}"}',
+          summary: 'Checking GitHub issues',
+          inputPreview: '{"command":"gh issue list"}',
         },
       })
     }

@@ -15,8 +15,8 @@
  * directly, prefix them with an MCP server, or shell a command — is rendered
  * per-runtime into the injected `tool-access` section of each agent's
  * AGENTS.md (see `renderToolAccessInstructions` + `src/core/team-context.ts`).
- * Keep it that way: no `mcporter`, no per-agent server names, no runtime
- * identifiers here, so the role files stay stable across runtimes.
+ * Keep it that way: no transport CLI commands, no per-agent server names, no
+ * runtime identifiers here, so the role files stay stable across runtimes.
  *
  * Templating: context files may use `{{agentId}}`, `{{agentName}}`,
  * `{{mainAgentId}}`, `{{mainAgentName}}` — substituted per-agent at
