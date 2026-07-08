@@ -184,6 +184,8 @@ export async function deferForMissingBrand(
  */
 export async function buildDispatchBrandBlock(task: {
   id: string
+  title?: string
+  description?: string
   brandId?: string
   parentId?: string | null
   projectId?: string
@@ -198,6 +200,7 @@ export async function buildDispatchBrandBlock(task: {
       | { card: string; warnings: string[]; meta: { brandId: string } & BrandInjectionMeta }
     >('brands.getContext', {
       brandId,
+      taskQuery: [task.title, task.description].filter(Boolean).join('\n').slice(0, 2000),
       maxBytes: resolveBrandContextBudget(getSettings().dispatch?.maxBrandContextBytes),
     })
     if (!result || 'notFound' in result) return { status: 'missing', brandId }

@@ -7,9 +7,18 @@
  * `brands.list` excludes drafts entirely so pickers can never offer one.
  */
 import type { PluginContext } from '@bakin/core/plugin-types'
+import { createLogger } from '../../../src/core/logger'
 import { getBrand, listBrands, listDocs } from './store'
 import { computeBrandFingerprint } from './fingerprint'
 import { buildBrandCard, type BrandCardInput } from './card'
+import { retrieveBrandLessons } from './lesson-retrieval'
+
+const log = createLogger('brands')
+
+// Audit lessons-unavailable at most once per brand per window — the marker in
+// every card is the per-dispatch signal; the audit row is the incident.
+const lessonsUnavailableAudited = new Map<string, number>()
+const LESSONS_UNAVAILABLE_AUDIT_TTL_MS = 10 * 60_000
 
 export function registerBrandsHooks(ctx: PluginContext): void {
   ctx.hooks.register(
@@ -30,16 +39,41 @@ export function registerBrandsHooks(ctx: PluginContext): void {
 
   ctx.hooks.register(
     'brands.getContext',
-    async (data: { brandId?: string; maxBytes?: number; lessons?: BrandCardInput['lessons']; lessonsUnavailable?: boolean }) => {
+    async (data: { brandId?: string; taskQuery?: string; maxBytes?: number; lessons?: BrandCardInput['lessons']; lessonsUnavailable?: boolean }) => {
       if (!data?.brandId) return { notFound: true }
+
+      // Lessons tier (#419 §6): top-N by the task's query, faceted to the
+      // brand. Engine-down degrades to a visible card marker + one audited
+      // incident — never blocks dispatch. Explicit inputs (tests/preview)
+      // bypass retrieval.
+      let lessons = data.lessons
+      let lessonsUnavailable = data.lessonsUnavailable ?? false
+      if (lessons === undefined && !lessonsUnavailable && data.taskQuery) {
+        const retrieved = await retrieveBrandLessons(data.brandId, data.taskQuery)
+        if (retrieved.status === 'ok') {
+          lessons = retrieved.lessons
+        } else {
+          lessonsUnavailable = true
+          const last = lessonsUnavailableAudited.get(data.brandId) ?? 0
+          if (Date.now() - last > LESSONS_UNAVAILABLE_AUDIT_TTL_MS) {
+            lessonsUnavailableAudited.set(data.brandId, Date.now())
+            try {
+              ctx.activity.audit('brand.lessons_unavailable', 'system', { brandId: data.brandId })
+            } catch {
+              log.warn('brand.lessons_unavailable audit unavailable', { brandId: data.brandId })
+            }
+          }
+        }
+      }
+
       return buildBrandCard(data.brandId, {
         maxBytes: typeof data.maxBytes === 'number' && data.maxBytes > 0 ? data.maxBytes : 12288,
-        lessons: data.lessons,
-        lessonsUnavailable: data.lessonsUnavailable,
+        lessons,
+        lessonsUnavailable,
         assetExists: async (assetId) => (await ctx.assets.getAsset(assetId)) !== null,
       })
     },
-    { label: 'Brand dispatch card', summary: 'Byte-budgeted brand card + injection-record meta; notFound for missing/draft brands' },
+    { label: 'Brand dispatch card', summary: 'Byte-budgeted brand card (+retrieved lessons) + injection-record meta; notFound for missing/draft brands' },
   )
 
   ctx.hooks.register(

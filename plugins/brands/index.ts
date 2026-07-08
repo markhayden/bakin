@@ -14,6 +14,7 @@ import { createLogger } from '../../src/core/logger'
 import { brandRoutes } from './lib/routes'
 import { registerBrandsHooks } from './lib/register-hooks'
 import { registerBrandExecTools } from './lib/exec-tools'
+import { registerBrandsSearch } from './lib/search-sync'
 
 const log = createLogger('brands')
 
@@ -39,6 +40,7 @@ const brandsPlugin: BakinPlugin = definePlugin({
   async activate(ctx: PluginContext) {
     registerBrandsHooks(ctx)
     registerBrandExecTools(ctx)
+    registerBrandsSearch(ctx)
     log.info('Brands plugin activated')
   },
 }) as unknown as BakinPlugin
