@@ -138,6 +138,58 @@ export const brandRoutes = [
   }),
 
   defineRoute({
+    path: '/import',
+    method: 'POST',
+    summary: 'Import a portable brand (local path source; github source lands with the drift-check)',
+    description:
+      'Validates the portable manifest, ingests referenced files as managed assets, rewrites path refs → assetIds, stamps provenance. Never writes on validation failure; existing ids require overwrite consent.',
+    body: z.object({
+      source: z.string().min(1),
+      overwrite: z.boolean().optional(),
+    }),
+    responses: { 200: passthrough, 400: errorResponse, 409: errorResponse },
+    handler: async (_req, ctx, parsed) => {
+      const { importBrand } = await import('./portable')
+      try {
+        const result = await importBrand({
+          sourceDir: parsed.body.source,
+          ctx: ctx as never,
+          source: parsed.body.source,
+          overwrite: parsed.body.overwrite,
+        })
+        emitChanged(ctx, result.brand.id, 'brand.imported')
+        return Response.json(result)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        return Response.json({ error: message }, { status: message.includes('already exists') ? 409 : 400 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/:brandId/export',
+    method: 'POST',
+    summary: 'Export a brand to a portable directory',
+    description: 'Writes the portable layout (brand.json with relative file refs, guidelines/, lessons/, assets/) to destDir.',
+    params: brandIdParams,
+    body: z.object({ destDir: z.string().min(1) }),
+    responses: { 200: passthrough, 400: errorResponse, 404: errorResponse },
+    handler: async (_req, ctx, parsed) => {
+      const { exportBrand } = await import('./portable')
+      try {
+        const result = await exportBrand(parsed.params.brandId, parsed.body.destDir, ctx as never)
+        try {
+          ctx.activity.audit('brand.exported', 'system', { brandId: parsed.params.brandId, dir: result.dir })
+        } catch { /* activity surface unavailable (tests) */ }
+        return Response.json(result)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        return Response.json({ error: message }, { status: message.includes('not found') ? 404 : 400 })
+      }
+    },
+  }),
+
+  defineRoute({
     path: '/task-context/:taskId',
     method: 'GET',
     summary: "A task's effective brand + provenance + blocked state",
