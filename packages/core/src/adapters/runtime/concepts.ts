@@ -1,4 +1,4 @@
-import type { AdapterHealthCheckDefinition, AdapterInitOpts, Unsubscribe } from '../shared'
+import type { AdapterHealthCheckDefinition, AdapterInitOpts, RuntimeExecToolProvider, Unsubscribe } from '../shared'
 import type { ChannelCapability } from './capabilities'
 
 export type RuntimeMetadata = Record<string, unknown>
@@ -434,6 +434,21 @@ export interface RuntimeToolAccess {
 }
 
 /**
+ * Result of `verifyToolAccess()` — a runtime-neutral report on whether this
+ * runtime's tool-access wiring is currently in place, so core (onboarding,
+ * doctor) can surface drift WITHOUT knowing any provider's config shape.
+ * `in-process` runtimes report `ok: true` with no issues (nothing to
+ * provision); `mcp` runtimes report missing/stale server entries.
+ */
+export interface ToolAccessProvisioningStatus {
+  style: ToolAccessStyle
+  ok: boolean
+  /** Human-readable drift descriptions when `ok` is false. */
+  issues: string[]
+  details?: Record<string, unknown>
+}
+
+/**
  * The unified capability declaration — every runtime-provided capability that
  * has a native/shim/gap choice. Bakin renders agent instructions from it,
  * routes to shims when `shimmed`, degrades honestly when `unavailable`, and
@@ -737,6 +752,33 @@ export interface AgentRuntimeAdapter {
    * returns the same facts for the async report surface.
    */
   describeToolAccess(): RuntimeToolAccess
+
+  /**
+   * Wire up this runtime so its agents can reach Bakin's exec tools.
+   * Idempotent + re-invokable: run at init AND whenever the agent roster or
+   * exec-tool set changes (agent-create, plugin (un)load).
+   *   - in-process (Pi): no-op — tools are injected per session via the
+   *     `execTools` provider passed to `initialize`.
+   *   - mcp (OpenClaw): write `config.mcp.servers[bakin-<agent>]` for every
+   *     agent, pruning stale Bakin entries; needs `bakinMcpBaseUrl` (init opt).
+   *   - cli-shim: no-op stub.
+   * The `execTools` provider reads the LIVE registry; runtimes that inject
+   * tools by value re-read it here so late registrations become visible.
+   */
+  provisionToolAccess(execTools?: RuntimeExecToolProvider): Promise<void>
+
+  /**
+   * Tear down what `provisionToolAccess` wrote (used on runtime switch-away).
+   * in-process/cli-shim: no-op. mcp: remove Bakin's `bakin-*` server entries.
+   */
+  deprovisionToolAccess(): Promise<void>
+
+  /**
+   * Report whether tool-access provisioning is currently in place, WITHOUT
+   * writing. Drives the onboarding/doctor drift surfaces through a
+   * runtime-neutral status so core never inspects a provider's config shape.
+   */
+  verifyToolAccess(): Promise<ToolAccessProvisioningStatus>
 
   images?: RuntimeImagesAccess
 

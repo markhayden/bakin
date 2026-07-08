@@ -216,6 +216,11 @@ export function createPluginRuntimeFacade(runtime: AgentRuntimeAdapter): AgentRu
     // the sync tool-access descriptor — both required on the contract.
     capabilities: runtime.capabilities.bind(runtime),
     describeToolAccess: runtime.describeToolAccess.bind(runtime),
+    // Tool-access provisioning is a core-only lifecycle concern (config
+    // writes, agent-roster wiring) — never exposed to plugins.
+    provisionToolAccess: async () => { throw new Error('Runtime tool-access provisioning is not exposed to plugins') },
+    deprovisionToolAccess: async () => { throw new Error('Runtime tool-access provisioning is not exposed to plugins') },
+    verifyToolAccess: async () => { throw new Error('Runtime tool-access provisioning is not exposed to plugins') },
     agents: {
       list: runtime.agents.list.bind(runtime.agents),
       get: runtime.agents.get.bind(runtime.agents),

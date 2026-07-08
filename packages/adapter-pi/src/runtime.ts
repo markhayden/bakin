@@ -10,7 +10,7 @@ import type {
   AdapterInitOpts,
 } from '@bakin/core/adapters/runtime'
 
-import type { CapabilitySet, RuntimeCapabilities, RuntimeToolAccess } from '@bakin/core/adapters/runtime'
+import type { CapabilitySet, RuntimeCapabilities, RuntimeToolAccess, ToolAccessProvisioningStatus } from '@bakin/core/adapters/runtime'
 
 import { createAgentsSurface } from './agents'
 import { createConfigSurface } from './config'
@@ -63,6 +63,18 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
 
   /** Pi agents call Bakin exec tools natively (in-process tool bridge). */
   describeToolAccess = (): RuntimeToolAccess => ({ style: 'in-process' })
+
+  /**
+   * No external wiring to provision — Pi's exec tools are injected per
+   * session via the `execTools` provider passed to `initialize`.
+   */
+  provisionToolAccess = async (): Promise<void> => {}
+  deprovisionToolAccess = async (): Promise<void> => {}
+  verifyToolAccess = async (): Promise<ToolAccessProvisioningStatus> => ({
+    style: 'in-process',
+    ok: true,
+    issues: [],
+  })
 
   /** Full capability set; input modality is a conservative model probe. */
   capabilities = async (opts?: { agentId?: string }): Promise<CapabilitySet> => ({

@@ -121,6 +121,10 @@ export function createMockRuntimeAdapter(
 
     describeToolAccess: () => ({ style: 'cli-shim' as const }),
 
+    provisionToolAccess: async () => {},
+    deprovisionToolAccess: async () => {},
+    verifyToolAccess: async () => ({ style: 'cli-shim' as const, ok: true, issues: [] }),
+
     cron: {
       list: async () => [],
       get: async () => null,

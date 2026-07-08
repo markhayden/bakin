@@ -52,6 +52,14 @@ export interface AdapterInitOpts {
   logger?: AdapterLogger
   audit?: (event: AdapterAuditEvent) => void
   execTools?: RuntimeExecToolProvider
+  /**
+   * Base URL of Bakin's MCP server (e.g. `http://localhost:3737`) — the seam
+   * a runtime whose agents reach Bakin over MCP (OpenClaw) needs to write its
+   * per-agent server entries during `provisionToolAccess`. Core knows the
+   * port; the adapter does not, so it is threaded here. In-process runtimes
+   * (Pi) ignore it.
+   */
+  bakinMcpBaseUrl?: string
 }
 
 export interface AdapterHealthCheckResult {

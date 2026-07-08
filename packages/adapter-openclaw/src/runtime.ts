@@ -19,6 +19,7 @@ import type {
   RuntimeCapabilities,
   CapabilitySet,
   RuntimeToolAccess,
+  ToolAccessProvisioningStatus,
   RuntimeImageEditInput,
   RuntimeImageGenerateInput,
   RuntimeImageGenerationResult,
@@ -31,7 +32,13 @@ import type {
   WorkspaceFile,
   WorkspaceFileStat,
 } from '@bakin/core/adapters/runtime'
-import type { AdapterHealthCheckDefinition, AdapterInitOpts, AdapterLogger } from '@bakin/core/adapters/shared'
+import type { AdapterAuditEvent, AdapterHealthCheckDefinition, AdapterInitOpts, AdapterLogger } from '@bakin/core/adapters/shared'
+import {
+  applyBakinMcpEntries,
+  removeBakinMcpEntries,
+  verifyBakinMcpEntries,
+  type BakinMcpConfig,
+} from './tool-access-provisioning'
 import { RuntimeError, RuntimeTurnError } from '@bakin/core/adapters/runtime'
 import { tryGetMainAgentId } from './main-agent'
 import { buildOpenClawAttachments } from './attachments'
@@ -197,6 +204,8 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
   private settings: OpenClawSettings
   private logger: AdapterLogger = noopLogger
+  private auditEvent?: (event: AdapterAuditEvent) => void
+  private bakinMcpBaseUrl?: string
   private approvalResponsesWarningLogged = false
   private approvalResolveWarningLogged = false
   private approvalGatewayClient: OpenClawApprovalGatewayClient | null = null
@@ -213,6 +222,8 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
   async initialize(opts: AdapterInitOpts): Promise<void> {
     this.logger = opts.logger ?? noopLogger
+    this.auditEvent = opts.audit
+    this.bakinMcpBaseUrl = opts.bakinMcpBaseUrl
     this.settings = mergeSettings(opts.settings ?? (this.settings as unknown as Record<string, unknown>))
   }
 
@@ -317,6 +328,9 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       }
       resetOpenClawConfigCache()
       if (!existsSync(workspace)) mkdirSync(workspace, { recursive: true })
+      // New agent → new MCP server entry. Re-provision immediately so the
+      // agent can reach Bakin's tools without waiting for the next boot.
+      await this.provisionToolAccess()
       return {
         id,
         name: input.name,
@@ -959,6 +973,78 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
    */
   /** OpenClaw agents reach Bakin exec tools via their native MCP client (verified: Phase-0 spike). */
   describeToolAccess = (): RuntimeToolAccess => ({ style: 'mcp', mcpServerTemplate: 'bakin-<agent>' })
+
+  private async runtimeAgentIds(): Promise<string[]> {
+    return (await this.agents.list()).map((agent) => agent.id).filter(Boolean)
+  }
+
+  /**
+   * Write `mcp.servers[bakin-<agent>]` for every agent (pruning stale Bakin
+   * entries), so OpenClaw's native MCP client can reach Bakin's tools. Reads +
+   * writes the runtime config directly and audits the change set. Idempotent —
+   * skips the write when nothing changed. Needs `bakinMcpBaseUrl` from init;
+   * warns and no-ops if absent (can't build URLs). The `execTools` provider is
+   * unused: OpenClaw reaches the live registry over MCP, not by value.
+   */
+  provisionToolAccess = async (): Promise<void> => {
+    const baseUrl = this.bakinMcpBaseUrl
+    if (!baseUrl) {
+      this.logger.warn('OpenClaw provisionToolAccess skipped — no Bakin MCP base URL provided at init')
+      return
+    }
+    const agents = await this.runtimeAgentIds()
+    const config = (readOpenClawConfig() ?? {}) as BakinMcpConfig
+    const changes = applyBakinMcpEntries(config, agents, baseUrl)
+    if (changes.length === 0) return
+    writeOpenClawConfig(config as Record<string, unknown>)
+    resetOpenClawConfigCache()
+    this.logger.info('OpenClaw MCP config provisioned', { changes })
+    this.audit('provision-tool-access', { changes })
+  }
+
+  /** Remove Bakin's `bakin-*` MCP server entries (runtime switch-away). */
+  deprovisionToolAccess = async (): Promise<void> => {
+    const config = (readOpenClawConfig() ?? {}) as BakinMcpConfig
+    const changes = removeBakinMcpEntries(config)
+    if (changes.length === 0) return
+    writeOpenClawConfig(config as Record<string, unknown>)
+    resetOpenClawConfigCache()
+    this.logger.info('OpenClaw MCP config deprovisioned', { changes })
+    this.audit('deprovision-tool-access', { changes })
+  }
+
+  /** Read-only drift report on the per-agent MCP entries (no write). */
+  verifyToolAccess = async (): Promise<ToolAccessProvisioningStatus> => {
+    const baseUrl = this.bakinMcpBaseUrl
+    if (!baseUrl) {
+      return { style: 'mcp', ok: false, issues: ['no Bakin MCP base URL configured'] }
+    }
+    const agents = await this.runtimeAgentIds()
+    const config = (readOpenClawConfig() ?? {}) as BakinMcpConfig
+    const status = verifyBakinMcpEntries(config, agents, baseUrl)
+    const missing = status.agentEntries.filter((entry) => !entry.correct)
+    const issues = [
+      ...(missing.length > 0
+        ? [`${missing.length} Bakin MCP entr${missing.length === 1 ? 'y is' : 'ies are'} missing or outdated`]
+        : []),
+      ...(status.staleEntries.length > 0
+        ? [`${status.staleEntries.length} stale Bakin MCP entr${status.staleEntries.length === 1 ? 'y' : 'ies'}`]
+        : []),
+    ]
+    return {
+      style: 'mcp',
+      ok: issues.length === 0,
+      issues,
+      details: {
+        mcpServers: status.agentEntries.map((entry) => entry.name),
+        staleEntries: status.staleEntries,
+      },
+    }
+  }
+
+  private audit(action: string, data: Record<string, unknown>): void {
+    this.auditEvent?.({ adapter: 'openclaw', action, data })
+  }
 
   capabilities = async (opts?: { agentId?: string }): Promise<CapabilitySet> => ({
     toolCalling: { mode: 'native', access: this.describeToolAccess() },

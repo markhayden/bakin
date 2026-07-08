@@ -58,14 +58,27 @@ export async function createAppServices(): Promise<AppServices> {
     },
   }
 
+  // In-process tool delivery for runtimes that register Bakin exec tools
+  // directly in agent sessions (Pi). Out-of-band runtimes (OpenClaw) reach the
+  // same registry over MCP and use the base URL to write their config entries.
+  const execTools = createRuntimeExecToolProvider()
+  const bakinMcpBaseUrl = `http://localhost:${Number(process.env.PORT || 3737)}`
+
   await runtime.initialize({
     ...adapterInit,
     settings: settings.runtime.settings,
-    // In-process tool delivery for runtimes that register Bakin exec tools
-    // directly in agent sessions (Pi). OpenClaw ignores this (MCP/mcporter).
-    execTools: createRuntimeExecToolProvider(),
+    execTools,
+    bakinMcpBaseUrl,
   })
   await search.initialize({ ...adapterInit, settings: withAntflyAuthSecret(settings.search.settings) })
+
+  // Provision this runtime's tool-access wiring (OpenClaw writes per-agent MCP
+  // server entries; Pi is a no-op). Never block boot on a provisioning failure.
+  try {
+    await runtime.provisionToolAccess(execTools)
+  } catch (err) {
+    log.warn('Runtime tool-access provisioning failed at init', err)
+  }
 
   const services: AppServices = {
     runtime,

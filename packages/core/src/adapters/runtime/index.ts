@@ -62,6 +62,7 @@ export type {
   CapabilityMode,
   ToolAccessStyle,
   RuntimeToolAccess,
+  ToolAccessProvisioningStatus,
   CapabilitySet,
   RuntimeConfigAccess,
   RuntimeImageBackground,
