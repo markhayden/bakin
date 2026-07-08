@@ -319,6 +319,56 @@ describe('exec tools', () => {
     expect(bad.ok).toBe(false)
   })
 
+  it('get joins asset captions via assets.describe (S7)', async () => {
+    await createAcme()
+    const put = await callRoute(route('PUT', '/:brandId'), activated.ctx, {
+      searchParams: { brandId: 'acme' },
+      body: {
+        name: 'Acme',
+        palette: [],
+        logos: [],
+        assetGroups: [{ name: 'shots', assetIds: ['asset-billing'] }],
+      },
+    })
+    expect(put.status).toBe(200)
+
+    // Wire assets.describe onto the mocked hooks surface
+    const hooksMock = activated.ctx.hooks as unknown as { has: (n: string) => boolean; invoke: (n: string, d: unknown) => unknown }
+    hooksMock.has = (n: string) => n === 'assets.describe'
+    hooksMock.invoke = async (n: string) =>
+      n === 'assets.describe'
+        ? { 'asset-billing': { description: 'Billing page', caption: 'The billing settings screen', type: 'images', exists: true } }
+        : undefined
+
+    const got = await callTool(tool('bakin_exec_brands_get'), { brandId: 'acme' })
+    expect(got.ok).toBe(true)
+    const details = got.assetDetails as Record<string, { caption?: string }>
+    expect(details['asset-billing']?.caption).toBe('The billing settings screen')
+  })
+
+  it('integrity route reports dangling refs via the shared scan', async () => {
+    await createAcme()
+    await callRoute(route('PUT', '/:brandId'), activated.ctx, {
+      searchParams: { brandId: 'acme' },
+      body: {
+        name: 'Acme',
+        palette: [],
+        logos: [{ assetId: 'ghost-logo', variant: 'dark' }],
+        assetGroups: [],
+      },
+    })
+    // ctx.assets.getAsset mock: nothing exists
+    const assetsMock = activated.ctx.assets as unknown as { getAsset: (id: string) => Promise<null> }
+    assetsMock.getAsset = async () => null
+
+    const res = await callRoute(route('GET', '/:brandId/integrity'), activated.ctx, {
+      searchParams: { brandId: 'acme' },
+    })
+    expect(res.status).toBe(200)
+    const findings = res.body.findings as Array<{ brandId: string; dangling: Array<{ assetId: string }> }>
+    expect(findings[0].dangling.map((d) => d.assetId)).toEqual(['ghost-logo'])
+  })
+
   it('add_lesson is append-only and never overwrites (#419 §6)', async () => {
     await createAcme()
     const first = await callTool(tool('bakin_exec_brands_add_lesson'), {

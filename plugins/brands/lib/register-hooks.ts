@@ -23,18 +23,37 @@ const LESSONS_UNAVAILABLE_AUDIT_TTL_MS = 10 * 60_000
 export function registerBrandsHooks(ctx: PluginContext): void {
   ctx.hooks.register(
     'brands.get',
-    (data: { brandId?: string }) => {
+    async (data: { brandId?: string }) => {
       if (!data?.brandId) return undefined
       const read = getBrand(data.brandId)
       if (read.status !== 'ok') return undefined
+      // Caption join (S7): label group members via assets.describe so agents
+      // pick the RIGHT screenshot, not a blind assetId. Best-effort — the
+      // brand view never breaks over the assets plugin.
+      let assetDetails: Record<string, { description: string; caption?: string; exists: boolean }> = {}
+      try {
+        if (ctx.hooks.has('assets.describe')) {
+          const ids = [
+            ...read.manifest.logos.map((l) => l.assetId),
+            ...read.manifest.assetGroups.flatMap((g) => g.assetIds),
+            ...(read.manifest.defaultImageReferences ?? []),
+          ]
+          if (ids.length) {
+            assetDetails = (await ctx.hooks.invoke('assets.describe', { assetIds: [...new Set(ids)] })) ?? {}
+          }
+        }
+      } catch {
+        log.warn('assets.describe unavailable for brand caption join', { brandId: data.brandId })
+      }
       return {
         manifest: read.manifest,
         guidelines: listDocs(read.manifest.id, 'guidelines'),
         lessons: listDocs(read.manifest.id, 'lessons'),
         fingerprint: computeBrandFingerprint(read.manifest.id),
+        assetDetails,
       }
     },
-    { label: 'Get brand', summary: 'Brand manifest + doc listings + fingerprint (drafts included, flagged)' },
+    { label: 'Get brand', summary: 'Brand manifest + doc listings + fingerprint + asset captions (drafts included, flagged)' },
   )
 
   ctx.hooks.register(

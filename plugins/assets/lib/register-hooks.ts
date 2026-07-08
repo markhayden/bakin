@@ -42,6 +42,28 @@ export function registerAssetsHooks(ctx: PluginContext): void {
       .map((m) => ({ assetId: m.assetId, description: m.description ?? '', type: m.type }))
   }, { label: 'List assets linked to a task.', summary: 'Returns {assetId, description, type} for every versioned asset whose manifest taskId matches. Backed by an in-memory index — the sanctioned way for core (dispatch) to resolve a task’s attached assets without scanning plugin storage.', hookKind: 'rpc' })
   ctx.hooks.register('assets.getAssetTypes', () => ASSET_TYPES, { label: 'List asset types.', summary: 'Returns the asset type definitions known to the assets plugin. Use it to build filters, upload forms, or validation messages that match Bakin asset categories.', hookKind: 'rpc' })
+
+  // Batch describe (#419 S7): description + enrichment caption per assetId so
+  // consumers (brands' asset groups) can show WHICH screenshot is which
+  // without re-billing enrichment or scanning plugin storage.
+  ctx.hooks.register('assets.describe', (d: Record<string, unknown>) => {
+    const assetIds = Array.isArray(d?.assetIds) ? d.assetIds.filter((x): x is string => typeof x === 'string') : []
+    const byId: Record<string, { description: string; caption?: string; type: string; exists: boolean }> = {}
+    for (const assetId of assetIds.slice(0, 200)) {
+      const manifest = getAsset(assetId)
+      if (!manifest) {
+        byId[assetId] = { description: '', type: 'other', exists: false }
+        continue
+      }
+      byId[assetId] = {
+        description: manifest.description ?? '',
+        ...(manifest.enrichment?.caption ? { caption: manifest.enrichment.caption } : {}),
+        type: manifest.type,
+        exists: true,
+      }
+    }
+    return byId
+  }, { label: 'Describe assets by id.', summary: 'Batch {description, enrichment caption, type, exists} per assetId — lets brand asset groups (and any consumer) label members without direct imports.', hookKind: 'rpc' })
   ctx.hooks.register('assets.resolveServe', (d: Record<string, unknown>) => resolveAssetServe((d.segments as string[]) ?? []), { label: 'Resolve versioned asset serve request.', summary: 'Resolves an /api/assets/<assetId> path (current, /v/<n>, /thumb, /export/<name>) to a file on disk for serving.', hookKind: 'rpc' })
 
   // Core's sanctioned save path (HookRegistry — core can't call exec

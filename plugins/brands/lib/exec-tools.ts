@@ -48,12 +48,27 @@ export function registerBrandExecTools(ctx: PluginContext): void {
       if (read.status !== 'ok') {
         return { ok: false, error: `brand not found: ${brandId}` }
       }
+      // Caption join (S7): agents pick the RIGHT screenshot by caption.
+      let assetDetails: Record<string, unknown> = {}
+      try {
+        if (ctx.hooks.has('assets.describe')) {
+          const ids = [
+            ...read.manifest.logos.map((l) => l.assetId),
+            ...read.manifest.assetGroups.flatMap((g) => g.assetIds),
+            ...(read.manifest.defaultImageReferences ?? []),
+          ]
+          if (ids.length) {
+            assetDetails = (await ctx.hooks.invoke('assets.describe', { assetIds: [...new Set(ids)] })) ?? {}
+          }
+        }
+      } catch { /* best-effort — the brand view never breaks over assets */ }
       return {
         ok: true,
         brand: read.manifest,
         guidelines: listDocs(brandId, 'guidelines'),
         lessons: listDocs(brandId, 'lessons'),
         fingerprint: computeBrandFingerprint(brandId),
+        assetDetails,
       }
     },
   })

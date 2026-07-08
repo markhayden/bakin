@@ -216,6 +216,13 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
         onSave={(terminology) => void putManifest({ terminology })}
       />
 
+      {/* Brand assets (T6.1b): logos + named groups, labeled by enrichment
+          captions so you (and agents) know which screenshot is which (S7). */}
+      <BrandAssetsSection brand={b} onSave={(patch) => void putManifest(patch)} />
+
+      {/* Card size + integrity + deletion guard */}
+      <BrandHealthSection brandId={b.id} onDeleted={onBack} />
+
       {/* Docs */}
       {(['guidelines', 'lessons'] as const).map((kind) => (
         <section key={kind} className="rounded-lg border p-3 space-y-2">
@@ -281,6 +288,247 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
         </section>
       ))}
     </div>
+  )
+}
+
+interface AssetOption {
+  assetId: string
+  description: string
+  type: string
+}
+
+/** Logos + asset groups, picked from the existing asset store (assets never move — brands only point). */
+function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (patch: ManifestPatch) => void }) {
+  const [options, setOptions] = useState<AssetOption[]>([])
+  const [groupDraft, setGroupDraft] = useState<{ name: string; description: string } | null>(null)
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch('/api/plugins/assets/versioned')
+        if (!res.ok) return
+        const body = (await res.json()) as { assets?: Array<{ assetId: string; description?: string; type?: string }> }
+        setOptions((body.assets ?? []).map((a) => ({ assetId: a.assetId, description: a.description ?? '', type: a.type ?? 'other' })))
+      } catch {
+        // Picker degrades to manual entry when the assets plugin is unreachable.
+      }
+    })()
+  }, [])
+
+  const label = (assetId: string) => {
+    const opt = options.find((o) => o.assetId === assetId)
+    return opt?.description ? `${assetId} — ${opt.description.slice(0, 60)}` : assetId
+  }
+
+  const assetSelect = (onPick: (assetId: string) => void) => (
+    <select
+      className="rounded-md border bg-background px-2 py-1 text-xs max-w-72"
+      value=""
+      onChange={(e) => { if (e.target.value) onPick(e.target.value) }}
+    >
+      <option value="">Add asset…</option>
+      {options.map((o) => (
+        <option key={o.assetId} value={o.assetId}>
+          {o.assetId}{o.description ? ` — ${o.description.slice(0, 50)}` : ''} ({o.type})
+        </option>
+      ))}
+    </select>
+  )
+
+  return (
+    <section className="rounded-lg border p-3 space-y-3">
+      <div className="flex items-center justify-between">
+        <label className="text-xs font-medium text-muted-foreground">Brand assets</label>
+        <span className="text-[11px] text-muted-foreground">Real logos + screenshots agents reference — assets stay in the asset store.</span>
+      </div>
+
+      {/* Logos */}
+      <div className="space-y-1">
+        <p className="text-[11px] font-medium text-muted-foreground">Logos</p>
+        {brand.logos.map((logo, i) => (
+          <div key={`${logo.assetId}-${i}`} className="flex items-center gap-2 text-xs">
+            <span className="font-mono">{label(logo.assetId)}</span>
+            <input
+              className="w-24 rounded-md border bg-background px-2 py-0.5 text-xs"
+              value={logo.variant}
+              onChange={(e) => onSave({ logos: brand.logos.map((l, j) => (j === i ? { ...l, variant: e.target.value } : l)) })}
+            />
+            <button className="text-muted-foreground hover:text-destructive" onClick={() => onSave({ logos: brand.logos.filter((_, j) => j !== i) })}>✕</button>
+          </div>
+        ))}
+        {assetSelect((assetId) => onSave({ logos: [...brand.logos, { assetId, variant: 'default' }] }))}
+      </div>
+
+      {/* Groups */}
+      <div className="space-y-2">
+        <p className="text-[11px] font-medium text-muted-foreground">Asset groups</p>
+        {brand.assetGroups.map((group, gi) => (
+          <div key={group.name} className="rounded-md border p-2 space-y-1">
+            <div className="flex items-center gap-2 text-xs">
+              <span className="font-medium">{group.name}</span>
+              {group.description && <span className="text-muted-foreground">— {group.description}</span>}
+              <button
+                className="ml-auto text-muted-foreground hover:text-destructive"
+                onClick={() => onSave({ assetGroups: brand.assetGroups.filter((_, j) => j !== gi) })}
+              >
+                remove group
+              </button>
+            </div>
+            {group.assetIds.map((assetId) => (
+              <div key={assetId} className="flex items-center gap-2 pl-2 text-xs text-muted-foreground">
+                <span className="font-mono">{label(assetId)}</span>
+                <button
+                  className="hover:text-destructive"
+                  onClick={() => onSave({
+                    assetGroups: brand.assetGroups.map((g, j) => (j === gi ? { ...g, assetIds: g.assetIds.filter((id) => id !== assetId) } : g)),
+                  })}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+            {assetSelect((assetId) => onSave({
+              assetGroups: brand.assetGroups.map((g, j) => (j === gi && !g.assetIds.includes(assetId) ? { ...g, assetIds: [...g.assetIds, assetId] } : g)),
+            }))}
+          </div>
+        ))}
+        {groupDraft ? (
+          <div className="flex items-center gap-2">
+            <input className="w-40 rounded-md border bg-background px-2 py-1 text-xs" placeholder="group name" value={groupDraft.name} onChange={(e) => setGroupDraft({ ...groupDraft, name: e.target.value })} />
+            <input className="flex-1 rounded-md border bg-background px-2 py-1 text-xs" placeholder="usage note, e.g. real product UI — use for any product visual" value={groupDraft.description} onChange={(e) => setGroupDraft({ ...groupDraft, description: e.target.value })} />
+            <button
+              className="rounded-md border px-2 py-1 text-xs hover:bg-accent disabled:opacity-50"
+              disabled={!groupDraft.name.trim()}
+              onClick={() => {
+                onSave({ assetGroups: [...brand.assetGroups, { name: groupDraft.name.trim(), description: groupDraft.description.trim() || undefined, assetIds: [] }] })
+                setGroupDraft(null)
+              }}
+            >
+              Add group
+            </button>
+            <button className="text-xs text-muted-foreground hover:underline" onClick={() => setGroupDraft(null)}>Cancel</button>
+          </div>
+        ) : (
+          <button className="rounded-md border px-2 py-1 text-xs hover:bg-accent" onClick={() => setGroupDraft({ name: '', description: '' })}>
+            New group
+          </button>
+        )}
+      </div>
+
+      {/* Default image references */}
+      <div className="space-y-1">
+        <p className="text-[11px] font-medium text-muted-foreground" title="Auto-attached to brand-conditioned image generation when the agent passes no references (max 4)">
+          Default image references (≤4)
+        </p>
+        {(brand.defaultImageReferences ?? []).map((assetId) => (
+          <div key={assetId} className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="font-mono">{label(assetId)}</span>
+            <button className="hover:text-destructive" onClick={() => onSave({ defaultImageReferences: (brand.defaultImageReferences ?? []).filter((id) => id !== assetId) })}>✕</button>
+          </div>
+        ))}
+        {(brand.defaultImageReferences ?? []).length < 4 &&
+          assetSelect((assetId) => {
+            const current = brand.defaultImageReferences ?? []
+            if (!current.includes(assetId)) onSave({ defaultImageReferences: [...current, assetId] })
+          })}
+      </div>
+    </section>
+  )
+}
+
+/** Card-size preview (S9), integrity warnings, and the guarded delete (S10). */
+function BrandHealthSection({ brandId, onDeleted }: { brandId: string; onDeleted: () => void }) {
+  const [cardInfo, setCardInfo] = useState<{ cardBytes: number; maxBytes: number; omitted: number } | null>(null)
+  const [dangling, setDangling] = useState<Array<{ assetId: string; where: string }>>([])
+  const [deleteState, setDeleteState] = useState<{ linked: number } | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch(`/api/plugins/brands/${brandId}/card-preview`)
+        if (res.ok) {
+          const body = (await res.json()) as { meta: { cardBytes: number; omitted: unknown[] }; maxBytes: number }
+          setCardInfo({ cardBytes: body.meta.cardBytes, maxBytes: body.maxBytes, omitted: body.meta.omitted.length })
+        }
+      } catch { /* preview is best-effort */ }
+      try {
+        const res = await fetch(`/api/plugins/brands/${brandId}/integrity`)
+        if (res.ok) {
+          const body = (await res.json()) as { findings: Array<{ brandId: string; dangling: Array<{ assetId: string; where: string }> }> }
+          setDangling(body.findings.find((f) => f.brandId === brandId)?.dangling ?? [])
+        }
+      } catch { /* integrity is best-effort here; the doctor is the backstop */ }
+    })()
+  }, [brandId])
+
+  return (
+    <section className="rounded-lg border p-3 space-y-2">
+      <label className="text-xs font-medium text-muted-foreground">Dispatch footprint & health</label>
+      {cardInfo && (
+        <p className="text-xs text-muted-foreground">
+          This brand's card adds ~{(cardInfo.cardBytes / 1024).toFixed(1)} KB of the {(cardInfo.maxBytes / 1024).toFixed(0)} KB budget to every branded dispatch
+          {cardInfo.omitted > 0
+            ? ` — ${cardInfo.omitted} item(s) currently omitted for size (agents fetch them via tools).`
+            : ' — nothing currently omitted.'}
+        </p>
+      )}
+      {dangling.length > 0 && (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-2">
+          {dangling.map((d) => (
+            <p key={d.assetId} className="text-xs text-amber-400">⚠ asset {d.assetId} missing ({d.where})</p>
+          ))}
+        </div>
+      )}
+      {error && <p className="text-xs text-destructive">{error}</p>}
+      {deleteState === null ? (
+        <button
+          className="rounded-md border border-destructive/40 px-2 py-1 text-xs text-destructive hover:bg-destructive/10"
+          onClick={async () => {
+            let linked = 0
+            try {
+              const res = await fetch('/api/plugins/tasks/')
+              if (res.ok) {
+                const board = (await res.json()) as { columns?: Record<string, Array<{ brandId?: string }>> }
+                for (const [column, tasks] of Object.entries(board.columns ?? {})) {
+                  if (column === 'done' || column === 'archived') continue
+                  linked += tasks.filter((t) => t.brandId === brandId).length
+                }
+              }
+            } catch { /* guard is best-effort; the confirm below is the gate */ }
+            setDeleteState({ linked })
+          }}
+        >
+          Delete brand…
+        </button>
+      ) : (
+        <div className="space-y-1">
+          <p className="text-xs text-destructive">
+            {deleteState.linked > 0
+              ? `${deleteState.linked} pending task(s) link to this brand — they will NOT dispatch until it exists again.`
+              : 'No pending tasks link to this brand.'}
+            {' '}Guidelines and lessons are deleted; assets stay in the asset store.
+          </p>
+          <div className="flex gap-2">
+            <button
+              className="rounded-md border border-destructive/40 px-2 py-1 text-xs text-destructive hover:bg-destructive/10"
+              onClick={async () => {
+                try {
+                  const res = await fetch(`/api/plugins/brands/${brandId}`, { method: 'DELETE' })
+                  if (!res.ok) throw new Error(`delete failed: ${res.status}`)
+                  onDeleted()
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : String(err))
+                }
+              }}
+            >
+              Delete permanently
+            </button>
+            <button className="text-xs text-muted-foreground hover:underline" onClick={() => setDeleteState(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </section>
   )
 }
 

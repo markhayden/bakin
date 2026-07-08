@@ -340,6 +340,25 @@ export const brandRoutes = [
   }),
 
   defineRoute({
+    path: '/:brandId/integrity',
+    method: 'GET',
+    summary: "A brand's dangling-reference report",
+    description: 'Shared integrity scan (lib/integrity.ts — same engine as the brands.integrity doctor check). Structured data, never message text.',
+    params: brandIdParams,
+    responses: { 200: passthrough, 404: errorResponse },
+    handler: async (_req, ctx, parsed) => {
+      const read = getBrand(parsed.params.brandId)
+      if (read.status === 'missing') return Response.json({ error: 'brand not found' }, { status: 404 })
+      const { scanBrandIntegrity } = await import('./integrity')
+      const report = await scanBrandIntegrity(
+        async (assetId) => (await ctx.assets.getAsset(assetId)) !== null,
+        parsed.params.brandId,
+      )
+      return Response.json(report)
+    },
+  }),
+
+  defineRoute({
     path: '/:brandId/card-preview',
     method: 'GET',
     summary: 'Render the exact dispatch card this brand would inject right now',
