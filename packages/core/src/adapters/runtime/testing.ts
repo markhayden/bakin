@@ -10,6 +10,13 @@ export function createMockRuntimeAdapter(
   overrides: Partial<AgentRuntimeAdapter> = {}
 ): AgentRuntimeAdapter {
   const agents = new Map<string, RuntimeAgent>()
+  // In-memory routing policy (P2.3) — mutated by setRoutingPolicy.
+  const mockRoutingPolicy = {
+    defaultModel: '',
+    fallbackModels: [] as string[],
+    defaultSubagentModel: null as string | null,
+    aliases: {} as Record<string, string>,
+  }
 
   const adapter: AgentRuntimeAdapter = {
     name: 'mock-runtime',
@@ -38,7 +45,21 @@ export function createMockRuntimeAdapter(
       },
       update: async (agentId, input) => {
         const existing = agents.get(agentId) ?? { id: agentId, name: agentId, status: 'unknown' as const }
-        const next = { ...existing, ...input }
+        const next: RuntimeAgent = {
+          ...existing,
+          ...(input.name !== undefined ? { name: input.name } : {}),
+          ...(input.role !== undefined ? { role: input.role } : {}),
+          ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
+        }
+        // null clears; string assigns (P2.3 clearing semantics).
+        if (input.model !== undefined) {
+          if (input.model === null) delete next.model
+          else next.model = input.model
+        }
+        if (input.subagentModel !== undefined) {
+          if (input.subagentModel === null) delete next.subagentModel
+          else next.subagentModel = input.subagentModel
+        }
         agents.set(agentId, next)
         return next
       },
@@ -104,6 +125,17 @@ export function createMockRuntimeAdapter(
 
     models: {
       listAvailable: async () => [],
+      routingSupport: () => ({
+        defaultModel: true,
+        fallbackModels: true,
+        defaultSubagentModel: true,
+        aliases: true,
+        perAgentSubagentModel: true,
+      }),
+      routingPolicy: async () => ({ ...mockRoutingPolicy }),
+      setRoutingPolicy: async (patch, _reason) => {
+        Object.assign(mockRoutingPolicy, patch)
+      },
     },
 
     // Conservative default matching production's no-app-services fallback

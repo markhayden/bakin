@@ -161,6 +161,7 @@ export function agentToRuntime(agent: NonNullable<ReturnType<typeof findAgentByI
     name: agent.identity?.name ?? agent.name ?? agent.id,
     role: resolveRole(agent.id),
     model: agentModelPrimary(agent.model),
+    ...(agent.subagents?.model ? { subagentModel: agent.subagents.model } : {}),
     status: 'active',
     metadata: {
       emoji: agent.identity?.emoji ?? '',

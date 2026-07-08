@@ -282,6 +282,11 @@ export function createPluginRuntimeFacade(runtime: AgentRuntimeAdapter): AgentRu
     },
     models: {
       listAvailable: runtime.models.listAvailable.bind(runtime.models),
+      // Routing policy (P2.3): the models plugin manages the runtime's
+      // routing knobs through this neutral surface.
+      routingSupport: runtime.models.routingSupport.bind(runtime.models),
+      routingPolicy: runtime.models.routingPolicy.bind(runtime.models),
+      setRoutingPolicy: runtime.models.setRoutingPolicy.bind(runtime.models),
     },
     ...(runtime.images
       ? {

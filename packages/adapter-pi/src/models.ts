@@ -8,7 +8,9 @@
  */
 import { AuthStorage, ModelRegistry } from '@earendil-works/pi-coding-agent'
 
-import type { AgentRuntimeAdapter, RuntimeAvailableModel, RuntimeCapabilities } from '@bakin/core/adapters/runtime'
+import type { AgentRuntimeAdapter, RuntimeAvailableModel, RuntimeCapabilities, RuntimeRoutingPolicy, RuntimeRoutingSupport } from '@bakin/core/adapters/runtime'
+import { RuntimeError } from '@bakin/core/adapters/runtime'
+import { readRoutingDefaultModel, writeRoutingDefaultModel } from './config'
 import { getPiPath } from './home'
 
 interface PiModelHandle {
@@ -63,6 +65,42 @@ export function createModelsSurface(): AgentRuntimeAdapter['models'] {
         tags: m.reasoning ? ['reasoning'] : [],
         metadata: { maxTokens: m.maxTokens, api: String(m.api) },
       }))
+    },
+
+    // Routing policy (P2.3): Pi honors defaultModel only (session build falls
+    // back to it when an agent has no assignment). Fallbacks / aliases /
+    // subagent models have no Pi semantics — declared unsupported, and a
+    // patch carrying one is REJECTED, never silently stored.
+    routingSupport: (): RuntimeRoutingSupport => ({
+      defaultModel: true,
+      fallbackModels: false,
+      defaultSubagentModel: false,
+      aliases: false,
+      perAgentSubagentModel: false,
+    }),
+
+    async routingPolicy(): Promise<RuntimeRoutingPolicy> {
+      return {
+        defaultModel: readRoutingDefaultModel(),
+        fallbackModels: [],
+        defaultSubagentModel: null,
+        aliases: {},
+      }
+    },
+
+    async setRoutingPolicy(patch: Partial<RuntimeRoutingPolicy>, _reason: string): Promise<void> {
+      const unsupported = [
+        ...(patch.fallbackModels !== undefined && patch.fallbackModels.length > 0 ? ['fallbackModels'] : []),
+        ...(patch.defaultSubagentModel !== undefined && patch.defaultSubagentModel !== null ? ['defaultSubagentModel'] : []),
+        ...(patch.aliases !== undefined && Object.keys(patch.aliases).length > 0 ? ['aliases'] : []),
+      ]
+      if (unsupported.length > 0) {
+        throw new RuntimeError(
+          `adapter-pi: routing policy field(s) not supported by the pi runtime: ${unsupported.join(', ')}`,
+          { kind: 'runtime_failed' },
+        )
+      }
+      if (patch.defaultModel !== undefined) writeRoutingDefaultModel(patch.defaultModel)
     },
   }
 }

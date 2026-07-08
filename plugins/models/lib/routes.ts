@@ -23,8 +23,6 @@ import {
   getRuntimeSync,
   markConfigDirty,
   markRuntimeRestarted,
-  readConfig,
-  updateConfig,
   resolveAgents,
 } from './config-io'
 import { normalizeModelId } from './model-id'
@@ -113,15 +111,19 @@ export const modelsRoutes = [
     responses: { 200: passthrough, 500: errorResponse },
     handler: async (_req, ctx) => {
       try {
-        const agents = await resolveAgents(ctx as unknown as PluginContext)
-        const config = await readConfig(ctx as unknown as PluginContext)
+        const [agents, policy] = await Promise.all([
+          resolveAgents(ctx as unknown as PluginContext),
+          ctx.runtime.models.routingPolicy(),
+        ])
         return Response.json({
           agents,
-          defaultModel: normalizeModelId(config.agents.defaults.model.primary),
-          defaultSubagentModel: config.agents.defaults.subagents?.model
-            ? normalizeModelId(config.agents.defaults.subagents.model)
+          defaultModel: normalizeModelId(policy.defaultModel),
+          defaultSubagentModel: policy.defaultSubagentModel
+            ? normalizeModelId(policy.defaultSubagentModel)
             : null,
-          fallbackModels: (config.agents.defaults.model.fallbacks ?? []).map(normalizeModelId),
+          fallbackModels: policy.fallbackModels.map(normalizeModelId),
+          // Which routing knobs the ACTIVE runtime honors — UIs hide the rest.
+          support: ctx.runtime.models.routingSupport(),
         })
       } catch (err) {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
@@ -140,26 +142,18 @@ export const modelsRoutes = [
         const { agentId } = body
         const agentsBefore = await resolveAgents(ctx as unknown as PluginContext)
         const before = agentsBefore.find((a) => a.agentId === agentId)
+        if (!before) throw new Error(`Agent "${agentId}" not found`)
         const oldModel = before?.effectiveModel ?? null
 
-        await updateConfig(ctx as unknown as PluginContext, 'models.update-agent-config', (config) => {
-          const agent = config.agents.list.find((a) => a.id === agentId)
-          if (!agent) throw new Error(`Agent "${agentId}" not found`)
-          if (body.ownModel !== undefined) {
-            if (body.ownModel) {
-              agent.model = { primary: normalizeModelId(body.ownModel) }
-            } else {
-              delete agent.model
-            }
-          }
-          if (body.subagentModel !== undefined) {
-            if (body.subagentModel) {
-              if (!agent.subagents) agent.subagents = {}
-              agent.subagents.model = normalizeModelId(body.subagentModel)
-            } else if (agent.subagents) {
-              delete agent.subagents.model
-            }
-          }
+        // Per-agent assignments are runtime-owned (P2.3): write through
+        // agents.update — empty string clears (null), never a config edit.
+        await ctx.runtime.agents.update(agentId, {
+          ...(body.ownModel !== undefined
+            ? { model: body.ownModel ? normalizeModelId(body.ownModel) : null }
+            : {}),
+          ...(body.subagentModel !== undefined
+            ? { subagentModel: body.subagentModel ? normalizeModelId(body.subagentModel) : null }
+            : {}),
         })
 
         const agentsAfter = await resolveAgents(ctx as unknown as PluginContext)
@@ -190,27 +184,22 @@ export const modelsRoutes = [
     responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
     handler: async (_req, ctx, { body }) => {
       try {
-        await updateConfig(ctx as unknown as PluginContext, 'models.update-defaults', (config) => {
-          if (body.defaultModel) {
-            config.agents.defaults.model.primary = normalizeModelId(body.defaultModel)
-          }
-          if (body.fallbackModels) {
-            const fallbackSet = body.fallbackModels
-              .map(normalizeModelId)
-              .filter((id) => id !== normalizeModelId(config.agents.defaults.model.primary))
-            config.agents.defaults.model.fallbacks = [...new Set(fallbackSet)]
-          }
-          if (body.defaultSubagentModel !== undefined) {
-            if (!config.agents.defaults.subagents) {
-              config.agents.defaults.subagents = {}
-            }
-            if (body.defaultSubagentModel) {
-              config.agents.defaults.subagents.model = body.defaultSubagentModel
-            } else {
-              delete config.agents.defaults.subagents.model
-            }
-          }
-        })
+        // Routing policy is runtime-owned (P2.3): merge through the neutral
+        // surface; the adapter maps to its native store (and rejects fields
+        // it declares unsupported).
+        const currentPolicy = await ctx.runtime.models.routingPolicy()
+        const nextDefault = body.defaultModel
+          ? normalizeModelId(body.defaultModel)
+          : normalizeModelId(currentPolicy.defaultModel)
+        await ctx.runtime.models.setRoutingPolicy({
+          ...(body.defaultModel ? { defaultModel: normalizeModelId(body.defaultModel) } : {}),
+          ...(body.fallbackModels
+            ? { fallbackModels: [...new Set(body.fallbackModels.map(normalizeModelId).filter((id) => id !== nextDefault))] }
+            : {}),
+          ...(body.defaultSubagentModel !== undefined
+            ? { defaultSubagentModel: body.defaultSubagentModel || null }
+            : {}),
+        }, 'models.update-defaults')
 
         markConfigDirty()
         setModelsCache(null)
@@ -230,9 +219,8 @@ export const modelsRoutes = [
     responses: { 200: passthrough, 500: errorResponse },
     handler: async (_req, ctx) => {
       try {
-        const config = await readConfig(ctx as unknown as PluginContext)
-        const aliases = readAliases(config)
-        return Response.json({ aliases })
+        const policy = await ctx.runtime.models.routingPolicy()
+        return Response.json({ aliases: readAliases(policy.aliases) })
       } catch (err) {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
       }
@@ -247,31 +235,26 @@ export const modelsRoutes = [
     responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
     handler: async (_req, ctx, { body }) => {
       try {
-        await updateConfig(ctx as unknown as PluginContext, 'models.update-aliases', (config) => {
-          if (!config.agents.defaults.models) {
-            config.agents.defaults.models = {}
-          }
-          if ('aliases' in body) {
-            const newModels: Record<string, unknown> = {}
-            for (const [alias, target] of Object.entries(body.aliases)) {
-              newModels[alias] = { alias: normalizeModelId(target) }
-            }
-            config.agents.defaults.models = newModels
-          } else if ('action' in body) {
-            if (body.action === 'add') {
-              (config.agents.defaults.models as Record<string, unknown>)[body.name] = { alias: normalizeModelId(body.target) }
-            } else if (body.action === 'delete') {
-              delete (config.agents.defaults.models as Record<string, unknown>)[body.name]
-            } else if (body.action === 'prepopulate') {
-              const models = config.agents.defaults.models as Record<string, unknown>
-              for (const [alias, target] of Object.entries(DEFAULT_ALIASES)) {
-                if (!(alias in models)) {
-                  models[alias] = { alias: target }
-                }
-              }
+        // Aliases are runtime-owned policy (P2.3): compute the next full map
+        // from the current one, write through the neutral surface.
+        const currentAliases = readAliases((await ctx.runtime.models.routingPolicy()).aliases)
+        let nextAliases: Record<string, string> = { ...currentAliases }
+        if ('aliases' in body) {
+          nextAliases = Object.fromEntries(
+            Object.entries(body.aliases).map(([alias, target]) => [alias, normalizeModelId(target)]),
+          )
+        } else if ('action' in body) {
+          if (body.action === 'add') {
+            nextAliases[body.name] = normalizeModelId(body.target)
+          } else if (body.action === 'delete') {
+            delete nextAliases[body.name]
+          } else if (body.action === 'prepopulate') {
+            for (const [alias, target] of Object.entries(DEFAULT_ALIASES)) {
+              if (!(alias in nextAliases)) nextAliases[alias] = target
             }
           }
-        })
+        }
+        await ctx.runtime.models.setRoutingPolicy({ aliases: nextAliases }, 'models.update-aliases')
 
         setModelsCache(null)
         ctx.activity.audit('aliases.updated', 'system')

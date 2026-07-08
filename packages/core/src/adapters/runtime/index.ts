@@ -64,6 +64,8 @@ export type {
   RuntimeToolAccess,
   ToolAccessProvisioningStatus,
   RuntimeCredentialStatus,
+  RuntimeRoutingPolicy,
+  RuntimeRoutingSupport,
   CapabilitySet,
   RuntimeConfigAccess,
   RuntimeImageBackground,

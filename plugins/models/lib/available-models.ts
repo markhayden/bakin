@@ -18,7 +18,6 @@ import {
   writePersistedCache,
 } from './models-cache'
 import { getKnownModel, getKnownProvider, formatCostRange } from '../data/known-models'
-import { readConfig } from './config-io'
 import { normalizeModelId, providerFromId, tierFromId } from './model-id'
 
 // ---------------------------------------------------------------------------
@@ -42,9 +41,9 @@ function sortModels(a: AvailableModel, b: AvailableModel): number {
 
 export async function loadConfiguredModelsFromRuntime(ctx: PluginContext): Promise<AvailableModel[]> {
   const runtimeModels = await ctx.runtime.models.listAvailable()
-  const config = await readConfig(ctx as unknown as PluginContext)
-  const defaultModel = normalizeModelId(config.agents.defaults.model.primary)
-  const fallbackModels = (config.agents.defaults.model.fallbacks ?? []).map(normalizeModelId)
+  const policy = await ctx.runtime.models.routingPolicy()
+  const defaultModel = normalizeModelId(policy.defaultModel)
+  const fallbackModels = policy.fallbackModels.map(normalizeModelId)
 
   return runtimeModels
     .filter((model) => model.id && model.available !== false)

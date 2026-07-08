@@ -20,7 +20,10 @@ import type {
   CapabilitySet,
   RuntimeToolAccess,
   RuntimeCredentialStatus,
+  RuntimeRoutingPolicy,
+  RuntimeRoutingSupport,
   ToolAccessProvisioningStatus,
+  UpdateRuntimeAgentInput,
   RuntimeImageEditInput,
   RuntimeImageGenerateInput,
   RuntimeImageGenerationResult,
@@ -41,6 +44,7 @@ import {
   type BakinMcpConfig,
 } from './tool-access-provisioning'
 import { listConfiguredChannels, listLlmProviders } from './credential-status'
+import { applyRoutingPolicy, readRoutingPolicy, setAgentModels } from './model-routing'
 import { RuntimeError, RuntimeTurnError } from '@bakin/core/adapters/runtime'
 import { tryGetMainAgentId } from './main-agent'
 import { buildOpenClawAttachments } from './attachments'
@@ -351,20 +355,24 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         metadata: { ...(input.metadata ?? {}), workspacePath: workspace },
       }
     },
-    update: async (agentId: string, input: Partial<RuntimeAgent>): Promise<RuntimeAgent> => {
+    update: async (agentId: string, input: UpdateRuntimeAgentInput): Promise<RuntimeAgent> => {
       if (!findAgentById(agentId)) throw new Error(`Agent not found: ${agentId}`)
       const args = ['agents', 'set-identity', '--agent', agentId]
       if (input.name) args.push('--name', input.name)
       const emoji = metadataValue(input.metadata, 'emoji')
       if (emoji) args.push('--emoji', emoji)
       if (args.length > 4) await this.exec(args)
+      // Model assignments PERSIST into agents.list[] (P2.3) — previously the
+      // input model was echoed back without being written anywhere.
+      if (input.model !== undefined || input.subagentModel !== undefined) {
+        setAgentModels(agentId, { model: input.model, subagentModel: input.subagentModel })
+      }
       resetOpenClawConfigCache()
       const refreshed = findAgentById(agentId)
       if (refreshed) {
         return {
           ...agentToRuntime(refreshed),
           ...(input.role ? { role: input.role } : {}),
-          ...(input.model ? { model: input.model } : {}),
           metadata: { ...(agentToRuntime(refreshed).metadata ?? {}), ...(input.metadata ?? {}) },
         }
       }
@@ -372,7 +380,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         id: agentId,
         name: input.name ?? agentId,
         role: input.role,
-        model: input.model,
+        model: input.model ?? undefined,
         status: 'active',
         metadata: input.metadata,
       }
@@ -976,6 +984,22 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
           return out
         })
         .filter((model): model is RuntimeAvailableModel => model !== null)
+    },
+
+    // Routing policy (P2.3): OpenClaw honors all five knobs natively —
+    // defaults/fallbacks/aliases in agents.defaults, per-agent subagent
+    // models on agents.list[]. Reads/writes stay adapter-private.
+    routingSupport: (): RuntimeRoutingSupport => ({
+      defaultModel: true,
+      fallbackModels: true,
+      defaultSubagentModel: true,
+      aliases: true,
+      perAgentSubagentModel: true,
+    }),
+    routingPolicy: async (): Promise<RuntimeRoutingPolicy> => readRoutingPolicy(),
+    setRoutingPolicy: async (patch: Partial<RuntimeRoutingPolicy>, reason: string): Promise<void> => {
+      applyRoutingPolicy(patch)
+      this.audit('set-routing-policy', { reason, fields: Object.keys(patch) })
     },
   }
 

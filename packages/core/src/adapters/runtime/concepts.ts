@@ -8,6 +8,8 @@ export interface RuntimeAgent {
   name: string
   role?: string
   model?: string
+  /** Model this agent's spawned subagents use (runtimes with a subagent concept). */
+  subagentModel?: string
   status?: 'active' | 'inactive' | 'unknown'
   metadata?: RuntimeMetadata
 }
@@ -23,7 +25,10 @@ export interface CreateRuntimeAgentInput {
 export interface UpdateRuntimeAgentInput {
   name?: string
   role?: string
-  model?: string
+  /** `null` clears the assignment (agent falls back to the routing default). */
+  model?: string | null
+  /** `null` clears. Reject via routingSupport().perAgentSubagentModel=false runtimes. */
+  subagentModel?: string | null
   metadata?: RuntimeMetadata
 }
 
@@ -479,6 +484,40 @@ export interface RuntimeCredentialStatus {
   channels: string[]
 }
 
+/**
+ * Runtime-owned model routing policy (P2.3): the knobs the RUNTIME honors at
+ * session time — default model for agents without an assignment, failover
+ * order, subagent default, alias map. Bakin manages these through this
+ * neutral surface; each adapter maps to its native store, so a runtime's
+ * policy survives untouched while another runtime is active (round-trip by
+ * construction).
+ */
+export interface RuntimeRoutingPolicy {
+  /** Default model for agents without an explicit assignment. '' when unset. */
+  defaultModel: string
+  /** Failover models tried in order when the default fails. */
+  fallbackModels: string[]
+  /** Default model for spawned subagents. Null when unset/unsupported. */
+  defaultSubagentModel: string | null
+  /** Alias name → target model id. */
+  aliases: Record<string, string>
+}
+
+/**
+ * Which routing-policy fields this runtime actually HONORS. Static
+ * declaration (like describeToolAccess): UIs hide unsupported controls and
+ * `setRoutingPolicy` rejects patches carrying unsupported fields — a knob
+ * the runtime ignores must never be silently stored.
+ */
+export interface RuntimeRoutingSupport {
+  defaultModel: boolean
+  fallbackModels: boolean
+  defaultSubagentModel: boolean
+  aliases: boolean
+  /** Per-agent subagentModel via agents.update. */
+  perAgentSubagentModel: boolean
+}
+
 export interface RuntimeAvailableModel {
   id: string
   name?: string
@@ -753,6 +792,16 @@ export interface AgentRuntimeAdapter {
 
   models: {
     listAvailable(opts?: { includeUnavailable?: boolean }): Promise<RuntimeAvailableModel[]>
+    /** Static declaration of which routing-policy fields this runtime honors. */
+    routingSupport(): RuntimeRoutingSupport
+    /** The runtime's current routing policy (unsupported fields empty). */
+    routingPolicy(): Promise<RuntimeRoutingPolicy>
+    /**
+     * Merge a partial policy into the runtime's native store. MUST throw on
+     * a patch carrying a field `routingSupport()` declares unsupported.
+     * `reason` feeds the adapter's audit trail.
+     */
+    setRoutingPolicy(patch: Partial<RuntimeRoutingPolicy>, reason: string): Promise<void>
   }
 
   /**

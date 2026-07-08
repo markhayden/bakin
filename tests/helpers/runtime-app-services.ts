@@ -104,7 +104,15 @@ export function installFilesystemRuntimeAppServices(options: FilesystemRuntimeAp
       },
       update: async (agentId, input) => {
         const existing = (await runtime.agents.get(agentId)) ?? { id: agentId, name: agentId, status: 'active' as const }
-        const next = { ...existing, ...input }
+        // model/subagentModel use null-to-clear semantics (P2.3) — strip
+        // nullish values so the result stays a valid RuntimeAgent.
+        const { model, subagentModel, ...rest } = input
+        const next = {
+          ...existing,
+          ...rest,
+          ...(typeof model === 'string' ? { model } : {}),
+          ...(typeof subagentModel === 'string' ? { subagentModel } : {}),
+        }
         createdAgents.set(agentId, next)
         return next
       },

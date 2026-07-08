@@ -39,6 +39,37 @@ export function listAuthProviders(): string[] {
   }
 }
 
+export function writePiSettings(next: Record<string, unknown>): void {
+  mkdirSync(getPiAgentDir(), { recursive: true })
+  const tmp = `${settingsPath()}.tmp`
+  writeFileSync(tmp, JSON.stringify(next, null, 2))
+  renameSync(tmp, settingsPath())
+}
+
+/**
+ * Routing policy (P2.3): Pi honors ONE knob — `routing.defaultModel` in
+ * settings.json, used at session build when an agent has no model. Fallbacks,
+ * aliases, and subagent models have no Pi session semantics and are rejected
+ * by setRoutingPolicy (never silently stored).
+ */
+export function readRoutingDefaultModel(): string {
+  const routing = readPiSettings().routing
+  if (routing && typeof routing === 'object') {
+    const value = (routing as Record<string, unknown>).defaultModel
+    if (typeof value === 'string') return value
+  }
+  return ''
+}
+
+export function writeRoutingDefaultModel(defaultModel: string): void {
+  const settings = readPiSettings()
+  const routing = (settings.routing && typeof settings.routing === 'object')
+    ? { ...(settings.routing as Record<string, unknown>) }
+    : {}
+  routing.defaultModel = defaultModel
+  writePiSettings({ ...settings, routing })
+}
+
 function lookupKeyPath(config: Record<string, unknown>, key: string): unknown {
   let node: unknown = config
   for (const part of key.split('.')) {

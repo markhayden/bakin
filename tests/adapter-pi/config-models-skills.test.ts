@@ -88,6 +88,49 @@ describe('config surface', () => {
   })
 })
 
+describe('routing policy (P2.3)', () => {
+  test('declares defaultModel-only support', () => {
+    expect(adapter.models.routingSupport()).toEqual({
+      defaultModel: true,
+      fallbackModels: false,
+      defaultSubagentModel: false,
+      aliases: false,
+      perAgentSubagentModel: false,
+    })
+  })
+
+  test('defaultModel round-trips through settings.json; unsupported fields stay empty', async () => {
+    await adapter.models.setRoutingPolicy({ defaultModel: 'openai-codex/gpt-test-text' }, 'test')
+    expect(await adapter.models.routingPolicy()).toEqual({
+      defaultModel: 'openai-codex/gpt-test-text',
+      fallbackModels: [],
+      defaultSubagentModel: null,
+      aliases: {},
+    })
+  })
+
+  test('rejects a patch carrying an unsupported field — never silently stored', async () => {
+    await expect(
+      adapter.models.setRoutingPolicy({ aliases: { fast: 'x/y' } }, 'test'),
+    ).rejects.toThrow('not supported by the pi runtime')
+    await expect(
+      adapter.models.setRoutingPolicy({ fallbackModels: ['x/y'] }, 'test'),
+    ).rejects.toThrow('not supported by the pi runtime')
+  })
+
+  test('agents.update: model null clears; subagentModel is rejected', async () => {
+    await adapter.agents.update('main', { model: 'openai-codex/gpt-test-text' })
+    expect((await adapter.agents.get('main'))?.model).toBe('openai-codex/gpt-test-text')
+
+    await adapter.agents.update('main', { model: null })
+    expect((await adapter.agents.get('main'))?.model).toBeUndefined()
+
+    await expect(
+      adapter.agents.update('main', { subagentModel: 'x/y' }),
+    ).rejects.toThrow('not supported by the pi runtime')
+  })
+})
+
 describe('skills surface', () => {
   test('global + per-agent scopes are separate; CRUD round-trips', async () => {
     await adapter.skills.write({ name: 'greet', instructions: '# Greet\nSay hi.', files: { 'extra.md': 'notes' } })
