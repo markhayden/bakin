@@ -225,7 +225,7 @@ async function cmdBudgetRm(args: string[]): Promise<void> {
   const scope = flag(args, '--scope') as RuleWire['scope'] | undefined
   const lane = flag(args, '--lane') as RuleWire['lane'] | undefined
   const scopeId = flag(args, '--id')
-  if (!scope || !lane) await exitUsage('bakin budget rm --scope global|agent|provider [--id <scopeId>] --lane metered|subscription')
+  if (!scope || !lane) await exitUsage('bakin budget rm --scope global|agent|provider|model [--id <scopeId>] --lane metered|subscription')
   const rules = await fetchRules()
   const next = rules.filter((r) => !(r.scope === scope && (r.scopeId ?? '') === (scopeId ?? '') && r.lane === lane))
   if (next.length === rules.length) {
@@ -250,8 +250,8 @@ async function cmdBudgetIncidents(args: string[]): Promise<void> {
     if (action !== 'raise' && action !== 'ack' && action !== 'resume') {
       await exitUsage('bakin budget incidents --resolve <id> --action raise|ack|resume [--cap N]')
     }
-    const cap = flag(args, '--cap')
-    const body: Record<string, unknown> = { action, ...(cap ? { cap: Number(cap) } : {}) }
+    const cap = parseCap(flag(args, '--cap'))
+    const body: Record<string, unknown> = { action, ...(cap !== undefined ? { cap } : {}) }
     await apiPost(`/api/plugins/models/budget/incidents/${resolveId}/resolve`, body)
     console.log(`Incident ${resolveId}: ${action}${cap ? ` (new cap ${cap})` : ''}.`)
     return

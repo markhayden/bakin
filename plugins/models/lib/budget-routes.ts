@@ -16,6 +16,8 @@ import { z } from 'zod'
 
 import type { ModelsPluginSettings } from '../types'
 import { resolveBilling } from './billing'
+import { normalizeModelId } from './model-id'
+import { isLegacyBudget, migrateLegacyBudget } from './budget-migration'
 import { resolveAgents } from './config-io'
 import {
   listBudgetIncidents,
@@ -29,6 +31,9 @@ import { assembleBudgetSpend, type BudgetSpendFacets, type LaneSums, type ScopeS
 import { evaluateBudget, dayStartMs, monthStartMs, type BudgetPolicy, type BudgetRule } from '../../../src/core/budget'
 import { getSettings as getSystemSettings } from '../../../src/core/settings'
 import { emitBudgetIncidentResolved } from '../../../src/core/budget-notify'
+import { createLogger } from '../../../src/core/logger'
+
+const log = createLogger('models:budget-routes')
 
 const passthrough = z.record(z.string(), z.unknown())
 const errorResponse = z.object({ error: z.string() })
@@ -37,7 +42,11 @@ const okResponse = z.object({ ok: z.boolean() })
 export type AgentBudgetStatus = 'ok' | 'warn' | 'deferred'
 
 function rulesOf(ctx: { getSettings<T>(): T }): BudgetRule[] {
-  return (ctx.getSettings<ModelsPluginSettings>().budget as BudgetPolicy | undefined)?.rules ?? []
+  // Same migrate-on-read the getBudgetPolicy hook does — a legacy-shaped
+  // settings file must read consistently on EVERY surface, not just the gate.
+  const budget = ctx.getSettings<ModelsPluginSettings>().budget
+  if (isLegacyBudget(budget)) return migrateLegacyBudget(budget).rules ?? []
+  return (budget as BudgetPolicy | undefined)?.rules ?? []
 }
 
 /** Worst decision for an (agent, prospective model) across both lanes — the
@@ -124,6 +133,14 @@ export const budgetStatusRoutes = [
         if (new URL(req.url).searchParams.get('lite') === '1') {
           return Response.json({ paused })
         }
+        // Maintenance-on-read (same as GET /budget/incidents): a quiet board
+        // must not report rolled-over defer incidents as live.
+        try {
+          const sweepNow = Date.now()
+          resolveExpiredBudgetIncidents({ dailyWindowStartMs: dayStartMs(sweepNow), monthlyWindowStartMs: monthStartMs(sweepNow), now: sweepNow })
+        } catch (err) {
+          void err
+        }
         const policy: BudgetPolicy = { rules: rulesOf(ctx) }
         const openIncidents = listBudgetIncidents({ openOnly: true })
         if (!policy.rules?.length) {
@@ -174,28 +191,44 @@ export const budgetStatusRoutes = [
         try {
           // Dynamic imports keep the dispatch fire-core (and its task-store
           // graph) out of the models plugin's static imports.
-          const [{ resolveDispatchRouting }, { readTaskboard }, { getRuntimeMainAgentId }] = await Promise.all([
+          const [{ resolveDispatchRouting }, { readTaskboard }, { getRuntimeMainAgentId }, { loadDispatchState, getFailureRecord }, { getContentDir }] = await Promise.all([
             import('../../../src/core/dispatch-turns'),
             import('../../../src/core/task-store'),
             import('@bakin/core/adapters/runtime'),
+            import('../../../src/core/dispatch-state'),
+            import('../../../src/core/content-dir'),
           ])
           const mainAgentId = await getRuntimeMainAgentId((ctx as unknown as PluginContext).runtime)
           const { columns } = readTaskboard()
+          // Recovery re-dispatches route to the 'recovery' origin — the badge
+          // must evaluate the same model the gate will (dispatch-cycle passes
+          // !!failure?.sessionDeath).
+          let failedDispatches: Record<string, unknown> = {}
+          try {
+            failedDispatches = loadDispatchState(getContentDir()).failedDispatches ?? {}
+          } catch (err) {
+            void err
+          }
           for (const task of columns.todo ?? []) {
             const agentId = task.agent ?? mainAgentId
+            const isRecovery = Boolean(getFailureRecord(failedDispatches[task.id] as never)?.sessionDeath)
             let routedModel: string | null = null
             try {
-              const routing = await resolveDispatchRouting(task as never, false)
+              const routing = await resolveDispatchRouting(task as never, isRecovery)
               routedModel = routing.model ?? null
             } catch (err) {
               void err // inherit the agent default below
             }
-            const model = routedModel ?? effectiveModelByAgent.get(agentId) ?? null
+            // Normalize like the gate's resolveBilling hook does — a bare
+            // claude-* id in a routing override must key model rules identically.
+            const rawModel = routedModel ?? effectiveModelByAgent.get(agentId) ?? null
+            const model = rawModel ? normalizeModelId(rawModel) : null
             const status = await gateStatusFor(ctx as unknown as PluginContext, policy, facets, agentId, model)
             if (status === 'deferred') perTask[task.id] = 'deferred'
           }
         } catch (err) {
-          void err // taskboard unreadable — badges degrade to perAgent
+          // Taskboard/dispatch graph unreadable — badges degrade to perAgent.
+          log.warn('perTask hold computation failed', { err: err instanceof Error ? err.message : String(err) })
         }
         return Response.json({ paused, configured: true, perAgent, perTask, billing, overrides: ctx.getSettings<ModelsPluginSettings>().billing?.overrides ?? [], deferredProviders: [...new Set(deferredProviders)], openIncidents })
       } catch (err) {
@@ -262,8 +295,7 @@ export const budgetStatusRoutes = [
         if (typeof body.cap !== 'number') {
           return Response.json({ error: 'raise requires a cap (in the rule\'s unit: whole USD or tokens)' }, { status: 400 })
         }
-        const settings = ctx.getSettings<ModelsPluginSettings>()
-        const rules = (settings.budget as BudgetPolicy | undefined)?.rules ?? []
+        const rules = rulesOf(ctx)
         const rule = rules.find((r) => ruleMatchesIncident(r, incident))
         if (!rule) return Response.json({ error: 'The breached rule no longer exists — nothing to raise' }, { status: 400 })
 

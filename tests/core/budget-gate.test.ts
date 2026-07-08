@@ -217,6 +217,24 @@ describe('budgetGate', () => {
     expect((await budgetGate('pixel', dir)).action).toBe('allow')
   })
 
+  it('MEMO: a spend memo from a previous day is invalidated (midnight straddle)', async () => {
+    budgetPolicy = GLOBAL_10
+    costRows.push({ runId: 'r1', agent: 'pixel', model: 'google/g', provider: 'google', lane: 'metered', totalTokens: 1, costUsdMicros: 10_000_000, occurredAt: Date.now() })
+    // A memo stamped YESTERDAY with empty facets must not be reused: the
+    // gate re-assembles for today and sees the over-cap spend.
+    const emptyFacets = () => Promise.resolve({
+      computedAt: 0,
+      daily: { startMs: 0, global: { meteredUsdMicros: 0, meteredTokens: 0, subscriptionTokens: 0, unpricedMeteredTokens: 0, unattributed: { meteredUsdMicros: 0, meteredTokens: 0, subscriptionTokens: 0 } }, byAgent: {}, byProvider: {}, byModel: {} },
+      monthly: { startMs: 0, global: { meteredUsdMicros: 0, meteredTokens: 0, subscriptionTokens: 0, unpricedMeteredTokens: 0, unattributed: { meteredUsdMicros: 0, meteredTokens: 0, subscriptionTokens: 0 } }, byAgent: {}, byProvider: {}, byModel: {} },
+    })
+    const staleMemo = { facets: emptyFacets(), dayStartMs: Date.now() - 86_400_000 }
+    expect((await budgetGate('pixel', dir, staleMemo as never)).action).toBe('defer')
+    // And a memo from TODAY is reused verbatim (empty facets ⇒ allow).
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
+    const freshMemo = { facets: emptyFacets(), dayStartMs: todayStart.getTime() }
+    expect((await budgetGate('pixel', dir, freshMemo as never)).action).toBe('allow')
+  })
+
   it('KILL SWITCH: dispatch.paused defers everything, even with no budget policy', async () => {
     dispatchPausedSetting = true
     expect(await deferForBudget('pixel', dir)).toBe(true)

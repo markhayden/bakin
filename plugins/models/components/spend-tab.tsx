@@ -343,7 +343,9 @@ function BillingLanesCard({ m }: { m: ModelsData }) {
   const billing = budgetStatus?.billing ?? {}
   const entries = Object.entries(billing)
   if (entries.length === 0) return null
-  const overriddenAgents = new Set((budgetStatus?.overrides ?? []).filter((o) => o.agentId && !o.provider).map((o) => o.agentId))
+  const overrides = budgetStatus?.overrides ?? []
+  const agentOverrides = new Map(overrides.filter((o) => o.agentId && !o.provider).map((o) => [o.agentId as string, o.lane]))
+  const agentsWithProviderOverrides = new Set(overrides.filter((o) => o.agentId && o.provider).map((o) => o.agentId as string))
   return (
     <div className="rounded-xl border border-border bg-card p-3 space-y-2">
       <div className="text-xs text-muted-foreground">
@@ -356,13 +358,16 @@ function BillingLanesCard({ m }: { m: ModelsData }) {
             <span className="text-muted-foreground">{b.provider}</span>
             <select
               className="h-6 rounded border border-border bg-background text-xs"
-              value={overriddenAgents.has(agentId) ? b.lane : 'auto'}
+              value={agentOverrides.has(agentId) ? agentOverrides.get(agentId) : 'auto'}
               onChange={(e) => setAgentLaneOverride(agentId, e.target.value as 'auto' | 'metered' | 'subscription')}
             >
               <option value="auto">auto ({b.lane})</option>
               <option value="metered">metered ($)</option>
               <option value="subscription">subscription (tokens)</option>
             </select>
+            {agentsWithProviderOverrides.has(agentId) ? (
+              <span className="text-[10px] text-muted-foreground" title="This agent also has per-provider lane overrides (settings billing.overrides) that win over this select for those providers.">+provider overrides</span>
+            ) : null}
           </div>
         ))}
       </div>

@@ -155,6 +155,16 @@ describe('assembleBudgetSpend', () => {
   })
 })
 
+describe('laneKey isolation', () => {
+  it('agent ids containing spaces never collide or corrupt the delta keys', async () => {
+    // 'a b' spends; a hypothetical agent named 'a' must see NO delta.
+    usageCells.push(usage('a b', TODAY, 'google/gemini-3-flash', 500, 400_000))
+    const s = await assembleBudgetSpend(NOW)
+    expect(s.daily.byAgent['a b']?.unattributed.meteredUsdMicros).toBe(400_000)
+    expect(s.daily.byAgent['a']).toBeUndefined()
+  })
+})
+
 describe('paceProjection', () => {
   const dayStart = dayStartMs(NOW)
   const nextDay = dayStart + 24 * 3600 * 1000

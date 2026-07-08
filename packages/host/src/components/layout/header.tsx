@@ -7,6 +7,7 @@ import { AppSidebar } from './app-sidebar'
 import { openGlobalSearch } from '../search/use-search-hotkey'
 import { useSidebarContext } from '@/context/sidebar-context'
 import { useDebug } from '@makinbakin/sdk/hooks'
+import { usePluginEvent, emitPluginEvent } from '@/hooks/use-plugin-event'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -30,10 +31,12 @@ interface BakinUpdateStatus {
 
 /**
  * Kill-switch state (cost-control v2): polled on the shared 15s cadence
- * (lite status endpoint) + refreshed instantly on budget SSE events. Lifted
- * into Header so the paused banner participates in the same
- * --bakin-header-top offset mechanism as the update banner — the banner
- * must PUSH the header down, never be painted over by it.
+ * (lite status endpoint); UI-driven toggles (Spend tab / this banner) fan
+ * out a client-side 'budget.paused_changed' event for instant reflection —
+ * CLI/settings-file toggles land within the poll. Lifted into Header so the
+ * paused banner participates in the same --bakin-header-top offset
+ * mechanism as the update banner — the banner must PUSH the header down,
+ * never be painted over by it.
  */
 function useDispatchPaused(): { paused: boolean; resuming: boolean; resume: () => Promise<void> } {
   const [paused, setPaused] = useState(false)
@@ -55,6 +58,9 @@ function useDispatchPaused(): { paused: boolean; resuming: boolean; resume: () =
     const timer = setInterval(check, 15_000)
     return () => { cancelled = true; clearInterval(timer) }
   }, [])
+  usePluginEvent('budget.paused_changed', (payload) => {
+    if (typeof payload.paused === 'boolean') setPaused(payload.paused)
+  })
 
   const resume = async () => {
     setResuming(true)
@@ -64,6 +70,7 @@ function useDispatchPaused(): { paused: boolean; resuming: boolean; resume: () =
         body: JSON.stringify({ dispatch: { paused: false } }),
       })
       setPaused(false)
+      emitPluginEvent({ event: 'budget.paused_changed', paused: false })
     } finally {
       setResuming(false)
     }

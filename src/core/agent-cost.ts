@@ -221,7 +221,8 @@ export async function meterImageTurn(opts: {
       runId: `image:${randomUUID()}`,
       taskId: opts.taskId,
       agent: opts.agent,
-      model: opts.model,
+      // Hook-normalized id preferred — same keying rule as chat turns.
+      model: priced?.model ?? opts.model,
       provider: priced?.provider ?? null,
       lane: priced?.lane ?? null,
       costUsdMicros: priced?.costUsdMicros ?? null,

@@ -90,7 +90,7 @@ mock.module('../../../packages/core/src/content-dir', () => ({
 mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
     info: mock(),
-    warn: mock(),
+    warn: (...a: unknown[]) => { if (process.env.DEBUG_WARN) console.log('WARN:', ...a) },
     error: mock(),
     debug: mock(),
   }),
@@ -110,8 +110,33 @@ mock.module('../../../src/core/execution-ledger', () => ({
   resolveBudgetIncident: mock((input: unknown) => { incidentResolves.push(input as Record<string, unknown>); return true }),
   resolveExpiredBudgetIncidents: mock(() => 0),
   findOpenCapIncident: mock(() => null),
+  // dispatch-turns (dynamic import in /budget/status) needs the dispatch verbs at load.
+  claimNextRun: mock(() => ({ claimed: false })),
+  settleRun: mock(() => true),
+  loseRun: mock(() => true),
+  currentSeq: mock(() => 0),
+  recordRunCost: mock(() => {}),
+  openBudgetIncident: mock(() => ({ opened: false, id: 1 })),
   LedgerUnavailableError: FakeLedgerUnavailable,
 }))
+// dispatch-turns (dynamically imported by /budget/status perTask) pulls
+// app-services + the adapter home transitively — stub them so the import is
+// side-effect-free in this test env (same trio as budget-gate.test.ts).
+mock.module('../../../src/core/app-services', () => ({ getAppServices: () => ({ runtime: { messaging: { send: async () => ({ id: 'm' }) }, agents: { list: async () => [{ id: 'main', name: 'Main' }] } } }) }))
+mock.module('@/core/app-services', () => ({ getAppServices: () => ({ runtime: { messaging: { send: async () => ({ id: 'm' }) }, agents: { list: async () => [{ id: 'main', name: 'Main' }] } } }) }))
+mock.module('@bakin/adapter-openclaw/home', () => ({ getOpenClawHome: () => testDir, getOpenClawPath: (s: string) => join(testDir, s), resetOpenClawHome: () => {} }))
+
+// Task board for the /budget/status perTask computation — one unassigned todo task.
+mock.module('../../../src/core/task-store', () => ({
+  // dispatch-turns (dynamically imported by /budget/status) needs the full
+  // facade shape at load — partial mocks break on missing exports.
+  readTaskboard: () => ({ columns: { todo: [{ id: 't-unassigned', title: 'Badge me' }] } }),
+  moveTask: async () => {},
+  addTaskLog: async () => {},
+  updateTask: async () => {},
+  blockTask: async () => {},
+}))
+
 // The spend engine's observed side — empty for route tests.
 mock.module('../../../packages/core/src/usage-history/store', () => ({
   usageByAgentModelDaySince: () => [],
@@ -769,6 +794,36 @@ describe('budget status + incidents routes (cost-control v2)', () => {
     expect(ok.status).toBe(200)
     const bad = await callRoute(route, activated.ctx, { body: { overrides: [{ lane: 'metered' }] } })
     expect(bad.status).toBe(400)
+  })
+
+  it('GET /budget/status computes perTask holds with the main-agent fallback (unassigned tasks badge)', async () => {
+    const originalGetSettings = activated.ctx.getSettings
+    const originalAgents = activated.ctx.runtime.agents
+    // $0.10 daily cap; the mocked ledger has $0.15 attributed → deferred.
+    activated.ctx.getSettings = (() => ({ budget: { rules: [{ scope: 'global', lane: 'metered', dailyCap: 0.1 }] } })) as typeof activated.ctx.getSettings
+    activated.ctx.runtime.agents = { ...originalAgents, list: (async () => [{ id: 'main', name: 'Main' }]) } as typeof activated.ctx.runtime.agents
+    try {
+      const route = findRoute(activated.routes, 'GET', '/budget/status')!
+      const { status, body } = await callRoute(route, activated.ctx)
+      expect(status).toBe(200)
+      expect((body.perTask as Record<string, string>)['t-unassigned']).toBe('deferred')
+    } finally {
+      activated.ctx.getSettings = originalGetSettings
+      activated.ctx.runtime.agents = originalAgents
+    }
+  })
+
+  it('models.getBudgetPolicy migrates a legacy shape ON READ (runtime-restored settings file)', async () => {
+    const call = (activated.ctx.hooks.register as ReturnType<typeof mock>).mock.calls.find((c: unknown[]) => c[0] === 'models.getBudgetPolicy')!
+    const handler = call[1] as () => { rules?: unknown[] }
+    const originalGetSettings = activated.ctx.getSettings
+    activated.ctx.getSettings = (() => ({ budget: { global: { dailyUsd: 10 } } })) as typeof activated.ctx.getSettings
+    try {
+      const policy = handler()
+      expect(policy.rules).toEqual([{ scope: 'global', lane: 'metered', dailyCap: 10 }])
+    } finally {
+      activated.ctx.getSettings = originalGetSettings
+    }
   })
 
   it('GET /budget/status?lite=1 returns only the kill-switch bit', async () => {

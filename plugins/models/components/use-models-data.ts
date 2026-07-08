@@ -3,7 +3,7 @@
 // React
 import { useEffect, useState, useCallback } from 'react'
 // SDK
-import { useQueryState, usePluginEvent } from "@makinbakin/sdk/hooks"
+import { useQueryState, usePluginEvent, emitPluginEvent } from "@makinbakin/sdk/hooks"
 import { useRuntimeStatus } from "@makinbakin/sdk/hooks"
 // Relative
 import type { AgentModelConfig, AvailableModel, ModelsConfigResponse } from '../types'
@@ -275,6 +275,9 @@ export function useModelsData() {
         setBudgetRules(pendingRules)
         setPendingRules(null)
         setBudgetWarnings(Array.isArray(data.warnings) ? data.warnings : [])
+        // Re-fetch the canonical rules — the server normalizes model-scope
+        // ids, and the utilization cards must key exactly like spend rows.
+        fetchBudget()
         fetchBudgetStatus()
       } else {
         setBudgetError(typeof data.error === 'string' ? data.error : `Save failed (${res.status})`)
@@ -288,19 +291,28 @@ export function useModelsData() {
 
   /** Toggle the dispatch kill switch from the Spend tab. */
   const setDispatchPaused = async (paused: boolean): Promise<void> => {
+    setBudgetError(null)
     try {
-      await fetch('/api/settings', {
+      const res = await fetch('/api/settings', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dispatch: { paused } }),
       })
+      if (!res.ok) {
+        setBudgetError(`Failed to ${paused ? 'pause' : 'resume'} dispatch (${res.status}).`)
+        return
+      }
       fetchBudgetStatus()
+      // Client-side fan-out so the header banner reflects immediately
+      // instead of waiting out its 15s poll (a settings write emits no SSE).
+      emitPluginEvent({ event: 'budget.paused_changed', paused })
     } catch (err) {
-      console.error('Failed to toggle dispatch pause:', err)
+      setBudgetError(err instanceof Error ? err.message : String(err))
     }
   }
 
   /** Save a per-agent billing-lane override ('auto' clears it). */
   const setAgentLaneOverride = async (agentId: string, lane: 'auto' | 'metered' | 'subscription'): Promise<void> => {
+    setBudgetError(null)
     try {
       const current = budgetStatus?.overrides ?? []
       const others = current.filter((o) => !(o.agentId === agentId && o.provider === undefined))
@@ -308,9 +320,14 @@ export function useModelsData() {
       const res = await fetch('/api/plugins/models/billing/overrides', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ overrides }),
       })
-      if (res.ok) fetchBudgetStatus()
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setBudgetError(typeof data.error === 'string' ? data.error : `Failed to save the lane override (${res.status}).`)
+        return
+      }
+      fetchBudgetStatus()
     } catch (err) {
-      console.error('Failed to save billing override:', err)
+      setBudgetError(err instanceof Error ? err.message : String(err))
     }
   }
 
