@@ -17,14 +17,11 @@ mock.module('../../src/core/sse', () => ({ broadcast: (d: Record<string, unknown
 
 let sendImpl = async (_args: Record<string, unknown>) => ({ id: 'm1' })
 const sends: Array<Record<string, unknown>> = []
-mock.module('../../src/core/app-services', () => ({
-  getAppServices: () => ({
-    runtime: {
-      messaging: { send: async (args: Record<string, unknown>) => { sends.push(args); return sendImpl(args) } },
-      agents: { list: async () => [{ id: 'main' }] },
-    },
-  }),
-}))
+// The runtime is INJECTED by the caller (no app-services import — cycle-free).
+const stubRuntime = {
+  messaging: { send: async (args: Record<string, unknown>) => { sends.push(args); return sendImpl(args) } },
+  agents: { list: async () => [{ id: 'main' }] },
+} as never
 mock.module('@bakin/core/adapters/runtime', () => ({ getRuntimeMainAgentId: async () => 'main' }))
 
 const metered: Array<Record<string, unknown>> = []
@@ -58,7 +55,7 @@ beforeEach(() => {
 
 describe('notifyBudgetIncidentOpened', () => {
   it('broadcasts one plugin-event and sends one metered main-agent message', async () => {
-    notifyBudgetIncidentOpened(INCIDENT)
+    notifyBudgetIncidentOpened(INCIDENT, () => stubRuntime)
     await settle()
     expect(broadcasts).toHaveLength(1)
     expect(broadcasts[0]).toMatchObject({ type: 'plugin-event', event: 'budget.incident_opened', incidentId: 7, scope: 'provider', scopeId: 'google' })
@@ -72,7 +69,7 @@ describe('notifyBudgetIncidentOpened', () => {
 
   it('a relay failure is swallowed (never throws into the gate)', async () => {
     sendImpl = async () => { throw new Error('runtime down') }
-    expect(() => notifyBudgetIncidentOpened(INCIDENT)).not.toThrow()
+    expect(() => notifyBudgetIncidentOpened(INCIDENT, () => stubRuntime)).not.toThrow()
     await settle()
     expect(broadcasts).toHaveLength(1) // SSE still went out
     expect(metered).toHaveLength(0)

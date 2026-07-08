@@ -15,6 +15,7 @@
  */
 import { createLogger } from './logger'
 import { broadcast } from './sse'
+import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import type { BudgetIncidentKind } from './execution-ledger'
 
 const log = createLogger('budget-notify')
@@ -50,16 +51,18 @@ export function describeBudgetIncident(n: BudgetIncidentNotification): string {
 
 /**
  * Fan out a freshly-opened incident. Synchronous facade; the agent relay
- * runs detached. Never throws.
+ * runs detached. Never throws. The runtime is INJECTED by the caller
+ * (dispatch-turns already holds app-services) — importing app-services here
+ * would close an import cycle back through the dispatch graph.
  */
-export function notifyBudgetIncidentOpened(n: BudgetIncidentNotification): void {
+export function notifyBudgetIncidentOpened(n: BudgetIncidentNotification, getRuntime: () => AgentRuntimeAdapter): void {
   const message = describeBudgetIncident(n)
   try {
     broadcast({ type: 'plugin-event', event: 'budget.incident_opened', ...n, message, timestamp: new Date().toISOString() })
   } catch (err) {
     log.error('Failed to broadcast budget incident', err, { incidentId: n.incidentId })
   }
-  void relayToMainAgent(n, message)
+  void relayToMainAgent(n, message, getRuntime)
 }
 
 /** SSE-only companion for resolutions (UI refresh; no agent message). */
@@ -71,16 +74,15 @@ export function emitBudgetIncidentResolved(payload: { incidentId: number; resolu
   }
 }
 
-async function relayToMainAgent(n: BudgetIncidentNotification, message: string): Promise<void> {
+async function relayToMainAgent(n: BudgetIncidentNotification, message: string, getRuntime: () => AgentRuntimeAdapter): Promise<void> {
   try {
     // Dynamic imports keep the notify module out of the static graphs of the
     // many gate call sites (same rationale as agent-cost.ts).
-    const [{ getAppServices }, { getRuntimeMainAgentId }, { meterAgentTurn }] = await Promise.all([
-      import('./app-services'),
+    const [{ getRuntimeMainAgentId }, { meterAgentTurn }] = await Promise.all([
       import('@bakin/core/adapters/runtime'),
       import('./agent-cost'),
     ])
-    const runtime = getAppServices().runtime
+    const runtime = getRuntime()
     const mainAgentId = await getRuntimeMainAgentId(runtime)
     const result = await runtime.messaging.send({
       agentId: mainAgentId,

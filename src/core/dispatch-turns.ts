@@ -272,7 +272,7 @@ function recordBudgetBreach(
       // Warn incidents never block — they must always rollover-sweep, even
       // on pause-mode rules (only CAP incidents inherit the pause hold).
       atCap: decision.action === 'defer' ? decision.rule.atCap ?? 'defer' : 'defer',
-    })
+    }, () => getAppServices().runtime)
   } catch (err) {
     log.error('Failed to record budget breach incident', err, { agentId })
   }
