@@ -135,10 +135,11 @@ Bottom-up: contract types first, then the pieces that consume them. Riskiest ear
 ## Phase 3 — Runtime switch
 
 ### P3.1 — Switch orchestrator (core)
-**Description:** `switchRuntime(target)`: backup settings → flip → `deprovisionToolAccess()` old → construct new adapter + `initialize` + `provisionToolAccess` → re-project agents (agent-sync) → re-validate `capabilities()` → build capability report → reload. Reversible from the backup on any step failure.
-**Acceptance:** orchestrator runs the full lifecycle in an isolated env; failure mid-step restores the backup.
+**Description:** `switchRuntime(target)`: backup settings → flip → `deprovisionToolAccess()` old → construct new adapter + `initialize` + `provisionToolAccess` → **`reconcileRoster` (best-effort carry-over seam)** → re-project agents **only if drifted** → re-validate `capabilities()` → build capability report → reload. Reversible from the backup on any step failure.
+**Cross-runtime carry-over matrix (design — everything has a home):** Bakin-owned state (tasks, assets, projects, workflows, Bakin schedules, chat, audit) carries automatically — the runtime switch never touches `~/.bakin`. Per-agent model assignments are Bakin-side keyed by runtime (P2.3), preserved per-runtime. The agent ROSTER + workspaces are the one runtime-owned thing needing migration: `reconcileRoster` does a best-effort carry (read source `agents.list` → create on target via `agents.create` → map model assignments to the target catalog → re-project → **report what couldn't map**, e.g. a model with no target equivalent). Runtime-native cron/channels/memory stay put by design. **Full carry-over polish (`.userEdited`, deep workspace content, edge mappings) = follow-up tickets (#625 +) that slot INTO this seam — no re-architecture, because the seam + the runtime-neutral agents contract exist from day one.**
+**Acceptance:** orchestrator runs the full lifecycle in an isolated env; failure mid-step restores the backup; `reconcileRoster` carries a roster Pi↔OpenClaw best-effort and reports unmapped items; re-projection is drift-gated (no needless rewrites on a no-op switch).
 **Verify:** `bun test tests/integration/runtime-switch.test.ts --isolate`.
-**Files:** `src/core/runtime-switch.ts` (new). **Size:** L.
+**Files:** `src/core/runtime-switch.ts` (new), `src/core/roster-reconcile.ts` (the seam). **Size:** L.
 
 ### P3.2 — CLI + REST
 **Description:** `bakin runtime use <adapter>` (`src/cli/commands/runtime.ts`), `POST /api/runtime/switch`, `GET /api/runtime/capabilities` (report of native/shimmed/unavailable per capability).
@@ -146,11 +147,11 @@ Bottom-up: contract types first, then the pieces that consume them. Riskiest ear
 **Verify:** CLI exit-code test + route tests.
 **Files:** CLI command, request-handler routes. **Size:** M.
 
-### P3.3 — Runtime-management page (UI)
-**Description:** A page: current runtime + status, capability matrix (per-capability native/shimmed/unavailable), health, one-click switch + rollback, live progress via SSE. New core plugin or a Settings route — decide during build (recommend a route + slot, not a new plugin).
-**Acceptance:** page shows the matrix, switches with confirmation + live progress, offers rollback.
+### P3.3 — Runtime-management page (UI) + switch-time onboarding surfacing
+**Description:** A page: current runtime + status, capability matrix (per-capability native/shimmed/unavailable), health, one-click switch + rollback, live progress via SSE. **Bounded UI-onboarding piece:** during/after a switch, surface the target runtime's onboarding component status + questions (reuse the existing `check()/install()` contract) — "configured ✓ / needs setup / answer this" — so switching a runtime that needs setup is guided in the UI, not punted to the CLI. New core plugin or a Settings route — decide during build (recommend a route + slot). **The full first-run onboarding WIZARD (barrier-to-entry win for new installs) is a named follow-up initiative** reusing these blocks (component contract + capability report + this page).
+**Acceptance:** page shows the matrix, switches with confirmation + live progress + rollback; a switch needing setup surfaces the onboarding steps/questions in-UI.
 **Verify:** dev-loop manual + component test for the matrix/report reducer.
-**Files:** host route + component(s), capability-report hook. **Size:** L.
+**Files:** host route + component(s), capability-report hook, onboarding-status surfacing. **Size:** L.
 
 ### P3.4 — Switch integration test
 **Description:** OpenClaw↔Pi round-trip in an isolated env: re-provision + re-project + re-validate + report; reversible.
@@ -226,6 +227,12 @@ P5.3  chore: this-box live validation                           ══ ε (merge
 | Runtime-switch reload semantics (restart needed?) | Med | Design in P3.1: prefer in-process re-init; fall back to a supervised restart signal; reversible backup covers failure |
 | UI scope creep on the management page | Med | Ship the matrix+switch+rollback+progress; defer deeper per-runtime health drilldowns |
 | Bits source lag | Low | Compose-neutralize covers installed content immediately; source fix is a fast-follow |
+
+## Follow-up initiatives (seams built here, polish later — no re-architecture)
+- **Full roster carry-over** (`.userEdited`, deep workspace content, edge model mappings) → enhances the P3.1 `reconcileRoster` seam (#625 +).
+- **First-run UI onboarding wizard** (barrier-to-entry for new installs) → reuses the component `check()/install()` contract + capability report + the P3.3 management page.
+- **Channels shim** (in-app delivery/approvals when a runtime lacks channels) → a new `delivery.mode='shimmed'` provider behind `CapabilitySet.delivery`.
+- **Runtime-native cron/channels/memory** stay runtime-owned; if cross-runtime portability is ever wanted, they attach to the same `reconcileRoster` seam.
 
 ## Parallelization
 - P1.1 blocks most of Phase 1; P1.2/P1.3 can proceed in parallel after it.
