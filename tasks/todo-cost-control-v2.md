@@ -38,4 +38,4 @@ Branch: `feat/464-cost-control-v2`. Gates per commit: `bun run test` + `bun run 
 
 ## Phase 6 — Docs + close-out
 - [x] T20 `docs(knowledge): cost-control v2 across knowledge docs + CLAUDE.md` (spec → IMPLEMENTED; README check)
-- [ ] CHECKPOINT E: `/verify` full pass; PR with `Closes #464`
+- [x] CHECKPOINT E (2026-07-07): isolated full drive — CLI set/show all three rule shapes (unit-per-lane rendering), breach → task held in todo + ONE incident + audit, too-low raise 400s, raise-$50 updated the rule + resolved the incident, kill switch pause/resume via CLI, notify fan-out fail-soft without a runtime. REAL dockerized-claw run: dispatched turn metered with full billing attribution (openai/gpt-5.5, provider openai, lane metered, 52,267 tokens; unpriced model → tokens counted, no fabricated $). Found+fixed: /budget/status 500 when runtime config unreadable. PR next.
