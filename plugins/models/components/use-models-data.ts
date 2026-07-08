@@ -3,7 +3,7 @@
 // React
 import { useEffect, useState, useCallback } from 'react'
 // SDK
-import { useQueryState } from "@makinbakin/sdk/hooks"
+import { useQueryState, usePluginEvent } from "@makinbakin/sdk/hooks"
 import { useRuntimeStatus } from "@makinbakin/sdk/hooks"
 // Relative
 import type { AgentModelConfig, AvailableModel, ModelsConfigResponse } from '../types'
@@ -36,6 +36,19 @@ export interface BudgetIncidentWire {
   atCap: 'defer' | 'pause'
   openedAt: number
   status: 'open' | 'acknowledged' | 'resolved'
+}
+
+export interface BillingOverrideWire { agentId?: string; provider?: string; lane: 'metered' | 'subscription' }
+/** Wire shape of GET /budget/status (full mode). */
+export interface BudgetStatusWire {
+  paused: boolean
+  configured: boolean
+  perAgent: Record<string, 'ok' | 'warn' | 'deferred'>
+  perTask: Record<string, 'deferred'>
+  billing: Record<string, { provider: string; lane: 'metered' | 'subscription'; model: string | null }>
+  overrides: BillingOverrideWire[]
+  deferredProviders: string[]
+  openIncidents: BudgetIncidentWire[]
 }
 
 export interface SpendRowAgent { agent: string; costUsdMicros: number; runs: number }
@@ -110,6 +123,9 @@ export function useModelsData() {
   const [budgetRules, setBudgetRules] = useState<BudgetRuleWire[]>([])
   const [pendingRules, setPendingRules] = useState<BudgetRuleWire[] | null>(null)
   const [incidents, setIncidents] = useState<BudgetIncidentWire[]>([])
+  const [budgetError, setBudgetError] = useState<string | null>(null)
+  const [budgetWarnings, setBudgetWarnings] = useState<string[]>([])
+  const [budgetStatus, setBudgetStatus] = useState<BudgetStatusWire | null>(null)
 
   // -------------------------------------------------------------------------
   // Data fetching
@@ -225,23 +241,76 @@ export function useModelsData() {
     }
   }, [])
 
-  /** PUT the full rule list — every rule round-trips; nothing is dropped. */
-  const saveBudgetRules = async () => {
+  const fetchBudgetStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/plugins/models/budget/status')
+      if (!res.ok) return
+      setBudgetStatus((await res.json()) as BudgetStatusWire)
+    } catch (err) {
+      console.error('Failed to fetch budget status:', err)
+    }
+  }, [])
+
+  /** PUT the full rule list — every rule round-trips; nothing is dropped.
+   *  Failures and unknown-id warnings surface in the UI, never only the
+   *  console (a silently-rejected cap is fake safety). */
+  const saveBudgetRules = async (): Promise<void> => {
     if (!pendingRules) return
     setSaving('budget')
+    setBudgetError(null)
+    setBudgetWarnings([])
     try {
-      // Drop rules with no caps at all (an empty row is a delete).
-      const rules = pendingRules.filter((r) => r.dailyCap || r.monthlyCap)
+      // A rule with no caps is invalid — reject explicitly instead of
+      // silently deleting the row on save.
+      const capless = pendingRules.findIndex((r) => !r.dailyCap && !r.monthlyCap)
+      if (capless >= 0) {
+        setBudgetError(`Rule ${capless + 1} has no caps — set a daily or monthly cap, or remove the row.`)
+        return
+      }
       const res = await fetch('/api/plugins/models/budget', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rules }),
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rules: pendingRules }),
       })
       const data = await res.json()
-      if (data.ok) { setBudgetRules(rules); setPendingRules(null) }
-      else console.error('Budget save rejected:', data)
+      if (data.ok) {
+        setBudgetRules(pendingRules)
+        setPendingRules(null)
+        setBudgetWarnings(Array.isArray(data.warnings) ? data.warnings : [])
+        fetchBudgetStatus()
+      } else {
+        setBudgetError(typeof data.error === 'string' ? data.error : `Save failed (${res.status})`)
+      }
     } catch (err) {
-      console.error('Failed to save budget:', err)
+      setBudgetError(err instanceof Error ? err.message : String(err))
     } finally {
       setSaving(null)
+    }
+  }
+
+  /** Toggle the dispatch kill switch from the Spend tab. */
+  const setDispatchPaused = async (paused: boolean): Promise<void> => {
+    try {
+      await fetch('/api/settings', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dispatch: { paused } }),
+      })
+      fetchBudgetStatus()
+    } catch (err) {
+      console.error('Failed to toggle dispatch pause:', err)
+    }
+  }
+
+  /** Save a per-agent billing-lane override ('auto' clears it). */
+  const setAgentLaneOverride = async (agentId: string, lane: 'auto' | 'metered' | 'subscription'): Promise<void> => {
+    try {
+      const current = budgetStatus?.overrides ?? []
+      const others = current.filter((o) => !(o.agentId === agentId && o.provider === undefined))
+      const overrides = lane === 'auto' ? others : [...others, { agentId, lane }]
+      const res = await fetch('/api/plugins/models/billing/overrides', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ overrides }),
+      })
+      if (res.ok) fetchBudgetStatus()
+    } catch (err) {
+      console.error('Failed to save billing override:', err)
     }
   }
 
@@ -262,8 +331,17 @@ export function useModelsData() {
   }
 
   useEffect(() => {
-    if (tab === 'spend') { fetchSpend(spendWindow); fetchBudget(); fetchIncidents() }
-  }, [tab, spendWindow, fetchSpend, fetchBudget, fetchIncidents])
+    if (tab === 'spend') { fetchSpend(spendWindow); fetchBudget(); fetchIncidents(); fetchBudgetStatus() }
+  }, [tab, spendWindow, fetchSpend, fetchBudget, fetchIncidents, fetchBudgetStatus])
+
+  // A Spend tab left open must reflect incidents as they happen — the 2am
+  // breach banner cannot wait for a tab switch.
+  const refreshBudgetSurfaces = useCallback(() => {
+    if (tab !== 'spend') return
+    fetchIncidents(); fetchBudget(); fetchSpend(spendWindow); fetchBudgetStatus()
+  }, [tab, spendWindow, fetchIncidents, fetchBudget, fetchSpend, fetchBudgetStatus])
+  usePluginEvent('budget.incident_opened', refreshBudgetSurfaces)
+  usePluginEvent('budget.incident_resolved', refreshBudgetSurfaces)
 
   const fetchRouting = useCallback(async () => {
     try {
@@ -527,8 +605,9 @@ export function useModelsData() {
     setOriginField, addTagOverride, updateTagOverride, removeTagOverride, saveRouting,
     // spend + budget
     spend, spendLoading,
-    budgetRules, pendingRules, setPendingRules, saveBudgetRules,
+    budgetRules, pendingRules, setPendingRules, saveBudgetRules, budgetError, budgetWarnings,
     incidents, resolveIncident,
+    budgetStatus, setDispatchPaused, setAgentLaneOverride,
   }
 }
 

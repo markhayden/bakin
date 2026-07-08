@@ -21,8 +21,15 @@ export function toggleNotifications(enabled: boolean): void {
   localStorage.setItem(STORAGE_KEY, String(enabled))
 }
 
-export function sendBrowserNotification(title: string, body: string): void {
+export function sendBrowserNotification(title: string, body: string, url?: string): void {
   if (!isNotificationsEnabled()) return
   if (document.hasFocus()) return
-  new Notification(title, { body, icon: '/favicon.ico' })
+  const notification = new Notification(title, { body, icon: '/favicon.ico' })
+  if (url) {
+    notification.onclick = () => {
+      window.focus()
+      window.location.href = url
+      notification.close()
+    }
+  }
 }

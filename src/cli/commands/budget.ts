@@ -38,8 +38,20 @@ interface IncidentWire {
   capValue: number; spentValue: number; atCap: string; status: string; openedAt: number
 }
 
-function usd(micros: number): string {
+function usd(micros: number, unpricedTokens = 0): string {
+  if (micros === 0 && unpricedTokens > 0) return '$ unavailable'
   return `$${(micros / 1_000_000).toFixed(2)}`
+}
+
+/** Parse a cap value: plain numbers, or k/M suffixes for token caps ("5M"). */
+function parseCap(raw: string | undefined): number | undefined {
+  if (!raw) return undefined
+  const match = /^([0-9]*\.?[0-9]+)\s*([kKmM])?$/.exec(raw.trim())
+  if (!match) return undefined
+  const base = Number(match[1])
+  if (!Number.isFinite(base) || base <= 0) return undefined
+  const mult = match[2]?.toLowerCase() === 'm' ? 1_000_000 : match[2]?.toLowerCase() === 'k' ? 1_000 : 1
+  return base * mult
 }
 function tokens(n: number): string {
   return n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `${(n / 1_000).toFixed(1)}k` : String(n)
@@ -63,11 +75,12 @@ async function fetchRules(): Promise<RuleWire[]> {
 }
 
 async function putRules(rules: RuleWire[]): Promise<void> {
-  await api('/api/plugins/models/budget', {
+  const result = (await api('/api/plugins/models/budget', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ rules }),
-  })
+  })) as { warnings?: string[] }
+  for (const warning of result.warnings ?? []) console.log(`⚠ ${warning}`)
 }
 
 function ruleSpent(rule: RuleWire, w: WindowSpend): number {
@@ -102,7 +115,7 @@ export async function cmdSpend(args: string[]): Promise<void> {
 
   const g = spend.facets?.monthly.global
   if (g) {
-    console.log(`This month: metered ${usd(g.meteredUsdMicros + g.unattributed.meteredUsdMicros)} (${tokens(g.meteredTokens + g.unattributed.meteredTokens)} tokens) · subscription ${tokens(g.subscriptionTokens + g.unattributed.subscriptionTokens)} tokens (no $ — plan quota)`)
+    console.log(`This month: metered ${usd(g.meteredUsdMicros + g.unattributed.meteredUsdMicros, g.unpricedMeteredTokens)} (${tokens(g.meteredTokens + g.unattributed.meteredTokens)} tokens${g.unpricedMeteredTokens ? `, ${tokens(g.unpricedMeteredTokens)} unpriced` : ''}) · subscription ${tokens(g.subscriptionTokens + g.unattributed.subscriptionTokens)} tokens (no $ — plan quota)`)
     const unattr = g.unattributed
     if (unattr.meteredUsdMicros || unattr.meteredTokens || unattr.subscriptionTokens) {
       console.log(`  includes unattributed (outside Bakin tasks): ${usd(unattr.meteredUsdMicros)} / ${tokens(unattr.meteredTokens + unattr.subscriptionTokens)} tokens`)
@@ -161,6 +174,9 @@ async function cmdBudgetShow(json: boolean): Promise<void> {
     console.log('No budget rules — spend is uncapped.')
     return
   }
+  // Three distinct pause concepts exist — disambiguate in the one place a
+  // confused operator will look first.
+  console.log('(pause/resume = the global kill switch; a rule\'s "at cap: pause" holds until you resolve its incident — `bakin budget incidents`)')
   printTable(rules.map((r) => ({
     rule: ruleName(r),
     lane: r.lane,
@@ -171,7 +187,7 @@ async function cmdBudgetShow(json: boolean): Promise<void> {
   })))
 }
 
-const SET_USAGE = 'bakin budget set --scope global|agent|provider [--id <scopeId>] --lane metered|subscription [--daily N] [--monthly N] [--warn-pct N] [--at-cap defer|pause]'
+const SET_USAGE = 'bakin budget set --scope global|agent|provider|model [--id <scopeId>] --lane metered|subscription [--daily N] [--monthly N] [--warn-pct N] [--at-cap defer|pause] — caps are whole USD (metered) or tokens (subscription; k/M suffixes ok, e.g. 5M)'
 
 async function cmdBudgetSet(args: string[]): Promise<void> {
   const scope = flag(args, '--scope') as RuleWire['scope'] | undefined
@@ -179,8 +195,10 @@ async function cmdBudgetSet(args: string[]): Promise<void> {
   const scopeId = flag(args, '--id')
   if (!scope || !lane) await exitUsage(SET_USAGE)
   if (scope !== 'global' && !scopeId) await exitUsage(SET_USAGE, `--id is required for scope '${scope}'`)
-  const daily = flag(args, '--daily')
-  const monthly = flag(args, '--monthly')
+  if (!['global', 'agent', 'provider', 'model'].includes(scope ?? '')) await exitUsage(SET_USAGE, `Unknown scope '${scope}'.`)
+  if (lane !== 'metered' && lane !== 'subscription') await exitUsage(SET_USAGE, `Unknown lane '${lane}'.`)
+  const daily = parseCap(flag(args, '--daily'))
+  const monthly = parseCap(flag(args, '--monthly'))
   const warnPct = flag(args, '--warn-pct')
   const atCap = flag(args, '--at-cap') as RuleWire['atCap'] | undefined
 
@@ -190,8 +208,8 @@ async function cmdBudgetSet(args: string[]): Promise<void> {
     scope: scope!,
     ...(scopeId ? { scopeId } : {}),
     lane: lane!,
-    ...(daily ? { dailyCap: Number(daily) } : {}),
-    ...(monthly ? { monthlyCap: Number(monthly) } : {}),
+    ...(daily !== undefined ? { dailyCap: daily } : {}),
+    ...(monthly !== undefined ? { monthlyCap: monthly } : {}),
     ...(warnPct ? { warnPct: Number(warnPct) / 100 } : {}),
     ...(atCap ? { atCap } : {}),
   }

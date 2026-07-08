@@ -78,11 +78,18 @@ describe('bakin budget set', () => {
     await expect(run(['budget', 'set', '--scope', 'global', '--lane', 'metered'])).rejects.toThrow(ExitCalled)
   })
 
-  it('subscription rules carry token caps verbatim', async () => {
-    await run(['budget', 'set', '--scope', 'agent', '--id', 'main', '--lane', 'subscription', '--daily', '5000000'])
+  it('subscription rules carry token caps verbatim, with k/M suffixes parsed', async () => {
+    await run(['budget', 'set', '--scope', 'agent', '--id', 'main', '--lane', 'subscription', '--daily', '5M'])
     const put = apiCalls.find((c) => c.init?.method === 'PUT')
     const body = JSON.parse(String(put!.init!.body)) as { rules: Array<Record<string, unknown>> }
     expect(body.rules).toEqual([{ scope: 'agent', scopeId: 'main', lane: 'subscription', dailyCap: 5_000_000 }])
+  })
+
+  it('model-scope rules are accepted (usage parity with the evaluator)', async () => {
+    await run(['budget', 'set', '--scope', 'model', '--id', 'anthropic/claude-opus-4-6', '--lane', 'metered', '--daily', '10'])
+    const put = apiCalls.find((c) => c.init?.method === 'PUT')
+    const body = JSON.parse(String(put!.init!.body)) as { rules: Array<Record<string, unknown>> }
+    expect(body.rules).toEqual([{ scope: 'model', scopeId: 'anthropic/claude-opus-4-6', lane: 'metered', dailyCap: 10 }])
   })
 })
 

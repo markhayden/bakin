@@ -29,12 +29,13 @@ interface BakinUpdateStatus {
 }
 
 /**
- * Kill-switch banner (cost-control v2): persistent, unmissable while
- * settings.dispatch.paused is on — a forgotten switch must never read as a
- * mysteriously idle system. Polls the side-effect-free budget status route
- * on the shared 15s cadence; SSE budget events land within a poll anyway.
+ * Kill-switch state (cost-control v2): polled on the shared 15s cadence
+ * (lite status endpoint) + refreshed instantly on budget SSE events. Lifted
+ * into Header so the paused banner participates in the same
+ * --bakin-header-top offset mechanism as the update banner — the banner
+ * must PUSH the header down, never be painted over by it.
  */
-function DispatchPausedBanner({ offset }: { offset: boolean }) {
+function useDispatchPaused(): { paused: boolean; resuming: boolean; resume: () => Promise<void> } {
   const [paused, setPaused] = useState(false)
   const [resuming, setResuming] = useState(false)
 
@@ -42,7 +43,7 @@ function DispatchPausedBanner({ offset }: { offset: boolean }) {
     let cancelled = false
     const check = async () => {
       try {
-        const res = await fetch('/api/plugins/models/budget/status')
+        const res = await fetch('/api/plugins/models/budget/status?lite=1')
         if (!res.ok) return
         const body = (await res.json()) as { paused?: boolean }
         if (!cancelled) setPaused(body.paused === true)
@@ -55,7 +56,6 @@ function DispatchPausedBanner({ offset }: { offset: boolean }) {
     return () => { cancelled = true; clearInterval(timer) }
   }, [])
 
-  if (!paused) return null
   const resume = async () => {
     setResuming(true)
     try {
@@ -68,6 +68,10 @@ function DispatchPausedBanner({ offset }: { offset: boolean }) {
       setResuming(false)
     }
   }
+  return { paused, resuming, resume }
+}
+
+function DispatchPausedBanner({ offset, resuming, resume }: { offset: boolean; resuming: boolean; resume: () => Promise<void> }) {
   return (
     <div
       role="status"
@@ -110,6 +114,7 @@ export function Header() {
   const { collapsed, toggle } = useSidebarContext()
   const displayUpdateStatus = updateStatus
   const showUpdateBanner = Boolean(updateStatus?.supported && updateStatus.updateAvailable)
+  const { paused: dispatchPaused, resuming, resume } = useDispatchPaused()
 
   useEffect(() => {
     fetch('/api/version').then(r => r.json()).then(d => setVersion(d.version)).catch(() => {})
@@ -126,9 +131,13 @@ export function Header() {
 
   useEffect(() => {
     const root = document.documentElement
-    if (showUpdateBanner) {
-      root.style.setProperty('--bakin-header-top', '2.25rem')
-      root.style.setProperty('--bakin-shell-top', '5.75rem')
+    // Each active banner is h-9 (2.25rem); the header (h-14 = 3.5rem) and
+    // the shell content shift down by the banner stack so a banner can never
+    // be painted over.
+    const banners = (showUpdateBanner ? 1 : 0) + (dispatchPaused ? 1 : 0)
+    if (banners > 0) {
+      root.style.setProperty('--bakin-header-top', `${banners * 2.25}rem`)
+      root.style.setProperty('--bakin-shell-top', `${banners * 2.25 + 3.5}rem`)
       return () => {
         root.style.removeProperty('--bakin-header-top')
         root.style.removeProperty('--bakin-shell-top')
@@ -136,7 +145,7 @@ export function Header() {
     }
     root.style.removeProperty('--bakin-header-top')
     root.style.removeProperty('--bakin-shell-top')
-  }, [showUpdateBanner])
+  }, [showUpdateBanner, dispatchPaused])
 
   async function applyUpdate() {
     setUpdating(true)
@@ -177,7 +186,7 @@ export function Header() {
 
   return (
     <>
-      <DispatchPausedBanner offset={Boolean(showUpdateBanner)} />
+      {dispatchPaused && <DispatchPausedBanner offset={Boolean(showUpdateBanner)} resuming={resuming} resume={resume} />}
       {showUpdateBanner && (
         <div
           role="status"

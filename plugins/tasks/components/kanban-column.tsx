@@ -5,6 +5,7 @@ import { useDroppable } from '@dnd-kit/react'
 import { TaskCard, type TaskScoreInfo } from './task-card'
 import { COLUMN_CONFIG, STATUS_DOT_COLORS } from '../constants'
 import { splitScheduledTasks } from '../lib/scheduled'
+import type { BudgetHold } from '../hooks/use-budget-status'
 import type { Task, ColumnId } from '../types'
 
 interface KanbanColumnProps {
@@ -12,7 +13,7 @@ interface KanbanColumnProps {
   tasks: Task[]
   gateLabels?: Record<string, string>
   childTaskLabels?: Record<string, string>
-  budgetHolds?: Record<string, string>
+  budgetHolds?: Record<string, BudgetHold>
   /** Per-task search score info, keyed by task id. Only set when debug + active search. */
   scoreMap?: Map<string, TaskScoreInfo>
   onDelete: (task: { id: string; title: string }) => void

@@ -21,7 +21,7 @@ import { useDebug } from "@makinbakin/sdk/hooks"
 import { useQueryState, useQueryArrayState } from "@makinbakin/sdk/hooks"
 import { toast } from "@makinbakin/sdk/hooks"
 import { useGateStatus } from '../hooks/use-gate-status'
-import { useBudgetStatus, budgetHoldReason } from '../hooks/use-budget-status'
+import { useBudgetStatus, budgetHoldReason, type BudgetHold } from '../hooks/use-budget-status'
 import { Button, Skeleton } from "@makinbakin/sdk/ui"
 import { Kanban, Table2, Plus } from 'lucide-react'
 import type { TaskScoreInfo } from './task-card'
@@ -236,10 +236,10 @@ export function KanbanBoard() {
   // status poll, never from task metadata.
   const budgetStatus = useBudgetStatus()
   const budgetHolds = useMemo(() => {
-    const holds: Record<string, string> = {}
+    const holds: Record<string, BudgetHold> = {}
     for (const task of columns.todo) {
-      const reason = budgetHoldReason(budgetStatus, task.agent)
-      if (reason) holds[task.id] = reason
+      const hold = budgetHoldReason(budgetStatus, task)
+      if (hold) holds[task.id] = hold
     }
     return holds
   }, [columns.todo, budgetStatus])

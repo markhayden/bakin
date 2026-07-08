@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { AlertTriangle, Plus, Trash2 } from 'lucide-react'
+import { AlertTriangle, Pause, Plus, Trash2 } from 'lucide-react'
 import { Button, Input, Skeleton, Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@makinbakin/sdk/ui"
 import { EmptyState } from "@makinbakin/sdk/components"
 import type { ModelsData } from './use-models-data'
@@ -14,11 +14,15 @@ const SPEND_WINDOWS = [
   { id: 'all', label: 'All time' },
 ] as const
 
-/** Render micro-dollars as a dollar amount. Returns null for an unmetered
- *  (zero-cost) row so the UI can show "$ unavailable" instead of "$0.00". */
-function formatUsdMicros(micros: number): string | null {
-  if (!micros) return null
-  return `$${(micros / 1_000_000).toFixed(micros < 10_000 ? 4 : 2)}`
+/**
+ * One money formatter, three honest states: real dollars render as dollars
+ * (including a genuine $0.00), "priced-nothing-yet-but-tokens-flowed"
+ * renders as "$ unavailable" (unpriced model), and both are distinguishable
+ * from each other everywhere.
+ */
+function formatUsd(micros: number, unpricedTokens = 0): string {
+  if (micros === 0 && unpricedTokens > 0) return '$ unavailable'
+  return `$${(micros / 1_000_000).toFixed(micros > 0 && micros < 10_000 ? 4 : 2)}`
 }
 
 function fmtTokens(tokens: number): string {
@@ -31,6 +35,19 @@ function fmtTokens(tokens: number): string {
 function fmtUnit(lane: 'metered' | 'subscription', value: number, isMicros: boolean): string {
   if (lane === 'metered') return `$${((isMicros ? value / 1_000_000 : value)).toFixed(2)}`
   return `${fmtTokens(value)} tokens`
+}
+
+/** Parse a cap input: plain numbers everywhere, k/M suffixes for token caps
+ *  ("5M" → 5,000,000). Returns undefined for blank/invalid. */
+export function parseCapInput(raw: string): number | undefined {
+  const text = raw.trim()
+  if (!text) return undefined
+  const match = /^([0-9]*\.?[0-9]+)\s*([kKmM])?$/.exec(text)
+  if (!match) return undefined
+  const base = Number(match[1])
+  if (!Number.isFinite(base) || base <= 0) return undefined
+  const mult = match[2]?.toLowerCase() === 'm' ? 1_000_000 : match[2]?.toLowerCase() === 'k' ? 1_000 : 1
+  return base * mult
 }
 
 /** Spend for a rule's scope × lane out of the engine facets (display only —
@@ -113,70 +130,124 @@ function UtilizationCards({ rules, spend }: { rules: BudgetRuleWire[]; spend: Sp
   )
 }
 
-function IncidentBanner({ incidents, resolveIncident }: { incidents: BudgetIncidentWire[]; resolveIncident: ModelsData['resolveIncident'] }) {
-  const [raiseValue, setRaiseValue] = useState<Record<number, string>>({})
-  const [error, setError] = useState<string | null>(null)
-  const live = incidents.filter((i) => i.status !== 'resolved')
-  if (live.length === 0) return null
+function IncidentRow({ incident, resolveIncident, setError }: {
+  incident: BudgetIncidentWire
+  resolveIncident: ModelsData['resolveIncident']
+  setError: (e: string | null) => void
+}) {
+  const [raiseValue, setRaiseValue] = useState('')
+  const i = incident
+  const isWarn = i.kind === 'warn'
+  const tone = isWarn ? 'text-amber-400' : 'text-red-400'
   return (
-    <div className="rounded-xl border border-red-500/40 bg-red-500/5 p-3 space-y-2">
-      <div className="flex items-center gap-2 text-sm font-medium text-red-500">
-        <AlertTriangle className="h-4 w-4" />
-        {live.length} open budget incident{live.length === 1 ? '' : 's'}
-      </div>
-      {error ? <div className="text-xs text-red-500">{error}</div> : null}
-      {live.map((i) => (
-        <div key={i.id} className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="tabular-nums">
-            {i.scopeId ? `${i.scope} '${i.scopeId}'` : 'global'} · {i.window} · {i.lane} — {i.kind === 'cap' ? 'cap reached' : 'warning'} at{' '}
-            {fmtUnit(i.lane, i.spentValue, i.unit === 'usd_micros')} of {fmtUnit(i.lane, i.capValue, i.unit === 'usd_micros')}
-            {i.atCap === 'pause' && i.kind === 'cap' ? ' · PAUSED until resolved' : ''}
-            {i.status === 'acknowledged' ? ' · acknowledged' : ''}
-          </span>
-          <span className="ml-auto flex items-center gap-1">
+    <div className="flex flex-wrap items-center gap-2 text-xs">
+      <span className={`tabular-nums ${isWarn ? '' : ''}`}>
+        <span className={`font-medium ${tone}`}>{isWarn ? 'Warning' : 'Cap reached'}</span>{' '}
+        — {i.scopeId ? `${i.scope} '${i.scopeId}'` : 'global'} · {i.window} · {i.lane} at{' '}
+        {fmtUnit(i.lane, i.spentValue, i.unit === 'usd_micros')} of {fmtUnit(i.lane, i.capValue, i.unit === 'usd_micros')}
+        {i.atCap === 'pause' && i.kind === 'cap' ? ' · PAUSED until resolved' : ''}
+        {i.status === 'acknowledged' ? ' · acknowledged' : ''}
+      </span>
+      <span className="ml-auto flex items-center gap-1">
+        {!isWarn && (
+          <>
             <Input
-              type="number" min="0" placeholder={i.lane === 'metered' ? 'new $ cap' : 'new token cap'}
+              type="text" placeholder={i.lane === 'metered' ? 'new $ cap' : 'new cap (e.g. 5M)'}
               className="h-7 w-28 text-xs"
-              value={raiseValue[i.id] ?? ''}
-              onChange={(e) => setRaiseValue({ ...raiseValue, [i.id]: e.target.value })}
+              value={raiseValue}
+              onChange={(e) => setRaiseValue(e.target.value)}
             />
             <Button
               size="xs"
               onClick={async () => {
-                const cap = Number(raiseValue[i.id])
-                if (!Number.isFinite(cap) || cap <= 0) { setError('Enter the new cap first'); return }
+                const cap = parseCapInput(raiseValue)
+                if (cap === undefined) { setError('Enter the new cap first (token caps accept k/M suffixes).'); return }
                 setError(await resolveIncident(i.id, 'raise', cap))
               }}
             >
               Raise & resume
             </Button>
-            {i.status === 'open' ? (
-              <Button variant="outline" size="xs" onClick={async () => setError(await resolveIncident(i.id, 'ack'))}>Acknowledge</Button>
-            ) : null}
-            {i.atCap === 'pause' && i.kind === 'cap' ? (
-              <Button variant="outline" size="xs" onClick={async () => setError(await resolveIncident(i.id, 'resume'))}>Resume as-is</Button>
-            ) : null}
-          </span>
-        </div>
+          </>
+        )}
+        {i.status === 'open' ? (
+          <Button variant="outline" size="xs" title="Stop alerting; deferral (if any) continues until the window resets" onClick={async () => setError(await resolveIncident(i.id, 'ack'))}>Acknowledge</Button>
+        ) : null}
+        <Button
+          variant="outline" size="xs"
+          title={i.atCap === 'pause' && i.kind === 'cap' ? 'Clear this pause hold without raising the cap' : 'Dismiss this incident'}
+          onClick={async () => setError(await resolveIncident(i.id, 'resume'))}
+        >
+          {i.atCap === 'pause' && i.kind === 'cap' ? 'Resume as-is' : 'Dismiss'}
+        </Button>
+      </span>
+    </div>
+  )
+}
+
+function IncidentBanner({ incidents, resolveIncident }: { incidents: BudgetIncidentWire[]; resolveIncident: ModelsData['resolveIncident'] }) {
+  const [error, setError] = useState<string | null>(null)
+  const live = incidents.filter((i) => i.status !== 'resolved')
+  if (live.length === 0) return null
+  const caps = live.filter((i) => i.kind === 'cap')
+  const warns = live.filter((i) => i.kind === 'warn')
+  const tone = caps.length > 0
+    ? 'border-red-500/40 bg-red-500/5 text-red-500'
+    : 'border-amber-500/40 bg-amber-500/5 text-amber-500'
+  return (
+    <div className={`rounded-xl border p-3 space-y-2 ${tone.split(' ').slice(0, 2).join(' ')}`}>
+      <div className={`flex items-center gap-2 text-sm font-medium ${tone.split(' ')[2]}`}>
+        <AlertTriangle className="h-4 w-4" />
+        {caps.length > 0 ? `${caps.length} budget cap incident${caps.length === 1 ? '' : 's'}` : ''}
+        {caps.length > 0 && warns.length > 0 ? ' · ' : ''}
+        {warns.length > 0 ? `${warns.length} warning${warns.length === 1 ? '' : 's'}` : ''}
+      </div>
+      {error ? <div className="text-xs text-red-500">{error}</div> : null}
+      {live.map((i) => (
+        <IncidentRow key={i.id} incident={i} resolveIncident={resolveIncident} setError={setError} />
       ))}
     </div>
   )
 }
 
-const SCOPES = ['global', 'agent', 'provider'] as const
+const SCOPES = ['global', 'agent', 'provider', 'model'] as const
+
+function CapInput({ rule, value, onChange }: { rule: BudgetRuleWire; value: number | undefined; onChange: (v: number | undefined) => void }) {
+  // Text input with unit-aware parsing: token caps accept k/M suffixes
+  // ("5M"), dollar caps take plain numbers. Local text state so a partial
+  // entry ("5M" mid-type) isn't destroyed by the parse.
+  const [text, setText] = useState<string | null>(null)
+  const display = text ?? (value !== undefined ? String(value) : '')
+  return (
+    <Input
+      type="text"
+      className="h-7 w-24 text-xs"
+      placeholder={rule.lane === 'metered' ? '$' : 'tokens (5M)'}
+      value={display}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={() => {
+        if (text === null) return
+        onChange(parseCapInput(text))
+        setText(null)
+      }}
+    />
+  )
+}
 
 function RuleEditor({ m }: { m: ModelsData }) {
-  const { budgetRules, pendingRules, setPendingRules, saveBudgetRules, saving } = m
+  const { budgetRules, pendingRules, setPendingRules, saveBudgetRules, saving, budgetError, budgetWarnings, agents, availableProviders, modelOptions, spend } = m
   const rules = pendingRules ?? budgetRules
   const edit = (index: number, patch: Partial<BudgetRuleWire>) => {
     const next = rules.map((r, i) => (i === index ? { ...r, ...patch } : r))
     setPendingRules(next)
   }
+  const monthlyTokens = spend?.facets
+    ? spend.facets.monthly.global.subscriptionTokens + spend.facets.monthly.global.unattributed.subscriptionTokens
+    : 0
   return (
     <div className="rounded-xl border border-border bg-card p-3 space-y-2">
       <div className="flex items-center justify-between">
         <div className="text-xs text-muted-foreground">
-          Cap rules — metered caps are estimated USD; subscription caps are tokens (plan quota). At 100%: defer resumes at window reset; pause holds until you resolve.
+          Cap rules — metered caps are estimated USD; subscription caps are tokens (plan quota; k/M suffixes ok{monthlyTokens > 0 ? ` — you used ${fmtTokens(monthlyTokens)} subscription tokens this month` : ''}). At 100%: defer resumes at window reset; pause holds until you resolve.
         </div>
         <div className="flex items-center gap-2">
           {pendingRules ? (
@@ -193,6 +264,8 @@ function RuleEditor({ m }: { m: ModelsData }) {
           </Button>
         </div>
       </div>
+      {budgetError ? <p className="text-xs text-red-500">{budgetError}</p> : null}
+      {budgetWarnings.map((w, i) => <p key={i} className="text-xs text-amber-500">⚠ {w}</p>)}
       {rules.length === 0 ? (
         <p className="text-xs text-amber-500">No budget rules — spend is uncapped.</p>
       ) : (
@@ -219,7 +292,19 @@ function RuleEditor({ m }: { m: ModelsData }) {
                 </TableCell>
                 <TableCell>
                   {r.scope === 'global' ? <span className="text-xs text-muted-foreground">—</span> : (
-                    <Input className="h-7 w-28 text-xs" placeholder={r.scope === 'agent' ? 'agent id' : 'e.g. google'} value={r.scopeId ?? ''} onChange={(e) => edit(i, { scopeId: e.target.value || undefined })} />
+                    <>
+                      <Input
+                        className="h-7 w-32 text-xs" list={`budget-ids-${r.scope}`}
+                        placeholder={r.scope === 'agent' ? 'agent id' : r.scope === 'provider' ? 'e.g. google' : 'provider/model'}
+                        value={r.scopeId ?? ''} onChange={(e) => edit(i, { scopeId: e.target.value || undefined })}
+                      />
+                      <datalist id={`budget-ids-${r.scope}`}>
+                        {(r.scope === 'agent' ? agents.map((a) => a.agentId)
+                          : r.scope === 'provider' ? availableProviders
+                          : modelOptions.map((mo) => (typeof mo === 'string' ? mo : mo.id))
+                        ).map((id) => <option key={id} value={id} />)}
+                      </datalist>
+                    </>
                   )}
                 </TableCell>
                 <TableCell>
@@ -228,12 +313,8 @@ function RuleEditor({ m }: { m: ModelsData }) {
                     <option value="subscription">subscription (tokens)</option>
                   </select>
                 </TableCell>
-                <TableCell>
-                  <Input type="number" min="0" className="h-7 w-24 text-xs" placeholder={r.lane === 'metered' ? '$' : 'tokens'} value={r.dailyCap ?? ''} onChange={(e) => edit(i, { dailyCap: e.target.value ? Number(e.target.value) : undefined })} />
-                </TableCell>
-                <TableCell>
-                  <Input type="number" min="0" className="h-7 w-24 text-xs" placeholder={r.lane === 'metered' ? '$' : 'tokens'} value={r.monthlyCap ?? ''} onChange={(e) => edit(i, { monthlyCap: e.target.value ? Number(e.target.value) : undefined })} />
-                </TableCell>
+                <TableCell><CapInput rule={r} value={r.dailyCap} onChange={(v) => edit(i, { dailyCap: v })} /></TableCell>
+                <TableCell><CapInput rule={r} value={r.monthlyCap} onChange={(v) => edit(i, { monthlyCap: v })} /></TableCell>
                 <TableCell>
                   <Input type="number" min="1" max="100" className="h-7 w-16 text-xs" placeholder="80" value={r.warnPct !== undefined ? Math.round(r.warnPct * 100) : ''} onChange={(e) => edit(i, { warnPct: e.target.value ? Number(e.target.value) / 100 : undefined })} />
                 </TableCell>
@@ -255,22 +336,57 @@ function RuleEditor({ m }: { m: ModelsData }) {
   )
 }
 
+/** Detected billing lane per agent with the manual override affordance —
+ *  the "why does my Codex agent read as metered?" surface. */
+function BillingLanesCard({ m }: { m: ModelsData }) {
+  const { budgetStatus, setAgentLaneOverride } = m
+  const billing = budgetStatus?.billing ?? {}
+  const entries = Object.entries(billing)
+  if (entries.length === 0) return null
+  const overriddenAgents = new Set((budgetStatus?.overrides ?? []).filter((o) => o.agentId && !o.provider).map((o) => o.agentId))
+  return (
+    <div className="rounded-xl border border-border bg-card p-3 space-y-2">
+      <div className="text-xs text-muted-foreground">
+        Billing lanes — detected from each agent&apos;s auth (API key → metered $; OAuth login → subscription tokens). Override when detection is wrong (e.g. a Codex subscription whose OAuth lives outside the per-agent auth profiles).
+      </div>
+      <div className="flex flex-wrap gap-x-6 gap-y-1">
+        {entries.map(([agentId, b]) => (
+          <div key={agentId} className="flex items-center gap-2 text-xs">
+            <span className="font-medium">{agentId}</span>
+            <span className="text-muted-foreground">{b.provider}</span>
+            <select
+              className="h-6 rounded border border-border bg-background text-xs"
+              value={overriddenAgents.has(agentId) ? b.lane : 'auto'}
+              onChange={(e) => setAgentLaneOverride(agentId, e.target.value as 'auto' | 'metered' | 'subscription')}
+            >
+              <option value="auto">auto ({b.lane})</option>
+              <option value="metered">metered ($)</option>
+              <option value="subscription">subscription (tokens)</option>
+            </select>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function LaneSummary({ spend }: { spend: SpendResponse }) {
   const g = spend.facets?.monthly.global
   if (!g) return null
   const unattr = g.unattributed
   const hasUnattr = unattr.meteredUsdMicros > 0 || unattr.meteredTokens > 0 || unattr.subscriptionTokens > 0
+  const meteredMicros = g.meteredUsdMicros + unattr.meteredUsdMicros
   return (
     <div className="rounded-xl border border-border bg-card p-4 space-y-1">
-      <div className="text-xs text-muted-foreground">This month (cap windows)</div>
+      <div className="text-xs text-muted-foreground">This month (cap windows, incl. unattributed)</div>
       <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm tabular-nums">
-        <span>Metered: <span className="font-semibold">{formatUsdMicros(g.meteredUsdMicros + unattr.meteredUsdMicros) ?? '$0.00'}</span> <span className="text-muted-foreground">({fmtTokens(g.meteredTokens + unattr.meteredTokens)} tokens)</span></span>
+        <span>Metered: <span className="font-semibold">{formatUsd(meteredMicros, g.unpricedMeteredTokens)}</span> <span className="text-muted-foreground">({fmtTokens(g.meteredTokens + unattr.meteredTokens)} tokens)</span></span>
         <span>Subscription: <span className="font-semibold">{fmtTokens(g.subscriptionTokens + unattr.subscriptionTokens)} tokens</span> <span className="text-muted-foreground">(included in plan — no $)</span></span>
         {g.unpricedMeteredTokens > 0 ? <span className="text-muted-foreground">Unpriced metered: {fmtTokens(g.unpricedMeteredTokens)} tokens</span> : null}
       </div>
       {hasUnattr ? (
         <p className="text-[11px] text-muted-foreground">
-          Includes {formatUsdMicros(unattr.meteredUsdMicros) ?? '$0'} / {fmtTokens(unattr.meteredTokens + unattr.subscriptionTokens)} tokens of UNATTRIBUTED spend — agent activity outside Bakin-managed tasks, observed from runtime transcripts (~5&nbsp;min lag; dollars only where the runtime reported cost). It counts toward the caps.
+          Includes {formatUsd(unattr.meteredUsdMicros)} / {fmtTokens(unattr.meteredTokens + unattr.subscriptionTokens)} tokens of UNATTRIBUTED spend — agent activity outside Bakin-managed tasks, observed from runtime transcripts (~5&nbsp;min lag; dollars only where the runtime reported cost). It counts toward the caps.
         </p>
       ) : null}
     </div>
@@ -278,7 +394,8 @@ function LaneSummary({ spend }: { spend: SpendResponse }) {
 }
 
 export function SpendTab({ m }: { m: ModelsData }) {
-  const { spendWindow, setSpendWindow, spend, spendLoading, budgetRules, incidents, resolveIncident } = m
+  const { spendWindow, setSpendWindow, spend, spendLoading, budgetRules, incidents, resolveIncident, budgetStatus, setDispatchPaused } = m
+  const paused = budgetStatus?.paused === true
 
   return (
     <div className="space-y-4">
@@ -297,6 +414,14 @@ export function SpendTab({ m }: { m: ModelsData }) {
               {w.label}
             </Button>
           ))}
+          <Button
+            variant={paused ? 'destructive' : 'outline'}
+            size="xs"
+            title={paused ? 'Dispatch is paused — click to resume' : 'Break-glass: pause ALL task dispatch and billed media now'}
+            onClick={() => setDispatchPaused(!paused)}
+          >
+            <Pause className="h-3 w-3" /> {paused ? 'Resume dispatch' : 'Pause all dispatch'}
+          </Button>
         </div>
       </div>
 
@@ -310,9 +435,9 @@ export function SpendTab({ m }: { m: ModelsData }) {
         <>
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <div className="rounded-xl border border-border bg-card p-4">
-              <div className="text-xs text-muted-foreground">Estimated total ({spend.window})</div>
+              <div className="text-xs text-muted-foreground">Estimated total ({spend.window}, attributed only — cap math uses the month card)</div>
               <div className="text-2xl font-semibold tabular-nums">
-                {formatUsdMicros(spend.totalUsdMicros) ?? '$ unavailable'}
+                {formatUsd(spend.totalUsdMicros, spend.facets?.monthly.global.unpricedMeteredTokens ?? 0)}
               </div>
             </div>
             <LaneSummary spend={spend} />
@@ -321,6 +446,8 @@ export function SpendTab({ m }: { m: ModelsData }) {
           <UtilizationCards rules={budgetRules} spend={spend} />
 
           <RuleEditor m={m} />
+
+          <BillingLanesCard m={m} />
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <div className="overflow-hidden rounded-xl border border-border">
@@ -339,7 +466,7 @@ export function SpendTab({ m }: { m: ModelsData }) {
                     <TableRow key={r.agent}>
                       <TableCell className="font-medium">{r.agent}</TableCell>
                       <TableCell className="text-right tabular-nums">{r.runs}</TableCell>
-                      <TableCell className="text-right tabular-nums">{formatUsdMicros(r.costUsdMicros) ?? <span className="text-muted-foreground">$ unavailable</span>}</TableCell>
+                      <TableCell className="text-right tabular-nums">{r.costUsdMicros ? formatUsd(r.costUsdMicros) : <span className="text-muted-foreground">$ unavailable</span>}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -361,7 +488,7 @@ export function SpendTab({ m }: { m: ModelsData }) {
                   ) : Object.entries(spend.facets.monthly.byProvider).map(([provider, sums]) => (
                     <TableRow key={provider}>
                       <TableCell className="font-medium">{provider}</TableCell>
-                      <TableCell className="text-right tabular-nums">{formatUsdMicros(sums.meteredUsdMicros) ?? <span className="text-muted-foreground">—</span>}</TableCell>
+                      <TableCell className="text-right tabular-nums">{sums.meteredUsdMicros ? formatUsd(sums.meteredUsdMicros) : sums.unpricedMeteredTokens > 0 ? <span className="text-muted-foreground">$ unavailable ({fmtTokens(sums.unpricedMeteredTokens)} unpriced)</span> : <span className="text-muted-foreground">—</span>}</TableCell>
                       <TableCell className="text-right tabular-nums">{sums.subscriptionTokens ? fmtTokens(sums.subscriptionTokens) : <span className="text-muted-foreground">—</span>}</TableCell>
                     </TableRow>
                   ))}
@@ -386,7 +513,7 @@ export function SpendTab({ m }: { m: ModelsData }) {
                   <TableRow key={r.model}>
                     <TableCell className="font-medium">{r.model}</TableCell>
                     <TableCell className="text-right tabular-nums">{r.runs}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatUsdMicros(r.costUsdMicros) ?? <span className="text-muted-foreground">$ unavailable</span>}</TableCell>
+                    <TableCell className="text-right tabular-nums">{r.costUsdMicros ? formatUsd(r.costUsdMicros) : <span className="text-muted-foreground">$ unavailable</span>}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

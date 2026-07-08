@@ -172,7 +172,7 @@ export function AttentionSection({ result }: { result: PolledResult<HealthSummar
             {chips.map((chip) => (
               <a
                 key={`${chip.agent}:${chip.kind}`}
-                href={`/team/${encodeURIComponent(chip.agent)}?tab=diagnostics`}
+                href={chip.kind === 'budget' ? '/models?tab=spend' : `/team/${encodeURIComponent(chip.agent)}?tab=diagnostics`}
                 title={chip.message}
                 className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors hover:bg-accent ${
                   chip.status === 'error' ? 'border-red-500/50 text-red-400' : 'border-amber-500/50 text-amber-400'
@@ -186,7 +186,8 @@ export function AttentionSection({ result }: { result: PolledResult<HealthSummar
         )}
         <ChartExplainer>
           Chips come from the doctor&apos;s scheduled checks: stale agent definitions (drift), oversized
-          fresh-session context, and unusual token burn. Click a chip to open that agent&apos;s diagnostics.
+          fresh-session context, unusual token burn, and budget breaches. Click a chip to open that
+          agent&apos;s diagnostics (budget chips open Models → Spend).
         </ChartExplainer>
       </CardContent>
     </Card>
