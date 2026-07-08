@@ -48,11 +48,12 @@ function agentWorkspace(agent: RuntimeAgent): string | null {
 /**
  * Reports-only integrity validator over the runtime roster.
  *
- * Bakin relies on the invariant that every runtime declares an orchestrator
- * agent (id 'main'), that agent ids are unique, and that no two agents
- * resolve to the same workspace. This scan collects *every* violation so the
- * user sees the whole picture on one run of `bakin check runtime` instead of
- * playing whack-a-mole.
+ * Bakin relies on the invariant that every runtime DECLARES an orchestrator
+ * (id 'main' or role 'orchestrator' — P2.6: a declared fact, not a baked
+ * constant), that agent ids are unique, and that no two agents resolve to
+ * the same workspace. This scan collects *every* violation so the user sees
+ * the whole picture on one run of `bakin check runtime` instead of playing
+ * whack-a-mole.
  *
  * **Never mutates runtime state.** The user owns the runtime and decides how
  * to fix it.
@@ -60,12 +61,16 @@ function agentWorkspace(agent: RuntimeAgent): string | null {
 export function validateRuntimeIntegrity(agents: RuntimeAgent[]): string[] {
   const issues: string[] = []
 
-  // 1. Missing main - Bakin's runtime helpers depend on this invariant.
-  const hasMain = agents.some((a) => a?.id === 'main')
-  if (!hasMain) {
+  // 1. No DECLARED orchestrator. selectRuntimeMainAgent would still fall
+  //    back to the first agent, but dispatch/prompts/permissions all key on
+  //    the orchestrator — an implicit pick is a footgun worth surfacing.
+  const hasDeclaredOrchestrator = agents.some(
+    (a) => a?.id === 'main' || a?.role?.toLowerCase() === 'orchestrator',
+  )
+  if (!hasDeclaredOrchestrator) {
     issues.push(
-      `Runtime roster has no agent with id 'main'. Add an orchestrator agent ` +
-        `with id 'main' — Bakin's orchestrator id is always 'main'.`
+      `Runtime roster declares no orchestrator. Add an agent with id 'main' ` +
+        `or role 'orchestrator' — Bakin resolves its orchestrator from that declaration.`
     )
   }
 

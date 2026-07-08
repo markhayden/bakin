@@ -44,6 +44,7 @@ describe('tool invocation styles', () => {
       { id: 't1', title: 'Do the thing', agent: 'rolo' },
       'rolo',
       '/tmp/none',
+      'main',
     )
     expect(msg).toContain('call these tools directly')
     expect(msg).toContain('bakin_exec_tasks_log_progress taskId=t1')
@@ -62,6 +63,7 @@ describe('tool invocation styles', () => {
       { id: 't1', title: 'Do the thing', agent: 'rolo' },
       'rolo',
       '/tmp/none',
+      'main',
     )
     expect(msg).toContain('native MCP tools (server `bakin-rolo`)')
     expect(msg).toContain('bakin-rolo.bakin_exec_tasks_log_progress taskId=t1')

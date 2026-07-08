@@ -70,7 +70,7 @@ const fixture = (name: string) =>
 
 describe('OUTPUT DISCIPLINE in dispatch prompts', () => {
   it('every specialist dispatch carries the short discipline reminder with the templated save command', () => {
-    const msg = buildDispatchMessage(specialistTask, 'jessica', testDir)
+    const msg = buildDispatchMessage(specialistTask, 'jessica', testDir, 'main')
     expect(msg).toContain('## OUTPUT DISCIPLINE — MANDATORY')
     expect(msg).toContain('KILLS your runtime session')
     expect(msg).toContain('ONE AT A TIME')
@@ -81,7 +81,7 @@ describe('OUTPUT DISCIPLINE in dispatch prompts', () => {
   })
 
   it('static catalog prose has moved to the managed block — not shipped per dispatch', () => {
-    const msg = buildDispatchMessage(specialistTask, 'jessica', testDir)
+    const msg = buildDispatchMessage(specialistTask, 'jessica', testDir, 'main')
     // Sentinels of the moved static prose:
     expect(msg).not.toContain('NEVER draft several deliverables in a single response')
     expect(msg).not.toContain('Required log points')
@@ -112,8 +112,8 @@ describe('prompt byte fixtures + labeled sections', () => {
   const cases: Array<{ name: string; build: () => string; sections: () => Array<{ source: string; text: string }>; joiner: string }> = [
     {
       name: 'specialist-plain',
-      build: () => buildDispatchMessage(SPECIALIST_PLAIN.task, SPECIALIST_PLAIN.agentName, FIXTURE_CONTENT_DIR),
-      sections: () => buildDispatchSections(SPECIALIST_PLAIN.task, SPECIALIST_PLAIN.agentName, FIXTURE_CONTENT_DIR),
+      build: () => buildDispatchMessage(SPECIALIST_PLAIN.task, SPECIALIST_PLAIN.agentName, FIXTURE_CONTENT_DIR, 'main'),
+      sections: () => buildDispatchSections(SPECIALIST_PLAIN.task, SPECIALIST_PLAIN.agentName, FIXTURE_CONTENT_DIR, 'main'),
       joiner: '',
     },
     {
@@ -140,8 +140,8 @@ describe('prompt byte fixtures + labeled sections', () => {
     },
     {
       name: 'main-agent',
-      build: () => buildDispatchMessage(MAIN_AGENT.task, MAIN_AGENT.agentName, FIXTURE_CONTENT_DIR),
-      sections: () => buildDispatchSections(MAIN_AGENT.task, MAIN_AGENT.agentName, FIXTURE_CONTENT_DIR),
+      build: () => buildDispatchMessage(MAIN_AGENT.task, MAIN_AGENT.agentName, FIXTURE_CONTENT_DIR, 'main'),
+      sections: () => buildDispatchSections(MAIN_AGENT.task, MAIN_AGENT.agentName, FIXTURE_CONTENT_DIR, 'main'),
       joiner: '',
     },
     {
@@ -198,7 +198,7 @@ describe('prompt byte fixtures + labeled sections', () => {
     // consciously raise the budget in the same commit that explains why.
     const staticBytes = (sections: Array<{ text: string }>) =>
       sections.reduce((n, s) => n + Buffer.byteLength(s.text, 'utf-8'), 0)
-    const task = buildDispatchSections({ id: '00000000', title: '', agent: 'jessica' }, 'jessica', testDir)
+    const task = buildDispatchSections({ id: '00000000', title: '', agent: 'jessica' }, 'jessica', testDir, 'main')
     const workflow = buildWorkflowDispatchSections({ id: '00000000', title: '' }, { stepId: 'step', label: '' }, 'jessica')
     expect(staticBytes(task)).toBeLessThanOrEqual(2560)
     expect(staticBytes(workflow)).toBeLessThanOrEqual(3584)
@@ -236,7 +236,7 @@ describe('runtime-derived roster (no hardcoded agents in core)', () => {
   })
 
   it('triage prompt degrades gracefully with no roster', () => {
-    const msg = buildDispatchMessage({ id: 't-3', title: 'Untriaged' }, 'main', testDir)
+    const msg = buildDispatchMessage({ id: 't-3', title: 'Untriaged' }, 'main', testDir, 'main')
     expect(msg).toContain('assign it to the right agent via')
     expect(msg).not.toContain('patch=execution')
   })

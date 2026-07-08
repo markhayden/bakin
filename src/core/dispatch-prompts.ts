@@ -179,7 +179,9 @@ export function buildDispatchSections(
   task: { id: string; title: string; description?: string; agent?: string; projectId?: string },
   agentName: string,
   contentDir: string,
-  mainAgentId = 'main',
+  // Resolved orchestrator id (P2.6): callers resolve via getRuntimeMainAgentId
+  // — never a baked 'main' default in the builder.
+  mainAgentId: string,
   lessonBlock = '',
   continuation: DispatchContinuationContext = {},
   recovery?: SessionDeathState,
@@ -281,7 +283,7 @@ export function buildDispatchMessage(
   task: { id: string; title: string; description?: string; agent?: string; projectId?: string },
   agentName: string,
   contentDir: string,
-  mainAgentId = 'main',
+  mainAgentId: string,
   lessonBlock = '',
   continuation: DispatchContinuationContext = {},
   recovery?: SessionDeathState,

@@ -135,13 +135,23 @@ describe('onboarding runtime component', () => {
   })
 
   describe('integrity check', () => {
-    it("reports an error when no agent has id 'main'", async () => {
+    it('reports an error when the roster declares no orchestrator', async () => {
       runtimeAgents = [{ id: 'bob', name: 'Bob', status: 'active', metadata: { workspacePath: '/tmp/bob' } }]
 
       const result = await runtimeComponent.check()
       expect(result.status).toBe('broken')
-      expect(result.message).toContain('no agent')
-      expect(result.message).toContain("'main'")
+      expect(result.message).toContain('declares no orchestrator')
+    })
+
+    it("passes with a NON-'main' orchestrator declared by role (P2.6)", async () => {
+      runtimeAgents = [
+        { id: 'atlas', name: 'Atlas', role: 'orchestrator', status: 'active', metadata: { workspacePath: '/tmp/atlas' } },
+        { id: 'pixel', name: 'Pixel', status: 'active', metadata: { workspacePath: '/tmp/pixel' } },
+      ]
+
+      const result = await runtimeComponent.check()
+      expect(result.status).toBe('ok')
+      expect(result.details?.mainAgentId).toBe('atlas')
     })
 
     it('reports an error when two agents share the same id', async () => {
