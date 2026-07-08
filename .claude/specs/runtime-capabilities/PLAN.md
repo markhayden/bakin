@@ -44,8 +44,8 @@ Bottom-up: contract types first, then the pieces that consume them. Riskiest ear
 **Files:** `app-services.ts`, new `app-services-store.ts`, ~6 core modules (registry/task-service/dispatch-cycle/dispatch-turns/dispatch-single/search-registry-core) + ~15 test files' mocks. **Size:** M. **Note:** proven approach during the #624 CI fix — this is the "proper fix" that allowlist comment points to.
 
 ### P1.1 — Contract: CapabilitySet + RuntimeToolAccess
-**Description:** Add `CapabilitySet` (every runtime-provided capability, mode `native|shimmed|unavailable`) + `RuntimeToolAccess` (`style: 'in-process'|'mcp'|'cli-shim'` + `mcpServerTemplate?`/`shimCommand?`/`example?`) to `concepts.ts`. Fold `describeToolAccess` into `capabilities().toolCalling.access`. Mock + both adapters return valid sets (Pi `in-process`, OpenClaw `mcp` w/ `mcpServerTemplate: 'bakin-<agent>'`).
-**Acceptance:** contract compiles; `capabilities()` returns a full `CapabilitySet` from Pi, OpenClaw, mock; conformance test asserts every member present.
+**Description:** Add `CapabilitySet` (every runtime-provided capability, mode `native|shimmed|unavailable`) + `RuntimeToolAccess` (`style: 'in-process'|'mcp'|'cli-shim'` + `mcpServerTemplate?`/`shimCommand?`/`example?`) to `concepts.ts`. **`describeToolAccess()` STAYS a lightweight SYNC method** (declared wiring, no I/O) for the sync dispatch-prompt render path; the ASYNC `capabilities()` report *includes* the same `RuntimeToolAccess` facts for the UI/switch. Two surfaces, one truth — never await inside prompt assembly. Mock + both adapters return valid sets (Pi `in-process`, OpenClaw `mcp` w/ `mcpServerTemplate: 'bakin-<agent>'`).
+**Acceptance:** contract compiles; `capabilities()` returns a full `CapabilitySet`; sync `describeToolAccess()` and `capabilities().toolCalling.access` agree; conformance test asserts every member present.
 **Verify:** `bun test tests/**/adapter*contract* tests/dev/mock-runtime-contract.test.ts --isolate` + typecheck.
 **Files:** `concepts.ts`, `index.ts`, `testing.ts`, `adapter-pi/src/runtime.ts`, `adapter-openclaw/src/runtime.ts`. **Size:** M.
 
@@ -56,22 +56,22 @@ Bottom-up: contract types first, then the pieces that consume them. Riskiest ear
 **Files:** `src/core/tool-access.ts` + test + `tests/fixtures/tool-access/*`. **Size:** M.
 
 ### P1.3 — Provisioning lifecycle (relocate OpenClaw out of core)
-**Description:** Contract: `provisionToolAccess(execTools)` + `deprovisionToolAccess()`. Move `syncOpenClawMcpConfig` + the `~/.mcporter`-less MCP-config writing from `src/core/openclaw-integration.ts` INTO `adapter-openclaw`. Pi = its in-process bridge (no-op hook). `app-services.ts` calls `adapter.provisionToolAccess(createRuntimeExecToolProvider())` at init; **core keeps zero runtime-specific provisioning**. Reads live `getAllExecTools()`; agent-create triggers provision (closes the boot-only gap).
+**Description:** Contract: `provisionToolAccess(execTools)` + `deprovisionToolAccess()`. Move `syncOpenClawMcpConfig` + the MCP-config writing from `src/core/openclaw-integration.ts` INTO `adapter-openclaw`. The adapter needs Bakin's MCP server URL/port to write `config.mcp.servers` (core knows the port today; the adapter won't) — thread it through `AdapterInitOpts` alongside the `execTools` provider. Pi = its in-process bridge (no-op hook). `app-services.ts` calls `adapter.provisionToolAccess(createRuntimeExecToolProvider())` at init; **core keeps zero runtime-specific provisioning**. Reads live `getAllExecTools()`; agent-create triggers provision (closes the boot-only gap).
 **Acceptance:** OpenClaw provisioning writes byte-identical `config.mcp.servers` to before (golden); Pi bridge unaffected; new plugin tools + new agent both provision live.
 **Verify:** `bun test tests/**/provision* tests/**/openclaw*integration* --isolate` + full suite.
 **Files:** `concepts.ts`/`shared.ts`, `adapter-openclaw/src/*` (new provisioning module), `src/core/app-services.ts`, `src/core/openclaw-integration.ts` (gutted). **Size:** L.
 
-### P1.4 — Delete mcporter
-**Description:** Remove `src/core/mcporter.ts`, `src/core/onboarding/mcporter.ts`, the `COMPONENT_ORDER` entry, the `server.ts` boot `mcporter.setup`, the npm dep, any `~/.mcporter` writes. `cli-shim` renderer branch stays (inert).
-**Acceptance:** grep-clean of `mcporter` in `src/`/`packages/`/`server.ts` (code); `bakin --help` + onboarding don't mention it; suite green.
-**Verify:** `grep -rn mcporter src packages server.ts` = only the inert `cli-shim` doc string; full suite.
-**Files:** deletes + `server.ts` + `onboarding/index.ts` + `package.json`. **Size:** S. **Depends:** P1.3.
-
-### P1.5 — Neutral role defaults + injected section + unify authors
-**Description:** Strip ALL mcporter/transport prose from `ROLE_DEFAULTS` (`team-context-defaults.ts`) → transport-neutral + stable. Inject the rendered tool-access section at compose (`resolveContextInputs`/`deriveExpectedBlocks`, `sync-scanner.ts`). Route `dispatch-prompts.ts`, `dispatch-workflow.ts`, `bakin-skill.ts` through `renderToolAccessInstructions` (drop `mcporterHelpers`). Regenerate dispatch byte fixtures.
+### P1.4 — Neutral role defaults + injected section + unify authors
+**Description:** (Reordered before mcporter delete — switch the instructions to native FIRST, then remove the dead path.) Strip ALL mcporter/transport prose from `ROLE_DEFAULTS` (`team-context-defaults.ts`) → transport-neutral + stable. Inject the rendered tool-access section at compose (`resolveContextInputs`/`deriveExpectedBlocks`, `sync-scanner.ts`). Route `dispatch-prompts.ts`, `dispatch-workflow.ts`, `bakin-skill.ts` through `renderToolAccessInstructions` (drop `mcporterHelpers`). Regenerate dispatch byte fixtures — **OpenClaw's prompts genuinely change (mcporter → native `mcp`), a large intentional diff; OpenClaw agents need a re-sync after this ships, not just Pi.**
 **Acceptance:** composed AGENTS.md on Pi says "call directly" (no cheat-sheet, smaller); on OpenClaw says mcp; role file stable across runtimes; `#357` budget green.
 **Verify:** `bun test tests/core/dispatch-prompts*.test.ts tests/**/compose* tests/architecture/ --isolate`; regen + review fixture diff.
 **Files:** `team-context-defaults.ts`, `sync-scanner.ts`/`composer.ts`, `dispatch-prompts.ts`, `dispatch-workflow.ts`, `bakin-skill.ts`, fixtures. **Size:** L. **Depends:** P1.2.
+
+### P1.5 — Delete mcporter
+**Description:** (After P1.4 — the instructions no longer reference it.) Remove `src/core/mcporter.ts`, `src/core/onboarding/mcporter.ts`, the `COMPONENT_ORDER` entry, the `server.ts` boot `mcporter.setup`, the npm dep, any `~/.mcporter` writes. `cli-shim` renderer branch stays (inert).
+**Acceptance:** grep-clean of `mcporter` in `src/`/`packages/`/`server.ts` (code); `bakin --help` + onboarding don't mention it; suite green.
+**Verify:** `grep -rn mcporter src packages server.ts` = only the inert `cli-shim` doc string; full suite.
+**Files:** deletes + `server.ts` + `onboarding/index.ts` + `package.json`. **Size:** S. **Depends:** P1.4.
 
 ### P1.6 — Lockfile runtime + runtime-aware drift
 **Description:** Add runtime/style to `ProjectionInputs` (lockfile.ts); `scanAgentSync` attributes `block-stale` to a runtime change; `team.agent-sync` finding message is runtime-aware.
@@ -195,8 +195,8 @@ Phase 0  docs(specs): spike PASS                          (done)
 P1.1  feat(core): CapabilitySet + RuntimeToolAccess contract
 P1.2  feat(core): renderToolAccessInstructions
 P1.3  feat(core,adapter-openclaw): adapter-owned tool provisioning
-P1.4  refactor(core): delete mcporter                        ← checkpoint α scope
-P1.5  feat(core,dispatch): neutral role defaults + injected tool-access section
+P1.4  feat(core,dispatch): neutral role defaults + injected tool-access section
+P1.5  refactor(core): delete mcporter                        ← checkpoint α scope
 P1.6  feat(agent-packages): runtime-aware sync drift
 P1.7  test(architecture): content transport-neutrality guard  ══ α ══
 P2.1  feat(core): channels/cron optional + feature-detect consumers
