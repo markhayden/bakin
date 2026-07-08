@@ -12,6 +12,7 @@ interface KanbanColumnProps {
   tasks: Task[]
   gateLabels?: Record<string, string>
   childTaskLabels?: Record<string, string>
+  budgetHolds?: Record<string, string>
   /** Per-task search score info, keyed by task id. Only set when debug + active search. */
   scoreMap?: Map<string, TaskScoreInfo>
   onDelete: (task: { id: string; title: string }) => void
@@ -24,7 +25,7 @@ interface KanbanColumnProps {
   onHeaderClick?: () => void
 }
 
-export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, scoreMap, onDelete, onTaskClick, onAddTask, footer, compact, totalCount, showScheduled = true, onHeaderClick }: KanbanColumnProps) {
+export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, budgetHolds, scoreMap, onDelete, onTaskClick, onAddTask, footer, compact, totalCount, showScheduled = true, onHeaderClick }: KanbanColumnProps) {
   const { ref, isDropTarget } = useDroppable({
     id,
     accept: 'item',
@@ -120,6 +121,7 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, scoreMap,
                 index={tasks.findIndex(item => item.id === task.id)}
                 gateLabel={gateLabels?.[task.id]}
                 childTaskId={childTaskLabels?.[task.id]}
+                budgetHold={budgetHolds?.[task.id]}
                 scoreInfo={scoreMap?.get(task.id)}
                 onDelete={onDelete}
                 onClick={onTaskClick}
@@ -145,6 +147,7 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, scoreMap,
                       index={tasks.findIndex(item => item.id === task.id)}
                       gateLabel={gateLabels?.[task.id]}
                       childTaskId={childTaskLabels?.[task.id]}
+                      budgetHold={budgetHolds?.[task.id]}
                       scoreInfo={scoreMap?.get(task.id)}
                       onDelete={onDelete}
                       onClick={onTaskClick}
