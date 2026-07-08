@@ -57,7 +57,6 @@ The orchestrator is intentionally trivial — it has no opinion about what's bei
 | `plugins/health/lib/system-checks/plugin-artifacts.ts` | `plugin-artifacts` |
 | `plugins/health/lib/system-checks/context-report.ts` | `context.startup-size` (warn-only per-dispatch context budget vs `dispatch.contextBudgetBytes`; arithmetic shared with `src/core/context-report.ts` — see `.claude/knowledge/startup-context.md`) |
 | `plugins/health/lib/system-checks/service.ts` | `service` |
-| `plugins/health/lib/system-checks/mcporter.ts` | `mcporter` |
 | `plugins/health/lib/system-checks/runtime.ts` | `runtime` |
 | `plugins/health/lib/system-checks/session-store.ts` | `session-store` |
 | `plugins/health/lib/system-checks/channel-aliases.ts` | `channel-aliases` |

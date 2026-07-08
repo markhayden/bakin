@@ -41,9 +41,9 @@ Pi is a minimal single-session coding harness — it has no agent roster, channe
 
 ## Core seams added for Pi (adapter-neutral, OpenClaw unaffected)
 
-- **`AdapterInitOpts.execTools: RuntimeExecToolProvider`** (`src/core/exec-tools/provider.ts`): core hands the live exec-tool registry across the boundary as JSON-Schema descriptors; `invoke()` carries the same usage-recording + `exec.*` audit the MCP path does. Pi registers them as first-class session tools; OpenClaw keeps MCP/mcporter.
-- **`describeToolAccess?(): RuntimeToolAccessHint`**: dispatch prompts render tool calls per the active runtime — bare `bakin_exec_*` calls for Pi (`'native'`), `mcporter call …` for OpenClaw. `resolveToolInvocation()` in `dispatch-prompts.ts` keeps measurement == production; absent hint = legacy `'mcporter-cli'` (fixtures byte-stable).
-- **Onboarding gating**: `OnboardingComponent.supportedAdapters` — `mcporter` + `openclaw-integration` are `['openclaw']`; everything else adapter-generic (Pi answers the credential-check raw keys via config synthesis).
+- **`AdapterInitOpts.execTools: RuntimeExecToolProvider`** (`src/core/exec-tools/provider.ts`): core hands the live exec-tool registry across the boundary as JSON-Schema descriptors; `invoke()` carries the same usage-recording + `exec.*` audit the MCP path does. Pi registers them as first-class session tools; OpenClaw reaches the same registry over its native MCP client.
+- **`describeToolAccess(): RuntimeToolAccess`**: dispatch prompts + the AGENTS.md tool-access section render tool calls per the active runtime — bare `bakin_exec_*` calls for Pi (`in-process`), `bakin-<agent>.`-prefixed native MCP calls for OpenClaw (`mcp`). `resolveToolAccess()` in `dispatch-prompts.ts` keeps measurement == production; everything renders through `src/core/tool-access.ts` (`renderToolCall`).
+- **Onboarding gating**: `OnboardingComponent.supportedAdapters` — `openclaw-integration` is `['openclaw']`; everything else adapter-generic (Pi answers the credential checks via `credentialStatus()` — auth.json provider names, presence-only).
 
 ## Degradation matrix (MVP, per spec D3/AD6)
 

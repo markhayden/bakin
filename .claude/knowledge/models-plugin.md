@@ -42,7 +42,7 @@ The OpenClaw adapter surfaces per-turn `usage` from the **gateway response paylo
 
 ### Routing (per-turn model + thinking)
 
-Bakin-owned policy resolved at dispatch (`src/core/model-routing.ts`); OpenClaw serves it (`model`/`thinking` on the gateway `agent` RPC). Routing key = dispatch **origin** (`scheduled|workflow|adhoc|recovery|decomposition`) + a per-task **tag override**. Cascade: tag → origin → inherit (nothing resolved = the agent's configured model, unchanged behavior). Stored in `settings.routing`, exposed via `models.getRoutingConfig`; the **Routing** tab edits it. Thinking levels include `inherit`.
+Bakin-owned policy resolved at dispatch (`src/core/model-routing.ts`); OpenClaw serves it (`model`/`thinking` on the gateway `agent` RPC). Distinct from the RUNTIME-owned routing policy (defaults/fallbacks/aliases + per-agent assignments), which lives in the runtime's native store behind `models.routingPolicy()/setRoutingPolicy()/routingSupport()` and `agents.update` (runtime-capabilities P2.3 — see `.claude/knowledge/runtime-capabilities.md`). Routing key = dispatch **origin** (`scheduled|workflow|adhoc|recovery|decomposition`) + a per-task **tag override**. Cascade: tag → origin → inherit (nothing resolved = the agent's configured model, unchanged behavior). Stored in `settings.routing`, exposed via `models.getRoutingConfig`; the **Routing** tab edits it. Thinking levels include `inherit`.
 
 ### Budget gating (#464)
 
