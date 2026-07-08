@@ -21,33 +21,54 @@ export interface BudgetRuleWire {
   warnPct?: number
   atCap?: 'defer' | 'pause'
 }
-/** View model the current caps editor binds to (global metered rule only —
- *  the full rule editor lands in T16). */
-export interface BudgetShape { global?: { dailyUsd?: number; monthlyUsd?: number; warnPct?: number } }
-
-function isGlobalMetered(r: BudgetRuleWire): boolean {
-  return r.scope === 'global' && r.lane === 'metered'
-}
-function rulesToView(rules: BudgetRuleWire[]): BudgetShape {
-  const g = rules.find(isGlobalMetered)
-  if (!g) return {}
-  return {
-    global: {
-      ...(g.dailyCap ? { dailyUsd: g.dailyCap } : {}),
-      ...(g.monthlyCap ? { monthlyUsd: g.monthlyCap } : {}),
-      ...(g.warnPct ? { warnPct: g.warnPct } : {}),
-    },
-  }
+/** One durable breach record (wire shape of a budget_incidents row). */
+export interface BudgetIncidentWire {
+  id: number
+  scope: string
+  scopeId: string
+  lane: 'metered' | 'subscription'
+  window: 'daily' | 'monthly'
+  windowStartMs: number
+  kind: 'warn' | 'cap'
+  unit: 'usd_micros' | 'tokens'
+  capValue: number
+  spentValue: number
+  atCap: 'defer' | 'pause'
+  openedAt: number
+  status: 'open' | 'acknowledged' | 'resolved'
 }
 
 export interface SpendRowAgent { agent: string; costUsdMicros: number; runs: number }
 export interface SpendRowModel { model: string; costUsdMicros: number; runs: number }
+export interface LaneSumsWire {
+  meteredUsdMicros: number
+  meteredTokens: number
+  subscriptionTokens: number
+  unpricedMeteredTokens: number
+}
+export interface ScopeSpendWire extends LaneSumsWire {
+  unattributed: { meteredUsdMicros: number; meteredTokens: number; subscriptionTokens: number }
+}
+export interface WindowSpendWire {
+  startMs: number
+  global: ScopeSpendWire
+  byAgent: Record<string, ScopeSpendWire>
+  byProvider: Record<string, LaneSumsWire>
+  byModel: Record<string, LaneSumsWire>
+}
+export interface PaceWire {
+  meteredUsdMicros: number | null
+  subscriptionTokens: number | null
+  endsMs: number
+}
 export interface SpendResponse {
   window: string
   estimated: boolean
   totalUsdMicros: number
   byAgent: SpendRowAgent[]
   byModel: SpendRowModel[]
+  facets?: { computedAt: number; daily: WindowSpendWire; monthly: WindowSpendWire }
+  pace?: { daily: PaceWire; monthly: PaceWire }
 }
 
 /**
@@ -86,11 +107,9 @@ export function useModelsData() {
   const [spendLoading, setSpendLoading] = useState(false)
   const [routing, setRouting] = useState<RoutingConfigShape>({ policies: [], tagOverrides: [] })
   const [pendingRouting, setPendingRouting] = useState<RoutingConfigShape | null>(null)
-  const [budget, setBudget] = useState<BudgetShape>({})
-  const [pendingBudget, setPendingBudget] = useState<BudgetShape | null>(null)
-  // Full rule list as fetched — non-global rules are preserved verbatim on
-  // save (the editor only owns the global metered rule until T16).
   const [budgetRules, setBudgetRules] = useState<BudgetRuleWire[]>([])
+  const [pendingRules, setPendingRules] = useState<BudgetRuleWire[] | null>(null)
+  const [incidents, setIncidents] = useState<BudgetIncidentWire[]>([])
 
   // -------------------------------------------------------------------------
   // Data fetching
@@ -189,37 +208,36 @@ export function useModelsData() {
       const res = await fetch('/api/plugins/models/budget')
       if (!res.ok) throw new Error(`Budget fetch failed (${res.status})`)
       const policy = (await res.json()) as { rules?: BudgetRuleWire[] }
-      const rules = policy.rules ?? []
-      setBudgetRules(rules)
-      setBudget(rulesToView(rules))
+      setBudgetRules(policy.rules ?? [])
     } catch (err) {
       console.error('Failed to fetch budget:', err)
     }
   }, [])
 
-  const saveBudget = async () => {
-    if (!pendingBudget) return
+  const fetchIncidents = useCallback(async () => {
+    try {
+      const res = await fetch('/api/plugins/models/budget/incidents')
+      if (!res.ok) throw new Error(`Incidents fetch failed (${res.status})`)
+      const data = (await res.json()) as { incidents?: BudgetIncidentWire[] }
+      setIncidents(data.incidents ?? [])
+    } catch (err) {
+      console.error('Failed to fetch budget incidents:', err)
+    }
+  }, [])
+
+  /** PUT the full rule list — every rule round-trips; nothing is dropped. */
+  const saveBudgetRules = async () => {
+    if (!pendingRules) return
     setSaving('budget')
     try {
-      // Rebuild the global metered rule from the inputs (blank field clears
-      // that cap); every other rule round-trips untouched.
-      const g = pendingBudget.global ?? {}
-      const others = budgetRules.filter((r) => !isGlobalMetered(r))
-      const globalRule: BudgetRuleWire | null = g.dailyUsd || g.monthlyUsd
-        ? {
-            scope: 'global',
-            lane: 'metered',
-            ...(g.dailyUsd ? { dailyCap: g.dailyUsd } : {}),
-            ...(g.monthlyUsd ? { monthlyCap: g.monthlyUsd } : {}),
-            ...(g.warnPct ? { warnPct: g.warnPct } : {}),
-          }
-        : null
-      const rules = globalRule ? [globalRule, ...others] : others
+      // Drop rules with no caps at all (an empty row is a delete).
+      const rules = pendingRules.filter((r) => r.dailyCap || r.monthlyCap)
       const res = await fetch('/api/plugins/models/budget', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rules }),
       })
       const data = await res.json()
-      if (data.ok) { setBudgetRules(rules); setBudget(rulesToView(rules)); setPendingBudget(null) }
+      if (data.ok) { setBudgetRules(rules); setPendingRules(null) }
+      else console.error('Budget save rejected:', data)
     } catch (err) {
       console.error('Failed to save budget:', err)
     } finally {
@@ -227,9 +245,25 @@ export function useModelsData() {
     }
   }
 
+  /** Resolve an incident: raise (new cap in the rule's unit), ack, or resume. */
+  const resolveIncident = async (id: number, action: 'raise' | 'ack' | 'resume', cap?: number): Promise<string | null> => {
+    try {
+      const res = await fetch(`/api/plugins/models/budget/incidents/${id}/resolve`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, ...(cap !== undefined ? { cap } : {}) }),
+      })
+      const data = await res.json()
+      if (!res.ok) return String(data.error ?? `Resolve failed (${res.status})`)
+      await Promise.all([fetchIncidents(), fetchBudget()])
+      return null
+    } catch (err) {
+      return err instanceof Error ? err.message : String(err)
+    }
+  }
+
   useEffect(() => {
-    if (tab === 'spend') { fetchSpend(spendWindow); fetchBudget() }
-  }, [tab, spendWindow, fetchSpend, fetchBudget])
+    if (tab === 'spend') { fetchSpend(spendWindow); fetchBudget(); fetchIncidents() }
+  }, [tab, spendWindow, fetchSpend, fetchBudget, fetchIncidents])
 
   const fetchRouting = useCallback(async () => {
     try {
@@ -492,7 +526,9 @@ export function useModelsData() {
     routing, pendingRouting, setPendingRouting, displayRouting,
     setOriginField, addTagOverride, updateTagOverride, removeTagOverride, saveRouting,
     // spend + budget
-    spend, spendLoading, budget, pendingBudget, setPendingBudget, saveBudget,
+    spend, spendLoading,
+    budgetRules, pendingRules, setPendingRules, saveBudgetRules,
+    incidents, resolveIncident,
   }
 }
 
