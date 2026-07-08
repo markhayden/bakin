@@ -23,6 +23,7 @@ import { meterAgentTurn } from './agent-cost'
 import { resolveTurnModel, type ResolvedTurn, type RoutingConfig } from './model-routing'
 import { evaluateBudget, ruleMatchesTurn, dayStartMs, monthStartMs, type BudgetPolicy, type BudgetDecision, type TurnBillingContext } from './budget'
 import { assembleBudgetSpend, type BudgetSpendFacets } from './budget-spend'
+import { notifyBudgetIncidentOpened } from './budget-notify'
 import { getBootId } from './boot-id'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { moveTask as moveStoredTask } from './task-store'
@@ -237,6 +238,19 @@ function recordBudgetBreach(
       unit: decision.unit,
       spentValue: decision.spentValue,
       capValue: decision.capValue,
+    })
+    // Proactive fan-out (SSE/browser + main-agent relay) — fresh opens only.
+    notifyBudgetIncidentOpened({
+      incidentId: incident.id,
+      kind: decision.action === 'defer' ? 'cap' : 'warn',
+      scope: decision.rule.scope,
+      ...(decision.rule.scopeId ? { scopeId: decision.rule.scopeId } : {}),
+      lane: decision.rule.lane,
+      window: decision.window,
+      unit: decision.unit,
+      capValue: decision.capValue,
+      spentValue: decision.spentValue,
+      atCap: decision.rule.atCap ?? 'defer',
     })
   } catch (err) {
     log.error('Failed to record budget breach incident', err, { agentId })
