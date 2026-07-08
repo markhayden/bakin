@@ -44,6 +44,8 @@ export function migrateLegacyBudget(legacy: LegacyBudgetPolicy): BudgetPolicy {
       lane: 'metered',
       ...(caps.dailyUsd ? { dailyCap: caps.dailyUsd } : {}),
       ...(caps.monthlyUsd ? { monthlyCap: caps.monthlyUsd } : {}),
+      // The legacy evaluator applied the single global warnPct to EVERY cap.
+      ...(g?.warnPct ? { warnPct: g.warnPct } : {}),
     })
   }
   return { rules }

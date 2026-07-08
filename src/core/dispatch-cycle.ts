@@ -282,6 +282,7 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
 
 export function start(contentDir: string, port: number): void {
   const settings = getSettings()
+  startedWith = { contentDir, port }
   dispatchTimer = setInterval(() => {
     dispatchTasks(contentDir, port).catch(err => {
       log.error('Dispatch cycle failed', err)
@@ -289,6 +290,23 @@ export function start(contentDir: string, port: number): void {
     })
   }, settings.dispatch.intervalMs)
   log.info('Dispatch started', { intervalMs: settings.dispatch.intervalMs })
+}
+
+let startedWith: { contentDir: string; port: number } | null = null
+
+/**
+ * Run a dispatch cycle NOW (cost-control v2): raising a cap / resuming a
+ * pause incident must visibly unstick deferred tasks instead of leaving the
+ * operator staring at a board that "did nothing" until the next interval.
+ * No-op before start(); the cycle mutex dedupes an overlap with the timer.
+ */
+export function requestImmediateDispatch(reason: string): void {
+  if (!startedWith) return
+  const { contentDir, port } = startedWith
+  log.info('Immediate dispatch requested', { reason })
+  dispatchTasks(contentDir, port).catch(err => {
+    log.error('Immediate dispatch failed', err, { reason })
+  })
 }
 
 export function stop(): void {

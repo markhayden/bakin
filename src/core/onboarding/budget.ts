@@ -54,14 +54,14 @@ async function checkBudget(): Promise<CheckResult> {
 }
 
 async function askUsd(prompt: string): Promise<number | null> {
-  const raw = await readLine(prompt)
-  if (raw === '') return null
-  const value = Number(raw)
-  if (!Number.isFinite(value) || value <= 0) {
-    console.log('  (not a positive number — leaving this cap unset)')
-    return null
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const raw = await readLine(attempt === 0 ? prompt : 'Please enter a positive number (Enter to skip):')
+    if (raw === '') return null
+    const value = Number(raw)
+    if (Number.isFinite(value) && value > 0) return value
   }
-  return value
+  console.log('  (not a positive number — leaving this cap unset)')
+  return null
 }
 
 async function installBudget(opts: OnboardingOptions): Promise<InstallResult> {

@@ -116,7 +116,10 @@ export async function meterAgentTurn(opts: {
       runId: opts.runId ?? `turn:${randomUUID()}`,
       taskId: opts.taskId,
       agent: opts.agent,
-      model: ranModel ?? priced?.model ?? null,
+      // Prefer the hook's NORMALIZED id (it resolves from ranModel) — spend
+      // facets and rule scopeIds must key identically or model-scoped caps
+      // read zero spend. Raw ranModel is the no-plugin fallback only.
+      model: priced?.model ?? ranModel ?? null,
       provider: priced?.provider ?? null,
       lane: priced?.lane ?? null,
       costUsdMicros: priced?.costUsdMicros ?? null,

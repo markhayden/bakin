@@ -537,6 +537,20 @@ describe('budget incidents', () => {
     expect(row?.status).toBe('open')
   })
 
+  it("an 'acknowledged'-resolved incident stays SUPPRESSED on re-breach this window (resume must not re-alert)", () => {
+    const input = {
+      scope: 'agent' as const, scopeId: 'ack-a', lane: 'metered' as const, window: 'daily' as const,
+      windowStartMs: W0, kind: 'cap' as const, unit: 'usd_micros' as const,
+      capValue: 1_000_000, spentValue: 1_100_000, atCap: 'pause' as const, openedAt: W0,
+    }
+    const { id } = openBudgetIncident(input)
+    // Operator resumes-as-is (dismiss) — spend is still over cap.
+    resolveBudgetIncident({ id, status: 'resolved', resolution: 'acknowledged' })
+    const rebreached = openBudgetIncident({ ...input, spentValue: 1_200_000, openedAt: W0 + 100 })
+    expect(rebreached.opened).toBe(false) // no reopen, no re-notify — the human already dismissed this window
+    expect(listBudgetIncidents({ openOnly: true }).some((i) => i.id === id)).toBe(false)
+  })
+
   it('resolveExpiredBudgetIncidents rolls over defer-mode incidents but leaves pause-mode blocking', () => {
     const base = { lane: 'metered' as const, window: 'daily' as const, windowStartMs: W0, kind: 'cap' as const, unit: 'usd_micros' as const, capValue: 1, spentValue: 2, openedAt: W0 }
     const deferInc = openBudgetIncident({ ...base, scope: 'agent', scopeId: 'roll-defer', atCap: 'defer' })

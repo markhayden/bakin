@@ -13,12 +13,13 @@ import type { PluginContext } from '@bakin/core/plugin-types'
 import { defineRoute } from '@bakin/core/routing'
 
 import type { ModelsPluginSettings } from '../types'
+import { KNOWN_PROVIDERS } from '../data/known-models'
 import {
   readPersistedCache,
   writePersistedCache,
   clearPersistedCache,
 } from './models-cache'
-import { spendTotal, spendByAgent, spendByModel, LedgerUnavailableError } from '../../../src/core/execution-ledger'
+import { spendTotal, spendByAgent, spendByModel, listBudgetIncidents, resolveBudgetIncident, LedgerUnavailableError } from '../../../src/core/execution-ledger'
 import { assembleBudgetSpend, paceProjection, dayEndMs, monthEndMs } from '../../../src/core/budget-spend'
 import { budgetStatusRoutes } from './budget-routes'
 import {
@@ -340,10 +341,45 @@ export const modelsRoutes = [
     responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
     handler: async (_req, ctx, { body }) => {
       try {
-        (ctx as unknown as PluginContext).updateSettings({ budget: body })
-        ctx.activity.audit('budget.updated', 'system', { rules: body.rules?.length ?? 0 })
+        // Model-scoped rule ids normalize on write so they key identically
+        // to the normalized model ids on spend rows.
+        const rules = (body.rules ?? []).map((r) =>
+          r.scope === 'model' && r.scopeId ? { ...r, scopeId: normalizeModelId(r.scopeId) } : r,
+        )
+        ;(ctx as unknown as PluginContext).updateSettings({ budget: { rules } })
+        // Live incidents whose rule was just deleted would otherwise strand
+        // in the banner with no working action — resolve them now.
+        try {
+          for (const incident of listBudgetIncidents({ openOnly: true })) {
+            const stillExists = rules.some(
+              (r) => r.scope === incident.scope && (r.scopeId ?? '') === incident.scopeId && r.lane === incident.lane,
+            )
+            if (!stillExists) resolveBudgetIncident({ id: incident.id, status: 'resolved', resolution: 'rule_removed' })
+          }
+        } catch (err) {
+          // Cleanup is best-effort — a failed sweep must not fail the save.
+          void err
+        }
+        // Unknown scope ids are the #1 fake-safety trap (a typo'd agent id
+        // caps nothing) — warn, don't reject (the id may exist later).
+        const warnings: string[] = []
+        try {
+          const knownAgents = new Set((await resolveAgents(ctx as unknown as PluginContext)).map((a) => a.agentId))
+          const knownProviders = new Set(KNOWN_PROVIDERS.map((p) => p.id))
+          for (const r of rules) {
+            if (r.scope === 'agent' && r.scopeId && !knownAgents.has(r.scopeId)) {
+              warnings.push(`No agent named '${r.scopeId}' — this rule caps nothing until such an agent exists.`)
+            }
+            if (r.scope === 'provider' && r.scopeId && !knownProviders.has(r.scopeId)) {
+              warnings.push(`Unknown provider '${r.scopeId}' — this rule caps nothing (known: ${KNOWN_PROVIDERS.map((p) => p.id).join(', ')}).`)
+            }
+          }
+        } catch (err) {
+          void err // runtime unreachable — skip validation, never block the save
+        }
+        ctx.activity.audit('budget.updated', 'system', { rules: rules.length, warnings: warnings.length })
         ctx.activity.log('system', 'Updated budget policy', { category: 'models' })
-        return Response.json({ ok: true })
+        return Response.json({ ok: true, ...(warnings.length ? { warnings } : {}) })
       } catch (err) {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
       }

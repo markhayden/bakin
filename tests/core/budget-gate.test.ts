@@ -275,4 +275,11 @@ describe('budgetGate', () => {
     expect(incidentOpens[0]).toMatchObject({ kind: 'warn' })
     expect(auditCalls.filter((c) => c[1] === 'budget.warn')).toHaveLength(1)
   })
+
+  it('a WARN on a pause-mode rule opens a sweepable (defer) incident — warnings never hold past rollover', async () => {
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 10, atCap: 'pause' }] }
+    costRows.push({ runId: 'r1', agent: 'pixel', model: 'google/g', provider: 'google', lane: 'metered', totalTokens: 100, costUsdMicros: 8_500_000, occurredAt: Date.now() })
+    expect((await budgetGate('pixel', dir)).action).toBe('warn')
+    expect(incidentOpens[0]).toMatchObject({ kind: 'warn', atCap: 'defer' })
+  })
 })

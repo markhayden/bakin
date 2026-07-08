@@ -486,12 +486,6 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
   if (!ctx.runtime.images) return fail('The active runtime does not provide an image generation capability')
   const runGenerate = ctx.runtime.images.generate
 
-  // Budget/kill-switch gate BEFORE the idempotency row and the provider call
-  // (cost-control v2): a capped provider refuses with a typed reason the
-  // agent can relay — nothing is billed, nothing is cached.
-  const generateGate = await gateBilledMediaCall({ agent, model: `${req.route.provider}/${req.route.model}` })
-  if (!generateGate.allowed) return { ok: false, error: generateGate.refusal.message, budget: generateGate.refusal }
-
   // Idempotent: a client (mcporter) timeout that retries this identical billed
   // call must not bill twice. Reference identity participates so the same prompt
   // with different references is not treated as a duplicate (#418); versionOf
@@ -503,6 +497,13 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
     references: req.references.fingerprint,
   }
   return runBilledImageCall(key, async () => {
+    // Budget/kill-switch gate INSIDE the idempotent wrapper (cost-control
+    // v2): it must run only when we would actually BILL — a retry of an
+    // already-billed identical call dedupes into the cached/in-flight result
+    // first and always receives what was paid for. Refusals are ok:false and
+    // never cached.
+    const generateGate = await gateBilledMediaCall({ agent, model: `${req.route.provider}/${req.route.model}` })
+    if (!generateGate.allowed) return { ok: false, error: generateGate.refusal.message, budget: generateGate.refusal }
     try {
       const result = await runGenerate({
         prompt: req.prompt, provider: req.route.provider, model: req.route.model,
@@ -544,10 +545,6 @@ export async function editImage(ctx: PluginContext, params: ImagesEditParams, ag
   if (!ctx.runtime.images?.edit) return fail('The active runtime does not provide an image edit capability')
   const runEdit = ctx.runtime.images.edit
 
-  // Same budget/kill-switch gate as generate — before billing or idempotency.
-  const editGate = await gateBilledMediaCall({ agent, model: `${req.route.provider}/${req.route.model}` })
-  if (!editGate.allowed) return { ok: false, error: editGate.refusal.message, budget: editGate.refusal }
-
   const key: ImageCallKey = {
     taskId: params.taskId, op: 'edit', source: params.assetId,
     promptHash, provider: req.route.provider, model: req.route.model,
@@ -555,6 +552,9 @@ export async function editImage(ctx: PluginContext, params: ImagesEditParams, ag
     references: req.references.fingerprint,
   }
   return runBilledImageCall(key, async () => {
+    // Same gate placement as generate — only when we would actually bill.
+    const editGate = await gateBilledMediaCall({ agent, model: `${req.route.provider}/${req.route.model}` })
+    if (!editGate.allowed) return { ok: false, error: editGate.refusal.message, budget: editGate.refusal }
     try {
       // The base (current version) stays first; extra references append after it.
       const result = await runEdit({

@@ -90,6 +90,10 @@ export function dispatchPaused(contentDir: string): boolean {
  */
 export interface BudgetSpendMemo {
   facets?: Promise<BudgetSpendFacets>
+  /** Local day-start the memoized facets were assembled in — a cycle that
+   *  straddles midnight must NOT gate post-midnight tasks on pre-midnight
+   *  windows (the old spendCache keyed on window start for the same reason). */
+  dayStartMs?: number
 }
 
 /**
@@ -127,6 +131,16 @@ export async function budgetGate(
     log.error('Budget policy read failed; allowing (no policy)', err, { agentId })
     return { action: 'allow' }
   }
+  const now = Date.now()
+
+  // Lazy window rollover runs even with NO rules — deleting every rule must
+  // not strand yesterday's open defer-mode incidents in the banner forever.
+  try {
+    resolveExpiredBudgetIncidents({ dailyWindowStartMs: dayStartMs(now), monthlyWindowStartMs: monthStartMs(now), now })
+  } catch (err) {
+    log.warn('Budget incident rollover sweep failed', { err: err instanceof Error ? err.message : String(err) })
+  }
+
   if (!policy?.rules?.length) return { action: 'allow' }
 
   // Billing context of the prospective turn — provider + lane let provider-
@@ -150,16 +164,6 @@ export async function budgetGate(
     }
   } catch (err) {
     log.warn('Billing resolution failed; gating as metered', { agentId, err: err instanceof Error ? err.message : String(err) })
-  }
-
-  const now = Date.now()
-
-  // Lazy window rollover: defer-mode incidents whose window ended resolve
-  // here (the UPDATE is a no-op when nothing expired).
-  try {
-    resolveExpiredBudgetIncidents({ dailyWindowStartMs: dayStartMs(now), monthlyWindowStartMs: monthStartMs(now), now })
-  } catch (err) {
-    log.warn('Budget incident rollover sweep failed', { err: err instanceof Error ? err.message : String(err) })
   }
 
   // PAUSE mode: a matching rule whose cap incident is still live blocks the
@@ -189,8 +193,13 @@ export async function budgetGate(
 
   let facets: BudgetSpendFacets
   try {
-    const pending = spendMemo?.facets ?? assembleBudgetSpend(now)
-    if (spendMemo) spendMemo.facets = pending
+    const windowStart = dayStartMs(now)
+    const memoValid = spendMemo?.facets !== undefined && spendMemo.dayStartMs === windowStart
+    const pending = memoValid ? spendMemo!.facets! : assembleBudgetSpend(now)
+    if (spendMemo) {
+      spendMemo.facets = pending
+      spendMemo.dayStartMs = windowStart
+    }
     facets = await pending
   } catch (err) {
     log.error('Budget spend read failed; deferring (fail-closed)', err, { agentId })
@@ -232,7 +241,9 @@ function recordBudgetBreach(
       unit: decision.unit,
       capValue: decision.capValue,
       spentValue: decision.spentValue,
-      atCap: decision.rule.atCap ?? 'defer',
+      // Warn incidents never block — they must always rollover-sweep, even
+      // on pause-mode rules (only CAP incidents inherit the pause hold).
+      atCap: decision.action === 'defer' ? decision.rule.atCap ?? 'defer' : 'defer',
       openedAt: Date.now(),
     })
     if (!incident.opened) return
@@ -258,7 +269,9 @@ function recordBudgetBreach(
       unit: decision.unit,
       capValue: decision.capValue,
       spentValue: decision.spentValue,
-      atCap: decision.rule.atCap ?? 'defer',
+      // Warn incidents never block — they must always rollover-sweep, even
+      // on pause-mode rules (only CAP incidents inherit the pause hold).
+      atCap: decision.action === 'defer' ? decision.rule.atCap ?? 'defer' : 'defer',
     })
   } catch (err) {
     log.error('Failed to record budget breach incident', err, { agentId })

@@ -12,7 +12,7 @@
  */
 import { queryAuditEvents } from '../../../../src/core/audit'
 import { getContentDir } from '../../../../src/core/content-dir'
-import { LedgerUnavailableError } from '../../../../src/core/execution-ledger'
+import { LedgerUnavailableError, listBudgetIncidents } from '../../../../src/core/execution-ledger'
 import { assembleBudgetSpend } from '../../../../src/core/budget-spend'
 import { evaluateBudget, type BudgetPolicy, type BudgetRule, type TurnBillingContext } from '../../../../src/core/budget'
 import { getSettings } from '../../../../src/core/settings'
@@ -65,6 +65,26 @@ export async function checkBudget(): Promise<HealthCheckResult[]> {
     return results
   }
 
+  // Open incidents block/alert independently of CURRENT spend — a pause-mode
+  // hold survives window rollover, so "spend is under cap" must never read
+  // as "healthy" while dispatch is frozen (the frozen-but-green trap).
+  try {
+    const open = listBudgetIncidents({ openOnly: true })
+    if (open.length > 0) {
+      const pausing = open.filter((i) => i.kind === 'cap' && i.atCap === 'pause')
+      const status = pausing.length > 0 ? 'error' : 'warn'
+      const holdNote = pausing.length > 0 ? ` ${pausing.length} pause-mode hold(s) are BLOCKING dispatch until resolved.` : ''
+      results.push(
+        result(status, `${open.length} open budget incident(s) — resolve in Models → Spend or \`bakin budget incidents\`.${holdNote}`, {
+          incidents: open.map((i) => ({ id: i.id, scope: i.scope, scopeId: i.scopeId, lane: i.lane, window: i.window, kind: i.kind, atCap: i.atCap, status: i.status })),
+          ...(pausing.length ? { pausing: pausing.length } : {}),
+        }),
+      )
+    }
+  } catch (err) {
+    void err // incident read failure — the spend evaluation below still runs
+  }
+
   const now = Date.now()
   let facets: Awaited<ReturnType<typeof assembleBudgetSpend>>
   try {
@@ -88,7 +108,11 @@ export async function checkBudget(): Promise<HealthCheckResult[]> {
     breaches.push({ rule, action: decision.action, window: decision.window, unit: decision.unit, spentValue: decision.spentValue, capValue: decision.capValue })
   }
 
+  // Agent-scoped breaches attribute directly; global/provider breaches get a
+  // synthetic 'global' entry so the Attention section shows SOMETHING for the
+  // most common breach (the onboarding-created global rule).
   const agents = [...new Set(breaches.filter((b) => b.rule.scope === 'agent' && b.rule.scopeId).map((b) => b.rule.scopeId as string))]
+  if (breaches.some((b) => b.rule.scope !== 'agent')) agents.push('global')
   const data = {
     rules: breaches.map((b) => ({
       scope: b.rule.scope,

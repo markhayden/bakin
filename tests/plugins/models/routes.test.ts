@@ -108,6 +108,7 @@ mock.module('../../../src/core/execution-ledger', () => ({
   listRunCostsSince: mock(() => [{ runId: 'r1', agent: 'pixel', model: 'anthropic/claude-sonnet-4-6', provider: 'anthropic', lane: 'metered', totalTokens: 100, costUsdMicros: 150_000, occurredAt: Date.now() }]),
   listBudgetIncidents: mock(() => incidentsList),
   resolveBudgetIncident: mock((input: unknown) => { incidentResolves.push(input as Record<string, unknown>); return true }),
+  resolveExpiredBudgetIncidents: mock(() => 0),
   findOpenCapIncident: mock(() => null),
   LedgerUnavailableError: FakeLedgerUnavailable,
 }))
@@ -179,6 +180,7 @@ describe('Models Plugin Activation', () => {
       'POST /defaults',
       'POST /refresh',
       'POST /runtime/restart',
+      'PUT /billing/overrides',
       'PUT /budget',
       'PUT /routing',
     ])
@@ -717,6 +719,63 @@ describe('budget status + incidents routes (cost-control v2)', () => {
       activated.ctx.getSettings = originalGetSettings
       activated.ctx.runtime.config.get = originalConfigGet
     }
+  })
+
+  it('PUT /budget warns on unknown agent/provider scopeIds (typo = fake safety)', async () => {
+    const route = findRoute(activated.routes, 'PUT', '/budget')!
+    const { status, body } = await callRoute(route, activated.ctx, {
+      body: { rules: [
+        { scope: 'agent', scopeId: 'no-such-agent', lane: 'metered', dailyCap: 5 },
+        { scope: 'provider', scopeId: 'Anthropic', lane: 'metered', dailyCap: 5 },
+      ] },
+    })
+    expect(status).toBe(200)
+    const warnings = body.warnings as string[]
+    expect(warnings.some((w) => w.includes('no-such-agent'))).toBe(true)
+    expect(warnings.some((w) => w.includes("'Anthropic'"))).toBe(true)
+  })
+
+  it('PUT /budget normalizes model-scope scopeIds so they key like spend rows', async () => {
+    const route = findRoute(activated.routes, 'PUT', '/budget')!
+    const originalGetSettings = activated.ctx.getSettings
+    const writes: Array<Record<string, unknown>> = []
+    const originalUpdate = activated.ctx.updateSettings
+    activated.ctx.updateSettings = ((patch: Record<string, unknown>) => { writes.push(patch); return (originalUpdate as (p: Record<string, unknown>) => unknown)(patch) }) as typeof activated.ctx.updateSettings
+    try {
+      const { status } = await callRoute(route, activated.ctx, {
+        body: { rules: [{ scope: 'model', scopeId: 'claude-opus-4-6', lane: 'metered', dailyCap: 10 }] },
+      })
+      expect(status).toBe(200)
+      const saved = writes.at(-1) as { budget?: { rules?: Array<{ scopeId?: string }> } }
+      expect(saved.budget?.rules?.[0]?.scopeId).toBe('anthropic/claude-opus-4-6')
+    } finally {
+      activated.ctx.updateSettings = originalUpdate
+      activated.ctx.getSettings = originalGetSettings
+    }
+  })
+
+  it('PUT /budget resolves live incidents whose rule was deleted (no orphaned banner rows)', async () => {
+    incidentsList = [{ id: 12, scope: 'provider', scopeId: 'google', lane: 'metered', window: 'daily', kind: 'cap', status: 'open' }]
+    const route = findRoute(activated.routes, 'PUT', '/budget')!
+    const { status } = await callRoute(route, activated.ctx, { body: { rules: [] } })
+    expect(status).toBe(200)
+    expect(incidentResolves.at(-1)).toMatchObject({ id: 12, status: 'resolved', resolution: 'rule_removed' })
+    incidentsList = []
+  })
+
+  it('PUT /billing/overrides validates and persists lane overrides', async () => {
+    const route = findRoute(activated.routes, 'PUT', '/billing/overrides')!
+    const ok = await callRoute(route, activated.ctx, { body: { overrides: [{ agentId: 'main', lane: 'subscription' }] } })
+    expect(ok.status).toBe(200)
+    const bad = await callRoute(route, activated.ctx, { body: { overrides: [{ lane: 'metered' }] } })
+    expect(bad.status).toBe(400)
+  })
+
+  it('GET /budget/status?lite=1 returns only the kill-switch bit', async () => {
+    const route = findRoute(activated.routes, 'GET', '/budget/status')!
+    const { status, body } = await callRoute(route, activated.ctx, { searchParams: { lite: '1' } })
+    expect(status).toBe(200)
+    expect(Object.keys(body)).toEqual(['paused'])
   })
 
   it('GET /budget/incidents lists open incidents', async () => {

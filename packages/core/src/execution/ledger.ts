@@ -959,7 +959,7 @@ export function listRunCostsSince(sinceMs: number): RunCostSpendRow[] {
 
 export type BudgetIncidentKind = 'warn' | 'cap'
 export type BudgetIncidentStatus = 'open' | 'acknowledged' | 'resolved'
-export type BudgetIncidentResolution = 'raised' | 'acknowledged' | 'window_rollover' | 'killswitch_cleared'
+export type BudgetIncidentResolution = 'raised' | 'acknowledged' | 'window_rollover' | 'killswitch_cleared' | 'rule_removed'
 
 export interface BudgetIncidentInput {
   scope: string
@@ -1048,8 +1048,12 @@ export function openBudgetIncident(input: BudgetIncidentInput): { opened: boolea
         )
         .get(input.scope, input.scopeId ?? '', input.lane, input.window, input.windowStartMs, input.kind)!
       if (inserted.changes > 0) return { opened: true, id: existing.id }
-      if (existing.status === 'resolved') {
-        // A raise-resolved incident that breached again is a NEW event.
+      if (existing.status === 'resolved' && (existing.resolution === 'raised' || existing.resolution === 'window_rollover')) {
+        // A breach after a raise (or a fresh breach whose stale row rolled
+        // over) is a NEW alertable event. An 'acknowledged'-resolved row
+        // (operator dismissed/resumed THIS window's breach) stays suppressed
+        // — reopening it would just re-alert the human who explicitly
+        // dismissed it (spend-based deferral still applies silently).
         db.prepare(
           `UPDATE budget_incidents SET status = 'open', spent_value = ?, cap_value = ?, at_cap = ?, opened_at = ?, resolved_at = NULL, resolution = NULL WHERE id = ?`,
         ).run(input.spentValue, input.capValue, input.atCap, input.openedAt, existing.id)

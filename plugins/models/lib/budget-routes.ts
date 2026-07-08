@@ -20,12 +20,13 @@ import { resolveAgents } from './config-io'
 import {
   listBudgetIncidents,
   resolveBudgetIncident,
+  resolveExpiredBudgetIncidents,
   findOpenCapIncident,
   LedgerUnavailableError,
   type BudgetIncidentRow,
 } from '../../../src/core/execution-ledger'
 import { assembleBudgetSpend, type BudgetSpendFacets, type LaneSums, type ScopeSpend } from '../../../src/core/budget-spend'
-import { evaluateBudget, type BudgetPolicy, type BudgetRule } from '../../../src/core/budget'
+import { evaluateBudget, dayStartMs, monthStartMs, type BudgetPolicy, type BudgetRule } from '../../../src/core/budget'
 import { getSettings as getSystemSettings } from '../../../src/core/settings'
 import { emitBudgetIncidentResolved } from '../../../src/core/budget-notify'
 
@@ -39,15 +40,17 @@ function rulesOf(ctx: { getSettings<T>(): T }): BudgetRule[] {
   return (ctx.getSettings<ModelsPluginSettings>().budget as BudgetPolicy | undefined)?.rules ?? []
 }
 
-/** Worst decision for an agent across both lanes (its own billing context). */
-async function agentStatus(
+/** Worst decision for an (agent, prospective model) across both lanes — the
+ *  same evaluation the gate runs, without its side effects. */
+async function gateStatusFor(
   ctx: PluginContext,
   policy: BudgetPolicy,
   facets: BudgetSpendFacets,
   agentId: string,
-  effectiveModel: string | null,
+  model: string | null,
 ): Promise<AgentBudgetStatus> {
-  const billing = await resolveBilling(ctx, { agentId, model: effectiveModel })
+  const billing = await resolveBilling(ctx, { agentId, model })
+  const resolvedModel = model ?? undefined
   // Pause-mode incidents block regardless of current spend — mirror the gate.
   for (const rule of policy.rules ?? []) {
     if (rule.atCap !== 'pause') continue
@@ -56,12 +59,12 @@ async function agentStatus(
       (rule.scope === 'global' ||
         (rule.scope === 'agent' && rule.scopeId === agentId) ||
         (rule.scope === 'provider' && rule.scopeId === billing.provider) ||
-        (rule.scope === 'model' && rule.scopeId === (effectiveModel ?? undefined)))
+        (rule.scope === 'model' && rule.scopeId === resolvedModel))
     if (matches && findOpenCapIncident({ scope: rule.scope, scopeId: rule.scopeId, lane: rule.lane })) return 'deferred'
   }
   const decision = evaluateBudget({
     policy,
-    turn: { agent: agentId, provider: billing.provider, model: effectiveModel ?? undefined, lane: billing.lane },
+    turn: { agent: agentId, provider: billing.provider, model: resolvedModel, lane: billing.lane },
     facets,
   })
   return decision.action === 'defer' ? 'deferred' : decision.action === 'warn' ? 'warn' : 'ok'
@@ -92,6 +95,20 @@ const ResolveIncidentSchema = z.object({
   cap: z.number().positive().optional(),
 })
 
+const BillingOverridesSchema = z.object({
+  overrides: z.array(
+    z
+      .object({
+        agentId: z.string().min(1).optional(),
+        provider: z.string().min(1).optional(),
+        lane: z.enum(['metered', 'subscription']),
+      })
+      .refine((o) => o.agentId !== undefined || o.provider !== undefined, {
+        message: 'an override needs an agentId, a provider, or both',
+      }),
+  ),
+})
+
 export const budgetStatusRoutes = [
   defineRoute({
     path: '/budget/status',
@@ -99,13 +116,27 @@ export const budgetStatusRoutes = [
     summary: 'Live budget gate status (side-effect-free)',
     description: 'Kill-switch state, per-agent gate status (ok | warn | deferred), providers currently deferred by provider rules, and open incidents — the poll behind task badges and the pause banner. Never opens incidents or audits.',
     responses: { 200: passthrough, 500: errorResponse },
-    handler: async (_req, ctx) => {
+    handler: async (req, ctx) => {
       try {
         const paused = getSystemSettings().dispatch.paused
+        // ?lite=1 — the header banner's poll wants ONLY the kill-switch bit;
+        // skip the facets/agents work entirely.
+        if (new URL(req.url).searchParams.get('lite') === '1') {
+          return Response.json({ paused })
+        }
         const policy: BudgetPolicy = { rules: rulesOf(ctx) }
         const openIncidents = listBudgetIncidents({ openOnly: true })
         if (!policy.rules?.length) {
-          return Response.json({ paused, configured: false, perAgent: {}, deferredProviders: [], openIncidents })
+          const billing: Record<string, { provider: string; lane: 'metered' | 'subscription'; model: string | null }> = {}
+          try {
+            for (const agent of await resolveAgents(ctx as unknown as PluginContext)) {
+              const agentBilling = await resolveBilling(ctx as unknown as PluginContext, { agentId: agent.agentId, model: agent.effectiveModel })
+              billing[agent.agentId] = { ...agentBilling, model: agent.effectiveModel }
+            }
+          } catch (err) {
+            void err // runtime unreachable — lane card degrades
+          }
+          return Response.json({ paused, configured: false, perAgent: {}, perTask: {}, billing, overrides: ctx.getSettings<ModelsPluginSettings>().billing?.overrides ?? [], deferredProviders: [], openIncidents })
         }
         const facets = await assembleBudgetSpend(Date.now())
         // Runtime-config reads can fail (runtime down / not installed) —
@@ -117,8 +148,15 @@ export const budgetStatusRoutes = [
           agents = []
         }
         const perAgent: Record<string, AgentBudgetStatus> = {}
+        const billing: Record<string, { provider: string; lane: 'metered' | 'subscription'; model: string | null }> = {}
+        const effectiveModelByAgent = new Map<string, string | null>()
         for (const agent of agents) {
-          perAgent[agent.agentId] = await agentStatus(ctx as unknown as PluginContext, policy, facets, agent.agentId, agent.effectiveModel)
+          effectiveModelByAgent.set(agent.agentId, agent.effectiveModel)
+          perAgent[agent.agentId] = await gateStatusFor(ctx as unknown as PluginContext, policy, facets, agent.agentId, agent.effectiveModel)
+          // Detected billing lane per agent (its default model's provider) —
+          // the Spend tab's "why does my Codex agent read as metered?" answer.
+          const agentBilling = await resolveBilling(ctx as unknown as PluginContext, { agentId: agent.agentId, model: agent.effectiveModel })
+          billing[agent.agentId] = { ...agentBilling, model: agent.effectiveModel }
         }
         const deferredProviders = (policy.rules ?? [])
           .filter((r) => r.scope === 'provider' && r.scopeId)
@@ -127,7 +165,39 @@ export const budgetStatusRoutes = [
             (r.atCap === 'pause' && findOpenCapIncident({ scope: 'provider', scopeId: r.scopeId, lane: r.lane }) !== null),
           )
           .map((r) => r.scopeId as string)
-        return Response.json({ paused, configured: true, perAgent, deferredProviders: [...new Set(deferredProviders)], openIncidents })
+
+        // Per-TASK holds for todo tasks — the badge's source of truth. Uses
+        // the SAME routing resolution the gate runs (tag/origin overrides can
+        // route a task to a capped provider even when the agent's default
+        // status is ok) and the main-agent fallback for unassigned tasks.
+        const perTask: Record<string, 'deferred'> = {}
+        try {
+          // Dynamic imports keep the dispatch fire-core (and its task-store
+          // graph) out of the models plugin's static imports.
+          const [{ resolveDispatchRouting }, { readTaskboard }, { getRuntimeMainAgentId }] = await Promise.all([
+            import('../../../src/core/dispatch-turns'),
+            import('../../../src/core/task-store'),
+            import('@bakin/core/adapters/runtime'),
+          ])
+          const mainAgentId = await getRuntimeMainAgentId((ctx as unknown as PluginContext).runtime)
+          const { columns } = readTaskboard()
+          for (const task of columns.todo ?? []) {
+            const agentId = task.agent ?? mainAgentId
+            let routedModel: string | null = null
+            try {
+              const routing = await resolveDispatchRouting(task as never, false)
+              routedModel = routing.model ?? null
+            } catch (err) {
+              void err // inherit the agent default below
+            }
+            const model = routedModel ?? effectiveModelByAgent.get(agentId) ?? null
+            const status = await gateStatusFor(ctx as unknown as PluginContext, policy, facets, agentId, model)
+            if (status === 'deferred') perTask[task.id] = 'deferred'
+          }
+        } catch (err) {
+          void err // taskboard unreadable — badges degrade to perAgent
+        }
+        return Response.json({ paused, configured: true, perAgent, perTask, billing, overrides: ctx.getSettings<ModelsPluginSettings>().billing?.overrides ?? [], deferredProviders: [...new Set(deferredProviders)], openIncidents })
       } catch (err) {
         const status = err instanceof LedgerUnavailableError ? 503 : 500
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status })
@@ -143,6 +213,14 @@ export const budgetStatusRoutes = [
     responses: { 200: passthrough, 500: errorResponse },
     handler: async (req) => {
       try {
+        // Maintenance-on-read: a quiet board (no dispatch attempts) must not
+        // show yesterday's rolled-over defer incidents as live forever.
+        const now = Date.now()
+        try {
+          resolveExpiredBudgetIncidents({ dailyWindowStartMs: dayStartMs(now), monthlyWindowStartMs: monthStartMs(now), now })
+        } catch (err) {
+          void err // listing still works; the gate sweeps on its next pass
+        }
         const all = new URL(req.url).searchParams.get('all') === '1'
         return Response.json({ incidents: listBudgetIncidents(all ? {} : { openOnly: true }) })
       } catch (err) {
@@ -176,6 +254,7 @@ export const budgetStatusRoutes = [
           resolveBudgetIncident({ id, status: 'resolved', resolution: 'acknowledged' })
           emitBudgetIncidentResolved({ incidentId: id, resolution: 'acknowledged' })
           ctx.activity.audit('budget.incident_resolved', 'system', { incidentId: id, action: 'resume' })
+          void import('../../../src/core/dispatch-cycle').then((m) => m.requestImmediateDispatch(`budget incident ${id} resumed`)).catch(() => {})
           return Response.json({ ok: true })
         }
 
@@ -203,6 +282,27 @@ export const budgetStatusRoutes = [
         resolveBudgetIncident({ id, status: 'resolved', resolution: 'raised' })
         emitBudgetIncidentResolved({ incidentId: id, resolution: 'raised' })
         ctx.activity.audit('budget.incident_resolved', 'system', { incidentId: id, action: 'raise', cap: body.cap, window: incident.window })
+        // "Raise & resume" must RESUME — kick a dispatch cycle so deferred
+        // tasks move now, not at the next interval.
+        void import('../../../src/core/dispatch-cycle').then((m) => m.requestImmediateDispatch(`budget incident ${id} raised`)).catch(() => {})
+        return Response.json({ ok: true })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/billing/overrides',
+    method: 'PUT',
+    summary: 'Replace billing-lane overrides',
+    description: 'Manual lane assignments (metered vs subscription) that win over auth-profile detection — the fix when e.g. a Codex subscription reads as metered because its OAuth lives outside the per-agent auth profiles. Most-specific match wins: agent+provider, then agent, then provider.',
+    body: BillingOverridesSchema,
+    responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
+    handler: async (_req, ctx, { body }) => {
+      try {
+        ;(ctx as unknown as PluginContext).updateSettings({ billing: { overrides: body.overrides } })
+        ctx.activity.audit('billing.overrides_updated', 'system', { overrides: body.overrides.length })
         return Response.json({ ok: true })
       } catch (err) {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })

@@ -30,10 +30,12 @@ describe('migrateLegacyBudget', () => {
       global: { dailyUsd: 25, monthlyUsd: 300, warnPct: 0.7 },
       perAgent: { pixel: { dailyUsd: 5 }, rolo: { monthlyUsd: 50 }, empty: {} },
     })
+    // The legacy evaluator applied the single global warnPct to EVERY cap —
+    // migrated per-agent rules inherit it.
     expect(migrated.rules).toEqual([
       { scope: 'global', lane: 'metered', dailyCap: 25, monthlyCap: 300, warnPct: 0.7 },
-      { scope: 'agent', scopeId: 'pixel', lane: 'metered', dailyCap: 5 },
-      { scope: 'agent', scopeId: 'rolo', lane: 'metered', monthlyCap: 50 },
+      { scope: 'agent', scopeId: 'pixel', lane: 'metered', dailyCap: 5, warnPct: 0.7 },
+      { scope: 'agent', scopeId: 'rolo', lane: 'metered', monthlyCap: 50, warnPct: 0.7 },
     ])
   })
 
