@@ -49,8 +49,11 @@ Rules of the model:
   `deprovisionToolAccess()` / `verifyToolAccess()`. OpenClaw writes/prunes
   `config.mcp.servers[bakin-<agent>]` internally (only entries tagged
   `Bakin MCP for <agent>` are ever pruned — a user's own `bakin-*` server
-  survives); Pi is a no-op (exec tools ride the `execTools` provider passed
-  to `initialize`). Provisioning runs at server BOOT (`server.ts`), onboarding
+  survives). Entries carry `requestTimeoutMs: 600_000` — OpenClaw's MCP
+  client default (60s) killed `bakin_exec_images_generate` mid-render in
+  P5.3 live validation; verify flags timeout-less entries as incorrect so
+  provisioning heals pre-timeout installs. Pi is a no-op (exec tools ride
+  the `execTools` provider passed to `initialize`). Provisioning runs at server BOOT (`server.ts`), onboarding
   `install()`, and adapter roster changes — NEVER inside `createAppServices()`
   (a read-only CLI check must not write runtime config, and per-process env
   PORT derivation would flip-flop URLs). `BAKIN_MCP_BASE_URL` overrides the
@@ -132,6 +135,21 @@ the original adapter.
 
 - Dockerized rig still bridges via mcporter config — re-plumb onto
   `BAKIN_MCP_BASE_URL` + adapter provisioning (gates P5.3 rig use).
-- Long image generation over OpenClaw's NATIVE MCP client is unvalidated
-  (mcporter's `--timeout 600000` is gone; the spike only ran fast tools) —
-  P5.3 must exercise it live.
+- ~~Long image generation over OpenClaw's NATIVE MCP client is unvalidated~~
+  Validated live in P5.3: OpenClaw's 60s MCP client default timed out
+  `bakin_exec_images_generate` (gpt-image-2) mid-render; fixed by
+  provisioning `requestTimeoutMs: 600_000` per server entry (mcporter
+  budget parity). The idempotent image tool prevented a double-bill during
+  the agent's honest retry.
+
+## P5.3 live findings (this box)
+
+- **Pi allowlist/tool-filter conflation**: `agents.updateAllowlist` records
+  the SUBAGENT dispatch allowlist (agent ids — installer adds every package
+  agent to main's list), but the Pi session builder fed that field to the
+  exec-tool filter as tool names → main silently lost every `bakin_exec_*`
+  tool. Fixed + regression-pinned (`tests/adapter-pi/tool-bridge.test.ts`).
+- Installed agent packages from `bakin-bits-official-private` (nemo/zen/
+  scout) and the `projects` plugin carried mcporter invocation forms —
+  neutralized at source (0.2.1 / 0.5.2+1.0.1) and re-synced. Shipped-repo
+  guards can't see installed content; watch for this on other boxes.

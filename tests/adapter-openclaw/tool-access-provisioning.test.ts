@@ -23,6 +23,7 @@ import {
   verifyBakinMcpEntries,
   serverName,
   mcpUrl,
+  BAKIN_MCP_REQUEST_TIMEOUT_MS,
   type BakinMcpConfig,
 } from '../../packages/adapter-openclaw/src/tool-access-provisioning'
 
@@ -38,9 +39,9 @@ describe('applyBakinMcpEntries', () => {
     expect(changes).toEqual(['added bakin-main', 'added bakin-pixel', 'added bakin-patch'])
     expect(config.mcp!.servers).toEqual({
       existing: { url: 'http://localhost:9999/mcp' },
-      'bakin-main': { url: 'http://localhost:3737/mcp?agent=main', description: 'Bakin MCP for main' },
-      'bakin-pixel': { url: 'http://localhost:3737/mcp?agent=pixel', description: 'Bakin MCP for pixel' },
-      'bakin-patch': { url: 'http://localhost:3737/mcp?agent=patch', description: 'Bakin MCP for patch' },
+      'bakin-main': { url: 'http://localhost:3737/mcp?agent=main', description: 'Bakin MCP for main', requestTimeoutMs: BAKIN_MCP_REQUEST_TIMEOUT_MS },
+      'bakin-pixel': { url: 'http://localhost:3737/mcp?agent=pixel', description: 'Bakin MCP for pixel', requestTimeoutMs: BAKIN_MCP_REQUEST_TIMEOUT_MS },
+      'bakin-patch': { url: 'http://localhost:3737/mcp?agent=patch', description: 'Bakin MCP for patch', requestTimeoutMs: BAKIN_MCP_REQUEST_TIMEOUT_MS },
     })
   })
 
@@ -80,7 +81,7 @@ describe('applyBakinMcpEntries', () => {
     const config: BakinMcpConfig = {
       mcp: {
         servers: {
-          'bakin-main': { url: 'http://localhost:3737/mcp?agent=main', description: 'Bakin MCP for main' },
+          'bakin-main': { url: 'http://localhost:3737/mcp?agent=main', description: 'Bakin MCP for main', requestTimeoutMs: BAKIN_MCP_REQUEST_TIMEOUT_MS },
         },
       },
     }
@@ -123,7 +124,7 @@ describe('verifyBakinMcpEntries', () => {
     const config: BakinMcpConfig = {
       mcp: {
         servers: {
-          'bakin-main': { url: 'http://localhost:3737/mcp?agent=main', description: 'Bakin MCP for main' },
+          'bakin-main': { url: 'http://localhost:3737/mcp?agent=main', description: 'Bakin MCP for main', requestTimeoutMs: BAKIN_MCP_REQUEST_TIMEOUT_MS },
           'bakin-stale': { url: 'http://localhost:3737/mcp?agent=stale', description: 'Bakin MCP for stale' },
         },
       },
@@ -135,6 +136,24 @@ describe('verifyBakinMcpEntries', () => {
     expect(status.staleEntries).toEqual(['bakin-stale'])
     // untouched
     expect(config.mcp!.servers!['bakin-stale']).toBeDefined()
+  })
+
+  it('flags a pre-timeout entry (correct URL, no requestTimeoutMs) as incorrect so provisioning heals it', () => {
+    // P5.3 live: OpenClaw's 60s MCP default killed bakin_exec_images_generate
+    // mid-render. Existing installs carry timeout-less entries — verify must
+    // report them incorrect and apply must rewrite them.
+    const config: BakinMcpConfig = {
+      mcp: {
+        servers: {
+          'bakin-main': { url: 'http://localhost:3737/mcp?agent=main', description: 'Bakin MCP for main' },
+        },
+      },
+    }
+    const status = verifyBakinMcpEntries(config, ['main'], BASE)
+    expect(status.agentEntries[0].correct).toBe(false)
+
+    expect(applyBakinMcpEntries(config, ['main'], BASE)).toEqual(['updated bakin-main'])
+    expect(config.mcp!.servers!['bakin-main'].requestTimeoutMs).toBe(BAKIN_MCP_REQUEST_TIMEOUT_MS)
   })
 })
 

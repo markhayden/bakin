@@ -11,6 +11,8 @@
 export interface BakinMcpServerEntry {
   url?: string
   description?: string
+  /** OpenClaw per-server MCP request timeout (ms). */
+  requestTimeoutMs?: number
 }
 
 export interface BakinMcpConfig {
@@ -20,6 +22,13 @@ export interface BakinMcpConfig {
 
 const BAKIN_PREFIX = 'bakin-'
 const BAKIN_DESCRIPTION_PREFIX = 'Bakin MCP for '
+
+/**
+ * Per-server MCP request timeout. OpenClaw's client default (60s) kills long
+ * Bakin tool calls — P5.3 live: `bakin_exec_images_generate` (gpt-image-2)
+ * timed out client-side mid-render. 600s matches the old mcporter budget.
+ */
+export const BAKIN_MCP_REQUEST_TIMEOUT_MS = 600_000
 
 /** MCP server name for an agent: `bakin-<agent>`. */
 export function serverName(agent: string): string {
@@ -59,8 +68,8 @@ export function applyBakinMcpEntries(
     const name = serverName(agent)
     const url = mcpUrl(agent, baseUrl)
     const existing = servers[name]
-    if (!existing || existing.url !== url) {
-      servers[name] = { url, description: `Bakin MCP for ${agent}` }
+    if (!existing || existing.url !== url || existing.requestTimeoutMs !== BAKIN_MCP_REQUEST_TIMEOUT_MS) {
+      servers[name] = { url, description: `Bakin MCP for ${agent}`, requestTimeoutMs: BAKIN_MCP_REQUEST_TIMEOUT_MS }
       changes.push(existing ? `updated ${name}` : `added ${name}`)
     }
   }
@@ -107,7 +116,8 @@ export function verifyBakinMcpEntries(
     const name = serverName(agent)
     const expectedUrl = mcpUrl(agent, baseUrl)
     const entry = servers[name]
-    return { agent, name, url: entry?.url ?? '', correct: entry?.url === expectedUrl }
+    const correct = entry?.url === expectedUrl && entry?.requestTimeoutMs === BAKIN_MCP_REQUEST_TIMEOUT_MS
+    return { agent, name, url: entry?.url ?? '', correct }
   })
   const staleEntries = Object.keys(servers).filter(
     (key) => isBakinOwnedEntry(key, servers[key]) && !agents.includes(key.slice(BAKIN_PREFIX.length)),
