@@ -153,6 +153,98 @@ export const brandRoutes = [
   }),
 
   defineRoute({
+    path: '/builder',
+    method: 'POST',
+    summary: 'Build-my-brand: create a draft + dispatch the drafting task',
+    description:
+      'The cold-start flow (§9.1): questionnaire answers become guidelines/_intake.md on a draft brand (invisible to pickers/resolution/injection), and a NORMAL Bakin task dispatches to the chosen agent, which authors the brand via the draft-gated write tools. Publish makes it real.',
+    body: z.object({
+      id: brandIdSchema,
+      name: z.string().min(1),
+      agent: z.string().min(1),
+      product: z.string().min(1),
+      audience: z.string().optional(),
+      tone: z.string().optional(),
+      competitors: z.string().optional(),
+      urls: z.string().optional(),
+      notes: z.string().optional(),
+    }),
+    responses: { 200: passthrough, 400: errorResponse, 409: errorResponse },
+    handler: async (_req, ctx, parsed) => {
+      const b = parsed.body
+      try {
+        const brand = createBrand({ id: b.id, name: b.name, draft: true })
+        const intake = [
+          '---',
+          'description: Builder-flow intake — the raw material this brand was authored from',
+          '---',
+          '',
+          `# Brand intake: ${b.name}`,
+          '',
+          `- What we sell: ${b.product}`,
+          ...(b.audience ? [`- Audience: ${b.audience}`] : []),
+          ...(b.tone ? [`- Tone words: ${b.tone}`] : []),
+          ...(b.competitors ? [`- Competitors: ${b.competitors}`] : []),
+          ...(b.urls ? [`- URLs to read: ${b.urls}`] : []),
+          ...(b.notes ? ['', '## Notes', '', b.notes] : []),
+          '',
+        ].join('\n')
+        writeDoc(brand.id, 'guidelines', '_intake.md', intake)
+
+        // A NORMAL task — deliberately unbranded (a draft brand would trip
+        // the dispatch brand gate); the description names the draft instead.
+        const task = await ctx.tasks.create({
+          title: `Author brand '${brand.id}' from its intake`,
+          agent: b.agent,
+          description: [
+            `Author the DRAFT brand '${brand.id}' from its intake questionnaire.`,
+            '',
+            `1. Read the intake: bakin_exec_brands_read_doc brandId="${brand.id}" kind="guidelines" name="_intake.md" (read any listed URLs too).`,
+            `2. Write voice.md (personality, sentences we would/would never write, audience) and style-guide.md (color usage, imagery, formatting) via bakin_exec_brands_write_doc.`,
+            `3. Set description, palette (real hex colors), rules (absolute do/don'ts), and terminology via bakin_exec_brands_update_manifest.`,
+            `4. Do NOT touch other brands. When done, complete this task — the operator reviews the draft on the Brands page and publishes it.`,
+          ].join('\n'),
+          skipWorkflowReason: 'brand-builder authoring task — direct tool work, no workflow applies',
+        })
+        emitChanged(ctx, brand.id, 'brand.created')
+        return Response.json({ brand, taskId: task.id })
+      } catch (err) {
+        return storeError(err)
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/:brandId/publish',
+    method: 'POST',
+    summary: 'Publish a draft brand',
+    description: 'Flips draft off — the brand becomes visible to pickers, resolution, and injection. Audited.',
+    params: brandIdParams,
+    body: { contentType: 'none' as const },
+    responses: { 200: passthrough, 400: errorResponse, 404: errorResponse },
+    handler: async (_req, ctx, parsed) => {
+      const read = getBrand(parsed.params.brandId)
+      if (read.status === 'missing') return Response.json({ error: 'brand not found' }, { status: 404 })
+      if (read.status === 'invalid') return Response.json({ error: read.error }, { status: 422 })
+      if (!read.manifest.draft) return Response.json({ error: 'brand is already published' }, { status: 400 })
+      try {
+        const { updateBrand } = await import('./store')
+        const brand = await updateBrand(parsed.params.brandId, (m) => {
+          const { draft: _draft, ...rest } = m
+          return rest
+        })
+        try {
+          ctx.activity.audit('brand.draft_published', 'system', { brandId: brand.id })
+        } catch { /* activity surface unavailable (tests) */ }
+        ctx.events.emit('brand.changed', { brandId: brand.id })
+        return Response.json({ brand })
+      } catch (err) {
+        return storeError(err)
+      }
+    },
+  }),
+
+  defineRoute({
     path: '/import/preview',
     method: 'POST',
     summary: 'Validate + summarize a portable brand source — writes NOTHING',

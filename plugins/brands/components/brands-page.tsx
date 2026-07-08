@@ -5,7 +5,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { PluginHeader } from '@makinbakin/sdk/components'
-import { useQueryState } from '@makinbakin/sdk/hooks'
+import { useQueryState, useAgentIds } from '@makinbakin/sdk/hooks'
 import type { BrandManifest } from '../types'
 import { BrandDetail } from './brand-detail'
 
@@ -47,6 +47,11 @@ export function BrandsPage() {
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null)
   const [importBusy, setImportBusy] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
+  const [builderOpen, setBuilderOpen] = useState(false)
+  const [builder, setBuilder] = useState({ name: '', agent: '', product: '', audience: '', tone: '', competitors: '', urls: '', notes: '' })
+  const [builderBusy, setBuilderBusy] = useState(false)
+  const [builderResult, setBuilderResult] = useState<string | null>(null)
+  const agentIds = useAgentIds()
 
   const refresh = useCallback(async () => {
     try {
@@ -117,7 +122,73 @@ export function BrandsPage() {
         >
           Import…
         </button>
+        <button
+          className="rounded-md border px-3 py-1.5 text-sm hover:bg-accent"
+          onClick={() => { setBuilderOpen((v) => !v); setBuilderResult(null) }}
+        >
+          Build my brand…
+        </button>
       </div>
+
+      {builderOpen && (
+        <div className="rounded-lg border p-3 space-y-2">
+          <p className="text-xs text-muted-foreground">
+            Answer a few questions; an agent drafts the whole brand (voice, style guide, palette, rules) as a DRAFT —
+            invisible to real work until you review and publish it.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <input className="rounded-md border bg-background px-2 py-1 text-sm" placeholder="Brand name *" value={builder.name} onChange={(e) => setBuilder({ ...builder, name: e.target.value })} />
+            <select className="rounded-md border bg-background px-2 py-1 text-sm" value={builder.agent} onChange={(e) => setBuilder({ ...builder, agent: e.target.value })}>
+              <option value="">Drafting agent *</option>
+              {agentIds.map((id) => <option key={id} value={id}>{id}</option>)}
+            </select>
+            <input className="col-span-2 rounded-md border bg-background px-2 py-1 text-sm" placeholder="What do you sell? *" value={builder.product} onChange={(e) => setBuilder({ ...builder, product: e.target.value })} />
+            <input className="rounded-md border bg-background px-2 py-1 text-sm" placeholder="Audience (who reads this?)" value={builder.audience} onChange={(e) => setBuilder({ ...builder, audience: e.target.value })} />
+            <input className="rounded-md border bg-background px-2 py-1 text-sm" placeholder="Three tone words" value={builder.tone} onChange={(e) => setBuilder({ ...builder, tone: e.target.value })} />
+            <input className="rounded-md border bg-background px-2 py-1 text-sm" placeholder="Competitors" value={builder.competitors} onChange={(e) => setBuilder({ ...builder, competitors: e.target.value })} />
+            <input className="rounded-md border bg-background px-2 py-1 text-sm" placeholder="Website URL(s) to read" value={builder.urls} onChange={(e) => setBuilder({ ...builder, urls: e.target.value })} />
+            <textarea className="col-span-2 rounded-md border bg-background px-2 py-1 text-sm" rows={2} placeholder="Anything else — existing docs, phrases you love/hate…" value={builder.notes} onChange={(e) => setBuilder({ ...builder, notes: e.target.value })} />
+          </div>
+          <button
+            className="rounded-md border px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
+            disabled={builderBusy || !builder.name.trim() || !builder.agent || !builder.product.trim()}
+            onClick={async () => {
+              setBuilderBusy(true)
+              setBuilderResult(null)
+              try {
+                const res = await fetch('/api/plugins/brands/builder', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    id: slugify(builder.name),
+                    name: builder.name.trim(),
+                    agent: builder.agent,
+                    product: builder.product.trim(),
+                    audience: builder.audience.trim() || undefined,
+                    tone: builder.tone.trim() || undefined,
+                    competitors: builder.competitors.trim() || undefined,
+                    urls: builder.urls.trim() || undefined,
+                    notes: builder.notes.trim() || undefined,
+                  }),
+                })
+                const body = (await res.json().catch(() => ({}))) as { taskId?: string; error?: string }
+                if (!res.ok) throw new Error(body.error ?? `builder failed: ${res.status}`)
+                setBuilderResult(`Draft created — ${builder.agent} is authoring it (task ${body.taskId}). Review + publish on the brand page when it completes.`)
+                setBuilderOpen(false)
+                setBuilder({ name: '', agent: '', product: '', audience: '', tone: '', competitors: '', urls: '', notes: '' })
+                await refresh()
+              } catch (err) {
+                setBuilderResult(err instanceof Error ? err.message : String(err))
+              } finally {
+                setBuilderBusy(false)
+              }
+            }}
+          >
+            {builderBusy ? 'Creating…' : 'Create draft + dispatch'}
+          </button>
+        </div>
+      )}
+      {builderResult && <p className="text-sm text-muted-foreground">{builderResult}</p>}
 
       {importOpen && (
         <div className="rounded-lg border p-3 space-y-2">

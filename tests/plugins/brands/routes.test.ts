@@ -286,6 +286,81 @@ describe('observability routes (#419 §5.5)', () => {
   })
 })
 
+describe('builder flow (#419 §9.1)', () => {
+  it('creates a draft + intake + drafting task; publish flips it live', async () => {
+    const created = await callRoute(route('POST', '/builder'), activated.ctx, {
+      body: {
+        id: 'loaf-ladle',
+        name: 'Loaf & Ladle',
+        agent: 'pixel',
+        product: 'Sourdough bakery software',
+        tone: 'warm, direct, floury',
+      },
+    })
+    expect(created.status).toBe(200)
+    expect((created.body.brand as { draft?: boolean }).draft).toBe(true)
+    expect(created.body.taskId).toBeTruthy()
+
+    // Intake written; drafting task deliberately UNBRANDED (a draft would
+    // trip the dispatch brand gate)
+    const intake = await callRoute(route('GET', '/:brandId/docs/:kind/:name'), activated.ctx, {
+      searchParams: { brandId: 'loaf-ladle', kind: 'guidelines', name: '_intake.md' },
+    })
+    expect(String(intake.body.content)).toContain('Sourdough bakery software')
+    const task = await activated.ctx.tasks.get(String(created.body.taskId))
+    expect(task?.brandId).toBeUndefined()
+    expect(task?.agent).toBe('pixel')
+
+    // Draft excluded from list hook / getContext (checked in hooks tests);
+    // publish flips it live + audits
+    const published = await callRoute(route('POST', '/:brandId/publish'), activated.ctx, {
+      searchParams: { brandId: 'loaf-ladle' },
+    })
+    expect(published.status).toBe(200)
+    expect((published.body.brand as { draft?: boolean }).draft).toBeUndefined()
+
+    const again = await callRoute(route('POST', '/:brandId/publish'), activated.ctx, {
+      searchParams: { brandId: 'loaf-ladle' },
+    })
+    expect(again.status).toBe(400) // already published
+  })
+
+  it('write tools are draft-gated: work on drafts, typed error on published brands', async () => {
+    await callRoute(route('POST', '/'), activated.ctx, { body: { id: 'wip', name: 'WIP', draft: true } })
+    await createAcme() // published
+
+    const tool = (name: string) => {
+      const t = activated.execTools.find((t) => t.name === name)
+      if (!t) throw new Error(`tool not registered: ${name}`)
+      return t
+    }
+
+    const draftWrite = await callTool(tool('bakin_exec_brands_write_doc'), {
+      brandId: 'wip', kind: 'guidelines', name: 'voice.md', content: 'Drafted voice.',
+    })
+    expect(draftWrite.ok).toBe(true)
+
+    const draftManifest = await callTool(tool('bakin_exec_brands_update_manifest'), {
+      brandId: 'wip',
+      palette: [{ name: 'ink', hex: '#101020' }],
+      rules: ['Never shout'],
+    })
+    expect(draftManifest.ok).toBe(true)
+    expect((draftManifest.brand as { rules: string[] }).rules).toEqual(['Never shout'])
+
+    const publishedWrite = await callTool(tool('bakin_exec_brands_write_doc'), {
+      brandId: 'acme', kind: 'guidelines', name: 'voice.md', content: 'hijack',
+    })
+    expect(publishedWrite.ok).toBe(false)
+    expect(String(publishedWrite.error)).toContain('PUBLISHED')
+
+    const publishedManifest = await callTool(tool('bakin_exec_brands_update_manifest'), {
+      brandId: 'acme', rules: ['hijack'],
+    })
+    expect(publishedManifest.ok).toBe(false)
+  })
+})
+
 describe('exec tools', () => {
   function tool(name: string) {
     const t = activated.execTools.find((t) => t.name === name)

@@ -7,8 +7,22 @@
  */
 import { z } from 'zod'
 import type { PluginContext } from '@bakin/core/plugin-types'
-import { getBrand, listBrands, listDocs, readDoc, writeDoc } from './store'
+import { getBrand, listBrands, listDocs, readDoc, writeDoc, updateBrand } from './store'
 import { computeBrandFingerprint } from './fingerprint'
+import { paletteEntrySchema, terminologyEntrySchema } from './schemas'
+
+/** Draft gate (§9.1): agents NEVER mutate published brand identity. */
+function requireDraftBrand(brandId: string): { ok: true } | { ok: false; error: string } {
+  const read = getBrand(brandId)
+  if (read.status !== 'ok') return { ok: false, error: `brand not found: ${brandId}` }
+  if (!read.manifest.draft) {
+    return {
+      ok: false,
+      error: `brand '${brandId}' is PUBLISHED — agents may not edit live brand identity. Use bakin_exec_brands_add_lesson for learnings, or ask the operator to edit the brand.`,
+    }
+  }
+  return { ok: true }
+}
 
 const lessonSlug = (title: string) =>
   title
@@ -69,6 +83,64 @@ export function registerBrandExecTools(ctx: PluginContext): void {
         lessons: listDocs(brandId, 'lessons'),
         fingerprint: computeBrandFingerprint(brandId),
         assetDetails,
+      }
+    },
+  })
+
+  ctx.registerExecTool({
+    name: 'bakin_exec_brands_write_doc',
+    label: 'Wrote a draft-brand doc',
+    description:
+      'DRAFT BRANDS ONLY (builder flow): write a guideline or lesson doc while authoring a brand. Typed error on published brands — live brand identity is operator-only.',
+    parameters: {
+      brandId: z.string().describe('Draft brand id'),
+      kind: z.enum(['guidelines', 'lessons']).describe('Doc kind'),
+      name: z.string().describe('Doc filename ending in .md, e.g. voice.md'),
+      content: z.string().describe('Full markdown content (frontmatter description: recommended)'),
+    },
+    handler: async (params) => {
+      const brandId = String(params.brandId ?? '')
+      const gate = requireDraftBrand(brandId)
+      if (!gate.ok) return { ok: false, error: gate.error }
+      const kind = params.kind === 'lessons' ? 'lessons' as const : 'guidelines' as const
+      try {
+        writeDoc(brandId, kind, String(params.name ?? ''), String(params.content ?? ''))
+        return { ok: true, brandId, doc: `${kind}/${params.name}` }
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+  })
+
+  ctx.registerExecTool({
+    name: 'bakin_exec_brands_update_manifest',
+    label: 'Updated a draft-brand manifest',
+    description:
+      'DRAFT BRANDS ONLY (builder flow): set description, palette, rules, terminology, and/or cardDocs while authoring a brand. Typed error on published brands.',
+    parameters: {
+      brandId: z.string().describe('Draft brand id'),
+      description: z.string().optional().describe('One-line brand description'),
+      palette: z.array(paletteEntrySchema).optional().describe('Structured colors [{name, hex, usage?}]'),
+      rules: z.array(z.string()).optional().describe('Absolute imperatives, e.g. "Never use emojis"'),
+      terminology: z.array(terminologyEntrySchema).optional().describe('Do/don\'t term pairs [{term, rule}]'),
+      cardDocs: z.array(z.string()).optional().describe('Guideline filenames inlined into the dispatch card'),
+    },
+    handler: async (params) => {
+      const brandId = String(params.brandId ?? '')
+      const gate = requireDraftBrand(brandId)
+      if (!gate.ok) return { ok: false, error: gate.error }
+      try {
+        const brand = await updateBrand(brandId, (m) => ({
+          ...m,
+          ...(params.description !== undefined ? { description: String(params.description) } : {}),
+          ...(params.palette !== undefined ? { palette: params.palette as never } : {}),
+          ...(params.rules !== undefined ? { rules: params.rules as never } : {}),
+          ...(params.terminology !== undefined ? { terminology: params.terminology as never } : {}),
+          ...(params.cardDocs !== undefined ? { cardDocs: params.cardDocs as never } : {}),
+        }))
+        return { ok: true, brand }
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
       }
     },
   })

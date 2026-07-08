@@ -133,6 +133,25 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
+      {b.draft && (
+        <div className="flex items-center justify-between rounded-md border border-fuchsia-500/30 bg-fuchsia-500/5 p-3">
+          <p className="text-xs text-muted-foreground">
+            <span className="font-medium text-fuchsia-400">Draft</span> — invisible to task pickers, dispatch, and image tools until published.
+            Review the sections below (delete <code>_intake.md</code> if you don't want it kept), then publish.
+          </p>
+          <button
+            className="rounded-md border border-fuchsia-500/40 px-3 py-1 text-xs text-fuchsia-300 hover:bg-fuchsia-500/10"
+            onClick={async () => {
+              const res = await fetch(`/api/plugins/brands/${brandId}/publish`, { method: 'POST' })
+              if (res.ok) await refresh()
+              else setError(`publish failed: ${res.status}`)
+            }}
+          >
+            Publish brand
+          </button>
+        </div>
+      )}
+
       {hints.length > 0 && (
         <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
           <p className="text-xs font-medium text-amber-400">This brand is still thin — agents only follow what exists:</p>
