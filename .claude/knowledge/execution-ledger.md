@@ -93,10 +93,11 @@ budget_incidents  one durable row per cap-rule breach per window
               at_cap defer|pause (captured at open — rollover auto-resolves
               defer rows only; pause rows hold until a human resolves),
               status open|acknowledged|resolved, resolution
-              raised|acknowledged|window_rollover|killswitch_cleared.
+              raised|acknowledged|window_rollover|killswitch_cleared|rule_removed.
               Verbs: openBudgetIncident (idempotent; reopens a
-              raise-resolved identity on a new breach — that IS a new
-              alertable event), resolveBudgetIncident, listBudgetIncidents,
+              raised/window_rollover-resolved identity on a new breach —
+              that IS a new alertable event; an 'acknowledged'-resolved row
+              stays suppressed for its window — the operator dismissed it), resolveBudgetIncident, listBudgetIncidents,
               resolveExpiredBudgetIncidents (gate-time rollover sweep),
               findOpenCapIncident (pause-mode gate probe).
 ```
