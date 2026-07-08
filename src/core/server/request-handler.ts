@@ -218,6 +218,23 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
       return
     }
 
+    // Runtime onboarding status (P3.3): the ACTIVE runtime's setup state —
+    // "configured ✓ / needs setup / remediation" per onboarding component
+    // (adapter-inapplicable components report themselves skipped). Backs the
+    // management page's switch-time setup surfacing.
+    if (url.pathname === '/api/runtime/onboarding' && req.method === 'GET') {
+      ;(async () => {
+        const { checkAll } = require('../onboarding/index') as typeof import('../onboarding/index')
+        return { adapter: getSettings().runtime.adapter, components: await checkAll() }
+      })()
+        .then((payload) => jsonResponse(res, 200, payload))
+        .catch((err) => {
+          log.error('Runtime onboarding status failed', err)
+          jsonResponse(res, 500, { error: err instanceof Error ? err.message : String(err) })
+        })
+      return
+    }
+
     // Runtime switch (P3.2): runs the full orchestrated lifecycle; progress
     // streams over the activity SSE channel as runtime:switch events. A
     // completed switch requires a server restart to rebind plugin contexts —
