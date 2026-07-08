@@ -92,10 +92,10 @@ Bottom-up: contract types first, then the pieces that consume them. Riskiest ear
 ## Phase 2 — Contract cleanup
 
 ### P2.1 — channels/cron → optional
-**Description:** Make `channels`, `cron` optional on the contract. Feature-detect every consumer (`runtime.channels?`/`runtime.cron?`): post-channel exec tool, watchdog, workflows notifications/approvals, channel-aliases, health, schedule plugin. Pi drops its throwing `unsupported.ts` channels/cron stubs (omits the blocks).
-**Acceptance:** Pi omits channels/cron; schedule plugin renders empty without error; watchdog degrades to log-only; no `runtime_failed`-on-absent throws.
-**Verify:** `bun test tests/**/{watchdog,schedule,channel,workflow-notif}* --isolate` + full suite.
-**Files:** `concepts.ts`, ~8 consumer sites, `adapter-pi/src/unsupported.ts` (trimmed). **Size:** L.
+**Description:** Make `channels`, `cron` optional on the contract. **Start with a committed grep inventory of every consumer as a checklist**, then feature-detect each (`runtime.channels?`/`runtime.cron?`): post-channel exec tool, watchdog, workflows notifications/approvals, channel-aliases, health, schedule plugin. Pi drops its throwing `unsupported.ts` channels/cron stubs (omits the blocks). **Add an arch-test/lint banning unguarded `runtime.channels`/`runtime.cron` access outside the adapter** — turns "did we get them all?" into a gate a future consumer can't bypass.
+**Acceptance:** Pi omits channels/cron; schedule plugin renders empty without error; watchdog degrades to log-only; no `runtime_failed`-on-absent throws; unguarded-access lint green.
+**Verify:** `bun test tests/**/{watchdog,schedule,channel,workflow-notif}* tests/architecture/ --isolate` + full suite.
+**Files:** `concepts.ts`, ~8 consumer sites, `adapter-pi/src/unsupported.ts` (trimmed), new arch-test. **Size:** L.
 
 ### P2.2 — credentialStatus()
 **Description:** Add `credentialStatus(agentId?)` capability method (presence-only: providers configured, channels configured — never secrets). Onboarding llm/channels checks rewire onto it. Pi synthesizes from `auth.json`; OpenClaw reads its config internally.
@@ -105,8 +105,9 @@ Bottom-up: contract types first, then the pieces that consume them. Riskiest ear
 
 ### P2.3 — models plugin off runtime-config
 **Description:** Rewire the models plugin: per-agent model → `agents.update`/`agents.list`; routing POLICY (defaults/fallbacks/aliases) → Bakin-owned plugin-settings storage. Remove `readRuntimeConfig('models.routing')`.
-**Acceptance:** model assignment + routing policy work on both runtimes with no runtime-config reads; the Pi `withModelConfigSkeleton` hack removed.
-**Verify:** `bun test tests/plugins/models/ --isolate` + manual model set on both.
+**Round-trip design (important):** model catalogs differ per runtime (OpenClaw `openai/gpt-5.5`, Pi `openai-codex/gpt-5.5`), so a switch can't blindly reuse an assignment. Store model policy **Bakin-side keyed by runtime** so switching Pi→OpenClaw→Pi PRESERVES each runtime's assignments (round-trip, not one-way). The Phase-3 switch flow validates the target runtime's assignments against its catalog and flags any model no longer available for re-selection.
+**Acceptance:** model assignment + routing policy work on both runtimes with no runtime-config reads; the Pi `withModelConfigSkeleton` hack removed; a Pi↔OpenClaw round-trip preserves each runtime's model assignments. **Bar: this box works after re-setting models per runtime — assignments are re-selected/validated on switch, not silently migrated.**
+**Verify:** `bun test tests/plugins/models/ --isolate` + a manual Pi↔OpenClaw round-trip preserving assignments.
 **Files:** `plugins/models/lib/config-io.ts`, `available-models.ts`, `routes.ts`, `aliases.ts`. **Size:** L.
 
 ### P2.4 — team plugin off runtime-config
@@ -127,7 +128,7 @@ Bottom-up: contract types first, then the pieces that consume them. Riskiest ear
 **Verify:** `bun test tests/core/main-agent.test.ts tests/core/onboarding* --isolate`.
 **Files:** `helpers.ts`, `dispatch-prompts.ts`, `onboarding/runtime.ts`. **Size:** M.
 
-**══ Checkpoint β ══** Full suite green; `config` member gone; Pi omits channels/cron cleanly; models+team on Bakin storage; main-literal generalized. *Revert line: contract stays at α (optional blocks not yet done).*
+**══ Checkpoint β ══** Full suite green; `config` member gone; Pi omits channels/cron cleanly; models+team on Bakin storage (per-runtime, round-trip-safe); main-literal generalized. *Revert line: contract stays at α.* **Phase-2 acceptance bar: the box works after a re-sync + re-setting per-runtime state (models), NOT "existing state migrates untouched" — pre-launch, break-it-now is the intent, but switching must be round-trippable (Pi↔OpenClaw↔Pi), just not a zero-touch toggle.**
 
 ---
 
