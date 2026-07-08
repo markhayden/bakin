@@ -34,7 +34,10 @@ export async function checkBudget(): Promise<HealthCheckResult[]> {
     policy = undefined
   }
   if (!policy?.rules?.length) {
-    return [result('ok', 'No budget caps configured — spend is unrestricted.')]
+    // Standing nag (spec V2): a fresh install must not run uncapped
+    // UNKNOWINGLY. Warn is the visible tier (no notice level exists);
+    // setting any cap rule clears it.
+    return [result('warn', 'No spending budget is set — agent spend is uncapped. Set one in Models → Spend or `bakin budget set`.')]
   }
 
   const now = Date.now()

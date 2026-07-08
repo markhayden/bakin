@@ -25,7 +25,7 @@ interface ScriptedComponent {
   installCalls: number
 }
 
-const COMPONENT_NAMES = ['mkdir', 'settings', 'runtime', 'search', 'search-models', 'mcporter', 'openclaw-integration', 'plugin-assets', 'agent-sync', 'llm', 'channels', 'recommended-plugins', 'recommended-agents'] as const
+const COMPONENT_NAMES = ['mkdir', 'settings', 'runtime', 'search', 'search-models', 'mcporter', 'openclaw-integration', 'plugin-assets', 'agent-sync', 'llm', 'budget', 'channels', 'recommended-plugins', 'recommended-agents'] as const
 
 let scripts: Record<(typeof COMPONENT_NAMES)[number], ScriptedComponent>
 
@@ -61,6 +61,7 @@ mock.module('../../../src/core/onboarding/mcporter', () => ({ mcporterComponent:
 mock.module('../../../src/core/onboarding/openclaw-integration', () => ({ openClawIntegrationComponent: makeMock('openclaw-integration') }))
 mock.module('../../../src/core/onboarding/plugin-assets', () => ({ pluginAssetsComponent: makeMock('plugin-assets') }))
 mock.module('../../../src/core/onboarding/agent-sync', () => ({ agentSyncComponent: makeMock('agent-sync') }))
+mock.module('../../../src/core/onboarding/budget', () => ({ budgetComponent: makeMock('budget') }))
 mock.module('../../../src/core/onboarding/credentials', () => ({
   llmComponent: makeMock('llm'),
   channelsComponent: makeMock('channels'),
@@ -213,7 +214,7 @@ describe('runOnboard orchestrator', () => {
   // ---------------------------------------------------------------------------
 
   describe('COMPONENT_ORDER', () => {
-    it('contains exactly the 13 expected components in the spec order', () => {
+    it('contains exactly the 14 expected components in the spec order', () => {
       expect(COMPONENT_ORDER.map((c) => c.name)).toEqual([
         'mkdir',
         'settings',
@@ -225,6 +226,7 @@ describe('runOnboard orchestrator', () => {
         'plugin-assets',
         'agent-sync',
         'llm',
+        'budget',
         'channels',
         'recommended-plugins',
         'recommended-agents',
@@ -241,9 +243,9 @@ describe('runOnboard orchestrator', () => {
       const result = await runOnboard(opts)
       expect(result.exitCode).toBe(0)
       expect(result.markerWritten).toBe(true)
-      expect(result.outcomes.map((o) => o.finalStatus)).toEqual([
-        'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok',
-      ])
+      expect(result.outcomes.map((o) => o.finalStatus)).toEqual(
+        Array.from({ length: COMPONENT_NAMES.length }, () => 'ok'),
+      )
       // check() was called on every component
       for (const n of COMPONENT_NAMES) {
         expect(scripts[n].checkCalls).toBe(1)
@@ -264,6 +266,7 @@ describe('runOnboard orchestrator', () => {
         'plugin-assets': 'ok',
         'agent-sync': 'ok',
         llm: 'ok',
+        budget: 'ok',
         channels: 'ok',
         'recommended-plugins': 'ok',
         'recommended-agents': 'ok',

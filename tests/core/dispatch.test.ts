@@ -939,7 +939,13 @@ describe('dispatch', () => {
       await dispatchTasks(tempDir, 3737)
       await awaitDispatchIdle()
 
-      expect(mockRuntimeSend).not.toHaveBeenCalled()
+      // The TASK must not dispatch (no send carrying a task: threadId). The
+      // breach itself sends ONE budget-alert relay to the main agent
+      // (budget-notify) — that is intended, not a dispatch.
+      const dispatchSends = mockRuntimeSend.mock.calls.filter(
+        (c) => typeof (c[0] as { threadId?: string })?.threadId === 'string',
+      )
+      expect(dispatchSends).toHaveLength(0)
     })
 
     it('regression: no budget policy → dispatch proceeds normally', async () => {

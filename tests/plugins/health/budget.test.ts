@@ -51,10 +51,10 @@ function seedSpend(costUsdMicros: number): void {
 }
 
 describe('budget health check', () => {
-  it('is ok when no caps are configured', async () => {
+  it('WARNS (standing nag) when no caps are configured — spend is uncapped', async () => {
     const [r] = await checkBudget()
-    expect(r.status).toBe('ok')
-    expect(r.message).toContain('No budget caps')
+    expect(r.status).toBe('warn')
+    expect(r.message).toContain('uncapped')
   })
 
   it('is ok when spend is well under the cap', async () => {
