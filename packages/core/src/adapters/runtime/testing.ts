@@ -106,9 +106,14 @@ export function createMockRuntimeAdapter(
       listAvailable: async () => [],
     },
 
-    // Conservative default; tests override per-case ({...mock, capabilities}).
+    // Conservative default matching production's no-app-services fallback
+    // (dispatch-prompts DEFAULT_TOOL_ACCESS) so mock-driven prompts render the
+    // same mcp-prefixed bytes; tests override per-case ({...mock, ...}).
     capabilities: async (_opts?: { agentId?: string }) => ({
-      toolCalling: { mode: 'native' as const, access: { style: 'cli-shim' as const } },
+      toolCalling: {
+        mode: 'native' as const,
+        access: { style: 'mcp' as const, mcpServerTemplate: 'bakin-<agent>' },
+      },
       delivery: { mode: 'native' as const },
       imageGen: { mode: 'unavailable' as const },
       memory: { mode: 'native' as const },
@@ -117,11 +122,11 @@ export function createMockRuntimeAdapter(
       input: { imageInput: false, audioInput: false },
     }),
 
-    describeToolAccess: () => ({ style: 'cli-shim' as const }),
+    describeToolAccess: () => ({ style: 'mcp' as const, mcpServerTemplate: 'bakin-<agent>' }),
 
     provisionToolAccess: async () => {},
     deprovisionToolAccess: async () => {},
-    verifyToolAccess: async () => ({ style: 'cli-shim' as const, ok: true, issues: [] }),
+    verifyToolAccess: async () => ({ style: 'mcp' as const, ok: true, issues: [] }),
 
     cron: {
       list: async () => [],

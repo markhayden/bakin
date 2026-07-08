@@ -44,12 +44,12 @@ describe('applyBakinMcpEntries', () => {
     })
   })
 
-  it('updates changed URLs and prunes stale Bakin entries', () => {
+  it('updates changed URLs and prunes stale Bakin-owned entries', () => {
     const config: BakinMcpConfig = {
       mcp: {
         servers: {
-          'bakin-main': { url: 'http://localhost:3737/mcp?agent=main' },
-          'bakin-old': { url: 'http://localhost:3737/mcp?agent=old' },
+          'bakin-main': { url: 'http://localhost:3737/mcp?agent=main', description: 'Bakin MCP for main' },
+          'bakin-old': { url: 'http://localhost:3737/mcp?agent=old', description: 'Bakin MCP for old' },
         },
       },
     }
@@ -59,6 +59,21 @@ describe('applyBakinMcpEntries', () => {
     expect(changes).toContain('removed bakin-old (agent no longer in runtime config)')
     expect(config.mcp!.servers!['bakin-main'].url).toBe('http://localhost:4000/mcp?agent=main')
     expect(config.mcp!.servers!['bakin-old']).toBeUndefined()
+  })
+
+  it('never prunes a bakin-* entry the user owns (no Bakin description tag)', () => {
+    const config: BakinMcpConfig = {
+      mcp: {
+        servers: {
+          'bakin-docs': { url: 'http://localhost:9000/mcp', description: 'my own docs server' },
+          'bakin-bare': { url: 'http://localhost:9001/mcp' },
+        },
+      },
+    }
+    const changes = applyBakinMcpEntries(config, ['main'], BASE)
+    expect(changes).toEqual(['added bakin-main'])
+    expect(config.mcp!.servers!['bakin-docs']).toBeDefined()
+    expect(config.mcp!.servers!['bakin-bare']).toBeDefined()
   })
 
   it('is idempotent — no changes when entries are already current', () => {
@@ -80,18 +95,22 @@ describe('applyBakinMcpEntries', () => {
 })
 
 describe('removeBakinMcpEntries', () => {
-  it('removes only bakin-* entries, leaving foreign ones', () => {
+  it('removes only Bakin-owned entries, leaving foreign ones (even bakin-* named)', () => {
     const config: BakinMcpConfig = {
       mcp: {
         servers: {
-          'bakin-main': { url: 'http://localhost:3737/mcp?agent=main' },
+          'bakin-main': { url: 'http://localhost:3737/mcp?agent=main', description: 'Bakin MCP for main' },
+          'bakin-docs': { url: 'http://localhost:9000/mcp', description: 'my own docs server' },
           other: { url: 'http://localhost:8080/mcp' },
         },
       },
     }
     const changes = removeBakinMcpEntries(config)
     expect(changes).toEqual(['removed bakin-main'])
-    expect(config.mcp!.servers).toEqual({ other: { url: 'http://localhost:8080/mcp' } })
+    expect(config.mcp!.servers).toEqual({
+      'bakin-docs': { url: 'http://localhost:9000/mcp', description: 'my own docs server' },
+      other: { url: 'http://localhost:8080/mcp' },
+    })
   })
 
   it('no-ops on a config with no servers', () => {
@@ -104,8 +123,8 @@ describe('verifyBakinMcpEntries', () => {
     const config: BakinMcpConfig = {
       mcp: {
         servers: {
-          'bakin-main': { url: 'http://localhost:3737/mcp?agent=main' },
-          'bakin-stale': { url: 'http://localhost:3737/mcp?agent=stale' },
+          'bakin-main': { url: 'http://localhost:3737/mcp?agent=main', description: 'Bakin MCP for main' },
+          'bakin-stale': { url: 'http://localhost:3737/mcp?agent=stale', description: 'Bakin MCP for stale' },
         },
       },
     }

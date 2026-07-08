@@ -253,11 +253,12 @@ export async function checkAgentSync(): Promise<HealthCheckResult[]> {
     })
   }
   if (fixable.length > 0) {
-    // Runtime-aware hint (P1.6): a tool-access change means the active runtime's
-    // invocation style changed under the agents — usually a runtime switch.
+    // Runtime-aware hint (P1.6): tool-access drift means the injected
+    // invocation section changed under the agents — a runtime switch, or an
+    // upgrade that (re)introduced the section (first post-upgrade scan).
     const runtimeSwitch = fixable.some((f) => f.staleInputs?.includes('tool-access'))
     const hint = runtimeSwitch
-      ? ' — the runtime tool-access style changed (switched runtimes?); run `bakin agents sync`'
+      ? ' — the runtime tool-access section changed (runtime switch or upgrade); run `bakin agents sync`'
       : ''
     results.push({
       ...warn(

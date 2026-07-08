@@ -33,6 +33,16 @@ function withAntflyAuthSecret(searchSettings: Record<string, unknown>): Record<s
   return { ...searchSettings, auth: { username: auth.username, password: resolved.password } }
 }
 
+/**
+ * Base URL for Bakin's MCP server, as written into runtime-side MCP config by
+ * `provisionToolAccess`. `BAKIN_MCP_BASE_URL` overrides for setups where
+ * "localhost from the runtime's perspective" is wrong (the dockerized OpenClaw
+ * rig needs `http://host.docker.internal:<port>`).
+ */
+export function resolveBakinMcpBaseUrl(): string {
+  return process.env.BAKIN_MCP_BASE_URL || `http://localhost:${Number(process.env.PORT || 3737)}`
+}
+
 export async function createAppServices(): Promise<AppServices> {
   // Relocate a legacy settings.json password before the settings cache forms.
   if (migrateAntflyPasswordToSecretStore()) {
@@ -61,24 +71,22 @@ export async function createAppServices(): Promise<AppServices> {
   // In-process tool delivery for runtimes that register Bakin exec tools
   // directly in agent sessions (Pi). Out-of-band runtimes (OpenClaw) reach the
   // same registry over MCP and use the base URL to write their config entries.
+  //
+  // NOTE: initialize() only THREADS the base URL — it never writes config.
+  // Provisioning (a config WRITE) happens only at explicit call sites: server
+  // boot (server.ts), onboarding install(), and adapter roster changes. A
+  // read-only CLI path (`bakin check …`) creating app services must never
+  // mutate the runtime config — and deriving the URL from each process's env
+  // would let a PORT-less shell rewrite working :4000 entries back to :3737.
   const execTools = createRuntimeExecToolProvider()
-  const bakinMcpBaseUrl = `http://localhost:${Number(process.env.PORT || 3737)}`
 
   await runtime.initialize({
     ...adapterInit,
     settings: settings.runtime.settings,
     execTools,
-    bakinMcpBaseUrl,
+    bakinMcpBaseUrl: resolveBakinMcpBaseUrl(),
   })
   await search.initialize({ ...adapterInit, settings: withAntflyAuthSecret(settings.search.settings) })
-
-  // Provision this runtime's tool-access wiring (OpenClaw writes per-agent MCP
-  // server entries; Pi is a no-op). Never block boot on a provisioning failure.
-  try {
-    await runtime.provisionToolAccess(execTools)
-  } catch (err) {
-    log.warn('Runtime tool-access provisioning failed at init', err)
-  }
 
   const services: AppServices = {
     runtime,

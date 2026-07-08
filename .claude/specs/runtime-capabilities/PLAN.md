@@ -234,6 +234,12 @@ P5.3  chore: this-box live validation                           ══ ε (merge
 - **Channels shim** (in-app delivery/approvals when a runtime lacks channels) → a new `delivery.mode='shimmed'` provider behind `CapabilitySet.delivery`.
 - **Runtime-native cron/channels/memory** stay runtime-owned; if cross-runtime portability is ever wanted, they attach to the same `reconcileRoster` seam.
 
+## Post-α re-evaluation addenda (fresh-eyes review after Phase 1 landed)
+- **P5.3 MUST live-validate a long image generation over OpenClaw native MCP.** mcporter's `--timeout 600000` is deleted; the native MCP client's timeout budget for a ~10-minute `bakin_exec_images_generate` was never exercised by the Phase-0 spike (fast tools only). If the client kills long calls, the image path needs an adapter-level answer before ε.
+- **Dockerized rig re-plumb (pre-ε, gates P5.3).** `scripts/instance/` still bridges tools via mcporter config with a `host.docker.internal` URL, but prompts now say native MCP and `provisionToolAccess` writes `http://localhost:<port>` — unreachable from inside the container. Fix: `BAKIN_MCP_BASE_URL` env override consumed by app-services; rig sets it (native/isolated → host.docker.internal) and drops its mcporter bridge (`scripts/instance/mcporter.ts`, Dockerfile mcporter install, imitation-crab pixel AGENTS.md fixture).
+- **P5.1 additions:** CLAUDE.md still says "13 components" (now 12) and lists `bakin install mcporter`.
+- **Decide: check-that-writes.** `createAppServices()` from a CLI process (`bakin check agent-sync`) now runs `provisionToolAccess` at init — an idempotent config write from a read-verb command. Either accept (documented) or split provisioning out of createAppServices into an explicit server-boot/install step.
+
 ## Parallelization
 - P1.1 blocks most of Phase 1; P1.2/P1.3 can proceed in parallel after it.
 - P2.3 (models) and P2.4 (team) are independent, parallel; both gate P2.5.

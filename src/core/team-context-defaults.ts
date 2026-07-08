@@ -108,7 +108,7 @@ When Bakin dispatches a workflow step to you, the dispatch message contains ever
 
 1. **The dispatch message is your single source of truth.** Follow it exactly for workflow steps.
 
-2. **Submit output ONLY via the submit-step tool:** \`bakin_exec_submit_step taskId=<id> stepId=<step> --args '<json>'\`. Conversational output does NOT complete the step.
+2. **Submit output ONLY via the submit-step tool:** \`bakin_exec_submit_step taskId=<id> stepId=<step> output=<json matching the step schema>\`. Conversational output does NOT complete the step.
 
 3. **Do NOT move the task, create subtasks, or message {{mainAgentName}}** for workflow tasks — the workflow engine handles all coordination.
 
@@ -194,10 +194,10 @@ bakin_exec_images_recommend surface=<surface> objective="<goal>"
 bakin_exec_images_generate taskId=<taskId> prompt="<text>" surface=<surface> provider=auto
 
 # Same, conditioned on reference images (assetIds, local paths, or runtime attachment URIs — max 4)
-bakin_exec_images_generate --args '{"taskId":"<taskId>","prompt":"<text>","surface":"<surface>","referenceImages":["<assetId|path|<runtime-attachment-uri>>"]}'
+bakin_exec_images_generate taskId=<taskId> prompt="<text>" surface=<surface> referenceImages=["<assetId|path|runtime-attachment-uri>"]
 
 # Iteration/re-roll of your own prior output — appends a new VERSION of that asset
-bakin_exec_images_generate --args '{"taskId":"<taskId>","prompt":"<corrected prompt>","surface":"<surface>","versionOf":"<assetId>"}'
+bakin_exec_images_generate taskId=<taskId> prompt="<corrected prompt>" surface=<surface> versionOf=<assetId>
 
 # Check workflow gate statuses
 bakin_exec_check_gates taskId=<taskId>

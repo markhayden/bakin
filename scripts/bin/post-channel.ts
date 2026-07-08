@@ -10,8 +10,8 @@
 import { parseArgs } from 'util'
 import { postChannel } from '../../src/core/exec-tools/tools/post-channel'
 
-console.error('⚠  WARNING: This CLI script bypasses Bakin tracking (no MCP call, no Health metrics, no audit log).')
-console.error('   Agents should use: mcporter call bakin-<agent>.bakin_exec_post_channel ...')
+console.error('⚠  WARNING: This CLI script bypasses Bakin tracking (no tool call, no Health metrics, no audit log).')
+console.error('   Agents should call the bakin_exec_post_channel tool directly (see their Tool access section).')
 console.error('')
 
 const { values } = parseArgs({

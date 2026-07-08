@@ -103,6 +103,16 @@ const eventBus = new BakinEventBus(broadcast)
   // Initialize the adapter/task service spine before plugin activation.
   const appServices = await createAppServices()
 
+  // Provision the runtime's tool-access wiring (OpenClaw writes per-agent MCP
+  // server entries; Pi is a no-op). This is a config WRITE, so it lives here
+  // at server boot — never inside createAppServices, which read-only CLI
+  // paths also call. Never block boot on a provisioning failure.
+  try {
+    await appServices.runtime.provisionToolAccess()
+  } catch (err) {
+    log.warn('Runtime tool-access provisioning failed at boot', err)
+  }
+
   // Rebuild any stale user plugin dist/ before the registry imports them.
   // User plugins activate only from `<pluginDir>/dist/index.js`; source
   // entries are build inputs, not runtime entrypoints.

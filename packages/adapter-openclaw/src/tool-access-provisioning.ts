@@ -19,10 +19,20 @@ export interface BakinMcpConfig {
 }
 
 const BAKIN_PREFIX = 'bakin-'
+const BAKIN_DESCRIPTION_PREFIX = 'Bakin MCP for '
 
 /** MCP server name for an agent: `bakin-<agent>`. */
 export function serverName(agent: string): string {
   return `${BAKIN_PREFIX}${agent}`
+}
+
+/**
+ * Ownership tag: only entries WE wrote (description `Bakin MCP for <agent>`)
+ * are ever pruned/removed. A user's own `bakin-docs` server — or an entry
+ * whose description they edited — is theirs and survives every provision.
+ */
+function isBakinOwnedEntry(name: string, entry: BakinMcpServerEntry): boolean {
+  return name.startsWith(BAKIN_PREFIX) && (entry.description ?? '').startsWith(BAKIN_DESCRIPTION_PREFIX)
 }
 
 /** Per-agent MCP URL against Bakin's server base (e.g. `http://localhost:3737`). */
@@ -56,7 +66,7 @@ export function applyBakinMcpEntries(
   }
 
   for (const key of Object.keys(servers)) {
-    if (!key.startsWith(BAKIN_PREFIX)) continue
+    if (!isBakinOwnedEntry(key, servers[key])) continue
     const agentName = key.slice(BAKIN_PREFIX.length)
     if (!agents.includes(agentName)) {
       delete servers[key]
@@ -67,13 +77,13 @@ export function applyBakinMcpEntries(
   return changes
 }
 
-/** Remove ALL Bakin `bakin-*` server entries (deprovision). Mutates in place. */
+/** Remove all Bakin-OWNED server entries (deprovision). Mutates in place. */
 export function removeBakinMcpEntries(config: BakinMcpConfig): string[] {
   const servers = config.mcp?.servers
   if (!servers) return []
   const changes: string[] = []
   for (const key of Object.keys(servers)) {
-    if (key.startsWith(BAKIN_PREFIX)) {
+    if (isBakinOwnedEntry(key, servers[key])) {
       delete servers[key]
       changes.push(`removed ${key}`)
     }
@@ -100,7 +110,7 @@ export function verifyBakinMcpEntries(
     return { agent, name, url: entry?.url ?? '', correct: entry?.url === expectedUrl }
   })
   const staleEntries = Object.keys(servers).filter(
-    (key) => key.startsWith(BAKIN_PREFIX) && !agents.includes(key.slice(BAKIN_PREFIX.length)),
+    (key) => isBakinOwnedEntry(key, servers[key]) && !agents.includes(key.slice(BAKIN_PREFIX.length)),
   )
   return { agentEntries, staleEntries }
 }

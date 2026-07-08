@@ -43,7 +43,7 @@ Your Bakin tools are exposed as native MCP tools under `bakin-main` — call the
 
 ```bash
 # Submit your output (must match the schema above)
-bakin-main.bakin_exec_submit_step taskId=t-wf-2 stepId=review --args '<json output>'
+bakin-main.bakin_exec_submit_step taskId=t-wf-2 stepId=review output=<json matching the schema above>
 
 # Log progress (mandatory, every major step)
 bakin-main.bakin_exec_tasks_log_progress taskId=t-wf-2 message="<update>"

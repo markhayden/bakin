@@ -414,7 +414,7 @@ export function buildWorkflowDispatchSections(
   lines.push('')
   lines.push('```bash')
   lines.push(`# Submit your output (must match the schema above)`)
-  lines.push(`${wfMc('bakin_exec_submit_step', `taskId=${task.id} stepId=${stepContext.stepId} --args '<json output>'`)}`)
+  lines.push(`${wfMc('bakin_exec_submit_step', `taskId=${task.id} stepId=${stepContext.stepId} output=<json matching the schema above>`)}`)
   lines.push('')
   lines.push(`# Log progress (mandatory, every major step)`)
   lines.push(`${wfMc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}`)

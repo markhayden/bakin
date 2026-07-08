@@ -78,7 +78,7 @@ A finished asset goes to a channel EXACTLY ONCE, via `bakin_exec_post_channel` w
 Example shape:
 
 ```
-bakin_exec_tasks_create --args '{"title":"Write todays story","assignee":"trainer","description":"Write a short story and post the result back to #general.","skipWorkflowReason":"one-off chat request"}'
+bakin_exec_tasks_create title="Write todays story" assignee="trainer" description="Write a short story and post the result back to #general." skipWorkflowReason="one-off chat request"
 ```
 
 ## Task Lifecycle

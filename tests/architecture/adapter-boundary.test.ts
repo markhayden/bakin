@@ -170,6 +170,10 @@ const TRANSPORT_BANS: Array<{ re: RegExp; label: string }> = [
   { re: /media:\/\//, label: 'raw media:// URI (runtime-private scheme)' },
   { re: /bakin-<agent>/, label: 'bakin-<agent> (per-agent MCP server template)' },
   { re: /bakin-[a-z][\w-]*\.bakin_exec/, label: 'per-agent MCP server prefix (bakin-<name>.bakin_exec_*)' },
+  // CLI flag syntax is transport, not tool contract: `--args`/`--timeout` were
+  // mcporter invocation flags — meaningless for in-process/native-MCP calls.
+  { re: /--args\b/, label: '--args flag (mcporter CLI invocation syntax)' },
+  { re: /--timeout\s+\d/, label: '--timeout flag (mcporter CLI invocation syntax)' },
 ]
 
 function walkContent(path: string, out: string[] = []): string[] {
@@ -307,6 +311,10 @@ describe('adapter boundary architecture', () => {
     ])
     expect(findTransportViolations('y.md', 'pass a media://inbound/x.png reference')).toEqual([
       'y.md: raw media:// URI (runtime-private scheme)',
+    ])
+    expect(findTransportViolations('w.md', "tool --args '{\"a\":1}' with --timeout 600000")).toEqual([
+      'w.md: --args flag (mcporter CLI invocation syntax)',
+      'w.md: --timeout flag (mcporter CLI invocation syntax)',
     ])
     expect(findTransportViolations('z.md', 'call `bakin_exec_tasks_get taskId=<id>` directly')).toEqual([])
   })

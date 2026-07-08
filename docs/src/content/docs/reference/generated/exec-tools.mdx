@@ -15,107 +15,107 @@ import McpToolCard from '../../../../components/McpToolCard.astro'
 <p class="mcp-section-description">Asset tools let agents list, inspect, save, link, restore, and clean up files managed by Bakin.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="assets-audit" name="bakin_exec_assets_audit" label="Audited assets" description="Audit versioned-asset health: manifest integrity, current-pointer resolution, and missing version files." source="plugins/assets/lib/exec-tools.ts:328">
+<McpToolCard id="assets-audit" name="bakin_exec_assets_audit" label="Audited assets" description="Audit versioned-asset health: manifest integrity, current-pointer resolution, and missing version files." source="plugins/assets/lib/exec-tools.ts:330">
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_assets_audit
+bakin_exec_assets_audit
 ```
 </McpToolCard>
 <McpToolCard id="assets-consolidate" name="bakin_exec_assets_consolidate" label="Consolidated variant assets" description="Absorb variant assets as versions of a winner asset (select-best flows): each loser's current file becomes a new version of the winner with consolidatedFrom provenance, the winner's pre-call current version stays promoted, and the losers move to trash. End state: ONE asset, every variant preserved as version history. Safe to re-call — already-absorbed losers are skipped and the version pointer is never moved by a retry." source="plugins/assets/lib/exec-tools.ts:193" parameters={[{"name":"winnerAssetId","type":"string","required":true,"description":"The selected (winning) asset id — absorbs the others"},{"name":"loserAssetIds","type":"array","required":true,"description":"The variant asset ids to absorb, in display order"},{"name":"taskId","type":"string","required":true,"description":"Task ID this consolidation belongs to"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_assets_consolidate --args '{
+bakin_exec_assets_consolidate {
   "winnerAssetId": "value",
   "loserAssetIds": [
     "value"
   ],
   "taskId": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="assets-delete" name="bakin_exec_assets_delete" label="Deleted an asset" description="Soft-delete a whole asset (all versions) to trash, restorable until trash is emptied." source="plugins/assets/lib/exec-tools.ts:174" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_assets_delete --args '{
+bakin_exec_assets_delete {
   "assetId": "value"
-}'
+}
 ```
 </McpToolCard>
-<McpToolCard id="assets-empty-trash" name="bakin_exec_assets_empty_trash" label="Emptied asset trash" description="Permanently delete all trashed assets. This cannot be undone." source="plugins/assets/lib/exec-tools.ts:301">
+<McpToolCard id="assets-empty-trash" name="bakin_exec_assets_empty_trash" label="Emptied asset trash" description="Permanently delete all trashed assets. This cannot be undone." source="plugins/assets/lib/exec-tools.ts:303">
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_assets_empty_trash
+bakin_exec_assets_empty_trash
 ```
 </McpToolCard>
 <McpToolCard id="assets-get" name="bakin_exec_assets_get" label="Read asset details" description="Retrieve an asset manifest (versions, current pointer, exports) by assetId." source="plugins/assets/lib/exec-tools.ts:113" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id, e.g. \"20260401-hero-a1b2c3d4\""}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_assets_get --args '{
+bakin_exec_assets_get {
   "assetId": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="assets-import" name="bakin_exec_assets_import" label="Imported unmanaged files" description="Explicitly import unmanaged files into managed versioned assets. Pass path (content-dir relative, e.g. assets/inbox/pic.png) or all: true. Optional type override and taskId link." source="plugins/assets/lib/exec-tools.ts:63" parameters={[{"name":"path","type":"string","required":false,"description":"One unmanaged file to import (content-dir relative)"},{"name":"all","type":"boolean","required":false,"description":"Import every unmanaged file"},{"name":"type","type":"choice","required":false,"description":"Override the suggested asset type"},{"name":"taskId","type":"string","required":false,"description":"Link the imported asset(s) to this task"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_assets_import --args '{
+bakin_exec_assets_import {
   "path": "value",
   "all": true,
   "type": "value",
   "taskId": "value"
-}'
+}
 ```
 </McpToolCard>
-<McpToolCard id="assets-link" name="bakin_exec_assets_link" label="Linked an asset" description="Link an asset to a different task, or unlink it (set taskId to null)." source="plugins/assets/lib/exec-tools.ts:230" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id"},{"name":"taskId","type":"string","required":true,"description":"Target task ID, or null to unlink"}]}>
+<McpToolCard id="assets-link" name="bakin_exec_assets_link" label="Linked an asset" description="Link an asset to a different task, or unlink it (set taskId to null)." source="plugins/assets/lib/exec-tools.ts:232" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id"},{"name":"taskId","type":"string","required":true,"description":"Target task ID, or null to unlink"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_assets_link --args '{
+bakin_exec_assets_link {
   "assetId": "value",
   "taskId": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="assets-list" name="bakin_exec_assets_list" label="Listed assets" description="List managed assets (one entry per asset, current-version view). Optional type, task, and tag filters. Tags are the UI &quot;folders&quot; — pass tags to list a folder, e.g. [&quot;brand&quot;]." source="plugins/assets/lib/exec-tools.ts:94" parameters={[{"name":"type","type":"choice","required":false,"description":"Filter by asset type"},{"name":"taskId","type":"string","required":false,"description":"Filter to assets linked to this task id"},{"name":"tags","type":"array","required":false,"description":"Filter to assets carrying ALL of these tags (the UI \"folders\")."}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_assets_list --args '{
+bakin_exec_assets_list {
   "type": "value",
   "taskId": "value",
   "tags": [
     "value"
   ]
-}'
+}
 ```
 </McpToolCard>
-<McpToolCard id="assets-list-trash" name="bakin_exec_assets_list_trash" label="Listed trashed assets" description="List trashed assets (whole-asset deletions) with deletion time and version count." source="plugins/assets/lib/exec-tools.ts:274">
+<McpToolCard id="assets-list-trash" name="bakin_exec_assets_list_trash" label="Listed trashed assets" description="List trashed assets (whole-asset deletions) with deletion time and version count." source="plugins/assets/lib/exec-tools.ts:276">
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_assets_list_trash
+bakin_exec_assets_list_trash
 ```
 </McpToolCard>
 <McpToolCard id="assets-open" name="bakin_exec_assets_open" label="Opened an asset" description="Open an asset by assetId: returns its manifest plus the current version’s extracted text for text-like assets." source="plugins/assets/lib/exec-tools.ts:126" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_assets_open --args '{
+bakin_exec_assets_open {
   "assetId": "value"
-}'
+}
 ```
 </McpToolCard>
-<McpToolCard id="assets-permanent-delete" name="bakin_exec_assets_permanent_delete" label="Permanently deleted an asset" description="Permanently delete a specific trashed asset. This cannot be undone." source="plugins/assets/lib/exec-tools.ts:314" parameters={[{"name":"trashName","type":"string","required":true,"description":"Trash name (includes __deleted- suffix)"}]}>
+<McpToolCard id="assets-permanent-delete" name="bakin_exec_assets_permanent_delete" label="Permanently deleted an asset" description="Permanently delete a specific trashed asset. This cannot be undone." source="plugins/assets/lib/exec-tools.ts:316" parameters={[{"name":"trashName","type":"string","required":true,"description":"Trash name (includes __deleted- suffix)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_assets_permanent_delete --args '{
+bakin_exec_assets_permanent_delete {
   "trashName": "value"
-}'
+}
 ```
 </McpToolCard>
-<McpToolCard id="assets-restore" name="bakin_exec_assets_restore" label="Restored an asset" description="Restore a trashed asset by its trash name (from bakin_exec_assets_list_trash)." source="plugins/assets/lib/exec-tools.ts:285" parameters={[{"name":"trashName","type":"string","required":true,"description":"Trash name (includes __deleted- suffix)"}]}>
+<McpToolCard id="assets-restore" name="bakin_exec_assets_restore" label="Restored an asset" description="Restore a trashed asset by its trash name (from bakin_exec_assets_list_trash)." source="plugins/assets/lib/exec-tools.ts:287" parameters={[{"name":"trashName","type":"string","required":true,"description":"Trash name (includes __deleted- suffix)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_assets_restore --args '{
+bakin_exec_assets_restore {
   "trashName": "value"
-}'
+}
 ```
 </McpToolCard>
-<McpToolCard id="assets-retype" name="bakin_exec_assets_retype" label="Retyped an asset" description="Change an asset type classification." source="plugins/assets/lib/exec-tools.ts:252" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id"},{"name":"type","type":"choice","required":true}]}>
+<McpToolCard id="assets-retype" name="bakin_exec_assets_retype" label="Retyped an asset" description="Change an asset type classification." source="plugins/assets/lib/exec-tools.ts:254" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id"},{"name":"type","type":"choice","required":true}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_assets_retype --args '{
+bakin_exec_assets_retype {
   "assetId": "value",
   "type": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="assets-save" name="bakin_exec_assets_save" label="Saved an asset" description="Save an agent-created file as a managed, versioned asset. Re-saving the SAME source file appends a new version to the existing asset (or no-ops if unchanged) instead of creating a duplicate — so an evolving doc stays one asset with a version history. Returns the asset id." source="plugins/assets/lib/exec-tools.ts:143" parameters={[{"name":"filePath","type":"string","required":true,"description":"Absolute path to the source file to save. Re-saving the same path versions the existing asset."},{"name":"taskId","type":"string","required":true,"description":"Task ID to link the asset."},{"name":"type","type":"choice","required":true},{"name":"description","type":"string","required":false,"description":"One-sentence summary visible in the asset grid and search. Be specific."},{"name":"tags","type":"array","required":false,"description":"Lowercase hyphenated tags for filtering."},{"name":"tool","type":"string","required":false,"description":"Tool used to generate or import the asset."},{"name":"slug","type":"string","required":false,"description":"Custom slug for the asset id. Auto-derived from source filename if omitted."}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_assets_save --args '{
+bakin_exec_assets_save {
   "filePath": "value",
   "taskId": "value",
   "type": "value",
@@ -125,12 +125,12 @@ mcporter call bakin-<agent>.bakin_exec_assets_save --args '{
   ],
   "tool": "value",
   "slug": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="assets-scan-unmanaged" name="bakin_exec_assets_scan_unmanaged" label="Scanned for unmanaged files" description="List files under assets/ that are NOT managed assets (inbox drops, loose files). Nothing is imported automatically — use bakin_exec_assets_import to import." source="plugins/assets/lib/exec-tools.ts:49">
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_assets_scan_unmanaged
+bakin_exec_assets_scan_unmanaged
 ```
 </McpToolCard>
 </div>
@@ -140,11 +140,11 @@ mcporter call bakin-<agent>.bakin_exec_assets_scan_unmanaged
 <p class="mcp-section-description">MCP tools discovered from registered exec tool definitions.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="check-gates" name="bakin_exec_check_gates" label="Checked workflow gates" description="Get a human-readable overview of all gate statuses in a workflow. Shows which gates are approved, waiting, or pending." source="plugins/workflows/lib/exec-tools.ts:305" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID (or workflow instance ID)"}]}>
+<McpToolCard id="check-gates" name="bakin_exec_check_gates" label="Checked workflow gates" description="Get a human-readable overview of all gate statuses in a workflow. Shows which gates are approved, waiting, or pending." source="plugins/workflows/lib/exec-tools.ts:311" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID (or workflow instance ID)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_check_gates --args '{
+bakin_exec_check_gates {
   "taskId": "value"
-}'
+}
 ```
 </McpToolCard>
 </div>
@@ -156,14 +156,14 @@ mcporter call bakin-<agent>.bakin_exec_check_gates --args '{
 <div class="mcp-tool-list">
 <McpToolCard id="get-paths" name="bakin_exec_get_paths" label="Resolved paths" description="Get Bakin content directory paths — where to find assets, team info, docs, etc." source="src/core/exec-tools/tools/get-paths.ts:9">
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_get_paths
+bakin_exec_get_paths
 ```
 </McpToolCard>
-<McpToolCard id="get-step" name="bakin_exec_get_step" label="Read workflow step" description="Get the current workflow step as human-readable formatted text. Includes instructions, prior outputs, schema, and rejection context in a clear structure." source="plugins/workflows/lib/exec-tools.ts:224" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"}]}>
+<McpToolCard id="get-step" name="bakin_exec_get_step" label="Read workflow step" description="Get the current workflow step as human-readable formatted text. Includes instructions, prior outputs, schema, and rejection context in a clear structure." source="plugins/workflows/lib/exec-tools.ts:227" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_get_step --args '{
+bakin_exec_get_step {
   "taskId": "value"
-}'
+}
 ```
 </McpToolCard>
 </div>
@@ -175,17 +175,17 @@ mcporter call bakin-<agent>.bakin_exec_get_step --args '{
 <div class="mcp-tool-list">
 <McpToolCard id="git-prepare-worktree" name="bakin_exec_git_prepare_worktree" label="Prepared git worktree" description="Create or reuse an isolated git worktree for a task. Call this before editing code for a Bakin task." source="plugins/git/index.ts:639">
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_git_prepare_worktree
+bakin_exec_git_prepare_worktree
 ```
 </McpToolCard>
 <McpToolCard id="git-release-worktree" name="bakin_exec_git_release_worktree" label="Released git worktree" description="Release a tracked git worktree. Refuses dirty removal unless force=true." source="plugins/git/index.ts:654">
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_git_release_worktree
+bakin_exec_git_release_worktree
 ```
 </McpToolCard>
 <McpToolCard id="git-status" name="bakin_exec_git_status" label="Checked git worktrees" description="List Bakin-tracked git worktrees and their dirty state." source="plugins/git/index.ts:647">
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_git_status
+bakin_exec_git_status
 ```
 </McpToolCard>
 </div>
@@ -195,16 +195,16 @@ mcporter call bakin-<agent>.bakin_exec_git_status
 <p class="mcp-section-description">Health tools let agents check whether Bakin is running correctly before or during work.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="health-doctor" name="bakin_exec_health_doctor" label="Ran diagnostics" description="Run system diagnostics (agent roster, skill sync, runtime, taskboard, assets, etc.). Returns detailed check results. Use fresh=true to force a full re-check instead of returning cached results." source="plugins/health/index.ts:614" parameters={[{"name":"fresh","type":"boolean","required":false,"description":"Force fresh diagnostics instead of cached results"}]}>
+<McpToolCard id="health-doctor" name="bakin_exec_health_doctor" label="Ran diagnostics" description="Run system diagnostics (agent roster, skill sync, runtime, taskboard, assets, etc.). Returns detailed check results. Use fresh=true to force a full re-check instead of returning cached results." source="plugins/health/index.ts:613" parameters={[{"name":"fresh","type":"boolean","required":false,"description":"Force fresh diagnostics instead of cached results"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_health_doctor --args '{
+bakin_exec_health_doctor {
   "fresh": true
-}'
+}
 ```
 </McpToolCard>
-<McpToolCard id="health-status" name="bakin_exec_health_status" label="Checked system health" description="Get a quick system health summary — uptime, memory, active MCP sessions, and doctor error/warning counts. Useful for checking system state before starting work." source="plugins/health/index.ts:585">
+<McpToolCard id="health-status" name="bakin_exec_health_status" label="Checked system health" description="Get a quick system health summary — uptime, memory, active MCP sessions, and doctor error/warning counts. Useful for checking system state before starting work." source="plugins/health/index.ts:584">
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_health_status
+bakin_exec_health_status
 ```
 </McpToolCard>
 </div>
@@ -216,11 +216,11 @@ mcporter call bakin-<agent>.bakin_exec_health_status
 <div class="mcp-tool-list">
 <McpToolCard id="heartbeat" name="bakin_exec_heartbeat" label="Sent heartbeat" description="Write a heartbeat signal. Call periodically (every 5-10 minutes) to indicate you are alive. Also call when starting or finishing a task." source="src/core/exec-tools/tools/heartbeat.ts:13" parameters={[{"name":"status","type":"choice","required":false,"description":"Current status"},{"name":"currentTask","type":"string","required":false,"description":"Task ID currently being worked on"},{"name":"message","type":"string","required":false,"description":"Brief status note"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_heartbeat --args '{
+bakin_exec_heartbeat {
   "status": "value",
   "currentTask": "value",
   "message": "value"
-}'
+}
 ```
 </McpToolCard>
 </div>
@@ -230,34 +230,34 @@ mcporter call bakin-<agent>.bakin_exec_heartbeat --args '{
 <p class="mcp-section-description">MCP tools discovered from registered exec tool definitions.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="images-edit" name="bakin_exec_images_edit" label="Edited an image" description="Edit a managed image asset (by assetId) through the runtime image provider — edits the current version, appends a NEW VERSION to that same asset, and returns the assetId. Pass referenceImages to supply extra context images alongside the edited asset." source="plugins/images/index.ts:216">
+<McpToolCard id="images-edit" name="bakin_exec_images_edit" label="Edited an image" description="Edit a managed image asset (by assetId) through the runtime image provider — edits the current version, appends a NEW VERSION to that same asset, and returns the assetId. Pass referenceImages to supply extra context images alongside the edited asset." source="plugins/images/index.ts:222">
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_images_edit
+bakin_exec_images_edit
 ```
 </McpToolCard>
-<McpToolCard id="images-export" name="bakin_exec_images_export" label="Exported an image" description="Export an existing image asset to a target surface profile by resizing, cropping, and format-converting it." source="plugins/images/index.ts:230">
+<McpToolCard id="images-export" name="bakin_exec_images_export" label="Exported an image" description="Export an existing image asset to a target surface profile by resizing, cropping, and format-converting it." source="plugins/images/index.ts:236">
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_images_export
+bakin_exec_images_export
 ```
 </McpToolCard>
-<McpToolCard id="images-generate" name="bakin_exec_images_generate" label="Generated an image" description="Generate an image through a configured runtime image provider, save it as a NEW managed asset (v1), and return its assetId. Pass referenceImages to create a new image conditioned on existing assets/files (e.g. &quot;in the style of these&quot;); to revise an existing asset in place use bakin_exec_images_edit instead." source="plugins/images/index.ts:209">
+<McpToolCard id="images-generate" name="bakin_exec_images_generate" label="Generated an image" description="Generate an image through a configured runtime image provider, save it as a NEW managed asset (v1), and return its assetId. Pass referenceImages to create a new image conditioned on existing assets/files (e.g. &quot;in the style of these&quot;); to revise an existing asset in place use bakin_exec_images_edit instead." source="plugins/images/index.ts:215">
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_images_generate
+bakin_exec_images_generate
 ```
 </McpToolCard>
-<McpToolCard id="images-import" name="bakin_exec_images_import" label="Imported an image" description="Import an existing local image file as a new managed asset (v1) and return its assetId." source="plugins/images/index.ts:223">
+<McpToolCard id="images-import" name="bakin_exec_images_import" label="Imported an image" description="Import an existing local image file as a new managed asset (v1) and return its assetId." source="plugins/images/index.ts:229">
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_images_import
+bakin_exec_images_import
 ```
 </McpToolCard>
-<McpToolCard id="images-profiles" name="bakin_exec_images_profiles" label="Listed image profiles" description="List image surface profiles and configured provider readiness. Use this before choosing dimensions or provider routes for image generation." source="plugins/images/index.ts:237">
+<McpToolCard id="images-profiles" name="bakin_exec_images_profiles" label="Listed image profiles" description="List image surface profiles and configured provider readiness. Use this before choosing dimensions or provider routes for image generation." source="plugins/images/index.ts:243">
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_images_profiles
+bakin_exec_images_profiles
 ```
 </McpToolCard>
-<McpToolCard id="images-recommend" name="bakin_exec_images_recommend" label="Recommended an image route" description="Recommend a deterministic image provider, model, surface profile, dimensions, and quality tier for an image generation request." source="plugins/images/index.ts:202">
+<McpToolCard id="images-recommend" name="bakin_exec_images_recommend" label="Recommended an image route" description="Recommend a deterministic image provider, model, surface profile, dimensions, and quality tier for an image generation request." source="plugins/images/index.ts:208">
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_images_recommend
+bakin_exec_images_recommend
 ```
 </McpToolCard>
 </div>
@@ -267,12 +267,12 @@ mcporter call bakin-<agent>.bakin_exec_images_recommend
 <p class="mcp-section-description">MCP tools discovered from registered exec tool definitions.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="lesson-search" name="bakin_exec_lesson_search" label="Searched package lessons" description="Search the enabled agent-package lessons for the calling agent." source="plugins/team/index.ts:377" parameters={[{"name":"query","type":"string","required":true,"description":"Search query"},{"name":"limit","type":"number","required":false,"description":"Max lessons to return (default from settings, max 10)"}]}>
+<McpToolCard id="lesson-search" name="bakin_exec_lesson_search" label="Searched package lessons" description="Search the enabled agent-package lessons for the calling agent." source="plugins/team/index.ts:375" parameters={[{"name":"query","type":"string","required":true,"description":"Search query"},{"name":"limit","type":"number","required":false,"description":"Max lessons to return (default from settings, max 10)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_lesson_search --args '{
+bakin_exec_lesson_search {
   "query": "value",
   "limit": 20
-}'
+}
 ```
 </McpToolCard>
 </div>
@@ -284,12 +284,12 @@ mcporter call bakin-<agent>.bakin_exec_lesson_search --args '{
 <div class="mcp-tool-list">
 <McpToolCard id="log" name="bakin_exec_log" label="Logged message" description="Log a formatted progress update with category and stage tags. Categories: start, progress, milestone, blocked, complete. More structured than raw bakin_exec_tasks_log_progress." source="src/core/exec-tools/tools/log-progress.ts:45" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"},{"name":"message","type":"string","required":true,"description":"Human-readable status update"},{"name":"category","type":"choice","required":false,"description":"Log category (default: progress)"},{"name":"stage","type":"string","required":false,"description":"Workflow stage tag (e.g., \"image-gen\", \"copy-review\")"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_log --args '{
+bakin_exec_log {
   "taskId": "value",
   "message": "value",
   "category": "value",
   "stage": "value"
-}'
+}
 ```
 </McpToolCard>
 </div>
@@ -301,37 +301,37 @@ mcporter call bakin-<agent>.bakin_exec_log --args '{
 <div class="mcp-tool-list">
 <McpToolCard id="memory-get-session" name="bakin_exec_memory_get_session" label="Read session memory" description="Fetch a session by key plus its most recent turns." source="plugins/memory/mcp/get-session.ts:23" parameters={[{"name":"sessionKey","type":"string","required":true,"description":"Session key (required)"},{"name":"agent","type":"string","required":false,"description":"Narrow to a single agent"},{"name":"turnLimit","type":"number","required":false,"description":"Max turns to include (default 50)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_memory_get_session --args '{
+bakin_exec_memory_get_session {
   "sessionKey": "value",
   "agent": "value",
   "turnLimit": 20
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="memory-get-turn" name="bakin_exec_memory_get_turn" label="Read turn memory" description="Fetch a single turn by id (the `turn:&lt;hex&gt;` form)." source="plugins/memory/mcp/get-turn.ts:23" parameters={[{"name":"turnId","type":"string","required":true,"description":"Turn id (required, e.g. turn:abc123...)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_memory_get_turn --args '{
+bakin_exec_memory_get_turn {
   "turnId": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="memory-list-agents" name="bakin_exec_memory_list_agents" label="Listed memory agents" description="Agents with memory rows, each with total count and per-tier breakdown." source="plugins/memory/mcp/list-agents.ts:20">
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_memory_list_agents
+bakin_exec_memory_list_agents
 ```
 </McpToolCard>
 <McpToolCard id="memory-search" name="bakin_exec_memory_search" label="Searched memory" description="Hybrid search across every memory tier (sessions, turns, checkpoints, daily notes, dreams, durable, audit). Optional tier/agent filters." source="plugins/memory/mcp/search.ts:24" parameters={[{"name":"query","type":"string","required":false,"description":"Search query (required)"},{"name":"agent","type":"string","required":false,"description":"Filter to a single agent id"},{"name":"limit","type":"number","required":false,"description":"Max results (default 20, max 100)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_memory_search --args '{
+bakin_exec_memory_search {
   "query": "value",
   "agent": "value",
   "limit": 20
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="memory-status" name="bakin_exec_memory_status" label="Read memory status" description="Indexer health: per-tier row counts, offset tracking, snapshot timestamp." source="plugins/memory/mcp/status.ts:14">
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_memory_status
+bakin_exec_memory_status
 ```
 </McpToolCard>
 </div>
@@ -343,14 +343,14 @@ mcporter call bakin-<agent>.bakin_exec_memory_status
 <div class="mcp-tool-list">
 <McpToolCard id="messaging-deliverable-approve" name="bakin_exec_messaging_deliverable_approve" label="Approved content deliverable" description="Approve a Deliverable after review." source="bakin-bits-official/plugins/messaging/index.ts:2036" parameters={[{"name":"deliverableId","type":"string","required":true,"description":"Deliverable ID (required)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_approve --args '{
+bakin_exec_messaging_deliverable_approve {
   "deliverableId": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="messaging-deliverable-create" name="bakin_exec_messaging_deliverable_create" label="Created content deliverable" description="Create a Quick Post Deliverable. Plan Deliverables are created only by Plan activation." source="bakin-bits-official/plugins/messaging/index.ts:1905" parameters={[{"name":"planId","type":"union","required":false,"description":"Optional Plan ID; null creates a Quick Post"},{"name":"channel","type":"string","required":true,"description":"Runtime channel ID"},{"name":"contentType","type":"string","required":true,"description":"Messaging content type ID"},{"name":"tone","type":"string","required":true,"description":"Tone"},{"name":"agent","type":"string","required":true,"description":"Prep agent"},{"name":"title","type":"string","required":true,"description":"Deliverable title"},{"name":"brief","type":"string","required":true,"description":"Deliverable brief"},{"name":"publishAt","type":"string","required":true,"description":"Publish datetime"},{"name":"prepStartAt","type":"string","required":false,"description":"Optional explicit prep start datetime"},{"name":"prepStartAtOverride","type":"string","required":false,"description":"Optional prep start override datetime"},{"name":"status","type":"string","required":false,"description":"Optional initial status; defaults to planned"},{"name":"draft","type":"object","required":false,"description":"Optional draft fields"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_create --args '{
+bakin_exec_messaging_deliverable_create {
   "planId": "value",
   "channel": "value",
   "contentType": "value",
@@ -365,45 +365,45 @@ mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_create --args '{
   "draft": {
     "key": "value"
   }
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="messaging-deliverable-get" name="bakin_exec_messaging_deliverable_get" label="Read content deliverable" description="Get a content Deliverable" source="bakin-bits-official/plugins/messaging/index.ts:1890" parameters={[{"name":"deliverableId","type":"string","required":true,"description":"Deliverable ID (required)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_get --args '{
+bakin_exec_messaging_deliverable_get {
   "deliverableId": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="messaging-deliverable-list" name="bakin_exec_messaging_deliverable_list" label="Listed content deliverables" description="List content Deliverables with optional filters" source="bakin-bits-official/plugins/messaging/index.ts:1867" parameters={[{"name":"planId","type":"union","required":false,"description":"Filter by Plan ID; null returns Quick Posts"},{"name":"status","type":"string","required":false,"description":"Filter by Deliverable status"},{"name":"channel","type":"string","required":false,"description":"Filter by channel"},{"name":"publishAfter","type":"string","required":false,"description":"Filter by publishAt at or after this date"},{"name":"publishBefore","type":"string","required":false,"description":"Filter by publishAt at or before this date"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_list --args '{
+bakin_exec_messaging_deliverable_list {
   "planId": "value",
   "status": "value",
   "channel": "value",
   "publishAfter": "value",
   "publishBefore": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="messaging-deliverable-ready-for-review" name="bakin_exec_messaging_deliverable_ready_for_review" label="Marked content deliverable ready for review" description="Signal that a bare-task Deliverable draft is ready for user review or auto-approval." source="bakin-bits-official/plugins/messaging/index.ts:2021" parameters={[{"name":"deliverableId","type":"string","required":true,"description":"Deliverable ID (required)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_ready_for_review --args '{
+bakin_exec_messaging_deliverable_ready_for_review {
   "deliverableId": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="messaging-deliverable-reject" name="bakin_exec_messaging_deliverable_reject" label="Rejected content deliverable" description="Request changes for a Deliverable after review." source="bakin-bits-official/plugins/messaging/index.ts:2055" parameters={[{"name":"deliverableId","type":"string","required":true,"description":"Deliverable ID (required)"},{"name":"note","type":"string","required":false,"description":"Review note for the prep agent"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_reject --args '{
+bakin_exec_messaging_deliverable_reject {
   "deliverableId": "value",
   "note": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="messaging-deliverable-update" name="bakin_exec_messaging_deliverable_update" label="Updated content deliverable" description="Update a content Deliverable. Draft fields are deep-merged." source="bakin-bits-official/plugins/messaging/index.ts:1961" parameters={[{"name":"deliverableId","type":"string","required":true,"description":"Deliverable ID (required)"},{"name":"planId","type":"union","required":false,"description":"Optional Plan ID; null makes it a Quick Post"},{"name":"channel","type":"string","required":false,"description":"Runtime channel ID"},{"name":"contentType","type":"string","required":false,"description":"Messaging content type ID"},{"name":"tone","type":"string","required":false,"description":"Tone"},{"name":"agent","type":"string","required":false,"description":"Prep agent"},{"name":"title","type":"string","required":false,"description":"Deliverable title"},{"name":"brief","type":"string","required":false,"description":"Deliverable brief"},{"name":"publishAt","type":"string","required":false,"description":"Publish datetime"},{"name":"prepStartAt","type":"string","required":false,"description":"Optional explicit prep start datetime"},{"name":"prepStartAtOverride","type":"string","required":false,"description":"Optional prep start override datetime"},{"name":"status","type":"string","required":false,"description":"Deliverable status"},{"name":"rejectionNote","type":"string","required":false,"description":"Optional rejection note"},{"name":"draft","type":"object","required":false,"description":"Draft fields to deep-merge"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_update --args '{
+bakin_exec_messaging_deliverable_update {
   "deliverableId": "value",
   "planId": "value",
   "channel": "value",
@@ -420,28 +420,28 @@ mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_update --args '{
   "draft": {
     "key": "value"
   }
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="messaging-plan-activate" name="bakin_exec_messaging_plan_activate" label="Activated content plan" description="Activate a content Plan and create scheduled kickoff tasks for its configured channels." source="bakin-bits-official/plugins/messaging/index.ts:1847" parameters={[{"name":"planId","type":"string","required":true,"description":"Plan ID (required)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_messaging_plan_activate --args '{
+bakin_exec_messaging_plan_activate {
   "planId": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="messaging-plan-channel-delete" name="bakin_exec_messaging_plan_channel_delete" label="Deleted content plan channel" description="Delete one configured Plan channel, its Deliverables, and linked board tasks." source="bakin-bits-official/plugins/messaging/index.ts:1820" parameters={[{"name":"planId","type":"string","required":true,"description":"Plan ID (required)"},{"name":"channelId","type":"string","required":true,"description":"Plan channel ID (required)"},{"name":"deleteLinkedTasks","type":"boolean","required":false,"description":"Delete linked board tasks; defaults to true"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_messaging_plan_channel_delete --args '{
+bakin_exec_messaging_plan_channel_delete {
   "planId": "value",
   "channelId": "value",
   "deleteLinkedTasks": true
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="messaging-plan-create" name="bakin_exec_messaging_plan_create" label="Created content plan" description="Create a content Plan" source="bakin-bits-official/plugins/messaging/index.ts:1755" parameters={[{"name":"title","type":"string","required":true,"description":"Plan title"},{"name":"targetDate","type":"string","required":true,"description":"Target ISO date"},{"name":"agent","type":"string","required":true,"description":"Lead agent"},{"name":"brief","type":"string","required":false,"description":"Plan brief"},{"name":"campaign","type":"string","required":false,"description":"Campaign tag"},{"name":"channels","type":"array","required":true},{"name":"id","type":"string","required":false},{"name":"channel","type":"string","required":true},{"name":"contentType","type":"string","required":true},{"name":"publishAt","type":"string","required":true},{"name":"prepStartAt","type":"string","required":false},{"name":"workflowId","type":"string","required":false},{"name":"agent","type":"string","required":false},{"name":"tone","type":"string","required":false},{"name":"title","type":"string","required":false},{"name":"brief","type":"string","required":false,"description":"Concrete channel deliverables to create when the Plan is activated"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_messaging_plan_create --args '{
+bakin_exec_messaging_plan_create {
   "title": "value",
   "targetDate": "value",
   "agent": "value",
@@ -457,36 +457,36 @@ mcporter call bakin-<agent>.bakin_exec_messaging_plan_create --args '{
   "prepStartAt": "value",
   "workflowId": "value",
   "tone": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="messaging-plan-delete" name="bakin_exec_messaging_plan_delete" label="Deleted content plan" description="Delete a content Plan, its content pieces, and linked board tasks." source="bakin-bits-official/plugins/messaging/index.ts:1796" parameters={[{"name":"planId","type":"string","required":true,"description":"Plan ID (required)"},{"name":"deleteLinkedTasks","type":"boolean","required":false,"description":"Delete linked board tasks; defaults to true"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_messaging_plan_delete --args '{
+bakin_exec_messaging_plan_delete {
   "planId": "value",
   "deleteLinkedTasks": true
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="messaging-plan-get" name="bakin_exec_messaging_plan_get" label="Read content plan" description="Get a content Plan and its Deliverables" source="bakin-bits-official/plugins/messaging/index.ts:1740" parameters={[{"name":"planId","type":"string","required":true,"description":"Plan ID (required)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_messaging_plan_get --args '{
+bakin_exec_messaging_plan_get {
   "planId": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="messaging-plan-list" name="bakin_exec_messaging_plan_list" label="Listed content plans" description="List content Plans with optional filters" source="bakin-bits-official/plugins/messaging/index.ts:1722" parameters={[{"name":"status","type":"string","required":false,"description":"Filter by Plan status"},{"name":"agent","type":"string","required":false,"description":"Filter by lead agent"},{"name":"campaign","type":"string","required":false,"description":"Filter by campaign"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_messaging_plan_list --args '{
+bakin_exec_messaging_plan_list {
   "status": "value",
   "agent": "value",
   "campaign": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="messaging-proposal-update" name="bakin_exec_messaging_proposal_update" label="Updated brainstorm proposal" description="Update a proposal status or fields (approve, reject, edit)" source="bakin-bits-official/plugins/messaging/index.ts:2240" parameters={[{"name":"sessionId","type":"string","required":true,"description":"Session ID (required)"},{"name":"proposalId","type":"string","required":true,"description":"Proposal ID (required)"},{"name":"status","type":"string","required":false,"description":"New status (proposed, approved, rejected, revised)"},{"name":"title","type":"string","required":false,"description":"Updated title"},{"name":"brief","type":"string","required":false,"description":"Updated brief"},{"name":"targetDate","type":"string","required":false,"description":"Updated Plan target date"},{"name":"suggestedChannels","type":"array","required":false,"description":"Updated suggested channels"},{"name":"rejectionNote","type":"string","required":false,"description":"Note explaining rejection"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_messaging_proposal_update --args '{
+bakin_exec_messaging_proposal_update {
   "sessionId": "value",
   "proposalId": "value",
   "status": "value",
@@ -497,62 +497,62 @@ mcporter call bakin-<agent>.bakin_exec_messaging_proposal_update --args '{
     "value"
   ],
   "rejectionNote": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="messaging-session-create" name="bakin_exec_messaging_session_create" label="Created brainstorm session" description="Create a new planning session for an agent" source="bakin-bits-official/plugins/messaging/index.ts:2109" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent ID (required)"},{"name":"title","type":"string","required":false,"description":"Session title"},{"name":"scope","type":"string","required":false,"description":"Optional brainstorm scope"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_messaging_session_create --args '{
+bakin_exec_messaging_session_create {
   "agentId": "value",
   "title": "value",
   "scope": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="messaging-session-delete" name="bakin_exec_messaging_session_delete" label="Deleted brainstorm session" description="Delete a planning session without deleting Plans prepared from it." source="bakin-bits-official/plugins/messaging/index.ts:2155" parameters={[{"name":"sessionId","type":"string","required":true,"description":"Session ID (required)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_messaging_session_delete --args '{
+bakin_exec_messaging_session_delete {
   "sessionId": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="messaging-session-get" name="bakin_exec_messaging_session_get" label="Read brainstorm session" description="Get a planning session with full message history and proposals" source="bakin-bits-official/plugins/messaging/index.ts:2094" parameters={[{"name":"sessionId","type":"string","required":true,"description":"Session ID (required)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_messaging_session_get --args '{
+bakin_exec_messaging_session_get {
   "sessionId": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="messaging-session-list" name="bakin_exec_messaging_session_list" label="Listed brainstorm sessions" description="List planning sessions with optional filters" source="bakin-bits-official/plugins/messaging/index.ts:2077" parameters={[{"name":"status","type":"string","required":false,"description":"Filter by status (active, archived)"},{"name":"agentId","type":"string","required":false,"description":"Filter by agent ID"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_messaging_session_list --args '{
+bakin_exec_messaging_session_list {
   "status": "value",
   "agentId": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="messaging-session-materialize" name="bakin_exec_messaging_session_materialize" label="Prepared Plans from brainstorm proposals" description="Prepare Plans from accepted brainstorm proposals" source="bakin-bits-official/plugins/messaging/index.ts:2272" parameters={[{"name":"sessionId","type":"string","required":true,"description":"Session ID (required)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_messaging_session_materialize --args '{
+bakin_exec_messaging_session_materialize {
   "sessionId": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="messaging-session-message" name="bakin_exec_messaging_session_message" label="Sent brainstorm message" description="Send a message in a planning session (non-streaming, returns full response)" source="bakin-bits-official/plugins/messaging/index.ts:2173" parameters={[{"name":"sessionId","type":"string","required":true,"description":"Session ID (required)"},{"name":"message","type":"string","required":true,"description":"User message content (required)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_messaging_session_message --args '{
+bakin_exec_messaging_session_message {
   "sessionId": "value",
   "message": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="messaging-session-update" name="bakin_exec_messaging_session_update" label="Updated brainstorm session" description="Update a planning session title or status" source="bakin-bits-official/plugins/messaging/index.ts:2132" parameters={[{"name":"sessionId","type":"string","required":true,"description":"Session ID (required)"},{"name":"title","type":"string","required":false,"description":"New title"},{"name":"status","type":"string","required":false,"description":"New status (active, archived)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_messaging_session_update --args '{
+bakin_exec_messaging_session_update {
   "sessionId": "value",
   "title": "value",
   "status": "value"
-}'
+}
 ```
 </McpToolCard>
 </div>
@@ -564,16 +564,16 @@ mcporter call bakin-<agent>.bakin_exec_messaging_session_update --args '{
 <div class="mcp-tool-list">
 <McpToolCard id="models-get-config" name="bakin_exec_models_get_config" label="Read model config" description="Get model configuration for all agents or a specific agent. Shows effective model (own override or default), subagent model, and system defaults." source="plugins/models/lib/exec-tools.ts:37" parameters={[{"name":"agentId","type":"string","required":false,"description":"Specific agent ID to query (omit for all agents)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_models_get_config --args '{
+bakin_exec_models_get_config {
   "agentId": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="models-list" name="bakin_exec_models_list" label="Listed models" description="List available AI models with tier classification (budget/standard/premium). Use this to discover what models are available for assignment." source="plugins/models/lib/exec-tools.ts:18" parameters={[{"name":"tier","type":"choice","required":false,"description":"Filter by model tier"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_models_list --args '{
+bakin_exec_models_list {
   "tier": "value"
-}'
+}
 ```
 </McpToolCard>
 </div>
@@ -585,7 +585,7 @@ mcporter call bakin-<agent>.bakin_exec_models_list --args '{
 <div class="mcp-tool-list">
 <McpToolCard id="post-channel" name="bakin_exec_post_channel" label="Posted to channel" description="Post a message through the active runtime channel adapter. Supports image/video attachments when the adapter supports rich content. Oversized images are downscaled automatically for the channel (as a derived export of the same asset) — pass the original asset id; do NOT create a separate, smaller asset just to post it." source="src/core/exec-tools/tools/post-channel.ts:367" parameters={[{"name":"channel","type":"string","required":true,"description":"Channel name or runtime channel target"},{"name":"content","type":"string","required":true,"description":"Message text / caption"},{"name":"imageAssetId","type":"string","required":false,"description":"Asset id of an image to attach. The current version is sent, or an auto-downscaled export if it exceeds the channel attachment limit (no separate asset is created)."},{"name":"videoAssetId","type":"string","required":false,"description":"Asset id of a video to attach (current version is sent)."},{"name":"embed","type":"record","required":false,"description":"Optional rich metadata for adapters that support it"},{"name":"taskId","type":"string","required":false,"description":"Task ID for audit trail"},{"name":"repost","type":"boolean","required":false,"description":"An attached asset is delivered to a channel once per task; set true ONLY when a second copy is genuinely intended."}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_post_channel --args '{
+bakin_exec_post_channel {
   "channel": "value",
   "content": "value",
   "imageAssetId": "value",
@@ -595,7 +595,7 @@ mcporter call bakin-<agent>.bakin_exec_post_channel --args '{
   },
   "taskId": "value",
   "repost": true
-}'
+}
 ```
 </McpToolCard>
 </div>
@@ -607,15 +607,15 @@ mcporter call bakin-<agent>.bakin_exec_post_channel --args '{
 <div class="mcp-tool-list">
 <McpToolCard id="projects-add-item" name="bakin_exec_projects_add_item" label="Added project item" description="Add a new checklist item to a project." source="bakin-bits-official/plugins/projects/index.ts:774" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"title","type":"string","required":true,"description":"Checklist item title"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_projects_add_item --args '{
+bakin_exec_projects_add_item {
   "projectId": "value",
   "title": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="projects-apply-plan" name="bakin_exec_projects_apply_plan" label="Applied a project plan" description="Apply a confirmed project plan update in one operation. Use this after the user confirms exact body/checklist changes so agents do not need shell scripts or multiple low-level calls." source="bakin-bits-official/plugins/projects/index.ts:725" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"title","type":"string","required":false,"description":"Optional new project title"},{"name":"status","type":"choice","required":false,"description":"Optional new status"},{"name":"body","type":"string","required":false,"description":"Replacement markdown body for the project plan"},{"name":"appendBody","type":"string","required":false,"description":"Markdown to append to the existing project body; cannot be combined with body"},{"name":"owner","type":"string","required":false,"description":"Optional new owner"},{"name":"checklistItems","type":"array","required":false,"description":"New unchecked checklist item titles to append"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_projects_apply_plan --args '{
+bakin_exec_projects_apply_plan {
   "projectId": "value",
   "title": "value",
   "status": "value",
@@ -625,141 +625,141 @@ mcporter call bakin-<agent>.bakin_exec_projects_apply_plan --args '{
   "checklistItems": [
     "value"
   ]
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="projects-ask" name="bakin_exec_projects_ask" label="Asked project question" description="Ask an agent a question about a project. Sends the project context (spec, checklist, assets) along with the message to the agent for brainstorming." source="bakin-bits-official/plugins/projects/index.ts:990" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"message","type":"string","required":true,"description":"Question or prompt for the agent"},{"name":"agent","type":"string","required":false,"description":"Agent ID to ask (defaults to main)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_projects_ask --args '{
+bakin_exec_projects_ask {
   "projectId": "value",
   "message": "value",
   "agent": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="projects-attach-asset" name="bakin_exec_projects_attach_asset" label="Attached asset to project" description="Attach an existing asset to a project by assetId. Assets provide additional context (specs, designs, docs) that agents can reference. Only summaries are included in projects_get — use asset tools to read full content when needed." source="bakin-bits-official/plugins/projects/index.ts:876" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"assetId","type":"string","required":true,"description":"Asset id (e.g., \"20260327-hero-a1b2c3d4\") — stable across versions"},{"name":"label","type":"string","required":false,"description":"Human-readable label or summary of what this asset contains"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_projects_attach_asset --args '{
+bakin_exec_projects_attach_asset {
   "projectId": "value",
   "assetId": "value",
   "label": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="projects-create" name="bakin_exec_projects_create" label="Created a project" description="Create a new project with title, markdown body, and optional initial checklist items. Returns project ID and generated task item IDs." source="bakin-bits-official/plugins/projects/index.ts:676" parameters={[{"name":"title","type":"string","required":true,"description":"Project title"},{"name":"body","type":"string","required":false,"description":"Markdown body (spec/plan)"},{"name":"owner","type":"string","required":false,"description":"Project owner"},{"name":"tasks","type":"array","required":false,"description":"Initial checklist item titles"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_projects_create --args '{
+bakin_exec_projects_create {
   "title": "value",
   "body": "value",
   "owner": "value",
   "tasks": [
     "value"
   ]
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="projects-delete" name="bakin_exec_projects_delete" label="Deleted a project" description="Delete a project by ID." source="bakin-bits-official/plugins/projects/index.ts:756" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_projects_delete --args '{
+bakin_exec_projects_delete {
   "projectId": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="projects-detach-asset" name="bakin_exec_projects_detach_asset" label="Detached asset from project" description="Remove an asset reference from a project by assetId. Does not delete the asset itself." source="bakin-bits-official/plugins/projects/index.ts:896" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"assetId","type":"string","required":true,"description":"Asset id to detach"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_projects_detach_asset --args '{
+bakin_exec_projects_detach_asset {
   "projectId": "value",
   "assetId": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="projects-get" name="bakin_exec_projects_get" label="Read project details" description="Get a project by ID including full spec, checklist, progress, and linked board task statuses." source="bakin-bits-official/plugins/projects/index.ts:662" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_projects_get --args '{
+bakin_exec_projects_get {
   "projectId": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="projects-link-item" name="bakin_exec_projects_link_item" label="Linked project item" description="Link an existing board task to a project checklist item. Use this when a task was created separately and should be associated with a project." source="bakin-bits-official/plugins/projects/index.ts:828" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"taskItemId","type":"string","required":true,"description":"Checklist item ID"},{"name":"taskId","type":"string","required":true,"description":"Board task ID to link"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_projects_link_item --args '{
+bakin_exec_projects_link_item {
   "projectId": "value",
   "taskItemId": "value",
   "taskId": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="projects-list" name="bakin_exec_projects_list" label="Listed projects" description="List all projects with optional status filter. Returns summaries with id, title, status, progress, taskCount." source="bakin-bits-official/plugins/projects/index.ts:646" parameters={[{"name":"status","type":"choice","required":false,"description":"Filter by status"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_projects_list --args '{
+bakin_exec_projects_list {
   "status": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="projects-mark-item" name="bakin_exec_projects_mark_item" label="Marked project item" description="Mark a checklist item as checked (done) or unchecked. Returns updated progress percentage." source="bakin-bits-official/plugins/projects/index.ts:789" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"taskItemId","type":"string","required":true,"description":"Checklist item ID (e.g., t001)"},{"name":"checked","type":"boolean","required":true,"description":"true to mark as done, false to uncheck"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_projects_mark_item --args '{
+bakin_exec_projects_mark_item {
   "projectId": "value",
   "taskItemId": "value",
   "checked": true
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="projects-promote-item" name="bakin_exec_projects_promote_item" label="Promoted project item" description="Create a NEW board task from a project checklist item and automatically link it. The task appears on the task board with the item title and projectId set." source="bakin-bits-official/plugins/projects/index.ts:852" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"taskItemId","type":"string","required":true,"description":"Checklist item ID to promote to a board task"},{"name":"assignee","type":"string","required":false,"description":"Agent to assign the task to"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_projects_promote_item --args '{
+bakin_exec_projects_promote_item {
   "projectId": "value",
   "taskItemId": "value",
   "assignee": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="projects-relink-asset" name="bakin_exec_projects_relink_asset" label="Relinked project asset" description="Replace an attached project asset reference with another existing asset. Use this to repair missing or deleted asset references without removing the project context." source="bakin-bits-official/plugins/projects/index.ts:915" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"assetId","type":"string","required":true,"description":"Current asset id attached to the project"},{"name":"newAssetId","type":"string","required":true,"description":"Replacement asset id to attach in its place"},{"name":"label","type":"string","required":false,"description":"Optional replacement label. If omitted, the existing project label is preserved."}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_projects_relink_asset --args '{
+bakin_exec_projects_relink_asset {
   "projectId": "value",
   "assetId": "value",
   "newAssetId": "value",
   "label": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="projects-remove-item" name="bakin_exec_projects_remove_item" label="Removed project item" description="Remove a checklist item from a project." source="bakin-bits-official/plugins/projects/index.ts:809" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"taskItemId","type":"string","required":true,"description":"Checklist item ID to remove"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_projects_remove_item --args '{
+bakin_exec_projects_remove_item {
   "projectId": "value",
   "taskItemId": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="projects-toggle-item" name="bakin_exec_projects_toggle_item" label="Toggled project item" description="Toggle a checklist item checked/unchecked by item ID. Returns updated progress percentage." source="bakin-bits-official/plugins/projects/index.ts:941" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"itemId","type":"string","required":true,"description":"Checklist item ID (e.g., t001)"},{"name":"checked","type":"boolean","required":true,"description":"true to mark as done, false to uncheck"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_projects_toggle_item --args '{
+bakin_exec_projects_toggle_item {
   "projectId": "value",
   "itemId": "value",
   "checked": true
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="projects-update" name="bakin_exec_projects_update" label="Updated a project" description="Update a project's title, status, body, or owner. Cannot set status to &quot;completed&quot; if unchecked items remain." source="bakin-bits-official/plugins/projects/index.ts:698" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"title","type":"string","required":false,"description":"New title"},{"name":"status","type":"choice","required":false,"description":"New status"},{"name":"body","type":"string","required":false,"description":"New markdown body"},{"name":"owner","type":"string","required":false,"description":"New owner"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_projects_update --args '{
+bakin_exec_projects_update {
   "projectId": "value",
   "title": "value",
   "status": "value",
   "body": "value",
   "owner": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="projects-update-item" name="bakin_exec_projects_update_item" label="Updated project item" description="Update a checklist item's title and/or description." source="bakin-bits-official/plugins/projects/index.ts:962" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"itemId","type":"string","required":true,"description":"Checklist item ID (e.g., t001)"},{"name":"title","type":"string","required":false,"description":"New title for the checklist item"},{"name":"description","type":"string","required":false,"description":"New description for the checklist item"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_projects_update_item --args '{
+bakin_exec_projects_update_item {
   "projectId": "value",
   "itemId": "value",
   "title": "value",
   "description": "value"
-}'
+}
 ```
 </McpToolCard>
 </div>
@@ -771,14 +771,14 @@ mcporter call bakin-<agent>.bakin_exec_projects_update_item --args '{
 <div class="mcp-tool-list">
 <McpToolCard id="schedule-briefing" name="bakin_exec_schedule_briefing" label="Generated schedule briefing" description="Today's schedule summary — which jobs fire, assigned agents, alerts. Designed for orchestrator daily briefing." source="plugins/schedule/lib/exec-tools.ts:223" parameters={[{"name":"date","type":"string","required":false,"description":"ISO date to check (defaults to today)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_schedule_briefing --args '{
+bakin_exec_schedule_briefing {
   "date": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="schedule-create" name="bakin_exec_schedule_create" label="Created a scheduled job" description="Create a new scheduled job that creates tasks on the board" source="plugins/schedule/lib/exec-tools.ts:58" parameters={[{"name":"name","type":"string","required":true,"description":"Job name (required)"},{"name":"schedule","type":"string","required":true,"description":"Schedule expression: NL (\"every day at 9am\") or raw cron (\"0 9 * * *\") (required)"},{"name":"agentId","type":"string","required":false,"description":"Agent to assign tasks to. Mutually exclusive with teamId."},{"name":"teamId","type":"string","required":false,"description":"Team to assign — each occurrence is routed to the best-suited member at fire time (#189). Mutually exclusive with agentId."},{"name":"workflowId","type":"string","required":false,"description":"Workflow to attach to tasks"},{"name":"taskPrompt","type":"string","required":false,"description":"Task description template"},{"name":"taskTitle","type":"string","required":false,"description":"Task title template (supports {date}, {agent})"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_schedule_create --args '{
+bakin_exec_schedule_create {
   "name": "value",
   "schedule": "value",
   "agentId": "value",
@@ -786,66 +786,66 @@ mcporter call bakin-<agent>.bakin_exec_schedule_create --args '{
   "workflowId": "value",
   "taskPrompt": "value",
   "taskTitle": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="schedule-delete" name="bakin_exec_schedule_delete" label="Deleted a scheduled job" description="Delete a scheduled job" source="plugins/schedule/lib/exec-tools.ts:142" parameters={[{"name":"jobId","type":"string","required":true,"description":"Job ID (required)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_schedule_delete --args '{
+bakin_exec_schedule_delete {
   "jobId": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="schedule-get" name="bakin_exec_schedule_get" label="Read schedule details" description="Get details for a single scheduled job" source="plugins/schedule/lib/exec-tools.ts:158" parameters={[{"name":"jobId","type":"string","required":true,"description":"Job ID (required)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_schedule_get --args '{
+bakin_exec_schedule_get {
   "jobId": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="schedule-list" name="bakin_exec_schedule_list" label="Listed scheduled jobs" description="List all scheduled jobs (merged runtime cron + Bakin view)" source="plugins/schedule/lib/exec-tools.ts:29" parameters={[{"name":"filter","type":"choice","required":false,"description":"Filter by job type"},{"name":"agentId","type":"string","required":false,"description":"Filter by assigned agent"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_schedule_list --args '{
+bakin_exec_schedule_list {
   "filter": "value",
   "agentId": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="schedule-parse" name="bakin_exec_schedule_parse" label="Parsed cron expression" description="Parse a natural language or raw cron schedule expression" source="plugins/schedule/lib/exec-tools.ts:208" parameters={[{"name":"input","type":"string","required":true,"description":"Schedule expression to parse (required)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_schedule_parse --args '{
+bakin_exec_schedule_parse {
   "input": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="schedule-pause" name="bakin_exec_schedule_pause" label="Paused a scheduled job" description="Pause, resume, or skip runs for a scheduled job" source="plugins/schedule/lib/exec-tools.ts:119" parameters={[{"name":"jobId","type":"string","required":true,"description":"Job ID (required)"},{"name":"action","type":"choice","required":true,"description":"Action to take (required)"},{"name":"pauseUntil","type":"string","required":false,"description":"ISO date to auto-resume (for pause action)"},{"name":"skipN","type":"number","required":false,"description":"Number of runs to skip (for skip action)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_schedule_pause --args '{
+bakin_exec_schedule_pause {
   "jobId": "value",
   "action": "value",
   "pauseUntil": "value",
   "skipN": 20
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="schedule-run-now" name="bakin_exec_schedule_run_now" label="Triggered scheduled job" description="Trigger an immediate run of a scheduled job" source="plugins/schedule/lib/exec-tools.ts:173" parameters={[{"name":"jobId","type":"string","required":true,"description":"Job ID (required)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_schedule_run_now --args '{
+bakin_exec_schedule_run_now {
   "jobId": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="schedule-runs" name="bakin_exec_schedule_runs" label="Listed schedule runs" description="Get run history for a scheduled job" source="plugins/schedule/lib/exec-tools.ts:192" parameters={[{"name":"jobId","type":"string","required":true,"description":"Job ID (required)"},{"name":"limit","type":"number","required":false,"description":"Max runs to return (default 50)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_schedule_runs --args '{
+bakin_exec_schedule_runs {
   "jobId": "value",
   "limit": 20
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="schedule-update" name="bakin_exec_schedule_update" label="Updated a scheduled job" description="Update an existing scheduled job" source="plugins/schedule/lib/exec-tools.ts:90" parameters={[{"name":"jobId","type":"string","required":true,"description":"Job ID (required)"},{"name":"name","type":"string","required":false,"description":"New job name"},{"name":"schedule","type":"string","required":false,"description":"New schedule expression"},{"name":"agentId","type":"string","required":false,"description":"New agent assignment. Setting a non-empty agent clears any team; mutually exclusive with teamId."},{"name":"teamId","type":"string","required":false,"description":"New team assignment (#189). Setting a non-empty team clears any agent; mutually exclusive with agentId."},{"name":"workflowId","type":"string","required":false,"description":"New workflow binding"},{"name":"taskPrompt","type":"string","required":false,"description":"New task prompt template"},{"name":"taskTitle","type":"string","required":false,"description":"New task title template"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_schedule_update --args '{
+bakin_exec_schedule_update {
   "jobId": "value",
   "name": "value",
   "schedule": "value",
@@ -854,7 +854,7 @@ mcporter call bakin-<agent>.bakin_exec_schedule_update --args '{
   "workflowId": "value",
   "taskPrompt": "value",
   "taskTitle": "value"
-}'
+}
 ```
 </McpToolCard>
 </div>
@@ -866,58 +866,58 @@ mcporter call bakin-<agent>.bakin_exec_schedule_update --args '{
 <div class="mcp-tool-list">
 <McpToolCard id="search-facets" name="bakin_exec_search_facets" label="Search facets" description="Get facet value counts for a plugin. Useful for understanding data distribution (e.g., how many tasks per status)." source="src/core/exec-tools/tools/search-tools.ts:157" parameters={[{"name":"plugin","type":"string","required":true,"description":"Plugin id (tasks, assets, projects, etc.)"},{"name":"facets","type":"string","required":true,"description":"Comma-separated facet fields (e.g., \"status,agent\")"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_search_facets --args '{
+bakin_exec_search_facets {
   "plugin": "value",
   "facets": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="search-lookup" name="bakin_exec_search_lookup" label="Search lookup" description="Look up a specific indexed document by its key and plugin." source="src/core/exec-tools/tools/search-tools.ts:126" parameters={[{"name":"plugin","type":"string","required":true,"description":"Plugin id (tasks, assets, projects, etc.)"},{"name":"key","type":"string","required":true,"description":"Document key to look up"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_search_lookup --args '{
+bakin_exec_search_lookup {
   "plugin": "value",
   "key": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="search-query" name="bakin_exec_search_query" label="Search" description="Search across all Bakin content (tasks, assets, projects, workflows, schedule, team, memory, messaging) or a specific plugin. Returns ranked results with scores." source="src/core/exec-tools/tools/search-tools.ts:48" parameters={[{"name":"q","type":"string","required":false,"description":"Search query text"},{"name":"limit","type":"number","required":false,"description":"Maximum results to return (default: 20)"},{"name":"offset","type":"number","required":false,"description":"Skip this many results (for pagination)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_search_query --args '{
+bakin_exec_search_query {
   "q": "value",
   "limit": 20,
   "offset": 20
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="search-reindex" name="bakin_exec_search_reindex" label="Reindex search" description="Trigger a full reindex of all content types (or a specific plugin). Use after bulk data changes." source="src/core/exec-tools/tools/search-tools.ts:220" parameters={[{"name":"plugin","type":"string","required":false,"description":"Specific plugin id to reindex (optional — omit for all)"},{"name":"rebuild","type":"boolean","required":false,"description":"Drop and recreate indexes before reindexing (default: false)"},{"name":"verify","type":"boolean","required":false,"description":"Re-query tables after reindex to verify doc counts (default: false)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_search_reindex --args '{
+bakin_exec_search_reindex {
   "plugin": "value",
   "rebuild": true,
   "verify": true
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="search-similar" name="bakin_exec_search_similar" label="Find similar" description="Find documents similar to a given text description. Uses semantic (vector) search for meaning-based matching." source="src/core/exec-tools/tools/search-tools.ts:186" parameters={[{"name":"text","type":"string","required":true,"description":"Text to find similar documents for"},{"name":"plugin","type":"string","required":false,"description":"Limit to a specific plugin id (optional)"},{"name":"limit","type":"number","required":false,"description":"Maximum results (default: 10)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_search_similar --args '{
+bakin_exec_search_similar {
   "text": "value",
   "plugin": "value",
   "limit": 20
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="search-stats" name="bakin_exec_search_stats" label="Search stats" description="Get search system health: enabled status, per-table document counts, and index stats." source="src/core/exec-tools/tools/search-tools.ts:250">
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_search_stats
+bakin_exec_search_stats
 ```
 </McpToolCard>
 <McpToolCard id="search-table" name="bakin_exec_search_table" label="Search plugin" description="Search a specific Bakin plugin with facet filtering. Returns results plus facet counts for filtering." source="src/core/exec-tools/tools/search-tools.ts:90" parameters={[{"name":"q","type":"string","required":false,"description":"Search query text"},{"name":"limit","type":"number","required":false,"description":"Maximum results (default: 20)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_search_table --args '{
+bakin_exec_search_table {
   "q": "value",
   "limit": 20
-}'
+}
 ```
 </McpToolCard>
 </div>
@@ -927,15 +927,15 @@ mcporter call bakin-<agent>.bakin_exec_search_table --args '{
 <p class="mcp-section-description">Workflow submission tools let agents submit step output back to the workflow engine.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="submit-step" name="bakin_exec_submit_step" label="Submitted workflow step" description="Submit workflow step output with local pre-validation. Validates against the step schema BEFORE hitting the server, giving you detailed field-level errors without a round trip." source="plugins/workflows/lib/exec-tools.ts:244" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"},{"name":"stepId","type":"string","required":true,"description":"Step ID to submit for"},{"name":"output","type":"record","required":true,"description":"JSON output matching the step schema"}]}>
+<McpToolCard id="submit-step" name="bakin_exec_submit_step" label="Submitted workflow step" description="Submit workflow step output with local pre-validation. Validates against the step schema BEFORE hitting the server, giving you detailed field-level errors without a round trip." source="plugins/workflows/lib/exec-tools.ts:247" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"},{"name":"stepId","type":"string","required":true,"description":"Step ID to submit for"},{"name":"output","type":"record","required":true,"description":"JSON output matching the step schema"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_submit_step --args '{
+bakin_exec_submit_step {
   "taskId": "value",
   "stepId": "value",
   "output": {
     "key": "value"
   }
-}'
+}
 ```
 </McpToolCard>
 </div>
@@ -947,31 +947,31 @@ mcporter call bakin-<agent>.bakin_exec_submit_step --args '{
 <div class="mcp-tool-list">
 <McpToolCard id="tasks-assign" name="bakin_exec_tasks_assign" label="Assigned a task" description="Assign a task to an agent." source="plugins/tasks/lib/exec-tools.ts:388" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"},{"name":"agent","type":"string","required":true,"description":"Agent to assign the task to"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_tasks_assign --args '{
+bakin_exec_tasks_assign {
   "taskId": "value",
   "agent": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="tasks-block" name="bakin_exec_tasks_block" label="Blocked a task" description="Mark a task as blocked with a reason. Use when you cannot proceed." source="plugins/tasks/lib/exec-tools.ts:225" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"},{"name":"reason","type":"string","required":true,"description":"Why the task is blocked"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_tasks_block --args '{
+bakin_exec_tasks_block {
   "taskId": "value",
   "reason": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="tasks-complete" name="bakin_exec_tasks_complete" label="Completed a task" description="Report that your task is complete. Moves the task to Done and notifies the orchestrator." source="plugins/tasks/lib/exec-tools.ts:250" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"},{"name":"summary","type":"string","required":true,"description":"Summary of what you accomplished"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_tasks_complete --args '{
+bakin_exec_tasks_complete {
   "taskId": "value",
   "summary": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="tasks-create" name="bakin_exec_tasks_create" label="Created a task" description="Create a new task on the task board. Workflows are auto-matched by title when workflowId is not provided. Provide workflowId to force a specific workflow, or skipWorkflowReason to explicitly skip." source="plugins/tasks/lib/exec-tools.ts:126" parameters={[{"name":"title","type":"string","required":true,"description":"Task title"},{"name":"assignee","type":"string","required":false,"description":"Agent to assign (chef, pixel, rolo, patch, trainer, etc.). Mutually exclusive with team."},{"name":"team","type":"string","required":false,"description":"Team to assign — Bakin routes the task to the best-suited member at dispatch (use bakin_exec_team_org to see teams). Mutually exclusive with assignee."},{"name":"description","type":"string","required":false,"description":"Task description and context"},{"name":"parentId","type":"string","required":false,"description":"Parent task ID if this is a subtask"},{"name":"workflowId","type":"string","required":false,"description":"Workflow to start (e.g. image-social-post, video-script). Use bakin_exec_workflows_list to see options."},{"name":"skipWorkflowReason","type":"string","required":false,"description":"Reason no workflow applies (required if workflowId is not set and this is not a subtask)"},{"name":"projectId","type":"string","required":false,"description":"Project ID to link this task to"},{"name":"availableAt","type":"string","required":false,"description":"ISO timestamp before which dispatch should not pick up the task"},{"name":"dueAt","type":"string","required":false,"description":"ISO timestamp representing the task deadline or target delivery time"},{"name":"sourcePluginId","type":"string","required":false,"description":"Plugin that owns the source entity for this task"},{"name":"sourceEntityType","type":"string","required":false,"description":"Source entity type, such as plan or deliverable"},{"name":"sourceEntityId","type":"string","required":false,"description":"Source entity ID"},{"name":"sourcePurpose","type":"string","required":false,"description":"Source purpose, such as kickoff or publish"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_tasks_create --args '{
+bakin_exec_tasks_create {
   "title": "value",
   "assignee": "value",
   "team": "value",
@@ -986,59 +986,59 @@ mcporter call bakin-<agent>.bakin_exec_tasks_create --args '{
   "sourceEntityType": "value",
   "sourceEntityId": "value",
   "sourcePurpose": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="tasks-delete" name="bakin_exec_tasks_delete" label="Deleted a task" description="Delete a task from the board." source="plugins/tasks/lib/exec-tools.ts:366" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_tasks_delete --args '{
+bakin_exec_tasks_delete {
   "taskId": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="tasks-get" name="bakin_exec_tasks_get" label="Read task details" description="Get details about a task — title, description, current column, logs, dependencies, project context." source="plugins/tasks/lib/exec-tools.ts:92" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_tasks_get --args '{
+bakin_exec_tasks_get {
   "taskId": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="tasks-list" name="bakin_exec_tasks_list" label="Listed tasks" description="List all tasks on the board. Optionally filter by column or agent." source="plugins/tasks/lib/exec-tools.ts:62" parameters={[{"name":"column","type":"choice","required":false,"description":"Filter by column"},{"name":"agent","type":"string","required":false,"description":"Filter by assigned agent"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_tasks_list --args '{
+bakin_exec_tasks_list {
   "column": "value",
   "agent": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="tasks-log-progress" name="bakin_exec_tasks_log_progress" label="Logged progress" description="Log a human-readable progress update to the live activity feed. Call this at every significant step." source="plugins/tasks/lib/exec-tools.ts:275" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID (e.g. \"fe84ac51\")"},{"name":"message","type":"string","required":true,"description":"Human-readable status update"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_tasks_log_progress --args '{
+bakin_exec_tasks_log_progress {
   "taskId": "value",
   "message": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="tasks-move" name="bakin_exec_tasks_move" label="Moved a task" description="Move a task to a different column on the task board." source="plugins/tasks/lib/exec-tools.ts:197" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"},{"name":"to","type":"choice","required":true,"description":"Target column"},{"name":"reason","type":"string","required":false,"description":"Required when moving to \"blocked\""}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_tasks_move --args '{
+bakin_exec_tasks_move {
   "taskId": "value",
   "to": "value",
   "reason": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="tasks-set-dependency" name="bakin_exec_tasks_set_dependency" label="Set task dependency" description="Register a dependency between tasks. Your task will be auto-re-dispatched when the dependency completes. After registering, exit — do not wait." source="plugins/tasks/lib/exec-tools.ts:294" parameters={[{"name":"taskId","type":"string","required":true,"description":"Your task ID (the one that depends)"},{"name":"dependsOn","type":"string","required":true,"description":"Task ID you depend on"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_tasks_set_dependency --args '{
+bakin_exec_tasks_set_dependency {
   "taskId": "value",
   "dependsOn": "value"
-}'
+}
 ```
 </McpToolCard>
 <McpToolCard id="tasks-update" name="bakin_exec_tasks_update" label="Updated a task" description="Update a task on the board — change title, description, or assigned agent." source="plugins/tasks/lib/exec-tools.ts:315" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"},{"name":"title","type":"string","required":false,"description":"New task title"},{"name":"description","type":"string","required":false,"description":"New task description"},{"name":"agent","type":"string","required":false,"description":"New assigned agent. Mutually exclusive with team."},{"name":"team","type":"string","required":false,"description":"New team assignment — clears any concrete agent; Bakin re-routes at dispatch. Mutually exclusive with agent."},{"name":"availableAt","type":"string","required":false,"description":"ISO timestamp before which dispatch should not pick up the task"},{"name":"dueAt","type":"string","required":false,"description":"ISO timestamp representing the task deadline or target delivery time"},{"name":"expectedVersion","type":"number","required":false,"description":"Optimistic-concurrency check: fail if the task version has moved past this"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_tasks_update --args '{
+bakin_exec_tasks_update {
   "taskId": "value",
   "title": "value",
   "description": "value",
@@ -1047,7 +1047,7 @@ mcporter call bakin-<agent>.bakin_exec_tasks_update --args '{
   "availableAt": "value",
   "dueAt": "value",
   "expectedVersion": 20
-}'
+}
 ```
 </McpToolCard>
 </div>
@@ -1057,9 +1057,9 @@ mcporter call bakin-<agent>.bakin_exec_tasks_update --args '{
 <p class="mcp-section-description">Team tools expose agent roster, identity, status, messaging, and permission operations.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="team-create-agent" name="bakin_exec_team_create_agent" label="Created agent" description="Create a new agent: registers it with the active runtime, writes persona files, configures dispatch permissions, optionally assigns it to a team. Returns next-step instructions." source="plugins/team/index.ts:544" parameters={[{"name":"id","type":"string","required":false,"description":"Agent ID (lowercase alphanumeric + hyphens). Auto-derived from name if omitted."},{"name":"name","type":"string","required":true,"description":"Display name (e.g. \"Jessica\")"},{"name":"emoji","type":"string","required":false,"description":"Single emoji (e.g. \"🔎\")"},{"name":"role","type":"string","required":false,"description":"One-line role description"},{"name":"vibe","type":"string","required":false,"description":"Personality vibe"},{"name":"primaryFunction","type":"string","required":false,"description":"What the agent does"},{"name":"defaultMode","type":"string","required":false,"description":"How the agent operates by default"},{"name":"model","type":"string","required":false,"description":"Full provider/model string. Uses default if omitted."},{"name":"soul","type":"string","required":false,"description":"Raw markdown for SOUL.md"},{"name":"tools","type":"string","required":false,"description":"Raw markdown for TOOLS.md"},{"name":"teamId","type":"string","required":false,"description":"Bakin team to assign the agent to"},{"name":"dispatchable","type":"union","required":false,"description":"Who can dispatch tasks to this agent. Default: \"main\"."}]}>
+<McpToolCard id="team-create-agent" name="bakin_exec_team_create_agent" label="Created agent" description="Create a new agent: registers it with the active runtime, writes persona files, configures dispatch permissions, optionally assigns it to a team. Returns next-step instructions." source="plugins/team/index.ts:542" parameters={[{"name":"id","type":"string","required":false,"description":"Agent ID (lowercase alphanumeric + hyphens). Auto-derived from name if omitted."},{"name":"name","type":"string","required":true,"description":"Display name (e.g. \"Jessica\")"},{"name":"emoji","type":"string","required":false,"description":"Single emoji (e.g. \"🔎\")"},{"name":"role","type":"string","required":false,"description":"One-line role description"},{"name":"vibe","type":"string","required":false,"description":"Personality vibe"},{"name":"primaryFunction","type":"string","required":false,"description":"What the agent does"},{"name":"defaultMode","type":"string","required":false,"description":"How the agent operates by default"},{"name":"model","type":"string","required":false,"description":"Full provider/model string. Uses default if omitted."},{"name":"soul","type":"string","required":false,"description":"Raw markdown for SOUL.md"},{"name":"tools","type":"string","required":false,"description":"Raw markdown for TOOLS.md"},{"name":"teamId","type":"string","required":false,"description":"Bakin team to assign the agent to"},{"name":"dispatchable","type":"union","required":false,"description":"Who can dispatch tasks to this agent. Default: \"main\"."}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_team_create_agent --args '{
+bakin_exec_team_create_agent {
   "id": "value",
   "name": "value",
   "emoji": "value",
@@ -1072,84 +1072,84 @@ mcporter call bakin-<agent>.bakin_exec_team_create_agent --args '{
   "tools": "value",
   "teamId": "value",
   "dispatchable": "value"
-}'
+}
 ```
 </McpToolCard>
-<McpToolCard id="team-delete-agent" name="bakin_exec_team_delete_agent" label="Deleted agent" description="Remove an agent from the active runtime and clean up Bakin state. Requires confirm=true as a safety guard." source="plugins/team/index.ts:654" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent to delete"},{"name":"confirm","type":"boolean","required":true,"description":"Must be true — safety guard against accidental deletion"}]}>
+<McpToolCard id="team-delete-agent" name="bakin_exec_team_delete_agent" label="Deleted agent" description="Remove an agent from the active runtime and clean up Bakin state. Requires confirm=true as a safety guard." source="plugins/team/index.ts:652" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent to delete"},{"name":"confirm","type":"boolean","required":true,"description":"Must be true — safety guard against accidental deletion"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_team_delete_agent --args '{
+bakin_exec_team_delete_agent {
   "agentId": "value",
   "confirm": true
-}'
+}
 ```
 </McpToolCard>
-<McpToolCard id="team-list" name="bakin_exec_team_list" label="Listed team" description="List all agents with their current status (online/working/available/offline)." source="plugins/team/index.ts:328">
+<McpToolCard id="team-list" name="bakin_exec_team_list" label="Listed team" description="List all agents with their current status (online/working/available/offline)." source="plugins/team/index.ts:326">
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_team_list
+bakin_exec_team_list
 ```
 </McpToolCard>
-<McpToolCard id="team-members" name="bakin_exec_team_members" label="Listed team members" description="Get agents that belong to a specific team (e.g. &quot;builders&quot;, &quot;creators&quot;)." source="plugins/team/index.ts:499" parameters={[{"name":"teamId","type":"string","required":true,"description":"Team ID (e.g. \"builders\", \"creators\")"}]}>
+<McpToolCard id="team-members" name="bakin_exec_team_members" label="Listed team members" description="Get agents that belong to a specific team (e.g. &quot;builders&quot;, &quot;creators&quot;)." source="plugins/team/index.ts:497" parameters={[{"name":"teamId","type":"string","required":true,"description":"Team ID (e.g. \"builders\", \"creators\")"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_team_members --args '{
+bakin_exec_team_members {
   "teamId": "value"
-}'
+}
 ```
 </McpToolCard>
-<McpToolCard id="team-message" name="bakin_exec_team_message" label="Sent a message" description="Send a message to an agent via the active runtime." source="plugins/team/index.ts:442" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent ID"},{"name":"message","type":"string","required":true,"description":"Message to send. Do NOT use this to brief an agent about a task they were just assigned — dispatch already notified them, and a second message starts a duplicate worker in their main session."}]}>
+<McpToolCard id="team-message" name="bakin_exec_team_message" label="Sent a message" description="Send a message to an agent via the active runtime." source="plugins/team/index.ts:440" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent ID"},{"name":"message","type":"string","required":true,"description":"Message to send. Do NOT use this to brief an agent about a task they were just assigned — dispatch already notified them, and a second message starts a duplicate worker in their main session."}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_team_message --args '{
+bakin_exec_team_message {
   "agentId": "value",
   "message": "value"
-}'
+}
 ```
 </McpToolCard>
-<McpToolCard id="team-my-team" name="bakin_exec_team_my_team" label="Read own team" description="Get the team that a specific agent belongs to, including all teammates." source="plugins/team/index.ts:518" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent ID"}]}>
+<McpToolCard id="team-my-team" name="bakin_exec_team_my_team" label="Read own team" description="Get the team that a specific agent belongs to, including all teammates." source="plugins/team/index.ts:516" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent ID"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_team_my_team --args '{
+bakin_exec_team_my_team {
   "agentId": "value"
-}'
+}
 ```
 </McpToolCard>
-<McpToolCard id="team-org" name="bakin_exec_team_org" label="Read organization" description="Get the full org structure: teams with their members. Use this to understand who is on which team and reporting lines." source="plugins/team/index.ts:489">
+<McpToolCard id="team-org" name="bakin_exec_team_org" label="Read organization" description="Get the full org structure: teams with their members. Use this to understand who is on which team and reporting lines." source="plugins/team/index.ts:487">
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_team_org
+bakin_exec_team_org
 ```
 </McpToolCard>
-<McpToolCard id="team-profile" name="bakin_exec_team_profile" label="Read agent profile" description="Get the full profile for an agent including soul, rules, and tools." source="plugins/team/index.ts:348" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent ID"}]}>
+<McpToolCard id="team-profile" name="bakin_exec_team_profile" label="Read agent profile" description="Get the full profile for an agent including soul, rules, and tools." source="plugins/team/index.ts:346" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent ID"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_team_profile --args '{
+bakin_exec_team_profile {
   "agentId": "value"
-}'
+}
 ```
 </McpToolCard>
-<McpToolCard id="team-read-file" name="bakin_exec_team_read_file" label="Read agent file" description="Read a workspace file for an agent (e.g., SOUL.md, AGENTS.md, TOOLS.md)." source="plugins/team/index.ts:427" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent ID"},{"name":"filename","type":"string","required":true,"description":"File name (e.g., SOUL.md)"}]}>
+<McpToolCard id="team-read-file" name="bakin_exec_team_read_file" label="Read agent file" description="Read a workspace file for an agent (e.g., SOUL.md, AGENTS.md, TOOLS.md)." source="plugins/team/index.ts:425" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent ID"},{"name":"filename","type":"string","required":true,"description":"File name (e.g., SOUL.md)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_team_read_file --args '{
+bakin_exec_team_read_file {
   "agentId": "value",
   "filename": "value"
-}'
+}
 ```
 </McpToolCard>
-<McpToolCard id="team-set-permissions" name="bakin_exec_team_set_permissions" label="Updated permissions" description="Update dispatch permissions — which agents a given agent can dispatch tasks to (subagents.allowAgents)." source="plugins/team/index.ts:699" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent whose allowAgents to modify"},{"name":"allowAgents","type":"array","required":true,"description":"Full replacement list of agent IDs this agent can dispatch to"}]}>
+<McpToolCard id="team-set-permissions" name="bakin_exec_team_set_permissions" label="Updated permissions" description="Update dispatch permissions — which agents a given agent can dispatch tasks to (subagents.allowAgents)." source="plugins/team/index.ts:697" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent whose allowAgents to modify"},{"name":"allowAgents","type":"array","required":true,"description":"Full replacement list of agent IDs this agent can dispatch to"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_team_set_permissions --args '{
+bakin_exec_team_set_permissions {
   "agentId": "value",
   "allowAgents": [
     "value"
   ]
-}'
+}
 ```
 </McpToolCard>
-<McpToolCard id="team-status" name="bakin_exec_team_status" label="Checked agent status" description="Get the heartbeat and health status for an agent." source="plugins/team/index.ts:362" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent ID"}]}>
+<McpToolCard id="team-status" name="bakin_exec_team_status" label="Checked agent status" description="Get the heartbeat and health status for an agent." source="plugins/team/index.ts:360" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent ID"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_team_status --args '{
+bakin_exec_team_status {
   "agentId": "value"
-}'
+}
 ```
 </McpToolCard>
-<McpToolCard id="team-update-identity" name="bakin_exec_team_update_identity" label="Updated agent identity" description="Update an existing agent's identity fields (name, emoji, role, vibe, etc.) and/or workspace files (SOUL.md, TOOLS.md)." source="plugins/team/index.ts:619" parameters={[{"name":"agentId","type":"string","required":true,"description":"Target agent ID"},{"name":"name","type":"string","required":false,"description":"New display name"},{"name":"emoji","type":"string","required":false,"description":"New emoji"},{"name":"role","type":"string","required":false,"description":"Updated role"},{"name":"vibe","type":"string","required":false,"description":"Updated vibe"},{"name":"primaryFunction","type":"string","required":false,"description":"Updated primary function"},{"name":"defaultMode","type":"string","required":false,"description":"Updated default mode"},{"name":"soul","type":"string","required":false,"description":"Replace SOUL.md content"},{"name":"tools","type":"string","required":false,"description":"Replace TOOLS.md content"}]}>
+<McpToolCard id="team-update-identity" name="bakin_exec_team_update_identity" label="Updated agent identity" description="Update an existing agent's identity fields (name, emoji, role, vibe, etc.) and/or workspace files (SOUL.md, TOOLS.md)." source="plugins/team/index.ts:617" parameters={[{"name":"agentId","type":"string","required":true,"description":"Target agent ID"},{"name":"name","type":"string","required":false,"description":"New display name"},{"name":"emoji","type":"string","required":false,"description":"New emoji"},{"name":"role","type":"string","required":false,"description":"Updated role"},{"name":"vibe","type":"string","required":false,"description":"Updated vibe"},{"name":"primaryFunction","type":"string","required":false,"description":"Updated primary function"},{"name":"defaultMode","type":"string","required":false,"description":"Updated default mode"},{"name":"soul","type":"string","required":false,"description":"Replace SOUL.md content"},{"name":"tools","type":"string","required":false,"description":"Replace TOOLS.md content"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_team_update_identity --args '{
+bakin_exec_team_update_identity {
   "agentId": "value",
   "name": "value",
   "emoji": "value",
@@ -1159,7 +1159,7 @@ mcporter call bakin-<agent>.bakin_exec_team_update_identity --args '{
   "defaultMode": "value",
   "soul": "value",
   "tools": "value"
-}'
+}
 ```
 </McpToolCard>
 </div>
@@ -1169,79 +1169,79 @@ mcporter call bakin-<agent>.bakin_exec_team_update_identity --args '{
 <p class="mcp-section-description">Workflow tools expose workflow definitions, active instances, current steps, and step completion.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="workflows-cancel-map-child" name="bakin_exec_workflows_cancel_map_child" label="Cancelled map child" description="Cancel one fan-out child of a map_workflow step. The map join stays blocked until the child is retried or the whole parent is cancelled — children are never silently skipped." source="plugins/workflows/lib/exec-tools.ts:197" parameters={[{"name":"taskId","type":"string","required":true,"description":"PARENT task ID (the instance holding the map step)"},{"name":"stepId","type":"string","required":true,"description":"The map_workflow step ID"},{"name":"index","type":"number","required":true,"description":"Child index within the fan-out (0-based)"}]}>
+<McpToolCard id="workflows-cancel-map-child" name="bakin_exec_workflows_cancel_map_child" label="Cancelled map child" description="Cancel one fan-out child of a map_workflow step. The map join stays blocked until the child is retried or the whole parent is cancelled — children are never silently skipped." source="plugins/workflows/lib/exec-tools.ts:200" parameters={[{"name":"taskId","type":"string","required":true,"description":"PARENT task ID (the instance holding the map step)"},{"name":"stepId","type":"string","required":true,"description":"The map_workflow step ID"},{"name":"index","type":"number","required":true,"description":"Child index within the fan-out (0-based)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_workflows_cancel_map_child --args '{
+bakin_exec_workflows_cancel_map_child {
   "taskId": "value",
   "stepId": "value",
   "index": 20
-}'
+}
 ```
 </McpToolCard>
-<McpToolCard id="workflows-complete-step" name="bakin_exec_workflows_complete_step" label="Completed workflow step" description="Complete a workflow step with output. Validates output against the step schema, advances the workflow to the next step. Returns success status and whether the workflow is complete." source="plugins/workflows/lib/exec-tools.ts:138" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"},{"name":"stepId","type":"string","required":true,"description":"Step ID to complete"},{"name":"output","type":"record","required":true,"description":"Step output object"}]}>
+<McpToolCard id="workflows-complete-step" name="bakin_exec_workflows_complete_step" label="Completed workflow step" description="Complete a workflow step with output. Validates output against the step schema, advances the workflow to the next step. Returns success status and whether the workflow is complete." source="plugins/workflows/lib/exec-tools.ts:141" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"},{"name":"stepId","type":"string","required":true,"description":"Step ID to complete"},{"name":"output","type":"record","required":true,"description":"Step output object"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_workflows_complete_step --args '{
+bakin_exec_workflows_complete_step {
   "taskId": "value",
   "stepId": "value",
   "output": {
     "key": "value"
   }
-}'
+}
 ```
 </McpToolCard>
-<McpToolCard id="workflows-get-definition" name="bakin_exec_workflows_get_definition" label="Read workflow definition" description="Get a workflow definition by filename. Returns the full definition with steps, inputs, and resolved sub-workflows." source="plugins/workflows/lib/exec-tools.ts:44" parameters={[{"name":"name","type":"string","required":true,"description":"Workflow definition filename (e.g. \"content-pipeline\")"}]}>
+<McpToolCard id="workflows-get-definition" name="bakin_exec_workflows_get_definition" label="Read workflow definition" description="Get a workflow definition by filename. Returns the full definition with steps, inputs, and resolved sub-workflows." source="plugins/workflows/lib/exec-tools.ts:47" parameters={[{"name":"name","type":"string","required":true,"description":"Workflow definition filename (e.g. \"content-pipeline\")"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_workflows_get_definition --args '{
+bakin_exec_workflows_get_definition {
   "name": "value"
-}'
+}
 ```
 </McpToolCard>
-<McpToolCard id="workflows-get-instance" name="bakin_exec_workflows_get_instance" label="Read workflow instance" description="Get the full state of a workflow instance for a task, including step states and history." source="plugins/workflows/lib/exec-tools.ts:110" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"}]}>
+<McpToolCard id="workflows-get-instance" name="bakin_exec_workflows_get_instance" label="Read workflow instance" description="Get the full state of a workflow instance for a task, including step states and history." source="plugins/workflows/lib/exec-tools.ts:113" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_workflows_get_instance --args '{
+bakin_exec_workflows_get_instance {
   "taskId": "value"
-}'
+}
 ```
 </McpToolCard>
-<McpToolCard id="workflows-get-step" name="bakin_exec_workflows_get_step" label="Read workflow step" description="Get the current workflow step for a task. Returns only the current step (information gating — future steps are hidden). Critical for agents to know what to do next." source="plugins/workflows/lib/exec-tools.ts:124" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"}]}>
+<McpToolCard id="workflows-get-step" name="bakin_exec_workflows_get_step" label="Read workflow step" description="Get the current workflow step for a task. Returns only the current step (information gating — future steps are hidden). Critical for agents to know what to do next." source="plugins/workflows/lib/exec-tools.ts:127" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_workflows_get_step --args '{
+bakin_exec_workflows_get_step {
   "taskId": "value"
-}'
+}
 ```
 </McpToolCard>
-<McpToolCard id="workflows-list" name="bakin_exec_workflows_list" label="Listed workflows" description="List all workflow definitions (templates). Returns name, filename, description, and step count for each." source="plugins/workflows/lib/exec-tools.ts:25">
+<McpToolCard id="workflows-list" name="bakin_exec_workflows_list" label="Listed workflows" description="List all workflow definitions (templates). Returns name, filename, description, and step count for each." source="plugins/workflows/lib/exec-tools.ts:28">
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_workflows_list
+bakin_exec_workflows_list
 ```
 </McpToolCard>
-<McpToolCard id="workflows-list-instances" name="bakin_exec_workflows_list_instances" label="Listed workflow runs" description="List workflow instances. Optionally filter by status (in_progress, pending_approval, complete, failed, cancelled)." source="plugins/workflows/lib/exec-tools.ts:97" parameters={[{"name":"status","type":"choice","required":false,"description":"Filter by instance status"}]}>
+<McpToolCard id="workflows-list-instances" name="bakin_exec_workflows_list_instances" label="Listed workflow runs" description="List workflow instances. Optionally filter by status (in_progress, pending_approval, complete, failed, cancelled)." source="plugins/workflows/lib/exec-tools.ts:100" parameters={[{"name":"status","type":"choice","required":false,"description":"Filter by instance status"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_workflows_list_instances --args '{
+bakin_exec_workflows_list_instances {
   "status": "value"
-}'
+}
 ```
 </McpToolCard>
-<McpToolCard id="workflows-retry-map-child" name="bakin_exec_workflows_retry_map_child" label="Retried map child" description="Retry one fan-out child of a map_workflow step. Live children reopen in place; dead/cancelled children are re-created under the same child task id with their original item context. Unblocks a blocked map join without rewinding the parent." source="plugins/workflows/lib/exec-tools.ts:171" parameters={[{"name":"taskId","type":"string","required":true,"description":"PARENT task ID (the instance holding the map step)"},{"name":"stepId","type":"string","required":true,"description":"The map_workflow step ID"},{"name":"index","type":"number","required":true,"description":"Child index within the fan-out (0-based)"},{"name":"reason","type":"string","required":false,"description":"Why this child is being retried"}]}>
+<McpToolCard id="workflows-retry-map-child" name="bakin_exec_workflows_retry_map_child" label="Retried map child" description="Retry one fan-out child of a map_workflow step. Live children reopen in place; dead/cancelled children are re-created under the same child task id with their original item context. Unblocks a blocked map join without rewinding the parent." source="plugins/workflows/lib/exec-tools.ts:174" parameters={[{"name":"taskId","type":"string","required":true,"description":"PARENT task ID (the instance holding the map step)"},{"name":"stepId","type":"string","required":true,"description":"The map_workflow step ID"},{"name":"index","type":"number","required":true,"description":"Child index within the fan-out (0-based)"},{"name":"reason","type":"string","required":false,"description":"Why this child is being retried"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_workflows_retry_map_child --args '{
+bakin_exec_workflows_retry_map_child {
   "taskId": "value",
   "stepId": "value",
   "index": 20,
   "reason": "value"
-}'
+}
 ```
 </McpToolCard>
-<McpToolCard id="workflows-start" name="bakin_exec_workflows_start" label="Started a workflow" description="Start a workflow instance for a task. The task must exist on the board. Returns the created instance." source="plugins/workflows/lib/exec-tools.ts:62" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID to start workflow for"},{"name":"workflowId","type":"string","required":true,"description":"Workflow definition filename"}]}>
+<McpToolCard id="workflows-start" name="bakin_exec_workflows_start" label="Started a workflow" description="Start a workflow instance for a task. The task must exist on the board. Returns the created instance." source="plugins/workflows/lib/exec-tools.ts:65" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID to start workflow for"},{"name":"workflowId","type":"string","required":true,"description":"Workflow definition filename"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_workflows_start --args '{
+bakin_exec_workflows_start {
   "taskId": "value",
   "workflowId": "value"
-}'
+}
 ```
 </McpToolCard>
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 7, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 8, 2026 · Bakin 0.0.0-dev</span>
 </aside>

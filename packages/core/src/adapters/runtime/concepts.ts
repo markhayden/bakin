@@ -768,8 +768,10 @@ export interface AgentRuntimeAdapter {
   provisionToolAccess(execTools?: RuntimeExecToolProvider): Promise<void>
 
   /**
-   * Tear down what `provisionToolAccess` wrote (used on runtime switch-away).
-   * in-process/cli-shim: no-op. mcp: remove Bakin's `bakin-*` server entries.
+   * Tear down what `provisionToolAccess` wrote. in-process/cli-shim: no-op.
+   * mcp: remove Bakin-owned `bakin-*` server entries. NO CALLER YET — the
+   * Phase-3 runtime-switch flow (P3.2) invokes it on switch-away; until then
+   * a switched-from OpenClaw config keeps its (harmless, idle) entries.
    */
   deprovisionToolAccess(): Promise<void>
 

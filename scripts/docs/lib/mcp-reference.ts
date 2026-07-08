@@ -3,7 +3,7 @@
  *
  * Renders the exec-tools.mdx audit page (McpToolCard wrappers) and the
  * exec-tools.md LLM bundle from the source-scanned exec tool definitions.
- * Owns the per-namespace group descriptions + the mcporter call examples.
+ * Owns the per-namespace group descriptions + the tool call examples.
  */
 import { escapeHtml, escapeMarkdownTableCell, generatedPageNote } from './doc-utils'
 import { extractExecTools } from '../source-scan'
@@ -53,10 +53,13 @@ function mcpExampleValue(type: string): unknown {
 }
 
 function renderMcpExample(tool: ExecToolDoc): string {
+  // Transport-neutral (P1.7): the invocation form (bare in-process call, native
+  // MCP prefix, shell shim) is per-runtime and rendered into each agent's Tool
+  // access section — docs show the tool name + a structured-args shape only.
   const args = Object.fromEntries(tool.parameters.map(param => [param.name, mcpExampleValue(param.type)]))
   const json = JSON.stringify(args, null, 2)
-  if (tool.parameters.length === 0) return `mcporter call bakin-<agent>.${tool.name}`
-  return `mcporter call bakin-<agent>.${tool.name} --args '${json}'`
+  if (tool.parameters.length === 0) return tool.name
+  return `${tool.name} ${json}`
 }
 
 function renderMcpToolCard(tool: ExecToolDoc): string {
@@ -89,13 +92,15 @@ export function renderMcpLlmReference(): string {
   }
 
   const lines = [
-    'Use MCP tools through `mcporter`:',
+    'Call Bakin exec tools by name with structured JSON arguments. HOW a tool is',
+    'invoked (bare in-process call, native MCP prefix, shell shim) depends on the',
+    "active runtime — each agent's Tool access section carries the exact form.",
     '',
     '```sh',
-    "mcporter call bakin-<agent>.<tool_name> --args '<json>'",
+    '<tool_name> <json arguments>',
     '```',
     '',
-    'Use the exact tool name shown below. Omit `--args` only for tools with no parameters.',
+    'Use the exact tool name shown below. Tools with no parameters take no arguments.',
     '',
   ]
 

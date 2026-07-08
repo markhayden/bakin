@@ -329,7 +329,17 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       if (!existsSync(workspace)) mkdirSync(workspace, { recursive: true })
       // New agent → new MCP server entry. Re-provision immediately so the
       // agent can reach Bakin's tools without waiting for the next boot.
-      await this.provisionToolAccess()
+      // Best-effort: the agent EXISTS at this point — failing create over a
+      // config write would strand a retry on "Agent already exists". The next
+      // boot/install re-provisions.
+      try {
+        await this.provisionToolAccess()
+      } catch (err) {
+        this.logger.warn('OpenClaw tool-access provisioning failed after agent create', {
+          agentId: id,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
       return {
         id,
         name: input.name,
@@ -372,8 +382,17 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       removeOpenClawAgentConfig(agentId)
       removeOpenClawAgentArtifacts(agentId, workspace)
       removeOpenClawAgentCronArtifacts(agentId)
-      // Prune the departed agent's MCP server entry so no stale routing lingers.
-      await this.provisionToolAccess()
+      // Prune the departed agent's MCP server entry so no stale routing
+      // lingers. Best-effort — the agent is already gone; a failed prune must
+      // not report the remove as failed (next boot/install re-provisions).
+      try {
+        await this.provisionToolAccess()
+      } catch (err) {
+        this.logger.warn('OpenClaw tool-access prune failed after agent remove', {
+          agentId,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
     },
     listWorkspaceFiles: async (agentId: string): Promise<string[]> => {
       const root = getWorkspacePath(agentId)
