@@ -36,6 +36,112 @@ export function resolveBrandContextBudget(raw?: number): number {
   return Math.max(Math.floor(raw), BRAND_CONTEXT_MIN_BUDGET)
 }
 
+// ─── Brand context (#419) ────────────────────────────────────────────────────
+// Structural mirrors of the brands plugin's getContext result — core never
+// imports plugin code (the dispatch-team.ts precedent).
+
+/** Injection-record fields the brands plugin reports per card build. */
+export interface BrandInjectionMeta {
+  brandFingerprint: string | null
+  cardBytes: number
+  sectionsIncluded: string[]
+  lessonsIncluded: string[]
+  omitted: Array<{ item: string; reason: string }>
+}
+
+export type BrandDispatchBlock =
+  | { status: 'none' }
+  | { status: 'ready'; brandId: string; block: string; meta: BrandInjectionMeta; warnings: string[] }
+  | { status: 'missing'; brandId: string }
+
+/** Thrown by dispatch prep when a linked brand vanished post-gate — the claim is released, never dispatched brandless. */
+export class BrandUnavailableError extends Error {
+  constructor(readonly brandId: string) {
+    super(`brand '${brandId}' not found — task will not dispatch until it exists`)
+    this.name = 'BrandUnavailableError'
+  }
+}
+
+const BRAND_ANCESTRY_MAX_HOPS = 10
+
+/**
+ * Effective brand id: own → nearest ancestor (cycle-safe parentId walk — the
+ * decomposition/corrective paths must never lose the brand) → project brand
+ * via the external projects plugin's hook (own or first ancestor projectId).
+ * Lazy by design (spec D4): re-branding a project flows to its tasks.
+ */
+export async function resolveEffectiveBrandId(task: {
+  id: string
+  brandId?: string
+  parentId?: string | null
+  projectId?: string
+}): Promise<string | undefined> {
+  if (task.brandId) return task.brandId
+
+  let projectId = task.projectId
+  const seen = new Set<string>([task.id])
+  let parentId = task.parentId ?? undefined
+  // Dynamic import keeps this module's load graph free of the task store
+  // (partial task-store mocks across tests/ break on new static imports).
+  const { getTask } = await import('./task-store')
+  for (let hop = 0; parentId && hop < BRAND_ANCESTRY_MAX_HOPS; hop++) {
+    if (seen.has(parentId)) break
+    seen.add(parentId)
+    const parent = getTask(parentId)
+    if (!parent) break
+    if (parent.brandId) return parent.brandId
+    if (!projectId && parent.projectId) projectId = parent.projectId
+    parentId = parent.parentId ?? undefined
+  }
+
+  if (projectId && hooks().has('projects.getBrand')) {
+    try {
+      const brandId = await hooks().invoke<string | undefined>('projects.getBrand', { projectId })
+      if (typeof brandId === 'string' && brandId) return brandId
+    } catch (err) {
+      log.warn('projects.getBrand failed; treating task as unbranded via project', {
+        taskId: task.id, projectId, error: formatDispatchError(err),
+      })
+    }
+  }
+  return undefined
+}
+
+/**
+ * Build the per-dispatch brand block by invoking brands.getContext. Returns
+ * `none` for unbranded tasks, `missing` when the effective brand does not
+ * resolve to a published brand (caller decides: pre-claim defer or typed
+ * prep failure) — NEVER a fabricated or empty-but-branded card.
+ */
+export async function buildDispatchBrandBlock(task: {
+  id: string
+  brandId?: string
+  parentId?: string | null
+  projectId?: string
+}): Promise<BrandDispatchBlock> {
+  const brandId = await resolveEffectiveBrandId(task)
+  if (!brandId) return { status: 'none' }
+  if (!hooks().has('brands.getContext')) return { status: 'missing', brandId }
+
+  try {
+    const result = await hooks().invoke<
+      | { notFound: true }
+      | { card: string; warnings: string[]; meta: { brandId: string } & BrandInjectionMeta }
+    >('brands.getContext', {
+      brandId,
+      maxBytes: resolveBrandContextBudget(getSettings().dispatch?.maxBrandContextBytes),
+    })
+    if (!result || 'notFound' in result) return { status: 'missing', brandId }
+    const { brandId: _ignored, ...meta } = result.meta
+    return { status: 'ready', brandId, block: result.card, meta, warnings: result.warnings }
+  } catch (err) {
+    // A broken brands plugin must fail closed for branded tasks — dispatching
+    // brandless would be the silent tripwire this feature exists to kill.
+    log.error('brands.getContext failed', err instanceof Error ? err : new Error(String(err)), { taskId: task.id, brandId })
+    return { status: 'missing', brandId }
+  }
+}
+
 /** @internal Test-only. */
 export function __resetLessonBlockCache(): void {
   lessonBlockCache.clear()

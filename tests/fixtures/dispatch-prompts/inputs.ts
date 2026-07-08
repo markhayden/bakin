@@ -63,6 +63,52 @@ export const MAIN_AGENT = {
   agentName: 'main',
 } as const
 
+// Branded dispatch (#419): the brand card is pre-resolved by the dispatch
+// layer and passed into the pure builders — the fixture carries a synthetic
+// card, no brand store on disk.
+export const BRAND_CARD_BLOCK = [
+  '## Brand: Acme (acme)',
+  '',
+  "All output for this task MUST follow this brand. Use ONLY this brand's materials — disregard knowledge of any other brand.",
+  '',
+  '### Rules (absolute)',
+  '- Never use emojis',
+  '',
+  '### Palette',
+  '- ink: #1A1A2E (primary text)',
+].join('\n')
+
+export const SPECIALIST_BRANDED = {
+  task: {
+    id: 't-fix-5',
+    title: 'Write launch tweet',
+    agent: 'jessica',
+    description: 'Announce the launch',
+    projectId: 'proj-9',
+    brandId: 'acme',
+  },
+  agentName: 'jessica',
+  brand: { brandId: 'acme', block: BRAND_CARD_BLOCK },
+} as const
+
+export const TRIAGE_BRANDED = {
+  task: { id: 't-fix-6', title: 'Untriaged branded thing', description: 'Needs an owner', brandId: 'acme' },
+  agentName: 'main',
+  roster: [{ id: 'main' }, { id: 'ada', role: 'data analysis' }],
+  brand: { brandId: 'acme', block: BRAND_CARD_BLOCK },
+} as const
+
+export const WORKFLOW_BRANDED = {
+  task: { id: 't-wf-3', title: 'Pipeline task', description: 'Campaign context' },
+  stepContext: {
+    stepId: 'write-copy',
+    label: 'Write Copy',
+    instructions: 'Write the campaign copy.',
+  },
+  agentName: 'jessica',
+  brand: { brandId: 'acme', block: BRAND_CARD_BLOCK },
+} as const
+
 // stepOutputs insertion order mirrors step-context.ts: prior steps in
 // definition order, __parentContext appended LAST.
 export const WORKFLOW_FULL = {
