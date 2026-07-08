@@ -48,6 +48,7 @@ export async function main(): Promise<void> {
 
       case 'status':
       case 'dispatch':
+      case 'runtime':
         await (await import('../src/cli/commands/runtime')).run(args)
         break
 

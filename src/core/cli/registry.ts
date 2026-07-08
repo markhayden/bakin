@@ -55,6 +55,17 @@ export const CLI_COMMANDS = [
     examples: [{ title: 'Check status', code: 'bakin status', test: 'illustrative', reason: 'Requires a running local server for full output.' }],
   }),
   cli({
+    name: 'runtime',
+    usage: 'bakin runtime [use <openclaw|pi>]',
+    group: 'Lifecycle',
+    summary: 'Show the runtime capability report or switch runtime adapters.',
+    description: 'Without arguments, prints the active runtime adapter and its capability report (native/shimmed/unavailable per capability, tool-access status). `bakin runtime use <adapter>` runs the orchestrated switch: settings backup, tool-access deprovision/provision, best-effort roster carry-over with an honest unmapped-model report, drift-gated agent re-projection, and capability validation. A completed switch requires `bakin restart` so plugins rebind.',
+    examples: [
+      { title: 'Show the capability report', code: 'bakin runtime', test: 'illustrative', reason: 'Requires a running local server.' },
+      { title: 'Switch to the Pi runtime', code: 'bakin runtime use pi', test: 'illustrative', reason: 'Mutates settings and runtime state; requires a restart.' },
+    ],
+  }),
+  cli({
     name: 'dev',
     usage: 'bakin dev [--verbose] [--no-color]',
     group: 'Lifecycle',
