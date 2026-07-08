@@ -318,4 +318,34 @@ describe('exec tools', () => {
     const bad = await callTool(tool('bakin_exec_brands_get'), { brandId: 'ghost' })
     expect(bad.ok).toBe(false)
   })
+
+  it('add_lesson is append-only and never overwrites (#419 §6)', async () => {
+    await createAcme()
+    const first = await callTool(tool('bakin_exec_brands_add_lesson'), {
+      brandId: 'acme',
+      title: 'Never use threads',
+      body: 'Single posts only on LinkedIn.',
+    })
+    expect(first.ok).toBe(true)
+    expect(first.lesson).toBe('never-use-threads.md')
+
+    const doc = await callTool(tool('bakin_exec_brands_read_doc'), {
+      brandId: 'acme', kind: 'lessons', name: 'never-use-threads.md',
+    })
+    expect(String(doc.content)).toContain('Single posts only')
+
+    // Same title again → new file, original untouched
+    const second = await callTool(tool('bakin_exec_brands_add_lesson'), {
+      brandId: 'acme',
+      title: 'Never use threads',
+      body: 'A different learning.',
+    })
+    expect(second.ok).toBe(true)
+    expect(second.lesson).not.toBe('never-use-threads.md')
+
+    const ghost = await callTool(tool('bakin_exec_brands_add_lesson'), {
+      brandId: 'ghost', title: 'x', body: 'y',
+    })
+    expect(ghost.ok).toBe(false)
+  })
 })

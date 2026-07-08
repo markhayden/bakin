@@ -7,8 +7,15 @@
  */
 import { z } from 'zod'
 import type { PluginContext } from '@bakin/core/plugin-types'
-import { getBrand, listBrands, listDocs, readDoc } from './store'
+import { getBrand, listBrands, listDocs, readDoc, writeDoc } from './store'
 import { computeBrandFingerprint } from './fingerprint'
+
+const lessonSlug = (title: string) =>
+  title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64) || 'lesson'
 
 export function registerBrandExecTools(ctx: PluginContext): void {
   ctx.registerExecTool({
@@ -48,6 +55,42 @@ export function registerBrandExecTools(ctx: PluginContext): void {
         lessons: listDocs(brandId, 'lessons'),
         fingerprint: computeBrandFingerprint(brandId),
       }
+    },
+  })
+
+  ctx.registerExecTool({
+    name: 'bakin_exec_brands_add_lesson',
+    label: 'Added a brand lesson',
+    description:
+      'Bank a brand learning from this task (e.g. "thread format flopped on LinkedIn — use single posts"). Append-only: the ONLY write agents may make to a published brand. Absolute always-rules belong in the brand\'s Rules list (ask the operator), not lessons.',
+    parameters: {
+      brandId: z.string().describe('Brand id'),
+      title: z.string().describe('Short lesson title'),
+      body: z.string().describe('The lesson: what happened, what to do instead'),
+    },
+    handler: async (params, agent) => {
+      const brandId = String(params.brandId ?? '')
+      const title = String(params.title ?? '').trim()
+      const body = String(params.body ?? '').trim()
+      if (!title || !body) return { ok: false, error: 'title and body are required' }
+      const read = getBrand(brandId)
+      if (read.status !== 'ok') return { ok: false, error: `brand not found: ${brandId}` }
+
+      // Append-only: never overwrite an existing lesson file.
+      let name = `${lessonSlug(title)}.md`
+      if (readDoc(brandId, 'lessons', name) !== null) {
+        name = `${lessonSlug(title)}-${Date.now().toString(36)}.md`
+      }
+      try {
+        writeDoc(brandId, 'lessons', name, `---\ntitle: ${title}\n---\n\n${body}\n`)
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+      try {
+        ctx.activity.audit('brand.lesson_added', agent, { brandId, lesson: name, title })
+        ctx.events.emit('brand.changed', { brandId })
+      } catch { /* activity surface unavailable (tests) */ }
+      return { ok: true, brandId, lesson: name }
     },
   })
 

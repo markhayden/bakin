@@ -35,9 +35,16 @@ const SOURCE_LABEL: Record<TaskBrandInfo['source'], string> = {
   project: 'inherited from project',
 }
 
+const slugify = (title: string) =>
+  title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64) || 'lesson'
+
 export function TaskBrandPanel({ taskId }: { taskId?: string }) {
   const [debug] = useDebug()
   const [preview, setPreview] = useState<string | null>(null)
+  const [lessonOpen, setLessonOpen] = useState(false)
+  const [lessonTitle, setLessonTitle] = useState('')
+  const [lessonBody, setLessonBody] = useState('')
+  const [lessonState, setLessonState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const { data: contextData } = useJsonFetch<{ brand: TaskBrandInfo | null }>(
     taskId ? `/api/plugins/brands/task-context/${taskId}` : null,
   )
@@ -102,6 +109,73 @@ export function TaskBrandPanel({ taskId }: { taskId?: string }) {
       {injections.length === 0 && !brand.blocked && (
         <p className="mt-1 text-xs text-muted-foreground">No dispatches yet — the brand card will inject on the next run.</p>
       )}
+
+      {/* Quick-add lesson (#419 §6): close the correction loop from the task
+          itself — no trip to the Brands page. */}
+      <div className="mt-2">
+        {!lessonOpen ? (
+          <button
+            className="rounded-md border px-2 py-1 text-xs hover:bg-accent"
+            onClick={() => { setLessonOpen(true); setLessonState('idle') }}
+          >
+            Save as brand lesson
+          </button>
+        ) : (
+          <div className="space-y-1.5">
+            <input
+              className="w-full rounded-md border bg-background px-2 py-1 text-xs"
+              placeholder="Lesson title (e.g. Never use threads on LinkedIn)"
+              value={lessonTitle}
+              onChange={(e) => setLessonTitle(e.target.value)}
+            />
+            <textarea
+              className="w-full rounded-md border bg-background px-2 py-1 text-xs"
+              rows={3}
+              placeholder="What happened on this task, and what to do instead. (Absolute always-rules belong in the brand's Rules list.)"
+              value={lessonBody}
+              onChange={(e) => setLessonBody(e.target.value)}
+            />
+            <div className="flex items-center gap-2">
+              <button
+                className="rounded-md border px-2 py-1 text-xs hover:bg-accent disabled:opacity-50"
+                disabled={!lessonTitle.trim() || !lessonBody.trim() || lessonState === 'saving'}
+                onClick={async () => {
+                  setLessonState('saving')
+                  try {
+                    const name = `${slugify(lessonTitle)}.md`
+                    const res = await fetch(
+                      `/api/plugins/brands/${brand.brandId}/docs/lessons/${encodeURIComponent(name)}`,
+                      {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          content: `---\ntitle: ${lessonTitle.trim()}\n---\n\n${lessonBody.trim()}\n`,
+                        }),
+                      },
+                    )
+                    if (!res.ok) throw new Error(String(res.status))
+                    setLessonState('saved')
+                    setLessonOpen(false)
+                    setLessonTitle('')
+                    setLessonBody('')
+                  } catch {
+                    setLessonState('error')
+                  }
+                }}
+              >
+                {lessonState === 'saving' ? 'Saving…' : 'Save lesson'}
+              </button>
+              <button className="text-xs text-muted-foreground hover:underline" onClick={() => setLessonOpen(false)}>
+                Cancel
+              </button>
+              {lessonState === 'error' && <span className="text-xs text-destructive">save failed</span>}
+            </div>
+          </div>
+        )}
+        {lessonState === 'saved' && !lessonOpen && (
+          <p className="mt-1 text-xs text-muted-foreground">Lesson saved — it will inject on relevant future dispatches.</p>
+        )}
+      </div>
 
       {debug && (
         <div className="mt-2">
