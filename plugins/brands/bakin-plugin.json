@@ -1,0 +1,73 @@
+{
+  "id": "brands",
+  "name": "Brands",
+  "version": "0.1.0",
+  "bakin": ">=1.0.0",
+  "description": "Structured brand definitions — voice, palette, rules, and reference assets injected per-task so agent output stays on brand",
+  "entry": {
+    "server": "index.ts"
+  },
+  "contentFiles": [],
+  "secrets": [],
+  "tests": "tests/",
+  "dependencies": [],
+  "permissions": [
+    "storage.read",
+    "storage.write"
+  ],
+  "contributes": {
+    "apiRoutes": [
+      {
+        "method": "GET",
+        "path": "/",
+        "summary": "List brands"
+      },
+      {
+        "method": "POST",
+        "path": "/",
+        "summary": "Create a brand (scaffolds starter guidelines)"
+      },
+      {
+        "method": "GET",
+        "path": "/:brandId",
+        "summary": "Brand manifest + doc listings + fingerprint"
+      },
+      {
+        "method": "PUT",
+        "path": "/:brandId",
+        "summary": "Replace a brand manifest"
+      },
+      {
+        "method": "DELETE",
+        "path": "/:brandId",
+        "summary": "Delete a brand"
+      },
+      {
+        "method": "GET",
+        "path": "/:brandId/docs/:kind/:name",
+        "summary": "Read a guideline or lesson doc"
+      },
+      {
+        "method": "PUT",
+        "path": "/:brandId/docs/:kind/:name",
+        "summary": "Write a guideline or lesson doc"
+      },
+      {
+        "method": "DELETE",
+        "path": "/:brandId/docs/:kind/:name",
+        "summary": "Delete a guideline or lesson doc"
+      }
+    ],
+    "nav": [
+      {
+        "id": "brands",
+        "label": "Brands",
+        "icon": "Palette",
+        "href": "/brands"
+      }
+    ],
+    "slots": [
+      "page:/brands"
+    ]
+  }
+}

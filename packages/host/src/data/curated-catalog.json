@@ -331,6 +331,26 @@
       "builtin": true
     },
     {
+      "id": "brands",
+      "kind": "plugin",
+      "name": "Brands",
+      "emoji": "🎨",
+      "description": "Structured brand definitions — voice, palette, rules, and reference assets injected per-task so agent output stays on brand.",
+      "category": "Creative",
+      "tags": [
+        "brands",
+        "voice",
+        "identity"
+      ],
+      "useCases": [
+        "Keep agent-produced copy and visuals on brand across every task",
+        "Run multiple brands on one instance without context bleed",
+        "Import shared brand definitions from a GitHub repo"
+      ],
+      "trust": "official",
+      "builtin": true
+    },
+    {
       "id": "git",
       "kind": "plugin",
       "name": "Git",
