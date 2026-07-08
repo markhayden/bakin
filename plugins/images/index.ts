@@ -9,7 +9,7 @@ import { definePlugin, defineRoute } from '@bakin/core/routing'
 import { createLogger } from '../../src/core/logger'
 import { loadDefaultWorkflows } from '@bakin/core/workflows/load-defaults'
 import { DEFAULT_IMAGE_SETTINGS, listImageProviders, providerReadiness } from './lib/providers'
-import { getImageProfile, listImageProfiles } from './lib/platform-profiles'
+import { getImageProfile, listImageProfiles, IMAGE_SURFACE_IDS } from './lib/platform-profiles'
 import { editImage, exportImage, generateImage, importImage } from './lib/tools'
 import { recommendImageRoute } from './lib/routing'
 
@@ -30,9 +30,15 @@ const profileToolShape = {
 const imageProviderRoute = z.string().min(1)
 const imageQualityEnum = z.enum(['draft', 'standard', 'premium'])
 const imageFormatEnum = z.enum(['jpg', 'png', 'webp'])
+// Valid surface ids ship IN the tool schema (derived from the profile
+// table) so the model picks a real one instead of guessing 'square' and
+// bouncing off a free-string rejection into a discovery call.
+const surfaceEnum = z.enum(IMAGE_SURFACE_IDS)
+// export additionally accepts 'custom' (with explicit width/height).
+const exportSurfaceEnum = z.enum([...IMAGE_SURFACE_IDS, 'custom'] as [string, ...string[]])
 
 const recommendShape = {
-  surface: z.string().optional().describe('Target surface profile id, such as instagram-feed-portrait or blog-hero.'),
+  surface: surfaceEnum.optional().describe('Target surface profile id.'),
   objective: z.string().optional().describe('Creative/business goal used for model routing, such as CTR, brand photography, typography, or landing page hero.'),
   provider: imageProviderRoute.optional().describe('Optional forced provider. Use auto to let the router choose, or pass a runtime provider id such as openai, google, openrouter, fal, or xai.'),
   model: z.string().optional().describe('Optional model id. May be provider/model or a provider-specific model id.'),
@@ -43,7 +49,7 @@ const generateShape = {
   prompt: z.string().optional().describe('Provider-neutral image prompt. Required unless promptPacket is supplied.'),
   promptPacket: z.record(z.string(), z.unknown()).optional().describe('Structured prompt packet compiled into the provider prompt.'),
   taskId: z.string().min(1).describe('Task ID to link the generated image asset.'),
-  surface: z.string().optional().describe('Image surface profile id, such as instagram-feed-portrait or google-display-landscape.'),
+  surface: surfaceEnum.optional().describe('Image surface profile id. Omit to default from the routed dimensions.'),
   provider: imageProviderRoute.optional().describe('Provider route. Defaults to auto routing.'),
   model: z.string().optional().describe('Provider model id, such as gpt-image-2 or gemini-3.1-flash-image-preview.'),
   width: z.number().int().positive().optional().describe('Optional custom width. Defaults from surface profile.'),
@@ -58,7 +64,7 @@ const editShape = {
   prompt: z.string().min(1).describe('Edit instruction, e.g. "add a capybara in the foreground".'),
   assetId: z.string().min(1).describe('Managed image assetId to edit. Edits the current version and appends a new one. Import a loose local file first to get an assetId.'),
   taskId: z.string().min(1).describe('Task ID to link the edited image asset.'),
-  surface: z.string().optional().describe('Output surface profile id for sizing.'),
+  surface: surfaceEnum.optional().describe('Output surface profile id for sizing.'),
   provider: imageProviderRoute.optional().describe('Provider route. Defaults to auto routing.'),
   model: z.string().optional().describe('Provider model id.'),
   width: z.number().int().positive().optional().describe('Optional custom width.'),
@@ -77,7 +83,7 @@ const importShape = {
 const exportShape = {
   assetId: z.string().min(1).describe('Managed image assetId to export. The export attaches to this asset (not a new asset).'),
   taskId: z.string().min(1).describe('Task ID for audit linkage.'),
-  surface: z.string().optional().describe('Target surface profile id. Use custom with width and height for custom exports.'),
+  surface: exportSurfaceEnum.optional().describe('Target surface profile id. Use custom with width and height for custom exports.'),
   width: z.number().int().positive().optional().describe('Override export width.'),
   height: z.number().int().positive().optional().describe('Override export height.'),
   format: imageFormatEnum.optional().describe('Output format.'),

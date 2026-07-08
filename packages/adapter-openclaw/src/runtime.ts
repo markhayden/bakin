@@ -17,6 +17,7 @@ import type {
   RuntimeAgent,
   RuntimeAvailableModel,
   RuntimeCapabilities,
+  RuntimeToolAccessHint,
   RuntimeImageEditInput,
   RuntimeImageGenerateInput,
   RuntimeImageGenerationResult,
@@ -955,6 +956,9 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
    * Conservative false on any ambiguity; no model-name heuristics (D17
    * discipline applies to runtimes too).
    */
+  /** OpenClaw agents reach Bakin exec tools by shelling mcporter against the MCP server. */
+  describeToolAccess = (): RuntimeToolAccessHint => ({ invocation: 'mcporter-cli' })
+
   capabilities = async (opts?: { agentId?: string }): Promise<RuntimeCapabilities> => {
     const CACHE_MS = 60_000
     const requested = opts?.agentId?.trim() || ''

@@ -404,6 +404,17 @@ export interface RuntimeCapabilities {
   audioInput: boolean
 }
 
+/**
+ * How agents on this runtime invoke Bakin exec tools:
+ * - 'native'       — exec tools are first-class session tools; the agent
+ *                    calls `bakin_exec_*` directly (in-process seam).
+ * - 'mcporter-cli' — tools are reached by shelling `mcporter call
+ *                    bakin-<agent>.<tool> <args>` against Bakin's MCP server.
+ */
+export interface RuntimeToolAccessHint {
+  invocation: 'native' | 'mcporter-cli'
+}
+
 export interface RuntimeAvailableModel {
   id: string
   name?: string
@@ -681,6 +692,15 @@ export interface AgentRuntimeAdapter {
    * means "unknown" and callers MUST treat it as all-false.
    */
   capabilities?(opts?: { agentId?: string }): Promise<RuntimeCapabilities>
+
+  /**
+   * How agents on this runtime invoke Bakin exec tools — drives the
+   * tool-usage wording of dispatch prompts (dispatch-prompts.ts renders
+   * `mcporter call bakin-<agent>.<tool> …` shell lines vs bare native tool
+   * calls). Sync + static: this is declared wiring, not probed state.
+   * Optional: absent means the legacy default, 'mcporter-cli'.
+   */
+  describeToolAccess?(): RuntimeToolAccessHint
 
   images?: RuntimeImagesAccess
 

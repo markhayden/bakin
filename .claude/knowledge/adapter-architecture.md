@@ -22,13 +22,27 @@ The current implementations are:
 
 | Contract | Factory | Implementation |
 |---|---|---|
-| Runtime | `src/core/runtime-adapter-factory.ts` | `packages/adapter-openclaw/` |
+| Runtime | `src/core/runtime-adapter-factory.ts` | `packages/adapter-openclaw/` (default) or `packages/adapter-pi/` (`settings.runtime.adapter: 'pi'`) |
 | Search | `src/core/search-adapter-factory.ts` | `packages/adapter-antfly/` |
 | Tasks | `src/core/app-services.ts` | `createFileBakinTaskStore(getBakinPaths().tasks)` |
 
 No plugin, route, CLI command, script, or `src/core/*` feature module should
 import provider packages directly. Factories are the only production modules
-that import `@bakin/adapter-openclaw` or `@bakin/adapter-antfly`.
+that import `@bakin/adapter-openclaw`, `@bakin/adapter-pi`, or
+`@bakin/adapter-antfly`.
+
+Two adapter-neutral seams exist so in-process runtimes (Pi) get what OpenClaw
+reaches out-of-band:
+
+- `AdapterInitOpts.execTools: RuntimeExecToolProvider` — core offers the live
+  exec-tool registry (JSON-Schema descriptors + invoke with usage/audit
+  bookkeeping, `src/core/exec-tools/provider.ts`). Pi registers the tools as
+  native session tools; OpenClaw ignores the seam and keeps MCP/mcporter.
+- `describeToolAccess?(): RuntimeToolAccessHint` — how agents call Bakin
+  tools ('native' vs 'mcporter-cli'); dispatch prompts render accordingly
+  (`resolveToolInvocation()` in `src/core/dispatch-prompts.ts`).
+
+Deep reference for the Pi implementation: `.claude/knowledge/pi-adapter.md`.
 
 ### SearchAdapter contract
 

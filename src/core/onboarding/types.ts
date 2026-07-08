@@ -7,6 +7,8 @@
  * aggregates the results into the .onboarded marker file.
  */
 
+import type { RuntimeAdapterName } from '../settings'
+
 export type CheckStatus = 'ok' | 'missing' | 'broken' | 'warn' | 'error'
 export type InstallStatus = 'installed' | 'skipped' | 'failed' | 'noop'
 
@@ -59,6 +61,13 @@ export interface OnboardingOptions {
 export interface OnboardingComponent {
   /** Stable identifier. Matches the key under components[] in the marker file. */
   readonly name: string
+  /**
+   * Runtime adapters this component applies to. Omit for adapter-generic
+   * components. The orchestrator skips (never checks/installs) components
+   * whose list excludes settings.runtime.adapter — e.g. mcporter and the
+   * OpenClaw MCP-config sync are meaningless on the in-process Pi runtime.
+   */
+  readonly supportedAdapters?: readonly RuntimeAdapterName[]
   check(): Promise<CheckResult>
   install(opts: OnboardingOptions): Promise<InstallResult>
 }

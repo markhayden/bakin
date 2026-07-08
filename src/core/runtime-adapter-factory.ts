@@ -1,5 +1,6 @@
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import { createOpenClawRuntimeAdapter } from '@bakin/adapter-openclaw'
+import { createPiRuntimeAdapter } from '@bakin/adapter-pi'
 import type { RuntimeAdapterName } from './settings'
 
 export interface RuntimeAdapterSupportInfo {
@@ -12,12 +13,18 @@ const RUNTIME_ADAPTER_SUPPORT: Record<RuntimeAdapterName, RuntimeAdapterSupportI
     setupUrl: 'https://makinbakin.com/docs/start/first-time-setup/',
     docsUrl: 'https://openclaw.ai/docs/',
   },
+  pi: {
+    setupUrl: 'https://pi.dev/docs/latest/quickstart',
+    docsUrl: 'https://pi.dev/docs/latest',
+  },
 }
 
 export function createRuntimeAdapter(name: RuntimeAdapterName): AgentRuntimeAdapter {
   switch (name) {
     case 'openclaw':
       return createOpenClawRuntimeAdapter()
+    case 'pi':
+      return createPiRuntimeAdapter()
     default:
       throw new Error(`Unknown runtime adapter: ${name}`)
   }

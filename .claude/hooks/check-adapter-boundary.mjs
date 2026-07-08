@@ -27,7 +27,7 @@ const ALLOWED_FILES = new Set([
 const DENYLIST = [
   {
     label: 'concrete adapter import outside adapter factories',
-    regex: /@bakin\/adapter-(?:antfly|openclaw)/,
+    regex: /@bakin\/adapter-(?:antfly|openclaw|pi)/,
   },
   {
     label: 'legacy core Antfly facade import',
@@ -40,6 +40,10 @@ const DENYLIST = [
   {
     label: 'raw OpenClaw home/path access outside adapter-openclaw',
     regex: /(?:~\/\.openclaw|OPENCLAW_HOME|getOpenClawHome|getOpenClawPath)/,
+  },
+  {
+    label: 'raw Pi home/path/SDK access outside adapter-pi',
+    regex: /(?:~\/\.pi\b|PI_HOME|getPiHome|getPiPath|@earendil-works)/,
   },
   {
     label: 'legacy OpenClaw implementation module',
@@ -67,7 +71,7 @@ const DENYLIST = [
   },
   {
     label: 'provider setup URL outside adapter factory',
-    regex: /openclaw\.ai/,
+    regex: /(?:openclaw\.ai|pi\.dev)/,
   },
 ]
 

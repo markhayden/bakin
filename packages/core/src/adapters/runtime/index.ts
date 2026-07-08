@@ -4,6 +4,9 @@ export type {
   AdapterHealthCheckResult,
   AdapterInitOpts,
   AdapterLogger,
+  RuntimeExecToolDescriptor,
+  RuntimeExecToolInvokeResult,
+  RuntimeExecToolProvider,
   Unsubscribe,
 } from '../shared'
 
@@ -56,6 +59,7 @@ export type {
   RuntimeToolActivity,
   RuntimeAvailableModel,
   RuntimeCapabilities,
+  RuntimeToolAccessHint,
   RuntimeConfigAccess,
   RuntimeImageBackground,
   RuntimeImageEditInput,

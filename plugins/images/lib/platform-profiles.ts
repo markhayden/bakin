@@ -166,6 +166,14 @@ export const IMAGE_SURFACE_PROFILES: ImageSurfaceProfile[] = [
   },
 ]
 
+/**
+ * Valid surface ids as a const tuple, derived from the profile table so the
+ * exec-tool zod enums stay in lockstep automatically (a new profile ships
+ * to the model's tool schema with zero extra edits). Non-empty by
+ * construction — the `as [string, ...string[]]` cast satisfies `z.enum`.
+ */
+export const IMAGE_SURFACE_IDS = IMAGE_SURFACE_PROFILES.map(p => p.id) as [string, ...string[]]
+
 export function listImageProfiles(): ImageSurfaceProfile[] {
   return IMAGE_SURFACE_PROFILES
 }

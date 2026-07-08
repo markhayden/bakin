@@ -82,7 +82,36 @@ async function getAgentMeta(ctx: PluginContext): Promise<AgentMeta[]> {
 // Config read/write helpers
 // ---------------------------------------------------------------------------
 export async function readConfig(ctx: PluginContext): Promise<RuntimeModelConfig> {
-  return readRuntimeConfig<RuntimeModelConfig>(ctx.runtime, 'models.routing')
+  const raw = await readRuntimeConfig<Partial<RuntimeModelConfig>>(ctx.runtime, 'models.routing')
+  return withModelConfigSkeleton(raw)
+}
+
+/**
+ * Runtimes whose config doesn't carry OpenClaw's `agents.defaults` shape
+ * (Pi) previously crashed every models-plugin read ("undefined is not an
+ * object evaluating config.agents.defaults" — Pi live-smoke finding).
+ * Guarantee the skeleton instead: the models list renders without
+ * default/fallback flags and per-agent overrides are simply absent —
+ * honest degradation, never a crash.
+ */
+function withModelConfigSkeleton(raw: Partial<RuntimeModelConfig>): RuntimeModelConfig {
+  const agents = (raw.agents ?? {}) as Partial<RuntimeModelConfig['agents']>
+  const defaults = (agents.defaults ?? {}) as Partial<RuntimeModelConfig['agents']['defaults']>
+  return {
+    ...raw,
+    agents: {
+      ...agents,
+      list: agents.list ?? [],
+      defaults: {
+        ...defaults,
+        model: {
+          primary: defaults.model?.primary ?? '',
+          fallbacks: defaults.model?.fallbacks ?? [],
+        },
+        models: defaults.models ?? {},
+      },
+    },
+  }
 }
 
 export async function writeConfig(ctx: PluginContext, config: RuntimeModelConfig, reason: string): Promise<void> {
