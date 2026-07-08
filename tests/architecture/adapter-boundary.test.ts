@@ -156,6 +156,60 @@ function isSymbolicAgent(value: string): boolean {
   return value.startsWith('$')
 }
 
+// ─── Content transport-neutrality (P1.7) ─────────────────────────────────────
+//
+// Shipped agent-facing CONTENT must never hardcode a transport: HOW an agent
+// invokes Bakin's tools is rendered per-runtime into the injected tool-access
+// section, and runtime-private URI schemes (media://) don't exist on every
+// runtime. Ban them so a switch (Pi↔OpenClaw) never leaves stale wording.
+const CONTENT_EXT_RE = /\.(md|ya?ml|ts|tsx|json)$/
+const CONTENT_FILE_ROOTS = ['skill/SKILL.md', 'src/core/team-context-defaults.ts']
+
+const TRANSPORT_BANS: Array<{ re: RegExp; label: string }> = [
+  { re: /mcporter/i, label: 'mcporter (removed transport CLI)' },
+  { re: /media:\/\//, label: 'raw media:// URI (runtime-private scheme)' },
+  { re: /bakin-<agent>/, label: 'bakin-<agent> (per-agent MCP server template)' },
+  { re: /bakin-[a-z][\w-]*\.bakin_exec/, label: 'per-agent MCP server prefix (bakin-<name>.bakin_exec_*)' },
+]
+
+function walkContent(path: string, out: string[] = []): string[] {
+  let entries
+  try {
+    entries = readdirSync(path, { withFileTypes: true })
+  } catch {
+    return out
+  }
+  for (const entry of entries) {
+    if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name.startsWith('.')) continue
+    const full = join(path, entry.name)
+    if (entry.isDirectory()) walkContent(full, out)
+    else if (entry.isFile() && CONTENT_EXT_RE.test(entry.name)) out.push(full)
+  }
+  return out
+}
+
+function scanContentFiles(): string[] {
+  const files = CONTENT_FILE_ROOTS.map((r) => join(ROOT, r))
+  const pluginsDir = join(ROOT, 'plugins')
+  try {
+    for (const entry of readdirSync(pluginsDir, { withFileTypes: true })) {
+      if (entry.isDirectory()) walkContent(join(pluginsDir, entry.name, 'defaults'), files)
+    }
+  } catch {
+    // no plugins dir — nothing to scan
+  }
+  return files
+}
+
+/** Transport-string violations in one shipped-content file. */
+export function findTransportViolations(rel: string, content: string): string[] {
+  const hits: string[] = []
+  for (const { re, label } of TRANSPORT_BANS) {
+    if (re.test(content)) hits.push(`${rel}: ${label}`)
+  }
+  return hits
+}
+
 function childSteps(step: WorkflowStep): WorkflowStep[] {
   if (step.type === 'parallel') return step.steps
   return []
@@ -230,5 +284,30 @@ describe('adapter boundary architecture', () => {
     }
 
     expect(hits).toEqual([])
+  })
+
+  it('keeps shipped agent-facing content transport-neutral', () => {
+    const hits: string[] = []
+    for (const file of scanContentFiles()) {
+      let content: string
+      try {
+        content = readFileSync(file, 'utf-8')
+      } catch {
+        continue
+      }
+      hits.push(...findTransportViolations(relative(ROOT, file), content))
+    }
+    expect(hits).toEqual([])
+  })
+
+  it('the transport-neutrality check catches violations (fixture)', () => {
+    expect(findTransportViolations('x.md', 'run `mcporter call bakin-main.bakin_exec_tasks_get`')).toEqual([
+      'x.md: mcporter (removed transport CLI)',
+      'x.md: per-agent MCP server prefix (bakin-<name>.bakin_exec_*)',
+    ])
+    expect(findTransportViolations('y.md', 'pass a media://inbound/x.png reference')).toEqual([
+      'y.md: raw media:// URI (runtime-private scheme)',
+    ])
+    expect(findTransportViolations('z.md', 'call `bakin_exec_tasks_get taskId=<id>` directly')).toEqual([])
   })
 })

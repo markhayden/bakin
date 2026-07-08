@@ -61,11 +61,11 @@ Before `bakin_exec_tasks_create`:
 2. Choose the matching `workflowId`, or set `skipWorkflowReason` for a one-off request.
 3. Include `parentId` when this is a subtask of an existing task.
 4. Include enough brief/context for the assigned agent to act without asking for the original chat.
-5. If the request carries an attached image, import it against the new task (`bakin_exec_images_import`) and put the returned assetId in the description — the assignee can pass it straight to `referenceImages`. The attachment's `media://` URI also works as a `referenceImages` entry directly.
+5. If the request carries an attached image, import it against the new task (`bakin_exec_images_import`) and put the returned assetId in the description — the assignee can pass it straight to `referenceImages`. The attachment's runtime attachment URI also works as a `referenceImages` entry directly.
 
 After `bakin_exec_tasks_create`: STOP. Dispatch delivers the full task to the assignee — do NOT also `bakin_exec_team_message` them about it. That message lands in their main session and starts a duplicate worker (Bakin refuses it when the task's run is detectable). Use `bakin_exec_log` for follow-up context.
 
-When a brief says "like this image" / "based on the attached reference", the generating agent should pass the image itself via `referenceImages` on `bakin_exec_images_generate` (assetIds, local paths, or `media://` URIs, max 4, native runtime models only) — not describe it in prose.
+When a brief says "like this image" / "based on the attached reference", the generating agent should pass the image itself via `referenceImages` on `bakin_exec_images_generate` (assetIds, local paths, or runtime attachment URIs, max 4, native runtime models only) — not describe it in prose.
 
 Iterating on your own output appends a VERSION, never a new asset: revise with `bakin_exec_images_edit`, or re-roll fresh with `bakin_exec_images_generate` + `versionOf=<assetId>`. One assetId per deliverable, n versions.
 
