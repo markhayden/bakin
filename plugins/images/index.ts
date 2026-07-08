@@ -56,6 +56,7 @@ const generateShape = {
   height: z.number().int().positive().optional().describe('Optional custom height. Defaults from surface profile.'),
   quality: imageQualityEnum.optional().describe('Generation quality tier (honored only on the direct-provider path).'),
   referenceImages: z.array(z.string()).optional().describe('Reference/context images to condition the generation: managed assetIds, local file paths, and/or media:// attachment URIs (mix freely; max 4). Loose paths and media URIs are auto-imported as assets. Requires a model with the reference-images capability on the native runtime.'),
+  brandId: z.string().optional().describe('Brand to condition this generation (#419): the brand palette + identity merge into the prompt and its default reference images fill empty referenceImages slots. Unknown or draft brands are hard errors. Pass this for ANY branded task.'),
   versionOf: z.string().optional().describe('Iteration/re-roll: append the render as a new VERSION of this existing asset instead of minting a new asset. Use this whenever you regenerate or correct your own prior output for the same deliverable.'),
   allowNewAsset: z.boolean().optional().describe('Set true ONLY when a generate that references your own same-task output is a deliberately separate companion image (e.g. same style, different scene) — not an iteration.'),
 }
@@ -71,6 +72,7 @@ const editShape = {
   height: z.number().int().positive().optional().describe('Optional custom height.'),
   quality: imageQualityEnum.optional().describe('Edit quality tier (honored only on the direct-provider path).'),
   referenceImages: z.array(z.string()).optional().describe('Additional reference/context images alongside the edited asset: managed assetIds and/or local file paths (max 4). Loose paths are auto-imported. Requires a model with the reference-images capability.'),
+  brandId: z.string().optional().describe('Brand to condition this edit (#419): palette + identity merge into the edit instruction. Unknown or draft brands are hard errors.'),
 }
 
 const importShape = {

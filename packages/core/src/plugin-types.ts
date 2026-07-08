@@ -509,6 +509,9 @@ export interface AssetGenerationInfo {
   routeReason?: string
   /** Reference/context images that conditioned this generation (#418). */
   references?: Array<{ assetId: string; version: number }>
+  /** Brand provenance (#419): brand id + content fingerprint as-used. */
+  brandId?: string
+  brandFingerprint?: string
 }
 
 /** Create a new versioned asset (v1) from a source file. */

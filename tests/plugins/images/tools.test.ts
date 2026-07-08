@@ -369,6 +369,116 @@ describe('images tools', () => {
     expect(exported[0].input).toMatchObject({ surface: 'open-graph', format: 'jpg', width: 1200, height: 630 })
   })
 
+  describe('brand-conditioned generation (#419)', () => {
+    const runtimeProvider = () => mock(async () => [
+      { id: 'openai', label: 'OpenAI', configured: true, selected: true, defaultModel: 'gpt-image-2', models: ['gpt-image-2'] },
+    ])
+    const acmeBrand = (overrides: Record<string, unknown> = {}) => ({
+      manifest: {
+        id: 'acme',
+        name: 'Acme',
+        description: 'Warm bakery software.',
+        palette: [{ name: 'ink', hex: '#1A1A2E', usage: 'primary' }],
+        ...overrides,
+      },
+      fingerprint: 'sha256:brandfp1',
+    })
+    const hooksWith = (result: unknown) => ({
+      has: (name: string) => name === 'brands.get',
+      invoke: mock(async () => result),
+      register: mock(),
+      call: mock(),
+      callAll: mock(),
+    })
+
+    it('merges palette into the prompt, fills default references, records provenance', async () => {
+      const outFile = join(testDir, 'brand-generated.png')
+      writeFileSync(outFile, 'img')
+      const refAbs = join(testDir, 'brand-logo.png')
+      writeFileSync(refAbs, 'logo')
+      const generate = mock(async () => ({
+        provider: 'openai', model: 'gpt-image-2',
+        images: [{ filePath: outFile, mimeType: 'image/png', width: 1024, height: 1024 }],
+        metadata: { servedBy: 'runtime' },
+      }))
+      const refId = '20260601-logo-ccccdddd'
+      const { ctx, created } = makeContext(
+        {
+          runtime: { images: { providers: runtimeProvider(), generate } },
+          hooks: hooksWith(acmeBrand({ defaultImageReferences: [refId] })),
+        } as never,
+        { absPath: refAbs, mimeType: 'image/png', version: 1 },
+      )
+
+      const result = await generateImage(ctx, {
+        prompt: 'launch hero image', taskId: 'task-brand', provider: 'openai',
+        model: 'gpt-image-2', surface: 'instagram-feed-portrait', brandId: 'acme',
+      }, 'pixel')
+
+      expect(result.ok).toBe(true)
+      // Palette merged into the provider prompt
+      expect(generate).toHaveBeenCalledWith(expect.objectContaining({
+        prompt: expect.stringContaining('#1A1A2E'),
+      }))
+      // Brand default references filled the empty slots
+      expect(generate).toHaveBeenCalledWith(expect.objectContaining({ referenceImages: [refAbs] }))
+      // Provenance: brandId + content fingerprint (the V2 staleness hook)
+      expect(created[0].generation).toMatchObject({ brandId: 'acme', brandFingerprint: 'sha256:brandfp1' })
+    })
+
+    it('hard-errors on unknown and draft brands BEFORE any provider call', async () => {
+      const generate = mock(async () => ({ provider: 'openai', model: 'gpt-image-2', images: [] }))
+      const { ctx } = makeContext({
+        runtime: { images: { providers: runtimeProvider(), generate } },
+        hooks: hooksWith(undefined),
+      } as never)
+      const missing = await generateImage(ctx, {
+        prompt: 'x', taskId: 't', provider: 'openai', model: 'gpt-image-2', brandId: 'ghost',
+      }, 'pixel')
+      expect(missing.ok).toBe(false)
+      expect(String(missing.error)).toContain('ghost')
+      expect(generate).not.toHaveBeenCalled()
+
+      const { ctx: draftCtx } = makeContext({
+        runtime: { images: { providers: runtimeProvider(), generate } },
+        hooks: hooksWith(acmeBrand({ draft: true })),
+      } as never)
+      const draft = await generateImage(draftCtx, {
+        prompt: 'x', taskId: 't', provider: 'openai', model: 'gpt-image-2', brandId: 'acme',
+      }, 'pixel')
+      expect(draft.ok).toBe(false)
+      expect(String(draft.error)).toContain('draft')
+      expect(generate).not.toHaveBeenCalled()
+    })
+
+    it('agent-passed references win over brand defaults', async () => {
+      const outFile = join(testDir, 'brand-agent-ref.png')
+      writeFileSync(outFile, 'img')
+      const agentRefAbs = join(testDir, 'agent-shot.png')
+      writeFileSync(agentRefAbs, 'shot')
+      const generate = mock(async () => ({
+        provider: 'openai', model: 'gpt-image-2',
+        images: [{ filePath: outFile, mimeType: 'image/png', width: 1024, height: 1024 }],
+        metadata: { servedBy: 'runtime' },
+      }))
+      const { ctx } = makeContext(
+        {
+          runtime: { images: { providers: runtimeProvider(), generate } },
+          hooks: hooksWith(acmeBrand({ defaultImageReferences: ['20260601-logo-eeeeffff'] })),
+        } as never,
+        { absPath: agentRefAbs, mimeType: 'image/png', version: 2 },
+      )
+
+      const result = await generateImage(ctx, {
+        prompt: 'hero', taskId: 't', provider: 'openai', model: 'gpt-image-2',
+        surface: 'instagram-feed-portrait', brandId: 'acme',
+        referenceImages: ['20260601-shot-11112222'],
+      }, 'pixel')
+      expect(result.ok).toBe(true)
+      expect(generate).toHaveBeenCalledWith(expect.objectContaining({ referenceImages: [agentRefAbs] }))
+    })
+  })
+
   describe('reference images (#418)', () => {
     // A runtime-configured provider yields servedBy: 'runtime' so the native
     // reference path is exercised (the default harness has no runtime provider →
