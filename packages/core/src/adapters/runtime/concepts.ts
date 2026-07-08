@@ -466,6 +466,19 @@ export interface CapabilitySet {
   input: RuntimeCapabilities
 }
 
+/**
+ * Presence-only credential report (P2.2): WHICH LLM providers and channels
+ * have usable credentials configured in the runtime — names only, NEVER
+ * secret material. Drives the onboarding llm/channels checks; each adapter
+ * reads its own config internally so credential shapes never leak upstream.
+ */
+export interface RuntimeCredentialStatus {
+  /** Provider names with usable credentials (api key / token / OAuth). */
+  llmProviders: string[]
+  /** Channel names with usable credentials. Empty on channel-less runtimes. */
+  channels: string[]
+}
+
 export interface RuntimeAvailableModel {
   id: string
   name?: string
@@ -759,6 +772,14 @@ export interface AgentRuntimeAdapter {
    * returns the same facts for the async report surface.
    */
   describeToolAccess(): RuntimeToolAccess
+
+  /**
+   * Presence-only credential report for the runtime's LLM providers and
+   * channels (P2.2). `opts.agentId` scopes provider credentials to one
+   * agent's profile where the runtime keys them per-agent (default: the
+   * main agent). Never returns secret material.
+   */
+  credentialStatus(opts?: { agentId?: string }): Promise<RuntimeCredentialStatus>
 
   /**
    * Wire up this runtime so its agents can reach Bakin's exec tools.

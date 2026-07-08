@@ -19,6 +19,7 @@ import type {
   RuntimeCapabilities,
   CapabilitySet,
   RuntimeToolAccess,
+  RuntimeCredentialStatus,
   ToolAccessProvisioningStatus,
   RuntimeImageEditInput,
   RuntimeImageGenerateInput,
@@ -39,6 +40,7 @@ import {
   verifyBakinMcpEntries,
   type BakinMcpConfig,
 } from './tool-access-provisioning'
+import { listConfiguredChannels, listLlmProviders } from './credential-status'
 import { RuntimeError, RuntimeTurnError } from '@bakin/core/adapters/runtime'
 import { tryGetMainAgentId } from './main-agent'
 import { buildOpenClawAttachments } from './attachments'
@@ -993,6 +995,15 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
    */
   /** OpenClaw agents reach Bakin exec tools via their native MCP client (verified: Phase-0 spike). */
   describeToolAccess = (): RuntimeToolAccess => ({ style: 'mcp', mcpServerTemplate: 'bakin-<agent>' })
+
+  /**
+   * Presence-only credential report (P2.2): provider names from the agent's
+   * auth-profiles.json + channel names from config.channels. Never secrets.
+   */
+  credentialStatus = async (opts?: { agentId?: string }): Promise<RuntimeCredentialStatus> => ({
+    llmProviders: listLlmProviders(opts?.agentId),
+    channels: listConfiguredChannels(),
+  })
 
   private async runtimeAgentIds(): Promise<string[]> {
     return (await this.agents.list()).map((agent) => agent.id).filter(Boolean)

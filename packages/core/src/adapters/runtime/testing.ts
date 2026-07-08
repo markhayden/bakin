@@ -124,6 +124,9 @@ export function createMockRuntimeAdapter(
 
     describeToolAccess: () => ({ style: 'mcp' as const, mcpServerTemplate: 'bakin-<agent>' }),
 
+    // Conservative default: no credentials configured; tests override.
+    credentialStatus: async (_opts?: { agentId?: string }) => ({ llmProviders: [], channels: [] }),
+
     provisionToolAccess: async () => {},
     deprovisionToolAccess: async () => {},
     verifyToolAccess: async () => ({ style: 'mcp' as const, ok: true, issues: [] }),

@@ -63,6 +63,7 @@ export type {
   ToolAccessStyle,
   RuntimeToolAccess,
   ToolAccessProvisioningStatus,
+  RuntimeCredentialStatus,
   CapabilitySet,
   RuntimeConfigAccess,
   RuntimeImageBackground,

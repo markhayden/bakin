@@ -79,6 +79,13 @@ describe('config surface', () => {
 
     expect(await adapter.config.raw<string>('defaultProvider', 'onboarding.runtime.integrity')).toBe('openai-codex')
   })
+
+  test('credentialStatus reports provider names only — never secrets, no channels (P2.2)', async () => {
+    const status = await adapter.credentialStatus()
+    expect(status.llmProviders).toContain('openai-codex')
+    expect(status.channels).toEqual([])
+    expect(JSON.stringify(status)).not.toContain('sk-test-not-real')
+  })
 })
 
 describe('skills surface', () => {

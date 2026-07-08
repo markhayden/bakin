@@ -10,10 +10,10 @@ import type {
   AdapterInitOpts,
 } from '@bakin/core/adapters/runtime'
 
-import type { CapabilitySet, RuntimeCapabilities, RuntimeToolAccess, ToolAccessProvisioningStatus } from '@bakin/core/adapters/runtime'
+import type { CapabilitySet, RuntimeCapabilities, RuntimeCredentialStatus, RuntimeToolAccess, ToolAccessProvisioningStatus } from '@bakin/core/adapters/runtime'
 
 import { createAgentsSurface } from './agents'
-import { createConfigSurface } from './config'
+import { createConfigSurface, listAuthProviders } from './config'
 import { MAIN_AGENT_ID, seedMainAgentIfEmpty } from './main-agent'
 import { createMemorySurface } from './memory'
 import { createMessagingSurface } from './messaging'
@@ -63,6 +63,16 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
 
   /** Pi agents call Bakin exec tools natively (in-process tool bridge). */
   describeToolAccess = (): RuntimeToolAccess => ({ style: 'in-process' })
+
+  /**
+   * Presence-only credential report (P2.2): provider names from Pi's
+   * auth.json (never secret material). Pi keys credentials per-install, not
+   * per-agent, so `agentId` is irrelevant; no channel layer → no channels.
+   */
+  credentialStatus = async (_opts?: { agentId?: string }): Promise<RuntimeCredentialStatus> => ({
+    llmProviders: listAuthProviders(),
+    channels: [],
+  })
 
   /**
    * No external wiring to provision — Pi's exec tools are injected per
