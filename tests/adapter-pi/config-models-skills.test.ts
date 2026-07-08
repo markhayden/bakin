@@ -119,15 +119,15 @@ describe('models + capabilities', () => {
 
   test('capabilities follow the agent model; unknown agent all-false', async () => {
     await adapter.agents.update('main', { model: 'openai-codex/gpt-test-vision' })
-    expect(await adapter.capabilities!({ agentId: 'main' })).toEqual({ imageInput: true, audioInput: false })
+    expect((await adapter.capabilities!({ agentId: 'main' })).input).toEqual({ imageInput: true, audioInput: false })
 
     await adapter.agents.update('main', { model: 'openai-codex/gpt-test-text' })
-    expect(await adapter.capabilities!({ agentId: 'main' })).toEqual({ imageInput: false, audioInput: false })
+    expect((await adapter.capabilities!({ agentId: 'main' })).input).toEqual({ imageInput: false, audioInput: false })
 
-    expect(await adapter.capabilities!({ agentId: 'ghost' })).toEqual({ imageInput: false, audioInput: false })
+    expect((await adapter.capabilities!({ agentId: 'ghost' })).input).toEqual({ imageInput: false, audioInput: false })
   })
 
-  test('describeToolAccess declares native invocation', () => {
-    expect(adapter.describeToolAccess!()).toEqual({ invocation: 'native' })
+  test('describeToolAccess declares in-process invocation', () => {
+    expect(adapter.describeToolAccess!()).toEqual({ style: 'in-process' })
   })
 })

@@ -34,7 +34,7 @@ describe('tool invocation styles', () => {
 
   test('resolveToolInvocation follows the active runtime hint (fallback mcporter-cli)', () => {
     const runtime = createMockRuntimeAdapter({
-      describeToolAccess: () => ({ invocation: 'native' as const }),
+      describeToolAccess: () => ({ style: 'in-process' as const }),
     })
     setAppServices({ runtime } as unknown as AppServices)
     expect(resolveToolInvocation()).toBe('native')

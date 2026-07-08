@@ -17,7 +17,8 @@ import type {
   RuntimeAgent,
   RuntimeAvailableModel,
   RuntimeCapabilities,
-  RuntimeToolAccessHint,
+  CapabilitySet,
+  RuntimeToolAccess,
   RuntimeImageEditInput,
   RuntimeImageGenerateInput,
   RuntimeImageGenerationResult,
@@ -956,12 +957,22 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
    * Conservative false on any ambiguity; no model-name heuristics (D17
    * discipline applies to runtimes too).
    */
-  /** OpenClaw agents reach Bakin exec tools by shelling mcporter against the MCP server. */
-  describeToolAccess = (): RuntimeToolAccessHint => ({ invocation: 'mcporter-cli' })
+  /** OpenClaw agents reach Bakin exec tools via their native MCP client (verified: Phase-0 spike). */
+  describeToolAccess = (): RuntimeToolAccess => ({ style: 'mcp', mcpServerTemplate: 'bakin-<agent>' })
 
-  capabilities = async (opts?: { agentId?: string }): Promise<RuntimeCapabilities> => {
+  capabilities = async (opts?: { agentId?: string }): Promise<CapabilitySet> => ({
+    toolCalling: { mode: 'native', access: this.describeToolAccess() },
+    delivery: { mode: 'native' },
+    imageGen: { mode: 'native' },
+    memory: { mode: 'native' },
+    sessions: { mode: 'native' },
+    workspaceFiles: { mode: 'native' },
+    input: await this.inputModality(opts?.agentId),
+  })
+
+  private inputModality = async (agentId?: string): Promise<RuntimeCapabilities> => {
     const CACHE_MS = 60_000
-    const requested = opts?.agentId?.trim() || ''
+    const requested = agentId?.trim() || ''
     const cached = this.capabilitiesCache.get(requested)
     if (cached && Date.now() - cached.at < CACHE_MS) {
       return cached.value

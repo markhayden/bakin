@@ -405,14 +405,50 @@ export interface RuntimeCapabilities {
 }
 
 /**
- * How agents on this runtime invoke Bakin exec tools:
- * - 'native'       — exec tools are first-class session tools; the agent
- *                    calls `bakin_exec_*` directly (in-process seam).
- * - 'mcporter-cli' — tools are reached by shelling `mcporter call
- *                    bakin-<agent>.<tool> <args>` against Bakin's MCP server.
+ * One capability's provisioning state on a runtime:
+ * - 'native'      — the runtime provides it directly.
+ * - 'shimmed'     — the runtime doesn't, but a Bakin-owned shim fills it.
+ * - 'unavailable' — neither; degrade honestly + surface in the UI.
  */
-export interface RuntimeToolAccessHint {
-  invocation: 'native' | 'mcporter-cli'
+export type CapabilityMode = 'native' | 'shimmed' | 'unavailable'
+
+/**
+ * How agents on this runtime invoke Bakin exec tools:
+ * - 'in-process' — exec tools are first-class session tools; the agent calls
+ *                  `bakin_exec_*` directly (Pi's in-process bridge).
+ * - 'mcp'        — the runtime's native MCP client reaches Bakin's MCP server;
+ *                  tools appear namespaced as `<mcpServerTemplate>.<tool>`.
+ * - 'cli-shim'   — the agent shells `<shimCommand>` (inert extension point for
+ *                  a future runtime that can neither embed nor speak MCP).
+ */
+export type ToolAccessStyle = 'in-process' | 'mcp' | 'cli-shim'
+
+export interface RuntimeToolAccess {
+  style: ToolAccessStyle
+  /** 'mcp': per-agent server-name template, e.g. `bakin-<agent>`. */
+  mcpServerTemplate?: string
+  /** 'cli-shim': shell command template. */
+  shimCommand?: string
+  /** One canonical, style-appropriate example call. */
+  example?: string
+}
+
+/**
+ * The unified capability declaration — every runtime-provided capability that
+ * has a native/shim/gap choice. Bakin renders agent instructions from it,
+ * routes to shims when `shimmed`, degrades honestly when `unavailable`, and
+ * plugins query it instead of assuming. Always-Bakin-owned capabilities
+ * (scheduling, heartbeats, tasks, assets, audit) are NOT here — they have no
+ * native/shim choice. `input` folds in the former modality-only capabilities.
+ */
+export interface CapabilitySet {
+  toolCalling: { mode: 'native'; access: RuntimeToolAccess }
+  delivery: { mode: CapabilityMode }
+  imageGen: { mode: CapabilityMode }
+  memory: { mode: 'native' | 'unavailable' }
+  sessions: { mode: 'native' | 'unavailable' }
+  workspaceFiles: { mode: 'native' | 'unavailable' }
+  input: RuntimeCapabilities
 }
 
 export interface RuntimeAvailableModel {
@@ -685,22 +721,22 @@ export interface AgentRuntimeAdapter {
   }
 
   /**
-   * Input-modality capabilities of the runtime's current configuration,
-   * evaluated for `opts.agentId`'s effective model (default: the main
-   * agent). A requested agent that does not exist reports all-false.
-   * Transitional-optional (same pattern the search contract used): absent
-   * means "unknown" and callers MUST treat it as all-false.
+   * The unified capability declaration for this runtime, evaluated for
+   * `opts.agentId`'s effective model (default: the main agent) where
+   * model-dependent (input modality). Async: the report surface for the
+   * runtime-switch UI + plugin capability queries. `input` is conservative-
+   * false on any ambiguity, never model-name heuristics.
    */
-  capabilities?(opts?: { agentId?: string }): Promise<RuntimeCapabilities>
+  capabilities(opts?: { agentId?: string }): Promise<CapabilitySet>
 
   /**
    * How agents on this runtime invoke Bakin exec tools — drives the
-   * tool-usage wording of dispatch prompts (dispatch-prompts.ts renders
-   * `mcporter call bakin-<agent>.<tool> …` shell lines vs bare native tool
-   * calls). Sync + static: this is declared wiring, not probed state.
-   * Optional: absent means the legacy default, 'mcporter-cli'.
+   * tool-usage wording of dispatch prompts + projected AGENTS.md. SYNC +
+   * static (declared wiring, not probed state) so it's callable from the
+   * synchronous prompt-assembly path; `capabilities().toolCalling.access`
+   * returns the same facts for the async report surface.
    */
-  describeToolAccess?(): RuntimeToolAccessHint
+  describeToolAccess(): RuntimeToolAccess
 
   images?: RuntimeImagesAccess
 

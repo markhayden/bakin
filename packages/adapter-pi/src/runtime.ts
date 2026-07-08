@@ -10,7 +10,7 @@ import type {
   AdapterInitOpts,
 } from '@bakin/core/adapters/runtime'
 
-import type { RuntimeCapabilities, RuntimeToolAccessHint } from '@bakin/core/adapters/runtime'
+import type { CapabilitySet, RuntimeCapabilities, RuntimeToolAccess } from '@bakin/core/adapters/runtime'
 
 import { createAgentsSurface } from './agents'
 import { createConfigSurface } from './config'
@@ -62,15 +62,28 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   /** Pi agents call Bakin exec tools natively (in-process tool bridge). */
-  describeToolAccess = (): RuntimeToolAccessHint => ({ invocation: 'native' })
+  describeToolAccess = (): RuntimeToolAccess => ({ style: 'in-process' })
+
+  /** Full capability set; input modality is a conservative model probe. */
+  capabilities = async (opts?: { agentId?: string }): Promise<CapabilitySet> => ({
+    toolCalling: { mode: 'native', access: this.describeToolAccess() },
+    // Pi has no channel layer (honest-empty until the in-app channel shim).
+    delivery: { mode: 'unavailable' },
+    // Image gen works via the codex OAuth + shared shim.
+    imageGen: { mode: 'native' },
+    memory: { mode: 'native' },
+    sessions: { mode: 'native' },
+    workspaceFiles: { mode: 'native' },
+    input: await this.inputModality(opts?.agentId),
+  })
 
   /** Conservative modality probe from the agent's effective Pi model. */
-  capabilities = async (opts?: { agentId?: string }): Promise<RuntimeCapabilities> => {
+  private inputModality(agentId?: string): Promise<RuntimeCapabilities> {
     const agents = readRegistry().agents
-    const requested = opts?.agentId?.trim()
+    const requested = agentId?.trim()
     if (requested) {
       const record = agents.find((a) => a.id === requested)
-      if (!record) return { imageInput: false, audioInput: false }
+      if (!record) return Promise.resolve({ imageInput: false, audioInput: false })
       return capabilitiesForModel(record.model)
     }
     const main = agents.find((a) => a.id === MAIN_AGENT_ID) ?? agents[0]

@@ -63,6 +63,18 @@ afterAll(() => {
 })
 beforeEach(() => { clearKeys() })
 
+function capabilitySetWith(input: { imageInput: boolean; audioInput: boolean }) {
+  return {
+    toolCalling: { mode: 'native' as const, access: { style: 'cli-shim' as const } },
+    delivery: { mode: 'native' as const },
+    imageGen: { mode: 'unavailable' as const },
+    memory: { mode: 'native' as const },
+    sessions: { mode: 'native' as const },
+    workspaceFiles: { mode: 'native' as const },
+    input,
+  }
+}
+
 function runtimeWith(caps: { imageInput: boolean; audioInput: boolean } | 'none' | 'throws'): AgentRuntimeAdapter {
   const base = createMockRuntimeAdapter()
   if (caps === 'none') {
@@ -72,7 +84,7 @@ function runtimeWith(caps: { imageInput: boolean; audioInput: boolean } | 'none'
   if (caps === 'throws') {
     return { ...base, capabilities: async () => { throw new Error('probe boom') } }
   }
-  return { ...base, capabilities: async () => caps }
+  return { ...base, capabilities: async () => capabilitySetWith(caps) }
 }
 
 describe('resolveEnrichmentEngine ladder', () => {

@@ -69,7 +69,7 @@ describe('OpenClaw runtime capabilities', () => {
       { key: 'openai/gpt-5.5', input: 'text+image', available: true, tags: ['configured'] },
     ])
     const caps = await makeAdapter().capabilities!()
-    expect(caps).toEqual({ imageInput: true, audioInput: false })
+    expect(caps.input).toEqual({ imageInput: true, audioInput: false })
   })
 
   it('reports all-false for a text-declared model (the live-machine case)', async () => {
@@ -80,7 +80,7 @@ describe('OpenClaw runtime capabilities', () => {
     const caps = await makeAdapter().capabilities!()
     // Other catalog models being multimodal is irrelevant — the probe keys
     // on the main agent's EFFECTIVE model, which the gateway gate enforces.
-    expect(caps).toEqual({ imageInput: false, audioInput: false })
+    expect(caps.input).toEqual({ imageInput: false, audioInput: false })
   })
 
   it("falls back to the catalog's `default`-tagged entry when the agent has no explicit model", async () => {
@@ -90,7 +90,7 @@ describe('OpenClaw runtime capabilities', () => {
       { key: 'openai/gpt-5.3-codex', input: 'text', available: true, tags: ['fallback#1'] },
     ])
     const caps = await makeAdapter().capabilities!()
-    expect(caps.imageInput).toBe(true)
+    expect(caps.input.imageInput).toBe(true)
   })
 
   it('reports all-false when the model is missing from the catalog (ambiguity = false)', async () => {
@@ -98,7 +98,7 @@ describe('OpenClaw runtime capabilities', () => {
       { key: 'someone/else', input: 'text+image', available: true },
     ])
     const caps = await makeAdapter().capabilities!()
-    expect(caps).toEqual({ imageInput: false, audioInput: false })
+    expect(caps.input).toEqual({ imageInput: false, audioInput: false })
   })
 
   it('reports all-false when the catalog read fails (probe never throws)', async () => {
@@ -106,7 +106,7 @@ describe('OpenClaw runtime capabilities', () => {
     writeFileSync(openclaw, '#!/bin/sh\nexit 1\n', 'utf-8')
     chmodSync(openclaw, 0o755)
     const caps = await makeAdapter().capabilities!()
-    expect(caps).toEqual({ imageInput: false, audioInput: false })
+    expect(caps.input).toEqual({ imageInput: false, audioInput: false })
   })
 
   it('evaluates the REQUESTED agent, not main (per-agent probe for enrichmentAgent)', async () => {
@@ -119,11 +119,11 @@ describe('OpenClaw runtime capabilities', () => {
       { key: 'anthropic/claude-sonnet-4-6', input: 'text+image', available: true },
     ])
     const adapter = makeAdapter()
-    expect(await adapter.capabilities!()).toEqual({ imageInput: false, audioInput: false })
-    expect(await adapter.capabilities!({ agentId: 'enrich' })).toEqual({ imageInput: true, audioInput: false })
+    expect((await adapter.capabilities!()).input).toEqual({ imageInput: false, audioInput: false })
+    expect((await adapter.capabilities!({ agentId: 'enrich' })).input).toEqual({ imageInput: true, audioInput: false })
     // per-agent cache isolation: repeat both, same answers
-    expect(await adapter.capabilities!({ agentId: 'enrich' })).toEqual({ imageInput: true, audioInput: false })
-    expect(await adapter.capabilities!()).toEqual({ imageInput: false, audioInput: false })
+    expect((await adapter.capabilities!({ agentId: 'enrich' })).input).toEqual({ imageInput: true, audioInput: false })
+    expect((await adapter.capabilities!()).input).toEqual({ imageInput: false, audioInput: false })
   })
 
   it('a REQUESTED agent that does not exist reports all-false (no default-model fallback)', async () => {
@@ -131,7 +131,7 @@ describe('OpenClaw runtime capabilities', () => {
       { key: 'openai/gpt-5.4', input: 'text+image', available: true, tags: ['default'] },
     ])
     const caps = await makeAdapter().capabilities!({ agentId: 'ghost' })
-    expect(caps).toEqual({ imageInput: false, audioInput: false })
+    expect(caps.input).toEqual({ imageInput: false, audioInput: false })
   })
 
   it('audio stays FALSE even for audio-declared models — the attachment transport is image-only', async () => {
@@ -143,7 +143,7 @@ describe('OpenClaw runtime capabilities', () => {
       { key: 'openai/gpt-5.5', input: 'text+image+audio', available: true },
     ])
     const caps = await makeAdapter().capabilities!()
-    expect(caps).toEqual({ imageInput: true, audioInput: false })
+    expect(caps.input).toEqual({ imageInput: true, audioInput: false })
   })
 
   it('an AMBIGUOUS bare id (two providers share it) reports all-false, never first-match', async () => {
@@ -156,7 +156,7 @@ describe('OpenClaw runtime capabilities', () => {
       { key: 'anthropic/claude-sonnet-4-6', input: 'text+image', available: true },
     ])
     const caps = await makeAdapter().capabilities!({ agentId: 'enrich' })
-    expect(caps).toEqual({ imageInput: false, audioInput: false })
+    expect(caps.input).toEqual({ imageInput: false, audioInput: false })
   })
 
   it('matches a bare agent model against a provider-prefixed catalog key (live enrich-agent shape)', async () => {
@@ -165,6 +165,6 @@ describe('OpenClaw runtime capabilities', () => {
       { key: 'anthropic/claude-sonnet-4-6', name: 'Claude Sonnet 4.6', input: 'text+image', available: true },
     ])
     const caps = await makeAdapter().capabilities!({ agentId: 'enrich' })
-    expect(caps.imageInput).toBe(true)
+    expect(caps.input.imageInput).toBe(true)
   })
 })

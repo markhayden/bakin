@@ -25,11 +25,18 @@ const IMAGE_MCPORTER_TIMEOUT_MS = 600000
 
 export type ToolInvocation = 'native' | 'mcporter-cli'
 
-/** Tool-invocation style of the ACTIVE runtime; 'mcporter-cli' when unset (legacy default). */
+/**
+ * Tool-invocation style of the ACTIVE runtime, mapped onto the legacy
+ * mcporterHelpers switch. BRIDGE (P1.1→P1.4): `in-process` → native rendering;
+ * every other style ('mcp', 'cli-shim') → the existing mcporter rendering, so
+ * OpenClaw prompt bytes stay identical until P1.4 swaps the builders onto the
+ * capability-aware renderer. 'mcporter-cli' when unset (legacy default).
+ */
 export function resolveToolInvocation(): ToolInvocation {
   try {
     if (typeof appServices.maybeGetAppServices !== 'function') return 'mcporter-cli'
-    return appServices.maybeGetAppServices()?.runtime.describeToolAccess?.().invocation ?? 'mcporter-cli'
+    const style = appServices.maybeGetAppServices()?.runtime.describeToolAccess?.().style
+    return style === 'in-process' ? 'native' : 'mcporter-cli'
   } catch {
     return 'mcporter-cli'
   }

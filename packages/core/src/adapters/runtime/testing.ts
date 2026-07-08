@@ -107,10 +107,19 @@ export function createMockRuntimeAdapter(
     },
 
     // Conservative default; tests override per-case ({...mock, capabilities}).
-    capabilities: async (_opts?: { agentId?: string }) => ({ imageInput: false, audioInput: false }),
+    // 'cli-shim' keeps prompt-fixture bytes stable for mock-driven suites
+    // (maps to the legacy mcporter rendering until P1.4 swaps the builders).
+    capabilities: async (_opts?: { agentId?: string }) => ({
+      toolCalling: { mode: 'native' as const, access: { style: 'cli-shim' as const } },
+      delivery: { mode: 'native' as const },
+      imageGen: { mode: 'unavailable' as const },
+      memory: { mode: 'native' as const },
+      sessions: { mode: 'native' as const },
+      workspaceFiles: { mode: 'native' as const },
+      input: { imageInput: false, audioInput: false },
+    }),
 
-    // Legacy default so prompt-fixture bytes stay stable for mock-driven suites.
-    describeToolAccess: () => ({ invocation: 'mcporter-cli' as const }),
+    describeToolAccess: () => ({ style: 'cli-shim' as const }),
 
     cron: {
       list: async () => [],

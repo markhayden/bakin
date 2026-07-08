@@ -189,7 +189,15 @@ describe('enrichment activity notifications', () => {
   it('runtime engine: events are attributed to the enrich AGENT, not system', async () => {
     delete process.env.ANTHROPIC_API_KEY
     const runtime = {
-      capabilities: async () => ({ imageInput: true, audioInput: false }),
+      capabilities: async () => ({
+        toolCalling: { mode: 'native' as const, access: { style: 'cli-shim' as const } },
+        delivery: { mode: 'native' as const },
+        imageGen: { mode: 'unavailable' as const },
+        memory: { mode: 'native' as const },
+        sessions: { mode: 'native' as const },
+        workspaceFiles: { mode: 'native' as const },
+        input: { imageInput: true, audioInput: false },
+      }),
       messaging: {
         send: async () => ({ id: 'm1', content: '{"caption":"a blue door","ocrText":"","suggestedTags":["blue-door"]}' }),
       },
