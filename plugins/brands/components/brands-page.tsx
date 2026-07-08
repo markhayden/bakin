@@ -12,6 +12,19 @@ interface ListResponse {
   invalid: Array<{ id: string; error: string }>
 }
 
+interface ImportPreview {
+  id: string
+  name: string
+  description?: string
+  palette: Array<{ name: string; hex: string }>
+  rules: number
+  guidelines: number
+  lessons: number
+  assets: number
+  exists: boolean
+  commit?: string
+}
+
 const slugify = (name: string) =>
   name
     .toLowerCase()
@@ -24,6 +37,11 @@ export function BrandsPage() {
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
+  const [importOpen, setImportOpen] = useState(false)
+  const [importSource, setImportSource] = useState('')
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null)
+  const [importBusy, setImportBusy] = useState(false)
+  const [importError, setImportError] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     try {
@@ -84,7 +102,106 @@ export function BrandsPage() {
         >
           Create brand
         </button>
+        <button
+          className="rounded-md border px-3 py-1.5 text-sm hover:bg-accent"
+          onClick={() => { setImportOpen((v) => !v); setImportPreview(null); setImportError(null) }}
+        >
+          Import…
+        </button>
       </div>
+
+      {importOpen && (
+        <div className="rounded-lg border p-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <input
+              className="w-96 rounded-md border bg-background px-3 py-1.5 text-sm"
+              placeholder="github:user/repo, github:user/repo/path, or a local directory"
+              value={importSource}
+              onChange={(e) => { setImportSource(e.target.value); setImportPreview(null) }}
+            />
+            <button
+              className="rounded-md border px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
+              disabled={importBusy || !importSource.trim()}
+              onClick={async () => {
+                setImportBusy(true)
+                setImportError(null)
+                try {
+                  const res = await fetch('/api/plugins/brands/import/preview', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ source: importSource.trim() }),
+                  })
+                  const body = (await res.json()) as { preview?: ImportPreview; error?: string }
+                  if (!res.ok || !body.preview) throw new Error(body.error ?? `preview failed: ${res.status}`)
+                  setImportPreview(body.preview)
+                } catch (err) {
+                  setImportError(err instanceof Error ? err.message : String(err))
+                } finally {
+                  setImportBusy(false)
+                }
+              }}
+            >
+              {importBusy && !importPreview ? 'Fetching…' : 'Preview'}
+            </button>
+          </div>
+
+          {importError && <p className="text-sm text-destructive">{importError}</p>}
+
+          {importPreview && (
+            <div className="rounded-md border p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="font-medium">{importPreview.name}</span>
+                <span className="text-xs text-muted-foreground">({importPreview.id})</span>
+                {importPreview.exists && (
+                  <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-xs text-amber-400">
+                    replaces existing brand
+                  </span>
+                )}
+              </div>
+              {importPreview.palette.length > 0 && (
+                <div className="flex gap-1">
+                  {importPreview.palette.slice(0, 8).map((c) => (
+                    <span key={c.name} title={`${c.name} ${c.hex}`} className="h-4 w-4 rounded-full border" style={{ backgroundColor: c.hex }} />
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                {importPreview.rules} rule(s) · {importPreview.guidelines} guideline doc(s) · {importPreview.lessons} lesson(s) · {importPreview.assets} asset file(s)
+                {importPreview.commit ? ` · ${importPreview.commit.slice(0, 8)}` : ''}
+              </p>
+              <button
+                className="rounded-md border px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
+                disabled={importBusy}
+                onClick={async () => {
+                  setImportBusy(true)
+                  setImportError(null)
+                  try {
+                    const res = await fetch('/api/plugins/brands/import', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ source: importSource.trim(), overwrite: importPreview.exists }),
+                    })
+                    if (!res.ok) {
+                      const body = (await res.json().catch(() => ({}))) as { error?: string }
+                      throw new Error(body.error ?? `import failed: ${res.status}`)
+                    }
+                    setImportOpen(false)
+                    setImportSource('')
+                    setImportPreview(null)
+                    await refresh()
+                  } catch (err) {
+                    setImportError(err instanceof Error ? err.message : String(err))
+                  } finally {
+                    setImportBusy(false)
+                  }
+                }}
+              >
+                {importBusy ? 'Importing…' : importPreview.exists ? 'Replace + import' : 'Import'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 

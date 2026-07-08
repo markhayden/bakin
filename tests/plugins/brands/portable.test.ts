@@ -34,6 +34,20 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
+// Github clones are mocked: "materialize" = copy the seeded portable dir into
+// the staging dir and report a fixed commit; the second call reports a newer
+// commit so the drift check has something to detect.
+const upstreamCommits = ['commit-aaa', 'commit-aaa', 'commit-bbb']
+let materializeCalls = 0
+mock.module('../../../src/core/github-source-cache', () => ({
+  materializeCachedGithubSource: mock(async (args: { stagingDir: string }) => {
+    const { cpSync } = await import('fs')
+    cpSync(join(testDir, 'src'), args.stagingDir, { recursive: true })
+    const commitSha = upstreamCommits[Math.min(materializeCalls, upstreamCommits.length - 1)]
+    materializeCalls++
+    return { checkoutDir: args.stagingDir, commitSha }
+  }),
+}))
 
 import { validatePortableDir, importBrand, exportBrand } from '../../../plugins/brands/lib/portable'
 import { getBrand, listDocs, readDoc } from '../../../plugins/brands/lib/store'
@@ -134,6 +148,49 @@ describe('importBrand', () => {
     // Overwrite replaces
     const again = await importBrand({ sourceDir: src, ctx, source: 'x', overwrite: true })
     expect(again.brand.id).toBe('acme')
+  })
+})
+
+describe('github import routes (#419 S6)', () => {
+  it('preview writes nothing; import stamps commit provenance; check detects drift', async () => {
+    const src = join(testDir, 'src')
+    seedPortableDir(src)
+    const brandsPlugin = (await import('../../../plugins/brands')).default
+    const { activatePlugin, callRoute, findRoute } = await import('../test-helpers')
+    const activated = await activatePlugin(brandsPlugin, testDir)
+    const route = (method: string, path: string) => {
+      const r = findRoute(activated.routes, method, path)
+      if (!r) throw new Error(`route not found: ${method} ${path}`)
+      return r
+    }
+
+    // Preview: summary, zero writes
+    const preview = await callRoute(route('POST', '/import/preview'), activated.ctx, {
+      body: { source: 'github:me/acme-brand' },
+    })
+    expect(preview.status).toBe(200)
+    const p = preview.body.preview as { id: string; assets: number; commit?: string }
+    expect(p.id).toBe('acme')
+    expect(p.assets).toBe(2)
+    expect(p.commit).toBe('commit-aaa')
+    expect(existsSync(join(testDir, 'brands', 'acme'))).toBe(false) // nothing written
+
+    // Import: provenance carries repo + commit
+    const imported = await callRoute(route('POST', '/import'), activated.ctx, {
+      body: { source: 'github:me/acme-brand' },
+    })
+    expect(imported.status).toBe(200)
+    const installed = getBrand('acme')
+    if (installed.status !== 'ok') throw new Error('expected brand')
+    expect(installed.manifest.source).toMatchObject({ repo: 'github:me/acme-brand', commit: 'commit-aaa' })
+
+    // Drift check: upstream moved to commit-bbb
+    const check = await callRoute(route('GET', '/import/check'), activated.ctx, {
+      searchParams: { id: 'acme' },
+    })
+    expect(check.status).toBe(200)
+    expect(check.body.drift).toBe(true)
+    expect(check.body.latestCommit).toBe('commit-bbb')
   })
 })
 

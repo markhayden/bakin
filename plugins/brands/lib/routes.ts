@@ -138,23 +138,73 @@ export const brandRoutes = [
   }),
 
   defineRoute({
+    path: '/import/preview',
+    method: 'POST',
+    summary: 'Validate + summarize a portable brand source — writes NOTHING',
+    description:
+      'The confirm step before install (S6): fetches github sources into a staging dir, validates the portable manifest, and returns name/palette/doc/asset counts. Zero writes to the brand store or asset store.',
+    body: z.object({ source: z.string().min(1) }),
+    responses: { 200: passthrough, 400: errorResponse },
+    handler: async (_req, _ctx, parsed) => {
+      const { materializeImportSource } = await import('./github-import')
+      const { validatePortableDir } = await import('./portable')
+      let materialized
+      try {
+        materialized = await materializeImportSource(parsed.body.source)
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 })
+      }
+      try {
+        const validated = validatePortableDir(materialized.dir)
+        if (!validated.ok) return Response.json({ error: validated.error }, { status: 400 })
+        const existing = getBrand(validated.portable.id)
+        return Response.json({
+          preview: {
+            id: validated.portable.id,
+            name: validated.portable.name,
+            description: validated.portable.description,
+            palette: validated.portable.palette,
+            rules: validated.portable.rules?.length ?? 0,
+            guidelines: validated.guidelines.length,
+            lessons: validated.lessons.length,
+            assets: validated.files.length,
+            exists: existing.status !== 'missing',
+            ...(materialized.provenance.commit ? { commit: materialized.provenance.commit } : {}),
+          },
+        })
+      } finally {
+        materialized.cleanup()
+      }
+    },
+  }),
+
+  defineRoute({
     path: '/import',
     method: 'POST',
-    summary: 'Import a portable brand (local path source; github source lands with the drift-check)',
+    summary: 'Import a portable brand from a local path or github source',
     description:
-      'Validates the portable manifest, ingests referenced files as managed assets, rewrites path refs → assetIds, stamps provenance. Never writes on validation failure; existing ids require overwrite consent.',
+      'Validates the portable manifest, ingests referenced files as managed assets, rewrites path refs → assetIds, stamps provenance ({repo, ref, commit}). Never writes on validation failure; existing ids require overwrite consent (local edits win). Private repos use the operator\'s ambient git credentials.',
     body: z.object({
       source: z.string().min(1),
       overwrite: z.boolean().optional(),
     }),
     responses: { 200: passthrough, 400: errorResponse, 409: errorResponse },
     handler: async (_req, ctx, parsed) => {
+      const { materializeImportSource } = await import('./github-import')
       const { importBrand } = await import('./portable')
+      let materialized
+      try {
+        materialized = await materializeImportSource(parsed.body.source)
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 })
+      }
       try {
         const result = await importBrand({
-          sourceDir: parsed.body.source,
+          sourceDir: materialized.dir,
           ctx: ctx as never,
-          source: parsed.body.source,
+          source: materialized.provenance.source,
+          ref: materialized.provenance.ref,
+          commit: materialized.provenance.commit,
           overwrite: parsed.body.overwrite,
         })
         emitChanged(ctx, result.brand.id, 'brand.imported')
@@ -162,6 +212,39 @@ export const brandRoutes = [
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         return Response.json({ error: message }, { status: message.includes('already exists') ? 409 : 400 })
+      } finally {
+        materialized.cleanup()
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/import/check',
+    method: 'GET',
+    summary: "Drift check: is an installed brand behind its upstream repo?",
+    description:
+      'Compares the installed brand\'s provenance commit against the current upstream commit (S6). Read-only — refreshing is an explicit re-import.',
+    query: z.object({ id: z.string().min(1) }),
+    responses: { 200: passthrough, 400: errorResponse, 404: errorResponse },
+    handler: async (_req, _ctx, parsed) => {
+      const read = getBrand(parsed.query.id)
+      if (read.status !== 'ok') return Response.json({ error: 'brand not found' }, { status: 404 })
+      const source = read.manifest.source
+      if (!source) return Response.json({ error: 'brand was not imported from a source' }, { status: 400 })
+      try {
+        const { latestUpstreamCommit, isGithubSource } = await import('./github-import')
+        if (!isGithubSource(source.repo)) {
+          return Response.json({ error: 'brand source is not a github repo' }, { status: 400 })
+        }
+        const latest = await latestUpstreamCommit(source.repo, source.ref)
+        return Response.json({
+          brandId: read.manifest.id,
+          installedCommit: source.commit ?? null,
+          latestCommit: latest,
+          drift: !!source.commit && source.commit !== latest,
+        })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 })
       }
     },
   }),
