@@ -225,6 +225,24 @@ function makeRuntimeMock() {
       runNow: async (jobId: string) => ({ id: 'run-1', jobId, status: 'succeeded' }),
       listRuns: async () => [],
     },
+    models: {
+      listAvailable: async () => [],
+      routingSupport: () => ({
+        defaultModel: true,
+        fallbackModels: true,
+        defaultSubagentModel: true,
+        aliases: true,
+        perAgentSubagentModel: true,
+      }),
+      // P2.4: the default-model fallback reads the routing policy, not config.
+      routingPolicy: async () => ({
+        defaultModel: 'claude-opus-4',
+        fallbackModels: [],
+        defaultSubagentModel: null,
+        aliases: {},
+      }),
+      setRoutingPolicy: async () => {},
+    },
     config: {
       get: async () => ({ agents: { defaults: { model: { primary: 'claude-opus-4' } } } }),
       update: async () => {},

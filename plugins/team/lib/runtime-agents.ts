@@ -8,7 +8,6 @@
  * REST routes and activate() call into.
  */
 import { basename } from 'path'
-import { readRuntimeConfig } from '../../../src/core/runtime-config'
 
 import { resolveAgentAvatar } from '@bakin/core/agents/avatar'
 import { getRuntimeMainAgentId, type AgentRuntimeAdapter, type RuntimeAgent } from '@bakin/core/adapters/runtime'
@@ -69,10 +68,10 @@ export async function getRuntimeAgentIds(runtime: AgentRuntimeAdapter): Promise<
 
 export async function getRuntimeAgentModel(runtime: AgentRuntimeAdapter, agent: RuntimeAgent): Promise<string> {
   if (agent.model) return agent.model
-  const config = await readRuntimeConfig<{
-    agents?: { defaults?: { model?: { primary?: string } } }
-  }>(runtime, 'team.agent-inventory')
-  return config.agents?.defaults?.model?.primary ?? 'unknown'
+  // No explicit assignment → the runtime's routing default (P2.4: read
+  // through the neutral policy surface, never raw runtime config).
+  const policy = await runtime.models.routingPolicy()
+  return policy.defaultModel || 'unknown'
 }
 
 async function readRuntimeWorkspaceText(
