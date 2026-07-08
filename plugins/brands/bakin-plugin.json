@@ -67,7 +67,8 @@
       }
     ],
     "slots": [
-      "page:/brands"
+      "page:/brands",
+      "task-brand"
     ]
   }
 }

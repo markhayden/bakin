@@ -64,19 +64,22 @@ export class BrandUnavailableError extends Error {
 
 const BRAND_ANCESTRY_MAX_HOPS = 10
 
+/** Where a task's effective brand came from — surfaced in the task Brand panel. */
+export type EffectiveBrandSource = 'own' | 'parent' | 'project'
+
 /**
- * Effective brand id: own → nearest ancestor (cycle-safe parentId walk — the
+ * Effective brand: own → nearest ancestor (cycle-safe parentId walk — the
  * decomposition/corrective paths must never lose the brand) → project brand
  * via the external projects plugin's hook (own or first ancestor projectId).
  * Lazy by design (spec D4): re-branding a project flows to its tasks.
  */
-export async function resolveEffectiveBrandId(task: {
+export async function resolveEffectiveBrand(task: {
   id: string
   brandId?: string
   parentId?: string | null
   projectId?: string
-}): Promise<string | undefined> {
-  if (task.brandId) return task.brandId
+}): Promise<{ brandId: string; source: EffectiveBrandSource } | undefined> {
+  if (task.brandId) return { brandId: task.brandId, source: 'own' }
 
   let projectId = task.projectId
   const seen = new Set<string>([task.id])
@@ -89,7 +92,7 @@ export async function resolveEffectiveBrandId(task: {
     seen.add(parentId)
     const parent = getTask(parentId)
     if (!parent) break
-    if (parent.brandId) return parent.brandId
+    if (parent.brandId) return { brandId: parent.brandId, source: 'parent' }
     if (!projectId && parent.projectId) projectId = parent.projectId
     parentId = parent.parentId ?? undefined
   }
@@ -97,7 +100,7 @@ export async function resolveEffectiveBrandId(task: {
   if (projectId && hooks().has('projects.getBrand')) {
     try {
       const brandId = await hooks().invoke<string | undefined>('projects.getBrand', { projectId })
-      if (typeof brandId === 'string' && brandId) return brandId
+      if (typeof brandId === 'string' && brandId) return { brandId, source: 'project' }
     } catch (err) {
       log.warn('projects.getBrand failed; treating task as unbranded via project', {
         taskId: task.id, projectId, error: formatDispatchError(err),
@@ -105,6 +108,16 @@ export async function resolveEffectiveBrandId(task: {
     }
   }
   return undefined
+}
+
+/** Effective brand id only — the dispatch-path convenience over resolveEffectiveBrand. */
+export async function resolveEffectiveBrandId(task: {
+  id: string
+  brandId?: string
+  parentId?: string | null
+  projectId?: string
+}): Promise<string | undefined> {
+  return (await resolveEffectiveBrand(task))?.brandId
 }
 
 // Notify-once per (taskId, brandId) incident. In-memory by design: a server

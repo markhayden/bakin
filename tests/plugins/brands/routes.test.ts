@@ -213,6 +213,79 @@ describe('hooks', () => {
   })
 })
 
+describe('observability routes (#419 §5.5)', () => {
+  it('task-context resolves effective brand with provenance + blocked state', async () => {
+    await createAcme()
+    const t1 = await activated.ctx.tasks.create({ title: 'Branded', brandId: 'acme' } as never)
+    const ctx1 = await callRoute(route('GET', '/task-context/:taskId'), activated.ctx, {
+      searchParams: { taskId: t1.id },
+    })
+    expect(ctx1.status).toBe(200)
+    const brand1 = ctx1.body.brand as { brandId: string; source: string; blocked: boolean }
+    expect(brand1.brandId).toBe('acme')
+    expect(brand1.source).toBe('own')
+    expect(brand1.blocked).toBe(false)
+
+    const ghost = await activated.ctx.tasks.create({ title: 'Ghost brand', brandId: 'ghost' } as never)
+    const ctx2 = await callRoute(route('GET', '/task-context/:taskId'), activated.ctx, {
+      searchParams: { taskId: ghost.id },
+    })
+    expect((ctx2.body.brand as { blocked: boolean }).blocked).toBe(true)
+
+    const plain = await activated.ctx.tasks.create({ title: 'Plain' } as never)
+    const ctx3 = await callRoute(route('GET', '/task-context/:taskId'), activated.ctx, {
+      searchParams: { taskId: plain.id },
+    })
+    expect(ctx3.body.brand).toBeNull()
+  })
+
+  it('blocked-tasks reports todo tasks deferring on missing/draft brands', async () => {
+    await createAcme()
+    const ok = await activated.ctx.tasks.create({ title: 'Fine', brandId: 'acme', column: 'todo' } as never)
+    const stuck = await activated.ctx.tasks.create({ title: 'Stuck', brandId: 'ghost', column: 'todo' } as never)
+    const res = await callRoute(route('GET', '/blocked-tasks'), activated.ctx)
+    expect(res.status).toBe(200)
+    const perTask = res.body.perTask as Record<string, string>
+    expect(perTask[stuck.id]).toBe('ghost')
+    expect(perTask[ok.id]).toBeUndefined()
+  })
+
+  it('injections returns bounded, task-filtered brand.injected records', async () => {
+    const { writeFileSync } = await import('fs')
+    const now = new Date().toISOString()
+    const lines = [
+      { ts: now, event: 'brand.injected', agent: 'jessica', data: { taskId: 't-a', runId: 'r1', brandId: 'acme', cardBytes: 900 } },
+      { ts: now, event: 'brand.injected', agent: 'jessica', data: { taskId: 't-b', runId: 'r2', brandId: 'acme', cardBytes: 800 } },
+      { ts: now, event: 'task.dispatched', agent: 'jessica', data: { taskId: 't-a' } },
+    ].map((l) => JSON.stringify(l)).join('\n')
+    writeFileSync(join(testDir, 'audit.jsonl'), lines + '\n', 'utf-8')
+
+    const res = await callRoute(route('GET', '/injections/:taskId'), activated.ctx, {
+      searchParams: { taskId: 't-a' },
+    })
+    expect(res.status).toBe(200)
+    const injections = res.body.injections as Array<{ runId: string; cardBytes: number }>
+    expect(injections.map((i) => i.runId)).toEqual(['r1'])
+    expect(injections[0].cardBytes).toBe(900)
+  })
+
+  it('card-preview renders the same card the dispatch builder produces', async () => {
+    await createAcme()
+    const res = await callRoute(route('GET', '/:brandId/card-preview'), activated.ctx, {
+      searchParams: { brandId: 'acme' },
+    })
+    expect(res.status).toBe(200)
+    expect(String(res.body.card)).toContain('Brand: Acme (acme)')
+    expect((res.body.meta as { cardBytes: number }).cardBytes).toBeGreaterThan(0)
+    expect(res.body.maxBytes).toBe(12288)
+
+    const missing = await callRoute(route('GET', '/:brandId/card-preview'), activated.ctx, {
+      searchParams: { brandId: 'ghost' },
+    })
+    expect(missing.status).toBe(404)
+  })
+})
+
 describe('exec tools', () => {
   function tool(name: string) {
     const t = activated.execTools.find((t) => t.name === name)

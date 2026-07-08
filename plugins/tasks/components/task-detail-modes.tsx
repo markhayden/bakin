@@ -196,6 +196,7 @@ export function TaskDetailForm({ m, task, columnId, open, onClose, onCancelEdit 
         <GateApprovalPanel m={m} />
         <MapChildrenPanel m={m} />
 
+        {!isCreate && task && <Slot name="task-brand" taskId={task.id} />}
         {!isCreate && task && <Slot name="task-assets" taskId={task.id} />}
 
         <div className="flex justify-end gap-2">
@@ -300,6 +301,7 @@ export function TaskDetailView({ m, task, columnId, open, onClose, onEdit, onDel
           </div>
         )}
 
+        <Slot name="task-brand" taskId={task.id} />
         <Slot name="task-assets" taskId={task.id} readOnly />
 
         <Separator />

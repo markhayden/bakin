@@ -26,6 +26,7 @@ import {
 import { brandIdSchema, brandManifestSchema } from './schemas'
 import { computeBrandFingerprint } from './fingerprint'
 import { scaffoldBrand } from './scaffold'
+import { buildBrandCard } from './card'
 
 const log = createLogger('brands')
 
@@ -133,6 +134,78 @@ export const brandRoutes = [
         }
       }
       return Response.json({ perTask })
+    },
+  }),
+
+  defineRoute({
+    path: '/task-context/:taskId',
+    method: 'GET',
+    summary: "A task's effective brand + provenance + blocked state",
+    description:
+      'The task Brand panel source (#419): which brand applies (own / inherited from parent / project), and whether it currently resolves to a published brand.',
+    params: z.object({ taskId: z.string().min(1) }),
+    responses: { 200: passthrough, 404: errorResponse },
+    handler: async (_req, ctx, parsed) => {
+      const task = await ctx.tasks.get(parsed.params.taskId)
+      if (!task) return Response.json({ error: 'task not found' }, { status: 404 })
+      const { resolveEffectiveBrand } = await import('../../../src/core/dispatch-context-blocks')
+      const effective = await resolveEffectiveBrand(task)
+      if (!effective) return Response.json({ brand: null })
+      const read = getBrand(effective.brandId)
+      const blocked = read.status !== 'ok' || !!read.manifest.draft
+      return Response.json({
+        brand: {
+          brandId: effective.brandId,
+          source: effective.source,
+          blocked,
+          name: read.status === 'ok' ? read.manifest.name : undefined,
+        },
+      })
+    },
+  }),
+
+  defineRoute({
+    path: '/injections/:taskId',
+    method: 'GET',
+    summary: "A task's recent brand.injected records",
+    description:
+      'Injection observability (#419, spec §5.5): what the agent actually saw per dispatch. Bounded read (7d window, post-filtered by taskId) — never an unbounded audit scan.',
+    params: z.object({ taskId: z.string().min(1) }),
+    responses: { 200: passthrough },
+    handler: async (_req, _ctx, parsed) => {
+      const { queryAuditEvents } = await import('../../../src/core/audit')
+      const { getContentDir } = await import('../../../src/core/content-dir')
+      const events = queryAuditEvents(getContentDir(), {
+        kinds: ['brand.injected'],
+        sinceMs: 7 * 24 * 60 * 60 * 1000,
+        limit: 500,
+      })
+      const injections = events
+        .filter((e) => (e.data as { taskId?: string } | undefined)?.taskId === parsed.params.taskId)
+        .slice(-20)
+        .reverse()
+        .map((e) => ({ ts: e.ts, agent: e.agent, ...(e.data as Record<string, unknown>) }))
+      return Response.json({ injections })
+    },
+  }),
+
+  defineRoute({
+    path: '/:brandId/card-preview',
+    method: 'GET',
+    summary: 'Render the exact dispatch card this brand would inject right now',
+    description:
+      'Debug/observability surface (#419): same pure builder as dispatch, current budget from settings. "What would inject now" vs the brand.injected audit\'s "what injected then".',
+    params: brandIdParams,
+    responses: { 200: passthrough, 404: errorResponse },
+    handler: async (_req, _ctx, parsed) => {
+      const [{ resolveBrandContextBudget }, { getSettings }] = await Promise.all([
+        import('../../../src/core/dispatch-context-blocks'),
+        import('../../../src/core/settings'),
+      ])
+      const maxBytes = resolveBrandContextBudget(getSettings().dispatch?.maxBrandContextBytes)
+      const result = await buildBrandCard(parsed.params.brandId, { maxBytes })
+      if ('notFound' in result) return Response.json({ error: 'brand not found (or draft)' }, { status: 404 })
+      return Response.json({ ...result, maxBytes })
     },
   }),
 
