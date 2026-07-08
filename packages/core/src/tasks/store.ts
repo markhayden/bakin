@@ -27,6 +27,8 @@ export interface BakinTask {
   workflowId?: string
   scheduleJobId?: string
   projectId?: string
+  /** Brand link (#419) — resolved lazily at dispatch, mirrors projectId. */
+  brandId?: string
   parentId?: string | null
   dependsOn?: string
   availableAt?: string
@@ -69,6 +71,7 @@ export interface CreateBakinTaskInput {
   workflowId?: string
   scheduleJobId?: string
   projectId?: string
+  brandId?: string
   parentId?: string | null
   dependsOn?: string
   availableAt?: string
@@ -89,6 +92,7 @@ export type BakinTaskPatch = Partial<Pick<
   | 'workflowId'
   | 'scheduleJobId'
   | 'projectId'
+  | 'brandId'
   | 'parentId'
   | 'dependsOn'
   | 'availableAt'
@@ -105,6 +109,7 @@ export interface TaskListOpts {
   column?: string
   agent?: string
   projectId?: string
+  brandId?: string
   includePendingDelete?: boolean
 }
 
@@ -172,6 +177,7 @@ export function createEmptyBakinTask(input: CreateBakinTaskInput, now = new Date
     workflowId: input.workflowId,
     scheduleJobId: input.scheduleJobId,
     projectId: input.projectId,
+    brandId: input.brandId,
     parentId: input.parentId ?? null,
     dependsOn: input.dependsOn,
     availableAt: input.availableAt,
@@ -376,6 +382,7 @@ export function createFileBakinTaskStore(root: string): SyncBakinTaskStore {
           if (!opts.includePendingDelete && task.pendingDelete) continue
           if (opts.agent && task.agent !== opts.agent) continue
           if (opts.projectId && task.projectId !== opts.projectId) continue
+          if (opts.brandId && task.brandId !== opts.brandId) continue
           tasks.push(task)
         }
         return sortTasks(tasks)
@@ -395,6 +402,7 @@ export function createFileBakinTaskStore(root: string): SyncBakinTaskStore {
           if (!opts.includePendingDelete && task.pendingDelete) continue
           if (opts.agent && task.agent !== opts.agent) continue
           if (opts.projectId && task.projectId !== opts.projectId) continue
+          if (opts.brandId && task.brandId !== opts.brandId) continue
           tasks.push(task)
         }
       }

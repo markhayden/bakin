@@ -106,6 +106,21 @@ beforeEach(() => {
   resetTasksRoutesHarness()
 })
 
+// ─── Doc mapping ─────────────────────────────────────────────────────────────
+
+describe('taskToSearchDoc', () => {
+  it('maps brandId → brand_id keyword (#419)', async () => {
+    const { taskToSearchDoc } = await import('../../../plugins/tasks/lib/search-doc')
+    const doc = taskToSearchDoc(
+      { id: 't1', title: 'Branded', brandId: 'acme' } as never,
+      'todo' as never,
+    )
+    expect(doc.brand_id).toBe('acme')
+    const bare = taskToSearchDoc({ id: 't2', title: 'Plain' } as never, 'todo' as never)
+    expect(bare.brand_id).toBe('')
+  })
+})
+
 // ─── Search Index Side Effects ──────────────────────────────────────────────
 
 describe('Search index side effects', () => {

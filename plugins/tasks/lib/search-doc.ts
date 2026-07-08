@@ -23,6 +23,7 @@ export function taskToSearchDoc(task: Task, column: ColumnId): Record<string, un
     created_by: task.createdBy || '',
     status: column,
     project_id: task.projectId || '',
+    brand_id: task.brandId || '',
     workflow_id: task.workflowId || '',
     source_plugin_id: task.source?.pluginId || '',
     source_entity_type: task.source?.entityType || '',

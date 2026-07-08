@@ -424,6 +424,7 @@ export interface PluginTask {
   workflowId?: string
   scheduleJobId?: string
   projectId?: string
+  brandId?: string
   availableAt?: string
   dueAt?: string
   source?: PluginTaskSource
@@ -453,6 +454,7 @@ export interface PluginTaskCreateInput {
   date?: string
   workflowId?: string
   projectId?: string
+  brandId?: string
   parentId?: string | null
   availableAt?: string
   dueAt?: string
@@ -472,6 +474,7 @@ export interface PluginTaskUpdateInput {
   workflowId?: string
   scheduleJobId?: string
   projectId?: string
+  brandId?: string
   parentId?: string | null
   availableAt?: string | null
   dueAt?: string | null
@@ -484,7 +487,7 @@ export interface PluginTaskService {
   move(id: string, column: PluginTaskColumn, order?: number): Promise<PluginTask>
   remove(id: string): Promise<void>
   get(id: string): Promise<PluginTask | null>
-  list(filter?: { column?: PluginTaskColumn; agent?: string; projectId?: string }): Promise<PluginTask[]>
+  list(filter?: { column?: PluginTaskColumn; agent?: string; projectId?: string; brandId?: string }): Promise<PluginTask[]>
   appendLog(id: string, entry: TaskLogEntry): Promise<void>
 }
 

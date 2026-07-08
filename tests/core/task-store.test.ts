@@ -265,6 +265,19 @@ describe('createTask', () => {
     expect(task.projectId).toBe('proj-abc')
   })
 
+  it('stores and updates brandId (#419)', async () => {
+    const task = await createTask(
+      'Branded task', 'todo', undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      { brandId: 'acme' },
+    )
+    expect(task.brandId).toBe('acme')
+
+    await updateTask(task.id, { brandId: 'other' })
+    expect(getTask(task.id)?.brandId).toBe('other')
+    await updateTask(task.id, { brandId: '' })
+    expect(getTask(task.id)?.brandId).toBeUndefined()
+  })
+
   it('uses provided ID when given', async () => {
     const task = await createTask('Custom ID', 'todo', undefined, undefined, undefined, undefined, 'custom01')
     expect(task.id).toBe('custom01')

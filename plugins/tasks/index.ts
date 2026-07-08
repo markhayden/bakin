@@ -50,7 +50,8 @@ const tasksPlugin: BakinPlugin = definePlugin({
 
     ctx.search.registerContentType({
       table: 'tasks',
-      schemaVersion: 1,
+      // v2: brand_id keyword + facet (#419) — blue/green migrates in the background.
+      schemaVersion: 2,
       schema: {
         title: { type: 'text' },
         description: { type: 'text' },
@@ -58,6 +59,7 @@ const tasksPlugin: BakinPlugin = definePlugin({
         created_by: { type: 'keyword' },
         status: { type: 'keyword' },
         project_id: { type: 'keyword' },
+        brand_id: { type: 'keyword' },
         workflow_id: { type: 'keyword' },
         source_plugin_id: { type: 'keyword' },
         source_entity_type: { type: 'keyword' },
@@ -72,7 +74,7 @@ const tasksPlugin: BakinPlugin = definePlugin({
       searchableFields: ['title', 'description', 'log_text', 'blocked_reason'],
       rerankField: 'description',
       embeddingTemplate: '{{title}} {{description}} {{log_text}}',
-      facets: ['status', 'agent', 'created_by', 'project_id', 'source_plugin_id', 'source_entity_type'],
+      facets: ['status', 'agent', 'created_by', 'project_id', 'brand_id', 'source_plugin_id', 'source_entity_type'],
       chunker: { enabled: true, targetTokens: 200, overlapTokens: 25 },
       reindex: async function* () {
         const board = readTaskboard()
