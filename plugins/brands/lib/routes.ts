@@ -140,10 +140,15 @@ export const brandRoutes = [
       const perTask: Record<string, string> = {}
       for (const task of todo) {
         try {
-          const brandId = await resolveEffectiveBrandId(task)
-          if (!brandId) continue
-          const read = getBrand(brandId)
-          if (read.status !== 'ok' || read.manifest.draft) perTask[task.id] = brandId
+          const effective = await resolveEffectiveBrandId(task)
+          if (!effective) continue
+          if ('unresolved' in effective) {
+            // Project-brand hook errored — the gate is deferring this task.
+            perTask[task.id] = `project:${task.projectId ?? '?'}`
+            continue
+          }
+          const read = getBrand(effective.brandId)
+          if (read.status !== 'ok' || read.manifest.draft) perTask[task.id] = effective.brandId
         } catch {
           // Resolution failure for one task must not break the whole badge poll.
         }
@@ -393,6 +398,12 @@ export const brandRoutes = [
       const { resolveEffectiveBrand } = await import('../../../src/core/dispatch-context-blocks')
       const effective = await resolveEffectiveBrand(task)
       if (!effective) return Response.json({ brand: null })
+      if ('unresolved' in effective) {
+        // Project-brand hook errored — surface the blocked state honestly.
+        return Response.json({
+          brand: { brandId: `project:${effective.projectId}`, source: 'project', blocked: true, name: undefined },
+        })
+      }
       const read = getBrand(effective.brandId)
       const blocked = read.status !== 'ok' || !!read.manifest.draft
       return Response.json({
@@ -569,6 +580,29 @@ export const brandRoutes = [
         writeDoc(parsed.params.brandId, kind, parsed.params.name, parsed.body.content)
         emitChanged(ctx, parsed.params.brandId, 'brand.updated')
         return Response.json({ ok: true })
+      } catch (err) {
+        return storeError(err)
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/:brandId/lessons',
+    method: 'POST',
+    summary: 'Append a brand lesson (collision-safe)',
+    description:
+      'The quick-add path (#419 §6): append-only — never overwrites an existing lesson with the same slug (suffixes a counter). Use this instead of PUT docs/lessons/<name> for banked learnings.',
+    params: brandIdParams,
+    body: z.object({ title: z.string().min(1), body: z.string().min(1) }),
+    responses: { 200: passthrough, 404: errorResponse },
+    handler: async (_req, ctx, parsed) => {
+      const brand = getBrand(parsed.params.brandId)
+      if (brand.status !== 'ok') return Response.json({ error: 'brand not found' }, { status: 404 })
+      try {
+        const { addLesson } = await import('./store')
+        const name = addLesson(parsed.params.brandId, parsed.body.title, parsed.body.body)
+        emitChanged(ctx, parsed.params.brandId, 'brand.lesson_added')
+        return Response.json({ ok: true, lesson: name })
       } catch (err) {
         return storeError(err)
       }

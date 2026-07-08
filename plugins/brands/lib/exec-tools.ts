@@ -7,7 +7,7 @@
  */
 import { z } from 'zod'
 import type { PluginContext } from '@bakin/core/plugin-types'
-import { getBrand, listBrands, listDocs, readDoc, writeDoc, updateBrand } from './store'
+import { getBrand, listBrands, listDocs, readDoc, writeDoc, updateBrand, addLesson } from './store'
 import { computeBrandFingerprint } from './fingerprint'
 import { paletteEntrySchema, terminologyEntrySchema } from './schemas'
 
@@ -23,13 +23,6 @@ function requireDraftBrand(brandId: string): { ok: true } | { ok: false; error: 
   }
   return { ok: true }
 }
-
-const lessonSlug = (title: string) =>
-  title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 64) || 'lesson'
 
 export function registerBrandExecTools(ctx: PluginContext): void {
   ctx.registerExecTool({
@@ -163,13 +156,9 @@ export function registerBrandExecTools(ctx: PluginContext): void {
       const read = getBrand(brandId)
       if (read.status !== 'ok') return { ok: false, error: `brand not found: ${brandId}` }
 
-      // Append-only: never overwrite an existing lesson file.
-      let name = `${lessonSlug(title)}.md`
-      if (readDoc(brandId, 'lessons', name) !== null) {
-        name = `${lessonSlug(title)}-${Date.now().toString(36)}.md`
-      }
+      let name: string
       try {
-        writeDoc(brandId, 'lessons', name, `---\ntitle: ${title}\n---\n\n${body}\n`)
+        name = addLesson(brandId, title, body) // append-only, collision-safe
       } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : String(err) }
       }

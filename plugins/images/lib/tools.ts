@@ -240,6 +240,7 @@ async function resolveReferences(
   agent: string,
   route: { provider: ImageProviderId; model: string },
   readyProvider: ImageProviderReadiness | undefined,
+  opts: { dropOnUnsupported?: boolean } = {},
 ): Promise<ResolvedReferences | { error: string }> {
   const entries = params.referenceImages ?? []
   if (entries.length === 0) return EMPTY_REFERENCES
@@ -252,10 +253,14 @@ async function resolveReferences(
   // reference-images flag in the merge (see #381 capability-drift).
   const modelDesc = getImageProvider(route.provider)?.models.find(model => model.id === route.model)
     ?? readyProvider?.models.find(model => model.id === route.model)
-  if (!modelDesc?.capabilities.includes('reference-images')) {
-    return { error: `Model does not support reference images: ${route.provider}/${route.model}` }
-  }
-  if (readyProvider?.servedBy !== 'runtime') {
+  const supportsReferences = !!modelDesc?.capabilities.includes('reference-images') && readyProvider?.servedBy === 'runtime'
+  if (!supportsReferences) {
+    // Brand default references (#419) are best-effort — drop them and let the
+    // palette prompt conditioning stand, rather than fail the whole generation.
+    if (opts.dropOnUnsupported) return EMPTY_REFERENCES
+    if (!modelDesc?.capabilities.includes('reference-images')) {
+      return { error: `Model does not support reference images: ${route.provider}/${route.model}` }
+    }
     const via = readyProvider?.servedBy === 'shim' ? 'served via the direct shim' : 'not natively configured'
     return { error: `Reference images require the native runtime; ${route.provider} is ${via}` }
   }
@@ -318,6 +323,11 @@ async function prepareImageRequest(ctx: PluginContext, params: ImagesGeneratePar
   // fails loudly here, never ships off-palette art. Agent-passed references
   // win; the brand's defaults fill only when none were given (max-4 upstream).
   let brand: PreparedImageRequest['brand']
+  // Brand DEFAULT references are best-effort: on a model/serving path that
+  // can't take reference images, drop them silently and let the palette prompt
+  // conditioning stand (a usable branded image), rather than hard-fail. Only
+  // AGENT-passed references are a hard error on an incapable route.
+  let referencesAreBrandDefaults = false
   if (params.brandId) {
     const resolved = await resolveBrandForImage(ctx, params.brandId)
     if ('error' in resolved) return resolved
@@ -325,6 +335,7 @@ async function prepareImageRequest(ctx: PluginContext, params: ImagesGeneratePar
     brand = { brandId: params.brandId, fingerprint: resolved.fingerprint }
     if (!(params.referenceImages?.length) && resolved.brand.defaultImageReferences?.length) {
       params = { ...params, referenceImages: resolved.brand.defaultImageReferences.slice(0, MAX_REFERENCE_IMAGES) }
+      referencesAreBrandDefaults = true
     }
   }
   const settings = effectiveImageSettings(ctx)
@@ -342,7 +353,7 @@ async function prepareImageRequest(ctx: PluginContext, params: ImagesGeneratePar
     || readyProvider?.models.some(model => model.id === route.model && model.status === 'routable')
   if (!knownModel) return { error: `Image model is not routable: ${route.provider}/${route.model}` }
 
-  const references = await resolveReferences(ctx, params, agent, route, readyProvider)
+  const references = await resolveReferences(ctx, params, agent, route, readyProvider, { dropOnUnsupported: referencesAreBrandDefaults })
   if ('error' in references) return references
 
   return { prompt, dims, route, quality: params.quality ?? settings.quality, references, ...(brand ? { brand } : {}) }

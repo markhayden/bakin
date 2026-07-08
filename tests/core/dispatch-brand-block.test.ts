@@ -47,7 +47,7 @@ mock.module('@bakin/core/hooks/hook-registry-singleton', () => ({
 }))
 
 import {
-  resolveEffectiveBrandId,
+  resolveEffectiveBrand,
   buildDispatchBrandBlock,
   deferForMissingBrand,
   __resetBrandBlockNotifications,
@@ -61,35 +61,42 @@ beforeEach(() => {
   ;(appendAudit as ReturnType<typeof mock>).mockClear()
 })
 
-describe('resolveEffectiveBrandId', () => {
+describe('resolveEffectiveBrand', () => {
   it('own brandId always wins', async () => {
-    expect(await resolveEffectiveBrandId({ id: 't1', brandId: 'acme', projectId: 'p1' })).toBe('acme')
+    expect(await resolveEffectiveBrand({ id: 't1', brandId: 'acme', projectId: 'p1' })).toEqual({ brandId: 'acme', source: 'own' })
   })
 
   it('walks the parent ancestry (decomposition subtasks inherit)', async () => {
     tasksById.set('parent', { id: 'parent', parentId: 'grand' })
     tasksById.set('grand', { id: 'grand', brandId: 'acme' })
-    expect(await resolveEffectiveBrandId({ id: 't1', parentId: 'parent' })).toBe('acme')
+    expect(await resolveEffectiveBrand({ id: 't1', parentId: 'parent' })).toEqual({ brandId: 'acme', source: 'parent' })
   })
 
   it('is cycle-safe on corrupt parent chains', async () => {
     tasksById.set('a', { id: 'a', parentId: 'b' })
     tasksById.set('b', { id: 'b', parentId: 'a' })
-    expect(await resolveEffectiveBrandId({ id: 'a', parentId: 'b' })).toBeUndefined()
+    expect(await resolveEffectiveBrand({ id: 'a', parentId: 'b' })).toBeUndefined()
   })
 
   it('falls back to the project brand via the hook (own or inherited projectId)', async () => {
     hookHandlers.set('projects.getBrand', (data) => ((data as { projectId: string }).projectId === 'p1' ? 'acme' : undefined))
-    expect(await resolveEffectiveBrandId({ id: 't1', projectId: 'p1' })).toBe('acme')
+    expect(await resolveEffectiveBrand({ id: 't1', projectId: 'p1' })).toEqual({ brandId: 'acme', source: 'project' })
 
     // Inherited projectId from an ancestor
     tasksById.set('parent', { id: 'parent', projectId: 'p1' })
-    expect(await resolveEffectiveBrandId({ id: 't2', parentId: 'parent' })).toBe('acme')
+    expect(await resolveEffectiveBrand({ id: 't2', parentId: 'parent' })).toEqual({ brandId: 'acme', source: 'project' })
+  })
+
+  it('fails CLOSED (unresolved) when the project hook throws — never silently unbranded', async () => {
+    hookHandlers.set('projects.getBrand', () => { throw new Error('hook boom') })
+    expect(await resolveEffectiveBrand({ id: 't1', projectId: 'p1' })).toEqual({ unresolved: true, projectId: 'p1' })
+    // A branded workflow/task on this outcome must defer, not dispatch brandless:
+    expect(await deferForMissingBrand({ id: 't1', title: 'x', projectId: 'p1' }, '/tmp/x')).toEqual({ brandId: 'project:p1' })
   })
 
   it('returns undefined for unbranded tasks and when the hook is absent', async () => {
-    expect(await resolveEffectiveBrandId({ id: 't1' })).toBeUndefined()
-    expect(await resolveEffectiveBrandId({ id: 't2', projectId: 'p1' })).toBeUndefined()
+    expect(await resolveEffectiveBrand({ id: 't1' })).toBeUndefined()
+    expect(await resolveEffectiveBrand({ id: 't2', projectId: 'p1' })).toBeUndefined()
   })
 })
 

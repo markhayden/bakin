@@ -117,6 +117,15 @@ export async function dispatchSingleTask(
       return
     }
 
+    // Brand gate (#419): defer BEFORE the workflow branch so branded workflow
+    // tasks whose brand is missing/draft stay in todo visibly (never move to
+    // inProgress and throw). Same semantics as the cycle.
+    const brandHoldEarly = await deferForMissingBrand(task, contentDir)
+    if (brandHoldEarly) {
+      log.debug('Single-task dispatch deferred by brand gate', { id: task.id, brandId: brandHoldEarly.brandId, source })
+      return
+    }
+
     // Workflow-aware dispatch path
     const taskWithWorkflow = task as typeof task & { workflowId?: string }
     if (taskWithWorkflow.workflowId) {
@@ -177,13 +186,6 @@ export async function dispatchSingleTask(
     // Spend ceiling — defer (leave in todo) when a budget cap is hit.
     if (await deferForBudget(targetAgent, contentDir, undefined, { model: routing.model })) {
       log.debug('Single-task dispatch deferred by budget gate', { id: task.id, agent: targetAgent, source })
-      return
-    }
-
-    // Brand gate (#419) — same defer-in-todo semantics as the cycle.
-    const brandHold = await deferForMissingBrand(task, contentDir)
-    if (brandHold) {
-      log.debug('Single-task dispatch deferred by brand gate', { id: task.id, brandId: brandHold.brandId, source })
       return
     }
 

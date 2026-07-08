@@ -210,8 +210,19 @@ export function registerBrandsSearch(ctx: PluginContext): void {
       }
     },
     verifyExists: async (id) => {
-      const [brandId] = id.split('/')
-      return existsSync(join(getContentDir(), 'brands', brandId ?? '', 'brand.json'))
+      // Ids are `<brand>/manifest` or `<brand>/guidelines/<doc>` — verify the
+      // ACTUAL backing file, not just brand.json, so a deleted guideline doc's
+      // row prunes (checking brand.json for a guideline row would keep the
+      // stale row alive as long as the brand exists).
+      const parts = id.split('/')
+      const brandId = parts[0] ?? ''
+      if (parts[1] === 'manifest') {
+        return existsSync(join(getContentDir(), 'brands', brandId, 'brand.json'))
+      }
+      if (parts[1] === 'guidelines' && parts[2]) {
+        return existsSync(join(getContentDir(), 'brands', brandId, 'guidelines', `${parts[2]}.md`))
+      }
+      return false
     },
   })
 }

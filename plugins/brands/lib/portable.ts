@@ -11,7 +11,7 @@
  * Import never writes on validation failure; re-import of an existing brand
  * requires the caller's explicit overwrite consent (local edits win).
  */
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs'
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'fs'
 import { basename, extname, join, normalize } from 'path'
 import type { PluginContext } from '@bakin/core/plugin-types'
 import { atomicWriteJson } from '@bakin/core/storage/atomic-write'
@@ -148,9 +148,6 @@ export async function importBrand(opts: ImportOptions): Promise<ImportResult> {
   const defaultImageReferences: string[] = []
   for (const f of portable.defaultImageReferences ?? []) defaultImageReferences.push(await ingest(f))
 
-  // Replace-on-overwrite: the incoming definition IS the brand now.
-  if (existing.status !== 'missing' && opts.overwrite) deleteBrand(portable.id)
-
   const now = new Date().toISOString()
   const manifest: BrandManifest = brandManifestSchema.parse({
     id: portable.id,
@@ -168,19 +165,37 @@ export async function importBrand(opts: ImportOptions): Promise<ImportResult> {
     updatedAt: now,
   })
 
-  const brandDir = join(getBakinPaths().brands, manifest.id)
-  mkdirSync(join(brandDir, 'guidelines'), { recursive: true })
-  mkdirSync(join(brandDir, 'lessons'), { recursive: true })
+  const brandsRoot = getBakinPaths().brands
+  const finalDir = join(brandsRoot, manifest.id)
+  // Stage-then-swap: build the WHOLE brand in a sibling temp dir, then swap it
+  // into place last. An overwrite import must NEVER delete the existing brand
+  // before the replacement is proven writable — a mid-import failure (bad
+  // source file, disk full) would otherwise leave no brand installed and every
+  // linked task deferring, with local lessons unrecoverable.
+  const stagingDir = `${finalDir}.importing-${manifest.id}-${assetIdByFile.size}${portable.palette.length}`
+  rmSync(stagingDir, { recursive: true, force: true })
   let docs = 0
-  for (const kind of ['guidelines', 'lessons'] as const) {
-    const srcDir = join(opts.sourceDir, kind)
-    if (!existsSync(srcDir)) continue
-    for (const file of readdirSync(srcDir).filter((f) => f.endsWith('.md'))) {
-      copyFileSync(join(srcDir, file), join(brandDir, kind, file))
-      docs++
+  try {
+    mkdirSync(join(stagingDir, 'guidelines'), { recursive: true })
+    mkdirSync(join(stagingDir, 'lessons'), { recursive: true })
+    for (const kind of ['guidelines', 'lessons'] as const) {
+      const srcDir = join(opts.sourceDir, kind)
+      if (!existsSync(srcDir)) continue
+      for (const file of readdirSync(srcDir).filter((f) => f.endsWith('.md'))) {
+        copyFileSync(join(srcDir, file), join(stagingDir, kind, file))
+        docs++
+      }
     }
+    atomicWriteJson(join(stagingDir, 'brand.json'), manifest)
+
+    // Swap: remove the old brand only now that staging is fully built. The
+    // window between remove and rename is a same-directory rename (near-atomic).
+    if (existing.status !== 'missing') deleteBrand(manifest.id)
+    renameSync(stagingDir, finalDir)
+  } catch (err) {
+    rmSync(stagingDir, { recursive: true, force: true })
+    throw err
   }
-  atomicWriteJson(join(brandDir, 'brand.json'), manifest)
 
   return { brand: manifest, importedAssets: assetIdByFile.size, docs }
 }

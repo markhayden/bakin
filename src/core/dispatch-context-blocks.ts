@@ -67,18 +67,30 @@ const BRAND_ANCESTRY_MAX_HOPS = 10
 /** Where a task's effective brand came from — surfaced in the task Brand panel. */
 export type EffectiveBrandSource = 'own' | 'parent' | 'project'
 
+export type EffectiveBrand =
+  | { brandId: string; source: EffectiveBrandSource }
+  /**
+   * A project brand was intended (the task/ancestry carries a projectId) but
+   * `projects.getBrand` ERRORED — we can't produce a brandId, but we also must
+   * NOT treat the task as unbranded, or we'd dispatch brandless against the
+   * feature's own fail-closed contract. The dispatch gate defers on this.
+   */
+  | { unresolved: true; projectId: string }
+
 /**
  * Effective brand: own → nearest ancestor (cycle-safe parentId walk — the
  * decomposition/corrective paths must never lose the brand) → project brand
  * via the external projects plugin's hook (own or first ancestor projectId).
- * Lazy by design (spec D4): re-branding a project flows to its tasks.
+ * Lazy by design (spec D4): re-branding a project flows to its tasks. A
+ * successful hook returning no brand = genuinely unbranded (undefined); a hook
+ * ERROR = unresolved (fail closed, not open).
  */
 export async function resolveEffectiveBrand(task: {
   id: string
   brandId?: string
   parentId?: string | null
   projectId?: string
-}): Promise<{ brandId: string; source: EffectiveBrandSource } | undefined> {
+}): Promise<EffectiveBrand | undefined> {
   if (task.brandId) return { brandId: task.brandId, source: 'own' }
 
   let projectId = task.projectId
@@ -101,23 +113,35 @@ export async function resolveEffectiveBrand(task: {
     try {
       const brandId = await hooks().invoke<string | undefined>('projects.getBrand', { projectId })
       if (typeof brandId === 'string' && brandId) return { brandId, source: 'project' }
+      // Hook succeeded and the project has no brand → genuinely unbranded.
     } catch (err) {
-      log.warn('projects.getBrand failed; treating task as unbranded via project', {
+      // Hook ERRORED — we don't know whether the project is branded. Fail
+      // CLOSED: signal unresolved so the dispatch gate defers instead of
+      // silently firing brandless.
+      log.warn('projects.getBrand failed; deferring rather than dispatching brandless', {
         taskId: task.id, projectId, error: formatDispatchError(err),
       })
+      return { unresolved: true, projectId }
     }
   }
   return undefined
 }
 
-/** Effective brand id only — the dispatch-path convenience over resolveEffectiveBrand. */
+/**
+ * Effective brand id only — the dispatch-path convenience over
+ * resolveEffectiveBrand. Returns `{ unresolved: true }` when a project brand
+ * was intended but the hook errored (fail-closed signal for the gate).
+ */
 export async function resolveEffectiveBrandId(task: {
   id: string
   brandId?: string
   parentId?: string | null
   projectId?: string
-}): Promise<string | undefined> {
-  return (await resolveEffectiveBrand(task))?.brandId
+}): Promise<{ brandId: string } | { unresolved: true } | undefined> {
+  const effective = await resolveEffectiveBrand(task)
+  if (!effective) return undefined
+  if ('unresolved' in effective) return { unresolved: true }
+  return { brandId: effective.brandId }
 }
 
 // Notify-once per (taskId, brandId) incident. In-memory by design: a server
@@ -143,11 +167,16 @@ export async function deferForMissingBrand(
   task: { id: string; title: string; brandId?: string; parentId?: string | null; projectId?: string },
   contentDir: string,
 ): Promise<{ brandId: string } | false> {
-  const brandId = await resolveEffectiveBrandId(task)
-  if (!brandId) return false
+  const effective = await resolveEffectiveBrandId(task)
+  if (!effective) return false
+  // Project-brand hook errored → defer, keyed by projectId (we have no brandId
+  // to check). The task resumes once resolution succeeds.
+  const brandId = 'unresolved' in effective ? `project:${task.projectId ?? '?'}` : effective.brandId
 
   let available = false
-  if (hooks().has('brands.get')) {
+  if ('unresolved' in effective) {
+    available = false // fail closed — never dispatch brandless on a resolution error
+  } else if (hooks().has('brands.get')) {
     try {
       const brand = await hooks().invoke<{ manifest?: { draft?: boolean } } | undefined>('brands.get', { brandId })
       available = !!brand?.manifest && !brand.manifest.draft
@@ -177,6 +206,43 @@ export async function deferForMissingBrand(
 }
 
 /**
+ * Triage brand resolution (#419): a triage dispatch (no agent) gets only a
+ * one-liner brand mention in its prompt, so it needs just the effective
+ * brandId — NOT a full card build or lesson retrieval. Fails closed the same
+ * way (missing/draft → block). The returned `block` is empty; only `brandId`
+ * feeds the triage one-liner.
+ */
+export async function resolveTriageBrand(task: {
+  id: string
+  brandId?: string
+  parentId?: string | null
+  projectId?: string
+}): Promise<BrandDispatchBlock> {
+  const effective = await resolveEffectiveBrandId(task)
+  if (!effective) return { status: 'none' }
+  if ('unresolved' in effective) return { status: 'missing', brandId: `project:${task.projectId ?? '?'}` }
+  const brandId = effective.brandId
+
+  let available = false
+  if (hooks().has('brands.get')) {
+    try {
+      const brand = await hooks().invoke<{ manifest?: { draft?: boolean } } | undefined>('brands.get', { brandId })
+      available = !!brand?.manifest && !brand.manifest.draft
+    } catch (err) {
+      log.warn('brands.get failed during triage brand resolution; failing closed', { taskId: task.id, brandId, error: formatDispatchError(err) })
+    }
+  }
+  if (!available) return { status: 'missing', brandId }
+  return {
+    status: 'ready',
+    brandId,
+    block: '',
+    meta: { brandFingerprint: null, cardBytes: 0, sectionsIncluded: [], lessonsIncluded: [], omitted: [] },
+    warnings: [],
+  }
+}
+
+/**
  * Build the per-dispatch brand block by invoking brands.getContext. Returns
  * `none` for unbranded tasks, `missing` when the effective brand does not
  * resolve to a published brand (caller decides: pre-claim defer or typed
@@ -190,8 +256,11 @@ export async function buildDispatchBrandBlock(task: {
   parentId?: string | null
   projectId?: string
 }): Promise<BrandDispatchBlock> {
-  const brandId = await resolveEffectiveBrandId(task)
-  if (!brandId) return { status: 'none' }
+  const effective = await resolveEffectiveBrandId(task)
+  if (!effective) return { status: 'none' }
+  // Project-brand resolution errored → fail closed (missing), never brandless.
+  if ('unresolved' in effective) return { status: 'missing', brandId: `project:${task.projectId ?? '?'}` }
+  const brandId = effective.brandId
   if (!hooks().has('brands.getContext')) return { status: 'missing', brandId }
 
   try {

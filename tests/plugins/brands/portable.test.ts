@@ -149,6 +149,26 @@ describe('importBrand', () => {
     const again = await importBrand({ sourceDir: src, ctx, source: 'x', overwrite: true })
     expect(again.brand.id).toBe('acme')
   })
+
+  it('a failed overwrite import leaves the EXISTING brand intact (stage-then-swap)', async () => {
+    const src = join(testDir, 'src')
+    seedPortableDir(src)
+    const { ctx } = makeAssetsCtx()
+    await importBrand({ sourceDir: src, ctx, source: 'origin' })
+    // Add a local lesson the operator would lose if import were destructive
+    writeFileSync(join(testDir, 'brands', 'acme', 'lessons', 'local-only.md'), 'Hand-added.')
+
+    // Break the source so the re-import fails partway (asset ingest throws)
+    const brokenCtx = {
+      assets: { createAsset: mock(async () => { throw new Error('disk full') }) },
+    } as unknown as PluginContext
+    await expect(importBrand({ sourceDir: src, ctx: brokenCtx, source: 'origin', overwrite: true })).rejects.toThrow(/disk full/)
+
+    // The original brand — including the local lesson — survives
+    const read = getBrand('acme')
+    expect(read.status).toBe('ok')
+    expect(readDoc('acme', 'lessons', 'local-only.md')).toContain('Hand-added.')
+  })
 })
 
 describe('github import routes (#419 S6)', () => {

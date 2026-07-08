@@ -170,6 +170,12 @@ export function deleteBrand(id: string): boolean {
 const DOC_NAME_RE = /^[a-zA-Z0-9_][a-zA-Z0-9._-]*\.md$/
 
 function docPath(brandId: string, kind: BrandDocKind, name: string): string {
+  // Validate the brandId too — read_doc reaches here with an agent-supplied id,
+  // and an unvalidated `../..` would escape the brands store (the slug regex
+  // forbids `/` and `..`). Defense-in-depth for every doc path.
+  if (!brandIdSchema.safeParse(brandId).success) {
+    throw new BrandStoreError('invalid_id', `invalid brand id: ${brandId}`)
+  }
   if (!DOC_NAME_RE.test(name) || name.includes('/') || name.includes('..')) {
     throw new BrandStoreError('invalid_doc_name', `invalid doc name: ${name}`)
   }
@@ -208,4 +214,22 @@ export function deleteDoc(brandId: string, kind: BrandDocKind, name: string): bo
   if (!existsSync(path)) return false
   unlinkSync(path)
   return true
+}
+
+const lessonSlug = (title: string) =>
+  title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64) || 'lesson'
+
+/**
+ * Append a lesson (#419) — collision-SAFE: never overwrites an existing lesson
+ * with the same slug (suffixes a counter instead). The single append-only
+ * write path shared by the exec tool and the quick-add route; banked brand
+ * learning is never silently destroyed. Returns the filename written.
+ */
+export function addLesson(brandId: string, title: string, body: string): string {
+  let name = `${lessonSlug(title)}.md`
+  for (let n = 2; readDoc(brandId, 'lessons', name) !== null; n++) {
+    name = `${lessonSlug(title)}-${n}.md`
+  }
+  writeDoc(brandId, 'lessons', name, `---\ntitle: ${title}\n---\n\n${body}\n`)
+  return name
 }

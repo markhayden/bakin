@@ -181,6 +181,17 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
       // maxRetries and paces retries via the transient cooldown (#189).
       if (task.team && !task.agent) continue
 
+      // Brand gate (#419): a task linked to a missing/draft brand stays in
+      // todo (no claim, no inProgress move) and resumes the cycle the brand
+      // exists — never dispatched brandless, never silently. Placed BEFORE the
+      // workflow branch so workflow tasks defer visibly too (the workflow path
+      // would otherwise move to inProgress and throw, sitting silently stuck).
+      const brandHoldEarly = await deferForMissingBrand(task, contentDir)
+      if (brandHoldEarly) {
+        log.debug('Dispatch deferred by brand gate', { id: task.id, brandId: brandHoldEarly.brandId })
+        continue
+      }
+
       // Workflow-aware dispatch path
       const taskWithWorkflow = task as typeof task & { workflowId?: string }
       if (taskWithWorkflow.workflowId) {
@@ -216,15 +227,6 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
       // per-cycle cache collapses the redundant global spend reads.
       if (await deferForBudget(targetAgent, contentDir, budgetSpendCache, { model: routing.model })) {
         log.debug('Dispatch deferred by budget gate', { id: task.id, agent: targetAgent })
-        continue
-      }
-
-      // Brand gate (#419): a task linked to a missing/draft brand stays in
-      // todo (no claim) and resumes the cycle the brand exists — never
-      // dispatched brandless, never silently.
-      const brandHold = await deferForMissingBrand(task, contentDir)
-      if (brandHold) {
-        log.debug('Dispatch deferred by brand gate', { id: task.id, brandId: brandHold.brandId })
         continue
       }
 

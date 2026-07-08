@@ -46,6 +46,7 @@ import {
   readDoc,
   writeDoc,
   deleteDoc,
+  addLesson,
 } from '../../../plugins/brands/lib/store'
 import { computeBrandFingerprint } from '../../../plugins/brands/lib/fingerprint'
 import { scaffoldBrand } from '../../../plugins/brands/lib/scaffold'
@@ -129,6 +130,23 @@ describe('brand docs', () => {
     createBrand({ id: 'acme', name: 'Acme' })
     expect(() => writeDoc('acme', 'guidelines', '../evil.md', 'x')).toThrow()
     expect(() => writeDoc('acme', 'guidelines', 'no-extension', 'x')).toThrow()
+  })
+
+  it('rejects path-escaping brandIds (traversal via the id, not just the name)', () => {
+    // read_doc reaches docPath with an agent-supplied brandId — a `../..` must
+    // never escape the brands store.
+    expect(() => readDoc('../..', 'guidelines', 'x.md')).toThrow(/invalid brand id/)
+    expect(() => writeDoc('../../etc', 'lessons', 'x.md', 'y')).toThrow(/invalid brand id/)
+  })
+
+  it('addLesson is append-only — never overwrites a same-slug lesson', () => {
+    createBrand({ id: 'acme', name: 'Acme' })
+    const first = addLesson('acme', 'Never use threads', 'Single posts only.')
+    expect(first).toBe('never-use-threads.md')
+    const second = addLesson('acme', 'Never use threads', 'A different learning.')
+    expect(second).toBe('never-use-threads-2.md')
+    expect(readDoc('acme', 'lessons', 'never-use-threads.md')).toContain('Single posts only.')
+    expect(readDoc('acme', 'lessons', 'never-use-threads-2.md')).toContain('A different learning.')
   })
 })
 

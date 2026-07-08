@@ -17,15 +17,23 @@ export async function checkBrandsIntegrity(ctx: PluginContext): Promise<HealthCh
   const report = await scanBrandIntegrity(async (assetId) => (await ctx.assets.getAsset(assetId)) !== null)
 
   // Tasks pointing at ghost/draft brands = tasks currently deferring at the
-  // brand gate (todo only — done/archived history is not a problem).
+  // brand gate (todo only — done/archived history is not a problem). Uses the
+  // SAME effective-brand resolution as the gate + badge (own → ancestry →
+  // project), so inherited-brand deferrals aren't invisible to the doctor.
   const ghostTasks: Array<{ taskId: string; brandId: string }> = []
   try {
+    const { resolveEffectiveBrand } = await import('../../../src/core/dispatch-context-blocks')
     const todo = await ctx.tasks.list({ column: 'todo' })
     for (const task of todo) {
-      if (!task.brandId) continue
-      const read = getBrand(task.brandId)
+      const effective = await resolveEffectiveBrand(task)
+      if (!effective) continue
+      if ('unresolved' in effective) {
+        ghostTasks.push({ taskId: task.id, brandId: `project:${effective.projectId}` })
+        continue
+      }
+      const read = getBrand(effective.brandId)
       if (read.status !== 'ok' || read.manifest.draft) {
-        ghostTasks.push({ taskId: task.id, brandId: task.brandId })
+        ghostTasks.push({ taskId: task.id, brandId: effective.brandId })
       }
     }
   } catch {

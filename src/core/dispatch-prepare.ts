@@ -28,7 +28,7 @@ import { appendAudit } from './audit'
 import { loseRun } from './execution-ledger'
 import { buildTaskLessonQuery } from './agent-packages/lesson-retrieval'
 import type { DispatchTask, DispatchRosterAgent, DispatchContinuationContext, SessionDeathState } from './dispatch-types'
-import { buildDispatchLessonBlock, buildDispatchAssetBlock, buildDispatchBrandBlock, BrandUnavailableError } from './dispatch-context-blocks'
+import { buildDispatchLessonBlock, buildDispatchAssetBlock, buildDispatchBrandBlock, resolveTriageBrand, BrandUnavailableError } from './dispatch-context-blocks'
 import { buildDispatchMessage, buildDecompositionMessage } from './dispatch-prompts'
 import { moveTaskToInProgress } from './dispatch-board'
 import { claimDispatchRun, auditDispatchSuppressed, fireDispatchTurn } from './dispatch-turns'
@@ -99,8 +99,14 @@ export async function prepareRegularDispatch(input: {
     // Brand context (#419): a linked brand that no longer resolves is a typed
     // prep failure — the claim is released and the task never fires brandless.
     // (The pre-claim defer in the cycle is the primary guard; this is the
-    // post-gate race backstop.)
-    const brandBlock = await buildDispatchBrandBlock(task)
+    // post-gate race backstop.) Triage dispatches (no agent) get only a
+    // one-liner in the prompt, so DON'T build the full card there — resolve
+    // just the effective brandId; the injection record stays accurate to what
+    // was actually shown.
+    const isTriage = !task.agent
+    const brandBlock = isTriage
+      ? await resolveTriageBrand(task)
+      : await buildDispatchBrandBlock(task)
     if (brandBlock.status === 'missing') throw new BrandUnavailableError(brandBlock.brandId)
     const brand = brandBlock.status === 'ready' ? { brandId: brandBlock.brandId, block: brandBlock.block } : undefined
     const message = recovery?.stage === 'decomposition'
@@ -117,8 +123,15 @@ export async function prepareRegularDispatch(input: {
     // audit row per dispatch, carrying the transition.
     appendAudit(contentDir, 'task.dispatched', targetAgent, { id: task.id, title: task.title, threadId, from: 'todo', to: 'inProgress' })
     // Injection record (#419, spec §5.5): what the agent actually saw —
-    // written where the runId exists, one row per branded dispatch.
-    if (brandBlock.status === 'ready') {
+    // written where the runId exists, one row per branded dispatch. Triage
+    // dispatches record the one-liner honestly (no full-card meta), so an
+    // operator auditing off-brand triage output isn't misled into thinking the
+    // agent saw the full card.
+    if (brandBlock.status === 'ready' && isTriage) {
+      appendAudit(contentDir, 'brand.injected', targetAgent, {
+        taskId: task.id, runId: threadId, brandId: brandBlock.brandId, triage: true,
+      })
+    } else if (brandBlock.status === 'ready') {
       appendAudit(contentDir, 'brand.injected', targetAgent, {
         taskId: task.id, runId: threadId, brandId: brandBlock.brandId, ...brandBlock.meta,
         ...(brandBlock.warnings.length ? { warnings: brandBlock.warnings } : {}),

@@ -65,8 +65,17 @@ export async function retrieveBrandLessons(
         const lessonId = typeof fields.lesson_id === 'string' ? fields.lesson_id : ''
         if (hitBrand !== brandId || !lessonId || seen.has(lessonId)) continue
         seen.add(lessonId)
-        // Hydrate the WHOLE lesson from disk — search hits may be chunks.
-        const raw = readDoc(brandId, 'lessons', `${lessonId}.md`)
+        // Hydrate the WHOLE lesson from disk — search hits may be chunks. A
+        // single un-hydratable lesson (e.g. a hand-dropped filename the store
+        // regex rejects) must SKIP, never abort the whole retrieval into a
+        // false "search unavailable" — that would drop all valid lessons and
+        // send the operator chasing a healthy engine.
+        let raw: string | null
+        try {
+          raw = readDoc(brandId, 'lessons', `${lessonId}.md`)
+        } catch {
+          continue
+        }
         if (raw === null) continue
         const body = splitFrontmatter(raw).body.slice(0, MAX_LESSON_CHARS)
         if (!body) continue

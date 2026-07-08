@@ -35,9 +35,6 @@ const SOURCE_LABEL: Record<TaskBrandInfo['source'], string> = {
   project: 'inherited from project',
 }
 
-const slugify = (title: string) =>
-  title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64) || 'lesson'
-
 export function TaskBrandPanel({ taskId }: { taskId?: string }) {
   const [debug] = useDebug()
   const [preview, setPreview] = useState<string | null>(null)
@@ -142,15 +139,13 @@ export function TaskBrandPanel({ taskId }: { taskId?: string }) {
                 onClick={async () => {
                   setLessonState('saving')
                   try {
-                    const name = `${slugify(lessonTitle)}.md`
+                    // Append-only route — never overwrites a same-slug lesson.
                     const res = await fetch(
-                      `/api/plugins/brands/${brand.brandId}/docs/lessons/${encodeURIComponent(name)}`,
+                      `/api/plugins/brands/${brand.brandId}/lessons`,
                       {
-                        method: 'PUT',
+                        method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          content: `---\ntitle: ${lessonTitle.trim()}\n---\n\n${lessonBody.trim()}\n`,
-                        }),
+                        body: JSON.stringify({ title: lessonTitle.trim(), body: lessonBody.trim() }),
                       },
                     )
                     if (!res.ok) throw new Error(String(res.status))
