@@ -194,3 +194,12 @@ The orchestrator (`runPluginHealthChecks` in `src/core/doctor.ts`) wraps each `d
 - **#174**: Moved health-check registry and managed-block infrastructure into `src/core/*`; health plugin now contributes checks without owning core doctor/CLI primitives.
 - **#172**: Unified `bakin agent-rules` and health orchestrator-rules checks with the core managed-block engine.
 - **#208**: Changed AGENTS.md projection from one physical marker pair per logical rule to one compact `managed-context` marker pair per agent, while keeping logical diagnostics and legacy-marker conversion.
+
+## brands.integrity (#419)
+
+Registered by the brands plugin (`plugins/brands/lib/health-checks.ts`),
+consuming the SAME `lib/integrity.ts` scan as `GET /:brandId/integrity`:
+dangling assetIds (logos/groups/defaultImageReferences), unreadable manifests,
+todo tasks waiting on ghost/draft brands (these are live brand-gate deferrals —
+warn → nav attention badge), and stale drafts (>7d unpublished, ok-level
+nudge). Structured `data` attached; no consumer parses message text.
