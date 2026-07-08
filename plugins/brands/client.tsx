@@ -9,6 +9,22 @@ import { TaskBrandPanel } from './components/task-brand-panel'
 
 registerPlugin({
   id: 'brands',
+  search: {
+    hitRenderers: {
+      brands: (hit) => ({
+        title: String(hit.fields.title ?? hit.id),
+        subtitle: String(hit.fields.description ?? '').trim() || `brand doc: ${hit.fields.doc ?? ''}`,
+        href: `/brands?brand=${encodeURIComponent(String(hit.fields.brand_id ?? ''))}`,
+        icon: 'palette',
+      }),
+      'brand-lessons': (hit) => ({
+        title: String(hit.fields.title ?? hit.id),
+        subtitle: `brand lesson · ${hit.fields.brand_id ?? ''}`,
+        href: `/brands?brand=${encodeURIComponent(String(hit.fields.brand_id ?? ''))}`,
+        icon: 'palette',
+      }),
+    },
+  },
   slots: {
     'page:/brands': BrandsPage,
     // Rendered inside the task detail (tasks plugin) — effective brand,
