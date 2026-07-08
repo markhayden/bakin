@@ -27,6 +27,15 @@ const LESSON_BLOCK_CACHE_TTL_MS = 5 * 60_000
 const LESSON_BLOCK_CACHE_MAX = 200
 const lessonBlockCache = new Map<string, { block: string; expires: number }>()
 
+const BRAND_CONTEXT_DEFAULT_BUDGET = 12288
+const BRAND_CONTEXT_MIN_BUDGET = 1024
+
+/** @internal Clamp dispatch.maxBrandContextBytes: unset/0/invalid → default, floor at the minimum (#419). */
+export function resolveBrandContextBudget(raw?: number): number {
+  if (raw === undefined || !Number.isFinite(raw) || raw <= 0) return BRAND_CONTEXT_DEFAULT_BUDGET
+  return Math.max(Math.floor(raw), BRAND_CONTEXT_MIN_BUDGET)
+}
+
 /** @internal Test-only. */
 export function __resetLessonBlockCache(): void {
   lessonBlockCache.clear()

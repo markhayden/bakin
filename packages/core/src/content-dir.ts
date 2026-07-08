@@ -109,6 +109,8 @@ export interface BakinPaths {
   inbox: string
   tasks: string
   workflows: string
+  /** Brand records — per-brand dirs with manifest + guidelines + lessons (#419). */
+  brands: string
   /** Chat plugin transcripts + index (Bakin-owned UI data). */
   chat: string
   settings: string
@@ -136,6 +138,7 @@ export function getBakinPaths(): BakinPaths {
     inbox: join(home, 'inbox'),
     tasks: join(home, 'tasks'),
     workflows: join(home, 'workflows'),
+    brands: join(home, 'brands'),
     chat: join(home, 'chat'),
     settings: join(home, 'settings.json'),
     logs: join(home, 'logs'),
@@ -174,6 +177,7 @@ export function initBakinHome(targetDir?: string): { created: string[]; seeded: 
     join(home, 'workflows', 'definitions'),
     join(home, 'workflows', 'skills'),
     join(home, 'workflows', 'instances'),
+    join(home, 'brands'),
   ]
 
   for (const dir of dirs) {

@@ -33,6 +33,7 @@ describe('Settings', () => {
     expect(settings.plugins.trustedSigners).toEqual([])
     expect(settings.diagnostics.startup.enabled).toBe(false)
     expect(settings.diagnostics.startup.slowMs).toBe(250)
+    expect(settings.dispatch.maxBrandContextBytes).toBe(12288)
   })
 
   it('returns doctor defaults including requireOnboard', () => {

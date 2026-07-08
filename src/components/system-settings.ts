@@ -142,6 +142,13 @@ export const SYSTEM_SETTINGS_SCHEMA: PluginSettingsSchema = {
       default: 16384,
     },
     {
+      key: 'dispatch.maxBrandContextBytes',
+      type: 'number',
+      label: 'Brand context budget (bytes)',
+      description: 'Byte budget for the brand card injected into branded dispatch prompts. Card sections are kept whole in priority order (rules and palette always survive); anything dropped leaves a visible marker pointing at the brand exec tools. Default 12288; minimum 1024.',
+      default: 12288,
+    },
+    {
       key: 'dispatch.contextBudgetBytes',
       type: 'number',
       label: 'Startup context warn budget (bytes)',
