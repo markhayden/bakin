@@ -241,17 +241,23 @@ export function createPluginRuntimeFacade(runtime: AgentRuntimeAdapter): AgentRu
     tools: {
       invoke: async () => { throw new Error('Runtime tool invocation is not exposed to plugins') },
     },
-    channels: {
-      list: runtime.channels.list.bind(runtime.channels),
-      sendNotification: runtime.channels.sendNotification.bind(runtime.channels),
-      sendMessage: runtime.channels.sendMessage.bind(runtime.channels),
-      deliverContent: runtime.channels.deliverContent.bind(runtime.channels),
-      createApproval: runtime.channels.createApproval.bind(runtime.channels),
-      editApproval: runtime.channels.editApproval.bind(runtime.channels),
-      cancelApproval: runtime.channels.cancelApproval.bind(runtime.channels),
-      resolveApproval: runtime.channels.resolveApproval.bind(runtime.channels),
-      subscribeApprovalResponses: runtime.channels.subscribeApprovalResponses.bind(runtime.channels),
-    },
+    // channels/cron are optional capabilities (P2.1) — forwarded only when
+    // the runtime provides them, so plugin feature-detection sees the truth.
+    ...(runtime.channels
+      ? {
+          channels: {
+            list: runtime.channels.list.bind(runtime.channels),
+            sendNotification: runtime.channels.sendNotification.bind(runtime.channels),
+            sendMessage: runtime.channels.sendMessage.bind(runtime.channels),
+            deliverContent: runtime.channels.deliverContent.bind(runtime.channels),
+            createApproval: runtime.channels.createApproval.bind(runtime.channels),
+            editApproval: runtime.channels.editApproval.bind(runtime.channels),
+            cancelApproval: runtime.channels.cancelApproval.bind(runtime.channels),
+            resolveApproval: runtime.channels.resolveApproval.bind(runtime.channels),
+            subscribeApprovalResponses: runtime.channels.subscribeApprovalResponses.bind(runtime.channels),
+          },
+        }
+      : {}),
     skills: {
       list: runtime.skills.list.bind(runtime.skills),
       get: runtime.skills.get.bind(runtime.skills),
@@ -284,17 +290,21 @@ export function createPluginRuntimeFacade(runtime: AgentRuntimeAdapter): AgentRu
           },
         }
       : {}),
-    cron: {
-      list: runtime.cron.list.bind(runtime.cron),
-      get: runtime.cron.get.bind(runtime.cron),
-      create: runtime.cron.create.bind(runtime.cron),
-      update: runtime.cron.update.bind(runtime.cron),
-      remove: runtime.cron.remove.bind(runtime.cron),
-      runNow: runtime.cron.runNow.bind(runtime.cron),
-      listRuns: runtime.cron.listRuns.bind(runtime.cron),
-      getRaw: runtime.cron.getRaw.bind(runtime.cron),
-      restoreRaw: runtime.cron.restoreRaw.bind(runtime.cron),
-    },
+    ...(runtime.cron
+      ? {
+          cron: {
+            list: runtime.cron.list.bind(runtime.cron),
+            get: runtime.cron.get.bind(runtime.cron),
+            create: runtime.cron.create.bind(runtime.cron),
+            update: runtime.cron.update.bind(runtime.cron),
+            remove: runtime.cron.remove.bind(runtime.cron),
+            runNow: runtime.cron.runNow.bind(runtime.cron),
+            listRuns: runtime.cron.listRuns.bind(runtime.cron),
+            getRaw: runtime.cron.getRaw.bind(runtime.cron),
+            restoreRaw: runtime.cron.restoreRaw.bind(runtime.cron),
+          },
+        }
+      : {}),
     config: {
       get: async () => { throw new Error('Runtime config is not exposed to plugins') },
       replace: async () => { throw new Error('Runtime config is not exposed to plugins') },

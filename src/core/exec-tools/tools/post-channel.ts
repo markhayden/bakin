@@ -231,11 +231,17 @@ async function deliverChannelPost(
     taskId?: string
   },
 ): Promise<ExecToolResult> {
+  // Optional capability (P2.1): a runtime without a channel layer cannot
+  // deliver — honest tool failure, never a silent drop.
+  const channels = runtime.channels
+  if (!channels) {
+    return fail(`Channel delivery is not available: the active runtime (${runtime.name}) has no channel layer.`)
+  }
   try {
     const chunks = chunkChannelPostContent(input.content)
     const deliveries = []
     for (let i = 0; i < chunks.length; i += 1) {
-      const result = await runtime.channels.deliverContent({
+      const result = await channels.deliverContent({
         channels: [input.channel],
         content: {
           title: '',

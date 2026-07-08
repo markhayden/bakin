@@ -14,11 +14,14 @@ import type { RunEntry } from '../types'
 
 const log = createLogger('schedule:runs')
 
-type RuntimeCronRunReader = Pick<AgentRuntimeAdapter['cron'], 'listRuns'>
+// cron is an OPTIONAL runtime capability (P2.1): readers accept undefined —
+// Bakin jobs read the ledger regardless; native jobs simply have no history.
+type RuntimeCronRunReader = Pick<NonNullable<AgentRuntimeAdapter['cron']>, 'listRuns'>
 
 /** Read run history for a specific job. Returns newest-first. */
-export async function readRuns(cron: RuntimeCronRunReader, jobId: string, limit = 50): Promise<RunEntry[]> {
+export async function readRuns(cron: RuntimeCronRunReader | undefined, jobId: string, limit = 50): Promise<RunEntry[]> {
   if (getJob(jobId)?.isBakinJob) return readLedgerRuns(jobId, limit)
+  if (!cron) return []
   try {
     return (await cron.listRuns(jobId)).slice(0, limit).map(runtimeRunToEntry)
   } catch (err) {
@@ -28,7 +31,7 @@ export async function readRuns(cron: RuntimeCronRunReader, jobId: string, limit 
 }
 
 /** Get the most recent run for a job. */
-export async function getLastRun(cron: RuntimeCronRunReader, jobId: string): Promise<RunEntry | null> {
+export async function getLastRun(cron: RuntimeCronRunReader | undefined, jobId: string): Promise<RunEntry | null> {
   const runs = await readRuns(cron, jobId, 1)
   return runs[0] ?? null
 }

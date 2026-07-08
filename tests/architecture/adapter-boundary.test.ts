@@ -34,6 +34,14 @@ const DENYLIST = [
     allow: (rel: string) => rel === 'src/core/search-adapter-factory.ts' || rel === 'src/core/runtime-adapter-factory.ts',
   },
   {
+    // channels/cron are OPTIONAL runtime capabilities (P2.1). The optional
+    // types force feature-detection at compile time; the only bypass is a
+    // non-null assertion — ban `.channels!.` / `.cron!.` so a consumer can
+    // never turn "absent on this runtime" into a crash.
+    label: 'non-null assertion on an optional runtime capability (feature-detect instead)',
+    regex: /\.(?:channels|cron)!\./,
+  },
+  {
     label: 'raw Pi home/path/SDK access outside adapter-pi',
     // Same treatment OpenClaw gets: Pi's home dir, env override, path
     // helpers, and the Pi SDK package must never leak upstream — a second

@@ -44,7 +44,8 @@ export async function guardBakinMutation(jobId: string): Promise<BakinMutationGu
   const meta = getJob(jobId)
   if (meta?.isBakinJob) return { ok: true, meta }
   const ctx = getPluginCtx()
-  const runtime = ctx ? await ctx.runtime.cron.get(jobId).catch(() => null) : null
+  // cron is optional (P2.1): without a native surface, an unknown id is 404.
+  const runtime = ctx ? await ctx.runtime.cron?.get(jobId).catch(() => null) : null
   return runtime
     ? { ok: false, status: 403, error: READ_ONLY_ERROR }
     : { ok: false, status: 404, error: 'Schedule not found' }
@@ -336,8 +337,11 @@ function isCronAlreadyGoneError(err: unknown): boolean {
 
 export async function deleteScheduleJob(ctx: ScheduleDeleteContext, jobId: string): Promise<{ runtimeMissing: boolean }> {
   let runtimeMissing = false
+  // cron is optional (P2.1): no native surface → nothing runtime-side to
+  // remove; the delete is purely a Bakin-record removal.
   try {
-    await ctx.runtime.cron.remove(jobId)
+    if (ctx.runtime.cron) await ctx.runtime.cron.remove(jobId)
+    else runtimeMissing = true
   } catch (err) {
     if (!isCronAlreadyGoneError(err)) throw err
     runtimeMissing = true

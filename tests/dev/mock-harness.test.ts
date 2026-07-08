@@ -49,7 +49,7 @@ describe('imitation-crab harness', () => {
     const patchSoul = await runtime.agents.readWorkspaceFile('patch', 'SOUL.md')
     expect(patchSoul?.content).toContain('Patch')
 
-    const jobs = await runtime.cron.list()
+    const jobs = await runtime.cron!.list()
     expect(jobs.map((job) => job.id)).toEqual(expect.arrayContaining(['daily-brief', 'weekly-review']))
 
     const taskList = await tasks.list()

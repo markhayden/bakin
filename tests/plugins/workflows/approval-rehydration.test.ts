@@ -151,7 +151,7 @@ describe('workflow approval rehydration', () => {
 
     const runtime = createMockRuntimeAdapter()
     const createApproval = mock(async () => ({ deliveries: [] }))
-    runtime.channels.createApproval = createApproval
+    runtime.channels!.createApproval = createApproval
 
     const summary = await rehydratePendingApprovals({
       runtime,
@@ -182,7 +182,7 @@ describe('workflow approval rehydration', () => {
 
     const runtime = createMockRuntimeAdapter() as AgentRuntimeAdapter
     const createApproval = mock(async () => ({ deliveries: [delivery] }))
-    runtime.channels.createApproval = createApproval
+    runtime.channels!.createApproval = createApproval
 
     const summary = await rehydratePendingApprovals({
       runtime,
@@ -218,7 +218,7 @@ describe('workflow approval rehydration', () => {
 
     const runtime = createMockRuntimeAdapter() as AgentRuntimeAdapter
     const createApproval = mock(async () => ({ deliveries: [delivery] }))
-    runtime.channels.createApproval = createApproval
+    runtime.channels!.createApproval = createApproval
     const logError = mock()
 
     const summary = await rehydratePendingApprovals({

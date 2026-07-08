@@ -160,7 +160,7 @@ export function createMockRuntimeAdapter(
       listRuns: async () => [],
       getRaw: async (id, reason) => {
         if (!reason) throw new Error('cron.getRaw requires a reason')
-        return adapter.cron.get(id)
+        return (await adapter.cron?.get(id)) ?? null
       },
       restoreRaw: async (id, snapshot, reason) => {
         if (!reason) throw new Error('cron.restoreRaw requires a reason')

@@ -468,7 +468,7 @@ describe('checkRuntime', () => {
 
 describe('checkChannelApprovals', () => {
   it('reports ok when a runtime channel supports interactive approvals', async () => {
-    mockRuntime.channels.list = async () => [{
+    mockRuntime.channels!.list = async () => [{
       id: 'discord',
       platform: 'discord',
       label: 'Discord',
@@ -482,7 +482,7 @@ describe('checkChannelApprovals', () => {
   })
 
   it('warns when channel approvals are render-only', async () => {
-    mockRuntime.channels.list = async () => [{
+    mockRuntime.channels!.list = async () => [{
       id: 'discord',
       platform: 'discord',
       label: 'Discord',
@@ -496,7 +496,7 @@ describe('checkChannelApprovals', () => {
   })
 
   it('warns when channel capabilities cannot be inspected', async () => {
-    mockRuntime.channels.list = async () => {
+    mockRuntime.channels!.list = async () => {
       throw new Error('channel registry unavailable')
     }
 
@@ -511,7 +511,7 @@ describe('checkChannelApprovals', () => {
 
 describe('checkChannelAliases', () => {
   it('reports ok when no aliases are configured', async () => {
-    mockRuntime.channels.list = async () => [{
+    mockRuntime.channels!.list = async () => [{
       id: 'discord',
       platform: 'discord',
       label: 'Discord',
@@ -526,7 +526,7 @@ describe('checkChannelAliases', () => {
 
   it('reports ok when aliases target available runtime channels', async () => {
     mockChannelAliases = { general: 'discord:channel-123' }
-    mockRuntime.channels.list = async () => [{
+    mockRuntime.channels!.list = async () => [{
       id: 'discord',
       platform: 'discord',
       label: 'Discord',
@@ -540,7 +540,7 @@ describe('checkChannelAliases', () => {
 
   it('warns when an alias targets an unavailable runtime channel', async () => {
     mockChannelAliases = { general: 'slack:channel-123' }
-    mockRuntime.channels.list = async () => [{
+    mockRuntime.channels!.list = async () => [{
       id: 'discord',
       platform: 'discord',
       label: 'Discord',
@@ -555,7 +555,7 @@ describe('checkChannelAliases', () => {
   it('reports ok when a legacy notification target supplies the general alias', async () => {
     mockNotificationChannel = 'discord'
     mockNotificationTarget = 'channel-123'
-    mockRuntime.channels.list = async () => [{
+    mockRuntime.channels!.list = async () => [{
       id: 'discord',
       platform: 'discord',
       label: 'Discord',
@@ -569,7 +569,7 @@ describe('checkChannelAliases', () => {
 
   it('warns when the configured alert channel is a missing alias', async () => {
     mockNotificationChannel = 'general'
-    mockRuntime.channels.list = async () => [{
+    mockRuntime.channels!.list = async () => [{
       id: 'discord',
       platform: 'discord',
       label: 'Discord',

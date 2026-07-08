@@ -679,7 +679,14 @@ export interface AgentRuntimeAdapter {
     invoke(agentId: string, name: string, args: unknown): Promise<ToolResult>
   }
 
-  channels: {
+  /**
+   * OPTIONAL capability (P2.1): runtimes without a channel/delivery layer
+   * (Pi) OMIT this member entirely — no throwing stubs. Callers MUST
+   * feature-detect (`runtime.channels?.…` or a guarded local) and degrade
+   * honestly: empty channel lists, log-only alerts, UI-only approval gates.
+   * `capabilities().delivery.mode` reports the same fact declaratively.
+   */
+  channels?: {
     list(): Promise<ChannelInfo[]>
     sendNotification(args: NotificationArgs): Promise<DeliveryResult>
     sendMessage(args: ChannelMessageArgs): Promise<DeliveryResult>
@@ -795,7 +802,14 @@ export interface AgentRuntimeAdapter {
     resolveUri(uri: string): Promise<string | null>
   }
 
-  cron: {
+  /**
+   * OPTIONAL capability (P2.1): the RUNTIME's native cron surface (jobs the
+   * runtime/agents create for themselves — Bakin surfaces them read-only and
+   * can adopt them). Runtimes without one (Pi) OMIT the member; Bakin-owned
+   * task scheduling (the schedule plugin's own tick scheduler) is unaffected.
+   * Callers MUST feature-detect and treat absence as "no native jobs".
+   */
+  cron?: {
     list(): Promise<CronJob[]>
     get(id: string): Promise<CronJob | null>
     create(input: CreateCronJobInput): Promise<CronJob>

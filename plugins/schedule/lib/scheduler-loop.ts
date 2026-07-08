@@ -74,11 +74,14 @@ export function schedulerDeps(): SchedulerDeps {
 export function runScheduleCutover(): ReturnType<typeof migrateBakinSchedulesOffOpenClawCron> {
   const cron = getPluginCtx()!.runtime.cron
   return migrateBakinSchedulesOffOpenClawCron({
+    // Optional capability (P2.1): no native cron surface → nothing is backed
+    // by a runtime cron, so every lookup is an honest miss and there is
+    // nothing to remove — the cutover is complete by construction.
     cronGet: async (jobId) => {
-      const job = await cron.get(jobId)
+      const job = await cron?.get(jobId)
       return job ? { schedule: job.schedule, enabled: job.enabled, metadata: job.metadata } : null
     },
-    cronRemove: (jobId) => cron.remove(jobId),
+    cronRemove: async (jobId) => { await cron?.remove(jobId) },
     systemTz: getSystemTimezone,
   })
 }

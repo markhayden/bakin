@@ -23,7 +23,7 @@ import { createHealthChecks } from './health-checks'
 import { createImagesSurface } from './images'
 import { createSessionsSurface } from './sessions'
 import { createSkillsSurface } from './skills'
-import { createChannelsSurface, createCronSurface, createToolsSurface } from './unsupported'
+import { createToolsSurface } from './unsupported'
 
 export interface PiRuntimeAdapterOptions {
   settings?: Record<string, unknown>
@@ -132,7 +132,9 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
     return this._images
   }
 
-  channels: AgentRuntimeAdapter['channels'] = createChannelsSurface()
+  // channels/cron are OMITTED (P2.1): Pi has no delivery layer and no
+  // runtime-native cron. Absence — not a throwing stub — is the contract's
+  // honest signal; consumers feature-detect and degrade.
 
   skills: AgentRuntimeAdapter['skills'] = createSkillsSurface()
 
@@ -141,8 +143,6 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
   memory: AgentRuntimeAdapter['memory'] = createMemorySurface()
 
   models: AgentRuntimeAdapter['models'] = createModelsSurface()
-
-  cron: AgentRuntimeAdapter['cron'] = createCronSurface()
 
   config: AgentRuntimeAdapter['config'] = createConfigSurface()
 }

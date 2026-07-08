@@ -57,22 +57,17 @@ async function expectUnsupported(promise: Promise<unknown>): Promise<void> {
 }
 
 describe('honest-empty surfaces', () => {
-  test('channels: empty list, typed failures on send/approval, no-op unsubscribe', async () => {
-    expect(await adapter.channels.list()).toEqual([])
-    await expectUnsupported(adapter.channels.sendNotification({ severity: 'info', message: 'x' } as never))
-    await expectUnsupported(adapter.channels.createApproval({} as never))
-    const unsubscribe = adapter.channels.subscribeApprovalResponses(() => {})
-    expect(typeof unsubscribe).toBe('function')
-    unsubscribe()
+  test('channels/cron: OMITTED — absence IS the signal (P2.1)', () => {
+    // No throwing stubs to maintain: the optional-capability contract means
+    // consumers feature-detect and degrade. capabilities() reports the same
+    // fact declaratively (delivery unavailable).
+    expect(adapter.channels).toBeUndefined()
+    expect(adapter.cron).toBeUndefined()
   })
 
-  test('cron: empty reads, typed failures on mutation', async () => {
-    expect(await adapter.cron.list()).toEqual([])
-    expect(await adapter.cron.get('x')).toBeNull()
-    expect(await adapter.cron.listRuns('x')).toEqual([])
-    expect(await adapter.cron.getRaw('x', 'test-reason')).toBeNull()
-    await expectUnsupported(adapter.cron.create({ name: 'j', schedule: '* * * * *', command: 'x' } as never))
-    await expectUnsupported(adapter.cron.runNow('x'))
+  test('capabilities() reports delivery unavailable, matching the omitted surface', async () => {
+    const caps = await adapter.capabilities()
+    expect(caps.delivery.mode).toBe('unavailable')
   })
 
   test('tools.invoke: typed failure', async () => {
@@ -82,8 +77,6 @@ describe('honest-empty surfaces', () => {
   test('optional members: images present (shim-backed, #627); the rest genuinely absent', () => {
     expect(adapter.images).toBeDefined()
     expect(adapter.media).toBeUndefined()
-    expect(adapter.channels.createThread).toBeUndefined()
-    expect(adapter.channels.editMessage).toBeUndefined()
   })
 })
 
