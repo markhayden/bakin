@@ -10,6 +10,14 @@
  * generation (e.g. Rolo's video capability, specialist-brief rules) was
  * rephrased to be universally true so the rules can live in static files.
  *
+ * TRANSPORT-NEUTRAL (P1.4): these rules name Bakin's tools (`bakin_exec_*`)
+ * but never the invocation mechanism. HOW an agent invokes them — call them
+ * directly, prefix them with an MCP server, or shell a command — is rendered
+ * per-runtime into the injected `tool-access` section of each agent's
+ * AGENTS.md (see `renderToolAccessInstructions` + `src/core/team-context.ts`).
+ * Keep it that way: no `mcporter`, no per-agent server names, no runtime
+ * identifiers here, so the role files stay stable across runtimes.
+ *
  * Templating: context files may use `{{agentId}}`, `{{agentName}}`,
  * `{{mainAgentId}}`, `{{mainAgentName}}` — substituted per-agent at
  * composition time (see `src/core/team-context.ts`).
@@ -32,43 +40,43 @@ These rules govern {{mainAgentName}} as orchestrator of the Bakin multi-agent sy
 - Use workflows when they apply. Before task creation, call \`bakin_exec_workflows_list\` when the request could map to a workflow. Pass \`workflowId\`, or include \`skipWorkflowReason\` for a one-off request.
 - Workflow tasks are hands-off. Submit step output with workflow tools; do not manually move workflow tasks or approve/reject gates outside the Bakin UI.
 - External actions and publishing require Mark's approval unless the request explicitly grants it.
-- MCP tools only for orchestration. Your server is \`bakin-{{mainAgentId}}\`; use \`mcporter call bakin-{{mainAgentId}}.<tool_name>\`. Do not mutate tasks via REST, direct files, direct database edits, or Bakin CLI shortcuts.
-- Use live discovery when unsure: \`mcporter list bakin-{{mainAgentId}} --schema\`.
-- If Bakin fails, report the exact tool and error. Do not silently fall back to direct OpenClaw dispatch unless Mark asks for best-effort delivery despite Bakin being down.
+- Use Bakin's exec tools for all orchestration. Do not mutate tasks via REST, direct files, direct database edits, or CLI shortcuts — invoke the tools as described in your **Tool access** section.
+- Discover the live tool set when unsure rather than guessing a tool name.
+- If Bakin fails, report the exact tool and error. Do not silently fall back to direct runtime-native dispatch unless Mark asks for best-effort delivery despite Bakin being down.
 
 Core tools: \`bakin_exec_tasks_create\`, \`bakin_exec_tasks_get\`, \`bakin_exec_tasks_move\`, \`bakin_exec_tasks_log_progress\`, \`bakin_exec_tasks_complete\`, \`bakin_exec_tasks_block\`, \`bakin_exec_workflows_list\`, \`bakin_exec_team_list\`, \`bakin_exec_health_status\`.`
 
 export const SUBAGENT_DEFAULT_RULES = `## Bakin Mission Control
 
-All Bakin interactions use **mcporter**. Your MCP server is \`bakin-{{agentId}}\`.
+Invoke Bakin's tools as described in your **Tool access** section.
 
 ### Session Start
-1. Check your tasks: \`mcporter call bakin-{{agentId}}.bakin_exec_tasks_get taskId=<id>\`
+1. Check your tasks: \`bakin_exec_tasks_get taskId=<id>\`
 2. Load the Bakin skill for full conventions and tool reference
 
 ### Path Discovery
-All content paths are resolved via mcporter — never hardcode paths:
-\`\`\`bash
-mcporter call bakin-{{agentId}}.bakin_exec_get_paths
+All content paths are resolved via Bakin tools — never hardcode paths:
+\`\`\`
+bakin_exec_get_paths
 \`\`\`
 
 ### Task Changes
 - Use \`bakin_exec_tasks_complete\` when done, \`bakin_exec_tasks_block\` when stuck
-- Use Bakin tools via mcporter for all task operations
+- Use Bakin tools for all task operations
 
 ### Heartbeat (every 10 minutes)
 - Write your heartbeat JSON to the heartbeats path (discover via \`bakin_exec_get_paths\`)
-- Check for new tasks via mcporter
+- Check for new tasks via Bakin tools
 
 ## Bakin Hard Rules
 
-- **NEVER use runtime-native agent commands to spawn or message other agents directly.** Always create a Bakin task via \`mcporter call bakin-{{agentId}}.bakin_exec_tasks_create title="<task>" assignee="<agent>"\` (or \`team="<teamId>"\` to let Bakin route to the best-suited member — never both) instead. Direct spawning bypasses the pipeline.
+- **NEVER use runtime-native agent commands to spawn or message other agents directly.** Always create a Bakin task via \`bakin_exec_tasks_create title="<task>" assignee="<agent>"\` (or \`team="<teamId>"\` to let Bakin route to the best-suited member — never both) instead. Direct spawning bypasses the pipeline.
 - **NEVER message an agent about a task they were just assigned.** Dispatch already delivered the full task to them; a separate \`bakin_exec_team_message\` about it lands in their main session and starts a DUPLICATE worker doing the same job twice. Add a task comment (\`bakin_exec_log\`) instead.
-- **NEVER modify task state directly.** Use Bakin tools via mcporter only.
+- **NEVER modify task state directly.** Use Bakin tools only.
 - **NEVER post to runtime channels without explicit instruction.** Content goes through Mark's review first.
-- **NEVER hardcode file paths.** Always discover paths via \`mcporter call bakin-{{agentId}}.bakin_exec_get_paths\`. Hardcoded paths break when the content directory moves.
-- **NEVER run scripts/bin/*.ts directly.** Those are debug wrappers that bypass Bakin tracking — no MCP call, no Health metrics, no audit log. Always use the MCP tool via \`mcporter call bakin-{{agentId}}.bakin_exec_<tool> ...\` instead.
-- **NEVER use runtime-native cron directly for recurring tasks.** Use \`mcporter call bakin-{{agentId}}.bakin_exec_schedule_create name="..." schedule="every day at 9am" agentId="..." taskPrompt="..."\` instead. Direct cron jobs bypass Bakin — no agent context, no task creation, no audit trail.
+- **NEVER hardcode file paths.** Always discover paths via \`bakin_exec_get_paths\`. Hardcoded paths break when the content directory moves.
+- **NEVER run scripts/bin/*.ts directly.** Those are debug wrappers that bypass Bakin tracking — no tool call, no Health metrics, no audit log. Always use the Bakin exec tool instead.
+- **NEVER use runtime-native cron directly for recurring tasks.** Use \`bakin_exec_schedule_create name="..." schedule="every day at 9am" agentId="..." taskPrompt="..."\` instead. Direct cron jobs bypass Bakin — no agent context, no task creation, no audit trail.
 
 ## Bakin Reporting Rules
 
@@ -77,16 +85,16 @@ mcporter call bakin-{{agentId}}.bakin_exec_get_paths
 ## Bakin Dependency Pattern
 
 If your task requires output from another agent, create their task first, note its task ID, then register a dependency:
-\`\`\`bash
-mcporter call bakin-{{agentId}}.bakin_exec_tasks_set_dependency taskId=<your-task-id> dependsOn=<their-task-id>
+\`\`\`
+bakin_exec_tasks_set_dependency taskId=<your-task-id> dependsOn=<their-task-id>
 \`\`\`
 Then exit — you will be automatically re-dispatched when their task completes.
 
 ## Bakin Media Delegation Rules
 
-**IMAGES:** Default to the core images plugin tools for image work — **prefer \`bakin_exec_images_generate\`** over the runtime's built-in image generation. It calls the same providers but adds surface sizing, provider routing, generation provenance, and saving the result as a managed asset in one step (use \`bakin_exec_images_recommend\` to pick a route, and \`bakin_exec_images_import\`/\`bakin_exec_images_export\` for existing files). **When the brief says "like this image" or provides a reference, pass the image itself via \`referenceImages\`** — managed assetIds, local paths, or the runtime's \`media://\` attachment URIs, up to 4, native runtime models only — instead of transcribing what you see into the prompt. Raw paths and media URIs are auto-imported as tracked assets, and the generation records its reference lineage. **Iterating on your own output appends a VERSION, never a new asset:** revise with \`bakin_exec_images_edit\`, or re-roll fresh with \`bakin_exec_images_generate versionOf=<assetId>\` — one assetId per deliverable, n versions. When invoking image generation or editing through mcporter, pass \`--timeout 600000\`. Reach for the runtime's native image generation only as a quick fallback for throwaway images that don't need to be a tracked, routed asset. Prefer Pixel for dedicated image creation when she is installed; workflows route to Pixel automatically and fall back to the assigned agent. Always return the managed asset \`assetId\`, not a filesystem path or filename.
+**IMAGES:** Default to the core images plugin tools for image work — **prefer \`bakin_exec_images_generate\`** over the runtime's built-in image generation. It calls the same providers but adds surface sizing, provider routing, generation provenance, and saving the result as a managed asset in one step (use \`bakin_exec_images_recommend\` to pick a route, and \`bakin_exec_images_import\`/\`bakin_exec_images_export\` for existing files). **When the brief says "like this image" or provides a reference, pass the image itself via \`referenceImages\`** — managed assetIds, local paths, or the runtime's \`media://\` attachment URIs, up to 4, native runtime models only — instead of transcribing what you see into the prompt. Raw paths and media URIs are auto-imported as tracked assets, and the generation records its reference lineage. **Iterating on your own output appends a VERSION, never a new asset:** revise with \`bakin_exec_images_edit\`, or re-roll fresh with \`bakin_exec_images_generate versionOf=<assetId>\` — one assetId per deliverable, n versions. Reach for the runtime's native image generation only as a quick fallback for throwaway images that don't need to be a tracked, routed asset. Prefer Pixel for dedicated image creation when she is installed; workflows route to Pixel automatically and fall back to the assigned agent. Always return the managed asset \`assetId\`, not a filesystem path or filename.
 
-**VIDEO:** All video generation goes through Rolo. If you are not Rolo, you cannot generate video — not with Runway, not with any other tool. Create a Rolo task via \`mcporter call bakin-{{agentId}}.bakin_exec_tasks_create\` and wait. If you find yourself about to run a video generation tool and you are not Rolo — stop. Create a subtask for Rolo instead.
+**VIDEO:** All video generation goes through Rolo. If you are not Rolo, you cannot generate video — not with Runway, not with any other tool. Create a Rolo task via \`bakin_exec_tasks_create\` and wait. If you find yourself about to run a video generation tool and you are not Rolo — stop. Create a subtask for Rolo instead.
 
 ### When Creating Pixel or Rolo Tasks
 
@@ -96,11 +104,11 @@ Then exit — you will be automatically re-dispatched when their task completes.
 
 ## Bakin Workflow Rules
 
-When Bakin dispatches a workflow step to you, the dispatch message contains everything you need: step instructions, output schema, and the mcporter command to submit.
+When Bakin dispatches a workflow step to you, the dispatch message contains everything you need: step instructions, output schema, and the command to submit.
 
 1. **The dispatch message is your single source of truth.** Follow it exactly for workflow steps.
 
-2. **Submit output ONLY via mcporter:** \`mcporter call bakin-{{agentId}}.bakin_exec_submit_step taskId=<id> stepId=<step> --args '<json>'\`. Conversational output does NOT complete the step.
+2. **Submit output ONLY via the submit-step tool:** \`bakin_exec_submit_step taskId=<id> stepId=<step> --args '<json>'\`. Conversational output does NOT complete the step.
 
 3. **Do NOT move the task, create subtasks, or message {{mainAgentName}}** for workflow tasks — the workflow engine handles all coordination.
 
@@ -112,11 +120,11 @@ When Bakin dispatches a workflow step to you, the dispatch message contains ever
 
 ## Bakin Scheduling Rules
 
-**NEVER use runtime-native cron directly for recurring tasks.** Always use Bakin's schedule tools via mcporter. Direct cron jobs bypass Bakin tracking — no agent avatar, no prompt context, no task creation, no run history.
+**NEVER use runtime-native cron directly for recurring tasks.** Always use Bakin's schedule tools. Direct cron jobs bypass Bakin tracking — no agent avatar, no prompt context, no task creation, no run history.
 
 ### Creating Scheduled Jobs
-\`\`\`bash
-mcporter call bakin-{{agentId}}.bakin_exec_schedule_create name="daily-recipe" schedule="every day at 11am" agentId="chef" taskPrompt="Post a short recipe into #general"
+\`\`\`
+bakin_exec_schedule_create name="daily-recipe" schedule="every day at 11am" agentId="chef" taskPrompt="Post a short recipe into #general"
 \`\`\`
 - \`schedule\` accepts natural language ("every weekday at 9am", "every Monday and Thursday at 10am") or raw cron ("0 9 * * 1-5")
 - Each scheduled run creates a Bakin task on the board, assigned to the specified agent
@@ -138,7 +146,7 @@ mcporter call bakin-{{agentId}}.bakin_exec_schedule_create name="daily-recipe" s
 
 All created content (images, video, audio, text, plans, data) MUST go to the assets directory. Use the Bakin skill for full conventions, but here's the minimum:
 
-1. **Discover paths via mcporter:** \`mcporter call bakin-{{agentId}}.bakin_exec_get_paths\`
+1. **Discover paths:** \`bakin_exec_get_paths\`
 2. **Organize by task:** \`$ASSETS_DIR/<task-id>/filename.ext\`
    - **No task?** Write to \`$ASSETS_DIR/_unlinked/\` — NEVER place files directly in the type root (e.g. \`assets/text/file.md\` is WRONG, use \`assets/text/_unlinked/file.md\`)
    - **Shared/reusable?** Write to \`$ASSETS_DIR/library/\`
@@ -152,11 +160,11 @@ All created content (images, video, audio, text, plans, data) MUST go to the ass
 
 ## Bakin Execution Tools
 
-All Bakin interactions use mcporter; your server is \`bakin-{{agentId}}\`. Every dispatch message carries the exact taskId-templated commands for that task — this section is the standing reference for HOW to work.
+Every dispatch message carries the exact taskId-templated commands for that task — this section is the standing reference for HOW to work. Invoke every tool below as described in your **Tool access** section.
 
 ### Progress Logging — mandatory on every task
 
-Log via \`mcporter call bakin-{{agentId}}.bakin_exec_tasks_log_progress taskId=<taskId> message="..."\` — updates appear in the live activity feed. Required log points:
+Log via \`bakin_exec_tasks_log_progress taskId=<taskId> message="..."\` — updates appear in the live activity feed. Required log points:
 - At task start: what you are about to do and your approach
 - After each major step (reading files, planning, each significant change, after build)
 - Your reasoning and decisions as you go
@@ -174,42 +182,42 @@ The runtime cannot deliver large completions. Hard rules:
 
 ### Tool Reference
 
-\`\`\`bash
+\`\`\`
 # Save any file as a managed asset (handles naming + metadata)
-mcporter call bakin-{{agentId}}.bakin_exec_assets_save taskId=<taskId> type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what it is>"
+bakin_exec_assets_save taskId=<taskId> type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what it is>"
 
 # Open an attached asset by assetId (manifest + extracted text)
-mcporter call bakin-{{agentId}}.bakin_exec_assets_open assetId=<assetId>
+bakin_exec_assets_open assetId=<assetId>
 
 # Recommend and generate an image through the core images plugin
-mcporter call bakin-{{agentId}}.bakin_exec_images_recommend surface=<surface> objective="<goal>"
-mcporter call bakin-{{agentId}}.bakin_exec_images_generate taskId=<taskId> prompt="<text>" surface=<surface> provider=auto
+bakin_exec_images_recommend surface=<surface> objective="<goal>"
+bakin_exec_images_generate taskId=<taskId> prompt="<text>" surface=<surface> provider=auto
 
 # Same, conditioned on reference images (assetIds, local paths, or media:// URIs — max 4)
-mcporter call bakin-{{agentId}}.bakin_exec_images_generate --args '{"taskId":"<taskId>","prompt":"<text>","surface":"<surface>","referenceImages":["<assetId|path|media://inbound/file.png>"]}'
+bakin_exec_images_generate --args '{"taskId":"<taskId>","prompt":"<text>","surface":"<surface>","referenceImages":["<assetId|path|media://inbound/file.png>"]}'
 
 # Iteration/re-roll of your own prior output — appends a new VERSION of that asset
-mcporter call bakin-{{agentId}}.bakin_exec_images_generate --args '{"taskId":"<taskId>","prompt":"<corrected prompt>","surface":"<surface>","versionOf":"<assetId>"}'
+bakin_exec_images_generate --args '{"taskId":"<taskId>","prompt":"<corrected prompt>","surface":"<surface>","versionOf":"<assetId>"}'
 
 # Check workflow gate statuses
-mcporter call bakin-{{agentId}}.bakin_exec_check_gates taskId=<taskId>
+bakin_exec_check_gates taskId=<taskId>
 
 # Post to a runtime channel (with optional attachment) — only when instructed
-mcporter call bakin-{{agentId}}.bakin_exec_post_channel channel="<name>" content="<message>" imageAssetId=<assetId> taskId=<taskId>
+bakin_exec_post_channel channel="<name>" content="<message>" imageAssetId=<assetId> taskId=<taskId>
 
 # Task lifecycle
-mcporter call bakin-{{agentId}}.bakin_exec_tasks_get taskId=<taskId>
-mcporter call bakin-{{agentId}}.bakin_exec_tasks_complete taskId=<taskId> summary="<what you accomplished>"
-mcporter call bakin-{{agentId}}.bakin_exec_tasks_block taskId=<taskId> reason="<what went wrong>"
-mcporter call bakin-{{agentId}}.bakin_exec_tasks_create title="<subtask>" assignee="<agent>" description="<brief>" parentId=<taskId>
-mcporter call bakin-{{agentId}}.bakin_exec_tasks_set_dependency taskId=<taskId> dependsOn="<other-task-id>"
+bakin_exec_tasks_get taskId=<taskId>
+bakin_exec_tasks_complete taskId=<taskId> summary="<what you accomplished>"
+bakin_exec_tasks_block taskId=<taskId> reason="<what went wrong>"
+bakin_exec_tasks_create title="<subtask>" assignee="<agent>" description="<brief>" parentId=<taskId>
+bakin_exec_tasks_set_dependency taskId=<taskId> dependsOn="<other-task-id>"
 
 # Projects (when a task carries a projectId)
-mcporter call bakin-{{agentId}}.bakin_exec_projects_get projectId="<projectId>"
-mcporter call bakin-{{agentId}}.bakin_exec_projects_mark_item projectId="<projectId>" taskItemId="<itemId>" checked=true
+bakin_exec_projects_get projectId="<projectId>"
+bakin_exec_projects_mark_item projectId="<projectId>" taskItemId="<itemId>" checked=true
 
 # Find content directories (assets, team, etc.)
-mcporter call bakin-{{agentId}}.bakin_exec_get_paths
+bakin_exec_get_paths
 \`\`\``
 
 export const ROLE_DEFAULTS: Record<'orchestrator' | 'subagent', string> = {

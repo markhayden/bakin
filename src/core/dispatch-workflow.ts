@@ -15,7 +15,7 @@ import type { DispatchState, SessionDeathState } from './dispatch-types'
 import { getFailureRecord } from './dispatch-state'
 import { findDispatchTaskSnapshot } from './dispatch-board'
 import { buildDispatchLessonBlock, buildDispatchAssetBlock } from './dispatch-context-blocks'
-import { mcporterHelpers, sharedExecutionToolDocs, outputDisciplineSection, buildCorrectiveSection, type PromptSection } from './dispatch-prompts'
+import { toolHelpers, sharedExecutionToolDocs, outputDisciplineSection, buildCorrectiveSection, type PromptSection } from './dispatch-prompts'
 import { concurrencyGate, deferForBudget, claimDispatchRun, auditDispatchSuppressed, fireDispatchTurn } from './dispatch-turns'
 
 const log = createLogger('dispatch-workflow')
@@ -394,7 +394,7 @@ export function buildWorkflowDispatchSections(
   // "Bakin Execution Tools" section of AGENTS.md (#357 trim).
   lines.push('## PROGRESS LOGGING — MANDATORY')
   lines.push('')
-  const { server: wfServer, mc: wfMc, invocation: wfInvocation } = mcporterHelpers(agentName)
+  const { access: wfAccess, mc: wfMc } = toolHelpers(agentName)
 
   lines.push('Log progress at EVERY major step (start, each action, decisions, blockers, submission; at least every 2 minutes). Full logging rules: "Bakin Execution Tools" in your AGENTS.md.')
   lines.push('')
@@ -403,9 +403,14 @@ export function buildWorkflowDispatchSections(
   // ─── Commands ───────────────────────────────────────────────────────
   lines.push('## COMMANDS')
   lines.push('')
-  lines.push(wfInvocation === 'native'
-    ? 'These Bakin tools are available directly in your session — call them for all interactions:'
-    : `Your Bakin MCP server is \`${wfServer}\`. Use mcporter for all interactions:`)
+  const wfServer = (wfAccess.mcpServerTemplate ?? 'bakin-<agent>').split('<agent>').join(agentName)
+  lines.push(
+    wfAccess.style === 'in-process'
+      ? 'These Bakin tools are available directly in your session — call them for all interactions:'
+      : wfAccess.style === 'mcp'
+        ? `Your Bakin tools are exposed as native MCP tools under \`${wfServer}\` — call them by their prefixed name for all interactions:`
+        : 'Reach Bakin\'s tools through the shell command shown below for all interactions:',
+  )
   lines.push('')
   lines.push('```bash')
   lines.push(`# Submit your output (must match the schema above)`)

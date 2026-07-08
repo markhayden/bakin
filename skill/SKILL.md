@@ -1,46 +1,25 @@
 ---
 name: bakin
-description: Mission control integration for multi-agent coordination through Bakin MCP tools via mcporter.
+description: Mission control integration for multi-agent coordination through Bakin's tools.
 ---
 
 # Bakin Mission Control
 
 Use Bakin for task-board work, workflow routing, team coordination, assets, schedules, and channel posting.
 
-Bakin is the local task, project, agent, workflow, asset, schedule, and observability system for this OpenClaw runtime.
+Bakin is the local task, project, agent, workflow, asset, schedule, and observability system for this runtime.
 
-Your MCP server is `bakin-<agent>`. The main operator uses `bakin-main`.
-
-The local Bakin server normally runs at `http://localhost:3737`. Prefer Bakin MCP tools when they are available. Use the CLI only when MCP is unavailable or when the user asks for a shell command.
+How you invoke Bakin's `bakin_exec_*` tools depends on the runtime — see your **Tool access** section (in your AGENTS.md) for the exact form. The local Bakin server normally runs at `http://localhost:3737`. Prefer Bakin's tools when they are available; use the CLI only when they are unavailable or when the user asks for a shell command.
 
 The CLI is usually `bakin`. If the runtime shell cannot find it, try `$HOME/.local/bin/bakin` or `/usr/local/bin/bakin`.
 
 ## Live Tool Discovery
 
-The live MCP server is authoritative. If a tool name or argument is uncertain, run:
+The live tool registry is authoritative. If a tool name or argument is uncertain, discover the available Bakin tools rather than guessing — your **Tool access** section describes how to list and call them on this runtime.
 
-```bash
-mcporter list bakin-<agent> --schema
-```
+Runtime shells are intentionally minimal. Do not assume `rg`, `jq`, GNU-only flags, or stdin JSON helpers exist.
 
-Runtime shells are intentionally minimal. Do not assume `rg`, `jq`, GNU-only flags, or stdin JSON helpers exist. If you need to filter schema output, use portable tools such as `grep`, `sed`, `awk`, and `head`:
-
-```bash
-mcporter list bakin-main --schema | grep -n -E 'bakin_exec_projects_apply_plan|bakin_exec_projects_get'
-```
-
-Call tools with valid `mcporter` argument syntax. Use `--args '<json object>'` as one shell argument, or simple `key=value` arguments when the schema is obvious. Do not use `--args @-`, heredocs, process substitution, or stdin-fed JSON with `mcporter call`; this mcporter version does not parse them.
-
-```bash
-mcporter call bakin-main.bakin_exec_projects_get --args '{"projectId":"proj_123"}'
-```
-
-For larger or multiline payloads, generate compact JSON first and pass it as a quoted variable:
-
-```bash
-ARGS=$(node -e 'process.stdout.write(JSON.stringify({projectId:"proj_123",body:"Updated plan\n\nNext step"}))')
-mcporter call bakin-main.bakin_exec_projects_apply_plan --args "$ARGS"
-```
+Pass arguments the way each tool expects — structured JSON for object parameters, or simple `key=value` pairs when the schema is obvious.
 
 Do not rely on old non-exec tool names such as `bakin_create_task`, `bakin_report_complete`, `bakin_get_task`, or `bakin_post_discord`. Current task-board and plugin tools use the `bakin_exec_*` namespace.
 
@@ -74,7 +53,7 @@ Use these current tool names for the common paths:
 
 ## Task Creation Discipline
 
-When the operator or main asks to assign work to another agent, create a Bakin task first. Do not directly spawn or message OpenClaw agents unless Bakin is unavailable and the user explicitly wants a fallback.
+When the operator or main asks to assign work to another agent, create a Bakin task first. Do not directly spawn or message runtime-native agents unless Bakin is unavailable and the user explicitly wants a fallback.
 
 Before `bakin_exec_tasks_create`:
 
@@ -98,8 +77,8 @@ A finished asset goes to a channel EXACTLY ONCE, via `bakin_exec_post_channel` w
 
 Example shape:
 
-```bash
-mcporter call bakin-main.bakin_exec_tasks_create --args '{"title":"Write todays story","assignee":"trainer","description":"Write a short story and post the result back to #general.","skipWorkflowReason":"one-off chat request"}'
+```
+bakin_exec_tasks_create --args '{"title":"Write todays story","assignee":"trainer","description":"Write a short story and post the result back to #general.","skipWorkflowReason":"one-off chat request"}'
 ```
 
 ## Task Lifecycle
@@ -110,7 +89,7 @@ Workflow step assignments are different: submit step output with `bakin_exec_sub
 
 ## Error Handling
 
-If a Bakin MCP call fails, report the exact tool and error. Do not silently fall back to direct OpenClaw dispatch for task-board work. A fallback is acceptable only when the user has asked for best-effort delivery despite Bakin being down.
+If a Bakin tool call fails, report the exact tool and error. Do not silently fall back to direct runtime-native dispatch for task-board work. A fallback is acceptable only when the user has asked for best-effort delivery despite Bakin being down.
 
 ## Path Discipline
 

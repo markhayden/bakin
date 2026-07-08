@@ -5,55 +5,64 @@
  * as already-resolved strings.
  *
  * The ONE non-pure touch: tool-call lines render per the active runtime's
- * declared tool access (`describeToolAccess`) — mcporter shell commands for
- * OpenClaw, bare native tool calls for in-process runtimes (Pi). Resolved
- * via `resolveToolInvocation()` so the context-report measurement path and
- * production dispatch render identically; every builder also accepts the
- * style explicitly for pure/testable use.
+ * declared tool access (`describeToolAccess`) — native MCP-prefixed calls for
+ * OpenClaw, bare in-session tool calls for Pi, a shell command for cli-shim.
+ * Resolved via `resolveToolAccess()` and rendered through the shared
+ * `renderToolCall` primitive so this path and the projected AGENTS.md
+ * tool-access section can never drift; every builder also accepts the access
+ * descriptor explicitly for pure/testable use.
  */
 import { join } from 'path'
 // Namespace import: suites mock.module() app-services with partial export
 // sets; a named import would break the whole import graph under those mocks.
 import * as appServices from './app-services-store'
+import { renderToolCall } from './tool-access'
+import type { RuntimeToolAccess } from '@bakin/core/adapters/runtime'
 import type {
   DispatchContinuationContext,
   DispatchRosterAgent,
   SessionDeathState,
 } from './dispatch-types'
 
-const IMAGE_MCPORTER_TIMEOUT_MS = 600000
-
-export type ToolInvocation = 'native' | 'mcporter-cli'
-
 /**
- * Tool-invocation style of the ACTIVE runtime, mapped onto the legacy
- * mcporterHelpers switch. BRIDGE (P1.1→P1.4): `in-process` → native rendering;
- * every other style ('mcp', 'cli-shim') → the existing mcporter rendering, so
- * OpenClaw prompt bytes stay identical until P1.4 swaps the builders onto the
- * capability-aware renderer. 'mcporter-cli' when unset (legacy default).
+ * Tool-access descriptor of the ACTIVE runtime — drives how every tool-call
+ * line renders (bare / mcp-prefixed / shell). Falls back to the conservative
+ * out-of-process `mcp` default when app services aren't up (production
+ * dispatch always has them; this only stabilizes the pure builder + fixture
+ * paths, which never run inside a live runtime).
  */
-export function resolveToolInvocation(): ToolInvocation {
+const DEFAULT_TOOL_ACCESS: RuntimeToolAccess = { style: 'mcp', mcpServerTemplate: 'bakin-<agent>' }
+
+export function resolveToolAccess(): RuntimeToolAccess {
   try {
-    if (typeof appServices.maybeGetAppServices !== 'function') return 'mcporter-cli'
-    const style = appServices.maybeGetAppServices()?.runtime.describeToolAccess?.().style
-    return style === 'in-process' ? 'native' : 'mcporter-cli'
+    if (typeof appServices.maybeGetAppServices !== 'function') return DEFAULT_TOOL_ACCESS
+    return appServices.maybeGetAppServices()?.runtime.describeToolAccess?.() ?? DEFAULT_TOOL_ACCESS
   } catch {
-    return 'mcporter-cli'
+    return DEFAULT_TOOL_ACCESS
   }
 }
 
-export function mcporterHelpers(agentName: string, invocation: ToolInvocation = resolveToolInvocation()) {
-  const server = `bakin-${agentName}`
-  if (invocation === 'native') {
-    // Exec tools are first-class session tools — render bare calls.
-    const call = (tool: string, args: string) => `${tool} ${args}`
-    return { server, invocation, mc: call, mcImage: call }
-  }
-  return {
-    server,
-    invocation,
-    mc: (tool: string, args: string) => `mcporter call ${server}.${tool} ${args}`,
-    mcImage: (tool: string, args: string) => `mcporter call ${server}.${tool} --timeout ${IMAGE_MCPORTER_TIMEOUT_MS} ${args}`,
+/**
+ * Tool-call renderer bound to one agent + the active (or supplied) access
+ * style. `mc(tool, args)` renders a single invocation via the shared
+ * `renderToolCall` primitive.
+ */
+export function toolHelpers(agentName: string, access: RuntimeToolAccess = resolveToolAccess()) {
+  const mc = (tool: string, args: string) => renderToolCall(access, { agentId: agentName, tool, args })
+  return { access, mc }
+}
+
+/** The TASK COMMANDS section header for the active tool-access style. */
+export function commandsHeader(access: RuntimeToolAccess, agentName: string): string {
+  switch (access.style) {
+    case 'in-process':
+      return '## TASK COMMANDS — call these tools directly (they are available in your session)'
+    case 'mcp': {
+      const server = (access.mcpServerTemplate ?? 'bakin-<agent>').split('<agent>').join(agentName)
+      return `## TASK COMMANDS — call these tools as native MCP tools (server \`${server}\`)`
+    }
+    case 'cli-shim':
+      return '## TASK COMMANDS — via shell'
   }
 }
 
@@ -63,14 +72,14 @@ export function mcporterHelpers(agentName: string, invocation: ToolInvocation = 
  * channel posting only for output steps) are explicit parameters.
  */
 export function sharedExecutionToolDocs(agentName: string, taskId: string, opts: { allowChannelPost: boolean }): string[] {
-  const { mc, mcImage } = mcporterHelpers(agentName)
+  const { mc } = toolHelpers(agentName)
   // Bare taskId-templated invocations only — the per-tool explanations live in
   // the "Bakin Execution Tools" role-layer section of AGENTS.md (#357 trim).
   const lines = [
     '# execution tools — full reference: "Bakin Execution Tools" in your AGENTS.md',
     mc('bakin_exec_assets_save', `taskId=${taskId} type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what it is>"`),
     mc('bakin_exec_images_recommend', 'surface=instagram-feed-portrait objective="<goal>"'),
-    mcImage('bakin_exec_images_generate', `taskId=${taskId} prompt="<text>" surface=instagram-feed-portrait provider=auto`),
+    mc('bakin_exec_images_generate', `taskId=${taskId} prompt="<text>" surface=instagram-feed-portrait provider=auto`),
     mc('bakin_exec_check_gates', `taskId=${taskId}`),
   ]
   if (opts.allowChannelPost) {
@@ -89,7 +98,7 @@ export function sharedExecutionToolDocs(agentName: string, taskId: string, opts:
  * catalog every turn.
  */
 export function outputDisciplineSection(agentName: string, taskId: string, opts: { subtasksAllowed: boolean }): string[] {
-  const { mc } = mcporterHelpers(agentName)
+  const { mc } = toolHelpers(agentName)
   return [
     '## OUTPUT DISCIPLINE — MANDATORY',
     '',
@@ -135,7 +144,7 @@ export function buildDecompositionMessage(
   agentName: string,
   recovery: SessionDeathState,
 ): string {
-  const { mc } = mcporterHelpers(agentName)
+  const { mc } = toolHelpers(agentName)
   const d = recovery.lastDiagnosis
   const detailsBlock = task.description ? `\n\nOriginal task details:\n${task.description}` : ''
   const salvageBlock = recovery.salvagedAssetIds.length > 0
@@ -192,7 +201,7 @@ export function buildDispatchSections(
     : ''
   const contactsRef = `Reference info is in ${join(contentDir, 'team/CONTACTS.md')}.`
 
-  const { server, mc, invocation } = mcporterHelpers(agentName)
+  const { access, mc } = toolHelpers(agentName)
 
   if (!task.agent) {
     // Roster comes from the live runtime — never a hardcoded agent list
@@ -239,9 +248,7 @@ Log progress at EVERY major step (start, each step, decisions, blockers, complet
 ${outputDisciplineSection(agentName, task.id, { subtasksAllowed: true }).join('\n')}`)
   add('task-commands', `
 
-${invocation === 'native'
-    ? '## TASK COMMANDS — call these tools directly (they are available in your session)'
-    : `## TASK COMMANDS — via mcporter (server \`${server}\`)`}
+${commandsHeader(access, agentName)}
 
 \`\`\`bash
 # log progress (mandatory at every major step)

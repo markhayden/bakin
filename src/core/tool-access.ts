@@ -32,6 +32,39 @@ function forAgent(template: string, agentId: string): string {
   return template.split(AGENT_SLOT).join(agentId)
 }
 
+/** Default cli-shim command when a runtime declares the style without one. */
+const CLI_SHIM_FALLBACK = `<shim-command> ${TOOL_SLOT} ${ARGS_SLOT}`
+
+function renderShimCall(shimCommand: string, agentId: string, tool: string, args: string): string {
+  return forAgent(shimCommand, agentId).split(TOOL_SLOT).join(tool).split(ARGS_SLOT).join(args)
+}
+
+/**
+ * Render ONE tool invocation in the runtime's style — the primitive shared by
+ * both the standing tool-access block (below) and the per-dispatch prompt
+ * authors, so invocation bytes cannot drift between the two surfaces.
+ *   - in-process → `bakin_exec_x arg=1`
+ *   - mcp        → `bakin-<agent>.bakin_exec_x arg=1`
+ *   - cli-shim   → the shim command with `<tool>`/`<args>` filled in
+ * `args` may be empty (trailing space is trimmed).
+ */
+export function renderToolCall(
+  access: RuntimeToolAccess,
+  opts: { agentId: string; tool: string; args?: string },
+): string {
+  const args = opts.args ?? ''
+  switch (access.style) {
+    case 'in-process':
+      return `${opts.tool} ${args}`.trimEnd()
+    case 'mcp': {
+      const server = forAgent(access.mcpServerTemplate ?? `bakin-${AGENT_SLOT}`, opts.agentId)
+      return `${server}.${opts.tool} ${args}`.trimEnd()
+    }
+    case 'cli-shim':
+      return renderShimCall(access.shimCommand ?? CLI_SHIM_FALLBACK, opts.agentId, opts.tool, args).trimEnd()
+  }
+}
+
 /** Core tools every agent touches — the cli-shim cheat-sheet payload. */
 const CORE_TOOL_EXAMPLES: ReadonlyArray<[tool: string, args: string]> = [
   ['bakin_exec_tasks_get', 'taskId=<id>'],
@@ -47,13 +80,13 @@ const DISCIPLINE_LINES = [
   '- Mutate task state ONLY through a `bakin_exec_*` tool. Editing files, the database, or CLI shortcuts bypasses the audit trail.',
 ]
 
-function renderInProcess(): string[] {
+function renderInProcess(access: RuntimeToolAccess, agentId: string): string[] {
   return [
     '## Tool access',
     '',
     "Bakin's `bakin_exec_*` tools are available directly in your session — call them like any other tool.",
     '',
-    'Example: `bakin_exec_tasks_get taskId=<id>`',
+    `Example: \`${renderToolCall(access, { agentId, tool: 'bakin_exec_tasks_get', args: 'taskId=<id>' })}\``,
     '',
     ...DISCIPLINE_LINES,
   ]
@@ -66,23 +99,15 @@ function renderMcp(access: RuntimeToolAccess, agentId: string): string[] {
     '',
     `Bakin's tools are exposed to you as native MCP tools under the \`${server}\` server — call them by their prefixed name.`,
     '',
-    `Example: \`${server}.bakin_exec_tasks_get taskId=<id>\``,
+    `Example: \`${renderToolCall(access, { agentId, tool: 'bakin_exec_tasks_get', args: 'taskId=<id>' })}\``,
     '',
     ...DISCIPLINE_LINES,
   ]
 }
 
-function renderShimExample(shimCommand: string, agentId: string, tool: string, args: string): string {
-  return forAgent(shimCommand, agentId).split(TOOL_SLOT).join(tool).split(ARGS_SLOT).join(args)
-}
-
 function renderCliShim(access: RuntimeToolAccess, agentId: string): string[] {
-  // The shim command carries `<tool>` / `<args>` slots. Absent it (the inert
-  // extension-point default), fall back to a labelled placeholder so the block
-  // is still legible rather than silently empty.
-  const shimCommand = access.shimCommand ?? `<shim-command> ${TOOL_SLOT} ${ARGS_SLOT}`
   const cheatSheet = CORE_TOOL_EXAMPLES.map(
-    ([tool, args]) => `\`${renderShimExample(shimCommand, agentId, tool, args)}\``,
+    ([tool, args]) => `\`${renderToolCall(access, { agentId, tool, args })}\``,
   )
   return [
     '## Tool access',
@@ -107,7 +132,7 @@ export function renderToolAccessInstructions(
   const lines = ((): string[] => {
     switch (access.style) {
       case 'in-process':
-        return renderInProcess()
+        return renderInProcess(access, opts.agentId)
       case 'mcp':
         return renderMcp(access, opts.agentId)
       case 'cli-shim':

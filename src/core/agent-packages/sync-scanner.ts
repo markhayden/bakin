@@ -192,6 +192,12 @@ export async function deriveExpectedBlocks(
         inputs.role = context.role
         inputShas.roleSha = sha256OfString(context.role.content)
       }
+      if (context.toolAccess) {
+        inputs.toolAccess = context.toolAccess
+        // Runtime-aware drift attribution (a dedicated toolAccessSha keyed by
+        // runtime) lands in P1.6; for now the composed-body comparison catches
+        // a changed section as an in-place edit and re-projects.
+      }
       if (context.team) {
         inputs.team = context.team
         inputShas.teamSha = sha256OfString(context.team.content)

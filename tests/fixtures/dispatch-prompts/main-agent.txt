@@ -3,6 +3,6 @@ Work on this task: "Main task".
 Details:
 Do the thing
 
-Reference info is in /fixture/bakin-home/team/CONTACTS.md. When done: `mcporter call bakin-main.bakin_exec_tasks_complete taskId=t-fix-4 summary="<what you did>"`
+Reference info is in /fixture/bakin-home/team/CONTACTS.md. When done: `bakin-main.bakin_exec_tasks_complete taskId=t-fix-4 summary="<what you did>"`
 
-Log progress: `mcporter call bakin-main.bakin_exec_tasks_log_progress taskId=t-fix-4 message="<update>"`
+Log progress: `bakin-main.bakin_exec_tasks_log_progress taskId=t-fix-4 message="<update>"`
