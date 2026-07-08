@@ -173,12 +173,20 @@ export const brandRoutes = [
       competitors: z.string().optional(),
       urls: z.string().optional(),
       notes: z.string().optional(),
+      /** Optional logo the operator uploaded in the wizard (already a managed assetId). */
+      logoAssetId: z.string().optional(),
     }),
     responses: { 200: passthrough, 400: errorResponse, 409: errorResponse },
     handler: async (_req, ctx, parsed) => {
       const b = parsed.body
       try {
         const brand = createBrand({ id: b.id, name: b.name, draft: true })
+        // Wire the uploaded logo onto the draft so it shows on the dashboard
+        // immediately (the drafting agent fills the rest).
+        if (b.logoAssetId) {
+          const { updateBrand } = await import('./store')
+          await updateBrand(brand.id, (m) => ({ ...m, logos: [{ assetId: b.logoAssetId!, variant: 'primary' }] }))
+        }
         const intake = [
           '---',
           'description: Builder-flow intake — the raw material this brand was authored from',
@@ -212,7 +220,8 @@ export const brandRoutes = [
           skipWorkflowReason: 'brand-builder authoring task — direct tool work, no workflow applies',
         })
         emitChanged(ctx, brand.id, 'brand.created')
-        return Response.json({ brand, taskId: task.id })
+        const current = getBrand(brand.id)
+        return Response.json({ brand: current.status === 'ok' ? current.manifest : brand, taskId: task.id })
       } catch (err) {
         return storeError(err)
       }
@@ -439,6 +448,35 @@ export const brandRoutes = [
         .reverse()
         .map((e) => ({ ts: e.ts, agent: e.agent, ...(e.data as Record<string, unknown>) }))
       return Response.json({ injections })
+    },
+  }),
+
+  defineRoute({
+    path: '/:brandId/activity',
+    method: 'GET',
+    summary: "A brand's recent activity",
+    description:
+      "Recent brand.* audit events scoped to one brand (created/updated/imported, injections into dispatches, lesson adds, blocks, publishes). Bounded 30d read, post-filtered by brandId — the Overview dashboard's activity feed.",
+    params: brandIdParams,
+    responses: { 200: passthrough },
+    handler: async (_req, _ctx, parsed) => {
+      const { queryAuditEvents } = await import('../../../src/core/audit')
+      const { getContentDir } = await import('../../../src/core/content-dir')
+      const events = queryAuditEvents(getContentDir(), {
+        kinds: [
+          'brand.created', 'brand.updated', 'brand.imported', 'brand.exported',
+          'brand.injected', 'brand.lesson_added', 'brand.dispatch_blocked',
+          'brand.asset_missing', 'brand.lessons_unavailable', 'brand.draft_published',
+        ],
+        sinceMs: 30 * 24 * 60 * 60 * 1000,
+        limit: 1000,
+      })
+      const activity = events
+        .filter((e) => (e.data as { brandId?: string } | undefined)?.brandId === parsed.params.brandId)
+        .slice(-25)
+        .reverse()
+        .map((e) => ({ ts: e.ts, event: e.event, agent: e.agent, data: e.data as Record<string, unknown> }))
+      return Response.json({ activity })
     },
   }),
 

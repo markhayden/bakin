@@ -325,6 +325,35 @@ describe('builder flow (#419 §9.1)', () => {
     expect(again.status).toBe(400) // already published
   })
 
+  it('builder wires an uploaded logo onto the draft (#419 wizard)', async () => {
+    const created = await callRoute(route('POST', '/builder'), activated.ctx, {
+      body: { id: 'logo-brand', name: 'Logo Brand', agent: 'pixel', product: 'x', logoAssetId: '20260101-logo-abcd1234' },
+    })
+    expect(created.status).toBe(200)
+    expect((created.body.brand as { logos: Array<{ assetId: string; variant: string }> }).logos).toEqual([
+      { assetId: '20260101-logo-abcd1234', variant: 'primary' },
+    ])
+  })
+})
+
+describe('activity feed (#419 Overview)', () => {
+  it('returns brand-scoped brand.* audit events, newest first', async () => {
+    const { writeFileSync } = await import('fs')
+    const now = new Date().toISOString()
+    const lines = [
+      { ts: now, event: 'brand.created', agent: 'system', data: { brandId: 'acme' } },
+      { ts: now, event: 'brand.injected', agent: 'jessica', data: { brandId: 'acme', taskId: 't1' } },
+      { ts: now, event: 'brand.updated', agent: 'system', data: { brandId: 'other' } }, // wrong brand
+      { ts: now, event: 'task.dispatched', agent: 'x', data: { brandId: 'acme' } },      // not a brand.* kind
+    ].map((l) => JSON.stringify(l)).join('\n')
+    writeFileSync(join(testDir, 'audit.jsonl'), lines + '\n', 'utf-8')
+
+    const res = await callRoute(route('GET', '/:brandId/activity'), activated.ctx, { searchParams: { brandId: 'acme' } })
+    expect(res.status).toBe(200)
+    const activity = res.body.activity as Array<{ event: string }>
+    expect(activity.map((a) => a.event)).toEqual(['brand.injected', 'brand.created'])
+  })
+
   it('write tools are draft-gated: work on drafts, typed error on published brands', async () => {
     await callRoute(route('POST', '/'), activated.ctx, { body: { id: 'wip', name: 'WIP', draft: true } })
     await createAcme() // published
