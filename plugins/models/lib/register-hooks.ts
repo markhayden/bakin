@@ -75,18 +75,23 @@ export function registerModelsHooks(ctx: PluginContext): void {
   // Null when the model has no flat rate (provider-priced/ranged) — the run
   // is still recorded, just unpriced.
   ctx.hooks.register('models.priceImage', async (data: Record<string, unknown>) => {
-    const agentId = data.agentId as string | undefined
     const model = typeof data.model === 'string' ? normalizeModelId(data.model) : undefined
     const count = typeof data.count === 'number' ? data.count : 1
     const imagePerUsd = model ? getKnownModel(model)?.imagePerUsd : undefined
-    const billing = await resolveBilling(ctx as unknown as PluginContext, { agentId, model })
+    // Image generation bills through PROVIDER credentials (API keys / the
+    // image service's own plan) — the AGENT's chat auth lane must never
+    // suppress a billed image's dollars (a Codex-OAuth agent generating via
+    // a metered image key is still spending real money). Lane resolves from
+    // provider-level overrides only (no agentId → detection skipped);
+    // default metered.
+    const billing = await resolveBilling(ctx as unknown as PluginContext, { model })
     return {
       model: model ?? null,
       provider: billing.provider,
       lane: billing.lane,
       costUsdMicros: billing.lane === 'subscription' ? null : computeImageCostUsdMicros(count, imagePerUsd),
     }
-  }, { label: 'Price an image.', summary: 'Returns billing attribution plus an estimated cost in micro-dollars for an image generation (count × the model’s flat per-image rate), or null cost when the model is provider-priced or the lane is subscription.', hookKind: 'rpc' })
+  }, { label: 'Price an image.', summary: 'Returns billing attribution plus an estimated cost in micro-dollars for an image generation (count × the model’s flat per-image rate), or null cost when the model is provider-priced or the provider is overridden to the subscription lane. The agent’s chat auth never affects image billing.', hookKind: 'rpc' })
 
   // Billing attribution for a prospective turn (provider + metered vs
   // subscription lane) — the budget gate and billed-media gate consult this

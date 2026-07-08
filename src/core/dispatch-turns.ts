@@ -114,8 +114,11 @@ export async function budgetGate(
   agentId: string,
   contentDir: string,
   spendMemo?: BudgetSpendMemo,
-  /** Model the turn is routed to (explicit override); omit = agent default. */
-  prospect?: { model?: string },
+  /** Model the turn is routed to (explicit override); omit = agent default.
+   *  `billedMedia` marks a billed media call: its lane resolves from
+   *  provider-level overrides only — the agent's CHAT auth (subscription)
+   *  must never reclassify image dollars. */
+  prospect?: { model?: string; billedMedia?: boolean },
 ): Promise<BudgetDecision> {
   let policy: BudgetPolicy | undefined
   try {
@@ -133,7 +136,12 @@ export async function budgetGate(
   try {
     const billing = await hooks().invoke<{ provider?: string; lane?: 'metered' | 'subscription'; model?: string | null }>(
       'models.resolveBilling',
-      { agentId, ...(prospect?.model ? { model: prospect.model } : {}) },
+      {
+        // Billed media: provider-keyed lane only — omit agentId so the
+        // agent's chat-auth detection can't reclassify image dollars.
+        ...(prospect?.billedMedia ? {} : { agentId }),
+        ...(prospect?.model ? { model: prospect.model } : {}),
+      },
     )
     if (billing) {
       turn.provider = billing.provider

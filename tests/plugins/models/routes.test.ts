@@ -258,6 +258,21 @@ describe('Models Plugin Activation', () => {
       expect(r.model).toBe('openai/gpt-image-2')
       expect(r.costUsdMicros).toBeNull()
     })
+
+    it("REGRESSION: an agent's subscription CHAT auth never suppresses billed-image dollars", async () => {
+      // Image generation bills via provider credentials, not the agent's
+      // chat auth — a Codex-OAuth agent generating on a metered image key
+      // must still book real dollars against the caps.
+      const originalRaw = activated.ctx.runtime.config.raw
+      activated.ctx.runtime.config.raw = (async () => [{ provider: 'black-forest-labs', access: 'oauth-a', refresh: 'oauth-r' }]) as typeof activated.ctx.runtime.config.raw
+      try {
+        const r = await priceImageHandler()({ agentId: 'main', model: 'black-forest-labs/flux-pro', count: 2 })
+        expect(r.lane).toBe('metered')
+        expect(r.costUsdMicros).toBe(110_000)
+      } finally {
+        activated.ctx.runtime.config.raw = originalRaw
+      }
+    })
   })
 
   it('has valid settings schema', () => {

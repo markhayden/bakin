@@ -166,7 +166,7 @@ export async function gateBilledMediaCall(opts: { agent: string; model: string }
         refusal: { code: 'dispatch_paused', message: 'Dispatch is paused (kill switch) — billed media calls are blocked until it is resumed in Settings.' },
       }
     }
-    const decision = await budgetGate(opts.agent, contentDir, undefined, { model: opts.model })
+    const decision = await budgetGate(opts.agent, contentDir, undefined, { model: opts.model, billedMedia: true })
     if (decision.action !== 'defer') return { allowed: true }
     const fmt = (v: number) => (decision.unit === 'usd_micros' ? `$${(v / 1_000_000).toFixed(2)}` : `${v.toLocaleString()} tokens`)
     const scopeLabel = decision.rule.scopeId ? `${decision.rule.scope} '${decision.rule.scopeId}'` : decision.rule.scope
@@ -212,7 +212,7 @@ export async function meterImageTurn(opts: {
       model: string | null; provider?: string | null; lane?: 'metered' | 'subscription' | null; costUsdMicros: number | null
     }>(
       'models.priceImage',
-      { agentId: opts.agent, model: opts.model, count: opts.count },
+      { model: opts.model, count: opts.count },
     )
     await recordSpend({
       runId: `image:${randomUUID()}`,
