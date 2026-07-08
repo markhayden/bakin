@@ -108,7 +108,14 @@ export const budgetStatusRoutes = [
           return Response.json({ paused, configured: false, perAgent: {}, deferredProviders: [], openIncidents })
         }
         const facets = await assembleBudgetSpend(Date.now())
-        const agents = await resolveAgents(ctx as unknown as PluginContext)
+        // Runtime-config reads can fail (runtime down / not installed) —
+        // status degrades to global/provider info rather than 500ing.
+        let agents: Awaited<ReturnType<typeof resolveAgents>> = []
+        try {
+          agents = await resolveAgents(ctx as unknown as PluginContext)
+        } catch {
+          agents = []
+        }
         const perAgent: Record<string, AgentBudgetStatus> = {}
         for (const agent of agents) {
           perAgent[agent.agentId] = await agentStatus(ctx as unknown as PluginContext, policy, facets, agent.agentId, agent.effectiveModel)
