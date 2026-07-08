@@ -387,7 +387,17 @@ export function SpendTokenSection({ usage, meteredSpend }: { usage: AgentUsage[]
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-[11px] text-muted-foreground mb-2">Bakin&apos;s estimate (the figure budget caps gate on).</p>
+            <p className="text-[11px] text-muted-foreground mb-2">
+              Bakin&apos;s estimate (the figure budget caps gate on).
+              {meteredSpend.pace?.daily.meteredUsdMicros != null || meteredSpend.pace?.monthly.meteredUsdMicros != null ? (
+                <span>
+                  {' '}On pace for
+                  {meteredSpend.pace?.daily.meteredUsdMicros != null ? ` ~$${(meteredSpend.pace.daily.meteredUsdMicros / 1_000_000).toFixed(2)} today` : ''}
+                  {meteredSpend.pace?.daily.meteredUsdMicros != null && meteredSpend.pace?.monthly.meteredUsdMicros != null ? ' ·' : ''}
+                  {meteredSpend.pace?.monthly.meteredUsdMicros != null ? ` ~$${(meteredSpend.pace.monthly.meteredUsdMicros / 1_000_000).toFixed(2)} this month` : ''}.
+                </span>
+              ) : null}
+            </p>
             {meteredSpend.byAgent.length === 0 ? (
               <p className="text-sm text-muted-foreground">No metered turns in the last 24h.</p>
             ) : (

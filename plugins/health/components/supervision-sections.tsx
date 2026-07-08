@@ -107,7 +107,7 @@ export function LiveNowSection({ refreshNonce }: { refreshNonce: number }) {
 
 interface AttentionChip {
   agent: string
-  kind: 'drift' | 'context' | 'burn'
+  kind: 'drift' | 'context' | 'burn' | 'budget'
   status: string
   message: string
 }
@@ -116,12 +116,14 @@ const ATTENTION_CHECKS: Record<string, AttentionChip['kind']> = {
   'agent-sync': 'drift',
   'context.startup-size': 'context',
   'usage.agent-burn': 'burn',
+  budget: 'budget',
 }
 
 const CHIP_LABEL: Record<AttentionChip['kind'], string> = {
   drift: 'drift',
   context: 'context size',
   burn: 'token burn',
+  budget: 'budget',
 }
 
 interface DoctorRowLike {

@@ -28,6 +28,64 @@ interface BakinUpdateStatus {
   error?: string
 }
 
+/**
+ * Kill-switch banner (cost-control v2): persistent, unmissable while
+ * settings.dispatch.paused is on — a forgotten switch must never read as a
+ * mysteriously idle system. Polls the side-effect-free budget status route
+ * on the shared 15s cadence; SSE budget events land within a poll anyway.
+ */
+function DispatchPausedBanner({ offset }: { offset: boolean }) {
+  const [paused, setPaused] = useState(false)
+  const [resuming, setResuming] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    const check = async () => {
+      try {
+        const res = await fetch('/api/plugins/models/budget/status')
+        if (!res.ok) return
+        const body = (await res.json()) as { paused?: boolean }
+        if (!cancelled) setPaused(body.paused === true)
+      } catch {
+        // Status is a convenience poll — network blips just skip a beat.
+      }
+    }
+    check()
+    const timer = setInterval(check, 15_000)
+    return () => { cancelled = true; clearInterval(timer) }
+  }, [])
+
+  if (!paused) return null
+  const resume = async () => {
+    setResuming(true)
+    try {
+      await fetch('/api/settings', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dispatch: { paused: false } }),
+      })
+      setPaused(false)
+    } finally {
+      setResuming(false)
+    }
+  }
+  return (
+    <div
+      role="status"
+      className={`fixed left-0 right-0 z-50 flex h-9 items-center gap-3 border-b border-red-500/40 bg-red-500/15 px-4 text-xs text-foreground ${offset ? 'top-9' : 'top-0'}`}
+    >
+      <span className="font-medium text-red-500">Dispatch paused</span>
+      <span className="min-w-0 truncate text-muted-foreground">Kill switch is on — no task dispatch or billed media until resumed.</span>
+      <button
+        onClick={resume}
+        disabled={resuming}
+        className="ml-auto rounded border border-red-500/40 px-2 py-0.5 text-xs hover:bg-red-500/20 disabled:opacity-50"
+      >
+        {resuming ? 'Resuming…' : 'Resume'}
+      </button>
+    </div>
+  )
+}
+
 function DebugToggle() {
   const [debug, toggleDebug] = useDebug()
   return (
@@ -119,6 +177,7 @@ export function Header() {
 
   return (
     <>
+      <DispatchPausedBanner offset={Boolean(showUpdateBanner)} />
       {showUpdateBanner && (
         <div
           role="status"

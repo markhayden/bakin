@@ -4,7 +4,7 @@
  * spend ledger is unreachable (gating fails closed without it).
  */
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
-import { mkdirSync, rmSync, appendFileSync } from 'fs'
+import { mkdirSync, rmSync, appendFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
@@ -92,5 +92,34 @@ describe('budget health check', () => {
     dbPath = join(testDir, 'blocked.db')
     const [r] = await checkBudget()
     expect(r.status).toBe('error')
+  })
+
+  it('is rule-aware: a breaching per-agent rule attributes the agent in data.agents (chips)', async () => {
+    budgetPolicy = {
+      rules: [
+        { scope: 'global', lane: 'metered', dailyCap: 1000 },
+        { scope: 'agent', scopeId: 'pixel', lane: 'metered', dailyCap: 2 },
+      ],
+    }
+    seedSpend(3_000_000) // $3 by pixel: global fine, pixel's $2 cap breached
+    const [r] = await checkBudget()
+    expect(r.status).toBe('error')
+    const data = r.data as { agents?: string[]; rules?: Array<Record<string, unknown>> }
+    expect(data.agents).toEqual(['pixel'])
+    expect(data.rules?.some((x) => x.scope === 'agent' && x.scopeId === 'pixel' && x.action === 'defer')).toBe(true)
+  })
+
+  it('surfaces the kill switch as its own warn row', async () => {
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 1000 }] }
+    writeFileSync(join(testDir, 'settings.json'), JSON.stringify({ dispatch: { paused: true } }), 'utf-8')
+    const { resetSettingsCache } = await import('../../../src/core/settings')
+    resetSettingsCache()
+    try {
+      const rows = await checkBudget()
+      expect(rows.some((r) => r.status === 'warn' && /PAUSED/.test(r.message))).toBe(true)
+    } finally {
+      rmSync(join(testDir, 'settings.json'), { force: true })
+      resetSettingsCache()
+    }
   })
 })
