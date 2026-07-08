@@ -270,6 +270,13 @@ async function prepareImageRequest(ctx: PluginContext, params: ImagesGeneratePar
   const dims = dimensionsForSurface(surfaceId, params.width, params.height)
   if (!dims) return { error: `Unknown image surface: ${surfaceId}` }
 
+  // Capability gate (P4.1): the runtime's descriptor is the top-level truth —
+  // 'unavailable' fails honestly BEFORE any provider fusing or route math.
+  const imageGen = (await ctx.runtime.capabilities()).imageGen
+  if (imageGen.mode === 'unavailable') {
+    return { error: 'Image generation is unavailable on this runtime — no native image path is authenticated and no Bakin provider key is configured.' }
+  }
+
   const readiness = await providerReadiness(ctx)
   const route = resolveImageRoute(readiness, settings, { provider: params.provider, model: params.model })
   if (!route) return { error: 'No image provider route available' }

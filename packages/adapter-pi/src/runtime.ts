@@ -10,7 +10,7 @@ import type {
   AdapterInitOpts,
 } from '@bakin/core/adapters/runtime'
 
-import type { CapabilitySet, RuntimeCapabilities, RuntimeCredentialStatus, RuntimeToolAccess, ToolAccessProvisioningStatus } from '@bakin/core/adapters/runtime'
+import type { CapabilityMode, CapabilitySet, RuntimeCapabilities, RuntimeCredentialStatus, RuntimeToolAccess, ToolAccessProvisioningStatus } from '@bakin/core/adapters/runtime'
 
 import { createAgentsSurface } from './agents'
 import { listAuthProviders } from './config'
@@ -21,6 +21,8 @@ import { capabilitiesForModel, createModelsSurface, resetModelRegistry } from '.
 import { readRegistry } from './registry'
 import { createHealthChecks } from './health-checks'
 import { createImagesSurface } from './images'
+import { codexImageAuth } from './codex-images'
+import { resolveProviderApiKeySource } from '@bakin/core/media'
 import { createSessionsSurface } from './sessions'
 import { createSkillsSurface } from './skills'
 import { createToolsSurface } from './unsupported'
@@ -91,13 +93,28 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
     toolCalling: { mode: 'native', access: this.describeToolAccess() },
     // Pi has no channel layer (honest-empty until the in-app channel shim).
     delivery: { mode: 'unavailable' },
-    // Image gen works via the codex OAuth + shared shim.
-    imageGen: { mode: 'native' },
+    imageGen: { mode: await this.imageGenMode() },
     memory: { mode: 'native' },
     sessions: { mode: 'native' },
     workspaceFiles: { mode: 'native' },
     input: await this.inputModality(opts?.agentId),
   })
+
+  /**
+   * Honest imageGen mode (P4.1): 'native' when the codex OAuth drives the
+   * ChatGPT image path; 'shimmed' when only Bakin's direct-provider shim can
+   * serve (a Bakin-owned openai/google key exists); 'unavailable' otherwise.
+   * The images plugin gates on this descriptor instead of fusing readiness.
+   */
+  private imageGenMode = async (): Promise<CapabilityMode> => {
+    try {
+      if ((await codexImageAuth()) !== null) return 'native'
+    } catch {
+      // Unreadable auth is not fatal — fall through to the shim probe.
+    }
+    const shimKey = (['openai', 'google'] as const).some((provider) => resolveProviderApiKeySource(provider) !== null)
+    return shimKey ? 'shimmed' : 'unavailable'
+  }
 
   /** Conservative modality probe from the agent's effective Pi model. */
   private inputModality(agentId?: string): Promise<RuntimeCapabilities> {

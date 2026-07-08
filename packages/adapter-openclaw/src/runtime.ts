@@ -1104,6 +1104,10 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   capabilities = async (opts?: { agentId?: string }): Promise<CapabilitySet> => ({
     toolCalling: { mode: 'native', access: this.describeToolAccess() },
     delivery: { mode: 'native' },
+    // Structurally native (P4.1): OpenClaw always exposes its own image
+    // inference path (`openclaw infer image`); WHICH providers are
+    // configured is per-provider data on images.providers(), not a mode
+    // downgrade. (Pi, by contrast, computes its mode from codex auth.)
     imageGen: { mode: 'native' },
     memory: { mode: 'native' },
     sessions: { mode: 'native' },
