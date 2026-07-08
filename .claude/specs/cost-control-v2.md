@@ -1,6 +1,6 @@
 # Spec — Cost Control v2: End-User Budget Safety & Visibility (#464 close-out)
 
-**Status:** DRAFT — pending operator approval.
+**Status:** IMPLEMENTED on `feat/464-cost-control-v2` — all phases per `tasks/plan-cost-control-v2.md`; see §13 As-Built Addendum for deviations. Retained as the design record.
 **Origin:** Issue #464, round 2. PR #500 shipped the core (metering → `run_costs`, origin routing, `budgetGate` defer-at-cap). This round closes the **end-user experience gaps** so cost cannot spin out of control *unknowingly*, then closes #464.
 **Related:** `.claude/specs/models-cost-optimization.md` (+`-plan.md`), `.claude/knowledge/{models-plugin,execution-ledger,usage-recording,dispatch,doctor-and-health-checks,agent-health-diagnostics}.md`.
 **Branch:** `feat/464-cost-control-v2`, PR to `main`.
@@ -307,3 +307,20 @@ Each commit builds green and passes the full suite; each phase is a natural roll
 7. Kill-switch banner placement in the host shell (header vs persistent toast).
 8. Media-gate placement: shared gate helper in core called by the images plugin before billing (lean), vs inline in tool bodies.
 9. Provider-id normalization: confirm the runtime's `provider/model` id format covers all catalog entries (incl. nanobanana-style image models) and define the unknown-provider bucket.
+
+---
+
+## 13. As-Built Addendum (post-implementation)
+
+Deviations between this spec and what shipped — each deliberate, found during build/test. The authoritative behavior description lives in `.claude/knowledge/{models-plugin,dispatch,execution-ledger,usage-recording,doctor-and-health-checks}.md`.
+
+1. **`/spend` kept its rolling browse rollups** (24h/7d/30d/all) — they're a display list, not a cap surface. The engine's cap-window `facets` + `pace` ride alongside in the same payload; every utilization/cap number on every surface comes from the engine (the "no parallel math" invariant holds where it matters).
+2. **The unset-budget nag is `warn`, not `notice`** — `HealthCheckResult.status` has no notice tier (`ok | warn | error | fixed`). A standing warn IS the nag the operator chose (V2).
+3. **Provider/model spend facets are attributed-only**; the unattributed usage.db delta lands on the global/agent scopes. Observed transcript model ids can't be provider-resolved authoritatively (bare ids), and phantom provider buckets would be worse than honest scoping. Provider rules therefore gate attributed spend; global/agent rules carry the total-observed basis.
+4. **Cap rules bind to exactly one lane** (`lane` is required; no `'all'`): a metered cap on subscription-lane turns wouldn't protect dollars, and the two lanes have different units. "All my real money" = `scope: global, lane: metered`.
+5. **Subscription-lane suppression happens at metering**: `models.priceTurn`/`priceImage` return `costUsdMicros: null` for subscription-lane turns — the fiction never enters `run_costs`, rather than being filtered at display time.
+6. **No cron-doctor notify change** — incident-open triggering (`budget-notify` called from the gate's fresh-open path) is strictly better than doctor-interval polling, as §4.6 anticipated. The doctor check remains the state surface.
+7. **Provider quota windows dropped** (plan §11.2 resolution): the adapter exposes no quota surface; nothing to surface read-only this round.
+8. **Onboarding component count is now 14** (`budget` after `llm`); the fail-closed pseudo-decision and the kill-switch audit keep small in-memory latches (the ledger IS the incident store — nothing durable to write when it's down / a switch is state, not a breach).
+9. **Task detail drawer** did not gain a separate reason line — the card badge carries the human reason text ("Budget-deferred — cap reached" / "Dispatch paused (kill switch)") and the board-level incident banner covers detail-level context.
+10. **Billing-lane detection is per (agent, provider)** via auth-profile credential shape (`apiKey` → metered; OAuth-only → subscription), better than the spec's per-agent framing — one agent can be subscription-Codex and metered-Gemini simultaneously. Manual overrides: `settings.billing.overrides` (agent+provider → agent → provider precedence).

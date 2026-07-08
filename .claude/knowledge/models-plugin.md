@@ -26,7 +26,7 @@ Merged into each runtime-sourced `AvailableModel` server-side via `getKnownModel
 
 ## Cost optimization (metering → routing → gating)
 
-Issue #464, widened from budget gating to the full cost story. Deep spec/plan: `.claude/specs/models-cost-optimization.md` (+ `-plan.md`).
+Issue #464, widened from budget gating to the full cost story. Deep spec/plan: `.claude/specs/models-cost-optimization.md` (+ `-plan.md`); round 2 (billing lanes, provider caps, incidents, kill switch, alerting): `.claude/specs/cost-control-v2.md`.
 
 ### Structured pricing
 
@@ -38,15 +38,19 @@ The OpenClaw adapter surfaces per-turn `usage` from the **gateway response paylo
 
 **Image generation** is a separate billed path (not chat tokens): `persistImageResult` meters each generate/edit via `meterImageTurn` → `models.priceImage` (flat `imagePerUsd` × count; provider-priced models record the run unpriced) → a `run_costs` image event (`image:` runId) that also counts toward the cap.
 
-**Surfacing:** Models → **Spend** tab (detail) + a **Bakin Metered Spend** card on the Health dashboard (distinct from the pre-existing runtime-reported "Runtime Cost Estimate" card, which reads `agent-usage.ts`/session JSONL — see `.claude/knowledge/usage-recording.md`). `GET /spend?window=24h|7d|30d|all` returns rollups (total/by-agent/by-model); the **Spend** tab renders them with an "estimated" caveat and "$ unavailable" for unmetered rows.
+**Billing lanes (cost-control v2, unit-per-lane):** every spend row carries `provider` + `lane`. Lane detection reads the credential SHAPE of `agents.<id>.authProfiles` through the allowlisted raw-config gate (`plugins/models/lib/billing.ts`): `apiKey`/`api_key` → **metered** (pay-per-token dollars); OAuth-only (`token`/`access`/`refresh`) → **subscription** (plan quota — tokens are the unit; the dollar estimate is SUPPRESSED, a subscription $ figure would be fiction). Manual `settings.billing.overrides` win (agent+provider → agent → provider); unknown defaults to metered (conservative). `models.resolveBilling` exposes prospective attribution (falls back to the agent's effective model) for the dispatch + billed-media gates; `priceTurn`/`priceImage` return `{model, provider, lane, costUsdMicros}`.
+
+**Surfacing:** Models → **Spend** tab (detail) + a **Bakin Metered Spend** card on the Health dashboard (distinct from the pre-existing runtime-reported "Runtime Cost Estimate" card, which reads `agent-usage.ts`/session JSONL — see `.claude/knowledge/usage-recording.md`). `GET /spend?window=24h|7d|30d|all` returns rollups (total/by-agent/by-model) PLUS cap-window `facets` (the engine's lane/provider split) and `pace` (linear projections) — utilization always computes on calendar cap windows regardless of the browse selector. The **Spend** tab renders the incident banner (raise & resume / ack / resume-a-pause), per-rule utilization cards, the cap-rule editor, a lane-split month summary with the unattributed coverage note, and "$ unavailable" for unmetered rows.
 
 ### Routing (per-turn model + thinking)
 
 Bakin-owned policy resolved at dispatch (`src/core/model-routing.ts`); OpenClaw serves it (`model`/`thinking` on the gateway `agent` RPC). Routing key = dispatch **origin** (`scheduled|workflow|adhoc|recovery|decomposition`) + a per-task **tag override**. Cascade: tag → origin → inherit (nothing resolved = the agent's configured model, unchanged behavior). Stored in `settings.routing`, exposed via `models.getRoutingConfig`; the **Routing** tab edits it. Thinking levels include `inherit`.
 
-### Budget gating (#464)
+### Budget gating (#464, rules since cost-control v2)
 
-`settings.budget` (`BudgetPolicy`: global + per-agent daily/monthly USD caps + `warnPct`), exposed via `models.getBudgetPolicy`. `dispatch.budgetGate` consults it against ledger spend before claiming a run: **warn** at `warnPct` (default 0.8), **defer** at 100% (task stays in todo, resumes when the window rolls over — never pauses the agent, diverging from paperclip). **Fail-closed**: an unreadable ledger defers. Audits debounce per window. The health plugin's `budget` check surfaces utilization + deferred-run count; the Spend tab has a global-caps editor.
+`settings.budget` is a **rule list** (`BudgetPolicy.rules`: `BudgetRule` = scope `global|agent|provider` — `model` accepted by evaluator+schema, UI ships through provider — × lane, `dailyCap`/`monthlyCap` in the lane's unit, `warnPct`, `atCap: defer|pause`), exposed via `models.getBudgetPolicy`. The PR #500 `{global, perAgent}` shape migrates one-shot at plugin `activate()` (`budget-migration.ts`; no dual-read). `dispatch.budgetGate` consults it against the shared spend engine (total-observed: attributed + unattributed delta) before claiming: **warn** at `warnPct` (default 0.8), **defer** at 100% (task stays in todo — badged by the Tasks UI — and resumes at window rollover; `atCap: 'pause'` holds until a human resolves the incident). **Fail-closed**: an unreadable ledger defers. Breaches open durable `budget_incidents` (the restart-safe debounce) and fan out via `budget-notify` (browser notification + main-agent relay).
+
+Routes: `GET/PUT /budget` (rule list, zod), `GET /budget/status` (side-effect-free poll: kill-switch state, per-agent ok|warn|deferred, deferred providers, open incidents — behind task badges + the header pause banner), `GET /budget/incidents`, `POST /budget/incidents/:id/resolve` (`raise` validates the new cap above current spend in the rule's unit and updates the rule; `ack`; `resume`). CLI: `bakin spend`, `bakin budget {show,set,rm,pause,resume,incidents}`. Onboarding has a `budget` component (prompted, skippable — NO silent default caps); no rules = a standing doctor warn.
 
 ## How to extend
 

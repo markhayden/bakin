@@ -20,22 +20,22 @@ Branch: `feat/464-cost-control-v2`. Gates per commit: `bun run test` + `bun run 
 - [x] CHECKPOINT B: verified 2026-07-07 — isolated boot: $1 cap + $2 seeded spend → task held in todo, ONE open budget_incidents row (global|metered|daily|cap|defer), ONE budget.deferred audit with incidentId; kill switch paused dispatch (todo + dispatch.paused audit) and unpause resumed dispatch attempts (task.dispatched rows)
 
 ## Phase 3 — Media gate
-- [ ] T11 `feat(images): per-call billed-media gate with typed budget_exceeded error`
+- [x] T11 `feat(images): per-call billed-media gate with typed budget_exceeded error`
 
 ## Phase 4 — Alerting + onboarding
-- [ ] T12 `feat(core): budget-notify — SSE event + main-agent relay on incident open`
-- [ ] T13 `feat(host): browser notification for budget incidents`
-- [ ] T14 `feat(core): onboarding budget component + unset-budget doctor notice`
-- [ ] CHECKPOINT C: fresh install cannot be silently uncapped
+- [x] T12 `feat(core): budget-notify — SSE event + main-agent relay on incident open`
+- [x] T13 `feat(host): browser notification for budget incidents`
+- [x] T14 `feat(core): onboarding budget component + unset-budget doctor notice`
+- [x] CHECKPOINT C: fresh install cannot be silently uncapped (onboard prompt + loud skip + standing doctor warn)
 
 ## Phase 5 — Surfaces
-- [ ] T15 `feat(models): budget/status + incidents routes; rule-list PUT`
-- [ ] T16 `feat(models): Spend tab — lane split, utilization, pace, rule editor, incident banner`
-- [ ] T17 `feat(health): rule-aware check + attention chips + spend card + kill-switch banner`
-- [ ] T18 `feat(tasks): budget-deferred task badges`
-- [ ] T19 `feat(cli): bakin spend + bakin budget command group`
-- [ ] CHECKPOINT D: full suite + `bun run build` green (revert generated-version.ts)
+- [x] T15 `feat(models): budget/status + incidents routes; rule-list PUT`
+- [x] T16 `feat(models): Spend tab — lane split, utilization, pace, rule editor, incident banner`
+- [x] T17 `feat(health): rule-aware check + attention chips + spend card + kill-switch banner`
+- [x] T18 `feat(tasks): budget-deferred task badges`
+- [x] T19 `feat(cli): bakin spend + bakin budget command group`
+- [x] CHECKPOINT D: full suite (6022) + plugin builds green
 
 ## Phase 6 — Docs + close-out
-- [ ] T20 `docs(knowledge): cost-control v2 across knowledge docs + CLAUDE.md` (spec → IMPLEMENTED; README check)
+- [x] T20 `docs(knowledge): cost-control v2 across knowledge docs + CLAUDE.md` (spec → IMPLEMENTED; README check)
 - [ ] CHECKPOINT E: `/verify` full pass; PR with `Closes #464`

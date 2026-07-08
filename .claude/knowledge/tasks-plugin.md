@@ -165,7 +165,8 @@ archived   → done, todo
 | `plugins/tasks/client.tsx` | Client entry — calls `registerPlugin({ id: 'tasks', navItems, slots: { 'page:/tasks': KanbanBoard } })` |
 | `plugins/tasks/components/kanban-board.tsx` | Main kanban view — fetches from `/api/plugins/tasks/`, re-fetches on `usePluginEvent('taskboard', …)` |
 | `plugins/tasks/components/kanban-column.tsx` | Single column rendering with task cards and footer |
-| `plugins/tasks/components/task-card.tsx` | Individual task card (avatar, title, status badge, log count) |
+| `plugins/tasks/components/task-card.tsx` | Individual task card (avatar, title, status badge, log count, budget-deferred badge) |
+| `plugins/tasks/hooks/use-budget-status.ts` | 15s poll of the models plugin's side-effect-free `/budget/status` (cost-control v2). Todo tasks whose agent (or the kill switch) is currently deferring dispatch get a red "Budget-deferred" card badge — derived state, no task metadata writes |
 | `plugins/tasks/components/task-detail-dialog.tsx` | Slide-out drawer for viewing/editing task details |
 | `plugins/tasks/components/delete-task-dialog.tsx` | Confirmation dialog for task deletion |
 | `plugins/tasks/components/task-filters.tsx` | Agent avatar filter bar + status facet filter |

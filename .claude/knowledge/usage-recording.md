@@ -106,3 +106,19 @@ The two token stores intentionally differ in coverage (run_costs = Bakin
 dispatches only; usage.db = everything in transcripts); the delta is a
 feature, not a reconciliation bug. Deep dive:
 `.claude/knowledge/agent-health-diagnostics.md`.
+
+## Budget gating consumes usage.db (cost-control v2)
+
+The delta stopped being observability-only: the spend engine
+(`src/core/budget-spend.ts` — `assembleBudgetSpend`, the ONE engine behind
+the dispatch gate, the billed-media gate, the budget health check,
+`/spend`, `/budget/status`, and the CLI) adds the observed-minus-attributed
+delta per (agent, local day, billing lane) to the caps — total-observed
+basis: a runaway agent loop OUTSIDE Bakin-managed tasks still trips the
+budget. `usageByAgentModelDaySince` (the agent×day×model cross-tab) is its
+read verb; the model column resolves to a provider/lane via
+`models.resolveBilling`. Honesty rules: dollars only where the runtime
+reported cost (NULL contributes tokens, never $); usage.db lags its scan
+interval (~5 min); subscription-lane deltas count tokens, never dollars
+(unit-per-lane). Clamped ≥ 0 per agent/day/lane — never netted across
+agents.

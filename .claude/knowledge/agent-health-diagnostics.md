@@ -25,6 +25,12 @@ it — same pattern as `context-report.ts`/`budget.ts`:
 
 ## Burn heuristics (`settings.burn`, warn-only)
 
+Burn signals stay warn-only, but since cost-control v2 the same
+observed-minus-attributed delta they surface ALSO counts toward budget caps
+(the spend engine adds it per agent/day/lane — see
+`.claude/knowledge/usage-recording.md` § Budget gating consumes usage.db).
+Burn = the explainable "why", budget = the enforced ceiling.
+
 Three explainable signals per agent, evaluated over a day-aligned window:
 
 - **effort-no-outcome** — ≥ `minTokensFloor` Bakin-attributed tokens

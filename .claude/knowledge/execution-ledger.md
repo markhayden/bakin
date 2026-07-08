@@ -65,15 +65,40 @@ run_costs     run_id PK ← per-turn/-op cost attribution (#464, migration v3);
               cache_read/cache_write_tokens (#357, migration v4; NULL =
               runtime reported none — pre-migration rows read back NULL,
               never a fabricated zero),
-              cost_usd_micros (NULL = unmetered), occurred_at. A billing
+              cost_usd_micros (NULL = unmetered), occurred_at,
+              provider + lane (cost-control v2, migration v5): billing
+              attribution — provider denormalized from `provider/model` ids
+              (SQL-backfilled for legacy rows; bare ids stay NULL and
+              resolve at read time), lane 'metered' (API-key dollars) |
+              'subscription' (plan quota; tokens are the unit — the dollar
+              estimate is suppressed, unit-per-lane) | NULL (unknown =
+              readers treat as metered, never fabricated). A billing
               fact, not content: written once on settle via recordRunCost
               (INSERT OR IGNORE → first write wins, so a transport retry of
               the same run can't double-count). Verbs: spendTotal({agent?,
               sinceMs, untilMs?}), spendByAgent(sinceMs), spendByModel(sinceMs),
+              listRunCostsSince(sinceMs) — raw rows for the spend engine
+              (local-day bucketing lives in TypeScript, ONE place),
               recentRunsByAgent(agent, {sinceMs?, limit?}) — newest-first,
               `run_id LIKE 'task:%'` only (context-report grounding, #357)
               — null costs coalesce to 0 (counted as runs, never dropped).
               Consumed by the models Spend view + dispatch budget gating.
+budget_incidents  one durable row per cap-rule breach per window
+              (cost-control v2, migration v6). UNIQUE(scope, scope_id,
+              lane, win, window_start_ms, kind) IS the alert debounce —
+              restart-safe, replaced the in-memory audited-windows set.
+              scope_id stores '' (never NULL — SQLite treats NULLs as
+              distinct in UNIQUE). Columns: kind warn|cap, unit
+              usd_micros|tokens + cap_value/spent_value (unit-per-lane),
+              at_cap defer|pause (captured at open — rollover auto-resolves
+              defer rows only; pause rows hold until a human resolves),
+              status open|acknowledged|resolved, resolution
+              raised|acknowledged|window_rollover|killswitch_cleared.
+              Verbs: openBudgetIncident (idempotent; reopens a
+              raise-resolved identity on a new breach — that IS a new
+              alertable event), resolveBudgetIncident, listBudgetIncidents,
+              resolveExpiredBudgetIncidents (gate-time rollover sweep),
+              findOpenCapIncident (pause-mode gate probe).
 ```
 
 `exec_key` is the live-run lock scope: the task id for regular tasks,
