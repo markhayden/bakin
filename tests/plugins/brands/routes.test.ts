@@ -35,7 +35,7 @@ mock.module('../../../src/core/logger', () => ({
 }))
 
 import brandsPlugin from '../../../plugins/brands'
-import { activatePlugin, callRoute, findRoute, type ActivatedPlugin } from '../test-helpers'
+import { activatePlugin, callRoute, callTool, findRoute, type ActivatedPlugin } from '../test-helpers'
 
 let activated: ActivatedPlugin
 
@@ -192,5 +192,57 @@ describe('hooks', () => {
     const list = hookHandler('brands.list')
     const result = (await list({})) as { brands: Array<{ id: string }> }
     expect(result.brands.map((b) => b.id)).toEqual(['acme'])
+  })
+
+  it('registers brands.getContext — card for published, notFound for missing/draft', async () => {
+    await createAcme()
+    await callRoute(route('POST', '/'), activated.ctx, {
+      body: { id: 'wip', name: 'WIP', draft: true },
+    })
+    const getContext = hookHandler('brands.getContext')
+
+    const ok = (await getContext({ brandId: 'acme', maxBytes: 12288 })) as {
+      card: string
+      meta: { brandId: string; cardBytes: number }
+    }
+    expect(ok.card).toContain('Brand: Acme (acme)')
+    expect(ok.meta.brandId).toBe('acme')
+
+    expect(await getContext({ brandId: 'ghost' })).toEqual({ notFound: true })
+    expect(await getContext({ brandId: 'wip' })).toEqual({ notFound: true })
+  })
+})
+
+describe('exec tools', () => {
+  function tool(name: string) {
+    const t = activated.execTools.find((t) => t.name === name)
+    if (!t) throw new Error(`tool not registered: ${name}`)
+    return t
+  }
+
+  it('list/get/read_doc round-trip; drafts excluded from list', async () => {
+    await createAcme()
+    await callRoute(route('POST', '/'), activated.ctx, {
+      body: { id: 'wip', name: 'WIP', draft: true },
+    })
+
+    const listed = await callTool(tool('bakin_exec_brands_list'), {})
+    expect((listed.brands as Array<{ id: string }>).map((b) => b.id)).toEqual(['acme'])
+
+    const got = await callTool(tool('bakin_exec_brands_get'), { brandId: 'acme' })
+    expect(got.ok).toBe(true)
+    expect((got.brand as { name: string }).name).toBe('Acme')
+    expect((got.guidelines as Array<{ name: string }>).map((g) => g.name)).toContain('voice.md')
+
+    const doc = await callTool(tool('bakin_exec_brands_read_doc'), {
+      brandId: 'acme',
+      kind: 'guidelines',
+      name: 'voice.md',
+    })
+    expect(doc.ok).toBe(true)
+    expect(String(doc.content)).toContain('Voice')
+
+    const bad = await callTool(tool('bakin_exec_brands_get'), { brandId: 'ghost' })
+    expect(bad.ok).toBe(false)
   })
 })

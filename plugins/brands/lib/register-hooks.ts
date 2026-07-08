@@ -9,6 +9,7 @@
 import type { PluginContext } from '@bakin/core/plugin-types'
 import { getBrand, listBrands, listDocs } from './store'
 import { computeBrandFingerprint } from './fingerprint'
+import { buildBrandCard, type BrandCardInput } from './card'
 
 export function registerBrandsHooks(ctx: PluginContext): void {
   ctx.hooks.register(
@@ -25,6 +26,20 @@ export function registerBrandsHooks(ctx: PluginContext): void {
       }
     },
     { label: 'Get brand', summary: 'Brand manifest + doc listings + fingerprint (drafts included, flagged)' },
+  )
+
+  ctx.hooks.register(
+    'brands.getContext',
+    async (data: { brandId?: string; maxBytes?: number; lessons?: BrandCardInput['lessons']; lessonsUnavailable?: boolean }) => {
+      if (!data?.brandId) return { notFound: true }
+      return buildBrandCard(data.brandId, {
+        maxBytes: typeof data.maxBytes === 'number' && data.maxBytes > 0 ? data.maxBytes : 12288,
+        lessons: data.lessons,
+        lessonsUnavailable: data.lessonsUnavailable,
+        assetExists: async (assetId) => (await ctx.assets.getAsset(assetId)) !== null,
+      })
+    },
+    { label: 'Brand dispatch card', summary: 'Byte-budgeted brand card + injection-record meta; notFound for missing/draft brands' },
   )
 
   ctx.hooks.register(
