@@ -21,7 +21,7 @@ import {
 } from './dispatch-state'
 import { readDispatchColumns, isTaskDispatchEligible, addTaskLog, moveTaskToInProgress, tryAddTaskLog } from './dispatch-board'
 import { formatDispatchError } from './dispatch-failures'
-import { concurrencyGate, deferForBudget, fireDispatchTurn } from './dispatch-turns'
+import { concurrencyGate, deferForBudget, fireDispatchTurn, resolveDispatchRouting } from './dispatch-turns'
 import { prepareRegularDispatch } from './dispatch-prepare'
 import { dispatchWorkflowTask } from './dispatch-workflow'
 import { resolveTeamAssignmentForSingle } from './dispatch-team'
@@ -169,8 +169,12 @@ export async function dispatchSingleTask(
       return
     }
 
+    // Resolve routing BEFORE the budget gate (provider-scoped rules need the
+    // turn's model); the fire reuses this exact resolution.
+    const routing = await resolveDispatchRouting(task, source === 'recovery')
+
     // Spend ceiling — defer (leave in todo) when a budget cap is hit.
-    if (await deferForBudget(targetAgent, contentDir)) {
+    if (await deferForBudget(targetAgent, contentDir, undefined, { model: routing.model })) {
       log.debug('Single-task dispatch deferred by budget gate', { id: task.id, agent: targetAgent, source })
       return
     }
@@ -188,6 +192,7 @@ export async function dispatchSingleTask(
       continuation,
       logPrefix: 'Immediate dispatch failed',
       isRecovery: source === 'recovery',
+      routing,
       path: 'single',
     })
     if (prepared.status === 'suppressed') return

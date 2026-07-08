@@ -7,6 +7,7 @@ import { AgentAvatar } from "@makinbakin/sdk/components"
 import { STATUS_BADGE_STYLES } from '../constants'
 import { compactDispatchFailureLabel, getLatestDispatchFailure } from '../lib/dispatch-failure'
 import { getTaskAvailableAtMs } from '../lib/scheduled'
+import type { BudgetHold } from '../hooks/use-budget-status'
 import type { Task, ColumnId } from '../types'
 
 export interface TaskScoreInfo {
@@ -64,7 +65,7 @@ function setChildCardHighlight(childTaskId: string, on: boolean): void {
   for (const cls of CHILD_HIGHLIGHT_CLASSES) card.classList.toggle(cls, on)
 }
 
-export function TaskCardContent({ task, columnId, className, gateLabel, childTaskId, style, scoreInfo }: { task: Task; columnId: string; className?: string; gateLabel?: string; childTaskId?: string; style?: CSSProperties; scoreInfo?: TaskScoreInfo }) {
+export function TaskCardContent({ task, columnId, className, gateLabel, childTaskId, budgetHold, style, scoreInfo }: { task: Task; columnId: string; className?: string; gateLabel?: string; childTaskId?: string; budgetHold?: BudgetHold; style?: CSSProperties; scoreInfo?: TaskScoreInfo }) {
   const badge = STATUS_BADGE_STYLES[columnId as ColumnId]
   // Clear any lingering child-card outline if this card unmounts mid-hover
   // (e.g. the sub-task finishes and the badge disappears under the cursor).
@@ -130,6 +131,21 @@ export function TaskCardContent({ task, columnId, className, gateLabel, childTas
           <span className="size-2 rounded-sm bg-violet-500/30" />
           {task.projectId.slice(0, 6)}
         </span>
+      )}
+
+      {/* Budget-deferred indicator (cost-control v2): the task is eligible
+          but the spend gate is holding it — visibly, never silently. */}
+      {budgetHold && (
+        <a
+          href="/models?tab=spend"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="flex items-center gap-1.5 mt-1.5 px-2 py-1 rounded-md bg-red-500/10 border border-red-500/20 whitespace-nowrap overflow-hidden hover:bg-red-500/20"
+          title="Open Models → Spend"
+        >
+          <span className="text-red-400 text-[11px] font-semibold shrink-0">{budgetHold.label}</span>
+          <span className="text-red-400/60 text-[10px] truncate">{budgetHold.detail}</span>
+        </a>
       )}
 
       {/* Gate approval indicator */}
@@ -208,12 +224,13 @@ interface TaskCardProps {
   index?: number
   gateLabel?: string
   childTaskId?: string
+  budgetHold?: BudgetHold
   scoreInfo?: TaskScoreInfo
   onDelete: (task: { id: string; title: string }) => void
   onClick: (task: Task, columnId: ColumnId) => void
 }
 
-export function TaskCard({ task, columnId, index = 0, gateLabel, childTaskId, scoreInfo, onDelete, onClick }: TaskCardProps) {
+export function TaskCard({ task, columnId, index = 0, gateLabel, childTaskId, budgetHold, scoreInfo, onDelete, onClick }: TaskCardProps) {
   const { ref, isDragging } = useSortable({
     id: task.id,
     group: columnId,
@@ -253,6 +270,7 @@ export function TaskCard({ task, columnId, index = 0, gateLabel, childTaskId, sc
         columnId={columnId}
         gateLabel={gateLabel}
         childTaskId={childTaskId}
+        budgetHold={budgetHold}
         scoreInfo={scoreInfo}
         className="p-4"
       />

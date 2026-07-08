@@ -973,4 +973,35 @@ describe('images tools', () => {
       expect(generate).not.toHaveBeenCalled()
     })
   })
+
+  it('refuses a billed generation when the budget cap is exhausted — no provider call, typed refusal (cost-control v2)', async () => {
+    const { getHookRegistry } = await import('../../../packages/core/src/hooks/hook-registry-singleton')
+    const { recordRunCost } = await import('../../../src/core/execution-ledger')
+    const registry = getHookRegistry()
+    // Register the models-plugin policy hooks under a throwaway plugin id so
+    // unregisterByPlugin cleans the global registry after the test.
+    registry.register('models.getBudgetPolicy', () => ({ rules: [{ scope: 'global', lane: 'metered', dailyCap: 1 }] }), { pluginId: 'test-budget' } as never)
+    registry.register('models.resolveBilling', (d: Record<string, unknown>) => ({ provider: String(d.model ?? '').split('/')[0], lane: 'metered', model: d.model ?? null }), { pluginId: 'test-budget' } as never)
+    try {
+      // $2 attributed today against the $1 cap.
+      recordRunCost({ runId: 'seed:media-gate', taskId: 't', agent: 'pixel', model: 'google/g', provider: 'google', lane: 'metered', totalTokens: 1, costUsdMicros: 2_000_000, occurredAt: Date.now() })
+
+      const generate = mock(async () => { throw new Error('provider must not be called') })
+      const { ctx } = makeContext({ runtime: { images: { providers: mock(async () => []), generate } } as never })
+      const result = await generateImage(ctx, {
+        prompt: 'over budget', taskId: 'task-budget-gate', provider: 'google', model: 'gemini-3.1-flash-image-preview', surface: 'blog-hero',
+      }, 'pixel')
+
+      expect(result.ok).toBe(false)
+      expect(result.error).toMatch(/budget exceeded/i)
+      expect((result as { budget?: { code?: string } }).budget?.code).toBe('budget_exceeded')
+      expect(generate).not.toHaveBeenCalled()
+    } finally {
+      registry.unregisterByPlugin('test-budget')
+      // The ledger handle was opened against this test's temp home — close it
+      // before afterEach rmSyncs the dir (stale-inode trap, CLAUDE.md).
+      const { closeDb } = await import('../../../packages/core/src/storage/db')
+      closeDb()
+    }
+  })
 })

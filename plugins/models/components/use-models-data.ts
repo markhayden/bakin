@@ -3,7 +3,7 @@
 // React
 import { useEffect, useState, useCallback } from 'react'
 // SDK
-import { useQueryState } from "@makinbakin/sdk/hooks"
+import { useQueryState, usePluginEvent, emitPluginEvent } from "@makinbakin/sdk/hooks"
 import { useRuntimeStatus } from "@makinbakin/sdk/hooks"
 // Relative
 import type { AgentModelConfig, AvailableModel, ModelsConfigResponse } from '../types'
@@ -11,16 +11,77 @@ import type { AgentModelConfig, AvailableModel, ModelsConfigResponse } from '../
 export interface RoutingPolicyRow { origin: string; model?: string; thinking?: string }
 export interface TagOverrideRow { tag: string; model?: string; thinking?: string }
 export interface RoutingConfigShape { policies: RoutingPolicyRow[]; tagOverrides: TagOverrideRow[] }
-export interface BudgetShape { global?: { dailyUsd?: number; monthlyUsd?: number; warnPct?: number }; perAgent?: Record<string, { dailyUsd?: number; monthlyUsd?: number }> }
+/** Wire shape of one budget cap rule (cost-control v2). */
+export interface BudgetRuleWire {
+  scope: 'global' | 'agent' | 'provider' | 'model'
+  scopeId?: string
+  lane: 'metered' | 'subscription'
+  dailyCap?: number
+  monthlyCap?: number
+  warnPct?: number
+  atCap?: 'defer' | 'pause'
+}
+/** One durable breach record (wire shape of a budget_incidents row). */
+export interface BudgetIncidentWire {
+  id: number
+  scope: string
+  scopeId: string
+  lane: 'metered' | 'subscription'
+  window: 'daily' | 'monthly'
+  windowStartMs: number
+  kind: 'warn' | 'cap'
+  unit: 'usd_micros' | 'tokens'
+  capValue: number
+  spentValue: number
+  atCap: 'defer' | 'pause'
+  openedAt: number
+  status: 'open' | 'acknowledged' | 'resolved'
+}
+
+export interface BillingOverrideWire { agentId?: string; provider?: string; lane: 'metered' | 'subscription' }
+/** Wire shape of GET /budget/status (full mode). */
+export interface BudgetStatusWire {
+  paused: boolean
+  configured: boolean
+  perAgent: Record<string, 'ok' | 'warn' | 'deferred'>
+  perTask: Record<string, 'deferred'>
+  billing: Record<string, { provider: string; lane: 'metered' | 'subscription'; model: string | null }>
+  overrides: BillingOverrideWire[]
+  deferredProviders: string[]
+  openIncidents: BudgetIncidentWire[]
+}
 
 export interface SpendRowAgent { agent: string; costUsdMicros: number; runs: number }
 export interface SpendRowModel { model: string; costUsdMicros: number; runs: number }
+export interface LaneSumsWire {
+  meteredUsdMicros: number
+  meteredTokens: number
+  subscriptionTokens: number
+  unpricedMeteredTokens: number
+}
+export interface ScopeSpendWire extends LaneSumsWire {
+  unattributed: { meteredUsdMicros: number; meteredTokens: number; subscriptionTokens: number }
+}
+export interface WindowSpendWire {
+  startMs: number
+  global: ScopeSpendWire
+  byAgent: Record<string, ScopeSpendWire>
+  byProvider: Record<string, LaneSumsWire>
+  byModel: Record<string, LaneSumsWire>
+}
+export interface PaceWire {
+  meteredUsdMicros: number | null
+  subscriptionTokens: number | null
+  endsMs: number
+}
 export interface SpendResponse {
   window: string
   estimated: boolean
   totalUsdMicros: number
   byAgent: SpendRowAgent[]
   byModel: SpendRowModel[]
+  facets?: { computedAt: number; daily: WindowSpendWire; monthly: WindowSpendWire }
+  pace?: { daily: PaceWire; monthly: PaceWire }
 }
 
 /**
@@ -59,8 +120,12 @@ export function useModelsData() {
   const [spendLoading, setSpendLoading] = useState(false)
   const [routing, setRouting] = useState<RoutingConfigShape>({ policies: [], tagOverrides: [] })
   const [pendingRouting, setPendingRouting] = useState<RoutingConfigShape | null>(null)
-  const [budget, setBudget] = useState<BudgetShape>({})
-  const [pendingBudget, setPendingBudget] = useState<BudgetShape | null>(null)
+  const [budgetRules, setBudgetRules] = useState<BudgetRuleWire[]>([])
+  const [pendingRules, setPendingRules] = useState<BudgetRuleWire[] | null>(null)
+  const [incidents, setIncidents] = useState<BudgetIncidentWire[]>([])
+  const [budgetError, setBudgetError] = useState<string | null>(null)
+  const [budgetWarnings, setBudgetWarnings] = useState<string[]>([])
+  const [budgetStatus, setBudgetStatus] = useState<BudgetStatusWire | null>(null)
 
   // -------------------------------------------------------------------------
   // Data fetching
@@ -158,39 +223,142 @@ export function useModelsData() {
     try {
       const res = await fetch('/api/plugins/models/budget')
       if (!res.ok) throw new Error(`Budget fetch failed (${res.status})`)
-      setBudget(await res.json() as BudgetShape)
+      const policy = (await res.json()) as { rules?: BudgetRuleWire[] }
+      setBudgetRules(policy.rules ?? [])
     } catch (err) {
       console.error('Failed to fetch budget:', err)
     }
   }, [])
 
-  const saveBudget = async () => {
-    if (!pendingBudget) return
-    setSaving('budget')
+  const fetchIncidents = useCallback(async () => {
     try {
-      // Drop blank/zero caps so an empty field clears the limit.
-      const g = pendingBudget.global ?? {}
-      const global: BudgetShape['global'] = {
-        ...(g.dailyUsd ? { dailyUsd: g.dailyUsd } : {}),
-        ...(g.monthlyUsd ? { monthlyUsd: g.monthlyUsd } : {}),
-        ...(g.warnPct ? { warnPct: g.warnPct } : {}),
+      const res = await fetch('/api/plugins/models/budget/incidents')
+      if (!res.ok) throw new Error(`Incidents fetch failed (${res.status})`)
+      const data = (await res.json()) as { incidents?: BudgetIncidentWire[] }
+      setIncidents(data.incidents ?? [])
+    } catch (err) {
+      console.error('Failed to fetch budget incidents:', err)
+    }
+  }, [])
+
+  const fetchBudgetStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/plugins/models/budget/status')
+      if (!res.ok) return
+      setBudgetStatus((await res.json()) as BudgetStatusWire)
+    } catch (err) {
+      console.error('Failed to fetch budget status:', err)
+    }
+  }, [])
+
+  /** PUT the full rule list — every rule round-trips; nothing is dropped.
+   *  Failures and unknown-id warnings surface in the UI, never only the
+   *  console (a silently-rejected cap is fake safety). */
+  const saveBudgetRules = async (): Promise<void> => {
+    if (!pendingRules) return
+    setSaving('budget')
+    setBudgetError(null)
+    setBudgetWarnings([])
+    try {
+      // A rule with no caps is invalid — reject explicitly instead of
+      // silently deleting the row on save.
+      const capless = pendingRules.findIndex((r) => !r.dailyCap && !r.monthlyCap)
+      if (capless >= 0) {
+        setBudgetError(`Rule ${capless + 1} has no caps — set a daily or monthly cap, or remove the row.`)
+        return
       }
-      const clean: BudgetShape = Object.keys(global).length ? { global } : {}
       const res = await fetch('/api/plugins/models/budget', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(clean),
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rules: pendingRules }),
       })
       const data = await res.json()
-      if (data.ok) { setBudget(clean); setPendingBudget(null) }
+      if (data.ok) {
+        setBudgetRules(pendingRules)
+        setPendingRules(null)
+        setBudgetWarnings(Array.isArray(data.warnings) ? data.warnings : [])
+        // Re-fetch the canonical rules — the server normalizes model-scope
+        // ids, and the utilization cards must key exactly like spend rows.
+        fetchBudget()
+        fetchBudgetStatus()
+      } else {
+        setBudgetError(typeof data.error === 'string' ? data.error : `Save failed (${res.status})`)
+      }
     } catch (err) {
-      console.error('Failed to save budget:', err)
+      setBudgetError(err instanceof Error ? err.message : String(err))
     } finally {
       setSaving(null)
     }
   }
 
+  /** Toggle the dispatch kill switch from the Spend tab. */
+  const setDispatchPaused = async (paused: boolean): Promise<void> => {
+    setBudgetError(null)
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dispatch: { paused } }),
+      })
+      if (!res.ok) {
+        setBudgetError(`Failed to ${paused ? 'pause' : 'resume'} dispatch (${res.status}).`)
+        return
+      }
+      fetchBudgetStatus()
+      // Client-side fan-out so the header banner reflects immediately
+      // instead of waiting out its 15s poll (a settings write emits no SSE).
+      emitPluginEvent({ event: 'budget.paused_changed', paused })
+    } catch (err) {
+      setBudgetError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  /** Save a per-agent billing-lane override ('auto' clears it). */
+  const setAgentLaneOverride = async (agentId: string, lane: 'auto' | 'metered' | 'subscription'): Promise<void> => {
+    setBudgetError(null)
+    try {
+      const current = budgetStatus?.overrides ?? []
+      const others = current.filter((o) => !(o.agentId === agentId && o.provider === undefined))
+      const overrides = lane === 'auto' ? others : [...others, { agentId, lane }]
+      const res = await fetch('/api/plugins/models/billing/overrides', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ overrides }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setBudgetError(typeof data.error === 'string' ? data.error : `Failed to save the lane override (${res.status}).`)
+        return
+      }
+      fetchBudgetStatus()
+    } catch (err) {
+      setBudgetError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  /** Resolve an incident: raise (new cap in the rule's unit), ack, or resume. */
+  const resolveIncident = async (id: number, action: 'raise' | 'ack' | 'resume', cap?: number): Promise<string | null> => {
+    try {
+      const res = await fetch(`/api/plugins/models/budget/incidents/${id}/resolve`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, ...(cap !== undefined ? { cap } : {}) }),
+      })
+      const data = await res.json()
+      if (!res.ok) return String(data.error ?? `Resolve failed (${res.status})`)
+      await Promise.all([fetchIncidents(), fetchBudget()])
+      return null
+    } catch (err) {
+      return err instanceof Error ? err.message : String(err)
+    }
+  }
+
   useEffect(() => {
-    if (tab === 'spend') { fetchSpend(spendWindow); fetchBudget() }
-  }, [tab, spendWindow, fetchSpend, fetchBudget])
+    if (tab === 'spend') { fetchSpend(spendWindow); fetchBudget(); fetchIncidents(); fetchBudgetStatus() }
+  }, [tab, spendWindow, fetchSpend, fetchBudget, fetchIncidents, fetchBudgetStatus])
+
+  // A Spend tab left open must reflect incidents as they happen — the 2am
+  // breach banner cannot wait for a tab switch.
+  const refreshBudgetSurfaces = useCallback(() => {
+    if (tab !== 'spend') return
+    fetchIncidents(); fetchBudget(); fetchSpend(spendWindow); fetchBudgetStatus()
+  }, [tab, spendWindow, fetchIncidents, fetchBudget, fetchSpend, fetchBudgetStatus])
+  usePluginEvent('budget.incident_opened', refreshBudgetSurfaces)
+  usePluginEvent('budget.incident_resolved', refreshBudgetSurfaces)
 
   const fetchRouting = useCallback(async () => {
     try {
@@ -453,7 +621,10 @@ export function useModelsData() {
     routing, pendingRouting, setPendingRouting, displayRouting,
     setOriginField, addTagOverride, updateTagOverride, removeTagOverride, saveRouting,
     // spend + budget
-    spend, spendLoading, budget, pendingBudget, setPendingBudget, saveBudget,
+    spend, spendLoading,
+    budgetRules, pendingRules, setPendingRules, saveBudgetRules, budgetError, budgetWarnings,
+    incidents, resolveIncident,
+    budgetStatus, setDispatchPaused, setAgentLaneOverride,
   }
 }
 

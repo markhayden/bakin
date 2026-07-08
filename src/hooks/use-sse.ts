@@ -140,6 +140,26 @@ export function useSSE() {
             })
           }
 
+          // Budget incidents (cost-control v2): browser notification (same
+          // bell toggle as workflow gates) + an activity entry. Resolutions
+          // ride emitPluginEvent (line above) for surface refreshes only.
+          if (data.type === 'plugin-event' && data.event === 'budget.incident_opened') {
+            sendBrowserNotification(
+              'Budget alert',
+              data.message || 'A budget cap was reached — dispatch may be deferred',
+              '/models?tab=spend',
+            )
+            appendActivityEvent({
+              id: `${data.timestamp || new Date().toISOString()}-budget-incident-${data.incidentId}`,
+              ts: data.timestamp || new Date().toISOString(),
+              type: 'alert',
+              agent: 'system',
+              message: data.message || 'Budget incident opened',
+              eventName: 'budget.incident_opened',
+              data: { incidentId: data.incidentId, scope: data.scope, scopeId: data.scopeId, lane: data.lane, window: data.window },
+            })
+          }
+
           // Watchdog alerts
           if (data.type === 'alert') {
             appendActivityEvent({

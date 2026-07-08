@@ -170,6 +170,11 @@ export interface SearchTelemetryData {
 export interface MeteredSpendData {
   totalUsdMicros: number
   byAgent: Array<{ agent: string; costUsdMicros: number; runs: number }>
+  /** Cap-window pace projections (cost-control v2) — null until enough of the window elapsed. */
+  pace?: {
+    daily: { meteredUsdMicros: number | null; subscriptionTokens: number | null; endsMs: number }
+    monthly: { meteredUsdMicros: number | null; subscriptionTokens: number | null; endsMs: number }
+  }
 }
 
 // ─── Usage history (GET /usage-history, #359) ────────────────────────────────

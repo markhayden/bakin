@@ -929,7 +929,7 @@ describe('dispatch', () => {
       setDispatchColumns({ todo: [{ id: 't-budget', title: 'Over budget', agent: 'pixel' }] })
       vi.mocked(getHookRegistry).mockReturnValue({
         invoke: mock(async (hook: string) => {
-          if (hook === 'models.getBudgetPolicy') return { global: { dailyUsd: 1 } }
+          if (hook === 'models.getBudgetPolicy') return { rules: [{ scope: 'global', lane: 'metered', dailyCap: 1 }] }
           return undefined
         }),
         has: mock().mockReturnValue(false),
@@ -939,7 +939,13 @@ describe('dispatch', () => {
       await dispatchTasks(tempDir, 3737)
       await awaitDispatchIdle()
 
-      expect(mockRuntimeSend).not.toHaveBeenCalled()
+      // The TASK must not dispatch (no send carrying a task: threadId). The
+      // breach itself sends ONE budget-alert relay to the main agent
+      // (budget-notify) — that is intended, not a dispatch.
+      const dispatchSends = mockRuntimeSend.mock.calls.filter(
+        (c) => typeof (c[0] as { threadId?: string })?.threadId === 'string',
+      )
+      expect(dispatchSends).toHaveLength(0)
     })
 
     it('regression: no budget policy → dispatch proceeds normally', async () => {

@@ -18,10 +18,12 @@ import { getSettings } from './settings'
 import { appendAudit } from './audit'
 import { getAppServices } from './app-services'
 import { RuntimeError, RuntimeTurnError, type MessageResult } from '@bakin/core/adapters/runtime'
-import { claimNextRun, loseRun, settleRun, spendTotal, type ClaimNextRunResult } from './execution-ledger'
+import { claimNextRun, loseRun, settleRun, openBudgetIncident, resolveExpiredBudgetIncidents, findOpenCapIncident, type ClaimNextRunResult } from './execution-ledger'
 import { meterAgentTurn } from './agent-cost'
 import { resolveTurnModel, type ResolvedTurn, type RoutingConfig } from './model-routing'
-import { evaluateBudget, dayStartMs, monthStartMs, type BudgetPolicy, type BudgetSpend, type BudgetDecision } from './budget'
+import { evaluateBudget, ruleMatchesTurn, dayStartMs, monthStartMs, type BudgetPolicy, type BudgetDecision, type TurnBillingContext } from './budget'
+import { assembleBudgetSpend, type BudgetSpendFacets } from './budget-spend'
+import { notifyBudgetIncidentOpened } from './budget-notify'
 import { getBootId } from './boot-id'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { moveTask as moveStoredTask } from './task-store'
@@ -54,26 +56,74 @@ async function sendDispatchMessage(agentId: string, content: string, threadId: s
   })
 }
 
-// Budget warn/defer audits fire once per (event, scope, window, window-start)
-// so a cap sitting at 85% — or a deferred task re-evaluated every cycle —
-// doesn't spam the audit log. Keyed by window start, so it auto-rolls when
-// the day/month turns over. In-memory; resets on restart (acceptable).
-const budgetAuditedWindows = new Set<string>()
+// Fail-closed (ledger unreadable) can't write a durable incident — the
+// ledger IS the incident store — so its audit keeps a small in-memory
+// once-per-window latch to avoid per-task spam. Every readable-ledger breach
+// debounces durably via the budget_incidents UNIQUE instead.
+const failClosedAuditedWindows = new Set<number>()
 
-function auditBudgetOnce(contentDir: string, event: 'budget.warn' | 'budget.deferred', agent: string, detail: Record<string, unknown>, windowStartMs: number): void {
-  const key = `${event}:${detail.scope}:${detail.window}:${windowStartMs}`
-  if (budgetAuditedWindows.has(key)) return
-  budgetAuditedWindows.add(key)
-  appendAudit(contentDir, event, agent, detail)
+// Kill-switch audit latch: one `dispatch.paused` row per activation (the
+// transition matters, not every deferred task). Re-arms on unpause; a
+// restart re-audits an active switch — harmless and honest.
+let killSwitchAudited = false
+
+/**
+ * The global kill switch (settings.dispatch.paused): pauses ALL Bakin-
+ * initiated task dispatch (and billed media via gateBilledMediaCall). The
+ * operator's break-glass control — independent of budget caps. Watchdog/
+ * doctor health probes stay allowed (documented boundary).
+ */
+export function dispatchPaused(contentDir: string): boolean {
+  const paused = getSettings().dispatch.paused
+  if (paused && !killSwitchAudited) {
+    killSwitchAudited = true
+    appendAudit(contentDir, 'dispatch.paused', 'system', { reason: 'dispatch_paused' })
+  }
+  if (!paused) killSwitchAudited = false
+  return paused
+}
+
+/**
+ * Per-cycle memo for the spend engine: the facets are identical for every
+ * task evaluated in one dispatch cycle (costs are only recorded on settle,
+ * after the loop), so one assembly serves the whole cycle.
+ */
+export interface BudgetSpendMemo {
+  facets?: Promise<BudgetSpendFacets>
+  /** Local day-start the memoized facets were assembled in — a cycle that
+   *  straddles midnight must NOT gate post-midnight tasks on pre-midnight
+   *  windows (the old spendCache keyed on window start for the same reason). */
+  dayStartMs?: number
 }
 
 /**
  * Consult the budget policy before a dispatch claims a run. allow / warn /
- * defer; warn and defer are audited (debounced per window). FAIL-CLOSED: if
- * the spend ledger can't be read, defer — consistent with the ledger's
- * existing fail-closed posture. No policy (plugin absent / empty) → allow.
+ * defer; warn and defer are audited (debounced per window). Spend comes from
+ * the shared engine (assembleBudgetSpend) — attributed run_costs PLUS the
+ * unattributed usage.db delta (total-observed basis, spec V4). FAIL-CLOSED:
+ * if the spend ledger can't be read, defer — consistent with the ledger's
+ * existing posture. No policy (plugin absent / empty) → allow.
  */
-export async function budgetGate(agentId: string, contentDir: string, spendCache?: Map<string, number>): Promise<BudgetDecision> {
+/** The fail-closed pseudo-rule when the spend ledger is unreadable. */
+const FAIL_CLOSED_DECISION: BudgetDecision = {
+  action: 'defer',
+  rule: { scope: 'global', lane: 'metered' },
+  window: 'daily',
+  unit: 'usd_micros',
+  spentValue: 0,
+  capValue: 0,
+}
+
+export async function budgetGate(
+  agentId: string,
+  contentDir: string,
+  spendMemo?: BudgetSpendMemo,
+  /** Model the turn is routed to (explicit override); omit = agent default.
+   *  `billedMedia` marks a billed media call: its lane resolves from
+   *  provider-level overrides only — the agent's CHAT auth (subscription)
+   *  must never reclassify image dollars. */
+  prospect?: { model?: string; billedMedia?: boolean },
+): Promise<BudgetDecision> {
   let policy: BudgetPolicy | undefined
   try {
     policy = (await hooks().invoke<BudgetPolicy>('models.getBudgetPolicy', {})) ?? undefined
@@ -81,53 +131,165 @@ export async function budgetGate(agentId: string, contentDir: string, spendCache
     log.error('Budget policy read failed; allowing (no policy)', err, { agentId })
     return { action: 'allow' }
   }
-  if (!policy || (!policy.global && !policy.perAgent)) return { action: 'allow' }
-
   const now = Date.now()
-  const dayStart = dayStartMs(now)
-  const monthStart = monthStartMs(now)
-  // Memoize spend reads within a dispatch cycle: the two GLOBAL totals are
-  // identical for every task in the cycle, and costs are only recorded on
-  // settle (after the loop), so a per-cycle cache is safe and saves ~2 SQL
-  // aggregates per task. Cache key includes the window start so it can't
-  // bleed across a day/month boundary.
-  const spendAt = (agent: string | undefined, sinceMs: number): number => {
-    const key = `${agent ?? '*'}:${sinceMs}`
-    const hit = spendCache?.get(key)
-    if (hit !== undefined) return hit
-    const v = spendTotal(agent ? { agent, sinceMs } : { sinceMs })
-    spendCache?.set(key, v)
-    return v
-  }
-  let spend: BudgetSpend
+
+  // Lazy window rollover runs even with NO rules — deleting every rule must
+  // not strand yesterday's open defer-mode incidents in the banner forever.
   try {
-    spend = {
-      globalDayMicros: spendAt(undefined, dayStart),
-      globalMonthMicros: spendAt(undefined, monthStart),
-      agentDayMicros: spendAt(agentId, dayStart),
-      agentMonthMicros: spendAt(agentId, monthStart),
+    resolveExpiredBudgetIncidents({ dailyWindowStartMs: dayStartMs(now), monthlyWindowStartMs: monthStartMs(now), now })
+  } catch (err) {
+    log.warn('Budget incident rollover sweep failed', { err: err instanceof Error ? err.message : String(err) })
+  }
+
+  if (!policy?.rules?.length) return { action: 'allow' }
+
+  // Billing context of the prospective turn — provider + lane let provider-
+  // scoped and subscription-lane rules match. Unresolvable (plugin absent /
+  // hook error) → metered lane, no provider: dollar rules still gate.
+  const turn: TurnBillingContext = { agent: agentId, model: prospect?.model }
+  try {
+    const billing = await hooks().invoke<{ provider?: string; lane?: 'metered' | 'subscription'; model?: string | null }>(
+      'models.resolveBilling',
+      {
+        // Billed media: provider-keyed lane only — omit agentId so the
+        // agent's chat-auth detection can't reclassify image dollars.
+        ...(prospect?.billedMedia ? {} : { agentId }),
+        ...(prospect?.model ? { model: prospect.model } : {}),
+      },
+    )
+    if (billing) {
+      turn.provider = billing.provider
+      turn.lane = billing.lane
+      turn.model = billing.model ?? turn.model
     }
   } catch (err) {
-    log.error('Budget spend read failed; deferring (fail-closed)', err, { agentId })
-    auditBudgetOnce(contentDir, 'budget.deferred', agentId, { scope: 'global', window: 'daily', reason: 'ledger-unavailable' }, dayStart)
-    return { action: 'defer', scope: 'global', window: 'daily', spentUsdMicros: 0, capUsdMicros: 0 }
+    log.warn('Billing resolution failed; gating as metered', { agentId, err: err instanceof Error ? err.message : String(err) })
   }
 
-  const decision = evaluateBudget({ policy, agent: agentId, spend })
+  // PAUSE mode: a matching rule whose cap incident is still live blocks the
+  // turn regardless of current spend — the rollover sweep above never
+  // touches pause-mode rows, so this holds past the window until a human
+  // resolves (raise / resume). Checked before the spend assembly: post-
+  // rollover spend is under cap by definition.
+  for (const rule of policy.rules) {
+    if (rule.atCap !== 'pause' || !ruleMatchesTurn(rule, turn)) continue
+    try {
+      const blocking = findOpenCapIncident({ scope: rule.scope, scopeId: rule.scopeId, lane: rule.lane })
+      if (blocking) {
+        return {
+          action: 'defer',
+          rule,
+          window: blocking.window,
+          unit: blocking.unit,
+          spentValue: blocking.spentValue,
+          capValue: blocking.capValue,
+        }
+      }
+    } catch (err) {
+      log.error('Pause-incident probe failed; deferring (fail-closed)', err, { agentId })
+      return FAIL_CLOSED_DECISION
+    }
+  }
+
+  let facets: BudgetSpendFacets
+  try {
+    const windowStart = dayStartMs(now)
+    const memoValid = spendMemo?.facets !== undefined && spendMemo.dayStartMs === windowStart
+    const pending = memoValid ? spendMemo!.facets! : assembleBudgetSpend(now)
+    if (spendMemo) {
+      spendMemo.facets = pending
+      spendMemo.dayStartMs = windowStart
+    }
+    facets = await pending
+  } catch (err) {
+    log.error('Budget spend read failed; deferring (fail-closed)', err, { agentId })
+    const windowStart = dayStartMs(now)
+    if (!failClosedAuditedWindows.has(windowStart)) {
+      failClosedAuditedWindows.add(windowStart)
+      appendAudit(contentDir, 'budget.deferred', agentId, { scope: 'global', window: 'daily', reason: 'ledger-unavailable' })
+    }
+    return FAIL_CLOSED_DECISION
+  }
+
+  const decision = evaluateBudget({ policy, turn, facets })
   if (decision.action !== 'allow') {
-    const windowStart = decision.window === 'monthly' ? monthStart : dayStart
-    const event = decision.action === 'defer' ? 'budget.deferred' : 'budget.warn'
-    auditBudgetOnce(contentDir, event, agentId, {
-      scope: decision.scope, window: decision.window,
-      spentUsdMicros: decision.spentUsdMicros, capUsdMicros: decision.capUsdMicros,
-    }, windowStart)
+    recordBudgetBreach(contentDir, agentId, decision, facets)
   }
   return decision
 }
 
-/** True when budget says defer — the shared shape all three dispatch paths use. */
-export async function deferForBudget(agentId: string, contentDir: string, spendCache?: Map<string, number>): Promise<boolean> {
-  return (await budgetGate(agentId, contentDir, spendCache)).action === 'defer'
+/**
+ * Open (idempotently) the durable incident for a breach and audit it exactly
+ * once per (rule identity, window, kind) — the budget_incidents UNIQUE is
+ * the restart-safe debounce. Never throws into the gate.
+ */
+function recordBudgetBreach(
+  contentDir: string,
+  agentId: string,
+  decision: Extract<BudgetDecision, { action: 'warn' | 'defer' }>,
+  facets: BudgetSpendFacets,
+): void {
+  try {
+    const windowStart = decision.window === 'monthly' ? facets.monthly.startMs : facets.daily.startMs
+    const incident = openBudgetIncident({
+      scope: decision.rule.scope,
+      scopeId: decision.rule.scopeId,
+      lane: decision.rule.lane,
+      window: decision.window,
+      windowStartMs: windowStart,
+      kind: decision.action === 'defer' ? 'cap' : 'warn',
+      unit: decision.unit,
+      capValue: decision.capValue,
+      spentValue: decision.spentValue,
+      // Warn incidents never block — they must always rollover-sweep, even
+      // on pause-mode rules (only CAP incidents inherit the pause hold).
+      atCap: decision.action === 'defer' ? decision.rule.atCap ?? 'defer' : 'defer',
+      openedAt: Date.now(),
+    })
+    if (!incident.opened) return
+    const event = decision.action === 'defer' ? 'budget.deferred' : 'budget.warn'
+    appendAudit(contentDir, event, agentId, {
+      incidentId: incident.id,
+      scope: decision.rule.scope,
+      ...(decision.rule.scopeId ? { scopeId: decision.rule.scopeId } : {}),
+      lane: decision.rule.lane,
+      window: decision.window,
+      unit: decision.unit,
+      spentValue: decision.spentValue,
+      capValue: decision.capValue,
+    })
+    // Proactive fan-out (SSE/browser + main-agent relay) — fresh opens only.
+    notifyBudgetIncidentOpened({
+      incidentId: incident.id,
+      kind: decision.action === 'defer' ? 'cap' : 'warn',
+      scope: decision.rule.scope,
+      ...(decision.rule.scopeId ? { scopeId: decision.rule.scopeId } : {}),
+      lane: decision.rule.lane,
+      window: decision.window,
+      unit: decision.unit,
+      capValue: decision.capValue,
+      spentValue: decision.spentValue,
+      // Warn incidents never block — they must always rollover-sweep, even
+      // on pause-mode rules (only CAP incidents inherit the pause hold).
+      atCap: decision.action === 'defer' ? decision.rule.atCap ?? 'defer' : 'defer',
+    }, () => getAppServices().runtime)
+  } catch (err) {
+    log.error('Failed to record budget breach incident', err, { agentId })
+  }
+}
+
+/**
+ * True when the turn must not fire: the kill switch is on, or budget says
+ * defer — the shared shape all three dispatch paths use.
+ */
+export async function deferForBudget(
+  agentId: string,
+  contentDir: string,
+  spendMemo?: BudgetSpendMemo,
+  prospect?: { model?: string },
+): Promise<boolean> {
+  if (dispatchPaused(contentDir)) return true
+  return (await budgetGate(agentId, contentDir, spendMemo, prospect)).action === 'defer'
 }
 
 /**
@@ -136,7 +298,7 @@ export async function deferForBudget(agentId: string, contentDir: string, spendC
  * inherit, unchanged dispatch — when no plugin/config/match applies or the
  * read fails. Never throws into the dispatch path.
  */
-async function resolveDispatchRouting(task: DispatchTask, isRecovery: boolean): Promise<ResolvedTurn> {
+export async function resolveDispatchRouting(task: DispatchTask, isRecovery: boolean): Promise<ResolvedTurn> {
   try {
     const config = await hooks().invoke<RoutingConfig>('models.getRoutingConfig', {})
     if (!config) return {}
@@ -286,13 +448,17 @@ export function fireDispatchTurn(opts: {
   /** True when this is a recovery-ladder re-dispatch (routes to the
    *  'recovery' origin policy regardless of the task's shape). */
   isRecovery?: boolean
+  /** Routing pre-resolved by the caller (also consulted by the budget gate);
+   *  when present the fire path reuses it instead of re-resolving — one
+   *  resolution per dispatch, so the gated model IS the fired model. */
+  routing?: ResolvedTurn
   onSettled?: (outcome: 'ok' | 'error', err?: unknown) => void
 }): void {
   // The registry entry is released only AFTER settle reconciliation
   // completes — awaitDispatchIdle() must mean "all bookkeeping done", and a
   // turn's slot shouldn't free until its outcome has been recorded.
   const abort = new AbortController()
-  const settled = resolveDispatchRouting(opts.task, opts.isRecovery ?? false)
+  const settled = (opts.routing ? Promise.resolve(opts.routing) : resolveDispatchRouting(opts.task, opts.isRecovery ?? false))
     .then(async (routing) => {
       // Fire-time existence check: a delete can interleave between the
       // cycle's phase-1 claim and this fire (the turn is only registered —

@@ -51,6 +51,7 @@ import { openClawIntegrationComponent } from './openclaw-integration'
 import { pluginAssetsComponent } from './plugin-assets'
 import { agentSyncComponent } from './agent-sync'
 import { llmComponent, channelsComponent } from './credentials'
+import { budgetComponent } from './budget'
 import { recommendedPluginsComponent } from './recommended-plugins'
 import { recommendedAgentsComponent } from './recommended-agents'
 import { saveState, clearMarker } from './state'
@@ -93,6 +94,7 @@ export const COMPONENT_ORDER: readonly OnboardingComponent[] = [
   pluginAssetsComponent,
   agentSyncComponent,
   llmComponent,
+  budgetComponent,
   channelsComponent,
   recommendedPluginsComponent,
   recommendedAgentsComponent,

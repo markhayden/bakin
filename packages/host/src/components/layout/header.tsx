@@ -7,6 +7,7 @@ import { AppSidebar } from './app-sidebar'
 import { openGlobalSearch } from '../search/use-search-hotkey'
 import { useSidebarContext } from '@/context/sidebar-context'
 import { useDebug } from '@makinbakin/sdk/hooks'
+import { usePluginEvent, emitPluginEvent } from '@/hooks/use-plugin-event'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -26,6 +27,74 @@ interface BakinUpdateStatus {
   checkedAt: string
   reason?: string
   error?: string
+}
+
+/**
+ * Kill-switch state (cost-control v2): polled on the shared 15s cadence
+ * (lite status endpoint); UI-driven toggles (Spend tab / this banner) fan
+ * out a client-side 'budget.paused_changed' event for instant reflection —
+ * CLI/settings-file toggles land within the poll. Lifted into Header so the
+ * paused banner participates in the same --bakin-header-top offset
+ * mechanism as the update banner — the banner must PUSH the header down,
+ * never be painted over by it.
+ */
+function useDispatchPaused(): { paused: boolean; resuming: boolean; resume: () => Promise<void> } {
+  const [paused, setPaused] = useState(false)
+  const [resuming, setResuming] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    const check = async () => {
+      try {
+        const res = await fetch('/api/plugins/models/budget/status?lite=1')
+        if (!res.ok) return
+        const body = (await res.json()) as { paused?: boolean }
+        if (!cancelled) setPaused(body.paused === true)
+      } catch {
+        // Status is a convenience poll — network blips just skip a beat.
+      }
+    }
+    check()
+    const timer = setInterval(check, 15_000)
+    return () => { cancelled = true; clearInterval(timer) }
+  }, [])
+  usePluginEvent('budget.paused_changed', (payload) => {
+    if (typeof payload.paused === 'boolean') setPaused(payload.paused)
+  })
+
+  const resume = async () => {
+    setResuming(true)
+    try {
+      await fetch('/api/settings', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dispatch: { paused: false } }),
+      })
+      setPaused(false)
+      emitPluginEvent({ event: 'budget.paused_changed', paused: false })
+    } finally {
+      setResuming(false)
+    }
+  }
+  return { paused, resuming, resume }
+}
+
+function DispatchPausedBanner({ offset, resuming, resume }: { offset: boolean; resuming: boolean; resume: () => Promise<void> }) {
+  return (
+    <div
+      role="status"
+      className={`fixed left-0 right-0 z-50 flex h-9 items-center gap-3 border-b border-red-500/40 bg-red-500/15 px-4 text-xs text-foreground ${offset ? 'top-9' : 'top-0'}`}
+    >
+      <span className="font-medium text-red-500">Dispatch paused</span>
+      <span className="min-w-0 truncate text-muted-foreground">Kill switch is on — no task dispatch or billed media until resumed.</span>
+      <button
+        onClick={resume}
+        disabled={resuming}
+        className="ml-auto rounded border border-red-500/40 px-2 py-0.5 text-xs hover:bg-red-500/20 disabled:opacity-50"
+      >
+        {resuming ? 'Resuming…' : 'Resume'}
+      </button>
+    </div>
+  )
 }
 
 function DebugToggle() {
@@ -52,6 +121,7 @@ export function Header() {
   const { collapsed, toggle } = useSidebarContext()
   const displayUpdateStatus = updateStatus
   const showUpdateBanner = Boolean(updateStatus?.supported && updateStatus.updateAvailable)
+  const { paused: dispatchPaused, resuming, resume } = useDispatchPaused()
 
   useEffect(() => {
     fetch('/api/version').then(r => r.json()).then(d => setVersion(d.version)).catch(() => {})
@@ -68,9 +138,13 @@ export function Header() {
 
   useEffect(() => {
     const root = document.documentElement
-    if (showUpdateBanner) {
-      root.style.setProperty('--bakin-header-top', '2.25rem')
-      root.style.setProperty('--bakin-shell-top', '5.75rem')
+    // Each active banner is h-9 (2.25rem); the header (h-14 = 3.5rem) and
+    // the shell content shift down by the banner stack so a banner can never
+    // be painted over.
+    const banners = (showUpdateBanner ? 1 : 0) + (dispatchPaused ? 1 : 0)
+    if (banners > 0) {
+      root.style.setProperty('--bakin-header-top', `${banners * 2.25}rem`)
+      root.style.setProperty('--bakin-shell-top', `${banners * 2.25 + 3.5}rem`)
       return () => {
         root.style.removeProperty('--bakin-header-top')
         root.style.removeProperty('--bakin-shell-top')
@@ -78,7 +152,7 @@ export function Header() {
     }
     root.style.removeProperty('--bakin-header-top')
     root.style.removeProperty('--bakin-shell-top')
-  }, [showUpdateBanner])
+  }, [showUpdateBanner, dispatchPaused])
 
   async function applyUpdate() {
     setUpdating(true)
@@ -119,6 +193,7 @@ export function Header() {
 
   return (
     <>
+      {dispatchPaused && <DispatchPausedBanner offset={Boolean(showUpdateBanner)} resuming={resuming} resume={resume} />}
       {showUpdateBanner && (
         <div
           role="status"

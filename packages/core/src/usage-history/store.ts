@@ -264,6 +264,38 @@ export function usageByAgentDaySince(sinceDay: string): AgentDayUsageRollup[] {
   }
 }
 
+export interface AgentModelDayUsageRollup {
+  agent: string
+  day: string
+  /** Model id as reported by the runtime transcript; '' when unknown. */
+  model: string
+  tokens: UsageTokenSums
+  costUsdMicros: number | null
+  costedMessages: number
+  messageCount: number
+}
+
+/**
+ * Per-(agent, day, model) cells for calendar days >= sinceDay — the spend
+ * engine's observed-usage input (cost-control v2): the model dimension lets
+ * unattributed usage resolve to a provider + billing lane. Unknown models
+ * keep their own '' bucket, never merged.
+ */
+export function usageByAgentModelDaySince(sinceDay: string): AgentModelDayUsageRollup[] {
+  try {
+    return db()
+      .prepare<RollupRow & { agent: string; model: string }, [string]>(
+        `SELECT agent, model, day AS key, ${ROLLUP_SUMS}
+           FROM session_usage_days WHERE day >= ? GROUP BY agent, day, model ORDER BY day ASC, agent ASC, model ASC`,
+      )
+      .all(sinceDay)
+      .map((r) => ({ agent: r.agent, day: r.key, model: r.model, ...toRollup(r) }))
+  } catch (err) {
+    log.error('usageByAgentModelDaySince failed', err, { sinceDay })
+    return []
+  }
+}
+
 /** Per-day sums for calendar days >= sinceDay, ascending by day. */
 export function usageByDaySince(sinceDay: string): DayUsageRollup[] {
   try {

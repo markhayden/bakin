@@ -38,6 +38,9 @@ async function recordSpend(e: {
   taskId?: string | null
   agent: string
   model?: string | null
+  /** Billing attribution from the pricing hook; null when unattributed. */
+  provider?: string | null
+  lane?: 'metered' | 'subscription' | null
   costUsdMicros: number | null
   /** Usage-recorder entry name (e.g. 'turn', 'image'). */
   name: string
@@ -55,6 +58,8 @@ async function recordSpend(e: {
       taskId: e.taskId ?? null,
       agent: e.agent,
       model: e.model ?? undefined,
+      provider: e.provider ?? null,
+      lane: e.lane ?? null,
       inputTokens: e.tokens?.input ?? null,
       outputTokens: e.tokens?.output ?? null,
       totalTokens: e.tokens?.total ?? null,
@@ -101,7 +106,9 @@ export async function meterAgentTurn(opts: {
     // requested — a per-turn override the provider rejected/fell back from
     // must be priced against what ran, not what we asked for (review #3).
     const ranModel = usage?.model ?? opts.resolvedModel
-    const priced = await (await loadHooks()).invoke<{ model: string | null; costUsdMicros: number | null }>(
+    const priced = await (await loadHooks()).invoke<{
+      model: string | null; provider?: string | null; lane?: 'metered' | 'subscription' | null; costUsdMicros: number | null
+    }>(
       'models.priceTurn',
       { agentId: opts.agent, model: ranModel, input: usage?.input, output: usage?.output, cacheRead: usage?.cacheRead, cacheWrite: usage?.cacheWrite },
     )
@@ -109,7 +116,12 @@ export async function meterAgentTurn(opts: {
       runId: opts.runId ?? `turn:${randomUUID()}`,
       taskId: opts.taskId,
       agent: opts.agent,
-      model: ranModel ?? priced?.model ?? null,
+      // Prefer the hook's NORMALIZED id (it resolves from ranModel) — spend
+      // facets and rule scopeIds must key identically or model-scoped caps
+      // read zero spend. Raw ranModel is the no-plugin fallback only.
+      model: priced?.model ?? ranModel ?? null,
+      provider: priced?.provider ?? null,
+      lane: priced?.lane ?? null,
       costUsdMicros: priced?.costUsdMicros ?? null,
       name: opts.name ?? 'turn',
       tokens: { input: usage?.input, output: usage?.output, total: usage?.total, cacheRead: usage?.cacheRead, cacheWrite: usage?.cacheWrite },
@@ -134,7 +146,9 @@ export async function meterImageTurn(opts: {
   taskId?: string | null
 }): Promise<void> {
   try {
-    const priced = await (await loadHooks()).invoke<{ model: string | null; costUsdMicros: number | null }>(
+    const priced = await (await loadHooks()).invoke<{
+      model: string | null; provider?: string | null; lane?: 'metered' | 'subscription' | null; costUsdMicros: number | null
+    }>(
       'models.priceImage',
       { model: opts.model, count: opts.count },
     )
@@ -142,7 +156,10 @@ export async function meterImageTurn(opts: {
       runId: `image:${randomUUID()}`,
       taskId: opts.taskId,
       agent: opts.agent,
-      model: opts.model,
+      // Hook-normalized id preferred — same keying rule as chat turns.
+      model: priced?.model ?? opts.model,
+      provider: priced?.provider ?? null,
+      lane: priced?.lane ?? null,
       costUsdMicros: priced?.costUsdMicros ?? null,
       name: 'image',
       meta: { count: opts.count },

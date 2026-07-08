@@ -20,6 +20,12 @@ import { createLogger } from '../logger'
 import { createAppServices, maybeGetAppServices } from '../app-services'
 import { DEFAULT_RUNTIME_ADAPTER_SUPPORT } from '../runtime-adapter-factory'
 import { readAllowedRuntimeConfigRaw, type RuntimeConfigRawReason } from '../runtime-config-raw'
+import {
+  LLM_CREDENTIAL_FIELDS,
+  authProfileEntryHasField,
+  authProfileEntryProvider,
+  normalizeAuthProfileEntries,
+} from '../runtime-auth-profiles'
 import type { CheckResult, InstallResult, OnboardingComponent } from './types'
 
 const log = createLogger('onboarding:credentials')
@@ -33,28 +39,15 @@ const RUNTIME_DOCS = DEFAULT_RUNTIME_ADAPTER_SUPPORT.docsUrl
  * check for any of them.
  */
 const CHANNEL_CREDENTIAL_FIELDS = ['token', 'apiKey', 'api_key', 'botToken', 'bot_token']
-const LLM_CREDENTIAL_FIELDS = ['apiKey', 'api_key', 'token', 'access', 'refresh']
 
 function hasCredentialField(entry: unknown): boolean {
-  if (entry === null || typeof entry !== 'object') return false
-  const obj = entry as Record<string, unknown>
-  for (const field of CHANNEL_CREDENTIAL_FIELDS) {
-    const value = obj[field]
-    if (typeof value === 'string' && value.trim().length > 0) return true
-  }
-  return false
+  return authProfileEntryHasField(entry, CHANNEL_CREDENTIAL_FIELDS)
 }
 
 function authProvider(entry: unknown): string | null {
-  if (entry === null || typeof entry !== 'object') return null
-  const obj = entry as Record<string, unknown>
-  const provider = obj.provider
-  if (typeof provider !== 'string' || provider.trim().length === 0) return null
-  for (const field of LLM_CREDENTIAL_FIELDS) {
-    const value = obj[field]
-    if (typeof value === 'string' && value.trim().length > 0) return provider
-  }
-  return null
+  const provider = authProfileEntryProvider(entry)
+  if (provider === null) return null
+  return authProfileEntryHasField(entry, LLM_CREDENTIAL_FIELDS) ? provider : null
 }
 
 async function getRuntimeForCredentials(): Promise<AgentRuntimeAdapter> {
@@ -106,26 +99,9 @@ async function checkLlm(): Promise<CheckResult> {
     }
   }
 
-  // Runtime adapters can expose multiple auth-profile shapes:
-  //   1. Bare array:   [{ provider, apiKey }]       (imitation crab)
-  //   2. Object+array: { profiles: [{ provider }] } (docker setup)
-  //   3. Object+dict:  { profiles: { k: { provider } } }
-  // Normalize into a flat array of entry objects for scanning.
-  let entries: unknown[]
-  if (Array.isArray(parsed)) {
-    entries = parsed
-  } else if (parsed !== null && typeof parsed === 'object') {
-    const inner = (parsed as Record<string, unknown>).profiles
-    if (Array.isArray(inner)) {
-      entries = inner
-    } else if (inner !== null && typeof inner === 'object') {
-      entries = Object.values(inner as Record<string, unknown>)
-    } else {
-      entries = []
-    }
-  } else {
-    entries = []
-  }
+  // Shape normalization is shared with the models plugin's billing-lane
+  // detection — see src/core/runtime-auth-profiles.ts.
+  const entries = normalizeAuthProfileEntries(parsed)
   if (entries.length === 0) {
     return {
       name: 'llm',

@@ -36,6 +36,7 @@ import {
   usageByAgentSince,
   usageByDaySince,
   usageByAgentDaySince,
+  usageByAgentModelDaySince,
   type SessionDayUsage,
 } from '../../packages/core/src/usage-history/store'
 import { closeAllDbs } from '../../packages/core/src/storage/db'
@@ -219,5 +220,43 @@ describe('usageByAgentDaySince (#385)', () => {
     const only2 = usageByAgentDaySince(DAY2)
     expect(only2.every((c) => c.day >= DAY2)).toBe(true)
     expect(only2.find((c) => c.agent === 'pixel' && c.day === DAY2)).toBeDefined()
+  })
+})
+
+describe('usageByAgentModelDaySince (cost-control v2)', () => {
+  it('splits the agent×day cells by model, keeping the empty-model bucket', () => {
+    replaceSessionUsage(
+      'm1',
+      'lane-agent',
+      [
+        row({ model: 'anthropic/claude-sonnet-4-6', totalTokens: 100, costUsdMicros: 500 }),
+        row({ model: 'gpt-5.5-codex', totalTokens: 900, costUsdMicros: null, costedMessages: 0 }),
+        row({ model: '', totalTokens: 7, costUsdMicros: null, costedMessages: 0 }),
+      ],
+      { mtimeMs: 1, size: 1 },
+    )
+    // second session, same agent+day+model — must sum into the same cell
+    replaceSessionUsage('m2', 'lane-agent', [row({ model: 'anthropic/claude-sonnet-4-6', totalTokens: 40, costUsdMicros: 100 })], { mtimeMs: 1, size: 1 })
+
+    const cells = usageByAgentModelDaySince(DAY1).filter((c) => c.agent === 'lane-agent')
+    const cell = (model: string) => cells.find((c) => c.model === model && c.day === DAY1)
+
+    expect(cell('anthropic/claude-sonnet-4-6')?.tokens.total).toBe(140)
+    expect(cell('anthropic/claude-sonnet-4-6')?.costUsdMicros).toBe(600)
+    expect(cell('gpt-5.5-codex')?.tokens.total).toBe(900)
+    expect(cell('gpt-5.5-codex')?.costUsdMicros).toBeNull() // NULL-honest
+    expect(cell('')?.tokens.total).toBe(7) // unknown model stays its own bucket
+
+    // re-aggregating by (agent, day) must match the modelless cross-tab
+    const modelless = usageByAgentDaySince(DAY1).find((c) => c.agent === 'lane-agent' && c.day === DAY1)
+    const summed = cells.filter((c) => c.day === DAY1).reduce((n, c) => n + c.tokens.total, 0)
+    expect(modelless?.tokens.total).toBe(summed)
+  })
+
+  it('honors the sinceDay cutoff', () => {
+    replaceSessionUsage('m3', 'lane-agent2', [row({ day: DAY2, model: 'x/y', totalTokens: 3, firstTs: T2, lastTs: T2 })], { mtimeMs: 1, size: 1 })
+    const only2 = usageByAgentModelDaySince(DAY2)
+    expect(only2.every((c) => c.day >= DAY2)).toBe(true)
+    expect(only2.find((c) => c.agent === 'lane-agent' && c.day === DAY1)).toBeUndefined()
   })
 })

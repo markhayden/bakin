@@ -54,13 +54,25 @@ export const RoutingConfigSchema = z.object({
   tagOverrides: z.array(TagOverrideSchema),
 })
 
-const BudgetCapsSchema = z.object({
-  dailyUsd: z.number().positive().optional(),
-  monthlyUsd: z.number().positive().optional(),
-})
+// Cap rules (cost-control v2): scope × lane; unit-per-lane — dailyCap /
+// monthlyCap are whole USD on metered rules, tokens on subscription rules.
+// 'model' scope is accepted today (evaluator handles it); the UI ships
+// through provider.
+export const BudgetRuleSchema = z
+  .object({
+    scope: z.enum(['global', 'agent', 'provider', 'model']),
+    scopeId: z.string().min(1).optional(),
+    lane: z.enum(['metered', 'subscription']),
+    dailyCap: z.number().positive().optional(),
+    monthlyCap: z.number().positive().optional(),
+    warnPct: z.number().gt(0).lte(1).optional(),
+    atCap: z.enum(['defer', 'pause']).optional(),
+  })
+  .refine((r) => r.scope === 'global' || typeof r.scopeId === 'string', {
+    message: 'scopeId is required for agent/provider/model rules',
+  })
 export const BudgetPolicySchema = z.object({
-  global: BudgetCapsSchema.extend({ warnPct: z.number().gt(0).lte(1).optional() }).optional(),
-  perAgent: z.record(z.string(), BudgetCapsSchema).optional(),
+  rules: z.array(BudgetRuleSchema).optional(),
 })
 
 // Spend reporting windows. Coarser than the live-usage 5m/1h windows —
