@@ -88,7 +88,22 @@ export const brandRoutes = [
       } catch {
         log.warn('brands settings unavailable; warnUnbranded defaults off')
       }
-      return Response.json({ ...listBrands(), warnUnbranded })
+      const { brands, invalid } = listBrands()
+      return Response.json({
+        brands: brands.map((b) => ({
+          ...b,
+          counts: {
+            guidelines: listDocs(b.id, 'guidelines').length,
+            lessons: listDocs(b.id, 'lessons').length,
+            assets: new Set([
+              ...b.logos.map((l) => l.assetId),
+              ...b.assetGroups.flatMap((g) => g.assetIds),
+            ]).size,
+          },
+        })),
+        invalid,
+        warnUnbranded,
+      })
     },
   }),
 

@@ -5,10 +5,14 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { PluginHeader } from '@makinbakin/sdk/components'
+import { useQueryState } from '@makinbakin/sdk/hooks'
 import type { BrandManifest } from '../types'
+import { BrandDetail } from './brand-detail'
+
+type ListedBrand = BrandManifest & { counts?: { guidelines: number; lessons: number; assets: number } }
 
 interface ListResponse {
-  brands: BrandManifest[]
+  brands: ListedBrand[]
   invalid: Array<{ id: string; error: string }>
 }
 
@@ -33,6 +37,7 @@ const slugify = (name: string) =>
     .slice(0, 64)
 
 export function BrandsPage() {
+  const [selectedBrand, setSelectedBrand] = useQueryState('brand', '')
   const [data, setData] = useState<ListResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
@@ -80,6 +85,10 @@ export function BrandsPage() {
       setCreating(false)
     }
   }, [newName, refresh])
+
+  if (selectedBrand) {
+    return <BrandDetail brandId={selectedBrand} onBack={() => { setSelectedBrand(''); void refresh() }} />
+  }
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -218,7 +227,11 @@ export function BrandsPage() {
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {data?.brands.map((brand) => (
-          <div key={brand.id} className="rounded-lg border p-4">
+          <div
+            key={brand.id}
+            className="rounded-lg border p-4 cursor-pointer hover:border-zinc-600"
+            onClick={() => setSelectedBrand(brand.id)}
+          >
             <div className="flex items-center justify-between">
               <h3 className="font-medium">{brand.name}</h3>
               {brand.draft && (
@@ -238,6 +251,12 @@ export function BrandsPage() {
                   />
                 ))}
               </div>
+            )}
+            {brand.counts && (
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                {brand.counts.guidelines} doc(s) · {brand.counts.lessons} lesson(s) · {brand.counts.assets} asset(s)
+                {brand.source ? ` · from ${brand.source.repo}` : ''}
+              </p>
             )}
           </div>
         ))}
