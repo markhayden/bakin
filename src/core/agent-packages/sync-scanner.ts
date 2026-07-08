@@ -87,7 +87,12 @@ export type SyncFindingType =
   | 'user-edited'
   | 'broken-marker'
 
-export type StaleInput = 'package' | 'global' | 'role' | 'team' | 'lessons' | 'in-place-edit'
+export type StaleInput = 'package' | 'global' | 'role' | 'team' | 'lessons' | 'tool-access' | 'in-place-edit'
+
+/** Human-facing label for a stale input — runtime-aware for tool-access (P1.6). */
+export function describeStaleInput(input: StaleInput): string {
+  return input === 'tool-access' ? 'runtime tool access' : input
+}
 
 export interface SyncFinding {
   type: SyncFindingType
@@ -194,9 +199,7 @@ export async function deriveExpectedBlocks(
       }
       if (context.toolAccess) {
         inputs.toolAccess = context.toolAccess
-        // Runtime-aware drift attribution (a dedicated toolAccessSha keyed by
-        // runtime) lands in P1.6; for now the composed-body comparison catches
-        // a changed section as an in-place edit and re-projects.
+        inputShas.toolAccessSha = sha256OfString(context.toolAccess)
       }
       if (context.team) {
         inputs.team = context.team
@@ -245,6 +248,7 @@ function attributeStaleness(
     ['roleSha', 'role'],
     ['teamSha', 'team'],
     ['lessonsSha', 'lessons'],
+    ['toolAccessSha', 'tool-access'],
   ]
   for (const [key, label] of keys) {
     if ((recorded[key] ?? null) !== (current[key] ?? null)) stale.push(label)
@@ -481,7 +485,7 @@ export async function scanAgentSync(lockfile?: Lockfile): Promise<SyncScanReport
         file: exp.file,
         staleInputs,
         message: staleInputs.length > 0
-          ? `${agent.id}/${exp.file} managed block is stale (changed: ${staleInputs.join(', ')})`
+          ? `${agent.id}/${exp.file} managed block is stale (changed: ${staleInputs.map(describeStaleInput).join(', ')})`
           : `${agent.id}/${exp.file} managed block differs from expected composition`,
       })
     }
