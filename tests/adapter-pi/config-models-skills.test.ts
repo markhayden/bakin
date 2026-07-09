@@ -137,6 +137,31 @@ describe('skills surface', () => {
     await expect(adapter.skills.write({ name: '../evil', instructions: 'x' })).rejects.toThrow('invalid skill name')
     await expect(adapter.skills.write({ name: 'ok', instructions: 'x', files: { '../escape.md': 'x' } })).rejects.toThrow('invalid skill file name')
   })
+
+  // Dropping these sidecars on write meant plugin-asset installs on Pi could
+  // never read back as installed ("5 missing" → install → "5 drifted", live
+  // P5.3) and user edits could never lock a projection.
+  test('installedBy marker round-trips through write→get; userEdited sentinel surfaces', async () => {
+    const marker = { pluginId: 'images', sha256: 'abc123' }
+    await adapter.skills.write({ name: 'marked', instructions: '# M', metadata: { installedBy: marker } })
+
+    const readBack = await adapter.skills.get('marked')
+    expect(readBack?.metadata?.installedBy).toEqual(marker)
+    expect(readBack?.metadata?.userEdited).toBe(false)
+    // Sidecars are metadata, never content files.
+    expect(readBack?.files?.['.installedBy']).toBeUndefined()
+
+    const { writeFileSync: writeFs } = await import('fs')
+    const { join: joinPath } = await import('path')
+    writeFs(joinPath(readBack!.path!, '.userEdited'), '')
+    expect((await adapter.skills.get('marked'))?.metadata?.userEdited).toBe(true)
+
+    // Re-writing without a marker clears it (OpenClaw parity).
+    await adapter.skills.write({ name: 'marked', instructions: '# M2' })
+    expect((await adapter.skills.get('marked'))?.metadata?.installedBy).toBeUndefined()
+
+    await adapter.skills.remove('marked')
+  })
 })
 
 describe('models + capabilities', () => {
