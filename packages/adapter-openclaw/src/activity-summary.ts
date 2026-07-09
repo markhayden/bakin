@@ -38,7 +38,11 @@ function activityChunkFromTrajectoryToolCall(record: Record<string, unknown>): C
   const data = isPlainObject(record.data) ? record.data : {}
   const name = typeof data.name === 'string' && data.name.length > 0 ? bareToolName(data.name) : 'tool'
   const args = data.arguments
+  // The live chip renders `summary` (not content) — fall back to the call
+  // detail so a bash row shows its command even when no purpose matched.
+  const detail = summarizeOpenClawToolCall(name, args)
   const summary = summarizeOpenClawToolPurpose(name, args)
+    ?? (detail !== name ? detail.replace(new RegExp(`^${name}: `), '') : undefined)
   return [{
     type: 'tool',
     content: summarizeOpenClawToolCall(name, args),

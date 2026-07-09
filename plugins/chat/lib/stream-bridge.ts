@@ -19,7 +19,7 @@ import { appendTranscriptRow, getChatSummary } from './store'
 
 const log = createLogger('chat-stream')
 
-type ToolActivity = { toolName?: string; phase?: string; summary?: string; status?: string }
+type ToolActivity = { toolName?: string; phase?: string; summary?: string; status?: string; callId?: string }
 
 // One in-flight turn per chat. The promise is retained so tests (and any
 // server-side caller) can await settlement; route handlers never block on it.
@@ -61,6 +61,7 @@ async function runTurn(
   content: string,
 ): Promise<void> {
   let assistantText = ''
+  const callSummaries = new Map<string, string>()
   const persist = async (row: ChatTranscriptRow) => {
     try {
       await appendTranscriptRow(chatId, row)
@@ -84,13 +85,19 @@ async function runTurn(
       } else if (chunk.type === 'tool') {
         const tool = (chunk.data ?? {}) as ToolActivity
         // Persist one row per completed tool call; 'call' phases are
-        // ephemeral progress the SSE stream already carried.
+        // ephemeral progress the SSE stream already carried. Result chunks
+        // usually carry no summary — reuse the call's so durable rows keep
+        // their detail instead of degrading to a bare tool name.
+        if (tool.phase === 'call' && tool.callId && tool.summary) {
+          callSummaries.set(tool.callId, tool.summary)
+        }
         if (tool.phase === 'result') {
           const name = tool.toolName ?? 'tool'
+          const summary = tool.summary ?? (tool.callId ? callSummaries.get(tool.callId) : undefined)
           await persist({
             kind: 'tool',
             ts: new Date().toISOString(),
-            summary: tool.summary ? `${name}: ${tool.summary}` : name,
+            summary: summary ? `${name}: ${summary}` : name,
           })
         }
       } else if (chunk.type === 'error') {
