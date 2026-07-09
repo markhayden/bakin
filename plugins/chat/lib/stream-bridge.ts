@@ -78,7 +78,15 @@ async function runTurn(
       content,
       threadId: `chat:${chatId}`,
     })) {
-      ctx.events.emit('chat.chunk', { chatId, chunk: { type: chunk.type, content: chunk.content, data: chunk.data } })
+      ctx.events.emit('chat.chunk', {
+        chatId,
+        chunk: {
+          type: chunk.type,
+          content: chunk.content,
+          data: chunk.data,
+          ...(chunk.type === 'text' && chunk.format ? { format: chunk.format } : {}),
+        },
+      })
 
       if (chunk.type === 'text' && chunk.content) {
         assistantText += chunk.content

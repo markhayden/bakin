@@ -30,7 +30,13 @@ export type ChatTranscriptRow =
 export interface ChatChunkEvent {
   type: 'chat.chunk'
   chatId: string
-  chunk: { type: 'text' | 'tool' | 'status'; content?: string; data?: Record<string, unknown> }
+  chunk: {
+    type: 'text' | 'tool' | 'status'
+    content?: string
+    /** Text chunks: render format hint; absent = markdown. */
+    format?: 'markdown' | 'plain' | 'code'
+    data?: Record<string, unknown>
+  }
 }
 
 export interface ChatDoneEvent {

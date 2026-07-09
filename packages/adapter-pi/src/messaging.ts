@@ -377,7 +377,13 @@ export function createMessagingSurface(deps: PiMessagingDeps): AgentRuntimeAdapt
       })
 
       turn.then(finish, (err) => {
-        push({ type: 'error', content: err instanceof Error ? err.message : String(err) })
+        push({
+          type: 'error',
+          content: err instanceof Error ? err.message : String(err),
+          // Contract: the terminal error chunk carries the typed kind so
+          // consumers classify without parsing message text.
+          ...(err instanceof RuntimeError ? { data: { kind: err.kind } } : {}),
+        })
         finish()
       })
 

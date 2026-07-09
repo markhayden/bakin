@@ -230,7 +230,7 @@ describe('messaging.stream', () => {
     expect(summary).not.toContain('\\n')
   })
 
-  test('provider failure surfaces as an error chunk, never a throw from iteration', async () => {
+  test('provider failure surfaces as an error chunk carrying the typed kind, never a throw from iteration', async () => {
     seedProvider([
       { status: 500, errorBody: { error: { message: 'exploded' } } },
       { status: 500, errorBody: { error: { message: 'exploded' } } },
@@ -241,8 +241,47 @@ describe('messaging.stream', () => {
     for await (const chunk of adapter.messaging.stream({ agentId: 'main', content: 'go' })) {
       chunks.push(chunk)
     }
-    expect(chunks.at(-1)?.type).toBe('error')
+    const last = chunks.at(-1)
+    expect(last?.type).toBe('error')
+    // R5: the error chunk carries the RuntimeError kind so consumers can
+    // classify without parsing message text.
+    const kind = (last?.data as { kind?: string } | undefined)?.kind
+    expect(typeof kind).toBe('string')
+    expect(kind!.length).toBeGreaterThan(0)
+    // No done after a terminal error.
+    expect(chunks.filter((c) => c.type === 'done')).toHaveLength(0)
   }, 30_000)
+
+  test('R5/R5b taxonomy: classified chunks only, done exactly once and last, structured tool data', async () => {
+    invocations.length = 0
+    seedProvider([
+      { steps: [{ text: 'thinking about it. ' }, { toolCall: { name: 'bakin_exec_test_echo', args: { message: 'taxo' } } }] },
+      { steps: [{ text: 'all done' }] },
+    ])
+    const chunks: ChatChunk[] = []
+    for await (const chunk of adapter.messaging.stream({ agentId: 'main', content: 'go', threadId: 'chat:taxo-1' })) {
+      chunks.push(chunk)
+    }
+    const allowed = new Set(['text', 'tool', 'status', 'done', 'error'])
+    for (const c of chunks) expect(allowed.has(c.type)).toBe(true)
+    // done exactly once, always last, nothing after it.
+    expect(chunks.filter((c) => c.type === 'done')).toHaveLength(1)
+    expect(chunks.at(-1)?.type).toBe('done')
+    // Tool chunks carry structured RuntimeToolActivity — never a raw dump.
+    const tools = chunks.filter((c) => c.type === 'tool')
+    expect(tools.length).toBeGreaterThan(0)
+    for (const t of tools) {
+      const data = t.data as { toolName?: string; phase?: string }
+      expect(typeof data?.toolName).toBe('string')
+      expect(['call', 'result']).toContain(data?.phase ?? '')
+    }
+    // Text chunks: format hint is absent (markdown default) or a known value.
+    for (const c of chunks.filter((x) => x.type === 'text')) {
+      const format = (c as { format?: string }).format
+      expect([undefined, 'markdown', 'plain', 'code']).toContain(format)
+      expect(typeof c.content).toBe('string')
+    }
+  })
 })
 
 describe('sessions surface', () => {

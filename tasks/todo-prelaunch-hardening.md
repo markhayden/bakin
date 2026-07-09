@@ -6,7 +6,7 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 ## PR 1a — feat/openclaw-push-streaming
 - [x] T1 Gateway frame fixtures + OQ2 resolution (spike) ✅ (chat frames suffice for text; 5 Appendix-A corrections)
 - [x] T2 Event-frame plumbing in gateway-rpc (caps, ack, protocol gate) ✅
-- [ ] T3 Normalized chunk taxonomy + streaming contract (R5/R5b)
+- [x] T3 Normalized chunk taxonomy + streaming contract (R5/R5b) ✅ (ChatChunk discriminated union + format hints + typed error kind)
 - [ ] T4 OpenClaw streamChat rewrite (push events)
 - [ ] T5 Server-side abort via accepted run ids
 - [ ] T6 Imitation Crab event frames + streaming e2e
