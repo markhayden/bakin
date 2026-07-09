@@ -598,6 +598,7 @@ current runtime/data capability surface:
 PermissionSchema = z.enum([
   'events.emit',
   'assets.read',
+  'assets.write',
   'runtime.read',
   'runtime.agents',
   'runtime.messaging',
@@ -744,10 +745,11 @@ it to the adapter contract first; do not pierce the boundary from plugin code.
 ```typescript
 interface SettingsField {
   key: string
-  type: 'string' | 'number' | 'boolean' | 'select'
+  type: 'string' | 'text' | 'number' | 'boolean' | 'select' | 'agent' | 'skill' | 'list'
   label: string
   description?: string
-  options?: { value: string; label: string }[]
+  options?: { value: string; label: string }[]  // select
+  itemFields?: SettingsField[]                  // list: per-item shape
   default?: unknown
 }
 
@@ -788,15 +790,18 @@ interface PluginManifest {
   version: string
   bakin: string                // semver range for compatibility
   description: string
-  server: string               // path to server bundle (e.g. "dist/index.js")
-  client?: string              // path to client bundle (e.g. "dist/client.js")
+  entry: {                     // entry-point file paths
+    server: string             // e.g. "index.ts"
+    client?: string            // e.g. "client.tsx"
+  }
+  contributes?: PluginContributions  // declared nav/routes/apiRoutes/execTools/slots
+                                     // (drives lazy client loading + consent review)
   contentFiles?: string[]
   secrets?: Array<{
     name: string                // canonical env var name, e.g. ANTHROPIC_API_KEY
     description: string         // setup note; never include a secret value
     required: boolean           // omitted JSON values default to true when parsed
   }>
-  tests?: string
   dependencies?: string[]      // other plugin IDs — drives topological sort
   permissions?: Permission[]   // strict Zod enum — see PermissionSchema. Empty/missing → []
   signature?: {
@@ -807,6 +812,9 @@ interface PluginManifest {
   }
 }
 ```
+
+(The full shape, including every `contributes` sub-type, lives in
+`packages/sdk/src/types/manifest.ts` — treat that file as canonical.)
 
 ## Runtime Plugin Loader (browser)
 
@@ -1195,11 +1203,19 @@ interface PluginToolContext {
   storage: StorageAdapter
   events: EventBus
   pluginId: string
-  hooks: HookAPI
-  activity: ActivityAPI
+  runtime: PluginRuntimeFacade   // adapter-neutral runtime surface
+  tasks: PluginTaskService
+  assets: PluginAssetService
+  search: SearchAPI
+  hooks: HookAPI                 // register/call/callAll/has/invoke
+  activity: ActivityAPI          // log (SSE) + audit (audit.jsonl)
   getSettings<T = Record<string, unknown>>(): T
 }
 ```
+
+The context is wrapped by `wrapPluginContextPermissions` before handlers see
+it — manifest permissions gate the capability surfaces (the bare `core`
+context used by built-in tools gets the full set).
 
 Tool handlers receive it as an optional third argument:
 ```typescript

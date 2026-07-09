@@ -51,7 +51,7 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 - [ ] CHECKPOINT 3: suite = adapter acceptance gate; PR merged
 
 ## PR 4 — chore/cleanup-sweep (anytime; during WS1 soak)
-- [ ] T32 Rig off mcporter (native-MCP provisioning)
-- [ ] T33 Fixtures, comments, knowledge-doc drift
+- [x] T32 Rig off mcporter (native-MCP provisioning) ✅ code+tests — ⚠️ live rig smoke (`bun run instance up`) OUTSTANDING: docker unavailable on this box; run before initiative close
+- [x] T33 Fixtures, comments, knowledge-doc drift ✅
 - [ ] T34 SDK primitive adoption sweep (ex-sdk-gaps A2/A3/A4 + useAvailableModels relocation; after PR 2b)
 - [ ] CHECKPOINT 4: initiative close — all success criteria re-verified, Pi worktree retired, SPEC marked complete
