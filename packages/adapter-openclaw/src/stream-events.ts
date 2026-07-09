@@ -216,6 +216,50 @@ export class OpenClawTurnChunkMachine {
   }
 }
 
+/** Handle returned by {@link tapOpenClawTurnActivity}. */
+export interface OpenClawActivityTap {
+  /** Wire into the turn's accepted-ack path: adopts the authoritative runId
+   *  and surfaces the immediate `thinking` status. */
+  onAccepted: (ack: OpenClawGatewayAcceptedAck) => void
+  /** Remove the event subscription — call on every settle path. */
+  unsubscribe: () => void
+}
+
+/**
+ * Send-path live-activity tap (MessageArgs.onActivity, T8/D-plan-1): the
+ * same frame→chunk machine as streaming, but subscribed to `agent` events
+ * only and filtered to `tool`/`status` chunks — text never flows through
+ * the tap (contract: prose rides `messaging.stream`). Callback exceptions
+ * are contained and reported via `onCallbackError`; they never propagate
+ * into frame handling or the turn itself.
+ */
+export function tapOpenClawTurnActivity(opts: {
+  events: GatewayEventSource
+  idempotencyKey: string
+  onActivity: (chunk: ChatChunk) => void
+  onCallbackError: (err: unknown) => void
+}): OpenClawActivityTap {
+  const machine = new OpenClawTurnChunkMachine(opts.idempotencyKey)
+  const forward = (chunks: ChatChunk[]): void => {
+    for (const chunk of chunks) {
+      if (chunk.type !== 'tool' && chunk.type !== 'status') continue
+      try {
+        opts.onActivity(chunk)
+      } catch (err) {
+        opts.onCallbackError(err)
+      }
+    }
+  }
+  const unsubscribe = subscribeAgentEvents(opts.events, (payload) => forward(machine.onAgentEvent(payload)))
+  return {
+    onAccepted: (ack) => {
+      machine.adoptRunId(ack.runId)
+      forward([{ type: 'status', content: 'thinking' }])
+    },
+    unsubscribe,
+  }
+}
+
 export interface OpenClawTurnStreamDeps {
   /** Live gateway connection to subscribe on (registered BEFORE the RPC is sent). */
   events: GatewayEventSource

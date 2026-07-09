@@ -161,6 +161,48 @@ describe('messaging.send', () => {
     expect(req.tools ?? []).toHaveLength(0)
   })
 
+  test('onActivity taps tool + status chunks during a send turn (T8/D-plan-1)', async () => {
+    invocations.length = 0
+    seedProvider([
+      { steps: [{ toolCall: { name: 'bakin_exec_test_echo', args: { message: 'tapped' } } }] },
+      { steps: [{ text: 'tap reply' }] },
+    ])
+    const activity: ChatChunk[] = []
+    const result = await adapter.messaging.send({
+      agentId: 'main',
+      content: 'use the tool',
+      threadId: 'task:tap:d1',
+      onActivity: (chunk) => activity.push(chunk),
+    })
+    expect(result.content).toBe('tap reply')
+    // v1 scope: tool + status only — never text/done/error.
+    expect(activity.length).toBeGreaterThan(0)
+    expect(activity.every((c) => c.type === 'tool' || c.type === 'status')).toBe(true)
+    const tools = activity.filter((c) => c.type === 'tool')
+    expect(tools.length).toBe(2)
+    expect(tools[0]!.data).toMatchObject({ phase: 'call', toolName: 'bakin_exec_test_echo', status: 'running' })
+    expect(tools[1]!.data).toMatchObject({ phase: 'result', toolName: 'bakin_exec_test_echo', status: 'completed' })
+  })
+
+  test('a throwing onActivity callback never fails the turn', async () => {
+    seedProvider([
+      { steps: [{ toolCall: { name: 'bakin_exec_test_echo', args: { message: 'boom' } } }] },
+      { steps: [{ text: 'still fine' }] },
+    ])
+    let calls = 0
+    const result = await adapter.messaging.send({
+      agentId: 'main',
+      content: 'use the tool',
+      threadId: 'task:tap-throw:d1',
+      onActivity: () => {
+        calls += 1
+        throw new Error('tap exploded')
+      },
+    })
+    expect(result.content).toBe('still fine')
+    expect(calls).toBeGreaterThan(0)
+  })
+
   test('provider 429 maps to provider_cooldown', async () => {
     seedProvider([
       { status: 429, errorBody: { error: { message: 'rate limited, slow down' } } },

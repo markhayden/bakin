@@ -95,7 +95,7 @@ import {
   OPENCLAW_SESSION_ACTIVITY_POLL_MS,
   openClawCliSessionId,
 } from './session-activity'
-import { streamOpenClawTurnChunks } from './stream-events'
+import { streamOpenClawTurnChunks, tapOpenClawTurnActivity } from './stream-events'
 import {
   writeOpenClawConfig, upsertOpenClawAgentConfig,
   updateOpenClawAgentIdentity, updateAgentAllowlist, removeOpenClawAgentConfig,
@@ -199,6 +199,8 @@ interface OpenClawAgentTurnOptions {
   idempotencyKey?: string
   /** Fires on the gateway's `accepted` ack (streaming: thinking + authoritative runId). */
   onAccepted?: (ack: OpenClawGatewayAcceptedAck) => void
+  /** Send-path live-activity tap (MessageArgs.onActivity): tool/status chunks only. */
+  onActivity?: (chunk: ChatChunk) => void
 }
 
 /** Result of one OpenClaw agent turn: the assistant text plus token usage
@@ -538,6 +540,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         thinking: args.thinking,
         oversizedOutputBytes: oversizedOutputBytesFrom(args.metadata),
         signal: args.signal,
+        onActivity: args.onActivity,
       })
       // Threaded sends expose the real (deterministic) provider session id
       // so callers can correlate the turn with forensics, usage, and audit.
@@ -1570,19 +1573,22 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     }
     const cliSessionId = opts.sessionKey ? openClawCliSessionId(opts.agentId, opts.sessionKey) : null
     const prompt = messagesToOpenClawPrompt(opts.messages)
+    // Per-turn key: the gateway DEDUPES on this for ~5 minutes and replays
+    // the cached payload, so two DIFFERENT logical turns on one thread must
+    // carry different keys (the enrichment corrective re-ask was the first
+    // multi-message-per-thread caller — a thread-only key silently replayed
+    // the first turn's reply to the re-ask). Hashing the rendered prompt
+    // keeps transport retries idempotent: same turn → same content → same
+    // key. Unthreaded sends keep a random key — each is its own turn. The
+    // gateway echoes this key back as the runId, so the activity tap below
+    // can pre-key its frame filter before the ack arrives.
+    const idempotencyKey = opts.idempotencyKey ?? openClawTurnIdempotencyKey(prompt, opts.sessionKey)
     const params: Record<string, unknown> = {
       agentId: opts.agentId,
       message: prompt,
       deliver: false,
       timeout: OPENCLAW_AGENT_TIMEOUT_SECONDS,
-      // Per-turn key: the gateway DEDUPES on this for ~5 minutes and replays
-      // the cached payload, so two DIFFERENT logical turns on one thread must
-      // carry different keys (the enrichment corrective re-ask was the first
-      // multi-message-per-thread caller — a thread-only key silently replayed
-      // the first turn's reply to the re-ask). Hashing the rendered prompt
-      // keeps transport retries idempotent: same turn → same content → same
-      // key. Unthreaded sends keep a random key — each is its own turn.
-      idempotencyKey: opts.idempotencyKey ?? openClawTurnIdempotencyKey(prompt, opts.sessionKey),
+      idempotencyKey,
     }
     applyRuntimeMessageToolPolicy(params, opts)
     if (cliSessionId) params.sessionId = cliSessionId
@@ -1624,8 +1630,25 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     // late ack can never surface after the local abort because the pending
     // entry is gone. The local rejection below never waits on any of this.
     let acceptedAck: OpenClawGatewayAcceptedAck | null = null
+    // MessageArgs.onActivity (T8): tool/status liveness for send() turns,
+    // fed from the same push-event subscription streaming uses. Absent tap
+    // → no subscription, zero behavior change.
+    const activityTap = opts.onActivity
+      ? tapOpenClawTurnActivity({
+          events: this.openClawChatGateway(),
+          idempotencyKey,
+          onActivity: opts.onActivity,
+          onCallbackError: (err) => {
+            this.logger.warn('onActivity callback threw; contained', {
+              agentId: opts.agentId,
+              err: err instanceof Error ? err.message : String(err),
+            })
+          },
+        })
+      : null
     const onAccepted = (ack: OpenClawGatewayAcceptedAck): void => {
       acceptedAck = ack
+      activityTap?.onAccepted(ack)
       opts.onAccepted?.(ack)
     }
     const onCallerAbort = () => {
@@ -1743,6 +1766,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       throw typed
     } finally {
       opts.signal?.removeEventListener('abort', onCallerAbort)
+      activityTap?.unsubscribe()
       deathWatch?.stop()
     }
   }

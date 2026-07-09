@@ -253,6 +253,74 @@ class TurnObserver {
   }
 }
 
+/**
+ * Map one Pi session event to normalized chunks — the single event→chunk
+ * mapping shared by `stream()` (all chunk kinds) and the `send()` activity
+ * tap (which keeps only tool/status). `state` carries the once-per-turn
+ * thinking announcement.
+ */
+function sessionEventChunks(event: AgentSessionEvent, state: { announcedThinking: boolean }): ChatChunk[] {
+  if (event.type === 'message_update') {
+    const delta = event.assistantMessageEvent
+    if (delta.type === 'text_delta') return [{ type: 'text', content: delta.delta }]
+    if (delta.type === 'thinking_start' && !state.announcedThinking) {
+      state.announcedThinking = true
+      return [{ type: 'status', content: 'thinking' }]
+    }
+    return []
+  }
+  if (event.type === 'tool_execution_start') {
+    return [{
+      type: 'tool',
+      data: {
+        phase: 'call',
+        callId: event.toolCallId,
+        toolName: event.toolName,
+        status: 'running',
+        inputPreview: safePreview(event.args),
+      },
+    }]
+  }
+  if (event.type === 'tool_execution_end') {
+    return [{
+      type: 'tool',
+      data: {
+        phase: 'result',
+        callId: event.toolCallId,
+        toolName: event.toolName,
+        status: event.isError ? 'failed' : 'completed',
+        // Clean one-line summary (peel the tool-result envelope, parse inner
+        // JSON) instead of an escaped raw dump (#608).
+        summary: summarizeStructured(unwrapToolResult(event.result)) || undefined,
+      },
+    }]
+  }
+  return []
+}
+
+/**
+ * Subscribe the send-path activity tap (MessageArgs.onActivity, T8): the
+ * shared event→chunk mapping filtered to tool/status. Callback exceptions
+ * are contained — a throwing tap never fails the turn.
+ */
+function subscribeActivityTap(
+  session: AgentSession,
+  onActivity: (chunk: ChatChunk) => void,
+  deps: PiMessagingDeps,
+): () => void {
+  const state = { announcedThinking: false }
+  return session.subscribe((event: AgentSessionEvent) => {
+    for (const chunk of sessionEventChunks(event, state)) {
+      if (chunk.type !== 'tool' && chunk.type !== 'status') continue
+      try {
+        onActivity(chunk)
+      } catch (err) {
+        deps.getLogger?.()?.warn('adapter-pi: onActivity callback threw; contained', { error: String(err) })
+      }
+    }
+  })
+}
+
 export function createMessagingSurface(deps: PiMessagingDeps): AgentRuntimeAdapter['messaging'] {
   async function runTurn<T>(
     args: MessageArgs,
@@ -283,6 +351,7 @@ export function createMessagingSurface(deps: PiMessagingDeps): AgentRuntimeAdapt
     async send(args: MessageArgs): Promise<MessageResult> {
       return runTurn(args, async ({ session, record }, observer) => {
         const before = session.getSessionStats()
+        const unsubscribeTap = args.onActivity ? subscribeActivityTap(session, args.onActivity, deps) : null
         try {
           await session.prompt(args.content, { images: imageContentsFor(args, record) })
         } catch (err) {
@@ -291,6 +360,8 @@ export function createMessagingSurface(deps: PiMessagingDeps): AgentRuntimeAdapt
             sessionId: session.sessionId,
             model: resolveModelRef(args.model, record.model),
           })
+        } finally {
+          unsubscribeTap?.()
         }
         if (args.signal?.aborted || observer.endedAborted) {
           throw new RuntimeError('Pi turn aborted', { kind: 'aborted' })
@@ -321,41 +392,9 @@ export function createMessagingSurface(deps: PiMessagingDeps): AgentRuntimeAdapt
       }
 
       const turn = runTurn(args, async ({ session, record }, observer) => {
-        let announcedThinking = false
+        const chunkState = { announcedThinking: false }
         const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
-          if (event.type === 'message_update') {
-            const delta = event.assistantMessageEvent
-            if (delta.type === 'text_delta') {
-              push({ type: 'text', content: delta.delta })
-            } else if (delta.type === 'thinking_start' && !announcedThinking) {
-              announcedThinking = true
-              push({ type: 'status', content: 'thinking' })
-            }
-          } else if (event.type === 'tool_execution_start') {
-            push({
-              type: 'tool',
-              data: {
-                phase: 'call',
-                callId: event.toolCallId,
-                toolName: event.toolName,
-                status: 'running',
-                inputPreview: safePreview(event.args),
-              },
-            })
-          } else if (event.type === 'tool_execution_end') {
-            push({
-              type: 'tool',
-              data: {
-                phase: 'result',
-                callId: event.toolCallId,
-                toolName: event.toolName,
-                status: event.isError ? 'failed' : 'completed',
-                // Clean one-line summary (peel the tool-result envelope,
-                // parse inner JSON) instead of an escaped raw dump (#608).
-                summary: summarizeStructured(unwrapToolResult(event.result)) || undefined,
-              },
-            })
-          }
+          for (const chunk of sessionEventChunks(event, chunkState)) push(chunk)
         })
         try {
           await session.prompt(args.content, { images: imageContentsFor(args, record) })
