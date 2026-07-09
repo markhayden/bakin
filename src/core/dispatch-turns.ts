@@ -17,7 +17,7 @@ import { createLogger } from './logger'
 import { getSettings } from './settings'
 import { appendAudit } from './audit'
 import { getAppServices } from './app-services-store'
-import { RuntimeError, RuntimeTurnError, type MessageResult } from '@bakin/core/adapters/runtime'
+import { RuntimeError, RuntimeTurnError, type ChatChunk, type MessageResult } from '@bakin/core/adapters/runtime'
 import { claimNextRun, loseRun, settleRun, openBudgetIncident, resolveExpiredBudgetIncidents, findOpenCapIncident, type ClaimNextRunResult } from './execution-ledger'
 import { meterAgentTurn } from './agent-cost'
 import { resolveTurnModel, type ResolvedTurn, type RoutingConfig } from './model-routing'
@@ -44,7 +44,7 @@ const hooks = () => getHookRegistry()
  * sends (orchestrator/watchdog/doctor) deliberately stay in the agent's
  * default session and don't go through here.
  */
-async function sendDispatchMessage(agentId: string, content: string, threadId: string, routing?: ResolvedTurn, signal?: AbortSignal): Promise<MessageResult> {
+async function sendDispatchMessage(agentId: string, content: string, threadId: string, routing?: ResolvedTurn, signal?: AbortSignal, onActivity?: (chunk: ChatChunk) => void): Promise<MessageResult> {
   return getAppServices().runtime.messaging.send({
     agentId,
     content,
@@ -52,8 +52,35 @@ async function sendDispatchMessage(agentId: string, content: string, threadId: s
     ...(routing?.model ? { model: routing.model } : {}),
     ...(routing?.thinking ? { thinking: routing.thinking } : {}),
     ...(signal ? { signal } : {}),
+    ...(onActivity ? { onActivity } : {}),
     metadata: { oversizedOutputBytes: getSettings().dispatch.oversizedOutputBytes },
   })
+}
+
+/**
+ * Live turn activity: the adapter's best-effort onActivity tap (tool/status
+ * chunks, T8) broadcast straight to SSE — EPHEMERAL by design. Never
+ * persisted: no task log, no audit, no heartbeat bump — the durable record
+ * of a turn stays the ledger run + the agent's own progress logs. Chunks
+ * arrive already classified and redacted by the adapter, and already
+ * coalesced/sparse upstream (OpenClaw coalesces 150ms server-side; the tap
+ * is tool+status only), so no additional throttling here.
+ */
+export interface TurnActivityEvent extends Record<string, unknown> {
+  type: 'turn-activity'
+  taskId: string
+  /** Nested-workflow child board task the step turn serves, when present. */
+  childTaskId?: string
+  agentId: string
+  /** The ledger run id (== threadId) of the turn producing the activity. */
+  runId: string
+  chunk: { type: ChatChunk['type']; content?: string; data?: unknown }
+  ts: string
+}
+
+function broadcastTurnActivity(event: TurnActivityEvent): void {
+  const fn = (globalThis as { __bakinBroadcast?: (data: Record<string, unknown>) => void }).__bakinBroadcast
+  if (fn) fn(event)
 }
 
 // Fail-closed (ledger unreadable) can't write a durable incident — the
@@ -372,7 +399,7 @@ export function auditDispatchSuppressed(contentDir: string, task: { id: string; 
 // public dispatch barrel.
 
 export { getInFlightTurnCount } from './dispatch-registry'
-import { getInFlightTurnCount, getInFlightSettledPromises, registerTurn, unregisterTurn } from './dispatch-registry'
+import { getInFlightTurnCount, getInFlightSettledPromises, getInFlightTurn, registerTurn, unregisterTurn } from './dispatch-registry'
 
 /** Why a dispatch can't fire right now, or null when a slot is free. */
 export function concurrencyGate(
@@ -475,7 +502,23 @@ export function fireDispatchTurn(opts: {
           ...(routing.thinking ? { thinking: routing.thinking } : {}),
         })
       }
-      const result = await sendDispatchMessage(opts.targetAgent, opts.message, opts.threadId, routing, abort.signal)
+      // Drop-after-settle guard: the tap can rarely fire after the turn
+      // settles (late gateway frames) — once the registry entry is gone,
+      // nothing broadcasts. Registry presence is the single liveness gate.
+      const onActivity = (chunk: ChatChunk): void => {
+        if (chunk.type === 'done' || chunk.type === 'error') return
+        if (!getInFlightTurn(opts.marker)) return
+        broadcastTurnActivity({
+          type: 'turn-activity',
+          taskId: opts.task.id,
+          ...(opts.childTaskId ? { childTaskId: opts.childTaskId } : {}),
+          agentId: opts.targetAgent,
+          runId: opts.threadId,
+          chunk: { type: chunk.type, ...(chunk.content !== undefined ? { content: chunk.content } : {}), ...(chunk.data !== undefined ? { data: chunk.data } : {}) },
+          ts: new Date().toISOString(),
+        })
+      }
+      const result = await sendDispatchMessage(opts.targetAgent, opts.message, opts.threadId, routing, abort.signal, onActivity)
       // Free the live-run slot FIRST — the settle reconciliation below (and
       // any ladder re-dispatch it schedules) must be able to claim anew.
       try {
