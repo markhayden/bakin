@@ -680,6 +680,230 @@ curl -sS \
 ```
 </OpenApiReference>
 
+## Brands
+
+<OpenApiReference tag="Brands" summary />
+
+<OpenApiReference operationId="brands.get.root">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/brands/'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="brands.post.root">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/brands/' \
+  -H 'Content-Type: application/json' \
+  --data '{"id":"value","name":"value","description":"value","draft":true}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="brands.get.brand-id">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/brands/<brandId>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="brands.put.brand-id">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PUT \
+  'http://localhost:3737/api/plugins/brands/<brandId>' \
+  -H 'Content-Type: application/json' \
+  --data '{"name":"value","description":"value","palette":[{"name":"value","hex":"value","usage":"value"}],"rules":["value"],"terminology":[{"term":"value","rule":"value"}],"cardDocs":["value"],"draft":true,"logos":[{"assetId":"value","variant":"value"}],"assetGroups":[{"name":"value","description":"value","assetIds":["value"]}],"defaultImageReferences":["value"],"source":{"repo":"value","ref":"value","commit":"value","importedAt":"value"}}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="brands.delete.brand-id">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X DELETE \
+  'http://localhost:3737/api/plugins/brands/<brandId>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="brands.get.brand-id-activity">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/brands/<brandId>/activity'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="brands.get.brand-id-card-preview">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/brands/<brandId>/card-preview'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="brands.get.brand-id-docs-kind-name">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/brands/<brandId>/docs/<kind>/<name>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="brands.put.brand-id-docs-kind-name">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PUT \
+  'http://localhost:3737/api/plugins/brands/<brandId>/docs/<kind>/<name>' \
+  -H 'Content-Type: application/json' \
+  --data '{"content":"value"}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="brands.delete.brand-id-docs-kind-name">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X DELETE \
+  'http://localhost:3737/api/plugins/brands/<brandId>/docs/<kind>/<name>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="brands.post.brand-id-export">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/brands/<brandId>/export' \
+  -H 'Content-Type: application/json' \
+  --data '{"destDir":"value"}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="brands.get.brand-id-integrity">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/brands/<brandId>/integrity'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="brands.post.brand-id-lessons">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/brands/<brandId>/lessons' \
+  -H 'Content-Type: application/json' \
+  --data '{"title":"value","body":"value"}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="brands.post.brand-id-publish">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/brands/<brandId>/publish'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="brands.get.blocked-tasks">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/brands/blocked-tasks'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="brands.post.builder">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/brands/builder' \
+  -H 'Content-Type: application/json' \
+  --data '{"id":"value","name":"value","agent":"value","product":"value","audience":"value","tone":"value","competitors":"value","urls":"value","notes":"value","logoAssetId":"value"}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="brands.post.import">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/brands/import' \
+  -H 'Content-Type: application/json' \
+  --data '{"source":"value","overwrite":true}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="brands.get.import-check">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/brands/import/check?id=<id>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="brands.post.import-preview">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/brands/import/preview' \
+  -H 'Content-Type: application/json' \
+  --data '{"source":"value"}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="brands.get.injections-task-id">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/brands/injections/<taskId>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="brands.get.task-context-task-id">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/brands/task-context/<taskId>'
+```
+</OpenApiReference>
+
+## Chat
+
+<OpenApiReference tag="Chat" summary />
+
+<OpenApiReference operationId="chat.get.chats">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/chat/chats?agent=<agent>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="chat.post.chats">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/chat/chats' \
+  -H 'Content-Type: application/json' \
+  --data '{"agentId":"value","title":"value"}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="chat.get.chats-chat-id">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/chat/chats/<chatId>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="chat.delete.chats-chat-id">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X DELETE \
+  'http://localhost:3737/api/plugins/chat/chats/<chatId>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="chat.post.chats-chat-id-messages">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/chat/chats/<chatId>/messages' \
+  -H 'Content-Type: application/json' \
+  --data '{"content":"value"}'
+```
+</OpenApiReference>
+
 ## Explore
 
 <OpenApiReference tag="Explore" summary />
@@ -1054,6 +1278,16 @@ curl -sS \
 ```
 </OpenApiReference>
 
+<OpenApiReference operationId="models.put.billing-overrides">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PUT \
+  'http://localhost:3737/api/plugins/models/billing/overrides' \
+  -H 'Content-Type: application/json' \
+  --data '{"overrides":[{"agentId":"value","provider":"value","lane":"metered"}]}'
+```
+</OpenApiReference>
+
 <OpenApiReference operationId="models.get.budget">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
@@ -1067,7 +1301,31 @@ curl -sS \
   -X PUT \
   'http://localhost:3737/api/plugins/models/budget' \
   -H 'Content-Type: application/json' \
-  --data '{"global":{"dailyUsd":1,"monthlyUsd":1,"warnPct":1}}'
+  --data '{"rules":[{"scope":"global","scopeId":"value","lane":"metered","dailyCap":1,"monthlyCap":1,"warnPct":1,"atCap":"defer"}]}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="models.get.budget-incidents">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/models/budget/incidents'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="models.post.budget-incidents-id-resolve">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/models/budget/incidents/<id>/resolve' \
+  -H 'Content-Type: application/json' \
+  --data '{"action":"raise","cap":1}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="models.get.budget-status">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/models/budget/status'
 ```
 </OpenApiReference>
 
@@ -1274,7 +1532,7 @@ curl -sS \
   -X POST \
   'http://localhost:3737/api/plugins/tasks/' \
   -H 'Content-Type: application/json' \
-  --data '{"id":"value","title":"value","description":"value","column":"backlog","assignee":"value","team":"value","workflowId":"value","skipWorkflowReason":"value","createdBy":"value","parentId":"value","projectId":"value","availableAt":"value","dueAt":"value","source":{"pluginId":"value","entityType":"value","entityId":"value","purpose":"value"}}'
+  --data '{"id":"value","title":"value","description":"value","column":"backlog","assignee":"value","team":"value","workflowId":"value","skipWorkflowReason":"value","createdBy":"value","parentId":"value","projectId":"value","brandId":"value","availableAt":"value","dueAt":"value","source":{"pluginId":"value","entityType":"value","entityId":"value","purpose":"value"}}'
 ```
 </OpenApiReference>
 
@@ -1291,7 +1549,7 @@ curl -sS \
   -X PUT \
   'http://localhost:3737/api/plugins/tasks/<taskId>' \
   -H 'Content-Type: application/json' \
-  --data '{"id":"value","originalTitle":"value","title":"value","description":"value","agent":"value","team":"value","column":"value","workflowId":"value","availableAt":"value","dueAt":"value","source":"value","expectedVersion":1}'
+  --data '{"id":"value","originalTitle":"value","title":"value","description":"value","agent":"value","team":"value","column":"value","workflowId":"value","brandId":"value","availableAt":"value","dueAt":"value","source":"value","expectedVersion":1}'
 ```
 </OpenApiReference>
 
@@ -1841,5 +2099,5 @@ curl -sS \
 </OpenApiReference>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 7, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 9, 2026 · Bakin 0.0.0-dev</span>
 </aside>

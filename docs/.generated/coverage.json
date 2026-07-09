@@ -4,8 +4,8 @@
   "surfaces": {
     "cliCommands": {
       "status": "active",
-      "count": 66,
-      "examples": 77,
+      "count": 75,
+      "examples": 89,
       "source": "src/core/cli/registry.ts"
     },
     "httpRoutes": {
@@ -23,7 +23,7 @@
     },
     "hookRegistrations": {
       "status": "audited",
-      "count": 54,
+      "count": 57,
       "source": "source scan"
     },
     "slots": {
@@ -34,17 +34,17 @@
     },
     "execTools": {
       "status": "audited",
-      "count": 128,
+      "count": 134,
       "source": "source scan"
     },
     "corePlugins": {
       "status": "active",
-      "count": 11,
+      "count": 13,
       "source": "plugins/*/bakin-plugin.json"
     },
     "settings": {
       "status": "active",
-      "count": 71,
+      "count": 73,
       "source": "packages/core/src/settings.ts"
     },
     "sdkSubpaths": {

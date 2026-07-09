@@ -295,6 +295,138 @@ Example:
 bakin_exec_assets_scan_unmanaged
 ```
 
+## Brands
+
+### bakin_exec_brands_add_lesson
+
+Label: Added a brand lesson
+Purpose: Bank a brand learning from this task (e.g. "thread format flopped on LinkedIn — use single posts"). Append-only: the ONLY write agents may make to a published brand. Absolute always-rules belong in the brand's Rules list (ask the operator), not lessons.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `brandId` | string | yes | Brand id |
+| `title` | string | yes | Short lesson title |
+| `body` | string | yes | The lesson: what happened, what to do instead |
+
+Example:
+
+```sh
+bakin_exec_brands_add_lesson {
+  "brandId": "value",
+  "title": "value",
+  "body": "value"
+}
+```
+
+### bakin_exec_brands_get
+
+Label: Read a brand
+Purpose: Full brand view: palette, absolute rules, terminology, logos, asset groups, guideline/lesson doc listings (with descriptions), and the content fingerprint. Use read_doc to fetch a doc body.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `brandId` | string | yes | Brand id (see bakin_exec_brands_list) |
+
+Example:
+
+```sh
+bakin_exec_brands_get {
+  "brandId": "value"
+}
+```
+
+### bakin_exec_brands_list
+
+Label: Listed brands
+Purpose: List all published brands (id, name, description). Drafts are excluded.
+
+Arguments: none.
+
+Example:
+
+```sh
+bakin_exec_brands_list
+```
+
+### bakin_exec_brands_read_doc
+
+Label: Read a brand doc
+Purpose: Read one guideline or lesson markdown body for a brand.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `brandId` | string | yes | Brand id |
+| `kind` | choice | yes | Doc kind |
+| `name` | string | yes | Doc filename, e.g. style-guide.md |
+
+Example:
+
+```sh
+bakin_exec_brands_read_doc {
+  "brandId": "value",
+  "kind": "value",
+  "name": "value"
+}
+```
+
+### bakin_exec_brands_update_manifest
+
+Label: Updated a draft-brand manifest
+Purpose: DRAFT BRANDS ONLY (builder flow): set description, palette, rules, terminology, and/or cardDocs while authoring a brand. Typed error on published brands.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `brandId` | string | yes | Draft brand id |
+| `description` | string | no | One-line brand description |
+| `palette` | array | no | Structured colors [{name, hex, usage?}] |
+| `rules` | array | no | Absolute imperatives, e.g. "Never use emojis" |
+| `terminology` | array | no | Do/don't term pairs [{term, rule}] |
+| `cardDocs` | array | no | Guideline filenames inlined into the dispatch card |
+
+Example:
+
+```sh
+bakin_exec_brands_update_manifest {
+  "brandId": "value",
+  "description": "value",
+  "palette": [
+    "value"
+  ],
+  "rules": [
+    "value"
+  ],
+  "terminology": [
+    "value"
+  ],
+  "cardDocs": [
+    "value"
+  ]
+}
+```
+
+### bakin_exec_brands_write_doc
+
+Label: Wrote a draft-brand doc
+Purpose: DRAFT BRANDS ONLY (builder flow): write a guideline or lesson doc while authoring a brand. Typed error on published brands — live brand identity is operator-only.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `brandId` | string | yes | Draft brand id |
+| `kind` | choice | yes | Doc kind |
+| `name` | string | yes | Doc filename ending in .md, e.g. voice.md |
+| `content` | string | yes | Full markdown content (frontmatter description: recommended) |
+
+Example:
+
+```sh
+bakin_exec_brands_write_doc {
+  "brandId": "value",
+  "kind": "value",
+  "name": "value",
+  "content": "value"
+}
+```
+
 ## Check
 
 ### bakin_exec_check_gates
@@ -2041,6 +2173,7 @@ Purpose: Create a new task on the task board. Workflows are auto-matched by titl
 | `workflowId` | string | no | Workflow to start (e.g. image-social-post, video-script). Use bakin_exec_workflows_list to see options. |
 | `skipWorkflowReason` | string | no | Reason no workflow applies (required if workflowId is not set and this is not a subtask) |
 | `projectId` | string | no | Project ID to link this task to |
+| `brandId` | string | no | Brand ID this task's output must follow (see bakin_exec_brands_list). Omit to inherit from the parent task or project. |
 | `availableAt` | string | no | ISO timestamp before which dispatch should not pick up the task |
 | `dueAt` | string | no | ISO timestamp representing the task deadline or target delivery time |
 | `sourcePluginId` | string | no | Plugin that owns the source entity for this task |
@@ -2060,6 +2193,7 @@ bakin_exec_tasks_create {
   "workflowId": "value",
   "skipWorkflowReason": "value",
   "projectId": "value",
+  "brandId": "value",
   "availableAt": "value",
   "dueAt": "value",
   "sourcePluginId": "value",

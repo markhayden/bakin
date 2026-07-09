@@ -826,6 +826,17 @@ bakin workflows submit <taskId> <stepId> <json>
 bakin serve
 ```
 </CliCommandCard>
+<CliCommandCard id="runtime" name="runtime" summary="Show the runtime capability report or switch runtime adapters." description="Without arguments, prints the active runtime adapter and its capability report (native/shimmed/unavailable per capability, tool-access status). `bakin runtime use &lt;adapter&gt;` runs the orchestrated switch: settings backup, tool-access deprovision/provision, best-effort roster carry-over with an honest unmapped-model report, drift-gated agent re-projection, and capability validation. A completed switch requires `bakin restart` so plugins rebind.">
+```sh frame="terminal"
+bakin runtime [use <openclaw|pi>]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[value]</code><span class="cli-command__choices"><span>use &lt;openclaw</span><span>pi&gt;</span></span></td><td>choice</td><td>no</td><td>Choose one of these values.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
 <CliCommandCard id="agents-context" name="agents context" summary="Startup-context size diagnostics." description="Reports per-source startup-context sizes for a fresh task dispatch: static prompt sections (measured from the real builders), configured caps for dynamic blocks, runtime workspace file sizes, and observed dispatch-run tokens from the cost ledger. Names and numbers only — never prompt content. Distinct from `bakin diagnostics startup`, which reports server boot timing.">
 ```sh frame="terminal"
 bakin agents context [agent-id] [--json]
@@ -878,8 +889,104 @@ bakin diagnostics startup <status|on|off> [--slow-ms <ms>] [--json]
     </tbody>
   </table>
 </CliCommandCard>
+<CliCommandCard id="spend" name="spend" summary="Estimated agent spend + budget utilization." description="Lane-split spend (metered dollars vs subscription tokens — plan quota carries no dollar figure), per-rule budget utilization, on-pace projections, unattributed share, per-agent/per-model rollups, and the kill-switch state. Same engine the dispatch gate enforces, so the numbers match the Spend tab.">
+```sh frame="terminal"
+bakin spend [--window 24h|7d|30d|all] [--json]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[value]</code><span class="cli-command__choices"><span>--window 24h</span><span>7d</span><span>30d</span><span>all</span></span></td><td>choice</td><td>no</td><td>Choose one of these values.</td></tr>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="budget" name="budget" summary="Manage spending caps + the dispatch kill switch." description="Shows or edits cap rules (scope global|agent|provider × lane metered|subscription; metered caps are whole USD, subscription caps are tokens), pauses/resumes ALL dispatch (kill switch), and lists/resolves budget incidents (raise a cap &amp; resume, acknowledge, or resume a pause-mode hold).">
+```sh frame="terminal"
+bakin budget [show|set|rm|pause|resume|incidents] ... (set: --scope global|agent|provider|model --lane metered|subscription; token caps accept k/M suffixes)
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[value]</code><span class="cli-command__choices"><span>show</span><span>set</span><span>rm</span><span>pause</span><span>resume</span><span>incidents</span></span></td><td>choice</td><td>no</td><td>Choose one of these values.</td></tr>
+      <tr><td><code>(set:</code></td><td>argument</td><td>no</td><td>Optional value.</td></tr>
+      <tr><td><code>--scope</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
+      <tr><td><code>value</code><span class="cli-command__choices"><span>global</span><span>agent</span><span>provider</span><span>model</span></span></td><td>choice</td><td>no</td><td>Choose one of these values.</td></tr>
+      <tr><td><code>--lane</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
+      <tr><td><code>value</code><span class="cli-command__choices"><span>metered</span><span>subscription;</span></span></td><td>choice</td><td>no</td><td>Choose one of these values.</td></tr>
+      <tr><td><code>token</code></td><td>argument</td><td>no</td><td>Optional value.</td></tr>
+      <tr><td><code>caps</code></td><td>argument</td><td>no</td><td>Optional value.</td></tr>
+      <tr><td><code>accept</code></td><td>argument</td><td>no</td><td>Optional value.</td></tr>
+      <tr><td><code>k/M</code></td><td>argument</td><td>no</td><td>Optional value.</td></tr>
+      <tr><td><code>suffixes)</code></td><td>argument</td><td>no</td><td>Optional value.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="brands-list" name="brands list" summary="List brand records." description="Lists all brands (drafts flagged) plus honestly-surfaced invalid records.">
+```sh frame="terminal"
+bakin brands list
+```
+</CliCommandCard>
+<CliCommandCard id="brands-get" name="brands get" summary="Show one brand." description="Palette, rules, asset groups, guideline/lesson docs, provenance, and the content fingerprint for a brand.">
+```sh frame="terminal"
+bakin brands get <id>
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;id&gt;</code></td><td>argument</td><td>yes</td><td>Resource identifier.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="brands-import" name="brands import" summary="Import a portable brand." description="Previews (name, palette, counts), confirms, then imports: referenced files become managed assets, path refs rewrite to assetIds, provenance is stamped. Existing ids are replaced only after confirmation — local edits win otherwise. Private repos use your ambient git credentials.">
+```sh frame="terminal"
+bakin brands import <github:user/repo[/path]|dir> [--yes]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;value&gt;</code><span class="cli-command__choices"><span>github:user/repo[/path]</span><span>dir</span></span></td><td>choice</td><td>yes</td><td>Choose one of these values.</td></tr>
+      <tr><td><code>[--yes]</code></td><td>option</td><td>no</td><td>Accept all defaults non-interactively.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="brands-check" name="brands check" summary="Drift-check an imported brand." description="Compares an INSTALLED brand's provenance commit against its upstream repo. Read-only; refreshing is an explicit re-import.">
+```sh frame="terminal"
+bakin brands check <id>
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;id&gt;</code></td><td>argument</td><td>yes</td><td>Resource identifier.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="brands-export" name="brands export" summary="Export a brand to a portable directory." description="Writes the portable layout (brand.json with relative file refs, guidelines/, lessons/, assets/) — pushable to a repo and importable by any Bakin.">
+```sh frame="terminal"
+bakin brands export <id> <dir>
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;id&gt;</code></td><td>argument</td><td>yes</td><td>Resource identifier.</td></tr>
+      <tr><td><code>&lt;dir&gt;</code></td><td>argument</td><td>yes</td><td>Required value.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="brands-remove" name="brands remove" summary="Delete a brand." description="Deletes the brand directory after a linked-task warning (pending tasks referencing it defer until the brand exists again). Assets stay in the asset store.">
+```sh frame="terminal"
+bakin brands remove <id> [--yes]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;id&gt;</code></td><td>argument</td><td>yes</td><td>Resource identifier.</td></tr>
+      <tr><td><code>[--yes]</code></td><td>option</td><td>no</td><td>Accept all defaults non-interactively.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 8, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 9, 2026 · Bakin 0.0.0-dev</span>
 </aside>
