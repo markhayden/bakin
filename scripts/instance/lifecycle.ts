@@ -18,7 +18,6 @@ import {
   type OpenClawExec,
 } from './codex'
 import { normalizeAgentPaths } from './agent-paths'
-import { mcporterBakinUrlBase, mcporterConfigJson, mcporterWriteArgs, parseAgentIds } from './mcporter'
 import { buildConfigCommands } from './openclaw-config'
 import { parseSecretsTemplate, redactSecrets, resolveSecrets } from './op-resolve'
 import { bakinOnboardArgs, sandboxBakinArgs, sandboxExecArgs } from './sandbox'
@@ -304,28 +303,13 @@ export async function up(
   await deps.runner.run(composeRestartArgs(paths.composeFile, plan.services, plan.composeProfile))
   await waitForGatewayHealthy(deps, paths)
 
-  // Bridge Bakin's MCP tools to the agent: write mcporter config (per agent,
-  // pointed at Bakin) into the agent's container. Without this the agent has no
-  // bakin_* tools and falls back to OpenClaw-native routing.
-  const agentsList = await exec(['agents', 'list', '--json'])
-  if (agentsList.code !== 0) {
-    // A failed list is indistinguishable from "no agents" once we fall back, so
-    // surface it — otherwise we'd silently wire MCP for the wrong agent set.
-    deps.log(`warning: \`agents list\` failed (${redactSecrets(agentsList.stderr.trim(), secretValues) || `exit ${agentsList.code}`}); defaulting to "main"`)
-  }
-  const agentIds = parseAgentIds(agentsList.stdout)
-  const ids = agentIds.length > 0 ? agentIds : ['main']
-  deps.log(`wiring Bakin MCP tools for: ${ids.join(', ')}`)
-  const mcpWrite = await deps.runner.run(
-    mcporterWriteArgs(
-      paths.composeFile,
-      plan.services[0],
-      mcporterConfigJson(ids, mcporterBakinUrlBase(plan.bakin.placement === 'container')),
-    ),
-  )
-  if (mcpWrite.code !== 0) {
-    deps.log(`warning: mcporter config write failed (${redactSecrets(mcpWrite.stderr.trim(), secretValues) || `exit ${mcpWrite.code}`}); Bakin tools may be unavailable to the agent`)
-  }
+  // Bakin's MCP tool access is provisioned by Bakin itself, not the rig: at
+  // boot the adapter's provisionToolAccess writes per-agent bakin-<agent>
+  // entries into the runtime config's mcp.servers (same path as production).
+  // The rig only supplies the container-reachable base URL via
+  // BAKIN_MCP_BASE_URL in the host env (see modes.ts) — the openclaw home is
+  // bind-mounted, so the entries land where the gateway reads them.
+  deps.log('Bakin MCP tool access: provisioned by Bakin at boot (native MCP entries)')
 
   if (plan.bakin.placement === 'container') {
     if (plan.bakin.onboard === 'auto') {

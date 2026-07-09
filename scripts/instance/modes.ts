@@ -50,10 +50,15 @@ export function resolvePlan(args: InstanceArgs, paths: InstancePaths): InstanceP
   }
 
   // native + isolated: OpenClaw in the gateway container; Bakin runs on the host.
+  // BAKIN_MCP_BASE_URL makes the adapter's provisionToolAccess write mcp.servers
+  // entries with a container-reachable URL (the openclaw home is bind-mounted, so
+  // the entries land where the gateway reads them). Sandbox needs no override:
+  // Bakin runs in-container and the localhost default is already correct.
   const hostEnv: Record<string, string> = {
     OPENCLAW_HOME: paths.openclawHome,
     OPENCLAW_PATH: paths.shim,
     BAKIN_URL,
+    BAKIN_MCP_BASE_URL: BAKIN_URL,
   }
   if (paths.bakinHome) hostEnv.BAKIN_HOME = paths.bakinHome
 
