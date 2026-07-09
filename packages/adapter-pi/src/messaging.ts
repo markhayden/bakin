@@ -125,12 +125,6 @@ async function openTurnSession(args: MessageArgs, deps: PiMessagingDeps): Promis
 
   const settingsManager = SettingsManager.create(workspace, agentDir, { projectTrusted: true })
   const adapterSettings = deps.getSettings?.()
-  const retry = adapterSettings?.retry
-  if (retry && typeof retry === 'object') {
-    // Bakin's dispatch owns the outer retry ladder; installs can tune or
-    // disable Pi's inner auto-retry via settings.runtime.settings.retry.
-    settingsManager.applyOverrides({ retry: retry as never })
-  }
   const extPolicy = extensionsPolicy(adapterSettings)
   const resourceLoader = new DefaultResourceLoader({
     cwd: workspace,
@@ -154,6 +148,16 @@ async function openTurnSession(args: MessageArgs, deps: PiMessagingDeps): Promis
     appendSystemPrompt: buildAppendSystemPrompt(record.id),
   })
   await resourceLoader.reload()
+
+  const retry = adapterSettings?.retry
+  if (retry && typeof retry === 'object') {
+    // Bakin's dispatch owns the outer retry ladder; installs can tune or
+    // disable Pi's inner auto-retry via settings.runtime.settings.retry.
+    // MUST run after resourceLoader.reload(): reload() calls
+    // settingsManager.reload(), which recomputes settings from disk and
+    // discards any overrides applied before it.
+    settingsManager.applyOverrides({ retry: retry as never })
+  }
 
   const execProvider = deps.getExecTools()
   // record.allowlist is the SUBAGENT dispatch allowlist (agent ids) — never
