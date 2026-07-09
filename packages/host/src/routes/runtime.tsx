@@ -305,6 +305,9 @@ function RuntimePage() {
                           : `RESTORE FAILED — compare settings.json with the backup: ${result.backupPath}`}
                       </div>
                     )}
+                    {result.restartRequired && (
+                      <div className="mt-2 font-medium">⚠ Restart required — plugins are still bound to the pre-switch runtime instance.</div>
+                    )}
                   </>
                 )}
               </div>

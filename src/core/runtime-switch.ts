@@ -28,6 +28,7 @@ import type {
 import type { RuntimeAdapterName } from '@bakin/core/settings'
 
 import { createAppServices, maybeGetAppServices } from './app-services'
+import { getSupportedRuntimeAdapterNames } from './runtime-adapter-factory'
 import { syncBakinRuntimeSkill } from './bakin-skill'
 import { getContentDir } from './content-dir'
 import { createLogger } from './logger'
@@ -36,7 +37,7 @@ import { getSettings, updateSettings } from './settings'
 
 const log = createLogger('runtime-switch')
 
-export const RUNTIME_ADAPTER_NAMES: readonly RuntimeAdapterName[] = ['openclaw', 'pi']
+export const RUNTIME_ADAPTER_NAMES: readonly RuntimeAdapterName[] = getSupportedRuntimeAdapterNames()
 
 export type SwitchPhase =
   | 'validate'
@@ -97,6 +98,12 @@ async function syncAgentsIfDrifted(): Promise<{ drifted: boolean; findings: numb
   return { drifted: true, findings: before.findings.length, syncedAgents: results.length }
 }
 
+/**
+ * Single-flight: two interleaved switches would deprovision/flip/provision
+ * in arbitrary order. Concurrent callers get an immediate error result.
+ */
+let switchInFlight = false
+
 export async function switchRuntime(
   target: string,
   opts: SwitchRuntimeOptions = {},
@@ -121,6 +128,11 @@ export async function switchRuntime(
 
   // ── validate ──────────────────────────────────────────────────────────
   emit({ phase: 'validate', status: 'start' })
+  if (switchInFlight) {
+    result.error = 'A runtime switch is already in progress'
+    emit({ phase: 'validate', status: 'error', detail: result.error })
+    return result
+  }
   if (!isRuntimeAdapterName(target)) {
     result.error = `Unknown runtime adapter '${target}' (supported: ${RUNTIME_ADAPTER_NAMES.join(', ')})`
     emit({ phase: 'validate', status: 'error', detail: result.error })
@@ -132,6 +144,9 @@ export async function switchRuntime(
     return result
   }
   emit({ phase: 'validate', status: 'ok', detail: `${from} → ${target}` })
+  switchInFlight = true
+
+  try {
 
   // ── backup ────────────────────────────────────────────────────────────
   emit({ phase: 'backup', status: 'start' })
@@ -154,14 +169,41 @@ export async function switchRuntime(
     return result
   }
 
+  // Set once the old runtime has been deprovisioned/shut down: from that
+  // point plugins hold a dead adapter instance, so even a restored failure
+  // needs a restart to rebind them.
+  let teardownRan = false
+  // The partially-initialized target (set after `initialize`) — restore must
+  // tear it down or its provisioned entries/watchers leak.
+  let targetRuntime: AgentRuntimeAdapter | null = null
+
   const restore = async (): Promise<boolean> => {
     emit({ phase: 'restore', status: 'start' })
     try {
+      // Best-effort: strip the half-provisioned target's tool access and
+      // shut it down before rebuilding on the original adapter.
+      if (targetRuntime) {
+        try {
+          await targetRuntime.deprovisionToolAccess()
+          await targetRuntime.shutdown()
+        } catch (err) {
+          log.warn('target runtime teardown failed during restore', { error: String(err) })
+        }
+      }
       if (result.backupPath) copyFileSync(result.backupPath, settingsPath)
       else updateSettings({ runtime: { adapter: from } })
       const { resetSettingsCache } = await import('./settings')
       resetSettingsCache()
-      await createAppServices()
+      const services = await createAppServices()
+      // The old runtime was deprovisioned before the flip — without this,
+      // a restored OpenClaw loses every bakin-<agent> MCP entry until the
+      // next server boot and agents silently lose their Bakin tools.
+      try {
+        await services.runtime.provisionToolAccess()
+        await syncBakinRuntimeSkill(process.cwd(), services.runtime)
+      } catch (err) {
+        log.warn('re-provisioning the restored runtime failed; next server boot heals it', { error: String(err) })
+      }
       emit({ phase: 'restore', status: 'ok', detail: `restored ${from}` })
       return true
     } catch (err) {
@@ -185,6 +227,7 @@ export async function switchRuntime(
 
     // ── deprovision the old runtime's tool access (best-effort) ─────────
     emit({ phase: 'deprovision', status: 'start' })
+    teardownRan = true
     try {
       await oldRuntime.deprovisionToolAccess()
       emit({ phase: 'deprovision', status: 'ok' })
@@ -193,8 +236,9 @@ export async function switchRuntime(
     }
     try {
       await oldRuntime.shutdown()
-    } catch {
+    } catch (err) {
       // Best-effort teardown; the new services replace it regardless.
+      log.warn('old runtime shutdown failed during switch', { error: String(err) })
     }
 
     // ── flip ─────────────────────────────────────────────────────────────
@@ -206,6 +250,7 @@ export async function switchRuntime(
     emit({ phase: 'initialize', status: 'start' })
     const services = await createAppServices()
     const newRuntime = services.runtime
+    targetRuntime = newRuntime
     emit({ phase: 'initialize', status: 'ok', detail: `${newRuntime.name}@${newRuntime.version}` })
 
     // ── provision tool access ─────────────────────────────────────────────
@@ -266,6 +311,12 @@ export async function switchRuntime(
     result.error = err instanceof Error ? err.message : String(err)
     log.error('Runtime switch failed — restoring previous adapter', err, { from, to: target })
     result.restored = await restore()
+    // Plugins captured the pre-switch adapter, which we shut down — even a
+    // clean restore built a NEW instance, so a restart is still required.
+    result.restartRequired = teardownRan
     return result
+  }
+  } finally {
+    switchInFlight = false
   }
 }

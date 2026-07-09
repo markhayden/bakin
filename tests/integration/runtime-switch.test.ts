@@ -206,7 +206,7 @@ describe('switchRuntime — OpenClaw → Pi', () => {
 })
 
 describe('switchRuntime — failure restores the original adapter', () => {
-  it('a mid-step failure restores settings + services to the source runtime', async () => {
+  it('a mid-step failure restores settings + services to the source runtime, RE-PROVISIONED', async () => {
     expect(getSettings().runtime.adapter).toBe('openclaw')
     scanShouldThrow = true
     try {
@@ -215,6 +215,16 @@ describe('switchRuntime — failure restores the original adapter', () => {
       expect(result.error).toContain('forced scan failure')
       expect(result.restored).toBe(true)
       expect(getSettings().runtime.adapter).toBe('openclaw')
+
+      // The switch deprovisioned OpenClaw's bakin-* MCP entries before the
+      // fallible phases — restore must put them BACK, or every agent
+      // silently loses its Bakin tools until the next server boot.
+      const ocConfig = JSON.parse(readFileSync(openclawConfigPath, 'utf-8'))
+      expect(ocConfig.mcp.servers['bakin-main']).toBeDefined()
+
+      // Plugins are still bound to the pre-switch (shut-down) adapter
+      // instance — even a restored failure needs a restart.
+      expect(result.restartRequired).toBe(true)
     } finally {
       scanShouldThrow = false
     }

@@ -112,6 +112,17 @@ const eventBus = new BakinEventBus(broadcast)
   } catch (err) {
     log.warn('Runtime tool-access provisioning failed at boot', err)
   }
+  // The Bakin runtime skill previously only installed via the openclaw-gated
+  // onboarding component, so fresh installs on other runtimes (Pi implements
+  // skills too) never received it. Idempotent; render is deterministic per
+  // (template, tool-access style).
+  try {
+    const { syncBakinRuntimeSkill } = await import('./src/core/bakin-skill')
+    const skillResult = await syncBakinRuntimeSkill(process.cwd(), appServices.runtime)
+    if (skillResult !== 'noop') log.info('Bakin runtime skill synced at boot', { result: skillResult })
+  } catch (err) {
+    log.warn('Bakin runtime skill sync failed at boot', err)
+  }
 
   // Rebuild any stale user plugin dist/ before the registry imports them.
   // User plugins activate only from `<pluginDir>/dist/index.js`; source
