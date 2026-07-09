@@ -10,21 +10,6 @@ import HookCard from '../../../../components/HookCard.astro'
   <p>This reference shows the hook key to call, what it returns or changes, and the registration that owns the contract.</p>
 </div>
 
-## ${name}
-
-<p class="hook-section-description">Hooks discovered from source registration audit.</p>
-
-<div class="hook-card-list">
-<HookCard id="name-greet" name="${name}.greet" label="${name}" source="src/core/plugin-scaffold.ts:239">
-```ts frame="terminal"
-const result = await ctx.hooks.invoke(
-  '${name}.greet',
-  {},
-)
-```
-</HookCard>
-</div>
-
 ## Assets
 
 <p class="hook-section-description">Asset hooks expose file, sidecar, variant, and trash helpers for plugins that need to work with Bakin-managed files.</p>
