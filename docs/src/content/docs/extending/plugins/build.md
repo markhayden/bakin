@@ -62,11 +62,15 @@ At minimum, define identity metadata (entry points are fixed by convention: `ind
   "name": "Lead Intel",
   "version": "0.1.0",
   "bakin": ">=0.1.0",
-  "description": "Lead scoring and qualification for Bakin agents."
+  "description": "Lead scoring and qualification for Bakin agents.",
+  "contributes": {
+    "apiRoutes": [{ "method": "GET", "path": "/leads" }],
+    "execTools": ["bakin_exec_lead-intel_score"]
+  }
 }
 ```
 
-Then add permissions and public contributions as the plugin grows. Routes, client pages, MCP tools, CLI commands, settings, and docs should be visible in `contributes` where the manifest supports them.
+Then add permissions and further public contributions as the plugin grows. Routes, client pages, MCP tools, CLI commands, settings, and docs should be visible in `contributes` where the manifest supports them. The manifest and the code grow together: every API route and exec tool the code registers must be declared here — exec tool names must start with `bakin_exec_<plugin-id>_`, and activation fails loudly on undeclared registrations.
 
 Full field details live in [Manifest](/docs/extending/plugins/manifest/).
 
@@ -121,8 +125,10 @@ const plugin = definePlugin({
     }),
   ],
   async activate(ctx) {
+    // Tool names must be `bakin_exec_<plugin-id>_<action>` and declared in
+    // the manifest's `contributes.execTools` — activation fails otherwise.
     ctx.registerExecTool({
-      name: 'lead_intel_score',
+      name: 'bakin_exec_lead-intel_score',
       description: 'Score a lead for sales readiness.',
       parameters: {},
       handler: async () => ({ ok: true, score: 0 }),

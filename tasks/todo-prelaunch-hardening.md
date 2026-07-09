@@ -24,7 +24,7 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 ## PR 2a — fix/sdk-golden-path (parallel worktree)
 - [x] T12 Delete manifest.entry (+ tests field); single root layout ✅ (tombstone rejections; 18 manifests + docs swept)
 - [x] T13 Scaffold rewrite ✅ (root layout, real APIs, tsconfig, contributes/permissions, starter test, standalone tsc+test verified)
-- [ ] T14 Golden-path integration test + build.md tutorial fix
+- [x] T14 Golden-path integration test + build.md tutorial fix ✅ (real-builder gate; tutorial tool renamed + contributes)
 - [ ] T15 Host/SDK semver gate
 - [ ] T16 Symmetric contributes enforcement + sync-manifest
 - [ ] CHECKPOINT 2a: golden path verbatim-works; PR merged
