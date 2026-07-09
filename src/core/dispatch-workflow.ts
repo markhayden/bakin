@@ -16,7 +16,7 @@ import { getFailureRecord } from './dispatch-state'
 import { findDispatchTaskSnapshot } from './dispatch-board'
 import { buildDispatchLessonBlock, buildDispatchAssetBlock } from './dispatch-context-blocks'
 import { toolHelpers, sharedExecutionToolDocs, outputDisciplineSection, buildCorrectiveSection, type PromptSection } from './dispatch-prompts'
-import { concurrencyGate, deferForBudget, claimDispatchRun, auditDispatchSuppressed, fireDispatchTurn } from './dispatch-turns'
+import { concurrencyGate, deferForBudget, claimDispatchRun, auditDispatchSuppressed, fireDispatchTurn, resolveDispatchRouting } from './dispatch-turns'
 
 const log = createLogger('dispatch-workflow')
 const hooks = () => getHookRegistry()
@@ -115,8 +115,12 @@ export async function dispatchWorkflowTask(
       continue
     }
 
+    // Resolve routing BEFORE the budget gate (provider-scoped rules need the
+    // turn's model); the fire below reuses this exact resolution.
+    const routing = await resolveDispatchRouting(task, false)
+
     // Spend ceiling — defer the step when a budget cap is hit.
-    if (await deferForBudget(targetAgent, contentDir)) {
+    if (await deferForBudget(targetAgent, contentDir, undefined, { model: routing.model })) {
       log.debug('Workflow step dispatch deferred by budget gate', { taskId: task.id, stepId, agent: targetAgent })
       continue
     }
@@ -157,6 +161,7 @@ export async function dispatchWorkflowTask(
       initialLogCount,
       logPrefix: `Workflow dispatch failed for step "${stepId}"`,
       dispatchKind: 'workflow',
+      routing,
       // Nested step: the agent serves a child board task — deleting that
       // child must abort this turn even though `task` is the parent (#604).
       ...(contextTaskId !== task.id ? { childTaskId: contextTaskId } : {}),

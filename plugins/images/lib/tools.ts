@@ -11,6 +11,7 @@ import { resolveImageRoute } from './routing'
 import { getImageProfile } from './platform-profiles'
 import { runBilledImageCall, type ImageCallKey } from './idempotency'
 import { meterImageTurn } from '../../../src/core/agent-cost'
+import { gateBilledMediaCall } from '../../../src/core/media-gate'
 
 /** Largest edge we send to a provider / feed into sharp, to bound cost. */
 const MAX_IMAGE_EDGE = 2048
@@ -504,6 +505,13 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
     references: req.references.fingerprint,
   }
   return runBilledImageCall(key, async () => {
+    // Budget/kill-switch gate INSIDE the idempotent wrapper (cost-control
+    // v2): it must run only when we would actually BILL — a retry of an
+    // already-billed identical call dedupes into the cached/in-flight result
+    // first and always receives what was paid for. Refusals are ok:false and
+    // never cached.
+    const generateGate = await gateBilledMediaCall({ agent, model: `${req.route.provider}/${req.route.model}` })
+    if (!generateGate.allowed) return { ok: false, error: generateGate.refusal.message, budget: generateGate.refusal }
     try {
       const result = await runGenerate({
         prompt: req.prompt, provider: req.route.provider, model: req.route.model,
@@ -552,6 +560,9 @@ export async function editImage(ctx: PluginContext, params: ImagesEditParams, ag
     references: req.references.fingerprint,
   }
   return runBilledImageCall(key, async () => {
+    // Same gate placement as generate — only when we would actually bill.
+    const editGate = await gateBilledMediaCall({ agent, model: `${req.route.provider}/${req.route.model}` })
+    if (!editGate.allowed) return { ok: false, error: editGate.refusal.message, budget: editGate.refusal }
     try {
       // The base (current version) stays first; extra references append after it.
       const result = await runEdit({

@@ -56,7 +56,7 @@ export { useSidebar } from '@/hooks/use-sidebar'
 /** Subscribe to a Server-Sent Events endpoint with auto-reconnect. */
 export { useSSE } from '@/hooks/use-sse'
 /** Subscribe to a server-pushed plugin event over the shell's single connection. */
-export { usePluginEvent, type PluginEventPayload } from '@/hooks/use-plugin-event'
+export { usePluginEvent, emitPluginEvent, type PluginEventPayload } from '@/hooks/use-plugin-event'
 /** Fire a toast notification (success/error/info). */
 export { toast } from '@/hooks/use-toast'
 /** Subscribe to the toast store for custom toast UIs. */

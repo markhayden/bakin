@@ -13,7 +13,7 @@ import type {
 import type { CapabilityMode, CapabilitySet, RuntimeCapabilities, RuntimeCredentialStatus, RuntimeToolAccess, ToolAccessProvisioningStatus } from '@bakin/core/adapters/runtime'
 
 import { createAgentsSurface } from './agents'
-import { listAuthProviders } from './config'
+import { listAuthCredentials } from './config'
 import { MAIN_AGENT_ID, seedMainAgentIfEmpty } from './main-agent'
 import { createMemorySurface } from './memory'
 import { createMessagingSurface } from './messaging'
@@ -71,10 +71,14 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
    * auth.json (never secret material). Pi keys credentials per-install, not
    * per-agent, so `agentId` is irrelevant; no channel layer → no channels.
    */
-  credentialStatus = async (_opts?: { agentId?: string }): Promise<RuntimeCredentialStatus> => ({
-    llmProviders: listAuthProviders(),
-    channels: [],
-  })
+  credentialStatus = async (_opts?: { agentId?: string }): Promise<RuntimeCredentialStatus> => {
+    const llmCredentials = listAuthCredentials()
+    return {
+      llmProviders: llmCredentials.map((entry) => entry.provider),
+      llmCredentials,
+      channels: [],
+    }
+  }
 
   /**
    * No external wiring to provision — Pi's exec tools are injected per

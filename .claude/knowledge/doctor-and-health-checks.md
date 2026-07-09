@@ -52,7 +52,7 @@ The orchestrator is intentionally trivial — it has no opinion about what's bei
 |---|---|
 | `plugins/health/lib/system-checks/content-dir.ts` | `content-dir` |
 | `plugins/health/lib/system-checks/execution-safety.ts` | `execution-safety` |
-| `plugins/health/lib/system-checks/budget.ts` | `budget` |
+| `plugins/health/lib/system-checks/budget.ts` | `budget` (rule-aware since cost-control v2: probes EVERY cap rule via the shared evaluator + spend engine; a missing policy is a standing warn — "spend is uncapped"; the kill switch gets its own warn row; breaching per-agent rules attach `data.agents` → 'budget' Attention chips, `data.rules` carries structured breach detail — UIs never parse message text) |
 | `plugins/health/lib/system-checks/agent-burn.ts` | `usage.agent-burn` (warn-only token-burn heuristics — effort-no-outcome / spike / unattributed; arithmetic in `src/core/agent-burn.ts`, shared with `GET /agent-effort` — see `.claude/knowledge/agent-health-diagnostics.md`) |
 | `plugins/health/lib/system-checks/plugin-artifacts.ts` | `plugin-artifacts` |
 | `plugins/health/lib/system-checks/context-report.ts` | `context.startup-size` (warn-only per-dispatch context budget vs `dispatch.contextBudgetBytes`; arithmetic shared with `src/core/context-report.ts` — see `.claude/knowledge/startup-context.md`) |

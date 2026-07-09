@@ -477,9 +477,22 @@ export interface CapabilitySet {
  * secret material. Drives the onboarding llm/channels checks; each adapter
  * reads its own config internally so credential shapes never leak upstream.
  */
+/**
+ * Presence-only credential KIND: 'api-key' = metered pay-per-use billing;
+ * 'oauth' = subscription login (plan quota). An entry carrying both reports
+ * 'api-key' — the key is what the provider bills. Never carries values.
+ */
+export type RuntimeCredentialKind = 'api-key' | 'oauth'
+
 export interface RuntimeCredentialStatus {
   /** Provider names with usable credentials (api key / token / OAuth). */
   llmProviders: string[]
+  /**
+   * Per-provider credential kind (billing-lane detection, cost-control v2).
+   * Optional — consumers treat absence as unknown and stay conservative
+   * (unknown bills as metered, never silently uncapped-as-free).
+   */
+  llmCredentials?: Array<{ provider: string; kind: RuntimeCredentialKind }>
   /** Channel names with usable credentials. Empty on channel-less runtimes. */
   channels: string[]
 }

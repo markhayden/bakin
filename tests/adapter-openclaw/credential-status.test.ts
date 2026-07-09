@@ -28,7 +28,7 @@ const contentDirMock = () => ({
 mock.module('../../src/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
 
-import { listLlmProviders, listLlmProvidersViaCli, listConfiguredChannels } from '../../packages/adapter-openclaw/src/credential-status'
+import { listLlmProviders, listLlmCredentials, listLlmCredentialsViaCli, listConfiguredChannels } from '../../packages/adapter-openclaw/src/credential-status'
 
 const authProfilesPath = () => join(testHome, 'agents', 'main', 'agent', 'auth-profiles.json')
 const configPath = () => join(testHome, 'openclaw.json')
@@ -156,8 +156,8 @@ describe('listConfiguredChannels', () => {
   })
 })
 
-describe('listLlmProvidersViaCli (sqlite-era store)', () => {
-  it('parses providers from `models auth list --json`, deduped', async () => {
+describe('listLlmCredentialsViaCli (sqlite-era store)', () => {
+  it('parses providers + kinds from `models auth list --json`, deduped', async () => {
     const exec = async (args: string[]) => {
       expect(args).toEqual(['models', 'auth', 'list', '--json'])
       return JSON.stringify({
@@ -166,11 +166,16 @@ describe('listLlmProvidersViaCli (sqlite-era store)', () => {
           { id: 'anthropic:default', provider: 'anthropic', type: 'token' },
           { id: 'openai:default', provider: 'openai', type: 'oauth' },
           { id: 'openai:hi@example.com', provider: 'openai', type: 'oauth' },
+          { id: 'google:default', provider: 'google', type: 'api-key' },
           { id: 'weird', provider: '  ' },
         ],
       })
     }
-    expect(await listLlmProvidersViaCli(exec)).toEqual(['anthropic', 'openai'])
+    expect(await listLlmCredentialsViaCli(exec)).toEqual([
+      { provider: 'anthropic', kind: 'oauth' },
+      { provider: 'openai', kind: 'oauth' },
+      { provider: 'google', kind: 'api-key' },
+    ])
   })
 
   it('passes --agent for an explicit agent id', async () => {
@@ -179,12 +184,27 @@ describe('listLlmProvidersViaCli (sqlite-era store)', () => {
       seen.push(args)
       return JSON.stringify({ profiles: [] })
     }
-    expect(await listLlmProvidersViaCli(exec, 'pixel')).toEqual([])
+    expect(await listLlmCredentialsViaCli(exec, 'pixel')).toEqual([])
     expect(seen[0]).toEqual(['models', 'auth', 'list', '--json', '--agent', 'pixel'])
   })
 
   it('propagates exec failures (caller decides the fallback)', async () => {
     const exec = async () => { throw new Error('binary missing') }
-    await expect(listLlmProvidersViaCli(exec)).rejects.toThrow('binary missing')
+    await expect(listLlmCredentialsViaCli(exec)).rejects.toThrow('binary missing')
+  })
+})
+
+describe('listLlmCredentials (kinds from auth-profiles.json)', () => {
+  it('api-key fields → api-key; OAuth-only fields → oauth; key wins over both', () => {
+    writeFileSync(authProfilesPath(), JSON.stringify([
+      { provider: 'google', apiKey: 'k1' },
+      { provider: 'openai-codex', access: 'a', refresh: 'r' },
+      { provider: 'openai', api_key: 'k', token: 't' },
+    ]))
+    expect(listLlmCredentials()).toEqual([
+      { provider: 'google', kind: 'api-key' },
+      { provider: 'openai-codex', kind: 'oauth' },
+      { provider: 'openai', kind: 'api-key' },
+    ])
   })
 })

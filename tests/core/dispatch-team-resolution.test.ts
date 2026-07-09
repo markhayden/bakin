@@ -117,7 +117,11 @@ let hookResult: unknown = { ok: true, agentId: 'reviewer', reason: 'best fit', m
 const hookInvokeSpy = mock(async (_name: string, _data: unknown) => hookResult)
 const hookRegistryMock = () => ({
   getHookRegistry: () => ({
-    invoke: hookInvokeSpy,
+    // The spy counts ONLY team-resolution calls — dispatch also invokes
+    // models.* hooks (routing/budget/billing) on its way to a fire, and
+    // those must not pollute the resolver-count assertions.
+    invoke: async (name: string, data: unknown) =>
+      name === 'team.resolveAssignment' ? hookInvokeSpy(name, data) : undefined,
     has: () => hookHasHandler,
     register: mock(),
     call: mock(async (_n: string, d: unknown) => d),

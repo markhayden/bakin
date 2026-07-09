@@ -32,6 +32,7 @@ import { buildDispatchLessonBlock, buildDispatchAssetBlock } from './dispatch-co
 import { buildDispatchMessage, buildDecompositionMessage } from './dispatch-prompts'
 import { moveTaskToInProgress } from './dispatch-board'
 import { claimDispatchRun, auditDispatchSuppressed, fireDispatchTurn } from './dispatch-turns'
+import type { ResolvedTurn } from './model-routing'
 
 const log = createLogger('dispatch-prepare')
 
@@ -72,10 +73,12 @@ export async function prepareRegularDispatch(input: {
   logPrefix: string
   /** Route the turn to the 'recovery' origin policy. */
   isRecovery: boolean
+  /** Routing the caller already resolved for the budget gate — reused by the fire. */
+  routing?: ResolvedTurn
   /** Which path is dispatching — used only for the suppressed-claim audit. */
   path: 'cycle' | 'single'
 }): Promise<PrepareRegularDispatchResult> {
-  const { task, targetAgent, contentDir, port, mainAgentId, runtimeRoster, recovery, continuation, logPrefix, isRecovery, path } = input
+  const { task, targetAgent, contentDir, port, mainAgentId, runtimeRoster, recovery, continuation, logPrefix, isRecovery, routing, path } = input
 
   // Claim FIRST — the ledger row is the lock (see fn doc).
   const claim = claimDispatchRun(task.id, targetAgent)
@@ -122,6 +125,7 @@ export async function prepareRegularDispatch(input: {
         logPrefix,
         dispatchKind: 'regular',
         isRecovery,
+        ...(routing ? { routing } : {}),
       },
     }
   } catch (error) {

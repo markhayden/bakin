@@ -4,7 +4,7 @@
  * spend ledger is unreachable (gating fails closed without it).
  */
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
-import { mkdirSync, rmSync, appendFileSync } from 'fs'
+import { mkdirSync, rmSync, appendFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
@@ -51,46 +51,75 @@ function seedSpend(costUsdMicros: number): void {
 }
 
 describe('budget health check', () => {
-  it('is ok when no caps are configured', async () => {
+  it('WARNS (standing nag) when no caps are configured — spend is uncapped', async () => {
     const [r] = await checkBudget()
-    expect(r.status).toBe('ok')
-    expect(r.message).toContain('No budget caps')
+    expect(r.status).toBe('warn')
+    expect(r.message).toContain('uncapped')
   })
 
   it('is ok when spend is well under the cap', async () => {
-    budgetPolicy = { global: { dailyUsd: 100 } }
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 100 }] }
     seedSpend(5_000_000) // $5 of $100
     const [r] = await checkBudget()
     expect(r.status).toBe('ok')
   })
 
   it('warns as spend approaches the cap (>= warnPct)', async () => {
-    budgetPolicy = { global: { dailyUsd: 10 } }
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 10 }] }
     seedSpend(8_500_000) // $8.50 of $10 = 85%
     const [r] = await checkBudget()
     expect(r.status).toBe('warn')
   })
 
   it('errors at/over the cap (dispatch blocked)', async () => {
-    budgetPolicy = { global: { dailyUsd: 10 } }
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 10 }] }
     seedSpend(10_000_000)
     const [r] = await checkBudget()
     expect(r.status).toBe('error')
   })
 
   it('warns when runs were deferred even if utilization looks ok', async () => {
-    budgetPolicy = { global: { dailyUsd: 1000 } }
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 1000 }] }
     appendFileSync(join(testDir, 'audit.jsonl'), JSON.stringify({ ts: new Date().toISOString(), event: 'budget.deferred', agent: 'pixel', data: {} }) + '\n', 'utf-8')
     const [r] = await checkBudget()
     expect(r.status).toBe('warn')
   })
 
   it('errors when the ledger is unreachable', async () => {
-    budgetPolicy = { global: { dailyUsd: 10 } }
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 10 }] }
     closeDb()
     mkdirSync(join(testDir, 'blocked.db'), { recursive: true }) // a dir where the db file should be
     dbPath = join(testDir, 'blocked.db')
     const [r] = await checkBudget()
     expect(r.status).toBe('error')
+  })
+
+  it('is rule-aware: a breaching per-agent rule attributes the agent in data.agents (chips)', async () => {
+    budgetPolicy = {
+      rules: [
+        { scope: 'global', lane: 'metered', dailyCap: 1000 },
+        { scope: 'agent', scopeId: 'pixel', lane: 'metered', dailyCap: 2 },
+      ],
+    }
+    seedSpend(3_000_000) // $3 by pixel: global fine, pixel's $2 cap breached
+    const [r] = await checkBudget()
+    expect(r.status).toBe('error')
+    const data = r.data as { agents?: string[]; rules?: Array<Record<string, unknown>> }
+    expect(data.agents).toEqual(['pixel'])
+    expect(data.rules?.some((x) => x.scope === 'agent' && x.scopeId === 'pixel' && x.action === 'defer')).toBe(true)
+  })
+
+  it('surfaces the kill switch as its own warn row', async () => {
+    budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 1000 }] }
+    writeFileSync(join(testDir, 'settings.json'), JSON.stringify({ dispatch: { paused: true } }), 'utf-8')
+    const { resetSettingsCache } = await import('../../../src/core/settings')
+    resetSettingsCache()
+    try {
+      const rows = await checkBudget()
+      expect(rows.some((r) => r.status === 'warn' && /PAUSED/.test(r.message))).toBe(true)
+    } finally {
+      rmSync(join(testDir, 'settings.json'), { force: true })
+      resetSettingsCache()
+    }
   })
 })

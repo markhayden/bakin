@@ -21,6 +21,7 @@ import { useDebug } from "@makinbakin/sdk/hooks"
 import { useQueryState, useQueryArrayState } from "@makinbakin/sdk/hooks"
 import { toast } from "@makinbakin/sdk/hooks"
 import { useGateStatus } from '../hooks/use-gate-status'
+import { useBudgetStatus, budgetHoldReason, type BudgetHold } from '../hooks/use-budget-status'
 import { Button, Skeleton } from "@makinbakin/sdk/ui"
 import { Kanban, Table2, Plus } from 'lucide-react'
 import type { TaskScoreInfo } from './task-card'
@@ -229,6 +230,19 @@ export function KanbanBoard() {
     }
     return labels
   }, [gateStatuses])
+
+  // Budget-deferred badges (cost-control v2): todo tasks whose dispatch the
+  // spend gate is currently holding — derived from the side-effect-free
+  // status poll, never from task metadata.
+  const budgetStatus = useBudgetStatus()
+  const budgetHolds = useMemo(() => {
+    const holds: Record<string, BudgetHold> = {}
+    for (const task of columns.todo) {
+      const hold = budgetHoldReason(budgetStatus, task)
+      if (hold) holds[task.id] = hold
+    }
+    return holds
+  }, [columns.todo, budgetStatus])
 
   const dragStartColumnsRef = useRef<TaskColumns | null>(null)
   const dragFromColRef = useRef<ColumnId | null>(null)
@@ -487,6 +501,7 @@ export function KanbanBoard() {
                       tasks={colId === 'archived' ? [] : filteredColumns[colId]}
                       gateLabels={gateLabels}
                       childTaskLabels={childTaskLabels}
+                      budgetHolds={budgetHolds}
                       scoreMap={scoreMap}
                       onDelete={setDeleteTarget}
                       onTaskClick={(task, columnId) => { setDetailTask({ task, columnId }); setEditing(false) }}

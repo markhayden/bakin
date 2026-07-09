@@ -65,6 +65,10 @@ const ledgerMock = () => ({
   currentSeq: () => fakeSeq,
   recordRunCost: () => {},
   spendTotal: () => 0,
+  listRunCostsSince: () => [],
+  openBudgetIncident: () => ({ opened: false, id: 1 }),
+  resolveExpiredBudgetIncidents: () => 0,
+  findOpenCapIncident: () => null,
 })
 mock.module('@/core/execution-ledger', ledgerMock)
 mock.module('../../src/core/execution-ledger', ledgerMock)

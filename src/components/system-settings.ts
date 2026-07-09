@@ -13,6 +13,14 @@ export const SYSTEM_SETTINGS_TAB_ID = '__system'
 
 export const SYSTEM_SETTINGS_SCHEMA: PluginSettingsSchema = {
   fields: [
+    // ── Kill switch (cost-control v2) ─────────────────────────────────
+    {
+      key: 'dispatch.paused',
+      type: 'boolean',
+      label: 'Pause all dispatch (kill switch)',
+      description: 'Break-glass control: pauses ALL task dispatch and billed media calls until turned off. In-flight turns finish. Also: the header banner Resume button or `bakin budget pause|resume`.',
+      default: false,
+    },
     // ── Alert delivery ────────────────────────────────────────────────
     {
       key: 'notifications.channel',

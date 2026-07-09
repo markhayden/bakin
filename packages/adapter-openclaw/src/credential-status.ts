@@ -20,6 +20,21 @@ import { tryGetMainAgentId } from './main-agent'
 
 const CHANNEL_CREDENTIAL_FIELDS = ['token', 'apiKey', 'api_key', 'botToken', 'bot_token']
 const LLM_CREDENTIAL_FIELDS = ['apiKey', 'api_key', 'token', 'access', 'refresh']
+/** Pay-per-use API-key fields — an entry carrying one bills metered. */
+const METERED_CREDENTIAL_FIELDS = ['apiKey', 'api_key']
+
+export interface LlmCredential {
+  provider: string
+  kind: 'api-key' | 'oauth'
+}
+
+/** Credential KIND for an entry: a key present wins (it is what bills). */
+function credentialKind(entry: Record<string, unknown>): 'api-key' | 'oauth' {
+  const hasKey = METERED_CREDENTIAL_FIELDS.some(
+    (field) => typeof entry[field] === 'string' && (entry[field] as string).trim().length > 0,
+  )
+  return hasKey ? 'api-key' : 'oauth'
+}
 
 function hasChannelCredential(entry: unknown): boolean {
   if (entry === null || typeof entry !== 'object') return false
@@ -58,22 +73,38 @@ function normalizeAuthProfiles(parsed: unknown): unknown[] {
  * `.sqlite-import.<ts>.bak` marks the migration), so the JSON probe returns
  * nothing on migrated installs; the CLI is the supported presence-only read.
  */
-export async function listLlmProvidersViaCli(
+export async function listLlmCredentialsViaCli(
   exec: (args: string[]) => Promise<string>,
   agentId?: string,
-): Promise<string[]> {
+): Promise<LlmCredential[]> {
   const args = ['models', 'auth', 'list', '--json']
   const agent = agentId?.trim()
   if (agent) args.push('--agent', agent)
-  const parsed = JSON.parse(await exec(args)) as { profiles?: Array<{ provider?: unknown }> }
-  const providers = (parsed.profiles ?? [])
-    .map((profile) => (typeof profile.provider === 'string' ? profile.provider.trim() : ''))
-    .filter((provider) => provider.length > 0)
-  return [...new Set(providers)]
+  const parsed = JSON.parse(await exec(args)) as { profiles?: Array<{ provider?: unknown; type?: unknown }> }
+  const out: LlmCredential[] = []
+  const seen = new Set<string>()
+  for (const profile of parsed.profiles ?? []) {
+    const provider = typeof profile.provider === 'string' ? profile.provider.trim() : ''
+    if (!provider || seen.has(provider)) continue
+    seen.add(provider)
+    // CLI `type`: 'oauth' and 'token' are login artifacts (subscription);
+    // anything else conservatively reads as a metered key.
+    const kind = profile.type === 'oauth' || profile.type === 'token' ? 'oauth' : 'api-key'
+    out.push({ provider, kind })
+  }
+  return out
 }
 
 /** Providers with usable credentials in the agent's auth-profiles.json. */
 export function listLlmProviders(agentId?: string): string[] {
+  return listLlmCredentials(agentId).map((entry) => entry.provider)
+}
+
+/**
+ * Per-provider credential KIND from auth-profiles.json (presence-only, first
+ * entry per provider wins — matching lane-detection semantics upstream).
+ */
+export function listLlmCredentials(agentId?: string): LlmCredential[] {
   const agent = agentId?.trim() || tryGetMainAgentId() || 'main'
   const profilePath = getOpenClawPath('agents', agent, 'agent', 'auth-profiles.json')
   if (!existsSync(profilePath)) return []
@@ -83,10 +114,15 @@ export function listLlmProviders(agentId?: string): string[] {
   } catch {
     return []
   }
-  const providers = normalizeAuthProfiles(parsed)
-    .map(authProvider)
-    .filter((provider): provider is string => provider !== null)
-  return [...new Set(providers)]
+  const out: LlmCredential[] = []
+  const seen = new Set<string>()
+  for (const entry of normalizeAuthProfiles(parsed)) {
+    const provider = authProvider(entry)
+    if (!provider || seen.has(provider)) continue
+    seen.add(provider)
+    out.push({ provider, kind: credentialKind(entry as Record<string, unknown>) })
+  }
+  return out
 }
 
 /** Channel names with a usable credential in config.channels. */

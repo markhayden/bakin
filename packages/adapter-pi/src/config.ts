@@ -28,12 +28,29 @@ export function readPiSettings(): Record<string, unknown> {
 
 /** Provider names present in Pi's auth.json — presence only, no secrets. */
 export function listAuthProviders(): string[] {
+  return listAuthCredentials().map((entry) => entry.provider)
+}
+
+/**
+ * Per-provider credential KIND (presence-only): `type: 'oauth'` or
+ * access/refresh fields → subscription login; anything else conservatively
+ * reads as a metered API key. Values never leave this module.
+ */
+export function listAuthCredentials(): Array<{ provider: string; kind: 'api-key' | 'oauth' }> {
   if (!existsSync(authPath())) return []
+  let parsed: Record<string, unknown>
   try {
-    return Object.keys(JSON.parse(readFileSync(authPath(), 'utf-8')) as Record<string, unknown>)
+    parsed = JSON.parse(readFileSync(authPath(), 'utf-8')) as Record<string, unknown>
   } catch {
     return []
   }
+  return Object.entries(parsed).map(([provider, entry]) => {
+    const obj = entry !== null && typeof entry === 'object' ? entry as Record<string, unknown> : {}
+    const oauth = obj.type === 'oauth'
+      || typeof obj.access === 'string'
+      || typeof obj.refresh === 'string'
+    return { provider, kind: oauth ? 'oauth' as const : 'api-key' as const }
+  })
 }
 
 export function writePiSettings(next: Record<string, unknown>): void {

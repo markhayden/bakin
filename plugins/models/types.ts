@@ -40,6 +40,13 @@ export interface AliasesResponse {
   aliases: Record<string, string>
 }
 
+/** Manual billing-lane override; most-specific match wins (agent+provider → agent → provider). */
+export interface BillingOverride {
+  agentId?: string
+  provider?: string
+  lane: 'metered' | 'subscription'
+}
+
 /** Shape of models plugin settings */
 export interface ModelsPluginSettings {
   defaultModel?: string
@@ -47,4 +54,6 @@ export interface ModelsPluginSettings {
   routing?: RoutingConfig
   /** Spend-cap policy (global + per-agent daily/monthly limits). */
   budget?: BudgetPolicy
+  /** Billing-lane manual overrides (win over auth-profile detection). */
+  billing?: { overrides?: BillingOverride[] }
 }

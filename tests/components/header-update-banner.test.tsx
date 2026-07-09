@@ -98,4 +98,53 @@ describe('Header update banner', () => {
     expect(screen.queryByText(/New Bakin version available/i)).toBeNull()
     expect(document.documentElement.style.getPropertyValue('--bakin-shell-top')).toBe('')
   })
+
+  it('renders the dispatch-paused banner and offsets the header (kill switch, cost-control v2)', async () => {
+    global.fetch = mock((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === '/api/version') return Promise.resolve(response({ version: '0.1.0' }))
+      if (url.startsWith('/api/plugins/models/budget/status')) return Promise.resolve(response({ paused: true }))
+      if (url === '/api/dispatch') return Promise.resolve(response({ secondsUntilNext: 120, dispatching: false }))
+      return Promise.resolve(response({}))
+    }) as unknown as typeof global.fetch
+
+    renderHeader()
+
+    await waitFor(() => expect(screen.getByText('Dispatch paused')).toBeDefined())
+    expect(screen.getByRole('button', { name: 'Resume' })).toBeDefined()
+    // ONE banner active: header shifts by 2.25rem, shell by 5.75rem — the
+    // banner must PUSH the header down, never be painted over by it.
+    await waitFor(() => {
+      expect(document.documentElement.style.getPropertyValue('--bakin-header-top')).toBe('2.25rem')
+      expect(document.documentElement.style.getPropertyValue('--bakin-shell-top')).toBe('5.75rem')
+    })
+  })
+
+  it('stacks BOTH banners: update at top, paused below, header offset by 4.5rem', async () => {
+    global.fetch = mock((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === '/api/version') return Promise.resolve(response({ version: '0.1.0' }))
+      if (url === '/api/update/status') {
+        return Promise.resolve(response({
+          ok: true, supported: true, currentVersion: '0.1.0', latestVersion: '0.2.0',
+          latestTag: 'v0.2.0', updateAvailable: true, checkedAt: '2026-06-01T12:00:00.000Z',
+        }))
+      }
+      if (url.startsWith('/api/plugins/models/budget/status')) return Promise.resolve(response({ paused: true }))
+      if (url === '/api/dispatch') return Promise.resolve(response({ secondsUntilNext: 120, dispatching: false }))
+      return Promise.resolve(response({}))
+    }) as unknown as typeof global.fetch
+
+    renderHeader()
+
+    await waitFor(() => expect(screen.getByText('Dispatch paused')).toBeDefined())
+    await waitFor(() => expect(screen.getByText(/New Bakin version available/i)).toBeDefined())
+    // Paused banner sits below the update banner (top-9), not on top of it.
+    const pausedBanner = screen.getByText('Dispatch paused').closest('[role="status"]')
+    expect(pausedBanner?.className).toContain('top-9')
+    await waitFor(() => {
+      expect(document.documentElement.style.getPropertyValue('--bakin-header-top')).toBe('4.5rem')
+      expect(document.documentElement.style.getPropertyValue('--bakin-shell-top')).toBe('8rem')
+    })
+  })
 })

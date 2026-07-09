@@ -43,7 +43,7 @@ import {
   verifyBakinMcpEntries,
   type BakinMcpConfig,
 } from './tool-access-provisioning'
-import { listConfiguredChannels, listLlmProviders, listLlmProvidersViaCli } from './credential-status'
+import { listConfiguredChannels, listLlmCredentials, listLlmCredentialsViaCli } from './credential-status'
 import { applyRoutingPolicy, readRoutingPolicy, setAgentModels } from './model-routing'
 import { RuntimeError, RuntimeTurnError } from '@bakin/core/adapters/runtime'
 import { tryGetMainAgentId } from './main-agent'
@@ -1028,17 +1028,21 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
    * credentials". Never secrets.
    */
   credentialStatus = async (opts?: { agentId?: string }): Promise<RuntimeCredentialStatus> => {
-    let llmProviders = listLlmProviders(opts?.agentId)
-    if (llmProviders.length === 0) {
+    let llmCredentials = listLlmCredentials(opts?.agentId)
+    if (llmCredentials.length === 0) {
       try {
-        llmProviders = await listLlmProvidersViaCli((args) => this.exec(args), opts?.agentId)
+        llmCredentials = await listLlmCredentialsViaCli((args) => this.exec(args), opts?.agentId)
       } catch (err) {
         this.logger.warn('OpenClaw auth-profile CLI probe failed; reporting no LLM providers', {
           error: String(err),
         })
       }
     }
-    return { llmProviders, channels: listConfiguredChannels() }
+    return {
+      llmProviders: llmCredentials.map((entry) => entry.provider),
+      llmCredentials,
+      channels: listConfiguredChannels(),
+    }
   }
 
   private async runtimeAgentIds(): Promise<string[]> {
