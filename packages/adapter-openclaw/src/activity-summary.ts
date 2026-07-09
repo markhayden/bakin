@@ -14,6 +14,11 @@ import { firstString, isPlainObject, parseJsonObject, redactSensitiveText } from
 const OPENCLAW_ACTIVITY_PREVIEW_CHARS = 500
 
 export function activityChunksFromOpenClawTranscriptRecord(record: Record<string, unknown>): ChatChunk[] {
+  // Trajectory records (`traceSchema: openclaw-trajectory`) — the LIVE
+  // activity source on newer OpenClaw, which batches session-JSONL records
+  // to turn end. Same ChatChunk shapes as the session-file path below.
+  if (record.type === 'tool.call') return activityChunkFromTrajectoryToolCall(record)
+  if (record.type === 'tool.result') return activityChunkFromTrajectoryToolResult(record)
   if (record.type !== 'message') return []
   const message = record.message
   if (!isPlainObject(message)) return []
@@ -21,6 +26,48 @@ export function activityChunksFromOpenClawTranscriptRecord(record: Record<string
   if (role === 'assistant') return activityChunksFromAssistantMessage(message)
   if (role === 'toolResult') return activityChunkFromToolResultMessage(message)
   return []
+}
+
+/** Trajectory `tool.call` → running tool chunk (data: {toolCallId, name, arguments}). */
+function activityChunkFromTrajectoryToolCall(record: Record<string, unknown>): ChatChunk[] {
+  const data = isPlainObject(record.data) ? record.data : {}
+  const name = typeof data.name === 'string' && data.name.length > 0 ? data.name : 'tool'
+  const args = data.arguments
+  const summary = summarizeOpenClawToolPurpose(name, args)
+  return [{
+    type: 'tool',
+    content: summarizeOpenClawToolCall(name, args),
+    data: {
+      phase: 'call',
+      callId: typeof data.toolCallId === 'string' ? data.toolCallId : undefined,
+      toolName: name,
+      status: 'running',
+      ...(summary ? { summary } : {}),
+      inputPreview: previewUnknown(args),
+    },
+  }]
+}
+
+/** Trajectory `tool.result` → result tool chunk (data: {toolCallId, name, status, isError, result}). */
+function activityChunkFromTrajectoryToolResult(record: Record<string, unknown>): ChatChunk[] {
+  const data = isPlainObject(record.data) ? record.data : {}
+  const toolName = typeof data.name === 'string' && data.name.length > 0 ? data.name : 'tool'
+  const status = typeof data.status === 'string' ? data.status : undefined
+  const result = isPlainObject(data.result) ? data.result : {}
+  const exitCode = typeof result.exitCode === 'number' ? result.exitCode : undefined
+  const label = status ? `${toolName} ${status}` : `${toolName} finished`
+  return [{
+    type: 'tool',
+    content: label,
+    data: {
+      phase: 'result',
+      toolName,
+      callId: typeof data.toolCallId === 'string' ? data.toolCallId : undefined,
+      status: data.isError === true ? 'failed' : normalizeToolResultStatus(status, exitCode),
+      exitCode,
+      outputPreview: previewUnknown(data.result),
+    },
+  }]
 }
 
 export function activityChunksFromAssistantMessage(message: Record<string, unknown>): ChatChunk[] {
