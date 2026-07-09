@@ -28,9 +28,19 @@ interface TaskFilterState {
   search: string
   agentFilter: string
   statusFilter: string[]
+  /** Brand facet (#419) — brand ids plus the NO_BRAND sentinel for unbranded tasks. */
+  brandFilter?: string[]
 }
 
-export function filterBoardColumns(columns: TaskColumns, search: string, agentFilter: string, searchResults?: SearchResult[]): TaskColumns {
+/** Brand-facet sentinel for tasks with no brandId. */
+export const NO_BRAND = '__none__'
+
+function matchesBrand(task: Task, brandFilter: string[]): boolean {
+  if (brandFilter.length === 0) return true
+  return task.brandId ? brandFilter.includes(task.brandId) : brandFilter.includes(NO_BRAND)
+}
+
+export function filterBoardColumns(columns: TaskColumns, search: string, agentFilter: string, searchResults?: SearchResult[], brandFilter: string[] = []): TaskColumns {
   const result = {} as TaskColumns
   const matchIds = searchResults?.length ? new Set(searchResults.map(r => r.id)) : null
 
@@ -44,6 +54,7 @@ export function filterBoardColumns(columns: TaskColumns, search: string, agentFi
       }
     }
     if (agentFilter !== 'all') tasks = tasks.filter(t => t.agent === agentFilter)
+    if (brandFilter.length > 0) tasks = tasks.filter(t => matchesBrand(t, brandFilter))
     if (searchResults?.length) tasks = reorderColumn(tasks, searchResults)
     result[colId] = tasks
   }
@@ -52,7 +63,7 @@ export function filterBoardColumns(columns: TaskColumns, search: string, agentFi
 }
 
 export function useTaskFilters(columns: TaskColumns, state: TaskFilterState) {
-  const { search, agentFilter, statusFilter } = state
+  const { search, agentFilter, statusFilter, brandFilter = [] } = state
 
   const searchHook = useSearch({
     plugin: 'tasks',
@@ -67,8 +78,8 @@ export function useTaskFilters(columns: TaskColumns, state: TaskFilterState) {
   }, [search])
 
   const filteredColumns = useMemo(() => {
-    return filterBoardColumns(columns, search, agentFilter, searchHook.results)
-  }, [columns, search, agentFilter, searchHook.results])
+    return filterBoardColumns(columns, search, agentFilter, searchHook.results, brandFilter)
+  }, [columns, search, agentFilter, searchHook.results, brandFilter])
 
   const allTasksFlat = useMemo(() => {
     const flat: FlatTask[] = []
@@ -88,9 +99,10 @@ export function useTaskFilters(columns: TaskColumns, state: TaskFilterState) {
     }
     if (agentFilter !== 'all') filtered = filtered.filter(t => t.agent === agentFilter)
     if (statusFilter.length > 0) filtered = filtered.filter(t => statusFilter.includes(t.status))
+    if (brandFilter.length > 0) filtered = filtered.filter(t => matchesBrand(t, brandFilter))
     if (searchHook.results.length) filtered = reorderBySearchResults(filtered, searchHook.results)
     return filtered
-  }, [columns, search, agentFilter, statusFilter, searchHook.results])
+  }, [columns, search, agentFilter, statusFilter, brandFilter, searchHook.results])
 
   return {
     filteredColumns,

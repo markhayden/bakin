@@ -56,9 +56,12 @@ import { buildWorkflowDispatchMessage, buildWorkflowDispatchSections } from '../
 import {
   FIXTURE_CONTENT_DIR,
   MAIN_AGENT,
+  SPECIALIST_BRANDED,
   SPECIALIST_FULL,
   SPECIALIST_PLAIN,
   TRIAGE,
+  TRIAGE_BRANDED,
+  WORKFLOW_BRANDED,
   WORKFLOW_FULL,
   WORKFLOW_PRIOR_ONLY,
 } from '../fixtures/dispatch-prompts/inputs'
@@ -164,6 +167,50 @@ describe('prompt byte fixtures + labeled sections', () => {
       sections: () => buildWorkflowDispatchSections(WORKFLOW_PRIOR_ONLY.task, WORKFLOW_PRIOR_ONLY.stepContext, WORKFLOW_PRIOR_ONLY.agentName),
       joiner: '\n',
     },
+    // Branded cases (#419) — brand label asserted within these cases only;
+    // the canonical unbranded cases and required-label lists stay untouched.
+    {
+      name: 'specialist-branded',
+      build: () =>
+        buildDispatchMessage(
+          SPECIALIST_BRANDED.task, SPECIALIST_BRANDED.agentName, FIXTURE_CONTENT_DIR,
+          'main', '', {}, undefined, [], '', SPECIALIST_BRANDED.brand,
+        ),
+      sections: () =>
+        buildDispatchSections(
+          SPECIALIST_BRANDED.task, SPECIALIST_BRANDED.agentName, FIXTURE_CONTENT_DIR,
+          'main', '', {}, undefined, [], '', SPECIALIST_BRANDED.brand,
+        ),
+      joiner: '',
+    },
+    {
+      name: 'triage-branded',
+      build: () =>
+        buildDispatchMessage(
+          TRIAGE_BRANDED.task, TRIAGE_BRANDED.agentName, FIXTURE_CONTENT_DIR,
+          'main', '', {}, undefined, [...TRIAGE_BRANDED.roster], '', TRIAGE_BRANDED.brand,
+        ),
+      sections: () =>
+        buildDispatchSections(
+          TRIAGE_BRANDED.task, TRIAGE_BRANDED.agentName, FIXTURE_CONTENT_DIR,
+          'main', '', {}, undefined, [...TRIAGE_BRANDED.roster], '', TRIAGE_BRANDED.brand,
+        ),
+      joiner: '',
+    },
+    {
+      name: 'workflow-branded',
+      build: () =>
+        buildWorkflowDispatchMessage(
+          WORKFLOW_BRANDED.task, WORKFLOW_BRANDED.stepContext, WORKFLOW_BRANDED.agentName,
+          '', undefined, '', { brand: WORKFLOW_BRANDED.brand },
+        ),
+      sections: () =>
+        buildWorkflowDispatchSections(
+          WORKFLOW_BRANDED.task, WORKFLOW_BRANDED.stepContext, WORKFLOW_BRANDED.agentName,
+          '', undefined, '', { brand: WORKFLOW_BRANDED.brand },
+        ),
+      joiner: '\n',
+    },
   ]
 
   for (const c of cases) {
@@ -202,6 +249,26 @@ describe('prompt byte fixtures + labeled sections', () => {
     const workflow = buildWorkflowDispatchSections({ id: '00000000', title: '' }, { stepId: 'step', label: '' }, 'jessica')
     expect(staticBytes(task)).toBeLessThanOrEqual(2560)
     expect(staticBytes(workflow)).toBeLessThanOrEqual(3584)
+  })
+
+  it('branded cases: full card between project and lessons; triage gets the one-liner (#419)', () => {
+    const specialist = cases.find((c) => c.name === 'specialist-branded')!
+    const sources = specialist.sections().map((s) => s.source)
+    expect(sources).toContain('brand')
+    expect(sources.indexOf('brand')).toBeGreaterThan(sources.indexOf('project'))
+    expect(sources.indexOf('brand')).toBeLessThan(sources.indexOf('lessons') === -1 ? Infinity : sources.indexOf('progress-logging'))
+    expect(specialist.build()).toContain('MUST follow this brand')
+    expect(specialist.build()).toContain('#1A1A2E')
+
+    const triage = cases.find((c) => c.name === 'triage-branded')!
+    const triageMsg = triage.build()
+    expect(triageMsg).toContain('**Brand:** acme')
+    // One-liner only — the full card never rides a triage pass.
+    expect(triageMsg).not.toContain('### Palette')
+
+    const workflow = cases.find((c) => c.name === 'workflow-branded')!
+    expect(workflow.sections().map((s) => s.source)).toContain('brand')
+    expect(workflow.build()).toContain('MUST follow this brand')
   })
 
   it('workflow sections label the prior-step dump for the context report', () => {

@@ -33,6 +33,8 @@ export interface ImagesGenerateParams {
   quality?: 'draft' | 'standard' | 'premium'
   /** Managed assetIds and/or file paths used as reference/context images (#418). */
   referenceImages?: string[]
+  /** Brand-conditioned generation (#419): palette + style merge into the prompt, defaultImageReferences fill empty reference slots, provenance is recorded. Unknown/draft brand = hard error. */
+  brandId?: string
   /** Append the render as a new VERSION of this asset (iteration/re-roll) instead of minting a new asset. */
   versionOf?: string
   /** Explicit intent: this generate references own same-task output but is a deliberately separate companion asset. */
@@ -178,6 +180,51 @@ interface PreparedImageRequest {
   route: { provider: ImageProviderId; model: string }
   quality: 'draft' | 'standard' | 'premium'
   references: ResolvedReferences
+  /** Brand conditioning (#419) — recorded in generation provenance + the dedupe key. */
+  brand?: { brandId: string; fingerprint: string | null }
+}
+
+/** Structural mirror of the brands.get hook result — no plugin imports. */
+interface BrandHookResult {
+  manifest?: {
+    id: string
+    name: string
+    description?: string
+    draft?: boolean
+    palette: Array<{ name: string; hex: string; usage?: string }>
+    defaultImageReferences?: string[]
+  }
+  fingerprint?: string | null
+}
+
+/** Resolve a brandId via the brands.get hook. Unknown/draft brands are typed hard errors — never silently off-brand (#419). */
+async function resolveBrandForImage(
+  ctx: PluginContext,
+  brandId: string,
+): Promise<{ brand: NonNullable<BrandHookResult['manifest']>; fingerprint: string | null } | { error: string }> {
+  if (!ctx.hooks.has('brands.get')) return { error: `Brand not found: ${brandId} (brands plugin unavailable)` }
+  let result: BrandHookResult | undefined
+  try {
+    result = await ctx.hooks.invoke<BrandHookResult | undefined>('brands.get', { brandId })
+  } catch {
+    return { error: `Brand lookup failed for '${brandId}' — refusing to generate off-brand` }
+  }
+  if (!result?.manifest) return { error: `Brand not found: ${brandId}` }
+  if (result.manifest.draft) return { error: `Brand '${brandId}' is a draft — publish it before branded generation` }
+  return { brand: result.manifest, fingerprint: result.fingerprint ?? null }
+}
+
+/** The brand's visual identity as a prompt suffix — palette + identity line. */
+function brandPromptSuffix(brand: NonNullable<BrandHookResult['manifest']>): string {
+  const lines = [`Brand: ${brand.name}.`]
+  if (brand.description) lines.push(brand.description)
+  if (brand.palette.length) {
+    lines.push(
+      `Brand palette (use these colors): ${brand.palette.map(c => `${c.name} ${c.hex}${c.usage ? ` (${c.usage})` : ''}`).join(', ')}.`,
+    )
+  }
+  lines.push('Stay strictly within this brand\'s visual identity.')
+  return lines.join(' ')
 }
 
 /**
@@ -193,6 +240,7 @@ async function resolveReferences(
   agent: string,
   route: { provider: ImageProviderId; model: string },
   readyProvider: ImageProviderReadiness | undefined,
+  opts: { dropOnUnsupported?: boolean } = {},
 ): Promise<ResolvedReferences | { error: string }> {
   const entries = params.referenceImages ?? []
   if (entries.length === 0) return EMPTY_REFERENCES
@@ -205,10 +253,14 @@ async function resolveReferences(
   // reference-images flag in the merge (see #381 capability-drift).
   const modelDesc = getImageProvider(route.provider)?.models.find(model => model.id === route.model)
     ?? readyProvider?.models.find(model => model.id === route.model)
-  if (!modelDesc?.capabilities.includes('reference-images')) {
-    return { error: `Model does not support reference images: ${route.provider}/${route.model}` }
-  }
-  if (readyProvider?.servedBy !== 'runtime') {
+  const supportsReferences = !!modelDesc?.capabilities.includes('reference-images') && readyProvider?.servedBy === 'runtime'
+  if (!supportsReferences) {
+    // Brand default references (#419) are best-effort — drop them and let the
+    // palette prompt conditioning stand, rather than fail the whole generation.
+    if (opts.dropOnUnsupported) return EMPTY_REFERENCES
+    if (!modelDesc?.capabilities.includes('reference-images')) {
+      return { error: `Model does not support reference images: ${route.provider}/${route.model}` }
+    }
     const via = readyProvider?.servedBy === 'shim' ? 'served via the direct shim' : 'not natively configured'
     return { error: `Reference images require the native runtime; ${route.provider} is ${via}` }
   }
@@ -264,8 +316,28 @@ async function resolveReferences(
 
 /** Shared prologue for generate + edit: compile prompt, resolve surface + route, validate routability + references. */
 async function prepareImageRequest(ctx: PluginContext, params: ImagesGenerateParams, agent: string): Promise<PreparedImageRequest | { error: string }> {
-  const prompt = compilePrompt(params)
+  let prompt = compilePrompt(params)
   if (!prompt) return { error: 'prompt or promptPacket is required' }
+
+  // Brand conditioning (#419): resolve BEFORE routing/billing — a bad brandId
+  // fails loudly here, never ships off-palette art. Agent-passed references
+  // win; the brand's defaults fill only when none were given (max-4 upstream).
+  let brand: PreparedImageRequest['brand']
+  // Brand DEFAULT references are best-effort: on a model/serving path that
+  // can't take reference images, drop them silently and let the palette prompt
+  // conditioning stand (a usable branded image), rather than hard-fail. Only
+  // AGENT-passed references are a hard error on an incapable route.
+  let referencesAreBrandDefaults = false
+  if (params.brandId) {
+    const resolved = await resolveBrandForImage(ctx, params.brandId)
+    if ('error' in resolved) return resolved
+    prompt = `${prompt}\n\n${brandPromptSuffix(resolved.brand)}`
+    brand = { brandId: params.brandId, fingerprint: resolved.fingerprint }
+    if (!(params.referenceImages?.length) && resolved.brand.defaultImageReferences?.length) {
+      params = { ...params, referenceImages: resolved.brand.defaultImageReferences.slice(0, MAX_REFERENCE_IMAGES) }
+      referencesAreBrandDefaults = true
+    }
+  }
   const settings = effectiveImageSettings(ctx)
   const surfaceId = params.surface || settings.defaultSurface
   const dims = dimensionsForSurface(surfaceId, params.width, params.height)
@@ -288,10 +360,10 @@ async function prepareImageRequest(ctx: PluginContext, params: ImagesGeneratePar
     || readyProvider?.models.some(model => model.id === route.model && model.status === 'routable')
   if (!knownModel) return { error: `Image model is not routable: ${route.provider}/${route.model}` }
 
-  const references = await resolveReferences(ctx, params, agent, route, readyProvider)
+  const references = await resolveReferences(ctx, params, agent, route, readyProvider, { dropOnUnsupported: referencesAreBrandDefaults })
   if ('error' in references) return references
 
-  return { prompt, dims, route, quality: params.quality ?? settings.quality, references }
+  return { prompt, dims, route, quality: params.quality ?? settings.quality, references, ...(brand ? { brand } : {}) }
 }
 
 /**
@@ -329,6 +401,8 @@ async function persistImageResult(
     ...(routeSource === 'shim' ? { quality: req.quality } : {}),
     // Reference lineage — which managed assets conditioned this generation (#418).
     ...(req.references.lineage.length ? { references: req.references.lineage } : {}),
+    // Brand provenance (#419, D14): the V2 staleness hook.
+    ...(req.brand ? { brandId: req.brand.brandId, ...(req.brand.fingerprint ? { brandFingerprint: req.brand.fingerprint } : {}) } : {}),
   }
 
   const ref = opts.create
@@ -388,6 +462,10 @@ function versionMatchesRequest(version: AssetVersionDetail | undefined, req: Pre
     || version.generation.quality === req.quality
   // Same prompt with different references is NOT a duplicate (#418).
   const referencesMatch = referencesFingerprint(version) === req.references.fingerprint
+  // A changed brand — or a changed VERSION of the brand — is a different
+  // generation, not a duplicate (#419).
+  const brandMatches = (version.generation?.brandId ?? '') === (req.brand?.brandId ?? '')
+    && (version.generation?.brandFingerprint ?? '') === (req.brand?.fingerprint ?? '')
   return version.tool === tool
     && version.promptHash === promptHash
     && version.generation?.provider === req.route.provider
@@ -395,6 +473,7 @@ function versionMatchesRequest(version: AssetVersionDetail | undefined, req: Pre
     && version.generation?.surface === req.dims.surface
     && qualityMatches
     && referencesMatch
+    && brandMatches
 }
 
 async function reusableGenerateResult(ctx: PluginContext, params: ImagesGenerateParams, req: PreparedImageRequest, promptHash: string): Promise<ExecToolResult | null> {

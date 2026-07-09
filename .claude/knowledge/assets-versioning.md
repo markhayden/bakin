@@ -29,7 +29,10 @@ the `assetId`, never a filename.
   that `addVersion`/`promoteVersion`/`deleteVersion` never touch. Versions
   carry no tags field (old manifests' version tags are stripped on parse; no
   migration). Machine provenance never goes into tags — it lives structurally
-  in `op`/`source`/`generation`.
+  in `op`/`source`/`generation`. Brand-conditioned generations (#419) also
+  record `generation.{brandId, brandFingerprint}` — which brand, and which
+  VERSION of it (content hash), conditioned the render; a changed brand is a
+  new generation, never a dedupe hit. The V2 staleness hook.
 - **Tag normalization** (`lib/tags.ts` — trim, lowercase, whitespace→hyphen,
   dedupe) is applied by **every** tag-writing path: `updateMetadata`, global
   ops, bulk apply, `createAsset`, upload, `assets_save`. One source of truth;

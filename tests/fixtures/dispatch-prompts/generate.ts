@@ -15,9 +15,12 @@ import { buildWorkflowDispatchMessage } from '../../../src/core/dispatch-workflo
 import {
   FIXTURE_CONTENT_DIR,
   MAIN_AGENT,
+  SPECIALIST_BRANDED,
   SPECIALIST_FULL,
   SPECIALIST_PLAIN,
   TRIAGE,
+  TRIAGE_BRANDED,
+  WORKFLOW_BRANDED,
   WORKFLOW_FULL,
   WORKFLOW_PRIOR_ONLY,
 } from './inputs'
@@ -61,4 +64,35 @@ out(
 out(
   'workflow-prior-only',
   buildWorkflowDispatchMessage(WORKFLOW_PRIOR_ONLY.task, WORKFLOW_PRIOR_ONLY.stepContext, WORKFLOW_PRIOR_ONLY.agentName),
+)
+// Branded cases (#419) — full card in specialist/workflow, one-liner in triage.
+out(
+  'specialist-branded',
+  buildDispatchMessage(
+    SPECIALIST_BRANDED.task,
+    SPECIALIST_BRANDED.agentName,
+    FIXTURE_CONTENT_DIR,
+    'main', '', {}, undefined, [], '',
+    SPECIALIST_BRANDED.brand,
+  ),
+)
+out(
+  'triage-branded',
+  buildDispatchMessage(
+    TRIAGE_BRANDED.task,
+    TRIAGE_BRANDED.agentName,
+    FIXTURE_CONTENT_DIR,
+    'main', '', {}, undefined, [...TRIAGE_BRANDED.roster], '',
+    TRIAGE_BRANDED.brand,
+  ),
+)
+out(
+  'workflow-branded',
+  buildWorkflowDispatchMessage(
+    WORKFLOW_BRANDED.task,
+    WORKFLOW_BRANDED.stepContext,
+    WORKFLOW_BRANDED.agentName,
+    '', undefined, '',
+    { brand: WORKFLOW_BRANDED.brand },
+  ),
 )

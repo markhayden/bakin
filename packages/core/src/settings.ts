@@ -118,6 +118,13 @@ export interface BakinSettings {
      */
     maxWorkflowContextBytes: number
     /**
+     * Byte budget for the brand card injected into branded dispatch prompts
+     * (#419). Whole-unit retention in card priority order; anything dropped
+     * leaves a visible omission marker. 0/unset → default; clamped to a
+     * 1024-byte minimum.
+     */
+    maxBrandContextBytes: number
+    /**
      * Warn threshold for the doctor's context.startup-size check (#357):
      * estimated Bakin-injected per-dispatch context (static sections +
      * configured caps) per agent. Warn-only — never blocks dispatch.
@@ -307,6 +314,7 @@ export const DEFAULT_SETTINGS: BakinSettings = {
     maxConcurrentTurns: 3,
     maxTurnsPerAgent: 1,
     maxWorkflowContextBytes: 16 * 1024,
+    maxBrandContextBytes: 12 * 1024,
     contextBudgetBytes: 64 * 1024,
   },
   watchdog: {

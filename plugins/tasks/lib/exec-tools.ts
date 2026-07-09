@@ -136,6 +136,7 @@ export function registerTaskExecTools(ctx: PluginContext): void {
         workflowId: z.string().optional().describe('Workflow to start (e.g. image-social-post, video-script). Use bakin_exec_workflows_list to see options.'),
         skipWorkflowReason: z.string().optional().describe('Reason no workflow applies (required if workflowId is not set and this is not a subtask)'),
         projectId: z.string().optional().describe('Project ID to link this task to'),
+        brandId: z.string().optional().describe('Brand ID this task\'s output must follow (see bakin_exec_brands_list). Omit to inherit from the parent task or project.'),
         availableAt: z.string().optional().describe('ISO timestamp before which dispatch should not pick up the task'),
         dueAt: z.string().optional().describe('ISO timestamp representing the task deadline or target delivery time'),
         sourcePluginId: z.string().optional().describe('Plugin that owns the source entity for this task'),
@@ -145,11 +146,11 @@ export function registerTaskExecTools(ctx: PluginContext): void {
       },
       handler: async (params: Record<string, unknown>, agent: string) => {
         const {
-          title, assignee, team, description, parentId, workflowId, skipWorkflowReason, projectId,
+          title, assignee, team, description, parentId, workflowId, skipWorkflowReason, projectId, brandId,
           availableAt, dueAt, sourcePluginId, sourceEntityType, sourceEntityId, sourcePurpose,
         } = params as {
           title: string; assignee?: string; team?: string; description?: string; parentId?: string
-          workflowId?: string; skipWorkflowReason?: string; projectId?: string
+          workflowId?: string; skipWorkflowReason?: string; projectId?: string; brandId?: string
           availableAt?: string; dueAt?: string
           sourcePluginId?: string; sourceEntityType?: string; sourceEntityId?: string; sourcePurpose?: string
         }
@@ -157,7 +158,7 @@ export function registerTaskExecTools(ctx: PluginContext): void {
         try {
           const result = await createTaskWithEffects({
             title, assignee, team, description, workflowId, skipWorkflowReason,
-            createdBy: agent, parentId, projectId, availableAt, dueAt,
+            createdBy: agent, parentId, projectId, brandId, availableAt, dueAt,
             source: sourcePluginId || sourceEntityType || sourceEntityId || sourcePurpose
               ? { pluginId: sourcePluginId, entityType: sourceEntityType, entityId: sourceEntityId, purpose: sourcePurpose }
               : undefined,

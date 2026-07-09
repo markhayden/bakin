@@ -8,6 +8,7 @@ const config: BakinConfig = {
     { path: 'plugins/models' },
     { path: 'plugins/assets' },
     { path: 'plugins/images' },
+    { path: 'plugins/brands' },
     { path: 'plugins/workflows' },
     { path: 'plugins/schedule' },
     { path: 'plugins/health' },

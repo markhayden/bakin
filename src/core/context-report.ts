@@ -22,6 +22,7 @@ import { getSettings } from './settings'
 import { getContentDir } from './content-dir'
 import { buildDispatchSections } from './dispatch-prompts'
 import { buildWorkflowDispatchSections, resolveWorkflowContextBudget } from './dispatch-workflow'
+import { resolveBrandContextBudget } from './dispatch-context-blocks'
 import { normalizeLessonRetrievalSettings } from './agent-packages/lesson-retrieval'
 import { readReceipt } from './agent-packages/receipts'
 import { recentRunsByAgent } from './execution-ledger'
@@ -149,6 +150,12 @@ export function configuredDynamicCaps(): DynamicCap[] {
       maxBytes: resolveWorkflowContextBudget(settings.dispatch?.maxWorkflowContextBytes),
       setting: 'dispatch.maxWorkflowContextBytes',
       appliesTo: 'workflow',
+    },
+    {
+      source: 'brand',
+      maxBytes: resolveBrandContextBudget(settings.dispatch?.maxBrandContextBytes),
+      setting: 'dispatch.maxBrandContextBytes',
+      appliesTo: 'both',
     },
   ]
 }

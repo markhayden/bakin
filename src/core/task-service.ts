@@ -425,6 +425,7 @@ export async function createTaskWithEffects(opts: {
   createdBy?: string
   parentId?: string
   projectId?: string
+  brandId?: string
   availableAt?: string
   dueAt?: string
   source?: TaskSource
@@ -481,6 +482,7 @@ export async function createTaskWithEffects(opts: {
       scheduleJobId: opts.scheduleJobId,
       dependsOn: opts.dependsOn,
       team: opts.team,
+      brandId: opts.brandId,
     },
   )
 

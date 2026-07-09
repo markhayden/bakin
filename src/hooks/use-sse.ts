@@ -160,6 +160,26 @@ export function useSSE() {
             })
           }
 
+          // Brand-blocked tasks (#419): a linked brand vanished — scheduled
+          // marketing must reach the operator, not wait to be found. Click
+          // lands on the board pre-filtered to the affected brand.
+          if (data.type === 'plugin-event' && data.event === 'brand.dispatch_blocked') {
+            sendBrowserNotification(
+              'Brand unavailable',
+              data.message || `A task is waiting on brand '${data.brandId}'`,
+              `/tasks?brand=${encodeURIComponent(data.brandId || '')}`,
+            )
+            appendActivityEvent({
+              id: `${data.timestamp || new Date().toISOString()}-brand-blocked-${data.taskId}`,
+              ts: data.timestamp || new Date().toISOString(),
+              type: 'alert',
+              agent: 'system',
+              message: data.message || 'Task blocked on a missing brand',
+              eventName: 'brand.dispatch_blocked',
+              data: { taskId: data.taskId, brandId: data.brandId },
+            })
+          }
+
           // Watchdog alerts
           if (data.type === 'alert') {
             appendActivityEvent({

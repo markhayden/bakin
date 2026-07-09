@@ -30,6 +30,8 @@ export type DispatchTask = {
   workflowId?: string
   description?: string
   projectId?: string
+  /** Brand link (#419) — effective brand resolves lazily (own → ancestry → project). */
+  brandId?: string
   availableAt?: string
   dependsOn?: string
   // Origin signals for per-turn model routing (present on the stored task).

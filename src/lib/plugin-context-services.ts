@@ -30,6 +30,7 @@ function toPluginTask(task: BakinTask): PluginTask {
     workflowId: task.workflowId,
     scheduleJobId: task.scheduleJobId,
     projectId: task.projectId,
+    brandId: task.brandId,
     availableAt: task.availableAt,
     dueAt: task.dueAt,
     source: task.source,
@@ -52,6 +53,7 @@ function taskPatchFromPublic(patch: PluginTaskUpdateInput): BakinTaskPatch {
   if ('workflowId' in patch) next.workflowId = patch.workflowId
   if ('scheduleJobId' in patch) next.scheduleJobId = patch.scheduleJobId
   if ('projectId' in patch) next.projectId = patch.projectId
+  if ('brandId' in patch) next.brandId = patch.brandId
   if ('parentId' in patch) next.parentId = patch.parentId
   if ('availableAt' in patch) next.availableAt = patch.availableAt || undefined
   if ('dueAt' in patch) next.dueAt = patch.dueAt || undefined
@@ -80,6 +82,7 @@ export function createPluginTaskService(store: BakinTaskStore): PluginTaskServic
         createdBy: input.createdBy,
         parentId: input.parentId ?? undefined,
         projectId: input.projectId,
+        brandId: input.brandId,
         availableAt: input.availableAt,
         dueAt: input.dueAt,
         source: input.source,
@@ -115,6 +118,7 @@ export function createPluginTaskService(store: BakinTaskStore): PluginTaskServic
         column: filter.column,
         agent: filter.agent,
         projectId: filter.projectId,
+        brandId: filter.brandId,
       })
       return tasks.map(toPluginTask)
     },

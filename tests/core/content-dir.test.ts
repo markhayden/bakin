@@ -25,7 +25,7 @@ mock.module('../../packages/adapter-openclaw/src/home', () => ({
   resetOpenClawHome: mock(),
 }))
 
-const { getContentDir, resetContentDir, initBakinHome } = require('@bakin/workflows/lib/content-dir') as typeof import('@bakin/workflows/lib/content-dir')
+const { getContentDir, resetContentDir, initBakinHome, getBakinPaths } = require('@bakin/workflows/lib/content-dir') as typeof import('@bakin/workflows/lib/content-dir')
 
 describe('content-dir', () => {
   const testDir = join(tmpdir(), `bakin-test-contentdir-${Date.now()}`)
@@ -84,7 +84,18 @@ describe('initBakinHome', () => {
     // Verify other directories
     expect(existsSync(join(testDir, 'team', 'personas'))).toBe(true)
 
+    // Brand records (#419)
+    expect(existsSync(join(testDir, 'brands'))).toBe(true)
+
     expect(created.length).toBeGreaterThan(0)
+  })
+
+  it('exposes the brands path in getBakinPaths', () => {
+    process.env.BAKIN_HOME = testDir
+    resetContentDir()
+    expect(getBakinPaths().brands).toBe(join(testDir, 'brands'))
+    delete process.env.BAKIN_HOME
+    resetContentDir()
   })
 
   it('does not overwrite existing files on re-init', () => {

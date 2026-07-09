@@ -27,6 +27,8 @@ export interface Task {
   workflowId?: string
   scheduleJobId?: string
   projectId?: string
+  /** Brand link (#419) — resolved lazily at dispatch, mirrors projectId. */
+  brandId?: string
   availableAt?: string
   dueAt?: string
   source?: TaskSource
@@ -74,6 +76,7 @@ export interface TaskCreateInput {
   date?: string
   workflowId?: string
   projectId?: string
+  brandId?: string
   parentId?: string | null
   availableAt?: string
   dueAt?: string
@@ -94,6 +97,7 @@ export interface TaskUpdateInput {
   workflowId?: string
   scheduleJobId?: string
   projectId?: string
+  brandId?: string
   parentId?: string | null
   availableAt?: string | null
   dueAt?: string | null
@@ -107,7 +111,7 @@ export interface TaskService {
   move(id: string, column: ColumnId): Promise<Task>
   remove(id: string): Promise<void>
   get(id: string): Promise<Task | null>
-  list(filter?: { column?: ColumnId; agent?: string; projectId?: string }): Promise<Task[]>
+  list(filter?: { column?: ColumnId; agent?: string; projectId?: string; brandId?: string }): Promise<Task[]>
   appendLog(id: string, entry: TaskLogEntry): Promise<void>
 }
 
@@ -343,6 +347,9 @@ export interface AssetGenerationInfo {
   routeReason?: string
   /** Reference/context images that conditioned this generation (#418). */
   references?: Array<{ assetId: string; version: number }>
+  /** Brand provenance (#419): brand id + content fingerprint as-used. */
+  brandId?: string
+  brandFingerprint?: string
 }
 
 /** Create a new versioned asset (v1) from a source file. */

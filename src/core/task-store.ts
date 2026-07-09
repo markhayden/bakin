@@ -43,6 +43,8 @@ export interface Task {
   workflowId?: string
   scheduleJobId?: string
   projectId?: string
+  /** Brand link (#419) — resolved lazily at dispatch, mirrors projectId. */
+  brandId?: string
   availableAt?: string
   dueAt?: string
   source?: TaskSource
@@ -145,6 +147,7 @@ function taskToView(task: BakinTask): Task {
     workflowId: task.workflowId,
     scheduleJobId: task.scheduleJobId,
     projectId: task.projectId,
+    brandId: task.brandId,
     availableAt: task.availableAt,
     dueAt: task.dueAt,
     source: task.source,
@@ -271,6 +274,8 @@ export function createTask(
     dependsOn?: string
     /** Team assignment (#189) — mutually exclusive with assignee. */
     team?: string
+    /** Brand link (#419). */
+    brandId?: string
   },
 ): Promise<Task> {
   try {
@@ -289,6 +294,7 @@ export function createTask(
       parentId,
       workflowId,
       projectId,
+      brandId: options?.brandId,
       scheduleJobId: options?.scheduleJobId,
       dependsOn: options?.dependsOn,
       availableAt: options?.availableAt,
@@ -448,6 +454,7 @@ export function updateTask(
     column?: ColumnId
     workflowId?: string
     projectId?: string
+    brandId?: string
     availableAt?: string | null
     dueAt?: string | null
     source?: TaskSource | null
@@ -482,6 +489,7 @@ export function updateTask(
     }
     if ('workflowId' in updates) patch.workflowId = updates.workflowId || undefined
     if ('projectId' in updates) patch.projectId = updates.projectId || undefined
+    if ('brandId' in updates) patch.brandId = updates.brandId || undefined
     if ('availableAt' in updates) patch.availableAt = updates.availableAt || undefined
     if ('dueAt' in updates) patch.dueAt = updates.dueAt || undefined
     if ('source' in updates) patch.source = updates.source || undefined

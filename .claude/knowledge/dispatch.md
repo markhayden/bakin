@@ -18,7 +18,7 @@ modules that import each other directly (never through the barrel):
 | `dispatch-board.ts` | Taskboard reads, `isTaskDispatchEligible` policy, thin task-store wrappers |
 | `dispatch-failures.ts` | Pure RuntimeError→cooldown-class classification (kind-only, never message text) |
 | `dispatch-prompts.ts` | Synchronous prompt assembly (labeled sections; pure string builders) |
-| `dispatch-context-blocks.ts` | Async prompt-context builders (lessons via retrieval, assets via hook) + lessonBlockCache |
+| `dispatch-context-blocks.ts` | Async prompt-context builders (lessons via retrieval, assets via hook, brand card via `brands.getContext` #419) + lessonBlockCache + brand resolution/defer |
 | `dispatch-registry.ts` | The in-flight turn registry (LEAF — types+logger only): counts, abort/snapshot/force-release surface for task-store + watchdog |
 | `dispatch-turns.ts` | The concurrent fire engine: budget gate, run claiming, turn registration + caps, `fireDispatchTurn` settle handlers |
 | `dispatch-prepare.ts` | Shared per-task fire prep (claim → lesson → assets → message → move → audit) for cycle + single |
@@ -384,3 +384,19 @@ one-time scheduled work.
 - `plugins/schedule/index.ts` — Bakin-owned scheduler wiring (see `.claude/knowledge/bakin-owned-scheduler.md`)
 - `.claude/knowledge/session-forensics.md` — trajectory schema, diagnosis flow, ladder walkthroughs
 - `.claude/knowledge/adapter-architecture.md` — adapter boundaries and task/runtime ownership
+
+## Brand context (#419)
+
+Effective brand resolves LAZILY per dispatch in `dispatch-context-blocks.ts`:
+`task.brandId` → cycle-safe parent ancestry → `projects.getBrand` hook.
+`buildDispatchBrandBlock` invokes `brands.getContext` (structural-mirror types,
+graceful when absent for unbranded tasks) and returns none/ready/missing.
+Ready → a conditional `brand` section between `project` and `lessons` in BOTH
+builders (full card subagent/main; one-liner in triage), budgeted by
+`dispatch.maxBrandContextBytes`, plus a `brand.injected` audit post-claim.
+Missing → the PRE-CLAIM brand gate (`deferForMissingBrand`, mirror of
+`deferForBudget` in dispatch-cycle + dispatch-single) leaves the task in todo
+with notify-once (`brand.dispatch_blocked` audit + plugin-event → browser
+notification + derived board badge); the post-gate race backstop is a typed
+`BrandUnavailableError` in prepare (claim released). A brand-linked task is
+NEVER dispatched brandless. Deep reference: `.claude/knowledge/brands-plugin.md`.

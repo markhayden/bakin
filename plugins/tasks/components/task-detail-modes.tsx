@@ -63,7 +63,7 @@ interface TaskDetailFormProps {
 export function TaskDetailForm({ m, task, columnId, open, onClose, onCancelEdit }: TaskDetailFormProps) {
   const {
     title, setTitle, description, setDescription, agent, setAgent, column, setColumn,
-    workflowId, setWorkflowId, workflows, saving, dirty, pasting, descriptionRef,
+    workflowId, setWorkflowId, workflows, brandId, setBrandId, brands, saving, dirty, pasting, descriptionRef,
     logMessage, setLogMessage, addingLog, showAllNotes, setShowAllNotes,
     isCreate, taskAgentMeta, markDirty, handleDescriptionPaste, handleSave, handleAddLog,
   } = m
@@ -168,11 +168,35 @@ export function TaskDetailForm({ m, task, columnId, open, onClose, onCancelEdit 
           </Select>
         </div>
 
+        {/* Brand (#419) — appears once at least one published brand exists */}
+        {brands.length > 0 && (
+          <div>
+            <label className="text-sm text-muted-foreground mb-1 block">Brand</label>
+            <Select value={brandId} onValueChange={(v) => { setBrandId(v ?? ''); markDirty() }}>
+              <SelectTrigger className="w-full bg-surface">
+                <SelectValue placeholder="None">
+                  {brands.find(b => b.id === brandId)?.name || (brandId || 'None (inherits from parent/project)')}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">None (inherits from parent/project)</SelectItem>
+                {brands.map((b) => (
+                  <SelectItem key={b.id} value={b.id}>
+                    <span className="size-2 rounded-full bg-fuchsia-500/50 shrink-0" />
+                    {b.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
         {/* Workflow preview box */}
         <WorkflowPreview m={m} />
         <GateApprovalPanel m={m} />
         <MapChildrenPanel m={m} />
 
+        {!isCreate && task && <Slot name="task-brand" taskId={task.id} />}
         {!isCreate && task && <Slot name="task-assets" taskId={task.id} />}
 
         <div className="flex justify-end gap-2">
@@ -277,6 +301,7 @@ export function TaskDetailView({ m, task, columnId, open, onClose, onEdit, onDel
           </div>
         )}
 
+        <Slot name="task-brand" taskId={task.id} />
         <Slot name="task-assets" taskId={task.id} readOnly />
 
         <Separator />

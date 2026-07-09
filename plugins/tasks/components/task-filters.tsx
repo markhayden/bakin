@@ -15,6 +15,9 @@ const STATUS_OPTIONS: { value: string; label: string; icon: React.ReactNode }[] 
     icon: <span className={`size-2 rounded-full ${STATUS_DOT_COLORS[id]}`} />,
   }))
 
+/** Brand-facet sentinel for unbranded tasks — mirrors NO_BRAND in use-task-filters. */
+const NO_BRAND_VALUE = '__none__'
+
 interface TaskFiltersProps {
   agentFilter: string
   onAgentChange: (agent: string) => void
@@ -25,6 +28,10 @@ interface TaskFiltersProps {
   onShowScheduledChange?: (show: boolean) => void
   /** Aggregation counts from search (status → count) */
   statusCounts?: Record<string, number>
+  /** Brand facet (#419) — rendered only when brands exist. */
+  brandFilter?: string[]
+  onBrandChange?: (brands: string[]) => void
+  brandOptions?: Array<{ id: string; name: string }>
 }
 
 export function TaskFilters({
@@ -34,12 +41,36 @@ export function TaskFilters({
   showScheduled = true,
   onShowScheduledChange,
   statusCounts,
+  brandFilter, onBrandChange, brandOptions,
 }: TaskFiltersProps) {
   const agentIds = useAgentIds()
+
+  const brandFacetOptions = (brandOptions ?? []).map(b => ({
+    value: b.id,
+    label: b.name,
+    icon: <span className="size-2 rounded-full bg-fuchsia-500/50" />,
+  }))
+  if (brandFacetOptions.length > 0) {
+    brandFacetOptions.push({
+      value: NO_BRAND_VALUE,
+      label: 'No brand',
+      icon: <span className="size-2 rounded-full border border-muted-foreground/50 bg-transparent" />,
+    })
+  }
 
   return (
     <div className="flex items-center gap-3 overflow-x-auto">
       <AgentFilter agentIds={agentIds} value={agentFilter} onChange={onAgentChange} />
+
+      {/* Brand facet (#419) — appears once at least one brand exists */}
+      {onBrandChange && brandFacetOptions.length > 0 && (
+        <FacetFilter
+          label="Brand"
+          options={brandFacetOptions}
+          selected={brandFilter ?? []}
+          onChange={onBrandChange}
+        />
+      )}
 
       {/* Status facet filter — only in table view */}
       {showStatusFilter && onStatusChange && (

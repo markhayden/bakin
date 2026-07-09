@@ -38,6 +38,7 @@ review record of any prompt change). Dynamic blocks and their bounds:
 | task title + description | UNBOUNDED by design — user-authored work spec, measured/flagged, never truncated | task author |
 | lessons | `agentPackages.lessonsRetrieval.maxCharacters` (default 8000; 0 when injection disabled) | settings |
 | workflow prior-step outputs | `dispatch.maxWorkflowContextBytes` (default 16384, min 1024) — newest outputs kept whole, most recent ALWAYS kept, `__parentContext` title/description always survive, omissions are visible markers pointing at `bakin_exec_workflows_get_instance` | settings |
+| brand card (#419) | `dispatch.maxBrandContextBytes` (default 12288, min 1024) — always-inline tiers (rules/palette/terminology/listings) survive past the budget; inline cardDocs + retrieved lessons drop whole with visible markers naming the brand exec tools | settings |
 | assets block | one line per linked asset (naturally small) | task links |
 | corrective / continuation / project blocks | conditional, representative sizes only | dispatch state |
 | workflow `previousOutput` (rejected-output revision block) | **KNOWN UNCAPPED** — a huge rejected output re-dispatches with the same huge payload; out of #357 scope, capture in a follow-up if it bites | — |

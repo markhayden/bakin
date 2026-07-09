@@ -25,6 +25,7 @@ import {
 import { readDispatchColumns, isTaskDispatchEligible, addTaskLog, moveTaskToInProgress, tryAddTaskLog } from './dispatch-board'
 import { concurrencyGate, deferForBudget, fireDispatchTurn, resolveDispatchRouting, type BudgetSpendMemo } from './dispatch-turns'
 import { prepareRegularDispatch } from './dispatch-prepare'
+import { deferForMissingBrand } from './dispatch-context-blocks'
 import { dispatchWorkflowTask } from './dispatch-workflow'
 import { resolveTeamAssignmentsPrePass } from './dispatch-team'
 
@@ -179,6 +180,17 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
       // the cycle; the ladder check above escalates to blocked at
       // maxRetries and paces retries via the transient cooldown (#189).
       if (task.team && !task.agent) continue
+
+      // Brand gate (#419): a task linked to a missing/draft brand stays in
+      // todo (no claim, no inProgress move) and resumes the cycle the brand
+      // exists — never dispatched brandless, never silently. Placed BEFORE the
+      // workflow branch so workflow tasks defer visibly too (the workflow path
+      // would otherwise move to inProgress and throw, sitting silently stuck).
+      const brandHoldEarly = await deferForMissingBrand(task, contentDir)
+      if (brandHoldEarly) {
+        log.debug('Dispatch deferred by brand gate', { id: task.id, brandId: brandHoldEarly.brandId })
+        continue
+      }
 
       // Workflow-aware dispatch path
       const taskWithWorkflow = task as typeof task & { workflowId?: string }

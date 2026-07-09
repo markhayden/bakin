@@ -187,6 +187,7 @@ export function buildDispatchSections(
   recovery?: SessionDeathState,
   roster: DispatchRosterAgent[] = [],
   assetsBlock = '',
+  brand?: { brandId: string; block: string },
 ): PromptSection[] {
   const sections: PromptSection[] = []
   const add = (source: string, text: string) => {
@@ -216,6 +217,8 @@ export function buildDispatchSections(
     add('description', detailsBlock)
     add('continuation', continuationBlock)
     add('assets', assetsBlock)
+    // Brand one-liner only — triage decides routing, not content (#419).
+    add('brand', brand ? `\n\n**Brand:** ${brand.brandId} — this task's output must follow this brand.` : '')
     add('lessons', lessonSection)
     add('triage-instructions', `\n\nEither handle it yourself or assign it to the right agent${rosterText} via \`${mc('bakin_exec_tasks_assign', `taskId=${task.id} agent="<agent>"`)}\`. ${contactsRef}\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``)
     return sections
@@ -226,6 +229,7 @@ export function buildDispatchSections(
     add('description', detailsBlock)
     add('continuation', continuationBlock)
     add('assets', assetsBlock)
+    add('brand', brand?.block ? `\n\n${brand.block}` : '')
     add('lessons', lessonSection)
     add('main-instructions', `\n\n${contactsRef} When done: \`${mc('bakin_exec_tasks_complete', `taskId=${task.id} summary="<what you did>"`)}\`\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``)
     return sections
@@ -239,6 +243,7 @@ export function buildDispatchSections(
   add('project', task.projectId
     ? `\n\n**Project:** id ${task.projectId}\nThe project spec may contain detailed requirements. Call bakin_exec_projects_get to read it before starting work.`
     : '')
+  add('brand', brand?.block ? `\n\n${brand.block}` : '')
   add('lessons', lessonSection)
   add('progress-logging', `
 
@@ -289,8 +294,9 @@ export function buildDispatchMessage(
   recovery?: SessionDeathState,
   roster: DispatchRosterAgent[] = [],
   assetsBlock = '',
+  brand?: { brandId: string; block: string },
 ): string {
-  return buildDispatchSections(task, agentName, contentDir, mainAgentId, lessonBlock, continuation, recovery, roster, assetsBlock)
+  return buildDispatchSections(task, agentName, contentDir, mainAgentId, lessonBlock, continuation, recovery, roster, assetsBlock, brand)
     .map((s) => s.text)
     .join('')
 }

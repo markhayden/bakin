@@ -20,6 +20,7 @@ import memoryPlugin from '../../plugins/memory'
 import modelsPlugin from '../../plugins/models'
 import assetsPlugin from '../../plugins/assets'
 import imagesPlugin from '../../plugins/images'
+import brandsPlugin from '../../plugins/brands'
 import workflowsPlugin from '../../plugins/workflows'
 import schedulePlugin from '../../plugins/schedule'
 import healthPlugin from '../../plugins/health'
@@ -33,6 +34,7 @@ import memoryManifestJson from '../../plugins/memory/bakin-plugin.json'
 import modelsManifestJson from '../../plugins/models/bakin-plugin.json'
 import assetsManifestJson from '../../plugins/assets/bakin-plugin.json'
 import imagesManifestJson from '../../plugins/images/bakin-plugin.json'
+import brandsManifestJson from '../../plugins/brands/bakin-plugin.json'
 import workflowsManifestJson from '../../plugins/workflows/bakin-plugin.json'
 import scheduleManifestJson from '../../plugins/schedule/bakin-plugin.json'
 import healthManifestJson from '../../plugins/health/bakin-plugin.json'
@@ -58,6 +60,7 @@ export const CORE_PLUGIN_IMPORTS: Readonly<Record<string, CorePluginRegistration
   'plugins/models': corePlugin(modelsPlugin, modelsManifestJson),
   'plugins/assets': corePlugin(assetsPlugin, assetsManifestJson),
   'plugins/images': corePlugin(imagesPlugin, imagesManifestJson),
+  'plugins/brands': corePlugin(brandsPlugin, brandsManifestJson),
   'plugins/workflows': corePlugin(workflowsPlugin, workflowsManifestJson),
   'plugins/schedule': corePlugin(schedulePlugin, scheduleManifestJson),
   'plugins/health': corePlugin(healthPlugin, healthManifestJson),

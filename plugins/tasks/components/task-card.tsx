@@ -8,6 +8,7 @@ import { STATUS_BADGE_STYLES } from '../constants'
 import { compactDispatchFailureLabel, getLatestDispatchFailure } from '../lib/dispatch-failure'
 import { getTaskAvailableAtMs } from '../lib/scheduled'
 import type { BudgetHold } from '../hooks/use-budget-status'
+import type { BrandHold } from '../hooks/use-brand-status'
 import type { Task, ColumnId } from '../types'
 
 export interface TaskScoreInfo {
@@ -65,7 +66,7 @@ function setChildCardHighlight(childTaskId: string, on: boolean): void {
   for (const cls of CHILD_HIGHLIGHT_CLASSES) card.classList.toggle(cls, on)
 }
 
-export function TaskCardContent({ task, columnId, className, gateLabel, childTaskId, budgetHold, style, scoreInfo }: { task: Task; columnId: string; className?: string; gateLabel?: string; childTaskId?: string; budgetHold?: BudgetHold; style?: CSSProperties; scoreInfo?: TaskScoreInfo }) {
+export function TaskCardContent({ task, columnId, className, gateLabel, childTaskId, budgetHold, brandHold, warnUnbranded, style, scoreInfo }: { task: Task; columnId: string; className?: string; gateLabel?: string; childTaskId?: string; budgetHold?: BudgetHold; brandHold?: BrandHold; warnUnbranded?: boolean; style?: CSSProperties; scoreInfo?: TaskScoreInfo }) {
   const badge = STATUS_BADGE_STYLES[columnId as ColumnId]
   // Clear any lingering child-card outline if this card unmounts mid-hover
   // (e.g. the sub-task finishes and the badge disappears under the cursor).
@@ -133,6 +134,20 @@ export function TaskCardContent({ task, columnId, className, gateLabel, childTas
         </span>
       )}
 
+      {/* Brand badge (#419) — plus an opt-in nudge for unbranded work */}
+      {task.brandId && (
+        <span className="inline-flex items-center gap-1 text-[10px] text-fuchsia-400/80 mt-1">
+          <span className="size-2 rounded-full bg-fuchsia-500/40" />
+          {task.brandId}
+        </span>
+      )}
+      {!task.brandId && warnUnbranded && !isComplete && (
+        <span className="inline-flex items-center gap-1 text-[10px] text-amber-400/60 mt-1" title="warnUnbranded is on — this task has no brand">
+          <span className="size-2 rounded-full border border-amber-500/40" />
+          no brand
+        </span>
+      )}
+
       {/* Budget-deferred indicator (cost-control v2): the task is eligible
           but the spend gate is holding it — visibly, never silently. */}
       {budgetHold && (
@@ -190,6 +205,21 @@ export function TaskCardContent({ task, columnId, className, gateLabel, childTas
         </div>
       )}
 
+      {/* Brand-blocked indicator (#419): the task is eligible but its brand
+          is missing/draft — visibly deferring, never silently. */}
+      {brandHold && (
+        <a
+          href="/brands"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="flex items-center gap-1.5 mt-1.5 px-2 py-1 rounded-md bg-amber-500/10 border border-amber-500/20 whitespace-nowrap overflow-hidden hover:bg-amber-500/20"
+          title="Open Brands"
+        >
+          <span className="text-amber-400 text-[11px] font-semibold shrink-0">Brand unavailable</span>
+          <span className="text-amber-400/60 text-[10px] truncate">{brandHold.detail}</span>
+        </a>
+      )}
+
       {isFutureScheduled && task.availableAt && (
         <div className="mt-2 inline-flex items-center rounded-md border border-sky-500/20 bg-sky-500/10 px-2 py-1 text-[11px] font-medium text-sky-300">
           {formatWaitingLabel(task.availableAt)}
@@ -225,12 +255,14 @@ interface TaskCardProps {
   gateLabel?: string
   childTaskId?: string
   budgetHold?: BudgetHold
+  brandHold?: BrandHold
+  warnUnbranded?: boolean
   scoreInfo?: TaskScoreInfo
   onDelete: (task: { id: string; title: string }) => void
   onClick: (task: Task, columnId: ColumnId) => void
 }
 
-export function TaskCard({ task, columnId, index = 0, gateLabel, childTaskId, budgetHold, scoreInfo, onDelete, onClick }: TaskCardProps) {
+export function TaskCard({ task, columnId, index = 0, gateLabel, childTaskId, budgetHold, brandHold, warnUnbranded, scoreInfo, onDelete, onClick }: TaskCardProps) {
   const { ref, isDragging } = useSortable({
     id: task.id,
     group: columnId,
@@ -271,6 +303,8 @@ export function TaskCard({ task, columnId, index = 0, gateLabel, childTaskId, bu
         gateLabel={gateLabel}
         childTaskId={childTaskId}
         budgetHold={budgetHold}
+        brandHold={brandHold}
+        warnUnbranded={warnUnbranded}
         scoreInfo={scoreInfo}
         className="p-4"
       />

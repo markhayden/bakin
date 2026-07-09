@@ -28,6 +28,10 @@ const GenerationSchema = z.object({
   quality: z.string().optional(),
   routeSource: z.string(),
   routeReason: z.string().optional(),
+  // Brand provenance (#419, D14): which brand — and which VERSION of it
+  // (content fingerprint) — conditioned this generation. The V2 staleness hook.
+  brandId: z.string().optional(),
+  brandFingerprint: z.string().optional(),
   // Reference/context images that conditioned this generation, by managed
   // asset identity (#418). Lineage Bakin owns at the persist step — the runtime
   // only ever saw opaque file paths.

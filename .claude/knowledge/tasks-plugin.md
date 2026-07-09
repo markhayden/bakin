@@ -39,6 +39,7 @@ interface BakinTaskState {
   createdBy?: string       // agent that created the task
   workflowId?: string      // linked workflow definition ID
   projectId?: string       // linked project ID
+  brandId?: string         // linked brand (#419) — effective brand resolves lazily at dispatch (own → parent → project)
   scheduleJobId?: string   // linked schedule job ID
   availableAt?: string     // earliest dispatcher pickup timestamp
   dueAt?: string           // deadline/expectation timestamp

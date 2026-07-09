@@ -23,6 +23,7 @@ import { readDispatchColumns, isTaskDispatchEligible, addTaskLog, moveTaskToInPr
 import { formatDispatchError } from './dispatch-failures'
 import { concurrencyGate, deferForBudget, fireDispatchTurn, resolveDispatchRouting } from './dispatch-turns'
 import { prepareRegularDispatch } from './dispatch-prepare'
+import { deferForMissingBrand } from './dispatch-context-blocks'
 import { dispatchWorkflowTask } from './dispatch-workflow'
 import { resolveTeamAssignmentForSingle } from './dispatch-team'
 
@@ -113,6 +114,15 @@ export async function dispatchSingleTask(
     // task still unresolved here raced a concurrent un-assignment — skip.
     if (task.team && !task.agent) {
       log.debug('dispatchSingleTask: team task unresolved after pre-pass; skipping', { taskId })
+      return
+    }
+
+    // Brand gate (#419): defer BEFORE the workflow branch so branded workflow
+    // tasks whose brand is missing/draft stay in todo visibly (never move to
+    // inProgress and throw). Same semantics as the cycle.
+    const brandHoldEarly = await deferForMissingBrand(task, contentDir)
+    if (brandHoldEarly) {
+      log.debug('Single-task dispatch deferred by brand gate', { id: task.id, brandId: brandHoldEarly.brandId, source })
       return
     }
 

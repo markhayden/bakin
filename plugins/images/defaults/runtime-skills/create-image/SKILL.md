@@ -33,4 +33,5 @@ API keys.
 - Front-load the exact visual subject and intended use.
 - Use surface profile ids for dimensions instead of raw aspect-ratio prose.
 - Keep brand, legal, and text constraints explicit.
+- Branded task? Pass `brandId` to the generate/edit tool — the brand's palette and identity merge into the prompt and its default reference images (real product screenshots, logos) attach automatically. Never hand-copy hex codes when a brandId exists.
 - Avoid provider-specific slang unless a provider-specific skill is being used.

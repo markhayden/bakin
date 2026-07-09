@@ -14,7 +14,7 @@ import { buildTaskLessonQuery } from './agent-packages/lesson-retrieval'
 import type { DispatchState, SessionDeathState } from './dispatch-types'
 import { getFailureRecord } from './dispatch-state'
 import { findDispatchTaskSnapshot } from './dispatch-board'
-import { buildDispatchLessonBlock, buildDispatchAssetBlock } from './dispatch-context-blocks'
+import { buildDispatchLessonBlock, buildDispatchAssetBlock, buildDispatchBrandBlock, BrandUnavailableError } from './dispatch-context-blocks'
 import { toolHelpers, sharedExecutionToolDocs, outputDisciplineSection, buildCorrectiveSection, type PromptSection } from './dispatch-prompts'
 import { concurrencyGate, deferForBudget, claimDispatchRun, auditDispatchSuppressed, fireDispatchTurn, resolveDispatchRouting } from './dispatch-turns'
 
@@ -104,8 +104,14 @@ export async function dispatchWorkflowTask(
     // Assets are linked to the PARENT task id (decomposition guidance tells
     // agents to save against the parent), so resolve by task.id, not contextTaskId.
     const wfAssetsBlock = await buildDispatchAssetBlock(task.id)
+    // Brand context (#419): resolve off the PARENT task (workflow steps
+    // inherit the task's brand); a missing brand is a typed failure — a
+    // branded workflow step never fires brandless.
+    const wfBrandBlock = await buildDispatchBrandBlock(task)
+    if (wfBrandBlock.status === 'missing') throw new BrandUnavailableError(wfBrandBlock.brandId)
     const message = buildWorkflowDispatchMessage({ ...task, id: contextTaskId }, ctx, agent, lessonBlock, wfRecovery, wfAssetsBlock, {
       maxWorkflowContextBytes: getSettings().dispatch.maxWorkflowContextBytes,
+      ...(wfBrandBlock.status === 'ready' ? { brand: { brandId: wfBrandBlock.brandId, block: wfBrandBlock.block } } : {}),
     })
     const initialLogCount = findDispatchTaskSnapshot(task.id)?.task.log?.length ?? 0
 
@@ -274,7 +280,7 @@ export function buildWorkflowDispatchSections(
   lessonBlock = '',
   recovery?: SessionDeathState,
   assetsBlock = '',
-  opts: { maxWorkflowContextBytes?: number } = {},
+  opts: { maxWorkflowContextBytes?: number; brand?: { brandId: string; block: string } } = {},
 ): PromptSection[] {
   // Sections are groups of lines; the message is section texts joined by
   // '\n', byte-identical to joining all lines directly (empty groups are
@@ -360,6 +366,12 @@ export function buildWorkflowDispatchSections(
     lines.push('')
   }
   flush('workflow-context')
+
+  if (opts.brand?.block) {
+    lines.push(opts.brand.block)
+    lines.push('')
+  }
+  flush('brand')
 
   if (lessonBlock) {
     lines.push(lessonBlock)
@@ -453,7 +465,7 @@ export function buildWorkflowDispatchMessage(
   lessonBlock = '',
   recovery?: SessionDeathState,
   assetsBlock = '',
-  opts: { maxWorkflowContextBytes?: number } = {},
+  opts: { maxWorkflowContextBytes?: number; brand?: { brandId: string; block: string } } = {},
 ): string {
   return buildWorkflowDispatchSections(task, stepContext, agentName, lessonBlock, recovery, assetsBlock, opts)
     .map((s) => s.text)

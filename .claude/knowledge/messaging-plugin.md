@@ -38,3 +38,11 @@ The official plugin must use task-backed scheduling for production work:
   channel delivery fails after workflow completion.
 
 Do not restore `plugins/messaging/`, `tests/plugins/messaging/`, `src/core/messaging-cron.ts`, `~/.bakin/messaging.json`, or a top-level `~/.bakin/messaging/` data path in this repo.
+
+## Brand integration (#419, external milestone)
+
+Plans gain `brandId`; activation stamps it onto every spawned deliverable task
+(top-level field, NOT `source` — a plan is the brand decision point, and tasks
+whose plan sets no brand still inherit via project). Lives in
+bakin-bits-official; the core contract (task brandId + dispatch injection) is
+already in place.
