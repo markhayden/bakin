@@ -13,8 +13,7 @@ const baseManifest = {
   version: '1.0.0',
   bakin: '>=1.0.0',
   description: 'A signed test plugin',
-  entry: { server: 'index.ts' },
-  permissions: [],
+    permissions: [],
 }
 
 function createSigningFixture() {

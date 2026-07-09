@@ -4,17 +4,12 @@
   "version": "2.0.1",
   "bakin": ">=1.0.0",
   "description": "Workflow runtime — enforces step-by-step agent execution with gated delivery, parallel steps, human gates, and output validation",
-  "entry": {
-    "server": "index.ts",
-    "client": "client.tsx"
-  },
   "contentFiles": [
     "workflows/definitions/",
     "workflows/skills/",
     "workflows/instances/"
   ],
   "secrets": [],
-  "tests": "tests/",
   "dependencies": [
     "tasks"
   ],

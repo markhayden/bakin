@@ -15,6 +15,14 @@ import HookCard from '../../../../components/HookCard.astro'
 <p class="hook-section-description">Asset hooks expose file, sidecar, variant, and trash helpers for plugins that need to work with Bakin-managed files.</p>
 
 <div class="hook-card-list">
+<HookCard id="assets-describe" name="assets.describe" label="Describe assets by id." summary="Batch {description, enrichment caption, type, exists} per assetId — lets brand asset groups (and any consumer) label members without direct imports." source="plugins/assets/lib/register-hooks.ts:49" badges={["rpc"]}>
+```ts frame="terminal"
+const result = await ctx.hooks.invoke(
+  'assets.describe',
+  {},
+)
+```
+</HookCard>
 <HookCard id="assets-enrichmentstats" name="assets.enrichmentStats" label="Enrichment queue stats." summary="Returns the vision-enrichment queue depth and processed/failed/skipped counters for telemetry." source="plugins/assets/lib/register-hooks.ts:30" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
@@ -39,7 +47,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="assets-purgeclipboardfortask" name="assets.purgeClipboardForTask" label="Purge task clipboard assets." summary="Deletes clipboard-sourced assets associated with a completed task when that cleanup setting is enabled. Use it from task completion flows that want asset cleanup to stay centralized." source="plugins/assets/lib/register-hooks.ts:77" badges={["rpc"]}>
+<HookCard id="assets-purgeclipboardfortask" name="assets.purgeClipboardForTask" label="Purge task clipboard assets." summary="Deletes clipboard-sourced assets associated with a completed task when that cleanup setting is enabled. Use it from task completion flows that want asset cleanup to stay centralized." source="plugins/assets/lib/register-hooks.ts:99" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.purgeClipboardForTask',
@@ -49,7 +57,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="assets-resolveserve" name="assets.resolveServe" label="Resolve versioned asset serve request." summary="Resolves an /api/assets/&lt;assetId&gt; path (current, /v/&lt;n&gt;, /thumb, /export/&lt;name&gt;) to a file on disk for serving." source="plugins/assets/lib/register-hooks.ts:45" badges={["rpc"]}>
+<HookCard id="assets-resolveserve" name="assets.resolveServe" label="Resolve versioned asset serve request." summary="Resolves an /api/assets/&lt;assetId&gt; path (current, /v/&lt;n&gt;, /thumb, /export/&lt;name&gt;) to a file on disk for serving." source="plugins/assets/lib/register-hooks.ts:67" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.resolveServe',
@@ -62,7 +70,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="assets-savefromsource" name="assets.saveFromSource" label="Save a file as a managed asset." summary="Upserts a file into the versioned asset store by source path (new asset, version bump, or no-op when unchanged). The sanctioned cross-plugin/core save path; mirrors bakin_exec_assets_save." source="plugins/assets/lib/register-hooks.ts:51" badges={["rpc"]}>
+<HookCard id="assets-savefromsource" name="assets.saveFromSource" label="Save a file as a managed asset." summary="Upserts a file into the versioned asset store by source path (new asset, version bump, or no-op when unchanged). The sanctioned cross-plugin/core save path; mirrors bakin_exec_assets_save." source="plugins/assets/lib/register-hooks.ts:73" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.saveFromSource',
@@ -77,7 +85,7 @@ const result = await ctx.hooks.invoke(
 <p class="hook-section-description">Health hooks expose registered readiness and diagnostic checks so other surfaces can list or inspect them.</p>
 
 <div class="hook-card-list">
-<HookCard id="health-getcheck" name="health.getCheck" label="Get a health check." summary="Returns metadata for one registered health check by id, without running the check. Use it when a plugin needs the check name, owner, and autofix capability before deciding what to show or run." source="plugins/health/index.ts:577" badges={["rpc"]}>
+<HookCard id="health-getcheck" name="health.getCheck" label="Get a health check." summary="Returns metadata for one registered health check by id, without running the check. Use it when a plugin needs the check name, owner, and autofix capability before deciding what to show or run." source="plugins/health/index.ts:576" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'health.getCheck',
@@ -87,7 +95,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="health-list" name="health.list" label="List health checks." summary="Returns the health checks registered by core and plugins without executing them. Use it when another surface needs to show the available diagnostics or autofix support." source="plugins/health/index.ts:576" badges={["rpc"]}>
+<HookCard id="health-list" name="health.list" label="List health checks." summary="Returns the health checks registered by core and plugins without executing them. Use it when another surface needs to show the available diagnostics or autofix support." source="plugins/health/index.ts:575" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'health.list',
@@ -102,7 +110,7 @@ const result = await ctx.hooks.invoke(
 <p class="hook-section-description">Model hooks expose the effective model configuration and notify dependent surfaces when runtime model state changes.</p>
 
 <div class="hook-card-list">
-<HookCard id="models-configchanged" name="models.configChanged" label="Model config changed." summary="Notifies listeners after an agent model assignment changes. Use it to refresh dependent state, update UI, or invalidate plugin caches that depend on model routing." source="plugins/models/lib/register-hooks.ts:20" badges={["event"]}>
+<HookCard id="models-configchanged" name="models.configChanged" label="Model config changed." summary="Notifies listeners after an agent model assignment changes. Use it to refresh dependent state, update UI, or invalidate plugin caches that depend on model routing." source="plugins/models/lib/register-hooks.ts:22" badges={["event"]}>
 ```ts frame="terminal"
 await ctx.hooks.callAll(
   'models.configChanged',
@@ -114,7 +122,7 @@ await ctx.hooks.callAll(
 )
 ```
 </HookCard>
-<HookCard id="models-getavailablemodels" name="models.getAvailableModels" label="List available models." summary="Returns the model catalog available from the currently configured providers. Use it to populate pickers, validate assignments, or compare model options before saving config." source="plugins/models/lib/register-hooks.ts:36" badges={["rpc"]}>
+<HookCard id="models-getavailablemodels" name="models.getAvailableModels" label="List available models." summary="Returns the model catalog available from the currently configured providers. Use it to populate pickers, validate assignments, or compare model options before saving config." source="plugins/models/lib/register-hooks.ts:38" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'models.getAvailableModels',
@@ -122,7 +130,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="models-getbudgetpolicy" name="models.getBudgetPolicy" label="Get budget policy." summary="Returns the spend-cap policy (global + per-agent daily/monthly limits) that dispatch consults before each turn. Use it to read the current budget limits." source="plugins/models/lib/register-hooks.ts:85" badges={["rpc"]}>
+<HookCard id="models-getbudgetpolicy" name="models.getBudgetPolicy" label="Get budget policy." summary="Returns the spend-cap rule list that dispatch consults before each turn (legacy shapes migrate on read). Use it to read the current budget limits." source="plugins/models/lib/register-hooks.ts:127" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'models.getBudgetPolicy',
@@ -130,7 +138,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="models-geteffectivemodel" name="models.getEffectiveModel" label="Get effective model." summary="Resolves the model an agent will actually use after defaults, overrides, and provider settings are applied. Use it when a plugin needs runtime-ready model information for one agent." source="plugins/models/lib/register-hooks.ts:24" badges={["rpc"]}>
+<HookCard id="models-geteffectivemodel" name="models.getEffectiveModel" label="Get effective model." summary="Resolves the model an agent will actually use after defaults, overrides, and provider settings are applied. Use it when a plugin needs runtime-ready model information for one agent." source="plugins/models/lib/register-hooks.ts:26" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'models.getEffectiveModel',
@@ -140,7 +148,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="models-getroutingconfig" name="models.getRoutingConfig" label="Get routing config." summary="Returns the per-turn model/thinking routing policy (origins + tag overrides) that dispatch applies before each agent turn. Use it to read the current routing rules." source="plugins/models/lib/register-hooks.ts:78" badges={["rpc"]}>
+<HookCard id="models-getroutingconfig" name="models.getRoutingConfig" label="Get routing config." summary="Returns the per-turn model/thinking routing policy (origins + tag overrides) that dispatch applies before each agent turn. Use it to read the current routing rules." source="plugins/models/lib/register-hooks.ts:117" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'models.getRoutingConfig',
@@ -148,7 +156,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="models-markconfigdirty" name="models.markConfigDirty" label="Mark config dirty." summary="Marks model configuration as changed so the runtime knows a refresh is needed. Use it after writing model settings that should not be treated as live yet." source="plugins/models/lib/register-hooks.ts:32" badges={["event"]}>
+<HookCard id="models-markconfigdirty" name="models.markConfigDirty" label="Mark config dirty." summary="Marks model configuration as changed so the runtime knows a refresh is needed. Use it after writing model settings that should not be treated as live yet." source="plugins/models/lib/register-hooks.ts:34" badges={["event"]}>
 ```ts frame="terminal"
 await ctx.hooks.callAll(
   'models.markConfigDirty',
@@ -156,7 +164,7 @@ await ctx.hooks.callAll(
 )
 ```
 </HookCard>
-<HookCard id="models-markruntimerestarted" name="models.markRuntimeRestarted" label="Mark runtime refreshed." summary="Records that the runtime has picked up the latest model configuration. Use it after restart or reload flows so stale dirty-state warnings can clear." source="plugins/models/lib/register-hooks.ts:34" badges={["event"]}>
+<HookCard id="models-markruntimerestarted" name="models.markRuntimeRestarted" label="Mark runtime refreshed." summary="Records that the runtime has picked up the latest model configuration. Use it after restart or reload flows so stale dirty-state warnings can clear." source="plugins/models/lib/register-hooks.ts:36" badges={["event"]}>
 ```ts frame="terminal"
 await ctx.hooks.callAll(
   'models.markRuntimeRestarted',
@@ -164,7 +172,7 @@ await ctx.hooks.callAll(
 )
 ```
 </HookCard>
-<HookCard id="models-priceimage" name="models.priceImage" label="Price an image." summary="Returns an estimated cost in micro-dollars for an image generation (count × the model’s flat per-image rate), or null when the model is provider-priced. Use it to attribute image-generation spend." source="plugins/models/lib/register-hooks.ts:68" badges={["rpc"]}>
+<HookCard id="models-priceimage" name="models.priceImage" label="Price an image." summary="Returns billing attribution plus an estimated cost in micro-dollars for an image generation (count × the model’s flat per-image rate), or null cost when the model is provider-priced or the provider is overridden to the subscription lane. The agent’s chat auth never affects image billing." source="plugins/models/lib/register-hooks.ts:78" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'models.priceImage',
@@ -172,10 +180,18 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="models-priceturn" name="models.priceTurn" label="Price a turn." summary="Resolves the model an agent turn ran on and returns an estimated cost in micro-dollars from the catalog pricing. Use it to attribute spend to a completed turn. Cost is null when the model is unpriced." source="plugins/models/lib/register-hooks.ts:47" badges={["rpc"]}>
+<HookCard id="models-priceturn" name="models.priceTurn" label="Price a turn." summary="Resolves the model an agent turn ran on and returns billing attribution (provider, metered/subscription lane) plus an estimated micro-dollar cost from the catalog pricing. Cost is null when the model is unpriced or the lane is subscription (tokens are the unit there)." source="plugins/models/lib/register-hooks.ts:49" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'models.priceTurn',
+  {},
+)
+```
+</HookCard>
+<HookCard id="models-resolvebilling" name="models.resolveBilling" label="Resolve billing." summary="Returns the provider, billing lane (metered vs subscription), and normalized model for an agent/model pair — falling back to the agent’s effective model when none is given. Use it to attribute or gate prospective spend before a turn or billed media call." source="plugins/models/lib/register-hooks.ts:101" badges={["rpc"]}>
+```ts frame="terminal"
+const result = await ctx.hooks.invoke(
+  'models.resolveBilling',
   {},
 )
 ```
@@ -202,7 +218,7 @@ const result = await ctx.hooks.invoke(
 <p class="hook-section-description">Task hooks let plugins enrich task details and react to task lifecycle changes.</p>
 
 <div class="hook-card-list">
-<HookCard id="tasks-enrichdetails" name="tasks.enrichDetails" label="Add project task context." summary="Adds project title, status, progress, and excerpt data to task detail payloads. Use it when a task surface wants project context without depending on project storage." source="bakin-bits-official/plugins/projects/index.ts:223" badges={["waterfall"]}>
+<HookCard id="tasks-enrichdetails" name="tasks.enrichDetails" label="Add project task context." summary="Adds project title, status, progress, and excerpt data to task detail payloads. Use it when a task surface wants project context without depending on project storage." source="bakin-bits-official/plugins/projects/index.ts:222" badges={["waterfall"]}>
 ```ts frame="terminal"
 const next = await ctx.hooks.call(
   'tasks.enrichDetails',
@@ -215,7 +231,7 @@ const next = await ctx.hooks.call(
 )
 ```
 </HookCard>
-<HookCard id="tasks-statuschanged" name="tasks.statusChanged" label="Sync project task state." summary="Updates linked project checklist items when a task moves into a completed state. Use it to keep project progress in sync with task lifecycle events." source="bakin-bits-official/plugins/projects/index.ts:212" badges={["event"]}>
+<HookCard id="tasks-statuschanged" name="tasks.statusChanged" label="Sync project task state." summary="Updates linked project checklist items when a task moves into a completed state. Use it to keep project progress in sync with task lifecycle events." source="bakin-bits-official/plugins/projects/index.ts:211" badges={["event"]}>
 ```ts frame="terminal"
 await ctx.hooks.callAll(
   'tasks.statusChanged',
@@ -234,7 +250,7 @@ await ctx.hooks.callAll(
 <p class="hook-section-description">Team hooks expose runtime agent and team metadata for plugins that need agent-aware behavior.</p>
 
 <div class="hook-card-list">
-<HookCard id="team-exists" name="team.exists" label="Check team exists." summary="Returns true when the given teamId is a configured team. Use it for write-time validation of team assignments." source="plugins/team/index.ts:309" badges={["rpc"]}>
+<HookCard id="team-exists" name="team.exists" label="Check team exists." summary="Returns true when the given teamId is a configured team. Use it for write-time validation of team assignments." source="plugins/team/index.ts:307" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'team.exists',
@@ -242,7 +258,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="team-getagent" name="team.getAgent" label="Get an agent." summary="Returns one runtime agent by id, including team-aware metadata when available. Use it when a plugin already has an agent id and needs the full display record." source="plugins/team/index.ts:288" badges={["rpc"]}>
+<HookCard id="team-getagent" name="team.getAgent" label="Get an agent." summary="Returns one runtime agent by id, including team-aware metadata when available. Use it when a plugin already has an agent id and needs the full display record." source="plugins/team/index.ts:286" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'team.getAgent',
@@ -252,7 +268,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="team-getagentids" name="team.getAgentIds" label="List agent ids." summary="Returns the ids of agents currently known to the runtime. Use it for lightweight validation, assignment pickers, or loops that do not need full agent metadata." source="plugins/team/index.ts:293" badges={["rpc"]}>
+<HookCard id="team-getagentids" name="team.getAgentIds" label="List agent ids." summary="Returns the ids of agents currently known to the runtime. Use it for lightweight validation, assignment pickers, or loops that do not need full agent metadata." source="plugins/team/index.ts:291" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'team.getAgentIds',
@@ -260,7 +276,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="team-getagentteam" name="team.getAgentTeam" label="Get agent team." summary="Returns the team currently assigned to an agent, or null when the agent is unassigned. Use it to add team context to task, workflow, or activity views." source="plugins/team/index.ts:300" badges={["rpc"]}>
+<HookCard id="team-getagentteam" name="team.getAgentTeam" label="Get agent team." summary="Returns the team currently assigned to an agent, or null when the agent is unassigned. Use it to add team context to task, workflow, or activity views." source="plugins/team/index.ts:298" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'team.getAgentTeam',
@@ -270,7 +286,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="team-getorgstructure" name="team.getOrgStructure" label="Get org structure." summary="Returns the current organization structure for teams and agents. Use it when a plugin needs the full hierarchy instead of individual team or agent records." source="plugins/team/index.ts:306" badges={["rpc"]}>
+<HookCard id="team-getorgstructure" name="team.getOrgStructure" label="Get org structure." summary="Returns the current organization structure for teams and agents. Use it when a plugin needs the full hierarchy instead of individual team or agent records." source="plugins/team/index.ts:304" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'team.getOrgStructure',
@@ -278,7 +294,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="team-getteammembers" name="team.getTeamMembers" label="List team members." summary="Returns the agents assigned to one team. Use it for team dashboards, routing rules, or workflow logic that needs team membership." source="plugins/team/index.ts:297" badges={["rpc"]}>
+<HookCard id="team-getteammembers" name="team.getTeamMembers" label="List team members." summary="Returns the agents assigned to one team. Use it for team dashboards, routing rules, or workflow logic that needs team membership." source="plugins/team/index.ts:295" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'team.getTeamMembers',
@@ -288,7 +304,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="team-list" name="team.list" label="List agents." summary="Returns runtime agents with their display and team metadata attached. Use it when another plugin needs the agent roster as Bakin presents it." source="plugins/team/index.ts:287" badges={["rpc"]}>
+<HookCard id="team-list" name="team.list" label="List agents." summary="Returns runtime agents with their display and team metadata attached. Use it when another plugin needs the agent roster as Bakin presents it." source="plugins/team/index.ts:285" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'team.list',
@@ -296,7 +312,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="team-resolveassignment" name="team.resolveAssignment" label="Resolve team assignment." summary="Resolves a team-assigned task to the best-suited member via the routing LLM (#189). Returns {ok:true, agentId, reason, model} or {ok:false, kind: transient|structural, message} — dispatch classifies by kind. Use it from dispatch or any surface that must turn a teamId into a concrete agent." source="plugins/team/index.ts:312" badges={["rpc"]}>
+<HookCard id="team-resolveassignment" name="team.resolveAssignment" label="Resolve team assignment." summary="Resolves a team-assigned task to the best-suited member via the routing LLM (#189). Returns {ok:true, agentId, reason, model} or {ok:false, kind: transient|structural, message} — dispatch classifies by kind. Use it from dispatch or any surface that must turn a teamId into a concrete agent." source="plugins/team/index.ts:310" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'team.resolveAssignment',
@@ -304,7 +320,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="team-resolveprofile" name="team.resolveProfile" label="Resolve agent profile." summary="Returns the runtime profile for an agent id. Use it when a plugin needs the lower-level profile data behind an agent display record." source="plugins/team/index.ts:294" badges={["rpc"]}>
+<HookCard id="team-resolveprofile" name="team.resolveProfile" label="Resolve agent profile." summary="Returns the runtime profile for an agent id. Use it when a plugin needs the lower-level profile data behind an agent display record." source="plugins/team/index.ts:292" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'team.resolveProfile',
@@ -570,5 +586,5 @@ const result = await ctx.hooks.invoke(
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 7, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 9, 2026 · Bakin 0.0.0-dev</span>
 </aside>

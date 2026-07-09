@@ -157,6 +157,7 @@ import { useSearch, useDebug } from '@makinbakin/sdk/hooks'
 | `TaskOutcome` | — |
 | `TaskRunEntry` | — |
 | `usePluginEvent` | Subscribe to a server-pushed plugin event over the shell's single connection. |
+| `emitPluginEvent` | Subscribe to a server-pushed plugin event over the shell's single connection. |
 | `PluginEventPayload` | Subscribe to a server-pushed plugin event over the shell's single connection. |
 | `useHorizontalResize` | Resize a side-by-side split pane by dragging the divider between columns. |
 | `useAvailableModels` | The available-models catalog (cached, read-only); empty until loaded. |
@@ -294,6 +295,11 @@ Source: `packages/sdk/src/utils/index.ts`.
 | `BrainstormActivityStorageInput` | — |
 | `BrainstormActivityStorageRecord` | — |
 | `readBrainstormSseResponse` | Read an SSE response stream into brainstorm activity events. |
+| `humanizeKey` | Structured-value (JSON → human) renderers — labeled prose, one-line summary, tool-envelope unwrap. |
+| `formatStructured` | Structured-value (JSON → human) renderers — labeled prose, one-line summary, tool-envelope unwrap. |
+| `summarizeStructured` | Structured-value (JSON → human) renderers — labeled prose, one-line summary, tool-envelope unwrap. |
+| `unwrapToolResult` | Structured-value (JSON → human) renderers — labeled prose, one-line summary, tool-envelope unwrap. |
+| `FormatStructuredOptions` | Structured-value (JSON → human) renderers — labeled prose, one-line summary, tool-envelope unwrap. |
 
 ## `@makinbakin/sdk/metadata`
 
@@ -352,5 +358,5 @@ Source: `packages/sdk/src/routing/index.ts`.
 | `DefinePluginInput` | — |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 7, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 9, 2026 · Bakin 0.0.0-dev</span>
 </aside>

@@ -73,8 +73,7 @@ function writeMinimalPlugin(dir: string, source: string, packageJson?: Record<st
     version: '0.1.0',
     bakin: '>=0.0.0-dev',
     description: 'Minimal test plugin',
-    entry: { server: 'index.ts' },
-  }))
+      }))
   writeFileSync(join(dir, 'index.ts'), source)
   if (packageJson) writeFileSync(join(dir, 'package.json'), JSON.stringify(packageJson, null, 2))
 }

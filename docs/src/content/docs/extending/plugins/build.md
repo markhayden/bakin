@@ -54,7 +54,7 @@ bakin plugins install <path|github:user/repo[@ref][#subpath]>
 
 Every plugin starts with `bakin-plugin.json`. The manifest tells Bakin what is being installed before code runs.
 
-At minimum, define identity and entry points:
+At minimum, define identity metadata (entry points are fixed by convention: `index.ts` and optional `client.tsx` at the plugin root):
 
 ```json
 {
@@ -63,14 +63,16 @@ At minimum, define identity and entry points:
   "version": "0.1.0",
   "bakin": ">=0.1.0",
   "description": "Lead scoring and qualification for Bakin agents.",
-  "entry": {
-    "server": "src/index.ts",
-    "client": "src/client.tsx"
+  "contributes": {
+    "apiRoutes": [{ "method": "GET", "path": "/leads", "summary": "List scored leads" }],
+    "execTools": [{ "name": "bakin_exec_lead-intel_score", "summary": "Score a lead" }]
   }
 }
 ```
 
-Then add permissions and public contributions as the plugin grows. Routes, client pages, MCP tools, CLI commands, settings, and docs should be visible in `contributes` where the manifest supports them.
+Then add permissions and further public contributions as the plugin grows. Routes, client pages, MCP tools, CLI commands, settings, and docs should be visible in `contributes` where the manifest supports them. The manifest and the code grow together: every API route and exec tool the code registers must be declared here — exec tool names must start with `bakin_exec_<plugin-id>_`, and activation fails loudly on undeclared registrations.
+
+You never have to maintain the server-derived sections by hand: `bakin plugins sync-manifest` builds the plugin and regenerates `contributes.apiRoutes` and `contributes.execTools` from the routes and exec tools the code actually registers (author-written summaries and metadata on kept entries are preserved). `bakin plugins sync-manifest --check` reports drift without writing — useful as a CI gate. Client sections (`nav`, `clientRoutes`) remain author-maintained.
 
 Full field details live in [Manifest](/docs/extending/plugins/manifest/).
 
@@ -125,8 +127,10 @@ const plugin = definePlugin({
     }),
   ],
   async activate(ctx) {
+    // Tool names must be `bakin_exec_<plugin-id>_<action>` and declared in
+    // the manifest's `contributes.execTools` — activation fails otherwise.
     ctx.registerExecTool({
-      name: 'lead_intel_score',
+      name: 'bakin_exec_lead-intel_score',
       description: 'Score a lead for sales readiness.',
       parameters: {},
       handler: async () => ({ ok: true, score: 0 }),

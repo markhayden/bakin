@@ -101,7 +101,6 @@ const TYPE_DOMAIN_GROUPS: Record<string, string> = {
   // Manifest
   PluginPermission: 'Manifest Contracts',
   RuntimeCapability: 'Manifest Contracts',
-  PluginEntryPoints: 'Manifest Contracts',
   SecretDeclaration: 'Manifest Contracts',
   ApiRouteContribution: 'Manifest Contracts',
   JsonSchemaContribution: 'Manifest Contracts',

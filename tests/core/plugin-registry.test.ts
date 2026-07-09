@@ -221,8 +221,7 @@ describe('PluginRegistryImpl', () => {
       version: '1.0.0',
       bakin: '>=1.0.0',
       description: `Test plugin ${id}`,
-      entry: { server: 'index.js' },
-      dependencies: opts.deps || [],
+            dependencies: opts.deps || [],
     }
     writeFileSync(join(pluginDir, 'bakin-plugin.json'), JSON.stringify(manifest))
 
@@ -255,6 +254,8 @@ describe('PluginRegistryImpl', () => {
       settingsSchema?: string
       manifest?: Record<string, unknown>
       root?: string
+      /** JS source for a declarative `routes` array on the plugin object. */
+      routes?: string
     } = {},
   ): string {
     const pluginDir = join(opts.root ?? join(tempDir, 'plugins'), id)
@@ -265,8 +266,7 @@ describe('PluginRegistryImpl', () => {
       version: '1.0.0',
       bakin: '>=1.0.0',
       description: `User plugin ${id}`,
-      entry: { server: 'index.js' },
-      dependencies: opts.deps ?? [],
+            dependencies: opts.deps ?? [],
       permissions: [],
       ...opts.manifest,
     }
@@ -280,6 +280,7 @@ describe('PluginRegistryImpl', () => {
         name: '${id.charAt(0).toUpperCase() + id.slice(1)}',
         version: '1.0.0',
         settingsSchema: ${opts.settingsSchema || 'undefined'},
+        routes: ${opts.routes || 'undefined'},
         activate: function(ctx) { ${opts.activate || ''} },
         onReady: ${opts.onReady || 'undefined'},
       }
@@ -624,7 +625,7 @@ describe('PluginRegistryImpl', () => {
 
     it('loads user plugins from dist even when the source entry is not runnable', async () => {
       const pluginDir = writeUserPlugin('dist-only-user', {
-        manifest: { entry: { server: 'index.ts' } },
+        manifest: { },
         activate: `ctx.log.info('loaded dist entry')`,
       })
       writeFileSync(
@@ -778,8 +779,7 @@ describe('PluginRegistryImpl', () => {
             version: '1.0.0',
             bakin: '>=1.0.0',
             description: 'Core plugin loaded from an embedded registration',
-            entry: { server: 'index.js' },
-            permissions: ['storage.read'],
+                        permissions: ['storage.read'],
           },
         },
       })
@@ -864,6 +864,40 @@ describe('PluginRegistryImpl', () => {
       })
       expect(failed.errorMessage).toContain('undeclared API route')
       expect(pluginRegistry.findRoute('undeclared-route', '/data', 'GET')).toBeNull()
+    })
+
+    it('fails user plugins with undeclared DECLARATIVE routes (T16 symmetric enforcement)', async () => {
+      writeUserPlugin('undeclared-declarative', {
+        routes: `[{ path: '/data', method: 'GET', handler: function() { return new Response('bad') } }]`,
+      })
+
+      await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
+
+      const failed = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'undeclared-declarative')
+      expect(failed).toMatchObject({
+        status: 'failed',
+        errorCode: 'activation_failed',
+      })
+      expect(failed.errorMessage).toContain('undeclared API route')
+      expect(failed.errorMessage).toContain('contributes.apiRoutes')
+      expect(pluginRegistry.findRoute('undeclared-declarative', '/data', 'GET')).toBeNull()
+    })
+
+    it('allows user plugins with declared declarative routes', async () => {
+      writeUserPlugin('declared-declarative', {
+        manifest: {
+          contributes: {
+            apiRoutes: [{ method: 'GET', path: '/data', summary: 'Read data' }],
+          },
+        },
+        routes: `[{ path: '/data', method: 'GET', handler: function() { return new Response('ok') } }]`,
+      })
+
+      await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
+
+      expect(pluginRegistry.findRoute('declared-declarative', '/data', 'GET')).not.toBeNull()
+      const active = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'declared-declarative')
+      expect(active).toMatchObject({ status: 'active' })
     })
 
     it('allows user plugins to register declared API routes and exec tools', async () => {

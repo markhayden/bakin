@@ -3,13 +3,9 @@
   "name": "Team",
   "version": "1.1.0",
   "bakin": ">=1.0.0",
-  "description": "Agent team management \u2014 adapter layer over runtime agent workspaces",
-  "entry": {
-    "server": "index.ts"
-  },
+  "description": "Agent team management — adapter layer over runtime agent workspaces",
   "contentFiles": [],
   "secrets": [],
-  "tests": "tests/",
   "dependencies": [],
   "permissions": [
     "storage.read",
@@ -242,8 +238,8 @@
       },
       {
         "name": "bakin_exec_team_set_permissions",
-        "summary": "Update dispatch permissions \u2014 which agents a given agent can dispatch tasks to (subagents",
-        "description": "Update dispatch permissions \u2014 which agents a given agent can dispatch tasks to (subagents.allowAgents)."
+        "summary": "Update dispatch permissions — which agents a given agent can dispatch tasks to (subagents",
+        "description": "Update dispatch permissions — which agents a given agent can dispatch tasks to (subagents.allowAgents)."
       },
       {
         "name": "bakin_exec_team_status",

@@ -46,8 +46,7 @@ function seedUnbuiltPlugin(): string {
   const dir = freshDir('pub-src')
   writeFileSync(join(dir, 'bakin-plugin.json'), JSON.stringify({
     id: 'pubdemo', name: 'Pub Demo', version: '0.2.0', bakin: '>=0.0.1',
-    description: 'publish --build fixture', entry: { server: 'index.ts', client: 'client.tsx' },
-  }))
+    description: 'publish --build fixture',   }))
   writeFileSync(join(dir, 'index.ts'), [
     `import { defineHookContract } from '@makinbakin/sdk/metadata'`,
     `export default { id: 'pubdemo', name: 'Pub Demo', version: '0.2.0', activate() { return defineHookContract } }`,

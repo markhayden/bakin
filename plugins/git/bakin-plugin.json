@@ -4,12 +4,8 @@
   "version": "1.0.0",
   "bakin": ">=1.0.0",
   "description": "Git worktree isolation for agent code work",
-  "entry": {
-    "server": "index.ts"
-  },
   "contentFiles": [],
   "secrets": [],
-  "tests": "tests/",
   "dependencies": [],
   "permissions": [
     "storage.read",

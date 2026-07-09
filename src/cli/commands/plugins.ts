@@ -177,7 +177,10 @@ async function cmdPluginsList(opts: { json?: boolean; check?: boolean } = {}): P
   console.log('Installed plugins:')
   for (const plugin of manifest.plugins) {
     const status = plugin.upgradeAvailable === true ? 'update available' : String(plugin.status ?? 'unknown')
-    console.log(`  ${String(plugin.id ?? '').padEnd(20)} ${String(plugin.source ?? '-').padEnd(8)} ${String(plugin.version ?? '-').padEnd(8)} ${status}`)
+    // Failed plugins carry the actionable reason (e.g. the T15 host-range
+    // refusal) — without it a bare "failed" hides what to fix.
+    const reason = plugin.status === 'failed' && plugin.errorMessage ? ` — ${String(plugin.errorMessage)}` : ''
+    console.log(`  ${String(plugin.id ?? '').padEnd(20)} ${String(plugin.source ?? '-').padEnd(8)} ${String(plugin.version ?? '-').padEnd(8)} ${status}${reason}`)
   }
 }
 
@@ -436,6 +439,42 @@ async function cmdPluginsScaffold(name: string, opts: { json?: boolean } = {}): 
   if (!result.ok) process.exit(1)
 }
 
+async function cmdPluginsSyncManifest(dir: string, opts: { check?: boolean; json?: boolean } = {}): Promise<void> {
+  const { syncPluginManifest } = await import('../../core/plugin-sync-manifest')
+  const result = await syncPluginManifest(dir, { check: opts.check })
+
+  if (opts.json) {
+    print(result)
+    if (!result.ok || (opts.check && result.changed)) process.exit(1)
+    return
+  }
+
+  if (!result.ok) {
+    console.error(result.error)
+    process.exit(1)
+  }
+
+  const diff = result.diff!
+  const lines: string[] = []
+  for (const key of diff.apiRoutes.added) lines.push(`  + apiRoutes: ${key}`)
+  for (const key of diff.apiRoutes.removed) lines.push(`  - apiRoutes: ${key}`)
+  for (const name of diff.execTools.added) lines.push(`  + execTools: ${name}`)
+  for (const name of diff.execTools.removed) lines.push(`  - execTools: ${name}`)
+
+  if (!result.changed) {
+    console.log(`Manifest in sync (${diff.apiRoutes.kept} routes, ${diff.execTools.kept} exec tools).`)
+  } else if (opts.check) {
+    console.log('Manifest drift detected:')
+    for (const line of lines) console.log(line)
+    console.log(`Run \`bakin plugins sync-manifest\` to update ${result.manifestPath}.`)
+  } else {
+    console.log(`Updated ${result.manifestPath}:`)
+    for (const line of lines) console.log(line)
+  }
+  console.log(`Note: ${result.note}`)
+  if (opts.check && result.changed) process.exit(1)
+}
+
 interface PluginRestoreSnapshot {
   timestamp: string
   createdAt: string
@@ -684,7 +723,21 @@ export async function run(args: string[]): Promise<void> {
   } else if (sub === 'scaffold') {
     if (!args[2]) await exitUsage('bakin plugins scaffold <name> [--json]')
     await cmdPluginsScaffold(args[2], { json: args.slice(3).includes('--json') })
+  } else if (sub === 'sync-manifest') {
+    const flags = args.slice(2).filter(arg => arg.startsWith('--'))
+    const positional = args.slice(2).filter(arg => !arg.startsWith('--'))
+    const unknown = flags.find(arg => arg !== '--check' && arg !== '--json')
+    if (unknown) {
+      await exitCommandIssue(`Unknown plugins sync-manifest flag: ${unknown}`, {
+        command: 'bakin plugins sync-manifest',
+        usage: 'bakin plugins sync-manifest [dir] [--check] [--json]',
+      })
+    }
+    await cmdPluginsSyncManifest(positional[0] ?? '.', {
+      check: flags.includes('--check'),
+      json: flags.includes('--json'),
+    })
   } else {
-    await exitUnknownSubcommand('plugins', sub, ['list', 'install', 'export', 'import', 'remove', 'upgrade', 'restore', 'link', 'unlink', 'scaffold'])
+    await exitUnknownSubcommand('plugins', sub, ['list', 'install', 'export', 'import', 'remove', 'upgrade', 'restore', 'link', 'unlink', 'scaffold', 'sync-manifest'])
   }
 }

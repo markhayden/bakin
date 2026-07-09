@@ -4,12 +4,8 @@
   "version": "2.0.2",
   "bakin": ">=1.0.0",
   "description": "Observability dashboard over runtime memory tiers plus Bakin's audit log",
-  "entry": {
-    "server": "index.ts"
-  },
   "contentFiles": [],
   "secrets": [],
-  "tests": "tests/",
   "dependencies": [],
   "permissions": [
     "storage.read",

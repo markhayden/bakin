@@ -54,6 +54,7 @@ import {
   PluginManifestError,
   readPluginManifestJson,
 } from '../../packages/core/src/plugins/manifest'
+import { checkBakinRangeCompatibility, IncompatibleHostError } from '../../packages/core/src/plugins/compat'
 import { getAppServices } from './app-services'
 import type { PluginManifest as PublicPluginManifest } from '@makinbakin/sdk/types'
 import { buildPluginContext, type PluginContextRegistrars } from '../lib/plugin-context-factory'
@@ -447,7 +448,7 @@ class PluginRegistryImpl {
         version: manifest.version,
         description: manifest.description ?? '',
         source: 'user',
-        errorCode: 'activation_failed',
+        errorCode: err instanceof IncompatibleHostError ? 'incompatible_host' : 'activation_failed',
         errorMessage: err instanceof Error ? err.message : String(err),
       })
       throw err
@@ -472,7 +473,12 @@ class PluginRegistryImpl {
       // with the legacy APIRoute used by state.routes — same path/method/
       // handler primary fields, plus extra typed schemas the dispatcher
       // adapter knows how to read.
-      state.routes.push(route as unknown as APIRoute)
+      const legacyShaped = route as unknown as APIRoute
+      // T16: declarative routes face the same manifest enforcement as
+      // ctx.registerRoute — user plugins must declare every route in
+      // contributes.apiRoutes (assertRouteDeclared no-ops for core).
+      this.assertRouteDeclared(plugin.id, state, legacyShaped)
+      state.routes.push(legacyShaped)
     }
   }
 
@@ -819,6 +825,14 @@ class PluginRegistryImpl {
     const manifest = entry.manifest!
     const pluginId = manifest.id
     const manifestPath = join(entry.path, 'bakin-plugin.json')
+
+    // Host-compatibility gate (T15/R13) — the single choke point for both
+    // the boot scan and runtime installs/reloads. Core plugins never route
+    // through here (they are version-locked to the host by definition).
+    const compat = checkBakinRangeCompatibility(manifest.bakin)
+    if (!compat.ok) {
+      throw new IncompatibleHostError(`User plugin "${pluginId}" is not compatible with this host: ${compat.message}`)
+    }
     const loadSpan = startStartupSpan(log, 'plugin.load', {
       phase: 'plugin',
       pluginId,
@@ -1004,7 +1018,7 @@ class PluginRegistryImpl {
             version: entry.manifest?.version ?? '0.0.0',
             description: entry.manifest?.description ?? '',
             source: 'user',
-            errorCode: 'activation_failed',
+            errorCode: err instanceof IncompatibleHostError ? 'incompatible_host' : 'activation_failed',
             errorMessage: message,
           })
         }

@@ -434,13 +434,20 @@ export function parsePluginManifest(raw: unknown): PluginManifest {
     throw new PluginManifestError(`Invalid plugin id "${id}" - must match ${PLUGIN_ID_RE}`)
   }
 
-  const entryRaw = raw.entry
-  if (!isRecord(entryRaw)) {
-    throw new PluginManifestError('bakin-plugin.json field "entry" must be an object')
+  // Removed-field tombstones (prelaunch-hardening R10/R15). There is ONE
+  // canonical plugin layout — index.ts (server) + optional client.tsx at the
+  // plugin root — so entry points are no longer declarable, and no
+  // `bakin plugins test` runner ever shipped.
+  if (raw.entry !== undefined) {
+    throw new PluginManifestError(
+      'bakin-plugin.json field "entry" was removed — plugins use the canonical root layout: '
+      + 'index.ts (server entry) and optional client.tsx at the plugin root. Delete the "entry" field.',
+    )
   }
-  const entry: PluginManifest['entry'] = {
-    server: stringField(entryRaw, 'server', { required: true })!,
-    client: stringField(entryRaw, 'client'),
+  if (raw.tests !== undefined) {
+    throw new PluginManifestError(
+      'bakin-plugin.json field "tests" was removed — there is no "bakin plugins test" runner. Delete the "tests" field.',
+    )
   }
 
   const runtimeCapabilities = stringArrayField(raw, 'runtimeCapabilities') as RuntimeCapability[] | undefined
@@ -458,10 +465,8 @@ export function parsePluginManifest(raw: unknown): PluginManifest {
     version: stringField(raw, 'version', { required: true })!,
     bakin: stringField(raw, 'bakin', { required: true })!,
     description: stringField(raw, 'description', { required: true })!,
-    entry,
     contentFiles: stringArrayField(raw, 'contentFiles'),
     secrets: secretDeclarationsField(raw, 'secrets'),
-    tests: stringField(raw, 'tests'),
     dependencies: stringArrayField(raw, 'dependencies'),
     permissions: stringArrayField(raw, 'permissions') as PluginPermission[] | undefined,
     runtimeCapabilities,

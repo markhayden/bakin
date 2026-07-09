@@ -3,13 +3,9 @@
   "name": "Health",
   "version": "1.3.0",
   "bakin": ">=1.0.0",
-  "description": "System health dashboard \u2014 MCP stats, diagnostics, and uptime",
-  "entry": {
-    "server": "index.ts"
-  },
+  "description": "System health dashboard — MCP stats, diagnostics, and uptime",
   "contentFiles": [],
   "secrets": [],
-  "tests": "tests/",
   "dependencies": [],
   "permissions": [
     "storage.read",
@@ -65,8 +61,8 @@
       },
       {
         "name": "bakin_exec_health_status",
-        "summary": "Get a quick system health summary \u2014 uptime, memory, active MCP sessions, and doctor error/warning counts",
-        "description": "Get a quick system health summary \u2014 uptime, memory, active MCP sessions, and doctor error/warning counts. Useful for checking system state before starting work."
+        "summary": "Get a quick system health summary — uptime, memory, active MCP sessions, and doctor error/warning counts",
+        "description": "Get a quick system health summary — uptime, memory, active MCP sessions, and doctor error/warning counts. Useful for checking system state before starting work."
       }
     ],
     "cliCommands": [
