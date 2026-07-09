@@ -48,11 +48,14 @@ class FakeWebSocket {
     this.listeners.get(type)?.delete(listener)
   }
 
+  /** hello-ok payload the fake returns for connect; tests override per case. */
+  static connectPayload: Record<string, unknown> = { type: 'hello-ok', protocol: 4, auth: { scopes: [] } }
+
   send(raw: string): void {
     const frame = JSON.parse(raw) as Frame
     this.sentFrames.push(frame)
     if (frame.method === 'connect') {
-      this.emitMessage({ type: 'res', id: frame.id, ok: true, payload: { auth: { scopes: [] } } })
+      this.emitMessage({ type: 'res', id: frame.id, ok: true, payload: FakeWebSocket.connectPayload })
     }
     // Other methods: never answered — tests control resolution manually.
   }
@@ -78,6 +81,7 @@ beforeEach(() => {
   originalWebSocket = globalThis.WebSocket
   globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket
   FakeWebSocket.instances.length = 0
+  FakeWebSocket.connectPayload = { type: 'hello-ok', protocol: 4, auth: { scopes: [] } }
   client = new OpenClawGatewayRpcClient({
     url: 'ws://127.0.0.1:1',
     token: () => null,
@@ -139,5 +143,121 @@ describe('gateway RPC abort signal', () => {
 
     const ws = FakeWebSocket.instances[0]!
     expect(ws.sentFrames.find((f) => f.method === 'agent')).toBeUndefined()
+  })
+})
+
+describe('connect caps + protocol gate', () => {
+  it('the connect frame declares the tool-events cap', async () => {
+    const request = client.request('health', {})
+    request.catch(() => {})
+    await new Promise((r) => setTimeout(r, 10))
+    const ws = FakeWebSocket.instances[0]!
+    const connectFrame = ws.sentFrames.find((f) => f.method === 'connect')
+    expect(connectFrame?.params.caps).toEqual(['tool-events'])
+  })
+
+  it('a gateway below protocol 4 fails connect with an actionable upgrade error', async () => {
+    FakeWebSocket.connectPayload = { type: 'hello-ok', protocol: 3, server: { version: '2026.4.1' }, auth: { scopes: [] } }
+    let thrown: unknown
+    try {
+      await client.request('health', {})
+    } catch (err) {
+      thrown = err
+    }
+    expect(thrown).toBeInstanceOf(RuntimeError)
+    const message = (thrown as Error).message
+    expect(message).toContain('protocol 3')
+    expect(message).toContain('2026.4.1')
+    expect(message.toLowerCase()).toContain('upgrade openclaw')
+  })
+
+  it('a gateway that does not report a protocol fails connect actionably', async () => {
+    FakeWebSocket.connectPayload = { type: 'hello-ok', auth: { scopes: [] } }
+    let thrown: unknown
+    try {
+      await client.request('health', {})
+    } catch (err) {
+      thrown = err
+    }
+    expect(thrown).toBeInstanceOf(RuntimeError)
+    expect(((thrown as Error).message).toLowerCase()).toContain('upgrade openclaw')
+  })
+})
+
+describe('accepted-ack surfacing', () => {
+  it('onAccepted fires with runId/sessionKey while the request stays pending until the final', async () => {
+    const acks: Array<{ runId: string | null; sessionKey: string | null; acceptedAt: number | null }> = []
+    const request = client.request(
+      'agent',
+      { agentId: 'jessica', idempotencyKey: 'bakin-run-1' },
+      { expectFinal: true, timeoutMs: 600_000, onAccepted: (ack) => acks.push(ack) },
+    )
+    await new Promise((r) => setTimeout(r, 10))
+    const ws = FakeWebSocket.instances[0]!
+    const agentFrame = ws.sentFrames.find((f) => f.method === 'agent')!
+
+    ws.emitMessage({
+      type: 'res',
+      id: agentFrame.id,
+      ok: true,
+      payload: { runId: 'bakin-run-1', sessionKey: 'agent:jessica:main', status: 'accepted', acceptedAt: 1234 },
+    })
+    await new Promise((r) => setTimeout(r, 5))
+    expect(acks).toEqual([{ runId: 'bakin-run-1', sessionKey: 'agent:jessica:main', acceptedAt: 1234 }])
+
+    // Still pending: the ack must not settle the request.
+    let settled = false
+    request.then(() => { settled = true }).catch(() => { settled = true })
+    await new Promise((r) => setTimeout(r, 5))
+    expect(settled).toBe(false)
+
+    ws.emitMessage({ type: 'res', id: agentFrame.id, ok: true, payload: { runId: 'bakin-run-1', status: 'ok', summary: 'completed' } })
+    const result = await request
+    expect((result as { status: string }).status).toBe('ok')
+  })
+
+  it('onAccepted fires at most once and a throwing callback does not break settlement', async () => {
+    let calls = 0
+    const request = client.request(
+      'agent',
+      { agentId: 'jessica' },
+      {
+        expectFinal: true,
+        timeoutMs: 600_000,
+        onAccepted: () => {
+          calls++
+          throw new Error('handler bug')
+        },
+      },
+    )
+    await new Promise((r) => setTimeout(r, 10))
+    const ws = FakeWebSocket.instances[0]!
+    const agentFrame = ws.sentFrames.find((f) => f.method === 'agent')!
+
+    const ack = { runId: 'r', sessionKey: 's', status: 'accepted', acceptedAt: 1 }
+    ws.emitMessage({ type: 'res', id: agentFrame.id, ok: true, payload: ack })
+    ws.emitMessage({ type: 'res', id: agentFrame.id, ok: true, payload: ack })
+    await new Promise((r) => setTimeout(r, 5))
+    expect(calls).toBe(1)
+
+    ws.emitMessage({ type: 'res', id: agentFrame.id, ok: true, payload: { status: 'ok' } })
+    const result = await request
+    expect((result as { status: string }).status).toBe('ok')
+  })
+
+  it('without onAccepted the ack is still swallowed (existing behavior)', async () => {
+    const request = client.request('agent', { agentId: 'jessica' }, { expectFinal: true, timeoutMs: 600_000 })
+    await new Promise((r) => setTimeout(r, 10))
+    const ws = FakeWebSocket.instances[0]!
+    const agentFrame = ws.sentFrames.find((f) => f.method === 'agent')!
+
+    ws.emitMessage({ type: 'res', id: agentFrame.id, ok: true, payload: { status: 'accepted', runId: 'r' } })
+    let settled = false
+    request.then(() => { settled = true }).catch(() => { settled = true })
+    await new Promise((r) => setTimeout(r, 5))
+    expect(settled).toBe(false)
+
+    ws.emitMessage({ type: 'res', id: agentFrame.id, ok: true, payload: { status: 'ok' } })
+    await request
   })
 })

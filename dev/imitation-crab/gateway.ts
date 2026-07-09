@@ -162,7 +162,7 @@ export async function handleGatewayRpcRequest(method: string, params: Record<str
   if (method === 'connect') {
     return {
       ok: true,
-      payload: { auth: { scopes: Array.isArray(params.scopes) ? params.scopes : [] } },
+      payload: { type: 'hello-ok', protocol: 4, auth: { scopes: Array.isArray(params.scopes) ? params.scopes : [] } },
     }
   }
 

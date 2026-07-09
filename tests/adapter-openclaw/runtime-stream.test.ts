@@ -960,7 +960,7 @@ class FakeWebSocket {
     const frame = JSON.parse(raw) as FakeGatewayFrame
     this.sentFrames.push(frame)
     if (frame.method === 'connect') {
-      this.emitMessage({ type: 'res', id: frame.id, ok: true, payload: { auth: { scopes: frame.params.scopes } } })
+      this.emitMessage({ type: 'res', id: frame.id, ok: true, payload: { type: 'hello-ok', protocol: 4, auth: { scopes: frame.params.scopes } } })
       return
     }
     if (FakeWebSocket.onRequest) {
