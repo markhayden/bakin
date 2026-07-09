@@ -22,7 +22,7 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 - [ ] CHECKPOINT 1b: live box shows dispatch chips; PR merged
 
 ## PR 2a — fix/sdk-golden-path (parallel worktree)
-- [ ] T12 Delete manifest.entry (+ tests field); single root layout
+- [x] T12 Delete manifest.entry (+ tests field); single root layout ✅ (tombstone rejections; 18 manifests + docs swept)
 - [ ] T13 Scaffold rewrite
 - [ ] T14 Golden-path integration test + build.md tutorial fix
 - [ ] T15 Host/SDK semver gate

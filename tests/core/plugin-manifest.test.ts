@@ -32,10 +32,6 @@ const baseManifest = {
   version: '1.0.0',
   bakin: '>=1.0.0',
   description: 'Content planning and delivery',
-  entry: {
-    server: 'index.ts',
-    client: 'client.tsx',
-  },
   permissions: ['storage.read', 'storage.write'],
 }
 
@@ -113,7 +109,6 @@ describe('plugin manifest schema', () => {
     })
 
     expect(manifest.id).toBe('messaging')
-    expect(manifest.entry.client).toBe('client.tsx')
     expect(manifest.secrets).toEqual([
       {
         name: 'ANTHROPIC_API_KEY',
@@ -171,7 +166,19 @@ describe('plugin manifest schema', () => {
       id: 'legacy',
       name: 'Legacy',
       version: '0.1.0',
-    })).toThrow(/entry/)
+    })).toThrow(/bakin/)
+  })
+
+  it('rejects the removed "entry" field with an actionable message', () => {
+    expect(() => parsePluginManifest({
+      ...baseManifest,
+      entry: { server: 'index.ts', client: 'client.tsx' },
+    })).toThrow(/"entry" was removed[\s\S]*index\.ts[\s\S]*client\.tsx/)
+  })
+
+  it('rejects the removed "tests" field with an actionable message', () => {
+    expect(() => parsePluginManifest({ ...baseManifest, tests: 'tests/' }))
+      .toThrow(/"tests" was removed/)
   })
 
   it('accepts an optional ed25519 signature block', () => {

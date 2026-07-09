@@ -53,8 +53,7 @@ function seedPlugin(opts: { withClient?: boolean } = {}): string {
   const dir = freshDir('plugin')
   writeFileSync(join(dir, 'bakin-plugin.json'), JSON.stringify({
     id: 'demo', name: 'Demo', version: '0.1.0', bakin: '>=0.0.1',
-    description: 'build fixture', entry: { server: 'index.ts' },
-  }))
+    description: 'build fixture',   }))
   writeFileSync(join(dir, 'index.ts'), [
     `import type { NavItem } from '@makinbakin/sdk/types'`,
     // A runtime SDK import so inlining is observable in the output bundle.

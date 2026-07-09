@@ -54,7 +54,7 @@ bakin plugins install <path|github:user/repo[@ref][#subpath]>
 
 Every plugin starts with `bakin-plugin.json`. The manifest tells Bakin what is being installed before code runs.
 
-At minimum, define identity and entry points:
+At minimum, define identity metadata (entry points are fixed by convention: `index.ts` and optional `client.tsx` at the plugin root):
 
 ```json
 {
@@ -62,11 +62,7 @@ At minimum, define identity and entry points:
   "name": "Lead Intel",
   "version": "0.1.0",
   "bakin": ">=0.1.0",
-  "description": "Lead scoring and qualification for Bakin agents.",
-  "entry": {
-    "server": "src/index.ts",
-    "client": "src/client.tsx"
-  }
+  "description": "Lead scoring and qualification for Bakin agents."
 }
 ```
 

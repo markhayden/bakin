@@ -4,12 +4,8 @@
   "version": "0.1.0",
   "bakin": ">=1.0.0",
   "description": "Structured brand definitions — voice, palette, rules, and reference assets injected per-task so agent output stays on brand",
-  "entry": {
-    "server": "index.ts"
-  },
   "contentFiles": [],
   "secrets": [],
-  "tests": "tests/",
   "dependencies": [],
   "permissions": [
     "storage.read",

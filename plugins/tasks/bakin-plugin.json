@@ -4,12 +4,8 @@
   "version": "2.2.0",
   "bakin": ">=1.0.0",
   "description": "Kanban task management with Bakin task-store persistence, agent assignment, and dependency tracking",
-  "entry": {
-    "server": "index.ts"
-  },
   "contentFiles": [],
   "secrets": [],
-  "tests": "tests/",
   "dependencies": [],
   "permissions": [
     "storage.read",
@@ -115,8 +111,8 @@
       },
       {
         "name": "bakin_exec_tasks_get",
-        "summary": "Get details about a task \u2014 title, description, current column, logs, dependencies, project context",
-        "description": "Get details about a task \u2014 title, description, current column, logs, dependencies, project context."
+        "summary": "Get details about a task — title, description, current column, logs, dependencies, project context",
+        "description": "Get details about a task — title, description, current column, logs, dependencies, project context."
       },
       {
         "name": "bakin_exec_tasks_list",
@@ -136,12 +132,12 @@
       {
         "name": "bakin_exec_tasks_set_dependency",
         "summary": "Register a dependency between tasks",
-        "description": "Register a dependency between tasks. Your task will be auto-re-dispatched when the dependency completes. After registering, exit \u2014 do not wait."
+        "description": "Register a dependency between tasks. Your task will be auto-re-dispatched when the dependency completes. After registering, exit — do not wait."
       },
       {
         "name": "bakin_exec_tasks_update",
-        "summary": "Update a task on the board \u2014 change title, description, or assigned agent",
-        "description": "Update a task on the board \u2014 change title, description, or assigned agent."
+        "summary": "Update a task on the board — change title, description, or assigned agent",
+        "description": "Update a task on the board — change title, description, or assigned agent."
       }
     ],
     "cliCommands": [

@@ -75,8 +75,7 @@ async function publishFoo(): Promise<void> {
       version: '1.0.0',
       bakin: '>=1.0.0',
       description: 'Foo artifact-install fixture',
-      entry: { server: 'index.ts' },
-      permissions: [],
+            permissions: [],
     }),
   )
   writeFileSync(join(built, 'dist', 'index.js'), 'module.exports = {}\n')

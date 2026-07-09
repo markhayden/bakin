@@ -4,9 +4,6 @@
   "version": "1.0.2",
   "bakin": ">=1.0.0",
   "description": "Cron job scheduling through the runtime adapter with task creation",
-  "entry": {
-    "server": "index.ts"
-  },
   "contentFiles": [
     "schedule/"
   ],
@@ -17,7 +14,6 @@
       "required": false
     }
   ],
-  "tests": "tests/",
   "dependencies": [
     "tasks"
   ],
@@ -93,8 +89,8 @@
     "execTools": [
       {
         "name": "bakin_exec_schedule_briefing",
-        "summary": "Today's schedule summary \u2014 which jobs fire, assigned agents, alerts",
-        "description": "Today's schedule summary \u2014 which jobs fire, assigned agents, alerts. Designed for orchestrator daily briefing."
+        "summary": "Today's schedule summary — which jobs fire, assigned agents, alerts",
+        "description": "Today's schedule summary — which jobs fire, assigned agents, alerts. Designed for orchestrator daily briefing."
       },
       {
         "name": "bakin_exec_schedule_create",

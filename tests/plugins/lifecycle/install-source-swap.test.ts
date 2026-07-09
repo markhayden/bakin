@@ -60,8 +60,7 @@ function writeFixture(dir: string, opts: { id: string; version: string; permissi
       version: opts.version,
       bakin: '>=1.0.0',
       description: `${opts.id} test plugin`,
-      entry: { server: 'index.ts' },
-      permissions: opts.permissions,
+            permissions: opts.permissions,
     }, null, 2),
     'utf-8')
   writeFileSync(join(dir, 'index.ts'), `export default { id: '${opts.id}', activate() {} }`, 'utf-8')

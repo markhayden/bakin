@@ -17,10 +17,6 @@ Source: `docs/snippets/plugin-basic/bakin-plugin.json`
   "version": "0.1.0",
   "bakin": ">=0.1.0",
   "description": "Minimal plugin used by the public Bakin docs.",
-  "entry": {
-    "server": "index.ts",
-    "client": "client.tsx"
-  },
   "contributes": {
     "apiRoutes": [
       {
@@ -62,7 +58,6 @@ Source: `docs/snippets/plugin-basic/bakin-plugin.json`
 | `version` | Plugin version. Use SemVer. |
 | `bakin` | Compatible Bakin version range. |
 | `description` | Short public summary. |
-| `entry.server` | Server entry loaded by the plugin runtime. |
 
 </div>
 
@@ -72,10 +67,8 @@ Source: `docs/snippets/plugin-basic/bakin-plugin.json`
 
 | Field | Meaning |
 | --- | --- |
-| `entry.client` | Browser entry loaded into the Bakin shell. |
 | `contentFiles` | Files the plugin contributes under Bakin content. |
 | `secrets` | Secret names the plugin expects. |
-| `tests` | Plugin-local test command. |
 | `dependencies` | Other Bakin plugin IDs that must be available before this plugin loads. |
 | `permissions` | Capability labels used for install consent and runtime permission checks. |
 | `runtimeCapabilities` | Runtime adapter capabilities the plugin needs, such as `tasks`, `search`, `models`, or `channels.message`. |
@@ -172,7 +165,7 @@ Runtime permission mode may warn or enforce depending on configuration. Missing 
 ## Authoring Rules
 
 - Treat `id` as permanent once users install the plugin.
-- Keep entry paths relative to the plugin root.
+- Use the canonical layout: `index.ts` (server entry) and optional `client.tsx` at the plugin root. Entry points are not declarable.
 - Declare plugin dependencies by plugin ID. `bakin plugins install` refuses a plugin when a dependency is neither core nor already installed.
 - Keep `contributes` in sync with registered routes, tools, settings, and docs.
 - Use `runtimeCapabilities` for adapter-level needs and `permissions` for plugin capability consent.

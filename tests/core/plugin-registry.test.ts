@@ -221,8 +221,7 @@ describe('PluginRegistryImpl', () => {
       version: '1.0.0',
       bakin: '>=1.0.0',
       description: `Test plugin ${id}`,
-      entry: { server: 'index.js' },
-      dependencies: opts.deps || [],
+            dependencies: opts.deps || [],
     }
     writeFileSync(join(pluginDir, 'bakin-plugin.json'), JSON.stringify(manifest))
 
@@ -265,8 +264,7 @@ describe('PluginRegistryImpl', () => {
       version: '1.0.0',
       bakin: '>=1.0.0',
       description: `User plugin ${id}`,
-      entry: { server: 'index.js' },
-      dependencies: opts.deps ?? [],
+            dependencies: opts.deps ?? [],
       permissions: [],
       ...opts.manifest,
     }
@@ -624,7 +622,7 @@ describe('PluginRegistryImpl', () => {
 
     it('loads user plugins from dist even when the source entry is not runnable', async () => {
       const pluginDir = writeUserPlugin('dist-only-user', {
-        manifest: { entry: { server: 'index.ts' } },
+        manifest: { },
         activate: `ctx.log.info('loaded dist entry')`,
       })
       writeFileSync(
@@ -778,8 +776,7 @@ describe('PluginRegistryImpl', () => {
             version: '1.0.0',
             bakin: '>=1.0.0',
             description: 'Core plugin loaded from an embedded registration',
-            entry: { server: 'index.js' },
-            permissions: ['storage.read'],
+                        permissions: ['storage.read'],
           },
         },
       })

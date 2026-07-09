@@ -98,8 +98,7 @@ async function seedSnapshot(): Promise<void> {
     version: '1.2.3',
     bakin: '>=1.0.0',
     description: 'Fixture plugin',
-    entry: { server: 'index.ts' },
-    permissions: [],
+        permissions: [],
   }, null, 2), 'utf-8')
   writeFileSync(join(pluginDir, 'index.ts'), '// fixture\n', 'utf-8')
   writePluginLockfile(addPlugin(readPluginLockfile(), 'demo-plugin', pluginEntry))

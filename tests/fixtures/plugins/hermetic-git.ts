@@ -150,8 +150,7 @@ export function fixturePluginFiles(opts: {
       id: opts.id,
       name: opts.id,
       version: opts.version,
-      entry: { server: 'index.ts' },
-      permissions: opts.permissions ?? [],
+            permissions: opts.permissions ?? [],
     }, null, 2),
     'index.ts': `export default { id: '${opts.id}', activate() {} }`,
   }

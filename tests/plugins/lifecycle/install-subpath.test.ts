@@ -67,8 +67,7 @@ const FOO_MANIFEST = JSON.stringify(
     version: '1.0.0',
     bakin: '>=1.0.0',
     description: 'Foo test plugin',
-    entry: { server: 'index.ts' },
-    permissions: [],
+        permissions: [],
   },
   null, 2,
 )
@@ -79,8 +78,7 @@ const BAR_MANIFEST = JSON.stringify(
     version: '0.5.0',
     bakin: '>=1.0.0',
     description: 'Bar test plugin',
-    entry: { server: 'index.ts' },
-    permissions: [],
+        permissions: [],
   },
   null, 2,
 )

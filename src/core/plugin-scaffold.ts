@@ -57,10 +57,6 @@ export function createPluginScaffold(name: string): PluginScaffoldResult {
           version: '0.1.0',
           bakin: `>=${APP_VERSION}`,
           description: `${name} plugin for Bakin`,
-          entry: {
-            server: 'src/index.ts',
-            client: 'src/client.tsx',
-          },
           permissions: [],
           dependencies: [],
         },
