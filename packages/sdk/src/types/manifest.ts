@@ -218,7 +218,13 @@ export interface PluginManifest {
   name: string
   /** Plugin version (semver). */
   version: string
-  /** Minimum Bakin version this plugin supports. */
+  /**
+   * Semver range of Bakin host versions this plugin supports (e.g.
+   * `">=0.5.0"`). Enforced at install and at activation: an incompatible or
+   * malformed range rejects with an actionable error. Dev-source hosts
+   * (version `0.0.0-dev`) skip the satisfaction check but still reject
+   * malformed ranges.
+   */
   bakin: string
   /** One-line summary shown in the plugin manager. */
   description: string

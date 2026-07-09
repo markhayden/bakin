@@ -177,7 +177,10 @@ async function cmdPluginsList(opts: { json?: boolean; check?: boolean } = {}): P
   console.log('Installed plugins:')
   for (const plugin of manifest.plugins) {
     const status = plugin.upgradeAvailable === true ? 'update available' : String(plugin.status ?? 'unknown')
-    console.log(`  ${String(plugin.id ?? '').padEnd(20)} ${String(plugin.source ?? '-').padEnd(8)} ${String(plugin.version ?? '-').padEnd(8)} ${status}`)
+    // Failed plugins carry the actionable reason (e.g. the T15 host-range
+    // refusal) — without it a bare "failed" hides what to fix.
+    const reason = plugin.status === 'failed' && plugin.errorMessage ? ` — ${String(plugin.errorMessage)}` : ''
+    console.log(`  ${String(plugin.id ?? '').padEnd(20)} ${String(plugin.source ?? '-').padEnd(8)} ${String(plugin.version ?? '-').padEnd(8)} ${status}${reason}`)
   }
 }
 

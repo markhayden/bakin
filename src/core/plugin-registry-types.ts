@@ -50,7 +50,7 @@ export interface PluginFailureState {
   version: string
   description: string
   source: 'built-in' | 'user'
-  errorCode: 'manifest_invalid' | 'missing_dependency' | 'dependency_cycle' | 'dependency_failed' | 'activation_failed'
+  errorCode: 'manifest_invalid' | 'missing_dependency' | 'dependency_cycle' | 'dependency_failed' | 'activation_failed' | 'incompatible_host'
   errorMessage: string
   missingDependencies?: string[]
 }

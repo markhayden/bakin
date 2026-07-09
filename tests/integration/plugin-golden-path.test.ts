@@ -32,6 +32,7 @@ process.env.OPENCLAW_HOME = join(testDir, 'openclaw')
 
 const REPO_ROOT = resolve(import.meta.dir, '../..')
 const PLUGIN_ID = 'gp-demo'
+const BAD_RANGE_ID = 'gp-badrange'
 
 const bakinPaths = () => ({
   root: testDir,
@@ -136,6 +137,20 @@ describe('plugin golden path (scaffold → install → activate → use)', () =>
     const { buildUserPlugin } = await import('../../packages/host/src/plugin-host/user-plugin-builder')
     await buildUserPlugin(targetDir)
 
+    // --- T15 negative: a sibling plugin with a malformed bakin range must be
+    // refused at activation (malformed ranges reject even on dev hosts, so
+    // this works with the repo's 0.0.0-dev APP_VERSION). No dist needed —
+    // the compat gate fires before the dist check.
+    const badDir = join(testDir, 'plugins', BAD_RANGE_ID)
+    mkdirSync(badDir, { recursive: true })
+    writeFileSync(join(badDir, 'bakin-plugin.json'), JSON.stringify({
+      id: BAD_RANGE_ID,
+      name: 'Bad Range',
+      version: '1.0.0',
+      bakin: 'banana',
+      description: 'T15 activation-refusal fixture',
+    }))
+
     // --- registry boot, like server.ts after buildAllUserPlugins ---
     const reg = await import('../../src/core/plugin-registry')
     pluginRegistry = reg.pluginRegistry
@@ -171,6 +186,15 @@ describe('plugin golden path (scaffold → install → activate → use)', () =>
       .getRegistrySnapshot()
       .find((e: any) => e.id === PLUGIN_ID)
     expect(entry).toMatchObject({ status: 'active' })
+  })
+
+  it('refuses activation of a plugin with a malformed bakin range (T15)', () => {
+    expect(pluginRegistry.getPluginIds()).not.toContain(BAD_RANGE_ID)
+    const entry = pluginRegistry
+      .getRegistrySnapshot()
+      .find((e: any) => e.id === BAD_RANGE_ID)
+    expect(entry).toMatchObject({ status: 'failed', errorCode: 'incompatible_host' })
+    expect(String(entry.errorMessage)).toContain('banana')
   })
 
   it('serves the scaffolded route through the real dispatch path', async () => {

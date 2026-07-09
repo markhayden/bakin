@@ -25,7 +25,7 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 - [x] T12 Delete manifest.entry (+ tests field); single root layout ✅ (tombstone rejections; 18 manifests + docs swept)
 - [x] T13 Scaffold rewrite ✅ (root layout, real APIs, tsconfig, contributes/permissions, starter test, standalone tsc+test verified)
 - [x] T14 Golden-path integration test + build.md tutorial fix ✅ (real-builder gate; tutorial tool renamed + contributes)
-- [ ] T15 Host/SDK semver gate
+- [x] T15 Host/SDK semver gate ✅ (well-formedness always; satisfaction skipped on 0.0.0-dev dev hosts; incompatible_host failure code)
 - [ ] T16 Symmetric contributes enforcement + sync-manifest
 - [ ] CHECKPOINT 2a: golden path verbatim-works; PR merged
 
