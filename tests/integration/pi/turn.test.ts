@@ -91,9 +91,11 @@ beforeAll(async () => {
   await adapter.initialize({
     contentDir: join(testDir, 'bakin'),
     execTools: execToolProvider,
-    // Bakin's dispatch owns retries — disable Pi's inner auto-retry so
-    // provider-failure tests settle immediately.
-    settings: { retry: { enabled: false } },
+    // Bakin's dispatch owns retries — disable BOTH of Pi's inner retry
+    // layers so provider-failure tests settle immediately: session-level
+    // auto-retry (retry.enabled) and provider-level HTTP retry with
+    // exponential backoff (retry.provider.maxRetries).
+    settings: { retry: { enabled: false, provider: { maxRetries: 0 } } },
   })
   await adapter.agents.update('main', { model: 'fakeai/fake-model' })
   await adapter.agents.writeWorkspaceFile('main', { path: 'SOUL.md', content: 'You are the test soul.' })
@@ -162,10 +164,9 @@ describe('messaging.send', () => {
   })
 
   test('provider 429 maps to provider_cooldown', async () => {
+    // One seed only: with provider retries disabled exactly one request
+    // fires; a residual retry would hit the empty-queue 500 and fail loudly.
     seedProvider([
-      { status: 429, errorBody: { error: { message: 'rate limited, slow down' } } },
-      { status: 429, errorBody: { error: { message: 'rate limited, slow down' } } },
-      { status: 429, errorBody: { error: { message: 'rate limited, slow down' } } },
       { status: 429, errorBody: { error: { message: 'rate limited, slow down' } } },
     ])
     try {
@@ -232,9 +233,6 @@ describe('messaging.stream', () => {
 
   test('provider failure surfaces as an error chunk carrying the typed kind, never a throw from iteration', async () => {
     seedProvider([
-      { status: 500, errorBody: { error: { message: 'exploded' } } },
-      { status: 500, errorBody: { error: { message: 'exploded' } } },
-      { status: 500, errorBody: { error: { message: 'exploded' } } },
       { status: 500, errorBody: { error: { message: 'exploded' } } },
     ])
     const chunks: ChatChunk[] = []
