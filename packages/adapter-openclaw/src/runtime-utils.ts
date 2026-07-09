@@ -111,14 +111,6 @@ export function truncate(value: string, maxLength: number): string {
   return `${value.slice(0, Math.max(0, maxLength - 3))}...`
 }
 
-export function redactSensitiveText(value: string): string {
-  return value
-    .replace(/(authorization:\s*bearer\s+)[^\s"'`]+/gi, '$1[redacted]')
-    .replace(/(x-access-token:)[^\s"'`@]+/gi, '$1[redacted]')
-    .replace(/([?&][^=\s"'`]*(?:token|password|secret|api[_-]?key)[^=\s"'`]*=)[^&\s"'`]+/gi, '$1[redacted]')
-    .replace(/\b([A-Za-z0-9_]*(?:token|password|secret|api[_-]?key)[A-Za-z0-9_]*\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,"'`}]+)/gi, '$1[redacted]')
-}
-
 export function slug(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `agent-${Date.now()}`
 }

@@ -63,6 +63,15 @@ export function useSSE() {
             return
           }
 
+          // Live turn activity (ephemeral, never persisted): tool/status
+          // chips for in-flight dispatch turns. Board cards + team timeline
+          // subscribe to 'turn-activity'; no activity-feed entry (the agent's
+          // own progress logs remain the durable record).
+          if (data.type === 'turn-activity') {
+            emitPluginEvent({ ...data, event: 'turn-activity' })
+            return
+          }
+
           // Installed/removed user plugins change the runtime manifest.
           // Dev tabs handle this through the dev hot-swap client; normal
           // tabs need a page reload so PluginHost re-fetches the manifest.

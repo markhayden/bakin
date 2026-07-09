@@ -40,7 +40,7 @@ mock.module('../../packages/core/src/logger', loggerMock)
 
 import { createOpenClawRuntimeAdapter } from '@bakin/adapter-openclaw'
 import { RuntimeError } from '../../packages/core/src/adapters/runtime/errors'
-import { openClawCliSessionId } from '../../packages/adapter-openclaw/src/session-activity'
+import { openClawCliSessionId } from '../../packages/adapter-openclaw/src/session-store'
 
 afterAll(() => rmSync(testHome, { recursive: true, force: true }))
 

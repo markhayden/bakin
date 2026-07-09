@@ -7,6 +7,7 @@ import { COLUMN_CONFIG, STATUS_DOT_COLORS } from '../constants'
 import { splitScheduledTasks } from '../lib/scheduled'
 import type { BudgetHold } from '../hooks/use-budget-status'
 import type { BrandHold } from '../hooks/use-brand-status'
+import type { LiveActivity } from '../hooks/use-live-activity'
 import type { Task, ColumnId } from '../types'
 
 interface KanbanColumnProps {
@@ -16,6 +17,7 @@ interface KanbanColumnProps {
   childTaskLabels?: Record<string, string>
   budgetHolds?: Record<string, BudgetHold>
   brandHolds?: Record<string, BrandHold>
+  liveActivity?: Record<string, LiveActivity>
   warnUnbranded?: boolean
   /** Per-task search score info, keyed by task id. Only set when debug + active search. */
   scoreMap?: Map<string, TaskScoreInfo>
@@ -29,7 +31,7 @@ interface KanbanColumnProps {
   onHeaderClick?: () => void
 }
 
-export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, budgetHolds, brandHolds, warnUnbranded, scoreMap, onDelete, onTaskClick, onAddTask, footer, compact, totalCount, showScheduled = true, onHeaderClick }: KanbanColumnProps) {
+export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, budgetHolds, brandHolds, liveActivity, warnUnbranded, scoreMap, onDelete, onTaskClick, onAddTask, footer, compact, totalCount, showScheduled = true, onHeaderClick }: KanbanColumnProps) {
   const { ref, isDropTarget } = useDroppable({
     id,
     accept: 'item',
@@ -127,6 +129,7 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, budgetHol
                 childTaskId={childTaskLabels?.[task.id]}
                 budgetHold={budgetHolds?.[task.id]}
                 brandHold={brandHolds?.[task.id]}
+                liveActivity={liveActivity?.[task.id]}
                 warnUnbranded={warnUnbranded}
                 scoreInfo={scoreMap?.get(task.id)}
                 onDelete={onDelete}
@@ -155,6 +158,7 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, budgetHol
                       childTaskId={childTaskLabels?.[task.id]}
                       budgetHold={budgetHolds?.[task.id]}
                 brandHold={brandHolds?.[task.id]}
+                liveActivity={liveActivity?.[task.id]}
                 warnUnbranded={warnUnbranded}
                       scoreInfo={scoreMap?.get(task.id)}
                       onDelete={onDelete}
