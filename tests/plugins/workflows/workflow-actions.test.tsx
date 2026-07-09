@@ -108,9 +108,7 @@ describe('workflow action components', () => {
 
     expect(onDelete).toHaveBeenCalled()
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
-    // Dialog-close polls run ~3.5s even unloaded; the 5s default flakes
-    // under full-core --parallel CPU contention.
-  }, 15_000)
+  })
 
   it('keeps the delete confirmation open when deletion reports failure', async () => {
     const onDelete = mock(() => Promise.resolve(false))

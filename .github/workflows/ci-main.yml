@@ -50,8 +50,10 @@ jobs:
           BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/external/bakin-bits-official/plugins
         run: bun run docs:check
 
+      # --timeout 15000: worker contention on the 4-core runner can push
+      # render-heavy component tests past the 5s default (observed 5.4-7.2s).
       - name: Tests
-        run: bun test --parallel
+        run: bun test --parallel --timeout 15000
 
       - name: Build (host + plugins, no binary compile)
         run: |
