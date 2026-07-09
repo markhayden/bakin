@@ -473,7 +473,12 @@ class PluginRegistryImpl {
       // with the legacy APIRoute used by state.routes — same path/method/
       // handler primary fields, plus extra typed schemas the dispatcher
       // adapter knows how to read.
-      state.routes.push(route as unknown as APIRoute)
+      const legacyShaped = route as unknown as APIRoute
+      // T16: declarative routes face the same manifest enforcement as
+      // ctx.registerRoute — user plugins must declare every route in
+      // contributes.apiRoutes (assertRouteDeclared no-ops for core).
+      this.assertRouteDeclared(plugin.id, state, legacyShaped)
+      state.routes.push(legacyShaped)
     }
   }
 
