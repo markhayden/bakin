@@ -13,7 +13,11 @@
   "dependencies": [],
   "permissions": [
     "storage.read",
-    "storage.write"
+    "storage.write",
+    "tasks.read",
+    "tasks.write",
+    "assets.read",
+    "assets.write"
   ],
   "contributes": {
     "apiRoutes": [
