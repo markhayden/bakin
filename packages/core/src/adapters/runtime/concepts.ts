@@ -158,11 +158,45 @@ export interface RuntimeToolActivity {
   metadata?: RuntimeMetadata
 }
 
-export interface ChatChunk {
-  type: 'text' | 'tool' | 'status' | 'done' | 'error'
-  content?: string
-  data?: RuntimeMetadata | RuntimeToolActivity
-}
+/** Render format for a text chunk's content. Absent means 'markdown'. */
+export type ChatTextFormat = 'markdown' | 'plain' | 'code'
+
+/**
+ * One chunk of a streaming agent turn — the turn-output normalization
+ * contract every adapter emits and every consumer renders against.
+ *
+ * Behavioral contract (pinned today by the per-adapter suites —
+ * tests/adapter-openclaw/stream-events.test.ts and
+ * tests/integration/pi/turn.test.ts; the cross-adapter conformance suite
+ * lands with prelaunch-hardening PR 3):
+ * - Chunk GRANULARITY may vary by adapter: per-token deltas, coalesced
+ *   spans, or one chunk per turn are all legal. Consumers accumulate
+ *   `text` content in arrival order and must not assume a cadence.
+ * - `done` is yielded EXACTLY ONCE, always last; no chunk of any kind
+ *   follows it.
+ * - A DELIBERATE abort (the turn's `kind:'aborted'` settle) ends the
+ *   stream with a clean `done` — never an `error` chunk. Abort is a
+ *   clean end, not a failure.
+ * - `tool` and `status` chunks are BEST-EFFORT liveness: adapters emit
+ *   what their runtime exposes, and none is guaranteed to appear.
+ * - Terminal failure ends the stream with an `error` chunk (its `data`
+ *   carries `{ kind }` — the RuntimeError kind — when known) and NO
+ *   `done`; the iterator itself never throws.
+ * - Adapters emit CLASSIFIED, STRUCTURED chunks only — never
+ *   pre-rendered HTML/ANSI or raw JSON/shell dumps in `content`.
+ *   Stripping runtime-specific noise is the adapter's job.
+ */
+export type ChatChunk =
+  /** Assistant text. `format` hints rendering; absent = markdown. */
+  | { type: 'text'; content: string; format?: ChatTextFormat; data?: RuntimeMetadata }
+  /** Tool activity; `data` is always the structured RuntimeToolActivity. */
+  | { type: 'tool'; content?: string; data: RuntimeToolActivity }
+  /** Turn lifecycle hint (e.g. 'thinking'). */
+  | { type: 'status'; content?: string; data?: RuntimeMetadata }
+  /** Clean turn end (success or deliberate abort) — exactly once, always last. */
+  | { type: 'done'; content?: string; data?: RuntimeMetadata }
+  /** Terminal failure — `data.kind` carries the RuntimeError kind when known. */
+  | { type: 'error'; content?: string; data?: RuntimeMetadata }
 
 export interface ToolResult {
   ok: boolean
@@ -720,6 +754,13 @@ export interface AgentRuntimeAdapter {
 
   messaging: {
     send(args: MessageArgs): Promise<MessageResult>
+    /**
+     * Stream one agent turn as normalized ChatChunks. See the ChatChunk
+     * doc for the behavioral contract: adapter-varying granularity,
+     * `done` exactly once and last, best-effort tool/status liveness,
+     * terminal failure = `error` chunk then end (never a throw from
+     * iteration), classified/structured chunks only.
+     */
     stream(args: MessageArgs): AsyncIterable<ChatChunk>
   }
 

@@ -24,13 +24,19 @@ export type ChatTranscriptRow =
   | { kind: 'user'; ts: string; content: string }
   | { kind: 'assistant'; ts: string; content: string }
   | { kind: 'tool'; ts: string; summary: string }
-  | { kind: 'error'; ts: string; message: string }
+  | { kind: 'error'; ts: string; message: string; errorKind?: string }
 
 /** SSE payloads broadcast on the global bus while a turn streams. */
 export interface ChatChunkEvent {
   type: 'chat.chunk'
   chatId: string
-  chunk: { type: 'text' | 'tool' | 'status'; content?: string; data?: Record<string, unknown> }
+  chunk: {
+    type: 'text' | 'tool' | 'status'
+    content?: string
+    /** Text chunks: render format hint; absent = markdown. */
+    format?: 'markdown' | 'plain' | 'code'
+    data?: Record<string, unknown>
+  }
 }
 
 export interface ChatDoneEvent {
@@ -42,4 +48,6 @@ export interface ChatErrorEvent {
   type: 'chat.error'
   chatId: string
   message: string
+  /** Typed RuntimeError kind when the runtime provided one. */
+  kind?: string
 }

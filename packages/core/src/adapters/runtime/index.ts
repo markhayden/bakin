@@ -39,6 +39,7 @@ export type {
   ChannelInfo,
   ChannelMessageArgs,
   ChatChunk,
+  ChatTextFormat,
   ContentDeliveryArgs,
   CreateApprovalArgs,
   CreateCronJobInput,

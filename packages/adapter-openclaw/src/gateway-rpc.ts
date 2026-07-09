@@ -7,6 +7,16 @@ import { openClawRuntimeErrorFromMessage } from './errors'
 
 const GATEWAY_MIN_PROTOCOL_VERSION = 1
 const GATEWAY_MAX_PROTOCOL_VERSION = 10
+/**
+ * Bakin's floor. Protocol 4 (OpenClaw 2026.6.11) is where the pushed
+ * `agent`/`chat` event streams Bakin's streaming integration rides were
+ * live-verified (see tests/fixtures/openclaw-gateway-frames/). We still
+ * advertise minProtocol 1 so an older gateway completes the handshake and we
+ * can fail with OUR actionable message instead of a server-side mismatch.
+ */
+const GATEWAY_REQUIRED_PROTOCOL = 4
+/** tool-stream agent events are only sent to connections declaring this cap. */
+const GATEWAY_CLIENT_CAPS = ['tool-events']
 const DEFAULT_REQUEST_TIMEOUT_MS = 10000
 const CONNECT_TIMEOUT_MS = 5000
 const RECONNECT_DELAY_MS = 1000
@@ -46,6 +56,19 @@ interface PendingRequest {
   reject: (error: Error) => void
   timeout: ReturnType<typeof setTimeout>
   expectFinal: boolean
+  onAccepted?: (ack: OpenClawGatewayAcceptedAck) => void
+}
+
+/**
+ * The gateway's first answer to an `agent` RPC (same request id as the
+ * final). `runId` echoes the client idempotencyKey but the ack's values are
+ * authoritative — they key every pushed `agent`/`chat` event frame and are
+ * the exact pair `chat.abort` requires.
+ */
+export interface OpenClawGatewayAcceptedAck {
+  runId: string | null
+  sessionKey: string | null
+  acceptedAt: number | null
 }
 
 export interface OpenClawGatewayRequestOptions {
@@ -57,6 +80,12 @@ export interface OpenClawGatewayRequestOptions {
    * pending entry; rejects with a transport RuntimeError.
    */
   signal?: AbortSignal
+  /**
+   * Fires once when an expectFinal request receives its `accepted` ack —
+   * the request stays pending until the final response. Only meaningful
+   * with expectFinal; ignored otherwise.
+   */
+  onAccepted?: (ack: OpenClawGatewayAcceptedAck) => void
 }
 
 interface ConnectState {
@@ -86,6 +115,7 @@ export class OpenClawGatewayRpcClient {
       timeoutMs: normalized.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
       expectFinal: normalized.expectFinal === true,
       signal: normalized.signal,
+      onAccepted: normalized.onAccepted,
     })
   }
 
@@ -188,6 +218,7 @@ export class OpenClawGatewayRpcClient {
       },
       role,
       scopes: this.opts.scopes,
+      caps: GATEWAY_CLIENT_CAPS,
     }
 
     // Device identity is required for elevated scopes (operator.write / dispatch).
@@ -218,7 +249,13 @@ export class OpenClawGatewayRpcClient {
     // this RPC. The per-request timer here is a 2x backstop so the pending
     // entry can't outlive a wedged handshake; it must never fire first.
     this.sendRequest('connect', params, { timeoutMs: CONNECT_TIMEOUT_MS * 2, expectFinal: false })
-      .then(() => {
+      .then((payload) => {
+        const protocolError = protocolFloorError(payload, this.label())
+        if (protocolError) {
+          this.failConnect(protocolError)
+          this.ws?.close()
+          return
+        }
         const state = this.connectState
         if (!state) return
         clearTimeout(state.timeout)
@@ -232,7 +269,11 @@ export class OpenClawGatewayRpcClient {
       })
   }
 
-  private sendRequest(method: string, params: Record<string, unknown>, opts: { timeoutMs: number; expectFinal: boolean; signal?: AbortSignal }): Promise<unknown> {
+  private sendRequest(
+    method: string,
+    params: Record<string, unknown>,
+    opts: { timeoutMs: number; expectFinal: boolean; signal?: AbortSignal; onAccepted?: (ack: OpenClawGatewayAcceptedAck) => void },
+  ): Promise<unknown> {
     const ws = this.ws
     if (!ws || ws.readyState !== WS_OPEN) {
       return Promise.reject(new RuntimeError(`${this.label()} is not connected`, { kind: 'transport' }))
@@ -265,6 +306,7 @@ export class OpenClawGatewayRpcClient {
         reject: (error) => { cleanupAbort(); reject(error) },
         timeout,
         expectFinal: opts.expectFinal,
+        onAccepted: opts.onAccepted,
       })
     })
     ws.send(JSON.stringify(frame))
@@ -316,7 +358,22 @@ export class OpenClawGatewayRpcClient {
   private handleResponse(frame: GatewayResponseFrame): void {
     const pending = this.pending.get(frame.id)
     if (!pending) return
-    if (pending.expectFinal && frame.ok && isAcceptedAckPayload(frame.payload)) return
+    if (pending.expectFinal && frame.ok && isAcceptedAckPayload(frame.payload)) {
+      // Surface the ack (runId/sessionKey key the pushed event streams and
+      // chat.abort) exactly once; the request stays pending until the final.
+      const onAccepted = pending.onAccepted
+      if (onAccepted) {
+        pending.onAccepted = undefined
+        try {
+          onAccepted(parseAcceptedAck(frame.payload))
+        } catch (err) {
+          this.opts.logger.warn(`${this.label()} onAccepted handler failed`, {
+            error: err instanceof Error ? err.message : String(err),
+          })
+        }
+      }
+      return
+    }
     this.pending.delete(frame.id)
     clearTimeout(pending.timeout)
     if (frame.ok) {
@@ -388,6 +445,32 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isAcceptedAckPayload(value: unknown): boolean {
   return isRecord(value) && value.status === 'accepted'
+}
+
+function parseAcceptedAck(value: unknown): OpenClawGatewayAcceptedAck {
+  const record = isRecord(value) ? value : {}
+  return {
+    runId: typeof record.runId === 'string' ? record.runId : null,
+    sessionKey: typeof record.sessionKey === 'string' ? record.sessionKey : null,
+    acceptedAt: typeof record.acceptedAt === 'number' ? record.acceptedAt : null,
+  }
+}
+
+/**
+ * Actionable floor check on the negotiated protocol from hello-ok. A gateway
+ * that reports nothing predates protocol reporting and is far below the floor.
+ */
+function protocolFloorError(payload: unknown, label: string): RuntimeError | null {
+  const record = isRecord(payload) ? payload : {}
+  const protocol = typeof record.protocol === 'number' ? record.protocol : null
+  if (protocol !== null && protocol >= GATEWAY_REQUIRED_PROTOCOL) return null
+  const server = isRecord(record.server) ? record.server : {}
+  const serverVersion = typeof server.version === 'string' ? server.version : 'unknown'
+  const found = protocol === null ? 'unreported' : `protocol ${protocol}`
+  return new RuntimeError(
+    `${label} ${found} is below Bakin's required gateway protocol ${GATEWAY_REQUIRED_PROTOCOL} (server version ${serverVersion}) — upgrade OpenClaw to 2026.6.11 or newer`,
+    { kind: 'runtime_failed' },
+  )
 }
 
 function formatGatewayErrorDetails(details: unknown): string | null {

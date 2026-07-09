@@ -28,6 +28,11 @@ The rig is OpenClaw-specific dev tooling at the adapter layer, so
 - `sandbox.ts` — exec-into-container helpers
 - `mcporter.ts` — write per-agent `bakin-<agent>` MCP config into the agent container. **STALE (runtime-capabilities post-α addendum):** agents are now instructed to use native MCP entries provisioned by the adapter, which bake `http://localhost:<port>` — container-unreachable. The rig needs re-plumbing onto `BAKIN_MCP_BASE_URL` + adapter provisioning before it can validate OpenClaw tool access again.
 - `device-approve.ts` — generate + pre-approve the gateway device (dispatch)
+- `record-gateway-frames.ts` — standalone gateway frame recorder (WS1a T1):
+  drives an `agent` RPC against any gateway (reuses the adapter's device-auth)
+  and captures every wire frame, sanitized, to JSONL — the source of
+  `tests/fixtures/openclaw-gateway-frames/`; re-record instructions in that
+  dir's README
 
 ## Hard-won knowledge (non-obvious)
 

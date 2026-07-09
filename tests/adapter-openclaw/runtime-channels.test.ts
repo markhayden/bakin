@@ -766,7 +766,7 @@ class FakeWebSocket {
     const frame = JSON.parse(raw) as FakeGatewayFrame
     this.sentFrames.push(frame)
     if (frame.method === 'connect') {
-      this.emitMessage({ type: 'res', id: frame.id, ok: true, payload: { auth: { scopes: ['operator.approvals'] } } })
+      this.emitMessage({ type: 'res', id: frame.id, ok: true, payload: { type: 'hello-ok', protocol: 4, auth: { scopes: ['operator.approvals'] } } })
     } else if (frame.method === 'plugin.approval.request') {
       if (FakeWebSocket.failApprovalRequests) {
         this.emitMessage({ type: 'res', id: frame.id, ok: false, error: { message: 'no approval route' } })

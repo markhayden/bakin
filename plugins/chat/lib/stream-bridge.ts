@@ -21,6 +21,13 @@ const log = createLogger('chat-stream')
 
 type ToolActivity = { toolName?: string; phase?: string; summary?: string; status?: string; callId?: string }
 
+/** Carries an error chunk's typed RuntimeError kind through the throw. */
+class StreamTurnError extends Error {
+  constructor(message: string, readonly kind?: string) {
+    super(message)
+  }
+}
+
 // One in-flight turn per chat. The promise is retained so tests (and any
 // server-side caller) can await settlement; route handlers never block on it.
 const inflight = new Map<string, Promise<void>>()
@@ -78,7 +85,20 @@ async function runTurn(
       content,
       threadId: `chat:${chatId}`,
     })) {
-      ctx.events.emit('chat.chunk', { chatId, chunk: { type: chunk.type, content: chunk.content, data: chunk.data } })
+      // Only liveness chunks ride chat.chunk — done/error have dedicated
+      // chat.done/chat.error events, and the wire must match the declared
+      // ChatChunkEvent union.
+      if (chunk.type === 'text' || chunk.type === 'tool' || chunk.type === 'status') {
+        ctx.events.emit('chat.chunk', {
+          chatId,
+          chunk: {
+            type: chunk.type,
+            content: chunk.content,
+            data: chunk.data,
+            ...(chunk.type === 'text' && chunk.format ? { format: chunk.format } : {}),
+          },
+        })
+      }
 
       if (chunk.type === 'text' && chunk.content) {
         assistantText += chunk.content
@@ -101,7 +121,8 @@ async function runTurn(
           })
         }
       } else if (chunk.type === 'error') {
-        throw new Error(chunk.content || 'runtime stream error')
+        const kind = typeof chunk.data?.kind === 'string' ? chunk.data.kind : undefined
+        throw new StreamTurnError(chunk.content || 'runtime stream error', kind)
       }
     }
 
@@ -111,13 +132,16 @@ async function runTurn(
     ctx.events.emit('chat.done', { chatId })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
+    // The typed kind the adapter attached to its error chunk survives to
+    // both the durable row and the SSE event (never re-parsed from text).
+    const kind = err instanceof StreamTurnError ? err.kind : undefined
     log.error(`chat turn failed for ${chatId}`, err as Error)
     // Keep whatever streamed before the failure, then record the failure
     // honestly as its own row.
     if (assistantText) {
       await persist({ kind: 'assistant', ts: new Date().toISOString(), content: assistantText })
     }
-    await persist({ kind: 'error', ts: new Date().toISOString(), message })
-    ctx.events.emit('chat.error', { chatId, message })
+    await persist({ kind: 'error', ts: new Date().toISOString(), message, ...(kind ? { errorKind: kind } : {}) })
+    ctx.events.emit('chat.error', { chatId, message, ...(kind ? { kind } : {}) })
   }
 }

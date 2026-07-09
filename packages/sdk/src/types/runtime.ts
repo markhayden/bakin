@@ -89,12 +89,28 @@ export interface RuntimeToolActivity {
   metadata?: Record<string, unknown>
 }
 
-/** One chunk in a streaming agent response (text, tool, status, done, error). */
-export interface RuntimeChatChunk {
-  type: 'text' | 'tool' | 'status' | 'done' | 'error'
-  content?: string
-  data?: Record<string, unknown> | RuntimeToolActivity
-}
+/** Render format for a text chunk's content. Absent means 'markdown'. */
+export type RuntimeChatTextFormat = 'markdown' | 'plain' | 'code'
+
+/**
+ * One chunk in a streaming agent response — the normalized turn-output
+ * contract. Granularity varies by runtime (per-token to whole-turn);
+ * `done` arrives exactly once and last on success AND on deliberate abort
+ * (abort is a clean end, never an `error` chunk); terminal failure ends
+ * the stream with an `error` chunk (`data.kind` = typed error kind when
+ * known) and no `done`; tool/status chunks are best-effort liveness.
+ */
+export type RuntimeChatChunk =
+  /** Assistant text. `format` hints rendering; absent = markdown. */
+  | { type: 'text'; content: string; format?: RuntimeChatTextFormat; data?: Record<string, unknown> }
+  /** Tool activity; `data` is always the structured RuntimeToolActivity. */
+  | { type: 'tool'; content?: string; data: RuntimeToolActivity }
+  /** Turn lifecycle hint (e.g. 'thinking'). */
+  | { type: 'status'; content?: string; data?: Record<string, unknown> }
+  /** Clean turn end (success or deliberate abort) — exactly once, always last. */
+  | { type: 'done'; content?: string; data?: Record<string, unknown> }
+  /** Terminal failure — `data.kind` carries the typed error kind when known. */
+  | { type: 'error'; content?: string; data?: Record<string, unknown> }
 
 /** A cron-scheduled job tracked by the runtime. */
 export interface CronJob {

@@ -258,33 +258,71 @@ Messaging callers pass stable Bakin `threadId` values through
 - **Task work** (dispatch, continuation, recovery): per-attempt threadIds
   (`task:<taskId>:d<seq>`, workflow steps `task:<id>:step:<stepId>:d<seq>`)
   so each attempt runs in a fresh, deterministic provider session. Threaded
-  sends return the provider `sessionId` in `MessageResult.metadata` and use
-  the stable gateway idempotency key `bakin:<threadId>`.
+  sends return the provider `sessionId` in `MessageResult.metadata`.
+  **`messaging.send` is NOT idempotent at the contract level** — callers own
+  dedupe (dispatch's ledger claims are that dedupe). The OpenClaw adapter
+  happens to derive a stable gateway idempotency key `bakin:<threadId>`
+  (which the gateway echoes back as the run's `runId`), but that is an
+  OpenClaw implementation detail, not a contract guarantee; Pi has no send
+  dedupe at all.
 - **Notifications/conversation** (orchestrator complete-ping, watchdog,
   doctor, agents API, UI chat `messaging:<sessionId>:<agentId>`): default or
   durable conversational sessions — never per-attempt.
 
-**Turn cancellation (#604):** `MessageArgs.signal?: AbortSignal` is the
-adapter-neutral best-effort cancel. Contract: on abort the adapter MUST
-reject the local awaiter promptly with `RuntimeError` kind `'aborted'`
-(terminal — dispatch never retries or diagnoses it) and SHOULD cancel the
-provider-side run where the runtime supports it. Fail-open: the OpenClaw
-gateway's `chat.abort` registry only tracks channel auto-reply runs (probed
-live on 2026.6.11 — backend `agent` RPC runs are NOT stopped server-side),
-so the adapter fires the canonical-key `chat.abort` frame as forward-compat
-and relies on the local rejection; the residual ghost run is bounded by the
-runtime's own turn timeout with every Bakin tool failing closed.
+**Turn cancellation (#604, hardened in WS1a):** `MessageArgs.signal?:
+AbortSignal` is the adapter-neutral best-effort cancel. Contract: on abort
+the adapter MUST reject the local awaiter promptly with `RuntimeError` kind
+`'aborted'` (terminal — dispatch never retries or diagnoses it) and SHOULD
+cancel the provider-side run where the runtime supports it. On OpenClaw the
+server-side cancel is REAL (live-verified on 2026.6.11, fixture
+`tests/fixtures/openclaw-gateway-frames/abort-turn.jsonl`): the adapter
+captures the `agent` RPC's accepted ack (`runId` + canonical `sessionKey`)
+and sends `chat.abort { sessionKey, runId }` from the owning connection —
+the gateway stops the run (`{aborted:true, runIds}` + terminal
+`chat state:'aborted'` frame). The outcome is consumed and audited
+(`agent-turn-abort`, honest `aborted:false` on refusal/send failure) —
+never fire-and-forget. Pre-ack aborts fall back to the best-known explicit
+session key (no guessed runId); the local rejection stays unconditional and
+immediate either way. Post-abort RPC finals arrive as `status:'timeout'`
+with `stopReason:'aborted'` — classification is by abort state/stopReason,
+never RPC status.
 
-The OpenClaw adapter maps threadIds to provider session ids and tails the
-provider transcript while the Gateway request is pending so tool
-calls/results become `ChatChunk { type: 'tool' }` events before final
-assistant text; it also watches the session **trajectory** file to fail fast
-on session deaths and run post-mortems (read-only — see
-`.claude/knowledge/session-forensics.md`). OpenClaw may store the live
-transcript entry under `agent:<agentId>:explicit:<uuid>` in `sessions.json`;
-the adapter owns that provider-specific lookup (mtime-cached). Plugins and UI
-code must continue to consume normalized runtime chunks instead of reading
-OpenClaw session files directly.
+**Stream contract (R5).** `ChatChunk` is a discriminated union (text with
+`format?: 'markdown'|'plain'|'code'` — absent = markdown; tool with
+structured `RuntimeToolActivity` data; status; done; error with
+`data.kind`). Behavioral guarantees every adapter implements: chunk
+granularity may vary by adapter; `done` is yielded exactly once and last;
+no chunks after done; tool/status chunks are best-effort; a terminal
+failure surfaces as an `error` chunk carrying the typed kind and then ends
+the stream (the iterator never throws). Adapters emit classified,
+structured chunks only — never pre-rendered HTML/ANSI/raw-JSON dumps;
+stripping runtime noise is the adapter's job. The doc-comment source of
+truth is `packages/core/src/adapters/runtime/concepts.ts`.
+
+**Turn output formatting — the two-seam rule.** (1) Server seam: adapters
+normalize runtime output into the chunk taxonomy above — per-runtime
+formatting differences are absorbed here, invisibly to the UI. (2) Client
+seam: ONE SDK component turns chunks into pixels (`TurnOutputView`,
+landing in WS2b). No third path: new turn-output surfaces consume
+normalized chunks through the single renderer, never hand-rolled dumps or
+per-surface format heuristics.
+
+The OpenClaw adapter streams turns from gateway push events
+(`gateway-frames.ts` schemas → the `stream-events.ts` frame→chunk machine):
+`chat` delta frames carry text (deltaText + full cumulative text — dropped
+`dropIfSlow` deltas self-heal via cumulative reconciliation), `agent`
+`tool`-stream frames become structured tool chunks (the `tool-events`
+connect cap gates that stream; `item`/`command_output` mirrors are
+deliberately ignored to avoid duplicate chips), and the accepted ack yields
+an immediate `status:'thinking'` chunk. The gateway connect handshake
+requires protocol ≥ 4 (actionable "upgrade OpenClaw" error below it). The
+session **trajectory** file is still watched — read-only, forensics only
+(fail-fast death detection + post-mortems, see
+`.claude/knowledge/session-forensics.md`), not for streaming. OpenClaw may
+store the live transcript entry under `agent:<agentId>:explicit:<uuid>` in
+`sessions.json`; the adapter owns that provider-specific lookup
+(mtime-cached). Plugins and UI code must continue to consume normalized
+runtime chunks instead of reading OpenClaw session files directly.
 
 ## Approvals And Channels
 

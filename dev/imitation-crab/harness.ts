@@ -152,7 +152,7 @@ function installGatewayWebSocketInterceptor(gatewayUrl: string): () => void {
       const id = typeof frame.id === 'string' ? frame.id : ''
       const method = typeof frame.method === 'string' ? frame.method : ''
       const params = frame.params ?? {}
-      handleGatewayRpcRequest(method, params)
+      handleGatewayRpcRequest(method, params, { requestId: id, push: (pushed) => this.emitMessage(pushed) })
         .then((response) => {
           this.emitMessage({
             type: 'res',

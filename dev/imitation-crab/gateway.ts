@@ -4,7 +4,31 @@
  * by chat:
  *   GET  /health
  *   POST /tools/invoke
- *   RPC  agent
+ *   RPC  agent, chat.abort
+ *
+ * Push-event emulation (prelaunch-hardening T6): when the transport provides
+ * a GatewayRpcContext, the `agent` RPC behaves like the real 2026.6.11 wire
+ * (tests/fixtures/openclaw-gateway-frames/): an `accepted` ack res on the
+ * request id first, then pushed `chat` deltas (deltaText + FULL cumulative
+ * text), `agent` lifecycle/assistant/tool/item/command_output frames, and
+ * health/tick broadcast noise, before the final res. Message markers script
+ * scenarios: `[[tool]]` adds a tool-call frame sequence, `[[dropped-delta]]`
+ * skips a middle delta frame (cumulative jump → the adapter must self-heal).
+ * `chat.abort {runId|sessionKey}` cancels a pending run: `{aborted:true,
+ * runIds}`, a terminal `chat state:'aborted'` frame, and the post-abort
+ * final (`status:'timeout'`, `stopReason:'aborted'`) — the recorded shapes.
+ *
+ * KNOWN DIVERGENCES from the real recordings (none consulted by the adapter
+ * today — it matches on `state`/`stream` and ignores seq; keep this list in
+ * sync before trusting the mock for a new frame field):
+ *  - the terminal aborted `chat` frame says `stopReason:'aborted'`; the real
+ *    wire recorded `stopReason:'rpc'`;
+ *  - the real wire re-emits a post-abort lifecycle pair reusing the runId
+ *    with payload seq RESTARTING at 1 — the mock omits that second emitter;
+ *  - the real post-abort final carries `result.payloads:[{text:"LLM request
+ *    timed out."}]`; the mock returns empty payloads;
+ *  - the real `chat.abort` response payload includes an inner `ok:true`
+ *    alongside `aborted`; the mock's payload has only `{aborted, runIds}`.
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'http'
 import { appendFileSync, mkdirSync } from 'fs'
@@ -43,31 +67,138 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-// Pending slow turns by sessionId, cancellable via the chat.abort RPC —
-// mirrors the real gateway's {ok, aborted, runIds} response shape so the
-// adapter's best-effort abort frame can be exercised end-to-end in dev/tests.
-// A Set per session: concurrent slow turns on one session must not clobber
-// each other's cancel handles (review F7).
-const pendingSlowTurns = new Map<string, Set<() => void>>()
+/** Transport seam: lets an RPC handler push extra frames (ack res, events). */
+export interface GatewayRpcContext {
+  requestId: string
+  push(frame: Record<string, unknown>): void
+}
+
+/** One in-flight agent run, cancellable via chat.abort (by runId or sessionKey). */
+interface ActiveRun {
+  runId: string
+  sessionKey: string
+  agentId: string
+  /** Cumulative assistant text pushed so far — the aborted frame carries it. */
+  emitted: string
+  aborted: boolean
+  /** Wakes any abortable sleep the run is parked in. */
+  cancels: Set<() => void>
+  /** Frame channel of the connection that started the run (null: direct call). */
+  push: ((frame: Record<string, unknown>) => void) | null
+  payloadSeq: number
+}
+
+// Runs keyed by runId — the gateway's own abort registry shape. chat.abort
+// resolves runId first, then sessionKey; mirrors the real {ok, aborted,
+// runIds} response so the adapter's response-checked abort can be exercised
+// end-to-end in dev/tests.
+const activeRuns = new Map<string, ActiveRun>()
+
+// Connection-global frame seq, like the real wire's top-level frame.seq.
+let frameSeq = 0
+let runCounter = 0
+
+// Test observability: what the mock saw (runs started, aborts received).
+// `finalSentAt` stamps when the happy-path final RPC payload was produced —
+// liveness tests compare it against when the consumer first SAW streamed text.
+interface ObservedAgentRun {
+  runId: string
+  sessionKey: string
+  agentId: string
+  finalSentAt?: number
+}
+const observedAgentRuns: ObservedAgentRun[] = []
+const observedChatAborts: Array<{ runId?: string; sessionKey?: string }> = []
+
+export function getObservedAgentRuns(): ReadonlyArray<ObservedAgentRun> {
+  return observedAgentRuns
+}
+
+export function getObservedChatAborts(): ReadonlyArray<{ runId?: string; sessionKey?: string }> {
+  return observedChatAborts
+}
+
+export function resetGatewayObservations(): void {
+  observedAgentRuns.length = 0
+  observedChatAborts.length = 0
+}
 
 /** Resolves false when the delay elapses, true when chat.abort cancels it. */
-function abortableSlowSleep(sessionId: string, ms: number): Promise<boolean> {
+function abortableRunSleep(run: ActiveRun, ms: number): Promise<boolean> {
+  if (run.aborted) return Promise.resolve(true)
   return new Promise((resolve) => {
-    const forSession = pendingSlowTurns.get(sessionId) ?? new Set<() => void>()
-    pendingSlowTurns.set(sessionId, forSession)
     const cancel = () => {
       clearTimeout(timer)
-      forSession.delete(cancel)
-      if (forSession.size === 0) pendingSlowTurns.delete(sessionId)
+      run.cancels.delete(cancel)
       resolve(true)
     }
     const timer = setTimeout(() => {
-      forSession.delete(cancel)
-      if (forSession.size === 0) pendingSlowTurns.delete(sessionId)
+      run.cancels.delete(cancel)
       resolve(false)
     }, ms)
-    forSession.add(cancel)
+    run.cancels.add(cancel)
   })
+}
+
+/** Push one event frame on the run's connection, real-wire enveloped. */
+function pushRunEvent(run: ActiveRun, event: 'chat' | 'agent', payload: Record<string, unknown>): void {
+  run.push?.({
+    type: 'event',
+    event,
+    payload: { runId: run.runId, sessionKey: run.sessionKey, seq: ++run.payloadSeq, ...payload },
+    seq: ++frameSeq,
+  })
+}
+
+function pushChatDelta(run: ActiveRun, deltaText: string, cumulative: string): void {
+  run.emitted = cumulative
+  pushRunEvent(run, 'chat', {
+    state: 'delta',
+    deltaText,
+    message: { role: 'assistant', content: [{ type: 'text', text: cumulative }] },
+  })
+}
+
+function pushAgentFrame(run: ActiveRun, stream: string, data: Record<string, unknown>): void {
+  pushRunEvent(run, 'agent', { agentId: run.agentId, stream, ts: Date.now(), data })
+}
+
+/** The recorded tool-call sequence: tool start/result + item/command_output mirrors. */
+async function pushToolSequence(run: ActiveRun): Promise<void> {
+  pushAgentFrame(run, 'tool', { phase: 'start', name: 'exec', toolCallId: 'tc-1', args: { command: 'ls' } })
+  pushAgentFrame(run, 'item', { itemId: 'item-1', phase: 'start', kind: 'tool', title: 'exec', status: 'running', name: 'exec', toolCallId: 'tc-1' })
+  await abortableRunSleep(run, 8)
+  pushAgentFrame(run, 'command_output', { itemId: 'item-1', phase: 'delta', output: 'README.md\n', toolCallId: 'tc-1' })
+  pushAgentFrame(run, 'tool', { phase: 'result', name: 'exec', toolCallId: 'tc-1', result: 'README.md\n', isError: false })
+  pushAgentFrame(run, 'command_output', { itemId: 'item-1', phase: 'end', output: 'README.md\n', exitCode: 0, durationMs: 12, toolCallId: 'tc-1' })
+  pushAgentFrame(run, 'item', { itemId: 'item-1', phase: 'end', kind: 'tool', title: 'exec', status: 'done', name: 'exec', toolCallId: 'tc-1' })
+}
+
+/** Split a reply into ~3 word-boundary deltas (real deltas are coalesced text runs). */
+function splitIntoDeltas(reply: string): string[] {
+  const words = reply.split(' ')
+  if (words.length < 3) return [reply]
+  const third = Math.ceil(words.length / 3)
+  const parts = [
+    words.slice(0, third).join(' '),
+    ' ' + words.slice(third, third * 2).join(' '),
+    ' ' + words.slice(third * 2).join(' '),
+  ]
+  return parts.filter((part) => part.length > 0)
+}
+
+/** The recorded post-abort final: status timeout, classified by stopReason. */
+function postAbortFinal(run: ActiveRun): GatewayRpcResponse {
+  return {
+    ok: true,
+    payload: {
+      runId: run.runId,
+      status: 'timeout',
+      summary: 'aborted',
+      stopReason: 'aborted',
+      result: { payloads: [], meta: {} },
+    },
+  }
 }
 
 /**
@@ -144,25 +275,36 @@ type GatewayRpcResponse = {
   error?: { message: string; code?: string }
 }
 
-export async function handleGatewayRpcRequest(method: string, params: Record<string, unknown>): Promise<GatewayRpcResponse> {
+export async function handleGatewayRpcRequest(method: string, params: Record<string, unknown>, ctx?: GatewayRpcContext): Promise<GatewayRpcResponse> {
   if (method === 'chat.abort') {
-    // Real-gateway key form: agent:<agentId>:explicit:<sessionId> — the mock
-    // resolves the trailing sessionId segment against its pending slow turns.
-    const sessionKey = typeof params.sessionKey === 'string' ? params.sessionKey : ''
-    const sessionId = sessionKey.split(':').pop() ?? ''
-    const pending = pendingSlowTurns.get(sessionId)
-    console.log(`  → rpc=chat.abort sessionKey=${sessionKey} pending=${pending?.size ?? 0}`)
-    if (pending && pending.size > 0) {
-      for (const cancel of [...pending]) cancel()
-      return { ok: true, payload: { aborted: true, runIds: [sessionId] } }
+    const runId = typeof params.runId === 'string' ? params.runId : undefined
+    const sessionKey = typeof params.sessionKey === 'string' ? params.sessionKey : undefined
+    observedChatAborts.push({ ...(runId ? { runId } : {}), ...(sessionKey ? { sessionKey } : {}) })
+    // Resolution mirrors the real registry: exact runId first, then the
+    // canonical sessionKey (T5 sends both from the accepted ack).
+    let run = runId ? activeRuns.get(runId) : undefined
+    if (!run && sessionKey) {
+      run = [...activeRuns.values()].find((candidate) => candidate.sessionKey === sessionKey)
     }
-    return { ok: true, payload: { aborted: false, runIds: [] } }
+    console.log(`  → rpc=chat.abort runId=${runId ?? '-'} sessionKey=${sessionKey ?? '-'} matched=${run?.runId ?? 'none'}`)
+    if (!run) return { ok: true, payload: { aborted: false, runIds: [] } }
+    activeRuns.delete(run.runId)
+    run.aborted = true
+    for (const cancel of [...run.cancels]) cancel()
+    // Terminal aborted frame carries the partial cumulative text, like the
+    // recorded wire (abort-turn.jsonl).
+    pushRunEvent(run, 'chat', {
+      state: 'aborted',
+      stopReason: 'aborted',
+      message: { role: 'assistant', content: [{ type: 'text', text: run.emitted }] },
+    })
+    return { ok: true, payload: { aborted: true, runIds: [run.runId] } }
   }
 
   if (method === 'connect') {
     return {
       ok: true,
-      payload: { auth: { scopes: Array.isArray(params.scopes) ? params.scopes : [] } },
+      payload: { type: 'hello-ok', protocol: 4, auth: { scopes: Array.isArray(params.scopes) ? params.scopes : [] } },
     }
   }
 
@@ -170,75 +312,151 @@ export async function handleGatewayRpcRequest(method: string, params: Record<str
     const agentId = typeof params.agentId === 'string' && params.agentId.length > 0 ? params.agentId : 'unknown'
     const agentName = AGENT_NAMES[agentId] || agentId
     const userMessage = typeof params.message === 'string' ? params.message : ''
+    const mode = getChatMode()
 
-    let reply: string
-    switch (getChatMode()) {
-      case 'echo':
-        reply = `[mock:${agentName}] ${userMessage}`
-        break
-      case 'error':
-        return { ok: false, error: { message: 'Mock error mode', code: 'mock_error' } }
-      case 'idle-timeout':
-        // The shape OpenClaw's codex app-server produces when a run ends
-        // before reporting completion — the adapter maps this to a
-        // RuntimeTurnError(runtime_timeout).
+    // Failure modes keep their pre-streaming shapes: the real gateway's
+    // failures Bakin cares about are res frames, not event streams.
+    if (mode === 'error') {
+      return { ok: false, error: { message: 'Mock error mode', code: 'mock_error' } }
+    }
+    if (mode === 'idle-timeout') {
+      // The shape OpenClaw's codex app-server produces when a run ends
+      // before reporting completion — the adapter maps this to a
+      // RuntimeTurnError(runtime_timeout).
+      return {
+        ok: false,
+        error: { message: 'codex app-server turn idle timed out waiting for turn/completed', code: 'turn_completion_idle_timeout' },
+      }
+    }
+    if (mode === 'session-death') {
+      const sessionId = typeof params.sessionId === 'string' ? params.sessionId : null
+      if (!sessionId) {
+        // Unthreaded sends have no trajectory for forensics — fall back to
+        // the structured idle-timeout shape so the failure is still typed.
         return {
           ok: false,
           error: { message: 'codex app-server turn idle timed out waiting for turn/completed', code: 'turn_completion_idle_timeout' },
         }
-      case 'session-death': {
-        const sessionId = typeof params.sessionId === 'string' ? params.sessionId : null
-        if (!sessionId) {
-          // Unthreaded sends have no trajectory for forensics — fall back to
-          // the structured idle-timeout shape so the failure is still typed.
-          return {
-            ok: false,
-            error: { message: 'codex app-server turn idle timed out waiting for turn/completed', code: 'turn_completion_idle_timeout' },
-          }
-        }
-        console.log(`  → rpc=agent agent=${agentId} mode=session-death session=${sessionId}`)
-        // Record the death on disk ~150ms into the turn, and never send a
-        // final frame: the accepted-ack below keeps the request pending so
-        // the adapter's fail-fast trajectory watcher must catch it.
-        setTimeout(() => {
-          try {
-            writeSessionDeathTrajectory(agentId, sessionId)
-          } catch (err) {
-            console.error('  → session-death trajectory write failed:', err)
-          }
-        }, 150)
-        return { ok: true, payload: { status: 'accepted' } }
       }
-      case 'slow': {
-        const slowSessionId = typeof params.sessionId === 'string' ? params.sessionId : `anon-${Date.now()}`
-        const aborted = await abortableSlowSleep(slowSessionId, getChatDelayMs())
-        if (aborted) {
-          console.log(`  → rpc=agent agent=${agentId} mode=slow session=${slowSessionId} ABORTED`)
-          return { ok: false, error: { message: 'mock run aborted', code: 'aborted' } }
+      console.log(`  → rpc=agent agent=${agentId} mode=session-death session=${sessionId}`)
+      // Record the death on disk ~150ms into the turn, and never send a
+      // final frame: the accepted-ack below keeps the request pending so
+      // the adapter's fail-fast trajectory watcher must catch it.
+      setTimeout(() => {
+        try {
+          writeSessionDeathTrajectory(agentId, sessionId)
+        } catch (err) {
+          console.error('  → session-death trajectory write failed:', err)
         }
-        reply = `[mock:${agentName}] Acknowledged after a slow turn.`
-        break
-      }
-      case 'canned':
-      default:
-        reply = `[mock:${agentName}] Acknowledged. Task understood — working on it.`
+      }, 150)
+      return { ok: true, payload: { status: 'accepted' } }
     }
 
-    console.log(`  → rpc=agent agent=${agentId} message=${userMessage.slice(0, 80)}${userMessage.length > 80 ? '...' : ''}`)
-    return {
-      ok: true,
-      payload: {
-        runId: 'mock-run',
-        status: 'ok',
-        summary: 'completed',
-        result: {
-          payloads: [{ text: reply, mediaUrl: null }],
-          meta: {
-            finalAssistantVisibleText: reply,
-            finalAssistantRawText: reply,
+    // Scenario markers script the streaming shape; they never reach the reply.
+    const wantsTool = userMessage.includes('[[tool]]')
+    const wantsDroppedDelta = userMessage.includes('[[dropped-delta]]')
+    const cleanMessage = userMessage.replace(/ ?\[\[(tool|dropped-delta)\]\]/g, '')
+
+    const reply = mode === 'echo'
+      ? `[mock:${agentName}] ${cleanMessage}`
+      : mode === 'slow'
+        ? `[mock:${agentName}] Acknowledged after a slow turn.`
+        : `[mock:${agentName}] Acknowledged. Task understood — working on it.`
+
+    // Real-wire run identity: runId echoes the client idempotencyKey; the
+    // canonical sessionKey is agent:<id>:explicit:<sessionId> for threaded
+    // turns (verified via sessions.list), agent:<id>:main otherwise.
+    const runId = typeof params.idempotencyKey === 'string' && params.idempotencyKey.length > 0
+      ? params.idempotencyKey
+      : `mock-run-${++runCounter}`
+    const sessionId = typeof params.sessionId === 'string' ? params.sessionId : null
+    const sessionKey = sessionId ? `agent:${agentId}:explicit:${sessionId}` : `agent:${agentId}:main`
+    const run: ActiveRun = {
+      runId,
+      sessionKey,
+      agentId,
+      emitted: '',
+      aborted: false,
+      cancels: new Set(),
+      push: ctx ? ctx.push : null,
+      payloadSeq: 0,
+    }
+    activeRuns.set(runId, run)
+    const observed: ObservedAgentRun = { runId, sessionKey, agentId }
+    observedAgentRuns.push(observed)
+    console.log(`  → rpc=agent agent=${agentId} run=${runId} message=${userMessage.slice(0, 80)}${userMessage.length > 80 ? '...' : ''}`)
+
+    try {
+      // Accepted ack res on the request id BEFORE the final — the adapter's
+      // onAccepted seam (and its abort addressing) hangs off this.
+      ctx?.push({
+        type: 'res',
+        id: ctx.requestId,
+        ok: true,
+        payload: { status: 'accepted', runId, sessionKey, acceptedAt: Date.now() },
+      })
+      pushAgentFrame(run, 'lifecycle', { phase: 'start', status: 'running', startedAt: Date.now() })
+
+      if (mode === 'slow') {
+        const aborted = await abortableRunSleep(run, getChatDelayMs())
+        if (aborted) {
+          console.log(`  → rpc=agent agent=${agentId} run=${runId} mode=slow ABORTED`)
+          return postAbortFinal(run)
+        }
+      }
+
+      if (ctx) {
+        // Broadcast noise rides alongside run frames on the real wire.
+        ctx.push({ type: 'event', event: 'health', payload: { status: 'ok' }, seq: ++frameSeq })
+
+        if (wantsTool) await pushToolSequence(run)
+        if (run.aborted) return postAbortFinal(run)
+
+        const deltas = splitIntoDeltas(reply)
+        let cumulative = ''
+        for (const [index, delta] of deltas.entries()) {
+          cumulative += delta
+          const dropThisFrame = wantsDroppedDelta && deltas.length >= 3 && index === 1
+          if (dropThisFrame) {
+            // dropIfSlow emulation: the frame vanishes but later cumulative
+            // text includes its content — the adapter must self-heal.
+            run.emitted = cumulative
+          } else {
+            pushChatDelta(run, delta, cumulative)
+            // The real assistant stream mirrors every chat delta 1:1 — the
+            // adapter must treat it as noise (text rides `chat` only).
+            pushAgentFrame(run, 'assistant', { text: cumulative, delta })
+          }
+          if (await abortableRunSleep(run, 8)) return postAbortFinal(run)
+        }
+
+        ctx.push({ type: 'event', event: 'tick', payload: {}, seq: ++frameSeq })
+        pushRunEvent(run, 'chat', {
+          state: 'final',
+          message: { role: 'assistant', content: [{ type: 'text', text: reply }] },
+        })
+        pushAgentFrame(run, 'lifecycle', { phase: 'finishing', status: 'running' })
+        pushAgentFrame(run, 'lifecycle', { phase: 'end', status: 'ok', stopReason: 'completed', endedAt: Date.now() })
+      }
+
+      observed.finalSentAt = Date.now()
+      return {
+        ok: true,
+        payload: {
+          runId,
+          status: 'ok',
+          summary: 'completed',
+          result: {
+            payloads: [{ text: reply, mediaUrl: null }],
+            meta: {
+              finalAssistantVisibleText: reply,
+              finalAssistantRawText: reply,
+            },
           },
         },
-      },
+      }
+    } finally {
+      activeRuns.delete(runId)
     }
   }
 
@@ -332,7 +550,7 @@ export function startGateway(port = getGatewayPort(), options: StartGatewayOptio
         const id = typeof frame.id === 'string' ? frame.id : ''
         const method = typeof frame.method === 'string' ? frame.method : ''
         const params = frame.params ?? {}
-        handleGatewayRpcRequest(method, params)
+        handleGatewayRpcRequest(method, params, { requestId: id, push: (pushed) => ws.send(JSON.stringify(pushed)) })
           .then((response) => {
             ws.send(JSON.stringify({
               type: 'res',

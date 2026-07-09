@@ -113,9 +113,13 @@ describe('chat stream bridge', () => {
     expect(seenArgs[0]?.threadId).toBe(`chat:${chat.id}`)
     expect(seenArgs[0]?.agentId).toBe('main')
 
-    // SSE: every chunk relayed, then done
+    // SSE: text/tool/status chunks relayed on chat.chunk (done/error ride
+    // their dedicated events — the wire matches the declared ChatChunkEvent
+    // union), then chat.done closes the turn.
     const chunkEvents = events.filter((e) => e.event === 'chat.chunk')
-    expect(chunkEvents.length).toBe(6)
+    expect(chunkEvents.length).toBe(5)
+    const wireTypes = chunkEvents.map((e) => (e.data.chunk as { type: string }).type)
+    expect(wireTypes.every((t) => t === 'text' || t === 'tool' || t === 'status')).toBe(true)
     expect(events.at(-1)?.event).toBe('chat.done')
 
     // Durable transcript: user + completed tool + aggregated assistant text
@@ -144,6 +148,33 @@ describe('chat stream bridge', () => {
     expect(rows.map((r) => r.kind)).toEqual(['user', 'assistant', 'error'])
     expect(rows[1]).toMatchObject({ content: 'partial answer' })
     expect(rows[2]).toMatchObject({ message: 'session died' })
+  })
+
+  test('error chunk with a typed kind: kind preserved on chat.error and the durable row', async () => {
+    const chat = await createChat({ agentId: 'main' })
+    const events: Array<{ event: string; data: Record<string, unknown> }> = []
+    const off = activated.ctx.events.on('chat.*', (event, data) => events.push({ event, data }))
+
+    scriptStream(async function* () {
+      yield { type: 'text', content: 'part' } as ChatChunk
+      yield { type: 'error', content: 'session died', data: { kind: 'session_died' } } as ChatChunk
+    })
+
+    expect(await startChatTurn(activated.ctx, chat.id, 'hi')).toBe('accepted')
+    await waitForTurn(chat.id)
+    off()
+
+    // The typed kind the adapter provided survives to both surfaces —
+    // consumers classify without parsing message text.
+    const errorEvent = events.find((e) => e.event === 'chat.error')
+    expect(errorEvent?.data).toMatchObject({ message: 'session died', kind: 'session_died' })
+    // Error chunks never ride chat.chunk (the wire matches ChatChunkEvent).
+    const wireTypes = events
+      .filter((e) => e.event === 'chat.chunk')
+      .map((e) => (e.data.chunk as { type: string }).type)
+    expect(wireTypes).toEqual(['text'])
+    const rows = readTranscript(chat.id)
+    expect(rows.at(-1)).toMatchObject({ kind: 'error', message: 'session died', errorKind: 'session_died' })
   })
 
   test('one in-flight turn per chat: second send gets busy/409', async () => {
