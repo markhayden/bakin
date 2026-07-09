@@ -1511,6 +1511,59 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     return outcome?.kind === 'success' ? outcome.usage : undefined
   }
 
+  /**
+   * Stop a caller-aborted turn server-side. Addressed by the accepted ack's
+   * {sessionKey, runId} when it has arrived — the exact pair the gateway's
+   * abort registry keys, live-verified to stop backend runs — else the
+   * best-known explicit session key, else nothing addressable (unthreaded,
+   * pre-ack). Response-checked and audited, never fire-and-forget; fully
+   * async so the caller's local rejection never waits on it.
+   */
+  private abortTurnServerSide(
+    agentId: string,
+    ack: OpenClawGatewayAcceptedAck | null,
+    cliSessionId: string | null,
+  ): void {
+    // The gateway keys explicit-sessionId sessions as
+    // agent:<agentId>:explicit:<sessionId> (verified via sessions.list).
+    const sessionKey = ack?.sessionKey ?? (cliSessionId ? `agent:${agentId}:explicit:${cliSessionId}` : null)
+    if (!sessionKey) return
+    const params: Record<string, unknown> = { sessionKey }
+    if (ack?.runId) params.runId = ack.runId
+    this.openClawChatGateway()
+      .request('chat.abort', params, { timeoutMs: OPENCLAW_ABORT_RPC_TIMEOUT_MS, expectFinal: false })
+      .then((payload) => {
+        const res = (payload && typeof payload === 'object' ? payload : {}) as Record<string, unknown>
+        const aborted = res.aborted === true
+        const runIds = Array.isArray(res.runIds) ? res.runIds.filter((v): v is string => typeof v === 'string') : []
+        this.audit('agent-turn-abort', {
+          agentId,
+          sessionKey,
+          ...(ack?.runId ? { runId: ack.runId } : {}),
+          aborted,
+          runIds,
+        })
+        if (aborted) {
+          this.logger.info('OpenClaw run aborted server-side', { agentId, sessionKey, runIds })
+        } else {
+          this.logger.warn('chat.abort acknowledged but no run stopped server-side', { agentId, sessionKey })
+        }
+      })
+      .catch((err) => {
+        this.audit('agent-turn-abort', {
+          agentId,
+          sessionKey,
+          ...(ack?.runId ? { runId: ack.runId } : {}),
+          aborted: false,
+          error: err instanceof Error ? err.message : String(err),
+        })
+        this.logger.warn('chat.abort failed; relying on local rejection', {
+          agentId,
+          err: err instanceof Error ? err.message : String(err),
+        })
+      })
+  }
+
   private async runOpenClawAgentGateway(opts: OpenClawAgentTurnOptions): Promise<OpenClawTurnResult> {
     if (opts.signal?.aborted) {
       throw new RuntimeError('OpenClaw agent turn aborted before send', { kind: 'aborted', cause: opts.signal.reason })
@@ -1562,25 +1615,24 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     // 630s transport timer to learn what the trajectory knew in 200ms.
     const requestAbort = new AbortController()
     // Caller cancellation (MessageArgs.signal): reject the local awaiter via
-    // requestAbort and fire a best-effort chat.abort at the gateway. Live
-    // probes (2026.6.11, spec task-delete-turn-abort) show the gateway's
-    // abort registry only tracks channel auto-reply runs — backend `agent`
-    // RPC runs are NOT stopped server-side today. The frame is fail-open
-    // forward-compat; the local rejection is the behavior Bakin depends on.
+    // requestAbort and stop the run server-side. chat.abort addressed by the
+    // accepted ack's exact {sessionKey, runId} DOES abort backend `agent`
+    // RPC runs (live-verified 2026-07-09; T1 fixture abort-turn.jsonl shows
+    // {ok:true, aborted:true, runIds:[…]} + terminal `chat state:'aborted'`).
+    // Before the ack arrives nothing is runId-addressable — fall back to the
+    // best-known explicit session key (threaded) or skip (unthreaded); a
+    // late ack can never surface after the local abort because the pending
+    // entry is gone. The local rejection below never waits on any of this.
+    let acceptedAck: OpenClawGatewayAcceptedAck | null = null
+    const onAccepted = (ack: OpenClawGatewayAcceptedAck): void => {
+      acceptedAck = ack
+      opts.onAccepted?.(ack)
+    }
     const onCallerAbort = () => {
       // Never let a listener throw escape AbortController.abort(): the local
       // rejection below is the load-bearing part and must always run.
       try {
-        if (cliSessionId) {
-          const request = this.openClawChatGateway().request(
-            'chat.abort',
-            // The gateway keys explicit-sessionId sessions as
-            // agent:<agentId>:explicit:<sessionId> (verified via sessions.list).
-            { sessionKey: `agent:${opts.agentId}:explicit:${cliSessionId}` },
-            { timeoutMs: OPENCLAW_ABORT_RPC_TIMEOUT_MS, expectFinal: false },
-          )
-          request.catch(() => {})
-        }
+        this.abortTurnServerSide(opts.agentId, acceptedAck, cliSessionId)
       } catch (err) {
         this.logger.warn('chat.abort frame failed to send; relying on local rejection', {
           agentId: opts.agentId,
@@ -1604,7 +1656,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         expectFinal: true,
         timeoutMs: OPENCLAW_AGENT_TRANSPORT_TIMEOUT_MS,
         signal: requestAbort.signal,
-        onAccepted: opts.onAccepted,
+        onAccepted,
       })
       // If the death watch wins the race, the losing request settles later
       // (abort rejection) with no awaiter — pre-attach a no-op catch so it
