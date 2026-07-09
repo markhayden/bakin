@@ -61,10 +61,12 @@ async function sendDispatchMessage(agentId: string, content: string, threadId: s
  * Live turn activity: the adapter's best-effort onActivity tap (tool/status
  * chunks, T8) broadcast straight to SSE — EPHEMERAL by design. Never
  * persisted: no task log, no audit, no heartbeat bump — the durable record
- * of a turn stays the ledger run + the agent's own progress logs. Chunks
- * arrive already classified and redacted by the adapter, and already
- * coalesced/sparse upstream (OpenClaw coalesces 150ms server-side; the tap
- * is tool+status only), so no additional throttling here.
+ * of a turn stays the ledger run + the agent's own progress logs. Rides the
+ * ephemeral broadcast (no replay buffer, no event id) so a long turn can
+ * never evict durable events from the reconnect window. Chunks arrive
+ * classified, with previews redacted by BOTH adapters (redactSensitiveText),
+ * and sparse upstream (tool phases + a once-per-turn thinking status), so no
+ * additional throttling here.
  */
 export interface TurnActivityEvent extends Record<string, unknown> {
   type: 'turn-activity'
@@ -79,7 +81,7 @@ export interface TurnActivityEvent extends Record<string, unknown> {
 }
 
 function broadcastTurnActivity(event: TurnActivityEvent): void {
-  const fn = (globalThis as { __bakinBroadcast?: (data: Record<string, unknown>) => void }).__bakinBroadcast
+  const fn = (globalThis as { __bakinBroadcastEphemeral?: (data: Record<string, unknown>) => void }).__bakinBroadcastEphemeral
   if (fn) fn(event)
 }
 
@@ -504,10 +506,13 @@ export function fireDispatchTurn(opts: {
       }
       // Drop-after-settle guard: the tap can rarely fire after the turn
       // settles (late gateway frames) — once the registry entry is gone,
-      // nothing broadcasts. Registry presence is the single liveness gate.
+      // nothing broadcasts. The gate matches the EXACT entry (threadId, not
+      // mere marker presence) so a future retry reusing the marker can't
+      // broadcast a zombie chunk under a stale runId.
       const onActivity = (chunk: ChatChunk): void => {
         if (chunk.type === 'done' || chunk.type === 'error') return
-        if (!getInFlightTurn(opts.marker)) return
+        const inFlight = getInFlightTurn(opts.marker)
+        if (!inFlight || inFlight.threadId !== opts.threadId) return
         broadcastTurnActivity({
           type: 'turn-activity',
           taskId: opts.task.id,

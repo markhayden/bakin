@@ -92,7 +92,7 @@ import {
   parseNativeApprovalRef, isExpectedNativeApprovalResolveMiss,
 } from './approval-helpers'
 import { openClawCliSessionId } from './session-store'
-import { streamOpenClawTurnChunks, tapOpenClawTurnActivity } from './stream-events'
+import { streamOpenClawTurnChunks, tapOpenClawTurnActivity, type OpenClawActivityTap } from './stream-events'
 import {
   writeOpenClawConfig, upsertOpenClawAgentConfig,
   updateOpenClawAgentIdentity, updateAgentAllowlist, removeOpenClawAgentConfig,
@@ -1622,22 +1622,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     // late ack can never surface after the local abort because the pending
     // entry is gone. The local rejection below never waits on any of this.
     let acceptedAck: OpenClawGatewayAcceptedAck | null = null
-    // MessageArgs.onActivity (T8): tool/status liveness for send() turns,
-    // fed from the same push-event subscription streaming uses. Absent tap
-    // → no subscription, zero behavior change.
-    const activityTap = opts.onActivity
-      ? tapOpenClawTurnActivity({
-          events: this.openClawChatGateway(),
-          idempotencyKey,
-          onActivity: opts.onActivity,
-          onCallbackError: (err) => {
-            this.logger.warn('onActivity callback threw; contained', {
-              agentId: opts.agentId,
-              err: err instanceof Error ? err.message : String(err),
-            })
-          },
-        })
-      : null
+    let activityTap: OpenClawActivityTap | null = null
     const onAccepted = (ack: OpenClawGatewayAcceptedAck): void => {
       acceptedAck = ack
       activityTap?.onAccepted(ack)
@@ -1663,6 +1648,24 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
           sinceByteOffset: trajectoryOffset,
           oversizedOutputBytes: opts.oversizedOutputBytes,
           pollMs: OPENCLAW_TRAJECTORY_POLL_MS,
+        })
+      : null
+    // MessageArgs.onActivity (T8): tool/status liveness for send() turns,
+    // fed from the same push-event subscription streaming uses. Absent tap
+    // → no subscription, zero behavior change. Created LAST, immediately
+    // before the try whose finally unsubscribes it — nothing may throw
+    // between the subscription and that finally.
+    activityTap = opts.onActivity
+      ? tapOpenClawTurnActivity({
+          events: this.openClawChatGateway(),
+          idempotencyKey,
+          onActivity: opts.onActivity,
+          onCallbackError: (err) => {
+            this.logger.warn('onActivity callback threw; contained', {
+              agentId: opts.agentId,
+              err: err instanceof Error ? err.message : String(err),
+            })
+          },
         })
       : null
 
@@ -1828,6 +1831,10 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       scopes: ['operator.read', 'operator.write'],
       useDeviceAuth: true,
       label: 'OpenClaw chat gateway',
+      // Long-lived adapter client: per-turn tap/stream subscriptions must
+      // not close the socket on every settle (close() in shutdown() remains
+      // the explicit teardown).
+      keepAlive: true,
     })
     return this.chatGatewayClient
   }

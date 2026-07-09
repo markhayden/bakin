@@ -34,6 +34,16 @@ export interface OpenClawGatewayRpcClientOptions {
   label?: string
   /** Present the home device identity on connect (required for operator.write / dispatch). */
   useDeviceAuth?: boolean
+  /**
+   * Keep the socket open when the last subscription and pending request
+   * drain. For long-lived adapter clients: per-turn tap/stream subscriptions
+   * would otherwise close the socket on every settle, paying a full
+   * reconnect + device-auth handshake per turn (and a racing
+   * `ensureConnected` on another turn would be rejected by that close).
+   * Explicit `close()` remains the shutdown path. Default false — close on
+   * idle (short-lived CLI/test clients must not dangle sockets).
+   */
+  keepAlive?: boolean
 }
 
 export interface OpenClawGatewayEventFrame {
@@ -133,7 +143,7 @@ export class OpenClawGatewayRpcClient {
       const current = this.eventHandlers.get(event)
       current?.delete(handler)
       if (current?.size === 0) this.eventHandlers.delete(event)
-      if (this.eventHandlers.size === 0 && this.pending.size === 0) this.close()
+      if (!this.opts.keepAlive && this.eventHandlers.size === 0 && this.pending.size === 0) this.close()
     }
   }
 

@@ -168,7 +168,7 @@ packages/adapter-openclaw/src/
 ├── approval-helpers.ts     ← Bakin ⇄ OpenClaw approval payload mapping
 ├── cron-store.ts           ← runtime.cron persistence + CLI argv + parsing
 ├── memory.ts               ← runtime memory tier reads
-├── session-store.ts        ← session-id mapping + sessions.json cache (LRU)
+├── session-store.ts        ← deterministic agent/sessionKey → CLI session-id mapping
 ├── activity-summary.ts     ← tool-call/shell summarizers + redacting previews
 ├── trajectory-forensics.ts ← read-only session death-watch / post-mortems
 ├── image-inference.ts      ← `openclaw image` arg formatting + parsers

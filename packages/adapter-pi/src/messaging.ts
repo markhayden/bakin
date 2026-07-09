@@ -31,6 +31,7 @@ import type {
 } from '@bakin/core/adapters/runtime'
 import { RuntimeError } from '@bakin/core/adapters/runtime'
 import { summarizeStructured, unwrapToolResult } from '@bakin/core/format'
+import { redactSensitiveText } from '@bakin/core/redact'
 
 import { buildStreamDeathError, toRuntimeError } from './errors'
 import { getAgentWorkspaceDir, getPiAgentDir } from './home'
@@ -290,8 +291,10 @@ function sessionEventChunks(event: AgentSessionEvent, state: { announcedThinking
         toolName: event.toolName,
         status: event.isError ? 'failed' : 'completed',
         // Clean one-line summary (peel the tool-result envelope, parse inner
-        // JSON) instead of an escaped raw dump (#608).
-        summary: summarizeStructured(unwrapToolResult(event.result)) || undefined,
+        // JSON) instead of an escaped raw dump (#608) — redacted like every
+        // preview field: summaries echo tool output, which can carry the
+        // secrets the tool was called with.
+        summary: redactSummary(summarizeStructured(unwrapToolResult(event.result))),
       },
     }]
   }
@@ -475,10 +478,17 @@ function throwOnTerminalFailure(
   })
 }
 
+function redactSummary(value: string): string | undefined {
+  if (!value) return undefined
+  return redactSensitiveText(value)
+}
+
 function safePreview(value: unknown, cap = 200): string | undefined {
   if (value === undefined || value === null) return undefined
   try {
-    const text = typeof value === 'string' ? value : JSON.stringify(value)
+    // Previews leave the adapter (turn-activity SSE → every browser) —
+    // redact before truncation, matching OpenClaw's previewUnknown parity.
+    const text = redactSensitiveText(typeof value === 'string' ? value : JSON.stringify(value))
     return text.length > cap ? `${text.slice(0, cap)}…` : text
   } catch {
     return undefined

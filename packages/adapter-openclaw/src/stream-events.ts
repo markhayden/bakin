@@ -242,6 +242,11 @@ export interface OpenClawActivityTap {
  * the tap (contract: prose rides `messaging.stream`). Callback exceptions
  * are contained and reported via `onCallbackError`; they never propagate
  * into frame handling or the turn itself.
+ *
+ * `thinking` is once-gated per turn (matching Pi's announcedThinking): the
+ * gateway emits a thinking frame every ~150ms for the whole stretch, and a
+ * long turn would otherwise push hundreds of identical status chunks
+ * through the tap → SSE fan-out. One "thinking" is the chip signal.
  */
 export function tapOpenClawTurnActivity(opts: {
   events: GatewayEventSource
@@ -250,9 +255,14 @@ export function tapOpenClawTurnActivity(opts: {
   onCallbackError: (err: unknown) => void
 }): OpenClawActivityTap {
   const machine = new OpenClawTurnChunkMachine(opts.idempotencyKey)
+  let thinkingAnnounced = false
   const forward = (chunks: ChatChunk[]): void => {
     for (const chunk of chunks) {
       if (chunk.type !== 'tool' && chunk.type !== 'status') continue
+      if (chunk.type === 'status' && chunk.content === 'thinking') {
+        if (thinkingAnnounced) continue
+        thinkingAnnounced = true
+      }
       try {
         opts.onActivity(chunk)
       } catch (err) {

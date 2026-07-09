@@ -48,6 +48,24 @@ export function broadcast(data: Record<string, unknown>): void {
   }
 }
 
+/**
+ * Broadcast to LIVE clients only — never enters the replay buffer and never
+ * carries an `id:` line, so it can neither evict durable events from the
+ * reconnect window nor advance a client's Last-Event-ID past unbuffered
+ * ground. For high-frequency ephemeral streams (turn-activity chips): a
+ * client that missed one saw nothing worth replaying.
+ */
+export function broadcastEphemeral(data: Record<string, unknown>): void {
+  const msg = `data: ${JSON.stringify(data)}\n\n`
+  for (const client of clients) {
+    try {
+      client.write(msg)
+    } catch {
+      removeClient(client)
+    }
+  }
+}
+
 export function broadcastAuditEvent(entry: Record<string, unknown>): void {
   broadcast({ type: 'audit', entry, timestamp: new Date().toISOString() })
 }
@@ -154,6 +172,7 @@ export function broadcastPluginRecover(pluginId: string): void {
 // module instance due to webpack bundling) can still reach the real SSE clients.
 ;(globalThis as any).__bakinBroadcastAudit = broadcastAuditEvent
 ;(globalThis as any).__bakinBroadcast = broadcast
+;(globalThis as any).__bakinBroadcastEphemeral = broadcastEphemeral
 
 function removeClient(res: ServerResponse): void {
   clients.delete(res)

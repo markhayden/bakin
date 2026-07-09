@@ -5,7 +5,8 @@
  * (The transcript-record → ChatChunk path that used to live here died with
  * the trajectory activity tail.)
  */
-import { isPlainObject, parseJsonObject, redactSensitiveText } from './runtime-utils'
+import { redactSensitiveText } from '@bakin/core/redact'
+import { isPlainObject, parseJsonObject } from './runtime-utils'
 
 /** Max chars for an unknown-value activity preview before middle-truncation. */
 const OPENCLAW_ACTIVITY_PREVIEW_CHARS = 500

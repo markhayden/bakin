@@ -94,12 +94,18 @@ the whole board behind one slow agent). Mechanics in
   no ordering guarantee vs the settle; the adapter contains callback
   exceptions). Dispatch broadcasts each chunk as a `turn-activity` SSE event
   (`TurnActivityEvent`: `{taskId, childTaskId?, agentId, runId, chunk, ts}`,
-  exported from `dispatch-turns.ts`) over the same `globalThis.__bakinBroadcast`
-  seam task-service uses. **Ephemeral by design** — never persisted: no task
+  exported from `dispatch-turns.ts`) over the `globalThis.__bakinBroadcastEphemeral`
+  seam — a live-sockets-only broadcast that never enters the SSE replay
+  buffer and carries no event id, so a long turn can't evict durable events
+  from the reconnect window or advance a client's Last-Event-ID.
+  **Ephemeral by design** — never persisted: no task
   log, no audit row, no heartbeat bump; `done`/`error` chunk types are
   filtered defensively. Late chunks after settle are dropped by gating on the
-  in-flight registry entry (`getInFlightTurn`). No extra throttling — chunks
-  are 150 ms-coalesced upstream (OpenClaw) or naturally sparse (tool/status).
+  EXACT in-flight registry entry (`getInFlightTurn` + threadId match). No
+  extra throttling — tool chunks are naturally sparse and `thinking` status
+  is once-gated per turn in both adapters (OpenClaw's tap gate mirrors Pi's
+  `announcedThinking`); previews are redacted by both adapters
+  (`@bakin/core/redact`).
   Client side: the shell fans `turn-activity` onto the plugin-event emitter
   (`use-sse.ts`); the board renders a per-task latest chip
   (`plugins/tasks/hooks/use-live-activity.ts`, 45 s TTL, in-progress column

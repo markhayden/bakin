@@ -46,6 +46,7 @@
     "./plugins/permissions": "./src/plugins/permissions.ts",
     "./constants": "./src/constants.ts",
     "./merge": "./src/merge.ts",
+    "./redact": "./src/redact.ts",
     "./format/frontmatter": "./src/format/frontmatter.ts",
     "./storage": "./src/storage/markdown-adapter.ts",
     "./storage/scoped-plugin-storage": "./src/storage/scoped-plugin-storage.ts",

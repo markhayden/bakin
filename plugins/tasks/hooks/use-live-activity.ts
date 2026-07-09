@@ -15,12 +15,28 @@ export interface LiveActivity {
 const TTL_MS = 45_000
 const SWEEP_MS = 10_000
 
-function chipLabel(chunk: { type?: string; content?: string; data?: { toolName?: string; phase?: string } }): string {
+export interface LiveActivityChunk {
+  type?: string
+  content?: string
+  data?: { toolName?: string; phase?: string; status?: string }
+}
+
+export function chipLabel(chunk: LiveActivityChunk): string {
   if (chunk.type === 'tool') {
     const name = chunk.data?.toolName ?? 'tool'
-    return chunk.data?.phase === 'result' ? `${name} ✓` : `${name}…`
+    if (chunk.data?.phase === 'result') return chunk.data?.status === 'failed' ? `${name} ✗` : `${name} ✓`
+    return `${name}…`
   }
   return chunk.content || 'working…'
+}
+
+/** The event's own timestamp when parseable, else receipt time — and stale
+ *  events (older than the TTL) are dropped outright so a replayed or
+ *  delayed event can never re-chip a settled task. */
+export function liveActivityTs(rawTs: unknown, now = Date.now()): number | null {
+  const eventTs = Date.parse(String(rawTs ?? ''))
+  const ts = Number.isFinite(eventTs) ? eventTs : now
+  return now - ts > TTL_MS ? null : ts
 }
 
 /**
@@ -32,11 +48,13 @@ export function useLiveActivity(): Record<string, LiveActivity> {
   const [byTask, setByTask] = useState<Record<string, LiveActivity>>({})
 
   usePluginEvent('turn-activity', (payload) => {
-    const chunk = payload.chunk as { type?: string; content?: string; data?: { toolName?: string; phase?: string } } | undefined
+    const chunk = payload.chunk as LiveActivityChunk | undefined
     if (!chunk) return
     const ids = [payload.taskId, payload.childTaskId].filter((id): id is string => typeof id === 'string')
     if (ids.length === 0) return
-    const entry: LiveActivity = { label: chipLabel(chunk), ts: Date.now() }
+    const ts = liveActivityTs(payload.ts)
+    if (ts === null) return
+    const entry: LiveActivity = { label: chipLabel(chunk), ts }
     setByTask((prev) => {
       const next = { ...prev }
       for (const id of ids) next[id] = entry

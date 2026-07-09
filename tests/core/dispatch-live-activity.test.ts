@@ -120,10 +120,17 @@ let tempDir: string
 const tick = (ms = 20) => new Promise((r) => setTimeout(r, ms))
 
 // Capture the ephemeral SSE broadcasts (dispatch-turns uses the
-// globalThis.__bakinBroadcast seam, same as task-service).
+// globalThis.__bakinBroadcastEphemeral seam — live sockets only, never the
+// replay buffer). The durable __bakinBroadcast seam is stubbed too so we can
+// prove turn-activity NEVER rides it.
 const broadcasts: Array<Record<string, unknown>> = []
-const g = globalThis as { __bakinBroadcast?: (data: Record<string, unknown>) => void }
+const durableBroadcasts: Array<Record<string, unknown>> = []
+const g = globalThis as {
+  __bakinBroadcast?: (data: Record<string, unknown>) => void
+  __bakinBroadcastEphemeral?: (data: Record<string, unknown>) => void
+}
 const originalBroadcast = g.__bakinBroadcast
+const originalEphemeral = g.__bakinBroadcastEphemeral
 
 function fireTurn(taskId: string, opts: { childTaskId?: string } = {}): void {
   fireDispatchTurn({
@@ -146,10 +153,12 @@ beforeEach(() => {
   pendingSends.clear()
   capturedTaps.length = 0
   broadcasts.length = 0
+  durableBroadcasts.length = 0
   auditEvents.length = 0
   taskStoreMock.addTaskLog.mockClear()
   taskStoreMock.updateTask.mockClear()
-  g.__bakinBroadcast = (data) => { broadcasts.push(data) }
+  g.__bakinBroadcast = (data) => { durableBroadcasts.push(data) }
+  g.__bakinBroadcastEphemeral = (data) => { broadcasts.push(data) }
 })
 
 afterEach(async () => {
@@ -162,6 +171,7 @@ afterEach(async () => {
 
 afterAll(() => {
   g.__bakinBroadcast = originalBroadcast
+  g.__bakinBroadcastEphemeral = originalEphemeral
   closeDb()
   rmSync(sentinelContentDir, { recursive: true, force: true })
 })
@@ -216,6 +226,60 @@ describe('dispatch live turn activity (ephemeral SSE)', () => {
 
     capturedTaps[0]!({ type: 'status', content: 'thinking' })
     expect(broadcasts[0]).toMatchObject({ taskId: 'wf-p', childTaskId: 'wf-p--sub' })
+
+    releaseSend('jessica')
+    await awaitDispatchIdle()
+  })
+
+  it('rides ONLY the ephemeral seam — the durable replay-buffered broadcast never sees activity', async () => {
+    setColumns({ inProgress: [{ id: 't-seam', title: 'Task t-seam' }] })
+    fireTurn('t-seam')
+    await tick()
+
+    capturedTaps[0]!({ type: 'status', content: 'thinking' })
+    capturedTaps[0]!({ type: 'tool', data: { phase: 'call', toolName: 'exec', status: 'running' } })
+
+    expect(broadcasts.length).toBe(2)
+    expect(durableBroadcasts.filter((b) => b.type === 'turn-activity').length).toBe(0)
+
+    releaseSend('jessica')
+    await awaitDispatchIdle()
+  })
+
+  it('gates on the EXACT registry entry: a reused marker with a new threadId drops the old tap', async () => {
+    setColumns({ inProgress: [{ id: 't-reuse', title: 'Task t-reuse' }] })
+    fireTurn('t-reuse') // threadId task:t-reuse:d1
+    await tick()
+    const oldTap = capturedTaps[0]!
+
+    releaseSend('jessica')
+    await awaitDispatchIdle()
+
+    // Same marker, new attempt (d2) — the registry entry exists again, but
+    // for a DIFFERENT threadId. The old turn's zombie tap must not broadcast
+    // under the stale runId.
+    fireDispatchTurn({
+      marker: 't-reuse',
+      task: { id: 't-reuse', title: 'Task t-reuse' } as never,
+      targetAgent: 'jessica',
+      threadId: 'task:t-reuse:d2',
+      message: 'retry',
+      contentDir: tempDir,
+      port: 3737,
+      initialLogCount: 0,
+      logPrefix: 'test',
+      dispatchKind: 'regular',
+    })
+    await tick()
+    const before = broadcasts.length
+
+    oldTap({ type: 'status', content: 'thinking' })
+    expect(broadcasts.length).toBe(before)
+
+    // The live attempt's own tap still broadcasts, under the new runId.
+    capturedTaps[1]!({ type: 'status', content: 'thinking' })
+    expect(broadcasts.length).toBe(before + 1)
+    expect(broadcasts.at(-1)).toMatchObject({ runId: 'task:t-reuse:d2' })
 
     releaseSend('jessica')
     await awaitDispatchIdle()

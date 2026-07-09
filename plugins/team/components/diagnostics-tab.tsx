@@ -437,12 +437,17 @@ function useAgentLiveActivity(agentId: string): { label: string; ts: number } | 
 
   usePluginEvent('turn-activity', (payload) => {
     if (payload.agentId !== agentId) return
-    const chunk = payload.chunk as { type?: string; content?: string; data?: { toolName?: string; phase?: string } } | undefined
+    const chunk = payload.chunk as { type?: string; content?: string; data?: { toolName?: string; phase?: string; status?: string } } | undefined
     if (!chunk) return
+    // Event's own timestamp, stale events dropped — a replayed/delayed
+    // event must never re-chip a settled turn (mirrors the board hook).
+    const eventTs = Date.parse(String(payload.ts ?? ''))
+    const ts = Number.isFinite(eventTs) ? eventTs : Date.now()
+    if (Date.now() - ts > LIVE_ACTIVITY_TTL_MS) return
     const label = chunk.type === 'tool'
-      ? `${chunk.data?.toolName ?? 'tool'}${chunk.data?.phase === 'result' ? ' ✓' : '…'}`
+      ? `${chunk.data?.toolName ?? 'tool'}${chunk.data?.phase === 'result' ? (chunk.data?.status === 'failed' ? ' ✗' : ' ✓') : '…'}`
       : (chunk.content || 'working…')
-    setChip({ label, ts: Date.now() })
+    setChip({ label, ts })
   })
 
   useEffect(() => {

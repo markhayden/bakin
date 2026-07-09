@@ -164,7 +164,9 @@ describe('messaging.send', () => {
   test('onActivity taps tool + status chunks during a send turn (T8/D-plan-1)', async () => {
     invocations.length = 0
     seedProvider([
-      { steps: [{ toolCall: { name: 'bakin_exec_test_echo', args: { message: 'tapped' } } }] },
+      // Token-bearing arg: previews leave the adapter (SSE → every browser),
+      // so safePreview must redact before truncation (parity with OpenClaw).
+      { steps: [{ toolCall: { name: 'bakin_exec_test_echo', args: { message: 'fetch https://api.example.com/data?apiKey=hunter2-super-secret' } } }] },
       { steps: [{ text: 'tap reply' }] },
     ])
     const activity: ChatChunk[] = []
@@ -182,6 +184,9 @@ describe('messaging.send', () => {
     expect(tools.length).toBe(2)
     expect(tools[0]!.data).toMatchObject({ phase: 'call', toolName: 'bakin_exec_test_echo', status: 'running' })
     expect(tools[1]!.data).toMatchObject({ phase: 'result', toolName: 'bakin_exec_test_echo', status: 'completed' })
+    const call = tools[0]!.data as { inputPreview?: string }
+    expect(call.inputPreview).toContain('apiKey=[redacted]')
+    expect(JSON.stringify(activity)).not.toContain('hunter2-super-secret')
   })
 
   test('a throwing onActivity callback never fails the turn', async () => {
