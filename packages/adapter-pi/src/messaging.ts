@@ -85,9 +85,19 @@ function requireAgent(agentId: string): PiAgentRecord {
 /**
  * Effective model for a turn: explicit per-turn override → the agent's
  * assignment → the routing default (P2.3) → undefined (SDK default).
+ *
+ * Never throws: this runs inside error-path metadata construction (the
+ * `toRuntimeError` calls), where a settings-parse throw would REPLACE the
+ * real turn error and defeat kind-based failure classification.
  */
 function resolveModelRef(turnModel: string | undefined, agentModel: string | undefined): string | undefined {
-  return turnModel ?? agentModel ?? (readRoutingDefaultModel() || undefined)
+  if (turnModel) return turnModel
+  if (agentModel) return agentModel
+  try {
+    return readRoutingDefaultModel() || undefined
+  } catch {
+    return undefined
+  }
 }
 
 function imageContentsFor(args: MessageArgs, record: PiAgentRecord) {

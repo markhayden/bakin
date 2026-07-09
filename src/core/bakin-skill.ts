@@ -5,6 +5,9 @@ import type { AgentRuntimeAdapter, RuntimeToolAccess } from '@bakin/core/adapter
 import { readEmbeddedBakinSkillTemplate } from './bakin-skill-template'
 import { renderToolAccessInstructions } from './tool-access'
 import { maybeGetAppServices } from './app-services-store'
+import { createLogger } from './logger'
+
+const log = createLogger('bakin-skill')
 
 // The bakin skill is one shared document (not per-agent), so it renders the
 // tool-access section with a generic `<agent>` placeholder. Conservative
@@ -14,7 +17,10 @@ const DEFAULT_TOOL_ACCESS: RuntimeToolAccess = { style: 'mcp', mcpServerTemplate
 function activeToolAccess(): RuntimeToolAccess {
   try {
     return maybeGetAppServices()?.runtime.describeToolAccess?.() ?? DEFAULT_TOOL_ACCESS
-  } catch {
+  } catch (err) {
+    // Byte-changing fallback: rendering with the default flips the skill's
+    // content and can reintroduce the check/sync flip-flop — make it loud.
+    log.warn('describeToolAccess failed, rendering with the mcp default', { error: String(err) })
     return DEFAULT_TOOL_ACCESS
   }
 }

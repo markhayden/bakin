@@ -120,6 +120,13 @@ function RuntimePage() {
         if (event?.type === 'runtime:switch') setSteps((prev) => reduceSwitchProgress(prev, event))
       } catch { /* non-JSON keepalives */ }
     }
+    // Fresh SSE connections get no replay — events broadcast before the
+    // handshake completes are lost, so a fast local switch would render only
+    // its late phases. Wait for the stream (bounded) before firing the POST.
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, 2000)
+      es.onopen = () => { clearTimeout(timer); resolve() }
+    })
 
     try {
       const res = await fetch('/api/runtime/switch', {

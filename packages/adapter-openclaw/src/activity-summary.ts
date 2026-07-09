@@ -42,7 +42,7 @@ function activityChunkFromTrajectoryToolCall(record: Record<string, unknown>): C
   // detail so a bash row shows its command even when no purpose matched.
   const detail = summarizeOpenClawToolCall(name, args)
   const summary = summarizeOpenClawToolPurpose(name, args)
-    ?? (detail !== name ? detail.replace(new RegExp(`^${name}: `), '') : undefined)
+    ?? (detail.startsWith(`${name}: `) ? detail.slice(name.length + 2) : undefined)
   return [{
     type: 'tool',
     content: summarizeOpenClawToolCall(name, args),

@@ -54,6 +54,8 @@ function readInstalledBy(dir: string): unknown {
   try {
     return JSON.parse(readFileSync(path, 'utf-8')) as unknown
   } catch {
+    // Corrupt marker reads as "not installed by us" — the plugin-assets
+    // check then reports drift and a reinstall rewrites the sidecar.
     return undefined
   }
 }

@@ -46,7 +46,7 @@ function isBakinOwnedEntry(name: string, entry: BakinMcpServerEntry): boolean {
 
 /** Per-agent MCP URL against Bakin's server base (e.g. `http://localhost:3737`). */
 export function mcpUrl(agent: string, baseUrl: string): string {
-  return `${baseUrl}/mcp?agent=${agent}`
+  return `${baseUrl.replace(/\/+$/, '')}/mcp?agent=${encodeURIComponent(agent)}`
 }
 
 /**
