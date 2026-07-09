@@ -441,6 +441,24 @@ async function cmdPluginsScaffold(name: string, opts: { json?: boolean } = {}): 
 
 async function cmdPluginsSyncManifest(dir: string, opts: { check?: boolean; json?: boolean } = {}): Promise<void> {
   const { syncPluginManifest } = await import('../../core/plugin-sync-manifest')
+  const { getContentDir } = await import('../../core/content-dir')
+  const { join: joinPath, resolve: resolvePath, sep } = await import('path')
+
+  if (!opts.json) {
+    // Honest trust model: capture BUILDS AND EXECUTES the plugin's server
+    // code (module top-level + activate) in this process — it is not a
+    // passive generator. Only run it on code you'd trust installing.
+    console.log("sync-manifest builds and executes this plugin's server code to capture its registrations.")
+    const resolved = resolvePath(dir)
+    const installedRoot = resolvePath(joinPath(getContentDir(), 'plugins'))
+    if (resolved === installedRoot || resolved.startsWith(installedRoot + sep)) {
+      console.log(
+        'Warning: this is an INSTALLED plugin dir — rewriting its manifest drifts from the ' +
+        "install lockfile's manifestSha (reinstall refreshes it). Prefer syncing the source tree.",
+      )
+    }
+  }
+
   const result = await syncPluginManifest(dir, { check: opts.check })
 
   if (opts.json) {

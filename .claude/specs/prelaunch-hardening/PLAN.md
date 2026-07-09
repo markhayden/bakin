@@ -261,6 +261,7 @@ PR 4 (cleanup) — independent
 **Verify:** docs build + snippet check.
 **Dependencies:** T17–T22 (document what shipped). **Files:** `docs/src/content/docs/extending/plugins/*`. **Size:** M.
 **Commit:** `docs(plugins): SSE, storage scoping, search guide, hooks catalog`
+**Note (PR #635 review):** mention in release-facing docs/notes that the manifest `entry`/`tests` removal breaks previously-installed user plugins on host upgrade — remedy is stripping the field (tombstone message spells it out) or reinstalling; no automated migration by design (no-shims directive).
 
 ### Checkpoint 2b
 - [ ] Spec Success Criteria #2, #3, #6 met; PR merged

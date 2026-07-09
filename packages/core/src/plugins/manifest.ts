@@ -154,6 +154,23 @@ function validatePluginRelativePath(path: string, label: string): void {
   }
 }
 
+/**
+ * Shape check for a route captured from live plugin code (sync-manifest):
+ * the SAME rules parseApiRoute enforces at load time, as a message instead of
+ * a throw. Returns null when the entry would survive a manifest round-trip.
+ */
+export function validateCapturedApiRoute(method: string, path: string): string | null {
+  if (!HTTP_METHODS.has(method.toUpperCase() as HttpMethod)) {
+    return `method "${method}" is not supported (use ${[...HTTP_METHODS].join('/')})`
+  }
+  try {
+    validatePluginRelativePath(path, 'captured route')
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err)
+  }
+  return null
+}
+
 function parseApiRoute(raw: unknown, index: number): ApiRouteContribution {
   if (!isRecord(raw)) throw new PluginManifestError(`contributes.apiRoutes[${index}] must be an object`)
   const label = `contributes.apiRoutes[${index}]`
@@ -441,7 +458,9 @@ export function parsePluginManifest(raw: unknown): PluginManifest {
   if (raw.entry !== undefined) {
     throw new PluginManifestError(
       'bakin-plugin.json field "entry" was removed — plugins use the canonical root layout: '
-      + 'index.ts (server entry) and optional client.tsx at the plugin root. Delete the "entry" field.',
+      + 'index.ts (server entry) and optional client.tsx at the plugin root. Delete the "entry" field. '
+      + 'For an already-installed plugin: edit ~/.bakin/plugins/<id>/bakin-plugin.json to remove the field '
+      + '(the install lockfile will then report manifest drift until you reinstall, which refreshes its manifestSha).',
     )
   }
   if (raw.tests !== undefined) {

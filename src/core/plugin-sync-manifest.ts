@@ -15,10 +15,21 @@
  * How capture works: the plugin is built with the real in-binary builder,
  * dist/index.js is imported, and `activate(ctx)` runs against a RECORDING
  * context — registerRoute / registerExecTool / search registrations are
- * captured; every other context surface is a deep no-op proxy so arbitrary
- * plugin code runs without side effects (no storage writes, no hooks, no
- * events). If activate throws, we refuse to write: a partial capture could
- * regenerate a wrong tool list.
+ * captured. THIS EXECUTES THE PLUGIN'S SERVER CODE: module top-level
+ * statements run at import (before any recording context exists), and
+ * activate() bodies can reach fs/network/process directly, bypassing ctx
+ * entirely. The recording context only guarantees that BAKIN surfaces
+ * (storage, hooks, events, registries) are no-ops — it is not a sandbox.
+ * The CLI prints this before running; only point sync-manifest at code you
+ * trust as much as you'd trust installing it. Import + activate share a
+ * deadline so a never-settling activate can't hang the CLI. If activate
+ * throws, we refuse to write: a partial capture could regenerate a wrong
+ * tool list.
+ *
+ * Captured entries are validated with the same rules the manifest parser and
+ * activation enforcer apply (route shape, `bakin_exec_<id>_` namespace)
+ * BEFORE writing — sync-manifest must never emit a manifest the host then
+ * refuses to load.
  *
  * Regeneration preserves author-maintained metadata: existing entries that
  * still exist in code keep their manifest objects verbatim (summary,
@@ -33,9 +44,30 @@ import { pathToFileURL } from 'url'
 
 import type { HttpMethod } from '@makinbakin/sdk/types'
 
+import { validateCapturedApiRoute } from '../../packages/core/src/plugins/manifest'
 import { createLogger } from '@/core/logger'
 
 const log = createLogger('plugin-sync-manifest')
+
+/** Import + activate share this deadline — a plugin whose module top-level or
+ * activate() never settles (e.g. awaiting an event the no-op ctx never fires)
+ * must not hang the CLI. */
+const CAPTURE_TIMEOUT_MS = 20_000
+
+async function withCaptureDeadline<T>(step: string, work: Promise<T>, timeoutMs = CAPTURE_TIMEOUT_MS): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`plugin ${step} did not settle within ${timeoutMs / 1000}s`)),
+      timeoutMs,
+    )
+  })
+  try {
+    return await Promise.race([work, deadline])
+  } finally {
+    clearTimeout(timer)
+  }
+}
 
 interface CapturedRoute {
   method: string
@@ -155,7 +187,7 @@ const routeKey = (method: string, path: string) => `${method.toUpperCase()} ${pa
 
 export async function syncPluginManifest(
   pluginDir: string,
-  opts: { check?: boolean; skipBuild?: boolean } = {},
+  opts: { check?: boolean; skipBuild?: boolean; captureTimeoutMs?: number } = {},
 ): Promise<SyncManifestResult> {
   const dir = resolve(pluginDir)
   const manifestPath = join(dir, 'bakin-plugin.json')
@@ -193,7 +225,11 @@ export async function syncPluginManifest(
 
   let plugin: { routes?: unknown[]; activate?: (ctx: unknown) => unknown }
   try {
-    const mod = await import(pathToFileURL(join(dir, 'dist', 'index.js')).href)
+    // CLI-only assumption: no cache-busting on this import. A one-shot CLI
+    // process never re-imports a stale dist; if this engine is ever wired
+    // into a long-lived server process, add a ?v= cache-bust AND revisit the
+    // execution-trust story above.
+    const mod = await withCaptureDeadline('import', import(pathToFileURL(join(dir, 'dist', 'index.js')).href), opts.captureTimeoutMs)
     plugin = (mod.default ?? mod) as typeof plugin
   } catch (err) {
     return {
@@ -218,7 +254,7 @@ export async function syncPluginManifest(
   if (typeof plugin.activate === 'function') {
     const ctx = buildCaptureContext(pluginId, routes, tools)
     try {
-      await plugin.activate(ctx)
+      await withCaptureDeadline('activate()', Promise.resolve(plugin.activate(ctx)), opts.captureTimeoutMs)
     } catch (err) {
       // A partial capture could regenerate a WRONG tool/route list — refuse.
       return {
@@ -228,6 +264,31 @@ export async function syncPluginManifest(
         error: `activate() threw during capture — not writing (a partial capture could drop real entries): ${err instanceof Error ? err.message : String(err)}`,
         note: V1_NOTE,
       }
+    }
+  }
+
+  // --- validate captured entries with the loader's own rules (never write a
+  // manifest the host then refuses to load) ---
+  const violations: string[] = []
+  for (const r of routes) {
+    const problem = validateCapturedApiRoute(r.method, r.path)
+    if (problem) violations.push(`route ${r.method} ${r.path}: ${problem}`)
+  }
+  const expectedToolPrefix = `bakin_exec_${pluginId}_`
+  for (const t of tools) {
+    if (!t.name.startsWith(expectedToolPrefix)) {
+      violations.push(`exec tool "${t.name}": name must start with "${expectedToolPrefix}"`)
+    }
+  }
+  if (violations.length > 0) {
+    return {
+      ok: false,
+      pluginId,
+      manifestPath,
+      error:
+        'Refusing to write: the plugin registers entries the host would reject at load ' +
+        `(fix the code, then re-run):\n  - ${violations.join('\n  - ')}`,
+      note: V1_NOTE,
     }
   }
 

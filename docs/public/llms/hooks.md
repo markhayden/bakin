@@ -14,23 +14,6 @@ Invocation style depends on `kind`:
 - `event`: `await ctx.hooks.callAll(name, payload)`
 - `waterfall`: `await ctx.hooks.call(name, payload)`
 
-## ${name}
-
-### ${name}.greet
-
-Label: ${name}
-Kind: rpc
-Source: src/core/plugin-scaffold.ts:239
-
-Example:
-
-```ts
-const result = await ctx.hooks.invoke(
-  '${name}.greet',
-  {},
-)
-```
-
 ## Assets
 
 Asset hooks expose file, sidecar, variant, and trash helpers for plugins that need to work with Bakin-managed files.

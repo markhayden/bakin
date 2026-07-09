@@ -200,4 +200,64 @@ module.exports.default = plugin
     expect(result.ok).toBe(false)
     expect(result.error).toContain('bakin-plugin.json')
   })
+
+  it('refuses to write entries the host loader would reject (route shape)', async () => {
+    const dir = writePlugin({
+      dist: `
+const plugin = {
+  id: '__ID__', name: '__ID__', version: '1.0.0',
+  activate: function(ctx) {
+    ctx.registerRoute({ method: 'GET', path: 'stats', handler: () => new Response('x') })
+    ctx.registerRoute({ method: 'GET', path: '/a/../b', handler: () => new Response('x') })
+    ctx.registerRoute({ method: 'OPTIONS', path: '/opts', handler: () => new Response('x') })
+  },
+}
+module.exports = plugin
+module.exports.default = plugin
+`,
+    })
+    const before = readFileSync(join(dir, 'bakin-plugin.json'), 'utf-8')
+    const result = await syncPluginManifest(dir, { skipBuild: true })
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('Refusing to write')
+    expect(result.error).toContain('stats')
+    expect(result.error).toContain('..')
+    expect(result.error).toContain('OPTIONS')
+    expect(readFileSync(join(dir, 'bakin-plugin.json'), 'utf-8')).toBe(before)
+  })
+
+  it('refuses to write exec tools outside the bakin_exec_<id>_ namespace', async () => {
+    const dir = writePlugin({
+      dist: `
+const plugin = {
+  id: '__ID__', name: '__ID__', version: '1.0.0',
+  activate: function(ctx) {
+    ctx.registerExecTool({ name: 'lead_intel_score', description: 'misnamed', parameters: {}, handler: async () => ({}) })
+  },
+}
+module.exports = plugin
+module.exports.default = plugin
+`,
+    })
+    const result = await syncPluginManifest(dir, { skipBuild: true })
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('lead_intel_score')
+    expect(result.error).toContain('bakin_exec_')
+  })
+
+  it('times out a never-settling activate instead of hanging', async () => {
+    const dir = writePlugin({
+      dist: `
+const plugin = {
+  id: '__ID__', name: '__ID__', version: '1.0.0',
+  activate: function() { return new Promise(() => {}) },
+}
+module.exports = plugin
+module.exports.default = plugin
+`,
+    })
+    const result = await syncPluginManifest(dir, { skipBuild: true, captureTimeoutMs: 250 })
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('did not settle')
+  })
 })

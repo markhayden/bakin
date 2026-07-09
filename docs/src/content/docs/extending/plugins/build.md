@@ -74,6 +74,8 @@ Then add permissions and further public contributions as the plugin grows. Route
 
 You never have to maintain the server-derived sections by hand: `bakin plugins sync-manifest` builds the plugin and regenerates `contributes.apiRoutes` and `contributes.execTools` from the routes and exec tools the code actually registers (author-written summaries and metadata on kept entries are preserved). `bakin plugins sync-manifest --check` reports drift without writing — useful as a CI gate. Client sections (`nav`, `clientRoutes`) remain author-maintained.
 
+Capture is not passive: sync-manifest **builds and executes your plugin's server code** (module top-level statements and `activate()`) in the CLI process, with Bakin surfaces stubbed to no-ops. Only run it on code you trust as much as you'd trust installing. Captured entries are validated with the same rules the host enforces at load, so it refuses to write a manifest the host would then reject.
+
 Full field details live in [Manifest](/docs/extending/plugins/manifest/).
 
 ## 5. Build the Client Surface
