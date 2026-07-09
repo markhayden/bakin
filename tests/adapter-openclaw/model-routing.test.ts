@@ -44,7 +44,7 @@ beforeEach(() => {
 afterAll(() => rmSync(testHome, { recursive: true, force: true }))
 
 describe('readRoutingPolicy', () => {
-  it('reads defaults + fallbacks + subagent default + all three alias spellings', () => {
+  it('reads defaults + fallbacks + subagent default + both alias spellings (bare entries are params, not aliases)', () => {
     writeConfig({
       agents: {
         defaults: {
@@ -53,7 +53,7 @@ describe('readRoutingPolicy', () => {
           models: {
             fast: 'anthropic/claude-haiku-4-5',                 // string spelling
             opus: { alias: 'anthropic/claude-opus-4-6' },       // { alias } spelling
-            'anthropic/claude-sonnet-4-6': {},                  // bare-key spelling
+            'anthropic/claude-sonnet-4-6': {},                  // bare entry: per-model params, NOT an alias
           },
         },
         list: [{ id: 'main' }],
@@ -66,7 +66,6 @@ describe('readRoutingPolicy', () => {
       aliases: {
         fast: 'anthropic/claude-haiku-4-5',
         opus: 'anthropic/claude-opus-4-6',
-        'anthropic/claude-sonnet-4-6': 'anthropic/claude-sonnet-4-6',
       },
     })
   })
@@ -132,5 +131,53 @@ describe('setAgentModels', () => {
   it('throws for an unknown agent', () => {
     writeConfig({ agents: { list: [] } })
     expect(() => setAgentModels('ghost', { model: 'a/b' })).toThrow('Agent not found')
+  })
+})
+
+describe('config-safety regressions (branch review)', () => {
+  it('refuses to modify a corrupt openclaw.json instead of clobbering it', () => {
+    writeFileSync(configPath(), '{ "gateway": { "auth": { "token": "SECRET" }')
+    resetOpenClawConfigCache()
+    expect(() => applyRoutingPolicy({ defaultModel: 'gpt-6' })).toThrow('refusing to modify')
+    expect(() => setAgentModels('main', { model: 'gpt-6' })).toThrow('refusing to modify')
+    // The broken file is untouched — nothing overwrote the secret.
+    expect(readFileSync(configPath(), 'utf-8')).toContain('SECRET')
+  })
+
+  it('setAgentModels materializes the implicit main on a minimal config', () => {
+    writeConfig({ agents: { defaults: { model: { primary: 'gpt-5.5' } } } })
+    setAgentModels('main', { model: 'gpt-6' })
+    const config = readConfigFile() as { agents?: { list?: Array<{ id: string; model?: { primary?: string } }> } }
+    const main = config.agents?.list?.find((a) => a.id === 'main')
+    expect(main?.model?.primary).toBe('gpt-6')
+  })
+
+  it('alias writes preserve non-alias model entries and their extra properties', () => {
+    writeConfig({
+      agents: {
+        defaults: {
+          models: {
+            'gpt-6': { temperature: 0.2 },
+            fast: { alias: 'gemini-flash', note: 'cheap' },
+          },
+        },
+      },
+    })
+    // Round-trip: read (must NOT fabricate a self-alias for gpt-6) then write.
+    const policy = readRoutingPolicy()
+    expect(policy.aliases).toEqual({ fast: 'gemini-flash' })
+    applyRoutingPolicy({ aliases: { fast: 'gemini-flash-2' } })
+
+    const models = (readConfigFile() as { agents: { defaults: { models: Record<string, unknown> } } }).agents.defaults.models
+    expect(models['gpt-6']).toEqual({ temperature: 0.2 })
+    expect(models.fast).toEqual({ alias: 'gemini-flash-2', note: 'cheap' })
+  })
+
+  it('fallback-only patch never synthesizes primary: ""', () => {
+    writeConfig({})
+    applyRoutingPolicy({ fallbackModels: ['gemini-flash'] })
+    const model = (readConfigFile() as { agents: { defaults: { model: Record<string, unknown> } } }).agents.defaults.model
+    expect(model.fallbacks).toEqual(['gemini-flash'])
+    expect('primary' in model).toBe(false)
   })
 })

@@ -53,10 +53,10 @@ import { inspectTrajectoryRun, trajectoryFilePathFor, watchTrajectoryForDeath, T
 import { generateDirectImage, isDirectImageProvider, resolveProviderApiKeySource } from '@bakin/core/media'
 import { isUserEdited } from '@bakin/core/agent-packages/markers'
 import {
-  agentListFrom,
   findAgentById,
   getAgentList,
   readOpenClawConfig,
+  readOpenClawConfigForMutation,
   resetOpenClawConfigCache,
 } from './config'
 import { getOpenClawPath } from './home'
@@ -74,7 +74,7 @@ import {
   statOpenClawMemoryEntry,
 } from './memory'
 import {
-  readPath, cloneJson, parseJsonValue,
+  cloneJson, parseJsonValue,
   parseJsonObject, readJsonFile, truncate, slug,
   metadataValue, metadataFiles,
 } from './runtime-utils'
@@ -1060,7 +1060,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       return
     }
     const agents = await this.runtimeAgentIds()
-    const config = (readOpenClawConfig() ?? {}) as BakinMcpConfig
+    const config = readOpenClawConfigForMutation() as BakinMcpConfig
     const changes = applyBakinMcpEntries(config, agents, baseUrl)
     if (changes.length === 0) return
     writeOpenClawConfig(config as Record<string, unknown>)
@@ -1071,7 +1071,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
   /** Remove Bakin's `bakin-*` MCP server entries (runtime switch-away). */
   deprovisionToolAccess = async (): Promise<void> => {
-    const config = (readOpenClawConfig() ?? {}) as BakinMcpConfig
+    const config = readOpenClawConfigForMutation() as BakinMcpConfig
     const changes = removeBakinMcpEntries(config)
     if (changes.length === 0) return
     writeOpenClawConfig(config as Record<string, unknown>)
