@@ -99,6 +99,7 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
   const prevPathRef = useRef(pathname)
 
   const settingsActive = pathname === '/settings'
+  const runtimeActive = pathname === '/runtime'
 
   // Auto-expand when navigating into a section, auto-collapse when leaving
   useEffect(() => {
@@ -334,6 +335,20 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
       {/* Bottom section — placement:'bottom' items + Settings, pinned */}
       <div className="mt-auto border-t border-border -mx-2 px-2 pt-2 flex flex-col gap-0.5">
         {bottomNavItems.map(renderNavItem)}
+        <Link
+          to="/runtime"
+          onClick={onNavigate}
+          className={`flex items-center gap-3 px-3 py-1.5 rounded-md text-sm transition-colors duration-150 ${
+            collapsed ? 'justify-center px-0' : ''
+          } ${
+            runtimeActive
+              ? 'text-foreground bg-[rgba(255,255,255,0.06)]'
+              : 'text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.04)]'
+          }`}
+        >
+          <Cpu className="size-4 shrink-0" />
+          {!collapsed && <span>Runtime</span>}
+        </Link>
         <Link
           to="/settings"
           onClick={onNavigate}

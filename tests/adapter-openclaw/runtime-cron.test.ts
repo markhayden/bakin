@@ -43,7 +43,7 @@ describe('OpenClaw runtime cron adapter', () => {
     })
     ;(runtime as unknown as { exec: typeof exec }).exec = exec
 
-    const created = await runtime.cron.create({
+    const created = await runtime.cron!.create({
       id: 'native-tools',
       name: 'Native Tools',
       schedule: '0 7 * * *',
@@ -75,11 +75,11 @@ describe('OpenClaw runtime cron adapter', () => {
       'message,image_generate',
     ], cronExecOpts)
 
-    await expect(runtime.cron.get('openclaw-native-tools')).resolves.toEqual(expect.objectContaining({
+    await expect(runtime.cron!.get('openclaw-native-tools')).resolves.toEqual(expect.objectContaining({
       id: 'openclaw-native-tools',
       toolsAllow: ['message', 'image_generate'],
     }))
-    await expect(runtime.cron.list()).resolves.toEqual([
+    await expect(runtime.cron!.list()).resolves.toEqual([
       expect.objectContaining({ id: 'openclaw-native-tools', toolsAllow: ['message', 'image_generate'] }),
     ])
   })
@@ -120,7 +120,7 @@ describe('OpenClaw runtime cron adapter', () => {
     })
     ;(runtime as unknown as { exec: typeof exec }).exec = exec
 
-    await expect(runtime.cron.update('native-update-tools', { toolsAllow: ['message', 'exec'] })).resolves.toEqual(expect.objectContaining({
+    await expect(runtime.cron!.update('native-update-tools', { toolsAllow: ['message', 'exec'] })).resolves.toEqual(expect.objectContaining({
       toolsAllow: ['message', 'exec'],
     }))
     expect(exec).toHaveBeenCalledWith([
@@ -137,7 +137,7 @@ describe('OpenClaw runtime cron adapter', () => {
       'message,exec',
     ], cronExecOpts)
 
-    await expect(runtime.cron.update('native-update-tools', { toolsAllow: null })).resolves.toEqual(expect.objectContaining({
+    await expect(runtime.cron!.update('native-update-tools', { toolsAllow: null })).resolves.toEqual(expect.objectContaining({
       toolsAllow: undefined,
     }))
     expect(exec).toHaveBeenCalledWith([
@@ -171,7 +171,7 @@ describe('OpenClaw runtime cron adapter', () => {
     }]))
     ;(runtime as unknown as { exec: typeof exec }).exec = exec
 
-    await expect(runtime.cron.list()).resolves.toEqual([
+    await expect(runtime.cron!.list()).resolves.toEqual([
       expect.objectContaining({
         id: 'openclaw-schedule-listed',
         command: 'bakin:schedule:schedule-listed',
@@ -192,7 +192,7 @@ describe('OpenClaw runtime cron adapter', () => {
     }]))
     ;(runtime as unknown as { exec: typeof exec }).exec = exec
 
-    await expect(runtime.cron.list()).resolves.toEqual([
+    await expect(runtime.cron!.list()).resolves.toEqual([
       expect.objectContaining({
         id: 'openclaw-tz',
         schedule: '0 9 * * *',
@@ -223,10 +223,10 @@ describe('OpenClaw runtime cron adapter', () => {
 
     const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
     const runtime = createOpenClawRuntimeAdapter()
-    const raw = await runtime.cron.getRaw('native-1', 'test capture')
+    const raw = await runtime.cron!.getRaw('native-1', 'test capture')
 
     writeFileSync(join(testDir, 'cron', 'jobs.json'), JSON.stringify({ version: 1, jobs: [] }), 'utf-8')
-    await runtime.cron.restoreRaw('native-1', raw, 'test restore')
+    await runtime.cron!.restoreRaw('native-1', raw, 'test restore')
 
     const store = JSON.parse(readFileSync(join(testDir, 'cron', 'jobs.json'), 'utf-8'))
     expect(store.jobs[0]).toEqual(raw)
@@ -241,7 +241,7 @@ describe('OpenClaw runtime cron adapter', () => {
     ]))
     ;(runtime as unknown as { exec: typeof exec }).exec = exec
 
-    await expect(runtime.cron.listRuns('cron-history')).resolves.toEqual([
+    await expect(runtime.cron!.listRuns('cron-history')).resolves.toEqual([
       expect.objectContaining({ id: 'run-1', jobId: 'cron-history', status: 'succeeded' }),
     ])
     expect(exec).toHaveBeenCalledWith([
@@ -262,7 +262,7 @@ describe('OpenClaw runtime cron adapter', () => {
     const exec = mock(async () => '')
     ;(runtime as unknown as { exec: typeof exec }).exec = exec
 
-    await runtime.cron.runNow('cron-tui-smoke-test')
+    await runtime.cron!.runNow('cron-tui-smoke-test')
 
     expect(exec).toHaveBeenCalledWith(['cron', 'run', 'cron-tui-smoke-test'])
   })

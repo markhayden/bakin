@@ -22,10 +22,17 @@ composition and what's actually in the block, attributed per input.
 |---|---|---|---|
 | global | `~/.bakin/team/context/global.md` | every runtime agent | AGENTS.md |
 | role | `~/.bakin/team/context/roles/{orchestrator,subagent}.md` | main / everyone else | AGENTS.md |
+| tool-access | rendered LIVE from the active runtime (`describeToolAccess()` → `renderToolAccessInstructions`, `src/core/tool-access.ts`) | every runtime agent | AGENTS.md |
 | team | `~/.bakin/team/context/<teamId>.md` | `OrgTeam` members (via `team.getAgentTeam` hook) | AGENTS.md |
 | package | installed source `workspace/*` templates | managed agents | all four |
 | lessons | installed source `lessons/*.md` + lockfile `lessonsEnabled` | managed agents | SOUL.md |
 
+- The tool-access layer is NOT a file: it renders per-runtime (in-process /
+  native-MCP / cli-shim wording) at compose time, and the lockfile records a
+  `toolAccessSha` so a runtime switch surfaces as `tool-access`-attributed
+  drift (`bakin agents sync` repairs it). Role defaults + shipped content are
+  transport-neutral by architecture test — they name `bakin_exec_*` tools but
+  never the invocation mechanism.
 - Context files are plain markdown, user-owned, with `{{agentId}}`,
   `{{agentName}}`, `{{mainAgentId}}`, `{{mainAgentName}}` tokens substituted
   per-agent at composition time.

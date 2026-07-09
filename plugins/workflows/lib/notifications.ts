@@ -205,8 +205,12 @@ export async function sendGateApprovalRequest(
   settings: GateNotificationSettings,
 ): Promise<ApprovalRenderRef | null> {
   if (!settings.approvalChannelAlerts) return null
-  if (!runtime) {
-    log.warn('Runtime channel adapter unavailable; skipping gate approval alert')
+  // Optional capability (P2.1): no runtime OR no channel layer → the gate
+  // still exists and is approvable in the Bakin UI; only the channel alert
+  // vehicle is absent.
+  const channels = runtime?.channels
+  if (!channels) {
+    log.warn('Runtime channel layer unavailable; skipping gate approval alert (approve in the Bakin UI)')
     return null
   }
 
@@ -251,7 +255,7 @@ export async function sendGateApprovalRequest(
 
   let resolvedChannel: string
   try {
-    resolvedChannel = (await resolveRuntimeChannelRef(runtime, channel)).resolved
+    resolvedChannel = (await resolveRuntimeChannelRef({ channels }, channel)).resolved
   } catch (err) {
     log.error('Gate approval channel resolution failed', err, { approvalId, channel })
     return null
@@ -275,7 +279,7 @@ export async function sendGateApprovalRequest(
   }
 
   try {
-    const result = await runtime.channels.createApproval({
+    const result = await channels.createApproval({
       approvalId,
       channels: [resolvedChannel],
       request,
@@ -339,7 +343,8 @@ async function sendGateContextMessage(
   resolvedChannel: string,
   context: CreateApprovalArgs['request']['context'],
 ): Promise<GateThreadInfo | null> {
-  if (!runtime) return null
+  const channels = runtime?.channels
+  if (!channels) return null
   try {
     const files: Array<{ name: string; path: string; contentType?: string }> = []
     for (const assetId of extractAssetIds(priorOutput)) {
@@ -371,11 +376,11 @@ async function sendGateContextMessage(
       taskId: instance.taskId,
       stepId,
     }
-    const canThread = typeof runtime.channels.createThread === 'function'
+    const canThread = typeof channels.createThread === 'function'
 
     if (!canThread) {
       // Flat mode: everything in one message, divider before the button card.
-      const result = await runtime.channels.deliverContent({
+      const result = await channels.deliverContent({
         channels: [resolvedChannel],
         content: {
           title: '',
@@ -394,7 +399,7 @@ async function sendGateContextMessage(
     const pointer = hasDetails
       ? '_Full output & decision buttons in the thread ↓_'
       : '_Decision buttons in the thread ↓_'
-    const rootResult = await runtime.channels.deliverContent({
+    const rootResult = await channels.deliverContent({
       channels: [resolvedChannel],
       content: {
         title: '',
@@ -409,7 +414,7 @@ async function sendGateContextMessage(
     let threadChannelRef: string | undefined
     if (rootDelivery?.ref) {
       try {
-        const thread = await runtime.channels.createThread!({
+        const thread = await channels.createThread!({
           channel: resolvedChannel,
           messageRef: rootDelivery.ref,
           name: `${instance.workflowId} — ${label}`,
@@ -426,7 +431,7 @@ async function sendGateContextMessage(
       // into the thread — provider target syntax never leaves the adapter.
       deliveries.push({ channelId: threadChannelRef, ref: `thread:${threadId}`, renderedAt: rootDelivery?.renderedAt ?? new Date().toISOString() })
       if (hasDetails) {
-        await runtime.channels.deliverContent({
+        await channels.deliverContent({
           channels: [threadChannelRef],
           content: {
             title: '',
@@ -440,7 +445,7 @@ async function sendGateContextMessage(
       // Thread creation failed after the root card already promised details:
       // the reviewable content must still be delivered — post it flat, right
       // under the root card.
-      await runtime.channels.deliverContent({
+      await channels.deliverContent({
         channels: [resolvedChannel],
         content: {
           title: '',
@@ -477,7 +482,8 @@ export async function resolveGateApproval(
   decidedAt: string,
   reason?: string,
 ): Promise<void> {
-  if (!runtime || !approvalRef) return
+  const channels = runtime?.channels
+  if (!channels || !approvalRef) return
 
   const response = {
     selectedOption: decision === 'approved' ? 'approve' : 'reject',
@@ -492,7 +498,7 @@ export async function resolveGateApproval(
   resolveApprovalRecord(approvalRef.approvalId, response)
 
   try {
-    await runtime.channels.resolveApproval({
+    await channels.resolveApproval({
       ...approvalRef,
       response,
     })
@@ -518,7 +524,8 @@ export async function sendGateDecisionSummary(
   approvalRef?: ApprovalRenderRef,
 ): Promise<void> {
   if (!settings.approvalChannelAlerts) return
-  if (!runtime) return
+  const channels = runtime?.channels
+  if (!channels) return
 
   const decisionLabel = decision === 'approved' ? 'Approved' : 'Rejected'
   const approverLabel = `${approver.displayName ?? approver.id} (${approver.source})`
@@ -556,14 +563,14 @@ export async function sendGateDecisionSummary(
   // gate's full context, and rewriting it would erase the reviewed content.
   const rootDelivery = approvalRef?.deliveries.find((d) => d.ref.startsWith('message:'))
   const threadDelivery = approvalRef?.deliveries.find((d) => d.ref.startsWith('thread:'))
-  if (rootDelivery && threadDelivery && typeof runtime.channels.editMessage === 'function') {
+  if (rootDelivery && threadDelivery && typeof channels.editMessage === 'function') {
     const rootBody = [
       `🚦 **${gateLabel}** — \`${instance.workflowId}\``,
       `Task \`${instance.taskId}\` · step \`${stepId}\``,
       decisionLine,
       ...(reason ? [`> ${reason}`] : []),
     ].join('\n')
-    await runtime.channels.editMessage({
+    await channels.editMessage({
       channel: rootDelivery.channelId,
       messageRef: rootDelivery.ref,
       body: rootBody,
@@ -576,7 +583,7 @@ export async function sendGateDecisionSummary(
   if (!summaryChannel) {
     const channel = settings.approvalChannel || 'general'
     try {
-      summaryChannel = (await resolveRuntimeChannelRef(runtime, channel)).resolved
+      summaryChannel = (await resolveRuntimeChannelRef({ channels }, channel)).resolved
     } catch (err) {
       log.error('Gate decision summary channel resolution failed', err, { channel })
       return
@@ -584,7 +591,7 @@ export async function sendGateDecisionSummary(
   }
 
   try {
-    await runtime.channels.sendNotification({
+    await channels.sendNotification({
       channels: [summaryChannel],
       notification: {
         severity: decision === 'approved' ? 'success' : 'warn',

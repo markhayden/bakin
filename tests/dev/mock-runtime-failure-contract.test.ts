@@ -40,7 +40,7 @@ describe('imitation-crab runtime failure contract', () => {
     await expect(runtime.tools.invoke('pixel', 'message_send', { message: 'hello' }))
       .rejects.toThrow('OpenClaw invokeTool failed (500)')
 
-    await expect(runtime.channels.sendMessage({
+    await expect(runtime.channels!.sendMessage({
       channels: ['discord'],
       message: { body: 'This channel message should fail' },
     })).resolves.toEqual(expect.objectContaining({

@@ -85,7 +85,6 @@ async function runOfflineDoctor(): Promise<CliDoctorResult> {
     { settingsComponent },
     { searchComponent },
     { searchModelsComponent },
-    { mcporterComponent },
     { agentSyncComponent },
     { recommendedPluginsComponent },
   ] = await Promise.all([
@@ -93,7 +92,6 @@ async function runOfflineDoctor(): Promise<CliDoctorResult> {
     import('../../core/onboarding/settings'),
     import('../../core/onboarding/search'),
     import('../../core/onboarding/search-models'),
-    import('../../core/onboarding/mcporter'),
     import('../../core/onboarding/agent-sync'),
     import('../../core/onboarding/recommended-plugins'),
   ])
@@ -103,7 +101,6 @@ async function runOfflineDoctor(): Promise<CliDoctorResult> {
     settingsComponent,
     searchComponent,
     searchModelsComponent,
-    mcporterComponent,
     agentSyncComponent,
     recommendedPluginsComponent,
   ]) {

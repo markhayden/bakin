@@ -196,13 +196,18 @@ export const scheduleRoutes = [
       const jobId = params.jobId || body.jobId
       if (!jobId) return json({ error: 'jobId required' }, 400)
 
-      const runtimeJob = await ctx.runtime.cron.get(jobId)
+      // cron is optional (P2.1): adoption only makes sense on a runtime that
+      // HAS native crons to adopt from.
+      const cron = ctx.runtime.cron
+      if (!cron) return json({ error: 'The active runtime has no native cron surface — nothing to adopt' }, 404)
+
+      const runtimeJob = await cron.get(jobId)
       if (!runtimeJob) return json({ error: 'Runtime cron job not found' }, 404)
 
       const existing = getJob(jobId)
       if (existing?.isBakinJob) return json({ error: 'Job is already managed by Bakin' }, 409)
 
-      const raw = await ctx.runtime.cron.getRaw(jobId, 'schedule adopt: preserve native cron before Bakin takes ownership')
+      const raw = await cron.getRaw(jobId, 'schedule adopt: preserve native cron before Bakin takes ownership')
       if (!raw) return json({ error: 'Runtime cron snapshot not found' }, 404)
 
       const parsed = body.schedule ? parseSchedule(body.schedule) : { cron: runtimeJob.schedule }
@@ -259,7 +264,7 @@ export const scheduleRoutes = [
       }
       upsertJob(meta)
       // Bakin owns the schedule now — remove the native cron so it stops firing.
-      await ctx.runtime.cron.remove(jobId)
+      await cron.remove(jobId)
       indexJob(jobId)
 
       ctx.activity.audit('job.adopted', 'system', { jobId })
@@ -282,7 +287,12 @@ export const scheduleRoutes = [
       const meta = getJob(jobId)
       if (!meta?.originalRuntimeCron) return json({ error: 'No native cron snapshot available' }, 404)
 
-      const restored = await ctx.runtime.cron.restoreRaw(
+      // cron is optional (P2.1): restoring native behavior needs a runtime
+      // with a native cron surface to restore INTO.
+      const cron = ctx.runtime.cron
+      if (!cron) return json({ error: 'The active runtime has no native cron surface — cannot restore native behavior' }, 400)
+
+      const restored = await cron.restoreRaw(
         jobId,
         meta.originalRuntimeCron.snapshot,
         'schedule restore: return adopted cron to native runtime behavior',

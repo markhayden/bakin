@@ -35,7 +35,7 @@ mock.module('../../../src/core/logger', loggerMock)
 mock.module('../../../packages/core/src/logger', loggerMock)
 
 import {
-  detectLanesFromProfiles,
+  detectLanesFromCredentials,
   resolveProviderForModel,
   resolveLaneFor,
   resolveBilling,
@@ -47,26 +47,25 @@ afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
 })
 
-describe('detectLanesFromProfiles', () => {
-  it('classifies apiKey entries as metered and OAuth-only entries as subscription', () => {
-    const lanes = detectLanesFromProfiles([
-      { provider: 'google', apiKey: 'k1' },
-      { provider: 'openai-codex', access: 'oauth-access', refresh: 'oauth-refresh' },
-      { provider: 'anthropic', token: 'oauth-token' },
+describe('detectLanesFromCredentials', () => {
+  // Credential SHAPE parsing (apiKey vs OAuth fields, the three profile
+  // layouts) is adapter territory now — pinned in the adapter credential
+  // tests. Here: the kind → lane mapping over the neutral report.
+  it("maps 'api-key' to metered and 'oauth' to subscription", () => {
+    const lanes = detectLanesFromCredentials([
+      { provider: 'google', kind: 'api-key' },
+      { provider: 'openai-codex', kind: 'oauth' },
+      { provider: 'anthropic', kind: 'oauth' },
     ])
     expect(lanes).toEqual({ google: 'metered', 'openai-codex': 'subscription', anthropic: 'subscription' })
   })
 
-  it('a key wins when an entry carries both key and OAuth fields', () => {
-    expect(detectLanesFromProfiles([{ provider: 'openai', api_key: 'k', token: 't' }])).toEqual({ openai: 'metered' })
-  })
-
-  it('handles all three profile shapes and skips credential-less entries', () => {
-    const entry = { provider: 'google', apiKey: 'k' }
-    expect(detectLanesFromProfiles([entry, { provider: 'empty' }])).toEqual({ google: 'metered' })
-    expect(detectLanesFromProfiles({ profiles: [entry] })).toEqual({ google: 'metered' })
-    expect(detectLanesFromProfiles({ profiles: { g: entry } })).toEqual({ google: 'metered' })
-    expect(detectLanesFromProfiles(null)).toEqual({})
+  it('first entry per provider wins; absent report yields no lanes', () => {
+    expect(detectLanesFromCredentials([
+      { provider: 'openai', kind: 'api-key' },
+      { provider: 'openai', kind: 'oauth' },
+    ])).toEqual({ openai: 'metered' })
+    expect(detectLanesFromCredentials(undefined)).toEqual({})
   })
 })
 
@@ -108,32 +107,31 @@ describe('resolveLaneFor (override precedence)', () => {
 })
 
 describe('resolveBilling (ctx-bound)', () => {
-  function makeCtx(profiles: unknown, overrides: BillingOverride[] = []) {
+  function makeCtx(credentials: Array<{ provider: string; kind: 'api-key' | 'oauth' }> | undefined, overrides: BillingOverride[] = []) {
     return {
       getSettings: () => ({ billing: { overrides } }),
       runtime: {
-        config: {
-          raw: async (key: string) => {
-            if (!/^agents\.[^.]+\.authProfiles$/.test(key)) throw new Error(`unexpected key ${key}`)
-            return profiles
-          },
-        },
+        credentialStatus: async (_opts?: { agentId?: string }) => ({
+          llmProviders: (credentials ?? []).map((c) => c.provider),
+          llmCredentials: credentials,
+          channels: [],
+        }),
       },
     } as never
   }
 
-  it('resolves provider + lane from the agent profiles', async () => {
+  it('resolves provider + lane from the runtime credential report', async () => {
     _resetBillingCache()
-    const ctx = makeCtx([{ provider: 'openai-codex', access: 'a', refresh: 'r' }])
+    const ctx = makeCtx([{ provider: 'openai-codex', kind: 'oauth' }])
     const billing = await resolveBilling(ctx, { agentId: 'main', model: 'openai-codex/gpt-5.5-codex' })
     expect(billing).toEqual({ provider: 'openai-codex', lane: 'subscription' })
   })
 
-  it('defaults to metered when profiles are unreadable', async () => {
+  it('defaults to metered when the credential report is unreadable', async () => {
     _resetBillingCache()
     const ctx = {
       getSettings: () => ({}),
-      runtime: { config: { raw: async () => { throw new Error('runtime down') } } },
+      runtime: { credentialStatus: async () => { throw new Error('runtime down') } },
     } as never
     const billing = await resolveBilling(ctx, { agentId: 'main', model: 'google/gemini-3-flash' })
     expect(billing).toEqual({ provider: 'google', lane: 'metered' })
@@ -141,7 +139,7 @@ describe('resolveBilling (ctx-bound)', () => {
 
   it('applies overrides without an agentId (provider-wide)', async () => {
     _resetBillingCache()
-    const ctx = makeCtx(null, [{ provider: 'google', lane: 'subscription' }])
+    const ctx = makeCtx(undefined, [{ provider: 'google', lane: 'subscription' }])
     const billing = await resolveBilling(ctx, { model: 'google/gemini-3-flash' })
     expect(billing).toEqual({ provider: 'google', lane: 'subscription' })
   })

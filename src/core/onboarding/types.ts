@@ -64,8 +64,8 @@ export interface OnboardingComponent {
   /**
    * Runtime adapters this component applies to. Omit for adapter-generic
    * components. The orchestrator skips (never checks/installs) components
-   * whose list excludes settings.runtime.adapter — e.g. mcporter and the
-   * OpenClaw MCP-config sync are meaningless on the in-process Pi runtime.
+   * whose list excludes settings.runtime.adapter — e.g. the OpenClaw
+   * integration component is meaningless on the in-process Pi runtime.
    */
   readonly supportedAdapters?: readonly RuntimeAdapterName[]
   check(): Promise<CheckResult>

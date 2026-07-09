@@ -16,7 +16,7 @@
 import { createLogger } from './logger'
 import { getSettings } from './settings'
 import { appendAudit } from './audit'
-import { getAppServices } from './app-services'
+import { getAppServices } from './app-services-store'
 import { RuntimeError, RuntimeTurnError, type MessageResult } from '@bakin/core/adapters/runtime'
 import { claimNextRun, loseRun, settleRun, openBudgetIncident, resolveExpiredBudgetIncidents, findOpenCapIncident, type ClaimNextRunResult } from './execution-ledger'
 import { meterAgentTurn } from './agent-cost'

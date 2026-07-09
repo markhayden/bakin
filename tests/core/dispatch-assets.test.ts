@@ -124,7 +124,7 @@ describe('buildDispatchMessage — precomputed assets block', () => {
 
   it('omits the block when none is provided', () => {
     const task = { id: 'task-no-assets', title: 'Simple task', agent: 'pixel' }
-    const msg = buildDispatchMessage(task, 'pixel', testDir)
+    const msg = buildDispatchMessage(task, 'pixel', testDir, 'main')
     expect(msg).not.toContain('## Attached Assets')
   })
 

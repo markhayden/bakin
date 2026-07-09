@@ -126,8 +126,16 @@ export async function rehydratePendingApprovals(
         summary.failed += 1
         continue
       }
+      // Optional capability (P2.1): only channel-bearing runtimes can
+      // re-render approval buttons. wireChannelApprovals gates on channels
+      // before calling here, so this is belt-and-braces for direct callers.
+      const channelsSurface = options.runtime.channels
+      if (!channelsSurface) {
+        summary.skipped += 1
+        continue
+      }
       try {
-        const result = await options.runtime.channels.createApproval({
+        const result = await channelsSurface.createApproval({
           approvalId: currentRecord.approvalId,
           channels: [channel],
           request: currentRecord.request,

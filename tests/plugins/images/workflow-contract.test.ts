@@ -17,7 +17,6 @@ describe('images workflow contract', () => {
     expect(parsed.id).toBe('image-generation')
     expect(raw).toContain('bakin_exec_images_recommend')
     expect(raw).toContain('bakin_exec_images_generate')
-    expect(raw).toContain('--timeout 600000')
     expect(raw).toContain('$preferred(pixel,$assigned)')
     expect(raw).toContain('assetId')
     expect(raw).not.toContain('image_filename')
@@ -27,7 +26,7 @@ describe('images workflow contract', () => {
     expect(raw).not.toContain('Nano Banana')
   })
 
-  it('tells image skills to use a long mcporter timeout for generation', () => {
+  it('keeps image skills transport-neutral — no mcporter timeout flag', () => {
     const files = [
       'plugins/images/defaults/workflow-skills/generate-image.md',
       'plugins/images/defaults/runtime-skills/create-image/SKILL.md',
@@ -36,7 +35,9 @@ describe('images workflow contract', () => {
     ]
 
     for (const file of files) {
-      expect(readWorkflow(file)).toContain('--timeout 600000')
+      const raw = readWorkflow(file)
+      expect(raw).not.toContain('mcporter')
+      expect(raw).not.toContain('--timeout 600000')
     }
   })
 

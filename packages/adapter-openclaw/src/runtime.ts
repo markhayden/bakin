@@ -17,7 +17,13 @@ import type {
   RuntimeAgent,
   RuntimeAvailableModel,
   RuntimeCapabilities,
-  RuntimeToolAccessHint,
+  CapabilitySet,
+  RuntimeToolAccess,
+  RuntimeCredentialStatus,
+  RuntimeRoutingPolicy,
+  RuntimeRoutingSupport,
+  ToolAccessProvisioningStatus,
+  UpdateRuntimeAgentInput,
   RuntimeImageEditInput,
   RuntimeImageGenerateInput,
   RuntimeImageGenerationResult,
@@ -30,7 +36,15 @@ import type {
   WorkspaceFile,
   WorkspaceFileStat,
 } from '@bakin/core/adapters/runtime'
-import type { AdapterHealthCheckDefinition, AdapterInitOpts, AdapterLogger } from '@bakin/core/adapters/shared'
+import type { AdapterAuditEvent, AdapterHealthCheckDefinition, AdapterInitOpts, AdapterLogger } from '@bakin/core/adapters/shared'
+import {
+  applyBakinMcpEntries,
+  removeBakinMcpEntries,
+  verifyBakinMcpEntries,
+  type BakinMcpConfig,
+} from './tool-access-provisioning'
+import { listConfiguredChannels, listLlmCredentials, listLlmCredentialsViaCli } from './credential-status'
+import { applyRoutingPolicy, readRoutingPolicy, setAgentModels } from './model-routing'
 import { RuntimeError, RuntimeTurnError } from '@bakin/core/adapters/runtime'
 import { tryGetMainAgentId } from './main-agent'
 import { buildOpenClawAttachments } from './attachments'
@@ -39,10 +53,10 @@ import { inspectTrajectoryRun, trajectoryFilePathFor, watchTrajectoryForDeath, T
 import { generateDirectImage, isDirectImageProvider, resolveProviderApiKeySource } from '@bakin/core/media'
 import { isUserEdited } from '@bakin/core/agent-packages/markers'
 import {
-  agentListFrom,
   findAgentById,
   getAgentList,
   readOpenClawConfig,
+  readOpenClawConfigForMutation,
   resetOpenClawConfigCache,
 } from './config'
 import { getOpenClawPath } from './home'
@@ -60,7 +74,7 @@ import {
   statOpenClawMemoryEntry,
 } from './memory'
 import {
-  readPath, cloneJson, parseJsonValue,
+  cloneJson, parseJsonValue,
   parseJsonObject, readJsonFile, truncate, slug,
   metadataValue, metadataFiles,
 } from './runtime-utils'
@@ -142,7 +156,6 @@ const OPENCLAW_AGENT_TRANSPORT_TIMEOUT_MS = OPENCLAW_AGENT_TIMEOUT_MS + 30_000
 const OPENCLAW_ABORT_RPC_TIMEOUT_MS = 5_000
 const OPENCLAW_CRON_PROCESS_TIMEOUT_MS = OPENCLAW_CRON_TIMEOUT_MS + 5000
 const OPENCLAW_IMAGE_PROCESS_TIMEOUT_MS = 600000
-const BAKIN_MCPORTER_CALL_TIMEOUT_MS = 600000
 const OPENCLAW_IMAGE_OUTPUT_MAX_BUFFER = 16 * 1024 * 1024
 const OPENCLAW_IMAGE_PROVIDERS_TTL_MS = 5000
 const OPENCLAW_MODELS_LIST_MAX_BUFFER = 16 * 1024 * 1024
@@ -196,6 +209,8 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
   private settings: OpenClawSettings
   private logger: AdapterLogger = noopLogger
+  private auditEvent?: (event: AdapterAuditEvent) => void
+  private bakinMcpBaseUrl?: string
   private approvalResponsesWarningLogged = false
   private approvalResolveWarningLogged = false
   private approvalGatewayClient: OpenClawApprovalGatewayClient | null = null
@@ -212,6 +227,8 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
   async initialize(opts: AdapterInitOpts): Promise<void> {
     this.logger = opts.logger ?? noopLogger
+    this.auditEvent = opts.audit
+    this.bakinMcpBaseUrl = opts.bakinMcpBaseUrl
     this.settings = mergeSettings(opts.settings ?? (this.settings as unknown as Record<string, unknown>))
   }
 
@@ -316,6 +333,19 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       }
       resetOpenClawConfigCache()
       if (!existsSync(workspace)) mkdirSync(workspace, { recursive: true })
+      // New agent → new MCP server entry. Re-provision immediately so the
+      // agent can reach Bakin's tools without waiting for the next boot.
+      // Best-effort: the agent EXISTS at this point — failing create over a
+      // config write would strand a retry on "Agent already exists". The next
+      // boot/install re-provisions.
+      try {
+        await this.provisionToolAccess()
+      } catch (err) {
+        this.logger.warn('OpenClaw tool-access provisioning failed after agent create', {
+          agentId: id,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
       return {
         id,
         name: input.name,
@@ -325,20 +355,24 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         metadata: { ...(input.metadata ?? {}), workspacePath: workspace },
       }
     },
-    update: async (agentId: string, input: Partial<RuntimeAgent>): Promise<RuntimeAgent> => {
+    update: async (agentId: string, input: UpdateRuntimeAgentInput): Promise<RuntimeAgent> => {
       if (!findAgentById(agentId)) throw new Error(`Agent not found: ${agentId}`)
       const args = ['agents', 'set-identity', '--agent', agentId]
       if (input.name) args.push('--name', input.name)
       const emoji = metadataValue(input.metadata, 'emoji')
       if (emoji) args.push('--emoji', emoji)
       if (args.length > 4) await this.exec(args)
+      // Model assignments PERSIST into agents.list[] (P2.3) — previously the
+      // input model was echoed back without being written anywhere.
+      if (input.model !== undefined || input.subagentModel !== undefined) {
+        setAgentModels(agentId, { model: input.model, subagentModel: input.subagentModel })
+      }
       resetOpenClawConfigCache()
       const refreshed = findAgentById(agentId)
       if (refreshed) {
         return {
           ...agentToRuntime(refreshed),
           ...(input.role ? { role: input.role } : {}),
-          ...(input.model ? { model: input.model } : {}),
           metadata: { ...(agentToRuntime(refreshed).metadata ?? {}), ...(input.metadata ?? {}) },
         }
       }
@@ -346,7 +380,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         id: agentId,
         name: input.name ?? agentId,
         role: input.role,
-        model: input.model,
+        model: input.model ?? undefined,
         status: 'active',
         metadata: input.metadata,
       }
@@ -358,6 +392,17 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       removeOpenClawAgentConfig(agentId)
       removeOpenClawAgentArtifacts(agentId, workspace)
       removeOpenClawAgentCronArtifacts(agentId)
+      // Prune the departed agent's MCP server entry so no stale routing
+      // lingers. Best-effort — the agent is already gone; a failed prune must
+      // not report the remove as failed (next boot/install re-provisions).
+      try {
+        await this.provisionToolAccess()
+      } catch (err) {
+        this.logger.warn('OpenClaw tool-access prune failed after agent remove', {
+          agentId,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
     },
     listWorkspaceFiles: async (agentId: string): Promise<string[]> => {
       const root = getWorkspacePath(agentId)
@@ -940,6 +985,22 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         })
         .filter((model): model is RuntimeAvailableModel => model !== null)
     },
+
+    // Routing policy (P2.3): OpenClaw honors all five knobs natively —
+    // defaults/fallbacks/aliases in agents.defaults, per-agent subagent
+    // models on agents.list[]. Reads/writes stay adapter-private.
+    routingSupport: (): RuntimeRoutingSupport => ({
+      defaultModel: true,
+      fallbackModels: true,
+      defaultSubagentModel: true,
+      aliases: true,
+      perAgentSubagentModel: true,
+    }),
+    routingPolicy: async (): Promise<RuntimeRoutingPolicy> => readRoutingPolicy(),
+    setRoutingPolicy: async (patch: Partial<RuntimeRoutingPolicy>, reason: string): Promise<void> => {
+      applyRoutingPolicy(patch)
+      this.audit('set-routing-policy', { reason, fields: Object.keys(patch) })
+    },
   }
 
   private capabilitiesCache = new Map<string, { at: number; value: RuntimeCapabilities }>()
@@ -956,12 +1017,123 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
    * Conservative false on any ambiguity; no model-name heuristics (D17
    * discipline applies to runtimes too).
    */
-  /** OpenClaw agents reach Bakin exec tools by shelling mcporter against the MCP server. */
-  describeToolAccess = (): RuntimeToolAccessHint => ({ invocation: 'mcporter-cli' })
+  /** OpenClaw agents reach Bakin exec tools via their native MCP client (verified: Phase-0 spike). */
+  describeToolAccess = (): RuntimeToolAccess => ({ style: 'mcp', mcpServerTemplate: 'bakin-<agent>' })
 
-  capabilities = async (opts?: { agentId?: string }): Promise<RuntimeCapabilities> => {
+  /**
+   * Presence-only credential report (P2.2): provider names from the agent's
+   * auth-profiles.json (legacy) with a CLI fallback for sqlite-era stores —
+   * newer OpenClaw migrated auth profiles into openclaw-agent.sqlite, so an
+   * empty JSON probe on a working install means "ask the CLI", not "no
+   * credentials". Never secrets.
+   */
+  credentialStatus = async (opts?: { agentId?: string }): Promise<RuntimeCredentialStatus> => {
+    let llmCredentials = listLlmCredentials(opts?.agentId)
+    if (llmCredentials.length === 0) {
+      try {
+        llmCredentials = await listLlmCredentialsViaCli((args) => this.exec(args), opts?.agentId)
+      } catch (err) {
+        this.logger.warn('OpenClaw auth-profile CLI probe failed; reporting no LLM providers', {
+          error: String(err),
+        })
+      }
+    }
+    return {
+      llmProviders: llmCredentials.map((entry) => entry.provider),
+      llmCredentials,
+      channels: listConfiguredChannels(),
+    }
+  }
+
+  private async runtimeAgentIds(): Promise<string[]> {
+    return (await this.agents.list()).map((agent) => agent.id).filter(Boolean)
+  }
+
+  /**
+   * Write `mcp.servers[bakin-<agent>]` for every agent (pruning stale Bakin
+   * entries), so OpenClaw's native MCP client can reach Bakin's tools. Reads +
+   * writes the runtime config directly and audits the change set. Idempotent —
+   * skips the write when nothing changed. Needs `bakinMcpBaseUrl` from init;
+   * warns and no-ops if absent (can't build URLs). The `execTools` provider is
+   * unused: OpenClaw reaches the live registry over MCP, not by value.
+   */
+  provisionToolAccess = async (): Promise<void> => {
+    const baseUrl = this.bakinMcpBaseUrl
+    if (!baseUrl) {
+      this.logger.warn('OpenClaw provisionToolAccess skipped — no Bakin MCP base URL provided at init')
+      return
+    }
+    const agents = await this.runtimeAgentIds()
+    const config = readOpenClawConfigForMutation() as BakinMcpConfig
+    const changes = applyBakinMcpEntries(config, agents, baseUrl)
+    if (changes.length === 0) return
+    writeOpenClawConfig(config as Record<string, unknown>)
+    resetOpenClawConfigCache()
+    this.logger.info('OpenClaw MCP config provisioned', { changes })
+    this.audit('provision-tool-access', { changes })
+  }
+
+  /** Remove Bakin's `bakin-*` MCP server entries (runtime switch-away). */
+  deprovisionToolAccess = async (): Promise<void> => {
+    const config = readOpenClawConfigForMutation() as BakinMcpConfig
+    const changes = removeBakinMcpEntries(config)
+    if (changes.length === 0) return
+    writeOpenClawConfig(config as Record<string, unknown>)
+    resetOpenClawConfigCache()
+    this.logger.info('OpenClaw MCP config deprovisioned', { changes })
+    this.audit('deprovision-tool-access', { changes })
+  }
+
+  /** Read-only drift report on the per-agent MCP entries (no write). */
+  verifyToolAccess = async (): Promise<ToolAccessProvisioningStatus> => {
+    const baseUrl = this.bakinMcpBaseUrl
+    if (!baseUrl) {
+      return { style: 'mcp', ok: false, issues: ['no Bakin MCP base URL configured'] }
+    }
+    const agents = await this.runtimeAgentIds()
+    const config = (readOpenClawConfig() ?? {}) as BakinMcpConfig
+    const status = verifyBakinMcpEntries(config, agents, baseUrl)
+    const missing = status.agentEntries.filter((entry) => !entry.correct)
+    const issues = [
+      ...(missing.length > 0
+        ? [`${missing.length} Bakin MCP entr${missing.length === 1 ? 'y is' : 'ies are'} missing or outdated`]
+        : []),
+      ...(status.staleEntries.length > 0
+        ? [`${status.staleEntries.length} stale Bakin MCP entr${status.staleEntries.length === 1 ? 'y' : 'ies'}`]
+        : []),
+    ]
+    return {
+      style: 'mcp',
+      ok: issues.length === 0,
+      issues,
+      details: {
+        mcpServers: status.agentEntries.map((entry) => entry.name),
+        staleEntries: status.staleEntries,
+      },
+    }
+  }
+
+  private audit(action: string, data: Record<string, unknown>): void {
+    this.auditEvent?.({ adapter: 'openclaw', action, data })
+  }
+
+  capabilities = async (opts?: { agentId?: string }): Promise<CapabilitySet> => ({
+    toolCalling: { mode: 'native', access: this.describeToolAccess() },
+    delivery: { mode: 'native' },
+    // Structurally native (P4.1): OpenClaw always exposes its own image
+    // inference path (`openclaw infer image`); WHICH providers are
+    // configured is per-provider data on images.providers(), not a mode
+    // downgrade. (Pi, by contrast, computes its mode from codex auth.)
+    imageGen: { mode: 'native' },
+    memory: { mode: 'native' },
+    sessions: { mode: 'native' },
+    workspaceFiles: { mode: 'native' },
+    input: await this.inputModality(opts?.agentId),
+  })
+
+  private inputModality = async (agentId?: string): Promise<RuntimeCapabilities> => {
     const CACHE_MS = 60_000
-    const requested = opts?.agentId?.trim() || ''
+    const requested = agentId?.trim() || ''
     const cached = this.capabilitiesCache.get(requested)
     if (cached && Date.now() - cached.at < CACHE_MS) {
       return cached.value
@@ -1179,34 +1351,6 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     },
   }
 
-  config = {
-    get: async <T = Record<string, unknown>>() => {
-      // Populate agents.list (synthesizing an implicit `main` for minimal
-      // configs) so consumers like the models plugin can rely on it.
-      const config = readOpenClawConfig()
-      if (!config) return {} as T
-      const list = config.agents?.list
-      if (Array.isArray(list) && list.length > 0) return config as T
-      return { ...config, agents: { ...config.agents, list: agentListFrom(config) } } as T
-    },
-    replace: async <T = Record<string, unknown>>(next: T, reason: string): Promise<void> => {
-      if (!reason) throw new Error('config.replace requires a reason')
-      writeOpenClawConfig(next as Record<string, unknown>)
-    },
-    raw: async <T = unknown>(key: string, reason: string): Promise<T> => {
-      if (!key) throw new Error('config.raw requires a key')
-      if (!reason) throw new Error('config.raw requires a reason')
-      const authProfilesMatch = key.match(/^agents\.([^.]+)\.authProfiles$/)
-      if (authProfilesMatch) {
-        const profilePath = getOpenClawPath('agents', authProfilesMatch[1], 'agent', 'auth-profiles.json')
-        if (!existsSync(profilePath)) return null as T
-        return JSON.parse(readFileSync(profilePath, 'utf-8')) as T
-      }
-      const config = readOpenClawConfig()
-      if (!config) return null as T
-      return (key === '*' ? config : readPath(config as Record<string, unknown>, key)) as T
-    },
-  }
 
   private async listCronJobs(): Promise<CronJob[]> {
     const stdout = await this.execCron(['cron', 'list', '--all', '--json', '--timeout', String(OPENCLAW_CRON_TIMEOUT_MS)])
@@ -1647,7 +1791,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
   private async exec(args: string[], opts: { maxBuffer?: number; timeout?: number } = {}): Promise<string> {
     try {
-      const { stdout } = await execFileAsync(this.settings.binaryPath, args, { timeout: 15000, ...opts, env: openClawChildEnv() })
+      const { stdout } = await execFileAsync(this.settings.binaryPath, args, { timeout: 15000, ...opts })
       return stdout
     } catch (err) {
       throw new OpenClawCommandError(args, err)
@@ -1712,16 +1856,6 @@ function findOpenClawBinary(): string | null {
 function resolveOpenClawBinary(requested: string): string {
   if (isExecutable(requested)) return requested
   return findOpenClawBinary() ?? requested
-}
-
-function openClawChildEnv(): NodeJS.ProcessEnv {
-  return {
-    ...process.env,
-    // Agents invoke Bakin tools through mcporter. Image generation routinely
-    // exceeds mcporter's 60s default, so keep the transport aligned with the
-    // adapter's image process budget while respecting explicit operator config.
-    MCPORTER_CALL_TIMEOUT: process.env.MCPORTER_CALL_TIMEOUT || String(BAKIN_MCPORTER_CALL_TIMEOUT_MS),
-  }
 }
 
 function gatewayWebSocketUrl(settings: OpenClawSettings): string {

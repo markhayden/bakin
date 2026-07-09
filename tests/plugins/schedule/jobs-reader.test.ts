@@ -330,6 +330,25 @@ describe('schedule/jobs-reader', () => {
       expect(sidecar.jobs.nativeEntry).toBeDefined()
     })
 
+    it('degrades to Bakin-owned schedules on a runtime WITHOUT native cron (P2.1) — and never sweeps', async () => {
+      writeSidecarFile({
+        version: 1,
+        jobs: {
+          bakinOwned: makeMeta({ jobId: 'bakinOwned', displayName: 'Survivor', schedule: { kind: 'cron', expr: '0 9 * * *' } }),
+          // Dormant native metadata (from a channel/cron-bearing runtime) must
+          // survive the switch and be intact on switch-back.
+          nativeEntry: makeMeta({ jobId: 'nativeEntry', isBakinJob: false }),
+        },
+      })
+
+      const jobs = await readMergedJobs(undefined, defaultOwner)
+      expect(jobs).toHaveLength(1)
+      expect(jobs[0].id).toBe('bakinOwned')
+
+      const sidecar = JSON.parse(readFileSync(sidecarPath, 'utf-8')) as ScheduleSidecar
+      expect(sidecar.jobs.nativeEntry).toBeDefined()
+    })
+
     it('surfaces store-owned Bakin schedules that have no runtime cron', async () => {
       writeSidecarFile({
         version: 1,

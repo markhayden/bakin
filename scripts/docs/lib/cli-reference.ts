@@ -129,7 +129,7 @@ export function displayCliPartToken(token: string, kind: 'argument' | 'option' |
   if (kind !== 'choice') return `${optional ? '[' : ''}${required ? '<' : ''}${token}${required ? '>' : ''}${optional ? ']' : ''}`
   const labels: Record<string, string> = {
     'runtime|search|search-models|llm|channels|plugin-assets|agent-assets|recommended-plugins|all': 'target',
-    'search|search-models|mcporter|plugin-assets|agent-assets|recommended-plugins': 'component',
+    'search|search-models|plugin-assets|agent-assets|recommended-plugins': 'component',
     'list|enable|disable': 'action',
     'list|add|pause|resume|remove|run|runs': 'action',
     'list|restore|empty': 'action',
@@ -171,7 +171,7 @@ export function describeCliPart(token: string, kind: 'argument' | 'option' | 'ch
     'path|github:user/repo[@ref]': 'Local path or pinned GitHub source.',
     'path|github:user/repo[@ref][#subpath]': 'Local path or GitHub source, optionally pinned and scoped to a subpath.',
     'runtime|search|search-models|llm|channels|plugin-assets|agent-assets|recommended-plugins|all': 'Check target.',
-    'search|search-models|mcporter|plugin-assets|agent-assets|recommended-plugins': 'Install target.',
+    'search|search-models|plugin-assets|agent-assets|recommended-plugins': 'Install target.',
     'list|enable|disable': 'Lesson action.',
     'list|add|pause|resume|remove|run|runs': 'Schedule action.',
     'list|restore|empty': 'Trash action.',

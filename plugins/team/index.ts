@@ -14,7 +14,6 @@ import { createLogger } from '../../src/core/logger'
 import { readHeartbeats } from '../../src/lib/content-files'
 import { getContentDir } from '../../packages/core/src/content-dir'
 import { getSettings, resetSettingsCache } from '../../src/core/settings'
-import { syncConfig as syncMcporter } from '../../src/core/mcporter'
 import { sendMessageToAgent } from '../../src/core/agents'
 import { getLiveRun, LedgerUnavailableError } from '../../src/core/execution-ledger'
 import { appendAudit } from '../../src/core/audit'
@@ -62,7 +61,6 @@ import { populateContextRoutes } from './lib/routes/context'
 import { populateOrgTeamRoutes } from './lib/routes/teams'
 
 const log = createLogger('team')
-const BAKIN_PORT = Number(process.env.PORT || 3737)
 
 /** Module-level hook for batch-indexing agents — set during activate() */
 let batchIndexAgents: () => Promise<void> = async () => {}
@@ -592,8 +590,8 @@ const teamPlugin: BakinPlugin = definePlugin({
 
         ctx.activity.audit('agent.created', 'system', { agent: id, name })
         indexAgent(id, { id, name }, params.model as string || '', 'offline')
+        // Tool-access provisioning is adapter-owned (create wires it up).
         resetSettingsCache()
-        try { await syncMcporter(BAKIN_PORT) } catch { /* non-fatal */ }
 
         let runtimeRestarted = false
         try {
@@ -678,8 +676,8 @@ const teamPlugin: BakinPlugin = definePlugin({
 
         ctx.activity.audit('agent.deleted', 'system', { agent: agentId })
         ctx.search.remove(agentId).catch(() => {})
+        // Tool-access provisioning is adapter-owned (remove prunes it).
         resetSettingsCache()
-        try { await syncMcporter(BAKIN_PORT) } catch { /* non-fatal */ }
 
         let runtimeRestarted = false
         try {

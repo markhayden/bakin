@@ -10,7 +10,10 @@ import type { RuntimeCronJobSnapshot, MergedJob, BakinJobMeta } from '../types'
 
 const log = createLogger('schedule:jobs')
 
-type RuntimeCronReader = Pick<AgentRuntimeAdapter['cron'], 'list'>
+// cron is an OPTIONAL runtime capability (P2.1): readers accept undefined and
+// degrade to Bakin-owned schedules only (a runtime without native cron simply
+// contributes zero native jobs).
+type RuntimeCronReader = Pick<NonNullable<AgentRuntimeAdapter['cron']>, 'list'>
 
 /** Normalize a runtime cron job into the schedule plugin's merged-view input. */
 export function runtimeCronToScheduleJob(job: CronJob): RuntimeCronJobSnapshot {
@@ -147,14 +150,15 @@ export function storeJobToSnapshot(meta: BakinJobMeta): RuntimeCronJobSnapshot {
  *  cut over). Bakin records are NEVER auto-deleted here — a read must not mutate
  *  the schedule store; only genuinely-orphaned NON-Bakin sidecar entries (a
  *  native cron deleted out-of-band) are swept. */
-export async function readMergedJobs(cron: RuntimeCronReader, defaultOwner: string): Promise<MergedJob[]> {
-  // Runtime cron jobs are a read-only surfacing; an unreachable runtime
-  // (no openclaw binary on PATH, gateway down) must not take the whole
-  // schedule plugin with it — Bakin-owned schedules keep working regardless.
+export async function readMergedJobs(cron: RuntimeCronReader | undefined, defaultOwner: string): Promise<MergedJob[]> {
+  // Runtime cron jobs are a read-only surfacing; a runtime WITHOUT a native
+  // cron surface (Pi) or an unreachable one (no openclaw binary on PATH,
+  // gateway down) must not take the whole schedule plugin with it —
+  // Bakin-owned schedules keep working regardless.
   let runtimeJobs: ReturnType<typeof runtimeCronToScheduleJob>[] = []
   let runtimeAvailable = true
   try {
-    runtimeJobs = (await cron.list()).map(runtimeCronToScheduleJob)
+    runtimeJobs = cron ? (await cron.list()).map(runtimeCronToScheduleJob) : []
   } catch (err) {
     runtimeAvailable = false
     log.warn('Runtime cron unavailable — surfacing Bakin-owned schedules only', {
@@ -176,7 +180,10 @@ export async function readMergedJobs(cron: RuntimeCronReader, defaultOwner: stri
   // Store-owned Bakin schedules intentionally have no runtime cron and must be
   // kept; they are deleted only through the explicit delete route. NEVER sweep
   // after a failed runtime read — every non-Bakin entry would look orphaned.
-  if (runtimeAvailable) {
+  // Same for an ABSENT cron surface (P2.1): on a cron-less runtime the native
+  // sidecar metadata is dormant, not orphaned — it must survive a runtime
+  // switch and be intact on switch-back.
+  if (cron && runtimeAvailable) {
     let dirty = false
     for (const [jobId, meta] of Object.entries(sidecar.jobs)) {
       if (runtimeIds.has(jobId) || meta.isBakinJob) continue

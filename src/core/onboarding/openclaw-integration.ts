@@ -2,14 +2,9 @@ import { createLogger } from '../logger'
 import { createAppServices, maybeGetAppServices } from '../app-services'
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import { checkBakinRuntimeSkill, syncBakinRuntimeSkill } from '../bakin-skill'
-import { syncOpenClawMcpConfig, verifyOpenClawMcpConfig } from '../openclaw-integration'
 import type { CheckResult, InstallResult, OnboardingComponent } from './types'
 
 const log = createLogger('onboarding:openclaw-integration')
-
-function getPort(): number {
-  return Number(process.env.PORT || 3737)
-}
 
 function projectRoot(): string {
   return process.cwd()
@@ -22,7 +17,6 @@ async function getRuntimeForOnboarding(): Promise<AgentRuntimeAdapter> {
 }
 
 async function check(): Promise<CheckResult> {
-  const port = getPort()
   let runtime: AgentRuntimeAdapter
   try {
     runtime = await getRuntimeForOnboarding()
@@ -35,15 +29,16 @@ async function check(): Promise<CheckResult> {
   }
 
   try {
-    const [skill, mcp] = await Promise.all([
+    // Tool-access provisioning is now adapter-owned; core reads the drift
+    // through the runtime-neutral verifyToolAccess() contract, never the
+    // provider's config shape.
+    const [skill, toolAccess] = await Promise.all([
       checkBakinRuntimeSkill(projectRoot(), runtime),
-      verifyOpenClawMcpConfig(port),
+      runtime.verifyToolAccess(),
     ])
-    const missingMcpEntries = mcp.agentEntries.filter((entry) => !entry.correct)
     const issues = [
       ...(skill.upToDate ? [] : [skill.installed ? 'Bakin runtime skill is outdated' : 'Bakin runtime skill is missing']),
-      ...(missingMcpEntries.length > 0 ? [`${missingMcpEntries.length} Bakin MCP entr${missingMcpEntries.length === 1 ? 'y is' : 'ies are'} missing or outdated in OpenClaw config`] : []),
-      ...(mcp.staleEntries.length > 0 ? [`${mcp.staleEntries.length} stale Bakin MCP entr${mcp.staleEntries.length === 1 ? 'y' : 'ies'} in OpenClaw config`] : []),
+      ...toolAccess.issues,
     ]
 
     if (issues.length === 0) {
@@ -51,7 +46,7 @@ async function check(): Promise<CheckResult> {
         name: 'openclaw-integration',
         status: 'ok',
         message: 'OpenClaw has the Bakin skill and native Bakin MCP entries',
-        details: { port, mcpServers: mcp.agentEntries.map((entry) => entry.name) },
+        details: { ...toolAccess.details },
       }
     }
 
@@ -60,7 +55,7 @@ async function check(): Promise<CheckResult> {
       status: 'broken',
       message: issues.join('; '),
       remediation: 'Run `bakin onboard` to install the Bakin runtime skill and sync OpenClaw MCP server entries.',
-      details: { port, issues },
+      details: { issues },
     }
   } catch (err) {
     return {
@@ -68,29 +63,30 @@ async function check(): Promise<CheckResult> {
       status: 'broken',
       message: `OpenClaw integration check failed: ${err instanceof Error ? err.message : String(err)}`,
       remediation: 'Fix OpenClaw config, then rerun `bakin onboard`.',
-      details: { port },
+      details: {},
     }
   }
 }
 
 async function install(): Promise<InstallResult> {
   const start = Date.now()
-  const port = getPort()
   try {
     const runtime = await getRuntimeForOnboarding()
-    const [skillResult, mcpChanges] = await Promise.all([
+    // Detect drift before provisioning so we can report noop vs. changed.
+    const before = await runtime.verifyToolAccess()
+    const [skillResult] = await Promise.all([
       syncBakinRuntimeSkill(projectRoot(), runtime),
-      syncOpenClawMcpConfig(port),
+      runtime.provisionToolAccess(),
     ])
     const changed = [
       ...(skillResult === 'noop' ? [] : [`Bakin skill ${skillResult}`]),
-      ...mcpChanges,
+      ...(before.ok ? [] : before.issues),
     ]
     const message = changed.length > 0
       ? `OpenClaw integration synced (${changed.length} change${changed.length === 1 ? '' : 's'})`
       : 'OpenClaw integration already up to date.'
 
-    log.info('OpenClaw integration ready', { skillResult, mcpChanges, port })
+    log.info('OpenClaw integration ready', { skillResult, toolAccessDrift: before.issues })
     return {
       name: 'openclaw-integration',
       status: changed.length > 0 ? 'installed' : 'noop',
@@ -116,4 +112,4 @@ export const openClawIntegrationComponent: OnboardingComponent = {
   install,
 }
 
-export const _internals = { getPort, projectRoot }
+export const _internals = { projectRoot }

@@ -77,6 +77,9 @@ import {
 import { ROLE_DEFAULTS } from '../../src/core/team-context-defaults'
 import { extractBlock } from '../../packages/core/src/agent-packages/managed-blocks'
 import { MANAGED_BLOCK_ID } from '../../packages/core/src/agent-packages/composer'
+import { setAppServices } from '../../src/core/app-services-store'
+import { createMockRuntimeAdapter } from '../../packages/core/src/adapters/runtime/testing'
+import type { AppServices } from '@bakin/core/app-services'
 
 const VARS = {
   agentId: 'pixel',
@@ -187,7 +190,9 @@ describe('resolveContextInputs', () => {
     seedContextFiles()
     const inputs = await resolveContextInputs(VARS)
     expect(inputs.role?.id).toBe('subagent')
-    expect(inputs.role?.content).toContain('bakin-pixel.bakin_exec_get_paths')
+    // Transport-neutral (P1.4): tools named bare, no mcporter / per-agent prefix.
+    expect(inputs.role?.content).toContain('bakin_exec_get_paths')
+    expect(inputs.role?.content).not.toContain('mcporter')
     expect(inputs.role?.content).not.toContain('{{agentId}}')
     // Fresh global seed is comment-only → omitted entirely
     expect(inputs.global).toBeUndefined()
@@ -198,7 +203,33 @@ describe('resolveContextInputs', () => {
     const inputs = await resolveContextInputs({ ...VARS, agentId: 'main', agentName: 'Roscoe' })
     expect(inputs.role?.id).toBe('orchestrator')
     expect(inputs.role?.content).toContain('Roscoe as orchestrator')
-    expect(inputs.role?.content).toContain('bakin-main')
+    // Transport-neutral (P1.4): named tools, no mcporter / per-agent server.
+    expect(inputs.role?.content).toContain('bakin_exec_tasks_create')
+    expect(inputs.role?.content).not.toContain('mcporter')
+  })
+
+  it('injects the runtime-specific tool-access section from the active runtime (P1.4)', async () => {
+    seedContextFiles()
+    // mcp runtime → per-agent native-MCP section
+    setAppServices({
+      runtime: createMockRuntimeAdapter({
+        describeToolAccess: () => ({ style: 'mcp' as const, mcpServerTemplate: 'bakin-<agent>' }),
+      }),
+    } as unknown as AppServices)
+    try {
+      const inputs = await resolveContextInputs(VARS)
+      expect(inputs.toolAccess).toContain('## Tool access')
+      expect(inputs.toolAccess).toContain('bakin-pixel')
+    } finally {
+      setAppServices(undefined as unknown as AppServices)
+    }
+  })
+
+  it('omits the tool-access section when no runtime is active', async () => {
+    seedContextFiles()
+    setAppServices(undefined as unknown as AppServices)
+    const inputs = await resolveContextInputs(VARS)
+    expect(inputs.toolAccess).toBeUndefined()
   })
 
   it('includes user global content once written', async () => {

@@ -314,7 +314,7 @@ All three live at `plugins/team/lib/health-checks.ts`. Migrated out of `src/core
 ## Common Pitfalls
 
 - **Don't add settings.agents back.** The field was deleted for a reason — having two sources of truth caused the original "duplicate main-operator + main" bug on production.
-- **Don't cache runtime config in a new spot.** Use typed runtime adapter surfaces first; any unavoidable raw read must go through `src/core/runtime-config-raw.ts`.
+- **Don't reach for runtime config.** The contract has no config surface (runtime-capabilities P2.5) — use the typed adapter methods (`agents.*`, `models.routingPolicy`, `credentialStatus`); a new provider-data need means a new typed method, never a config escape hatch.
 - **Don't write provider config for agent add/delete.** Use the runtime adapter. Provider-specific mutation belongs in `packages/adapter-openclaw/`.
 - **Don't write provider config from validation code.** Integrity problems are the user's job to fix — surface them via the doctor, don't auto-heal.
 - **Don't hard-code the main agent's display name** (e.g. "Main Operator"). It varies per install. Always resolve via `getMainAgentName()` server-side or `useMainAgentId()` + `useAgent(id)` client-side.

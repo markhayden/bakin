@@ -26,7 +26,9 @@ mock.module('../../src/core/audit', () => ({ appendAudit: (...a: unknown[]) => {
 // App-services / task-store / openclaw-home are imported transitively by
 // dispatch at load — stub them so importing dispatch is side-effect-free.
 mock.module('../../src/core/app-services', () => ({ getAppServices: () => ({ runtime: { messaging: { send: async () => ({ id: 'm' }) }, agents: { list: async () => [] } } }) }))
+mock.module('../../src/core/app-services-store', () => ({ getAppServices: () => ({ runtime: { messaging: { send: async () => ({ id: 'm' }) }, agents: { list: async () => [] } } }) }))
 mock.module('@/core/app-services', () => ({ getAppServices: () => ({ runtime: { messaging: { send: async () => ({ id: 'm' }) }, agents: { list: async () => [] } } }) }))
+mock.module('@/core/app-services-store', () => ({ getAppServices: () => ({ runtime: { messaging: { send: async () => ({ id: 'm' }) }, agents: { list: async () => [] } } }) }))
 mock.module('../../src/core/task-store', () => ({ readTaskboard: () => ({ columns: {} }), addTaskLog: async () => {}, updateTask: async () => {}, moveTask: async () => {}, blockTask: async () => {} }))
 mock.module('@/core/task-store', () => ({ readTaskboard: () => ({ columns: {} }), addTaskLog: async () => {}, updateTask: async () => {}, moveTask: async () => {}, blockTask: async () => {} }))
 mock.module('@bakin/adapter-openclaw/home', () => ({ getOpenClawHome: () => dir, getOpenClawPath: (s: string) => join(dir, s) }))

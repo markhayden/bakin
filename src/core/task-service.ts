@@ -13,7 +13,7 @@ import { createLogger } from './logger'
 import { recordUsage } from './usage'
 // indexCompletedTask removed — tasks plugin now handles indexing via ctx.search
 import { checkAndContinueDependents } from './continuation'
-import { getAppServices } from './app-services'
+import { getAppServices } from './app-services-store'
 import { meterAgentTurn } from './agent-cost'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import type { TaskSource } from '@bakin/core/tasks/store'

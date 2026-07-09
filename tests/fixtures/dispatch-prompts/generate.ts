@@ -30,7 +30,7 @@ const out = (name: string, content: string) => {
   console.log(`${name}.txt ${content.length} bytes`)
 }
 
-out('specialist-plain', buildDispatchMessage(SPECIALIST_PLAIN.task, SPECIALIST_PLAIN.agentName, FIXTURE_CONTENT_DIR))
+out('specialist-plain', buildDispatchMessage(SPECIALIST_PLAIN.task, SPECIALIST_PLAIN.agentName, FIXTURE_CONTENT_DIR, 'main'))
 out(
   'specialist-full',
   buildDispatchMessage(
@@ -49,7 +49,7 @@ out(
   'triage',
   buildDispatchMessage(TRIAGE.task, TRIAGE.agentName, FIXTURE_CONTENT_DIR, 'main', '', {}, undefined, [...TRIAGE.roster]),
 )
-out('main-agent', buildDispatchMessage(MAIN_AGENT.task, MAIN_AGENT.agentName, FIXTURE_CONTENT_DIR))
+out('main-agent', buildDispatchMessage(MAIN_AGENT.task, MAIN_AGENT.agentName, FIXTURE_CONTENT_DIR, 'main'))
 out(
   'workflow-full',
   buildWorkflowDispatchMessage(

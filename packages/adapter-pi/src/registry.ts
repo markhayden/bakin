@@ -30,7 +30,13 @@ const AgentRecordSchema = z.object({
   model: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
-  /** Exec-tool allowlist (empty/absent = all tools). Recorded state, applied at session build. */
+  /**
+   * Subagent dispatch allowlist — agent ids this agent may target
+   * (contract: `agents.updateAllowlist`; OpenClaw parity is
+   * `subagents.allowAgents`). Recorded state surfaced on the RuntimeAgent.
+   * NEVER a tool filter — applying it to the exec-tool bridge once stripped
+   * every bakin_exec_* tool from main after an agent-package install.
+   */
   allowlist: z.array(z.string()).optional(),
   /** Permission grant/deny record (updatePermissions patches land here). */
   permissions: z.object({ allow: z.array(z.string()), deny: z.array(z.string()) }).optional(),

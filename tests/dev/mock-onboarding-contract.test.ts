@@ -84,9 +84,11 @@ describe('imitation-crab onboarding contract', () => {
     const { env } = await openHarness()
     writeFileSync(join(env.home, 'agents', 'main', 'agent', 'auth-profiles.json'), 'not-json {{{', 'utf-8')
 
+    // P2.2: a malformed file reads as zero usable providers via
+    // credentialStatus — same warn contract, provider-absence message.
     const result = await llmComponent.check()
     expect(result.status).toBe('warn')
-    expect(result.message).toContain('Could not parse')
+    expect(result.message).toContain('No LLM provider')
   })
 
   it('warns when the seeded channel config is removed', async () => {
@@ -97,6 +99,6 @@ describe('imitation-crab onboarding contract', () => {
 
     const result = await channelsComponent.check()
     expect(result.status).toBe('warn')
-    expect(result.message).toContain('channels config is missing')
+    expect(result.message).toContain('No messaging channel')
   })
 })

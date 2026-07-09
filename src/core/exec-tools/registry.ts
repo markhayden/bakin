@@ -14,7 +14,7 @@ import { appendAudit } from '../audit'
 import { MarkdownStorageAdapter } from '../../lib/storage/markdown-adapter'
 import { ScopedPluginStorageAdapter } from '@bakin/core/storage/scoped-plugin-storage'
 import { BakinEventBus } from '../../lib/events/event-bus'
-import { getAppServices } from '../app-services'
+import { getAppServices } from '../app-services-store'
 import { buildSearchAPI } from '../search-registry'
 import {
   createPluginAssetsAPI,

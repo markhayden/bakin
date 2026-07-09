@@ -59,25 +59,58 @@ afterAll(() => {
 })
 
 describe('config surface', () => {
-  test('get/replace round-trip settings.json', async () => {
-    await adapter.config.replace({ theme: 'dark', defaultProvider: 'openai-codex' }, 'test')
-    const cfg = await adapter.config.get<Record<string, unknown>>()
-    expect(cfg.theme).toBe('dark')
+  test('the contract config surface is GONE (P2.5) — adapter-internal reads only', () => {
+    expect((adapter as unknown as Record<string, unknown>).config).toBeUndefined()
   })
 
-  test('raw synthesizes onboarding keys: authProfiles presence-only, channels empty', async () => {
-    const profiles = await adapter.config.raw<Record<string, { configured: boolean; key?: string }>>('agents.main.authProfiles', 'onboarding.llm.check')
-    expect(profiles['openai-codex']?.configured).toBe(true)
-    // NEVER credential material:
-    expect(JSON.stringify(profiles)).not.toContain('sk-test-not-real')
+  test('credentialStatus reports provider names only — never secrets, no channels (P2.2)', async () => {
+    const status = await adapter.credentialStatus()
+    expect(status.llmProviders).toContain('openai-codex')
+    expect(status.channels).toEqual([])
+    expect(JSON.stringify(status)).not.toContain('sk-test-not-real')
+  })
+})
 
-    const channels = await adapter.config.raw<Record<string, unknown>>('channels', 'onboarding.channels.check')
-    expect(channels).toEqual({})
+describe('routing policy (P2.3)', () => {
+  test('declares defaultModel-only support', () => {
+    expect(adapter.models.routingSupport()).toEqual({
+      defaultModel: true,
+      fallbackModels: false,
+      defaultSubagentModel: false,
+      aliases: false,
+      perAgentSubagentModel: false,
+    })
+  })
 
-    const whole = await adapter.config.raw<Record<string, unknown>>('*', 'onboarding.runtime.integrity')
-    expect(whole.theme).toBe('dark')
+  test('defaultModel round-trips through settings.json; unsupported fields stay empty', async () => {
+    await adapter.models.setRoutingPolicy({ defaultModel: 'openai-codex/gpt-test-text' }, 'test')
+    expect(await adapter.models.routingPolicy()).toEqual({
+      defaultModel: 'openai-codex/gpt-test-text',
+      fallbackModels: [],
+      defaultSubagentModel: null,
+      aliases: {},
+    })
+  })
 
-    expect(await adapter.config.raw<string>('defaultProvider', 'onboarding.runtime.integrity')).toBe('openai-codex')
+  test('rejects a patch carrying an unsupported field — never silently stored', async () => {
+    await expect(
+      adapter.models.setRoutingPolicy({ aliases: { fast: 'x/y' } }, 'test'),
+    ).rejects.toThrow('not supported by the pi runtime')
+    await expect(
+      adapter.models.setRoutingPolicy({ fallbackModels: ['x/y'] }, 'test'),
+    ).rejects.toThrow('not supported by the pi runtime')
+  })
+
+  test('agents.update: model null clears; subagentModel is rejected', async () => {
+    await adapter.agents.update('main', { model: 'openai-codex/gpt-test-text' })
+    expect((await adapter.agents.get('main'))?.model).toBe('openai-codex/gpt-test-text')
+
+    await adapter.agents.update('main', { model: null })
+    expect((await adapter.agents.get('main'))?.model).toBeUndefined()
+
+    await expect(
+      adapter.agents.update('main', { subagentModel: 'x/y' }),
+    ).rejects.toThrow('not supported by the pi runtime')
   })
 })
 
@@ -104,6 +137,31 @@ describe('skills surface', () => {
     await expect(adapter.skills.write({ name: '../evil', instructions: 'x' })).rejects.toThrow('invalid skill name')
     await expect(adapter.skills.write({ name: 'ok', instructions: 'x', files: { '../escape.md': 'x' } })).rejects.toThrow('invalid skill file name')
   })
+
+  // Dropping these sidecars on write meant plugin-asset installs on Pi could
+  // never read back as installed ("5 missing" → install → "5 drifted", live
+  // P5.3) and user edits could never lock a projection.
+  test('installedBy marker round-trips through write→get; userEdited sentinel surfaces', async () => {
+    const marker = { pluginId: 'images', sha256: 'abc123' }
+    await adapter.skills.write({ name: 'marked', instructions: '# M', metadata: { installedBy: marker } })
+
+    const readBack = await adapter.skills.get('marked')
+    expect(readBack?.metadata?.installedBy).toEqual(marker)
+    expect(readBack?.metadata?.userEdited).toBe(false)
+    // Sidecars are metadata, never content files.
+    expect(readBack?.files?.['.installedBy']).toBeUndefined()
+
+    const { writeFileSync: writeFs } = await import('fs')
+    const { join: joinPath } = await import('path')
+    writeFs(joinPath(readBack!.path!, '.userEdited'), '')
+    expect((await adapter.skills.get('marked'))?.metadata?.userEdited).toBe(true)
+
+    // Re-writing without a marker clears it (OpenClaw parity).
+    await adapter.skills.write({ name: 'marked', instructions: '# M2' })
+    expect((await adapter.skills.get('marked'))?.metadata?.installedBy).toBeUndefined()
+
+    await adapter.skills.remove('marked')
+  })
 })
 
 describe('models + capabilities', () => {
@@ -119,15 +177,15 @@ describe('models + capabilities', () => {
 
   test('capabilities follow the agent model; unknown agent all-false', async () => {
     await adapter.agents.update('main', { model: 'openai-codex/gpt-test-vision' })
-    expect(await adapter.capabilities!({ agentId: 'main' })).toEqual({ imageInput: true, audioInput: false })
+    expect((await adapter.capabilities!({ agentId: 'main' })).input).toEqual({ imageInput: true, audioInput: false })
 
     await adapter.agents.update('main', { model: 'openai-codex/gpt-test-text' })
-    expect(await adapter.capabilities!({ agentId: 'main' })).toEqual({ imageInput: false, audioInput: false })
+    expect((await adapter.capabilities!({ agentId: 'main' })).input).toEqual({ imageInput: false, audioInput: false })
 
-    expect(await adapter.capabilities!({ agentId: 'ghost' })).toEqual({ imageInput: false, audioInput: false })
+    expect((await adapter.capabilities!({ agentId: 'ghost' })).input).toEqual({ imageInput: false, audioInput: false })
   })
 
-  test('describeToolAccess declares native invocation', () => {
-    expect(adapter.describeToolAccess!()).toEqual({ invocation: 'native' })
+  test('describeToolAccess declares in-process invocation', () => {
+    expect(adapter.describeToolAccess!()).toEqual({ style: 'in-process' })
   })
 })

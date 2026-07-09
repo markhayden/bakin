@@ -5,7 +5,7 @@
  * and skills methods own the exec/validation and import these; reads/writes go
  * through the config + home + cron-store siblings, so no cycle back to runtime.
  */
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'fs'
 import { join, resolve, sep } from 'path'
 import type { RuntimeAgent } from '@bakin/core/adapters/runtime'
 import {
@@ -22,7 +22,12 @@ import { readCronStore, writeCronStore } from './cron-store'
 
 export function writeOpenClawConfig(config: Record<string, unknown>): void {
   mkdirSync(getOpenClawHome(), { recursive: true })
-  writeFileSync(getOpenClawPath('openclaw.json'), JSON.stringify(config, null, 2), 'utf-8')
+  // tmp + rename: a torn openclaw.json is what makes the next boot's
+  // read-modify-write see "corrupt" — never leave a half-written file.
+  const target = getOpenClawPath('openclaw.json')
+  const tmp = `${target}.tmp-${process.pid}`
+  writeFileSync(tmp, JSON.stringify(config, null, 2), 'utf-8')
+  renameSync(tmp, target)
   resetOpenClawConfigCache()
 }
 
@@ -161,6 +166,7 @@ export function agentToRuntime(agent: NonNullable<ReturnType<typeof findAgentByI
     name: agent.identity?.name ?? agent.name ?? agent.id,
     role: resolveRole(agent.id),
     model: agentModelPrimary(agent.model),
+    ...(agent.subagents?.model ? { subagentModel: agent.subagents.model } : {}),
     status: 'active',
     metadata: {
       emoji: agent.identity?.emoji ?? '',

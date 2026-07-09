@@ -17,35 +17,30 @@ const testDir = join(tmpdir(), 'bakin-test-models-routes')
 // when plugin modules call getContentDir at init.
 process.env.BAKIN_HOME = testDir
 
-const mockRuntimeConfig = {
-  agents: {
-    defaults: {
-      model: { primary: 'anthropic/claude-sonnet-4-6' },
-      models: {
-        haiku: { alias: 'claude-haiku-4-5' },
-        opus: { alias: 'claude-opus-4-6' },
-      },
-      subagents: { model: 'anthropic/claude-haiku-4-5' },
-    },
-    list: [
-      {
-        id: 'main',
-        identity: { name: 'Main Operator', emoji: '🐾' },
-        model: { primary: 'anthropic/claude-opus-4-6' },
-        subagents: { model: 'anthropic/claude-sonnet-4-6' },
-      },
-      {
-        id: 'patch',
-        identity: { name: 'Patch', emoji: '⚙️' },
-      },
-      {
-        id: 'pixel',
-        identity: { name: 'Pixel', emoji: '🖼️' },
-        model: { primary: 'anthropic/claude-sonnet-4-6' },
-      },
-    ],
-  },
+// P2.3: the plugin reads the runtime roster (agents.list) + routing policy
+// (models.routingPolicy) instead of raw runtime config. Mutable state the
+// surface overrides below serve; writeRuntimeConfig() resets it.
+interface TestAgent {
+  id: string
+  name: string
+  model?: string
+  subagentModel?: string
+  status: 'active'
+  metadata?: Record<string, unknown>
 }
+const seedAgents = (): TestAgent[] => [
+  { id: 'main', name: 'Main Operator', model: 'anthropic/claude-opus-4-6', subagentModel: 'anthropic/claude-sonnet-4-6', status: 'active', metadata: { emoji: '🐾' } },
+  { id: 'patch', name: 'Patch', status: 'active', metadata: { emoji: '⚙️' } },
+  { id: 'pixel', name: 'Pixel', model: 'anthropic/claude-sonnet-4-6', status: 'active', metadata: { emoji: '🖼️' } },
+]
+const seedPolicy = () => ({
+  defaultModel: 'anthropic/claude-sonnet-4-6',
+  fallbackModels: [] as string[],
+  defaultSubagentModel: 'anthropic/claude-haiku-4-5' as string | null,
+  aliases: { haiku: 'claude-haiku-4-5', opus: 'claude-opus-4-6' } as Record<string, string>,
+})
+let runtimeAgents = seedAgents()
+let routingPolicy = seedPolicy()
 
 const runtimeModels = [
   { id: 'openai-codex/gpt-5.4', name: 'GPT-5.4', available: true, local: false, tags: ['default', 'configured'] },
@@ -57,19 +52,9 @@ const runtimeModels = [
   { id: 'xai/grok-4', name: 'Grok 4', available: false, local: false, tags: [] },
 ]
 
-let runtimeConfig = cloneConfig(mockRuntimeConfig)
-
 const runtimeMocks = {
   listAvailable: mock(async () => runtimeModels),
-  replace: mock(async (next: typeof mockRuntimeConfig, reason: string) => {
-    if (!reason) throw new Error('replace reason required')
-    runtimeConfig = cloneConfig(next)
-  }),
   restart: mock(async () => {}),
-}
-
-function cloneConfig<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T
 }
 
 // ---------------------------------------------------------------------------
@@ -159,8 +144,11 @@ const modelsPlugin = (await import('../../../plugins/models')).default as typeof
 
 let activated: ActivatedPlugin
 
-function writeRuntimeConfig(config = mockRuntimeConfig) {
-  runtimeConfig = cloneConfig(config)
+/** Reset runtime-side state (roster + routing policy) to the seed. */
+function writeRuntimeConfig(overrides: { aliases?: Record<string, string> } = {}) {
+  runtimeAgents = seedAgents()
+  routingPolicy = seedPolicy()
+  if (overrides.aliases !== undefined) routingPolicy.aliases = overrides.aliases
 }
 
 beforeAll(async () => {
@@ -171,10 +159,35 @@ beforeAll(async () => {
   mkdirSync(join(testDir, '.bakin', 'plugin-settings'), { recursive: true })
 
   activated = await activatePlugin(modelsPlugin, testDir)
-  activated.ctx.runtime.config.get = (async <T = Record<string, unknown>>() => cloneConfig(runtimeConfig) as T) as typeof activated.ctx.runtime.config.get
-  activated.ctx.runtime.config.replace = runtimeMocks.replace as typeof activated.ctx.runtime.config.replace
   activated.ctx.runtime.models.listAvailable = runtimeMocks.listAvailable as typeof activated.ctx.runtime.models.listAvailable
   activated.ctx.runtime.restart = runtimeMocks.restart
+  // P2.3 surfaces: roster + routing policy served from the mutable test state.
+  activated.ctx.runtime.agents.list = async () => runtimeAgents.map((a) => ({ ...a }))
+  activated.ctx.runtime.agents.update = async (agentId, input) => {
+    const agent = runtimeAgents.find((a) => a.id === agentId)
+    if (!agent) throw new Error(`Agent not found: ${agentId}`)
+    if (input.model !== undefined) {
+      if (input.model === null) delete agent.model
+      else agent.model = input.model
+    }
+    if (input.subagentModel !== undefined) {
+      if (input.subagentModel === null) delete agent.subagentModel
+      else agent.subagentModel = input.subagentModel
+    }
+    return { ...agent }
+  }
+  activated.ctx.runtime.models.routingPolicy = async () => ({ ...routingPolicy, fallbackModels: [...routingPolicy.fallbackModels], aliases: { ...routingPolicy.aliases } })
+  activated.ctx.runtime.models.setRoutingPolicy = async (patch, reason) => {
+    if (!reason) throw new Error('setRoutingPolicy reason required')
+    Object.assign(routingPolicy, patch)
+  }
+  activated.ctx.runtime.models.routingSupport = () => ({
+    defaultModel: true,
+    fallbackModels: true,
+    defaultSubagentModel: true,
+    aliases: true,
+    perAgentSubagentModel: true,
+  })
 })
 
 afterAll(() => {
@@ -290,14 +303,18 @@ describe('Models Plugin Activation', () => {
       // Image generation bills via provider credentials, not the agent's
       // chat auth — a Codex-OAuth agent generating on a metered image key
       // must still book real dollars against the caps.
-      const originalRaw = activated.ctx.runtime.config.raw
-      activated.ctx.runtime.config.raw = (async () => [{ provider: 'black-forest-labs', access: 'oauth-a', refresh: 'oauth-r' }]) as typeof activated.ctx.runtime.config.raw
+      const originalStatus = activated.ctx.runtime.credentialStatus
+      activated.ctx.runtime.credentialStatus = (async () => ({
+        llmProviders: ['black-forest-labs'],
+        llmCredentials: [{ provider: 'black-forest-labs', kind: 'oauth' as const }],
+        channels: [],
+      })) as typeof activated.ctx.runtime.credentialStatus
       try {
         const r = await priceImageHandler()({ agentId: 'main', model: 'black-forest-labs/flux-pro', count: 2 })
         expect(r.lane).toBe('metered')
         expect(r.costUsdMicros).toBe(110_000)
       } finally {
-        activated.ctx.runtime.config.raw = originalRaw
+        activated.ctx.runtime.credentialStatus = originalStatus
       }
     })
   })
@@ -629,10 +646,8 @@ describe('POST /aliases', () => {
   })
 
   it('prepopulates default aliases', async () => {
-    // Start with empty models
-    const emptyConfig = JSON.parse(JSON.stringify(mockRuntimeConfig))
-    emptyConfig.agents.defaults.models = {}
-    writeRuntimeConfig(emptyConfig)
+    // Start with an empty alias map
+    writeRuntimeConfig({ aliases: {} })
 
     const route = findRoute(activated.routes, 'POST', '/aliases')!
     const { body: data } = await callRoute(route, activated.ctx, {
@@ -731,9 +746,9 @@ describe('budget status + incidents routes (cost-control v2)', () => {
     // Found live at checkpoint E: resolveAgents threw (no runtime installed)
     // and the status poll 500'd — killing task badges + the pause banner.
     const originalGetSettings = activated.ctx.getSettings
-    const originalConfigGet = activated.ctx.runtime.config.get
+    const originalList = activated.ctx.runtime.agents.list
     activated.ctx.getSettings = (() => ({ budget: { rules: [{ scope: 'global', lane: 'metered', dailyCap: 10 }] } })) as typeof activated.ctx.getSettings
-    activated.ctx.runtime.config.get = (async () => { throw new Error('runtime down') }) as typeof activated.ctx.runtime.config.get
+    activated.ctx.runtime.agents.list = (async () => { throw new Error('runtime down') }) as typeof activated.ctx.runtime.agents.list
     try {
       const route = findRoute(activated.routes, 'GET', '/budget/status')!
       const { status, body } = await callRoute(route, activated.ctx)
@@ -742,7 +757,7 @@ describe('budget status + incidents routes (cost-control v2)', () => {
       expect(body.perAgent).toEqual({})
     } finally {
       activated.ctx.getSettings = originalGetSettings
-      activated.ctx.runtime.config.get = originalConfigGet
+      activated.ctx.runtime.agents.list = originalList
     }
   })
 

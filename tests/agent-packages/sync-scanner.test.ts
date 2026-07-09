@@ -285,6 +285,24 @@ describe('scanAgentSync — block staleness attribution', () => {
     const finding = report.findings.find((f) => f.type === 'block-stale' && f.file === 'SOUL.md')
     expect(finding?.staleInputs).toEqual(['in-place-edit'])
   })
+
+  it('attributes a runtime tool-access style change to the tool-access input (P1.6)', async () => {
+    const setStyle = (style: unknown) => {
+      ;((globalThis as TestGlobal).__bakinAppServices as { runtime: { describeToolAccess: () => unknown } })
+        .runtime.describeToolAccess = () => style
+    }
+    // Seed a synced state whose AGENTS.md carries the mcp (per-agent server) section…
+    setStyle({ style: 'mcp', mcpServerTemplate: 'bakin-<agent>' })
+    await seedSyncedState()
+    // …then the active runtime switches to in-process — the tool-access section
+    // (and only it) changes, so the block is stale and attributed to tool-access.
+    setStyle({ style: 'in-process' })
+    const report = await scanAgentSync()
+    const finding = report.findings.find(
+      (f) => f.type === 'block-stale' && f.agentId === 'pixel' && f.file === 'AGENTS.md',
+    )
+    expect(finding?.staleInputs).toEqual(['tool-access'])
+  })
 })
 
 describe('scanAgentSync — structural block findings', () => {

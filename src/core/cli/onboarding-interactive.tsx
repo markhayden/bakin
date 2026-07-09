@@ -22,7 +22,6 @@ import { recommendedPluginsComponent } from "../onboarding/recommended-plugins";
 import { runtimeComponent } from "../onboarding/runtime";
 import { searchComponent } from "../onboarding/search";
 import { searchModelsComponent } from "../onboarding/search-models";
-import { mcporterComponent } from "../onboarding/mcporter";
 import type { CheckResult, OnboardingOptions } from "../onboarding/types";
 
 interface CatalogChoice {
@@ -199,13 +198,11 @@ export async function collectOnboardingSelections(
 
   const searchCheck = await searchComponent.check();
   const searchModelsCheck = await searchModelsComponent.check();
-  const mcporterCheck = await mcporterComponent.check();
   const pluginCheck = await recommendedPluginsComponent.check();
   const agentCheck = await recommendedAgentsComponent.check();
   const hasWizardSteps = [
     searchCheck,
     searchModelsCheck,
-    mcporterCheck,
     pluginCheck,
     agentCheck,
   ].some((check) => check.status === "missing" || check.status === "broken");
@@ -240,15 +237,6 @@ export async function collectOnboardingSelections(
     if (approved) approvedComponents.push("search-models");
   }
 
-  if (mcporterCheck.status === "missing" || mcporterCheck.status === "broken") {
-    const approved = await promptConfirm(
-      "MCP porter",
-      `${mcporterCheck.message}. Bakin will install and configure mcporter if you continue.`,
-      "confirm",
-      { showBrand: false },
-    );
-    if (approved) approvedComponents.push("mcporter");
-  }
 
   const selectedRecommendedPluginIds =
     pluginCheck.status === "missing"

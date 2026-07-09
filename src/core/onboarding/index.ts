@@ -3,7 +3,7 @@
  *
  * runOnboard() walks every component in a fixed dependency order:
  *
- *   mkdir -> settings -> runtime -> search -> search-models -> mcporter -> openclaw-integration -> plugin-assets -> agent-assets -> llm -> channels -> recommended-plugins -> recommended-agents
+ *   mkdir -> settings -> runtime -> search -> search-models -> openclaw-integration -> plugin-assets -> agent-assets -> llm -> channels -> recommended-plugins -> recommended-agents
  *
  * For each component:
  *   1. Call `check()`. If it reports `ok` or `warn`, record and move on.
@@ -46,7 +46,6 @@ import { settingsComponent } from './settings'
 import { runtimeComponent } from './runtime'
 import { searchComponent } from './search'
 import { searchModelsComponent } from './search-models'
-import { mcporterComponent } from './mcporter'
 import { openClawIntegrationComponent } from './openclaw-integration'
 import { pluginAssetsComponent } from './plugin-assets'
 import { agentSyncComponent } from './agent-sync'
@@ -89,7 +88,6 @@ export const COMPONENT_ORDER: readonly OnboardingComponent[] = [
   runtimeComponent,
   searchComponent,
   searchModelsComponent,
-  mcporterComponent,
   openClawIntegrationComponent,
   pluginAssetsComponent,
   agentSyncComponent,
@@ -387,7 +385,7 @@ export async function runOnboard(opts: OnboardingOptions): Promise<RunOnboardRes
     const component = COMPONENT_ORDER[i]
 
     // Adapter applicability: never check/install components that don't
-    // apply to the configured runtime (e.g. mcporter on Pi).
+    // apply to the configured runtime (e.g. openclaw-integration on Pi).
     if (!componentApplies(component)) {
       const skip: ComponentOutcome = {
         name: component.name,

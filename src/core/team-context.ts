@@ -34,6 +34,9 @@ import { getContentDir } from './content-dir'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { createLogger } from './logger'
 import { ROLE_DEFAULTS } from './team-context-defaults'
+import { renderToolAccessInstructions } from './tool-access'
+// Leaf accessor (P1.0) — safe from team-context without an import cycle.
+import { maybeGetAppServices } from './app-services-store'
 
 const log = createLogger('team-context')
 
@@ -193,15 +196,26 @@ export async function resolveTeamMembership(agentId: string): Promise<string | n
  */
 export async function resolveContextInputs(
   vars: ContextAgentVars,
-): Promise<Pick<ComposeInputs, 'global' | 'role' | 'team'>> {
+): Promise<Pick<ComposeInputs, 'global' | 'role' | 'toolAccess' | 'team'>> {
   const role: AgentRole = vars.agentId === vars.mainAgentId ? 'orchestrator' : 'subagent'
-  const inputs: Pick<ComposeInputs, 'global' | 'role' | 'team'> = {}
+  const inputs: Pick<ComposeInputs, 'global' | 'role' | 'toolAccess' | 'team'> = {}
 
   const global = readContextFile(getGlobalContextPath())
   if (global) inputs.global = substituteTokens(global, vars)
 
   const roleContent = readContextFile(getRoleContextPath(role))
   if (roleContent) inputs.role = { id: role, content: substituteTokens(roleContent, vars) }
+
+  // Runtime-specific tool-access section (P1.4) — rendered from the ACTIVE
+  // runtime's static tool-access style. `describeToolAccess()` is a pure
+  // literal (no I/O), so this is a cheap in-memory call. Omitted when app
+  // services aren't up yet — composition stays consistent within a run.
+  const runtime = maybeGetAppServices()?.runtime
+  const access = runtime?.describeToolAccess?.()
+  if (access) {
+    const rendered = renderToolAccessInstructions(access, { agentId: vars.agentId })
+    if (rendered.trim()) inputs.toolAccess = rendered
+  }
 
   const teamId = await resolveTeamMembership(vars.agentId)
   if (teamId) {

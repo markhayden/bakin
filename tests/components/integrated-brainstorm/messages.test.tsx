@@ -168,14 +168,14 @@ describe('IntegratedBrainstorm — message list rendering', () => {
         id: 'act1',
         role: 'activity',
         kind: 'tool_call',
-        content: "exec: mcporter call --help | sed -n '1,120p'",
+        content: "exec: gh issue list | sed -n '1,120p'",
         data: {
           phase: 'call',
           callId: 'call-1',
           toolName: 'exec',
           status: 'running',
-          summary: 'Checking Bakin tool call syntax',
-          inputPreview: '{"command":"mcporter call --help | sed -n \'1,120p\'"}',
+          summary: 'Checking GitHub issues',
+          inputPreview: '{"command":"gh issue list | sed -n \'1,120p\'"}',
         },
       },
     ]
@@ -183,8 +183,8 @@ describe('IntegratedBrainstorm — message list rendering', () => {
     const activity = container.querySelector('[data-testid="activity-bubble"]')
     const summary = container.querySelector('[data-testid="tool-activity-summary"]')
     expect(activity).toBeTruthy()
-    expect(summary?.textContent).toBe('Checking Bakin tool call syntax')
-    expect(summary?.textContent).not.toContain('mcporter call --help')
+    expect(summary?.textContent).toBe('Checking GitHub issues')
+    expect(summary?.textContent).not.toContain('gh issue list')
     expect(activity!.textContent).toContain('Input')
   })
 

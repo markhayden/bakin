@@ -115,6 +115,10 @@ const routes = [
     responses: { 200: okResponse },
     handler: async (_req, ctx) => Response.json({
       ok: true,
+      // The runtime's capability descriptor (P4.1) — how generation is served
+      // on this runtime: native / shimmed / unavailable. Per-provider detail
+      // below refines it; this is the top-level truth UIs and agents gate on.
+      imageGen: (await ctx.runtime.capabilities()).imageGen,
       providers: listImageProviders(),
       readiness: await providerReadiness(ctx as PluginContext),
     }),
@@ -123,6 +127,9 @@ const routes = [
 
 async function checkImages(ctx: PluginContext): Promise<HealthCheckResult[]> {
   const rows: HealthCheckResult[] = []
+  // Readiness derives from the runtime's capability descriptor (P4.1);
+  // per-provider readiness refines the message, never overrides the mode.
+  const imageGen = (await ctx.runtime.capabilities()).imageGen
   const readiness = await providerReadiness(ctx)
   const readyProviders = readiness.filter(provider => provider.routable)
 
@@ -144,10 +151,12 @@ async function checkImages(ctx: PluginContext): Promise<HealthCheckResult[]> {
 
   rows.push({
     check: 'images.providers',
-    status: readyProviders.length > 0 ? 'ok' : 'warn',
-    message: readyProviders.length > 0
-      ? `${readyProviders.map(provider => provider.label).join(', ')} configured for image generation.`
-      : 'No image provider route found. Configure OpenClaw image auth or set OPENAI_API_KEY, GEMINI_API_KEY, or GOOGLE_AI_API_KEY.',
+    status: imageGen.mode !== 'unavailable' && readyProviders.length > 0 ? 'ok' : 'warn',
+    message: imageGen.mode === 'unavailable'
+      ? 'Image generation is unavailable on this runtime — no native image path is authenticated and no Bakin provider key is configured (set OPENAI_API_KEY, GEMINI_API_KEY, or GOOGLE_AI_API_KEY, or log the runtime into its image provider).'
+      : readyProviders.length > 0
+        ? `Image generation is ${imageGen.mode} on this runtime: ${readyProviders.map(provider => provider.label).join(', ')} configured.`
+        : `Runtime reports image generation as ${imageGen.mode}, but no provider route resolved — check provider configuration.`,
     autoFixable: false,
   })
 

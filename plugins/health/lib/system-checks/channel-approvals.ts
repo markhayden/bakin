@@ -12,6 +12,16 @@ import type { HealthCheckResult } from '../../../../packages/core/src/plugin-typ
 export async function checkChannelApprovals(
   runtime: Pick<AgentRuntimeAdapter, 'channels'>
 ): Promise<HealthCheckResult[]> {
+  // Optional capability (P2.1): no channel layer → gates are UI-only by
+  // design, not a degraded state worth warning about.
+  if (!runtime.channels) {
+    return [{
+      check: 'channel-approvals',
+      status: 'ok',
+      message: 'The active runtime has no channel layer — approve/reject workflow gates in the Bakin UI.',
+      autoFixable: false,
+    }]
+  }
   try {
     const channels = await runtime.channels.list()
     const interactive = channels.filter((channel) => hasChannelCapability(channel.capabilities, 'interactive-approval'))

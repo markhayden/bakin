@@ -26,7 +26,7 @@ The rig is OpenClaw-specific dev tooling at the adapter layer, so
 - `modes.ts` — mode → execution plan (native/isolated/sandbox)
 - `lifecycle.ts` — up/reset/down/status; the bootstrap + ordering live here
 - `sandbox.ts` — exec-into-container helpers
-- `mcporter.ts` — write per-agent `bakin-<agent>` MCP config into the agent container
+- `mcporter.ts` — write per-agent `bakin-<agent>` MCP config into the agent container. **STALE (runtime-capabilities post-α addendum):** agents are now instructed to use native MCP entries provisioned by the adapter, which bake `http://localhost:<port>` — container-unreachable. The rig needs re-plumbing onto `BAKIN_MCP_BASE_URL` + adapter provisioning before it can validate OpenClaw tool access again.
 - `device-approve.ts` — generate + pre-approve the gateway device (dispatch)
 
 ## Hard-won knowledge (non-obvious)

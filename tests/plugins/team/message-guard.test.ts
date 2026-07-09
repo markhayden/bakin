@@ -38,10 +38,6 @@ mock.module('@bakin/core/main-agent', () => ({
   tryGetMainAgentId: () => 'main',
   getMainAgentName: () => 'Main',
 }))
-mock.module('../../../src/core/mcporter', () => ({
-  syncConfig: mock(() => []),
-}))
-
 // In-memory ledger fake — tests control which task has a live run, and can
 // simulate ledger unavailability (the guard must fail CLOSED).
 class FakeLedgerUnavailableError extends Error {}

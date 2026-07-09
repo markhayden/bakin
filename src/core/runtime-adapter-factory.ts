@@ -37,3 +37,8 @@ export function getRuntimeAdapterSupport(name: RuntimeAdapterName): RuntimeAdapt
 }
 
 export const DEFAULT_RUNTIME_ADAPTER_SUPPORT = RUNTIME_ADAPTER_SUPPORT.openclaw
+
+/** The one registry of adapter names — consumers derive, never duplicate. */
+export function getSupportedRuntimeAdapterNames(): RuntimeAdapterName[] {
+  return Object.keys(RUNTIME_ADAPTER_SUPPORT) as RuntimeAdapterName[]
+}

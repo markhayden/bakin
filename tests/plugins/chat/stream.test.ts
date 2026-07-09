@@ -70,6 +70,26 @@ afterAll(() => {
 })
 
 describe('chat stream bridge', () => {
+  test('summary-less result chunks reuse the call summary (live chips and durable rows)', async () => {
+    // OpenClaw trajectory result records carry no summary — without callId
+    // reuse, durable tool rows degrade back to bare tool names (the P5.3
+    // "IT STILL SAYS JUST BASH" bug).
+    const chat = await createChat({ agentId: 'main' })
+    scriptStream(async function* () {
+      yield { type: 'tool', data: { phase: 'call', callId: 'c1', toolName: 'bash', summary: 'curl -s https://example.com' } } as ChatChunk
+      yield { type: 'tool', data: { phase: 'result', callId: 'c1', toolName: 'bash', status: 'completed' } } as ChatChunk
+      yield { type: 'text', content: 'done' } as ChatChunk
+      yield { type: 'done' } as ChatChunk
+    }, [])
+
+    expect(await startChatTurn(activated.ctx, chat.id, 'fetch it')).toBe('accepted')
+    await waitForTurn(chat.id)
+
+    const rows = readTranscript(chat.id)
+    const toolRow = rows.find((r) => r.kind === 'tool')
+    expect(toolRow).toMatchObject({ summary: 'bash: curl -s https://example.com' })
+  })
+
   test('happy path: chunks broadcast in order, durable rows persisted, chat.done emitted', async () => {
     const chat = await createChat({ agentId: 'main' })
     const events: Array<{ event: string; data: Record<string, unknown> }> = []

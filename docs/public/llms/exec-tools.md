@@ -6,13 +6,15 @@ Audience: coding agents and technical authors.
 
 Canonical docs: https://makinbakin.com/docs/
 
-Use MCP tools through `mcporter`:
+Call Bakin exec tools by name with structured JSON arguments. HOW a tool is
+invoked (bare in-process call, native MCP prefix, shell shim) depends on the
+active runtime — each agent's Tool access section carries the exact form.
 
 ```sh
-mcporter call bakin-<agent>.<tool_name> --args '<json>'
+<tool_name> <json arguments>
 ```
 
-Use the exact tool name shown below. Omit `--args` only for tools with no parameters.
+Use the exact tool name shown below. Tools with no parameters take no arguments.
 
 ## Assets
 
@@ -28,7 +30,7 @@ Arguments: none.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_assets_audit
+bakin_exec_assets_audit
 ```
 
 ### bakin_exec_assets_consolidate
@@ -45,13 +47,13 @@ Purpose: Absorb variant assets as versions of a winner asset (select-best flows)
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_assets_consolidate --args '{
+bakin_exec_assets_consolidate {
   "winnerAssetId": "value",
   "loserAssetIds": [
     "value"
   ],
   "taskId": "value"
-}'
+}
 ```
 
 ### bakin_exec_assets_delete
@@ -66,9 +68,9 @@ Purpose: Soft-delete a whole asset (all versions) to trash, restorable until tra
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_assets_delete --args '{
+bakin_exec_assets_delete {
   "assetId": "value"
-}'
+}
 ```
 
 ### bakin_exec_assets_empty_trash
@@ -81,7 +83,7 @@ Arguments: none.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_assets_empty_trash
+bakin_exec_assets_empty_trash
 ```
 
 ### bakin_exec_assets_get
@@ -96,9 +98,9 @@ Purpose: Retrieve an asset manifest (versions, current pointer, exports) by asse
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_assets_get --args '{
+bakin_exec_assets_get {
   "assetId": "value"
-}'
+}
 ```
 
 ### bakin_exec_assets_import
@@ -116,12 +118,12 @@ Purpose: Explicitly import unmanaged files into managed versioned assets. Pass p
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_assets_import --args '{
+bakin_exec_assets_import {
   "path": "value",
   "all": true,
   "type": "value",
   "taskId": "value"
-}'
+}
 ```
 
 ### bakin_exec_assets_link
@@ -137,10 +139,10 @@ Purpose: Link an asset to a different task, or unlink it (set taskId to null).
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_assets_link --args '{
+bakin_exec_assets_link {
   "assetId": "value",
   "taskId": "value"
-}'
+}
 ```
 
 ### bakin_exec_assets_list
@@ -157,13 +159,13 @@ Purpose: List managed assets (one entry per asset, current-version view). Option
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_assets_list --args '{
+bakin_exec_assets_list {
   "type": "value",
   "taskId": "value",
   "tags": [
     "value"
   ]
-}'
+}
 ```
 
 ### bakin_exec_assets_list_trash
@@ -176,7 +178,7 @@ Arguments: none.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_assets_list_trash
+bakin_exec_assets_list_trash
 ```
 
 ### bakin_exec_assets_open
@@ -191,9 +193,9 @@ Purpose: Open an asset by assetId: returns its manifest plus the current version
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_assets_open --args '{
+bakin_exec_assets_open {
   "assetId": "value"
-}'
+}
 ```
 
 ### bakin_exec_assets_permanent_delete
@@ -208,9 +210,9 @@ Purpose: Permanently delete a specific trashed asset. This cannot be undone.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_assets_permanent_delete --args '{
+bakin_exec_assets_permanent_delete {
   "trashName": "value"
-}'
+}
 ```
 
 ### bakin_exec_assets_restore
@@ -225,9 +227,9 @@ Purpose: Restore a trashed asset by its trash name (from bakin_exec_assets_list_
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_assets_restore --args '{
+bakin_exec_assets_restore {
   "trashName": "value"
-}'
+}
 ```
 
 ### bakin_exec_assets_retype
@@ -243,10 +245,10 @@ Purpose: Change an asset type classification.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_assets_retype --args '{
+bakin_exec_assets_retype {
   "assetId": "value",
   "type": "value"
-}'
+}
 ```
 
 ### bakin_exec_assets_save
@@ -267,7 +269,7 @@ Purpose: Save an agent-created file as a managed, versioned asset. Re-saving the
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_assets_save --args '{
+bakin_exec_assets_save {
   "filePath": "value",
   "taskId": "value",
   "type": "value",
@@ -277,7 +279,7 @@ mcporter call bakin-<agent>.bakin_exec_assets_save --args '{
   ],
   "tool": "value",
   "slug": "value"
-}'
+}
 ```
 
 ### bakin_exec_assets_scan_unmanaged
@@ -290,7 +292,7 @@ Arguments: none.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_assets_scan_unmanaged
+bakin_exec_assets_scan_unmanaged
 ```
 
 ## Check
@@ -307,9 +309,9 @@ Purpose: Get a human-readable overview of all gate statuses in a workflow. Shows
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_check_gates --args '{
+bakin_exec_check_gates {
   "taskId": "value"
-}'
+}
 ```
 
 ## Get
@@ -326,7 +328,7 @@ Arguments: none.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_get_paths
+bakin_exec_get_paths
 ```
 
 ### bakin_exec_get_step
@@ -341,9 +343,9 @@ Purpose: Get the current workflow step as human-readable formatted text. Include
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_get_step --args '{
+bakin_exec_get_step {
   "taskId": "value"
-}'
+}
 ```
 
 ## Git
@@ -358,7 +360,7 @@ Arguments: none.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_git_prepare_worktree
+bakin_exec_git_prepare_worktree
 ```
 
 ### bakin_exec_git_release_worktree
@@ -371,7 +373,7 @@ Arguments: none.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_git_release_worktree
+bakin_exec_git_release_worktree
 ```
 
 ### bakin_exec_git_status
@@ -384,7 +386,7 @@ Arguments: none.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_git_status
+bakin_exec_git_status
 ```
 
 ## Health
@@ -403,9 +405,9 @@ Purpose: Run system diagnostics (agent roster, skill sync, runtime, taskboard, a
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_health_doctor --args '{
+bakin_exec_health_doctor {
   "fresh": true
-}'
+}
 ```
 
 ### bakin_exec_health_status
@@ -418,7 +420,7 @@ Arguments: none.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_health_status
+bakin_exec_health_status
 ```
 
 ## Heartbeat
@@ -439,11 +441,11 @@ Purpose: Write a heartbeat signal. Call periodically (every 5-10 minutes) to ind
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_heartbeat --args '{
+bakin_exec_heartbeat {
   "status": "value",
   "currentTask": "value",
   "message": "value"
-}'
+}
 ```
 
 ## Images
@@ -458,7 +460,7 @@ Arguments: none.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_images_edit
+bakin_exec_images_edit
 ```
 
 ### bakin_exec_images_export
@@ -471,7 +473,7 @@ Arguments: none.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_images_export
+bakin_exec_images_export
 ```
 
 ### bakin_exec_images_generate
@@ -484,7 +486,7 @@ Arguments: none.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_images_generate
+bakin_exec_images_generate
 ```
 
 ### bakin_exec_images_import
@@ -497,7 +499,7 @@ Arguments: none.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_images_import
+bakin_exec_images_import
 ```
 
 ### bakin_exec_images_profiles
@@ -510,7 +512,7 @@ Arguments: none.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_images_profiles
+bakin_exec_images_profiles
 ```
 
 ### bakin_exec_images_recommend
@@ -523,7 +525,7 @@ Arguments: none.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_images_recommend
+bakin_exec_images_recommend
 ```
 
 ## Lesson
@@ -541,10 +543,10 @@ Purpose: Search the enabled agent-package lessons for the calling agent.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_lesson_search --args '{
+bakin_exec_lesson_search {
   "query": "value",
   "limit": 20
-}'
+}
 ```
 
 ## Log
@@ -566,12 +568,12 @@ Purpose: Log a formatted progress update with category and stage tags. Categorie
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_log --args '{
+bakin_exec_log {
   "taskId": "value",
   "message": "value",
   "category": "value",
   "stage": "value"
-}'
+}
 ```
 
 ## Memory
@@ -592,11 +594,11 @@ Purpose: Fetch a session by key plus its most recent turns.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_memory_get_session --args '{
+bakin_exec_memory_get_session {
   "sessionKey": "value",
   "agent": "value",
   "turnLimit": 20
-}'
+}
 ```
 
 ### bakin_exec_memory_get_turn
@@ -611,9 +613,9 @@ Purpose: Fetch a single turn by id (the `turn:<hex>` form).
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_memory_get_turn --args '{
+bakin_exec_memory_get_turn {
   "turnId": "value"
-}'
+}
 ```
 
 ### bakin_exec_memory_list_agents
@@ -626,7 +628,7 @@ Arguments: none.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_memory_list_agents
+bakin_exec_memory_list_agents
 ```
 
 ### bakin_exec_memory_search
@@ -643,11 +645,11 @@ Purpose: Hybrid search across every memory tier (sessions, turns, checkpoints, d
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_memory_search --args '{
+bakin_exec_memory_search {
   "query": "value",
   "agent": "value",
   "limit": 20
-}'
+}
 ```
 
 ### bakin_exec_memory_status
@@ -660,7 +662,7 @@ Arguments: none.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_memory_status
+bakin_exec_memory_status
 ```
 
 ## Messaging
@@ -679,9 +681,9 @@ Purpose: Approve a Deliverable after review.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_approve --args '{
+bakin_exec_messaging_deliverable_approve {
   "deliverableId": "value"
-}'
+}
 ```
 
 ### bakin_exec_messaging_deliverable_create
@@ -707,7 +709,7 @@ Purpose: Create a Quick Post Deliverable. Plan Deliverables are created only by 
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_create --args '{
+bakin_exec_messaging_deliverable_create {
   "planId": "value",
   "channel": "value",
   "contentType": "value",
@@ -722,7 +724,7 @@ mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_create --args '{
   "draft": {
     "key": "value"
   }
-}'
+}
 ```
 
 ### bakin_exec_messaging_deliverable_get
@@ -737,9 +739,9 @@ Purpose: Get a content Deliverable
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_get --args '{
+bakin_exec_messaging_deliverable_get {
   "deliverableId": "value"
-}'
+}
 ```
 
 ### bakin_exec_messaging_deliverable_list
@@ -758,13 +760,13 @@ Purpose: List content Deliverables with optional filters
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_list --args '{
+bakin_exec_messaging_deliverable_list {
   "planId": "value",
   "status": "value",
   "channel": "value",
   "publishAfter": "value",
   "publishBefore": "value"
-}'
+}
 ```
 
 ### bakin_exec_messaging_deliverable_ready_for_review
@@ -779,9 +781,9 @@ Purpose: Signal that a bare-task Deliverable draft is ready for user review or a
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_ready_for_review --args '{
+bakin_exec_messaging_deliverable_ready_for_review {
   "deliverableId": "value"
-}'
+}
 ```
 
 ### bakin_exec_messaging_deliverable_reject
@@ -797,10 +799,10 @@ Purpose: Request changes for a Deliverable after review.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_reject --args '{
+bakin_exec_messaging_deliverable_reject {
   "deliverableId": "value",
   "note": "value"
-}'
+}
 ```
 
 ### bakin_exec_messaging_deliverable_update
@@ -828,7 +830,7 @@ Purpose: Update a content Deliverable. Draft fields are deep-merged.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_update --args '{
+bakin_exec_messaging_deliverable_update {
   "deliverableId": "value",
   "planId": "value",
   "channel": "value",
@@ -845,7 +847,7 @@ mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_update --args '{
   "draft": {
     "key": "value"
   }
-}'
+}
 ```
 
 ### bakin_exec_messaging_plan_activate
@@ -860,9 +862,9 @@ Purpose: Activate a content Plan and create scheduled kickoff tasks for its conf
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_messaging_plan_activate --args '{
+bakin_exec_messaging_plan_activate {
   "planId": "value"
-}'
+}
 ```
 
 ### bakin_exec_messaging_plan_channel_delete
@@ -879,11 +881,11 @@ Purpose: Delete one configured Plan channel, its Deliverables, and linked board 
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_messaging_plan_channel_delete --args '{
+bakin_exec_messaging_plan_channel_delete {
   "planId": "value",
   "channelId": "value",
   "deleteLinkedTasks": true
-}'
+}
 ```
 
 ### bakin_exec_messaging_plan_create
@@ -913,7 +915,7 @@ Purpose: Create a content Plan
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_messaging_plan_create --args '{
+bakin_exec_messaging_plan_create {
   "title": "value",
   "targetDate": "value",
   "agent": "value",
@@ -929,7 +931,7 @@ mcporter call bakin-<agent>.bakin_exec_messaging_plan_create --args '{
   "prepStartAt": "value",
   "workflowId": "value",
   "tone": "value"
-}'
+}
 ```
 
 ### bakin_exec_messaging_plan_delete
@@ -945,10 +947,10 @@ Purpose: Delete a content Plan, its content pieces, and linked board tasks.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_messaging_plan_delete --args '{
+bakin_exec_messaging_plan_delete {
   "planId": "value",
   "deleteLinkedTasks": true
-}'
+}
 ```
 
 ### bakin_exec_messaging_plan_get
@@ -963,9 +965,9 @@ Purpose: Get a content Plan and its Deliverables
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_messaging_plan_get --args '{
+bakin_exec_messaging_plan_get {
   "planId": "value"
-}'
+}
 ```
 
 ### bakin_exec_messaging_plan_list
@@ -982,11 +984,11 @@ Purpose: List content Plans with optional filters
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_messaging_plan_list --args '{
+bakin_exec_messaging_plan_list {
   "status": "value",
   "agent": "value",
   "campaign": "value"
-}'
+}
 ```
 
 ### bakin_exec_messaging_proposal_update
@@ -1008,7 +1010,7 @@ Purpose: Update a proposal status or fields (approve, reject, edit)
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_messaging_proposal_update --args '{
+bakin_exec_messaging_proposal_update {
   "sessionId": "value",
   "proposalId": "value",
   "status": "value",
@@ -1019,7 +1021,7 @@ mcporter call bakin-<agent>.bakin_exec_messaging_proposal_update --args '{
     "value"
   ],
   "rejectionNote": "value"
-}'
+}
 ```
 
 ### bakin_exec_messaging_session_create
@@ -1036,11 +1038,11 @@ Purpose: Create a new planning session for an agent
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_messaging_session_create --args '{
+bakin_exec_messaging_session_create {
   "agentId": "value",
   "title": "value",
   "scope": "value"
-}'
+}
 ```
 
 ### bakin_exec_messaging_session_delete
@@ -1055,9 +1057,9 @@ Purpose: Delete a planning session without deleting Plans prepared from it.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_messaging_session_delete --args '{
+bakin_exec_messaging_session_delete {
   "sessionId": "value"
-}'
+}
 ```
 
 ### bakin_exec_messaging_session_get
@@ -1072,9 +1074,9 @@ Purpose: Get a planning session with full message history and proposals
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_messaging_session_get --args '{
+bakin_exec_messaging_session_get {
   "sessionId": "value"
-}'
+}
 ```
 
 ### bakin_exec_messaging_session_list
@@ -1090,10 +1092,10 @@ Purpose: List planning sessions with optional filters
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_messaging_session_list --args '{
+bakin_exec_messaging_session_list {
   "status": "value",
   "agentId": "value"
-}'
+}
 ```
 
 ### bakin_exec_messaging_session_materialize
@@ -1108,9 +1110,9 @@ Purpose: Prepare Plans from accepted brainstorm proposals
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_messaging_session_materialize --args '{
+bakin_exec_messaging_session_materialize {
   "sessionId": "value"
-}'
+}
 ```
 
 ### bakin_exec_messaging_session_message
@@ -1126,10 +1128,10 @@ Purpose: Send a message in a planning session (non-streaming, returns full respo
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_messaging_session_message --args '{
+bakin_exec_messaging_session_message {
   "sessionId": "value",
   "message": "value"
-}'
+}
 ```
 
 ### bakin_exec_messaging_session_update
@@ -1146,11 +1148,11 @@ Purpose: Update a planning session title or status
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_messaging_session_update --args '{
+bakin_exec_messaging_session_update {
   "sessionId": "value",
   "title": "value",
   "status": "value"
-}'
+}
 ```
 
 ## Models
@@ -1169,9 +1171,9 @@ Purpose: Get model configuration for all agents or a specific agent. Shows effec
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_models_get_config --args '{
+bakin_exec_models_get_config {
   "agentId": "value"
-}'
+}
 ```
 
 ### bakin_exec_models_list
@@ -1186,9 +1188,9 @@ Purpose: List available AI models with tier classification (budget/standard/prem
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_models_list --args '{
+bakin_exec_models_list {
   "tier": "value"
-}'
+}
 ```
 
 ## Post
@@ -1213,7 +1215,7 @@ Purpose: Post a message through the active runtime channel adapter. Supports ima
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_post_channel --args '{
+bakin_exec_post_channel {
   "channel": "value",
   "content": "value",
   "imageAssetId": "value",
@@ -1223,7 +1225,7 @@ mcporter call bakin-<agent>.bakin_exec_post_channel --args '{
   },
   "taskId": "value",
   "repost": true
-}'
+}
 ```
 
 ## Projects
@@ -1241,10 +1243,10 @@ Purpose: Add a new checklist item to a project.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_projects_add_item --args '{
+bakin_exec_projects_add_item {
   "projectId": "value",
   "title": "value"
-}'
+}
 ```
 
 ### bakin_exec_projects_apply_plan
@@ -1265,7 +1267,7 @@ Purpose: Apply a confirmed project plan update in one operation. Use this after 
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_projects_apply_plan --args '{
+bakin_exec_projects_apply_plan {
   "projectId": "value",
   "title": "value",
   "status": "value",
@@ -1275,7 +1277,7 @@ mcporter call bakin-<agent>.bakin_exec_projects_apply_plan --args '{
   "checklistItems": [
     "value"
   ]
-}'
+}
 ```
 
 ### bakin_exec_projects_ask
@@ -1292,11 +1294,11 @@ Purpose: Ask an agent a question about a project. Sends the project context (spe
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_projects_ask --args '{
+bakin_exec_projects_ask {
   "projectId": "value",
   "message": "value",
   "agent": "value"
-}'
+}
 ```
 
 ### bakin_exec_projects_attach_asset
@@ -1313,11 +1315,11 @@ Purpose: Attach an existing asset to a project by assetId. Assets provide additi
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_projects_attach_asset --args '{
+bakin_exec_projects_attach_asset {
   "projectId": "value",
   "assetId": "value",
   "label": "value"
-}'
+}
 ```
 
 ### bakin_exec_projects_create
@@ -1335,14 +1337,14 @@ Purpose: Create a new project with title, markdown body, and optional initial ch
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_projects_create --args '{
+bakin_exec_projects_create {
   "title": "value",
   "body": "value",
   "owner": "value",
   "tasks": [
     "value"
   ]
-}'
+}
 ```
 
 ### bakin_exec_projects_delete
@@ -1357,9 +1359,9 @@ Purpose: Delete a project by ID.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_projects_delete --args '{
+bakin_exec_projects_delete {
   "projectId": "value"
-}'
+}
 ```
 
 ### bakin_exec_projects_detach_asset
@@ -1375,10 +1377,10 @@ Purpose: Remove an asset reference from a project by assetId. Does not delete th
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_projects_detach_asset --args '{
+bakin_exec_projects_detach_asset {
   "projectId": "value",
   "assetId": "value"
-}'
+}
 ```
 
 ### bakin_exec_projects_get
@@ -1393,9 +1395,9 @@ Purpose: Get a project by ID including full spec, checklist, progress, and linke
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_projects_get --args '{
+bakin_exec_projects_get {
   "projectId": "value"
-}'
+}
 ```
 
 ### bakin_exec_projects_link_item
@@ -1412,11 +1414,11 @@ Purpose: Link an existing board task to a project checklist item. Use this when 
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_projects_link_item --args '{
+bakin_exec_projects_link_item {
   "projectId": "value",
   "taskItemId": "value",
   "taskId": "value"
-}'
+}
 ```
 
 ### bakin_exec_projects_list
@@ -1431,9 +1433,9 @@ Purpose: List all projects with optional status filter. Returns summaries with i
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_projects_list --args '{
+bakin_exec_projects_list {
   "status": "value"
-}'
+}
 ```
 
 ### bakin_exec_projects_mark_item
@@ -1450,11 +1452,11 @@ Purpose: Mark a checklist item as checked (done) or unchecked. Returns updated p
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_projects_mark_item --args '{
+bakin_exec_projects_mark_item {
   "projectId": "value",
   "taskItemId": "value",
   "checked": true
-}'
+}
 ```
 
 ### bakin_exec_projects_promote_item
@@ -1471,11 +1473,11 @@ Purpose: Create a NEW board task from a project checklist item and automatically
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_projects_promote_item --args '{
+bakin_exec_projects_promote_item {
   "projectId": "value",
   "taskItemId": "value",
   "assignee": "value"
-}'
+}
 ```
 
 ### bakin_exec_projects_relink_asset
@@ -1493,12 +1495,12 @@ Purpose: Replace an attached project asset reference with another existing asset
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_projects_relink_asset --args '{
+bakin_exec_projects_relink_asset {
   "projectId": "value",
   "assetId": "value",
   "newAssetId": "value",
   "label": "value"
-}'
+}
 ```
 
 ### bakin_exec_projects_remove_item
@@ -1514,10 +1516,10 @@ Purpose: Remove a checklist item from a project.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_projects_remove_item --args '{
+bakin_exec_projects_remove_item {
   "projectId": "value",
   "taskItemId": "value"
-}'
+}
 ```
 
 ### bakin_exec_projects_toggle_item
@@ -1534,11 +1536,11 @@ Purpose: Toggle a checklist item checked/unchecked by item ID. Returns updated p
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_projects_toggle_item --args '{
+bakin_exec_projects_toggle_item {
   "projectId": "value",
   "itemId": "value",
   "checked": true
-}'
+}
 ```
 
 ### bakin_exec_projects_update
@@ -1557,13 +1559,13 @@ Purpose: Update a project's title, status, body, or owner. Cannot set status to 
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_projects_update --args '{
+bakin_exec_projects_update {
   "projectId": "value",
   "title": "value",
   "status": "value",
   "body": "value",
   "owner": "value"
-}'
+}
 ```
 
 ### bakin_exec_projects_update_item
@@ -1581,12 +1583,12 @@ Purpose: Update a checklist item's title and/or description.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_projects_update_item --args '{
+bakin_exec_projects_update_item {
   "projectId": "value",
   "itemId": "value",
   "title": "value",
   "description": "value"
-}'
+}
 ```
 
 ## Schedule
@@ -1605,9 +1607,9 @@ Purpose: Today's schedule summary — which jobs fire, assigned agents, alerts. 
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_schedule_briefing --args '{
+bakin_exec_schedule_briefing {
   "date": "value"
-}'
+}
 ```
 
 ### bakin_exec_schedule_create
@@ -1628,7 +1630,7 @@ Purpose: Create a new scheduled job that creates tasks on the board
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_schedule_create --args '{
+bakin_exec_schedule_create {
   "name": "value",
   "schedule": "value",
   "agentId": "value",
@@ -1636,7 +1638,7 @@ mcporter call bakin-<agent>.bakin_exec_schedule_create --args '{
   "workflowId": "value",
   "taskPrompt": "value",
   "taskTitle": "value"
-}'
+}
 ```
 
 ### bakin_exec_schedule_delete
@@ -1651,9 +1653,9 @@ Purpose: Delete a scheduled job
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_schedule_delete --args '{
+bakin_exec_schedule_delete {
   "jobId": "value"
-}'
+}
 ```
 
 ### bakin_exec_schedule_get
@@ -1668,9 +1670,9 @@ Purpose: Get details for a single scheduled job
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_schedule_get --args '{
+bakin_exec_schedule_get {
   "jobId": "value"
-}'
+}
 ```
 
 ### bakin_exec_schedule_list
@@ -1686,10 +1688,10 @@ Purpose: List all scheduled jobs (merged runtime cron + Bakin view)
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_schedule_list --args '{
+bakin_exec_schedule_list {
   "filter": "value",
   "agentId": "value"
-}'
+}
 ```
 
 ### bakin_exec_schedule_parse
@@ -1704,9 +1706,9 @@ Purpose: Parse a natural language or raw cron schedule expression
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_schedule_parse --args '{
+bakin_exec_schedule_parse {
   "input": "value"
-}'
+}
 ```
 
 ### bakin_exec_schedule_pause
@@ -1724,12 +1726,12 @@ Purpose: Pause, resume, or skip runs for a scheduled job
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_schedule_pause --args '{
+bakin_exec_schedule_pause {
   "jobId": "value",
   "action": "value",
   "pauseUntil": "value",
   "skipN": 20
-}'
+}
 ```
 
 ### bakin_exec_schedule_run_now
@@ -1744,9 +1746,9 @@ Purpose: Trigger an immediate run of a scheduled job
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_schedule_run_now --args '{
+bakin_exec_schedule_run_now {
   "jobId": "value"
-}'
+}
 ```
 
 ### bakin_exec_schedule_runs
@@ -1762,10 +1764,10 @@ Purpose: Get run history for a scheduled job
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_schedule_runs --args '{
+bakin_exec_schedule_runs {
   "jobId": "value",
   "limit": 20
-}'
+}
 ```
 
 ### bakin_exec_schedule_update
@@ -1787,7 +1789,7 @@ Purpose: Update an existing scheduled job
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_schedule_update --args '{
+bakin_exec_schedule_update {
   "jobId": "value",
   "name": "value",
   "schedule": "value",
@@ -1796,7 +1798,7 @@ mcporter call bakin-<agent>.bakin_exec_schedule_update --args '{
   "workflowId": "value",
   "taskPrompt": "value",
   "taskTitle": "value"
-}'
+}
 ```
 
 ## Search
@@ -1816,10 +1818,10 @@ Purpose: Get facet value counts for a plugin. Useful for understanding data dist
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_search_facets --args '{
+bakin_exec_search_facets {
   "plugin": "value",
   "facets": "value"
-}'
+}
 ```
 
 ### bakin_exec_search_lookup
@@ -1835,10 +1837,10 @@ Purpose: Look up a specific indexed document by its key and plugin.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_search_lookup --args '{
+bakin_exec_search_lookup {
   "plugin": "value",
   "key": "value"
-}'
+}
 ```
 
 ### bakin_exec_search_query
@@ -1855,11 +1857,11 @@ Purpose: Search across all Bakin content (tasks, assets, projects, workflows, sc
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_search_query --args '{
+bakin_exec_search_query {
   "q": "value",
   "limit": 20,
   "offset": 20
-}'
+}
 ```
 
 ### bakin_exec_search_reindex
@@ -1876,11 +1878,11 @@ Purpose: Trigger a full reindex of all content types (or a specific plugin). Use
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_search_reindex --args '{
+bakin_exec_search_reindex {
   "plugin": "value",
   "rebuild": true,
   "verify": true
-}'
+}
 ```
 
 ### bakin_exec_search_similar
@@ -1897,11 +1899,11 @@ Purpose: Find documents similar to a given text description. Uses semantic (vect
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_search_similar --args '{
+bakin_exec_search_similar {
   "text": "value",
   "plugin": "value",
   "limit": 20
-}'
+}
 ```
 
 ### bakin_exec_search_stats
@@ -1914,7 +1916,7 @@ Arguments: none.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_search_stats
+bakin_exec_search_stats
 ```
 
 ### bakin_exec_search_table
@@ -1930,10 +1932,10 @@ Purpose: Search a specific Bakin plugin with facet filtering. Returns results pl
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_search_table --args '{
+bakin_exec_search_table {
   "q": "value",
   "limit": 20
-}'
+}
 ```
 
 ## Submit
@@ -1954,13 +1956,13 @@ Purpose: Submit workflow step output with local pre-validation. Validates agains
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_submit_step --args '{
+bakin_exec_submit_step {
   "taskId": "value",
   "stepId": "value",
   "output": {
     "key": "value"
   }
-}'
+}
 ```
 
 ## Tasks
@@ -1980,10 +1982,10 @@ Purpose: Assign a task to an agent.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_tasks_assign --args '{
+bakin_exec_tasks_assign {
   "taskId": "value",
   "agent": "value"
-}'
+}
 ```
 
 ### bakin_exec_tasks_block
@@ -1999,10 +2001,10 @@ Purpose: Mark a task as blocked with a reason. Use when you cannot proceed.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_tasks_block --args '{
+bakin_exec_tasks_block {
   "taskId": "value",
   "reason": "value"
-}'
+}
 ```
 
 ### bakin_exec_tasks_complete
@@ -2018,10 +2020,10 @@ Purpose: Report that your task is complete. Moves the task to Done and notifies 
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_tasks_complete --args '{
+bakin_exec_tasks_complete {
   "taskId": "value",
   "summary": "value"
-}'
+}
 ```
 
 ### bakin_exec_tasks_create
@@ -2049,7 +2051,7 @@ Purpose: Create a new task on the task board. Workflows are auto-matched by titl
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_tasks_create --args '{
+bakin_exec_tasks_create {
   "title": "value",
   "assignee": "value",
   "team": "value",
@@ -2064,7 +2066,7 @@ mcporter call bakin-<agent>.bakin_exec_tasks_create --args '{
   "sourceEntityType": "value",
   "sourceEntityId": "value",
   "sourcePurpose": "value"
-}'
+}
 ```
 
 ### bakin_exec_tasks_delete
@@ -2079,9 +2081,9 @@ Purpose: Delete a task from the board.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_tasks_delete --args '{
+bakin_exec_tasks_delete {
   "taskId": "value"
-}'
+}
 ```
 
 ### bakin_exec_tasks_get
@@ -2096,9 +2098,9 @@ Purpose: Get details about a task — title, description, current column, logs, 
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_tasks_get --args '{
+bakin_exec_tasks_get {
   "taskId": "value"
-}'
+}
 ```
 
 ### bakin_exec_tasks_list
@@ -2114,10 +2116,10 @@ Purpose: List all tasks on the board. Optionally filter by column or agent.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_tasks_list --args '{
+bakin_exec_tasks_list {
   "column": "value",
   "agent": "value"
-}'
+}
 ```
 
 ### bakin_exec_tasks_log_progress
@@ -2133,10 +2135,10 @@ Purpose: Log a human-readable progress update to the live activity feed. Call th
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_tasks_log_progress --args '{
+bakin_exec_tasks_log_progress {
   "taskId": "value",
   "message": "value"
-}'
+}
 ```
 
 ### bakin_exec_tasks_move
@@ -2153,11 +2155,11 @@ Purpose: Move a task to a different column on the task board.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_tasks_move --args '{
+bakin_exec_tasks_move {
   "taskId": "value",
   "to": "value",
   "reason": "value"
-}'
+}
 ```
 
 ### bakin_exec_tasks_set_dependency
@@ -2173,10 +2175,10 @@ Purpose: Register a dependency between tasks. Your task will be auto-re-dispatch
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_tasks_set_dependency --args '{
+bakin_exec_tasks_set_dependency {
   "taskId": "value",
   "dependsOn": "value"
-}'
+}
 ```
 
 ### bakin_exec_tasks_update
@@ -2198,7 +2200,7 @@ Purpose: Update a task on the board — change title, description, or assigned a
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_tasks_update --args '{
+bakin_exec_tasks_update {
   "taskId": "value",
   "title": "value",
   "description": "value",
@@ -2207,7 +2209,7 @@ mcporter call bakin-<agent>.bakin_exec_tasks_update --args '{
   "availableAt": "value",
   "dueAt": "value",
   "expectedVersion": 20
-}'
+}
 ```
 
 ## Team
@@ -2237,7 +2239,7 @@ Purpose: Create a new agent: registers it with the active runtime, writes person
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_team_create_agent --args '{
+bakin_exec_team_create_agent {
   "id": "value",
   "name": "value",
   "emoji": "value",
@@ -2250,7 +2252,7 @@ mcporter call bakin-<agent>.bakin_exec_team_create_agent --args '{
   "tools": "value",
   "teamId": "value",
   "dispatchable": "value"
-}'
+}
 ```
 
 ### bakin_exec_team_delete_agent
@@ -2266,10 +2268,10 @@ Purpose: Remove an agent from the active runtime and clean up Bakin state. Requi
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_team_delete_agent --args '{
+bakin_exec_team_delete_agent {
   "agentId": "value",
   "confirm": true
-}'
+}
 ```
 
 ### bakin_exec_team_list
@@ -2282,7 +2284,7 @@ Arguments: none.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_team_list
+bakin_exec_team_list
 ```
 
 ### bakin_exec_team_members
@@ -2297,9 +2299,9 @@ Purpose: Get agents that belong to a specific team (e.g. "builders", "creators")
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_team_members --args '{
+bakin_exec_team_members {
   "teamId": "value"
-}'
+}
 ```
 
 ### bakin_exec_team_message
@@ -2315,10 +2317,10 @@ Purpose: Send a message to an agent via the active runtime.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_team_message --args '{
+bakin_exec_team_message {
   "agentId": "value",
   "message": "value"
-}'
+}
 ```
 
 ### bakin_exec_team_my_team
@@ -2333,9 +2335,9 @@ Purpose: Get the team that a specific agent belongs to, including all teammates.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_team_my_team --args '{
+bakin_exec_team_my_team {
   "agentId": "value"
-}'
+}
 ```
 
 ### bakin_exec_team_org
@@ -2348,7 +2350,7 @@ Arguments: none.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_team_org
+bakin_exec_team_org
 ```
 
 ### bakin_exec_team_profile
@@ -2363,9 +2365,9 @@ Purpose: Get the full profile for an agent including soul, rules, and tools.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_team_profile --args '{
+bakin_exec_team_profile {
   "agentId": "value"
-}'
+}
 ```
 
 ### bakin_exec_team_read_file
@@ -2381,10 +2383,10 @@ Purpose: Read a workspace file for an agent (e.g., SOUL.md, AGENTS.md, TOOLS.md)
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_team_read_file --args '{
+bakin_exec_team_read_file {
   "agentId": "value",
   "filename": "value"
-}'
+}
 ```
 
 ### bakin_exec_team_set_permissions
@@ -2400,12 +2402,12 @@ Purpose: Update dispatch permissions — which agents a given agent can dispatch
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_team_set_permissions --args '{
+bakin_exec_team_set_permissions {
   "agentId": "value",
   "allowAgents": [
     "value"
   ]
-}'
+}
 ```
 
 ### bakin_exec_team_status
@@ -2420,9 +2422,9 @@ Purpose: Get the heartbeat and health status for an agent.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_team_status --args '{
+bakin_exec_team_status {
   "agentId": "value"
-}'
+}
 ```
 
 ### bakin_exec_team_update_identity
@@ -2445,7 +2447,7 @@ Purpose: Update an existing agent's identity fields (name, emoji, role, vibe, et
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_team_update_identity --args '{
+bakin_exec_team_update_identity {
   "agentId": "value",
   "name": "value",
   "emoji": "value",
@@ -2455,7 +2457,7 @@ mcporter call bakin-<agent>.bakin_exec_team_update_identity --args '{
   "defaultMode": "value",
   "soul": "value",
   "tools": "value"
-}'
+}
 ```
 
 ## Workflows
@@ -2476,11 +2478,11 @@ Purpose: Cancel one fan-out child of a map_workflow step. The map join stays blo
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_workflows_cancel_map_child --args '{
+bakin_exec_workflows_cancel_map_child {
   "taskId": "value",
   "stepId": "value",
   "index": 20
-}'
+}
 ```
 
 ### bakin_exec_workflows_complete_step
@@ -2497,13 +2499,13 @@ Purpose: Complete a workflow step with output. Validates output against the step
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_workflows_complete_step --args '{
+bakin_exec_workflows_complete_step {
   "taskId": "value",
   "stepId": "value",
   "output": {
     "key": "value"
   }
-}'
+}
 ```
 
 ### bakin_exec_workflows_get_definition
@@ -2518,9 +2520,9 @@ Purpose: Get a workflow definition by filename. Returns the full definition with
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_workflows_get_definition --args '{
+bakin_exec_workflows_get_definition {
   "name": "value"
-}'
+}
 ```
 
 ### bakin_exec_workflows_get_instance
@@ -2535,9 +2537,9 @@ Purpose: Get the full state of a workflow instance for a task, including step st
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_workflows_get_instance --args '{
+bakin_exec_workflows_get_instance {
   "taskId": "value"
-}'
+}
 ```
 
 ### bakin_exec_workflows_get_step
@@ -2552,9 +2554,9 @@ Purpose: Get the current workflow step for a task. Returns only the current step
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_workflows_get_step --args '{
+bakin_exec_workflows_get_step {
   "taskId": "value"
-}'
+}
 ```
 
 ### bakin_exec_workflows_list
@@ -2567,7 +2569,7 @@ Arguments: none.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_workflows_list
+bakin_exec_workflows_list
 ```
 
 ### bakin_exec_workflows_list_instances
@@ -2582,9 +2584,9 @@ Purpose: List workflow instances. Optionally filter by status (in_progress, pend
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_workflows_list_instances --args '{
+bakin_exec_workflows_list_instances {
   "status": "value"
-}'
+}
 ```
 
 ### bakin_exec_workflows_retry_map_child
@@ -2602,12 +2604,12 @@ Purpose: Retry one fan-out child of a map_workflow step. Live children reopen in
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_workflows_retry_map_child --args '{
+bakin_exec_workflows_retry_map_child {
   "taskId": "value",
   "stepId": "value",
   "index": 20,
   "reason": "value"
-}'
+}
 ```
 
 ### bakin_exec_workflows_start
@@ -2623,8 +2625,8 @@ Purpose: Start a workflow instance for a task. The task must exist on the board.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_workflows_start --args '{
+bakin_exec_workflows_start {
   "taskId": "value",
   "workflowId": "value"
-}'
+}
 ```

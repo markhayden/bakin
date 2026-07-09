@@ -35,6 +35,7 @@ import { summarizeStructured, unwrapToolResult } from '@bakin/core/format'
 import { buildStreamDeathError, toRuntimeError } from './errors'
 import { getAgentWorkspaceDir, getPiAgentDir } from './home'
 import { findPiModel, getModelRegistry, qualifiedModelId } from './models'
+import { readRoutingDefaultModel } from './config'
 import { readRegistry, scaffoldAgentDirs, type PiAgentRecord } from './registry'
 import { recordThreadSession, sessionManagerForThread, withThreadLock } from './sessions'
 import { buildAppendSystemPrompt } from './system-prompt'
@@ -81,9 +82,27 @@ function requireAgent(agentId: string): PiAgentRecord {
   return record
 }
 
+/**
+ * Effective model for a turn: explicit per-turn override → the agent's
+ * assignment → the routing default (P2.3) → undefined (SDK default).
+ *
+ * Never throws: this runs inside error-path metadata construction (the
+ * `toRuntimeError` calls), where a settings-parse throw would REPLACE the
+ * real turn error and defeat kind-based failure classification.
+ */
+function resolveModelRef(turnModel: string | undefined, agentModel: string | undefined): string | undefined {
+  if (turnModel) return turnModel
+  if (agentModel) return agentModel
+  try {
+    return readRoutingDefaultModel() || undefined
+  } catch {
+    return undefined
+  }
+}
+
 function imageContentsFor(args: MessageArgs, record: PiAgentRecord) {
   if (!args.attachments || args.attachments.length === 0) return undefined
-  const model = findPiModel(args.model ?? record.model)
+  const model = findPiModel(resolveModelRef(args.model, record.model))
   if (!model || !model.input.includes('image')) {
     throw new RuntimeError(
       `adapter-pi: agent ${record.id} model does not accept image input — refusing to drop ${args.attachments.length} attachment(s)`,
@@ -137,10 +156,12 @@ async function openTurnSession(args: MessageArgs, deps: PiMessagingDeps): Promis
   await resourceLoader.reload()
 
   const execProvider = deps.getExecTools()
-  const descriptors = execProvider ? filterExecToolDescriptors(execProvider.list(), args, record.allowlist) : []
+  // record.allowlist is the SUBAGENT dispatch allowlist (agent ids) — never
+  // a tool filter. Tool exposure is policy-driven only (args.tools*).
+  const descriptors = execProvider ? filterExecToolDescriptors(execProvider.list(), args) : []
   const customTools = execProvider ? bridgeExecTools(execProvider, record.id, descriptors) : []
 
-  const model = findPiModel(args.model ?? record.model)
+  const model = findPiModel(resolveModelRef(args.model, record.model))
   const thinking = args.thinking && THINKING_LEVELS.has(args.thinking) ? args.thinking : undefined
 
   const { session } = await createAgentSession({
@@ -268,7 +289,7 @@ export function createMessagingSurface(deps: PiMessagingDeps): AgentRuntimeAdapt
           throw toRuntimeError(err, {
             aborted: args.signal?.aborted,
             sessionId: session.sessionId,
-            model: args.model ?? record.model,
+            model: resolveModelRef(args.model, record.model),
           })
         }
         if (args.signal?.aborted || observer.endedAborted) {
@@ -348,7 +369,7 @@ export function createMessagingSurface(deps: PiMessagingDeps): AgentRuntimeAdapt
           throw toRuntimeError(err, {
             aborted: args.signal?.aborted,
             sessionId: session.sessionId,
-            model: args.model ?? record.model,
+            model: resolveModelRef(args.model, record.model),
           })
         } finally {
           unsubscribe()
@@ -400,7 +421,7 @@ function throwOnTerminalFailure(
   }
   throw toRuntimeError(new Error(observer.terminalError), {
     sessionId: session.sessionId,
-    model: args.model ?? record.model,
+    model: resolveModelRef(args.model, record.model),
   })
 }
 

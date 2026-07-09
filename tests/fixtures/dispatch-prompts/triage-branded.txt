@@ -5,6 +5,6 @@ Needs an owner
 
 **Brand:** acme — this task's output must follow this brand.
 
-Either handle it yourself or assign it to the right agent (ada=data analysis) via `mcporter call bakin-main.bakin_exec_tasks_assign taskId=t-fix-6 agent="<agent>"`. Reference info is in /fixture/bakin-home/team/CONTACTS.md.
+Either handle it yourself or assign it to the right agent (ada=data analysis) via `bakin-main.bakin_exec_tasks_assign taskId=t-fix-6 agent="<agent>"`. Reference info is in /fixture/bakin-home/team/CONTACTS.md.
 
-Log progress: `mcporter call bakin-main.bakin_exec_tasks_log_progress taskId=t-fix-6 message="<update>"`
+Log progress: `bakin-main.bakin_exec_tasks_log_progress taskId=t-fix-6 message="<update>"`

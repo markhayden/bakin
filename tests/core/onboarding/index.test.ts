@@ -25,7 +25,7 @@ interface ScriptedComponent {
   installCalls: number
 }
 
-const COMPONENT_NAMES = ['mkdir', 'settings', 'runtime', 'search', 'search-models', 'mcporter', 'openclaw-integration', 'plugin-assets', 'agent-sync', 'llm', 'budget', 'channels', 'recommended-plugins', 'recommended-agents'] as const
+const COMPONENT_NAMES = ['mkdir', 'settings', 'runtime', 'search', 'search-models', 'openclaw-integration', 'plugin-assets', 'agent-sync', 'llm', 'budget', 'channels', 'recommended-plugins', 'recommended-agents'] as const
 
 let scripts: Record<(typeof COMPONENT_NAMES)[number], ScriptedComponent>
 
@@ -57,7 +57,6 @@ mock.module('../../../src/core/onboarding/settings', () => ({ settingsComponent:
 mock.module('../../../src/core/onboarding/runtime', () => ({ runtimeComponent: makeMock('runtime') }))
 mock.module('../../../src/core/onboarding/search', () => ({ searchComponent: makeMock('search') }))
 mock.module('../../../src/core/onboarding/search-models', () => ({ searchModelsComponent: makeMock('search-models') }))
-mock.module('../../../src/core/onboarding/mcporter', () => ({ mcporterComponent: makeMock('mcporter') }))
 mock.module('../../../src/core/onboarding/openclaw-integration', () => ({ openClawIntegrationComponent: makeMock('openclaw-integration') }))
 mock.module('../../../src/core/onboarding/plugin-assets', () => ({ pluginAssetsComponent: makeMock('plugin-assets') }))
 mock.module('../../../src/core/onboarding/agent-sync', () => ({ agentSyncComponent: makeMock('agent-sync') }))
@@ -103,6 +102,26 @@ mock.module('../../../src/core/logger', () => ({
 }))
 
 mock.module('../../../src/core/app-services', () => ({
+  getAppServices: () => ({
+    runtime: {},
+    search: {},
+    tasks: {},
+    health: {},
+  }),
+  maybeGetAppServices: () => ({
+    runtime: {},
+    search: {},
+    tasks: {},
+    health: {},
+  }),
+  createAppServices: async () => ({
+    runtime: {},
+    search: {},
+    tasks: {},
+    health: {},
+  }),
+}))
+mock.module('../../../src/core/app-services-store', () => ({
   getAppServices: () => ({
     runtime: {},
     search: {},
@@ -221,7 +240,6 @@ describe('runOnboard orchestrator', () => {
         'runtime',
         'search',
         'search-models',
-        'mcporter',
         'openclaw-integration',
         'plugin-assets',
         'agent-sync',
@@ -261,7 +279,6 @@ describe('runOnboard orchestrator', () => {
         runtime: 'ok',
         search: 'ok',
         'search-models': 'ok',
-        mcporter: 'ok',
         'openclaw-integration': 'ok',
         'plugin-assets': 'ok',
         'agent-sync': 'ok',
@@ -307,20 +324,20 @@ describe('runOnboard orchestrator', () => {
     })
 
     it('treats install:failed as an error (exit 1, no marker)', async () => {
-      scripts.mcporter.check = { name: 'mcporter', status: 'missing', message: 'mcporter missing' }
-      scripts.mcporter.install = { name: 'mcporter', status: 'failed', message: 'npm failed', durationMs: 0 }
+      scripts['plugin-assets'].check = { name: 'plugin-assets', status: 'missing', message: 'plugin-assets missing' }
+      scripts['plugin-assets'].install = { name: 'plugin-assets', status: 'failed', message: 'npm failed', durationMs: 0 }
       const result = await runOnboard(opts)
-      expect(result.outcomes.find((o) => o.name === 'mcporter')?.finalStatus).toBe('error')
+      expect(result.outcomes.find((o) => o.name === 'plugin-assets')?.finalStatus).toBe('error')
       expect(result.exitCode).toBe(1)
       expect(result.markerWritten).toBe(false)
       expect(saveStateCalls).toHaveLength(0)
     })
 
     it('treats install:skipped as skipped (exit 2, marker still written)', async () => {
-      scripts.mcporter.check = { name: 'mcporter', status: 'missing', message: 'mcporter missing' }
-      scripts.mcporter.install = { name: 'mcporter', status: 'skipped', message: 'user declined', durationMs: 0 }
+      scripts['plugin-assets'].check = { name: 'plugin-assets', status: 'missing', message: 'plugin-assets missing' }
+      scripts['plugin-assets'].install = { name: 'plugin-assets', status: 'skipped', message: 'user declined', durationMs: 0 }
       const result = await runOnboard(opts)
-      expect(result.outcomes.find((o) => o.name === 'mcporter')?.finalStatus).toBe('skipped')
+      expect(result.outcomes.find((o) => o.name === 'plugin-assets')?.finalStatus).toBe('skipped')
       expect(result.exitCode).toBe(2)
       expect(result.markerWritten).toBe(true)
     })
@@ -340,12 +357,12 @@ describe('runOnboard orchestrator', () => {
   describe('checkOnly mode', () => {
     it('never calls install() even when check reports missing', async () => {
       scripts.search.check = { name: 'search', status: 'missing', message: 'search missing' }
-      scripts.mcporter.check = { name: 'mcporter', status: 'missing', message: 'mcporter missing' }
+      scripts['plugin-assets'].check = { name: 'plugin-assets', status: 'missing', message: 'plugin-assets missing' }
       const result = await runOnboard({ ...opts, checkOnly: true })
       expect(scripts.search.installCalls).toBe(0)
-      expect(scripts.mcporter.installCalls).toBe(0)
+      expect(scripts['plugin-assets'].installCalls).toBe(0)
       expect(result.outcomes.find((o) => o.name === 'search')?.finalStatus).toBe('skipped')
-      expect(result.outcomes.find((o) => o.name === 'mcporter')?.finalStatus).toBe('skipped')
+      expect(result.outcomes.find((o) => o.name === 'plugin-assets')?.finalStatus).toBe('skipped')
       // check-only is non-destructive → marker still written iff no errors
       expect(result.exitCode).toBe(2)
       expect(result.markerWritten).toBe(true)
@@ -399,7 +416,7 @@ describe('runOnboard orchestrator', () => {
       // Everything downstream is NOT run - check is never called on them
       expect(scripts.search.checkCalls).toBe(0)
       expect(scripts['search-models'].checkCalls).toBe(0)
-      expect(scripts.mcporter.checkCalls).toBe(0)
+      expect(scripts['plugin-assets'].checkCalls).toBe(0)
       expect(scripts.llm.checkCalls).toBe(0)
       expect(scripts.channels.checkCalls).toBe(0)
       // All components still appear in outcomes
@@ -445,8 +462,8 @@ describe('runOnboard orchestrator', () => {
       expect(scripts['search-models'].checkCalls).toBe(0)
       expect(result.outcomes.find((o) => o.name === 'search-models')?.finalStatus).toBe('skipped')
       expect(result.outcomes.find((o) => o.name === 'search-models')?.message).toContain('search adapter binary is required')
-      // mcporter and credentials still run; they do not depend on search.
-      expect(scripts.mcporter.checkCalls).toBe(1)
+      // plugin-assets and credentials still run; they do not depend on search.
+      expect(scripts['plugin-assets'].checkCalls).toBe(1)
       expect(scripts.llm.checkCalls).toBe(1)
     })
 
@@ -519,12 +536,12 @@ describe('runOnboard orchestrator', () => {
     })
 
     it('catches thrown errors from check() and returns them as error status', async () => {
-      scripts.mcporter.check = { name: 'mcporter', status: 'ok', message: 'ok' }
-      // Replace the mock to make mcporter.check throw
-      const mod = await import('../../../src/core/onboarding/mcporter')
-      spyOn(mod.mcporterComponent, 'check').mockRejectedValueOnce(new Error('boom'))
+      scripts['plugin-assets'].check = { name: 'plugin-assets', status: 'ok', message: 'ok' }
+      // Replace the mock to make plugin-assets.check throw
+      const mod = await import('../../../src/core/onboarding/plugin-assets')
+      spyOn(mod.pluginAssetsComponent, 'check').mockRejectedValueOnce(new Error('boom'))
       const results = await checkAll()
-      const mcp = results.find((r) => r.name === 'mcporter')
+      const mcp = results.find((r) => r.name === 'plugin-assets')
       expect(mcp?.status).toBe('error')
       expect(mcp?.message).toContain('boom')
     })
@@ -536,10 +553,10 @@ describe('runOnboard orchestrator', () => {
 
   describe('exception handling', () => {
     it('converts a thrown check() error into an error outcome', async () => {
-      const mod = await import('../../../src/core/onboarding/mcporter')
-      spyOn(mod.mcporterComponent, 'check').mockRejectedValueOnce(new Error('boom'))
+      const mod = await import('../../../src/core/onboarding/plugin-assets')
+      spyOn(mod.pluginAssetsComponent, 'check').mockRejectedValueOnce(new Error('boom'))
       const result = await runOnboard(opts)
-      const mcp = result.outcomes.find((o) => o.name === 'mcporter')
+      const mcp = result.outcomes.find((o) => o.name === 'plugin-assets')
       expect(mcp?.finalStatus).toBe('error')
       expect(result.exitCode).toBe(1)
       expect(result.markerWritten).toBe(false)

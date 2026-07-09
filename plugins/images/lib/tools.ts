@@ -343,6 +343,13 @@ async function prepareImageRequest(ctx: PluginContext, params: ImagesGeneratePar
   const dims = dimensionsForSurface(surfaceId, params.width, params.height)
   if (!dims) return { error: `Unknown image surface: ${surfaceId}` }
 
+  // Capability gate (P4.1): the runtime's descriptor is the top-level truth —
+  // 'unavailable' fails honestly BEFORE any provider fusing or route math.
+  const imageGen = (await ctx.runtime.capabilities()).imageGen
+  if (imageGen.mode === 'unavailable') {
+    return { error: 'Image generation is unavailable on this runtime — no native image path is authenticated and no Bakin provider key is configured.' }
+  }
+
   const readiness = await providerReadiness(ctx)
   const route = resolveImageRoute(readiness, settings, { provider: params.provider, model: params.model })
   if (!route) return { error: 'No image provider route available' }
@@ -566,7 +573,7 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
   if (!ctx.runtime.images) return fail('The active runtime does not provide an image generation capability')
   const runGenerate = ctx.runtime.images.generate
 
-  // Idempotent: a client (mcporter) timeout that retries this identical billed
+  // Idempotent: a client timeout that retries this identical billed
   // call must not bill twice. Reference identity participates so the same prompt
   // with different references is not treated as a duplicate (#418); versionOf
   // participates so a re-roll into an asset is distinct from a fresh generate.

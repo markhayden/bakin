@@ -17,6 +17,17 @@ function targetDriver(target: string): string {
 }
 
 export async function checkChannelAliases(runtime: Pick<AgentRuntimeAdapter, 'channels'>): Promise<HealthCheckResult[]> {
+  // Optional capability (P2.1): no channel layer → aliases have no runtime
+  // targets to validate against. Configured aliases are surfaced as inert,
+  // not broken (they become meaningful again on a channel-bearing runtime).
+  if (!runtime.channels) {
+    const aliasCount = Object.keys(readConfiguredChannelAliases()).length
+    return [ok(
+      aliasCount === 0
+        ? 'The active runtime has no channel layer — no channel aliases to validate.'
+        : `The active runtime has no channel layer — ${aliasCount} configured channel alias${aliasCount === 1 ? '' : 'es'} inert until a channel-bearing runtime is active.`,
+    )]
+  }
   let knownChannelIds: string[]
   try {
     knownChannelIds = (await runtime.channels.list()).map((channel) => channel.id)

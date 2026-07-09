@@ -253,10 +253,17 @@ export async function checkAgentSync(): Promise<HealthCheckResult[]> {
     })
   }
   if (fixable.length > 0) {
+    // Runtime-aware hint (P1.6): tool-access drift means the injected
+    // invocation section changed under the agents — a runtime switch, or an
+    // upgrade that (re)introduced the section (first post-upgrade scan).
+    const runtimeSwitch = fixable.some((f) => f.staleInputs?.includes('tool-access'))
+    const hint = runtimeSwitch
+      ? ' — the runtime tool-access section changed (runtime switch or upgrade); run `bakin agents sync`'
+      : ''
     results.push({
       ...warn(
         'agent-sync',
-        `${fixable.length} stale item(s): ${fixable.slice(0, 3).map((f) => f.message).join('; ')}${fixable.length > 3 ? '; …' : ''}`,
+        `${fixable.length} stale item(s): ${fixable.slice(0, 3).map((f) => f.message).join('; ')}${fixable.length > 3 ? '; …' : ''}${hint}`,
         true,
       ),
       data: { agents: agentsOf(fixable) },

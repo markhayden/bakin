@@ -1,4 +1,4 @@
-import type { AdapterHealthCheckDefinition, AdapterInitOpts, Unsubscribe } from '../shared'
+import type { AdapterHealthCheckDefinition, AdapterInitOpts, RuntimeExecToolProvider, Unsubscribe } from '../shared'
 import type { ChannelCapability } from './capabilities'
 
 export type RuntimeMetadata = Record<string, unknown>
@@ -8,6 +8,8 @@ export interface RuntimeAgent {
   name: string
   role?: string
   model?: string
+  /** Model this agent's spawned subagents use (runtimes with a subagent concept). */
+  subagentModel?: string
   status?: 'active' | 'inactive' | 'unknown'
   metadata?: RuntimeMetadata
 }
@@ -23,7 +25,10 @@ export interface CreateRuntimeAgentInput {
 export interface UpdateRuntimeAgentInput {
   name?: string
   role?: string
-  model?: string
+  /** `null` clears the assignment (agent falls back to the routing default). */
+  model?: string | null
+  /** `null` clears. Reject via routingSupport().perAgentSubagentModel=false runtimes. */
+  subagentModel?: string | null
   metadata?: RuntimeMetadata
 }
 
@@ -405,14 +410,125 @@ export interface RuntimeCapabilities {
 }
 
 /**
- * How agents on this runtime invoke Bakin exec tools:
- * - 'native'       — exec tools are first-class session tools; the agent
- *                    calls `bakin_exec_*` directly (in-process seam).
- * - 'mcporter-cli' — tools are reached by shelling `mcporter call
- *                    bakin-<agent>.<tool> <args>` against Bakin's MCP server.
+ * One capability's provisioning state on a runtime:
+ * - 'native'      — the runtime provides it directly.
+ * - 'shimmed'     — the runtime doesn't, but a Bakin-owned shim fills it.
+ * - 'unavailable' — neither; degrade honestly + surface in the UI.
  */
-export interface RuntimeToolAccessHint {
-  invocation: 'native' | 'mcporter-cli'
+export type CapabilityMode = 'native' | 'shimmed' | 'unavailable'
+
+/**
+ * How agents on this runtime invoke Bakin exec tools:
+ * - 'in-process' — exec tools are first-class session tools; the agent calls
+ *                  `bakin_exec_*` directly (Pi's in-process bridge).
+ * - 'mcp'        — the runtime's native MCP client reaches Bakin's MCP server;
+ *                  tools appear namespaced as `<mcpServerTemplate>.<tool>`.
+ * - 'cli-shim'   — the agent shells `<shimCommand>` (inert extension point for
+ *                  a future runtime that can neither embed nor speak MCP).
+ */
+export type ToolAccessStyle = 'in-process' | 'mcp' | 'cli-shim'
+
+export interface RuntimeToolAccess {
+  style: ToolAccessStyle
+  /** 'mcp': per-agent server-name template, e.g. `bakin-<agent>`. */
+  mcpServerTemplate?: string
+  /** 'cli-shim': shell command template. */
+  shimCommand?: string
+  /** One canonical, style-appropriate example call. */
+  example?: string
+}
+
+/**
+ * Result of `verifyToolAccess()` — a runtime-neutral report on whether this
+ * runtime's tool-access wiring is currently in place, so core (onboarding,
+ * doctor) can surface drift WITHOUT knowing any provider's config shape.
+ * `in-process` runtimes report `ok: true` with no issues (nothing to
+ * provision); `mcp` runtimes report missing/stale server entries.
+ */
+export interface ToolAccessProvisioningStatus {
+  style: ToolAccessStyle
+  ok: boolean
+  /** Human-readable drift descriptions when `ok` is false. */
+  issues: string[]
+  details?: Record<string, unknown>
+}
+
+/**
+ * The unified capability declaration — every runtime-provided capability that
+ * has a native/shim/gap choice. Bakin renders agent instructions from it,
+ * routes to shims when `shimmed`, degrades honestly when `unavailable`, and
+ * plugins query it instead of assuming. Always-Bakin-owned capabilities
+ * (scheduling, heartbeats, tasks, assets, audit) are NOT here — they have no
+ * native/shim choice. `input` folds in the former modality-only capabilities.
+ */
+export interface CapabilitySet {
+  toolCalling: { mode: 'native'; access: RuntimeToolAccess }
+  delivery: { mode: CapabilityMode }
+  imageGen: { mode: CapabilityMode }
+  memory: { mode: 'native' | 'unavailable' }
+  sessions: { mode: 'native' | 'unavailable' }
+  workspaceFiles: { mode: 'native' | 'unavailable' }
+  input: RuntimeCapabilities
+}
+
+/**
+ * Presence-only credential report (P2.2): WHICH LLM providers and channels
+ * have usable credentials configured in the runtime — names only, NEVER
+ * secret material. Drives the onboarding llm/channels checks; each adapter
+ * reads its own config internally so credential shapes never leak upstream.
+ */
+/**
+ * Presence-only credential KIND: 'api-key' = metered pay-per-use billing;
+ * 'oauth' = subscription login (plan quota). An entry carrying both reports
+ * 'api-key' — the key is what the provider bills. Never carries values.
+ */
+export type RuntimeCredentialKind = 'api-key' | 'oauth'
+
+export interface RuntimeCredentialStatus {
+  /** Provider names with usable credentials (api key / token / OAuth). */
+  llmProviders: string[]
+  /**
+   * Per-provider credential kind (billing-lane detection, cost-control v2).
+   * Optional — consumers treat absence as unknown and stay conservative
+   * (unknown bills as metered, never silently uncapped-as-free).
+   */
+  llmCredentials?: Array<{ provider: string; kind: RuntimeCredentialKind }>
+  /** Channel names with usable credentials. Empty on channel-less runtimes. */
+  channels: string[]
+}
+
+/**
+ * Runtime-owned model routing policy (P2.3): the knobs the RUNTIME honors at
+ * session time — default model for agents without an assignment, failover
+ * order, subagent default, alias map. Bakin manages these through this
+ * neutral surface; each adapter maps to its native store, so a runtime's
+ * policy survives untouched while another runtime is active (round-trip by
+ * construction).
+ */
+export interface RuntimeRoutingPolicy {
+  /** Default model for agents without an explicit assignment. '' when unset. */
+  defaultModel: string
+  /** Failover models tried in order when the default fails. */
+  fallbackModels: string[]
+  /** Default model for spawned subagents. Null when unset/unsupported. */
+  defaultSubagentModel: string | null
+  /** Alias name → target model id. */
+  aliases: Record<string, string>
+}
+
+/**
+ * Which routing-policy fields this runtime actually HONORS. Static
+ * declaration (like describeToolAccess): UIs hide unsupported controls and
+ * `setRoutingPolicy` rejects patches carrying unsupported fields — a knob
+ * the runtime ignores must never be silently stored.
+ */
+export interface RuntimeRoutingSupport {
+  defaultModel: boolean
+  fallbackModels: boolean
+  defaultSubagentModel: boolean
+  aliases: boolean
+  /** Per-agent subagentModel via agents.update. */
+  perAgentSubagentModel: boolean
 }
 
 export interface RuntimeAvailableModel {
@@ -569,23 +685,6 @@ export interface RawCronSnapshot {
   snapshot: unknown
 }
 
-/**
- * Whole-config access to the runtime provider's own configuration.
- *
- * GOVERNED SURFACE: app and plugin code never calls these directly — reads
- * and replaces go through the scoped wrapper in `src/core/runtime-config.ts`
- * (typed scopes; mutations audited), and key-level reads through
- * `src/core/runtime-config-raw.ts` (allowlist + audit). Both are
- * architecture-test enforced. `update(patch)` was removed — it had zero
- * callers, and a reasonless deep-merge write was exactly the ungoverned
- * surface the audit flagged.
- */
-export interface RuntimeConfigAccess {
-  get<T = Record<string, unknown>>(): Promise<T>
-  replace<T = Record<string, unknown>>(next: T, reason: string): Promise<void>
-  raw<T = unknown>(key: string, reason: string): Promise<T>
-}
-
 export interface AgentRuntimeAdapter {
   readonly name: string
   readonly version: string
@@ -628,7 +727,14 @@ export interface AgentRuntimeAdapter {
     invoke(agentId: string, name: string, args: unknown): Promise<ToolResult>
   }
 
-  channels: {
+  /**
+   * OPTIONAL capability (P2.1): runtimes without a channel/delivery layer
+   * (Pi) OMIT this member entirely — no throwing stubs. Callers MUST
+   * feature-detect (`runtime.channels?.…` or a guarded local) and degrade
+   * honestly: empty channel lists, log-only alerts, UI-only approval gates.
+   * `capabilities().delivery.mode` reports the same fact declaratively.
+   */
+  channels?: {
     list(): Promise<ChannelInfo[]>
     sendNotification(args: NotificationArgs): Promise<DeliveryResult>
     sendMessage(args: ChannelMessageArgs): Promise<DeliveryResult>
@@ -682,25 +788,71 @@ export interface AgentRuntimeAdapter {
 
   models: {
     listAvailable(opts?: { includeUnavailable?: boolean }): Promise<RuntimeAvailableModel[]>
+    /** Static declaration of which routing-policy fields this runtime honors. */
+    routingSupport(): RuntimeRoutingSupport
+    /** The runtime's current routing policy (unsupported fields empty). */
+    routingPolicy(): Promise<RuntimeRoutingPolicy>
+    /**
+     * Merge a partial policy into the runtime's native store. MUST throw on
+     * a patch carrying a field `routingSupport()` declares unsupported.
+     * `reason` feeds the adapter's audit trail.
+     */
+    setRoutingPolicy(patch: Partial<RuntimeRoutingPolicy>, reason: string): Promise<void>
   }
 
   /**
-   * Input-modality capabilities of the runtime's current configuration,
-   * evaluated for `opts.agentId`'s effective model (default: the main
-   * agent). A requested agent that does not exist reports all-false.
-   * Transitional-optional (same pattern the search contract used): absent
-   * means "unknown" and callers MUST treat it as all-false.
+   * The unified capability declaration for this runtime, evaluated for
+   * `opts.agentId`'s effective model (default: the main agent) where
+   * model-dependent (input modality). Async: the report surface for the
+   * runtime-switch UI + plugin capability queries. `input` is conservative-
+   * false on any ambiguity, never model-name heuristics.
    */
-  capabilities?(opts?: { agentId?: string }): Promise<RuntimeCapabilities>
+  capabilities(opts?: { agentId?: string }): Promise<CapabilitySet>
 
   /**
    * How agents on this runtime invoke Bakin exec tools — drives the
-   * tool-usage wording of dispatch prompts (dispatch-prompts.ts renders
-   * `mcporter call bakin-<agent>.<tool> …` shell lines vs bare native tool
-   * calls). Sync + static: this is declared wiring, not probed state.
-   * Optional: absent means the legacy default, 'mcporter-cli'.
+   * tool-usage wording of dispatch prompts + projected AGENTS.md. SYNC +
+   * static (declared wiring, not probed state) so it's callable from the
+   * synchronous prompt-assembly path; `capabilities().toolCalling.access`
+   * returns the same facts for the async report surface.
    */
-  describeToolAccess?(): RuntimeToolAccessHint
+  describeToolAccess(): RuntimeToolAccess
+
+  /**
+   * Presence-only credential report for the runtime's LLM providers and
+   * channels (P2.2). `opts.agentId` scopes provider credentials to one
+   * agent's profile where the runtime keys them per-agent (default: the
+   * main agent). Never returns secret material.
+   */
+  credentialStatus(opts?: { agentId?: string }): Promise<RuntimeCredentialStatus>
+
+  /**
+   * Wire up this runtime so its agents can reach Bakin's exec tools.
+   * Idempotent + re-invokable: run at init AND whenever the agent roster or
+   * exec-tool set changes (agent-create, plugin (un)load).
+   *   - in-process (Pi): no-op — tools are injected per session via the
+   *     `execTools` provider passed to `initialize`.
+   *   - mcp (OpenClaw): write `config.mcp.servers[bakin-<agent>]` for every
+   *     agent, pruning stale Bakin entries; needs `bakinMcpBaseUrl` (init opt).
+   *   - cli-shim: no-op stub.
+   * The `execTools` provider reads the LIVE registry; runtimes that inject
+   * tools by value re-read it here so late registrations become visible.
+   */
+  provisionToolAccess(execTools?: RuntimeExecToolProvider): Promise<void>
+
+  /**
+   * Tear down what `provisionToolAccess` wrote. in-process/cli-shim: no-op.
+   * mcp: remove Bakin-owned `bakin-*` server entries. Called by the
+   * runtime-switch flow (P3.2) on switch-away.
+   */
+  deprovisionToolAccess(): Promise<void>
+
+  /**
+   * Report whether tool-access provisioning is currently in place, WITHOUT
+   * writing. Drives the onboarding/doctor drift surfaces through a
+   * runtime-neutral status so core never inspects a provider's config shape.
+   */
+  verifyToolAccess(): Promise<ToolAccessProvisioningStatus>
 
   images?: RuntimeImagesAccess
 
@@ -715,7 +867,14 @@ export interface AgentRuntimeAdapter {
     resolveUri(uri: string): Promise<string | null>
   }
 
-  cron: {
+  /**
+   * OPTIONAL capability (P2.1): the RUNTIME's native cron surface (jobs the
+   * runtime/agents create for themselves — Bakin surfaces them read-only and
+   * can adopt them). Runtimes without one (Pi) OMIT the member; Bakin-owned
+   * task scheduling (the schedule plugin's own tick scheduler) is unaffected.
+   * Callers MUST feature-detect and treat absence as "no native jobs".
+   */
+  cron?: {
     list(): Promise<CronJob[]>
     get(id: string): Promise<CronJob | null>
     create(input: CreateCronJobInput): Promise<CronJob>
@@ -726,6 +885,4 @@ export interface AgentRuntimeAdapter {
     getRaw(id: string, reason: string): Promise<unknown | null>
     restoreRaw(id: string, snapshot: unknown, reason: string): Promise<CronJob>
   }
-
-  config: RuntimeConfigAccess
 }

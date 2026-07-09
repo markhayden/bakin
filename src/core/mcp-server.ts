@@ -7,7 +7,7 @@
  *
  * Supports two transports:
  * - Streamable HTTP (POST-only, session ID in headers) — modern MCP clients
- * - SSE (GET to establish stream, POST to send messages) — mcporter and legacy clients
+ * - SSE (GET to establish stream, POST to send messages) — legacy MCP clients
  *
  * All tools are registered dynamically via the exec tool registry:
  * - Plugin tools: registered via ctx.registerExecTool() in plugin activate()
@@ -343,7 +343,7 @@ export async function handleMcpRequest(
   const agentId = url.searchParams.get('agent')
 
   // ─── SSE Transport (GET) ───────────────────────────────────────────
-  // Legacy clients (mcporter) connect via GET to establish an SSE stream.
+  // Legacy MCP clients connect via GET to establish an SSE stream.
   // The SSE transport sends an `endpoint` event with a POST URL for messages.
   if (method === 'GET') {
     if (!agentId) {

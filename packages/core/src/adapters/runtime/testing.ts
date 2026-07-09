@@ -10,6 +10,13 @@ export function createMockRuntimeAdapter(
   overrides: Partial<AgentRuntimeAdapter> = {}
 ): AgentRuntimeAdapter {
   const agents = new Map<string, RuntimeAgent>()
+  // In-memory routing policy (P2.3) — mutated by setRoutingPolicy.
+  const mockRoutingPolicy = {
+    defaultModel: '',
+    fallbackModels: [] as string[],
+    defaultSubagentModel: null as string | null,
+    aliases: {} as Record<string, string>,
+  }
 
   const adapter: AgentRuntimeAdapter = {
     name: 'mock-runtime',
@@ -38,7 +45,21 @@ export function createMockRuntimeAdapter(
       },
       update: async (agentId, input) => {
         const existing = agents.get(agentId) ?? { id: agentId, name: agentId, status: 'unknown' as const }
-        const next = { ...existing, ...input }
+        const next: RuntimeAgent = {
+          ...existing,
+          ...(input.name !== undefined ? { name: input.name } : {}),
+          ...(input.role !== undefined ? { role: input.role } : {}),
+          ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
+        }
+        // null clears; string assigns (P2.3 clearing semantics).
+        if (input.model !== undefined) {
+          if (input.model === null) delete next.model
+          else next.model = input.model
+        }
+        if (input.subagentModel !== undefined) {
+          if (input.subagentModel === null) delete next.subagentModel
+          else next.subagentModel = input.subagentModel
+        }
         agents.set(agentId, next)
         return next
       },
@@ -104,13 +125,43 @@ export function createMockRuntimeAdapter(
 
     models: {
       listAvailable: async () => [],
+      routingSupport: () => ({
+        defaultModel: true,
+        fallbackModels: true,
+        defaultSubagentModel: true,
+        aliases: true,
+        perAgentSubagentModel: true,
+      }),
+      routingPolicy: async () => ({ ...mockRoutingPolicy }),
+      setRoutingPolicy: async (patch, _reason) => {
+        Object.assign(mockRoutingPolicy, patch)
+      },
     },
 
-    // Conservative default; tests override per-case ({...mock, capabilities}).
-    capabilities: async (_opts?: { agentId?: string }) => ({ imageInput: false, audioInput: false }),
+    // Conservative default matching production's no-app-services fallback
+    // (dispatch-prompts DEFAULT_TOOL_ACCESS) so mock-driven prompts render the
+    // same mcp-prefixed bytes; tests override per-case ({...mock, ...}).
+    capabilities: async (_opts?: { agentId?: string }) => ({
+      toolCalling: {
+        mode: 'native' as const,
+        access: { style: 'mcp' as const, mcpServerTemplate: 'bakin-<agent>' },
+      },
+      delivery: { mode: 'native' as const },
+      imageGen: { mode: 'unavailable' as const },
+      memory: { mode: 'native' as const },
+      sessions: { mode: 'native' as const },
+      workspaceFiles: { mode: 'native' as const },
+      input: { imageInput: false, audioInput: false },
+    }),
 
-    // Legacy default so prompt-fixture bytes stay stable for mock-driven suites.
-    describeToolAccess: () => ({ invocation: 'mcporter-cli' as const }),
+    describeToolAccess: () => ({ style: 'mcp' as const, mcpServerTemplate: 'bakin-<agent>' }),
+
+    // Conservative default: no credentials configured; tests override.
+    credentialStatus: async (_opts?: { agentId?: string }) => ({ llmProviders: [], channels: [] }),
+
+    provisionToolAccess: async () => {},
+    deprovisionToolAccess: async () => {},
+    verifyToolAccess: async () => ({ style: 'mcp' as const, ok: true, issues: [] }),
 
     cron: {
       list: async () => [],
@@ -144,7 +195,7 @@ export function createMockRuntimeAdapter(
       listRuns: async () => [],
       getRaw: async (id, reason) => {
         if (!reason) throw new Error('cron.getRaw requires a reason')
-        return adapter.cron.get(id)
+        return (await adapter.cron?.get(id)) ?? null
       },
       restoreRaw: async (id, snapshot, reason) => {
         if (!reason) throw new Error('cron.restoreRaw requires a reason')
@@ -173,11 +224,6 @@ export function createMockRuntimeAdapter(
       },
     },
 
-    config: {
-      get: async <T = Record<string, unknown>>() => ({}) as T,
-      replace: async () => {},
-      raw: async <T = unknown>() => undefined as T,
-    },
   }
 
   return { ...adapter, ...overrides }

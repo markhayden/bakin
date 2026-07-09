@@ -40,7 +40,6 @@ import { generateDocs } from './src/core/api-docs'
 import type { buildOpenApiDocument } from './packages/host/src/api/docs-runtime'
 import { collectOpenApiSources as collectTypedOpenApiSources } from './packages/host/src/api/openapi-sources'
 import { startSearchEngine } from './src/core/search-startup'
-import * as mcporter from './src/core/mcporter'
 import { buildAllUserPlugins } from './packages/host/src/plugin-host/user-plugin-builder'
 import { dispatchCli } from './src/core/cli'
 import { setEmbeddedAssets } from './packages/host/src/api/_embedded-assets'
@@ -103,6 +102,27 @@ const eventBus = new BakinEventBus(broadcast)
 ;(async () => {
   // Initialize the adapter/task service spine before plugin activation.
   const appServices = await createAppServices()
+
+  // Provision the runtime's tool-access wiring (OpenClaw writes per-agent MCP
+  // server entries; Pi is a no-op). This is a config WRITE, so it lives here
+  // at server boot — never inside createAppServices, which read-only CLI
+  // paths also call. Never block boot on a provisioning failure.
+  try {
+    await appServices.runtime.provisionToolAccess()
+  } catch (err) {
+    log.warn('Runtime tool-access provisioning failed at boot', err)
+  }
+  // The Bakin runtime skill previously only installed via the openclaw-gated
+  // onboarding component, so fresh installs on other runtimes (Pi implements
+  // skills too) never received it. Idempotent; render is deterministic per
+  // (template, tool-access style).
+  try {
+    const { syncBakinRuntimeSkill } = await import('./src/core/bakin-skill')
+    const skillResult = await syncBakinRuntimeSkill(process.cwd(), appServices.runtime)
+    if (skillResult !== 'noop') log.info('Bakin runtime skill synced at boot', { result: skillResult })
+  } catch (err) {
+    log.warn('Bakin runtime skill sync failed at boot', err)
+  }
 
   // Rebuild any stale user plugin dist/ before the registry imports them.
   // User plugins activate only from `<pluginDir>/dist/index.js`; source
@@ -167,13 +187,6 @@ const eventBus = new BakinEventBus(broadcast)
   })
 
   const server = createServer(createRequestHandler({ port, CONTENT_DIR, collectOpenApiSources }))
-
-  // Setup mcporter (install if needed + sync per-agent config)
-  try {
-    await mcporter.setup(port)
-  } catch (err) {
-    log.warn('mcporter setup failed — agents can still use REST/CLI', err)
-  }
 
   // Start file watching before the server loops. Dispatch/watchdog wait until
   // restart recovery has taken the first look at stale in-progress tasks.

@@ -22,33 +22,33 @@ Log progress at EVERY major step (start, each step, decisions, blockers, complet
 
 ## OUTPUT DISCIPLINE — MANDATORY
 
-Oversized chat output KILLS your runtime session. Deliverables larger than ~8KB go to workspace files, saved as assets ONE AT A TIME: `mcporter call bakin-jessica.bakin_exec_assets_save taskId=t-fix-5 type=<type> filePath="<path>" description="<what it is>"`
+Oversized chat output KILLS your runtime session. Deliverables larger than ~8KB go to workspace files, saved as assets ONE AT A TIME: `bakin-jessica.bakin_exec_assets_save taskId=t-fix-5 type=<type> filePath="<path>" description="<what it is>"`
 Keep chat short — status + asset ids only. Split into subtasks ONLY for several genuinely independent deliverables; a single deliverable (one image, one document) stays in THIS turn — never spawn a subtask for it. Full rules: "Bakin Execution Tools" in your AGENTS.md.
 
-## TASK COMMANDS — via mcporter (server `bakin-jessica`)
+## TASK COMMANDS — call these tools as native MCP tools (server `bakin-jessica`)
 
 ```bash
 # log progress (mandatory at every major step)
-mcporter call bakin-jessica.bakin_exec_tasks_log_progress taskId=t-fix-5 message="<what you did or are doing>"
+bakin-jessica.bakin_exec_tasks_log_progress taskId=t-fix-5 message="<what you did or are doing>"
 # complete / block
-mcporter call bakin-jessica.bakin_exec_tasks_complete taskId=t-fix-5 summary="<what you accomplished>"
-mcporter call bakin-jessica.bakin_exec_tasks_block taskId=t-fix-5 reason="<what went wrong>"
+bakin-jessica.bakin_exec_tasks_complete taskId=t-fix-5 summary="<what you accomplished>"
+bakin-jessica.bakin_exec_tasks_block taskId=t-fix-5 reason="<what went wrong>"
 # subtask + dependency chain (then stop — you'll be re-dispatched)
-mcporter call bakin-jessica.bakin_exec_tasks_create title="<subtask>" assignee="<agent>" description="<brief>" parentId=t-fix-5
-mcporter call bakin-jessica.bakin_exec_tasks_set_dependency taskId=t-fix-5 dependsOn="<other-task-id>"
+bakin-jessica.bakin_exec_tasks_create title="<subtask>" assignee="<agent>" description="<brief>" parentId=t-fix-5
+bakin-jessica.bakin_exec_tasks_set_dependency taskId=t-fix-5 dependsOn="<other-task-id>"
 # your task details
-mcporter call bakin-jessica.bakin_exec_tasks_get taskId=t-fix-5
+bakin-jessica.bakin_exec_tasks_get taskId=t-fix-5
 # execution tools — full reference: "Bakin Execution Tools" in your AGENTS.md
-mcporter call bakin-jessica.bakin_exec_assets_save taskId=t-fix-5 type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what it is>"
-mcporter call bakin-jessica.bakin_exec_images_recommend surface=instagram-feed-portrait objective="<goal>"
-mcporter call bakin-jessica.bakin_exec_images_generate --timeout 600000 taskId=t-fix-5 prompt="<text>" surface=instagram-feed-portrait provider=auto
-mcporter call bakin-jessica.bakin_exec_check_gates taskId=t-fix-5
-mcporter call bakin-jessica.bakin_exec_post_channel channel="<name>" content="<message>" taskId=t-fix-5
+bakin-jessica.bakin_exec_assets_save taskId=t-fix-5 type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what it is>"
+bakin-jessica.bakin_exec_images_recommend surface=instagram-feed-portrait objective="<goal>"
+bakin-jessica.bakin_exec_images_generate taskId=t-fix-5 prompt="<text>" surface=instagram-feed-portrait provider=auto
+bakin-jessica.bakin_exec_check_gates taskId=t-fix-5
+bakin-jessica.bakin_exec_post_channel channel="<name>" content="<message>" taskId=t-fix-5
 
 # Project tools (this task is part of a project)
-mcporter call bakin-jessica.bakin_exec_projects_get projectId="proj-9"
-mcporter call bakin-jessica.bakin_exec_projects_mark_item projectId="proj-9" taskItemId="<itemId>" checked=true
-mcporter call bakin-jessica.bakin_exec_projects_add_item projectId="proj-9" title="<item title>"
+bakin-jessica.bakin_exec_projects_get projectId="proj-9"
+bakin-jessica.bakin_exec_projects_mark_item projectId="proj-9" taskItemId="<itemId>" checked=true
+bakin-jessica.bakin_exec_projects_add_item projectId="proj-9" title="<item title>"
 ```
 
 Tool reference + dependency pattern: "Bakin Execution Tools" in your AGENTS.md.

@@ -68,6 +68,10 @@ const ProjectionInputsSchema = z.object({
   roleSha: z.string().optional(),
   teamSha: z.string().optional(),
   lessonsSha: z.string().optional(),
+  // sha of the injected runtime tool-access section (P1.6). Changes when the
+  // active runtime's tool-access style changes (e.g. Pi↔OpenClaw switch), so a
+  // switch shows up as runtime-attributed drift rather than an in-place edit.
+  toolAccessSha: z.string().optional(),
 })
 
 const ProjectionEntrySchema = z.object({
