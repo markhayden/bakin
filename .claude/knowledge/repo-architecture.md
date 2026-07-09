@@ -155,7 +155,12 @@ packages/adapter-openclaw/src/
 ├── config.ts               ← OpenClaw runtime config reader
 ├── agent-config.ts         ← openclaw.json mutators + workspace/skill readers
 ├── agent-turn.ts           ← turn prompt building + response/usage parsing
-├── gateway-rpc.ts          ← gateway WebSocket RPC client
+├── gateway-rpc.ts          ← gateway WebSocket RPC client (protocol ≥4 gate,
+│                             accepted-ack surfacing, tool-events cap)
+├── gateway-frames.ts       ← zod schemas + classifier for pushed agent/chat
+│                             event frames (fixture-validated)
+├── stream-events.ts        ← frame→chunk state machine + streaming driver
+│                             (push-event streamChat)
 ├── device-auth.ts          ← device identity for the gateway handshake
 ├── attachments.ts          ← turn attachments → gateway `agent` RPC payload
 ├── channel-helpers.ts      ← channel refs, delivery parsing, registry read
@@ -163,7 +168,9 @@ packages/adapter-openclaw/src/
 ├── approval-helpers.ts     ← Bakin ⇄ OpenClaw approval payload mapping
 ├── cron-store.ts           ← runtime.cron persistence + CLI argv + parsing
 ├── memory.ts               ← runtime memory tier reads
-├── session-activity.ts     ← live session transcript tail → ChatChunk stream
+├── session-activity.ts     ← session-store cache + legacy transcript tail
+│                             (unused by streamChat since WS1a; PR 1b deletes
+│                             the live tail)
 ├── activity-summary.ts     ← transcript records → displayable activity
 ├── trajectory-forensics.ts ← read-only session death-watch / post-mortems
 ├── image-inference.ts      ← `openclaw image` arg formatting + parsers

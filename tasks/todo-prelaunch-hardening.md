@@ -10,8 +10,8 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 - [x] T4 OpenClaw streamChat rewrite (push events) ✅ (chat-frame text, tool chips from tool stream, abort=clean done)
 - [x] T5 Server-side abort via accepted run ids ✅
 - [x] T6 Imitation Crab event frames + streaming e2e ✅ (mock emits ack/chat/agent frames; 4-test e2e vs real adapter)
-- [ ] T7 WS1a docs
-- [ ] CHECKPOINT 1a: suite green, e2e green, PR merged
+- [x] T7 WS1a docs ✅ (session-forensics, adapter-architecture R5 contract + two-seam rule + ack-keyed abort, chat-plugin, repo map, rig recorder note)
+- [ ] CHECKPOINT 1a: suite green ✅ / e2e green ✅ / PR merged ☐
 - [ ] 🔶 USER: runtime flip to OpenClaw + live validation (box stays on OpenClaw)
 
 ## PR 1b — feat/dispatch-live-activity

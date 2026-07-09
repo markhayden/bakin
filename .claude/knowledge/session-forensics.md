@@ -9,6 +9,17 @@ reproduced the deterministic failure. This system makes that class of failure
 detected in milliseconds, diagnosed precisely, recovered automatically, and
 prevented by prompt discipline.
 
+**Scope note (WS1a):** the trajectory/transcript machinery below is
+forensics-only. Live chat streaming no longer reads any session file — it
+rides gateway push events (`chat` delta/final/aborted frames + `agent`
+tool/lifecycle frames; see `gateway-frames.ts` + `stream-events.ts` and
+`.claude/knowledge/adapter-architecture.md` § stream contract). The old
+live transcript tail in `session-activity.ts` is unused by `streamChat`
+(the module still hosts the session-store cache and the shared
+`OPENCLAW_SESSION_ACTIVITY_POLL_MS` constant the death watch reuses);
+PR 1b deletes the live tail outright, leaving forensics as this system's
+only file-watching consumer.
+
 ## The trajectory file (read-only forensic source)
 
 OpenClaw writes `~/.openclaw/agents/<id>/sessions/<sessionId>.trajectory.jsonl`
@@ -47,8 +58,8 @@ turn (per-attempt scoping — a session accrues one run per turn):
    `finalize()` probes it against a state clone so an unterminated line is
    evaluated without being consumed. Shared low-level reads live in
    `packages/adapter-openclaw/src/file-utils.ts` (`safeFileSize`,
-   `readFileFrom`/`readFileBytesFrom`) — also used by runtime.ts's
-   session-activity tail.
+   `readFileFrom`/`readFileBytesFrom`) — also used by the
+   session-activity module.
 2. **Post-mortem** (`inspectTrajectoryRun`): if the transport timer fires
    anyway or the socket drops mid-turn, the trajectory tail is inspected.
    Three verdicts: `success` → the run finished but the frame was lost, so
