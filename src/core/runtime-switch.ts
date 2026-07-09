@@ -258,8 +258,8 @@ export async function switchRuntime(
     await newRuntime.provisionToolAccess()
     // The Bakin runtime skill is transport-carrying content rendered from
     // the ACTIVE runtime's tool access — a switch without a refresh strands
-    // the previous transport's skill (P5.3 live: OpenClaw held an
-    // mcporter-era skill after the flip). Idempotent; a failure degrades to
+    // a skill that still teaches the PREVIOUS runtime's invocation style
+    // (observed live in P5.3). Idempotent; a failure degrades to
     // onboarding's `broken` state instead of failing the switch.
     let skillDetail: string | undefined
     try {

@@ -13,20 +13,20 @@
 ## Image Generation vs Editing
 
 ### Generate new image (no source):
-```bash
-mcporter call bakin-pixel.bakin_exec_images_recommend surface=blog-hero objective="brand photography"
-mcporter call bakin-pixel.bakin_exec_images_generate taskId=<task-id> provider=auto surface=blog-hero prompt="<approved prompt>"
+```
+bakin-pixel.bakin_exec_images_recommend surface=blog-hero objective="brand photography"
+bakin-pixel.bakin_exec_images_generate taskId=<task-id> provider=auto surface=blog-hero prompt="<approved prompt>"
 ```
 The generation tool saves through Assets and returns `image_filename`.
 
 ### Import an existing image:
-```bash
-mcporter call bakin-pixel.bakin_exec_images_import taskId=<task-id> filePath="/path/to/source-image.png" description="<short description>"
+```
+bakin-pixel.bakin_exec_images_import taskId=<task-id> filePath="/path/to/source-image.png" description="<short description>"
 ```
 
 ### Export a surface variant:
-```bash
-mcporter call bakin-pixel.bakin_exec_images_export taskId=<task-id> filename="<image_filename>" surface=instagram-feed-portrait format=jpg
+```
+bakin-pixel.bakin_exec_images_export taskId=<task-id> filename="<image_filename>" surface=instagram-feed-portrait format=jpg
 ```
 
 ## Task Card Format for Image Tasks

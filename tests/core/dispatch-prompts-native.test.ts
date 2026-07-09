@@ -1,7 +1,7 @@
 /**
  * Adapter-aware tool-access rendering (P4): 'native' invocation renders bare
- * tool calls; the default stays byte-identical mcporter CLI (fixture suite
- * covers those bytes — this file covers the branch).
+ * tool calls; the other styles render their own invocation bytes (fixture
+ * suite covers those bytes — this file covers the branch).
  */
 import { describe, test, expect, mock } from 'bun:test'
 import { join } from 'path'

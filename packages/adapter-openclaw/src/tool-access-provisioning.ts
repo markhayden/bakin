@@ -26,7 +26,8 @@ const BAKIN_DESCRIPTION_PREFIX = 'Bakin MCP for '
 /**
  * Per-server MCP request timeout. OpenClaw's client default (60s) kills long
  * Bakin tool calls — P5.3 live: `bakin_exec_images_generate` (gpt-image-2)
- * timed out client-side mid-render. 600s matches the old mcporter budget.
+ * timed out client-side mid-render. 600s covers the slowest billed image
+ * renders with headroom.
  */
 export const BAKIN_MCP_REQUEST_TIMEOUT_MS = 600_000
 
