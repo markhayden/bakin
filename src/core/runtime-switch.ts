@@ -28,6 +28,7 @@ import type {
 import type { RuntimeAdapterName } from '@bakin/core/settings'
 
 import { createAppServices, maybeGetAppServices } from './app-services'
+import { syncBakinRuntimeSkill } from './bakin-skill'
 import { getContentDir } from './content-dir'
 import { createLogger } from './logger'
 import { reconcileRoster, type RosterCarryReport } from './roster-reconcile'
@@ -210,7 +211,20 @@ export async function switchRuntime(
     // ── provision tool access ─────────────────────────────────────────────
     emit({ phase: 'provision', status: 'start' })
     await newRuntime.provisionToolAccess()
-    emit({ phase: 'provision', status: 'ok' })
+    // The Bakin runtime skill is transport-carrying content rendered from
+    // the ACTIVE runtime's tool access — a switch without a refresh strands
+    // the previous transport's skill (P5.3 live: OpenClaw held an
+    // mcporter-era skill after the flip). Idempotent; a failure degrades to
+    // onboarding's `broken` state instead of failing the switch.
+    let skillDetail: string | undefined
+    try {
+      const skillResult = await syncBakinRuntimeSkill(process.cwd(), newRuntime)
+      if (skillResult !== 'noop') skillDetail = `runtime skill ${skillResult}`
+    } catch (err) {
+      skillDetail = `runtime skill sync failed: ${err instanceof Error ? err.message : String(err)}`
+      log.warn('runtime skill sync failed during switch', { error: String(err) })
+    }
+    emit({ phase: 'provision', status: 'ok', ...(skillDetail ? { detail: skillDetail } : {}) })
 
     // ── reconcile roster (best-effort carry) ──────────────────────────────
     emit({ phase: 'reconcile-roster', status: 'start' })

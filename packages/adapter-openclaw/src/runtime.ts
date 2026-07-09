@@ -43,7 +43,7 @@ import {
   verifyBakinMcpEntries,
   type BakinMcpConfig,
 } from './tool-access-provisioning'
-import { listConfiguredChannels, listLlmProviders } from './credential-status'
+import { listConfiguredChannels, listLlmProviders, listLlmProvidersViaCli } from './credential-status'
 import { applyRoutingPolicy, readRoutingPolicy, setAgentModels } from './model-routing'
 import { RuntimeError, RuntimeTurnError } from '@bakin/core/adapters/runtime'
 import { tryGetMainAgentId } from './main-agent'
@@ -1022,12 +1022,24 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
   /**
    * Presence-only credential report (P2.2): provider names from the agent's
-   * auth-profiles.json + channel names from config.channels. Never secrets.
+   * auth-profiles.json (legacy) with a CLI fallback for sqlite-era stores —
+   * newer OpenClaw migrated auth profiles into openclaw-agent.sqlite, so an
+   * empty JSON probe on a working install means "ask the CLI", not "no
+   * credentials". Never secrets.
    */
-  credentialStatus = async (opts?: { agentId?: string }): Promise<RuntimeCredentialStatus> => ({
-    llmProviders: listLlmProviders(opts?.agentId),
-    channels: listConfiguredChannels(),
-  })
+  credentialStatus = async (opts?: { agentId?: string }): Promise<RuntimeCredentialStatus> => {
+    let llmProviders = listLlmProviders(opts?.agentId)
+    if (llmProviders.length === 0) {
+      try {
+        llmProviders = await listLlmProvidersViaCli((args) => this.exec(args), opts?.agentId)
+      } catch (err) {
+        this.logger.warn('OpenClaw auth-profile CLI probe failed; reporting no LLM providers', {
+          error: String(err),
+        })
+      }
+    }
+    return { llmProviders, channels: listConfiguredChannels() }
+  }
 
   private async runtimeAgentIds(): Promise<string[]> {
     return (await this.agents.list()).map((agent) => agent.id).filter(Boolean)

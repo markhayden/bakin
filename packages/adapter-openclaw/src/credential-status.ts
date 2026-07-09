@@ -52,6 +52,26 @@ function normalizeAuthProfiles(parsed: unknown): unknown[] {
   return []
 }
 
+/**
+ * Providers from `models auth list --json` — the sqlite-era store. Newer
+ * OpenClaw migrated auth-profiles.json into openclaw-agent.sqlite (a
+ * `.sqlite-import.<ts>.bak` marks the migration), so the JSON probe returns
+ * nothing on migrated installs; the CLI is the supported presence-only read.
+ */
+export async function listLlmProvidersViaCli(
+  exec: (args: string[]) => Promise<string>,
+  agentId?: string,
+): Promise<string[]> {
+  const args = ['models', 'auth', 'list', '--json']
+  const agent = agentId?.trim()
+  if (agent) args.push('--agent', agent)
+  const parsed = JSON.parse(await exec(args)) as { profiles?: Array<{ provider?: unknown }> }
+  const providers = (parsed.profiles ?? [])
+    .map((profile) => (typeof profile.provider === 'string' ? profile.provider.trim() : ''))
+    .filter((provider) => provider.length > 0)
+  return [...new Set(providers)]
+}
+
 /** Providers with usable credentials in the agent's auth-profiles.json. */
 export function listLlmProviders(agentId?: string): string[] {
   const agent = agentId?.trim() || tryGetMainAgentId() || 'main'

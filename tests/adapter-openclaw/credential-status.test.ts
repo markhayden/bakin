@@ -28,7 +28,7 @@ const contentDirMock = () => ({
 mock.module('../../src/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
 
-import { listLlmProviders, listConfiguredChannels } from '../../packages/adapter-openclaw/src/credential-status'
+import { listLlmProviders, listLlmProvidersViaCli, listConfiguredChannels } from '../../packages/adapter-openclaw/src/credential-status'
 
 const authProfilesPath = () => join(testHome, 'agents', 'main', 'agent', 'auth-profiles.json')
 const configPath = () => join(testHome, 'openclaw.json')
@@ -153,5 +153,38 @@ describe('listConfiguredChannels', () => {
       },
     }))
     expect(listConfiguredChannels()).toEqual(['discord', 'slack', 'telegram'])
+  })
+})
+
+describe('listLlmProvidersViaCli (sqlite-era store)', () => {
+  it('parses providers from `models auth list --json`, deduped', async () => {
+    const exec = async (args: string[]) => {
+      expect(args).toEqual(['models', 'auth', 'list', '--json'])
+      return JSON.stringify({
+        agentId: 'main',
+        profiles: [
+          { id: 'anthropic:default', provider: 'anthropic', type: 'token' },
+          { id: 'openai:default', provider: 'openai', type: 'oauth' },
+          { id: 'openai:hi@example.com', provider: 'openai', type: 'oauth' },
+          { id: 'weird', provider: '  ' },
+        ],
+      })
+    }
+    expect(await listLlmProvidersViaCli(exec)).toEqual(['anthropic', 'openai'])
+  })
+
+  it('passes --agent for an explicit agent id', async () => {
+    const seen: string[][] = []
+    const exec = async (args: string[]) => {
+      seen.push(args)
+      return JSON.stringify({ profiles: [] })
+    }
+    expect(await listLlmProvidersViaCli(exec, 'pixel')).toEqual([])
+    expect(seen[0]).toEqual(['models', 'auth', 'list', '--json', '--agent', 'pixel'])
+  })
+
+  it('propagates exec failures (caller decides the fallback)', async () => {
+    const exec = async () => { throw new Error('binary missing') }
+    await expect(listLlmProvidersViaCli(exec)).rejects.toThrow('binary missing')
   })
 })
