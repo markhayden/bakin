@@ -176,11 +176,16 @@ export const brandRoutes = [
       /** Optional logo the operator uploaded in the wizard (already a managed assetId). */
       logoAssetId: z.string().optional(),
     }),
-    responses: { 200: passthrough, 400: errorResponse, 409: errorResponse },
+    responses: { 200: passthrough, 400: errorResponse, 409: errorResponse, 500: errorResponse },
     handler: async (_req, ctx, parsed) => {
       const b = parsed.body
+      // Track whether THIS call created the draft so a later failure can roll it
+      // back — otherwise a half-authored orphan is left on disk and every retry
+      // with the same id trips createBrand's 'exists' → 409, blocking the wizard.
+      let createdHere = false
       try {
         const brand = createBrand({ id: b.id, name: b.name, draft: true })
+        createdHere = true
         // Wire the uploaded logo onto the draft so it shows on the dashboard
         // immediately (the drafting agent fills the rest).
         if (b.logoAssetId) {
@@ -223,6 +228,13 @@ export const brandRoutes = [
         const current = getBrand(brand.id)
         return Response.json({ brand: current.status === 'ok' ? current.manifest : brand, taskId: task.id })
       } catch (err) {
+        if (createdHere) {
+          try {
+            deleteBrand(b.id)
+          } catch (cleanupErr) {
+            log.warn('builder rollback failed to delete orphaned draft', cleanupErr, { brandId: b.id })
+          }
+        }
         return storeError(err)
       }
     },
@@ -469,11 +481,13 @@ export const brandRoutes = [
           'brand.asset_missing', 'brand.lessons_unavailable', 'brand.draft_published',
         ],
         sinceMs: 30 * 24 * 60 * 60 * 1000,
-        limit: 1000,
+        // Scope to THIS brand inside the bounded scan — the tail read stops at 25
+        // matches for this brand, so a busy neighbour can't push its events out of
+        // the window before we filter (a fleet-wide cap + post-filter did exactly that).
+        match: (e) => (e.data as { brandId?: string } | undefined)?.brandId === parsed.params.brandId,
+        limit: 25,
       })
       const activity = events
-        .filter((e) => (e.data as { brandId?: string } | undefined)?.brandId === parsed.params.brandId)
-        .slice(-25)
         .reverse()
         .map((e) => ({ ts: e.ts, event: e.event, agent: e.agent, data: e.data as Record<string, unknown> }))
       return Response.json({ activity })

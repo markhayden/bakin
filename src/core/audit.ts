@@ -27,7 +27,19 @@ export interface AuditEvent {
  */
 export function queryAuditEvents(
   contentDir: string,
-  opts: { kinds?: string[]; sinceMs?: number; limit?: number; agent?: string } = {},
+  opts: {
+    kinds?: string[]
+    sinceMs?: number
+    limit?: number
+    agent?: string
+    /**
+     * Extra predicate applied alongside kind/agent, BEFORE `limit`. Callers that
+     * scope on `data` (e.g. one brand's events) must filter here rather than
+     * post-slicing — otherwise a fleet-wide `limit` can drop the caller's rows
+     * before they are ever seen.
+     */
+    match?: (event: AuditEvent) => boolean
+  } = {},
 ): AuditEvent[] {
   const auditFile = join(contentDir, 'audit.jsonl')
   if (!existsSync(auditFile)) return []
@@ -36,7 +48,7 @@ export function queryAuditEvents(
   const cutoff = opts.sinceMs !== undefined ? Date.now() - opts.sinceMs : null
 
   if (cutoff !== null) {
-    return queryAuditEventsTail(auditFile, cutoff, kinds, opts.limit, opts.agent)
+    return queryAuditEventsTail(auditFile, cutoff, kinds, opts.limit, opts.agent, opts.match)
   }
 
   const results: AuditEvent[] = []
@@ -53,6 +65,7 @@ export function queryAuditEvents(
     if (!entry) continue
     if (kinds && !kinds.has(entry.event)) continue
     if (opts.agent !== undefined && entry.agent !== opts.agent) continue
+    if (opts.match && !opts.match(entry)) continue
     results.push(entry)
   }
 
@@ -95,6 +108,7 @@ function queryAuditEventsTail(
   kinds: Set<string> | null,
   limit?: number,
   agent?: string,
+  match?: (event: AuditEvent) => boolean,
 ): AuditEvent[] {
   const collected: AuditEvent[] = [] // reverse file order while scanning backwards
   let fd: number | null = null
@@ -137,6 +151,7 @@ function queryAuditEventsTail(
         sawInWindow = true
         if (kinds && !kinds.has(entry.event)) continue
         if (agent !== undefined && entry.agent !== agent) continue
+        if (match && !match(entry)) continue
         collected.push(entry)
         if (limit !== undefined && collected.length >= limit) {
           stop = true

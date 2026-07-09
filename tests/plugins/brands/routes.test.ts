@@ -334,6 +334,30 @@ describe('builder flow (#419 §9.1)', () => {
       { assetId: '20260101-logo-abcd1234', variant: 'primary' },
     ])
   })
+
+  it('rolls back the draft when a downstream step fails, so retries are not 409-blocked', async () => {
+    const realCreate = activated.ctx.tasks.create
+    // Simulate ctx.tasks.create rejecting (bad agent, dispatch error, etc.).
+    activated.ctx.tasks.create = (() => Promise.reject(new Error('boom'))) as typeof realCreate
+    const failed = await callRoute(route('POST', '/builder'), activated.ctx, {
+      body: { id: 'rollback-brand', name: 'Rollback', agent: 'pixel', product: 'x' },
+    })
+    expect(failed.status).toBe(500)
+
+    // No orphaned draft left behind.
+    const gone = await callRoute(route('GET', '/:brandId'), activated.ctx, {
+      searchParams: { brandId: 'rollback-brand' },
+    })
+    expect(gone.status).toBe(404)
+
+    // Retry with the same id now succeeds instead of tripping 'exists' → 409.
+    activated.ctx.tasks.create = realCreate
+    const retry = await callRoute(route('POST', '/builder'), activated.ctx, {
+      body: { id: 'rollback-brand', name: 'Rollback', agent: 'pixel', product: 'x' },
+    })
+    expect(retry.status).toBe(200)
+    expect((retry.body.brand as { draft?: boolean }).draft).toBe(true)
+  })
 })
 
 describe('activity feed (#419 Overview)', () => {
@@ -346,6 +370,29 @@ describe('activity feed (#419 Overview)', () => {
       { ts: now, event: 'brand.updated', agent: 'system', data: { brandId: 'other' } }, // wrong brand
       { ts: now, event: 'task.dispatched', agent: 'x', data: { brandId: 'acme' } },      // not a brand.* kind
     ].map((l) => JSON.stringify(l)).join('\n')
+    writeFileSync(join(testDir, 'audit.jsonl'), lines + '\n', 'utf-8')
+
+    const res = await callRoute(route('GET', '/:brandId/activity'), activated.ctx, { searchParams: { brandId: 'acme' } })
+    expect(res.status).toBe(200)
+    const activity = res.body.activity as Array<{ event: string }>
+    expect(activity.map((a) => a.event)).toEqual(['brand.injected', 'brand.created'])
+  })
+
+  it('a busy neighbour brand cannot push this brand out of the window', async () => {
+    const { writeFileSync } = await import('fs')
+    const older = new Date(Date.now() - 60 * 60 * 1000).toISOString() // 1h ago, still in 30d window
+    const now = new Date().toISOString()
+    // acme's real events land FIRST in the file (oldest), then a flood of newer
+    // neighbour events. A fleet-wide cap + post-filter would read only the newest
+    // rows (all neighbour) and drop acme entirely; the per-brand match must not.
+    const acmeLines = [
+      { ts: older, event: 'brand.created', agent: 'system', data: { brandId: 'acme' } },
+      { ts: older, event: 'brand.injected', agent: 'jessica', data: { brandId: 'acme', taskId: 't1' } },
+    ]
+    const neighbourLines = Array.from({ length: 1200 }, (_, i) => ({
+      ts: now, event: 'brand.injected', agent: 'noisy', data: { brandId: 'other', taskId: `n${i}` },
+    }))
+    const lines = [...acmeLines, ...neighbourLines].map((l) => JSON.stringify(l)).join('\n')
     writeFileSync(join(testDir, 'audit.jsonl'), lines + '\n', 'utf-8')
 
     const res = await callRoute(route('GET', '/:brandId/activity'), activated.ctx, { searchParams: { brandId: 'acme' } })

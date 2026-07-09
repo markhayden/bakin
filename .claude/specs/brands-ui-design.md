@@ -118,3 +118,37 @@ Upload, Plus, Check, AlertTriangle, ExternalLink, Pencil, etc. Keep to ~16px,
 - Keep all existing behavior/endpoints; this is a visual + interaction-polish
   pass, not a data change.
 - Accessibility floor: visible focus, keyboard paths, reduced-motion, contrast.
+
+## Correctness guardrails (carried from code review — the rework MUST fix these)
+
+The interim components (`brand-detail.tsx`, `brand-builder.tsx`) carry real
+defects that a visual rework would otherwise re-inherit. The server-side findings
+(builder-route orphan/409, activity-feed fleet cap) are already fixed on the PR.
+These client-side ones are deliberately NOT patched in the throwaway code — fold
+the fix into the rebuilt components:
+
+1. **Stale-fetch races render/persist the WRONG brand.** `BrandDetail.refresh()`
+   and the Overview fetches (card/voice/activity) have no in-flight guard, so
+   switching brand A→B while a fetch is pending can call `setDetail(A)`/`setActivity(A)`
+   under id B — and a subsequent save then PUTs A's manifest under B's id. In the
+   rework, every fetch effect must capture the current `brandId` and drop the
+   response if `brandId` changed before it resolved (ignore-stale flag or
+   AbortController), and clear rendered state on `brandId` change.
+2. **No silent data-loss catches.** `saveDescription` (asset metadata PATCH) and
+   the Identity `putManifest` onBlur handlers swallow failed writes with empty/
+   comment-only catches — the edit looks saved but reverts on reload, and it
+   violates CLAUDE.md "No empty catch blocks." Surface write failures (toast +
+   re-fetch/rollback), never discard them.
+3. **Manifest edits must not race on stale closures.** Identity name/description
+   onBlur PUTs the ENTIRE manifest built from a closed-over `detail`; two rapid
+   field edits let the second save revert the first. Send field-scoped patches
+   (or read-modify-write against fresh state), not the whole stale manifest.
+4. **Fetch-failure ≠ absent.** The Voice panel shows "No voice.md yet" when the
+   `voice.md` GET simply failed. Distinguish `loading`/`error`/`absent` states.
+5. **Don't orphan billed logo assets.** The wizard uploads the logo as a managed
+   (vision-billed) asset BEFORE the brand exists; if create fails the asset is
+   orphaned and each retry re-uploads. Upload only after the brand is created (or
+   let the builder route own the upload), and clean up on abort.
+6. **Object-URL + dirty hygiene.** Revoke logo-preview object URLs on unmount (the
+   drawer is persistently mounted). Compute `dirty` by value, not reference
+   equality against an EMPTY sentinel.
