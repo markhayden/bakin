@@ -17,6 +17,13 @@ mock.module('@/core/app-services', () => ({
     search: {},
   }),
 }))
+mock.module('@/core/app-services-store', () => ({
+  getAppServices: () => ({
+    runtime: {},
+    tasks: {},
+    search: {},
+  }),
+}))
 
 mock.module('@/core/logger', () => ({
   createLogger: () => ({

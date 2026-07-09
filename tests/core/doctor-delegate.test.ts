@@ -52,6 +52,15 @@ mock.module('../../src/core/app-services', () => ({
     },
   }),
 }))
+mock.module('../../src/core/app-services-store', () => ({
+  getAppServices: () => ({
+    runtime: {
+      agents: {
+        list: async () => [{ id: 'main', name: 'Main', role: 'Orchestrator' }],
+      },
+    },
+  }),
+}))
 
 mock.module('../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),

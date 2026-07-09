@@ -20,6 +20,14 @@ import { resolveGateApproval, sendGateDecisionSummary } from './notifications'
 const log = createLogger('workflows')
 
 export async function wireChannelApprovals(ctx: PluginContext): Promise<() => void> {
+  // Optional capability (P2.1): no channel layer → no provider decisions will
+  // ever arrive; gates are decided in the Bakin UI. No-op unsubscribe.
+  const channels = ctx.runtime.channels
+  if (!channels) {
+    log.info('Runtime has no channel layer — workflow gates are UI-only (no channel approval wiring)')
+    return () => {}
+  }
+
   const approvalRehydration = await rehydratePendingApprovals({
     runtime: ctx.runtime,
     channel: activeGateSettings().approvalChannel || 'general',
@@ -30,7 +38,7 @@ export async function wireChannelApprovals(ctx: PluginContext): Promise<() => vo
     log.info('Rehydrated pending workflow approvals', { ...approvalRehydration })
   }
 
-  return ctx.runtime.channels.subscribeApprovalResponses(async (event) => {
+  return channels.subscribeApprovalResponses(async (event) => {
     const approvalRecord = getApprovalRecord(event.approvalId)
     if (!approvalRecord) {
       log.warn('Channel approval response ignored: no durable approval record', { approvalId: event.approvalId })

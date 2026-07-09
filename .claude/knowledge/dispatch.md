@@ -271,7 +271,12 @@ what production sends — see `.claude/knowledge/startup-context.md` (#357).
 `outputDisciplineSection()` (a SHORT artifact-first reminder in EVERY
 dispatch carrying the taskId-templated `assets_save` command) and
 `sharedExecutionToolDocs()` (taskId-templated invocations — intentional
-differences are parameters, so the builders can't drift). The static half of
+differences are parameters, so the builders can't drift). Every tool-call
+line renders through `renderToolCall` (`src/core/tool-access.ts`) per the
+ACTIVE runtime's `describeToolAccess()` — bare calls on Pi (in-process),
+`bakin-<agent>.`-prefixed native MCP calls on OpenClaw — the same primitive
+the AGENTS.md tool-access section uses, so prompt and projection bytes can
+never drift (runtime-capabilities P1.4). The static half of
 the old ~4KB catalog (logging rules, discipline rationale, dependency
 pattern, tool reference) lives in the SUBAGENT ROLE CONTEXT layer
 (`~/.bakin/team/context/roles/subagent.md`, defaults in

@@ -95,9 +95,11 @@ export async function resolveRuntimeChannelRef(
   runtime: Pick<AgentRuntimeAdapter, 'channels'>,
   channel: string,
 ): Promise<ChannelAliasResolution> {
+  // Optional capability (P2.1): a runtime without channels knows no ids —
+  // aliases still resolve; bare unknown names fail with the config hint.
   let knownChannelIds: string[] = []
   try {
-    knownChannelIds = (await runtime.channels.list()).map((entry) => entry.id)
+    knownChannelIds = (await runtime.channels?.list() ?? []).map((entry) => entry.id)
   } catch {
     knownChannelIds = []
   }

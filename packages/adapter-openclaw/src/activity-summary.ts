@@ -14,6 +14,11 @@ import { firstString, isPlainObject, parseJsonObject, redactSensitiveText } from
 const OPENCLAW_ACTIVITY_PREVIEW_CHARS = 500
 
 export function activityChunksFromOpenClawTranscriptRecord(record: Record<string, unknown>): ChatChunk[] {
+  // Trajectory records (`traceSchema: openclaw-trajectory`) — the LIVE
+  // activity source on newer OpenClaw, which batches session-JSONL records
+  // to turn end. Same ChatChunk shapes as the session-file path below.
+  if (record.type === 'tool.call') return activityChunkFromTrajectoryToolCall(record)
+  if (record.type === 'tool.result') return activityChunkFromTrajectoryToolResult(record)
   if (record.type !== 'message') return []
   const message = record.message
   if (!isPlainObject(message)) return []
@@ -21,6 +26,57 @@ export function activityChunksFromOpenClawTranscriptRecord(record: Record<string
   if (role === 'assistant') return activityChunksFromAssistantMessage(message)
   if (role === 'toolResult') return activityChunkFromToolResultMessage(message)
   return []
+}
+
+/** `bakin-<agent>.bakin_exec_foo` (native-MCP prefixed) → `bakin_exec_foo`. */
+function bareToolName(name: string): string {
+  return name.replace(/^bakin-[a-z0-9_-]+\./, '')
+}
+
+/** Trajectory `tool.call` → running tool chunk (data: {toolCallId, name, arguments}). */
+function activityChunkFromTrajectoryToolCall(record: Record<string, unknown>): ChatChunk[] {
+  const data = isPlainObject(record.data) ? record.data : {}
+  const name = typeof data.name === 'string' && data.name.length > 0 ? bareToolName(data.name) : 'tool'
+  const args = data.arguments
+  // The live chip renders `summary` (not content) — fall back to the call
+  // detail so a bash row shows its command even when no purpose matched.
+  const detail = summarizeOpenClawToolCall(name, args)
+  const summary = summarizeOpenClawToolPurpose(name, args)
+    ?? (detail.startsWith(`${name}: `) ? detail.slice(name.length + 2) : undefined)
+  return [{
+    type: 'tool',
+    content: summarizeOpenClawToolCall(name, args),
+    data: {
+      phase: 'call',
+      callId: typeof data.toolCallId === 'string' ? data.toolCallId : undefined,
+      toolName: name,
+      status: 'running',
+      ...(summary ? { summary } : {}),
+      inputPreview: previewUnknown(args),
+    },
+  }]
+}
+
+/** Trajectory `tool.result` → result tool chunk (data: {toolCallId, name, status, isError, result}). */
+function activityChunkFromTrajectoryToolResult(record: Record<string, unknown>): ChatChunk[] {
+  const data = isPlainObject(record.data) ? record.data : {}
+  const toolName = typeof data.name === 'string' && data.name.length > 0 ? bareToolName(data.name) : 'tool'
+  const status = typeof data.status === 'string' ? data.status : undefined
+  const result = isPlainObject(data.result) ? data.result : {}
+  const exitCode = typeof result.exitCode === 'number' ? result.exitCode : undefined
+  const label = status ? `${toolName} ${status}` : `${toolName} finished`
+  return [{
+    type: 'tool',
+    content: label,
+    data: {
+      phase: 'result',
+      toolName,
+      callId: typeof data.toolCallId === 'string' ? data.toolCallId : undefined,
+      status: data.isError === true ? 'failed' : normalizeToolResultStatus(status, exitCode),
+      exitCode,
+      outputPreview: previewUnknown(data.result),
+    },
+  }]
 }
 
 export function activityChunksFromAssistantMessage(message: Record<string, unknown>): ChatChunk[] {
@@ -74,11 +130,28 @@ export function normalizeToolResultStatus(status: string | undefined, exitCode: 
   return 'completed'
 }
 
+/**
+ * Trajectory bash commands arrive wrapped for the shell —
+ * `/bin/zsh -lc "actual command"` — which buries the interesting part.
+ * Strip the wrapper (and its quotes) for display.
+ */
+export function unwrapShellWrapper(command: string): string {
+  const match = command.trim().match(/^(?:\/bin\/)?(?:z|ba)?sh\s+-l?c\s+([\s\S]*)$/)
+  if (!match) return command
+  const inner = match[1].trim()
+  const quote = inner[0]
+  if ((quote === '"' || quote === "'") && inner.endsWith(quote) && inner.length > 1) {
+    return inner.slice(1, -1)
+  }
+  return inner
+}
+
 export function summarizeOpenClawToolCall(name: string, args: unknown): string {
   if (isPlainObject(args)) {
     const command = args.command
-    if (name === 'exec' && typeof command === 'string' && command.trim()) {
-      return `exec: ${firstLine(command)}`
+    // `exec` is the session-file name; the live trajectory calls it `bash`.
+    if ((name === 'exec' || name === 'bash') && typeof command === 'string' && command.trim()) {
+      return `${name}: ${firstLine(unwrapShellWrapper(command))}`
     }
     const path = args.path
     if (name === 'read' && typeof path === 'string' && path.trim()) {
@@ -105,9 +178,9 @@ export function summarizeOpenClawToolPurpose(name: string, args: unknown): strin
     if (action === 'poll') return 'Waiting for command output'
   }
 
-  if (name === 'exec' && isPlainObject(args)) {
+  if ((name === 'exec' || name === 'bash') && isPlainObject(args)) {
     const command = typeof args.command === 'string' ? args.command.trim() : ''
-    return summarizeShellCommandPurpose(command)
+    return summarizeShellCommandPurpose(unwrapShellWrapper(command))
   }
 
   if (name === 'web_fetch') {
@@ -120,13 +193,6 @@ export function summarizeOpenClawToolPurpose(name: string, args: unknown): strin
 export function summarizeShellCommandPurpose(command: string): string | undefined {
   if (!command) return undefined
   const first = command.split(/\r?\n/)[0]?.trim() ?? ''
-  if (/\bmcporter\s+call\s+--help\b/.test(first)) return 'Checking Bakin tool call syntax'
-  const mcporterCall = first.match(/\bmcporter\s+call\s+([^\s]+)/)
-  if (mcporterCall) {
-    const tool = mcporterCall[1].split('.').pop() ?? mcporterCall[1]
-    return summarizeToolNamePurpose(tool) ?? 'Calling a Bakin tool'
-  }
-  if (/\bmcporter\s+list\b/.test(first)) return 'Inspecting available Bakin tools'
   if (/\bgh\s+issue\b/.test(first)) return 'Checking GitHub issues'
   if (/\bgh\s+pr\b/.test(first)) return 'Checking GitHub pull requests'
   const bxContextSummary = summarizeBxContextCommand(first)

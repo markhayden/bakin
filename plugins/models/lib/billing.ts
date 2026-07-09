@@ -9,22 +9,17 @@
  * real money, never silently uncapped-as-free).
  *
  * Resolution: manual settings override (most specific first: agent+provider
- * → agent → provider) → per-agent profile detection → 'metered'. Profile
- * reads go through the allowlisted raw-config gate and only inspect
- * credential SHAPE — values never leave this module.
+ * → agent → provider) → per-agent detection → 'metered'. Detection reads the
+ * runtime-neutral `credentialStatus()` contract (presence-only credential
+ * KIND per provider) — credential shapes stay adapter-private, values never
+ * cross the boundary.
  */
 import type { PluginContext } from '@bakin/core/plugin-types'
 import type { BillingLane } from '@bakin/core/execution/ledger'
 
+import type { RuntimeCredentialStatus } from '@bakin/core/adapters/runtime'
+
 import { createLogger } from '../../../src/core/logger'
-import { readAllowedRuntimeConfigRaw } from '../../../src/core/runtime-config-raw'
-import {
-  METERED_CREDENTIAL_FIELDS,
-  SUBSCRIPTION_CREDENTIAL_FIELDS,
-  authProfileEntryHasField,
-  authProfileEntryProvider,
-  normalizeAuthProfileEntries,
-} from '../../../src/core/runtime-auth-profiles'
 import { normalizeModelId, providerFromId } from './model-id'
 import type { BillingOverride, ModelsPluginSettings } from '../types'
 
@@ -35,17 +30,18 @@ export type { BillingLane }
 // for the detection API surface.
 export type { BillingOverride } from '../types'
 
-/** Provider → lane map detected from one agent's auth profiles. */
-export function detectLanesFromProfiles(parsed: unknown): Record<string, BillingLane> {
+/**
+ * Provider → lane map from the runtime's presence-only credential report.
+ * 'api-key' bills metered; 'oauth' is a subscription login. First entry per
+ * provider wins (the adapters already dedupe).
+ */
+export function detectLanesFromCredentials(
+  credentials: RuntimeCredentialStatus['llmCredentials'],
+): Record<string, BillingLane> {
   const lanes: Record<string, BillingLane> = {}
-  for (const entry of normalizeAuthProfileEntries(parsed)) {
-    const provider = authProfileEntryProvider(entry)
-    if (!provider || lanes[provider]) continue
-    if (authProfileEntryHasField(entry, METERED_CREDENTIAL_FIELDS)) {
-      lanes[provider] = 'metered'
-    } else if (authProfileEntryHasField(entry, SUBSCRIPTION_CREDENTIAL_FIELDS)) {
-      lanes[provider] = 'subscription'
-    }
+  for (const entry of credentials ?? []) {
+    if (lanes[entry.provider]) continue
+    lanes[entry.provider] = entry.kind === 'oauth' ? 'subscription' : 'metered'
   }
   return lanes
 }
@@ -92,12 +88,8 @@ async function detectedLanesForAgent(ctx: PluginContext, agentId: string): Promi
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.lanes
   let lanes: Record<string, BillingLane> = {}
   try {
-    const parsed = await readAllowedRuntimeConfigRaw<unknown>(
-      ctx.runtime,
-      `agents.${agentId}.authProfiles`,
-      'models.billing-lane',
-    )
-    lanes = detectLanesFromProfiles(parsed)
+    const status = await ctx.runtime.credentialStatus({ agentId })
+    lanes = detectLanesFromCredentials(status.llmCredentials)
   } catch (err) {
     // Unknown stays metered — never block or fabricate on a read failure.
     log.warn('Billing-lane detection failed; defaulting to metered', { agentId, err: err instanceof Error ? err.message : String(err) })

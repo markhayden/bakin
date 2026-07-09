@@ -39,21 +39,48 @@ function skillDir(name: string, agentId?: string): string {
   return join(skillsRoot(agentId), name)
 }
 
+/**
+ * Metadata sidecars, mirroring the OpenClaw adapter's convention:
+ * `.installedBy` (JSON install marker) + `.userEdited` (bare sentinel).
+ * Dropping these on write broke plugin-asset installs on Pi — installed
+ * skills could never read back as installed (always "drifted"), and user
+ * edits could never lock a projection.
+ */
+const SKILL_SIDECARS = new Set(['.installedBy', '.userEdited'])
+
+function readInstalledBy(dir: string): unknown {
+  const path = join(dir, '.installedBy')
+  if (!existsSync(path)) return undefined
+  try {
+    return JSON.parse(readFileSync(path, 'utf-8')) as unknown
+  } catch {
+    // Corrupt marker reads as "not installed by us" — the plugin-assets
+    // check then reports drift and a reinstall rewrites the sidecar.
+    return undefined
+  }
+}
+
 function readSkill(name: string, agentId?: string): RuntimeSkill | null {
   const dir = skillDir(name, agentId)
   const skillMd = join(dir, 'SKILL.md')
   if (!existsSync(skillMd)) return null
   const files: Record<string, string> = {}
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (!entry.isFile() || entry.name === 'SKILL.md') continue
+    if (!entry.isFile() || entry.name === 'SKILL.md' || SKILL_SIDECARS.has(entry.name)) continue
     files[entry.name] = readFileSync(join(dir, entry.name), 'utf-8')
   }
+  const installedBy = readInstalledBy(dir)
   return {
     name,
     path: dir,
     instructions: readFileSync(skillMd, 'utf-8'),
     ...(Object.keys(files).length > 0 ? { files } : {}),
-    metadata: { scope: agentId ? 'agent' : 'global', updatedAt: statSync(skillMd).mtime.toISOString() },
+    metadata: {
+      scope: agentId ? 'agent' : 'global',
+      updatedAt: statSync(skillMd).mtime.toISOString(),
+      ...(installedBy !== undefined ? { installedBy } : {}),
+      userEdited: existsSync(join(dir, '.userEdited')),
+    },
   }
 }
 
@@ -80,10 +107,16 @@ export function createSkillsSurface(): AgentRuntimeAdapter['skills'] {
       mkdirSync(dir, { recursive: true })
       writeFileSync(join(dir, 'SKILL.md'), skill.instructions ?? '')
       for (const [fileName, content] of Object.entries(skill.files ?? {})) {
-        if (fileName.includes('/') || fileName.includes('..')) {
+        if (fileName.includes('/') || fileName.includes('..') || SKILL_SIDECARS.has(fileName)) {
           throw new Error(`adapter-pi: invalid skill file name "${fileName}"`)
         }
         writeFileSync(join(dir, fileName), content)
+      }
+      const installedBy = skill.metadata?.installedBy
+      if (installedBy !== undefined && installedBy !== null) {
+        writeFileSync(join(dir, '.installedBy'), JSON.stringify(installedBy, null, 2))
+      } else {
+        rmSync(join(dir, '.installedBy'), { force: true })
       }
     },
 

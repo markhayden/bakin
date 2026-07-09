@@ -51,8 +51,14 @@ function makeContext(overrides: Partial<PluginContext> = {}, sourceRef: { absPat
       upsertFromSource: mock(realUpsertFromSource),
       resolveStoreFile: mock(async (absPath: string) => realResolveStoreFile(absPath)),
     },
-    runtime: { config: { get: mock(async () => ({})) } },
     ...overrides,
+    // Merge (not replace) the runtime so per-test images/messaging overrides
+    // keep the capability descriptor the P4.1 gate reads.
+    runtime: {
+      config: { get: mock(async () => ({})) },
+      capabilities: mock(async () => ({ imageGen: { mode: 'native' } })),
+      ...((overrides as { runtime?: Record<string, unknown> }).runtime ?? {}),
+    },
   } as unknown as PluginContext
   return { ctx, created, versioned, exported }
 }
@@ -84,6 +90,23 @@ describe('images tools', () => {
     resetContentDir()
     rmSync(testDir, { recursive: true, force: true })
     mock.restore()
+  })
+
+  it("fails honestly when the runtime reports imageGen 'unavailable' — before any route math (P4.1)", async () => {
+    const generate = mock(async () => { throw new Error('must never be called') })
+    const { ctx, created } = makeContext({
+      runtime: {
+        images: { providers: mock(async () => []), generate },
+        capabilities: mock(async () => ({ imageGen: { mode: 'unavailable' } })),
+      } as never,
+    })
+
+    const result = await generateImage(ctx, { prompt: 'x', taskId: 't', surface: 'instagram-story' }, 'pixel')
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('unavailable on this runtime')
+    expect(generate).not.toHaveBeenCalled()
+    expect(created).toEqual([])
   })
 
   it('generates through the runtime, creating a new asset with generation provenance', async () => {

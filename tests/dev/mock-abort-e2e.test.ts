@@ -91,7 +91,9 @@ mock.module('@bakin/core/hooks/hook-registry-singleton', hookRegistryMock)
 // The harness services (real adapter over the mock gateway) back app-services.
 let harnessServices: unknown = null
 mock.module('../../src/core/app-services', () => ({ getAppServices: () => harnessServices }))
+mock.module('../../src/core/app-services-store', () => ({ getAppServices: () => harnessServices }))
 mock.module('@/core/app-services', () => ({ getAppServices: () => harnessServices }))
+mock.module('@/core/app-services-store', () => ({ getAppServices: () => harnessServices }))
 
 import { createImitationCrabHarness, type ImitationCrabHarness } from '../../dev/imitation-crab/harness'
 import { handleGatewayRpcRequest } from '../../dev/imitation-crab/gateway'

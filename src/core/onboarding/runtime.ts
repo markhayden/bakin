@@ -12,18 +12,21 @@
  * Detection criteria (all must hold for status: ok):
  * 1. The configured runtime adapter initializes
  * 2. The runtime responds to ping()
- * 3. Runtime agent/config integrity checks pass
+ * 3. Runtime roster integrity checks pass
  *
  * If any one of those is missing we report `missing` (not `error`) and
  * leave the hard-stop decision to the orchestrator — a single `bakin check
  * runtime` invocation should still be able to surface the same result
  * without hard-exiting the process.
+ *
+ * P2.5: integrity validates the runtime-neutral ROSTER (`agents.list()` — the
+ * adapter resolves each agent's effective workspace into metadata), never raw
+ * runtime config. The config surface is gone from the contract.
  */
 import { selectRuntimeMainAgent, type AgentRuntimeAdapter, type RuntimeAgent } from '@bakin/core/adapters/runtime'
 import { createLogger } from '../logger'
 import { createAppServices, maybeGetAppServices } from '../app-services'
 import { DEFAULT_RUNTIME_ADAPTER_SUPPORT } from '../runtime-adapter-factory'
-import { readAllowedRuntimeConfigRaw } from '../runtime-config-raw'
 import type { CheckResult, InstallResult, OnboardingComponent } from './types'
 
 const log = createLogger('onboarding:runtime')
@@ -31,55 +34,43 @@ const log = createLogger('onboarding:runtime')
 const SETUP_URL = DEFAULT_RUNTIME_ADAPTER_SUPPORT.setupUrl
 const SETUP_MESSAGE = `Bakin requires an active agent runtime such as OpenClaw. Review the prerequisites and setup guide, then rerun onboarding: ${SETUP_URL}`
 
-interface RuntimeConfigForIntegrity {
-  agents?: {
-    defaults?: { workspace?: string | null }
-    list?: Array<{ id?: string | null; workspace?: string | null }>
-  }
-}
-
 async function getRuntimeForOnboarding(): Promise<AgentRuntimeAdapter> {
   const existing = maybeGetAppServices()?.runtime
   if (existing) return existing
   return (await createAppServices()).runtime
 }
 
-function configFromRuntimeAgents(agents: RuntimeAgent[]): RuntimeConfigForIntegrity {
-  return {
-    agents: {
-      list: agents.map((agent) => ({
-        id: agent.id,
-        workspace: typeof agent.metadata?.workspace === 'string' ? agent.metadata.workspace : undefined,
-      })),
-    },
-  }
+function agentWorkspace(agent: RuntimeAgent): string | null {
+  const value = agent.metadata?.workspacePath ?? agent.metadata?.workspace
+  return typeof value === 'string' && value.length > 0 ? value : null
 }
 
 /**
- * Reports-only integrity validator for a parsed runtime config.
+ * Reports-only integrity validator over the runtime roster.
  *
- * Bakin relies on the invariant that the orchestrator agent lives at
- * `id: "main"` in every runtime, that agent ids are unique, and that no two
- * agents resolve to the same workspace. This scan collects *every* violation
- * so the user sees the whole picture on one run of `bakin check runtime`
- * instead of playing whack-a-mole.
+ * Bakin relies on the invariant that every runtime DECLARES an orchestrator
+ * (id 'main' or role 'orchestrator' — P2.6: a declared fact, not a baked
+ * constant), that agent ids are unique, and that no two agents resolve to
+ * the same workspace. This scan collects *every* violation so the user sees
+ * the whole picture on one run of `bakin check runtime` instead of playing
+ * whack-a-mole.
  *
- * **Never mutates runtime config.** The user owns the active runtime config
- * and decides how to fix it.
+ * **Never mutates runtime state.** The user owns the runtime and decides how
+ * to fix it.
  */
-export function validateRuntimeIntegrity(config: RuntimeConfigForIntegrity | null): string[] {
+export function validateRuntimeIntegrity(agents: RuntimeAgent[]): string[] {
   const issues: string[] = []
-  if (!config) return issues
 
-  const list = Array.isArray(config.agents?.list) ? config.agents!.list! : []
-
-  // 1. Missing main - Bakin's runtime helpers depend on this invariant.
-  const hasMain = list.some((a) => a?.id === 'main')
-  if (!hasMain) {
+  // 1. No DECLARED orchestrator. selectRuntimeMainAgent would still fall
+  //    back to the first agent, but dispatch/prompts/permissions all key on
+  //    the orchestrator — an implicit pick is a footgun worth surfacing.
+  const hasDeclaredOrchestrator = agents.some(
+    (a) => a?.id === 'main' || a?.role?.toLowerCase() === 'orchestrator',
+  )
+  if (!hasDeclaredOrchestrator) {
     issues.push(
-      `Runtime config has no agent with id 'main'. Add an entry like ` +
-        `{ "id": "main", "identity": { "name": "<your-agent-name>" } }. ` +
-        `Bakin's orchestrator id is always 'main'.`
+      `Runtime roster declares no orchestrator. Add an agent with id 'main' ` +
+        `or role 'orchestrator' — Bakin resolves its orchestrator from that declaration.`
     )
   }
 
@@ -87,13 +78,13 @@ export function validateRuntimeIntegrity(config: RuntimeConfigForIntegrity | nul
   //    encounter order so the report is stable across runs.
   const seen = new Set<string>()
   const reportedDupes = new Set<string>()
-  for (const agent of list) {
+  for (const agent of agents) {
     const id = agent?.id
     if (typeof id !== 'string' || id.length === 0) continue
     if (seen.has(id)) {
       if (!reportedDupes.has(id)) {
         issues.push(
-          `Runtime config has duplicate agent id '${id}'. Keep one entry; remove the other.`
+          `Runtime roster has duplicate agent id '${id}'. Keep one entry; remove the other.`
         )
         reportedDupes.add(id)
       }
@@ -102,21 +93,19 @@ export function validateRuntimeIntegrity(config: RuntimeConfigForIntegrity | nul
     }
   }
 
-  // 3. Duplicate resolved workspaces. The OpenClaw adapter uses
-  //    `agents.defaults.workspace` only for main; subagents without an explicit
-  //    workspace resolve to adapter-owned per-agent paths, so they are skipped
-  //    here rather than treated as collisions on the main workspace.
-  const defaultWorkspace = config.agents?.defaults?.workspace ?? null
+  // 3. Duplicate resolved workspaces. The adapter resolves each agent's
+  //    effective workspace into metadata (workspacePath); agents without one
+  //    are skipped rather than treated as collisions.
   const firstOwner = new Map<string, string>()
-  for (const agent of list) {
+  for (const agent of agents) {
     const id = agent?.id
     if (typeof id !== 'string' || id.length === 0) continue
-    const resolved = agent?.workspace ?? (id === 'main' ? defaultWorkspace : null)
+    const resolved = agentWorkspace(agent)
     if (!resolved) continue
     const existing = firstOwner.get(resolved)
     if (existing && existing !== id) {
       issues.push(
-        `Runtime config has two agents sharing workspace '${resolved}': ` +
+        `Runtime roster has two agents sharing workspace '${resolved}': ` +
           `'${existing}' and '${id}'. Bakin's adapter cannot distinguish ` +
           `them - rename the workspace of one, or remove the duplicate entry.`
       )
@@ -139,33 +128,6 @@ async function check(): Promise<CheckResult> {
       message: `Runtime adapter could not initialize: ${err instanceof Error ? err.message : String(err)}`,
       remediation: SETUP_MESSAGE,
       details: { installUrl: SETUP_URL },
-    }
-  }
-
-  let config: RuntimeConfigForIntegrity | null
-  try {
-    config = await readAllowedRuntimeConfigRaw<RuntimeConfigForIntegrity>(
-      runtime,
-      '*',
-      'onboarding.runtime.integrity'
-    )
-  } catch (err) {
-    return {
-      name: 'runtime',
-      status: 'broken',
-      message: `Runtime config could not be read: ${err instanceof Error ? err.message : String(err)}`,
-      remediation: 'Fix or regenerate the runtime config, then rerun onboarding.',
-      details: { runtime: runtime.name, parseError: String(err) },
-    }
-  }
-
-  if (!config) {
-    return {
-      name: 'runtime',
-      status: 'missing',
-      message: `${runtime.name} runtime config is not present`,
-      remediation: SETUP_MESSAGE,
-      details: { runtime: runtime.name, installUrl: SETUP_URL },
     }
   }
 
@@ -204,17 +166,13 @@ async function check(): Promise<CheckResult> {
     }
   }
 
-  const rawAgentList = Array.isArray(config?.agents?.list) ? config.agents!.list! : null
-  const integrityConfig = rawAgentList && rawAgentList.length > 0
-    ? config
-    : configFromRuntimeAgents(agents)
-  const integrityIssues = validateRuntimeIntegrity(integrityConfig)
+  const integrityIssues = validateRuntimeIntegrity(agents)
   if (integrityIssues.length > 0) {
     return {
       name: 'runtime',
       status: 'broken',
-      message: `Runtime config has ${integrityIssues.length} integrity issue${integrityIssues.length === 1 ? '' : 's'}:\n  - ${integrityIssues.join('\n  - ')}`,
-      remediation: 'Edit the runtime config to resolve the listed issues, then rerun `bakin check runtime`. Bakin will not modify runtime config for you.',
+      message: `Runtime roster has ${integrityIssues.length} integrity issue${integrityIssues.length === 1 ? '' : 's'}:\n  - ${integrityIssues.join('\n  - ')}`,
+      remediation: 'Fix the runtime\'s agent roster to resolve the listed issues, then rerun `bakin check runtime`. Bakin will not modify the runtime for you.',
       details: { runtime: runtime.name, integrityIssues },
     }
   }

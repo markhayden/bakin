@@ -195,11 +195,11 @@ describe('plugin runtime permission wrapper', () => {
       mode: 'enforce',
     })
 
-    await wrapped.runtime.cron.create({ id: 'job-1', schedule: '* * * * *', command: 'echo ok' } as never)
+    await wrapped.runtime.cron!.create({ id: 'job-1', schedule: '* * * * *', command: 'echo ok' } as never)
     await wrapped.search.index('key', {})
     await wrapped.tasks.create({ title: 'Task' })
 
-    expect(runtime.cron.create).toHaveBeenCalledTimes(1)
+    expect(runtime.cron!.create).toHaveBeenCalledTimes(1)
     expect(search.index).toHaveBeenCalledTimes(1)
     expect(tasks.create).toHaveBeenCalledTimes(1)
   })

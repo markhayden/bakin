@@ -48,6 +48,13 @@ export interface ComposeInputs {
    * AGENTS.md only.
    */
   role?: { id: string; content: string }
+  /**
+   * Pre-rendered, runtime-specific tool-access instructions (P1.4) — how this
+   * agent invokes Bakin's exec tools on the active runtime (in-process / mcp /
+   * cli-shim). The caller renders it via `renderToolAccessInstructions` so the
+   * composer stays pure. AGENTS.md only. Sits between role and team.
+   */
+  toolAccess?: string
   /** Effective content of the agent's team context file. AGENTS.md only. */
   team?: { id: string; content: string }
   /** Package workspace template for this file. Managed agents only. */
@@ -91,6 +98,8 @@ function sectionsFor(file: ComposableFile, inputs: ComposeInputs): Section[] {
     if (global) sections.push({ label: 'global', content: global })
     const role = normalized(inputs.role?.content)
     if (role && inputs.role) sections.push({ label: `role:${inputs.role.id}`, content: role })
+    const toolAccess = normalized(inputs.toolAccess)
+    if (toolAccess) sections.push({ label: 'tool-access', content: toolAccess })
     const team = normalized(inputs.team?.content)
     if (team && inputs.team) sections.push({ label: `team:${inputs.team.id}`, content: team })
     if (pkg) sections.push({ label: 'package', content: pkg })

@@ -99,11 +99,6 @@ mock.module('../../../packages/adapter-openclaw/src/main-agent', () => ({
   getMainAgentName: () => 'Main',
 }))
 
-// mcporter — would otherwise spawn child processes
-mock.module('../../../src/core/mcporter', () => ({
-  syncConfig: mock(() => []),
-}))
-
 // agents — sendMessageToAgent is the only thing imported by team
 mock.module('../../../src/core/agents', () => ({
   sendMessageToAgent: mock(async () => ({ ok: true })),
@@ -229,6 +224,24 @@ function makeRuntimeMock() {
       remove: async () => {},
       runNow: async (jobId: string) => ({ id: 'run-1', jobId, status: 'succeeded' }),
       listRuns: async () => [],
+    },
+    models: {
+      listAvailable: async () => [],
+      routingSupport: () => ({
+        defaultModel: true,
+        fallbackModels: true,
+        defaultSubagentModel: true,
+        aliases: true,
+        perAgentSubagentModel: true,
+      }),
+      // P2.4: the default-model fallback reads the routing policy, not config.
+      routingPolicy: async () => ({
+        defaultModel: 'claude-opus-4',
+        fallbackModels: [],
+        defaultSubagentModel: null,
+        aliases: {},
+      }),
+      setRoutingPolicy: async () => {},
     },
     config: {
       get: async () => ({ agents: { defaults: { model: { primary: 'claude-opus-4' } } } }),

@@ -11,10 +11,9 @@ import { createRuntimeExecToolProvider } from './exec-tools/provider'
 import { createRuntimeAdapter } from './runtime-adapter-factory'
 import { createSearchAdapter } from './search-adapter-factory'
 import { getSettings, resetSettingsCache } from './settings'
-
-type AppServicesGlobal = typeof globalThis & {
-  __bakinAppServices?: AppServices
-}
+// Accessors live in a leaf module (breaks the composition-root import cycle);
+// re-exported below so existing `from './app-services'` imports are unchanged.
+import { getAppServices, maybeGetAppServices, setAppServices } from './app-services-store'
 
 const log = createLogger('app-services')
 
@@ -32,6 +31,16 @@ function withAntflyAuthSecret(searchSettings: Record<string, unknown>): Record<s
     return { ...searchSettings, auth: undefined }
   }
   return { ...searchSettings, auth: { username: auth.username, password: resolved.password } }
+}
+
+/**
+ * Base URL for Bakin's MCP server, as written into runtime-side MCP config by
+ * `provisionToolAccess`. `BAKIN_MCP_BASE_URL` overrides for setups where
+ * "localhost from the runtime's perspective" is wrong (the dockerized OpenClaw
+ * rig needs `http://host.docker.internal:<port>`).
+ */
+export function resolveBakinMcpBaseUrl(): string {
+  return process.env.BAKIN_MCP_BASE_URL || `http://localhost:${Number(process.env.PORT || 3737)}`
 }
 
 export async function createAppServices(): Promise<AppServices> {
@@ -59,12 +68,23 @@ export async function createAppServices(): Promise<AppServices> {
     },
   }
 
+  // In-process tool delivery for runtimes that register Bakin exec tools
+  // directly in agent sessions (Pi). Out-of-band runtimes (OpenClaw) reach the
+  // same registry over MCP and use the base URL to write their config entries.
+  //
+  // NOTE: initialize() only THREADS the base URL — it never writes config.
+  // Provisioning (a config WRITE) happens only at explicit call sites: server
+  // boot (server.ts), onboarding install(), and adapter roster changes. A
+  // read-only CLI path (`bakin check …`) creating app services must never
+  // mutate the runtime config — and deriving the URL from each process's env
+  // would let a PORT-less shell rewrite working :4000 entries back to :3737.
+  const execTools = createRuntimeExecToolProvider()
+
   await runtime.initialize({
     ...adapterInit,
     settings: settings.runtime.settings,
-    // In-process tool delivery for runtimes that register Bakin exec tools
-    // directly in agent sessions (Pi). OpenClaw ignores this (MCP/mcporter).
-    execTools: createRuntimeExecToolProvider(),
+    execTools,
+    bakinMcpBaseUrl: resolveBakinMcpBaseUrl(),
   })
   await search.initialize({ ...adapterInit, settings: withAntflyAuthSecret(settings.search.settings) })
 
@@ -82,18 +102,6 @@ export async function createAppServices(): Promise<AppServices> {
   return services
 }
 
-export function setAppServices(services: AppServices): void {
-  ;(globalThis as AppServicesGlobal).__bakinAppServices = services
-}
-
-export function getAppServices(): AppServices {
-  const services = maybeGetAppServices()
-  if (!services) {
-    throw new Error('Bakin AppServices have not been initialized')
-  }
-  return services
-}
-
-export function maybeGetAppServices(): AppServices | undefined {
-  return (globalThis as AppServicesGlobal).__bakinAppServices
-}
+// Re-exported from the leaf store so `import { getAppServices } from
+// './app-services'` keeps working across the codebase.
+export { getAppServices, maybeGetAppServices, setAppServices }

@@ -10,10 +10,10 @@ import type {
   AdapterInitOpts,
 } from '@bakin/core/adapters/runtime'
 
-import type { RuntimeCapabilities, RuntimeToolAccessHint } from '@bakin/core/adapters/runtime'
+import type { CapabilityMode, CapabilitySet, RuntimeCapabilities, RuntimeCredentialStatus, RuntimeToolAccess, ToolAccessProvisioningStatus } from '@bakin/core/adapters/runtime'
 
 import { createAgentsSurface } from './agents'
-import { createConfigSurface } from './config'
+import { listAuthCredentials } from './config'
 import { MAIN_AGENT_ID, seedMainAgentIfEmpty } from './main-agent'
 import { createMemorySurface } from './memory'
 import { createMessagingSurface } from './messaging'
@@ -21,9 +21,11 @@ import { capabilitiesForModel, createModelsSurface, resetModelRegistry } from '.
 import { readRegistry } from './registry'
 import { createHealthChecks } from './health-checks'
 import { createImagesSurface } from './images'
+import { codexImageAuth } from './codex-images'
+import { resolveProviderApiKeySource } from '@bakin/core/media'
 import { createSessionsSurface } from './sessions'
 import { createSkillsSurface } from './skills'
-import { createChannelsSurface, createCronSurface, createToolsSurface } from './unsupported'
+import { createToolsSurface } from './unsupported'
 
 export interface PiRuntimeAdapterOptions {
   settings?: Record<string, unknown>
@@ -62,15 +64,69 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   /** Pi agents call Bakin exec tools natively (in-process tool bridge). */
-  describeToolAccess = (): RuntimeToolAccessHint => ({ invocation: 'native' })
+  describeToolAccess = (): RuntimeToolAccess => ({ style: 'in-process' })
+
+  /**
+   * Presence-only credential report (P2.2): provider names from Pi's
+   * auth.json (never secret material). Pi keys credentials per-install, not
+   * per-agent, so `agentId` is irrelevant; no channel layer → no channels.
+   */
+  credentialStatus = async (_opts?: { agentId?: string }): Promise<RuntimeCredentialStatus> => {
+    const llmCredentials = listAuthCredentials()
+    return {
+      llmProviders: llmCredentials.map((entry) => entry.provider),
+      llmCredentials,
+      channels: [],
+    }
+  }
+
+  /**
+   * No external wiring to provision — Pi's exec tools are injected per
+   * session via the `execTools` provider passed to `initialize`.
+   */
+  provisionToolAccess = async (): Promise<void> => {}
+  deprovisionToolAccess = async (): Promise<void> => {}
+  verifyToolAccess = async (): Promise<ToolAccessProvisioningStatus> => ({
+    style: 'in-process',
+    ok: true,
+    issues: [],
+  })
+
+  /** Full capability set; input modality is a conservative model probe. */
+  capabilities = async (opts?: { agentId?: string }): Promise<CapabilitySet> => ({
+    toolCalling: { mode: 'native', access: this.describeToolAccess() },
+    // Pi has no channel layer (honest-empty until the in-app channel shim).
+    delivery: { mode: 'unavailable' },
+    imageGen: { mode: await this.imageGenMode() },
+    memory: { mode: 'native' },
+    sessions: { mode: 'native' },
+    workspaceFiles: { mode: 'native' },
+    input: await this.inputModality(opts?.agentId),
+  })
+
+  /**
+   * Honest imageGen mode (P4.1): 'native' when the codex OAuth drives the
+   * ChatGPT image path; 'shimmed' when only Bakin's direct-provider shim can
+   * serve (a Bakin-owned openai/google key exists); 'unavailable' otherwise.
+   * The images plugin gates on this descriptor instead of fusing readiness.
+   */
+  private imageGenMode = async (): Promise<CapabilityMode> => {
+    try {
+      if ((await codexImageAuth()) !== null) return 'native'
+    } catch {
+      // Unreadable auth is not fatal — fall through to the shim probe.
+    }
+    const shimKey = (['openai', 'google'] as const).some((provider) => resolveProviderApiKeySource(provider) !== null)
+    return shimKey ? 'shimmed' : 'unavailable'
+  }
 
   /** Conservative modality probe from the agent's effective Pi model. */
-  capabilities = async (opts?: { agentId?: string }): Promise<RuntimeCapabilities> => {
+  private inputModality(agentId?: string): Promise<RuntimeCapabilities> {
     const agents = readRegistry().agents
-    const requested = opts?.agentId?.trim()
+    const requested = agentId?.trim()
     if (requested) {
       const record = agents.find((a) => a.id === requested)
-      if (!record) return { imageInput: false, audioInput: false }
+      if (!record) return Promise.resolve({ imageInput: false, audioInput: false })
       return capabilitiesForModel(record.model)
     }
     const main = agents.find((a) => a.id === MAIN_AGENT_ID) ?? agents[0]
@@ -107,7 +163,9 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
     return this._images
   }
 
-  channels: AgentRuntimeAdapter['channels'] = createChannelsSurface()
+  // channels/cron are OMITTED (P2.1): Pi has no delivery layer and no
+  // runtime-native cron. Absence — not a throwing stub — is the contract's
+  // honest signal; consumers feature-detect and degrade.
 
   skills: AgentRuntimeAdapter['skills'] = createSkillsSurface()
 
@@ -117,7 +175,4 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
 
   models: AgentRuntimeAdapter['models'] = createModelsSurface()
 
-  cron: AgentRuntimeAdapter['cron'] = createCronSurface()
-
-  config: AgentRuntimeAdapter['config'] = createConfigSurface()
 }

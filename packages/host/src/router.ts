@@ -25,6 +25,7 @@ import { Route as MemoryRoute } from './routes/memory'
 import { Route as ModelsRoute } from './routes/models'
 import { Route as ScheduleRoute } from './routes/schedule'
 import { Route as SettingsRoute } from './routes/settings'
+import { Route as RuntimeRoute } from './routes/runtime'
 import { Route as PluginCatchAllRoute } from './routes/plugin-catchall'
 
 const routeTree = RootRoute.addChildren([
@@ -46,6 +47,7 @@ const routeTree = RootRoute.addChildren([
   ModelsRoute,
   ScheduleRoute,
   SettingsRoute,
+  RuntimeRoute,
   PluginCatchAllRoute,
 ])
 

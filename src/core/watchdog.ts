@@ -121,7 +121,15 @@ export function getNotificationChannel(settings: ReturnType<typeof getSettings>)
 }
 
 async function sendWatchdogChannelMessage(channel: string, message: string): Promise<void> {
-  await getAppServices().runtime.channels.sendMessage({
+  const channels = getAppServices().runtime.channels
+  if (!channels) {
+    // Optional capability (P2.1): no channel layer on this runtime — the
+    // alert degrades to log-only. The message content is already logged by
+    // every caller before attempting delivery.
+    log.warn('Watchdog alert not delivered — runtime has no channel layer', { channel })
+    return
+  }
+  await channels.sendMessage({
     channels: [channel],
     message: {
       body: message,

@@ -116,7 +116,6 @@ export type {
   ResolveApprovalArgs,
   RuntimeAgent,
   RuntimeAllowlistPatch,
-  RuntimeConfigAccess,
   RuntimeMemoryEntry,
   RuntimeMemoryTier,
   RuntimeErrorKind,

@@ -95,7 +95,6 @@ steps:
     description: >
       Use the approved develop-prompt output. Call bakin_exec_images_generate
       with taskId, promptPacket, prompt, provider, model, surface, and quality.
-      If invoking through mcporter, use --timeout 600000 for the generation call.
       Do not manually write files; the images and assets plugins handle
       persistence. Submit the assetId returned by the tool.
     output_schema:

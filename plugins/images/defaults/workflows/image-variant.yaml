@@ -21,8 +21,7 @@ steps:
       surface, or brand-safety constraints.
 
       Call bakin_exec_images_generate with taskId, promptPacket, prompt, and
-      the parent route's provider, model, surface, and quality. If invoking
-      through mcporter, use --timeout 600000 for the generation call. Do not
+      the parent route's provider, model, surface, and quality. Do not
       write files manually; the images and assets plugins handle persistence.
       Submit the identifiers the tool returns.
     output_schema:

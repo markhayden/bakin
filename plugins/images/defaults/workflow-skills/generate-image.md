@@ -34,15 +34,15 @@ runtime/native routing, provider authentication, and saving the result as a
 managed versioned asset.
 
 1. Read the approved prompt, promptPacket, route, surface, and quality from priorStepOutput.
-2. Call `bakin_exec_images_generate` with the current task id, `promptPacket`, `prompt`, `provider`, `model`, `surface`, and `quality`. If invoking through mcporter, use `--timeout 600000`.
+2. Call `bakin_exec_images_generate` with the current task id, `promptPacket`, `prompt`, `provider`, `model`, `surface`, and `quality`.
 3. Verify the tool returned `ok: true`.
 4. Submit the tool's returned `assetId`, `version`, provider, model, surface, width, height, and promptHash.
 
 Reference images:
 
-- When the brief provides a reference ("like this image", "match this style", an attached file), pass the image itself via `referenceImages` — do NOT transcribe what you see into the prompt. Entries can be managed assetIds, local file paths, or the runtime's `media://` attachment URIs (max 4, mixed forms allowed).
+- When the brief provides a reference ("like this image", "match this style", an attached file), pass the image itself via `referenceImages` — do NOT transcribe what you see into the prompt. Entries can be managed assetIds, local file paths, or the runtime's attachment URIs (max 4, mixed forms allowed).
 - References require a native runtime model whose capabilities include `reference-images` (check `bakin_exec_images_recommend` / `bakin_exec_images_profiles`); the call fails cleanly before billing otherwise.
-- Raw paths and `media://` URIs are auto-imported as tracked assets linked to the task, and the generated asset records its reference lineage — the References row on the asset page is your provenance.
+- Raw paths and runtime attachment URIs are auto-imported as tracked assets linked to the task, and the generated asset records its reference lineage — the References row on the asset page is your provenance.
 - To revise an existing managed asset, use `bakin_exec_images_edit` with its `assetId` instead; `referenceImages` there supplies extra context images, never the asset being edited.
 
 Iteration (correction passes, re-rolls, quality loops):
@@ -56,6 +56,6 @@ Timeouts and retries:
 
 - If the generation call times out or the transport result is ambiguous, first call `bakin_exec_assets_list` with the same task id and `type: "images"`.
 - Reuse a matching generated asset linked to the task instead of generating again.
-- If no matching asset exists, retry `bakin_exec_images_generate` once with the exact same prompt, promptPacket, provider, model, surface, quality, task id, and `--timeout 600000` mcporter flag.
+- If no matching asset exists, retry `bakin_exec_images_generate` once with the exact same prompt, promptPacket, provider, model, surface, quality, task id.
 
 Do not call legacy image tools. Do not write image files, thumbnails, or sidecars by hand. Do not emit a local filesystem path or filename as the image identity — the asset is addressed by its `assetId`.

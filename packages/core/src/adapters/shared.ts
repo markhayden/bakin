@@ -36,7 +36,7 @@ export interface RuntimeExecToolInvokeResult {
 /**
  * Bakin's exec-tool registry offered to runtimes that deliver tools
  * in-process (Pi registers these as native session tools). Out-of-band
- * runtimes (OpenClaw reaches the same registry over HTTP MCP/mcporter)
+ * runtimes (OpenClaw reaches the same registry over its native MCP client)
  * ignore it. `list()` reads the LIVE registry — call it at session build
  * time so late plugin registrations and hot reloads are visible.
  * Usage recording + audit happen inside `invoke`; adapters add nothing.
@@ -52,6 +52,14 @@ export interface AdapterInitOpts {
   logger?: AdapterLogger
   audit?: (event: AdapterAuditEvent) => void
   execTools?: RuntimeExecToolProvider
+  /**
+   * Base URL of Bakin's MCP server (e.g. `http://localhost:3737`) — the seam
+   * a runtime whose agents reach Bakin over MCP (OpenClaw) needs to write its
+   * per-agent server entries during `provisionToolAccess`. Core knows the
+   * port; the adapter does not, so it is threaded here. In-process runtimes
+   * (Pi) ignore it.
+   */
+  bakinMcpBaseUrl?: string
 }
 
 export interface AdapterHealthCheckResult {

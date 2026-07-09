@@ -55,6 +55,17 @@ export const CLI_COMMANDS = [
     examples: [{ title: 'Check status', code: 'bakin status', test: 'illustrative', reason: 'Requires a running local server for full output.' }],
   }),
   cli({
+    name: 'runtime',
+    usage: 'bakin runtime [use <openclaw|pi>]',
+    group: 'Lifecycle',
+    summary: 'Show the runtime capability report or switch runtime adapters.',
+    description: 'Without arguments, prints the active runtime adapter and its capability report (native/shimmed/unavailable per capability, tool-access status). `bakin runtime use <adapter>` runs the orchestrated switch: settings backup, tool-access deprovision/provision, best-effort roster carry-over with an honest unmapped-model report, drift-gated agent re-projection, and capability validation. A completed switch requires `bakin restart` so plugins rebind.',
+    examples: [
+      { title: 'Show the capability report', code: 'bakin runtime', test: 'illustrative', reason: 'Requires a running local server.' },
+      { title: 'Switch to the Pi runtime', code: 'bakin runtime use pi', test: 'illustrative', reason: 'Mutates settings and runtime state; requires a restart.' },
+    ],
+  }),
+  cli({
     name: 'dev',
     usage: 'bakin dev [--verbose] [--no-color]',
     group: 'Lifecycle',
@@ -150,7 +161,7 @@ export const CLI_COMMANDS = [
   cli({ name: 'setup service', usage: 'bakin setup service [--uninstall]', group: 'Setup and config', summary: 'Install or remove autostart service integration.', description: 'Installs or removes a macOS LaunchAgent or Linux user systemd service that runs `bakin serve` on login, starts it immediately, and verifies the server responds.', examples: [{ title: 'Enable autostart', code: 'bakin setup service', test: 'illustrative', reason: 'Mutates host service configuration.' }, { title: 'Disable autostart', code: 'bakin setup service --uninstall', test: 'illustrative', reason: 'Mutates host service configuration.' }] }),
   cli({ name: 'mkdir', usage: 'bakin mkdir [--json]', group: 'Setup and config', summary: 'Create the Bakin home directory tree.', description: 'Creates or verifies the `~/.bakin` directory tree. Pass --json for machine-readable output.', examples: [{ title: 'Create directories', code: 'bakin mkdir', test: 'illustrative', reason: 'Writes local home directory state.' }] }),
   cli({ name: 'check', usage: 'bakin check <runtime|search|search-models|llm|channels|plugin-assets|agent-sync|recommended-plugins|recommended-agents|all>', group: 'Setup and config', summary: 'Run onboarding checks.', description: 'Runs one or all first-run readiness checks.', examples: [{ title: 'Run all checks', code: 'bakin check all', test: 'illustrative', reason: 'Depends on local environment.' }] }),
-  cli({ name: 'install', usage: 'bakin install <search|search-models|mcporter|plugin-assets|agent-sync|recommended-plugins|recommended-agents>', group: 'Setup and config', summary: 'Install onboarding components.', description: 'Installs Bakin dependencies, plugin/agent assets, or official recommended plugins and agents.', examples: [{ title: 'Install mcporter', code: 'bakin install mcporter', test: 'illustrative', reason: 'Downloads or mutates local dependencies.' }] }),
+  cli({ name: 'install', usage: 'bakin install <search|search-models|plugin-assets|agent-sync|recommended-plugins|recommended-agents>', group: 'Setup and config', summary: 'Install onboarding components.', description: 'Installs Bakin dependencies, plugin/agent assets, or official recommended plugins and agents.', examples: [{ title: 'Install the search engine', code: 'bakin install search', test: 'illustrative', reason: 'Downloads or mutates local dependencies.' }] }),
   cli({ name: 'onboard', usage: 'bakin onboard [--check] [--yes] [--json] [--force] [--verbose]', group: 'Setup and config', summary: 'Run first-time onboarding.', description: 'Runs the full first-run setup flow. By default it hides raw service logs and shows a structured setup report; use --verbose for underlying logs.', examples: [{ title: 'Scripted onboarding', code: 'bakin onboard --yes --json', test: 'illustrative', reason: 'Writes local state and may install dependencies.' }] }),
   cli({ name: 'paths', usage: 'bakin paths [key] [--json]', group: 'Setup and config', summary: 'Show content directory paths.', description: 'Prints Bakin runtime paths, optionally for one key. Pass --json for raw API output.', examples: [{ title: 'Show paths', code: 'bakin paths', test: 'illustrative', reason: 'Depends on local Bakin home settings.' }] }),
 

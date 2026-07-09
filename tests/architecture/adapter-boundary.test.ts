@@ -34,6 +34,14 @@ const DENYLIST = [
     allow: (rel: string) => rel === 'src/core/search-adapter-factory.ts' || rel === 'src/core/runtime-adapter-factory.ts',
   },
   {
+    // channels/cron are OPTIONAL runtime capabilities (P2.1). The optional
+    // types force feature-detection at compile time; the only bypass is a
+    // non-null assertion — ban `.channels!.` / `.cron!.` so a consumer can
+    // never turn "absent on this runtime" into a crash.
+    label: 'non-null assertion on an optional runtime capability (feature-detect instead)',
+    regex: /\.(?:channels|cron)!\./,
+  },
+  {
     label: 'raw Pi home/path/SDK access outside adapter-pi',
     // Same treatment OpenClaw gets: Pi's home dir, env override, path
     // helpers, and the Pi SDK package must never leak upstream — a second
@@ -102,17 +110,12 @@ const DENYLIST = [
     regex: /(?:discord(?:app)?\.com|discord\.gg|discord\/api)/,
   },
   {
-    label: 'raw runtime config access outside allowlisted gate',
-    regex: /(?:config\.raw|\.raw<)/,
-    allow: (rel: string) => rel === 'src/core/runtime-config-raw.ts',
-  },
-  {
-    // Whole-config reads/replaces are scope-typed + mutation-audited via the
-    // governed wrapper; direct adapter calls bypass that (the audit's
-    // config-surface finding). update(patch) no longer exists at all.
-    label: 'whole runtime-config access outside the governed wrapper',
-    regex: /\.config\.(?:get|replace|update)\s*(?:<[^>]*>)?\s*\(/,
-    allow: (rel: string) => rel === 'src/core/runtime-config.ts',
+    // The contract's config surface is DELETED (P2.5): runtime config is
+    // adapter-private. Nothing upstream may reach for a `runtime.config`
+    // member (it no longer exists — this catches casts/any escapes) or the
+    // deleted governed wrappers.
+    label: 'runtime config access (surface deleted in P2.5 — use the neutral contract methods)',
+    regex: /runtime\.config\.|readRuntimeConfig|replaceRuntimeConfig|readAllowedRuntimeConfigRaw/,
   },
   {
     label: 'provider setup URL outside adapter factory',
@@ -154,6 +157,64 @@ function scanFiles(): string[] {
 
 function isSymbolicAgent(value: string): boolean {
   return value.startsWith('$')
+}
+
+// ─── Content transport-neutrality (P1.7) ─────────────────────────────────────
+//
+// Shipped agent-facing CONTENT must never hardcode a transport: HOW an agent
+// invokes Bakin's tools is rendered per-runtime into the injected tool-access
+// section, and runtime-private URI schemes (media://) don't exist on every
+// runtime. Ban them so a switch (Pi↔OpenClaw) never leaves stale wording.
+const CONTENT_EXT_RE = /\.(md|ya?ml|ts|tsx|json)$/
+const CONTENT_FILE_ROOTS = ['skill/SKILL.md', 'src/core/team-context-defaults.ts']
+
+const TRANSPORT_BANS: Array<{ re: RegExp; label: string }> = [
+  { re: /mcporter/i, label: 'mcporter (removed transport CLI)' },
+  { re: /media:\/\//, label: 'raw media:// URI (runtime-private scheme)' },
+  { re: /bakin-<agent>/, label: 'bakin-<agent> (per-agent MCP server template)' },
+  { re: /bakin-[a-z][\w-]*\.bakin_exec/, label: 'per-agent MCP server prefix (bakin-<name>.bakin_exec_*)' },
+  // CLI flag syntax is transport, not tool contract: `--args`/`--timeout` were
+  // mcporter invocation flags — meaningless for in-process/native-MCP calls.
+  { re: /--args\b/, label: '--args flag (mcporter CLI invocation syntax)' },
+  { re: /--timeout\s+\d/, label: '--timeout flag (mcporter CLI invocation syntax)' },
+]
+
+function walkContent(path: string, out: string[] = []): string[] {
+  let entries
+  try {
+    entries = readdirSync(path, { withFileTypes: true })
+  } catch {
+    return out
+  }
+  for (const entry of entries) {
+    if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name.startsWith('.')) continue
+    const full = join(path, entry.name)
+    if (entry.isDirectory()) walkContent(full, out)
+    else if (entry.isFile() && CONTENT_EXT_RE.test(entry.name)) out.push(full)
+  }
+  return out
+}
+
+function scanContentFiles(): string[] {
+  const files = CONTENT_FILE_ROOTS.map((r) => join(ROOT, r))
+  const pluginsDir = join(ROOT, 'plugins')
+  try {
+    for (const entry of readdirSync(pluginsDir, { withFileTypes: true })) {
+      if (entry.isDirectory()) walkContent(join(pluginsDir, entry.name, 'defaults'), files)
+    }
+  } catch {
+    // no plugins dir — nothing to scan
+  }
+  return files
+}
+
+/** Transport-string violations in one shipped-content file. */
+export function findTransportViolations(rel: string, content: string): string[] {
+  const hits: string[] = []
+  for (const { re, label } of TRANSPORT_BANS) {
+    if (re.test(content)) hits.push(`${rel}: ${label}`)
+  }
+  return hits
 }
 
 function childSteps(step: WorkflowStep): WorkflowStep[] {
@@ -230,5 +291,34 @@ describe('adapter boundary architecture', () => {
     }
 
     expect(hits).toEqual([])
+  })
+
+  it('keeps shipped agent-facing content transport-neutral', () => {
+    const hits: string[] = []
+    for (const file of scanContentFiles()) {
+      let content: string
+      try {
+        content = readFileSync(file, 'utf-8')
+      } catch {
+        continue
+      }
+      hits.push(...findTransportViolations(relative(ROOT, file), content))
+    }
+    expect(hits).toEqual([])
+  })
+
+  it('the transport-neutrality check catches violations (fixture)', () => {
+    expect(findTransportViolations('x.md', 'run `mcporter call bakin-main.bakin_exec_tasks_get`')).toEqual([
+      'x.md: mcporter (removed transport CLI)',
+      'x.md: per-agent MCP server prefix (bakin-<name>.bakin_exec_*)',
+    ])
+    expect(findTransportViolations('y.md', 'pass a media://inbound/x.png reference')).toEqual([
+      'y.md: raw media:// URI (runtime-private scheme)',
+    ])
+    expect(findTransportViolations('w.md', "tool --args '{\"a\":1}' with --timeout 600000")).toEqual([
+      'w.md: --args flag (mcporter CLI invocation syntax)',
+      'w.md: --timeout flag (mcporter CLI invocation syntax)',
+    ])
+    expect(findTransportViolations('z.md', 'call `bakin_exec_tasks_get taskId=<id>` directly')).toEqual([])
   })
 })

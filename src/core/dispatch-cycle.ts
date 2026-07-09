@@ -7,7 +7,7 @@
 import { createLogger } from './logger'
 import { appendAudit } from './audit'
 import { getSettings } from './settings'
-import { getAppServices } from './app-services'
+import { getAppServices } from './app-services-store'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { loseRun } from './execution-ledger'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'

@@ -19,37 +19,57 @@ mock.module('../../src/core/logger', () => ({
   createLogger: () => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }),
 }))
 
-import { buildDispatchMessage, mcporterHelpers, resolveToolInvocation } from '../../src/core/dispatch-prompts'
+import { buildDispatchMessage, toolHelpers, resolveToolAccess } from '../../src/core/dispatch-prompts'
 import { setAppServices } from '../../src/core/app-services'
 import { createMockRuntimeAdapter } from '../../packages/core/src/adapters/runtime/testing'
 import type { AppServices } from '@bakin/core/app-services'
 
 describe('tool invocation styles', () => {
-  test('mcporterHelpers renders both styles', () => {
-    const cli = mcporterHelpers('rolo', 'mcporter-cli')
-    expect(cli.mc('bakin_exec_tasks_get', 'taskId=t1')).toBe('mcporter call bakin-rolo.bakin_exec_tasks_get taskId=t1')
-    const native = mcporterHelpers('rolo', 'native')
-    expect(native.mc('bakin_exec_tasks_get', 'taskId=t1')).toBe('bakin_exec_tasks_get taskId=t1')
+  test('toolHelpers renders per the supplied access style', () => {
+    const bare = toolHelpers('rolo', { style: 'in-process' })
+    expect(bare.mc('bakin_exec_tasks_get', 'taskId=t1')).toBe('bakin_exec_tasks_get taskId=t1')
+
+    const mcp = toolHelpers('rolo', { style: 'mcp', mcpServerTemplate: 'bakin-<agent>' })
+    expect(mcp.mc('bakin_exec_tasks_get', 'taskId=t1')).toBe('bakin-rolo.bakin_exec_tasks_get taskId=t1')
   })
 
-  test('resolveToolInvocation follows the active runtime hint (fallback mcporter-cli)', () => {
+  test('in-process runtime → bare calls + direct header, never a server prefix', () => {
     const runtime = createMockRuntimeAdapter({
-      describeToolAccess: () => ({ invocation: 'native' as const }),
+      describeToolAccess: () => ({ style: 'in-process' as const }),
     })
     setAppServices({ runtime } as unknown as AppServices)
-    expect(resolveToolInvocation()).toBe('native')
+    expect(resolveToolAccess().style).toBe('in-process')
 
     const msg = buildDispatchMessage(
       { id: 't1', title: 'Do the thing', agent: 'rolo' },
       'rolo',
       '/tmp/none',
+      'main',
     )
     expect(msg).toContain('call these tools directly')
     expect(msg).toContain('bakin_exec_tasks_log_progress taskId=t1')
+    expect(msg).not.toContain('bakin-rolo.')
+    expect(msg).not.toContain('mcporter')
+  })
+
+  test('mcp runtime → native MCP header + per-agent prefixed calls', () => {
+    const runtime = createMockRuntimeAdapter({
+      describeToolAccess: () => ({ style: 'mcp' as const, mcpServerTemplate: 'bakin-<agent>' }),
+    })
+    setAppServices({ runtime } as unknown as AppServices)
+    expect(resolveToolAccess().style).toBe('mcp')
+
+    const msg = buildDispatchMessage(
+      { id: 't1', title: 'Do the thing', agent: 'rolo' },
+      'rolo',
+      '/tmp/none',
+      'main',
+    )
+    expect(msg).toContain('native MCP tools (server `bakin-rolo`)')
+    expect(msg).toContain('bakin-rolo.bakin_exec_tasks_log_progress taskId=t1')
     expect(msg).not.toContain('mcporter')
 
-    // Restore legacy default for other suites sharing this process.
+    // Restore a clean default runtime for other suites sharing this process.
     setAppServices({ runtime: createMockRuntimeAdapter() } as unknown as AppServices)
-    expect(resolveToolInvocation()).toBe('mcporter-cli')
   })
 })

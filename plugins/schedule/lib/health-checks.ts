@@ -18,7 +18,9 @@ import { healthOk as ok, healthWarn as warn, healthError as error } from '@makin
 
 const log = createLogger('schedule:health')
 
-type RuntimeCronReader = Pick<AgentRuntimeAdapter['cron'], 'list'>
+// cron is an OPTIONAL runtime capability (P2.1): checks accept undefined —
+// no native cron surface means nothing to sync, by design.
+type RuntimeCronReader = Pick<NonNullable<AgentRuntimeAdapter['cron']>, 'list'>
 
 // ─── Result constructors (inlined; matches workflows precedent) ─────────────
 
@@ -36,7 +38,7 @@ function fixed(check: string, message: string): HealthCheckResult {
  */
 export async function checkScheduleSync(
   contentDir: string,
-  cron: RuntimeCronReader,
+  cron: RuntimeCronReader | undefined,
   defaultOwner: string,
 ): Promise<HealthCheckResult[]> {
   return checkScheduleSyncInternal(contentDir, cron, defaultOwner, false)
@@ -44,12 +46,16 @@ export async function checkScheduleSync(
 
 async function checkScheduleSyncInternal(
   contentDir: string,
-  cron: RuntimeCronReader,
+  cron: RuntimeCronReader | undefined,
   defaultOwner: string,
   autoFix: boolean,
 ): Promise<HealthCheckResult[]> {
   const checkName = 'schedule-sync'
   const results: HealthCheckResult[] = []
+
+  if (!cron) {
+    return [ok(checkName, 'The active runtime has no native cron surface — nothing to sync.')]
+  }
 
   let runtimeJobs: Array<{ id: string; name: string }>
   try {
@@ -142,10 +148,13 @@ async function checkScheduleSyncInternal(
  * onboarding checks, not plugin-registered health checks like this one.
  */
 export async function checkScheduleCutover(
-  cron: RuntimeCronReader,
+  cron: RuntimeCronReader | undefined,
   bakinJobIds: () => string[],
 ): Promise<HealthCheckResult[]> {
   const check = 'schedule-cutover'
+  if (!cron) {
+    return [ok(check, 'The active runtime has no native cron surface — all Bakin schedules are cut over by construction.')]
+  }
   let runtimeIds: Set<string>
   try {
     runtimeIds = new Set((await cron.list()).map(job => job.id))

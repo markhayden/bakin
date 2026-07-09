@@ -51,10 +51,10 @@ export async function runtimeEngineAvailability(
     }
     if (!caps) return { ok: false, reason: 'runtime capability probe failed' }
     const agentLabel = opts.agentId ? `agent '${opts.agentId}'` : 'runtime model'
-    if (input.kind === 'image' && !caps.imageInput) {
+    if (input.kind === 'image' && !caps.input.imageInput) {
       return { ok: false, reason: `${agentLabel} has no image input` }
     }
-    if (input.kind === 'audio' && !caps.audioInput) {
+    if (input.kind === 'audio' && !caps.input.audioInput) {
       return { ok: false, reason: `${agentLabel} has no audio input` }
     }
   }

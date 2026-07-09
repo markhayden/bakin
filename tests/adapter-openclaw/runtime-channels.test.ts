@@ -93,7 +93,7 @@ describe('OpenClaw runtime channels', () => {
     const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
     const runtime = createOpenClawRuntimeAdapter()
 
-    const channels = await runtime.channels.list()
+    const channels = await runtime.channels!.list()
     expect(channels).toEqual([expect.objectContaining({
       id: 'discord',
       capabilities: ['message', 'rich-content'],
@@ -115,7 +115,7 @@ describe('OpenClaw runtime channels', () => {
     const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
     const runtime = createOpenClawRuntimeAdapter()
 
-    const channels = await runtime.channels.list()
+    const channels = await runtime.channels!.list()
     expect(channels).toEqual([expect.objectContaining({
       id: 'discord',
       capabilities: ['message', 'rich-content', 'interactive-approval'],
@@ -141,7 +141,7 @@ describe('OpenClaw runtime channels', () => {
     const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: recorder.binaryPath } })
     await runtime.initialize({ contentDir: testDir })
 
-    const result = await runtime.channels.deliverContent({
+    const result = await runtime.channels!.deliverContent({
       channels: ['discord'],
       content: {
         title: 'Launch post',
@@ -171,7 +171,7 @@ describe('OpenClaw runtime channels', () => {
     const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: recorder.binaryPath } })
     await runtime.initialize({ contentDir: testDir })
 
-    await runtime.channels.sendMessage({
+    await runtime.channels!.sendMessage({
       channels: ['discord:launch-room'],
       message: {
         title: 'Workflow publish failed',
@@ -201,7 +201,7 @@ describe('OpenClaw runtime channels', () => {
     const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: recorder.binaryPath } })
     await runtime.initialize({ contentDir: testDir })
 
-    await runtime.channels.createApproval({
+    await runtime.channels!.createApproval({
       approvalId: 'approval-1',
       channels: ['discord'],
       request: {
@@ -233,7 +233,7 @@ describe('OpenClaw runtime channels', () => {
     const runtime = createOpenClawRuntimeAdapter()
     await runtime.initialize({ contentDir: testDir })
 
-    const result = await runtime.channels.createApproval({
+    const result = await runtime.channels!.createApproval({
       approvalId: 'approval-1',
       channels: ['discord:channel-1'],
       request: {
@@ -295,7 +295,7 @@ describe('OpenClaw runtime channels', () => {
     const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: recorder.binaryPath } })
     await runtime.initialize({ contentDir: testDir })
 
-    const result = await runtime.channels.createApproval({
+    const result = await runtime.channels!.createApproval({
       approvalId: 'approval-1',
       channels: ['discord:channel-1'],
       request: {
@@ -339,7 +339,7 @@ describe('OpenClaw runtime channels', () => {
     const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: recorder.binaryPath } })
     await runtime.initialize({ contentDir: testDir })
 
-    await runtime.channels.createApproval({
+    await runtime.channels!.createApproval({
       approvalId: 'approval-1',
       channels: ['discord:channel-1'],
       request: {
@@ -379,7 +379,7 @@ describe('OpenClaw runtime channels', () => {
     const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: recorder.binaryPath } })
     await runtime.initialize({ contentDir: testDir })
 
-    await runtime.channels.createApproval({
+    await runtime.channels!.createApproval({
       approvalId: 'approval-1',
       channels: ['discord:channel-1'],
       request: {
@@ -425,10 +425,10 @@ describe('OpenClaw runtime channels', () => {
     })
 
     const events: unknown[] = []
-    const unsubscribe = runtime.channels.subscribeApprovalResponses(event => events.push(event))
+    const unsubscribe = runtime.channels!.subscribeApprovalResponses(event => events.push(event))
     await tick()
 
-    await runtime.channels.createApproval({
+    await runtime.channels!.createApproval({
       approvalId: 'approval-1',
       channels: ['discord:channel-1'],
       request: {
@@ -492,7 +492,7 @@ describe('OpenClaw runtime channels', () => {
       logger: { debug: mock(), info: mock(), warn, error: mock() },
     })
     const events: Array<{ response: { selectedOption: string } }> = []
-    const unsubscribe = runtime.channels.subscribeApprovalResponses(event => events.push(event))
+    const unsubscribe = runtime.channels!.subscribeApprovalResponses(event => events.push(event))
     await tick()
 
     FakeWebSocket.instances[0]!.emitMessage({
@@ -541,12 +541,12 @@ describe('OpenClaw runtime channels', () => {
     const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: recorder.binaryPath } })
     await runtime.initialize({ contentDir: testDir })
 
-    await runtime.channels.createThread!({
+    await runtime.channels!.createThread!({
       channel: 'discord:channel:111',
       messageRef: 'message:42',
       name: 'image-generation — Approve Prompt',
     })
-    await runtime.channels.editMessage!({
+    await runtime.channels!.editMessage!({
       channel: 'discord:channel:111',
       messageRef: 'message:42',
       body: 'updated card',
@@ -588,7 +588,7 @@ describe('OpenClaw runtime channels', () => {
     const runtime = createOpenClawRuntimeAdapter()
     await runtime.initialize({ contentDir: testDir })
 
-    await runtime.channels.createApproval({
+    await runtime.channels!.createApproval({
       approvalId: 'approval-1',
       channels: ['discord:channel-1'],
       request: {
@@ -626,7 +626,7 @@ describe('OpenClaw runtime channels', () => {
     const runtime = createOpenClawRuntimeAdapter()
     await runtime.initialize({ contentDir: testDir })
     const events: unknown[] = []
-    const unsubscribe = runtime.channels.subscribeApprovalResponses(event => events.push(event))
+    const unsubscribe = runtime.channels!.subscribeApprovalResponses(event => events.push(event))
     await tick()
 
     FakeWebSocket.instances[0]!.emitMessage({
@@ -675,7 +675,7 @@ describe('OpenClaw runtime channels', () => {
     const runtime = createOpenClawRuntimeAdapter()
     await runtime.initialize({ contentDir: testDir })
 
-    await runtime.channels.resolveApproval({
+    await runtime.channels!.resolveApproval({
       approvalId: 'approval-1',
       deliveries: [{ channelId: 'discord', ref: 'openclaw-plugin-approval:plugin:test-approval', renderedAt: '2026-04-28T12:00:00Z' }],
       response: {
@@ -706,8 +706,8 @@ describe('OpenClaw runtime channels', () => {
       },
     })
 
-    const unsubscribe = runtime.channels.subscribeApprovalResponses(() => {})
-    await runtime.channels.resolveApproval({
+    const unsubscribe = runtime.channels!.subscribeApprovalResponses(() => {})
+    await runtime.channels!.resolveApproval({
       approvalId: 'approval-1',
       deliveries: [{ channelId: 'discord', ref: 'message:1', renderedAt: '2026-04-28T12:00:00Z' }],
       response: {

@@ -99,20 +99,20 @@ describe('imitation-crab runtime contract', () => {
       output: { ok: true, mock: true },
     })
 
-    await expect(runtime.channels.list()).resolves.toEqual(expect.arrayContaining([
+    await expect(runtime.channels!.list()).resolves.toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: 'discord',
         capabilities: expect.arrayContaining(['message', 'rich-content']),
       }),
     ]))
-    await expect(runtime.channels.sendMessage({
+    await expect(runtime.channels!.sendMessage({
       channels: ['discord:contract-channel'],
       message: { body: 'contract channel message' },
     })).resolves.toEqual(expect.objectContaining({
       deliveries: [expect.objectContaining({ channelId: 'discord:contract-channel' })],
     }))
 
-    const createdCron = await runtime.cron.create({
+    const createdCron = await runtime.cron!.create({
       name: 'Contract Cron',
       schedule: '*/10 * * * *',
       command: 'Run contract cron',
@@ -122,7 +122,7 @@ describe('imitation-crab runtime contract', () => {
       command: 'Run contract cron',
       toolsAllow: ['message'],
     }))
-    await expect(runtime.cron.update(createdCron.id, {
+    await expect(runtime.cron!.update(createdCron.id, {
       schedule: '0 * * * *',
       toolsAllow: ['message', 'exec'],
     })).resolves.toEqual(expect.objectContaining({
@@ -130,14 +130,14 @@ describe('imitation-crab runtime contract', () => {
       schedule: '0 * * * *',
       toolsAllow: ['message', 'exec'],
     }))
-    await expect(runtime.cron.runNow(createdCron.id)).resolves.toEqual(expect.objectContaining({
+    await expect(runtime.cron!.runNow(createdCron.id)).resolves.toEqual(expect.objectContaining({
       jobId: createdCron.id,
       status: 'succeeded',
     }))
-    await expect(runtime.cron.listRuns(createdCron.id)).resolves.toEqual([
+    await expect(runtime.cron!.listRuns(createdCron.id)).resolves.toEqual([
       expect.objectContaining({ jobId: createdCron.id, status: 'succeeded' }),
     ])
-    await runtime.cron.remove(createdCron.id)
-    await expect(runtime.cron.get(createdCron.id)).resolves.toBeNull()
+    await runtime.cron!.remove(createdCron.id)
+    await expect(runtime.cron!.get(createdCron.id)).resolves.toBeNull()
   })
 })

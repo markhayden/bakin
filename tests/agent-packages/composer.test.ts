@@ -83,6 +83,36 @@ describe('composeManagedBlock — AGENTS.md recipe', () => {
     expect(body!).toContain('Delegate, never do inline work')
   })
 
+  it('places the tool-access section between role and team', () => {
+    const body = composeManagedBlock('AGENTS.md', {
+      global: '# Global Rules',
+      role: { id: 'orchestrator', content: '# Orchestrator Rules' },
+      toolAccess: '## Tool access\n\nCall your bakin_exec_* tools directly.',
+      team: { id: 'media', content: '# Media Team' },
+    })
+    const roleIdx = body!.indexOf('<!-- bakin-section: role:orchestrator -->')
+    const toolIdx = body!.indexOf('<!-- bakin-section: tool-access -->')
+    const teamIdx = body!.indexOf('<!-- bakin-section: team:media -->')
+    expect(toolIdx).toBeGreaterThan(roleIdx)
+    expect(teamIdx).toBeGreaterThan(toolIdx)
+    expect(body!).toContain('Call your bakin_exec_* tools directly.')
+  })
+
+  it('omits the tool-access section when unset or empty', () => {
+    expect(composeManagedBlock('AGENTS.md', { global: '# G', toolAccess: '' }))
+      .not.toContain('bakin-section: tool-access')
+    expect(composeManagedBlock('AGENTS.md', { global: '# G' }))
+      .not.toContain('bakin-section: tool-access')
+  })
+
+  it('ignores the tool-access layer in non-AGENTS files', () => {
+    const body = composeManagedBlock('SOUL.md', {
+      packageTemplate: { packageId: 'pixel', content: '# Soul' },
+      toolAccess: 'must not appear',
+    })
+    expect(body).not.toContain('must not appear')
+  })
+
   it('ignores the role layer in non-AGENTS files', () => {
     const body = composeManagedBlock('SOUL.md', {
       packageTemplate: { packageId: 'pixel', content: '# Soul' },

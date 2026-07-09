@@ -129,8 +129,8 @@ export function summarizeStructured(value: unknown, cap = 120): string {
  * Peel a runtime tool-result envelope to its meaningful payload:
  *   { content: [{ type:'text', text }] } → the joined text, JSON-parsed when
  *   the text is itself a JSON document (bakin exec tools return JSON strings).
- * Peels REPEATEDLY — an agent that shells a tool via bash/mcporter produces a
- * doubly-wrapped envelope (runtime content → mcporter stdout → MCP content).
+ * Peels REPEATEDLY — an agent that shells a tool via bash produces a
+ * doubly-wrapped envelope (runtime content → shell stdout → MCP content).
  * Non-envelope values pass through unchanged. Never throws.
  */
 export function unwrapToolResult(value: unknown, depth = 6): unknown {

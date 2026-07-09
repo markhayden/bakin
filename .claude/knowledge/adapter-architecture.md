@@ -37,10 +37,16 @@ reaches out-of-band:
 - `AdapterInitOpts.execTools: RuntimeExecToolProvider` — core offers the live
   exec-tool registry (JSON-Schema descriptors + invoke with usage/audit
   bookkeeping, `src/core/exec-tools/provider.ts`). Pi registers the tools as
-  native session tools; OpenClaw ignores the seam and keeps MCP/mcporter.
-- `describeToolAccess?(): RuntimeToolAccessHint` — how agents call Bakin
-  tools ('native' vs 'mcporter-cli'); dispatch prompts render accordingly
-  (`resolveToolInvocation()` in `src/core/dispatch-prompts.ts`).
+  native session tools; OpenClaw reaches the same registry over its native
+  MCP client (per-agent `bakin-<agent>` servers, adapter-provisioned).
+- `describeToolAccess(): RuntimeToolAccess` — how agents call Bakin tools
+  (`in-process` / `mcp` / `cli-shim`); every prompt + AGENTS.md surface
+  renders through the ONE renderer in `src/core/tool-access.ts`
+  (`resolveToolAccess()` in `src/core/dispatch-prompts.ts`).
+- `provisionToolAccess()` / `deprovisionToolAccess()` / `verifyToolAccess()` —
+  adapter-owned tool-access wiring lifecycle (OpenClaw writes/prunes its own
+  MCP config entries; Pi is a no-op). Runs at server boot, onboarding
+  install, and roster changes — never from read-only paths.
 
 Deep reference for the Pi implementation: `.claude/knowledge/pi-adapter.md`.
 
@@ -151,37 +157,26 @@ Plugins must not import:
 - `@antfly/sdk`
 - provider database paths or provider-owned SQLite files
 
-## Runtime Config Access (governed)
+## Runtime Config Is Adapter-Private
 
-Two gates, both audited, both architecture-test enforced:
+The contract's `config` surface is DELETED (runtime-capabilities P2.5): no
+whole-config access, no raw key reads, no governed wrappers. An architecture
+rule bans `runtime.config.` / `readRuntimeConfig` / `replaceRuntimeConfig` /
+`readAllowedRuntimeConfigRaw` anywhere upstream of the adapter packages.
 
-- **Whole-config access** — `runtime.config.get()`/`.replace()` are called
-  ONLY from `src/core/runtime-config.ts` (`readRuntimeConfig`/
-  `replaceRuntimeConfig`). Every caller passes a typed scope; mutations
-  append an audit row (reads deliberately don't — the models plugin reads
-  config per `/config` request and auditing reads would spam the feed).
-- **Key-level raw reads** — `runtime.config.raw()` for provider data not
-  worth a stable cross-runtime interface yet. Direct calls are forbidden
-  outside `src/core/runtime-config-raw.ts`.
+Every former consumer crosses a neutral contract method instead:
 
-Every raw read must be:
-
-- allowlisted by reason and key
-- audited as `runtime.config.raw`
-- value-redacted in telemetry
-- tied to a tracking id in `RAW_RUNTIME_CONFIG_ALLOWLIST`
-
-Current allowlisted reads are onboarding-only:
-
-| Reason | Key |
+| Former raw read | Neutral surface |
 |---|---|
-| `onboarding.runtime.integrity` | `*` |
-| `onboarding.llm.check` | `agents.<id>.authProfiles` |
-| `onboarding.channels.check` | `channels` |
+| onboarding runtime integrity (`*`) | `agents.list()` roster + adapter-resolved `metadata.workspacePath` |
+| onboarding llm/channels checks | `credentialStatus()` — presence-only names, never secrets |
+| models plugin routing (defaults/fallbacks/aliases) | `models.routingPolicy()` / `setRoutingPolicy()` / `routingSupport()` |
+| per-agent model assignment | `agents.update({ model, subagentModel })` (null clears) |
+| OpenClaw MCP provisioning | `provisionToolAccess()` family (adapter-internal writes) |
 
-If a new raw read is needed, either promote it to a typed adapter method or add
-an explicit allowlist entry with owner/reason/tracking. Do not call
-`runtime.config.raw()` from feature code.
+If a new provider-data need appears, add a typed adapter method — never a
+config escape hatch. Deep reference:
+`.claude/knowledge/runtime-capabilities.md`.
 
 ## Task Metadata
 

@@ -178,6 +178,15 @@ mock.module('../../src/core/app-services', () => ({
     },
   }),
 }))
+mock.module('../../src/core/app-services-store', () => ({
+  getAppServices: () => ({
+    search: {
+      tables: { stats: searchStatsMock },
+      documents: { get: documentsGetMock },
+      query: searchQueryMock,
+    },
+  }),
+}))
 
 // Blue/green: raw-adapter calls must target the physical table.
 const resolvePhysicalTableMock = mock((logical: string) => `${logical}_v1_phys`)

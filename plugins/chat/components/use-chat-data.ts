@@ -119,8 +119,11 @@ export function useChatStream(chatId: string): ChatStreamState {
       setLiveTools((prev) => {
         const status: LiveToolChip['status'] =
           tool.phase === 'result' ? (tool.status === 'failed' ? 'failed' : 'completed') : 'running'
-        const chip: LiveToolChip = { key, toolName: tool.toolName ?? 'tool', summary: tool.summary, status }
         const existing = prev.findIndex((c) => c.key === key)
+        // Result chunks usually carry no summary — keep the call's summary
+        // instead of wiping the chip back to a bare tool name.
+        const summary = tool.summary ?? (existing >= 0 ? prev[existing].summary : undefined)
+        const chip: LiveToolChip = { key, toolName: tool.toolName ?? 'tool', summary, status }
         if (existing >= 0) return prev.map((c, i) => (i === existing ? chip : c))
         return [...prev, chip]
       })

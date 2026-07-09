@@ -58,7 +58,9 @@ const mockAppServices = {
   },
 }
 mock.module('@/core/app-services', () => ({ getAppServices: () => mockAppServices }))
+mock.module('@/core/app-services-store', () => ({ getAppServices: () => mockAppServices }))
 mock.module('../../src/core/app-services', () => ({ getAppServices: () => mockAppServices }))
+mock.module('../../src/core/app-services-store', () => ({ getAppServices: () => mockAppServices }))
 
 mock.module('@bakin/core/adapters/runtime', () => ({
   getRuntimeMainAgentId: () => Promise.resolve('main'),

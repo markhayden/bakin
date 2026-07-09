@@ -166,6 +166,21 @@ mock.module('../../src/core/app-services', () => ({
     },
   }),
 }))
+mock.module('../../src/core/app-services-store', () => ({
+  getAppServices: () => ({
+    runtime: {
+      agents: {
+        list: async () => [
+          { id: 'alice', name: 'Alice', role: 'Builder', status: 'active' },
+          { id: 'orchestrator', name: 'Orchestrator', role: 'Orchestrator', status: 'active' },
+        ],
+      },
+      messaging: {
+        send: async () => ({ id: 'msg-1', content: '' }),
+      },
+    },
+  }),
+}))
 
 const taskColumns = {
   backlog: [] as any[],

@@ -8,7 +8,7 @@
  * are re-exported from runtime.ts so the session-store-cache test's import
  * path stays stable.
  */
-import { statSync } from 'fs'
+import { existsSync, statSync } from 'fs'
 import { join } from 'path'
 import { createHash } from 'crypto'
 import type { ChatChunk } from '@bakin/core/adapters/runtime'
@@ -16,6 +16,7 @@ import { readFileFrom, safeFileSize } from './file-utils'
 import { getOpenClawHome } from './home'
 import { parseJsonObject, readJsonFile, sleep } from './runtime-utils'
 import { activityChunksFromOpenClawTranscriptRecord } from './activity-summary'
+import { trajectoryFilePathFor } from './trajectory-forensics'
 
 /** Session-activity transcript poll interval (ms) while a turn is streaming. */
 export const OPENCLAW_SESSION_ACTIVITY_POLL_MS = 200
@@ -29,6 +30,13 @@ export interface OpenClawSessionActivityCursor {
   sessionFile?: string
   offset: number
   partial: string
+  /**
+   * ISO floor for record `ts` values. The trajectory file persists across
+   * turns, and lazy resolution (file appears mid-turn) starts at offset 0 —
+   * without the floor, every prior run's tool activity would replay as
+   * live chunks.
+   */
+  notBefore?: string
 }
 
 export async function* watchOpenClawSessionActivity(
@@ -51,12 +59,26 @@ export async function* watchOpenClawSessionActivity(
 }
 
 export function createOpenClawSessionActivityCursor(agentId: string, sessionKey: string): OpenClawSessionActivityCursor {
-  const sessionFile = resolveOpenClawSessionFile(agentId, sessionKey)
+  const sessionFile = resolveOpenClawSessionActivityFile(agentId, sessionKey)
   return {
     sessionFile,
     offset: sessionFile ? safeFileSize(sessionFile) : 0,
     partial: '',
+    notBefore: new Date().toISOString(),
   }
+}
+
+/**
+ * Live activity source. Newer OpenClaw (≥2026.6) batches session-JSONL
+ * records to turn END but appends the trajectory file live — tailing the
+ * session file made every tool chunk arrive in one burst at completion
+ * (found live in P5.3). Prefer the trajectory when it exists; fall back to
+ * the session file for older runtimes that still append it live.
+ */
+export function resolveOpenClawSessionActivityFile(agentId: string, sessionKey: string): string | undefined {
+  const trajectory = trajectoryFilePathFor(agentId, openClawCliSessionId(agentId, sessionKey))
+  if (existsSync(trajectory)) return trajectory
+  return resolveOpenClawSessionFile(agentId, sessionKey)
 }
 
 export function readOpenClawSessionActivity(
@@ -65,9 +87,21 @@ export function readOpenClawSessionActivity(
   cursor: OpenClawSessionActivityCursor,
 ): ChatChunk[] {
   if (!cursor.sessionFile) {
-    cursor.sessionFile = resolveOpenClawSessionFile(agentId, sessionKey)
+    cursor.sessionFile = resolveOpenClawSessionActivityFile(agentId, sessionKey)
     cursor.offset = 0
     cursor.partial = ''
+  } else if (!cursor.sessionFile.endsWith('.trajectory.jsonl')) {
+    // Sticky-pick upgrade: on a fresh session the session .jsonl can appear
+    // BEFORE the trajectory file, so the first resolution lands on the
+    // batch-written session file and would stay there for the whole turn.
+    // Keep checking for the live trajectory and switch when it shows up
+    // (offset 0 is safe — the notBefore floor drops anything pre-cursor).
+    const trajectory = trajectoryFilePathFor(agentId, openClawCliSessionId(agentId, sessionKey))
+    if (existsSync(trajectory)) {
+      cursor.sessionFile = trajectory
+      cursor.offset = 0
+      cursor.partial = ''
+    }
   }
   if (!cursor.sessionFile) return []
 
@@ -84,7 +118,11 @@ export function readOpenClawSessionActivity(
     const trimmed = line.trim()
     if (!trimmed) continue
     const parsed = parseJsonObject(trimmed)
-    if (parsed) chunks.push(...activityChunksFromOpenClawTranscriptRecord(parsed))
+    if (!parsed) continue
+    // Drop records from prior runs (lazy offset-0 resolution replays the
+    // whole file; the trajectory spans every turn of the session).
+    if (cursor.notBefore && typeof parsed.ts === 'string' && parsed.ts < cursor.notBefore) continue
+    chunks.push(...activityChunksFromOpenClawTranscriptRecord(parsed))
   }
   return chunks
 }

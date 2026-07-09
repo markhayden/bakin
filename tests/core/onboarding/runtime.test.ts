@@ -2,7 +2,9 @@
  * Tests for the runtime onboarding component.
  *
  * The component does not probe provider paths directly. It asks the configured
- * runtime adapter for readiness, roster, and raw config integrity data.
+ * runtime adapter for readiness and validates ROSTER integrity (P2.5: the raw
+ * config surface is gone from the contract — the adapter resolves each
+ * agent's effective workspace into metadata).
  */
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import { join } from 'path'
@@ -12,9 +14,8 @@ const testDir = join(tmpdir(), `bakin-runtime-onboarding-test-${Date.now()}`)
 let useExistingServices = true
 let initError: Error | null = null
 let runtimeAvailable = true
-let runtimeAgents: Array<{ id: string; name: string; role?: string; status: string }> = []
-let runtimeConfig: unknown = null
-let runtimeConfigError: Error | null = null
+let runtimeAgents: Array<{ id: string; name: string; role?: string; status: string; metadata?: Record<string, unknown> }> = []
+let rosterError: Error | null = null
 
 const runtime = {
   name: 'test-runtime',
@@ -22,17 +23,21 @@ const runtime = {
   requiredCoreVersion: '*',
   ping: async () => runtimeAvailable,
   agents: {
-    list: async () => runtimeAgents,
-  },
-  config: {
-    raw: async () => {
-      if (runtimeConfigError) throw runtimeConfigError
-      return runtimeConfig
+    list: async () => {
+      if (rosterError) throw rosterError
+      return runtimeAgents
     },
   },
 }
 
 mock.module('../../../src/core/app-services', () => ({
+  maybeGetAppServices: () => (useExistingServices ? { runtime } : undefined),
+  createAppServices: async () => {
+    if (initError) throw initError
+    return { runtime }
+  },
+}))
+mock.module('../../../src/core/app-services-store', () => ({
   maybeGetAppServices: () => (useExistingServices ? { runtime } : undefined),
   createAppServices: async () => {
     if (initError) throw initError
@@ -79,8 +84,7 @@ describe('onboarding runtime component', () => {
     initError = null
     runtimeAvailable = true
     runtimeAgents = [{ id: 'main', name: 'Main', role: 'Orchestrator', status: 'active' }]
-    runtimeConfig = { agents: { list: [{ id: 'main' }] } }
-    runtimeConfigError = null
+    rosterError = null
     vi.resetModules()
     const mod = await import('@/core/onboarding/runtime')
     runtimeComponent = mod.runtimeComponent
@@ -106,27 +110,16 @@ describe('onboarding runtime component', () => {
       expect(result.message).toContain('not reachable')
     })
 
-    it('reports missing when the runtime config is absent before reading agents', async () => {
-      runtimeAgents = []
-      runtimeConfig = null
-
-      const result = await runtimeComponent.check()
-      expect(result.status).toBe('missing')
-      expect(result.message).toContain('runtime config is not present')
-      expect(result.remediation).toContain(RUNTIME_SETUP_URL)
-    })
-
     it('reports broken when the runtime returns no agents', async () => {
       runtimeAgents = []
-      runtimeConfig = { agents: { list: [] } }
 
       const result = await runtimeComponent.check()
       expect(result.status).toBe('broken')
       expect(result.message).toContain('no agents')
     })
 
-    it('reports broken when runtime config cannot be read', async () => {
-      runtimeConfigError = new Error('bad json')
+    it('reports broken when the roster cannot be read', async () => {
+      rosterError = new Error('bad roster')
 
       const result = await runtimeComponent.check()
       expect(result.status).toBe('broken')
@@ -139,44 +132,33 @@ describe('onboarding runtime component', () => {
       expect(result.message).toContain('runtime adapter is available')
       expect(result.details?.mainAgentId).toBe('main')
     })
-
-    it('accepts OpenClaw default-agent configs where agents.list is absent', async () => {
-      runtimeAgents = [{ id: 'main', name: 'Main', role: 'Orchestrator', status: 'active' }]
-      runtimeConfig = {
-        agents: {
-          defaults: {
-            workspace: '/Users/markhayden/.openclaw/workspace',
-            model: { primary: 'openai-codex/gpt-5.5' },
-          },
-        },
-      }
-
-      const result = await runtimeComponent.check()
-      expect(result.status).toBe('ok')
-      expect(result.details?.mainAgentId).toBe('main')
-    })
   })
 
   describe('integrity check', () => {
-    it("reports an error when no agent has id 'main'", async () => {
-      runtimeAgents = [{ id: 'bob', name: 'Bob', status: 'active' }]
-      runtimeConfig = { agents: { list: [{ id: 'bob', workspace: '/tmp/bob' }] } }
+    it('reports an error when the roster declares no orchestrator', async () => {
+      runtimeAgents = [{ id: 'bob', name: 'Bob', status: 'active', metadata: { workspacePath: '/tmp/bob' } }]
 
       const result = await runtimeComponent.check()
       expect(result.status).toBe('broken')
-      expect(result.message).toContain('no agent')
-      expect(result.message).toContain("'main'")
+      expect(result.message).toContain('declares no orchestrator')
+    })
+
+    it("passes with a NON-'main' orchestrator declared by role (P2.6)", async () => {
+      runtimeAgents = [
+        { id: 'atlas', name: 'Atlas', role: 'orchestrator', status: 'active', metadata: { workspacePath: '/tmp/atlas' } },
+        { id: 'pixel', name: 'Pixel', status: 'active', metadata: { workspacePath: '/tmp/pixel' } },
+      ]
+
+      const result = await runtimeComponent.check()
+      expect(result.status).toBe('ok')
+      expect(result.details?.mainAgentId).toBe('atlas')
     })
 
     it('reports an error when two agents share the same id', async () => {
-      runtimeConfig = {
-        agents: {
-          list: [
-            { id: 'main', workspace: '/tmp/main-ws' },
-            { id: 'main', workspace: '/tmp/other-ws' },
-          ],
-        },
-      }
+      runtimeAgents = [
+        { id: 'main', name: 'Main', status: 'active', metadata: { workspacePath: '/tmp/main-ws' } },
+        { id: 'main', name: 'Main 2', status: 'active', metadata: { workspacePath: '/tmp/other-ws' } },
+      ]
 
       const result = await runtimeComponent.check()
       expect(result.status).toBe('broken')
@@ -184,16 +166,12 @@ describe('onboarding runtime component', () => {
       expect(result.message).toContain("'main'")
     })
 
-    it('reports an error when two agents collide on workspace', async () => {
-      runtimeConfig = {
-        agents: {
-          list: [
-            { id: 'a', workspace: '/x' },
-            { id: 'b', workspace: '/x' },
-            { id: 'main', workspace: '/y' },
-          ],
-        },
-      }
+    it('reports an error when two agents collide on resolved workspace', async () => {
+      runtimeAgents = [
+        { id: 'a', name: 'A', status: 'active', metadata: { workspacePath: '/x' } },
+        { id: 'b', name: 'B', status: 'active', metadata: { workspacePath: '/x' } },
+        { id: 'main', name: 'Main', status: 'active', metadata: { workspacePath: '/y' } },
+      ]
 
       const result = await runtimeComponent.check()
       expect(result.status).toBe('broken')
@@ -202,20 +180,11 @@ describe('onboarding runtime component', () => {
       expect(result.message).toContain('/x')
     })
 
-    it('does not apply the default workspace to every subagent when agent workspaces are omitted', async () => {
+    it('skips agents without a resolved workspace rather than treating them as collisions', async () => {
       runtimeAgents = [
         { id: 'main', name: 'Main', role: 'Orchestrator', status: 'active' },
         { id: 'pixel', name: 'Pixel', status: 'active' },
       ]
-      runtimeConfig = {
-        agents: {
-          defaults: { workspace: '/tmp/main-workspace' },
-          list: [
-            { id: 'main' },
-            { id: 'pixel' },
-          ],
-        },
-      }
 
       const result = await runtimeComponent.check()
       expect(result.status).toBe('ok')

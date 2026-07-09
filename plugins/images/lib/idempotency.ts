@@ -2,7 +2,7 @@
  * Idempotency for billed image calls.
  *
  * A billed `generate`/`edit` is non-idempotent at the provider, so a client
- * (mcporter) that times out and retries an identical call would bill twice —
+ * that times out and retries an identical call would bill twice —
  * Bakin finished server-side, but the client gave up and re-issued. This guards
  * against that WITHOUT adding a retry: an identical call that is still in flight
  * awaits the same promise, and an identical completed call returns the cached

@@ -194,6 +194,66 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
       }
     }
 
+    // Runtime capability report (P3.2) — the management page's matrix source.
+    if (url.pathname === '/api/runtime/capabilities' && req.method === 'GET') {
+      ;(async () => {
+        const { getAppServices } = require('../app-services') as typeof import('../app-services')
+        const { RUNTIME_ADAPTER_NAMES } = require('../runtime-switch') as typeof import('../runtime-switch')
+        const runtime = getAppServices().runtime
+        return {
+          adapter: getSettings().runtime.adapter,
+          adapters: RUNTIME_ADAPTER_NAMES,
+          runtime: { name: runtime.name, version: runtime.version },
+          capabilities: await runtime.capabilities(),
+          toolAccess: await runtime.verifyToolAccess(),
+          routingSupport: runtime.models.routingSupport(),
+          credentialStatus: await runtime.credentialStatus().catch(() => null),
+        }
+      })()
+        .then((payload) => jsonResponse(res, 200, payload))
+        .catch((err) => {
+          log.error('Runtime capability report failed', err)
+          jsonResponse(res, 500, { error: err instanceof Error ? err.message : String(err) })
+        })
+      return
+    }
+
+    // Runtime onboarding status (P3.3): the ACTIVE runtime's setup state —
+    // "configured ✓ / needs setup / remediation" per onboarding component
+    // (adapter-inapplicable components report themselves skipped). Backs the
+    // management page's switch-time setup surfacing.
+    if (url.pathname === '/api/runtime/onboarding' && req.method === 'GET') {
+      ;(async () => {
+        const { checkAll } = require('../onboarding/index') as typeof import('../onboarding/index')
+        return { adapter: getSettings().runtime.adapter, components: await checkAll() }
+      })()
+        .then((payload) => jsonResponse(res, 200, payload))
+        .catch((err) => {
+          log.error('Runtime onboarding status failed', err)
+          jsonResponse(res, 500, { error: err instanceof Error ? err.message : String(err) })
+        })
+      return
+    }
+
+    // Runtime switch (P3.2): runs the full orchestrated lifecycle; progress
+    // streams over the activity SSE channel as runtime:switch events. A
+    // completed switch requires a server restart to rebind plugin contexts —
+    // the result says so, callers surface it.
+    if (url.pathname === '/api/runtime/switch' && req.method === 'POST') {
+      handleJsonPost(req, res, async (body) => {
+        const target = typeof (body as { target?: unknown }).target === 'string'
+          ? (body as { target: string }).target
+          : ''
+        const { switchRuntime } = require('../runtime-switch') as typeof import('../runtime-switch')
+        const result = await switchRuntime(target, {
+          onProgress: (event) => broadcast({ type: 'runtime:switch', ...event }),
+        })
+        broadcast({ type: 'runtime:switch:result', ok: result.ok, to: result.to, restartRequired: result.restartRequired })
+        return result
+      })
+      return
+    }
+
     // Provider secret store (Bakin-owned shim keys; write-only/masked)
     if (url.pathname === '/api/secrets') {
       if (req.method === 'GET') {

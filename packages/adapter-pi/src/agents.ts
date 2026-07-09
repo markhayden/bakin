@@ -111,12 +111,18 @@ export function createAgentsSurface(): AgentRuntimeAdapter['agents'] {
     },
 
     async update(agentId: string, input: UpdateRuntimeAgentInput): Promise<RuntimeAgent> {
+      // Pi has no subagent concept — reject rather than silently store (the
+      // routingSupport declaration tells UIs to hide the control).
+      if (input.subagentModel !== undefined) {
+        throw new Error('adapter-pi: per-agent subagent models are not supported by the pi runtime')
+      }
       return mutateRegistry((registry) => {
         const record = registry.agents.find((a) => a.id === agentId)
         if (!record) throw new Error(`adapter-pi: unknown agent: ${agentId}`)
         if (input.name !== undefined) record.name = input.name
         if (input.role !== undefined) record.role = input.role
-        if (input.model !== undefined) record.model = input.model
+        // null clears the assignment → agent falls back to routing.defaultModel.
+        if (input.model !== undefined) record.model = input.model ?? undefined
         if (input.metadata !== undefined) {
           record.metadata = { ...(record.metadata ?? {}), ...(input.metadata as Record<string, unknown>) }
         }

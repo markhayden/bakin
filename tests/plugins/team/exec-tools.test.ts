@@ -73,10 +73,6 @@ mock.module('../../../packages/adapter-openclaw/src/main-agent', () => ({
   getMainAgentName: () => 'Main',
 }))
 
-mock.module('../../../src/core/mcporter', () => ({
-  syncConfig: mock(() => []),
-}))
-
 mock.module('../../../src/core/agents', () => ({
   sendMessageToAgent: mock(async () => ({ ok: true })),
 }))
