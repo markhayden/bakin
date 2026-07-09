@@ -91,6 +91,25 @@ describe('trajectory record parsing', () => {
     expect(data.status).toBe('running')
   })
 
+  it('bash calls summarize the unwrapped command, not the bare tool name', () => {
+    const chunks = activityChunksFromOpenClawTranscriptRecord({
+      type: 'tool.call',
+      ts: '2026-07-09T00:00:01.000Z',
+      data: { toolCallId: 'call_9', name: 'bash', arguments: { command: '/bin/zsh -lc "curl -s https://example.com/feed"' } },
+    })
+    expect(chunks[0].content).toBe('bash: curl -s https://example.com/feed')
+  })
+
+  it('MCP-prefixed bakin tool names are stripped to the bare tool', () => {
+    const chunks = activityChunksFromOpenClawTranscriptRecord({
+      type: 'tool.call',
+      ts: '2026-07-09T00:00:01.000Z',
+      data: { toolCallId: 'call_10', name: 'bakin-main.bakin_exec_tasks_get', arguments: { taskId: 'x' } },
+    })
+    expect((chunks[0].data as Record<string, unknown>).toolName).toBe('bakin_exec_tasks_get')
+    expect(chunks[0].content).toBe('bakin_exec_tasks_get')
+  })
+
   it('tool.result → result tool chunk; isError wins over status', () => {
     const ok = activityChunksFromOpenClawTranscriptRecord({
       type: 'tool.result',

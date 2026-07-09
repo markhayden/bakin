@@ -28,10 +28,15 @@ export function activityChunksFromOpenClawTranscriptRecord(record: Record<string
   return []
 }
 
+/** `bakin-<agent>.bakin_exec_foo` (native-MCP prefixed) → `bakin_exec_foo`. */
+function bareToolName(name: string): string {
+  return name.replace(/^bakin-[a-z0-9_-]+\./, '')
+}
+
 /** Trajectory `tool.call` → running tool chunk (data: {toolCallId, name, arguments}). */
 function activityChunkFromTrajectoryToolCall(record: Record<string, unknown>): ChatChunk[] {
   const data = isPlainObject(record.data) ? record.data : {}
-  const name = typeof data.name === 'string' && data.name.length > 0 ? data.name : 'tool'
+  const name = typeof data.name === 'string' && data.name.length > 0 ? bareToolName(data.name) : 'tool'
   const args = data.arguments
   const summary = summarizeOpenClawToolPurpose(name, args)
   return [{
@@ -51,7 +56,7 @@ function activityChunkFromTrajectoryToolCall(record: Record<string, unknown>): C
 /** Trajectory `tool.result` → result tool chunk (data: {toolCallId, name, status, isError, result}). */
 function activityChunkFromTrajectoryToolResult(record: Record<string, unknown>): ChatChunk[] {
   const data = isPlainObject(record.data) ? record.data : {}
-  const toolName = typeof data.name === 'string' && data.name.length > 0 ? data.name : 'tool'
+  const toolName = typeof data.name === 'string' && data.name.length > 0 ? bareToolName(data.name) : 'tool'
   const status = typeof data.status === 'string' ? data.status : undefined
   const result = isPlainObject(data.result) ? data.result : {}
   const exitCode = typeof result.exitCode === 'number' ? result.exitCode : undefined
@@ -121,11 +126,28 @@ export function normalizeToolResultStatus(status: string | undefined, exitCode: 
   return 'completed'
 }
 
+/**
+ * Trajectory bash commands arrive wrapped for the shell —
+ * `/bin/zsh -lc "actual command"` — which buries the interesting part.
+ * Strip the wrapper (and its quotes) for display.
+ */
+export function unwrapShellWrapper(command: string): string {
+  const match = command.trim().match(/^(?:\/bin\/)?(?:z|ba)?sh\s+-l?c\s+([\s\S]*)$/)
+  if (!match) return command
+  const inner = match[1].trim()
+  const quote = inner[0]
+  if ((quote === '"' || quote === "'") && inner.endsWith(quote) && inner.length > 1) {
+    return inner.slice(1, -1)
+  }
+  return inner
+}
+
 export function summarizeOpenClawToolCall(name: string, args: unknown): string {
   if (isPlainObject(args)) {
     const command = args.command
-    if (name === 'exec' && typeof command === 'string' && command.trim()) {
-      return `exec: ${firstLine(command)}`
+    // `exec` is the session-file name; the live trajectory calls it `bash`.
+    if ((name === 'exec' || name === 'bash') && typeof command === 'string' && command.trim()) {
+      return `${name}: ${firstLine(unwrapShellWrapper(command))}`
     }
     const path = args.path
     if (name === 'read' && typeof path === 'string' && path.trim()) {
@@ -152,9 +174,9 @@ export function summarizeOpenClawToolPurpose(name: string, args: unknown): strin
     if (action === 'poll') return 'Waiting for command output'
   }
 
-  if (name === 'exec' && isPlainObject(args)) {
+  if ((name === 'exec' || name === 'bash') && isPlainObject(args)) {
     const command = typeof args.command === 'string' ? args.command.trim() : ''
-    return summarizeShellCommandPurpose(command)
+    return summarizeShellCommandPurpose(unwrapShellWrapper(command))
   }
 
   if (name === 'web_fetch') {
