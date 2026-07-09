@@ -67,7 +67,9 @@ function statusBadgeClass(status: string): string {
 function RuntimePage() {
   const [report, setReport] = useState<CapabilityReport | null>(null)
   const [reportError, setReportError] = useState<string | null>(null)
-  const [onboarding, setOnboarding] = useState<OnboardingComponentStatus[] | null>(null)
+  // undefined = fetch in flight (the setup check runs every component live —
+  // seconds, not ms); null = fetch failed.
+  const [onboarding, setOnboarding] = useState<OnboardingComponentStatus[] | null | undefined>(undefined)
   const [confirmTarget, setConfirmTarget] = useState<string | null>(null)
   const [switching, setSwitching] = useState(false)
   const [steps, setSteps] = useState<SwitchStepRow[]>([])
@@ -86,6 +88,7 @@ function RuntimePage() {
   }, [])
 
   const loadOnboarding = useCallback(async () => {
+    setOnboarding(undefined)
     try {
       const res = await fetch('/api/runtime/onboarding')
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -156,6 +159,14 @@ function RuntimePage() {
           <div className="rounded-md border border-red-500/30 bg-red-500/10 p-3 text-sm">
             Failed to load the runtime report: {reportError}
           </div>
+        )}
+
+        {!report && !reportError && (
+          <section className="rounded-lg border p-4">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <RefreshCw className="size-3 animate-spin" /> Loading runtime report…
+            </div>
+          </section>
         )}
 
         {report && (
@@ -306,7 +317,11 @@ function RuntimePage() {
           <p className="mb-3 text-xs text-muted-foreground">
             Onboarding status for the active runtime — anything below “ok” needs attention after a switch.
           </p>
-          {onboarding === null ? (
+          {onboarding === undefined ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <RefreshCw className="size-3 animate-spin" /> Checking runtime setup (runs every component live — this takes a few seconds)…
+            </div>
+          ) : onboarding === null ? (
             <div className="text-sm text-muted-foreground">Setup status unavailable.</div>
           ) : (
             <div className="flex flex-col gap-2" data-testid="onboarding-status">
