@@ -44,6 +44,16 @@ import {
   summarizeOpenClawToolPurpose,
 } from './activity-summary'
 
+/**
+ * `bakin-<agent>.bakin_exec_foo` (native-MCP prefixed) → `bakin_exec_foo`.
+ * Gateway `tool`-stream frames carry the MCP-qualified name; chips render the
+ * bare tool. Only the `bakin-` prefix is stripped — other dotted names
+ * (e.g. `browser.navigate`) are real tool ids.
+ */
+function bareToolName(name: string): string {
+  return name.replace(/^bakin-[a-z0-9_-]+\./, '')
+}
+
 /** How one OpenClaw turn ended, from the RPC settle (or a pushed abort). */
 export type OpenClawTurnFinish =
   | { kind: 'ok'; content: string | null }
@@ -157,7 +167,7 @@ export class OpenClawTurnChunkMachine {
   }
 
   private onTool(data: Extract<ReturnType<typeof parseAgentStreamData>, { stream: 'tool' }>): ChatChunk[] {
-    const name = data.name && data.name.length > 0 ? data.name : 'tool'
+    const name = data.name && data.name.length > 0 ? bareToolName(data.name) : 'tool'
     if (data.phase === 'start') {
       const summary = summarizeOpenClawToolPurpose(name, data.args)
       return [{
