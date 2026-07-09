@@ -26,8 +26,8 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 - [x] T13 Scaffold rewrite ✅ (root layout, real APIs, tsconfig, contributes/permissions, starter test, standalone tsc+test verified)
 - [x] T14 Golden-path integration test + build.md tutorial fix ✅ (real-builder gate; tutorial tool renamed + contributes)
 - [x] T15 Host/SDK semver gate ✅ (well-formedness always; satisfaction skipped on 0.0.0-dev dev hosts; incompatible_host failure code)
-- [ ] T16 Symmetric contributes enforcement + sync-manifest
-- [ ] CHECKPOINT 2a: golden path verbatim-works; PR merged
+- [x] T16 Symmetric contributes enforcement + sync-manifest ✅ (declarative routes now enforced; sync-manifest engine + CLI, --check drift gate)
+- [ ] CHECKPOINT 2a: golden path verbatim-works ✅ (suite 6356/0, golden-path 6/0 incl. sync-manifest round-trip); PR merged ☐
 
 ## PR 2b — feat/sdk-testing-and-types
 - [ ] T17 @makinbakin/sdk/testing

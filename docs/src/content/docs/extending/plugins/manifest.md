@@ -122,6 +122,8 @@ The signature covers canonical JSON for `bakin-plugin.json` with the top-level `
 
 API route paths are plugin-relative. A route declared as `/hello` is exposed under `/api/plugins/{pluginId}/hello`. Do not declare `/api/...` paths in a plugin manifest.
 
+`apiRoutes` and `execTools` are enforced at activation — a user plugin that registers an undeclared route or exec tool fails to load. Keep them in sync automatically with `bakin plugins sync-manifest` (`--check` for a non-writing CI drift gate); it regenerates both sections from the plugin's actual code while preserving author-written summaries on kept entries. Client sections (`nav`, `clientRoutes`, `routes`, `slots`) are author-maintained.
+
 ### Declarative client metadata (lazy loading)
 
 `nav`, `routes`, and `slots` describe the client bundle's contributions so the shell can render the sidebar and route the first navigation **before** the bundle loads. A plugin that declares any of them is lazy by default: its `client.js` imports on the first render of a declared slot or navigation into a declared route pattern. Declarations must exactly match what `client.tsx` registers at runtime — Bakin warns on drift after every client load.

@@ -205,6 +205,42 @@ describe('plugin golden path (scaffold → install → activate → use)', () =>
     expect(body.message).toBe(`Hello from the ${PLUGIN_ID} plugin!`)
   })
 
+  it('sync-manifest on the scaffold is in sync with enforcement (T16)', async () => {
+    const { syncPluginManifest } = await import('../../src/core/plugin-sync-manifest')
+    const targetDir = join(testDir, 'plugins', PLUGIN_ID)
+
+    // The scaffold's hand-written contributes must already match its code —
+    // --check reports no drift (exit-0 semantics).
+    const check = await syncPluginManifest(targetDir, { check: true, skipBuild: true })
+    expect(check.ok).toBe(true)
+    expect(check.changed).toBe(false)
+
+    // And a full regeneration from a stripped manifest reproduces a manifest
+    // that passes the same activation enforcement the registry applies.
+    const manifestPath = join(targetDir, 'bakin-plugin.json')
+    const original = readFileSync(manifestPath, 'utf-8')
+    try {
+      const stripped = JSON.parse(original)
+      delete stripped.contributes.apiRoutes
+      delete stripped.contributes.execTools
+      writeFileSync(manifestPath, JSON.stringify(stripped, null, 2))
+
+      const sync = await syncPluginManifest(targetDir, { skipBuild: true })
+      expect(sync.ok).toBe(true)
+      expect(sync.written).toBe(true)
+
+      const regenerated = JSON.parse(readFileSync(manifestPath, 'utf-8'))
+      const { parsePluginManifest } = await import('../../packages/core/src/plugins/manifest')
+      const parsed = parsePluginManifest(regenerated)
+      const declaredRoutes = parsed.contributes?.apiRoutes ?? []
+      expect(declaredRoutes.some((r: any) => r.method === 'GET' && r.path === '/hello')).toBe(true)
+      const declaredTools = parsed.contributes?.execTools ?? []
+      expect(declaredTools.some((t: any) => t.name === `bakin_exec_${PLUGIN_ID}_greet`)).toBe(true)
+    } finally {
+      writeFileSync(manifestPath, original)
+    }
+  })
+
   it('exec tool is registered, callable, and its write is visible to the route', async () => {
     const toolName = `bakin_exec_${PLUGIN_ID}_greet`
     const tool = getExecTool(toolName)
