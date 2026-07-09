@@ -27,7 +27,7 @@ import {
   __sessionStoreCacheKeysForTest as cacheKeys,
   __resetSessionStoreCacheForTest as resetCache,
   SESSION_STORE_CACHE_MAX,
-} from '../../packages/adapter-openclaw/src/runtime'
+} from '../../packages/adapter-openclaw/src/session-store'
 
 function writeStore(name: string, content: Record<string, unknown>): string {
   const dir = join(testDir, 'stores')

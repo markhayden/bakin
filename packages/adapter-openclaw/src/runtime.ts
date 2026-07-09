@@ -49,7 +49,7 @@ import { RuntimeError, RuntimeTurnError } from '@bakin/core/adapters/runtime'
 import { tryGetMainAgentId } from './main-agent'
 import { buildOpenClawAttachments } from './attachments'
 import { safeFileSize } from './file-utils'
-import { inspectTrajectoryRun, trajectoryFilePathFor, watchTrajectoryForDeath, TrajectoryRecoveredTurn, type TrajectoryUsage } from './trajectory-forensics'
+import { OPENCLAW_TRAJECTORY_POLL_MS, inspectTrajectoryRun, trajectoryFilePathFor, watchTrajectoryForDeath, TrajectoryRecoveredTurn, type TrajectoryUsage } from './trajectory-forensics'
 import { generateDirectImage, isDirectImageProvider, resolveProviderApiKeySource } from '@bakin/core/media'
 import { isUserEdited } from '@bakin/core/agent-packages/markers'
 import {
@@ -91,10 +91,7 @@ import {
   approvalEventFromOpenClawPayload, openClawDecisionFromBakinOption,
   parseNativeApprovalRef, isExpectedNativeApprovalResolveMiss,
 } from './approval-helpers'
-import {
-  OPENCLAW_SESSION_ACTIVITY_POLL_MS,
-  openClawCliSessionId,
-} from './session-activity'
+import { openClawCliSessionId } from './session-store'
 import { streamOpenClawTurnChunks, tapOpenClawTurnActivity } from './stream-events'
 import {
   writeOpenClawConfig, upsertOpenClawAgentConfig,
@@ -115,11 +112,6 @@ import {
   oversizedOutputBytesFrom, messagesToOpenClawPrompt, normalizeToolList,
   extractOpenClawAgentText, extractOpenClawAgentUsage,
 } from './agent-turn'
-// Re-exported so the session-store-cache test's `from '.../runtime'` path stays stable.
-export {
-  SESSION_STORE_CACHE_MAX, __readSessionStoreCachedForTest,
-  __sessionStoreCacheKeysForTest, __resetSessionStoreCacheForTest,
-} from './session-activity'
 import {
   OPENCLAW_CRON_TIMEOUT_MS,
   readCronStore, writeCronStore, readCronJobs, cronStoreJobToRuntime, cronCreateArgs,
@@ -1670,7 +1662,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
           trajectoryFile,
           sinceByteOffset: trajectoryOffset,
           oversizedOutputBytes: opts.oversizedOutputBytes,
-          pollMs: OPENCLAW_SESSION_ACTIVITY_POLL_MS,
+          pollMs: OPENCLAW_TRAJECTORY_POLL_MS,
         })
       : null
 
@@ -1959,81 +1951,4 @@ function gatewayWebSocketUrl(settings: OpenClawSettings): string {
   const url = new URL(`${settings.gatewayUrl}:${settings.gatewayPort}`)
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
   return url.toString().replace(/\/$/, '')
-}
-
-// Exported for tests — pure stream-merging helper with no adapter state.
-export async function* mergeChatStreams(
-  primary: AsyncIterable<ChatChunk>,
-  secondary: AsyncIterable<ChatChunk>,
-  stopSecondary: () => void,
-): AsyncIterable<ChatChunk> {
-  type QueueItem =
-    | { source: 'primary' | 'secondary'; chunk: ChatChunk }
-    | { source: 'primary' | 'secondary'; done: true }
-    | { source: 'primary' | 'secondary'; error: unknown }
-
-  const queue: QueueItem[] = []
-  let notify: (() => void) | null = null
-  const push = (item: QueueItem): void => {
-    queue.push(item)
-    notify?.()
-    notify = null
-  }
-
-  const pump = async (source: 'primary' | 'secondary', iterable: AsyncIterable<ChatChunk>): Promise<void> => {
-    try {
-      for await (const chunk of iterable) {
-        if (source === 'primary' && chunk.type === 'done') {
-          push({ source, done: true })
-          return
-        }
-        push({ source, chunk })
-      }
-      push({ source, done: true })
-    } catch (error) {
-      // The secondary (session-activity poller) is advisory — a poller
-      // hiccup must never abort a live turn and mask the primary result.
-      // Degrade to "secondary done"; primary errors still propagate.
-      if (source === 'secondary') {
-        push({ source, done: true })
-        return
-      }
-      push({ source, error })
-    }
-  }
-
-  void pump('primary', primary)
-  void pump('secondary', secondary)
-
-  // finally-guarded: if the consumer abandons the stream (early break /
-  // generator return), the suspended yield exits through here — without it
-  // the 200ms session-activity poller leaks and spins forever (audit C2).
-  try {
-    let primaryDone = false
-    let secondaryDone = false
-    while (!primaryDone || !secondaryDone) {
-      if (queue.length === 0) {
-        await new Promise<void>((resolve) => { notify = resolve })
-      }
-      const item = queue.shift()
-      if (!item) continue
-      if ('error' in item) {
-        throw item.error
-      }
-      if ('done' in item) {
-        if (item.source === 'primary') {
-          primaryDone = true
-          stopSecondary()
-        } else {
-          secondaryDone = true
-        }
-        continue
-      }
-      yield item.chunk
-    }
-
-    yield { type: 'done' }
-  } finally {
-    stopSecondary()
-  }
 }

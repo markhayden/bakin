@@ -17,7 +17,7 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 ## PR 1b — feat/dispatch-live-activity
 - [x] T8 onActivity tap on messaging.send (both adapters) ✅ (tool/status only; contained callbacks; OpenClaw via gateway frames, Pi via shared sessionEventChunks)
 - [x] T9 Live task activity on board + timeline (ephemeral SSE) ✅ (turn-activity SSE event; board chip + team timeline live row)
-- [ ] T10 Delete trajectory activity tail (forensics only)
+- [x] T10 Delete trajectory activity tail (forensics only) ✅ (tail + mergeChatStreams + transcript-chunk path deleted; survivors → session-store.ts, poll const → trajectory-forensics)
 - [ ] T11 WS1b docs
 - [ ] CHECKPOINT 1b: live box shows dispatch chips; PR merged
 

@@ -168,10 +168,8 @@ packages/adapter-openclaw/src/
 ├── approval-helpers.ts     ← Bakin ⇄ OpenClaw approval payload mapping
 ├── cron-store.ts           ← runtime.cron persistence + CLI argv + parsing
 ├── memory.ts               ← runtime memory tier reads
-├── session-activity.ts     ← session-store cache + legacy transcript tail
-│                             (unused by streamChat since WS1a; PR 1b deletes
-│                             the live tail)
-├── activity-summary.ts     ← transcript records → displayable activity
+├── session-store.ts        ← session-id mapping + sessions.json cache (LRU)
+├── activity-summary.ts     ← tool-call/shell summarizers + redacting previews
 ├── trajectory-forensics.ts ← read-only session death-watch / post-mortems
 ├── image-inference.ts      ← `openclaw image` arg formatting + parsers
 ├── errors.ts               ← the ONE place provider error text → typed RuntimeError
