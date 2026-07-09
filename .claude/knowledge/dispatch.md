@@ -88,6 +88,26 @@ the whole board behind one slow agent). Mechanics in
   time.
 - `awaitDispatchIdle()` — deterministic "all turns + bookkeeping settled"
   synchronization for tests and shutdown.
+- **Live turn activity (WS1b):** every fired turn passes
+  `MessageArgs.onActivity` — the adapter-side tap that forwards **tool +
+  status chunks only** (text deltas stay on `messaging.stream`; best-effort,
+  no ordering guarantee vs the settle; the adapter contains callback
+  exceptions). Dispatch broadcasts each chunk as a `turn-activity` SSE event
+  (`TurnActivityEvent`: `{taskId, childTaskId?, agentId, runId, chunk, ts}`,
+  exported from `dispatch-turns.ts`) over the same `globalThis.__bakinBroadcast`
+  seam task-service uses. **Ephemeral by design** — never persisted: no task
+  log, no audit row, no heartbeat bump; `done`/`error` chunk types are
+  filtered defensively. Late chunks after settle are dropped by gating on the
+  in-flight registry entry (`getInFlightTurn`). No extra throttling — chunks
+  are 150 ms-coalesced upstream (OpenClaw) or naturally sparse (tool/status).
+  Client side: the shell fans `turn-activity` onto the plugin-event emitter
+  (`use-sse.ts`); the board renders a per-task latest chip
+  (`plugins/tasks/hooks/use-live-activity.ts`, 45 s TTL, in-progress column
+  only, workflow steps chip parent + child) and the Team Diagnostics timeline
+  shows a live row for in-flight turns — UI layer only, the durable
+  ledger+audit timeline spine is untouched. Heartbeats never chip:
+  OpenClaw's chunk machine filters `isHeartbeat` frames and Pi heartbeats
+  don't go through `messaging.send`.
 
 ## Per-dispatch sessions
 

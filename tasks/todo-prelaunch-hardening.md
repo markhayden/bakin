@@ -18,8 +18,8 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 - [x] T8 onActivity tap on messaging.send (both adapters) ✅ (tool/status only; contained callbacks; OpenClaw via gateway frames, Pi via shared sessionEventChunks)
 - [x] T9 Live task activity on board + timeline (ephemeral SSE) ✅ (turn-activity SSE event; board chip + team timeline live row)
 - [x] T10 Delete trajectory activity tail (forensics only) ✅ (tail + mergeChatStreams + transcript-chunk path deleted; survivors → session-store.ts, poll const → trajectory-forensics)
-- [ ] T11 WS1b docs
-- [ ] CHECKPOINT 1b: live box shows dispatch chips; PR merged
+- [x] T11 WS1b docs ✅ (+ tool-chip MCP-prefix fix; dispatch.md, adapter-architecture.md onActivity contract, agent-health-diagnostics.md live row; CLAUDE.md bullets verified still true)
+- [ ] CHECKPOINT 1b: suite green ✅ / live box shows dispatch chips ☐ / PR merged ☐
 
 ## PR 2a — fix/sdk-golden-path (parallel worktree)
 - [ ] T12 Delete manifest.entry (+ tests field); single root layout
