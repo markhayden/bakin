@@ -17,6 +17,18 @@
  * `chat.abort {runId|sessionKey}` cancels a pending run: `{aborted:true,
  * runIds}`, a terminal `chat state:'aborted'` frame, and the post-abort
  * final (`status:'timeout'`, `stopReason:'aborted'`) — the recorded shapes.
+ *
+ * KNOWN DIVERGENCES from the real recordings (none consulted by the adapter
+ * today — it matches on `state`/`stream` and ignores seq; keep this list in
+ * sync before trusting the mock for a new frame field):
+ *  - the terminal aborted `chat` frame says `stopReason:'aborted'`; the real
+ *    wire recorded `stopReason:'rpc'`;
+ *  - the real wire re-emits a post-abort lifecycle pair reusing the runId
+ *    with payload seq RESTARTING at 1 — the mock omits that second emitter;
+ *  - the real post-abort final carries `result.payloads:[{text:"LLM request
+ *    timed out."}]`; the mock returns empty payloads;
+ *  - the real `chat.abort` response payload includes an inner `ok:true`
+ *    alongside `aborted`; the mock's payload has only `{aborted, runIds}`.
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'http'
 import { appendFileSync, mkdirSync } from 'fs'
@@ -87,10 +99,18 @@ let frameSeq = 0
 let runCounter = 0
 
 // Test observability: what the mock saw (runs started, aborts received).
-const observedAgentRuns: Array<{ runId: string; sessionKey: string; agentId: string }> = []
+// `finalSentAt` stamps when the happy-path final RPC payload was produced —
+// liveness tests compare it against when the consumer first SAW streamed text.
+interface ObservedAgentRun {
+  runId: string
+  sessionKey: string
+  agentId: string
+  finalSentAt?: number
+}
+const observedAgentRuns: ObservedAgentRun[] = []
 const observedChatAborts: Array<{ runId?: string; sessionKey?: string }> = []
 
-export function getObservedAgentRuns(): ReadonlyArray<{ runId: string; sessionKey: string; agentId: string }> {
+export function getObservedAgentRuns(): ReadonlyArray<ObservedAgentRun> {
   return observedAgentRuns
 }
 
@@ -362,7 +382,8 @@ export async function handleGatewayRpcRequest(method: string, params: Record<str
       payloadSeq: 0,
     }
     activeRuns.set(runId, run)
-    observedAgentRuns.push({ runId, sessionKey, agentId })
+    const observed: ObservedAgentRun = { runId, sessionKey, agentId }
+    observedAgentRuns.push(observed)
     console.log(`  → rpc=agent agent=${agentId} run=${runId} message=${userMessage.slice(0, 80)}${userMessage.length > 80 ? '...' : ''}`)
 
     try {
@@ -418,6 +439,7 @@ export async function handleGatewayRpcRequest(method: string, params: Record<str
         pushAgentFrame(run, 'lifecycle', { phase: 'end', status: 'ok', stopReason: 'completed', endedAt: Date.now() })
       }
 
+      observed.finalSentAt = Date.now()
       return {
         ok: true,
         payload: {

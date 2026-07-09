@@ -1,12 +1,17 @@
-import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { mkdtempSync } from 'fs'
+import { afterAll, afterEach, describe, expect, it, mock } from 'bun:test'
+import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
 // Isolation guard BEFORE app imports: the harness re-points BAKIN_HOME to its
 // own mkdtemp home per test; this seed only guarantees no module-load path
 // ever resolves the real ~/.bakin (per CLAUDE.md env-before-imports rule).
-process.env.BAKIN_HOME = mkdtempSync(join(tmpdir(), 'bakin-mock-failure-contract-'))
+const seedHome = mkdtempSync(join(tmpdir(), 'bakin-mock-failure-contract-'))
+process.env.BAKIN_HOME = seedHome
+
+afterAll(() => {
+  rmSync(seedHome, { recursive: true, force: true })
+})
 
 // Content-dir mocks DELEGATE to BAKIN_HOME (not a fixed dir) so the harness's
 // per-test mkdtemp home keeps working while ~/.bakin stays unreachable.

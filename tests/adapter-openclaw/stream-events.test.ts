@@ -183,14 +183,57 @@ describe('OpenClawTurnChunkMachine — synthesized scenarios', () => {
     expect(second).toEqual([{ type: 'text', content: 'CDEF' }])
   })
 
-  it('replace:true emits the full new text as a fresh chunk flagged for replacement', () => {
+  it('replace:true is absorbed into cumulative reconciliation — extension emits the suffix', () => {
+    const machine = new OpenClawTurnChunkMachine(RUN)
+    machine.onChatEvent(chatDelta(RUN, 'AB', 'AB'))
+    // A replace frame whose text prefix-extends what rendered = a plain flush.
+    const replaced = machine.onChatEvent(chatDelta(RUN, 'ABCD', 'ABCD', { replace: true }))
+    expect(replaced).toEqual([{ type: 'text', content: 'CD' }])
+    const next = machine.onChatEvent(chatDelta(RUN, '!', 'ABCD!'))
+    expect(next).toEqual([{ type: 'text', content: '!' }])
+  })
+
+  it('replace:true that diverges from rendered text is dropped — consumers are append-only', () => {
     const machine = new OpenClawTurnChunkMachine(RUN)
     machine.onChatEvent(chatDelta(RUN, 'draft one', 'draft one'))
-    const replaced = machine.onChatEvent(chatDelta(RUN, 'final answer', 'final answer', { replace: true }))
-    expect(replaced).toEqual([{ type: 'text', content: 'final answer', data: { replace: true } }])
-    // Subsequent deltas continue from the replaced text.
-    const next = machine.onChatEvent(chatDelta(RUN, '!', 'final answer!'))
-    expect(next).toEqual([{ type: 'text', content: '!' }])
+    // A server-directed rewrite cannot be rendered by append-only consumers:
+    // no chunk, and `emitted` keeps the text that already rendered.
+    expect(machine.onChatEvent(chatDelta(RUN, 'final answer', 'final answer', { replace: true }))).toEqual([])
+    // Later frames continuing the REWRITTEN text still diverge → dropped.
+    expect(machine.onChatEvent(chatDelta(RUN, '!', 'final answer!'))).toEqual([])
+    // finish(ok) with the diverging authoritative final appends nothing either.
+    expect(machine.finish({ kind: 'ok', content: 'final answer!' })).toEqual([{ type: 'done' }])
+  })
+
+  it('replace:true with empty text emits nothing and does not desync emitted', () => {
+    const machine = new OpenClawTurnChunkMachine(RUN)
+    machine.onChatEvent(chatDelta(RUN, 'AB', 'AB'))
+    expect(machine.onChatEvent(chatDelta(RUN, '', '', { replace: true }))).toEqual([])
+    // Reconciliation base survived: the next cumulative frame emits only the increment.
+    expect(machine.onChatEvent(chatDelta(RUN, 'C', 'ABC'))).toEqual([{ type: 'text', content: 'C' }])
+  })
+
+  it('a divergent cumulative frame (no replace flag) is dropped without corrupting emitted', () => {
+    const machine = new OpenClawTurnChunkMachine(RUN)
+    machine.onChatEvent(chatDelta(RUN, 'hello world', 'hello world'))
+    expect(machine.onChatEvent(chatDelta(RUN, 'goodbye', 'goodbye'))).toEqual([])
+    // Frames extending the ORIGINAL text still flush normally.
+    expect(machine.onChatEvent(chatDelta(RUN, '!', 'hello world!'))).toEqual([{ type: 'text', content: '!' }])
+    // finish(ok) after divergence emits only done — append-only consumers
+    // cannot be rewound to the authoritative final.
+    expect(machine.finish({ kind: 'ok', content: 'goodbye' })).toEqual([{ type: 'done' }])
+  })
+
+  it('a chat error frame alone never ends the stream — the RPC settle classifies', () => {
+    const machine = new OpenClawTurnChunkMachine(RUN)
+    machine.onChatEvent(chatDelta(RUN, 'part', 'part'))
+    expect(machine.onChatEvent({ runId: RUN, state: 'error' } as ChatEventPayload)).toEqual([])
+    expect(machine.finished).toBe(false)
+    // The settle still owns the terminal: recovered content flows out.
+    expect(machine.finish({ kind: 'ok', content: 'partial answer' })).toEqual([
+      { type: 'text', content: 'ial answer' },
+      { type: 'done' },
+    ])
   })
 
   it('ignores frames from other runs and heartbeats', () => {
@@ -293,6 +336,29 @@ describe('streamOpenClawTurnChunks — driver', () => {
     expect(joinedText(chunks)).toBe('partial reply')
     expect(chunks[chunks.length - 1]).toEqual({ type: 'done' })
     expect(events.unsubscribedCount).toBe(2)
+  })
+
+  it('a delta arriving BEFORE the ack still streams — the machine is keyed on the idempotencyKey', async () => {
+    const events = stubEvents()
+    const stream = streamOpenClawTurnChunks({
+      events: events.source,
+      idempotencyKey: KEY,
+      run: async ({ onAccepted }) => {
+        // Frames can outrun the accepted ack: the gateway echoes our
+        // idempotencyKey as runId, so pre-ack frames must already match.
+        events.emit('chat', chatDelta(KEY, 'early', 'early'))
+        onAccepted({ runId: KEY, sessionKey: 'agent:main:main', acceptedAt: 1 })
+        return { content: 'early' }
+      },
+      classifyFailure: () => ({ kind: 'error', errorKind: 'runtime_failed' }),
+    })
+
+    const chunks: ChatChunk[] = []
+    for await (const chunk of stream) chunks.push(chunk)
+
+    expect(chunks[0]).toEqual({ type: 'text', content: 'early' })
+    expect(joinedText(chunks)).toBe('early')
+    expect(chunks[chunks.length - 1]).toEqual({ type: 'done' })
   })
 
   it('ends with an error chunk when the RPC fails', async () => {

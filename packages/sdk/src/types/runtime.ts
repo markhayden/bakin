@@ -95,7 +95,8 @@ export type RuntimeChatTextFormat = 'markdown' | 'plain' | 'code'
 /**
  * One chunk in a streaming agent response — the normalized turn-output
  * contract. Granularity varies by runtime (per-token to whole-turn);
- * `done` arrives exactly once and last on success; terminal failure ends
+ * `done` arrives exactly once and last on success AND on deliberate abort
+ * (abort is a clean end, never an `error` chunk); terminal failure ends
  * the stream with an `error` chunk (`data.kind` = typed error kind when
  * known) and no `done`; tool/status chunks are best-effort liveness.
  */
@@ -106,7 +107,7 @@ export type RuntimeChatChunk =
   | { type: 'tool'; content?: string; data: RuntimeToolActivity }
   /** Turn lifecycle hint (e.g. 'thinking'). */
   | { type: 'status'; content?: string; data?: Record<string, unknown> }
-  /** Successful turn end — exactly once, always last. */
+  /** Clean turn end (success or deliberate abort) — exactly once, always last. */
   | { type: 'done'; content?: string; data?: Record<string, unknown> }
   /** Terminal failure — `data.kind` carries the typed error kind when known. */
   | { type: 'error'; content?: string; data?: Record<string, unknown> }

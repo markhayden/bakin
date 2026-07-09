@@ -376,14 +376,19 @@ export function createMessagingSurface(deps: PiMessagingDeps): AgentRuntimeAdapt
         }
       })
 
-      turn.then(finish, (err) => {
-        push({
-          type: 'error',
-          content: err instanceof Error ? err.message : String(err),
+      turn.then(finish, (rawErr) => {
+        // Normalize BEFORE classifying so pre-prompt raw throws (e.g. from
+        // createAgentSession) carry a typed kind like everything else.
+        const err = toRuntimeError(rawErr, { aborted: args.signal?.aborted })
+        if (err.kind === 'aborted') {
+          // Contract: a deliberate abort ends the stream with a clean done —
+          // matching the send path's kind:'aborted' settle. Never an error chunk.
+          push({ type: 'done' })
+        } else {
           // Contract: the terminal error chunk carries the typed kind so
           // consumers classify without parsing message text.
-          ...(err instanceof RuntimeError ? { data: { kind: err.kind } } : {}),
-        })
+          push({ type: 'error', content: err.message, data: { kind: err.kind } })
+        }
         finish()
       })
 

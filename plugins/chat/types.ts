@@ -24,7 +24,7 @@ export type ChatTranscriptRow =
   | { kind: 'user'; ts: string; content: string }
   | { kind: 'assistant'; ts: string; content: string }
   | { kind: 'tool'; ts: string; summary: string }
-  | { kind: 'error'; ts: string; message: string }
+  | { kind: 'error'; ts: string; message: string; errorKind?: string }
 
 /** SSE payloads broadcast on the global bus while a turn streams. */
 export interface ChatChunkEvent {
@@ -48,4 +48,6 @@ export interface ChatErrorEvent {
   type: 'chat.error'
   chatId: string
   message: string
+  /** Typed RuntimeError kind when the runtime provided one. */
+  kind?: string
 }

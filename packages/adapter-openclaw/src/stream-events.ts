@@ -37,6 +37,7 @@ import {
 } from './gateway-frames'
 import type { OpenClawGatewayAcceptedAck } from './gateway-rpc'
 import {
+  firstLine,
   previewUnknown,
   normalizeToolResultStatus,
   summarizeOpenClawToolCall,
@@ -120,11 +121,13 @@ export class OpenClawTurnChunkMachine {
   private onDelta(payload: ChatEventPayload): ChatChunk[] {
     const cumulative = chatCumulativeText(payload)
     if (payload.replace === true) {
-      // Server-directed rewrite of everything emitted so far. Downstream
-      // renderers treat data.replace as "reset, don't append".
-      const text = cumulative ?? payload.deltaText ?? ''
-      this.emitted = text
-      return text ? [{ type: 'text', content: text, data: { replace: true } }] : []
+      // Server-directed rewrite, absorbed into the same cumulative
+      // reconciliation as everything else: ChatChunk consumers are
+      // append-only (contract), so a rewrite can only ever surface as its
+      // not-yet-emitted suffix — anything else is dropped by flushTo. On a
+      // replace frame the deltaText is the full text, so it doubles as the
+      // cumulative when the message body is missing.
+      return this.flushTo(cumulative ?? payload.deltaText ?? null)
     }
     if (cumulative !== null) return this.flushTo(cumulative)
     // Tolerant fallback for a delta without cumulative text (never observed
@@ -144,12 +147,12 @@ export class OpenClawTurnChunkMachine {
       this.emitted = cumulative
       return [{ type: 'text', content: increment }]
     }
-    if (this.emitted === '') {
-      this.emitted = cumulative
-      return [{ type: 'text', content: cumulative }]
-    }
-    // Divergent rewrite without a replace flag: trust what already rendered —
-    // appending the full text would duplicate it downstream.
+    // Divergent rewrite (replace-flagged or not): append-only consumers
+    // cannot rewind — trust what already rendered, drop the frame, and keep
+    // `emitted` intact so frames extending the ORIGINAL text still flush.
+    // This holds at finish(ok) too: a diverging authoritative final is not
+    // appended (it would duplicate downstream), so the streamed transcript
+    // deliberately freezes at the divergence point.
     return []
   }
 
@@ -181,7 +184,7 @@ export class OpenClawTurnChunkMachine {
           toolName: name,
           callId: data.toolCallId ?? undefined,
           status: failed ? 'failed' : status,
-          ...(data.meta ? { summary: data.meta } : {}),
+          ...(data.meta ? { summary: firstLine(data.meta) } : {}),
           outputPreview: previewUnknown(data.result),
         },
       }]

@@ -45,7 +45,7 @@ const TranscriptRowSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('user'), ts: z.string(), content: z.string() }),
   z.object({ kind: z.literal('assistant'), ts: z.string(), content: z.string() }),
   z.object({ kind: z.literal('tool'), ts: z.string(), summary: z.string() }),
-  z.object({ kind: z.literal('error'), ts: z.string(), message: z.string() }),
+  z.object({ kind: z.literal('error'), ts: z.string(), message: z.string(), errorKind: z.string().optional() }),
 ])
 
 /** Derive a chat title from the first user message. */

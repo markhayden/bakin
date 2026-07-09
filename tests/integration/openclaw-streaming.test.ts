@@ -71,10 +71,15 @@ describe('openclaw streaming over the mock gateway (e2e)', () => {
     mockHome = harness.env.home
     const message = 'Stream this reply as several incremental deltas for the harness'
 
-    const chunks = await collect(harness.services.runtime.messaging.stream({
+    const chunks: Chunk[] = []
+    let firstTextAt: number | null = null
+    for await (const chunk of harness.services.runtime.messaging.stream({
       agentId: 'jessica',
       content: message,
-    }))
+    })) {
+      if (chunk.type === 'text' && firstTextAt === null) firstTextAt = Date.now()
+      chunks.push(chunk)
+    }
 
     expect(chunks[0]).toMatchObject({ type: 'status', content: 'thinking' })
     const doneIndexes = chunks.map((c, i) => (c.type === 'done' ? i : -1)).filter((i) => i >= 0)
@@ -83,6 +88,14 @@ describe('openclaw streaming over the mock gateway (e2e)', () => {
     expect(textChunks.length).toBeGreaterThanOrEqual(2)
     expect(textOf(chunks)).toBe(`[mock:Jessica] ${message}`)
     expect(chunks.some((c) => c.type === 'error')).toBe(false)
+
+    // LIVENESS, not just chunking: the consumer saw text while the turn was
+    // still in flight — before the mock even sent the final RPC response. A
+    // buffer-then-replay implementation would fail this.
+    const run = getObservedAgentRuns().at(-1)!
+    expect(firstTextAt).not.toBeNull()
+    expect(typeof run.finalSentAt).toBe('number')
+    expect(firstTextAt!).toBeLessThanOrEqual(run.finalSentAt!)
   })
 
   it('surfaces tool activity as structured tool chunks without item/command_output duplicates', async () => {

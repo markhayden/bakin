@@ -252,6 +252,27 @@ describe('messaging.stream', () => {
     expect(chunks.filter((c) => c.type === 'done')).toHaveLength(0)
   }, 30_000)
 
+  test('deliberate abort ends the stream with a clean done, never an error chunk', async () => {
+    seedProvider([
+      { steps: [{ text: 'slow ' }, { delayMs: 3_000, text: 'never delivered' }] },
+    ])
+    const controller = new AbortController()
+    const chunks: ChatChunk[] = []
+    setTimeout(() => controller.abort(), 250)
+    for await (const chunk of adapter.messaging.stream({
+      agentId: 'main',
+      content: 'go',
+      signal: controller.signal,
+    })) {
+      chunks.push(chunk)
+    }
+    // Contract: abort is a clean end (matching the send path's
+    // kind:'aborted' settle) — done last, no error chunk.
+    expect(chunks.at(-1)?.type).toBe('done')
+    expect(chunks.filter((c) => c.type === 'done')).toHaveLength(1)
+    expect(chunks.some((c) => c.type === 'error')).toBe(false)
+  }, 15_000)
+
   test('R5/R5b taxonomy: classified chunks only, done exactly once and last, structured tool data', async () => {
     invocations.length = 0
     seedProvider([

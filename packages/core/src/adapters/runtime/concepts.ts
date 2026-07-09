@@ -165,12 +165,18 @@ export type ChatTextFormat = 'markdown' | 'plain' | 'code'
  * One chunk of a streaming agent turn — the turn-output normalization
  * contract every adapter emits and every consumer renders against.
  *
- * Behavioral contract (pinned by the runtime conformance suite):
+ * Behavioral contract (pinned today by the per-adapter suites —
+ * tests/adapter-openclaw/stream-events.test.ts and
+ * tests/integration/pi/turn.test.ts; the cross-adapter conformance suite
+ * lands with prelaunch-hardening PR 3):
  * - Chunk GRANULARITY may vary by adapter: per-token deltas, coalesced
  *   spans, or one chunk per turn are all legal. Consumers accumulate
  *   `text` content in arrival order and must not assume a cadence.
- * - `done` is yielded EXACTLY ONCE per successful turn, always last;
- *   no chunk of any kind follows it.
+ * - `done` is yielded EXACTLY ONCE, always last; no chunk of any kind
+ *   follows it.
+ * - A DELIBERATE abort (the turn's `kind:'aborted'` settle) ends the
+ *   stream with a clean `done` — never an `error` chunk. Abort is a
+ *   clean end, not a failure.
  * - `tool` and `status` chunks are BEST-EFFORT liveness: adapters emit
  *   what their runtime exposes, and none is guaranteed to appear.
  * - Terminal failure ends the stream with an `error` chunk (its `data`
@@ -187,7 +193,7 @@ export type ChatChunk =
   | { type: 'tool'; content?: string; data: RuntimeToolActivity }
   /** Turn lifecycle hint (e.g. 'thinking'). */
   | { type: 'status'; content?: string; data?: RuntimeMetadata }
-  /** Successful turn end — exactly once, always last. */
+  /** Clean turn end (success or deliberate abort) — exactly once, always last. */
   | { type: 'done'; content?: string; data?: RuntimeMetadata }
   /** Terminal failure — `data.kind` carries the RuntimeError kind when known. */
   | { type: 'error'; content?: string; data?: RuntimeMetadata }
