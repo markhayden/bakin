@@ -62,7 +62,7 @@ import {
 import { getOpenClawPath } from './home'
 import type { OpenClawRuntimeAdapterOptions } from './index'
 import { OpenClawApprovalGatewayClient } from './approval-gateway'
-import { OpenClawGatewayRpcClient } from './gateway-rpc'
+import { OpenClawGatewayRpcClient, type OpenClawGatewayAcceptedAck } from './gateway-rpc'
 import {
   CANONICAL_DURABLE_FILES,
   getOpenClawMemoryEntry,
@@ -93,8 +93,9 @@ import {
 } from './approval-helpers'
 import {
   OPENCLAW_SESSION_ACTIVITY_POLL_MS,
-  watchOpenClawSessionActivity, createOpenClawSessionActivityCursor, openClawCliSessionId,
+  openClawCliSessionId,
 } from './session-activity'
+import { streamOpenClawTurnChunks } from './stream-events'
 import {
   writeOpenClawConfig, upsertOpenClawAgentConfig,
   updateOpenClawAgentIdentity, updateAgentAllowlist, removeOpenClawAgentConfig,
@@ -154,6 +155,19 @@ const OPENCLAW_AGENT_TIMEOUT_SECONDS = Math.ceil(OPENCLAW_AGENT_TIMEOUT_MS / 100
 const OPENCLAW_AGENT_TRANSPORT_TIMEOUT_MS = OPENCLAW_AGENT_TIMEOUT_MS + 30_000
 /** Best-effort chat.abort frame — short: the local rejection never waits on it. */
 const OPENCLAW_ABORT_RPC_TIMEOUT_MS = 5_000
+
+/**
+ * Per-turn idempotency key — shared by the send path and streamChat (which
+ * pre-registers its event subscription on it: the gateway echoes the key as
+ * the runId on every pushed frame). Threaded: thread + content hash so
+ * transport retries dedupe but a different turn on the same thread never
+ * replays a cached reply. Unthreaded: random — each send is its own turn.
+ */
+function openClawTurnIdempotencyKey(prompt: string, sessionKey: string | undefined): string {
+  return sessionKey
+    ? `bakin:${sessionKey}:${createHash('sha256').update(prompt).digest('hex').slice(0, 12)}`
+    : `bakin-${randomUUID()}`
+}
 const OPENCLAW_CRON_PROCESS_TIMEOUT_MS = OPENCLAW_CRON_TIMEOUT_MS + 5000
 const OPENCLAW_IMAGE_PROCESS_TIMEOUT_MS = 600000
 const OPENCLAW_IMAGE_OUTPUT_MAX_BUFFER = 16 * 1024 * 1024
@@ -177,6 +191,14 @@ interface OpenClawAgentTurnOptions {
   oversizedOutputBytes?: number
   /** Best-effort caller cancellation (MessageArgs.signal). */
   signal?: AbortSignal
+  /**
+   * Precomputed per-turn idempotency key (streamChat pre-registers its event
+   * subscription on this value — the gateway echoes it as the runId). Omit
+   * to let the send path compute it.
+   */
+  idempotencyKey?: string
+  /** Fires on the gateway's `accepted` ack (streaming: thinking + authoritative runId). */
+  onAccepted?: (ack: OpenClawGatewayAcceptedAck) => void
 }
 
 /** Result of one OpenClaw agent turn: the assistant text plus token usage
@@ -1439,30 +1461,30 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     return this.runOpenClawAgentGateway(opts)
   }
 
+  /**
+   * Live turn streaming from gateway push events (SPEC prelaunch R3): text
+   * from `chat` frames, tool/status activity from `agent` frames, keyed on
+   * the run's idempotencyKey (echoed by the gateway as the runId and adopted
+   * from the `accepted` ack). The RPC settle — with its full fail-fast /
+   * recovery-ladder handling in runOpenClawAgentGateway — stays authoritative
+   * for the terminal outcome; a pushed `chat aborted` frame ends the stream
+   * early (deliberate abort = clean `done`, matching the send path's
+   * kind:'aborted' settle). Replaced the await-the-whole-turn one-blob yield
+   * merged with the 200ms trajectory activity poll.
+   */
   private async *streamChat(opts: OpenClawAgentTurnOptions): AsyncIterable<ChatChunk> {
-    const primary = this.runOpenClawAgentGatewayStream(opts)
-    if (!opts.sessionKey) {
-      yield* primary
-      return
-    }
-
-    const activityCursor = opts.sessionKey
-      ? createOpenClawSessionActivityCursor(opts.agentId, opts.sessionKey)
-      : null
-    if (!activityCursor) {
-      yield* primary
-      return
-    }
-
-    const activityAbort = new AbortController()
-    const activity = watchOpenClawSessionActivity(opts.agentId, opts.sessionKey, activityCursor, activityAbort.signal)
-    yield* mergeChatStreams(primary, activity, () => activityAbort.abort())
-  }
-
-  private async *runOpenClawAgentGatewayStream(opts: OpenClawAgentTurnOptions): AsyncIterable<ChatChunk> {
-    const { content } = await this.runOpenClawAgentGateway(opts)
-    if (content) yield { type: 'text', content }
-    yield { type: 'done' }
+    const prompt = messagesToOpenClawPrompt(opts.messages)
+    const idempotencyKey = opts.idempotencyKey ?? openClawTurnIdempotencyKey(prompt, opts.sessionKey)
+    yield* streamOpenClawTurnChunks({
+      events: this.openClawChatGateway(),
+      idempotencyKey,
+      run: ({ onAccepted }) => this.runOpenClawAgentGateway({ ...opts, idempotencyKey, onAccepted }),
+      classifyFailure: (err) => {
+        if (err instanceof RuntimeError && err.kind === 'aborted') return { kind: 'aborted' }
+        if (err instanceof RuntimeError) return { kind: 'error', errorKind: err.kind, message: err.message }
+        return { kind: 'error', errorKind: 'runtime_failed', message: err instanceof Error ? err.message : String(err) }
+      },
+    })
   }
 
   /**
@@ -1507,9 +1529,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       // the first turn's reply to the re-ask). Hashing the rendered prompt
       // keeps transport retries idempotent: same turn → same content → same
       // key. Unthreaded sends keep a random key — each is its own turn.
-      idempotencyKey: opts.sessionKey
-        ? `bakin:${opts.sessionKey}:${createHash('sha256').update(prompt).digest('hex').slice(0, 12)}`
-        : `bakin-${randomUUID()}`,
+      idempotencyKey: opts.idempotencyKey ?? openClawTurnIdempotencyKey(prompt, opts.sessionKey),
     }
     applyRuntimeMessageToolPolicy(params, opts)
     if (cliSessionId) params.sessionId = cliSessionId
@@ -1584,6 +1604,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         expectFinal: true,
         timeoutMs: OPENCLAW_AGENT_TRANSPORT_TIMEOUT_MS,
         signal: requestAbort.signal,
+        onAccepted: opts.onAccepted,
       })
       // If the death watch wins the race, the losing request settles later
       // (abort rejection) with no awaiter — pre-attach a no-op catch so it

@@ -1,0 +1,294 @@
+/**
+ * Push-event turn streaming: the frame→chunk state machine behind
+ * `messaging.stream` (SPEC prelaunch-hardening R3+R5b).
+ *
+ * The gateway pushes `chat` frames (cooked assistant text: deltaText + the
+ * FULL cumulative text on every frame) and `agent` frames (lifecycle / tool /
+ * thinking / item / command_output). This module turns those into the
+ * normalized ChatChunk taxonomy:
+ *
+ *  - Text comes from `chat` frames ONLY (OQ2: they mirror the assistant
+ *    stream 1:1 and self-heal). Reconciliation is cumulative-text based —
+ *    `dropIfSlow` deltas vanish silently and per-run seq is NOT reliable
+ *    (it resets across the abort boundary; gaps are silent), so seq is
+ *    never consulted for correctness.
+ *  - Tool chunks come from the `tool` stream only, on `start` and `result`
+ *    phases (`update` would spam a chip per partial). `item` and
+ *    `command_output` mirror the same activity as UI cards — emitting them
+ *    too would double every chip, so they are deliberately ignored (v1).
+ *  - A deliberate abort ends the stream with `done` after flushing the
+ *    aborted frame's partial text — matching the clean `kind:'aborted'`
+ *    settle on the send path; `error` chunks are for failures only.
+ *  - The RPC final remains authoritative: `finish({kind:'ok'})` flushes any
+ *    text the events never delivered (gateway dedupe replays a cached final
+ *    with no events at all; the recovery ladder can surface trajectory-
+ *    recovered content the same way).
+ */
+import type { ChatChunk } from '@bakin/core/adapters/runtime'
+
+import {
+  chatCumulativeText,
+  parseAgentStreamData,
+  subscribeAgentEvents,
+  subscribeChatEvents,
+  type AgentEventPayload,
+  type ChatEventPayload,
+  type GatewayEventSource,
+} from './gateway-frames'
+import type { OpenClawGatewayAcceptedAck } from './gateway-rpc'
+import {
+  previewUnknown,
+  normalizeToolResultStatus,
+  summarizeOpenClawToolCall,
+  summarizeOpenClawToolPurpose,
+} from './activity-summary'
+
+/** How one OpenClaw turn ended, from the RPC settle (or a pushed abort). */
+export type OpenClawTurnFinish =
+  | { kind: 'ok'; content: string | null }
+  | { kind: 'aborted' }
+  | { kind: 'error'; errorKind: string; message?: string }
+
+/**
+ * Pure frame→chunk state machine for ONE run. Feed classified gateway event
+ * payloads in; get normalized ChatChunks out. Exactly-once terminal: the
+ * first of {chat aborted event, finish()} wins; everything after returns [].
+ */
+export class OpenClawTurnChunkMachine {
+  private runId: string
+  /** Assistant text already emitted downstream (cumulative reconciliation base). */
+  private emitted = ''
+  private done = false
+
+  constructor(runId: string) {
+    this.runId = runId
+  }
+
+  get finished(): boolean {
+    return this.done
+  }
+
+  /**
+   * Adopt the ack's authoritative runId. It echoes the client idempotencyKey
+   * today, but the ack's value keys every pushed frame and is what
+   * `chat.abort` requires — trust it over our guess.
+   */
+  adoptRunId(runId: string | null | undefined): void {
+    if (runId) this.runId = runId
+  }
+
+  onChatEvent(payload: ChatEventPayload): ChatChunk[] {
+    if (this.done || payload.runId !== this.runId) return []
+    switch (payload.state) {
+      case 'delta':
+        return this.onDelta(payload)
+      case 'final':
+        return this.flushTo(chatCumulativeText(payload))
+      case 'aborted':
+        // Deliberate abort: flush the frame's partial cumulative text (it can
+        // be AHEAD of the last delivered delta — observed live), then end
+        // cleanly. No recovery ladder, no error chunk.
+        return [...this.flushTo(chatCumulativeText(payload)), ...this.finish({ kind: 'aborted' })]
+      case 'error':
+        // Terminal classification belongs to the RPC settle: the recovery
+        // ladder may still turn this into recovered content or a typed
+        // diagnosis. Never end the stream on the frame alone.
+        return []
+      default:
+        return []
+    }
+  }
+
+  onAgentEvent(payload: AgentEventPayload): ChatChunk[] {
+    if (this.done || payload.runId !== this.runId || payload.isHeartbeat === true) return []
+    const data = parseAgentStreamData(payload)
+    switch (data.stream) {
+      case 'tool':
+        return this.onTool(data)
+      case 'thinking':
+        // Already coalesced server-side (150ms/run/stream) — one status per
+        // frame is the intended cadence, not spam.
+        return [{ type: 'status', content: 'thinking' }]
+      default:
+        // assistant: text rides the cooked `chat` stream (OQ2).
+        // item/command_output: UI-card mirrors of the tool stream (see module doc).
+        // lifecycle: run status only — the RPC settle is authoritative.
+        return []
+    }
+  }
+
+  private onDelta(payload: ChatEventPayload): ChatChunk[] {
+    const cumulative = chatCumulativeText(payload)
+    if (payload.replace === true) {
+      // Server-directed rewrite of everything emitted so far. Downstream
+      // renderers treat data.replace as "reset, don't append".
+      const text = cumulative ?? payload.deltaText ?? ''
+      this.emitted = text
+      return text ? [{ type: 'text', content: text, data: { replace: true } }] : []
+    }
+    if (cumulative !== null) return this.flushTo(cumulative)
+    // Tolerant fallback for a delta without cumulative text (never observed
+    // live — every recorded frame carries it).
+    if (payload.deltaText) {
+      this.emitted += payload.deltaText
+      return [{ type: 'text', content: payload.deltaText }]
+    }
+    return []
+  }
+
+  /** Emit exactly the not-yet-emitted suffix of `cumulative` (dropped-delta self-heal). */
+  private flushTo(cumulative: string | null): ChatChunk[] {
+    if (this.done || !cumulative || cumulative === this.emitted) return []
+    if (cumulative.startsWith(this.emitted)) {
+      const increment = cumulative.slice(this.emitted.length)
+      this.emitted = cumulative
+      return [{ type: 'text', content: increment }]
+    }
+    if (this.emitted === '') {
+      this.emitted = cumulative
+      return [{ type: 'text', content: cumulative }]
+    }
+    // Divergent rewrite without a replace flag: trust what already rendered —
+    // appending the full text would duplicate it downstream.
+    return []
+  }
+
+  private onTool(data: Extract<ReturnType<typeof parseAgentStreamData>, { stream: 'tool' }>): ChatChunk[] {
+    const name = data.name && data.name.length > 0 ? data.name : 'tool'
+    if (data.phase === 'start') {
+      const summary = summarizeOpenClawToolPurpose(name, data.args)
+      return [{
+        type: 'tool',
+        content: summarizeOpenClawToolCall(name, data.args),
+        data: {
+          phase: 'call',
+          callId: data.toolCallId ?? undefined,
+          toolName: name,
+          status: 'running',
+          ...(summary ? { summary } : {}),
+          inputPreview: previewUnknown(data.args),
+        },
+      }]
+    }
+    if (data.phase === 'result') {
+      const status = normalizeToolResultStatus(undefined, undefined)
+      const failed = data.isError === true
+      return [{
+        type: 'tool',
+        content: `${name} ${failed ? 'failed' : status}`,
+        data: {
+          phase: 'result',
+          toolName: name,
+          callId: data.toolCallId ?? undefined,
+          status: failed ? 'failed' : status,
+          ...(data.meta ? { summary: data.meta } : {}),
+          outputPreview: previewUnknown(data.result),
+        },
+      }]
+    }
+    // `update` (partialResult) suppressed — a chip per partial is noise.
+    return []
+  }
+
+  /**
+   * Terminal transition — exactly once; later calls (the RPC settling after
+   * a pushed abort already ended the stream) return [].
+   */
+  finish(outcome: OpenClawTurnFinish): ChatChunk[] {
+    if (this.done) return []
+    if (outcome.kind === 'ok') {
+      // Flush BEFORE latching done so the resilience path (no events at all)
+      // still delivers the final text.
+      const residual = this.flushTo(outcome.content)
+      this.done = true
+      return [...residual, { type: 'done' }]
+    }
+    this.done = true
+    if (outcome.kind === 'aborted') return [{ type: 'done' }]
+    return [{
+      type: 'error',
+      ...(outcome.message ? { content: outcome.message } : {}),
+      data: { kind: outcome.errorKind },
+    }]
+  }
+}
+
+export interface OpenClawTurnStreamDeps {
+  /** Live gateway connection to subscribe on (registered BEFORE the RPC is sent). */
+  events: GatewayEventSource
+  /** The turn's idempotency key — the runId frames will carry until the ack says otherwise. */
+  idempotencyKey: string
+  /** Send the agent RPC; `onAccepted` fires on the gateway's first answer. */
+  run: (hooks: { onAccepted: (ack: OpenClawGatewayAcceptedAck) => void }) => Promise<{ content: string }>
+  /** Map a rejected RPC to a terminal outcome (kind:'aborted' → clean done). */
+  classifyFailure: (err: unknown) => OpenClawTurnFinish
+}
+
+/** Unbounded push queue bridging subscription callbacks to an async iterator. */
+class ChunkQueue {
+  private items: ChatChunk[] = []
+  private closed = false
+  private wake: (() => void) | null = null
+
+  push(chunks: ChatChunk[]): void {
+    if (this.closed || chunks.length === 0) return
+    this.items.push(...chunks)
+    this.wake?.()
+  }
+
+  close(): void {
+    this.closed = true
+    this.wake?.()
+  }
+
+  async *[Symbol.asyncIterator](): AsyncIterator<ChatChunk> {
+    for (;;) {
+      while (this.items.length > 0) yield this.items.shift()!
+      if (this.closed) return
+      await new Promise<void>((resolve) => {
+        this.wake = resolve
+      })
+      this.wake = null
+    }
+  }
+}
+
+/**
+ * Drive one agent turn as a live chunk stream: subscribe → send → yield
+ * chunks as frames arrive → terminal from the first of {pushed abort, RPC
+ * settle}. A consumer that stops early just unsubscribes — it never aborts
+ * the server-side run (that's an explicit `MessageArgs.signal` action).
+ */
+export async function* streamOpenClawTurnChunks(deps: OpenClawTurnStreamDeps): AsyncIterable<ChatChunk> {
+  const machine = new OpenClawTurnChunkMachine(deps.idempotencyKey)
+  const queue = new ChunkQueue()
+  const push = (chunks: ChatChunk[]) => {
+    queue.push(chunks)
+    if (machine.finished) queue.close()
+  }
+
+  const unsubscribes = [
+    subscribeChatEvents(deps.events, (payload) => push(machine.onChatEvent(payload))),
+    subscribeAgentEvents(deps.events, (payload) => push(machine.onAgentEvent(payload))),
+  ]
+
+  const rpc = deps.run({
+    onAccepted: (ack) => {
+      machine.adoptRunId(ack.runId)
+      if (!machine.finished) push([{ type: 'status', content: 'thinking' }])
+    },
+  })
+  rpc.then(
+    (result) => push(machine.finish({ kind: 'ok', content: result.content })),
+    (err) => push(machine.finish(deps.classifyFailure(err))),
+  )
+
+  try {
+    yield* queue
+  } finally {
+    for (const unsubscribe of unsubscribes) unsubscribe()
+    // A pushed abort (or an early consumer break) can leave the RPC pending;
+    // its later settle must never surface as an unhandled rejection.
+    rpc.catch(() => {})
+  }
+}

@@ -318,7 +318,10 @@ describe('OpenClaw runtime Gateway chat', () => {
       threadId: 'brainstorm-2',
     }))
 
+    // The accepted ack surfaces immediately as a thinking status; the final
+    // text is flushed by the RPC settle when no chat deltas streamed it.
     expect(chunks).toEqual([
+      { type: 'status', content: 'thinking' },
       { type: 'text', content: 'ok from gateway' },
       { type: 'done' },
     ])
@@ -606,44 +609,42 @@ describe('OpenClaw runtime Gateway chat', () => {
     expect(result.content).toBe('done: saved assets a1..a6')
   })
 
-  it('emits OpenClaw transcript tool activity while the Gateway agent request is pending', async () => {
-    const sessionsDir = join(testDir, 'agents', 'main', 'sessions')
-    mkdirSync(sessionsDir, { recursive: true })
-    const sessionFile = join(sessionsDir, 'session-1.jsonl')
-    writeFileSync(sessionFile, [
-      JSON.stringify({ type: 'session', id: 'session-1' }),
-      JSON.stringify({ type: 'message', message: { role: 'user', content: [{ type: 'text', text: 'before' }] } }),
-      '',
-    ].join('\n'), 'utf-8')
-    writeFileSync(join(sessionsDir, 'sessions.json'), JSON.stringify({
-      'thread-1': { sessionId: 'session-1', sessionFile },
-    }), 'utf-8')
-
+  it('emits gateway tool activity while the agent RPC is pending', async () => {
     FakeWebSocket.onRequest = (frame, ws) => {
       if (frame.method !== 'agent') return
+      ws.emitMessage({ type: 'res', id: frame.id, ok: true, payload: gatewayAgentAcceptedAck() })
       setTimeout(() => {
-        appendFileSync(sessionFile, `${JSON.stringify({
-          type: 'message',
-          message: {
-            role: 'assistant',
-            content: [{
-              type: 'toolCall',
-              id: 'call-1',
+        ws.emitMessage({
+          type: 'event',
+          event: 'agent',
+          payload: {
+            runId: 'run-1',
+            stream: 'tool',
+            seq: 2,
+            data: {
+              phase: 'start',
               name: 'exec',
-              arguments: { command: 'gh issue list --repo markhayden/bakin --search messaging' },
-            }],
+              toolCallId: 'call-1',
+              args: { command: 'gh issue list --repo markhayden/bakin --search messaging' },
+            },
           },
-        })}\n`)
-        appendFileSync(sessionFile, `${JSON.stringify({
-          type: 'message',
-          message: {
-            role: 'toolResult',
-            toolName: 'exec',
-            toolCallId: 'call-1',
-            content: [{ type: 'text', text: 'Found #190' }],
-            details: { status: 'completed', exitCode: 0, durationMs: 12 },
+        })
+        ws.emitMessage({
+          type: 'event',
+          event: 'agent',
+          payload: {
+            runId: 'run-1',
+            stream: 'tool',
+            seq: 3,
+            data: {
+              phase: 'result',
+              name: 'exec',
+              toolCallId: 'call-1',
+              result: { content: [{ type: 'text', text: 'Found #190' }] },
+              isError: false,
+            },
           },
-        })}\n`)
+        })
       }, 20)
       setTimeout(() => {
         ws.emitMessage({ type: 'res', id: frame.id, ok: true, payload: gatewayAgentPayload('Done.') })
@@ -660,6 +661,7 @@ describe('OpenClaw runtime Gateway chat', () => {
     }))
 
     expect(chunks).toEqual([
+      { type: 'status', content: 'thinking' },
       {
         type: 'tool',
         content: 'exec: gh issue list --repo markhayden/bakin --search messaging',
@@ -680,9 +682,7 @@ describe('OpenClaw runtime Gateway chat', () => {
           toolName: 'exec',
           callId: 'call-1',
           status: 'completed',
-          exitCode: 0,
-          durationMs: 12,
-          outputPreview: '[{"type":"text","text":"Found #190"}]',
+          outputPreview: '{"content":[{"type":"text","text":"Found #190"}]}',
         },
       },
       { type: 'text', content: 'Done.' },
@@ -690,34 +690,22 @@ describe('OpenClaw runtime Gateway chat', () => {
     ])
   })
 
-  it('emits transcript activity before the Gateway agent response arrives', async () => {
-    const sessionsDir = join(testDir, 'agents', 'main', 'sessions')
-    mkdirSync(sessionsDir, { recursive: true })
-    const sessionFile = join(sessionsDir, 'session-2.jsonl')
-    writeFileSync(sessionFile, [
-      JSON.stringify({ type: 'session', id: 'session-2' }),
-      '',
-    ].join('\n'), 'utf-8')
-    writeFileSync(join(sessionsDir, 'sessions.json'), JSON.stringify({
-      'thread-2': { sessionId: 'session-2', sessionFile },
-    }), 'utf-8')
-
+  it('emits live activity before the Gateway agent response arrives', async () => {
     let gatewayResolved = false
     FakeWebSocket.onRequest = (frame, ws) => {
       if (frame.method !== 'agent') return
+      ws.emitMessage({ type: 'res', id: frame.id, ok: true, payload: gatewayAgentAcceptedAck() })
       setTimeout(() => {
-        appendFileSync(sessionFile, `${JSON.stringify({
-          type: 'message',
-          message: {
-            role: 'assistant',
-            content: [{
-              type: 'toolCall',
-              id: 'call-2',
-              name: 'read',
-              arguments: { path: '/tmp/project.md' },
-            }],
+        ws.emitMessage({
+          type: 'event',
+          event: 'agent',
+          payload: {
+            runId: 'run-1',
+            stream: 'tool',
+            seq: 2,
+            data: { phase: 'start', name: 'read', toolCallId: 'call-2', args: { path: '/tmp/project.md' } },
           },
-        })}\n`)
+        })
       }, 20)
       setTimeout(() => {
         gatewayResolved = true
@@ -733,15 +721,26 @@ describe('OpenClaw runtime Gateway chat', () => {
       threadId: 'thread-2',
     })[Symbol.asyncIterator]()
 
+    // The ack's thinking status arrives long before the final frame.
     const first = await Promise.race([
       iterator.next(),
       wait(500).then(() => 'timeout' as const),
     ])
-
     expect(first).not.toBe('timeout')
     expect(gatewayResolved).toBe(false)
     if (first !== 'timeout') {
-      expect(first.value).toEqual({
+      expect(first.value).toEqual({ type: 'status', content: 'thinking' })
+    }
+
+    // The tool chip streams while the RPC is still pending.
+    const second = await Promise.race([
+      iterator.next(),
+      wait(500).then(() => 'timeout' as const),
+    ])
+    expect(second).not.toBe('timeout')
+    expect(gatewayResolved).toBe(false)
+    if (second !== 'timeout') {
+      expect(second.value).toEqual({
         type: 'tool',
         content: 'read: /tmp/project.md',
         data: {
@@ -763,112 +762,91 @@ describe('OpenClaw runtime Gateway chat', () => {
     expect(remaining).toContainEqual({ type: 'done' })
   })
 
-  it('finds transcript activity stored under OpenClaw explicit session keys', async () => {
-    const sessionKey = 'messaging:session-explicit:main'
-    const sessionsDir = join(testDir, 'agents', 'main', 'sessions')
-    mkdirSync(sessionsDir, { recursive: true })
-    let sessionFile = ''
-
-    let gatewayResolved = false
+  it('keys streamed events on the accepted ack`s runId — other runs never leak', async () => {
     FakeWebSocket.onRequest = (frame, ws) => {
       if (frame.method !== 'agent') return
-      const openClawSessionId = String(frame.params.sessionId)
-      sessionFile = join(sessionsDir, `${openClawSessionId}.jsonl`)
-      writeFileSync(sessionFile, [
-        JSON.stringify({ type: 'session', id: openClawSessionId }),
-        '',
-      ].join('\n'), 'utf-8')
-      writeFileSync(join(sessionsDir, 'sessions.json'), JSON.stringify({
-        [`agent:main:explicit:${openClawSessionId}`]: {
-          sessionId: openClawSessionId,
-          sessionFile,
-        },
-      }), 'utf-8')
+      ws.emitMessage({ type: 'res', id: frame.id, ok: true, payload: gatewayAgentAcceptedAck() })
       setTimeout(() => {
-        appendFileSync(sessionFile, `${JSON.stringify({
-          type: 'message',
-          message: {
-            role: 'assistant',
-            content: [{
-              type: 'toolCall',
-              id: 'call-explicit',
-              name: 'exec',
-              arguments: { command: 'gh issue list' },
-            }],
+        // Broadcast noise: another run's tool activity + a heartbeat frame.
+        ws.emitMessage({
+          type: 'event',
+          event: 'agent',
+          payload: {
+            runId: 'someone-elses-run',
+            stream: 'tool',
+            seq: 1,
+            data: { phase: 'start', name: 'exec', toolCallId: 'call-x', args: { command: 'rm -rf /' } },
           },
-        })}\n`)
+        })
+        ws.emitMessage({
+          type: 'event',
+          event: 'agent',
+          payload: { runId: 'run-1', stream: 'thinking', isHeartbeat: true, seq: 2, data: {} },
+        })
+        // This run's real activity (the ack's runId, not our idempotency key).
+        ws.emitMessage({
+          type: 'event',
+          event: 'agent',
+          payload: {
+            runId: 'run-1',
+            stream: 'tool',
+            seq: 3,
+            data: { phase: 'start', name: 'exec', toolCallId: 'call-explicit', args: { command: 'gh issue list' } },
+          },
+        })
       }, 20)
       setTimeout(() => {
-        gatewayResolved = true
         ws.emitMessage({ type: 'res', id: frame.id, ok: true, payload: gatewayAgentPayload('Final reply.') })
-      }, 800)
+      }, 300)
     }
 
     const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
     const runtime = createOpenClawRuntimeAdapter()
-    const iterator = runtime.messaging.stream({
+
+    const chunks = await collect(runtime.messaging.stream({
       agentId: 'main',
       content: 'hello',
-      threadId: sessionKey,
-    })[Symbol.asyncIterator]()
+      threadId: 'messaging:session-explicit:main',
+    }))
 
-    const first = await Promise.race([
-      iterator.next(),
-      wait(500).then(() => 'timeout' as const),
-    ])
-
-    expect(first).not.toBe('timeout')
-    expect(gatewayResolved).toBe(false)
-    if (first !== 'timeout') {
-      expect(first.value).toEqual({
-        type: 'tool',
-        content: 'exec: gh issue list',
-        data: {
-          phase: 'call',
-          callId: 'call-explicit',
-          toolName: 'exec',
-          status: 'running',
-          summary: 'Checking GitHub issues',
-          inputPreview: '{"command":"gh issue list"}',
-        },
-      })
-    }
-
-    const remaining: unknown[] = []
-    for await (const chunk of { [Symbol.asyncIterator]: () => iterator }) {
-      remaining.push(chunk)
-    }
-    expect(remaining).toContainEqual({ type: 'text', content: 'Final reply.' })
-    expect(remaining).toContainEqual({ type: 'done' })
+    const toolChunks = chunks.filter((c) => c.type === 'tool')
+    expect(toolChunks).toEqual([{
+      type: 'tool',
+      content: 'exec: gh issue list',
+      data: {
+        phase: 'call',
+        callId: 'call-explicit',
+        toolName: 'exec',
+        status: 'running',
+        summary: 'Checking GitHub issues',
+        inputPreview: '{"command":"gh issue list"}',
+      },
+    }])
+    expect(JSON.stringify(chunks)).not.toContain('rm -rf')
+    expect(chunks).toContainEqual({ type: 'text', content: 'Final reply.' })
+    expect(chunks[chunks.length - 1]).toEqual({ type: 'done' })
   })
 
-  it('summarizes transcript web fetch tools without leaking query secrets', async () => {
-    const sessionsDir = join(testDir, 'agents', 'main', 'sessions')
-    mkdirSync(sessionsDir, { recursive: true })
-    const sessionFile = join(sessionsDir, 'session-web.jsonl')
-    writeFileSync(sessionFile, [
-      JSON.stringify({ type: 'session', id: 'session-web' }),
-      '',
-    ].join('\n'), 'utf-8')
-    writeFileSync(join(sessionsDir, 'sessions.json'), JSON.stringify({
-      'thread-web': { sessionId: 'session-web', sessionFile },
-    }), 'utf-8')
-
+  it('summarizes gateway web fetch tools without leaking query secrets', async () => {
     FakeWebSocket.onRequest = (frame, ws) => {
       if (frame.method !== 'agent') return
+      ws.emitMessage({ type: 'res', id: frame.id, ok: true, payload: gatewayAgentAcceptedAck() })
       setTimeout(() => {
-        appendFileSync(sessionFile, `${JSON.stringify({
-          type: 'message',
-          message: {
-            role: 'assistant',
-            content: [{
-              type: 'toolCall',
-              id: 'call-web',
+        ws.emitMessage({
+          type: 'event',
+          event: 'agent',
+          payload: {
+            runId: 'run-1',
+            stream: 'tool',
+            seq: 2,
+            data: {
+              phase: 'start',
               name: 'web_fetch',
-              arguments: { url: 'https://example.com/docs?token=secret' },
-            }],
+              toolCallId: 'call-web',
+              args: { url: 'https://example.com/docs?token=secret' },
+            },
           },
-        })}\n`)
+        })
       }, 20)
       setTimeout(() => {
         ws.emitMessage({ type: 'res', id: frame.id, ok: true, payload: gatewayAgentPayload('Done.') })
@@ -884,7 +862,8 @@ describe('OpenClaw runtime Gateway chat', () => {
       threadId: 'thread-web',
     }))
 
-    expect(chunks[0]).toEqual({
+    const toolChunk = chunks.find((c) => c.type === 'tool')
+    expect(toolChunk).toEqual({
       type: 'tool',
       content: 'web_fetch',
       data: {
@@ -896,6 +875,7 @@ describe('OpenClaw runtime Gateway chat', () => {
         inputPreview: '{"url":"https://example.com/docs?token=[redacted]"}',
       },
     })
+    expect(JSON.stringify(chunks)).not.toContain('secret')
   })
 })
 
