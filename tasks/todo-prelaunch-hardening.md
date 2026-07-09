@@ -9,7 +9,7 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 - [x] T3 Normalized chunk taxonomy + streaming contract (R5/R5b) ✅ (ChatChunk discriminated union + format hints + typed error kind)
 - [x] T4 OpenClaw streamChat rewrite (push events) ✅ (chat-frame text, tool chips from tool stream, abort=clean done)
 - [x] T5 Server-side abort via accepted run ids ✅
-- [ ] T6 Imitation Crab event frames + streaming e2e
+- [x] T6 Imitation Crab event frames + streaming e2e ✅ (mock emits ack/chat/agent frames; 4-test e2e vs real adapter)
 - [ ] T7 WS1a docs
 - [ ] CHECKPOINT 1a: suite green, e2e green, PR merged
 - [ ] 🔶 USER: runtime flip to OpenClaw + live validation (box stays on OpenClaw)
