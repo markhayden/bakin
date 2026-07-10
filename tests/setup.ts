@@ -19,6 +19,26 @@ import { mock, setSystemTime, spyOn } from 'bun:test'
 
 GlobalRegistrator.register()
 
+// ---------------------------------------------------------------------------
+// Cross-file isolation is provided by `--isolate` (in the test script AND the
+// CI workflows), NOT by cleanup hooks here. Two hard-won facts before you
+// "improve" this:
+//  1. RTL auto-cleanup is inert under bun:test — bun's test globals are not
+//     visible at module-eval time, so RTL's `typeof beforeAll === 'function'`
+//     feature-detect fails in every test file. Files sharing a process
+//     therefore leak mounted React roots into each other (the "Attempted to
+//     synchronously unmount a root while React was already rendering" /
+//     empty-container CI failures).
+//  2. Do NOT fix that by importing @testing-library/react here. An eager
+//     preload import lets RTL self-register (globals ARE visible during
+//     preload) — which also sets React's act-environment for EVERY file and
+//     fails ~450 component tests written without act() discipline. A lazy
+//     require() inside a hook is worse ("Cannot call beforeAll() inside a
+//     test", ~5.7k failures).
+// `--isolate` gives each file its own process, which also contains
+// mock.module overlay leakage (see CLAUDE.md Testing Rules).
+// ---------------------------------------------------------------------------
+
 // NOTE: we don't register a global main-agent stub here — bun:test has no
 // per-path unmock, and the main-agent.test.ts file exercises the real
 // resolution logic. Tests that want the stub add their own
