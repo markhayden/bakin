@@ -276,6 +276,6 @@ const memoryPlugin: BakinPlugin = definePlugin({
     clearEventSubscriptions()
     stopTtlTimer()
   },
-}) as unknown as BakinPlugin
+})
 
 export default memoryPlugin

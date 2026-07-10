@@ -32,7 +32,7 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 ## PR 2b — feat/sdk-testing-and-types
 - [x] T17 @makinbakin/sdk/testing ✅ (harness entry + external-author fixture + scaffold starter test migrated)
 - [x] T18 In-repo tests consume sdk/testing ✅ (test-helpers is a thin adapter: spies + 3 global registries + caller-owned dirs are the whole delta)
-- [ ] T19 Type tightening (contract commit + adoption commit)
+- [x] T19 Type tightening ✅ (closed definePlugin w/ exactness, inferred exec params, legacy route API deleted, log/storage required, 13 casts removed)
 - [ ] T20 Uniform duplicate-throw + /internal split + pluginFetch
 - [ ] T21 TurnOutputView + migrate chat & step-output
 - [ ] T22 Reference plugin (examples/) + CI gate

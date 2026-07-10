@@ -164,7 +164,7 @@ const schedulePlugin: BakinPlugin = definePlugin({
     stopScheduler()
     log.info('Schedule plugin shutting down')
   },
-}) as unknown as BakinPlugin
+})
 
 export default schedulePlugin
 

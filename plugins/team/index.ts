@@ -760,6 +760,6 @@ const teamPlugin: BakinPlugin = definePlugin({
   onShutdown() {
     log.info('Shutting down team plugin')
   },
-}) as unknown as BakinPlugin
+})
 
 export default teamPlugin

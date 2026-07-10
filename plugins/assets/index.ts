@@ -116,6 +116,6 @@ const assetsPlugin: BakinPlugin = definePlugin({
     stopEnrichmentQueue()
     log.info('Shutting down assets plugin')
   },
-}) as unknown as BakinPlugin
+})
 
 export default assetsPlugin

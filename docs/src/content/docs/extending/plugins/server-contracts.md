@@ -59,7 +59,7 @@ defineRoute({
 
 Plugin API paths are mounted under `/api/plugins/{pluginId}`. A plugin route with `path: '/hello'` becomes `/api/plugins/docs-basic/hello`.
 
-Legacy `ctx.registerRoute()` still works for migration compatibility, but new plugin APIs should use declarative routes.
+The legacy `ctx.registerRoute()` API was removed — routes are always declared declaratively via `definePlugin({ routes })`. A typo'd `definePlugin` key or an excess property fails typecheck at the call site.
 
 ## `activate(ctx)`
 

@@ -22,6 +22,6 @@ const chatPlugin: BakinPlugin = definePlugin({
   activate(_ctx: PluginContext) {
     // Routes are declarative; nothing to register imperatively yet.
   },
-}) as unknown as BakinPlugin
+})
 
 export default chatPlugin

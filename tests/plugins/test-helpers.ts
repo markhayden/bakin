@@ -46,8 +46,9 @@ const testHelperLog = createLogger('test-helpers')
 // Mechanical helpers delegate to the SDK verbatim. They are re-declared with
 // `@bakin/core/plugin-types` signatures (what every consuming suite passes)
 // rather than bare re-exported, because the SDK's own declarations use its
-// mirrored types — the two-tier RegisteredAPIRoute/ExecToolDefinition duplication that
-// WS2b's type-tightening task collapses. Until then the cast lives HERE, once.
+// mirrored types. T19 collapsed the APIRoute duplication, but the CONTEXT
+// tiers (SDK reduced facade vs core full adapter) are deliberately distinct,
+// so this boundary cast is permanent and lives HERE, once.
 export { makeRequest }
 
 type SdkCallRouteArgs = Parameters<typeof sdkCallRoute>
@@ -119,8 +120,10 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
     mkdirSync(testDir, { recursive: true })
   }
 
-  // One boundary cast from the SDK's mirrored types to core plugin-types —
-  // the same duplication callRoute documents above.
+  // Permanent two-tier boundary cast: SDK PluginContext and core
+  // PluginContext deliberately differ (reduced runtime facade vs full
+  // adapter), so the harness's SDK-typed surface is cast once at this
+  // boundary. T19 unified APIRoute but NOT the context tiers — by design.
   const harness = sdkCreateTestContext(pluginId, { dir: testDir }) as unknown as {
     ctx: PluginContext
     routes: RegisteredAPIRoute[]

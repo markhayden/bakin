@@ -664,6 +664,6 @@ const gitPlugin = definePlugin({
       run: () => checkWorktrees(ctx),
     })
   },
-}) as unknown as BakinPlugin
+})
 
 export default gitPlugin
