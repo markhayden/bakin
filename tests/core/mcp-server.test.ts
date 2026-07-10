@@ -29,6 +29,33 @@ mock.module('@/core/content-dir', () => ({
     plugins: `${process.env.BAKIN_HOME || '/tmp/test'}/plugins`,
     audit: `${process.env.BAKIN_HOME || '/tmp/test'}/audit.jsonl`,
     logs: `${process.env.BAKIN_HOME || '/tmp/test'}/logs`,
+    db: `${process.env.BAKIN_HOME || '/tmp/test'}/bakin.db`,
+  })),
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+  initBakinHome: () => {},
+}))
+
+mock.module('@/core/task-store', () => ({
+  readTaskboard: mock(() => ({ columns: { todo: [], inProgress: [], review: [], done: [] } })),
+  getTask: mock(() => null),
+  getSharedBakinTaskStore: mock(() => ({})),
+  normalizeColumn: mock((c: string) => c),
+  localDateString: mock(() => '2026-01-01'),
+}))
+
+mock.module('../../packages/core/src/content-dir', () => ({
+  getContentDir: mock(() => process.env.BAKIN_HOME || '/tmp/test'),
+  getBakinPaths: mock(() => ({
+    root: process.env.BAKIN_HOME || '/tmp/test',
+    home: process.env.BAKIN_HOME || '/tmp/test',
+    assets: `${process.env.BAKIN_HOME || '/tmp/test'}/assets`,
+    settings: `${process.env.BAKIN_HOME || '/tmp/test'}/settings.json`,
+    pluginSettings: `${process.env.BAKIN_HOME || '/tmp/test'}/plugin-settings`,
+    plugins: `${process.env.BAKIN_HOME || '/tmp/test'}/plugins`,
+    audit: `${process.env.BAKIN_HOME || '/tmp/test'}/audit.jsonl`,
+    logs: `${process.env.BAKIN_HOME || '/tmp/test'}/logs`,
+    db: `${process.env.BAKIN_HOME || '/tmp/test'}/bakin.db`,
   })),
   isUsingBakinHome: () => true,
   resetContentDir: () => {},
@@ -85,15 +112,13 @@ describe('MCP Server', () => {
     expect(getActiveSessions()).toEqual([])
   })
 
-  it('should summarize both streamable and SSE sessions for health stats', async () => {
+  it('should summarize streamable sessions for health stats', async () => {
     const { summarizeMcpSessions } = await import('@/core/mcp-server')
 
     const summary = summarizeMcpSessions(
       [
         { agentId: 'patch', createdAt: 1_000 },
         { agentId: 'chef', createdAt: 2_000 },
-      ],
-      [
         { agentId: 'patch', createdAt: 3_000 },
       ],
       '2026-05-04T00:00:00.000Z',
@@ -156,7 +181,13 @@ describe('MCP Server', () => {
     expect(res.writeHead).toHaveBeenCalledWith(404, expect.any(Object))
   })
 
-  it('should reject GET without session ID', async () => {
+  // Sessionless GETs previously auto-started a legacy SSE handshake. The
+  // codex MCP client ignores that handshake and waits a fixed 5s before
+  // falling back to streamable-http — a 5s tax on EVERY codex turn (579 of
+  // 1,074 logged MCP inits sat at 5.0±0.1s). Per the streamable-http spec a
+  // GET without Mcp-Session-Id is 405, which makes clients fall back
+  // immediately.
+  it('should 405 a GET without Mcp-Session-Id (no agent param)', async () => {
     const { handleMcpRequest } = require('@/core/mcp-server') as typeof import('@/core/mcp-server')
 
     const req = createMockRequest('GET', '/mcp', null)
@@ -164,7 +195,101 @@ describe('MCP Server', () => {
 
     await handleMcpRequest(req, res)
 
-    expect(res.writeHead).toHaveBeenCalledWith(400, expect.any(Object))
+    expect(res.writeHead).toHaveBeenCalledWith(405, expect.objectContaining({ Allow: expect.any(String) }))
+  })
+
+  it('should 405 a sessionless GET even with an agent param (the codex transport probe)', async () => {
+    const { handleMcpRequest } = require('@/core/mcp-server') as typeof import('@/core/mcp-server')
+
+    const req = createMockRequest('GET', '/mcp?agent=main', null)
+    const res = createMockResponse()
+
+    await handleMcpRequest(req, res)
+
+    expect(res.writeHead).toHaveBeenCalledWith(405, expect.objectContaining({ Allow: expect.any(String) }))
+    expect(res._body).toContain('Mcp-Session-Id')
+  })
+
+  it('should 404 a GET with an unknown Mcp-Session-Id', async () => {
+    const { handleMcpRequest } = require('@/core/mcp-server') as typeof import('@/core/mcp-server')
+
+    const req = createMockRequest('GET', '/mcp', null, { 'mcp-session-id': 'nope' })
+    const res = createMockResponse()
+
+    await handleMcpRequest(req, res)
+
+    expect(res.writeHead).toHaveBeenCalledWith(404, expect.any(Object))
+  })
+
+  it('should serve the streamable notification stream on GET with a live session', async () => {
+    const { handleMcpRequest, getActiveSessions } = require('@/core/mcp-server') as typeof import('@/core/mcp-server')
+    const { createServer } = require('http') as typeof import('http')
+    // Bun.fetch, NOT global fetch: the test preload registers happy-dom,
+    // whose window fetch breaks on real HTTP sockets.
+    const nativeFetch = (Bun as unknown as { fetch: typeof fetch }).fetch
+
+    // Real HTTP round-trip: hand mocks can't satisfy the MCP SDK transport's
+    // ServerResponse expectations. Bun.fetch, NOT global fetch — the
+    // happy-dom preload's fetch breaks on real sockets (CLAUDE.md).
+    const server = createServer((req, res) => {
+      void handleMcpRequest(req, res)
+    })
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const port = (server.address() as { port: number }).port
+    const base = `http://127.0.0.1:${port}`
+
+    try {
+      const initRes = await nativeFetch(`${base}/mcp?agent=main`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json, text/event-stream',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'initialize',
+          params: {
+            protocolVersion: '2025-06-18',
+            capabilities: {},
+            clientInfo: { name: 'test', version: '0' },
+          },
+        }),
+      })
+      expect(initRes.status).toBe(200)
+      const sid = initRes.headers.get('mcp-session-id')
+      expect(sid).toBeTruthy()
+      expect(getActiveSessions().some((s) => s.sessionId === sid && s.agentId === 'main')).toBe(true)
+      await initRes.body?.cancel()
+
+      // GET with the live session id = the notification stream, not a 4xx.
+      const streamRes = await nativeFetch(`${base}/mcp`, {
+        method: 'GET',
+        headers: {
+          'mcp-session-id': sid!,
+          accept: 'text/event-stream',
+          'mcp-protocol-version': '2025-06-18',
+        },
+      })
+      // 200 = the session's transport owns the response (the notification
+      // stream), vs the 405/404 the routing layer returns itself. The real
+      // content-type is text/event-stream, but the happy-dom preload's
+      // Response implementation makes Hono's request-listener coerce the
+      // streamed body to text/plain in-test — so only status is asserted
+      // here; the SSE content-type is exercised against real node HTTP by
+      // the transport SDK itself.
+      expect(streamRes.status).toBe(200)
+      await streamRes.body?.cancel()
+
+      // And the sessionless GET a real codex client probes with → immediate 405.
+      const probeRes = await nativeFetch(`${base}/mcp?agent=main`, {
+        method: 'GET',
+        headers: { accept: 'text/event-stream' },
+      })
+      expect(probeRes.status).toBe(405)
+    } finally {
+      server.close()
+    }
   })
 })
 
@@ -206,6 +331,56 @@ function createMockResponse() {
       if (data) bodyContent = data
     }),
     headersSent: false,
+    get _body() {
+      return bodyContent
+    },
+  }
+  return res
+}
+
+// Richer mock for paths where the MCP SDK transport owns the response
+// (initialize round-trips, notification streams): records status/headers,
+// supports write/flush, and behaves as a minimal ServerResponse.
+function createStreamingMockResponse() {
+  let bodyContent = ''
+  const listeners = new Map<string, Array<(...args: unknown[]) => void>>()
+  const res: any = {
+    statusCode: 0,
+    headers: {} as Record<string, unknown>,
+    headersSent: false,
+    writeHead: mock(function (this: unknown, status: number, headers?: Record<string, unknown>) {
+      res.statusCode = status
+      if (headers) Object.assign(res.headers, headers)
+      res.headersSent = true
+      return res
+    }),
+    setHeader: mock((k: string, v: unknown) => {
+      res.headers[k.toLowerCase()] = v
+    }),
+    getHeader: mock((k: string) => res.headers[k.toLowerCase()]),
+    write: mock((chunk: unknown) => {
+      bodyContent += String(chunk)
+      return true
+    }),
+    end: mock((data?: string) => {
+      if (data) bodyContent += data
+    }),
+    flushHeaders: mock(() => {
+      res.headersSent = true
+    }),
+    on: mock((event: string, cb: (...args: unknown[]) => void) => {
+      const arr = listeners.get(event) ?? []
+      arr.push(cb)
+      listeners.set(event, arr)
+      return res
+    }),
+    once: mock((event: string, cb: (...args: unknown[]) => void) => {
+      const arr = listeners.get(event) ?? []
+      arr.push(cb)
+      listeners.set(event, arr)
+      return res
+    }),
+    removeListener: mock(() => res),
     get _body() {
       return bodyContent
     },
