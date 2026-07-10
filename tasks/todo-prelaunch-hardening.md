@@ -37,8 +37,8 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 - [x] T21 TurnOutputView + migrate chat & step-output ✅ (single renderer + thinking indicator; chat + step-output migrated)
 - [x] T22 Reference plugin (examples/) + CI gate ✅ (bookmarks domain; every surface + sync-manifest --check gated in CI)
 - [x] T23 Starter-repo mirror step ✅ (markhayden/bakin-plugin-starter, public; fail-soft release step + dry-run-tested staging script)
-- [ ] T24 Public docs sweep
-- [ ] CHECKPOINT 2b: success criteria #2 #3 #6; PR merged
+- [x] T24 Public docs sweep ✅ (realtime + search pages, storage scoping, hook catalog, settings types, link as primary dev verb)
+- [ ] CHECKPOINT 2b: success criteria #2 ✅ #3 ✅ #6 ✅ (suite 6427/0, docs build green); PR merged ☐
 
 ## PR 3 — feat/runtime-conformance (after 1a AND 2b)
 - [ ] T25 Conformance suite skeleton + messaging pins (3 targets)

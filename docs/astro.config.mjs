@@ -127,6 +127,8 @@ export default defineConfig({
                 { label: 'Manifest', slug: 'extending/plugins/manifest' },
                 { label: 'Client UI', slug: 'extending/plugins/client-ui' },
                 { label: 'Server Contracts', slug: 'extending/plugins/server-contracts' },
+                { label: 'Realtime Events', slug: 'extending/plugins/realtime' },
+                { label: 'Search', slug: 'extending/plugins/search' },
                 { label: 'Distribute', slug: 'extending/plugins/distribute' },
               ],
             },

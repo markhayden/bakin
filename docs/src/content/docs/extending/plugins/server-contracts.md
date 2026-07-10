@@ -61,6 +61,10 @@ Plugin API paths are mounted under `/api/plugins/{pluginId}`. A plugin route wit
 
 The legacy `ctx.registerRoute()` API was removed — routes are always declared declaratively via `definePlugin({ routes })`. A typo'd `definePlugin` key or an excess property fails typecheck at the call site.
 
+Body specs accept only the supported `contentType` values (`application/json` — the default when you pass a schema — and the other members of the published union). An unknown value such as `'json'` is rejected loudly: at `defineRoute()` for literal specs, and at activation for anything that slips past — never a silent pass-through with an unparsed body.
+
+For a complete route surface built the way these docs teach it (list/create/delete with zod params, query filters, and shared logic between a route and an exec tool), read the reference plugin's [`index.ts`](https://github.com/markhayden/bakin/tree/main/examples/reference-plugin).
+
 ## `activate(ctx)`
 
 Use `activate()` for registration, not for long-running background work. Keep it idempotent so plugin reload and tests are predictable.
@@ -84,6 +88,20 @@ Use `activate()` for registration, not for long-running background work. Keep it
 </div>
 
 Do not create lifetime resources at module import time. Timers, process listeners, file watchers, sockets, EventSources, and event-target listeners belong inside `activate(ctx)` or a narrower handler and need a matching cleanup path.
+
+## Storage
+
+`ctx.storage` is the plugin's file store, and its root depends on where the plugin came from:
+
+- **Installed (user) plugins are jailed** to `~/.bakin/plugin-data/<pluginId>/`. Every path you read or write — `read`, `write`, `readJson`, `writeJson`, `list`, `exists`, `remove` — is relative to that directory, and the adapter refuses traversal out of it.
+- **Core plugins** see the whole Bakin content directory (they manage shared stores like tasks and assets).
+
+Write your plugin against the jailed model: relative paths only, no assumptions about siblings. Two consequences worth knowing:
+
+- File-backed search `filePatterns` match paths relative to the **content directory**, not your storage root. An installed plugin's files live under `plugin-data/<pluginId>/`, so a note stored at `data/notes/x.md` (storage-relative) is matched by the pattern `plugin-data/<pluginId>/data/notes/*.md`.
+- Plugin **settings** are not in your storage. They live at `~/.bakin/plugin-settings/<pluginId>.json` and are reached through `ctx.getSettings()` / `ctx.updateSettings()` — never write settings files yourself.
+
+Emitting a live UI update after a storage write is the normal pairing — see [Realtime Events](/docs/extending/plugins/realtime/).
 
 ## Exec Tools
 
@@ -123,6 +141,35 @@ const unsubscribe = ctx.hooks.register(
 ```
 
 Store unsubscribe functions when a handler has a shorter lifetime than the plugin. Public hooks need metadata because generated docs and agent bundles depend on it.
+
+### Hooks You Can Invoke
+
+Core plugins expose cross-plugin hooks through the same registry — call them with `ctx.hooks.invoke(name, data)`. Hook contracts are currently **by-convention, not typed**: the shapes below reflect the current implementations, and you should treat a `null`/missing-handler result as "that plugin isn't installed" rather than an error.
+
+<div class="table-light-full table-label-wrap">
+
+| Hook | Payload → Result |
+| --- | --- |
+| `team.list` | `{}` → array of agents with display + team metadata |
+| `team.getAgent` | `{ id }` → one agent record or `null` |
+| `team.getAgentIds` | `{}` → `string[]` of runtime agent ids |
+| `team.exists` | `{ id }` → boolean |
+| `team.getTeamMembers` | `{ teamId }` → agents assigned to a team |
+| `workflows.definitions.list` | `{}` → available workflow definitions |
+| `workflows.instances.list` | `{}` → workflow instances |
+| `workflows.createInstance` | validated definition + params → new instance (start a workflow) |
+| `workflows.approveGate` / `workflows.rejectGate` | gate id payload → gate decision applied |
+| `schedule.ensureBakinJob` | job spec (see Plugin-Owned Cron Jobs below) → `{ ok, jobId }` |
+| `assets.listByTask` | `{ taskId }` → asset ids attached to a task |
+| `assets.describe` | `{ assetIds: string[] }` → `{ [id]: { description, caption?, type, exists } }` |
+| `assets.saveFromSource` | source-file payload → saved/upserted asset |
+| `models.getAvailableModels` | `{}` → the merged model catalog |
+| `models.getEffectiveModel` | agent/context payload → the model routing would pick |
+| `health.list` | `{}` → registered health checks |
+
+</div>
+
+The full, current list is discoverable from generated docs (hooks with `visibility: 'public'` metadata) — anything not listed there is an internal contract that may change without notice.
 
 ## Plugin-Owned Cron Jobs
 
@@ -207,11 +254,27 @@ settingsSchema: {
 
 Read settings with `ctx.getSettings()` and persist partial updates with `ctx.updateSettings()`. Use `onSettingsChange(settings)` when a changed setting should update runtime behavior without a restart.
 
+All supported field types:
+
+<div class="table-light-full table-label-wrap">
+
+| Type | Renders as | Extras |
+| --- | --- | --- |
+| `string` | Single-line text input | `default?: string` |
+| `number` | Numeric input | `default?: number` |
+| `boolean` | Toggle | `default?: boolean` |
+| `select` | Dropdown | `options: { value, label }[]` (both fields required), `default?: string` |
+| `list` | Repeatable rows | `itemShape` (a record of string/number/boolean/select fields per row), `addLabel?`, `minItems?`, `maxItems?`, `uniqueField?` |
+
+</div>
+
+Every field takes `key`, `label`, and optional `description` / `required`. The reference plugin's `settingsSchema` shows `number` and `string` fields being read back with `ctx.getSettings()` inside both a route and an exec tool.
+
 ## Search
 
-Register search content through `ctx.search`. Every content type declares a required `schemaVersion` — bump it when the doc shape changes and the table migrates blue/green in the background (no manual reindex, no downtime). File-backed content should use Bakin content paths, not absolute host paths. All content types need a side-effect-free, restartable `reindex()` generator (it is the blue/green backfill source — throw when a dependency is unavailable) and a `verifyExists()` check for the doctor's orphan sweep. Writes (`index`/`remove`/`transform`) journal through a durable outbox: they are fire-and-forget safe, and the engine being down never loses a write.
+Register search content through `ctx.search`. Every content type declares a required `schemaVersion` — bump it when the doc shape changes and the table migrates in the background (no manual reindex, no downtime). All content types need a side-effect-free, restartable `reindex()` generator and a `verifyExists()` check; writes journal through a durable outbox and are fire-and-forget safe.
 
-Search definitions should name stable tables, list searchable fields, provide facets where useful, and define embedding input that matches the way users and agents will query the content.
+The full authoring guide — registration, file-backed sync, hit renderers, honest degradation — lives at [Search](/docs/extending/plugins/search/).
 
 ## Cleanup
 
