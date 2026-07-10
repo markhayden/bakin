@@ -11,6 +11,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, mock } from 'bun:test'
 import { render, screen, fireEvent } from '@testing-library/react'
+import '../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
 

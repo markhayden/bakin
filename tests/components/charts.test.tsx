@@ -6,6 +6,7 @@
  */
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import '../rtl-settle'
 
 // Pure client-component test — isolation mocks are belt-and-braces.
 const contentDirMock = () => ({

@@ -16,6 +16,7 @@
 
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { z } from 'zod'

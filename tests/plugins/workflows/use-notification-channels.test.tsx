@@ -8,6 +8,7 @@
  */
 import { describe, it, expect, beforeEach, mock, spyOn } from 'bun:test'
 import { render, waitFor, act } from '@testing-library/react'
+import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
 

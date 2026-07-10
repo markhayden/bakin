@@ -15,6 +15,7 @@ mock.module('../../packages/core/src/content-dir', () => ({
 }))
 
 import { render, waitFor } from '@testing-library/react'
+import '../rtl-settle'
 import { useSSE } from '@/hooks/use-sse'
 import { usePluginEvent } from '@/hooks/use-plugin-event'
 import { useContentStore } from '@/hooks/use-content-store'

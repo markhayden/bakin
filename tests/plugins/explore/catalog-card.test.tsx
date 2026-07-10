@@ -2,6 +2,7 @@
 
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import '../../rtl-settle'
 import type { ReactNode } from 'react'
 
 // Pure client-component test — the isolation mocks are belt-and-braces per

@@ -27,6 +27,7 @@ mock.module('../../src/core/task-store', () => ({}))
 mock.module('@/core/task-store', () => ({}))
 
 import { render, waitFor } from '@testing-library/react'
+import '../rtl-settle'
 import { emitPluginEvent } from '@makinbakin/sdk/hooks'
 import { useLiveActivity, chipLabel, liveActivityTs, type LiveActivity } from '../../plugins/tasks/hooks/use-live-activity'
 

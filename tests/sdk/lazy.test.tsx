@@ -9,6 +9,7 @@
  */
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import '../rtl-settle'
 
 // Defensive content-dir mocks per CLAUDE.md test-isolation rules.
 mock.module('../../src/core/content-dir', () => {

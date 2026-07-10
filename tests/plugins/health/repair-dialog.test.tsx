@@ -11,6 +11,7 @@ import { describe, it, expect, beforeEach, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import '../../rtl-settle'
 
 // Pure-UI test (all fetches mocked) — content-dir/OpenClaw mocks are the
 // CLAUDE.md-mandated belt-and-suspenders so no transitive import can ever
