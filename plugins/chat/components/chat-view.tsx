@@ -1,29 +1,44 @@
 /**
  * Chat view — transcript rows + live streaming overlay + composer.
+ *
+ * All turn output (assistant text, tool chips, thinking status, errors)
+ * renders through the SDK's TurnOutputView — the single chunk renderer.
+ * This file owns only chat chrome: avatars, bubbles, indentation, composer.
  */
 import { useEffect, useRef } from 'react'
-import { AlertTriangle, Loader2, Wrench } from 'lucide-react'
-import { AgentAvatar, EmptyState, MarkdownContent } from '@makinbakin/sdk/components'
-import { summarizeStructured, unwrapToolResult } from '@makinbakin/sdk/utils'
+import type { ReactNode } from 'react'
+import { AlertTriangle } from 'lucide-react'
+import { AgentAvatar, EmptyState, TurnOutputView } from '@makinbakin/sdk/components'
+import type { RuntimeChatChunk } from '@makinbakin/sdk/types'
 
 import { Composer } from './composer'
-import { useChatStream, type LiveToolChip, type TranscriptRowDto } from './use-chat-data'
+import { useChatStream, type TranscriptRowDto } from './use-chat-data'
 
-function ToolChip(props: { toolName: string; summary?: string; status: LiveToolChip['status'] }) {
-  const { toolName, summary, status } = props
-  // Defensive across runtimes: peel any tool-result envelope + JSON blob to
-  // a clean one-line summary (the Pi adapter already does this at source,
-  // but OpenClaw or a future runtime may still hand us raw JSON).
-  const clean = summary ? summarizeStructured(unwrapToolResult(summary)) : ''
-  return (
-    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-      {status === 'running'
-        ? <Loader2 className="size-3 animate-spin" />
-        : <Wrench className={`size-3 ${status === 'failed' ? 'text-destructive' : ''}`} />}
-      <span className="font-mono">{toolName}</span>
-      {clean ? <span className="truncate">— {clean}</span> : null}
-    </div>
-  )
+/** Chat's assistant-bubble frame: avatar beside a bordered text block. */
+function assistantFrame(agentId: string) {
+  return function frame(text: ReactNode) {
+    return (
+      <div className="flex items-start gap-2">
+        <AgentAvatar agentId={agentId} size="xs" />
+        <div className="min-w-0 max-w-[85%] rounded-lg border px-3 py-2 text-sm">{text}</div>
+      </div>
+    )
+  }
+}
+
+/** Map a durable transcript row to its normalized chunk form. */
+function rowToChunk(row: TranscriptRowDto): RuntimeChatChunk | null {
+  if (row.kind === 'assistant') return { type: 'text', content: row.content }
+  if (row.kind === 'tool') {
+    // Durable tool rows persist as "name: summary" strings.
+    const [toolName, ...rest] = row.summary.split(': ')
+    return {
+      type: 'tool',
+      data: { phase: 'result', toolName, status: 'completed', summary: rest.join(': ') || undefined },
+    }
+  }
+  if (row.kind === 'error') return { type: 'error', content: row.message }
+  return null
 }
 
 function TranscriptRow({ row, agentId }: { row: TranscriptRowDto; agentId: string }) {
@@ -36,36 +51,18 @@ function TranscriptRow({ row, agentId }: { row: TranscriptRowDto; agentId: strin
       </div>
     )
   }
-  if (row.kind === 'assistant') {
-    return (
-      <div className="flex items-start gap-2">
-        <AgentAvatar agentId={agentId} size="xs" />
-        <div className="min-w-0 max-w-[85%] rounded-lg border px-3 py-2 text-sm">
-          <MarkdownContent content={row.content} />
-        </div>
-      </div>
-    )
-  }
-  if (row.kind === 'tool') {
-    // Durable tool rows persist as "name: summary" strings.
-    const [toolName, ...rest] = row.summary.split(': ')
-    return <div className="pl-8"><ToolChip toolName={toolName} summary={rest.join(': ') || undefined} status="completed" /></div>
-  }
-  return (
-    <div className="flex items-center gap-2 pl-8 text-sm text-destructive">
-      <AlertTriangle className="size-4 shrink-0" />
-      <span>{row.message}</span>
-    </div>
-  )
+  const chunk = rowToChunk(row)
+  if (!chunk) return null
+  return <TurnOutputView chunks={[chunk]} textFrame={assistantFrame(agentId)} rowClassName="pl-8" />
 }
 
 export function ChatView({ chatId }: { chatId: string }) {
-  const { chat, rows, liveText, liveTools, streaming, sendError, send } = useChatStream(chatId)
+  const { chat, rows, liveChunks, streaming, sendError, send } = useChatStream(chatId)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
-  }, [rows.length, liveText, liveTools.length])
+  }, [rows.length, liveChunks])
 
   if (!chat) {
     return <EmptyState title="Chat not found" description="It may have been deleted." />
@@ -83,20 +80,13 @@ export function ChatView({ chatId }: { chatId: string }) {
           rows.map((row, i) => <TranscriptRow key={`${row.ts}-${i}`} row={row} agentId={chat.agentId} />)
         )}
 
-        {liveTools.map((chip) => (
-          <div key={chip.key} className="pl-8"><ToolChip {...chip} /></div>
-        ))}
-        {liveText ? (
-          <div className="flex items-start gap-2">
-            <AgentAvatar agentId={chat.agentId} size="xs" />
-            <div className="min-w-0 max-w-[85%] rounded-lg border px-3 py-2 text-sm">
-              <MarkdownContent content={liveText} />
-            </div>
-          </div>
-        ) : streaming ? (
-          <div className="flex items-center gap-2 pl-8 text-xs text-muted-foreground">
-            <Loader2 className="size-3 animate-spin" /> thinking…
-          </div>
+        {streaming || liveChunks.length > 0 ? (
+          <TurnOutputView
+            chunks={liveChunks}
+            live={streaming}
+            textFrame={assistantFrame(chat.agentId)}
+            rowClassName="pl-8"
+          />
         ) : null}
 
         {sendError ? (

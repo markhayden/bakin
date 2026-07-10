@@ -34,7 +34,7 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 - [x] T18 In-repo tests consume sdk/testing ✅ (test-helpers is a thin adapter: spies + 3 global registries + caller-owned dirs are the whole delta)
 - [x] T19 Type tightening ✅ (closed definePlugin w/ exactness, inferred exec params, legacy route API deleted, log/storage required, 13 casts removed)
 - [x] T20 Uniform duplicate-throw + /internal split + pluginFetch ✅ (internal entry, R18 throws, pluginFetch/usePluginJsonFetch adopted in chat+brands)
-- [ ] T21 TurnOutputView + migrate chat & step-output
+- [x] T21 TurnOutputView + migrate chat & step-output ✅ (single renderer + thinking indicator; chat + step-output migrated)
 - [ ] T22 Reference plugin (examples/) + CI gate
 - [ ] T23 🔶 Starter-repo mirror step (ask-first: OQ1 repo name/visibility)
 - [ ] T24 Public docs sweep

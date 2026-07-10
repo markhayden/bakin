@@ -1,6 +1,6 @@
 'use client'
 
-import { MarkdownContent } from "@makinbakin/sdk/components"
+import { TurnOutputView } from "@makinbakin/sdk/components"
 import { isRenderableAssetRef } from '../lib/output-assets'
 
 /** Normalize step output — handles string (possibly JSON), object, or unexpected types. */
@@ -37,7 +37,14 @@ function OutputValue({ value }: { value: unknown }) {
     }
     const str = value as string
     if (str.includes('\n') || str.length > 120) {
-      return <div className="text-xs text-zinc-300 mt-0.5"><MarkdownContent content={str} /></div>
+      // Step output is a key/value tree, not chunk-shaped — but its prose
+      // leaves ARE turn output, so they render through the single chunk
+      // renderer (markdown default) instead of a local format heuristic.
+      return (
+        <div className="text-xs text-zinc-300 mt-0.5">
+          <TurnOutputView chunks={[{ type: 'text', content: str }]} />
+        </div>
+      )
     }
     return <p className="text-xs text-zinc-300 mt-0.5">{str}</p>
   }
