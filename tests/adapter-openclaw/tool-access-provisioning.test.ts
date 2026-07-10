@@ -39,9 +39,9 @@ describe('applyBakinMcpEntries', () => {
     expect(changes).toEqual(['added bakin-main', 'added bakin-pixel', 'added bakin-patch'])
     expect(config.mcp!.servers).toEqual({
       existing: { url: 'http://localhost:9999/mcp' },
-      'bakin-main': { url: 'http://localhost:3737/mcp?agent=main', description: 'Bakin MCP for main', requestTimeoutMs: BAKIN_MCP_REQUEST_TIMEOUT_MS },
-      'bakin-pixel': { url: 'http://localhost:3737/mcp?agent=pixel', description: 'Bakin MCP for pixel', requestTimeoutMs: BAKIN_MCP_REQUEST_TIMEOUT_MS },
-      'bakin-patch': { url: 'http://localhost:3737/mcp?agent=patch', description: 'Bakin MCP for patch', requestTimeoutMs: BAKIN_MCP_REQUEST_TIMEOUT_MS },
+      'bakin-main': { url: 'http://localhost:3737/mcp?agent=main', description: 'Bakin MCP for main', requestTimeoutMs: BAKIN_MCP_REQUEST_TIMEOUT_MS, type: 'streamable-http' },
+      'bakin-pixel': { url: 'http://localhost:3737/mcp?agent=pixel', description: 'Bakin MCP for pixel', requestTimeoutMs: BAKIN_MCP_REQUEST_TIMEOUT_MS, type: 'streamable-http' },
+      'bakin-patch': { url: 'http://localhost:3737/mcp?agent=patch', description: 'Bakin MCP for patch', requestTimeoutMs: BAKIN_MCP_REQUEST_TIMEOUT_MS, type: 'streamable-http' },
     })
   })
 
@@ -81,7 +81,7 @@ describe('applyBakinMcpEntries', () => {
     const config: BakinMcpConfig = {
       mcp: {
         servers: {
-          'bakin-main': { url: 'http://localhost:3737/mcp?agent=main', description: 'Bakin MCP for main', requestTimeoutMs: BAKIN_MCP_REQUEST_TIMEOUT_MS },
+          'bakin-main': { url: 'http://localhost:3737/mcp?agent=main', description: 'Bakin MCP for main', requestTimeoutMs: BAKIN_MCP_REQUEST_TIMEOUT_MS, type: 'streamable-http' },
         },
       },
     }
@@ -124,7 +124,7 @@ describe('verifyBakinMcpEntries', () => {
     const config: BakinMcpConfig = {
       mcp: {
         servers: {
-          'bakin-main': { url: 'http://localhost:3737/mcp?agent=main', description: 'Bakin MCP for main', requestTimeoutMs: BAKIN_MCP_REQUEST_TIMEOUT_MS },
+          'bakin-main': { url: 'http://localhost:3737/mcp?agent=main', description: 'Bakin MCP for main', requestTimeoutMs: BAKIN_MCP_REQUEST_TIMEOUT_MS, type: 'streamable-http' },
           'bakin-stale': { url: 'http://localhost:3737/mcp?agent=stale', description: 'Bakin MCP for stale' },
         },
       },
@@ -154,6 +154,26 @@ describe('verifyBakinMcpEntries', () => {
 
     expect(applyBakinMcpEntries(config, ['main'], BASE)).toEqual(['updated bakin-main'])
     expect(config.mcp!.servers!['bakin-main'].requestTimeoutMs).toBe(BAKIN_MCP_REQUEST_TIMEOUT_MS)
+  })
+
+  it('flags an entry without a transport type as incorrect so provisioning heals it', () => {
+    // OpenClaw's embedded runtime DEFAULTS HTTP MCP servers to the legacy SSE
+    // transport when `type` is absent — and Bakin's /mcp now 405s sessionless
+    // GETs (the legacy handshake made the codex client stall a fixed 5s per
+    // turn). Existing installs carry type-less entries — verify must report
+    // them incorrect and apply must rewrite them with type: streamable-http.
+    const config: BakinMcpConfig = {
+      mcp: {
+        servers: {
+          'bakin-main': { url: 'http://localhost:3737/mcp?agent=main', description: 'Bakin MCP for main', requestTimeoutMs: BAKIN_MCP_REQUEST_TIMEOUT_MS },
+        },
+      },
+    }
+    const status = verifyBakinMcpEntries(config, ['main'], BASE)
+    expect(status.agentEntries[0].correct).toBe(false)
+
+    expect(applyBakinMcpEntries(config, ['main'], BASE)).toEqual(['updated bakin-main'])
+    expect(config.mcp!.servers!['bakin-main'].type).toBe('streamable-http')
   })
 })
 

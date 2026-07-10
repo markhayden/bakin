@@ -1,13 +1,17 @@
 /**
  * Bakin MCP Server.
  *
- * Exposes agent-facing operations as MCP tools over Streamable HTTP and SSE.
+ * Exposes agent-facing operations as MCP tools over Streamable HTTP.
  * Agents connect to /mcp?agent=<name> and get tools for task management,
  * progress logging, workflow step submission, etc.
  *
- * Supports two transports:
- * - Streamable HTTP (POST-only, session ID in headers) — modern MCP clients
- * - SSE (GET to establish stream, POST to send messages) — legacy MCP clients
+ * Transport: Streamable HTTP only (POST initialize; Mcp-Session-Id header;
+ * GET with a session id opens the notification stream). Sessionless GETs are
+ * 405 per spec — the legacy SSE auto-handshake was removed because the codex
+ * MCP client ignores it and waits a fixed 5s before falling back to
+ * streamable-http, taxing every codex-runtime turn ~5s. Provisioned OpenClaw
+ * entries declare `type: "streamable-http"` so the embedded runtime (whose
+ * HTTP client DEFAULTS to legacy SSE) picks the right transport too.
  *
  * All tools are registered dynamically via the exec tool registry:
  * - Plugin tools: registered via ctx.registerExecTool() in plugin activate()
@@ -20,7 +24,6 @@ import { randomUUID } from 'crypto'
 import type { IncomingMessage, ServerResponse } from 'http'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
-import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js'
 import { CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { createLogger } from './logger'
 import { getContentDir } from './content-dir'
@@ -62,26 +65,16 @@ interface McpSession {
 
 const sessions = new Map<string, McpSession>()
 
-// SSE sessions are keyed by session ID from the SSE transport
-interface SseSession {
-  server: McpServer
-  transport: SSEServerTransport
-  agentId: string
-  createdAt: number
-}
-const sseSessions = new Map<string, SseSession>()
-
 const startedAt = new Date().toISOString()
 
-type SessionSummaryInput = Pick<McpSession | SseSession, 'agentId' | 'createdAt'>
+type SessionSummaryInput = Pick<McpSession, 'agentId' | 'createdAt'>
 
 export function summarizeMcpSessions(
   streamable: Iterable<SessionSummaryInput>,
-  sse: Iterable<SessionSummaryInput>,
   upSince: string = startedAt,
 ): { activeSessions: Array<{ agent: string; sessions: number; connectedAt: string }>; upSince: string } {
   const agentMap = new Map<string, { sessions: number; latestAt: number }>()
-  for (const session of [...streamable, ...sse]) {
+  for (const session of streamable) {
     const existing = agentMap.get(session.agentId)
     if (existing) {
       existing.sessions++
@@ -104,7 +97,7 @@ export function summarizeMcpSessions(
 // plugin reads this via globalThis to avoid coupling to mcp-server.ts
 // directly — same pattern as __bakinBroadcast.
 ;(globalThis as unknown as { __bakinGetMcpSessions?: () => { activeSessions: Array<{ agent: string; sessions: number; connectedAt: string }>; upSince: string } }).__bakinGetMcpSessions = () => {
-  return summarizeMcpSessions(sessions.values(), sseSessions.values(), startedAt)
+  return summarizeMcpSessions(sessions.values(), startedAt)
 }
 
 // Clean up stale sessions every 5 minutes.
@@ -119,15 +112,8 @@ setInterval(() => {
       cleaned++
     }
   }
-  for (const [id, session] of sseSessions) {
-    if (now - session.createdAt > SESSION_TTL_MS) {
-      session.transport.close?.()
-      sseSessions.delete(id)
-      cleaned++
-    }
-  }
   if (cleaned > 0) {
-    log.info('Cleaned up stale MCP sessions', { cleaned, remaining: sessions.size + sseSessions.size })
+    log.info('Cleaned up stale MCP sessions', { cleaned, remaining: sessions.size })
   }
 }, 5 * 60 * 1000)
 
@@ -342,40 +328,30 @@ export async function handleMcpRequest(
 
   const agentId = url.searchParams.get('agent')
 
-  // ─── SSE Transport (GET) ───────────────────────────────────────────
-  // Legacy MCP clients connect via GET to establish an SSE stream.
-  // The SSE transport sends an `endpoint` event with a POST URL for messages.
+  // ─── GET: streamable-http notification stream ───────────────────────
+  // A GET with a live Mcp-Session-Id opens the session's server→client
+  // notification stream. A GET WITHOUT one is 405 per the streamable-http
+  // spec. (This endpoint previously auto-started a legacy SSE handshake for
+  // sessionless GETs; the codex MCP client ignores that handshake and waits
+  // a fixed 5s before falling back to streamable-http — a 5s tax on every
+  // codex-runtime turn. 405 makes clients fall back immediately.)
   if (method === 'GET') {
-    if (!agentId) {
-      res.writeHead(400, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({ error: 'agent query parameter required (e.g. /mcp?agent=chef)' }))
+    const existingSessionId = req.headers['mcp-session-id'] as string | undefined
+    if (existingSessionId) {
+      const session = sessions.get(existingSessionId)
+      if (!session) {
+        res.writeHead(404, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: 'Session not found' }))
+        return
+      }
+      await session.transport.handleRequest(req, res)
       return
     }
 
-    const server = new McpServer(
-      { name: 'bakin', version: '1.0.0' },
-      { capabilities: { logging: {} } },
-    )
-    registerTools(server, () => agentId)
-
-    // The endpoint is where the SSE client will POST messages back.
-    // Use /mcp with a sessionId query param so we can route them.
-    const transport = new SSEServerTransport(`/mcp`, res)
-    // server.connect(transport) internally calls transport.start() — calling
-    // start() again here throws "SSEServerTransport already started" from
-    // the MCP SDK.
-    await server.connect(transport)
-
-    const sid = transport.sessionId
-    sseSessions.set(sid, { server, transport, agentId, createdAt: Date.now() })
-    log.info('SSE MCP session created', { sessionId: sid, agent: agentId })
-
-    // Clean up on disconnect
-    res.on('close', () => {
-      transport.close?.()
-      sseSessions.delete(sid)
-      log.info('SSE MCP session closed', { sessionId: sid, agent: agentId })
-    })
+    res.writeHead(405, { 'Content-Type': 'application/json', Allow: 'POST, DELETE' })
+    res.end(JSON.stringify({
+      error: 'Streamable HTTP only: POST a JSON-RPC initialize request to /mcp?agent=<id>. GET requires an Mcp-Session-Id header from an initialized session.',
+    }))
     return
   }
 
@@ -408,19 +384,6 @@ export async function handleMcpRequest(
         return
       }
       await session.transport.handleRequest(req, res, body)
-      return
-    }
-
-    // Check for SSE session (query param-based — SSE transport POSTs to /mcp?sessionId=...)
-    const sseSessionId = url.searchParams.get('sessionId')
-    if (sseSessionId) {
-      const sseSession = sseSessions.get(sseSessionId)
-      if (!sseSession) {
-        res.writeHead(404, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ error: 'SSE session not found' }))
-        return
-      }
-      await sseSession.transport.handlePostMessage(req, res, body)
       return
     }
 
