@@ -25,7 +25,7 @@ import type {
   WorkflowDefinitionInput,
   PluginNodeTypeInput,
 } from '@bakin/core/plugin-types'
-import { registerPluginDefinition } from '@bakin/core/workflows/source-registry'
+import { registerPluginDefinition, unregisterPluginDefinitions } from '@bakin/core/workflows/source-registry'
 import type { WorkflowDefinition } from '@bakin/core/workflows/definition-types'
 import { registerPluginNodeType, unregisterPluginNodeTypes } from '@bakin/core/workflows/node-type-registry'
 import {
@@ -42,14 +42,14 @@ import type {
 } from '@bakin/core/plugin-types'
 import type { AppServices } from '@bakin/core/app-services'
 import { assertValidBodySpec } from '@bakin/core/routing'
-import { registerRouteDoc } from './api-docs'
+import { registerRouteDoc, removeRouteDocsByPlugin } from './api-docs'
 import { addExecTool, removeExecToolsByPlugin } from './exec-tools/registry'
 import { runMigrations } from './migrations'
 import { getContentDir } from './content-dir'
 import { createLogger } from './logger'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { getPluginSkills as skillRegistry, clearPluginSkills, removePluginSkillsByPlugin } from '@bakin/core/skills/plugin-skill-registry'
-import { getContentTypes, purgeContentType } from './search-registry'
+import { getContentTypes, purgeContentType, unregisterContentTypesByPlugin } from './search-registry'
 import { loadPluginSkills } from '../lib/plugin-skill-loader'
 import { setCorePluginCheck, readPluginLockfile } from '../../packages/core/src/plugins/lockfile'
 import {
@@ -317,6 +317,51 @@ class PluginRegistryImpl {
     state.healthCheckIds.length = 0
   }
 
+  /**
+   * Non-destructive sweep of every registry surface a plugin can contribute
+   * to: hooks, exec tools, node types, notification channels, health checks,
+   * skills, plugin-owned workflow definitions, search runtime wiring, route
+   * docs, and the per-plugin state arrays. Never drops search tables —
+   * uninstall (`deactivatePlugin`) owns destructive cleanup.
+   *
+   * Used by the activation-failure path (R18 collisions THROW out of
+   * activate(), and everything the plugin registered before the throw must
+   * not survive as callable, failed-owner registrations) and delegated to by
+   * the hot-reload pipeline. Idempotent — every sub-sweep is no-op-on-empty.
+   */
+  sweepPluginRegistrations(pluginId: string): void {
+    try { getHookRegistry().unregisterByPlugin(pluginId) } catch (err) {
+      log.warn('sweep: unregisterByPlugin failed', { pluginId, err: String(err) })
+    }
+    try { removeExecToolsByPlugin(pluginId) } catch (err) {
+      log.warn('sweep: removeExecToolsByPlugin failed', { pluginId, err: String(err) })
+    }
+    try { unregisterPluginNodeTypes(pluginId) } catch (err) {
+      log.warn('sweep: unregisterPluginNodeTypes failed', { pluginId, err: String(err) })
+    }
+    try { unregisterPluginNotificationChannels(pluginId) } catch (err) {
+      log.warn('sweep: unregisterPluginNotificationChannels failed', { pluginId, err: String(err) })
+    }
+    try { unregisterPluginHealthChecks(pluginId) } catch (err) {
+      log.warn('sweep: unregisterPluginHealthChecks failed', { pluginId, err: String(err) })
+    }
+    try { removePluginSkillsByPlugin(pluginId) } catch (err) {
+      log.warn('sweep: removePluginSkillsByPlugin failed', { pluginId, err: String(err) })
+    }
+    try { unregisterPluginDefinitions(pluginId) } catch (err) {
+      log.warn('sweep: unregisterPluginDefinitions failed', { pluginId, err: String(err) })
+    }
+    // Runtime wiring only — never drops backing search tables.
+    try { unregisterContentTypesByPlugin(pluginId) } catch (err) {
+      log.warn('sweep: unregisterContentTypesByPlugin failed', { pluginId, err: String(err) })
+    }
+    try { removeRouteDocsByPlugin(pluginId) } catch (err) {
+      log.warn('sweep: removeRouteDocsByPlugin failed', { pluginId, err: String(err) })
+    }
+    const state = this.plugins.get(pluginId)
+    if (state) this.clearStateArrays(state)
+  }
+
   async deactivatePlugin(pluginId: string, opts: { callShutdown?: boolean; removeState?: boolean } = {}): Promise<{
     hooks: number
     execTools: number
@@ -349,6 +394,15 @@ class PluginRegistryImpl {
     }
     try { unregisterPluginHealthChecks(pluginId) } catch (err) {
       log.warn('deactivate: unregisterPluginHealthChecks failed', { pluginId, err: String(err) })
+    }
+    // Plugin-owned workflow definitions: with cross-plugin id collisions now
+    // THROWING (R18), a removed plugin's stale ids would make its workflow
+    // ids permanently unclaimable in this process.
+    try { unregisterPluginDefinitions(pluginId) } catch (err) {
+      log.warn('deactivate: unregisterPluginDefinitions failed', { pluginId, err: String(err) })
+    }
+    try { removeRouteDocsByPlugin(pluginId) } catch (err) {
+      log.warn('deactivate: removeRouteDocsByPlugin failed', { pluginId, err: String(err) })
     }
     try {
       const ownedTables = [...getContentTypes().entries()]
@@ -459,13 +513,11 @@ class PluginRegistryImpl {
 
   /**
    * Register declarative routes from `plugin.routes` into state.routes.
-   * T20: called BEFORE `plugin.activate()` (the spec invariant). Every
-   * in-repo plugin populates `plugin.routes` at module-load time so the
-   * static analyzer + the docs generator see the full surface without
-   * needing to invoke activate(). Routes registered through the legacy
-   * `ctx.registerRoute` adapter during activate() are appended to
-   * state.routes after this runs; this only adds the declarative
-   * entries.
+   * Called BEFORE `plugin.activate()` (the spec invariant): every plugin
+   * populates `plugin.routes` at module-load time so the static analyzer +
+   * the docs generator see the full surface without invoking activate().
+   * The only other producer onto state.routes is the search auto-route
+   * (an internal registrar — `ctx.registerRoute` no longer exists).
    */
   private registerDeclarativeRoutes(plugin: BakinPlugin, state: PluginState): void {
     const declarative = plugin.routes ?? []
@@ -650,6 +702,11 @@ class PluginRegistryImpl {
       activateSpan.end({ status: 'ok' })
     } catch (err) {
       activateSpan.end({ status: 'error', error: err instanceof Error ? err.message : String(err) })
+      // A throwing activate() is now the DESIGNED collision outcome (R18).
+      // Sweep everything the plugin registered before the throw — exec
+      // tools, hooks, skills, etc. would otherwise survive as callable
+      // registrations owned by a plugin whose status is `failed`.
+      this.sweepPluginRegistrations(plugin.id)
       throw err
     }
     state.ctx = ctx

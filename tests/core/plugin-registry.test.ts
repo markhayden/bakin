@@ -36,6 +36,7 @@ mock.module('@/core/logger', () => ({
 
 mock.module('@/core/api-docs', () => ({
   registerRouteDoc: mock(),
+  removeRouteDocsByPlugin: mock(),
 }))
 
 mock.module('@/core/audit', () => ({
@@ -460,6 +461,54 @@ describe('PluginRegistryImpl', () => {
       expect(failed?.status).toBe('failed')
       expect(failed?.errorMessage).toContain('my-skill')
       expect(failed?.errorMessage).toContain('plugin:alpha')
+    })
+
+    it('a failed activation sweeps EVERYTHING the plugin registered before the throw', async () => {
+      const pathA = writeFakePlugin('alpha', {
+        activate: `ctx.registerSkill({ name: 'sweep-skill', instructions: 'from alpha' })`,
+      })
+      // bravo registers an exec tool + a hook + a workflow BEFORE colliding
+      // on the skill name — none of those may survive its failed activation.
+      const pathB = writeFakePlugin('bravo', {
+        activate: `
+          ctx.registerExecTool({ name: 'bakin_exec_bravo_thing', description: 'x', parameters: {}, handler: async () => ({ ok: true }) })
+          ctx.hooks.register('bravo.leaky', function () { return 1 })
+          ctx.registerWorkflow({ id: 'bravo-flow', name: 'Bravo Flow', steps: [] })
+          ctx.registerSkill({ name: 'sweep-skill', instructions: 'from bravo' })
+        `,
+      })
+
+      await pluginRegistry.initialize(
+        { plugins: [{ path: pathA }, { path: pathB }] },
+        mockStorage(),
+        mockEvents(),
+      )
+
+      const failed = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'bravo')
+      expect(failed?.status).toBe('failed')
+      // Exec tool swept (the mocked registry removes by source tag).
+      expect(mockedExecTools.has('bakin_exec_bravo_thing')).toBe(false)
+      // Hook swept.
+      expect(getHookRegistry().has('bravo.leaky')).toBe(false)
+      // Workflow id reclaimable: registering it from another plugin must not throw.
+      const { registerPluginDefinition } = await import('@bakin/core/workflows/source-registry')
+      expect(() => registerPluginDefinition('charlie', 'bravo-flow', { id: 'bravo-flow', name: 'Claimed', steps: [] } as any)).not.toThrow()
+    })
+
+    it('deactivatePlugin frees the plugin\'s workflow ids for later claimants', async () => {
+      const pathA = writeFakePlugin('alpha', {
+        activate: `ctx.registerWorkflow({ id: 'shared-flow', name: 'Alpha Flow', steps: [] })`,
+      })
+      await pluginRegistry.initialize({ plugins: [{ path: pathA }] }, mockStorage(), mockEvents())
+
+      const { registerPluginDefinition, getSource } = await import('@bakin/core/workflows/source-registry')
+      expect(getSource('shared-flow')).toBe('plugin')
+      // Cross-plugin claim while alpha is live still throws (R18).
+      expect(() => registerPluginDefinition('bravo', 'shared-flow', { id: 'shared-flow', name: 'Stolen', steps: [] } as any)).toThrow()
+
+      await pluginRegistry.deactivatePlugin('alpha', { callShutdown: false })
+      // Stale id must not be activation-fatal for the next claimant.
+      expect(() => registerPluginDefinition('bravo', 'shared-flow', { id: 'shared-flow', name: 'Claimed', steps: [] } as any)).not.toThrow()
     })
 
     it('registerWorkflow cross-plugin id collision THROWS and fails activation (R18)', async () => {

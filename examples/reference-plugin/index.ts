@@ -38,7 +38,10 @@ interface BookmarkServices {
 }
 
 /** Settings shape — mirrors `settingsSchema` below. `ctx.getSettings` returns
- * the persisted values with schema defaults already applied. */
+ * ONLY what was persisted (`{}` on a fresh install) — schema defaults are NOT
+ * applied for you, which is why `settingsOf` re-applies them. Keep that
+ * pattern: reading a field without a fallback is `undefined` until the user
+ * saves the settings page once. */
 interface BookmarkSettings {
   maxBookmarks: number
   defaultTag: string
@@ -61,8 +64,10 @@ function createBookmark(
   const result = addBookmark(ctx.storage, input, settingsOf(ctx))
   if (!result.ok) return result
   // Fire-and-forget: search writes journal through the durable outbox — the
-  // engine being down means the row waits, never blocks the request.
-  void ctx.search.index(result.bookmark.id, bookmarkSearchDoc(result.bookmark))
+  // engine being down means the row waits, never blocks the request. Catch
+  // (never `void`): the enqueue itself can reject, and an unhandled
+  // rejection is noise the caller can't act on.
+  ctx.search.index(result.bookmark.id, bookmarkSearchDoc(result.bookmark)).catch(() => {})
   // SSE to every connected browser; the page subscribes via usePluginEvent.
   ctx.events.emit(`${PLUGIN_ID}.changed`, { action: 'created', id: result.bookmark.id })
   return result
@@ -150,7 +155,7 @@ const plugin = definePlugin({
         if (!removeBookmark(ctx.storage, parsed.params.id)) {
           return Response.json({ error: 'bookmark not found' }, { status: 404 })
         }
-        void ctx.search.remove(parsed.params.id)
+        ctx.search.remove(parsed.params.id).catch(() => {})
         ctx.events.emit(`${PLUGIN_ID}.changed`, { action: 'deleted', id: parsed.params.id })
         return Response.json({ ok: true })
       },
@@ -201,7 +206,9 @@ const plugin = definePlugin({
         created_at: { type: 'datetime' },
       },
       searchableFields: ['title', 'note', 'url'],
-      embeddingTemplate: '{title}\n{note}',
+      // Template fields use DOUBLE braces — `{x}` single braces embed as
+      // literal text and silently kill semantic search for the whole type.
+      embeddingTemplate: '{{title}}\n{{note}}',
       facets: ['tags'],
       // Reindex is the blue/green rebuild path: yield every live document.
       reindex: async function* () {

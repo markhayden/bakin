@@ -47,6 +47,37 @@ describe('foldTurnChunks', () => {
     expect(folded.tools).toEqual([{ key: 'c1', toolName: 'bash', summary: 'ls -la', status: 'completed' }])
   })
 
+  it('pairs a callId-less result with the last RUNNING chip for the same tool (no stuck spinner)', () => {
+    // OpenClaw can omit callId (toolCallId ?? undefined) — the result must
+    // close the running chip, not open an unmatched duplicate.
+    const folded = foldTurnChunks([
+      { type: 'tool', data: { phase: 'call', toolName: 'bash', summary: 'ls' } },
+      { type: 'tool', data: { phase: 'result', toolName: 'bash', status: 'completed' } },
+    ])
+    expect(folded.tools).toHaveLength(1)
+    expect(folded.tools[0]).toMatchObject({ toolName: 'bash', summary: 'ls', status: 'completed' })
+  })
+
+  it('callId-less pairing closes the MOST RECENT running chip and leaves earlier ones alone', () => {
+    const folded = foldTurnChunks([
+      { type: 'tool', data: { phase: 'call', toolName: 'bash', summary: 'first' } },
+      { type: 'tool', data: { phase: 'call', toolName: 'bash', summary: 'second' } },
+      { type: 'tool', data: { phase: 'result', toolName: 'bash', status: 'completed' } },
+    ])
+    expect(folded.tools).toHaveLength(2)
+    expect(folded.tools[0]).toMatchObject({ summary: 'first', status: 'running' })
+    expect(folded.tools[1]).toMatchObject({ summary: 'second', status: 'completed' })
+  })
+
+  it('a callId-less result with no matching running chip renders as a settled chip (no crash)', () => {
+    const folded = foldTurnChunks([
+      { type: 'tool', data: { phase: 'result', toolName: 'web_fetch', status: 'failed', summary: 'timeout' } },
+    ])
+    expect(folded.tools).toEqual([
+      expect.objectContaining({ toolName: 'web_fetch', status: 'failed', summary: 'timeout' }),
+    ])
+  })
+
   it('latest status wins; done and error mark terminal state with typed kind', () => {
     const folded = foldTurnChunks([
       { type: 'status', content: 'thinking' },

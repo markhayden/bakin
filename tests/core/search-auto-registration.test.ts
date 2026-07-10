@@ -81,6 +81,7 @@ mock.module('@/core/sse', () => ({
 }))
 
 import { buildSearchAPI, getContentTypes, resetSearchRegistry, unregisterContentTypesByPlugin } from '@/core/search-registry'
+import { hasSingleBracePlaceholders } from '@/core/search-plugin-api'
 import * as watcher from '@/core/watcher'
 
 afterAll(() => {
@@ -323,5 +324,20 @@ describe('search-registry buildSearchAPI auto-registration', () => {
     expect(disposeSync).toHaveBeenCalledTimes(1)
     expect(disposeUnlink).toHaveBeenCalledTimes(1)
     expect(searchHarness.calls.tablesDrop).not.toHaveBeenCalled()
+  })
+})
+
+describe('embeddingTemplate single-brace lint', () => {
+  // The warn call itself rides the module-level logger (unmockable here due
+  // to import hoisting) — the predicate is the tested contract.
+  it('flags {field} single braces (they embed as literal text)', () => {
+    expect(hasSingleBracePlaceholders('{title}\n{note}')).toBe(true)
+    expect(hasSingleBracePlaceholders('prefix {x} suffix')).toBe(true)
+  })
+
+  it('accepts {{field}} templates, including prose around them', () => {
+    expect(hasSingleBracePlaceholders('{{title}}\n{{note}}')).toBe(false)
+    expect(hasSingleBracePlaceholders('Title: {{title}}')).toBe(false)
+    expect(hasSingleBracePlaceholders('plain text, no braces')).toBe(false)
   })
 })

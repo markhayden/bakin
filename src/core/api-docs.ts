@@ -38,13 +38,19 @@ export function _resetRouteDocsForTests(): void {
 }
 
 /**
- * Register a plugin route for documentation. Kept for backward compat with
- * any caller that still pushes plugin route metadata via this surface.
- * Plugin routes registered through `definePlugin({ routes })` are surfaced
- * through `pluginRegistry.getAllPluginRoutes()` instead.
+ * Register a plugin route for documentation on the `/api/docs` surface.
+ * Called for declarative `definePlugin({ routes })` entries at activation
+ * (plugin-registry.registerDeclarativeRoutes) and for the search auto-route.
+ * Re-registration (hot reload) REPLACES the (pluginId, method, path) entry —
+ * the list must not grow per reload cycle — and `removeRouteDocsByPlugin`
+ * sweeps a plugin's entries on deactivation/failed activation.
  */
 export function registerRouteDoc(pluginId: string, route: Pick<RegisteredAPIRoute, 'path' | 'method' | 'summary' | 'description' | 'params' | 'visibility' | 'stability' | 'permissions'>): void {
   const summary = route.summary ?? route.description ?? `${route.method} ${route.path}`
+  const existing = routeDocs.findIndex(
+    (d) => d.pluginId === pluginId && d.method === route.method && d.path === route.path,
+  )
+  if (existing >= 0) routeDocs.splice(existing, 1)
   routeDocs.push({
     pluginId,
     method: route.method,
@@ -57,6 +63,18 @@ export function registerRouteDoc(pluginId: string, route: Pick<RegisteredAPIRout
     stability: route.stability ?? 'stable',
     permissions: route.permissions,
   })
+}
+
+/** Sweep a plugin's route docs (deactivation, uninstall, failed activation). */
+export function removeRouteDocsByPlugin(pluginId: string): number {
+  let removed = 0
+  for (let i = routeDocs.length - 1; i >= 0; i--) {
+    if (routeDocs[i].pluginId === pluginId) {
+      routeDocs.splice(i, 1)
+      removed++
+    }
+  }
+  return removed
 }
 
 /**

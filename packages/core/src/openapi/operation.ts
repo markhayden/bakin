@@ -18,6 +18,10 @@ import { globalErrorResponses } from './errors'
  * loose alias to sidestep the contravariant handler-context type check.
  *
  * The shape also accepts the *legacy* `APIRoute` fields (`input`, `output`,
+ * — read-side only: the runtime dispatcher no longer adapter-maps these
+ * (T19 deleted `ctx.registerRoute`); they survive here purely so historical
+ * doc metadata renders. New code never produces them.
+ *
  * `description`) so the runtime OpenAPI builder can include unmigrated
  * routes. Adapter mapping: `input → body` (assumed application/json),
  * `output → responses[200]`. Legacy routes register through

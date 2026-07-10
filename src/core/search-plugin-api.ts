@@ -41,6 +41,34 @@ import { getSearchHealth } from './search-reindex'
 const log = createLogger('search-plugin-api')
 
 /**
+ * Embedding templates use `{{field}}` — a `{field}` single brace embeds as
+ * LITERAL text, so every document gets an identical embedding and semantic
+ * search for the type is silently dead. Warn (not throw): single braces can
+ * legitimately appear in surrounding prose, so this only fires when a
+ * template has `{x}` patterns and not a single `{{x}}`.
+ */
+export function hasSingleBracePlaceholders(template: string): boolean {
+  const withoutDouble = template.replace(/\{\{[^{}]+\}\}/g, '')
+  return /\{[^{}]+\}/.test(withoutDouble)
+}
+
+function warnOnSingleBraceTemplate(pluginId: string, tableName: string, def: SearchContentTypeDefinition): void {
+  const templates = [
+    def.embeddingTemplate,
+    ...(def.indexes ?? []).map((idx) => idx.embeddingTemplate),
+  ].filter((t): t is string => typeof t === 'string' && t.length > 0)
+  for (const template of templates) {
+    if (hasSingleBracePlaceholders(template)) {
+      log.warn(
+        `embeddingTemplate for "${tableName}" (plugin ${pluginId}) contains single-brace {field} placeholders — ` +
+        `the template language is {{field}}; single braces embed as literal text and disable semantic search`,
+        { template },
+      )
+    }
+  }
+}
+
+/**
  * Options for building a plugin-scoped SearchAPI.
  */
 export interface BuildSearchAPIOptions {
@@ -110,6 +138,7 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
   // content type at all (e.g. a purely file-backed plugin).
   const registerContentTypeInternal = (def: SearchContentTypeDefinition, primary: boolean): void => {
     const tableName = fullTableName(def.table)
+    warnOnSingleBraceTemplate(pluginId, tableName, def)
     const existing = registry.contentTypes.get(tableName)
     if (existing && existing.pluginId !== pluginId) {
       throw new Error(

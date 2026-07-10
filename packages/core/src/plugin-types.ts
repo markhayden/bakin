@@ -352,9 +352,10 @@ export interface PluginContext {
    * Register a workflow definition shipped by this plugin. Disk-resident
    * user definitions in `~/.bakin/workflows/definitions/` always win on id
    * collision (user-wins). A second plugin claiming an id already taken by
-   * another plugin is a containment error: it's logged but does not throw
-   * out of `activate()`. Re-registering the same id from the same plugin
-   * is idempotent (newer wins) so hot reload works.
+   * another plugin THROWS out of `activate()` (R18 — the activation fails
+   * and the plugin's partial registrations are swept). Re-registering the
+   * same id from the same plugin is an update (newer wins) so hot reload
+   * works.
    */
   registerWorkflow(definition: WorkflowDefinitionInput, opts?: { readOnly?: boolean }): void
   /**

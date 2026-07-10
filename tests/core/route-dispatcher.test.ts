@@ -374,58 +374,39 @@ describe('dispatchRoute — response validation (NODE_ENV=test)', () => {
   })
 })
 
-describe('dispatchRoute — legacy adapter mapping', () => {
-  it('treats legacy `input` as JSON body and `output` as responses[200]', async () => {
-    // Legacy APIRoute shape — used when ctx.registerRoute({input, output}) is called.
-    const legacyRoute: any = {
-      path: '/',
-      method: 'POST',
-      summary: 'Legacy create',
-      input: z.object({ title: z.string() }),
-      output: z.object({ id: z.string() }),
-      handler: async (_req: Request, _ctx: any) => Response.json({ id: 'a' }),
-    }
-    const req = new Request('http://x/', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ title: 'hello' }),
-    })
-    const res = await dispatchRoute({ req, ctx: stubCtx, route: legacyRoute, params: {} })
-    expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ id: 'a' })
-  })
-
-  it('legacy route with no input/output does not validate', async () => {
-    const legacyRoute: any = {
+describe('dispatchRoute — no legacy adapter mapping (T19)', () => {
+  it('a route with no body/responses does not validate the body', async () => {
+    const route: any = {
       path: '/x',
       method: 'GET',
-      summary: 'Legacy x',
+      summary: 'Plain route',
       handler: async () => Response.json({ anything: true }),
     }
     const req = new Request('http://x/x')
-    const res = await dispatchRoute({ req, ctx: stubCtx, route: legacyRoute, params: {} })
+    const res = await dispatchRoute({ req, ctx: stubCtx, route, params: {} })
     expect(res.status).toBe(200)
   })
 
-  it('legacy handler signature (req, ctx) still works (no third arg)', async () => {
-    const legacyRoute: any = {
+  it('legacy `input`/`output` fields are ignored, not adapter-mapped', async () => {
+    // ctx.registerRoute and the legacy APIRoute shape were deleted; a stale
+    // dist bundle still carrying these fields must no-op harmlessly (no
+    // validation from `input`, no response checking from `output`).
+    const route: any = {
       path: '/',
       method: 'POST',
-      summary: 'Two-arg handler',
-      input: z.object({ x: z.number() }),
-      output: z.object({ doubled: z.number() }),
-      handler: async (req: Request) => {
-        const body = await req.clone().json() as { x: number }
-        return Response.json({ doubled: body.x * 2 })
-      },
+      summary: 'Stale legacy fields',
+      input: z.object({ title: z.string() }),
+      output: z.object({ id: z.string() }),
+      handler: async () => Response.json({ not: 'the output shape' }),
     }
     const req = new Request('http://x/', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ x: 21 }),
+      body: JSON.stringify({ wrong: true }),
     })
-    const res = await dispatchRoute({ req, ctx: stubCtx, route: legacyRoute, params: {} })
-    expect(await res.json()).toEqual({ doubled: 42 })
+    const res = await dispatchRoute({ req, ctx: stubCtx, route, params: {} })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ not: 'the output shape' })
   })
 })
 

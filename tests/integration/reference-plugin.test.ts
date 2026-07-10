@@ -59,6 +59,7 @@ mock.module('../../src/core/audit', () => ({
 }))
 mock.module('../../src/core/api-docs', () => ({
   registerRouteDoc: mock(),
+  removeRouteDocsByPlugin: () => 0,
 }))
 mock.module('../../src/core/migrations', () => ({
   runMigrations: mock().mockResolvedValue(0),

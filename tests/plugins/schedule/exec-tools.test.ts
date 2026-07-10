@@ -308,14 +308,14 @@ describe('schedule exec tools', () => {
       const tool = findTool(plugin.execTools, 'bakin_exec_schedule_create')!
       const result = await callTool(tool, { schedule: '0 9 * * *' })
       expect(result.ok).toBe(false)
-      expect(result.error).toContain('name and schedule are required')
+      expect(result.error).toContain('invalid parameters')
     })
 
     it('returns error when schedule is missing', async () => {
       const tool = findTool(plugin.execTools, 'bakin_exec_schedule_create')!
       const result = await callTool(tool, { name: 'Test' })
       expect(result.ok).toBe(false)
-      expect(result.error).toContain('name and schedule are required')
+      expect(result.error).toContain('invalid parameters')
     })
 
     it('returns error for unparseable schedule', async () => {
@@ -411,7 +411,7 @@ describe('schedule exec tools', () => {
       const tool = findTool(plugin.execTools, 'bakin_exec_schedule_update')!
       const result = await callTool(tool, { name: 'Test' })
       expect(result.ok).toBe(false)
-      expect(result.error).toContain('jobId required')
+      expect(result.error).toContain('invalid parameters')
     })
 
     it('returns error for non-existent job', async () => {
@@ -518,14 +518,14 @@ describe('schedule exec tools', () => {
       const tool = findTool(plugin.execTools, 'bakin_exec_schedule_pause')!
       const result = await callTool(tool, { action: 'pause' })
       expect(result.ok).toBe(false)
-      expect(result.error).toContain('jobId and action required')
+      expect(result.error).toContain('invalid parameters')
     })
 
     it('returns error when action is missing', async () => {
       const tool = findTool(plugin.execTools, 'bakin_exec_schedule_pause')!
       const result = await callTool(tool, { jobId: 'job-p' })
       expect(result.ok).toBe(false)
-      expect(result.error).toContain('jobId and action required')
+      expect(result.error).toContain('invalid parameters')
     })
 
     it('returns not-found for an unknown job', async () => {
@@ -565,7 +565,7 @@ describe('schedule exec tools', () => {
       const tool = findTool(plugin.execTools, 'bakin_exec_schedule_delete')!
       const result = await callTool(tool, {})
       expect(result.ok).toBe(false)
-      expect(result.error).toContain('jobId required')
+      expect(result.error).toContain('invalid parameters')
     })
   })
 
@@ -626,7 +626,7 @@ describe('schedule exec tools', () => {
       const tool = findTool(plugin.execTools, 'bakin_exec_schedule_get')!
       const result = await callTool(tool, {})
       expect(result.ok).toBe(false)
-      expect(result.error).toContain('jobId required')
+      expect(result.error).toContain('invalid parameters')
     })
 
     it('returns error for non-existent job', async () => {
@@ -670,7 +670,7 @@ describe('schedule exec tools', () => {
       const tool = findTool(plugin.execTools, 'bakin_exec_schedule_run_now')!
       const result = await callTool(tool, {})
       expect(result.ok).toBe(false)
-      expect(result.error).toContain('jobId required')
+      expect(result.error).toContain('invalid parameters')
     })
 
     it('returns error for non-existent job', async () => {

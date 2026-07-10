@@ -93,4 +93,28 @@ describe('@makinbakin/sdk/testing external-author flow', () => {
     scratch.dispose()
     expect(existsSync(scratch.dir)).toBe(false)
   })
+
+  it('callTool zod-rejects params production would reject (validation parity)', async () => {
+    const tool = findTool(harness.execTools, 'bakin_exec_demo-crm_greet')!
+    const result = await callTool(tool, { name: 42 }, 'test-agent', harness.toolContext())
+    expect(result.ok).toBe(false)
+    expect(String(result.error)).toContain('invalid parameters')
+  })
+
+  it('activatePlugin disposes its temp dir when activate() throws', async () => {
+    const { readdirSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const before = readdirSync(tmpdir()).filter((d) => d.startsWith('bakin-exploding-test-')).length
+    const exploding = definePlugin({
+      id: 'exploding',
+      name: 'exploding',
+      version: '0.0.1',
+      async activate() {
+        throw new Error('boom during activate')
+      },
+    })
+    await expect(activatePlugin(exploding)).rejects.toThrow('boom during activate')
+    const after = readdirSync(tmpdir()).filter((d) => d.startsWith('bakin-exploding-test-')).length
+    expect(after).toBe(before)
+  })
 })

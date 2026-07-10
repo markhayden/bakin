@@ -36,13 +36,7 @@ import { existsSync } from 'fs'
 import { join } from 'path'
 import { createLogger } from '@/core/logger'
 import { pluginRegistry } from '@/core/plugin-registry'
-import { removePluginSkillsByPlugin } from '@bakin/core/skills/plugin-skill-registry'
-import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
-import { removeExecToolsByPlugin } from '../exec-tools/registry'
-import { unregisterPluginNodeTypes } from '@bakin/core/workflows/node-type-registry'
-import { unregisterPluginNotificationChannels } from '@bakin/core/workflows/notification-channel-registry'
-import { unregisterPluginHealthChecks } from '../health-check-registry'
-import { ensurePluginSearchReady, unregisterContentTypesByPlugin } from '@/core/search-registry'
+import { ensurePluginSearchReady } from '@/core/search-registry'
 import {
   bumpVersion,
   getVersion,
@@ -108,36 +102,13 @@ function clearStateArrays(state: {
 }
 
 /**
- * Sweep every registry surface a plugin can contribute to. Idempotent —
- * each sub-helper is no-op-on-empty so a re-sweep after a half-successful
- * activate doesn't double-error.
+ * Sweep every registry surface a plugin can contribute to. Delegates to the
+ * registry's canonical non-destructive sweep (which also clears workflow
+ * source-registry entries and route docs). Idempotent — safe to re-run after
+ * a half-successful activate.
  */
 async function sweepPluginRegistrations(pluginId: string): Promise<void> {
-  try { removeExecToolsByPlugin(pluginId) } catch (err) {
-    log.warn('sweep: removeExecToolsByPlugin failed', { pluginId, err: String(err) })
-  }
-  try { getHookRegistry().unregisterByPlugin(pluginId) } catch (err) {
-    log.warn('sweep: unregisterByPlugin failed', { pluginId, err: String(err) })
-  }
-  try { unregisterPluginNodeTypes(pluginId) } catch (err) {
-    log.warn('sweep: unregisterPluginNodeTypes failed', { pluginId, err: String(err) })
-  }
-  try { unregisterPluginNotificationChannels(pluginId) } catch (err) {
-    log.warn('sweep: unregisterPluginNotificationChannels failed', { pluginId, err: String(err) })
-  }
-  try { unregisterPluginHealthChecks(pluginId) } catch (err) {
-    log.warn('sweep: unregisterPluginHealthChecks failed', { pluginId, err: String(err) })
-  }
-  try { removePluginSkillsByPlugin(pluginId) } catch (err) {
-    log.warn('sweep: removePluginSkillsByPlugin failed', { pluginId, err: String(err) })
-  }
-  // Search content types — hot reload unregisters runtime wiring only. It
-  // must not drop backing tables on every save; uninstall/remove owns that.
-  try {
-    unregisterContentTypesByPlugin(pluginId)
-  } catch (err) {
-    log.warn('sweep: search-registry walk failed', { pluginId, err: String(err) })
-  }
+  pluginRegistry.sweepPluginRegistrations(pluginId)
 }
 
 async function refreshPluginSearch(pluginId: string): Promise<void> {

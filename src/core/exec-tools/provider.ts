@@ -55,9 +55,21 @@ export function createRuntimeExecToolProvider(): RuntimeExecToolProvider {
       const start = Date.now()
       const taskId = params.taskId as string | undefined
       log.info('Exec tool called (runtime-native)', { tool: name, agent: agentId, taskId })
+      // Parity with the MCP path, where the SDK zod-parses params against the
+      // declared shape before the handler runs. Handlers are typed
+      // `z.infer<ZodObject<Shape>>` — without this parse that typing would be
+      // theater on the runtime-native path.
+      const parsedParams = z.object(tool.parameters).safeParse(params)
+      if (!parsedParams.success) {
+        const detail = parsedParams.error.issues
+          .map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`)
+          .join('; ')
+        log.warn('Exec tool rejected: invalid parameters (runtime-native)', { tool: name, agent: agentId, detail })
+        return { ok: false, text: `ERROR: invalid parameters for ${name}: ${detail}` }
+      }
       try {
         const result = await tool.handler(
-          params,
+          parsedParams.data as Record<string, unknown>,
           agentId,
           typeof registry.getToolContext === 'function' ? registry.getToolContext(name) : undefined,
         )

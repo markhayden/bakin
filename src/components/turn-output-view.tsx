@@ -70,10 +70,25 @@ export function foldTurnChunks(chunks: readonly RuntimeChatChunk[]): FoldedTurnO
       case 'tool': {
         const data = chunk.data
         if (!data?.toolName) break
-        const key = data.callId ?? `${data.toolName}-${tools.length}`
         const chipStatus: TurnToolChipState['status'] =
           data.phase === 'result' ? (data.status === 'failed' ? 'failed' : 'completed') : 'running'
-        const existing = tools.findIndex((c) => c.key === key)
+        // Pair call/result chips by callId when present. Adapters can omit
+        // callId (OpenClaw forwards toolCallId ?? undefined) — a callId-less
+        // RESULT then closes the most recent RUNNING chip for the same tool;
+        // generating a fresh key here would leave that chip spinning forever
+        // next to a duplicate completed one.
+        let existing = -1
+        if (data.callId) {
+          existing = tools.findIndex((c) => c.key === data.callId)
+        } else if (data.phase === 'result') {
+          for (let i = tools.length - 1; i >= 0; i--) {
+            if (tools[i].toolName === data.toolName && tools[i].status === 'running') {
+              existing = i
+              break
+            }
+          }
+        }
+        const key = data.callId ?? (existing >= 0 ? tools[existing].key : `${data.toolName}-${tools.length}`)
         const summary = data.summary ?? (existing >= 0 ? tools[existing].summary : undefined)
         const chip: TurnToolChipState = { key, toolName: data.toolName, summary, status: chipStatus }
         if (existing >= 0) tools[existing] = chip

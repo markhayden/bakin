@@ -30,6 +30,7 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { z } from 'zod'
 import { BakinEventBus } from '@bakin/core/events'
 import { MarkdownStorageAdapter } from '@bakin/core/storage'
 import { dispatchRoute } from '@bakin/core/routing'
@@ -192,6 +193,11 @@ export function createTestContext(
     pluginId,
     storage,
     events,
+    // runtime/tasks are genuinely cross-tier (the mocks implement the CORE
+    // adapter contracts, the SDK context declares the reduced author tier) —
+    // casts are the documented boundary. assets/search below are same-package
+    // and MUST typecheck via `satisfies` so a type change can't silently
+    // desync the mocks.
     runtime: createMockRuntimeAdapter() as unknown as PluginContext['runtime'],
     tasks: createMockBakinTaskStore() as unknown as PluginContext['tasks'],
     assets: {
@@ -204,12 +210,12 @@ export function createTestContext(
       getAssetVersions: async () => null,
       upsertFromSource: async () => ({ assetId: 'test-asset', version: 1, changed: true }),
       resolveStoreFile: async () => null,
-    } as unknown as PluginContext['assets'],
+    } satisfies PluginContext['assets'],
     registerNav: (items) => navItems.push(...items),
     registerSlot: (registration) => slots.push(registration),
     registerExecTool: (tool) => execTools.push(tool as unknown as ExecToolDefinition),
     registerSkill: (skill) => skills.push(skill),
-    registerWorkflow: (definition) => workflows.push(definition),
+    registerWorkflow: (definition, _opts) => workflows.push(definition),
     registerNodeType: (def) => {
       nodeTypes.push(def as PluginNodeTypeInput<unknown>)
       return `${pluginId}.${def.kind}`
@@ -282,7 +288,7 @@ export function createTestContext(
         },
       }),
       health: async () => ({ enabled: false as const, tables: [] }),
-    } as unknown as PluginContext['search'],
+    } satisfies PluginContext['search'],
   }
 
   let disposed = false
@@ -340,7 +346,14 @@ export async function activatePlugin(
   const harness = createTestContext(plugin.id, options)
   const declarative = (plugin as { routes?: APIRoute[] }).routes
   if (declarative) harness.routes.push(...declarative)
-  await plugin.activate(harness.ctx)
+  try {
+    await plugin.activate(harness.ctx)
+  } catch (err) {
+    // The harness is never returned on a throwing activate — dispose here
+    // or the temp dir leaks.
+    harness.dispose()
+    throw err
+  }
   return harness
 }
 
@@ -464,5 +477,15 @@ export async function callTool(
   agent = 'test-agent',
   toolCtx?: PluginToolContext,
 ): Promise<ExecToolResult> {
-  return tool.handler(params, agent, toolCtx)
+  // Zod-validate exactly like production: both the MCP transport and the
+  // runtime-native provider parse against the declared shape before the
+  // handler runs — a test must not pass params production would reject.
+  const parsed = z.object(tool.parameters).safeParse(params)
+  if (!parsed.success) {
+    const detail = parsed.error.issues
+      .map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`)
+      .join('; ')
+    return { ok: false, error: `invalid parameters for ${tool.name}: ${detail}` }
+  }
+  return tool.handler(parsed.data as Record<string, unknown>, agent, toolCtx)
 }

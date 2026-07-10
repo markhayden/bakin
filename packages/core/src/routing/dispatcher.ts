@@ -11,10 +11,11 @@
  *   - In dev / test, validate the response body against `responses[status]`
  *     and surface mismatches (test → throw, dev → console.warn).
  *
- * Adapter mapping: legacy `APIRoute.input` is treated as a JSON `body` schema
- * and legacy `APIRoute.output` is treated as `responses[200]`. This keeps
- * routes registered via the migration-window `ctx.registerRoute({...})` shim
- * flowing through the same validation path.
+ * There is no legacy `input`/`output` adapter mapping here: `ctx.registerRoute`
+ * and the legacy `APIRoute` shape were deleted (T19) — declarative routes and
+ * core routes are the only producers, and both speak `body`/`responses`.
+ * (The OpenAPI builder keeps a read-side mapping for historical doc callers;
+ * see packages/core/src/openapi/operation.ts.)
  */
 
 import { z } from 'zod'
@@ -38,9 +39,6 @@ export interface DispatchableRoute {
   body?: BodySpec<unknown>
   responses?: Partial<Record<string | number, ResponseSpec>>
   handler: (req: Request, ctx: any, parsed?: any) => Response | Promise<Response>
-  // Legacy fields supported via adapter mapping.
-  input?: z.ZodType<unknown>
-  output?: z.ZodType<unknown>
 }
 
 export interface DispatchInput {
@@ -54,9 +52,8 @@ export async function dispatchRoute(input: DispatchInput): Promise<Response> {
   const { req, ctx, route, params: pathParams } = input
   const url = new URL(req.url)
 
-  // ─── 1. Adapt legacy { input, output } to { body, responses } ────────────
-  const bodySpec = effectiveBodySpec(route)
-  const responses = effectiveResponses(route)
+  const bodySpec = route.body as BodySpec<unknown> | undefined
+  const responses = route.responses as Partial<Record<string, ResponseSpec>> | undefined
 
   // ─── 2. Body content-type gate ──────────────────────────────────────────
   if (bodySpec && typeof bodySpec === 'object' && 'contentType' in bodySpec
@@ -136,26 +133,6 @@ export async function dispatchRoute(input: DispatchInput): Promise<Response> {
   }
 
   return res
-}
-
-// ---------------------------------------------------------------------------
-// Adapter mapping helpers
-// ---------------------------------------------------------------------------
-
-function effectiveBodySpec(route: DispatchInput['route']): BodySpec<unknown> | undefined {
-  if (route.body !== undefined) return route.body as BodySpec<unknown>
-  // Legacy: treat `input` as JSON body schema.
-  if (route.input) return route.input as z.ZodType<unknown>
-  return undefined
-}
-
-function effectiveResponses(
-  route: DispatchInput['route'],
-): Partial<Record<string, ResponseSpec>> | undefined {
-  if (route.responses) return route.responses as Partial<Record<string, ResponseSpec>>
-  // Legacy: synthesize `{ 200: output }` if present.
-  if (route.output) return { '200': route.output as z.ZodType }
-  return undefined
 }
 
 // ---------------------------------------------------------------------------

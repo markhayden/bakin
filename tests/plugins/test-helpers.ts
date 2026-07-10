@@ -250,9 +250,8 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
 /**
  * Activate a plugin and return the captured routes and exec tools.
  *
- * Routes are collected from two sources:
- *   1. The declarative `plugin.routes` array (T6+ pattern).
- *   2. Any `ctx.registerRoute(...)` calls inside `activate()` (legacy).
+ * Routes are collected from the declarative `plugin.routes` array plus the
+ * auto-wired `GET /search` route (`ctx.registerRoute` no longer exists).
  */
 export async function activatePlugin(
   plugin: BakinPlugin,
