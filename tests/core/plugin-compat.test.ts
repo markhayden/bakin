@@ -24,6 +24,7 @@ mock.module('../../packages/core/src/content-dir', () => ({
 import {
   checkBakinRangeCompatibility,
   isWellFormedSemverRange,
+  stripPrerelease,
   IncompatibleHostError,
 } from '../../packages/core/src/plugins/compat'
 
@@ -98,10 +99,24 @@ describe('checkBakinRangeCompatibility', () => {
     expect(checkBakinRangeCompatibility('>=0.0.0-dev', '1.2.3').ok).toBe(true)
   })
 
-  it('documents Bun prerelease semantics: a prerelease host only matches ranges anchored at its own base', () => {
-    // Stamped releases are never prereleases in practice (release tags are
-    // strict v*), so this is informational — pinned so a Bun change is loud.
-    expect(checkBakinRangeCompatibility('>=1.1.0', '1.2.0-beta.1').ok).toBe(false)
+  it('prerelease hosts satisfy against the stripped base version', () => {
+    // Release tags allow rc (v0.6.0-rc.1) and self-builds are describe-stamped
+    // (0.6.1-3-gabc1234[-dirty]); npm prerelease-exclusion would reject every
+    // range (even `*`) on such hosts — the checker compares the base tuple.
+    expect(checkBakinRangeCompatibility('>=1.1.0', '1.2.0-beta.1').ok).toBe(true)
+    expect(checkBakinRangeCompatibility('>=0.5.0', '0.6.0-rc.1').ok).toBe(true)
+    expect(checkBakinRangeCompatibility('*', '0.6.1-3-gabc1234').ok).toBe(true)
+    expect(checkBakinRangeCompatibility('*', '0.6.1-3-gabc1234-dirty').ok).toBe(true)
+    // The base tuple still gates: an rc of 0.6.0 is not a 0.7-era host.
+    expect(checkBakinRangeCompatibility('>=0.7.0', '0.6.0-rc.1').ok).toBe(false)
+  })
+
+  it('stripPrerelease reduces to the base tuple and passes through non-semver', () => {
+    expect(stripPrerelease('0.6.0-rc.1')).toBe('0.6.0')
+    expect(stripPrerelease('0.6.1-3-gabc1234-dirty')).toBe('0.6.1')
+    expect(stripPrerelease('v1.2.3+build.5')).toBe('1.2.3')
+    expect(stripPrerelease('1.2.3')).toBe('1.2.3')
+    expect(stripPrerelease('0.0.0-dev')).toBe('0.0.0')
   })
 })
 

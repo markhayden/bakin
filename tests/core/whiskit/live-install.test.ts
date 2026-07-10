@@ -60,7 +60,14 @@ async function publishServedPlugin(origin: string): Promise<string> {
   const built = freshDir('built')
   writeFileSync(
     join(built, 'bakin-plugin.json'),
-    JSON.stringify({ id: 'messaging', version: '0.1.0', permissions: ['storage.read'] }),
+    JSON.stringify({
+      id: 'messaging',
+      name: 'Messaging',
+      version: '0.1.0',
+      bakin: '>=0.0.1',
+      description: 'live-install fixture',
+      permissions: ['storage.read'],
+    }),
   )
   mkdirSync(join(built, 'dist'), { recursive: true })
   writeFileSync(join(built, 'dist', 'index.js'), 'module.exports = {}\n')

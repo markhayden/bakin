@@ -883,6 +883,25 @@ describe('PluginRegistryImpl', () => {
       expect(pluginRegistry.findRoute('undeclared-declarative', '/data', 'GET')).toBeNull()
     })
 
+    it('accepts lowercase code-side methods against uppercased manifest declarations', async () => {
+      // Plain-JS authors register method:'get'; the manifest parser uppercases.
+      // The enforcer compares case-insensitively so sync-manifest and
+      // activation agree (PR #635 review fix).
+      writeUserPlugin('lowercase-method', {
+        manifest: {
+          contributes: {
+            apiRoutes: [{ method: 'GET', path: '/data', summary: 'Read data' }],
+          },
+        },
+        routes: `[{ path: '/data', method: 'get', handler: function() { return new Response('ok') } }]`,
+      })
+
+      await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
+
+      const active = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'lowercase-method')
+      expect(active).toMatchObject({ status: 'active' })
+    })
+
     it('allows user plugins with declared declarative routes', async () => {
       writeUserPlugin('declared-declarative', {
         manifest: {

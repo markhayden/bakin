@@ -14,6 +14,13 @@
  *    compatibility — enforcing it would reject every real plugin (e.g.
  *    `>=0.5.0`) on dev hosts. Stamped release builds always enforce.
  *
+ * Prerelease-stamped hosts (rc tags like `0.6.0-rc.1`, describe-stamped
+ * self-builds like `0.6.1-3-gabc1234[-dirty]`) satisfy against the
+ * prerelease-STRIPPED base version: npm prerelease-exclusion rules would
+ * otherwise make such a host satisfy nothing (not even `*`), flipping every
+ * installed user plugin to incompatible_host on an rc upgrade. Stripping
+ * keeps the gate meaningful (an rc of 0.6.0 genuinely is a 0.6.0-era host).
+ *
  * Core plugins never pass through this gate: they are version-locked to the
  * host by definition (no independent lifecycle), and the enforcement sites
  * are install + user-plugin activation only.
@@ -24,6 +31,16 @@ import { APP_VERSION } from '../generated-version'
 
 /** The unstamped dev-build version — satisfaction is skipped on these hosts. */
 const DEV_HOST_VERSION = '0.0.0-dev'
+
+/**
+ * `1.2.3-rc.1+build` → `1.2.3`. Used to compare prerelease-stamped hosts by
+ * their base tuple (see module doc). Exported for the scaffold's version
+ * resolution, which needs the same base for manifest floors.
+ */
+export function stripPrerelease(version: string): string {
+  const match = version.match(/^v?(\d+\.\d+\.\d+)/)
+  return match ? match[1] : version
+}
 
 /** Thrown by the activation gate; callers map it to the `incompatible_host` failure code. */
 export class IncompatibleHostError extends Error {
@@ -101,7 +118,7 @@ export function checkBakinRangeCompatibility(
       ok: false,
       message:
         `bakin-plugin.json field "bakin" is not a valid semver range: "${range}". ` +
-        'Use a range like ">=0.5.0".',
+        'Use a range like ">=0.5.0" (no space after the operator).',
     }
   }
 
@@ -109,7 +126,11 @@ export function checkBakinRangeCompatibility(
   // version and would fail every release-floor range.
   if (hostVersion === DEV_HOST_VERSION) return { ok: true }
 
-  if (!semver.satisfies(hostVersion, range)) {
+  // Prerelease-stamped hosts satisfy against the stripped base version —
+  // npm prerelease-exclusion would otherwise reject EVERY range (even `*`).
+  const effectiveHost = stripPrerelease(hostVersion)
+
+  if (!semver.satisfies(effectiveHost, range)) {
     return {
       ok: false,
       message:

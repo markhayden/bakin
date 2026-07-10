@@ -485,7 +485,11 @@ class PluginRegistryImpl {
   private assertRouteDeclared(pluginId: string, state: PluginState, route: APIRoute): void {
     if (state.source !== 'user') return
     const declared = state.manifest?.contributes?.apiRoutes ?? []
-    const found = declared.some(item => item.method === route.method && item.path === route.path)
+    // Manifest methods are uppercased at parse; code-side methods are
+    // as-authored (plain-JS plugins may register method:'get') — compare
+    // case-insensitively so the enforcer and sync-manifest agree.
+    const method = route.method.toUpperCase()
+    const found = declared.some(item => item.method === method && item.path === route.path)
     if (!found) {
       throw new Error(
         `Plugin "${pluginId}" registered undeclared API route ${route.method} ${route.path}. ` +

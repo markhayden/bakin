@@ -154,4 +154,12 @@ describe('resolveScaffoldVersions', () => {
   it('falls back to latest for the npm SDK on dev builds', () => {
     expect(resolveScaffoldVersions('0.0.0-dev')).toEqual({ bakinRange: '>=0.0.0-dev', sdkDependency: 'latest' })
   })
+
+  it('prerelease-stamped hosts use the stripped base floor and a resolvable SDK dep', () => {
+    // rc release build
+    expect(resolveScaffoldVersions('0.6.0-rc.1')).toEqual({ bakinRange: '>=0.6.0', sdkDependency: 'latest' })
+    // describe-stamped self-build — ^0.6.1-3-gabc1234 is unresolvable on npm
+    expect(resolveScaffoldVersions('0.6.1-3-gabc1234')).toEqual({ bakinRange: '>=0.6.1', sdkDependency: 'latest' })
+    expect(resolveScaffoldVersions('0.6.1-3-gabc1234-dirty')).toEqual({ bakinRange: '>=0.6.1', sdkDependency: 'latest' })
+  })
 })

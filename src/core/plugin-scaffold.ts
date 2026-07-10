@@ -25,6 +25,7 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { APP_VERSION } from '../../packages/core/src/constants'
+import { stripPrerelease } from '../../packages/core/src/plugins/compat'
 
 const NAME_RE = /^[a-z][a-z0-9-]{0,39}$/
 
@@ -42,23 +43,31 @@ export interface PluginScaffoldResult {
 /**
  * Resolve the version strings baked into the scaffold.
  *
- * Stamped binary (the normal end-user case): pin both to the scaffolding
- * host — the manifest floor `>=${APP_VERSION}` always satisfies the host that
- * generated it, and `^${APP_VERSION}` matches the SDK published for that
- * release.
+ * Stamped release binary (the normal end-user case): pin both to the
+ * scaffolding host — the manifest floor `>=${APP_VERSION}` always satisfies
+ * the host that generated it, and `^${APP_VERSION}` matches the SDK
+ * published for that release.
+ *
+ * Prerelease-stamped hosts (rc builds `0.6.0-rc.1`, describe-stamped
+ * self-builds `0.6.1-3-gabc1234[-dirty]`): the manifest floor uses the
+ * prerelease-STRIPPED base (matching the compat gate's comparison basis) and
+ * the SDK dep falls back to `latest` — `^0.6.1-3-gabc1234` is unresolvable
+ * on npm and would break the scaffold's `bun install` step.
  *
  * Dev source checkout (APP_VERSION is the 0.0.0-dev fallback): the manifest
- * floor stays host-consistent (`>=0.0.0-dev` installs on this host), but
- * `^0.0.0-dev` does not exist on npm — `latest` is the only resolvable
- * choice for the SDK types.
+ * floor stays host-consistent, but note `>=0.0.0` is effectively NO floor on
+ * release hosts — a dev-scaffolded plugin installs anywhere; authors set a
+ * real floor when they know their minimum. `^0.0.0-dev` does not exist on
+ * npm — `latest` is the only resolvable choice for the SDK types.
  */
 export function resolveScaffoldVersions(appVersion: string = APP_VERSION): {
   bakinRange: string
   sdkDependency: string
 } {
+  const isPrerelease = appVersion !== stripPrerelease(appVersion)
   return {
-    bakinRange: `>=${appVersion}`,
-    sdkDependency: appVersion === DEV_VERSION ? 'latest' : `^${appVersion}`,
+    bakinRange: `>=${appVersion === DEV_VERSION ? appVersion : stripPrerelease(appVersion)}`,
+    sdkDependency: appVersion === DEV_VERSION || isPrerelease ? 'latest' : `^${appVersion}`,
   }
 }
 

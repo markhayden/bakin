@@ -63,7 +63,7 @@ function makeRequest(body: unknown): Request {
 }
 
 /** Build + publish a fresh "foo" artifact into the served release dir. */
-async function publishFoo(): Promise<void> {
+async function publishFoo(manifestOverrides: Record<string, unknown> = {}): Promise<void> {
   const built = join(testDir, 'built-foo')
   rmSync(built, { recursive: true, force: true })
   mkdirSync(join(built, 'dist'), { recursive: true })
@@ -76,6 +76,7 @@ async function publishFoo(): Promise<void> {
       bakin: '>=1.0.0',
       description: 'Foo artifact-install fixture',
             permissions: [],
+      ...manifestOverrides,
     }),
   )
   writeFileSync(join(built, 'dist', 'index.js'), 'module.exports = {}\n')
@@ -147,6 +148,31 @@ describe('install via published artifact (REST handler)', () => {
     )
     const json = (await res.json()) as { ok?: boolean; error?: string }
     expect(json.ok).toBe(false)
+    expect(existsSync(join(testDir, 'plugins', 'foo'))).toBe(false)
+  })
+
+  it('rejects an artifact whose manifest carries the removed entry field (full parse, PR #635 review fix)', async () => {
+    await publishFoo({ entry: { server: 'src/index.ts' } })
+    const res = await installPOST(
+      makeRequest({ source: 'github:markhayden/bakin-bits-official#plugins/foo', type: 'github' }),
+      new URL('http://localhost/api/plugins/install'),
+    )
+    const json = (await res.json()) as { ok?: boolean; error?: string }
+    expect(json.ok).toBe(false)
+    expect(json.error).toContain('"entry" was removed')
+    expect(existsSync(join(testDir, 'plugins', 'foo'))).toBe(false)
+  })
+
+  it('rejects an artifact with a malformed bakin range (gate applies to the artifact path too)', async () => {
+    // Well-formedness is enforced even on dev hosts (satisfaction is skipped).
+    await publishFoo({ bakin: 'banana' })
+    const res = await installPOST(
+      makeRequest({ source: 'github:markhayden/bakin-bits-official#plugins/foo', type: 'github' }),
+      new URL('http://localhost/api/plugins/install'),
+    )
+    const json = (await res.json()) as { ok?: boolean; error?: string }
+    expect(json.ok).toBe(false)
+    expect(json.error).toContain('banana')
     expect(existsSync(join(testDir, 'plugins', 'foo'))).toBe(false)
   })
 })
