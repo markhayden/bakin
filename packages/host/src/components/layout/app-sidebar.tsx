@@ -21,14 +21,13 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
+import { type NavBadge as NavBadgeData, type NavItem } from '@makinbakin/sdk'
 import {
   getNavItemsSnapshot,
   getNavBadgesSnapshot,
   subscribeRegistry,
   subscribeNavBadges,
-  type NavBadge as NavBadgeData,
-  type NavItem,
-} from '@makinbakin/sdk'
+} from '@makinbakin/sdk/internal'
 import { useSidebarContext } from '@/context/sidebar-context'
 import { usePathname } from '../../hooks/use-pathname'
 import {

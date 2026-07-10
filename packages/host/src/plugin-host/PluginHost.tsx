@@ -35,6 +35,7 @@
  * undefined there.
  */
 import { useEffect, useState, type ReactNode } from 'react'
+import { type PluginContributions } from '@makinbakin/sdk'
 import {
   configureLazyPlugins,
   getPluginLoadState,
@@ -42,8 +43,7 @@ import {
   setManifestNav,
   setPluginLoadState,
   unregisterPlugin,
-  type PluginContributions,
-} from '@makinbakin/sdk'
+} from '@makinbakin/sdk/internal'
 import { Slot } from '@makinbakin/sdk/slots'
 import { assertReactInstance } from '../lib/react-identity'
 import { checkPluginDrift } from './drift-check'

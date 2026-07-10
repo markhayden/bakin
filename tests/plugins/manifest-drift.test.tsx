@@ -52,7 +52,7 @@ mock.module('../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
-import { setManifestNav, unregisterPlugin } from '@makinbakin/sdk'
+import { setManifestNav, unregisterPlugin } from '@makinbakin/sdk/internal'
 import { readPluginManifestJson } from '../../packages/core/src/plugins/manifest'
 import { checkPluginDrift } from '../../packages/host/src/plugin-host/drift-check'
 

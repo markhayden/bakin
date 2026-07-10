@@ -54,15 +54,15 @@ mock.module('../../packages/core/src/content-dir', () => {
 })
 
 import { PluginHost } from '../../packages/host/src/plugin-host/PluginHost'
+import { registerPlugin } from '@makinbakin/sdk'
 import {
   configureLazyPlugins,
   getAllNavItems,
   getPluginLoadState,
-  registerPlugin,
   setManifestNav,
   setPluginLoadState,
   unregisterPlugin,
-} from '@makinbakin/sdk'
+} from '@makinbakin/sdk/internal'
 import { Slot } from '@makinbakin/sdk/slots'
 
 function SlotPage() {

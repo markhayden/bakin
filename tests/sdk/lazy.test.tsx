@@ -30,6 +30,7 @@ mock.module('../../packages/core/src/content-dir', () => {
   }
 })
 
+import { registerPlugin } from '@makinbakin/sdk'
 import {
   configureLazyPlugins,
   getAllNavItems,
@@ -39,7 +40,6 @@ import {
   getPluginLoadState,
   getRouteOwners,
   getSlotOwners,
-  registerPlugin,
   requestAllPlugins,
   requestRoutePlugins,
   requestSlotPlugins,
@@ -48,7 +48,7 @@ import {
   setManifestNav,
   setPluginLoadState,
   unregisterPlugin,
-} from '@makinbakin/sdk'
+} from '@makinbakin/sdk/internal'
 import { Slot } from '@makinbakin/sdk/slots'
 
 const USED_IDS = ['lz-a', 'lz-b']
