@@ -117,6 +117,30 @@ describe('messaging.send with MessageArgs.signal', () => {
     expect('runId' in abortFrames[0].params).toBe(false)
   })
 
+  it('threaded sends carry BOTH sessionId and the canonical sessionKey (abort-registration workaround)', async () => {
+    // sessionId alone leaves the run unregistered in the gateway's
+    // chat-abort registry (OpenClaw 2026.6.11 — fixture
+    // abort-explicit-session.jsonl); the sessionKey param is what makes the
+    // run server-side abortable at all. Guard the send shape.
+    const { adapter, captured } = adapterWithHangingGateway()
+    const controller = new AbortController()
+    const pending = adapter.messaging.send({
+      agentId: 'a1',
+      content: 'work on the task',
+      threadId: 'task:t9:d1',
+      signal: controller.signal,
+    })
+    pending.catch(() => {})
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    const agentFrames = captured.filter((c) => c.method === 'agent')
+    expect(agentFrames.length).toBe(1)
+    const cliSessionId = openClawCliSessionId('a1', 'task:t9:d1')
+    expect(agentFrames[0].params.sessionId).toBe(cliSessionId)
+    expect(agentFrames[0].params.sessionKey).toBe(`agent:a1:explicit:${cliSessionId}`)
+    controller.abort('cleanup')
+    await pending.catch(() => {})
+  })
+
   it('abort after the accepted ack sends chat.abort with the ack exact ids and audits the server-side stop', async () => {
     const ack = { runId: 'bakin-run-123', sessionKey: 'agent:a1:explicit:sess-1', acceptedAt: 1 }
     const { adapter, captured, auditEvents } = adapterWithHangingGateway({ ack })

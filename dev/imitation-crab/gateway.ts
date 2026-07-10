@@ -366,11 +366,23 @@ export async function handleGatewayRpcRequest(method: string, params: Record<str
     // Real-wire run identity: runId echoes the client idempotencyKey; the
     // canonical sessionKey is agent:<id>:explicit:<sessionId> for threaded
     // turns (verified via sessions.list), agent:<id>:main otherwise.
+    //
+    // UPSTREAM DEFECT MIRROR (OpenClaw 2026.6.11, fixture
+    // abort-explicit-session.jsonl): a run addressed by `sessionId` alone —
+    // no `sessionKey` param — is never registered in the gateway's
+    // chat-abort registry: its ack OMITS sessionKey and chat.abort /
+    // sessions.abort cannot stop it. Senders must pass BOTH (the adapter
+    // does since the 2026-07-09 fix). If a future OpenClaw release
+    // registers sessionId-only runs, the workaround-regression pin fails
+    // and this mirror + the send-shape requirement can be revisited.
     const runId = typeof params.idempotencyKey === 'string' && params.idempotencyKey.length > 0
       ? params.idempotencyKey
       : `mock-run-${++runCounter}`
     const sessionId = typeof params.sessionId === 'string' ? params.sessionId : null
-    const sessionKey = sessionId ? `agent:${agentId}:explicit:${sessionId}` : `agent:${agentId}:main`
+    const requestedSessionKey = typeof params.sessionKey === 'string' ? params.sessionKey : null
+    const sessionKey = requestedSessionKey
+      ?? (sessionId ? `agent:${agentId}:explicit:${sessionId}` : `agent:${agentId}:main`)
+    const abortRegistered = Boolean(requestedSessionKey) || !sessionId
     const run: ActiveRun = {
       runId,
       sessionKey,
@@ -381,19 +393,26 @@ export async function handleGatewayRpcRequest(method: string, params: Record<str
       push: ctx ? ctx.push : null,
       payloadSeq: 0,
     }
-    activeRuns.set(runId, run)
+    if (abortRegistered) activeRuns.set(runId, run)
     const observed: ObservedAgentRun = { runId, sessionKey, agentId }
     observedAgentRuns.push(observed)
-    console.log(`  → rpc=agent agent=${agentId} run=${runId} message=${userMessage.slice(0, 80)}${userMessage.length > 80 ? '...' : ''}`)
+    console.log(`  → rpc=agent agent=${agentId} run=${runId} registered=${abortRegistered} message=${userMessage.slice(0, 80)}${userMessage.length > 80 ? '...' : ''}`)
 
     try {
       // Accepted ack res on the request id BEFORE the final — the adapter's
-      // onAccepted seam (and its abort addressing) hangs off this.
+      // onAccepted seam (and its abort addressing) hangs off this. The ack
+      // carries sessionKey ONLY for abort-registered runs (real-wire
+      // behavior; unregistered sessionId-only runs get a bare ack).
       ctx?.push({
         type: 'res',
         id: ctx.requestId,
         ok: true,
-        payload: { status: 'accepted', runId, sessionKey, acceptedAt: Date.now() },
+        payload: {
+          status: 'accepted',
+          runId,
+          ...(abortRegistered ? { sessionKey } : {}),
+          acceptedAt: Date.now(),
+        },
       })
       pushAgentFrame(run, 'lifecycle', { phase: 'start', status: 'running', startedAt: Date.now() })
 
