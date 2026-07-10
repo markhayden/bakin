@@ -36,7 +36,6 @@ import { dispatchRoute } from '@bakin/core/routing'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
 import type {
-  APIRoute,
   BakinPlugin,
   ExecToolDefinition,
   ExecToolResult,
@@ -52,6 +51,7 @@ import type {
   UISlotRegistration,
   WorkflowDefinitionInput,
 } from '../types'
+import type { APIRoute } from '../routing'
 
 /** One captured `ctx.log` line. */
 export interface CapturedLog {
@@ -76,7 +76,7 @@ export interface CapturedActivity {
 export interface PluginTestContext {
   /** The isolated context — pass to `callRoute`, or to the plugin directly. */
   ctx: PluginContext
-  /** All routes: declarative `plugin.routes` + `ctx.registerRoute` calls. */
+  /** All routes: declarative `plugin.routes` + the auto-wired search route. */
   routes: APIRoute[]
   /** Exec tools registered via `ctx.registerExecTool`. */
   execTools: ExecToolDefinition[]
@@ -206,9 +206,8 @@ export function createTestContext(
       resolveStoreFile: async () => null,
     } as unknown as PluginContext['assets'],
     registerNav: (items) => navItems.push(...items),
-    registerRoute: (route) => routes.push(route),
     registerSlot: (registration) => slots.push(registration),
-    registerExecTool: (tool) => execTools.push(tool),
+    registerExecTool: (tool) => execTools.push(tool as unknown as ExecToolDefinition),
     registerSkill: (skill) => skills.push(skill),
     registerWorkflow: (definition) => workflows.push(definition),
     registerNodeType: (def) => {
@@ -399,7 +398,7 @@ export async function callRoute(
     queryEntries = opts.searchParams ?? {}
   } else {
     const sp = { ...(opts.searchParams ?? {}) }
-    callPath = route.path.replace(/:([A-Za-z_][\w]*)/g, (_match, name: string) => {
+    callPath = route.path.replace(/:([A-Za-z_][\w]*)/g, (_match: string, name: string) => {
       const value = sp[name]
       if (value !== undefined) {
         delete sp[name]
@@ -428,7 +427,7 @@ export async function callRoute(
         route: route as unknown as Parameters<typeof dispatchRoute>[0]['route'],
         params,
       })
-    : await route.handler(req, ctx)
+    : await (route.handler as unknown as (req: Request, ctx: unknown) => Response | Promise<Response>)(req, ctx)
 
   if (opts.rawResponse) {
     return { status: res.status, body: {}, response: res }

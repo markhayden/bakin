@@ -14,7 +14,7 @@ import { describe, it, expect, beforeEach, afterEach, afterAll, mock } from 'bun
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { rmSync } from 'fs'
-import type { APIRoute } from '../../packages/core/src/plugin-types'
+import type { RegisteredAPIRoute } from '../../packages/core/src/plugin-types'
 import { clearSearchAdapter, createSearchAdapterHarness, installSearchAdapter } from '../helpers/search-adapter'
 
 const testDir = join(tmpdir(), `bakin-test-search-autoreg-${Date.now()}`)
@@ -135,7 +135,7 @@ describe('search-registry buildSearchAPI auto-registration', () => {
   // ── happy path: route is registered exactly once ────────────────────
 
   it('registerContentType pushes exactly one GET /search route onto registerRoute', () => {
-    const routes: APIRoute[] = []
+    const routes: RegisteredAPIRoute[] = []
     const api = buildSearchAPI('widgets', {
       registerRoute: (r) => routes.push(r),
     })
@@ -151,7 +151,7 @@ describe('search-registry buildSearchAPI auto-registration', () => {
   // ── idempotency: many registrations, one route ──────────────────────
 
   it('registerContentType called twice still only registers one /search route', () => {
-    const routes: APIRoute[] = []
+    const routes: RegisteredAPIRoute[] = []
     const api = buildSearchAPI('widgets', { registerRoute: (r) => routes.push(r) })
     api.registerContentType(makeDef('widgets'))
     api.registerContentType(makeDef('widgets'))
@@ -160,7 +160,7 @@ describe('search-registry buildSearchAPI auto-registration', () => {
   })
 
   it('registerFileBackedContentType after registerContentType does not double-register the /search route', () => {
-    const routes: APIRoute[] = []
+    const routes: RegisteredAPIRoute[] = []
     const api = buildSearchAPI('widgets', { registerRoute: (r) => routes.push(r) })
     api.registerContentType(makeDef('widgets'))
     api.registerFileBackedContentType(makeFileBackedDef('widgets'))
@@ -186,12 +186,12 @@ describe('search-registry buildSearchAPI auto-registration', () => {
   // ── handler behavior: 400 / query passthrough / params parsing ──────
 
   it('auto-registered /search handler returns 400 when ?q= is missing', async () => {
-    let captured: APIRoute | null = null
+    let captured: RegisteredAPIRoute | null = null
     const api = buildSearchAPI('widgets', { registerRoute: (r) => { captured = r } })
     api.registerContentType(makeDef('widgets'))
 
     expect(captured).not.toBeNull()
-    const route = captured! as APIRoute
+    const route = captured! as RegisteredAPIRoute
     const res = await route.handler(new Request('http://localhost/search'), {} as never)
     expect(res.status).toBe(400)
     const body = await res.json()
@@ -199,11 +199,11 @@ describe('search-registry buildSearchAPI auto-registration', () => {
   })
 
   it('auto-registered /search handler calls api.query when q is present', async () => {
-    let captured: APIRoute | null = null
+    let captured: RegisteredAPIRoute | null = null
     const api = buildSearchAPI('widgets', { registerRoute: (r) => { captured = r } })
     api.registerContentType(makeDef('widgets'))
 
-    const res = await (captured! as APIRoute).handler(
+    const res = await (captured! as RegisteredAPIRoute).handler(
       new Request('http://localhost/search?q=hello'),
       {} as never,
     )
@@ -218,11 +218,11 @@ describe('search-registry buildSearchAPI auto-registration', () => {
   })
 
   it('auto-registered /search handler threads limit, offset, and comma-split facets through to api.query', async () => {
-    let captured: APIRoute | null = null
+    let captured: RegisteredAPIRoute | null = null
     const api = buildSearchAPI('widgets', { registerRoute: (r) => { captured = r } })
     api.registerContentType(makeDef('widgets'))
 
-    await (captured! as APIRoute).handler(
+    await (captured! as RegisteredAPIRoute).handler(
       new Request('http://localhost/search?q=foo&limit=7&offset=14&facets=status,owner,tags'),
       {} as never,
     )
@@ -239,11 +239,11 @@ describe('search-registry buildSearchAPI auto-registration', () => {
   })
 
   it('auto-registered /search handler tolerates an empty facets param', async () => {
-    let captured: APIRoute | null = null
+    let captured: RegisteredAPIRoute | null = null
     const api = buildSearchAPI('widgets', { registerRoute: (r) => { captured = r } })
     api.registerContentType(makeDef('widgets'))
 
-    const res = await (captured! as APIRoute).handler(
+    const res = await (captured! as RegisteredAPIRoute).handler(
       new Request('http://localhost/search?q=foo&facets='),
       {} as never,
     )
@@ -262,7 +262,7 @@ describe('search-registry buildSearchAPI auto-registration', () => {
   // ── skipFileBackedWiring escape hatch ───────────────────────────────
 
   it('registerFileBackedContentType still auto-registers /search when skipFileBackedWiring is true', () => {
-    const routes: APIRoute[] = []
+    const routes: RegisteredAPIRoute[] = []
     const api = buildSearchAPI('widgets', {
       registerRoute: (r) => routes.push(r),
       skipFileBackedWiring: true,

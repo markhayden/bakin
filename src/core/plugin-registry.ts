@@ -9,6 +9,7 @@ import {
   statSync,
 } from 'fs'
 import { join } from 'path'
+import type { ZodRawShape } from 'zod'
 import type {
   BakinConfig,
   BakinPlugin,
@@ -16,7 +17,7 @@ import type {
   EventBus,
   PluginContext,
   NavItem,
-  APIRoute,
+  RegisteredAPIRoute,
   UISlotRegistration,
   ExecToolDefinition,
   SkillDefinition,
@@ -469,20 +470,24 @@ class PluginRegistryImpl {
     const declarative = plugin.routes ?? []
     if (declarative.length === 0) return
     for (const route of declarative) {
-      // Cast: declarative APIRoute<C, P, Q, B> is structurally compatible
-      // with the legacy APIRoute used by state.routes — same path/method/
+      // Cast: declarative RegisteredAPIRoute<C, P, Q, B> is structurally compatible
+      // with the legacy RegisteredAPIRoute used by state.routes — same path/method/
       // handler primary fields, plus extra typed schemas the dispatcher
       // adapter knows how to read.
-      const legacyShaped = route as unknown as APIRoute
+      const erased = route as unknown as RegisteredAPIRoute
       // T16: declarative routes face the same manifest enforcement as
       // ctx.registerRoute — user plugins must declare every route in
       // contributes.apiRoutes (assertRouteDeclared no-ops for core).
-      this.assertRouteDeclared(plugin.id, state, legacyShaped)
-      state.routes.push(legacyShaped)
+      this.assertRouteDeclared(plugin.id, state, erased)
+      state.routes.push(erased)
+      // Docs parity: declarative routes feed the runtime /api/docs surface
+      // exactly like the (deleted) imperative path always did — without this,
+      // getAllRoutes() only ever saw core + search auto-routes.
+      registerRouteDoc(plugin.id, erased)
     }
   }
 
-  private assertRouteDeclared(pluginId: string, state: PluginState, route: APIRoute): void {
+  private assertRouteDeclared(pluginId: string, state: PluginState, route: RegisteredAPIRoute): void {
     if (state.source !== 'user') return
     const declared = state.manifest?.contributes?.apiRoutes ?? []
     // Manifest methods are uppercased at parse; code-side methods are
@@ -527,7 +532,7 @@ class PluginRegistryImpl {
     // Extract as a local so both ctx.registerRoute and the search API's
     // auto-route wiring land routes in the same place (and share the
     // same docs registration side effect).
-    const registerRoute = (route: APIRoute) => {
+    const registerRoute = (route: RegisteredAPIRoute) => {
       // Dedup against declarative routes already registered before
       // activate(). Without this, plugins that declare a route via
       // `routes: [searchRoute(...)]` AND trigger the auto-wire path
@@ -543,10 +548,11 @@ class PluginRegistryImpl {
       registerNav: (items: NavItem[]) => { state.navItems.push(...items) },
       registerRoute,
       registerSlot: (reg: UISlotRegistration) => { state.slots.push(reg) },
-      registerExecTool: (tool: ExecToolDefinition) => {
-        this.assertExecToolDeclared(pluginId, state, tool)
-        tool.source = `plugin:${pluginId}`
-        addExecTool(tool)
+      registerExecTool: <Shape extends ZodRawShape>(tool: ExecToolDefinition<Shape>) => {
+        const erased = tool as unknown as ExecToolDefinition
+        this.assertExecToolDeclared(pluginId, state, erased)
+        erased.source = `plugin:${pluginId}`
+        addExecTool(erased)
       },
       registerSkill: (skill: SkillDefinition) => {
         skill.source = `plugin:${pluginId}`
@@ -1042,7 +1048,7 @@ class PluginRegistryImpl {
     return items.sort((a, b) => (a.order ?? 100) - (b.order ?? 100))
   }
 
-  findRoute(pluginId: string, path: string, method: string): APIRoute | null {
+  findRoute(pluginId: string, path: string, method: string): RegisteredAPIRoute | null {
     const state = this.plugins.get(pluginId)
     if (!state) return null
     return state.routes.find(r =>
@@ -1067,8 +1073,8 @@ class PluginRegistryImpl {
    * with the plugin id (scope) for OpenAPI / docs generation. Used by the
    * runtime `/api/docs` builder.
    */
-  getAllPluginRoutes(): Array<{ pluginId: string; route: APIRoute }> {
-    const out: Array<{ pluginId: string; route: APIRoute }> = []
+  getAllPluginRoutes(): Array<{ pluginId: string; route: RegisteredAPIRoute }> {
+    const out: Array<{ pluginId: string; route: RegisteredAPIRoute }> = []
     for (const [pluginId, state] of this.plugins.entries()) {
       for (const route of state.routes) {
         out.push({ pluginId, route })

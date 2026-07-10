@@ -28,3 +28,7 @@ export * from './runtime'
 export * from './services'
 export * from './registration'
 export * from './context'
+
+// The ONE public route type (declarative-generic) — re-exported so
+// `@makinbakin/sdk/types` keeps the name after the legacy interface died.
+export type { APIRoute, PluginContextLite } from '../routing'

@@ -18,7 +18,7 @@
  * SDK and re-exported below. Collapsing the boundary itself is WS2 work.
  */
 
-import type { ZodRawShape, ZodType } from 'zod'
+import type { z, ZodRawShape, ZodType } from 'zod'
 import type {
   ActivityAPI,
   EventBus,
@@ -50,18 +50,18 @@ export interface StorageAdapter {
   append(path: string, content: string): void
   exists(path: string): boolean
   readAll(): Record<string, string>
-  list?(path?: string): string[]
-  remove?(path: string): void
-  rename?(from: string, to: string): void
-  stat?(path: string): {
+  list(path?: string): string[]
+  remove(path: string): void
+  rename(from: string, to: string): void
+  stat(path: string): {
     path: string
     size: number
     mtimeMs: number
     isFile: boolean
     isDirectory: boolean
   } | null
-  readJson?<T = unknown>(path: string): T | null
-  writeJson?(path: string, value: unknown): void
+  readJson<T = unknown>(path: string): T | null
+  writeJson(path: string, value: unknown): void
   /**
    * Convert a plugin-storage-relative path or glob to the content-dir-relative
    * path seen by file-backed search/watch APIs. Implementations never return
@@ -90,7 +90,15 @@ export interface NavItem {
   placement?: 'bottom'
 }
 
-export interface APIRoute {
+/**
+ * INTERNAL registered-route record — the erased shape routes take inside the
+ * plugin registry's state after declarative registration (typed schemas
+ * survive as extra fields the dispatcher reads). NOT a public authoring
+ * type: plugin authors declare routes with `defineRoute()` and the
+ * declarative-generic `APIRoute<C, P, Q, B>` from `@bakin/core/routing` /
+ * `@makinbakin/sdk` (audit 2026-07 H3 collapsed the two same-named types).
+ */
+export interface RegisteredAPIRoute {
   path: string
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   handler: (req: Request, ctx: PluginContext) => Response | Promise<Response>
@@ -140,13 +148,14 @@ export interface PluginToolContext {
   getSettings<T = Record<string, unknown>>(): T
 }
 
-export interface ExecToolDefinition {
+export interface ExecToolDefinition<Shape extends ZodRawShape = ZodRawShape> {
   name: string
   description: string
   label?: string // Short human-readable action phrase for activity feed (e.g., "Created a task")
   activityDuplicate?: boolean // true = handler already emits a meaningful activity event; auto-audit can be hidden
-  parameters: ZodRawShape
-  handler: (params: Record<string, unknown>, agent: string, ctx?: PluginToolContext) => Promise<ExecToolResult>
+  parameters: Shape
+  /** Params are inferred from `parameters` — declare the shape once, get typed params. */
+  handler: (params: z.infer<z.ZodObject<Shape>>, agent: string, ctx?: PluginToolContext) => Promise<ExecToolResult>
   source?: string // 'core' | 'plugin:<id>' — set automatically on registration
 }
 
@@ -336,17 +345,8 @@ export interface PluginContext {
   tasks: PluginTaskService
   assets: AssetsAPI
   registerNav(items: NavItem[]): void
-  /**
-   * @deprecated Use `definePlugin({ routes: [defineRoute({...})] })` to declare
-   * routes. This adapter remains during the migration window for any
-   * out-of-tree plugin that still calls `ctx.registerRoute(...)` from
-   * `activate()`. In-repo plugins migrated in T6–T13 / T20 — none of them
-   * call this. The dispatcher adapts the legacy shape (input → body,
-   * output → responses[200]) when invoked through this path.
-   */
-  registerRoute(route: APIRoute): void
   registerSlot(registration: UISlotRegistration): void
-  registerExecTool(tool: ExecToolDefinition): void
+  registerExecTool<Shape extends ZodRawShape>(tool: ExecToolDefinition<Shape>): void
   registerSkill(skill: SkillDefinition): void
   /**
    * Register a workflow definition shipped by this plugin. Disk-resident
@@ -387,8 +387,8 @@ export interface PluginContext {
   updateSettings(patch: Record<string, unknown>): void
   /** Structured activity logging */
   activity: ActivityAPI
-  /** Plugin-scoped server log. Prefer this over console.* for lifecycle logs. */
-  log?: PluginLogger
+  /** Plugin-scoped server log. Always provided; prefer over console.*. */
+  log: PluginLogger
   /** Cross-plugin hook registration */
   hooks: HookAPI
   /** Adapter-backed search — register content types, index, query */
@@ -760,9 +760,6 @@ export interface BakinPlugin {
    * a bare `routes: APIRoute[]` annotation widens types and breaks the
    * per-route inference that drives the dispatcher's typed `parsed` argument.
    *
-   * Optional during the migration window (T1–T16); plugins still using
-   * `ctx.registerRoute(...)` from `activate()` continue to work via the
-   * dispatcher adapter.
    */
   routes?: ReadonlyArray<DeclarativeAPIRoute<PluginContextLite, any, any, any>>
 }

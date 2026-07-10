@@ -20,7 +20,7 @@
 import { mkdirSync, existsSync } from 'fs'
 import type {
   PluginContext,
-  APIRoute,
+  RegisteredAPIRoute,
   ExecToolDefinition,
   BakinPlugin,
   SearchResult,
@@ -46,7 +46,7 @@ const testHelperLog = createLogger('test-helpers')
 // Mechanical helpers delegate to the SDK verbatim. They are re-declared with
 // `@bakin/core/plugin-types` signatures (what every consuming suite passes)
 // rather than bare re-exported, because the SDK's own declarations use its
-// mirrored types — the two-tier APIRoute/ExecToolDefinition duplication that
+// mirrored types — the two-tier RegisteredAPIRoute/ExecToolDefinition duplication that
 // WS2b's type-tightening task collapses. Until then the cast lives HERE, once.
 export { makeRequest }
 
@@ -57,7 +57,7 @@ type SdkCallRouteArgs = Parameters<typeof sdkCallRoute>
  * (schema validation, `(req, ctx, parsed)` signature); see the SDK helper.
  */
 export async function callRoute(
-  route: APIRoute,
+  route: RegisteredAPIRoute,
   ctx: PluginContext,
   opts: {
     path?: string
@@ -71,10 +71,10 @@ export async function callRoute(
 
 /** Find a route handler by method and declared path. */
 export function findRoute(
-  routes: APIRoute[],
+  routes: RegisteredAPIRoute[],
   method: string,
   path: string
-): APIRoute | undefined {
+): RegisteredAPIRoute | undefined {
   return routes.find((r) => r.method === method && r.path === path)
 }
 
@@ -99,7 +99,7 @@ function slugifyWorkflowId(name: string): string {
 
 export interface ActivatedPlugin {
   ctx: PluginContext
-  routes: APIRoute[]
+  routes: RegisteredAPIRoute[]
   execTools: ExecToolDefinition[]
   /**
    * Seed the mocked `ctx.search.query()` to return these results on the
@@ -123,7 +123,7 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
   // the same duplication callRoute documents above.
   const harness = sdkCreateTestContext(pluginId, { dir: testDir }) as unknown as {
     ctx: PluginContext
-    routes: APIRoute[]
+    routes: RegisteredAPIRoute[]
     execTools: ExecToolDefinition[]
   }
   const { ctx, routes, execTools } = harness
@@ -280,7 +280,7 @@ export async function activatePlugin(
   const result = createTestContext(plugin.id, testDir)
   if (plugin.routes) {
     for (const route of plugin.routes) {
-      result.routes.push(route as unknown as APIRoute)
+      result.routes.push(route as unknown as RegisteredAPIRoute)
     }
   }
   await plugin.activate(result.ctx)

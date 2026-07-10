@@ -10,7 +10,7 @@ import type {
   BakinPlugin,
   PluginContext,
   NavItem,
-  APIRoute,
+  RegisteredAPIRoute,
   UISlotRegistration,
 } from '@bakin/core/plugin-types'
 import type { PluginManifest as PublicPluginManifest } from '@makinbakin/sdk/types'
@@ -31,7 +31,7 @@ export interface PluginState {
   source: 'core' | 'user'
   description: string
   navItems: NavItem[]
-  routes: APIRoute[]
+  routes: RegisteredAPIRoute[]
   slots: UISlotRegistration[]
   watchPatterns: string[]
   /** Namespaced workflow node kinds registered via ctx.registerNodeType. */

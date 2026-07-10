@@ -4,7 +4,7 @@
  * surfaced through the search-registry barrel.
  */
 import type {
-  APIRoute,
+  RegisteredAPIRoute,
   FileBackedContentTypeDefinition,
   SearchAPI,
   SearchContentTypeDefinition,
@@ -51,7 +51,7 @@ export interface BuildSearchAPIOptions {
    * dispatch, etc.), no route is registered — the caller must surface
    * search some other way.
    */
-  registerRoute?: (route: APIRoute) => void
+  registerRoute?: (route: RegisteredAPIRoute) => void
   /**
    * Skip the side effects of `registerFileBackedContentType` — watcher
    * sync/unlink hooks and pending startup reconcile. The primary register

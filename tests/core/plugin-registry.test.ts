@@ -205,6 +205,7 @@ describe('PluginRegistryImpl', () => {
     opts: {
       deps?: string[]
       activate?: string
+      routes?: string
       navItems?: string
       settingsSchema?: string
       onReady?: string
@@ -232,6 +233,7 @@ describe('PluginRegistryImpl', () => {
         name: '${id.charAt(0).toUpperCase() + id.slice(1)}',
         version: '1.0.0',
         navItems: ${opts.navItems || '[]'},
+        routes: ${opts.routes || 'undefined'},
         settingsSchema: ${opts.settingsSchema || 'undefined'},
         onReady: ${opts.onReady || 'undefined'},
         onShutdown: ${opts.onShutdown || 'undefined'},
@@ -386,9 +388,9 @@ describe('PluginRegistryImpl', () => {
       expect(items[0]).toMatchObject({ id: 'test', label: 'Test', order: 5 })
     })
 
-    it('registerRoute makes route findable and calls registerRouteDoc', async () => {
+    it('declarative routes are findable and registered with registerRouteDoc', async () => {
       const pathA = writeFakePlugin('alpha', {
-        activate: `ctx.registerRoute({ path: '/items', method: 'GET', handler: function() { return new Response('ok') } })`,
+        routes: `[{ path: '/items', method: 'GET', handler: function() { return new Response('ok') } }]`,
       })
 
       await pluginRegistry.initialize(
@@ -692,7 +694,7 @@ describe('PluginRegistryImpl', () => {
     it('reports missing dependencies without exposing plugin routes', async () => {
       writeUserPlugin('needs-missing', {
         deps: ['not-installed'],
-        activate: `ctx.registerRoute({ path: '/data', method: 'GET', handler: function() { return new Response('bad') } })`,
+        routes: `[{ path: '/data', method: 'GET', handler: function() { return new Response('bad') } }]`,
       })
 
       await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
@@ -852,7 +854,7 @@ describe('PluginRegistryImpl', () => {
 
     it('fails user plugins that register undeclared API routes', async () => {
       writeUserPlugin('undeclared-route', {
-        activate: `ctx.registerRoute({ path: '/data', method: 'GET', handler: function() { return new Response('bad') } })`,
+        routes: `[{ path: '/data', method: 'GET', handler: function() { return new Response('bad') } }]`,
       })
 
       await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
@@ -931,8 +933,8 @@ describe('PluginRegistryImpl', () => {
             ],
           },
         },
+        routes: `[{ path: '/data', method: 'GET', handler: function() { return new Response('ok') } }]`,
         activate: `
-          ctx.registerRoute({ path: '/data', method: 'GET', handler: function() { return new Response('ok') } })
           ctx.registerExecTool({ name: 'bakin_exec_declared-surfaces_data', description: 'test', parameters: {}, handler: async () => ({ ok: true }) })
         `,
       })
@@ -983,15 +985,15 @@ describe('PluginRegistryImpl', () => {
     async function initWithTwoPlugins() {
       const pathA = writeFakePlugin('alpha', {
         navItems: `[{ id: 'a', label: 'Alpha', icon: 'star', href: '/a', order: 20 }]`,
+        routes: `[{ path: '/data', method: 'GET', handler: function() { return new Response('ok') } }]`,
         activate: `
-          ctx.registerRoute({ path: '/data', method: 'GET', handler: function() { return new Response('ok') } })
           ctx.registerSlot({ slot: 'dashboard', component: function() {}, order: 10 })
         `,
       })
       const pathB = writeFakePlugin('bravo', {
         navItems: `[{ id: 'b', label: 'Bravo', icon: 'zap', href: '/b', order: 5 }]`,
+        routes: `[{ path: '/items', method: 'POST', handler: function() { return new Response('ok') } }]`,
         activate: `
-          ctx.registerRoute({ path: '/items', method: 'POST', handler: function() { return new Response('ok') } })
           ctx.registerSlot({ slot: 'dashboard', component: function() {}, order: 1 })
           ctx.registerSlot({ slot: 'sidebar', component: function() {}, order: 1 })
         `,

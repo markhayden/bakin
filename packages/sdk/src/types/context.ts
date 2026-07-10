@@ -1,7 +1,8 @@
 // Part of the @makinbakin/sdk/types contract — see ./index.ts for the
 // module's self-containment + two-tier rationale.
+import type { ZodRawShape } from 'zod'
 import type { ContractStability, ContractVisibility, DocsExample, SchemaLike } from './primitives'
-import type { APIRoute, ContentFile, ExecToolDefinition, NavItem, PluginHealthCheckInput, PluginNodeTypeInput, PluginNotificationChannelInput, PluginSettingsSchema, SkillDefinition, UISlotRegistration, WorkflowDefinitionInput } from './registration'
+import type { ContentFile, ExecToolDefinition, NavItem, PluginHealthCheckInput, PluginNodeTypeInput, PluginNotificationChannelInput, PluginSettingsSchema, SkillDefinition, UISlotRegistration, WorkflowDefinitionInput } from './registration'
 import type { AgentRuntimeAdapter } from './runtime'
 import type { AssetsAPI, SearchAPI, TaskService } from './services'
 
@@ -21,12 +22,12 @@ export interface StorageAdapter {
   append(path: string, content: string): void
   exists(path: string): boolean
   readAll(): Record<string, string>
-  list?(path?: string): string[]
-  remove?(path: string): void
-  rename?(from: string, to: string): void
-  stat?(path: string): StorageStat | null
-  readJson?<T = unknown>(path: string): T | null
-  writeJson?(path: string, value: unknown): void
+  list(path?: string): string[]
+  remove(path: string): void
+  rename(from: string, to: string): void
+  stat(path: string): StorageStat | null
+  readJson<T = unknown>(path: string): T | null
+  writeJson(path: string, value: unknown): void
   searchPath?(path: string): string
 }
 
@@ -103,12 +104,10 @@ export interface PluginContext {
   assets: AssetsAPI
   /** Register sidebar navigation items. */
   registerNav(items: NavItem[]): void
-  /** Register an HTTP route under `/api/plugins/{pluginId}`. */
-  registerRoute(route: APIRoute): void
   /** Register a component for a named slot (legacy — prefer `<Slot>` from `/slots`). */
   registerSlot(registration: UISlotRegistration): void
   /** Register an MCP exec tool agents can call. */
-  registerExecTool(tool: ExecToolDefinition): void
+  registerExecTool<Shape extends ZodRawShape>(tool: ExecToolDefinition<Shape>): void
   /** Register a runtime skill (capability definition). */
   registerSkill(skill: SkillDefinition): void
   /** Register a workflow definition (or template) the plugin ships. */
@@ -127,8 +126,8 @@ export interface PluginContext {
   updateSettings(patch: Record<string, unknown>): void
   /** Activity feed + audit log API. */
   activity: ActivityAPI
-  /** Plugin-scoped structured logger. Optional — falls back to console. */
-  log?: PluginLogger
+  /** Plugin-scoped structured logger. Always provided by the host. */
+  log: PluginLogger
   /** Cross-plugin hook registry. */
   hooks: HookAPI
   /** Search API for indexing and querying. */
@@ -155,6 +154,13 @@ export interface BakinPlugin {
   onUninstall?(ctx: PluginContext): void | Promise<void>
   /** Settings schema rendered on this plugin's settings page. */
   settingsSchema?: PluginSettingsSchema
+  /**
+   * Declarative HTTP routes, registered before `activate()` runs. Author
+   * entries with `defineRoute()`; compose with `definePlugin()` so per-route
+   * inference survives. The route type is the declarative-generic `APIRoute`
+   * from `@makinbakin/sdk/routing`.
+   */
+  routes?: ReadonlyArray<import('../routing').APIRoute<import('../routing').PluginContextLite, any, any, any>>
   /** Convenience: nav items to auto-register at activation. */
   navItems?: NavItem[]
   /** Convenience: static content files declared at construction. */

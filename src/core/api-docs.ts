@@ -8,7 +8,7 @@
  * still expect. After downstream consumers migrate to /api/openapi this
  * module can be deleted entirely.
  */
-import type { APIRoute } from '../../packages/core/src/plugin-types'
+import type { RegisteredAPIRoute } from '../../packages/core/src/plugin-types'
 import type { ContractStability, ContractVisibility, DocsExample, SchemaLike, SourceLocation } from '../../packages/core/src/docs'
 import { coreRoutes } from '../../packages/host/src/core-routes'
 
@@ -43,7 +43,7 @@ export function _resetRouteDocsForTests(): void {
  * Plugin routes registered through `definePlugin({ routes })` are surfaced
  * through `pluginRegistry.getAllPluginRoutes()` instead.
  */
-export function registerRouteDoc(pluginId: string, route: Pick<APIRoute, 'path' | 'method' | 'summary' | 'description' | 'params' | 'visibility' | 'stability' | 'permissions'>): void {
+export function registerRouteDoc(pluginId: string, route: Pick<RegisteredAPIRoute, 'path' | 'method' | 'summary' | 'description' | 'params' | 'visibility' | 'stability' | 'permissions'>): void {
   const summary = route.summary ?? route.description ?? `${route.method} ${route.path}`
   routeDocs.push({
     pluginId,
