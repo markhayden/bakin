@@ -15,7 +15,18 @@ export interface BakinMcpServerEntry {
   requestTimeoutMs?: number
   /** OpenClaw Codex projection controls (per-agent scoping). */
   codex?: { agents?: string[] }
+  /**
+   * OpenClaw HTTP transport selection. MUST be `streamable-http`: the
+   * embedded runtime's MCP client DEFAULTS to the legacy SSE transport when
+   * `type` is absent, and Bakin's /mcp endpoint no longer speaks legacy SSE
+   * (sessionless GETs are 405 — the legacy handshake made the codex client
+   * stall a fixed 5s per turn before falling back).
+   */
+  type?: string
 }
+
+/** The only transport Bakin's /mcp endpoint speaks. */
+export const BAKIN_MCP_TRANSPORT_TYPE = 'streamable-http'
 
 export interface BakinMcpConfig {
   mcp?: { servers?: Record<string, BakinMcpServerEntry> }
@@ -69,6 +80,7 @@ function isCurrentEntry(entry: BakinMcpServerEntry | undefined, agent: string, u
     entry !== undefined &&
     entry.url === url &&
     entry.requestTimeoutMs === BAKIN_MCP_REQUEST_TIMEOUT_MS &&
+    entry.type === BAKIN_MCP_TRANSPORT_TYPE &&
     isScopedToAgent(entry, agent)
   )
 }
@@ -97,6 +109,7 @@ export function applyBakinMcpEntries(
         url,
         description: `Bakin MCP for ${agent}`,
         requestTimeoutMs: BAKIN_MCP_REQUEST_TIMEOUT_MS,
+        type: BAKIN_MCP_TRANSPORT_TYPE,
         codex: { agents: [agent] },
       }
       changes.push(existing ? `updated ${name}` : `added ${name}`)

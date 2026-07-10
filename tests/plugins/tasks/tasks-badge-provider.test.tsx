@@ -33,6 +33,7 @@ const useNavBadge = mock()
 mock.module('@makinbakin/sdk/hooks', () => ({ useNavBadge }))
 
 import { cleanup, render } from '@testing-library/react'
+import '../../rtl-settle'
 import { TasksBadgeProvider } from '../../../plugins/tasks/components/tasks-badge-provider'
 
 beforeEach(() => {

@@ -2,6 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import '../rtl-settle'
 import { ModelsPage } from '../../plugins/models/components/models-page'
 
 mock.module('@bakin/core/main-agent', () => ({

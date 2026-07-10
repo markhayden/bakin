@@ -10,6 +10,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { renderHook, waitFor, act, cleanup } from '@testing-library/react'
+import '../../rtl-settle'
 
 const contentDirMock = () => ({
   getContentDir: () => '/tmp/bakin-test-use-record-deep-link',

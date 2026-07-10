@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
+import '../rtl-settle'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 
 import {

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import '../rtl-settle'
 
 // Pure client component, but pin the resolvers per the repo-wide
 // test-isolation rules so nothing transitive can reach ~/.bakin.

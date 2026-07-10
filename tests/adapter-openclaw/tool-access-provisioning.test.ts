@@ -34,6 +34,7 @@ const entryFor = (agent: string, base = BASE) => ({
   url: `${base.replace(/\/+$/, '')}/mcp?agent=${agent}`,
   description: `Bakin MCP for ${agent}`,
   requestTimeoutMs: BAKIN_MCP_REQUEST_TIMEOUT_MS,
+  type: 'streamable-http',
   codex: { agents: [agent] },
 })
 
@@ -211,12 +212,38 @@ describe('verifyBakinMcpEntries', () => {
             url: 'http://localhost:3737/mcp?agent=main',
             description: 'Bakin MCP for main',
             requestTimeoutMs: BAKIN_MCP_REQUEST_TIMEOUT_MS,
+            type: 'streamable-http',
           },
         },
       },
     }
     const status = verifyBakinMcpEntries(config, ['main'], BASE)
     expect(status.agentEntries[0].correct).toBe(false)
+  })
+
+  it('flags an entry without a transport type as incorrect so provisioning heals it', () => {
+    // OpenClaw's embedded runtime DEFAULTS HTTP MCP servers to the legacy SSE
+    // transport when `type` is absent — and Bakin's /mcp now 405s sessionless
+    // GETs (the legacy handshake made the codex client stall a fixed 5s per
+    // turn). Existing installs carry type-less entries — verify must report
+    // them incorrect and apply must rewrite them with type: streamable-http.
+    const config: BakinMcpConfig = {
+      mcp: {
+        servers: {
+          'bakin-main': {
+            url: 'http://localhost:3737/mcp?agent=main',
+            description: 'Bakin MCP for main',
+            requestTimeoutMs: BAKIN_MCP_REQUEST_TIMEOUT_MS,
+            codex: { agents: ['main'] },
+          },
+        },
+      },
+    }
+    const status = verifyBakinMcpEntries(config, ['main'], BASE)
+    expect(status.agentEntries[0].correct).toBe(false)
+
+    expect(applyBakinMcpEntries(config, ['main'], BASE)).toEqual(['updated bakin-main'])
+    expect(config.mcp!.servers!['bakin-main'].type).toBe('streamable-http')
   })
 })
 
