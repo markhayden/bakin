@@ -121,6 +121,17 @@ export interface MessageArgs extends RuntimeMessageToolPolicy {
    * that can't cancel still gets the local rejection).
    */
   signal?: AbortSignal
+  /**
+   * Best-effort live-activity tap for a `send()` turn (prelaunch-hardening
+   * R7/D-plan-1): invoked with `tool` and `status` chunks as the runtime
+   * surfaces them — text deltas do NOT flow here (use `messaging.stream`
+   * to render prose live). No delivery guarantee, no chunk is required to
+   * appear, and no ordering guarantee relative to the send() settle (a
+   * late-arriving frame may tap after the promise resolves). Adapters
+   * contain callback exceptions — a throwing tap never fails the turn.
+   * Ignored by `messaging.stream`, whose iterator already carries chunks.
+   */
+  onActivity?: (chunk: ChatChunk) => void
   metadata?: RuntimeMetadata
 }
 

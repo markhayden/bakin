@@ -88,7 +88,10 @@ Bakin/observed/unattributed columns), per-agent stacked daily chart
 drift panel (live `GET /api/agent-packages/{id}/scan` + receipt + Sync now via
 the existing sync POST), context panel (render of `/api/context-report/{id}` +
 budget from `/api/settings` `dispatch.contextBudgetBytes` + observed-input
-sparkline), timeline panel (24h/7d, expandable per-run progress logs).
+sparkline), timeline panel (24h/7d, expandable per-run progress logs; a live
+row at the top chips the agent's in-flight turn from the ephemeral
+`turn-activity` SSE event — UI layer only, the durable ledger+audit spine
+`assembleTimeline` merges is untouched; see `dispatch.md`).
 Overview tab renders drift/context/burn chips and overrides the package badge
 to `drifted` from the same attention hook.
 

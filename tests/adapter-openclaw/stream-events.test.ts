@@ -224,6 +224,31 @@ describe('OpenClawTurnChunkMachine — synthesized scenarios', () => {
     expect(machine.finish({ kind: 'ok', content: 'goodbye' })).toEqual([{ type: 'done' }])
   })
 
+  it('strips the native-MCP server prefix from tool-chip names', () => {
+    const machine = new OpenClawTurnChunkMachine(RUN)
+    const start = machine.onAgentEvent({
+      runId: RUN,
+      stream: 'tool',
+      data: { phase: 'start', name: 'bakin-pixel.bakin_exec_images_generate', toolCallId: 't1', args: { surface: 'blog-hero' } },
+    } as AgentEventPayload)
+    expect(start).toHaveLength(1)
+    expect((start[0]!.data as { toolName?: string }).toolName).toBe('bakin_exec_images_generate')
+    expect(start[0]!.content).not.toContain('bakin-pixel.')
+    const result = machine.onAgentEvent({
+      runId: RUN,
+      stream: 'tool',
+      data: { phase: 'result', name: 'bakin-pixel.bakin_exec_images_generate', toolCallId: 't1', result: 'ok' },
+    } as AgentEventPayload)
+    expect((result[0]!.data as { toolName?: string }).toolName).toBe('bakin_exec_images_generate')
+    // Non-bakin dotted names are left alone — only the `bakin-<agent>.` MCP prefix is noise.
+    const other = machine.onAgentEvent({
+      runId: RUN,
+      stream: 'tool',
+      data: { phase: 'start', name: 'browser.navigate', toolCallId: 't2' },
+    } as AgentEventPayload)
+    expect((other[0]!.data as { toolName?: string }).toolName).toBe('browser.navigate')
+  })
+
   it('a chat error frame alone never ends the stream — the RPC settle classifies', () => {
     const machine = new OpenClawTurnChunkMachine(RUN)
     machine.onChatEvent(chatDelta(RUN, 'part', 'part'))

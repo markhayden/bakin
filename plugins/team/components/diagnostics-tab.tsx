@@ -21,6 +21,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Loader2, RefreshCw } from 'lucide-react'
 import { Button, Badge, Skeleton } from '@makinbakin/sdk/ui'
 import { Sparkline, ChartExplainer } from '@makinbakin/sdk/components'
+import { usePluginEvent } from '@makinbakin/sdk/hooks'
 import type { ScanFinding, TimelineEventView } from '../types'
 
 // ── Small shared bits ────────────────────────────────────────────────────────
@@ -422,9 +423,50 @@ const STATUS_STYLES: Record<string, string> = {
   lost: 'text-red-400',
 }
 
+/** Sweep a live chip this long after its last chunk (tap is best-effort —
+ *  no terminal signal is guaranteed). Mirrors the tasks board TTL. */
+const LIVE_ACTIVITY_TTL_MS = 45_000
+
+/**
+ * Latest live turn-activity chip for one agent — fed by the ephemeral
+ * 'turn-activity' SSE events (never persisted; the timeline's durable spine
+ * below stays ledger + audit).
+ */
+function useAgentLiveActivity(agentId: string): { label: string; ts: number } | null {
+  const [chip, setChip] = useState<{ label: string; ts: number } | null>(null)
+
+  usePluginEvent('turn-activity', (payload) => {
+    if (payload.agentId !== agentId) return
+    const chunk = payload.chunk as { type?: string; content?: string; data?: { toolName?: string; phase?: string; status?: string } } | undefined
+    if (!chunk) return
+    // Event's own timestamp, stale events dropped — a replayed/delayed
+    // event must never re-chip a settled turn (mirrors the board hook).
+    const eventTs = Date.parse(String(payload.ts ?? ''))
+    const ts = Number.isFinite(eventTs) ? eventTs : Date.now()
+    if (Date.now() - ts > LIVE_ACTIVITY_TTL_MS) return
+    const label = chunk.type === 'tool'
+      ? `${chunk.data?.toolName ?? 'tool'}${chunk.data?.phase === 'result' ? (chunk.data?.status === 'failed' ? ' ✗' : ' ✓') : '…'}`
+      : (chunk.content || 'working…')
+    setChip({ label, ts })
+  })
+
+  useEffect(() => {
+    if (!chip) return
+    const timer = setTimeout(() => {
+      setChip((prev) => (prev && Date.now() - prev.ts >= LIVE_ACTIVITY_TTL_MS ? null : prev))
+    }, LIVE_ACTIVITY_TTL_MS + 500)
+    return () => clearTimeout(timer)
+  }, [chip])
+
+  useEffect(() => { setChip(null) }, [agentId])
+
+  return chip
+}
+
 function TimelinePanel({ agentId }: { agentId: string }) {
   const [window, setWindow] = useState<'24h' | '7d'>('24h')
   const [events, setEvents] = useState<TimelineEventView[] | null>(null)
+  const live = useAgentLiveActivity(agentId)
 
   useEffect(() => {
     let cancelled = false
@@ -454,6 +496,16 @@ function TimelinePanel({ agentId }: { agentId: string }) {
         </span>
       }
     >
+      {live && (
+        <div className="mb-2 flex items-center gap-2 rounded border border-blue-500/20 bg-blue-500/10 px-3 py-2 text-sm">
+          <span className="relative flex size-2 shrink-0">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-60" />
+            <span className="relative inline-flex size-2 rounded-full bg-blue-500" />
+          </span>
+          <span className="text-blue-300 text-xs">live</span>
+          <span className="truncate text-xs text-blue-200/90" title={live.label}>{live.label}</span>
+        </div>
+      )}
       {events === null ? (
         <Skeleton className="h-16 w-full" />
       ) : events.length === 0 ? (

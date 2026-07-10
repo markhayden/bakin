@@ -11,15 +11,15 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 - [x] T5 Server-side abort via accepted run ids ✅
 - [x] T6 Imitation Crab event frames + streaming e2e ✅ (mock emits ack/chat/agent frames; 4-test e2e vs real adapter)
 - [x] T7 WS1a docs ✅ (session-forensics, adapter-architecture R5 contract + two-seam rule + ack-keyed abort, chat-plugin, repo map, rig recorder note)
-- [ ] CHECKPOINT 1a: suite green ✅ / e2e green ✅ / PR merged ☐
+- [x] CHECKPOINT 1a: suite green ✅ / e2e green ✅ / PR merged ✅ (#632)
 - [ ] 🔶 USER: runtime flip to OpenClaw + live validation (box stays on OpenClaw)
 
 ## PR 1b — feat/dispatch-live-activity
-- [ ] T8 onActivity tap on messaging.send (both adapters)
-- [ ] T9 Live task activity on board + timeline (ephemeral SSE)
-- [ ] T10 Delete trajectory activity tail (forensics only)
-- [ ] T11 WS1b docs
-- [ ] CHECKPOINT 1b: live box shows dispatch chips; PR merged
+- [x] T8 onActivity tap on messaging.send (both adapters) ✅ (tool/status only; contained callbacks; OpenClaw via gateway frames, Pi via shared sessionEventChunks)
+- [x] T9 Live task activity on board + timeline (ephemeral SSE) ✅ (turn-activity SSE event; board chip + team timeline live row)
+- [x] T10 Delete trajectory activity tail (forensics only) ✅ (tail + mergeChatStreams + transcript-chunk path deleted; survivors → session-store.ts, poll const → trajectory-forensics)
+- [x] T11 WS1b docs ✅ (+ tool-chip MCP-prefix fix; dispatch.md, adapter-architecture.md onActivity contract, agent-health-diagnostics.md live row; CLAUDE.md bullets verified still true)
+- [ ] CHECKPOINT 1b: suite green ✅ / live box shows dispatch chips ☐ / PR merged ☐
 
 ## PR 2a — fix/sdk-golden-path (parallel worktree)
 - [x] T12 Delete manifest.entry (+ tests field); single root layout ✅ (tombstone rejections; 18 manifests + docs swept)
@@ -55,3 +55,7 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 - [ ] T33 Fixtures, comments, knowledge-doc drift
 - [ ] T34 SDK primitive adoption sweep (ex-sdk-gaps A2/A3/A4 + useAvailableModels relocation; after PR 2b)
 - [ ] CHECKPOINT 4: initiative close — all success criteria re-verified, Pi worktree retired, SPEC marked complete
+
+## Live-validation follow-ups (2026-07-09 flip)
+- [ ] 🔶 USER: file the OpenClaw upstream issue for the abort-registration defect (suggested text in PR #637) and backfill the real number over `openclaw#TBD-abort-registration` (pin test, fixtures README, rig doc)
+- [ ] Run rig-validate R7 (abort workaround re-verify) after every OpenClaw version bump

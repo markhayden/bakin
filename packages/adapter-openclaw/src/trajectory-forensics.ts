@@ -22,6 +22,13 @@ import { getOpenClawHome } from './home'
 /** OpenClaw truncates recorded completion text at this trajectory limit. */
 export const OPENCLAW_TRAJECTORY_TEXT_LIMIT = 262_144
 
+/**
+ * Death-watch trajectory poll interval (stat-gated; see
+ * `watchTrajectoryForDeath`). Formerly OPENCLAW_SESSION_ACTIVITY_POLL_MS,
+ * when the deleted live activity tail shared it.
+ */
+export const OPENCLAW_TRAJECTORY_POLL_MS = 200
+
 export const DEFAULT_OVERSIZED_OUTPUT_BYTES = 128 * 1024
 
 const SUPPORTED_TRACE_SCHEMA = 'openclaw-trajectory'

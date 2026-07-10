@@ -44,6 +44,16 @@ import {
   summarizeOpenClawToolPurpose,
 } from './activity-summary'
 
+/**
+ * `bakin-<agent>.bakin_exec_foo` (native-MCP prefixed) → `bakin_exec_foo`.
+ * Gateway `tool`-stream frames carry the MCP-qualified name; chips render the
+ * bare tool. Only the `bakin-` prefix is stripped — other dotted names
+ * (e.g. `browser.navigate`) are real tool ids.
+ */
+function bareToolName(name: string): string {
+  return name.replace(/^bakin-[a-z0-9_-]+\./, '')
+}
+
 /** How one OpenClaw turn ended, from the RPC settle (or a pushed abort). */
 export type OpenClawTurnFinish =
   | { kind: 'ok'; content: string | null }
@@ -157,7 +167,7 @@ export class OpenClawTurnChunkMachine {
   }
 
   private onTool(data: Extract<ReturnType<typeof parseAgentStreamData>, { stream: 'tool' }>): ChatChunk[] {
-    const name = data.name && data.name.length > 0 ? data.name : 'tool'
+    const name = data.name && data.name.length > 0 ? bareToolName(data.name) : 'tool'
     if (data.phase === 'start') {
       const summary = summarizeOpenClawToolPurpose(name, data.args)
       return [{
@@ -213,6 +223,60 @@ export class OpenClawTurnChunkMachine {
       ...(outcome.message ? { content: outcome.message } : {}),
       data: { kind: outcome.errorKind },
     }]
+  }
+}
+
+/** Handle returned by {@link tapOpenClawTurnActivity}. */
+export interface OpenClawActivityTap {
+  /** Wire into the turn's accepted-ack path: adopts the authoritative runId
+   *  and surfaces the immediate `thinking` status. */
+  onAccepted: (ack: OpenClawGatewayAcceptedAck) => void
+  /** Remove the event subscription — call on every settle path. */
+  unsubscribe: () => void
+}
+
+/**
+ * Send-path live-activity tap (MessageArgs.onActivity, T8/D-plan-1): the
+ * same frame→chunk machine as streaming, but subscribed to `agent` events
+ * only and filtered to `tool`/`status` chunks — text never flows through
+ * the tap (contract: prose rides `messaging.stream`). Callback exceptions
+ * are contained and reported via `onCallbackError`; they never propagate
+ * into frame handling or the turn itself.
+ *
+ * `thinking` is once-gated per turn (matching Pi's announcedThinking): the
+ * gateway emits a thinking frame every ~150ms for the whole stretch, and a
+ * long turn would otherwise push hundreds of identical status chunks
+ * through the tap → SSE fan-out. One "thinking" is the chip signal.
+ */
+export function tapOpenClawTurnActivity(opts: {
+  events: GatewayEventSource
+  idempotencyKey: string
+  onActivity: (chunk: ChatChunk) => void
+  onCallbackError: (err: unknown) => void
+}): OpenClawActivityTap {
+  const machine = new OpenClawTurnChunkMachine(opts.idempotencyKey)
+  let thinkingAnnounced = false
+  const forward = (chunks: ChatChunk[]): void => {
+    for (const chunk of chunks) {
+      if (chunk.type !== 'tool' && chunk.type !== 'status') continue
+      if (chunk.type === 'status' && chunk.content === 'thinking') {
+        if (thinkingAnnounced) continue
+        thinkingAnnounced = true
+      }
+      try {
+        opts.onActivity(chunk)
+      } catch (err) {
+        opts.onCallbackError(err)
+      }
+    }
+  }
+  const unsubscribe = subscribeAgentEvents(opts.events, (payload) => forward(machine.onAgentEvent(payload)))
+  return {
+    onAccepted: (ack) => {
+      machine.adoptRunId(ack.runId)
+      forward([{ type: 'status', content: 'thinking' }])
+    },
+    unsubscribe,
   }
 }
 
