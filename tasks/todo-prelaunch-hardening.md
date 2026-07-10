@@ -35,7 +35,7 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 - [x] T19 Type tightening ✅ (closed definePlugin w/ exactness, inferred exec params, legacy route API deleted, log/storage required, 13 casts removed)
 - [x] T20 Uniform duplicate-throw + /internal split + pluginFetch ✅ (internal entry, R18 throws, pluginFetch/usePluginJsonFetch adopted in chat+brands)
 - [x] T21 TurnOutputView + migrate chat & step-output ✅ (single renderer + thinking indicator; chat + step-output migrated)
-- [ ] T22 Reference plugin (examples/) + CI gate
+- [x] T22 Reference plugin (examples/) + CI gate ✅ (bookmarks domain; every surface + sync-manifest --check gated in CI)
 - [ ] T23 🔶 Starter-repo mirror step (ask-first: OQ1 repo name/visibility)
 - [ ] T24 Public docs sweep
 - [ ] CHECKPOINT 2b: success criteria #2 #3 #6; PR merged
