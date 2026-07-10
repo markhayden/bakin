@@ -40,7 +40,7 @@ mock.module('../../packages/core/src/logger', loggerMock)
 
 import { createOpenClawRuntimeAdapter } from '@bakin/adapter-openclaw'
 import { RuntimeError } from '../../packages/core/src/adapters/runtime/errors'
-import { openClawCliSessionId } from '../../packages/adapter-openclaw/src/session-store'
+import { openClawCliSessionId, openClawExplicitSessionKey } from '../../packages/adapter-openclaw/src/session-store'
 
 afterAll(() => rmSync(testHome, { recursive: true, force: true }))
 
@@ -115,6 +115,30 @@ describe('messaging.send with MessageArgs.signal', () => {
     expect(abortFrames[0].params.sessionKey).toBe(expectedKey)
     // Pre-ack there is no runId to address — the param must be absent, not a guess.
     expect('runId' in abortFrames[0].params).toBe(false)
+  })
+
+  it('threaded sends carry BOTH sessionId and the canonical sessionKey (abort-registration workaround)', async () => {
+    // sessionId alone leaves the run unregistered in the gateway's
+    // chat-abort registry (OpenClaw 2026.6.11 — fixture
+    // abort-explicit-session.jsonl); the sessionKey param is what makes the
+    // run server-side abortable at all. Guard the send shape.
+    const { adapter, captured } = adapterWithHangingGateway()
+    const controller = new AbortController()
+    const pending = adapter.messaging.send({
+      agentId: 'a1',
+      content: 'work on the task',
+      threadId: 'task:t9:d1',
+      signal: controller.signal,
+    })
+    pending.catch(() => {})
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    const agentFrames = captured.filter((c) => c.method === 'agent')
+    expect(agentFrames.length).toBe(1)
+    const cliSessionId = openClawCliSessionId('a1', 'task:t9:d1')
+    expect(agentFrames[0].params.sessionId).toBe(cliSessionId)
+    expect(agentFrames[0].params.sessionKey).toBe(`agent:a1:explicit:${cliSessionId}`)
+    controller.abort('cleanup')
+    await pending.catch(() => {})
   })
 
   it('abort after the accepted ack sends chat.abort with the ack exact ids and audits the server-side stop', async () => {
@@ -303,5 +327,14 @@ describe('messaging.send with MessageArgs.signal', () => {
       signal: controller.signal,
     })
     expect(result.content).toBe('done')
+  })
+})
+
+describe('openClawExplicitSessionKey format pin', () => {
+  it('is the single owner of the gateway canonical explicit-session key format', () => {
+    // Drift here silently breaks BOTH the send-shape workaround and the
+    // abort fallback (fixtures abort-sessionkey-addressed.jsonl record the
+    // gateway echoing exactly this format).
+    expect(openClawExplicitSessionKey('pixel', 'abc-123')).toBe('agent:pixel:explicit:abc-123')
   })
 })

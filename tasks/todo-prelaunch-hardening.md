@@ -55,3 +55,7 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 - [ ] T33 Fixtures, comments, knowledge-doc drift
 - [ ] T34 SDK primitive adoption sweep (ex-sdk-gaps A2/A3/A4 + useAvailableModels relocation; after PR 2b)
 - [ ] CHECKPOINT 4: initiative close — all success criteria re-verified, Pi worktree retired, SPEC marked complete
+
+## Live-validation follow-ups (2026-07-09 flip)
+- [ ] 🔶 USER: file the OpenClaw upstream issue for the abort-registration defect (suggested text in PR #637) and backfill the real number over `openclaw#TBD-abort-registration` (pin test, fixtures README, rig doc)
+- [ ] Run rig-validate R7 (abort workaround re-verify) after every OpenClaw version bump

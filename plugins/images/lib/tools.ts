@@ -319,6 +319,14 @@ async function prepareImageRequest(ctx: PluginContext, params: ImagesGeneratePar
   let prompt = compilePrompt(params)
   if (!prompt) return { error: 'prompt or promptPacket is required' }
 
+  // Second line of defense behind server-side abort (2026-07-09 incident:
+  // a deleted task's turn kept running and billed a generation): billable
+  // work for a task that no longer exists is refused BEFORE routing/billing.
+  const task = await ctx.tasks.get(params.taskId)
+  if (!task) {
+    return { error: `Task ${params.taskId} no longer exists (deleted). Do not continue work for it — stop and re-check your assignment with bakin_exec_tasks_get.` }
+  }
+
   // Brand conditioning (#419): resolve BEFORE routing/billing — a bad brandId
   // fails loudly here, never ships off-palette art. Agent-passed references
   // win; the brand's defaults fill only when none were given (max-4 upstream).

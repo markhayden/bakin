@@ -91,7 +91,7 @@ import {
   approvalEventFromOpenClawPayload, openClawDecisionFromBakinOption,
   parseNativeApprovalRef, isExpectedNativeApprovalResolveMiss,
 } from './approval-helpers'
-import { openClawCliSessionId } from './session-store'
+import { openClawCliSessionId, openClawExplicitSessionKey } from './session-store'
 import { streamOpenClawTurnChunks, tapOpenClawTurnActivity, type OpenClawActivityTap } from './stream-events'
 import {
   writeOpenClawConfig, upsertOpenClawAgentConfig,
@@ -1520,8 +1520,9 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     cliSessionId: string | null,
   ): void {
     // The gateway keys explicit-sessionId sessions as
-    // agent:<agentId>:explicit:<sessionId> (verified via sessions.list).
-    const sessionKey = ack?.sessionKey ?? (cliSessionId ? `agent:${agentId}:explicit:${cliSessionId}` : null)
+    // agent:<agentId>:explicit:<sessionId> (verified via sessions.list) —
+    // openClawExplicitSessionKey is the single owner of that format.
+    const sessionKey = ack?.sessionKey ?? (cliSessionId ? openClawExplicitSessionKey(agentId, cliSessionId) : null)
     if (!sessionKey) return
     const params: Record<string, unknown> = { sessionKey }
     if (ack?.runId) params.runId = ack.runId
@@ -1537,6 +1538,10 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
           ...(ack?.runId ? { runId: ack.runId } : {}),
           aborted,
           runIds,
+          // Registration evidence: an ack WITHOUT sessionKey means the run
+          // was never registered gateway-side (sessionId-only send shape) —
+          // an aborted:false here is the upstream defect, not a Bakin bug.
+          ackHadSessionKey: Boolean(ack?.sessionKey),
         })
         if (aborted) {
           this.logger.info('OpenClaw run aborted server-side', { agentId, sessionKey, runIds })
@@ -1583,7 +1588,14 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       idempotencyKey,
     }
     applyRuntimeMessageToolPolicy(params, opts)
-    if (cliSessionId) params.sessionId = cliSessionId
+    // BOTH sessionId and its canonical sessionKey: sessionId alone leaves
+    // the run unregistered in the gateway's chat-abort registry (server-side
+    // abort silently fails — the 2026-07-09 delete-didn't-abort incident;
+    // fixtures abort-explicit-session.jsonl / abort-sessionkey-addressed.jsonl).
+    if (cliSessionId) {
+      params.sessionId = cliSessionId
+      params.sessionKey = openClawExplicitSessionKey(opts.agentId, cliSessionId)
+    }
     // Per-turn routing overrides (Bakin's policy → gateway agent RPC). Omit
     // when unset so the runtime uses the agent's configured model/default.
     if (opts.model) params.model = opts.model
@@ -1614,9 +1626,12 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     const requestAbort = new AbortController()
     // Caller cancellation (MessageArgs.signal): reject the local awaiter via
     // requestAbort and stop the run server-side. chat.abort addressed by the
-    // accepted ack's exact {sessionKey, runId} DOES abort backend `agent`
-    // RPC runs (live-verified 2026-07-09; T1 fixture abort-turn.jsonl shows
-    // {ok:true, aborted:true, runIds:[…]} + terminal `chat state:'aborted'`).
+    // accepted ack's exact {sessionKey, runId} aborts backend `agent` RPC
+    // runs ONLY when the run was registered at accept time — which requires
+    // the send to carry `sessionKey` (set above alongside sessionId; a
+    // sessionId-only run is unregistered and NO abort surface can reach it —
+    // fixtures abort-turn.jsonl, abort-explicit-session.jsonl,
+    // abort-sessionkey-addressed.jsonl; live-verified 2026-07-09).
     // Before the ack arrives nothing is runId-addressable — fall back to the
     // best-known explicit session key (threaded) or skip (unthreaded); a
     // late ack can never surface after the local abort because the pending

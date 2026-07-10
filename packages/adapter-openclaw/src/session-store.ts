@@ -15,6 +15,19 @@ export function openClawCliSessionId(agentId: string, sessionKey: string): strin
   return deterministicUuid(`bakin:${agentId}:${sessionKey}`)
 }
 
+/**
+ * The gateway's canonical key for an explicit-sessionId session. Threaded
+ * sends MUST pass this alongside `sessionId`: a run addressed by sessionId
+ * alone is never registered in the gateway's chat-abort registry (ack
+ * omits sessionKey; chat.abort AND sessions.abort miss — fixture
+ * abort-explicit-session.jsonl), so server-side abort silently fails.
+ * Sending both registers the run AND keeps the underlying sessionId (and
+ * trajectory filename) ours (fixture abort-sessionkey-addressed.jsonl).
+ */
+export function openClawExplicitSessionKey(agentId: string, cliSessionId: string): string {
+  return `agent:${agentId}:explicit:${cliSessionId}`
+}
+
 export function isOpenClawCliSessionId(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 }

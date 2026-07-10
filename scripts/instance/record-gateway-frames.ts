@@ -24,6 +24,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 
 import { buildDeviceConnectFields, loadDeviceAuth } from '../../packages/adapter-openclaw/src/device-auth'
+import { redactString, registerSecretValue, sanitizeFrameValue } from './frame-sanitize'
 
 interface CliArgs {
   url: string
@@ -72,44 +73,6 @@ interface RecordedLine {
   frame: unknown
 }
 
-/** Values that must never land in a committed fixture. */
-const secretValues: string[] = []
-
-function redactString(value: string): string {
-  let out = value
-  for (const secret of secretValues) {
-    if (secret && out.includes(secret)) out = out.split(secret).join('<redacted-secret>')
-  }
-  return out
-}
-
-const REDACT_KEYS: Record<string, string> = {
-  token: '<redacted-token>',
-  deviceToken: '<redacted-device-token>',
-  signature: '<redacted-signature>',
-  publicKey: '<redacted-public-key>',
-  privateKeyPem: '<redacted-private-key>',
-  publicKeyPem: '<redacted-public-key>',
-  nonce: '<redacted-nonce>',
-}
-
-/** deviceId (sha256 hex) and any registered secret value are scrubbed wherever they appear. */
-function sanitize(value: unknown, keyHint?: string): unknown {
-  if (typeof value === 'string') {
-    if (keyHint && REDACT_KEYS[keyHint]) return REDACT_KEYS[keyHint]
-    if (keyHint === 'deviceId' || keyHint === 'id' && /^[0-9a-f]{64}$/.test(value)) return '<redacted-device-id>'
-    if (/^[0-9a-f]{64}$/.test(value) && secretValues.includes(value)) return '<redacted-device-id>'
-    return redactString(value)
-  }
-  if (Array.isArray(value)) return value.map((v) => sanitize(v))
-  if (value && typeof value === 'object') {
-    const out: Record<string, unknown> = {}
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = sanitize(v, k)
-    return out
-  }
-  return value
-}
-
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2))
   const lines: RecordedLine[] = []
@@ -122,8 +85,7 @@ async function main(): Promise<void> {
     console.error('no device identity found under OPENCLAW_HOME — pre-approve one first (scripts/instance/device-approve.ts)')
     process.exit(1)
   }
-  secretValues.push(args.token, deviceInfo.deviceId)
-  if (deviceInfo.deviceToken) secretValues.push(deviceInfo.deviceToken)
+  registerSecretValue(args.token, deviceInfo.deviceId, deviceInfo.deviceToken)
 
   const ws = new WebSocket(args.url)
   const send = (frame: Record<string, unknown>): void => {
@@ -145,7 +107,7 @@ async function main(): Promise<void> {
     setTimeout(() => {
       try { ws.close() } catch { /* already closed */ }
       mkdirSync(dirname(args.out), { recursive: true })
-      const body = lines.map((l) => JSON.stringify(sanitize(l))).join('\n') + '\n'
+      const body = lines.map((l) => JSON.stringify(sanitizeFrameValue(l))).join('\n') + '\n'
       writeFileSync(args.out, redactString(body))
       console.log(`recorded ${lines.length} lines → ${args.out}`)
       process.exit(0)
