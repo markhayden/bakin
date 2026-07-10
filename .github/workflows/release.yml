@@ -344,6 +344,39 @@ jobs:
       - name: Publish SDK to npm
         run: bun run scripts/publish-sdk.ts --version "${VERSION}" --package-dir "${RUNNER_TEMP}/sdk-package" --tag "${NPM_TAG}"
 
+      - name: Mirror reference plugin to starter repo
+        if: ${{ needs.gate.outputs.prerelease == 'false' }}
+        env:
+          STARTER_REPO_TOKEN: ${{ secrets.STARTER_REPO_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # FAIL-SOFT by design: a missing token or starter repo must never
+          # break a release — the starter mirror is a convenience artifact.
+          if [[ -z "${STARTER_REPO_TOKEN:-}" ]]; then
+            echo "::warning::STARTER_REPO_TOKEN not set — skipping starter-repo mirror (create markhayden/bakin-plugin-starter and add the token to enable)"
+            exit 0
+          fi
+
+          starter_dir="${RUNNER_TEMP}/bakin-plugin-starter"
+          if ! git clone "https://x-access-token:${STARTER_REPO_TOKEN}@github.com/markhayden/bakin-plugin-starter.git" "${starter_dir}"; then
+            echo "::warning::could not clone markhayden/bakin-plugin-starter — skipping mirror (create the repo, public, to enable)"
+            exit 0
+          fi
+
+          bun run scripts/release/mirror-starter-repo.ts --version "${VERSION}" --target "${starter_dir}"
+
+          cd "${starter_dir}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Starter repo already current for ${VERSION}"
+          else
+            git commit -m "bakin-plugin-starter ${VERSION} (mirrored from bakin ${TAG})"
+            git push origin HEAD:main
+          fi
+
       - name: Render Homebrew formula
         run: bun run scripts/update-homebrew-formula.ts --version "${VERSION}" --checksums dist/checksums.txt --out "${RUNNER_TEMP}/bakin.rb"
 

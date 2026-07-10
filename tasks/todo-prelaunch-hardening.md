@@ -36,7 +36,7 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 - [x] T20 Uniform duplicate-throw + /internal split + pluginFetch ✅ (internal entry, R18 throws, pluginFetch/usePluginJsonFetch adopted in chat+brands)
 - [x] T21 TurnOutputView + migrate chat & step-output ✅ (single renderer + thinking indicator; chat + step-output migrated)
 - [x] T22 Reference plugin (examples/) + CI gate ✅ (bookmarks domain; every surface + sync-manifest --check gated in CI)
-- [ ] T23 🔶 Starter-repo mirror step (ask-first: OQ1 repo name/visibility)
+- [x] T23 Starter-repo mirror step ✅ (markhayden/bakin-plugin-starter, public; fail-soft release step + dry-run-tested staging script)
 - [ ] T24 Public docs sweep
 - [ ] CHECKPOINT 2b: success criteria #2 #3 #6; PR merged
 
@@ -59,3 +59,4 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 ## Live-validation follow-ups (2026-07-09 flip)
 - [ ] 🔶 USER: file the OpenClaw upstream issue for the abort-registration defect (suggested text in PR #637) and backfill the real number over `openclaw#TBD-abort-registration` (pin test, fixtures README, rig doc)
 - [ ] Run rig-validate R7 (abort workaround re-verify) after every OpenClaw version bump
+- [ ] 🔶 USER: create the public repo markhayden/bakin-plugin-starter (empty) + add a STARTER_REPO_TOKEN secret before the next stable release — until then the mirror step warns and skips (release never breaks)
