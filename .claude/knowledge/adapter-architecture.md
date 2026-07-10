@@ -299,6 +299,16 @@ structured chunks only — never pre-rendered HTML/ANSI/raw-JSON dumps;
 stripping runtime noise is the adapter's job. The doc-comment source of
 truth is `packages/core/src/adapters/runtime/concepts.ts`.
 
+**Turn-activity tap (`MessageArgs.onActivity`).** `send()` accepts an
+optional per-turn callback both adapters feed with **tool + status chunks
+only** (text deltas never tap — they belong to `stream()`). Best-effort:
+no delivery or ordering guarantee relative to the settle; adapters contain
+callback exceptions (a throwing tap can never fail the turn); absent tap =
+zero cost (OpenClaw doesn't even subscribe). This is dispatch's liveness
+seam — see `dispatch.md` § Concurrent dispatch model for the `turn-activity`
+SSE fan-out. Deliberately NOT mirrored into the SDK's reduced
+`RuntimeMessageArgs` (plugins consume liveness via SSE, not the tap).
+
 **Turn output formatting — the two-seam rule.** (1) Server seam: adapters
 normalize runtime output into the chunk taxonomy above — per-runtime
 formatting differences are absorbed here, invisibly to the UI. (2) Client

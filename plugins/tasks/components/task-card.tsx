@@ -9,6 +9,7 @@ import { compactDispatchFailureLabel, getLatestDispatchFailure } from '../lib/di
 import { getTaskAvailableAtMs } from '../lib/scheduled'
 import type { BudgetHold } from '../hooks/use-budget-status'
 import type { BrandHold } from '../hooks/use-brand-status'
+import type { LiveActivity } from '../hooks/use-live-activity'
 import type { Task, ColumnId } from '../types'
 
 export interface TaskScoreInfo {
@@ -66,7 +67,7 @@ function setChildCardHighlight(childTaskId: string, on: boolean): void {
   for (const cls of CHILD_HIGHLIGHT_CLASSES) card.classList.toggle(cls, on)
 }
 
-export function TaskCardContent({ task, columnId, className, gateLabel, childTaskId, budgetHold, brandHold, warnUnbranded, style, scoreInfo }: { task: Task; columnId: string; className?: string; gateLabel?: string; childTaskId?: string; budgetHold?: BudgetHold; brandHold?: BrandHold; warnUnbranded?: boolean; style?: CSSProperties; scoreInfo?: TaskScoreInfo }) {
+export function TaskCardContent({ task, columnId, className, gateLabel, childTaskId, budgetHold, brandHold, warnUnbranded, style, scoreInfo, liveActivity }: { task: Task; columnId: string; className?: string; gateLabel?: string; childTaskId?: string; budgetHold?: BudgetHold; brandHold?: BrandHold; warnUnbranded?: boolean; style?: CSSProperties; scoreInfo?: TaskScoreInfo; liveActivity?: LiveActivity }) {
   const badge = STATUS_BADGE_STYLES[columnId as ColumnId]
   // Clear any lingering child-card outline if this card unmounts mid-hover
   // (e.g. the sub-task finishes and the badge disappears under the cursor).
@@ -171,6 +172,18 @@ export function TaskCardContent({ task, columnId, className, gateLabel, childTas
         </div>
       )}
 
+      {/* Live turn activity (ephemeral SSE chip): only meaningful while the
+          turn runs, so inProgress only — TTL in the hook sweeps stale chips. */}
+      {liveActivity && columnId === 'inProgress' && !isComplete && (
+        <div className="flex items-center gap-1.5 mt-1.5 px-2 py-1 rounded-md bg-blue-500/10 border border-blue-500/20 whitespace-nowrap overflow-hidden">
+          <span className="relative flex size-2 shrink-0">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-60" />
+            <span className="relative inline-flex size-2 rounded-full bg-blue-500" />
+          </span>
+          <span className="text-blue-300 text-[11px] truncate" title={liveActivity.label}>{liveActivity.label}</span>
+        </div>
+      )}
+
       {/* Child sub-task indicator — hover outlines the linked child card */}
       {childTaskId && (
         <div
@@ -258,11 +271,12 @@ interface TaskCardProps {
   brandHold?: BrandHold
   warnUnbranded?: boolean
   scoreInfo?: TaskScoreInfo
+  liveActivity?: LiveActivity
   onDelete: (task: { id: string; title: string }) => void
   onClick: (task: Task, columnId: ColumnId) => void
 }
 
-export function TaskCard({ task, columnId, index = 0, gateLabel, childTaskId, budgetHold, brandHold, warnUnbranded, scoreInfo, onDelete, onClick }: TaskCardProps) {
+export function TaskCard({ task, columnId, index = 0, gateLabel, childTaskId, budgetHold, brandHold, warnUnbranded, scoreInfo, liveActivity, onDelete, onClick }: TaskCardProps) {
   const { ref, isDragging } = useSortable({
     id: task.id,
     group: columnId,
@@ -306,6 +320,7 @@ export function TaskCard({ task, columnId, index = 0, gateLabel, childTaskId, bu
         brandHold={brandHold}
         warnUnbranded={warnUnbranded}
         scoreInfo={scoreInfo}
+        liveActivity={liveActivity}
         className="p-4"
       />
       </div>

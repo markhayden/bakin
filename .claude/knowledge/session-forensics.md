@@ -9,16 +9,15 @@ reproduced the deterministic failure. This system makes that class of failure
 detected in milliseconds, diagnosed precisely, recovered automatically, and
 prevented by prompt discipline.
 
-**Scope note (WS1a):** the trajectory/transcript machinery below is
-forensics-only. Live chat streaming no longer reads any session file — it
-rides gateway push events (`chat` delta/final/aborted frames + `agent`
-tool/lifecycle frames; see `gateway-frames.ts` + `stream-events.ts` and
-`.claude/knowledge/adapter-architecture.md` § stream contract). The old
-live transcript tail in `session-activity.ts` is unused by `streamChat`
-(the module still hosts the session-store cache and the shared
-`OPENCLAW_SESSION_ACTIVITY_POLL_MS` constant the death watch reuses);
-PR 1b deletes the live tail outright, leaving forensics as this system's
-only file-watching consumer.
+**Scope note (WS1):** the trajectory/transcript machinery below is
+forensics-only — this module is the ONLY file-watching consumer left. Live
+chat streaming and dispatch liveness read no session file; they ride gateway
+push events (`chat` delta/final/aborted frames + `agent` tool/lifecycle
+frames; see `gateway-frames.ts` + `stream-events.ts` and
+`.claude/knowledge/adapter-architecture.md` § stream contract). The old live
+transcript tail is deleted; its survivors live in `session-store.ts`
+(session-id mapping + sessions.json cache) and the death-watch poll interval
+is `OPENCLAW_TRAJECTORY_POLL_MS` in `trajectory-forensics.ts`.
 
 ## The trajectory file (read-only forensic source)
 
@@ -58,8 +57,7 @@ turn (per-attempt scoping — a session accrues one run per turn):
    `finalize()` probes it against a state clone so an unterminated line is
    evaluated without being consumed. Shared low-level reads live in
    `packages/adapter-openclaw/src/file-utils.ts` (`safeFileSize`,
-   `readFileFrom`/`readFileBytesFrom`) — also used by the
-   session-activity module.
+   `readFileFrom`/`readFileBytesFrom`).
 2. **Post-mortem** (`inspectTrajectoryRun`): if the transport timer fires
    anyway or the socket drops mid-turn, the trajectory tail is inspected.
    Three verdicts: `success` → the run finished but the frame was lost, so

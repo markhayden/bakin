@@ -97,7 +97,7 @@ mock.module('@/core/app-services-store', () => ({ getAppServices: () => harnessS
 
 import { createImitationCrabHarness, type ImitationCrabHarness } from '../../dev/imitation-crab/harness'
 import { handleGatewayRpcRequest } from '../../dev/imitation-crab/gateway'
-import { openClawCliSessionId } from '../../packages/adapter-openclaw/src/session-activity'
+import { openClawCliSessionId } from '../../packages/adapter-openclaw/src/session-store'
 import { fireDispatchTurn, getInFlightTurnCount, awaitDispatchIdle } from '../../src/core/dispatch-turns'
 import { abortTurnsForTask } from '../../src/core/dispatch-registry'
 import { closeDb } from '../../packages/core/src/storage/db'

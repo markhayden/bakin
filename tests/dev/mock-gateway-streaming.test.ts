@@ -187,9 +187,19 @@ describe('mock gateway push-event streaming', () => {
     process.env.OPENCLAW_MOCK_CHAT_DELAY_MS = '10000'
     try {
       const frames: Frame[] = []
+      // The fixed adapter send shape: sessionId AND its canonical sessionKey
+      // (sessionId alone is the upstream-defect shape — see the
+      // workaround-regressions test).
       const turn = handleGatewayRpcRequest(
         'agent',
-        { agentId: 'patch', message: 'Count slowly', idempotencyKey: 'idem-abort', sessionId: 'sess-abort', expectFinal: true },
+        {
+          agentId: 'patch',
+          message: 'Count slowly',
+          idempotencyKey: 'idem-abort',
+          sessionId: 'sess-abort',
+          sessionKey: 'agent:patch:explicit:sess-abort',
+          expectFinal: true,
+        },
         { requestId: 'req-abort', push: (frame) => frames.push(frame as Frame) },
       )
       // Let the ack land and the slow sleep start.

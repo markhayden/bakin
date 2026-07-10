@@ -110,5 +110,14 @@ needed, mount the workspace or translate paths like the openclaw-shim does.
 `bun run scripts/instance/validate.ts` (rig up first) runs the session-death
 hardening validation: gateway sanity, real-turn e2e + forensics against live
 trajectories, same/cross-agent concurrency probes, benchmarks, a
-gateway-restart failure drill, and a session-retention probe. See
+gateway-restart failure drill, a session-retention probe, and the **abort
+workaround re-verify (R7)** — the real-wire owner of the
+`openclaw#TBD-abort-registration` workaround pin (threaded sends carry
+`sessionKey` alongside `sessionId`; the CI pin only tests the Imitation Crab
+mirror). **Run the campaign after every OpenClaw version bump**; if R7.2
+reports the sessionId-only defect gone, follow the deletion checklist in
+`tests/dev/openclaw-workaround-regressions.test.ts`. Standalone probes:
+`scripts/instance/abort-ladder-probe.ts` (defect) and
+`scripts/instance/abort-workaround-probe.ts` (fix shape), sharing the
+`frame-sanitize.ts` redaction pass with the frame recorder. See
 `.claude/knowledge/session-forensics.md` for the system it validates.

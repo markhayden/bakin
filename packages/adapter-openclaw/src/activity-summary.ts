@@ -1,128 +1,15 @@
 /**
- * OpenClaw activity summarization — transcript record → displayable ChatChunk.
- *
- * Turns OpenClaw session-transcript records (assistant messages with tool
- * calls, tool-result messages) into the ChatChunk activity stream the UI
- * renders, plus the pure tool-call/shell/URL summarizers and redaction-aware
- * preview helpers behind it. No adapter state; the session reader feeds it
- * raw records.
+ * OpenClaw activity summarization — pure tool-call/shell/URL summarizers and
+ * redaction-aware preview helpers. No adapter state; the gateway-event chunk
+ * machine (`stream-events.ts`) feeds it tool names/args from pushed frames.
+ * (The transcript-record → ChatChunk path that used to live here died with
+ * the trajectory activity tail.)
  */
-import type { ChatChunk } from '@bakin/core/adapters/runtime'
-import { firstString, isPlainObject, parseJsonObject, redactSensitiveText } from './runtime-utils'
+import { redactSensitiveText } from '@bakin/core/redact'
+import { isPlainObject, parseJsonObject } from './runtime-utils'
 
 /** Max chars for an unknown-value activity preview before middle-truncation. */
 const OPENCLAW_ACTIVITY_PREVIEW_CHARS = 500
-
-export function activityChunksFromOpenClawTranscriptRecord(record: Record<string, unknown>): ChatChunk[] {
-  // Trajectory records (`traceSchema: openclaw-trajectory`) — the LIVE
-  // activity source on newer OpenClaw, which batches session-JSONL records
-  // to turn end. Same ChatChunk shapes as the session-file path below.
-  if (record.type === 'tool.call') return activityChunkFromTrajectoryToolCall(record)
-  if (record.type === 'tool.result') return activityChunkFromTrajectoryToolResult(record)
-  if (record.type !== 'message') return []
-  const message = record.message
-  if (!isPlainObject(message)) return []
-  const role = message.role
-  if (role === 'assistant') return activityChunksFromAssistantMessage(message)
-  if (role === 'toolResult') return activityChunkFromToolResultMessage(message)
-  return []
-}
-
-/** `bakin-<agent>.bakin_exec_foo` (native-MCP prefixed) → `bakin_exec_foo`. */
-function bareToolName(name: string): string {
-  return name.replace(/^bakin-[a-z0-9_-]+\./, '')
-}
-
-/** Trajectory `tool.call` → running tool chunk (data: {toolCallId, name, arguments}). */
-function activityChunkFromTrajectoryToolCall(record: Record<string, unknown>): ChatChunk[] {
-  const data = isPlainObject(record.data) ? record.data : {}
-  const name = typeof data.name === 'string' && data.name.length > 0 ? bareToolName(data.name) : 'tool'
-  const args = data.arguments
-  // The live chip renders `summary` (not content) — fall back to the call
-  // detail so a bash row shows its command even when no purpose matched.
-  const detail = summarizeOpenClawToolCall(name, args)
-  const summary = summarizeOpenClawToolPurpose(name, args)
-    ?? (detail.startsWith(`${name}: `) ? detail.slice(name.length + 2) : undefined)
-  return [{
-    type: 'tool',
-    content: summarizeOpenClawToolCall(name, args),
-    data: {
-      phase: 'call',
-      callId: typeof data.toolCallId === 'string' ? data.toolCallId : undefined,
-      toolName: name,
-      status: 'running',
-      ...(summary ? { summary } : {}),
-      inputPreview: previewUnknown(args),
-    },
-  }]
-}
-
-/** Trajectory `tool.result` → result tool chunk (data: {toolCallId, name, status, isError, result}). */
-function activityChunkFromTrajectoryToolResult(record: Record<string, unknown>): ChatChunk[] {
-  const data = isPlainObject(record.data) ? record.data : {}
-  const toolName = typeof data.name === 'string' && data.name.length > 0 ? bareToolName(data.name) : 'tool'
-  const status = typeof data.status === 'string' ? data.status : undefined
-  const result = isPlainObject(data.result) ? data.result : {}
-  const exitCode = typeof result.exitCode === 'number' ? result.exitCode : undefined
-  const label = status ? `${toolName} ${status}` : `${toolName} finished`
-  return [{
-    type: 'tool',
-    content: label,
-    data: {
-      phase: 'result',
-      toolName,
-      callId: typeof data.toolCallId === 'string' ? data.toolCallId : undefined,
-      status: data.isError === true ? 'failed' : normalizeToolResultStatus(status, exitCode),
-      exitCode,
-      outputPreview: previewUnknown(data.result),
-    },
-  }]
-}
-
-export function activityChunksFromAssistantMessage(message: Record<string, unknown>): ChatChunk[] {
-  const content = Array.isArray(message.content) ? message.content : []
-  const chunks: ChatChunk[] = []
-  for (const part of content) {
-    if (!isPlainObject(part) || part.type !== 'toolCall') continue
-    const name = typeof part.name === 'string' && part.name.length > 0 ? part.name : 'tool'
-    const args = part.arguments
-    const summary = firstString(part.summary, part.purpose, part.displayLabel)
-      ?? summarizeOpenClawToolPurpose(name, args)
-    chunks.push({
-      type: 'tool',
-      content: summarizeOpenClawToolCall(name, args),
-      data: {
-        phase: 'call',
-        callId: typeof part.id === 'string' ? part.id : undefined,
-        toolName: name,
-        status: 'running',
-        ...(summary ? { summary } : {}),
-        inputPreview: previewUnknown(args),
-      },
-    })
-  }
-  return chunks
-}
-
-export function activityChunkFromToolResultMessage(message: Record<string, unknown>): ChatChunk[] {
-  const toolName = typeof message.toolName === 'string' && message.toolName.length > 0 ? message.toolName : 'tool'
-  const details = isPlainObject(message.details) ? message.details : {}
-  const status = typeof details.status === 'string' ? details.status : undefined
-  const label = status ? `${toolName} ${status}` : `${toolName} finished`
-  return [{
-    type: 'tool',
-      content: label,
-      data: {
-        phase: 'result',
-        toolName,
-        callId: typeof message.toolCallId === 'string' ? message.toolCallId : undefined,
-        status: normalizeToolResultStatus(status, typeof details.exitCode === 'number' ? details.exitCode : undefined),
-        exitCode: typeof details.exitCode === 'number' ? details.exitCode : undefined,
-        durationMs: typeof details.durationMs === 'number' ? details.durationMs : undefined,
-        outputPreview: previewUnknown(message.content),
-      },
-  }]
-}
 
 export function normalizeToolResultStatus(status: string | undefined, exitCode: number | undefined): string {
   if (status && status.length > 0) return status
