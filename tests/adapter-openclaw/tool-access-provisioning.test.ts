@@ -29,6 +29,14 @@ import {
 
 const BASE = 'http://localhost:3737'
 
+/** Golden entry shape: what provisioning writes for one agent. */
+const entryFor = (agent: string, base = BASE) => ({
+  url: `${base.replace(/\/+$/, '')}/mcp?agent=${agent}`,
+  description: `Bakin MCP for ${agent}`,
+  requestTimeoutMs: BAKIN_MCP_REQUEST_TIMEOUT_MS,
+  codex: { agents: [agent] },
+})
+
 describe('applyBakinMcpEntries', () => {
   it('writes byte-identical mcp.servers entries for every agent, preserving foreign entries', () => {
     const config: BakinMcpConfig = {
@@ -39,10 +47,21 @@ describe('applyBakinMcpEntries', () => {
     expect(changes).toEqual(['added bakin-main', 'added bakin-pixel', 'added bakin-patch'])
     expect(config.mcp!.servers).toEqual({
       existing: { url: 'http://localhost:9999/mcp' },
-      'bakin-main': { url: 'http://localhost:3737/mcp?agent=main', description: 'Bakin MCP for main', requestTimeoutMs: BAKIN_MCP_REQUEST_TIMEOUT_MS },
-      'bakin-pixel': { url: 'http://localhost:3737/mcp?agent=pixel', description: 'Bakin MCP for pixel', requestTimeoutMs: BAKIN_MCP_REQUEST_TIMEOUT_MS },
-      'bakin-patch': { url: 'http://localhost:3737/mcp?agent=patch', description: 'Bakin MCP for patch', requestTimeoutMs: BAKIN_MCP_REQUEST_TIMEOUT_MS },
+      'bakin-main': entryFor('main'),
+      'bakin-pixel': entryFor('pixel'),
+      'bakin-patch': entryFor('patch'),
     })
+  })
+
+  it('scopes every entry to exactly its own agent (codex.agents)', () => {
+    // Without codex.agents, OpenClaw attaches EVERY configured server to EVERY
+    // Codex app-server thread — live evidence: 10 agents x 134 tools = 1,340
+    // duplicate tool entries per turn. codex.agents is OpenClaw's per-server
+    // agent filter (isCodexMcpServerAllowedForAgent).
+    const config: BakinMcpConfig = {}
+    applyBakinMcpEntries(config, ['main', 'pixel'], BASE)
+    expect(config.mcp!.servers!['bakin-main'].codex).toEqual({ agents: ['main'] })
+    expect(config.mcp!.servers!['bakin-pixel'].codex).toEqual({ agents: ['pixel'] })
   })
 
   it('updates changed URLs and prunes stale Bakin-owned entries', () => {
@@ -62,6 +81,36 @@ describe('applyBakinMcpEntries', () => {
     expect(config.mcp!.servers!['bakin-old']).toBeUndefined()
   })
 
+  it('heals a pre-scoping entry (correct URL + timeout, no codex.agents)', () => {
+    // Existing installs carry unscoped entries that fan every server out to
+    // every agent thread. Apply must rewrite them in place.
+    const config: BakinMcpConfig = {
+      mcp: {
+        servers: {
+          'bakin-main': {
+            url: 'http://localhost:3737/mcp?agent=main',
+            description: 'Bakin MCP for main',
+            requestTimeoutMs: BAKIN_MCP_REQUEST_TIMEOUT_MS,
+          },
+        },
+      },
+    }
+    expect(applyBakinMcpEntries(config, ['main'], BASE)).toEqual(['updated bakin-main'])
+    expect(config.mcp!.servers!['bakin-main']).toEqual(entryFor('main'))
+  })
+
+  it('heals an entry scoped to the wrong agent', () => {
+    const config: BakinMcpConfig = {
+      mcp: {
+        servers: {
+          'bakin-main': { ...entryFor('main'), codex: { agents: ['pixel'] } },
+        },
+      },
+    }
+    expect(applyBakinMcpEntries(config, ['main'], BASE)).toEqual(['updated bakin-main'])
+    expect(config.mcp!.servers!['bakin-main'].codex).toEqual({ agents: ['main'] })
+  })
+
   it('never prunes a bakin-* entry the user owns (no Bakin description tag)', () => {
     const config: BakinMcpConfig = {
       mcp: {
@@ -79,11 +128,7 @@ describe('applyBakinMcpEntries', () => {
 
   it('is idempotent — no changes when entries are already current', () => {
     const config: BakinMcpConfig = {
-      mcp: {
-        servers: {
-          'bakin-main': { url: 'http://localhost:3737/mcp?agent=main', description: 'Bakin MCP for main', requestTimeoutMs: BAKIN_MCP_REQUEST_TIMEOUT_MS },
-        },
-      },
+      mcp: { servers: { 'bakin-main': entryFor('main') } },
     }
     expect(applyBakinMcpEntries(config, ['main'], BASE)).toEqual([])
   })
@@ -124,7 +169,7 @@ describe('verifyBakinMcpEntries', () => {
     const config: BakinMcpConfig = {
       mcp: {
         servers: {
-          'bakin-main': { url: 'http://localhost:3737/mcp?agent=main', description: 'Bakin MCP for main', requestTimeoutMs: BAKIN_MCP_REQUEST_TIMEOUT_MS },
+          'bakin-main': entryFor('main'),
           'bakin-stale': { url: 'http://localhost:3737/mcp?agent=stale', description: 'Bakin MCP for stale' },
         },
       },
@@ -154,6 +199,24 @@ describe('verifyBakinMcpEntries', () => {
 
     expect(applyBakinMcpEntries(config, ['main'], BASE)).toEqual(['updated bakin-main'])
     expect(config.mcp!.servers!['bakin-main'].requestTimeoutMs).toBe(BAKIN_MCP_REQUEST_TIMEOUT_MS)
+  })
+
+  it('flags an unscoped entry (no codex.agents) as incorrect so provisioning heals it', () => {
+    // Unscoped entries attach to every Codex app-server thread (10x duplicate
+    // tool catalogs per turn). Verify must surface them as drift.
+    const config: BakinMcpConfig = {
+      mcp: {
+        servers: {
+          'bakin-main': {
+            url: 'http://localhost:3737/mcp?agent=main',
+            description: 'Bakin MCP for main',
+            requestTimeoutMs: BAKIN_MCP_REQUEST_TIMEOUT_MS,
+          },
+        },
+      },
+    }
+    const status = verifyBakinMcpEntries(config, ['main'], BASE)
+    expect(status.agentEntries[0].correct).toBe(false)
   })
 })
 

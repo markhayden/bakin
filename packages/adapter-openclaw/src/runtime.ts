@@ -1068,11 +1068,14 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
   /**
    * Write `mcp.servers[bakin-<agent>]` for every agent (pruning stale Bakin
-   * entries), so OpenClaw's native MCP client can reach Bakin's tools. Reads +
-   * writes the runtime config directly and audits the change set. Idempotent —
-   * skips the write when nothing changed. Needs `bakinMcpBaseUrl` from init;
-   * warns and no-ops if absent (can't build URLs). The `execTools` provider is
-   * unused: OpenClaw reaches the live registry over MCP, not by value.
+   * entries), so OpenClaw's native MCP client can reach Bakin's tools. Each
+   * entry is scoped to its own agent via `codex.agents` — without it OpenClaw
+   * attaches every server to every Codex app-server thread (N agents = N
+   * duplicate tool catalogs per turn). Reads + writes the runtime config
+   * directly and audits the change set. Idempotent — skips the write when
+   * nothing changed. Needs `bakinMcpBaseUrl` from init; warns and no-ops if
+   * absent (can't build URLs). The `execTools` provider is unused: OpenClaw
+   * reaches the live registry over MCP, not by value.
    */
   provisionToolAccess = async (): Promise<void> => {
     const baseUrl = this.bakinMcpBaseUrl
