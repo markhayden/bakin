@@ -5,6 +5,7 @@
  */
 import { describe, it, expect, mock, afterEach } from 'bun:test'
 import { render, cleanup, screen } from '@testing-library/react'
+import '../rtl-settle'
 
 const contentDirMock = () => ({
   getContentDir: () => '/tmp/bakin-test-score-overlay',

@@ -1,5 +1,6 @@
 import { describe, it, expect, mock } from 'bun:test'
 import { renderHook } from '@testing-library/react'
+import '../rtl-settle'
 import { usePluginEvent, emitPluginEvent } from '@/hooks/use-plugin-event'
 
 describe('usePluginEvent', () => {

@@ -21,6 +21,7 @@ import { usePluginEvent, emitPluginEvent } from '@/hooks/use-plugin-event'
 mock.module('@makinbakin/sdk/hooks', () => ({ usePluginEvent }))
 
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import '../rtl-settle'
 import { useHealthSummary } from '../../plugins/health/hooks/use-health-summary'
 
 function Probe() {

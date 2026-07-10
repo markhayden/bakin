@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, mock } from 'bun:test'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import '../../rtl-settle'
 import { useState } from 'react'
 import { join } from 'path'
 import { tmpdir } from 'os'

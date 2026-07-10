@@ -2,6 +2,7 @@
 
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import '../rtl-settle'
 import { ProviderKeysTab } from '../../src/components/provider-keys-tab'
 
 const json = (body: unknown) => ({ ok: true, json: async () => body }) as unknown as Response

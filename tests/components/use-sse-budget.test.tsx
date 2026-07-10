@@ -25,6 +25,7 @@ mock.module('@/lib/browser-notify', () => ({
 }))
 
 import { render, waitFor } from '@testing-library/react'
+import '../rtl-settle'
 import { useSSE } from '@/hooks/use-sse'
 import { useContentStore } from '@/hooks/use-content-store'
 

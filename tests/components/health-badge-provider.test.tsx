@@ -28,6 +28,7 @@ const useNavBadge = mock()
 mock.module('@makinbakin/sdk/hooks', () => ({ useNavBadge }))
 
 import { cleanup, render } from '@testing-library/react'
+import '../rtl-settle'
 import { HealthBadgeProvider } from '../../plugins/health/components/health-badge-provider'
 
 beforeEach(() => {

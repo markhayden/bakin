@@ -10,6 +10,7 @@
  */
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, render, screen } from '@testing-library/react'
+import '../rtl-settle'
 
 // Defensive isolation per CLAUDE.md — this test is pure in-memory React but
 // the lint hook requires content-dir mocks on every test to guarantee no

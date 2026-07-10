@@ -10,6 +10,7 @@ import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { renderHook, waitFor, cleanup } from '@testing-library/react'
+import '../rtl-settle'
 
 const testDir = join(tmpdir(), `bakin-test-use-task-run-history-${Date.now()}`)
 

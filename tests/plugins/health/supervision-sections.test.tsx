@@ -5,6 +5,7 @@
  */
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, render, screen } from '@testing-library/react'
+import '../../rtl-settle'
 import type { ReactNode } from 'react'
 
 const contentDirMock = () => ({
