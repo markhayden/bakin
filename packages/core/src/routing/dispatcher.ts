@@ -165,6 +165,34 @@ function effectiveResponses(
 interface BodyOk { ok: true; value: unknown }
 interface BodyErr { ok: false; status: number; error: string; issues?: unknown[] }
 
+const VALID_BODY_CONTENT_TYPES = ['application/json', 'multipart/form-data', '*/*', 'none'] as const
+
+/**
+ * Loudly reject malformed `body` specs. A typo'd contentType (`'json'`)
+ * previously fell through parseBodySpec as a silent pass-through with an
+ * undefined parsed body — the handler then read `parsed.body.title` off
+ * undefined at request time with no hint why. Definition/registration time
+ * is the right place to fail: defineRoute/defineCoreRoute call this at
+ * module eval, and the plugin registry calls it for bare-literal routes at
+ * activation. `label` names the route in the error (e.g. `POST /items`).
+ */
+export function assertValidBodySpec(body: unknown, label: string): void {
+  if (body === undefined || body === null) return
+  if (isZodType(body)) return
+  if (typeof body !== 'object' || !('contentType' in body)) {
+    throw new Error(`route ${label}: body spec must be a zod schema or declare a contentType (got ${JSON.stringify(body)})`)
+  }
+  const ct = (body as { contentType: unknown }).contentType
+  if (!VALID_BODY_CONTENT_TYPES.includes(ct as (typeof VALID_BODY_CONTENT_TYPES)[number])) {
+    throw new Error(
+      `route ${label}: unknown body contentType '${String(ct)}' — valid values: ${VALID_BODY_CONTENT_TYPES.join(', ')}`,
+    )
+  }
+  if (ct === 'application/json' && !isZodType((body as { schema?: unknown }).schema)) {
+    throw new Error(`route ${label}: contentType 'application/json' requires a zod schema`)
+  }
+}
+
 async function parseBodySpec(req: Request, body: BodySpec<unknown>): Promise<BodyOk | BodyErr> {
   // Zod shorthand → JSON
   if (isZodType(body)) return parseJsonBody(req, body)
@@ -177,7 +205,12 @@ async function parseBodySpec(req: Request, body: BodySpec<unknown>): Promise<Bod
       return { ok: true, value: undefined }
     }
   }
-  return { ok: true, value: undefined }
+  // Unreachable for routes that passed assertValidBodySpec; loud for smuggled specs.
+  return {
+    ok: false,
+    status: 500,
+    error: `unknown body contentType '${String((body as { contentType?: unknown }).contentType)}' — route was registered without validation`,
+  }
 }
 
 async function parseJsonBody(req: Request, schema: z.ZodType<unknown>): Promise<BodyOk | BodyErr> {

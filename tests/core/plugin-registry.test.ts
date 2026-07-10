@@ -405,6 +405,24 @@ describe('PluginRegistryImpl', () => {
       expect(mockRegisterRouteDoc).toHaveBeenCalled()
     })
 
+    it('a declarative route with an unknown body contentType fails activation loudly', async () => {
+      const pathA = writeFakePlugin('alpha', {
+        routes: `[{ path: '/items', method: 'POST', body: { contentType: 'json' }, handler: function() { return new Response('ok') } }]`,
+      })
+
+      await pluginRegistry.initialize(
+        { plugins: [{ path: pathA }] },
+        mockStorage(),
+        mockEvents(),
+      )
+
+      const failed = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'alpha')
+      expect(failed?.status).toBe('failed')
+      expect(failed?.errorMessage).toContain("unknown body contentType 'json'")
+      expect(failed?.errorMessage).toContain('POST /items')
+      expect(pluginRegistry.findRoute('alpha', '/items', 'POST')).toBeNull()
+    })
+
     it('registerExecTool sets source and calls addExecTool', async () => {
       const pathA = writeFakePlugin('alpha', {
         activate: `ctx.registerExecTool({ name: 'bakin_exec_alpha_test', description: 'test', parameters: {}, handler: async () => ({ ok: true }) })`,

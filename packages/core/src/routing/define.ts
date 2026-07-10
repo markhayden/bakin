@@ -13,6 +13,7 @@ import type {
   CoreContext,
   PluginContextLite,
 } from './types'
+import { assertValidBodySpec } from './dispatcher'
 import type {
   ContentFile,
   NavItem,
@@ -32,6 +33,7 @@ export function defineRoute<
 >(
   route: APIRoute<PluginContextLite, P, Q, B>,
 ): APIRoute<PluginContextLite, P, Q, B> {
+  assertValidBodySpec(route.body, `${route.method} ${route.path}`)
   return route
 }
 
@@ -45,6 +47,7 @@ export function defineCoreRoute<
 >(
   route: APIRoute<CoreContext, P, Q, B>,
 ): APIRoute<CoreContext, P, Q, B> {
+  assertValidBodySpec(route.body, `${route.method} ${route.path}`)
   return route
 }
 

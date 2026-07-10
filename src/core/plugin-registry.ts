@@ -41,6 +41,7 @@ import type {
   PluginHealthCheckInput,
 } from '@bakin/core/plugin-types'
 import type { AppServices } from '@bakin/core/app-services'
+import { assertValidBodySpec } from '@bakin/core/routing'
 import { registerRouteDoc } from './api-docs'
 import { addExecTool, removeExecToolsByPlugin } from './exec-tools/registry'
 import { runMigrations } from './migrations'
@@ -475,6 +476,11 @@ class PluginRegistryImpl {
       // handler primary fields, plus extra typed schemas the dispatcher
       // adapter knows how to read.
       const erased = route as unknown as RegisteredAPIRoute
+      // Bare-literal routes never went through defineRoute's definition-time
+      // validation — reject malformed body specs here so a typo'd contentType
+      // fails activation with a named route instead of silently parsing to
+      // an undefined body at request time.
+      assertValidBodySpec((route as { body?: unknown }).body, `${erased.method} ${erased.path}`)
       // T16: declarative routes face the same manifest enforcement as
       // ctx.registerRoute — user plugins must declare every route in
       // contributes.apiRoutes (assertRouteDeclared no-ops for core).

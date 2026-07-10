@@ -29,7 +29,7 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 }))
 mock.module('../../src/core/task-store', () => ({}))
 
-import { defineRoute } from '../../packages/core/src/routing'
+import { assertValidBodySpec, defineRoute } from '../../packages/core/src/routing'
 import { dispatchRoute } from '../../packages/core/src/routing/dispatcher'
 
 const stubCtx = {} as any
@@ -426,5 +426,54 @@ describe('dispatchRoute — legacy adapter mapping', () => {
     })
     const res = await dispatchRoute({ req, ctx: stubCtx, route: legacyRoute, params: {} })
     expect(await res.json()).toEqual({ doubled: 42 })
+  })
+})
+
+describe('body contentType validation', () => {
+  it('assertValidBodySpec accepts every sanctioned shape', () => {
+    expect(() => assertValidBodySpec(z.object({}), 'r')).not.toThrow()
+    expect(() => assertValidBodySpec({ contentType: 'application/json', schema: z.object({}) }, 'r')).not.toThrow()
+    expect(() => assertValidBodySpec({ contentType: 'multipart/form-data' }, 'r')).not.toThrow()
+    expect(() => assertValidBodySpec({ contentType: '*/*' }, 'r')).not.toThrow()
+    expect(() => assertValidBodySpec({ contentType: 'none' }, 'r')).not.toThrow()
+    expect(() => assertValidBodySpec(undefined, 'r')).not.toThrow()
+  })
+
+  it('rejects unknown contentType values loudly (the "json" typo footgun)', () => {
+    expect(() => assertValidBodySpec({ contentType: 'json' } as any, 'GET /x')).toThrow(/route GET \/x: unknown body contentType 'json'/)
+    expect(() => assertValidBodySpec({ contentType: 'text/plain' } as any, 'r')).toThrow(/unknown body contentType/)
+    expect(() => assertValidBodySpec({} as any, 'r')).toThrow(/body spec/)
+  })
+
+  it('rejects application/json without a schema', () => {
+    expect(() => assertValidBodySpec({ contentType: 'application/json' } as any, 'r')).toThrow(/schema/)
+  })
+
+  it('defineRoute throws at definition time on an unknown contentType', () => {
+    expect(() =>
+      defineRoute({
+        path: '/broken',
+        method: 'POST',
+        body: { contentType: 'json', schema: z.object({}) } as any,
+        handler: async () => new Response('ok'),
+      }),
+    ).toThrow(/unknown body contentType 'json'/)
+  })
+
+  it('dispatcher fails loudly (500) if a bad spec reaches request time anyway', async () => {
+    const route = {
+      path: '/smuggled',
+      method: 'POST',
+      body: { contentType: 'json', schema: z.object({}) },
+      handler: async () => new Response('ok'),
+    } as any
+    const res = await dispatchRoute({
+      req: new Request('http://x/smuggled', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }),
+      route,
+      params: {},
+      ctx: stubCtx,
+    })
+    expect(res.status).toBe(500)
+    expect((await res.json()).error).toMatch(/unknown body contentType/)
   })
 })
