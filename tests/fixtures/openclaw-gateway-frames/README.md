@@ -69,3 +69,24 @@ every frame until the final RPC response + a 3s grace window.
 - Only `agent` `stream:'tool'` frames are gated behind `caps:['tool-events']`; `stream:'item'` and `stream:'command_output'` are broadcast to operator connections regardless (verified by a no-caps control run). Missing caps therefore shows up as **silent per-run seq gaps** — no synthetic seq-gap error frame was observed.
 - After `chat.abort`, a second lifecycle emitter re-uses the same `runId` with seq restarting at 1 (`finishing`/`end`, `stopReason:'aborted'`, no `sessionId`) — per-run seq is NOT globally monotonic across the abort boundary.
 - Broadcast noise on an operator connection: `health` and `tick` events (no `isHeartbeat` agent frames observed in these captures).
+
+## Abort fixtures (2026-07-09, post-incident)
+
+- `abort-explicit-session.jsonl` — **the upstream defect**: an `agent` RPC run started
+  with an explicit `sessionId` param (production Bakin dispatch shape pre-fix). The
+  accepted ack omits `sessionKey`; the run is never registered in the gateway's
+  chat-abort registry, so ALL abort surfaces miss while the run is mid-flight:
+  `chat.abort` → `{aborted:false, runIds:[]}`, `sessions.abort {runId}` and
+  `sessions.abort {key}` → `{abortedRunId:null, status:"no-active-run"}`. The run
+  streams to natural completion. (OpenClaw 2026.6.11; upstream issue pending.)
+- `abort-sessionkey-addressed.jsonl` — **the fix shape**: the same run sent with BOTH
+  `sessionId: <uuid>` and `sessionKey: agent:<agent>:explicit:<uuid>`. The ack carries
+  the sessionKey, the run is registered, `chat.abort {sessionKey, runId}` returns
+  `{aborted:true}`, lifecycle ends `stopReason:'aborted'`, and the RPC final settles
+  `status:'timeout' / stopReason:'aborted'`. The sessions store maps the key to the
+  SAME sessionId (trajectory file names preserved — forensics unaffected). Session
+  continuity across turns on one key was separately verified (two-turn recall probe).
+
+Re-record with `scripts/instance/record-gateway-frames.ts` variants in the session
+scratchpad (`abort-ladder-probe.ts`, `abort-both-probe.ts`) against a throwaway
+gateway home — never the production `~/.openclaw`.
