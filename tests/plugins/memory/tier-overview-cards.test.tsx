@@ -11,6 +11,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import '../../rtl-settle'
 
 // Defensive isolation per CLAUDE.md.
 mock.module('@bakin/core/main-agent', () => ({

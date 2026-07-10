@@ -2,6 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, renderHook } from '@testing-library/react'
+import '../rtl-settle'
 
 // Mock fetch globally so initialize() doesn't hit the network
 vi.stubGlobal('fetch', mock(() =>

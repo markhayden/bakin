@@ -37,6 +37,13 @@ GlobalRegistrator.register()
 //     test", ~5.7k failures).
 // `--isolate` gives each file its own process, which also contains
 // mock.module overlay leakage (see CLAUDE.md Testing Rules).
+//
+// INTRA-file root leakage is the other dimension (--isolate can't help):
+// bun clears document.body between tests but never unmounts React roots, and
+// a bare sync cleanup() can unmount mid-slice on a slow machine (the
+// kanban/TaskCard CI failures). Every RTL-rendering test file imports
+// tests/rtl-settle.ts, whose afterEach unmounts inside act() — see that
+// module for the full fact chain.
 // ---------------------------------------------------------------------------
 
 // NOTE: we don't register a global main-agent stub here — bun:test has no

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, mock } from 'bun:test'
 import { render, fireEvent, screen } from '@testing-library/react'
+import '../../rtl-settle'
 import { Flame } from 'lucide-react'
 import { join } from 'path'
 import { tmpdir } from 'os'

@@ -2,6 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import '../rtl-settle'
 import type { Task, TaskColumns } from '../../plugins/tasks/types'
 
 const { mockMove, mockUseSortable } = (() => ({

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import '../../rtl-settle'
 
 mock.module('@makinbakin/sdk/hooks', () => ({
   useAgent: (id: string) => id ? { id, name: id } : null,

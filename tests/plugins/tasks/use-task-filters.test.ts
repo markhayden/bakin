@@ -11,6 +11,7 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { rmSync } from 'fs'
 import { renderHook, cleanup } from '@testing-library/react'
+import '../../rtl-settle'
 
 const testDir = join(tmpdir(), `bakin-test-tasks-filters-${Date.now()}`)
 
