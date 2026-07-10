@@ -26,11 +26,11 @@ interface MirrorOptions {
   version: string
 }
 
-const STARTER_HEADER = (version: string) => `<!-- mirrored from makin-bakin/bakin examples/reference-plugin — do not edit here; changes land upstream -->
+const STARTER_HEADER = (version: string) => `<!-- mirrored from markhayden/bakin examples/reference-plugin — do not edit here; changes land upstream -->
 
 > **This is the Bakin plugin starter.** Fork it (or "Use this template") to
 > build your own plugin, then follow the authoring docs:
-> https://docs.makinbakin.com/extending/plugins/overview/
+> https://makinbakin.com/docs/extending/plugins/overview/
 > Mirrored automatically from the Bakin repo at release \`v${version}\`.
 
 `
@@ -53,7 +53,7 @@ export function mirrorStarter(opts: MirrorOptions): { staged: string[] } {
   }
   cpSync(source, target, {
     recursive: true,
-    filter: (src) => !src.includes('node_modules') && !src.endsWith('.installedBy'),
+    filter: (src) => !src.includes('node_modules') && !src.includes('/dist') && !src.endsWith('.installedBy'),
   })
 
   // Rewrite the SDK dep to the released version. The example intentionally

@@ -163,6 +163,8 @@ export function createTestContext(
 
   // Mirror the host: registering a search content type auto-wires GET /search
   // unless the plugin already declared one (searchRoute pattern).
+  // NOTE: one of THREE deliberate copies of this wiring — see
+  // src/core/search-plugin-api.ts (production) and tests/plugins/test-helpers.ts.
   const maybeAutoRegisterSearchRoute = () => {
     if (routes.some((r) => r.path === '/search' && r.method === 'GET')) return
     routes.push({

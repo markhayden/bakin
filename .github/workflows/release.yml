@@ -364,7 +364,14 @@ jobs:
             exit 0
           fi
 
-          bun run scripts/release/mirror-starter-repo.ts --version "${VERSION}" --target "${starter_dir}"
+          # Stage + push are fail-soft too: a staging error (e.g. the no-leak
+          # guard) or a push rejection (branch protection, manual commit,
+          # network) lands AFTER npm publish — it must warn, never fail the
+          # release. The script itself stays fail-loud for the dry-run test.
+          if ! bun run scripts/release/mirror-starter-repo.ts --version "${VERSION}" --target "${starter_dir}"; then
+            echo "::warning::starter-repo staging failed — skipping mirror for ${VERSION} (run scripts/release/mirror-starter-repo.ts locally to diagnose)"
+            exit 0
+          fi
 
           cd "${starter_dir}"
           git config user.name "github-actions[bot]"
@@ -373,8 +380,8 @@ jobs:
           if git diff --cached --quiet; then
             echo "Starter repo already current for ${VERSION}"
           else
-            git commit -m "bakin-plugin-starter ${VERSION} (mirrored from bakin ${TAG})"
-            git push origin HEAD:main
+            git commit -m "bakin-plugin-starter ${VERSION} (mirrored from bakin ${TAG})" || { echo "::warning::starter-repo commit failed — skipping mirror"; exit 0; }
+            git push origin HEAD:main || { echo "::warning::starter-repo push rejected (branch protection or a manual commit?) — skipping mirror for ${VERSION}"; exit 0; }
           fi
 
       - name: Render Homebrew formula
@@ -498,7 +505,7 @@ jobs:
           bun init -y
           bun add react@^19 react-dom@^19 "@makinbakin/sdk@${VERSION}"
           bun -e "const m = await import('@makinbakin/sdk'); if (typeof m.registerPlugin !== 'function') throw new Error('missing registerPlugin')"
-          for subpath in ui hooks components slots types utils metadata routing; do
+          for subpath in ui hooks components slots types utils metadata routing testing internal; do
             bun -e "await import('@makinbakin/sdk/${subpath}')"
           done
 

@@ -208,13 +208,28 @@ describe('reference plugin (install → activate → every surface)', () => {
   })
 
   it('imports only the published SDK surface', () => {
-    // The acceptance grep from the task: the template must not reach into
-    // Bakin internals — @makinbakin/sdk/* is the entire authoring API.
-    const { execSync } = require('node:child_process') as typeof import('node:child_process')
-    const out = execSync(
-      `grep -rn "@bakin/\\|src/core" "${join(REPO_ROOT, 'examples', 'reference-plugin')}" --include="*.ts" --include="*.tsx" || true`,
-      { encoding: 'utf-8' },
-    )
-    expect(out.trim()).toBe('')
+    // The template must not reach into Bakin internals — @makinbakin/sdk/*
+    // is the entire authoring API. Scan actual import/require specifiers
+    // (not raw text, which also matches comments) for every escape hatch:
+    // @bakin/*, the @/ alias, packages/host|core, and relative escapes out
+    // of the example tree.
+    const { readdirSync, readFileSync, statSync } = require('node:fs') as typeof import('node:fs')
+    const root = join(REPO_ROOT, 'examples', 'reference-plugin')
+    const offenders: string[] = []
+    const forbidden = /^(@bakin\/|@\/)|(?:^|\/)packages\/(host|core)|^\.\.\/\.\.\//
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir)) {
+        if (entry === 'node_modules' || entry === 'dist') continue
+        const full = join(dir, entry)
+        if (statSync(full).isDirectory()) { walk(full); continue }
+        if (!/\.(ts|tsx)$/.test(entry)) continue
+        const src = readFileSync(full, 'utf-8')
+        for (const m of src.matchAll(/(?:from\s+|require\()\s*['"]([^'"]+)['"]/g)) {
+          if (forbidden.test(m[1])) offenders.push(`${full}: ${m[1]}`)
+        }
+      }
+    }
+    walk(root)
+    expect(offenders).toEqual([])
   })
 })

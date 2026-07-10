@@ -20,7 +20,7 @@ const { data, refresh } = usePluginJsonFetch<BookmarkList>('reference-bookmarks'
 usePluginEvent('reference-bookmarks.changed', () => refresh())
 ```
 
-Every browser tab with Bakin open receives the event — the emitting user's tab, other tabs, other devices. The payload is delivered as-is; keep it small (ids and action verbs, not full records) and refetch through your routes for the actual data.
+Every browser tab with Bakin open receives the event — the emitting user's tab, other tabs, other devices. The payload is delivered as-is — with one caveat: it is spread into the SSE envelope, so the keys `event`, `type`, and `timestamp` are RESERVED (a payload `event` key would corrupt client subscription routing). Keep payloads small (ids and action verbs, not full records) and refetch through your routes for the actual data.
 
 ## Naming
 

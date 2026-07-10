@@ -38,7 +38,7 @@ const DEMO_TURN: RuntimeChatChunk[] = [
 ]
 
 export function BookmarksPage() {
-  const { data, loading, refresh } = usePluginJsonFetch<{ bookmarks: Bookmark[] }>(PLUGIN_ID, '/')
+  const { data, loading, error: fetchError, refresh } = usePluginJsonFetch<{ bookmarks: Bookmark[] }>(PLUGIN_ID, '/')
   const [url, setUrl] = useState('')
   const [title, setTitle] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -61,7 +61,14 @@ export function BookmarksPage() {
   }
 
   async function remove(id: string) {
-    await pluginFetch(PLUGIN_ID, `/${id}`, { method: 'DELETE' })
+    // Surface failures: a failed delete with no error state looks like a
+    // stuck row (the .changed refresh never fires on failure).
+    setError(null)
+    const res = await pluginFetch(PLUGIN_ID, `/${id}`, { method: 'DELETE' })
+    if (!res.ok) {
+      const body = (await res.json().catch(() => null)) as { error?: string } | null
+      setError(body?.error ?? `delete failed (${res.status})`)
+    }
   }
 
   const bookmarks = data?.bookmarks ?? []
@@ -92,6 +99,7 @@ export function BookmarksPage() {
         </button>
       </div>
       {error ? <p className="text-sm text-red-500">{error}</p> : null}
+      {fetchError ? <p className="text-sm text-red-500">could not load bookmarks: {fetchError}</p> : null}
 
       {loading && bookmarks.length === 0 ? (
         <p className="text-sm text-muted-foreground">Loading…</p>

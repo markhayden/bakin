@@ -61,6 +61,8 @@ Plugin API paths are mounted under `/api/plugins/{pluginId}`. A plugin route wit
 
 The legacy `ctx.registerRoute()` API was removed — routes are always declared declaratively via `definePlugin({ routes })`. A typo'd `definePlugin` key or an excess property fails typecheck at the call site.
 
+One side effect of that exactness: **generic wrappers around `definePlugin` fail to compile** — `function wrap<T extends DefinePluginInput>(p: T) { return definePlugin(p) }` trips the excess-key enforcement. Call `definePlugin` with a concrete object literal (or a concrete-typed factory), not through a generic passthrough.
+
 Body specs accept only the supported `contentType` values (`application/json` — the default when you pass a schema — and the other members of the published union). An unknown value such as `'json'` is rejected loudly: at `defineRoute()` for literal specs, and at activation for anything that slips past — never a silent pass-through with an unparsed body.
 
 For a complete route surface built the way these docs teach it (list/create/delete with zod params, query filters, and shared logic between a route and an exec tool), read the reference plugin's [`index.ts`](https://github.com/markhayden/bakin/tree/main/examples/reference-plugin).
@@ -153,14 +155,14 @@ Core plugins expose cross-plugin hooks through the same registry — call them w
 | `team.list` | `{}` → array of agents with display + team metadata |
 | `team.getAgent` | `{ id }` → one agent record or `null` |
 | `team.getAgentIds` | `{}` → `string[]` of runtime agent ids |
-| `team.exists` | `{ id }` → boolean |
+| `team.exists` | `{ teamId }` → boolean — TEAM existence (org teams), not agents |
 | `team.getTeamMembers` | `{ teamId }` → agents assigned to a team |
 | `workflows.definitions.list` | `{}` → available workflow definitions |
 | `workflows.instances.list` | `{}` → workflow instances |
-| `workflows.createInstance` | validated definition + params → new instance (start a workflow) |
+| `workflows.createInstance` | `{ taskId, workflowId, assignee? }` → new instance (start a workflow) |
 | `workflows.approveGate` / `workflows.rejectGate` | gate id payload → gate decision applied |
 | `schedule.ensureBakinJob` | job spec (see Plugin-Owned Cron Jobs below) → `{ ok, jobId }` |
-| `assets.listByTask` | `{ taskId }` → asset ids attached to a task |
+| `assets.listByTask` | `{ taskId }` → `{assetId, description, type}[]` records for a task |
 | `assets.describe` | `{ assetIds: string[] }` → `{ [id]: { description, caption?, type, exists } }` |
 | `assets.saveFromSource` | source-file payload → saved/upserted asset |
 | `models.getAvailableModels` | `{}` → the merged model catalog |

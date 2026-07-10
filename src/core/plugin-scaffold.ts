@@ -8,7 +8,7 @@
  *   ./<name>/index.ts            — server entry (definePlugin + activate)
  *   ./<name>/client.tsx          — browser entry (registerPlugin side effect)
  *   ./<name>/greeting.ts         — pure helper shared by route + exec tool
- *   ./<name>/tests/greeting.test.ts
+ *   ./<name>/tests/plugin.test.ts
  *   ./<name>/.gitignore
  *   ./<name>/README.md
  *
@@ -293,7 +293,7 @@ registerPlugin({
     )
 
     writeFileSync(
-      join(root, 'tests/greeting.test.ts'),
+      join(root, 'tests/plugin.test.ts'),
       `/**
  * Starter test — runs with \`bun test\` after \`bun install\`.
  *

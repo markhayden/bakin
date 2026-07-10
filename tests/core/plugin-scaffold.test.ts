@@ -64,7 +64,7 @@ describe('createPluginScaffold', () => {
       'index.ts',
       'client.tsx',
       'greeting.ts',
-      'tests/greeting.test.ts',
+      'tests/plugin.test.ts',
       '.gitignore',
       'README.md',
     ]) {
@@ -127,7 +127,7 @@ describe('createPluginScaffold', () => {
   })
 
   it('starter test drives the plugin through @makinbakin/sdk/testing', () => {
-    const test = read('tests/greeting.test.ts')
+    const test = read('tests/plugin.test.ts')
     expect(test).toContain("from '@makinbakin/sdk/testing'")
     expect(test).toContain("import plugin from '../index'")
     expect(test).toContain('dispose()')

@@ -143,6 +143,8 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
   }
 
   // Mirror the production de-dup behavior: if a plugin already declared
+  // NOTE: one of THREE deliberate copies of the auto GET /search wiring — see
+  // src/core/search-plugin-api.ts (production) and packages/sdk/src/testing/index.ts.
   // /search via `searchRoute({ table })` (T6+), skip the auto-wire so the
   // route table stays canonical with no duplicates.
   const maybeAutoRegisterSearchRoute = () => {

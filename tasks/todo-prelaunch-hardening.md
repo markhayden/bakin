@@ -60,3 +60,4 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 - [ ] 🔶 USER: file the OpenClaw upstream issue for the abort-registration defect (suggested text in PR #637) and backfill the real number over `openclaw#TBD-abort-registration` (pin test, fixtures README, rig doc)
 - [ ] Run rig-validate R7 (abort workaround re-verify) after every OpenClaw version bump
 - [ ] 🔶 USER: create the public repo markhayden/bakin-plugin-starter (empty) + add a STARTER_REPO_TOKEN secret before the next stable release — until then the mirror step warns and skips (release never breaks)
+- [ ] Note for the first stable release notes: plugins scaffolded from a dev/prerelease host resolve SDK `latest`, which lacks `/testing` until the first stable release with PR #642 publishes — scaffolded starter tests import-fail until then (self-resolving)

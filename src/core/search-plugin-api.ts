@@ -104,6 +104,9 @@ export interface BuildSearchAPIOptions {
 export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): SearchAPI {
   const registry = getRegistry()
 
+  // NOTE: the auto GET /search wiring exists in THREE deliberately separate
+  // copies — here (production), packages/sdk/src/testing/index.ts (harness),
+  // and tests/plugins/test-helpers.ts (in-repo adapter). Change one, sync all.
   let searchRouteRegistered = false
   const maybeAutoRegisterSearchRoute = () => {
     if (searchRouteRegistered) return
