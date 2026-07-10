@@ -29,6 +29,9 @@ export * from './services'
 export * from './registration'
 export * from './context'
 
-// The ONE public route type (declarative-generic) — re-exported so
-// `@makinbakin/sdk/types` keeps the name after the legacy interface died.
-export type { APIRoute, PluginContextLite } from '../routing'
+// The ONE public route type (declarative-generic) + its pure companions —
+// DECLARED here (api-route.ts is a leaf; reaching through ../routing pulled
+// @bakin/core back in and closed a package cycle). Bare `APIRoute` here has
+// `C = unknown`; the contextful default rides `@makinbakin/sdk/routing`,
+// which also re-exports the tier-bound `PluginContextLite`.
+export * from './api-route'

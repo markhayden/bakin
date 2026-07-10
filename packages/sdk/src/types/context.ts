@@ -159,8 +159,14 @@ export interface BakinPlugin {
    * entries with `defineRoute()`; compose with `definePlugin()` so per-route
    * inference survives. The route type is the declarative-generic `APIRoute`
    * from `@makinbakin/sdk/routing`.
+   *
+   * Ctx is `any` here for the same documented reason activate()'s ctx is:
+   * the SDK and core context tiers are deliberately distinct, and this leaf
+   * type module must not import `../routing` (it reaches into @bakin/core
+   * and closes a package import cycle). Handler ctx typing comes from
+   * `defineRoute()` at authoring time, not from this field.
    */
-  routes?: ReadonlyArray<import('../routing').APIRoute<import('../routing').PluginContextLite, any, any, any>>
+  routes?: ReadonlyArray<import('./api-route').APIRoute<any, any, any, any>>
   /** Convenience: nav items to auto-register at activation. */
   navItems?: NavItem[]
   /** Convenience: static content files declared at construction. */
