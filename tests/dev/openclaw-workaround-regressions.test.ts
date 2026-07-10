@@ -8,7 +8,9 @@ import { tmpdir } from 'os'
  * upstream defect we work around, so a fix upstream fails HERE loudly and
  * the workaround can be deleted instead of fossilizing).
  *
- * Defect (OpenClaw 2026.6.11, upstream issue: TO-FILE — see fixture
+ * Defect (OpenClaw 2026.6.11, upstream issue: openclaw#TBD-abort-registration
+ * — file it and backfill the number here, in the fixtures README, and in
+ * tasks/todo-prelaunch-hardening.md; see fixture
  * tests/fixtures/openclaw-gateway-frames/abort-explicit-session.jsonl for
  * the live recording): an `agent` RPC run addressed by `sessionId` alone is
  * never registered in the gateway's chat-abort registry — the accepted ack
@@ -19,11 +21,14 @@ import { tmpdir } from 'os'
  * (packages/adapter-openclaw/src/runtime.ts + session-store.ts
  * openClawExplicitSessionKey).
  *
- * These pins run against the Imitation Crab mirror of the defect. If a
- * future OpenClaw release registers sessionId-only runs, re-record the
- * fixture against the new gateway; when the REAL wire no longer reproduces
- * the defect, delete the mock mirror + these pins + (optionally) the
- * send-shape workaround.
+ * These pins run against the Imitation Crab mirror of the defect, so they
+ * CANNOT fail on an upstream fix by themselves — the real-wire owner is the
+ * dockerized-rig validation campaign, phase R7
+ * (`bun run scripts/instance/validate.ts`): run it after every OpenClaw
+ * version bump. If R7.2 reports the defect is gone, re-record the fixtures
+ * (scripts/instance/abort-ladder-probe.ts / abort-workaround-probe.ts) and
+ * delete the mock mirror + these pins + (optionally) the send-shape
+ * workaround.
  */
 const tempDir = mkdtempSync(join(tmpdir(), 'bakin-openclaw-workarounds-'))
 process.env.OPENCLAW_MOCK_HOME = tempDir

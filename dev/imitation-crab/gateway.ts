@@ -372,9 +372,13 @@ export async function handleGatewayRpcRequest(method: string, params: Record<str
     // no `sessionKey` param — is never registered in the gateway's
     // chat-abort registry: its ack OMITS sessionKey and chat.abort /
     // sessions.abort cannot stop it. Senders must pass BOTH (the adapter
-    // does since the 2026-07-09 fix). If a future OpenClaw release
-    // registers sessionId-only runs, the workaround-regression pin fails
-    // and this mirror + the send-shape requirement can be revisited.
+    // does since the 2026-07-09 fix). The pin CANNOT detect an upstream fix
+    // by itself (it tests this mirror) — the real-wire owner is rig-validate
+    // phase R7; when R7.2 reports the defect gone, delete this mirror + the
+    // pins. NOTE: sessionKey-only sends (no sessionId) registering as
+    // abortable is UNVERIFIED against the real wire — the live probes only
+    // covered sessionId-only (defect) and sessionId+sessionKey (fix shape);
+    // the real gateway also mints a different sessionId for key-only sends.
     const runId = typeof params.idempotencyKey === 'string' && params.idempotencyKey.length > 0
       ? params.idempotencyKey
       : `mock-run-${++runCounter}`

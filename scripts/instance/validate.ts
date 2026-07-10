@@ -17,6 +17,8 @@
  *   R5  failure drill (gateway restart mid-turn → typed transport error,
  *       recovery on reconnect)
  *   R6  session retention probe (#435)
+ *   R7  abort workaround re-verify (openclaw#TBD-abort-registration) — the
+ *       real-wire owner of the workaround pin; run after OpenClaw bumps
  */
 import { mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync, existsSync } from 'fs'
 import { tmpdir } from 'os'
@@ -239,6 +241,78 @@ console.log('\n━━ R6 session retention probe ━━')
     'R6.2 retention config',
     true,
     retentionKeys.length > 0 ? `found: ${retentionKeys.join(', ')}` : 'NO pruning/retention keys in openclaw.json — upstream concern stands (#435)',
+  )
+}
+
+// ─── R7: abort workaround re-verify (openclaw#TBD-abort-registration) ───────
+// The chat.abort workaround (threaded sends carry sessionKey alongside
+// sessionId) is pinned in CI only against the Imitation Crab MIRROR of the
+// gateway defect — this phase is the real-wire owner of that pin. Run it
+// after every OpenClaw version bump.
+console.log('\n━━ R7 abort workaround re-verify ━━')
+{
+  // R7.1 — the workaround shape (what dispatch sends today) must still stop
+  // runs server-side: local settle kind 'aborted' AND an agent-turn-abort
+  // audit with aborted:true.
+  const audits: Array<{ action: string; data?: Record<string, unknown> }> = []
+  await runtime.initialize({
+    contentDir: process.env.BAKIN_HOME!,
+    audit: (event) => {
+      audits.push({ action: event.action, data: event.data })
+    },
+  })
+  const controller = new AbortController()
+  const slow = runtime.messaging.send({
+    agentId: primary,
+    content: 'Count slowly from 1 to 300, one number per line. Do not use tools.',
+    threadId: `task:rigabort-${runStamp}:d1`,
+    signal: controller.signal,
+  })
+  await new Promise((r) => setTimeout(r, 2500)) // let the run start server-side
+  controller.abort()
+  let localKind = 'no-rejection'
+  try {
+    await slow
+    localKind = 'resolved'
+  } catch (err) {
+    localKind = err instanceof RuntimeError ? err.kind : 'untyped'
+  }
+  await new Promise((r) => setTimeout(r, 3000)) // async chat.abort round-trip + audit
+  const abortAudit = audits.find((a) => a.action === 'agent-turn-abort')
+  const serverAborted = abortAudit?.data?.aborted === true
+  report(
+    'R7.1 workaround abort (sessionKey+sessionId)',
+    localKind === 'aborted' && serverAborted,
+    `local kind=${localKind} serverAborted=${String(abortAudit?.data?.aborted)} ackHadSessionKey=${String(abortAudit?.data?.ackHadSessionKey)}`,
+  )
+
+  // R7.2 — re-probe the upstream defect (sessionId-only runs unabortable) so
+  // the CI pin has a real-wire owner. Informational: the operator acts on the
+  // detail line.
+  const rigConfig = JSON.parse(readFileSync(join(OPENCLAW_HOME, 'openclaw.json'), 'utf-8')) as {
+    gateway?: { port?: number; auth?: { token?: string }; remote?: { token?: string } }
+  }
+  const gwToken = rigConfig.gateway?.auth?.token ?? rigConfig.gateway?.remote?.token ?? ''
+  const gwPort = rigConfig.gateway?.port ?? 18789
+  const probe = Bun.spawn(
+    [
+      'bun', join(REPO, 'scripts', 'instance', 'abort-ladder-probe.ts'),
+      '--url', `ws://127.0.0.1:${gwPort}`,
+      '--token', String(gwToken),
+      '--agent', primary,
+      '--out', join(tmpdir(), `rig-abort-ladder-${runStamp}.jsonl`),
+    ],
+    { stdout: 'pipe', stderr: 'pipe' },
+  )
+  const probeOut = await new Response(probe.stdout).text()
+  await probe.exited
+  const anyAborted = probeOut.includes('"aborted":true') || probeOut.includes('"abortedRunId":"')
+  report(
+    'R7.2 upstream defect re-probe (sessionId-only)',
+    true,
+    anyAborted
+      ? 'defect NOT reproduced — upstream may have fixed registration: delete the workaround pin (tests/dev/openclaw-workaround-regressions.test.ts) + the mock defect mirror, and re-record the abort fixtures'
+      : 'defect STANDS on this gateway — keep the workaround + pin (openclaw#TBD-abort-registration)',
   )
 }
 

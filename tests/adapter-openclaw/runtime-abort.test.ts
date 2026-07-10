@@ -40,7 +40,7 @@ mock.module('../../packages/core/src/logger', loggerMock)
 
 import { createOpenClawRuntimeAdapter } from '@bakin/adapter-openclaw'
 import { RuntimeError } from '../../packages/core/src/adapters/runtime/errors'
-import { openClawCliSessionId } from '../../packages/adapter-openclaw/src/session-store'
+import { openClawCliSessionId, openClawExplicitSessionKey } from '../../packages/adapter-openclaw/src/session-store'
 
 afterAll(() => rmSync(testHome, { recursive: true, force: true }))
 
@@ -327,5 +327,14 @@ describe('messaging.send with MessageArgs.signal', () => {
       signal: controller.signal,
     })
     expect(result.content).toBe('done')
+  })
+})
+
+describe('openClawExplicitSessionKey format pin', () => {
+  it('is the single owner of the gateway canonical explicit-session key format', () => {
+    // Drift here silently breaks BOTH the send-shape workaround and the
+    // abort fallback (fixtures abort-sessionkey-addressed.jsonl record the
+    // gateway echoing exactly this format).
+    expect(openClawExplicitSessionKey('pixel', 'abc-123')).toBe('agent:pixel:explicit:abc-123')
   })
 })

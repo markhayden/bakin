@@ -1520,8 +1520,9 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     cliSessionId: string | null,
   ): void {
     // The gateway keys explicit-sessionId sessions as
-    // agent:<agentId>:explicit:<sessionId> (verified via sessions.list).
-    const sessionKey = ack?.sessionKey ?? (cliSessionId ? `agent:${agentId}:explicit:${cliSessionId}` : null)
+    // agent:<agentId>:explicit:<sessionId> (verified via sessions.list) —
+    // openClawExplicitSessionKey is the single owner of that format.
+    const sessionKey = ack?.sessionKey ?? (cliSessionId ? openClawExplicitSessionKey(agentId, cliSessionId) : null)
     if (!sessionKey) return
     const params: Record<string, unknown> = { sessionKey }
     if (ack?.runId) params.runId = ack.runId
