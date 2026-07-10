@@ -5,7 +5,7 @@
  * status, typed error rows) and the foldTurnChunks semantics the chat and
  * step-output surfaces rely on.
  */
-import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { describe, expect, it, mock } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -22,11 +22,10 @@ mock.module('../../packages/core/src/content-dir', () => ({
 }))
 
 import { cleanup, render } from '@testing-library/react'
+import '../rtl-settle'
 import type { RuntimeChatChunk } from '@makinbakin/sdk/types'
 
 import { TurnOutputView, foldTurnChunks } from '@makinbakin/sdk/components'
-
-afterEach(cleanup)
 
 const text = (content: string, format?: 'markdown' | 'plain' | 'code'): RuntimeChatChunk =>
   ({ type: 'text', content, ...(format ? { format } : {}) })
