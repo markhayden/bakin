@@ -42,6 +42,7 @@ export const SDK_EXPORTS: SdkExportEntry[] = [
   { exportPath: './utils', source: 'packages/sdk/src/utils/index.ts', importPath: './utils/index.js', typesPath: './utils/index.d.ts' },
   { exportPath: './metadata', source: 'packages/sdk/src/metadata/index.ts', importPath: './metadata/index.js', typesPath: './metadata/index.d.ts' },
   { exportPath: './routing', source: 'packages/sdk/src/routing/index.ts', importPath: './routing/index.js', typesPath: './routing/index.d.ts' },
+  { exportPath: './testing', source: 'packages/sdk/src/testing/index.ts', importPath: './testing/index.js', typesPath: './testing/index.d.ts' },
 ]
 
 const EXTERNAL_JS_PEERS = [
@@ -132,7 +133,7 @@ function mapSdkModule(rest: string): string | null {
   if (rest === 'index') return 'index'
   if (rest === 'register') return 'register'
   if (rest.endsWith('/index')) return rest
-  if (rest === 'types' || rest === 'routing' || rest === 'ui' || rest === 'hooks' || rest === 'components' || rest === 'slots' || rest === 'utils' || rest === 'metadata') {
+  if (rest === 'types' || rest === 'routing' || rest === 'ui' || rest === 'hooks' || rest === 'components' || rest === 'slots' || rest === 'utils' || rest === 'metadata' || rest === 'testing') {
     return `${rest}/index`
   }
   return rest === 'hooks/router' ? 'hooks/router' : null

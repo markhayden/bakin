@@ -33,6 +33,7 @@
       "@makinbakin/sdk/utils": ["./packages/sdk/src/utils/index.ts"],
       "@makinbakin/sdk/metadata": ["./packages/sdk/src/metadata/index.ts"],
       "@makinbakin/sdk/routing": ["./packages/sdk/src/routing/index.ts"],
+      "@makinbakin/sdk/testing": ["./packages/sdk/src/testing/index.ts"],
       "@bakin/core/docs": ["./packages/core/src/docs/index.ts"],
       "@bakin/tasks": ["./plugins/tasks"],
       "@bakin/tasks/*": ["./plugins/tasks/*"],

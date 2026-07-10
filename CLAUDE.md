@@ -164,7 +164,7 @@ Additional mandatory rules:
 - **Never hardcode `~/.bakin/`** or `process.env.HOME` in test fixtures
 - **Use `tests/plugins/test-helpers.ts`** (`activatePlugin`, `callRoute`, `callTool`) for plugin tests — these provide properly isolated mock contexts
 
-If a test does not mock the content-dir resolvers, it **will** eventually write to `~/.bakin/` and corrupt production data. Pure scanner tests under `tests/architecture/` are the only exception because they do not import app modules; the mock checker hook handles that case explicitly.
+If a test does not mock the content-dir resolvers, it **will** eventually write to `~/.bakin/` and corrupt production data. Pure scanner tests under `tests/architecture/` and the external-author fixtures under `tests/sdk-testing/` are the only exceptions — the former import no app modules, the latter import only the published `@makinbakin/sdk/testing` harness (whose per-test temp dir IS the isolation); the mock checker hook handles both cases explicitly.
 
 ## Key Patterns
 

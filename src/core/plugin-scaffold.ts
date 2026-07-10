@@ -297,20 +297,25 @@ registerPlugin({
       `/**
  * Starter test — runs with \`bun test\` after \`bun install\`.
  *
- * TODO: @makinbakin/sdk/testing (activatePlugin/callRoute/callTool helpers
- * for full plugin tests) ships soon — until then, keep logic in pure modules
- * like greeting.ts so it stays testable without a host.
+ * Uses @makinbakin/sdk/testing: \`activatePlugin\` builds an isolated context
+ * (plugin storage in a throwaway temp dir — no host, no ~/.bakin) and
+ * \`callRoute\` drives handlers exactly like the host's router.
  */
-import { describe, expect, it } from 'bun:test'
-import { buildGreeting } from '../greeting'
+import { afterAll, describe, expect, it } from 'bun:test'
+import { activatePlugin, callRoute, findRoute } from '@makinbakin/sdk/testing'
+import plugin from '../index'
 
-describe('buildGreeting', () => {
-  it('greets by name', () => {
-    expect(buildGreeting('Ada')).toBe('Hello from Ada!')
-  })
+describe('${name}', () => {
+  const ready = activatePlugin(plugin)
+  afterAll(async () => (await ready).dispose())
 
-  it('falls back to the plugin name', () => {
-    expect(buildGreeting()).toBe('Hello from the ${name} plugin!')
+  it('activates and serves GET /hello', async () => {
+    const harness = await ready
+    const route = findRoute(harness.routes, 'GET', '/hello')
+    expect(route).toBeDefined()
+    const { status, body } = await callRoute(route!, harness.ctx)
+    expect(status).toBe(200)
+    expect(body.message).toBe('Hello from the ${name} plugin!')
   })
 })
 `,

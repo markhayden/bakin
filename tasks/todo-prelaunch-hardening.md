@@ -30,7 +30,7 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 - [ ] CHECKPOINT 2a: golden path verbatim-works ✅ (suite 6356/0, golden-path 6/0 incl. sync-manifest round-trip); PR merged ☐
 
 ## PR 2b — feat/sdk-testing-and-types
-- [ ] T17 @makinbakin/sdk/testing
+- [x] T17 @makinbakin/sdk/testing ✅ (harness entry + external-author fixture + scaffold starter test migrated)
 - [ ] T18 In-repo tests consume sdk/testing
 - [ ] T19 Type tightening (contract commit + adoption commit)
 - [ ] T20 Uniform duplicate-throw + /internal split + pluginFetch
