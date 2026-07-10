@@ -124,6 +124,27 @@ registerPlugin({
 
 Patterns support exact paths and dynamic segments in `:id`, `[id]`, or `$id` form. Declare every registered pattern in `bakin-plugin.json` `contributes.routes` so direct navigation lazy-loads your client; if a route is visible in navigation, also declare it in `contributes.clientRoutes` for docs generation.
 
+## Calling your API routes
+
+Never hand-build `/api/plugins/<id>/...` strings — use `pluginFetch` (raw
+`Response`, JSON defaults; plain-object bodies are stringified with the JSON
+content type) or `usePluginJsonFetch` (the `{ data, loading, error, refresh }`
+lifecycle) scoped to your plugin id:
+
+```tsx
+import { pluginFetch } from '@makinbakin/sdk/utils'
+import { usePluginJsonFetch } from '@makinbakin/sdk/hooks'
+
+// component lifecycle
+const { data, loading, refresh } = usePluginJsonFetch<{ items: Item[] }>('docs-basic', 'items')
+
+// imperative mutation
+await pluginFetch('docs-basic', 'items', { method: 'POST', body: { name: 'New item' } })
+```
+
+Both compose with the host's dev-mode hot-reload fetch instrumentation
+automatically.
+
 ## Page Slots
 
 Use `page:/...` slots when the host already owns the route and the plugin fills that route. Core plugins use this for built-in pages such as Tasks, Assets, Schedule, Team, Models, Health, Workflows, and Memory.

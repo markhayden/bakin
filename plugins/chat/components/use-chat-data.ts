@@ -7,8 +7,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { usePluginEvent } from '@makinbakin/sdk/hooks'
-
-const API = '/api/plugins/chat'
+import { pluginFetch } from '@makinbakin/sdk/utils'
 
 export interface ChatSummaryDto {
   id: string
@@ -38,8 +37,8 @@ export function useChats(agentFilter: string) {
 
   const refresh = useCallback(async () => {
     try {
-      const url = agentFilter ? `${API}/chats?agent=${encodeURIComponent(agentFilter)}` : `${API}/chats`
-      const res = await fetch(url)
+      const url = agentFilter ? `chats?agent=${encodeURIComponent(agentFilter)}` : 'chats'
+      const res = await pluginFetch('chat', url)
       if (res.ok) setChats(((await res.json()) as { chats: ChatSummaryDto[] }).chats)
     } finally {
       setLoading(false)
@@ -54,7 +53,7 @@ export function useChats(agentFilter: string) {
 }
 
 export async function createChatRequest(agentId: string): Promise<ChatSummaryDto | null> {
-  const res = await fetch(`${API}/chats`, {
+  const res = await pluginFetch('chat', 'chats', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ agentId }),
@@ -64,7 +63,7 @@ export async function createChatRequest(agentId: string): Promise<ChatSummaryDto
 }
 
 export async function deleteChatRequest(chatId: string): Promise<boolean> {
-  const res = await fetch(`${API}/chats/${chatId}`, { method: 'DELETE' })
+  const res = await pluginFetch('chat', `chats/${chatId}`, { method: 'DELETE' })
   return res.ok
 }
 
@@ -91,7 +90,7 @@ export function useChatStream(chatId: string): ChatStreamState {
 
   const loadTranscript = useCallback(async () => {
     if (!chatId) { setChat(null); setRows([]); return }
-    const res = await fetch(`${API}/chats/${chatId}`)
+    const res = await pluginFetch('chat', `chats/${chatId}`)
     if (!res.ok || activeChatRef.current !== chatId) return
     const body = (await res.json()) as { chat: ChatSummaryDto; messages: TranscriptRowDto[] }
     setChat(body.chat)
@@ -149,7 +148,7 @@ export function useChatStream(chatId: string): ChatStreamState {
     // Optimistic user row; the durable copy replaces it on the next refetch.
     setRows((prev) => [...prev, { kind: 'user', ts: new Date().toISOString(), content }])
     setStreaming(true)
-    const res = await fetch(`${API}/chats/${chatId}/messages`, {
+    const res = await pluginFetch('chat', `chats/${chatId}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content }),

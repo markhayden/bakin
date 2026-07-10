@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { PluginHeader } from '@makinbakin/sdk/components'
 import { useQueryState } from '@makinbakin/sdk/hooks'
+import { pluginFetch } from '@makinbakin/sdk/utils'
 import type { BrandManifest } from '../types'
 import { BrandDetail } from './brand-detail'
 import { BrandBuilder } from './brand-builder'
@@ -52,7 +53,7 @@ export function BrandsPage() {
 
   const refresh = useCallback(async () => {
     try {
-      const res = await fetch('/api/plugins/brands/')
+      const res = await pluginFetch('brands', '/')
       if (!res.ok) throw new Error(`list failed: ${res.status}`)
       setData((await res.json()) as ListResponse)
       setError(null)
@@ -70,7 +71,7 @@ export function BrandsPage() {
     if (!name) return
     setCreating(true)
     try {
-      const res = await fetch('/api/plugins/brands/', {
+      const res = await pluginFetch('brands', '/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: slugify(name), name }),
@@ -149,7 +150,7 @@ export function BrandsPage() {
                 setImportBusy(true)
                 setImportError(null)
                 try {
-                  const res = await fetch('/api/plugins/brands/import/preview', {
+                  const res = await pluginFetch('brands', 'import/preview', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ source: importSource.trim() }),
@@ -199,7 +200,7 @@ export function BrandsPage() {
                   setImportBusy(true)
                   setImportError(null)
                   try {
-                    const res = await fetch('/api/plugins/brands/import', {
+                    const res = await pluginFetch('brands', 'import', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ source: importSource.trim(), overwrite: importPreview.exists }),
