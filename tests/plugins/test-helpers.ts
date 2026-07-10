@@ -194,38 +194,16 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
     registerNav: vi.fn(),
     registerSlot: vi.fn(),
     registerSkill: vi.fn(),
+    // Collision semantics mirror production (R18): duplicates THROW.
     registerWorkflow: (def: WorkflowDefinitionInput) => {
       const id = (def.id && def.id.length > 0) ? def.id : slugifyWorkflowId(def.name)
-      try {
-        registerPluginDefinition(pluginId, id, def as unknown as WorkflowDefinition)
-      } catch (err) {
-        testHelperLog.error(
-          `registerWorkflow collision in plugin "${pluginId}" for id "${id}"`,
-          err as Error,
-        )
-      }
+      registerPluginDefinition(pluginId, id, def as unknown as WorkflowDefinition)
     },
     registerNodeType: (def: Parameters<PluginContext['registerNodeType']>[0]) => {
-      try {
-        return registerPluginNodeType(pluginId, def)
-      } catch (err) {
-        testHelperLog.error(
-          `registerNodeType collision in plugin "${pluginId}" for kind "${def.kind}"`,
-          err as Error,
-        )
-        return `${pluginId}.${def.kind}`
-      }
+      return registerPluginNodeType(pluginId, def)
     },
     registerNotificationChannel: (def: Parameters<PluginContext['registerNotificationChannel']>[0]) => {
-      try {
-        return registerPluginNotificationChannel(pluginId, def)
-      } catch (err) {
-        testHelperLog.error(
-          `registerNotificationChannel collision in plugin "${pluginId}" for id "${def.id}"`,
-          err as Error,
-        )
-        return `${pluginId}.${def.id}`
-      }
+      return registerPluginNotificationChannel(pluginId, def)
     },
     registerHealthCheck: vi.fn((def: PluginHealthCheckInput) => `${pluginId}.${def.id}`),
     watchFiles: vi.fn(),

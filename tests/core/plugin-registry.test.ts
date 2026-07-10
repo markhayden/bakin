@@ -421,7 +421,7 @@ describe('PluginRegistryImpl', () => {
       )
     })
 
-    it('registerSkill first-wins — second registration with same name is ignored', async () => {
+    it('registerSkill duplicate name THROWS naming the collision + owning plugin (R18)', async () => {
       const pathA = writeFakePlugin('alpha', {
         activate: `ctx.registerSkill({ name: 'my-skill', instructions: 'from alpha' })`,
       })
@@ -435,8 +435,59 @@ describe('PluginRegistryImpl', () => {
         mockEvents(),
       )
 
+      // First registration wins; the duplicate FAILS bravo's activation.
       const skills = getPluginSkills()
       expect(skills.get('my-skill')!.instructions).toBe('from alpha')
+      const failed = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'bravo')
+      expect(failed?.status).toBe('failed')
+      expect(failed?.errorMessage).toContain('my-skill')
+      expect(failed?.errorMessage).toContain('plugin:alpha')
+    })
+
+    it('registerWorkflow cross-plugin id collision THROWS and fails activation (R18)', async () => {
+      // Same-plugin re-registration is an UPDATE by contract (hot-reload of
+      // defaults re-registers); only a cross-plugin id collision throws.
+      const pathA = writeFakePlugin('alpha', {
+        activate: `ctx.registerWorkflow({ id: 'dup-flow', name: 'Dup Flow', steps: [] })`,
+      })
+      const pathB = writeFakePlugin('bravo', {
+        activate: `ctx.registerWorkflow({ id: 'dup-flow', name: 'Stolen Flow', steps: [] })`,
+      })
+      await pluginRegistry.initialize(
+        { plugins: [{ path: pathA }, { path: pathB }] },
+        mockStorage(),
+        mockEvents(),
+      )
+      const failed = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'bravo')
+      expect(failed?.status).toBe('failed')
+      expect(failed?.errorMessage).toContain('dup-flow')
+      expect(failed?.errorMessage).toContain('alpha')
+    })
+
+    it('registerNodeType duplicate kind THROWS and fails activation (R18)', async () => {
+      const pathA = writeFakePlugin('alpha', {
+        activate: `
+          ctx.registerNodeType({ kind: 'dup-node', label: 'Dup', execute() {} })
+          ctx.registerNodeType({ kind: 'dup-node', label: 'Dup 2', execute() {} })
+        `,
+      })
+      await pluginRegistry.initialize({ plugins: [{ path: pathA }] }, mockStorage(), mockEvents())
+      const failed = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'alpha')
+      expect(failed?.status).toBe('failed')
+      expect(failed?.errorMessage).toContain('dup-node')
+    })
+
+    it('registerNotificationChannel duplicate id THROWS and fails activation (R18)', async () => {
+      const pathA = writeFakePlugin('alpha', {
+        activate: `
+          ctx.registerNotificationChannel({ id: 'dup-chan', label: 'Dup', send() {} })
+          ctx.registerNotificationChannel({ id: 'dup-chan', label: 'Dup 2', send() {} })
+        `,
+      })
+      await pluginRegistry.initialize({ plugins: [{ path: pathA }] }, mockStorage(), mockEvents())
+      const failed = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'alpha')
+      expect(failed?.status).toBe('failed')
+      expect(failed?.errorMessage).toContain('dup-chan')
     })
 
     it('hooks.register/has/invoke delegate to shared HookRegistry', async () => {

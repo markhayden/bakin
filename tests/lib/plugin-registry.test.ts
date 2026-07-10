@@ -102,7 +102,7 @@ describe('PluginContext.registerWorkflow', () => {
     expect(entry).toBeDefined()
   })
 
-  it('contains a cross-plugin id collision (logs error, does not throw out of activate)', async () => {
+  it('cross-plugin id collision THROWS out of activate (R18 uniform duplicate-throw)', async () => {
     // First plugin registers id 'shared'
     const pluginA = makeWorkflowsPlugin((ctx) => {
       ctx.registerWorkflow({
@@ -115,7 +115,7 @@ describe('PluginContext.registerWorkflow', () => {
     }, 'plugin-a')
     await activatePlugin(pluginA, testDir)
 
-    // Second plugin tries to claim 'shared' — must NOT throw
+    // Second plugin tries to claim 'shared' — the collision THROWS
     const pluginB = makeWorkflowsPlugin((ctx) => {
       ctx.registerWorkflow({
         id: 'shared',
@@ -126,17 +126,12 @@ describe('PluginContext.registerWorkflow', () => {
       })
     }, 'plugin-b')
 
-    await expect(activatePlugin(pluginB, testDir)).resolves.toBeDefined()
+    await expect(activatePlugin(pluginB, testDir)).rejects.toThrow(/shared[\s\S]*plugin-a/)
 
     // Original entry untouched
     const entry = getDefinition('shared')
     expect(entry!.pluginId).toBe('plugin-a')
     expect(entry!.definition.name).toBe('A')
-
-    // Error was logged
-    expect(errorLog).toHaveBeenCalled()
-    const logged = errorLog.mock.calls.flat().join(' ')
-    expect(logged).toMatch(/shared/)
   })
 
   it('lets the same plugin re-register the same id (hot reload)', async () => {

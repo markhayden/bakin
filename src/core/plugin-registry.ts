@@ -554,49 +554,39 @@ class PluginRegistryImpl {
         erased.source = `plugin:${pluginId}`
         addExecTool(erased)
       },
+      // Collision semantics are uniform across every registrar (R18): a
+      // duplicate registration THROWS with the collision + owning plugin.
+      // Hot reload is safe — the reload pipeline sweeps all five per-plugin
+      // registries before re-running activate() (see reload-pipeline.ts).
       registerSkill: (skill: SkillDefinition) => {
-        skill.source = `plugin:${pluginId}`
-        if (!skillRegistry().has(skill.name)) {
-          skillRegistry().set(skill.name, skill)
+        const existing = skillRegistry().get(skill.name)
+        if (existing) {
+          throw new Error(
+            `Skill "${skill.name}" is already registered by ${existing.source ?? 'unknown'} — ` +
+            `plugin "${pluginId}" must use a unique skill name`,
+          )
         }
+        skill.source = `plugin:${pluginId}`
+        skillRegistry().set(skill.name, skill)
       },
       registerWorkflow: (def: WorkflowDefinitionInput) => {
         const id = (def.id && def.id.length > 0) ? def.id : slugifyWorkflowId(def.name)
-        try {
-          registerPluginDefinition(pluginId, id, def as unknown as WorkflowDefinition)
-        } catch (err) {
-          log.error(`registerWorkflow collision in plugin "${pluginId}" for id "${id}"`, err as Error)
-        }
+        registerPluginDefinition(pluginId, id, def as unknown as WorkflowDefinition)
       },
       registerNodeType: <T = unknown>(def: PluginNodeTypeInput<T>): string => {
-        try {
-          const namespacedKind = registerPluginNodeType<T>(pluginId, def)
-          state.nodeKinds.push(namespacedKind)
-          return namespacedKind
-        } catch (err) {
-          log.error(`registerNodeType collision in plugin "${pluginId}" for kind "${def.kind}"`, err as Error)
-          return `${pluginId}.${def.kind}`
-        }
+        const namespacedKind = registerPluginNodeType<T>(pluginId, def)
+        state.nodeKinds.push(namespacedKind)
+        return namespacedKind
       },
       registerNotificationChannel: (def: PluginNotificationChannelInput): string => {
-        try {
-          const namespacedId = registerPluginNotificationChannel(pluginId, def)
-          state.channelIds.push(namespacedId)
-          return namespacedId
-        } catch (err) {
-          log.error(`registerNotificationChannel collision in plugin "${pluginId}" for id "${def.id}"`, err as Error)
-          return `${pluginId}.${def.id}`
-        }
+        const namespacedId = registerPluginNotificationChannel(pluginId, def)
+        state.channelIds.push(namespacedId)
+        return namespacedId
       },
       registerHealthCheck: (def: PluginHealthCheckInput): string => {
-        try {
-          const namespacedId = registerPluginHealthCheck(pluginId, def)
-          state.healthCheckIds.push(namespacedId)
-          return namespacedId
-        } catch (err) {
-          log.error(`registerHealthCheck collision in plugin "${pluginId}" for id "${def.id}"`, err as Error)
-          return `${pluginId}.${def.id}`
-        }
+        const namespacedId = registerPluginHealthCheck(pluginId, def)
+        state.healthCheckIds.push(namespacedId)
+        return namespacedId
       },
       watchFiles: (patterns: string[]) => { state.watchPatterns.push(...patterns) },
     }
