@@ -159,7 +159,6 @@ function makeRuntimeMock() {
       listWorkspaceFiles: async () => [],
       readWorkspaceFile: runtimeMocks.readWorkspaceFile,
       writeWorkspaceFile: runtimeMocks.writeWorkspaceFile,
-      updatePermissions: async () => {},
       updateAllowlist: runtimeMocks.updateAllowlist,
     },
     messaging: { send: async () => ({ id: 'msg-1' }), stream: async function* () {} },

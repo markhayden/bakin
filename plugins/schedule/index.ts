@@ -125,13 +125,14 @@ const schedulePlugin: BakinPlugin = definePlugin({
     }
 
     // Doctor check + repair surfacing any schedule whose cutover didn't complete
-    // (e.g. OpenClaw unreachable at boot) — the end-user migration command.
+    // (e.g. the runtime unreachable at boot) — the end-user migration command.
     ctx.registerHealthCheck({
       id: 'schedule-cutover',
-      name: 'Bakin schedules cut over from OpenClaw cron',
+      name: 'Bakin schedules cut over from runtime cron',
       run: async () => checkScheduleCutover(
         ctx.runtime.cron,
         () => Object.values(readSidecar().jobs).filter(j => j.isBakinJob).map(j => j.jobId),
+        ctx.runtime.name,
       ),
       repair: scheduleCutoverRepair(runScheduleCutover),
     })

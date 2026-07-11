@@ -189,18 +189,38 @@ describe('memory plugin shell (C2)', () => {
     expect(getOffset('reindex-probe-file')).toBe(123)
   })
 
-  it('reindex fails loudly when the runtime is unavailable (migration must park, not flip thin)', async () => {
+  it('reindex fails loudly when the memory surface is unavailable (migration must park, not flip thin)', async () => {
     const activated = await activatePlugin(memoryPlugin, testDir)
     const reg = activated.ctx.search.registerContentType as ReturnType<typeof mock>
     const def = reg.mock.calls[0][0]
 
+    const memory = activated.ctx.runtime.memory as unknown as { listTiers: ReturnType<typeof mock> }
+    const originalListTiers = memory.listTiers
+    memory.listTiers = mock(async () => { throw new Error('gateway down') })
+    try {
+      await expect(async () => {
+        for await (const _row of def.reindex()) { /* drain */ }
+      }).toThrow(/runtime memory surface unavailable/)
+    } finally {
+      memory.listTiers = originalListTiers
+    }
+  })
+
+  it('reindex proceeds when memory works even if ping is false (Pi: credential-less installs still backfill)', async () => {
+    const activated = await activatePlugin(memoryPlugin, testDir)
+    const reg = activated.ctx.search.registerContentType as ReturnType<typeof mock>
+    const def = reg.mock.calls[0][0]
+
+    // Pi-shaped state: turn-serveability probe false (no credentials), but
+    // the memory surface — what enumeration actually reads — works fine.
     const runtime = activated.ctx.runtime as unknown as { ping: ReturnType<typeof mock> }
     const originalPing = runtime.ping
     runtime.ping = mock(async () => false)
     try {
-      await expect(async () => {
-        for await (const _row of def.reindex()) { /* drain */ }
-      }).toThrow(/runtime unavailable/)
+      const rows: unknown[] = []
+      for await (const row of def.reindex()) rows.push(row)
+      // Empty enumeration is fine — the point is it did NOT park.
+      expect(Array.isArray(rows)).toBe(true)
     } finally {
       runtime.ping = originalPing
     }

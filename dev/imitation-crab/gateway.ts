@@ -31,7 +31,8 @@
  *    alongside `aborted`; the mock's payload has only `{aborted, runIds}`.
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'http'
-import { appendFileSync, mkdirSync } from 'fs'
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { randomUUID } from 'crypto'
 import { join } from 'path'
 import { getChatDelayMs, getChatMode, getGatewayPort, getMockHome, getToolMode } from './env'
 
@@ -199,6 +200,42 @@ function postAbortFinal(run: ActiveRun): GatewayRpcResponse {
       result: { payloads: [], meta: {} },
     },
   }
+}
+
+/**
+ * Mirror the real gateway's sessions.json bookkeeping: one entry per
+ * sessionKey holding the CURRENT sessionId plus timing metadata (the shape
+ * `sessions.list/get` reads — see packages/adapter-openclaw/src/sessions.ts).
+ * Written at run acceptance like the real wire; sessionStartedAt is
+ * preserved across turns on the same key, updatedAt refreshes.
+ */
+function recordSessionStoreEntry(agentId: string, sessionKey: string, sessionId: string | null): void {
+  const dir = join(getMockHome(), 'agents', agentId, 'sessions')
+  mkdirSync(dir, { recursive: true })
+  const path = join(dir, 'sessions.json')
+  let store: Record<string, Record<string, unknown>> = {}
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(path, 'utf-8'))
+    if (parsed && typeof parsed === 'object') store = parsed as Record<string, Record<string, unknown>>
+  } catch {
+    // Missing/corrupt store starts fresh — bookkeeping, not source of truth.
+  }
+  const existing = store[sessionKey]
+  const now = Date.now()
+  const resolvedSessionId = sessionId ?? (typeof existing?.sessionId === 'string' ? existing.sessionId : randomUUID())
+  store[sessionKey] = {
+    ...existing,
+    sessionId: resolvedSessionId,
+    // The real gateway always writes sessionFile — mirror it so the adapter's
+    // primary path (store-provided file) is what e2e exercises, not only the
+    // synthesized-path fallback.
+    sessionFile: join(dir, `${resolvedSessionId}.jsonl`),
+    sessionStartedAt: typeof existing?.sessionStartedAt === 'number' ? existing.sessionStartedAt : now,
+    updatedAt: now,
+    model: 'mock-model',
+    chatType: 'direct',
+  }
+  writeFileSync(path, JSON.stringify(store, null, 2))
 }
 
 /**
@@ -398,6 +435,7 @@ export async function handleGatewayRpcRequest(method: string, params: Record<str
       payloadSeq: 0,
     }
     if (abortRegistered) activeRuns.set(runId, run)
+    recordSessionStoreEntry(agentId, sessionKey, sessionId)
     const observed: ObservedAgentRun = { runId, sessionKey, agentId }
     observedAgentRuns.push(observed)
     console.log(`  → rpc=agent agent=${agentId} run=${runId} registered=${abortRegistered} message=${userMessage.slice(0, 80)}${userMessage.length > 80 ? '...' : ''}`)

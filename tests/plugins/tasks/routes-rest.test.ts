@@ -17,6 +17,7 @@ import {
   ledgerMock,
   taskStoreMock,
   taskServiceMock,
+  MockWorkflowTaskMoveError,
   resetTasksRoutesHarness,
   completionsFake,
   mockTaskRuns,
@@ -744,7 +745,7 @@ describe('POST /:taskId/move — Move Task', () => {
   })
 
   it('returns 403 for workflow-blocked moves', async () => {
-    mockMoveTaskWithEffects.mockRejectedValue(new Error('Workflow tasks cannot be moved manually'))
+    mockMoveTaskWithEffects.mockRejectedValue(new MockWorkflowTaskMoveError())
 
     const route = findRoute(activated.routes, 'POST', '/:taskId/move')!
     const { status, body } = await callRoute(route, activated.ctx, {

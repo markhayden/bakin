@@ -34,6 +34,12 @@ export function parseTurnLine(
   sessionKey: string,
   line: string,
   lineByteOffset: number,
+  /**
+   * Session artifact filename from the runtime memory surface (adapter-owned
+   * naming — upstream never invents a `<sessionId>.jsonl` convention). Falls
+   * back to the bare sessionId when the adapter reports no file.
+   */
+  sourceFile?: string,
 ): MemoryRow | null {
   if (!line) return null
   let obj: Record<string, unknown>
@@ -97,7 +103,7 @@ export function parseTurnLine(
     sourceRef: {
       backend: 'runtime',
       path: '',
-      file: `${sessionId}.jsonl`,
+      file: sourceFile ?? sessionId,
       offset: lineByteOffset,
       sessionId,
       eventId,

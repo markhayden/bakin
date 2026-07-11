@@ -53,7 +53,8 @@ async function sendDispatchMessage(agentId: string, content: string, threadId: s
     ...(routing?.thinking ? { thinking: routing.thinking } : {}),
     ...(signal ? { signal } : {}),
     ...(onActivity ? { onActivity } : {}),
-    metadata: { oversizedOutputBytes: getSettings().dispatch.oversizedOutputBytes },
+    // Typed contract field (T29) — core policy never rides the metadata bag.
+    oversizedOutputBytes: getSettings().dispatch.oversizedOutputBytes,
   })
 }
 

@@ -1,4 +1,4 @@
-import { pluginRegistry } from '@/core/plugin-registry'
+import { PluginRegistryNotInitializedError, pluginRegistry } from '@/core/plugin-registry'
 import { bumpVersion } from '@/core/plugin-host/version-stamp'
 import { createLogger } from '@/core/logger'
 import { broadcastPluginManifestChanged, broadcastPluginReload } from '@/core/sse'
@@ -14,7 +14,7 @@ export interface LiveActivationResult {
 }
 
 export function isLiveActivationUnavailable(err: unknown): boolean {
-  return err instanceof Error && err.message.includes('plugin registry is not initialized')
+  return err instanceof PluginRegistryNotInitializedError
 }
 
 export async function activateUserPluginDir(pluginDir: string): Promise<LiveActivationResult> {

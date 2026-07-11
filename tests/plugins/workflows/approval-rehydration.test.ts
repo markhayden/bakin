@@ -65,7 +65,7 @@ mock.module('@/core/task-store', () => ({
   getTaskWithColumn: mock(() => null),
 }))
 
-import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
+import { createMockRuntimeAdapter, mockChannels } from '@bakin/core/adapters/runtime/testing'
 import { createApprovalRecord, getApprovalRecord, resolveApprovalRecord, updateApprovalDeliveries } from '@bakin/workflows/lib/approval-store'
 import { rehydratePendingApprovals } from '@bakin/workflows/lib/approval-rehydration'
 import { loadInstance, saveInstance } from '@bakin/workflows/lib/runtime'
@@ -149,7 +149,7 @@ describe('workflow approval rehydration', () => {
     createPendingRecord()
     updateApprovalDeliveries('workflow-gate:task-42:review-gate', [delivery], testDir)
 
-    const runtime = createMockRuntimeAdapter()
+    const runtime = createMockRuntimeAdapter({ channels: mockChannels() })
     const createApproval = mock(async () => ({ deliveries: [] }))
     runtime.channels!.createApproval = createApproval
 
@@ -180,7 +180,7 @@ describe('workflow approval rehydration', () => {
     saveInstance(pendingInstance(), testDir)
     createPendingRecord()
 
-    const runtime = createMockRuntimeAdapter() as AgentRuntimeAdapter
+    const runtime = createMockRuntimeAdapter({ channels: mockChannels() }) as AgentRuntimeAdapter
     const createApproval = mock(async () => ({ deliveries: [delivery] }))
     runtime.channels!.createApproval = createApproval
 
@@ -216,7 +216,7 @@ describe('workflow approval rehydration', () => {
     saveInstance(pendingInstance(), testDir)
     createPendingRecord()
 
-    const runtime = createMockRuntimeAdapter() as AgentRuntimeAdapter
+    const runtime = createMockRuntimeAdapter({ channels: mockChannels() }) as AgentRuntimeAdapter
     const createApproval = mock(async () => ({ deliveries: [delivery] }))
     runtime.channels!.createApproval = createApproval
     const logError = mock()

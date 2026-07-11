@@ -66,6 +66,18 @@ function getPort(): number {
 
 export type Channel = 'human' | 'mcp' | 'rest' | 'cli' | 'system'
 
+/**
+ * Workflow done-guard rejection — a TYPED class so route/tool callers
+ * classify by instanceof, never by message text (R28 discipline applies to
+ * Bakin-owned errors too; the tasks move route maps this to 403).
+ */
+export class WorkflowTaskMoveError extends Error {
+  constructor() {
+    super('Workflow tasks cannot be moved to Done directly. Use bakin_exec_submit_step — the workflow engine manages task completion.')
+    this.name = 'WorkflowTaskMoveError'
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Ledger sync helpers
 // ---------------------------------------------------------------------------
@@ -186,7 +198,7 @@ export async function moveTaskWithEffects(
       if (task?.workflowId) {
         const instance = await hooks().invoke<Record<string, unknown>>('workflows.loadInstance', { taskId: task.id })
         if (instance && instance.status !== 'complete') {
-          throw new Error('Workflow tasks cannot be moved to Done directly. Use bakin_exec_submit_step — the workflow engine manages task completion.')
+          throw new WorkflowTaskMoveError()
         }
         break
       }

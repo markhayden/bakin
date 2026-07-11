@@ -32,12 +32,6 @@ export interface UpdateRuntimeAgentInput {
   metadata?: RuntimeMetadata
 }
 
-export interface RuntimePermissionPatch {
-  allow?: string[]
-  deny?: string[]
-  replace?: boolean
-}
-
 export interface RuntimeAllowlistPatch {
   add?: string[]
   remove?: string[]
@@ -71,11 +65,23 @@ export interface RuntimeMessageToolPolicy {
   /**
    * Controls whether runtime-native tools are available for this agent turn.
    * `none` disables tools. Omit or use `auto` for runtime/provider defaults.
+   * Native tool policy beyond on/off is ADAPTER-PRIVATE — callers never name
+   * native tools.
    */
   toolsMode?: RuntimeMessageToolsMode
-  /** Optional runtime-native tool allowlist for this turn. */
+  /**
+   * Per-turn allowlist of BAKIN EXEC TOOLS by exact name (e.g.
+   * `bakin_exec_tasks_get`). Scope is the exec-tool set ONLY — never
+   * runtime-native tools (audit M3: OpenClaw once forwarded these as native
+   * policy while Pi filtered exec tools, so `toolsAllow: ['read']` meant two
+   * different things). Enforcement is mechanism-dependent: in-process
+   * runtimes filter the tool bridge per turn; runtimes whose exec tools ride
+   * session-static transports (OpenClaw's per-agent MCP servers) cannot
+   * filter per-turn and must IGNORE the fields with a loud warning — never
+   * misapply them to native tools.
+   */
   toolsAllow?: string[]
-  /** Optional runtime-native tool denylist for this turn. */
+  /** Per-turn denylist of Bakin exec tools by exact name (same scope/enforcement as `toolsAllow`). */
   toolsDeny?: string[]
 }
 
@@ -132,8 +138,26 @@ export interface MessageArgs extends RuntimeMessageToolPolicy {
    * Ignored by `messaging.stream`, whose iterator already carries chunks.
    */
   onActivity?: (chunk: ChatChunk) => void
+  /**
+   * Byte threshold above which a died turn's completion counts as
+   * "oversized output" in its RuntimeTurnDiagnosis (the recovery ladder
+   * treats runaway-output deaths differently from ordinary interrupts).
+   * Dispatch passes `settings.dispatch.oversizedOutputBytes`; adapters fall
+   * back to their own default (128 KiB) when omitted. Typed here — NOT a
+   * metadata-bag key (audit M4: core policy must never ride the opaque bag).
+   */
+  oversizedOutputBytes?: number
   metadata?: RuntimeMetadata
 }
+
+/**
+ * Fallback for `MessageArgs.oversizedOutputBytes` when the caller omits it —
+ * THE single source both adapters and `settings.dispatch.oversizedOutputBytes`
+ * default from (previously duplicated per adapter; parity by reference, not
+ * by copy). Both adapters measure the same thing: UTF-8 bytes of the turn's
+ * assistant output text, strict `>`.
+ */
+export const DEFAULT_OVERSIZED_OUTPUT_BYTES = 128 * 1024
 
 /** Token usage for one agent turn, when the runtime reports it. */
 export interface MessageUsage {
@@ -208,12 +232,6 @@ export type ChatChunk =
   | { type: 'done'; content?: string; data?: RuntimeMetadata }
   /** Terminal failure — `data.kind` carries the RuntimeError kind when known. */
   | { type: 'error'; content?: string; data?: RuntimeMetadata }
-
-export interface ToolResult {
-  ok: boolean
-  output?: unknown
-  error?: { message: string; recoverable: boolean }
-}
 
 export interface ChannelInfo {
   id: string
@@ -395,6 +413,12 @@ export interface RuntimeSessionStoreStats {
   fileCount: number
   /** Total bytes of the agent's sessions directory, subtrees included. */
   diskBytes: number
+  /**
+   * Adapter-owned operator guidance for shrinking this agent's store (CLI
+   * commands, config knobs). Health surfaces render it verbatim — provider
+   * specifics belong HERE, never hardcoded upstream of the adapter.
+   */
+  remediation?: string
 }
 
 export interface RuntimeMemoryTier {
@@ -481,6 +505,15 @@ export interface RuntimeToolAccess {
   shimCommand?: string
   /** One canonical, style-appropriate example call. */
   example?: string
+  /**
+   * Whether this runtime can ENFORCE `MessageArgs.toolsAllow`/`toolsDeny`
+   * per turn. In-process runtimes filter their tool bridge per call (true);
+   * runtimes whose exec tools ride session-static transports (OpenClaw's
+   * per-agent MCP servers) cannot (false) — they ignore the fields with a
+   * loud warning. Callers needing a RESTRICTED turn must feature-detect
+   * this and refuse rather than degrade fail-open.
+   */
+  perTurnExecToolFiltering?: boolean
 }
 
 /**
@@ -730,6 +763,14 @@ export interface RawCronSnapshot {
   snapshot: unknown
 }
 
+/**
+ * URI scheme for runtime-private media references (`media://inbound/…`).
+ * The ONE place upstream code may learn the scheme: callers detect
+ * media references with this constant and hand them to `media.resolveUri`
+ * (feature-detected) — the adapter owns what the URI means.
+ */
+export const RUNTIME_MEDIA_URI_SCHEME = 'media://'
+
 export interface AgentRuntimeAdapter {
   readonly name: string
   readonly version: string
@@ -737,10 +778,38 @@ export interface AgentRuntimeAdapter {
 
   initialize(opts: AdapterInitOpts): Promise<void>
   shutdown(): Promise<void>
+  /**
+   * "Can this runtime serve a turn?" — a CHEAP probe (an HTTP health hit, a
+   * credential-presence read; never an LLM call). Resolves `false` rather
+   * than throwing when the runtime cannot serve (unreachable process,
+   * uninitialized adapter, no LLM credentials). Deep diagnostics belong to
+   * getHealthChecks(), not here — the health plugin's `runtime` check
+   * renders this as reachable/not-responding.
+   */
   ping(): Promise<boolean>
+  /**
+   * Re-read ALL durable config: credentials, model registry, settings,
+   * provisioned tool access. External-process runtimes may bounce the
+   * process; in-process runtimes must drop every cache so the next call
+   * re-reads disk. Callers (team/models plugins) invoke this after config
+   * writes and expect the next read to reflect them.
+   */
   restart(): Promise<void>
   getHealthChecks(): AdapterHealthCheckDefinition[]
 
+  /**
+   * CRUD error contract (R28): `get` returns `null` for a missing agent —
+   * absence is a value, never a throw. Mutations addressing a MISSING agent
+   * (`update`, `updateAllowlist`, `remove`) reject with a typed
+   * `RuntimeError` kind `'not_found'`. Workspace-file writes are exempt BY
+   * DESIGN: they provision the workspace directory on demand (creating an
+   * agent's first file is a legitimate provisioning step, not an error).
+   * Provider/runtime failures on these surfaces are typed `RuntimeError`s
+   * (adapters map them in their own errors module — core never classifies
+   * on message text); caller-INPUT validation (invalid names/paths,
+   * unsupported options) may throw plain `Error`s — those signal programmer
+   * error before any runtime interaction, not runtime state.
+   */
   agents: {
     list(): Promise<RuntimeAgent[]>
     get(agentId: string): Promise<RuntimeAgent | null>
@@ -759,7 +828,15 @@ export interface AgentRuntimeAdapter {
      * skip, never error.
      */
     workspaceFileStats?(agentId: string): Promise<WorkspaceFileStat[] | null>
-    updatePermissions(agentId: string, patch: RuntimePermissionPatch): Promise<void>
+    /**
+     * The SUBAGENT-DISPATCH allowlist: the patch strings are AGENT IDS this
+     * agent may dispatch subtasks to (P5.3 live incident: these were once fed
+     * into an exec-tool name filter — they are never tool names). OpenClaw
+     * writes `agents.list[].subagents.allowAgents` in its config; Pi stores
+     * the registry record's `allowlist`, consumed by its tool bridge when
+     * filtering subagent dispatch targets. Installer/team flows add every
+     * newly installed agent to its dispatchers here.
+     */
     updateAllowlist(agentId: string, patch: RuntimeAllowlistPatch): Promise<void>
   }
 
@@ -773,10 +850,6 @@ export interface AgentRuntimeAdapter {
      * iteration), classified/structured chunks only.
      */
     stream(args: MessageArgs): AsyncIterable<ChatChunk>
-  }
-
-  tools: {
-    invoke(agentId: string, name: string, args: unknown): Promise<ToolResult>
   }
 
   /**
@@ -858,6 +931,11 @@ export interface AgentRuntimeAdapter {
    * model-dependent (input modality). Async: the report surface for the
    * runtime-switch UI + plugin capability queries. `input` is conservative-
    * false on any ambiguity, never model-name heuristics.
+   *
+   * Modes are HONEST: a static `'native'` declaration is acceptable only
+   * when the surface is unconditionally implemented (the standard the T28
+   * sessions fix restored — a declared-native stub is a contract violation,
+   * pinned by the runtime conformance suite's capability-honesty check).
    */
   capabilities(opts?: { agentId?: string }): Promise<CapabilitySet>
 
@@ -910,10 +988,10 @@ export interface AgentRuntimeAdapter {
 
   /**
    * Access to the runtime's private media store (e.g. channel attachments).
-   * `resolveUri` maps a runtime-private URI (OpenClaw's `media://…`) to an
-   * absolute local file path; null for unknown schemes or missing files —
-   * never throws for not-found. Optional: runtimes without a media store
-   * omit it, and callers must treat absence as "cannot resolve".
+   * `resolveUri` maps a runtime-private URI (`RUNTIME_MEDIA_URI_SCHEME`-
+   * prefixed) to an absolute local file path; null for unknown schemes or
+   * missing files — never throws for not-found. Optional: runtimes without a
+   * media store omit it, and callers must treat absence as "cannot resolve".
    */
   media?: {
     resolveUri(uri: string): Promise<string | null>

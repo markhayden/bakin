@@ -179,12 +179,19 @@ const memoryPlugin: BakinPlugin = definePlugin({
       reindex: async function* () {
         // Blue/green backfill source: the side-effect-free enumerator
         // re-derives every row from source files WITHOUT touching offsets
-        // or live state. MUST fail loudly when the runtime is down —
-        // non-audit tiers read through ctx.runtime, and silently yielding
-        // nothing would let a thin green table converge and flip.
-        const alive = await ctx.runtime.ping().catch(() => false)
-        if (!alive) {
-          throw new Error('runtime unavailable — memory backfill would be incomplete; migration stays parked')
+        // or live state. MUST fail loudly when the MEMORY surface is down —
+        // non-audit tiers read through ctx.runtime.memory, and silently
+        // yielding nothing would let a thin green table converge and flip.
+        // Probe the surface enumeration actually needs, NOT ping(): on Pi,
+        // ping is a turn-serveability (credential) probe while memory reads
+        // are credential-free local files — a credential-less Pi install can
+        // serve a complete backfill and must not park forever.
+        try {
+          await ctx.runtime.memory.listTiers()
+        } catch (err) {
+          throw new Error(
+            `runtime memory surface unavailable — memory backfill would be incomplete; migration stays parked (${err instanceof Error ? err.message : String(err)})`,
+          )
         }
         yield* indexer.enumerateAll()
       },

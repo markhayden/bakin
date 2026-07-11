@@ -14,7 +14,7 @@
  */
 import { join } from 'path'
 
-import { RuntimeTurnError, type RuntimeTurnDiagnosis } from '@bakin/core/adapters/runtime'
+import { DEFAULT_OVERSIZED_OUTPUT_BYTES, RuntimeTurnError, type RuntimeTurnDiagnosis } from '@bakin/core/adapters/runtime'
 
 import { readFileBytesFrom, safeFileSize } from './file-utils'
 import { getOpenClawHome } from './home'
@@ -28,8 +28,6 @@ export const OPENCLAW_TRAJECTORY_TEXT_LIMIT = 262_144
  * when the deleted live activity tail shared it.
  */
 export const OPENCLAW_TRAJECTORY_POLL_MS = 200
-
-export const DEFAULT_OVERSIZED_OUTPUT_BYTES = 128 * 1024
 
 const SUPPORTED_TRACE_SCHEMA = 'openclaw-trajectory'
 const SUPPORTED_SCHEMA_VERSION = 1

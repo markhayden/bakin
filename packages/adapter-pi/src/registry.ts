@@ -38,7 +38,7 @@ const AgentRecordSchema = z.object({
    * every bakin_exec_* tool from main after an agent-package install.
    */
   allowlist: z.array(z.string()).optional(),
-  /** Permission grant/deny record (updatePermissions patches land here). */
+  /** Retired permission record (the deleted updatePermissions wrote here); kept so existing registry files still parse. */
   permissions: z.object({ allow: z.array(z.string()), deny: z.array(z.string()) }).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 })

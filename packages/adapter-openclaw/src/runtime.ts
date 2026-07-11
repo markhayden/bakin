@@ -92,6 +92,7 @@ import {
   parseNativeApprovalRef, isExpectedNativeApprovalResolveMiss,
 } from './approval-helpers'
 import { openClawCliSessionId, openClawExplicitSessionKey } from './session-store'
+import { getOpenClawSession, listOpenClawSessions } from './sessions'
 import { streamOpenClawTurnChunks, tapOpenClawTurnActivity, type OpenClawActivityTap } from './stream-events'
 import {
   writeOpenClawConfig, upsertOpenClawAgentConfig,
@@ -109,7 +110,7 @@ import {
   threadIdFromOpenClawOutput, messageIdFromDeliveryRef,
 } from './channel-helpers'
 import {
-  oversizedOutputBytesFrom, messagesToOpenClawPrompt, normalizeToolList,
+  messagesToOpenClawPrompt,
   extractOpenClawAgentText, extractOpenClawAgentUsage,
 } from './agent-turn'
 import {
@@ -173,8 +174,6 @@ interface OpenClawAgentTurnOptions {
   attachments?: MessageArgs['attachments']
   ephemeral?: boolean
   toolsMode?: MessageArgs['toolsMode']
-  toolsAllow?: string[]
-  toolsDeny?: string[]
   /** Per-turn model override (`provider/model`); omit to use the agent default. */
   model?: string
   /** Per-turn thinking level; omit to use the runtime default. */
@@ -314,7 +313,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     create: async (input: CreateRuntimeAgentInput): Promise<RuntimeAgent> => {
       const id = input.id ?? slug(input.name)
       const workspace = getWorkspacePath(id)
-      if (findAgentById(id)) throw new Error(`Agent already exists: ${id}`)
+      if (findAgentById(id)) throw new RuntimeError(`Agent already exists: ${id}`, { kind: 'runtime_failed' })
       const args = ['agents', 'add', id, '--workspace', workspace, '--non-interactive', '--json']
       if (input.model) args.splice(3, 0, '--model', input.model)
       const emoji = metadataValue(input.metadata, 'emoji')
@@ -372,7 +371,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       }
     },
     update: async (agentId: string, input: UpdateRuntimeAgentInput): Promise<RuntimeAgent> => {
-      if (!findAgentById(agentId)) throw new Error(`Agent not found: ${agentId}`)
+      if (!findAgentById(agentId)) throw new RuntimeError(`Agent not found: ${agentId}`, { kind: 'not_found' })
       const args = ['agents', 'set-identity', '--agent', agentId]
       if (input.name) args.push('--name', input.name)
       const emoji = metadataValue(input.metadata, 'emoji')
@@ -402,6 +401,10 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       }
     },
     remove: async (agentId: string): Promise<void> => {
+      // Removing a MISSING agent is typed not_found (R28) — matching Pi and
+      // the contract doc; previously the CLI failure surfaced as an opaque
+      // runtime_failed.
+      if (!findAgentById(agentId)) throw new RuntimeError(`Agent not found: ${agentId}`, { kind: 'not_found' })
       const workspace = getWorkspacePath(agentId)
       await this.exec(['agents', 'delete', agentId, '--force', '--json'])
       resetOpenClawConfigCache()
@@ -497,15 +500,6 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       rmSync(target, { force: true })
       rmSync(`${target}.installedBy`, { force: true })
     },
-    updatePermissions: async (agentId: string, patch: { allow?: string[]; deny?: string[]; replace?: boolean }): Promise<void> => {
-      updateAgentAllowlist(agentId, (current) => {
-        const next = new Set(patch.replace ? [] : current)
-        for (const id of patch.allow ?? []) next.add(id)
-        for (const id of patch.deny ?? []) next.delete(id)
-        next.delete(agentId)
-        return Array.from(next)
-      })
-    },
     updateAllowlist: async (agentId: string, patch: { add?: string[]; remove?: string[]; replace?: string[] }): Promise<void> => {
       updateAgentAllowlist(agentId, (current) => {
         const next = new Set(patch.replace ?? current)
@@ -519,6 +513,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
   messaging = {
     send: async (args: MessageArgs) => {
+      warnUnenforceableToolPolicy(args, this.logger)
       const { content, usage } = await this.chatCompletion({
         agentId: args.agentId,
         messages: [{ role: 'user', content: args.content }],
@@ -526,11 +521,9 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         attachments: args.attachments,
         ephemeral: args.ephemeral,
         toolsMode: args.toolsMode,
-        toolsAllow: args.toolsAllow,
-        toolsDeny: args.toolsDeny,
         model: args.model,
         thinking: args.thinking,
-        oversizedOutputBytes: oversizedOutputBytesFrom(args.metadata),
+        oversizedOutputBytes: args.oversizedOutputBytes,
         signal: args.signal,
         onActivity: args.onActivity,
       })
@@ -544,28 +537,23 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         ...(sessionId ? { metadata: { sessionId } } : {}),
       }
     },
-    stream: (args: MessageArgs): AsyncIterable<ChatChunk> => this.streamChat({
-      agentId: args.agentId,
-      messages: [{ role: 'user', content: args.content }],
-      sessionKey: args.threadId,
-      attachments: args.attachments,
-      ephemeral: args.ephemeral,
-      toolsMode: args.toolsMode,
-      toolsAllow: args.toolsAllow,
-      toolsDeny: args.toolsDeny,
-      model: args.model,
-      thinking: args.thinking,
-      oversizedOutputBytes: oversizedOutputBytesFrom(args.metadata),
-      signal: args.signal,
-    }),
-  }
-
-  tools = {
-    invoke: async (_agentId: string, name: string, args: unknown) => {
-      const value = await this.invokeTool(name, args as Record<string, unknown>)
-      return { ok: true, output: value }
+    stream: (args: MessageArgs): AsyncIterable<ChatChunk> => {
+      warnUnenforceableToolPolicy(args, this.logger)
+      return this.streamChat({
+        agentId: args.agentId,
+        messages: [{ role: 'user', content: args.content }],
+        sessionKey: args.threadId,
+        attachments: args.attachments,
+        ephemeral: args.ephemeral,
+        toolsMode: args.toolsMode,
+        model: args.model,
+        thinking: args.thinking,
+        oversizedOutputBytes: args.oversizedOutputBytes,
+        signal: args.signal,
+      })
     },
   }
+
 
   channels = {
     list: async (): Promise<ChannelInfo[]> => readChannelInfos(),
@@ -910,8 +898,8 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   sessions = {
-    list: async () => [],
-    get: async () => null,
+    list: async (agentId?: string) => listOpenClawSessions(agentId),
+    get: async (sessionId: string) => getOpenClawSession(sessionId),
     storeStats: async (): Promise<RuntimeSessionStoreStats[]> => {
       const agentsDir = getOpenClawPath('agents')
       if (!existsSync(agentsDir)) return []
@@ -947,7 +935,16 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
             error: String(err),
           })
         }
-        stats.push({ agentId: entry.name, storeEntries, fileCount, diskBytes })
+        stats.push({
+          agentId: entry.name,
+          storeEntries,
+          fileCount,
+          diskBytes,
+          // Adapter-owned operator guidance (R29): the provider-specific
+          // cleanup command lives HERE, never in upstream health copy.
+          remediation:
+            'Run `openclaw sessions cleanup --enforce` and consider setting `session.maintenance.maxDiskBytes` so the gateway self-maintains.',
+        })
       }
       return stats
     },
@@ -1035,7 +1032,9 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
    * discipline applies to runtimes too).
    */
   /** OpenClaw agents reach Bakin exec tools via their native MCP client (verified: Phase-0 spike). */
-  describeToolAccess = (): RuntimeToolAccess => ({ style: 'mcp', mcpServerTemplate: 'bakin-<agent>' })
+  // perTurnExecToolFiltering false: exec tools ride session-static per-agent
+  // MCP servers — toolsAllow/toolsDeny are unenforceable per turn here.
+  describeToolAccess = (): RuntimeToolAccess => ({ style: 'mcp', mcpServerTemplate: 'bakin-<agent>', perTurnExecToolFiltering: false })
 
   /**
    * Presence-only credential report (P2.2): provider names from the agent's
@@ -1400,7 +1399,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
   private async updateCronJob(id: string, patch: UpdateCronJobInput): Promise<CronJob> {
     const current = await this.getCronJob(id)
-    if (!current) throw new Error(`Cron job not found: ${id}`)
+    if (!current) throw new RuntimeError(`Cron job not found: ${id}`, { kind: 'not_found' })
 
     const args = cronUpdateArgs(id, current, patch)
     if (args.length > 5) await this.execCron(args)
@@ -1857,15 +1856,6 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     return this.chatGatewayClient
   }
 
-  private async invokeTool(toolName: string, args: Record<string, unknown> = {}): Promise<unknown> {
-    const res = await fetch(`${this.baseUrl()}/tools/invoke`, {
-      method: 'POST',
-      headers: this.headers(),
-      body: JSON.stringify({ tool: toolName, action: 'json', args }),
-    })
-    if (!res.ok) throw new RuntimeError(`OpenClaw invokeTool failed (${res.status}): ${await res.text()}`, { kind: 'runtime_failed' })
-    return res.json()
-  }
 
   private async runImageInference(
     command: 'generate' | 'edit',
@@ -1917,12 +1907,36 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   }
 }
 
+/**
+ * Per-turn tool policy → gateway params: toolsMode ONLY. The contract's
+ * toolsAllow/toolsDeny name Bakin exec tools — OpenClaw's exec tools ride
+ * session-static per-agent MCP servers, so per-turn filtering is not
+ * enforceable here, and forwarding the fields as gateway-native tool policy
+ * misapplied them to native tools (audit M3: `toolsAllow: ['read']`
+ * restricted natives on OpenClaw while Pi filtered exec tools). The fields
+ * are ignored with a loud warning (warnUnenforceableToolPolicy).
+ */
 function applyRuntimeMessageToolPolicy(params: Record<string, unknown>, opts: OpenClawAgentTurnOptions): void {
   if (opts.toolsMode === 'none' || opts.toolsMode === 'auto') params.toolsMode = opts.toolsMode
-  const toolsAllow = normalizeToolList(opts.toolsAllow)
-  const toolsDeny = normalizeToolList(opts.toolsDeny)
-  if (toolsAllow) params.toolsAllow = toolsAllow
-  if (toolsDeny) params.toolsDeny = toolsDeny
+}
+
+/**
+ * Loud honesty: callers supplying exec-tool filters must know OpenClaw cannot
+ * enforce them per-turn. Deduped once per agent — a caller that adopts the
+ * fields would otherwise log every single turn. (Callers can feature-detect
+ * via describeToolAccess().perTurnExecToolFiltering === false and refuse
+ * instead of degrading.)
+ */
+const warnedUnenforceableToolPolicyAgents = new Set<string>()
+function warnUnenforceableToolPolicy(args: MessageArgs, logger: AdapterLogger): void {
+  if (!args.toolsAllow?.length && !args.toolsDeny?.length) return
+  if (warnedUnenforceableToolPolicyAgents.has(args.agentId)) return
+  warnedUnenforceableToolPolicyAgents.add(args.agentId)
+  logger.warn('toolsAllow/toolsDeny ignored: OpenClaw exec tools ride session-static MCP servers — per-turn exec-tool filtering is unenforceable on this runtime (fields are never applied to native tools)', {
+    agentId: args.agentId,
+    toolsAllow: args.toolsAllow?.length ?? 0,
+    toolsDeny: args.toolsDeny?.length ?? 0,
+  })
 }
 
 /**

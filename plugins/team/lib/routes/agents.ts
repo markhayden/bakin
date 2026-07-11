@@ -17,7 +17,7 @@ import { defineRoute } from '@bakin/core/routing'
 import type { PluginContextLite } from '@bakin/core/routing'
 import { serveAvatar, detectImageExtension } from '@bakin/core/agents/avatar'
 import { removeInstalledBy } from '@bakin/core/agent-packages/markers'
-import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
+import { getRuntimeMainAgentId, RuntimeError } from '@bakin/core/adapters/runtime'
 
 import { createLogger } from '../../../../src/core/logger'
 import { readHeartbeats } from '../../../../src/lib/content-files'
@@ -48,6 +48,7 @@ import {
   removeRuntimeAgent,
   updateRuntimeAgentIdentity,
   setRuntimeSubagentPermissions,
+  SelfDispatchError,
   listRuntimeSkills,
   readRuntimeSkillFile,
   listRuntimeMemoryFiles,
@@ -144,6 +145,14 @@ export function populateAgentRoutes(arr: any[], deps: TeamRouteDeps): void {
         if (!id) return Response.json({ error: 'id is required (lowercase alphanumeric)' }, { status: 400 })
         if (!body.name) return Response.json({ error: 'name is required' }, { status: 400 })
 
+        // Existence pre-check for the 409 — typed and adapter-neutral
+        // (adapters throw kind 'runtime_failed' for creates on existing ids,
+        // which is not distinguishable from other failures; absence-as-null
+        // via get() is the contract's honest existence probe).
+        if (await ctx.runtime.agents.get(id)) {
+          return Response.json({ error: `Agent already exists: ${id}` }, { status: 409 })
+        }
+
         await createRuntimeAgent(ctx.runtime, {
           id,
           name: body.name as string,
@@ -197,8 +206,7 @@ export function populateAgentRoutes(arr: any[], deps: TeamRouteDeps): void {
         return Response.json({ ok: true, id, runtimeRestarted: !skipRestart })
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
-        const status = msg.includes('already exists') ? 409 : 500
-        return Response.json({ error: msg }, { status })
+        return Response.json({ error: msg }, { status: 500 })
       }
     },
   }))
@@ -289,8 +297,11 @@ export function populateAgentRoutes(arr: any[], deps: TeamRouteDeps): void {
 
         return Response.json({ ok: true, id: agentId, updated })
       } catch (err) {
+        // Typed classification (R28): kind, never message text — both
+        // adapters and the roster pre-check reject missing agents with
+        // RuntimeError kind 'not_found'.
         const msg = err instanceof Error ? err.message : String(err)
-        const status = msg.includes('not found') ? 404 : 500
+        const status = err instanceof RuntimeError && err.kind === 'not_found' ? 404 : 500
         return Response.json({ error: msg }, { status })
       }
     },
@@ -330,7 +341,11 @@ export function populateAgentRoutes(arr: any[], deps: TeamRouteDeps): void {
         return Response.json({ ok: true, agentId, allowAgents })
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
-        const status = msg.includes('not found') ? 404 : msg.includes('cannot dispatch') ? 400 : 500
+        const status = err instanceof RuntimeError && err.kind === 'not_found'
+          ? 404
+          : err instanceof SelfDispatchError
+            ? 400
+            : 500
         return Response.json({ error: msg }, { status })
       }
     },

@@ -105,7 +105,7 @@ function warnRuntimeModelFetchFailed(message: string): void {
   const now = Date.now()
   if (
     lastRuntimeModelFetchWarning &&
-    lastRuntimeModelFetchWarning.message === message &&
+    lastRuntimeModelFetchWarning.message === message && // arch:allow-error-message log-dedupe equality, not classification
     now - lastRuntimeModelFetchWarning.at < MODEL_FETCH_WARNING_TTL
   ) {
     return

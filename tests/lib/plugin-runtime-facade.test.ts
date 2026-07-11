@@ -17,6 +17,8 @@ describe('createPluginRuntimeFacade', () => {
     await expect(facade.images!.providers()).resolves.toEqual([
       expect.objectContaining({ id: 'openai', configured: true }),
     ])
-    await expect(facade.tools.invoke('main', 'image_generate', {})).rejects.toThrow('Runtime tool invocation is not exposed')
+    // The tools surface is gone from the contract — the facade must not
+    // resurrect it.
+    expect((facade as unknown as Record<string, unknown>).tools).toBeUndefined()
   })
 })

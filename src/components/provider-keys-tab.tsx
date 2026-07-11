@@ -1,8 +1,8 @@
 /**
  * Provider Keys settings tab (image-scoped).
  *
- * Shows where each image provider's credential comes from — runtime (OpenClaw),
- * a Bakin env override, the Bakin secret store, or nothing — and lets you
+ * Shows where each image provider's credential comes from — the active
+ * runtime, a Bakin env override, the Bakin secret store, or nothing — and lets you
  * manage the Bakin-owned store key (write-only). Runtime- and env-sourced rows
  * are read-only status. Status comes from the images plugin's /providers
  * readiness; store edits go through /api/secrets.
@@ -34,11 +34,14 @@ function badgeFor(servedBy: ReadinessRow['servedBy']): { label: string; variant:
 
 export function ProviderKeysTab() {
   const [rows, setRows] = useState<ReadinessRow[]>([])
+  const [runtimeName, setRuntimeName] = useState<string | null>(null)
   const [stored, setStored] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Adapter identity from the providers payload — copy never hardcodes one.
+  const runtimeLabel = runtimeName ? `the runtime (${runtimeName})` : 'the runtime'
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -48,6 +51,7 @@ export function ProviderKeysTab() {
         fetch('/api/secrets').then(r => r.json()).catch(() => ({ stored: [] })),
       ])
       setRows(Array.isArray(providers?.readiness) ? providers.readiness : [])
+      setRuntimeName(typeof providers?.runtimeName === 'string' ? providers.runtimeName : null)
       setStored(Array.isArray(secrets?.stored) ? secrets.stored : [])
       setError(null)
     } finally {
@@ -111,7 +115,7 @@ export function ProviderKeysTab() {
         </p>
       )}
       <p className="text-sm text-muted-foreground">
-        Runtime-managed providers are configured in OpenClaw and shown here read-only. Bakin keys are
+        Runtime-managed providers are configured in {runtimeLabel} and shown here read-only. Bakin keys are
         used only when the runtime can&apos;t serve a route; an environment variable always overrides a stored key.
       </p>
       {rows.map(row => {
@@ -120,14 +124,14 @@ export function ProviderKeysTab() {
         const isStored = stored.includes(row.id)
         const badge = badgeFor(row.servedBy)
         const detail = row.servedBy === 'runtime'
-          ? 'Configured in the runtime (OpenClaw).'
+          ? `Configured in ${runtimeLabel}.`
           : envSet
             ? `Set via env: ${row.configuredEnvVars!.join(', ')} — overrides any stored key.`
             : isStored
               ? 'Using a key stored in Bakin.'
               : storeable
                 ? 'No key configured.'
-                : 'Managed by the runtime — configure it in OpenClaw.'
+                : `Managed by the runtime — configure it in ${runtimeLabel}.`
         return (
           <div key={row.id} className="flex flex-col gap-2 rounded-md border p-3">
             <div className="flex items-center justify-between">

@@ -79,6 +79,7 @@ mock.module('@/core/task-store', () => ({
 const mockSetDependencyWithEffects = mock(async () => {})
 const mockBlockTaskWithEffects = mock(async (): Promise<{ alreadyComplete: boolean }> => ({ alreadyComplete: false }))
 mock.module('../../../src/core/task-service', () => ({
+  WorkflowTaskMoveError: class WorkflowTaskMoveError extends Error {},
   validateTeamRef: async () => undefined,
   validateTeamAssignment: async () => undefined,
   TaskValidationError: class extends Error {},

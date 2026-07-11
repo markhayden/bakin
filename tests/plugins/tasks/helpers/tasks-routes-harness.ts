@@ -89,6 +89,14 @@ export const mockTriggerDispatch = mock()
 /** Teams accepted by the mocked validateTeamRef (#189). */
 export const mockKnownTeams = new Set(['development'])
 /** Same class shape as the real task-service export — routes match by instanceof. */
+/** Mirrors the real typed class — routes classify the 403 by instanceof. */
+export class MockWorkflowTaskMoveError extends Error {
+  constructor() {
+    super('Workflow tasks cannot be moved to Done directly. Use bakin_exec_submit_step — the workflow engine manages task completion.')
+    this.name = 'WorkflowTaskMoveError'
+  }
+}
+
 export class MockTaskValidationError extends Error {
   constructor(message: string) { super(message); this.name = 'TaskValidationError' }
 }
@@ -118,6 +126,7 @@ export const taskServiceMock = () => ({
   validateTeamRef: (teamId: string) => mockValidateTeamRef(teamId),
   validateTeamAssignment: (opts: { assignee?: string; team?: string }) => mockValidateTeamAssignment(opts),
   TaskValidationError: MockTaskValidationError,
+  WorkflowTaskMoveError: MockWorkflowTaskMoveError,
 })
 
 /**

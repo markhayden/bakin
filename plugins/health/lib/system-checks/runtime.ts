@@ -11,9 +11,9 @@ export async function checkRuntime(runtime: Pick<AgentRuntimeAdapter, 'ping'>): 
   try {
     const alive = await runtime.ping()
     if (alive) {
-      return [{ check: 'runtime', status: 'ok', message: 'Runtime is reachable', autoFixable: false }]
+      return [{ check: 'runtime', status: 'ok', message: 'Runtime can serve turns', autoFixable: false }]
     }
-    return [{ check: 'runtime', status: 'error', message: 'Runtime is not responding', autoFixable: false }]
+    return [{ check: 'runtime', status: 'error', message: 'Runtime cannot serve turns (ping false — gateway down or credentials missing; see the runtime-specific checks for the exact cause)', autoFixable: false }]
   } catch (err) {
     return [{ check: 'runtime', status: 'error', message: `Runtime check failed: ${err}`, autoFixable: false }]
   }

@@ -25,6 +25,12 @@ export type RuntimeErrorKind =
    * ladder.
    */
   | 'aborted'
+  /**
+   * A CRUD mutation addressed an entity (agent, skill, cron job) that does
+   * not exist on the runtime. Reads return `null` for absence; only
+   * mutations reject with this kind (R28).
+   */
+  | 'not_found'
 
 /**
  * Structured provider metadata for `provider_cooldown` failures, extracted by

@@ -25,7 +25,6 @@ import { codexImageAuth } from './codex-images'
 import { resolveProviderApiKeySource } from '@bakin/core/media'
 import { createSessionsSurface } from './sessions'
 import { createSkillsSurface } from './skills'
-import { createToolsSurface } from './unsupported'
 
 export interface PiRuntimeAdapterOptions {
   settings?: Record<string, unknown>
@@ -51,20 +50,38 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
 
   async shutdown(): Promise<void> {}
 
-  /** In-process runtime: alive iff initialized (deep probes are health checks). */
+  /**
+   * Cheap can-serve-a-turn probe (contract semantics, T29): initialized AND
+   * at least one LLM credential on disk. A turn without any provider
+   * credential always fails, so credential presence is the cheapest honest
+   * signal for an in-process runtime — the old `initOpts !== null` was
+   * vacuously true after boot and made the health plugin's runtime check
+   * meaningless on Pi. Resolves false, never throws (unreadable auth.json
+   * reads as no credentials). Deep probes stay in getHealthChecks().
+   */
   async ping(): Promise<boolean> {
-    return this.initOpts !== null
+    if (this.initOpts === null) return false
+    try {
+      return listAuthCredentials().length > 0
+    } catch {
+      return false
+    }
   }
 
+  /**
+   * Re-read ALL durable config (contract semantics, T29). Pi's only cached
+   * durable state is the model registry and the images surface (which holds
+   * provider auth); settings.json and auth.json are read from disk on every
+   * call, and turn sessions are built fresh per turn (resourceLoader.reload).
+   * Session-pool disposal lands with P7.
+   */
   async restart(): Promise<void> {
-    // No external process to bounce: drop cached SDK state so the next call
-    // re-reads auth/models from disk. Session-pool disposal lands with P7.
     resetModelRegistry()
     this._images = null
   }
 
-  /** Pi agents call Bakin exec tools natively (in-process tool bridge). */
-  describeToolAccess = (): RuntimeToolAccess => ({ style: 'in-process' })
+  /** Pi agents call Bakin exec tools natively (in-process tool bridge, filtered per turn). */
+  describeToolAccess = (): RuntimeToolAccess => ({ style: 'in-process', perTurnExecToolFiltering: true })
 
   /**
    * Presence-only credential report (P2.2): provider names from Pi's
@@ -145,7 +162,6 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
     getSettings: () => this.initOpts?.settings ?? this.options.settings,
   })
 
-  tools: AgentRuntimeAdapter['tools'] = createToolsSurface()
 
   /**
    * Codex-native image generation (primary) + direct-provider shim

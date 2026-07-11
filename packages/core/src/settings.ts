@@ -8,6 +8,7 @@ import { createLogger } from './logger'
 import { getContentDir } from './content-dir'
 import { deepMerge } from './merge'
 import { setStoredProviderKey } from './media/secret-store'
+import { DEFAULT_OVERSIZED_OUTPUT_BYTES } from './adapters/runtime'
 
 const log = createLogger('settings')
 
@@ -310,7 +311,7 @@ export const DEFAULT_SETTINGS: BakinSettings = {
     transientCooldownMs: 60 * 1000,
     maxDispatched: 500,
     maxRetries: 5,
-    oversizedOutputBytes: 128 * 1024,
+    oversizedOutputBytes: DEFAULT_OVERSIZED_OUTPUT_BYTES,
     maxConcurrentTurns: 3,
     maxTurnsPerAgent: 1,
     maxWorkflowContextBytes: 16 * 1024,

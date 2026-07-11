@@ -24,16 +24,21 @@ export interface RuntimeChannel {
 /** Whether to expose runtime-native tools for this agent turn. */
 export type RuntimeMessageToolsMode = 'auto' | 'none'
 
-/** Per-turn policy for which runtime tools the agent may call. */
+/** Per-turn policy for which tools the agent may call. */
 export interface RuntimeMessageToolPolicy {
   /**
    * Controls whether runtime-native tools are available for this agent turn.
    * `none` disables tools. Omit or use `auto` for runtime/provider defaults.
    */
   toolsMode?: RuntimeMessageToolsMode
-  /** Optional runtime-native tool allowlist for this turn. */
+  /**
+   * Per-turn allowlist of BAKIN EXEC TOOLS by exact name (never
+   * runtime-native tools — those are governed only by `toolsMode`).
+   * Runtimes whose exec tools ride session-static transports cannot filter
+   * per-turn and ignore these fields with a warning.
+   */
   toolsAllow?: string[]
-  /** Optional runtime-native tool denylist for this turn. */
+  /** Per-turn denylist of Bakin exec tools by exact name (same scope as `toolsAllow`). */
   toolsDeny?: string[]
 }
 
@@ -156,7 +161,12 @@ export interface AgentRuntimeAdapter {
     send(input: RuntimeMessageArgs): Promise<RuntimeMessageResult>
     stream(input: RuntimeMessageArgs): AsyncIterable<RuntimeChatChunk>
   }
-  channels: {
+  /**
+   * OPTIONAL: absent when the active runtime has no channel surface (e.g.
+   * in-process runtimes). Feature-detect (`if (runtime.channels)`) — never
+   * bare-deref; absence is the honest signal, not an error.
+   */
+  channels?: {
     list(): Promise<RuntimeChannel[]>
     sendMessage(input: {
       channels: string[]
@@ -173,7 +183,11 @@ export interface AgentRuntimeAdapter {
       }
     }): Promise<{ deliveries: Array<{ channelId: string; ref: string; renderedAt: string }> }>
   }
-  cron: {
+  /**
+   * OPTIONAL: absent when the active runtime has no native cron surface.
+   * Feature-detect like `channels` — Bakin-owned scheduling is unaffected.
+   */
+  cron?: {
     list(): Promise<CronJob[]>
     get(id: string): Promise<CronJob | null>
     create(input: { id?: string; name: string; schedule: string; command: string; enabled?: boolean; toolsAllow?: string[]; metadata?: Record<string, unknown> }): Promise<CronJob>
