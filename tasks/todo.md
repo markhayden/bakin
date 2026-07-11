@@ -3,10 +3,10 @@
 Plan: `tasks/plan-search-trust-and-speed.md` · Spec: `.claude/specs/search-trust-and-speed.md`
 
 ## P0
-- [ ] T1 fix(host): ⌘K debug-toggle bug + RTL test
+- [x] T1 fix(host): ⌘K debug-toggle bug + RTL test
 
 ## P1 — engine upgrade (live ops)
-- [ ] T2 chore(search): pin antfly v0.2.0-rc.18 (+ delete tasks/antfly-main-local-patches.diff)
+- [x] T2 chore(search): pin antfly v0.2.0-rc.18 (+ delete tasks/antfly-main-local-patches.diff)
 - [ ] T3 ops: backup settings.json + search.db + version note (rollback point)
 - [ ] T4 ops: bakin install search → rc.18 live, tables queryable
 - [ ] T5 fix(search): orphan registry-row sweep + team-migration restart + projects rebuild + full clean rebuild
