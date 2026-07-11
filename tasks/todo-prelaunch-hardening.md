@@ -51,7 +51,7 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 - [ ] CHECKPOINT 3: suite = adapter acceptance gate; PR merged
 
 ## PR 4 — chore/cleanup-sweep (anytime; during WS1 soak)
-- [x] T32 Rig off mcporter (native-MCP provisioning) ✅ code+tests — ⚠️ live rig smoke (`bun run instance up`) OUTSTANDING: docker unavailable on this box; run before initiative close
+- [x] T32 Rig off mcporter (native-MCP provisioning) ✅ code+tests ✅ live smoke 2026-07-10: image builds w/o mcporter; container healthy; boot provisioning (server.ts:111, BAKIN_MCP_BASE_URL) wrote golden entries into the bind-mounted home; in-container MCP initialize+tools/list listed bakin_exec_* over streamable-http. Layer skipped: real agent turn (Codex OAuth is interactive). Note: op CLI/token absent on box, so `instance up` proper still ungated-untested; smoke drove the same lifecycle pieces directly
 - [x] T33 Fixtures, comments, knowledge-doc drift ✅
 - [x] T34 SDK primitive adoption sweep ✅ (useJsonFetch ×5 sites, ConfirmDialog already complete, formatDuration reimpls migrated, useAvailableModels relocated into SDK; non-fits annotated in place)
 - [ ] CHECKPOINT 4: initiative close — all success criteria re-verified, Pi worktree retired, SPEC marked complete
