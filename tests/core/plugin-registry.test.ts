@@ -36,6 +36,7 @@ mock.module('@/core/logger', () => ({
 
 mock.module('@/core/api-docs', () => ({
   registerRouteDoc: mock(),
+  removeRouteDocsByPlugin: mock(),
 }))
 
 mock.module('@/core/audit', () => ({
@@ -205,6 +206,7 @@ describe('PluginRegistryImpl', () => {
     opts: {
       deps?: string[]
       activate?: string
+      routes?: string
       navItems?: string
       settingsSchema?: string
       onReady?: string
@@ -232,6 +234,7 @@ describe('PluginRegistryImpl', () => {
         name: '${id.charAt(0).toUpperCase() + id.slice(1)}',
         version: '1.0.0',
         navItems: ${opts.navItems || '[]'},
+        routes: ${opts.routes || 'undefined'},
         settingsSchema: ${opts.settingsSchema || 'undefined'},
         onReady: ${opts.onReady || 'undefined'},
         onShutdown: ${opts.onShutdown || 'undefined'},
@@ -386,9 +389,9 @@ describe('PluginRegistryImpl', () => {
       expect(items[0]).toMatchObject({ id: 'test', label: 'Test', order: 5 })
     })
 
-    it('registerRoute makes route findable and calls registerRouteDoc', async () => {
+    it('declarative routes are findable and registered with registerRouteDoc', async () => {
       const pathA = writeFakePlugin('alpha', {
-        activate: `ctx.registerRoute({ path: '/items', method: 'GET', handler: function() { return new Response('ok') } })`,
+        routes: `[{ path: '/items', method: 'GET', handler: function() { return new Response('ok') } }]`,
       })
 
       await pluginRegistry.initialize(
@@ -401,6 +404,24 @@ describe('PluginRegistryImpl', () => {
       expect(route).not.toBeNull()
       expect(route!.path).toBe('/items')
       expect(mockRegisterRouteDoc).toHaveBeenCalled()
+    })
+
+    it('a declarative route with an unknown body contentType fails activation loudly', async () => {
+      const pathA = writeFakePlugin('alpha', {
+        routes: `[{ path: '/items', method: 'POST', body: { contentType: 'json' }, handler: function() { return new Response('ok') } }]`,
+      })
+
+      await pluginRegistry.initialize(
+        { plugins: [{ path: pathA }] },
+        mockStorage(),
+        mockEvents(),
+      )
+
+      const failed = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'alpha')
+      expect(failed?.status).toBe('failed')
+      expect(failed?.errorMessage).toContain("unknown body contentType 'json'")
+      expect(failed?.errorMessage).toContain('POST /items')
+      expect(pluginRegistry.findRoute('alpha', '/items', 'POST')).toBeNull()
     })
 
     it('registerExecTool sets source and calls addExecTool', async () => {
@@ -419,7 +440,7 @@ describe('PluginRegistryImpl', () => {
       )
     })
 
-    it('registerSkill first-wins — second registration with same name is ignored', async () => {
+    it('registerSkill duplicate name THROWS naming the collision + owning plugin (R18)', async () => {
       const pathA = writeFakePlugin('alpha', {
         activate: `ctx.registerSkill({ name: 'my-skill', instructions: 'from alpha' })`,
       })
@@ -433,8 +454,107 @@ describe('PluginRegistryImpl', () => {
         mockEvents(),
       )
 
+      // First registration wins; the duplicate FAILS bravo's activation.
       const skills = getPluginSkills()
       expect(skills.get('my-skill')!.instructions).toBe('from alpha')
+      const failed = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'bravo')
+      expect(failed?.status).toBe('failed')
+      expect(failed?.errorMessage).toContain('my-skill')
+      expect(failed?.errorMessage).toContain('plugin:alpha')
+    })
+
+    it('a failed activation sweeps EVERYTHING the plugin registered before the throw', async () => {
+      const pathA = writeFakePlugin('alpha', {
+        activate: `ctx.registerSkill({ name: 'sweep-skill', instructions: 'from alpha' })`,
+      })
+      // bravo registers an exec tool + a hook + a workflow BEFORE colliding
+      // on the skill name — none of those may survive its failed activation.
+      const pathB = writeFakePlugin('bravo', {
+        activate: `
+          ctx.registerExecTool({ name: 'bakin_exec_bravo_thing', description: 'x', parameters: {}, handler: async () => ({ ok: true }) })
+          ctx.hooks.register('bravo.leaky', function () { return 1 })
+          ctx.registerWorkflow({ id: 'bravo-flow', name: 'Bravo Flow', steps: [] })
+          ctx.registerSkill({ name: 'sweep-skill', instructions: 'from bravo' })
+        `,
+      })
+
+      await pluginRegistry.initialize(
+        { plugins: [{ path: pathA }, { path: pathB }] },
+        mockStorage(),
+        mockEvents(),
+      )
+
+      const failed = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'bravo')
+      expect(failed?.status).toBe('failed')
+      // Exec tool swept (the mocked registry removes by source tag).
+      expect(mockedExecTools.has('bakin_exec_bravo_thing')).toBe(false)
+      // Hook swept.
+      expect(getHookRegistry().has('bravo.leaky')).toBe(false)
+      // Workflow id reclaimable: registering it from another plugin must not throw.
+      const { registerPluginDefinition } = await import('@bakin/core/workflows/source-registry')
+      expect(() => registerPluginDefinition('charlie', 'bravo-flow', { id: 'bravo-flow', name: 'Claimed', steps: [] } as any)).not.toThrow()
+    })
+
+    it('deactivatePlugin frees the plugin\'s workflow ids for later claimants', async () => {
+      const pathA = writeFakePlugin('alpha', {
+        activate: `ctx.registerWorkflow({ id: 'shared-flow', name: 'Alpha Flow', steps: [] })`,
+      })
+      await pluginRegistry.initialize({ plugins: [{ path: pathA }] }, mockStorage(), mockEvents())
+
+      const { registerPluginDefinition, getSource } = await import('@bakin/core/workflows/source-registry')
+      expect(getSource('shared-flow')).toBe('plugin')
+      // Cross-plugin claim while alpha is live still throws (R18).
+      expect(() => registerPluginDefinition('bravo', 'shared-flow', { id: 'shared-flow', name: 'Stolen', steps: [] } as any)).toThrow()
+
+      await pluginRegistry.deactivatePlugin('alpha', { callShutdown: false })
+      // Stale id must not be activation-fatal for the next claimant.
+      expect(() => registerPluginDefinition('bravo', 'shared-flow', { id: 'shared-flow', name: 'Claimed', steps: [] } as any)).not.toThrow()
+    })
+
+    it('registerWorkflow cross-plugin id collision THROWS and fails activation (R18)', async () => {
+      // Same-plugin re-registration is an UPDATE by contract (hot-reload of
+      // defaults re-registers); only a cross-plugin id collision throws.
+      const pathA = writeFakePlugin('alpha', {
+        activate: `ctx.registerWorkflow({ id: 'dup-flow', name: 'Dup Flow', steps: [] })`,
+      })
+      const pathB = writeFakePlugin('bravo', {
+        activate: `ctx.registerWorkflow({ id: 'dup-flow', name: 'Stolen Flow', steps: [] })`,
+      })
+      await pluginRegistry.initialize(
+        { plugins: [{ path: pathA }, { path: pathB }] },
+        mockStorage(),
+        mockEvents(),
+      )
+      const failed = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'bravo')
+      expect(failed?.status).toBe('failed')
+      expect(failed?.errorMessage).toContain('dup-flow')
+      expect(failed?.errorMessage).toContain('alpha')
+    })
+
+    it('registerNodeType duplicate kind THROWS and fails activation (R18)', async () => {
+      const pathA = writeFakePlugin('alpha', {
+        activate: `
+          ctx.registerNodeType({ kind: 'dup-node', label: 'Dup', execute() {} })
+          ctx.registerNodeType({ kind: 'dup-node', label: 'Dup 2', execute() {} })
+        `,
+      })
+      await pluginRegistry.initialize({ plugins: [{ path: pathA }] }, mockStorage(), mockEvents())
+      const failed = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'alpha')
+      expect(failed?.status).toBe('failed')
+      expect(failed?.errorMessage).toContain('dup-node')
+    })
+
+    it('registerNotificationChannel duplicate id THROWS and fails activation (R18)', async () => {
+      const pathA = writeFakePlugin('alpha', {
+        activate: `
+          ctx.registerNotificationChannel({ id: 'dup-chan', label: 'Dup', send() {} })
+          ctx.registerNotificationChannel({ id: 'dup-chan', label: 'Dup 2', send() {} })
+        `,
+      })
+      await pluginRegistry.initialize({ plugins: [{ path: pathA }] }, mockStorage(), mockEvents())
+      const failed = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'alpha')
+      expect(failed?.status).toBe('failed')
+      expect(failed?.errorMessage).toContain('dup-chan')
     })
 
     it('hooks.register/has/invoke delegate to shared HookRegistry', async () => {
@@ -692,7 +812,7 @@ describe('PluginRegistryImpl', () => {
     it('reports missing dependencies without exposing plugin routes', async () => {
       writeUserPlugin('needs-missing', {
         deps: ['not-installed'],
-        activate: `ctx.registerRoute({ path: '/data', method: 'GET', handler: function() { return new Response('bad') } })`,
+        routes: `[{ path: '/data', method: 'GET', handler: function() { return new Response('bad') } }]`,
       })
 
       await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
@@ -852,7 +972,7 @@ describe('PluginRegistryImpl', () => {
 
     it('fails user plugins that register undeclared API routes', async () => {
       writeUserPlugin('undeclared-route', {
-        activate: `ctx.registerRoute({ path: '/data', method: 'GET', handler: function() { return new Response('bad') } })`,
+        routes: `[{ path: '/data', method: 'GET', handler: function() { return new Response('bad') } }]`,
       })
 
       await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
@@ -931,8 +1051,8 @@ describe('PluginRegistryImpl', () => {
             ],
           },
         },
+        routes: `[{ path: '/data', method: 'GET', handler: function() { return new Response('ok') } }]`,
         activate: `
-          ctx.registerRoute({ path: '/data', method: 'GET', handler: function() { return new Response('ok') } })
           ctx.registerExecTool({ name: 'bakin_exec_declared-surfaces_data', description: 'test', parameters: {}, handler: async () => ({ ok: true }) })
         `,
       })
@@ -983,15 +1103,15 @@ describe('PluginRegistryImpl', () => {
     async function initWithTwoPlugins() {
       const pathA = writeFakePlugin('alpha', {
         navItems: `[{ id: 'a', label: 'Alpha', icon: 'star', href: '/a', order: 20 }]`,
+        routes: `[{ path: '/data', method: 'GET', handler: function() { return new Response('ok') } }]`,
         activate: `
-          ctx.registerRoute({ path: '/data', method: 'GET', handler: function() { return new Response('ok') } })
           ctx.registerSlot({ slot: 'dashboard', component: function() {}, order: 10 })
         `,
       })
       const pathB = writeFakePlugin('bravo', {
         navItems: `[{ id: 'b', label: 'Bravo', icon: 'zap', href: '/b', order: 5 }]`,
+        routes: `[{ path: '/items', method: 'POST', handler: function() { return new Response('ok') } }]`,
         activate: `
-          ctx.registerRoute({ path: '/items', method: 'POST', handler: function() { return new Response('ok') } })
           ctx.registerSlot({ slot: 'dashboard', component: function() {}, order: 1 })
           ctx.registerSlot({ slot: 'sidebar', component: function() {}, order: 1 })
         `,

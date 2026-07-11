@@ -91,6 +91,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@happy-dom/global-registrator": "^20.9.0",
+    "@makinbakin/sdk": "workspace:*",
     "@tailwindcss/cli": "^4.2.4",
     "@tailwindcss/postcss": "^4.2.2",
     "@testing-library/react": "^16.3.2",

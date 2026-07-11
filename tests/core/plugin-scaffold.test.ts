@@ -64,7 +64,7 @@ describe('createPluginScaffold', () => {
       'index.ts',
       'client.tsx',
       'greeting.ts',
-      'tests/greeting.test.ts',
+      'tests/plugin.test.ts',
       '.gitignore',
       'README.md',
     ]) {
@@ -126,10 +126,12 @@ describe('createPluginScaffold', () => {
     })
   })
 
-  it('starter test targets the pure helper', () => {
-    const test = read('tests/greeting.test.ts')
-    expect(test).toContain("from '../greeting'")
-    expect(test).toContain("import { describe, expect, it } from 'bun:test'")
+  it('starter test drives the plugin through @makinbakin/sdk/testing', () => {
+    const test = read('tests/plugin.test.ts')
+    expect(test).toContain("from '@makinbakin/sdk/testing'")
+    expect(test).toContain("import plugin from '../index'")
+    expect(test).toContain('dispose()')
+    expect(test).not.toContain('TODO')
   })
 
   it('generated greeting helper behaves as the starter test asserts', async () => {

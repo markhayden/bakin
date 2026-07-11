@@ -2,24 +2,35 @@
  * Routing primitives — typed route contracts that drive runtime dispatch and
  * OpenAPI emission from a single source.
  *
- * The legacy `APIRoute` interface in `../plugin-types.ts` remains during the
- * migration window; this module's `APIRoute<C, P, Q, B>` is the new
- * declarative shape that plugins move to under T6–T16. The two coexist via the
- * `ctx.registerRoute` adapter wired in T4.
+ * The pure, context-free declarations (the generic `APIRoute`, body/response
+ * specs, `ParsedInput`) are DECLARED in `@makinbakin/sdk/types` (api-route.ts
+ * — a leaf module) and re-exported here bound to the core-tier
+ * `RouteContext`. That direction keeps the package DAG acyclic: core imports
+ * SDK types (as `plugin-types.ts` always has); the SDK never imports core
+ * from its types layer. Only the tier-specific route CONTEXTS live here.
  */
 
-import type { z } from 'zod'
-import type { ContractStability, ContractVisibility, DocsExample, SourceLocation } from '../docs'
+import type {
+  APIRoute as SdkAPIRoute,
+} from '@makinbakin/sdk/types'
 import type { AgentRuntimeAdapter } from '../adapters/runtime'
 import type { StorageAdapter, EventBus, SearchAPI, ActivityAPI, HookAPI, AssetsAPI, PluginTaskService } from '../plugin-types'
 
-export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
-
-export type HttpStatus =
-  | 200 | 201 | 202 | 204
-  | 301 | 302 | 304
-  | 400 | 401 | 403 | 404 | 409 | 410 | 415 | 422 | 429
-  | 500 | 502 | 503 | 504
+// Context-free declarations — re-exported from the SDK leaf (ONE declaration).
+export type {
+  HttpMethod,
+  HttpStatus,
+  JsonBodySpec,
+  MultipartBodySpec,
+  RawBodySpec,
+  NoBodySpec,
+  BodySpec,
+  JsonResponseSpec,
+  NoContentResponseSpec,
+  NonJsonResponseSpec,
+  ResponseSpec,
+  ParsedInput,
+} from '@makinbakin/sdk/types'
 
 // ---------------------------------------------------------------------------
 // Route contexts
@@ -62,127 +73,21 @@ export interface PluginContextLite extends RouteContext {
 export type CoreContext = RouteContext
 
 // ---------------------------------------------------------------------------
-// Body / response specs
+// APIRoute — core-tier alias of the ONE published declaration
 // ---------------------------------------------------------------------------
-
-export interface JsonBodySpec<B = unknown> {
-  contentType: 'application/json'
-  schema: z.ZodType<B>
-}
-
-export interface MultipartBodySpec<B = unknown> {
-  contentType: 'multipart/form-data'
-  schema?: z.ZodType<B>
-}
-
-export interface RawBodySpec<B = unknown> {
-  contentType: '*/*'
-  schema?: z.ZodType<B>
-}
-
-export interface NoBodySpec {
-  contentType: 'none'
-}
 
 /**
- * `body` declaration:
- *   - `z.ZodType` shorthand → JSON body validated against the schema.
- *   - explicit JSON spec → same, content-type stated.
- *   - multipart / raw → handler reads `req.formData()` / `req.body` itself.
- *   - none → dispatcher rejects non-empty bodies with 415.
- *
- * Omit the field entirely on routes that don't consume a body.
+ * Same declaration as `@makinbakin/sdk/types`' `APIRoute`, with the core-tier
+ * `RouteContext` as the default context. An alias (not a copy): the two are
+ * mutually assignable by construction — pinned in
+ * tests/core/plugin-type-contract.test.ts.
  */
-export type BodySpec<B = unknown> =
-  | z.ZodType<B>
-  | JsonBodySpec<B>
-  | MultipartBodySpec<B>
-  | RawBodySpec<B>
-  | NoBodySpec
-
-export interface JsonResponseSpec {
-  contentType: 'application/json'
-  schema: z.ZodType
-}
-
-export interface NoContentResponseSpec {
-  contentType: 'none'
-}
-
-export interface NonJsonResponseSpec {
-  contentType:
-    | 'text/event-stream'
-    | 'text/html'
-    | 'text/plain'
-    | 'application/octet-stream'
-    | 'image/png'
-    | 'image/jpeg'
-    | 'image/svg+xml'
-    | (string & Record<never, never>)
-  schema?: z.ZodType
-}
-
-export type ResponseSpec =
-  | z.ZodType
-  | JsonResponseSpec
-  | NoContentResponseSpec
-  | NonJsonResponseSpec
-
-// ---------------------------------------------------------------------------
-// Parsed input — conditional intersection so undeclared keys are absent
-// ---------------------------------------------------------------------------
-
-/** Helper: `{ body: B }` if B is declared (non-undefined), else no fields. */
-type Field<K extends string, T> = [T] extends [undefined] ? unknown : { [P in K]: T }
-type Normalize<T> = { [K in keyof T]: T[K] }
-
-export type ParsedInput<P, Q, B> =
-  Normalize<
-    & Field<'params', P>
-    & Field<'query', Q>
-    & Field<'body', B>
-  >
-
-// ---------------------------------------------------------------------------
-// APIRoute — the new declarative shape
-// ---------------------------------------------------------------------------
-
-export interface APIRoute<
+export type APIRoute<
   C extends RouteContext = RouteContext,
   P = undefined,
   Q = undefined,
   B = undefined,
-> {
-  path: string
-  method: HttpMethod
-  // `summary` is optional during the migration window so legacy `description`-only
-  // routes can be wrapped via defineRoute() without restructuring. The validator
-  // (T18 fail-closed) flags public bundled routes that lack summary.
-  summary?: string
-  description?: string
-
-  params?: z.ZodType<P>
-  query?: z.ZodType<Q>
-  body?: P extends never ? never : BodySpec<B>
-
-  // Optional during migration; the validator (T18) flags public bundled routes
-  // that lack any 2xx response declaration.
-  responses?: Partial<Record<HttpStatus, ResponseSpec>>
-
-  visibility?: ContractVisibility
-  stability?: ContractStability
-  permissions?: string[]
-  examples?: DocsExample[]
-  operationId?: string
-  tags?: string[]
-  source?: SourceLocation
-
-  handler: (
-    req: Request,
-    ctx: C,
-    parsed: ParsedInput<P, Q, B>,
-  ) => Response | Promise<Response>
-}
+> = SdkAPIRoute<C, P, Q, B>
 
 // ---------------------------------------------------------------------------
 // Plugin shape with declarative routes

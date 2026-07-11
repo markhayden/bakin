@@ -1,4 +1,4 @@
-import type { APIRoute } from '../plugin-types'
+import type { RegisteredAPIRoute as APIRoute } from '../plugin-types'
 
 export type DocsAwareAPIRoute = APIRoute & {
   summary: string

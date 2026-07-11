@@ -344,6 +344,46 @@ jobs:
       - name: Publish SDK to npm
         run: bun run scripts/publish-sdk.ts --version "${VERSION}" --package-dir "${RUNNER_TEMP}/sdk-package" --tag "${NPM_TAG}"
 
+      - name: Mirror reference plugin to starter repo
+        if: ${{ needs.gate.outputs.prerelease == 'false' }}
+        env:
+          STARTER_REPO_TOKEN: ${{ secrets.STARTER_REPO_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # FAIL-SOFT by design: a missing token or starter repo must never
+          # break a release — the starter mirror is a convenience artifact.
+          if [[ -z "${STARTER_REPO_TOKEN:-}" ]]; then
+            echo "::warning::STARTER_REPO_TOKEN not set — skipping starter-repo mirror (create markhayden/bakin-plugin-starter and add the token to enable)"
+            exit 0
+          fi
+
+          starter_dir="${RUNNER_TEMP}/bakin-plugin-starter"
+          if ! git clone "https://x-access-token:${STARTER_REPO_TOKEN}@github.com/markhayden/bakin-plugin-starter.git" "${starter_dir}"; then
+            echo "::warning::could not clone markhayden/bakin-plugin-starter — skipping mirror (create the repo, public, to enable)"
+            exit 0
+          fi
+
+          # Stage + push are fail-soft too: a staging error (e.g. the no-leak
+          # guard) or a push rejection (branch protection, manual commit,
+          # network) lands AFTER npm publish — it must warn, never fail the
+          # release. The script itself stays fail-loud for the dry-run test.
+          if ! bun run scripts/release/mirror-starter-repo.ts --version "${VERSION}" --target "${starter_dir}"; then
+            echo "::warning::starter-repo staging failed — skipping mirror for ${VERSION} (run scripts/release/mirror-starter-repo.ts locally to diagnose)"
+            exit 0
+          fi
+
+          cd "${starter_dir}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Starter repo already current for ${VERSION}"
+          else
+            git commit -m "bakin-plugin-starter ${VERSION} (mirrored from bakin ${TAG})" || { echo "::warning::starter-repo commit failed — skipping mirror"; exit 0; }
+            git push origin HEAD:main || { echo "::warning::starter-repo push rejected (branch protection or a manual commit?) — skipping mirror for ${VERSION}"; exit 0; }
+          fi
+
       - name: Render Homebrew formula
         run: bun run scripts/update-homebrew-formula.ts --version "${VERSION}" --checksums dist/checksums.txt --out "${RUNNER_TEMP}/bakin.rb"
 
@@ -465,7 +505,7 @@ jobs:
           bun init -y
           bun add react@^19 react-dom@^19 "@makinbakin/sdk@${VERSION}"
           bun -e "const m = await import('@makinbakin/sdk'); if (typeof m.registerPlugin !== 'function') throw new Error('missing registerPlugin')"
-          for subpath in ui hooks components slots types utils metadata routing; do
+          for subpath in ui hooks components slots types utils metadata routing testing internal; do
             bun -e "await import('@makinbakin/sdk/${subpath}')"
           done
 

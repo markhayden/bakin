@@ -161,15 +161,15 @@ describe('buildPluginWithSystemBun', () => {
     // can't read the barrel's zod dependency under the test harness.
     const dir = seedPlugin({ withClient: false })
     writeFileSync(join(dir, 'index.ts'), [
-      `import { getRegistryVersion } from '@makinbakin/sdk'`,
-      `export default { id: 'demo', name: 'Demo', version: '0.1.0', activate() { return getRegistryVersion() } }`,
+      `import { getNavBadge } from '@makinbakin/sdk'`,
+      `export default { id: 'demo', name: 'Demo', version: '0.1.0', activate() { return getNavBadge('demo:x') } }`,
       '',
     ].join('\n'))
 
     const result = await buildPluginWithSystemBun({ pluginDir: dir })
     expect(result.builtServer).toBe(true)
     const server = readFileSync(join(dir, 'dist', 'index.js'), 'utf-8')
-    expect(server).toContain('getRegistryVersion')
+    expect(server).toContain('getNavBadge')
     expect(server).not.toMatch(/from\s+["']react/)
   }, 30_000)
 

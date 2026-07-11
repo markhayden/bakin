@@ -274,6 +274,6 @@ const imagesPlugin = definePlugin({
       run: async () => checkImages(ctx),
     })
   },
-}) as unknown as BakinPlugin
+})
 
 export default imagesPlugin

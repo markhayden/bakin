@@ -6,6 +6,8 @@
     "packages/**/*.tsx",
     "src/**/*.ts",
     "src/**/*.tsx",
+    "examples/**/*.ts",
+    "examples/**/*.tsx",
     "plugins/**/*.ts",
     "plugins/**/*.tsx",
     "tests/**/*.ts",

@@ -4,7 +4,7 @@
  * surfaced through the search-registry barrel.
  */
 import type {
-  APIRoute,
+  RegisteredAPIRoute,
   FileBackedContentTypeDefinition,
   SearchAPI,
   SearchContentTypeDefinition,
@@ -41,6 +41,34 @@ import { getSearchHealth } from './search-reindex'
 const log = createLogger('search-plugin-api')
 
 /**
+ * Embedding templates use `{{field}}` — a `{field}` single brace embeds as
+ * LITERAL text, so every document gets an identical embedding and semantic
+ * search for the type is silently dead. Warn (not throw): single braces can
+ * legitimately appear in surrounding prose, so this only fires when a
+ * template has `{x}` patterns and not a single `{{x}}`.
+ */
+export function hasSingleBracePlaceholders(template: string): boolean {
+  const withoutDouble = template.replace(/\{\{[^{}]+\}\}/g, '')
+  return /\{[^{}]+\}/.test(withoutDouble)
+}
+
+function warnOnSingleBraceTemplate(pluginId: string, tableName: string, def: SearchContentTypeDefinition): void {
+  const templates = [
+    def.embeddingTemplate,
+    ...(def.indexes ?? []).map((idx) => idx.embeddingTemplate),
+  ].filter((t): t is string => typeof t === 'string' && t.length > 0)
+  for (const template of templates) {
+    if (hasSingleBracePlaceholders(template)) {
+      log.warn(
+        `embeddingTemplate for "${tableName}" (plugin ${pluginId}) contains single-brace {field} placeholders — ` +
+        `the template language is {{field}}; single braces embed as literal text and disable semantic search`,
+        { template },
+      )
+    }
+  }
+}
+
+/**
  * Options for building a plugin-scoped SearchAPI.
  */
 export interface BuildSearchAPIOptions {
@@ -51,7 +79,7 @@ export interface BuildSearchAPIOptions {
    * dispatch, etc.), no route is registered — the caller must surface
    * search some other way.
    */
-  registerRoute?: (route: APIRoute) => void
+  registerRoute?: (route: RegisteredAPIRoute) => void
   /**
    * Skip the side effects of `registerFileBackedContentType` — watcher
    * sync/unlink hooks and pending startup reconcile. The primary register
@@ -76,6 +104,9 @@ export interface BuildSearchAPIOptions {
 export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): SearchAPI {
   const registry = getRegistry()
 
+  // NOTE: the auto GET /search wiring exists in THREE deliberately separate
+  // copies — here (production), packages/sdk/src/testing/index.ts (harness),
+  // and tests/plugins/test-helpers.ts (in-repo adapter). Change one, sync all.
   let searchRouteRegistered = false
   const maybeAutoRegisterSearchRoute = () => {
     if (searchRouteRegistered) return
@@ -110,6 +141,7 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
   // content type at all (e.g. a purely file-backed plugin).
   const registerContentTypeInternal = (def: SearchContentTypeDefinition, primary: boolean): void => {
     const tableName = fullTableName(def.table)
+    warnOnSingleBraceTemplate(pluginId, tableName, def)
     const existing = registry.contentTypes.get(tableName)
     if (existing && existing.pluginId !== pluginId) {
       throw new Error(

@@ -40,15 +40,17 @@ Keep the first version small. A useful plugin with one page and one tool beats a
 bakin plugins scaffold my-plugin
 cd my-plugin
 bun install
-bakin plugins install --dev .
-bakin dev
+bakin plugins link .
+BAKIN_DEV_HOTRELOAD=1 bakin start
 ```
 
-`--dev` symlinks the local source into Bakin and participates in the dev reload loop. Use normal install only when you want Bakin to copy the plugin into the user's plugin directory:
+`bakin plugins link` is the primary dev loop: it symlinks your source tree as a plugin, and with hot reload enabled every save rebuilds and swaps in-process — no restart, no page reload. (`bakin plugins install --dev .` is an equivalent older spelling of link.) Use a normal install only when you want Bakin to copy the plugin into the user's plugin directory:
 
 ```sh
 bakin plugins install <path|github:user/repo[@ref][#subpath]>
 ```
+
+If you'd rather start from a complete working plugin than a scaffold, fork the reference plugin ([`examples/reference-plugin/`](https://github.com/markhayden/bakin/tree/main/examples/reference-plugin)) — it exercises every surface on this page.
 
 ## 4. Declare the Manifest
 
@@ -151,7 +153,30 @@ Plugins reload during development and shut down with Bakin. Keep module import s
 
 If settings change runtime behavior, use `onSettingsChange(settings)` instead of making users restart Bakin.
 
-## 8. Check and Share
+## 8. Test
+
+`@makinbakin/sdk/testing` gives you an isolated harness — temp-dir storage, mock runtime, real route dispatch — with no Bakin server and no `~/.bakin` involved:
+
+```ts
+import { describe, expect, it, afterAll } from 'bun:test'
+import { activatePlugin, callRoute, findRoute } from '@makinbakin/sdk/testing'
+import plugin from '../index'
+
+describe('lead-intel', () => {
+  const ready = activatePlugin(plugin)
+  afterAll(async () => (await ready).dispose())
+
+  it('lists leads', async () => {
+    const h = await ready
+    const res = await callRoute(findRoute(h.routes, 'GET', '/leads')!, h.ctx)
+    expect(res.status).toBe(200)
+  })
+})
+```
+
+`callRoute` drives the real dispatcher, so zod validation behaves exactly as in production; `callTool` does the same for exec tools; the harness records every registration (`routes`, `execTools`, `healthChecks`, …) for assertions. The scaffold ships a starter test in this style, and the reference plugin's [`tests/`](https://github.com/markhayden/bakin/tree/main/examples/reference-plugin) show the full pattern including settings and storage round-trips.
+
+## 9. Check and Share
 
 Run targeted tests while building. Before sharing or opening a PR:
 

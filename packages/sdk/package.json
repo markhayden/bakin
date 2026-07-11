@@ -14,7 +14,9 @@
     "./types": "./src/types/index.ts",
     "./utils": "./src/utils/index.ts",
     "./metadata": "./src/metadata/index.ts",
-    "./routing": "./src/routing/index.ts"
+    "./routing": "./src/routing/index.ts",
+    "./testing": "./src/testing/index.ts",
+    "./internal": "./src/internal/index.ts"
   },
   "files": [
     "src",

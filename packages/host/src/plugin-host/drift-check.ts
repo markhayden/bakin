@@ -13,13 +13,12 @@
  * The CI-side twin lives in tests/plugins/manifest-drift.test.tsx, which
  * imports every core plugin's client and applies the same comparison.
  */
+import { type NavItem, type PluginContributions } from '@makinbakin/sdk'
 import {
   getManifestNav,
   getPluginNavItems,
   getPluginRoutes,
-  type NavItem,
-  type PluginContributions,
-} from '@makinbakin/sdk'
+} from '@makinbakin/sdk/internal'
 import { getSlotNamesOwnedBy } from '@makinbakin/sdk/slots'
 
 /**

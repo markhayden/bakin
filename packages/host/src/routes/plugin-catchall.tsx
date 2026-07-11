@@ -25,7 +25,7 @@ import {
   retryPluginLoad,
   subscribeLazyPlugins,
   subscribeRegistry,
-} from '@makinbakin/sdk'
+} from '@makinbakin/sdk/internal'
 import { Route as RootRoute } from './__root'
 
 /** Boundary so a crashing lazily-loaded page can't white-screen the shell. */

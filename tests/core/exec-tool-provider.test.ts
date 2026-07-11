@@ -85,4 +85,18 @@ describe('runtime exec-tool provider', () => {
     expect(result.ok).toBe(false)
     expect(result.text).toContain('unknown exec tool')
   })
+
+  test('invalid parameters are zod-rejected BEFORE the handler runs (MCP-path parity)', async () => {
+    // Handlers are typed z.infer<ZodObject<Shape>> — the runtime-native path
+    // must enforce that, not just claim it. `message` is required.
+    const result = await provider.invoke('bakin_exec_test_echo', { times: 'not-a-number' }, 'agent-7')
+    expect(result.ok).toBe(false)
+    expect(result.text).toContain('invalid parameters for bakin_exec_test_echo')
+    expect(result.text).toContain('message')
+  })
+
+  test('valid params pass through parsed (happy path unchanged)', async () => {
+    const result = await provider.invoke('bakin_exec_test_echo', { message: 'ok', times: 2 }, 'agent-7')
+    expect(result.ok).toBe(true)
+  })
 })

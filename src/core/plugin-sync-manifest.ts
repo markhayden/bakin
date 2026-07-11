@@ -5,7 +5,7 @@
  *
  * v1 boundary: syncs the SERVER-derived sections only —
  *   - `contributes.apiRoutes`  (declarative `definePlugin({routes})`, legacy
- *     `ctx.registerRoute` calls, and the search API's auto-registered
+ *     the search API's auto-registered
  *     `GET /search` route)
  *   - `contributes.execTools`  (`ctx.registerExecTool` calls)
  * Client sections (`nav`, `clientRoutes`, slots) are left untouched: deriving
@@ -14,7 +14,7 @@
  *
  * How capture works: the plugin is built with the real in-binary builder,
  * dist/index.js is imported, and `activate(ctx)` runs against a RECORDING
- * context — registerRoute / registerExecTool / search registrations are
+ * context — registerExecTool / search registrations are
  * captured. THIS EXECUTES THE PLUGIN'S SERVER CODE: module top-level
  * statements run at import (before any recording context exists), and
  * activate() bodies can reach fs/network/process directly, bypassing ctx
@@ -140,7 +140,6 @@ function buildCaptureContext(pluginId: string, routes: CapturedRoute[], tools: C
     pluginId,
     log: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
     getSettings: () => ({}),
-    registerRoute: recordRoute,
     registerExecTool: (tool: unknown) => {
       const t = tool as CapturedTool
       if (!t || typeof t.name !== 'string') return

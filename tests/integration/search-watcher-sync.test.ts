@@ -135,7 +135,6 @@ function makeCtx(plugin: BakinPlugin): PluginContext {
       resolveStoreFile: mock(async () => null),
     },
     registerNav: mock(),
-    registerRoute: mock(),
     registerSlot: mock(),
     registerExecTool: mock(),
     registerSkill: mock(),
@@ -147,6 +146,7 @@ function makeCtx(plugin: BakinPlugin): PluginContext {
     getSettings: (() => ({})) as PluginContext['getSettings'],
     updateSettings: mock(),
     activity: { log: mock(), audit: mock() },
+    log: { debug: mock(), info: mock(), warn: mock(), error: mock() },
     search,
     hooks: {
       register: mock(() => () => {}),

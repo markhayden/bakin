@@ -1,30 +1,91 @@
 /**
  * Shared test helpers for plugin route and exec tool testing.
- * Provides mock context creation and request/response helpers.
+ *
+ * Thin adapter over `@makinbakin/sdk/testing` (the published harness — one
+ * source of truth for context creation and route/tool dispatch). What stays
+ * here is exactly the in-repo delta the published harness deliberately does
+ * not ship:
+ *
+ *  - the three GLOBAL registry side effects (workflows / node types /
+ *    notification channels) — the workflows suites assert real registry
+ *    state, so registrations must land in the process-global registries,
+ *    not just the harness capture arrays;
+ *  - `vi.fn` spy affordances on ctx members that existing tests assert on
+ *    (`hooks.has.mockReturnValue`, `search.index` call args, `activity.*`,
+ *    `updateSettings`, …);
+ *  - caller-owned temp-dir semantics (`createTestContext(id, testDir)` —
+ *    callers create and clean their own dirs);
+ *  - `callSearchRoute` and the legacy `ActivatedPlugin` shape.
  */
 import { mkdirSync, existsSync } from 'fs'
 import type {
   PluginContext,
-  APIRoute,
+  RegisteredAPIRoute,
   ExecToolDefinition,
   BakinPlugin,
   SearchResult,
   SearchResponse,
-  WorkflowDefinitionInput,
   PluginHealthCheckInput,
   SearchQueryParams,
+  WorkflowDefinitionInput,
 } from '@bakin/core/plugin-types'
-import { BakinEventBus } from '../../src/lib/events/event-bus'
-import { MarkdownStorageAdapter } from '../../src/lib/storage/markdown-adapter'
+import {
+  createTestContext as sdkCreateTestContext,
+  callRoute as sdkCallRoute,
+  makeRequest,
+  callTool as sdkCallTool,
+} from '@makinbakin/sdk/testing'
 import { registerPluginDefinition } from '@bakin/core/workflows/source-registry'
 import { registerPluginNodeType } from '@bakin/core/workflows/node-type-registry'
 import { registerPluginNotificationChannel } from '@bakin/core/workflows/notification-channel-registry'
 import type { WorkflowDefinition } from '../../plugins/workflows/types'
 import { createLogger } from '../../src/core/logger'
-import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
-import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
 
 const testHelperLog = createLogger('test-helpers')
+
+// Mechanical helpers delegate to the SDK verbatim. They are re-declared with
+// `@bakin/core/plugin-types` signatures (what every consuming suite passes)
+// rather than bare re-exported, because the SDK's own declarations use its
+// mirrored types. T19 collapsed the APIRoute duplication, but the CONTEXT
+// tiers (SDK reduced facade vs core full adapter) are deliberately distinct,
+// so this boundary cast is permanent and lives HERE, once.
+export { makeRequest }
+
+type SdkCallRouteArgs = Parameters<typeof sdkCallRoute>
+
+/**
+ * Call a route handler. Declarative routes dispatch through the real router
+ * (schema validation, `(req, ctx, parsed)` signature); see the SDK helper.
+ */
+export async function callRoute(
+  route: RegisteredAPIRoute,
+  ctx: PluginContext,
+  opts: {
+    path?: string
+    body?: unknown
+    searchParams?: Record<string, string>
+    rawResponse?: boolean
+  } = {},
+): Promise<{ status: number; body: Record<string, unknown>; response: Response }> {
+  return sdkCallRoute(route as unknown as SdkCallRouteArgs[0], ctx as unknown as SdkCallRouteArgs[1], opts)
+}
+
+/** Find a route handler by method and declared path. */
+export function findRoute(
+  routes: RegisteredAPIRoute[],
+  method: string,
+  path: string
+): RegisteredAPIRoute | undefined {
+  return routes.find((r) => r.method === method && r.path === path)
+}
+
+/** Find an exec tool by name. */
+export function findTool(
+  tools: ExecToolDefinition[],
+  name: string
+): ExecToolDefinition | undefined {
+  return tools.find((t) => t.name === name)
+}
 
 function slugifyWorkflowId(name: string): string {
   return name
@@ -39,7 +100,7 @@ function slugifyWorkflowId(name: string): string {
 
 export interface ActivatedPlugin {
   ctx: PluginContext
-  routes: APIRoute[]
+  routes: RegisteredAPIRoute[]
   execTools: ExecToolDefinition[]
   /**
    * Seed the mocked `ctx.search.query()` to return these results on the
@@ -51,17 +112,24 @@ export interface ActivatedPlugin {
 
 /**
  * Create a mock PluginContext that captures registered routes and exec tools.
- * Uses a real MarkdownStorageAdapter backed by the provided temp directory.
+ * Uses a real MarkdownStorageAdapter backed by the provided temp directory
+ * (caller-owned: this helper never deletes it).
  */
 export function createTestContext(pluginId: string, testDir: string): ActivatedPlugin {
   if (!existsSync(testDir)) {
     mkdirSync(testDir, { recursive: true })
   }
 
-  const routes: APIRoute[] = []
-  const execTools: ExecToolDefinition[] = []
-  const storage = new MarkdownStorageAdapter(testDir)
-  const events = new BakinEventBus(() => {})
+  // Permanent two-tier boundary cast: SDK PluginContext and core
+  // PluginContext deliberately differ (reduced runtime facade vs full
+  // adapter), so the harness's SDK-typed surface is cast once at this
+  // boundary. T19 unified APIRoute but NOT the context tiers — by design.
+  const harness = sdkCreateTestContext(pluginId, { dir: testDir }) as unknown as {
+    ctx: PluginContext
+    routes: RegisteredAPIRoute[]
+    execTools: ExecToolDefinition[]
+  }
+  const { ctx, routes, execTools } = harness
 
   let seededResults: SearchResult[] = []
   let seededAggregations: SearchResponse['aggregations'] = undefined
@@ -75,9 +143,10 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
   }
 
   // Mirror the production de-dup behavior: if a plugin already declared
+  // NOTE: one of THREE deliberate copies of the auto GET /search wiring — see
+  // src/core/search-plugin-api.ts (production) and packages/sdk/src/testing/index.ts.
   // /search via `searchRoute({ table })` (T6+), skip the auto-wire so the
-  // route table stays canonical with no duplicates. Plugins still on the
-  // legacy auto-wire path (pre-migration) get the legacy route shape.
+  // route table stays canonical with no duplicates.
   const maybeAutoRegisterSearchRoute = () => {
     if (routes.some(r => r.path === '/search' && r.method === 'GET')) return
     routes.push({
@@ -99,9 +168,8 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
     })
   }
 
-  const runtime = createMockRuntimeAdapter()
-  if (runtime.memory) {
-    runtime.memory.watchPaths = async () => [
+  if (ctx.runtime.memory) {
+    ctx.runtime.memory.watchPaths = async () => [
       '/mock/openclaw/agents/*/sessions/sessions.json',
       '/mock/openclaw/agents/*/sessions/*.jsonl',
       '/mock/openclaw/workspace/*.md',
@@ -109,12 +177,11 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
     ]
   }
 
-  const ctx: PluginContext = {
-    storage,
-    events,
-    pluginId,
-    runtime,
-    tasks: createMockBakinTaskStore() as unknown as PluginContext['tasks'],
+  // ---- In-repo overrides on top of the SDK harness ----------------------
+  // Spy affordances: suites assert call args / use mockClear / mockReturnValue
+  // on these members, so they must be vi.fn spies, not plain functions.
+  // Global registries: workflows suites assert process-global registry state.
+  Object.assign(ctx, {
     assets: {
       createAsset: vi.fn(async () => ({ assetId: 'test-asset', version: 1 })),
       getAsset: vi.fn(async () => null),
@@ -127,42 +194,18 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
       resolveStoreFile: vi.fn(async () => null),
     },
     registerNav: vi.fn(),
-    registerRoute: (route) => routes.push(route),
     registerSlot: vi.fn(),
-    registerExecTool: (tool) => execTools.push(tool),
     registerSkill: vi.fn(),
+    // Collision semantics mirror production (R18): duplicates THROW.
     registerWorkflow: (def: WorkflowDefinitionInput) => {
       const id = (def.id && def.id.length > 0) ? def.id : slugifyWorkflowId(def.name)
-      try {
-        registerPluginDefinition(pluginId, id, def as unknown as WorkflowDefinition)
-      } catch (err) {
-        testHelperLog.error(
-          `registerWorkflow collision in plugin "${pluginId}" for id "${id}"`,
-          err as Error,
-        )
-      }
+      registerPluginDefinition(pluginId, id, def as unknown as WorkflowDefinition)
     },
-    registerNodeType: (def) => {
-      try {
-        return registerPluginNodeType(pluginId, def)
-      } catch (err) {
-        testHelperLog.error(
-          `registerNodeType collision in plugin "${pluginId}" for kind "${def.kind}"`,
-          err as Error,
-        )
-        return `${pluginId}.${def.kind}`
-      }
+    registerNodeType: (def: Parameters<PluginContext['registerNodeType']>[0]) => {
+      return registerPluginNodeType(pluginId, def)
     },
-    registerNotificationChannel: (def) => {
-      try {
-        return registerPluginNotificationChannel(pluginId, def)
-      } catch (err) {
-        testHelperLog.error(
-          `registerNotificationChannel collision in plugin "${pluginId}" for id "${def.id}"`,
-          err as Error,
-        )
-        return `${pluginId}.${def.id}`
-      }
+    registerNotificationChannel: (def: Parameters<PluginContext['registerNotificationChannel']>[0]) => {
+      return registerPluginNotificationChannel(pluginId, def)
     },
     registerHealthCheck: vi.fn((def: PluginHealthCheckInput) => `${pluginId}.${def.id}`),
     watchFiles: vi.fn(),
@@ -201,7 +244,7 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
       has: vi.fn(() => false),
       invoke: vi.fn(async () => undefined),
     },
-  }
+  } satisfies Partial<PluginContext>)
 
   return { ctx, routes, execTools, seedResults }
 }
@@ -209,12 +252,8 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
 /**
  * Activate a plugin and return the captured routes and exec tools.
  *
- * Routes are collected from two sources:
- *   1. The declarative `plugin.routes` array (T6+ pattern).
- *   2. Any `ctx.registerRoute(...)` calls inside `activate()` (legacy).
- *
- * Both populate the same `routes` array so test code can find a route
- * regardless of how the plugin declares it.
+ * Routes are collected from the declarative `plugin.routes` array plus the
+ * auto-wired `GET /search` route (`ctx.registerRoute` no longer exists).
  */
 export async function activatePlugin(
   plugin: BakinPlugin,
@@ -223,7 +262,7 @@ export async function activatePlugin(
   const result = createTestContext(plugin.id, testDir)
   if (plugin.routes) {
     for (const route of plugin.routes) {
-      result.routes.push(route as unknown as APIRoute)
+      result.routes.push(route as unknown as RegisteredAPIRoute)
     }
   }
   await plugin.activate(result.ctx)
@@ -249,162 +288,6 @@ export async function callSearchRoute(
 }
 
 /**
- * Find a route handler by method and path pattern.
- * Supports parameterized paths: findRoute(routes, 'GET', '/:id') matches '/:id'.
- */
-export function findRoute(
-  routes: APIRoute[],
-  method: string,
-  path: string
-): APIRoute | undefined {
-  return routes.find((r) => r.method === method && r.path === path)
-}
-
-/**
- * Find an exec tool by name.
- */
-export function findTool(
-  tools: ExecToolDefinition[],
-  name: string
-): ExecToolDefinition | undefined {
-  return tools.find((t) => t.name === name)
-}
-
-/**
- * Create a Request object for testing route handlers.
- */
-export function makeRequest(
-  path: string,
-  opts: {
-    method?: string
-    body?: unknown
-    searchParams?: Record<string, string>
-  } = {}
-): Request {
-  const url = new URL(`http://localhost${path}`)
-  if (opts.searchParams) {
-    for (const [k, v] of Object.entries(opts.searchParams)) {
-      url.searchParams.set(k, v)
-    }
-  }
-
-  const init: RequestInit = { method: opts.method || 'GET' }
-  if (opts.body !== undefined) {
-    init.body = JSON.stringify(opts.body)
-    init.headers = { 'Content-Type': 'application/json' }
-  }
-
-  return new Request(url, init)
-}
-
-/**
- * Call a route handler. Returns { status, body } by default (body parsed as
- * JSON). Pass `rawResponse: true` to also receive the unconsumed Response —
- * essential for streaming endpoints where the caller needs to read the body
- * themselves.
- *
- * Routes that declare typed contracts (`params`/`query`/`body` schemas) are
- * dispatched through the runtime dispatcher so input validation, content-type
- * gating, and the (req, ctx, parsed) handler signature all behave the same
- * in tests as in production. Path-param values are extracted from
- * `opts.path` against `route.path`; pass `opts.path: '/abc-1/move'` to bind
- * `:taskId` to `'abc-1'` for a route declared at `/:taskId/move`.
- */
-export async function callRoute(
-  route: APIRoute,
-  ctx: PluginContext,
-  opts: {
-    path?: string
-    body?: unknown
-    searchParams?: Record<string, string>
-    rawResponse?: boolean
-  } = {}
-): Promise<{ status: number; body: Record<string, unknown>; response: Response }> {
-  // If opts.path is given, use it verbatim. Otherwise resolve `:param`
-  // placeholders in route.path against opts.searchParams (legacy
-  // convention — the catch-all dispatcher previously injected path
-  // params into searchParams). Remaining searchParams entries flow into
-  // the URL as query string.
-  let callPath: string
-  let queryEntries: Record<string, string> = {}
-  if (opts.path) {
-    callPath = opts.path
-    queryEntries = opts.searchParams ?? {}
-  } else {
-    const placeholderNames = (route.path.match(/:([A-Za-z_][\w]*)/g) ?? []).map(s => s.slice(1))
-    const sp = { ...(opts.searchParams ?? {}) }
-    callPath = route.path.replace(/:([A-Za-z_][\w]*)/g, (_match, name) => {
-      const value = sp[name]
-      if (value !== undefined) {
-        delete sp[name]
-        return value
-      }
-      return `:${name}`
-    })
-    void placeholderNames
-    queryEntries = sp
-  }
-
-  const req = makeRequest(callPath, {
-    method: route.method,
-    body: opts.body,
-    searchParams: queryEntries,
-  })
-
-  // Extract path params by matching the resolved callPath against route.path.
-  const params = extractPathParams(route.path, callPath)
-
-  // Tests run under NODE_ENV=test which makes the dispatcher's response
-  // validator throw on unmatched status codes. Fall back to direct
-  // handler invocation when the route declares no schemas (legacy shape)
-  // OR when explicitly opting out via rawResponse mode.
-  const declarative = (route as { params?: unknown; query?: unknown; body?: unknown; responses?: unknown })
-  const isDeclarative =
-    !!declarative.params || !!declarative.query
-    || !!declarative.body || !!declarative.responses
-
-  let res: Response
-  if (isDeclarative) {
-    const { dispatchRoute } = await import('../../packages/core/src/routing')
-    res = await dispatchRoute({
-      req,
-      ctx,
-      route: route as unknown as Parameters<typeof dispatchRoute>[0]['route'],
-      params,
-    })
-  } else {
-    res = await route.handler(req, ctx)
-  }
-
-  if (opts.rawResponse) {
-    return { status: res.status, body: {}, response: res }
-  }
-  let body: Record<string, unknown> = {}
-  try {
-    body = await res.json()
-  } catch {
-    // Some responses may not have JSON body
-  }
-  return { status: res.status, body, response: res }
-}
-
-/**
- * Extract path-param values from `actualPath` matched against `routePath`.
- * Supports `:param` segments. Returns `{}` when there are no params.
- */
-function extractPathParams(routePath: string, actualPath: string): Record<string, string> {
-  const routeSegments = routePath.split('/').filter(Boolean)
-  const actualSegments = actualPath.split('?')[0].split('/').filter(Boolean)
-  if (routeSegments.length !== actualSegments.length) return {}
-  const out: Record<string, string> = {}
-  for (let i = 0; i < routeSegments.length; i++) {
-    const r = routeSegments[i]
-    if (r.startsWith(':')) out[r.slice(1)] = actualSegments[i]
-  }
-  return out
-}
-
-/**
  * Call an exec tool handler with params and return the result.
  */
 export async function callTool(
@@ -412,5 +295,9 @@ export async function callTool(
   params: Record<string, unknown>,
   agent = 'test-agent'
 ): Promise<Record<string, unknown>> {
-  return tool.handler(params, agent)
+  return (await sdkCallTool(
+    tool as unknown as Parameters<typeof sdkCallTool>[0],
+    params,
+    agent,
+  )) as unknown as Record<string, unknown>
 }

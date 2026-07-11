@@ -48,6 +48,6 @@ const modelsPlugin: BakinPlugin = definePlugin({
     // MCP Exec Tools — read-only agent access
     registerModelsExecTools(ctx)
   },
-}) as unknown as BakinPlugin
+})
 
 export default modelsPlugin

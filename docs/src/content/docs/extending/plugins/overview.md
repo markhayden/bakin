@@ -7,6 +7,8 @@ Plugins add new functionality to Bakin. Reach for one when the built-in app almo
 
 A plugin can be tiny. It can be a single MCP tool. It can also be a full product surface with pages, routes, settings, search, health checks, hooks, skills, and workflows.
 
+The canonical template is the in-repo reference plugin ([`examples/reference-plugin/`](https://github.com/markhayden/bakin/tree/main/examples/reference-plugin)) — a small bookmarks manager that exercises every surface below with the smallest honest example of each, written entirely against `@makinbakin/sdk/*` and install-gated by CI so it can never drift from the host. It is mirrored to [`markhayden/bakin-plugin-starter`](https://github.com/markhayden/bakin-plugin-starter) on stable releases as a forkable starting point.
+
 ## What Plugins Ship
 
 <div class="table-light-full table-label-wrap">
@@ -68,5 +70,7 @@ Do not import host files, `src`, `packages/host`, another plugin's internals, or
 - [Build a Plugin](/docs/extending/plugins/build/): the full authoring path
 - [Manifest](/docs/extending/plugins/manifest/): install-time metadata and permissions
 - [Client UI](/docs/extending/plugins/client-ui/): pages, navigation, slots, and UI conventions
-- [Server Contracts](/docs/extending/plugins/server-contracts/): routes, tools, hooks, search, health checks, skills, workflows, and cleanup
+- [Server Contracts](/docs/extending/plugins/server-contracts/): routes, tools, hooks, storage, health checks, skills, workflows, and cleanup
+- [Realtime Events](/docs/extending/plugins/realtime/): live UI updates over the shared SSE stream
+- [Search](/docs/extending/plugins/search/): making plugin content searchable
 - [Ingredients](/docs/extending/ingredients/): glossary of plugin and agent kit parts

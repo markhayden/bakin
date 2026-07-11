@@ -65,3 +65,16 @@ export function useJsonFetch<T>(url: string | null, opts?: RequestInit): UseJson
 
   return { data, loading, error, refresh }
 }
+
+/**
+ * `useJsonFetch` scoped to a plugin's own API: builds `/api/plugins/<id>/<path>`
+ * so components never hand-assemble the prefix. Pass `path = null` to skip.
+ */
+export function usePluginJsonFetch<T>(
+  pluginId: string,
+  path: string | null,
+  opts?: RequestInit,
+): UseJsonFetchResult<T> {
+  const clean = path === null ? null : path.startsWith('/') ? path.slice(1) : path
+  return useJsonFetch<T>(clean === null ? null : `/api/plugins/${pluginId}/${clean}`, opts)
+}

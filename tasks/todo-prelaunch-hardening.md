@@ -30,15 +30,15 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 - [ ] CHECKPOINT 2a: golden path verbatim-works ✅ (suite 6356/0, golden-path 6/0 incl. sync-manifest round-trip); PR merged ☐
 
 ## PR 2b — feat/sdk-testing-and-types
-- [ ] T17 @makinbakin/sdk/testing
-- [ ] T18 In-repo tests consume sdk/testing
-- [ ] T19 Type tightening (contract commit + adoption commit)
-- [ ] T20 Uniform duplicate-throw + /internal split + pluginFetch
-- [ ] T21 TurnOutputView + migrate chat & step-output
-- [ ] T22 Reference plugin (examples/) + CI gate
-- [ ] T23 🔶 Starter-repo mirror step (ask-first: OQ1 repo name/visibility)
-- [ ] T24 Public docs sweep
-- [ ] CHECKPOINT 2b: success criteria #2 #3 #6; PR merged
+- [x] T17 @makinbakin/sdk/testing ✅ (harness entry + external-author fixture + scaffold starter test migrated)
+- [x] T18 In-repo tests consume sdk/testing ✅ (test-helpers is a thin adapter: spies + 3 global registries + caller-owned dirs are the whole delta)
+- [x] T19 Type tightening ✅ (closed definePlugin w/ exactness, inferred exec params, legacy route API deleted, log/storage required, 13 casts removed)
+- [x] T20 Uniform duplicate-throw + /internal split + pluginFetch ✅ (internal entry, R18 throws, pluginFetch/usePluginJsonFetch adopted in chat+brands)
+- [x] T21 TurnOutputView + migrate chat & step-output ✅ (single renderer + thinking indicator; chat + step-output migrated)
+- [x] T22 Reference plugin (examples/) + CI gate ✅ (bookmarks domain; every surface + sync-manifest --check gated in CI)
+- [x] T23 Starter-repo mirror step ✅ (markhayden/bakin-plugin-starter, public; fail-soft release step + dry-run-tested staging script)
+- [x] T24 Public docs sweep ✅ (realtime + search pages, storage scoping, hook catalog, settings types, link as primary dev verb)
+- [ ] CHECKPOINT 2b: success criteria #2 ✅ #3 ✅ #6 ✅ (suite 6427/0, docs build green); PR merged ☐
 
 ## PR 3 — feat/runtime-conformance (after 1a AND 2b)
 - [ ] T25 Conformance suite skeleton + messaging pins (3 targets)
@@ -59,3 +59,5 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 ## Live-validation follow-ups (2026-07-09 flip)
 - [ ] 🔶 USER: file the OpenClaw upstream issue for the abort-registration defect (suggested text in PR #637) and backfill the real number over `openclaw#TBD-abort-registration` (pin test, fixtures README, rig doc)
 - [ ] Run rig-validate R7 (abort workaround re-verify) after every OpenClaw version bump
+- [ ] 🔶 USER: create the public repo markhayden/bakin-plugin-starter (empty) + add a STARTER_REPO_TOKEN secret before the next stable release — until then the mirror step warns and skips (release never breaks)
+- [ ] Note for the first stable release notes: plugins scaffolded from a dev/prerelease host resolve SDK `latest`, which lacks `/testing` until the first stable release with PR #642 publishes — scaffolded starter tests import-fail until then (self-resolving)

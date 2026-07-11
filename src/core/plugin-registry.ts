@@ -9,6 +9,7 @@ import {
   statSync,
 } from 'fs'
 import { join } from 'path'
+import type { ZodRawShape } from 'zod'
 import type {
   BakinConfig,
   BakinPlugin,
@@ -16,7 +17,7 @@ import type {
   EventBus,
   PluginContext,
   NavItem,
-  APIRoute,
+  RegisteredAPIRoute,
   UISlotRegistration,
   ExecToolDefinition,
   SkillDefinition,
@@ -24,7 +25,7 @@ import type {
   WorkflowDefinitionInput,
   PluginNodeTypeInput,
 } from '@bakin/core/plugin-types'
-import { registerPluginDefinition } from '@bakin/core/workflows/source-registry'
+import { registerPluginDefinition, unregisterPluginDefinitions } from '@bakin/core/workflows/source-registry'
 import type { WorkflowDefinition } from '@bakin/core/workflows/definition-types'
 import { registerPluginNodeType, unregisterPluginNodeTypes } from '@bakin/core/workflows/node-type-registry'
 import {
@@ -40,14 +41,15 @@ import type {
   PluginHealthCheckInput,
 } from '@bakin/core/plugin-types'
 import type { AppServices } from '@bakin/core/app-services'
-import { registerRouteDoc } from './api-docs'
+import { assertValidBodySpec } from '@bakin/core/routing'
+import { registerRouteDoc, removeRouteDocsByPlugin } from './api-docs'
 import { addExecTool, removeExecToolsByPlugin } from './exec-tools/registry'
 import { runMigrations } from './migrations'
 import { getContentDir } from './content-dir'
 import { createLogger } from './logger'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { getPluginSkills as skillRegistry, clearPluginSkills, removePluginSkillsByPlugin } from '@bakin/core/skills/plugin-skill-registry'
-import { getContentTypes, purgeContentType } from './search-registry'
+import { getContentTypes, purgeContentType, unregisterContentTypesByPlugin } from './search-registry'
 import { loadPluginSkills } from '../lib/plugin-skill-loader'
 import { setCorePluginCheck, readPluginLockfile } from '../../packages/core/src/plugins/lockfile'
 import {
@@ -315,6 +317,51 @@ class PluginRegistryImpl {
     state.healthCheckIds.length = 0
   }
 
+  /**
+   * Non-destructive sweep of every registry surface a plugin can contribute
+   * to: hooks, exec tools, node types, notification channels, health checks,
+   * skills, plugin-owned workflow definitions, search runtime wiring, route
+   * docs, and the per-plugin state arrays. Never drops search tables —
+   * uninstall (`deactivatePlugin`) owns destructive cleanup.
+   *
+   * Used by the activation-failure path (R18 collisions THROW out of
+   * activate(), and everything the plugin registered before the throw must
+   * not survive as callable, failed-owner registrations) and delegated to by
+   * the hot-reload pipeline. Idempotent — every sub-sweep is no-op-on-empty.
+   */
+  sweepPluginRegistrations(pluginId: string): void {
+    try { getHookRegistry().unregisterByPlugin(pluginId) } catch (err) {
+      log.warn('sweep: unregisterByPlugin failed', { pluginId, err: String(err) })
+    }
+    try { removeExecToolsByPlugin(pluginId) } catch (err) {
+      log.warn('sweep: removeExecToolsByPlugin failed', { pluginId, err: String(err) })
+    }
+    try { unregisterPluginNodeTypes(pluginId) } catch (err) {
+      log.warn('sweep: unregisterPluginNodeTypes failed', { pluginId, err: String(err) })
+    }
+    try { unregisterPluginNotificationChannels(pluginId) } catch (err) {
+      log.warn('sweep: unregisterPluginNotificationChannels failed', { pluginId, err: String(err) })
+    }
+    try { unregisterPluginHealthChecks(pluginId) } catch (err) {
+      log.warn('sweep: unregisterPluginHealthChecks failed', { pluginId, err: String(err) })
+    }
+    try { removePluginSkillsByPlugin(pluginId) } catch (err) {
+      log.warn('sweep: removePluginSkillsByPlugin failed', { pluginId, err: String(err) })
+    }
+    try { unregisterPluginDefinitions(pluginId) } catch (err) {
+      log.warn('sweep: unregisterPluginDefinitions failed', { pluginId, err: String(err) })
+    }
+    // Runtime wiring only — never drops backing search tables.
+    try { unregisterContentTypesByPlugin(pluginId) } catch (err) {
+      log.warn('sweep: unregisterContentTypesByPlugin failed', { pluginId, err: String(err) })
+    }
+    try { removeRouteDocsByPlugin(pluginId) } catch (err) {
+      log.warn('sweep: removeRouteDocsByPlugin failed', { pluginId, err: String(err) })
+    }
+    const state = this.plugins.get(pluginId)
+    if (state) this.clearStateArrays(state)
+  }
+
   async deactivatePlugin(pluginId: string, opts: { callShutdown?: boolean; removeState?: boolean } = {}): Promise<{
     hooks: number
     execTools: number
@@ -347,6 +394,15 @@ class PluginRegistryImpl {
     }
     try { unregisterPluginHealthChecks(pluginId) } catch (err) {
       log.warn('deactivate: unregisterPluginHealthChecks failed', { pluginId, err: String(err) })
+    }
+    // Plugin-owned workflow definitions: with cross-plugin id collisions now
+    // THROWING (R18), a removed plugin's stale ids would make its workflow
+    // ids permanently unclaimable in this process.
+    try { unregisterPluginDefinitions(pluginId) } catch (err) {
+      log.warn('deactivate: unregisterPluginDefinitions failed', { pluginId, err: String(err) })
+    }
+    try { removeRouteDocsByPlugin(pluginId) } catch (err) {
+      log.warn('deactivate: removeRouteDocsByPlugin failed', { pluginId, err: String(err) })
     }
     try {
       const ownedTables = [...getContentTypes().entries()]
@@ -457,32 +513,39 @@ class PluginRegistryImpl {
 
   /**
    * Register declarative routes from `plugin.routes` into state.routes.
-   * T20: called BEFORE `plugin.activate()` (the spec invariant). Every
-   * in-repo plugin populates `plugin.routes` at module-load time so the
-   * static analyzer + the docs generator see the full surface without
-   * needing to invoke activate(). Routes registered through the legacy
-   * `ctx.registerRoute` adapter during activate() are appended to
-   * state.routes after this runs; this only adds the declarative
-   * entries.
+   * Called BEFORE `plugin.activate()` (the spec invariant): every plugin
+   * populates `plugin.routes` at module-load time so the static analyzer +
+   * the docs generator see the full surface without invoking activate().
+   * The only other producer onto state.routes is the search auto-route
+   * (an internal registrar — `ctx.registerRoute` no longer exists).
    */
   private registerDeclarativeRoutes(plugin: BakinPlugin, state: PluginState): void {
     const declarative = plugin.routes ?? []
     if (declarative.length === 0) return
     for (const route of declarative) {
-      // Cast: declarative APIRoute<C, P, Q, B> is structurally compatible
-      // with the legacy APIRoute used by state.routes — same path/method/
+      // Cast: declarative RegisteredAPIRoute<C, P, Q, B> is structurally compatible
+      // with the legacy RegisteredAPIRoute used by state.routes — same path/method/
       // handler primary fields, plus extra typed schemas the dispatcher
       // adapter knows how to read.
-      const legacyShaped = route as unknown as APIRoute
+      const erased = route as unknown as RegisteredAPIRoute
+      // Bare-literal routes never went through defineRoute's definition-time
+      // validation — reject malformed body specs here so a typo'd contentType
+      // fails activation with a named route instead of silently parsing to
+      // an undefined body at request time.
+      assertValidBodySpec((route as { body?: unknown }).body, `${erased.method} ${erased.path}`)
       // T16: declarative routes face the same manifest enforcement as
       // ctx.registerRoute — user plugins must declare every route in
       // contributes.apiRoutes (assertRouteDeclared no-ops for core).
-      this.assertRouteDeclared(plugin.id, state, legacyShaped)
-      state.routes.push(legacyShaped)
+      this.assertRouteDeclared(plugin.id, state, erased)
+      state.routes.push(erased)
+      // Docs parity: declarative routes feed the runtime /api/docs surface
+      // exactly like the (deleted) imperative path always did — without this,
+      // getAllRoutes() only ever saw core + search auto-routes.
+      registerRouteDoc(plugin.id, erased)
     }
   }
 
-  private assertRouteDeclared(pluginId: string, state: PluginState, route: APIRoute): void {
+  private assertRouteDeclared(pluginId: string, state: PluginState, route: RegisteredAPIRoute): void {
     if (state.source !== 'user') return
     const declared = state.manifest?.contributes?.apiRoutes ?? []
     // Manifest methods are uppercased at parse; code-side methods are
@@ -527,7 +590,7 @@ class PluginRegistryImpl {
     // Extract as a local so both ctx.registerRoute and the search API's
     // auto-route wiring land routes in the same place (and share the
     // same docs registration side effect).
-    const registerRoute = (route: APIRoute) => {
+    const registerRoute = (route: RegisteredAPIRoute) => {
       // Dedup against declarative routes already registered before
       // activate(). Without this, plugins that declare a route via
       // `routes: [searchRoute(...)]` AND trigger the auto-wire path
@@ -543,54 +606,45 @@ class PluginRegistryImpl {
       registerNav: (items: NavItem[]) => { state.navItems.push(...items) },
       registerRoute,
       registerSlot: (reg: UISlotRegistration) => { state.slots.push(reg) },
-      registerExecTool: (tool: ExecToolDefinition) => {
-        this.assertExecToolDeclared(pluginId, state, tool)
-        tool.source = `plugin:${pluginId}`
-        addExecTool(tool)
+      registerExecTool: <Shape extends ZodRawShape>(tool: ExecToolDefinition<Shape>) => {
+        const erased = tool as unknown as ExecToolDefinition
+        this.assertExecToolDeclared(pluginId, state, erased)
+        erased.source = `plugin:${pluginId}`
+        addExecTool(erased)
       },
+      // Collision semantics are uniform across every registrar (R18): a
+      // duplicate registration THROWS with the collision + owning plugin.
+      // Hot reload is safe — the reload pipeline sweeps all five per-plugin
+      // registries before re-running activate() (see reload-pipeline.ts).
       registerSkill: (skill: SkillDefinition) => {
-        skill.source = `plugin:${pluginId}`
-        if (!skillRegistry().has(skill.name)) {
-          skillRegistry().set(skill.name, skill)
+        const existing = skillRegistry().get(skill.name)
+        if (existing) {
+          throw new Error(
+            `Skill "${skill.name}" is already registered by ${existing.source ?? 'unknown'} — ` +
+            `plugin "${pluginId}" must use a unique skill name`,
+          )
         }
+        skill.source = `plugin:${pluginId}`
+        skillRegistry().set(skill.name, skill)
       },
       registerWorkflow: (def: WorkflowDefinitionInput) => {
         const id = (def.id && def.id.length > 0) ? def.id : slugifyWorkflowId(def.name)
-        try {
-          registerPluginDefinition(pluginId, id, def as unknown as WorkflowDefinition)
-        } catch (err) {
-          log.error(`registerWorkflow collision in plugin "${pluginId}" for id "${id}"`, err as Error)
-        }
+        registerPluginDefinition(pluginId, id, def as unknown as WorkflowDefinition)
       },
       registerNodeType: <T = unknown>(def: PluginNodeTypeInput<T>): string => {
-        try {
-          const namespacedKind = registerPluginNodeType<T>(pluginId, def)
-          state.nodeKinds.push(namespacedKind)
-          return namespacedKind
-        } catch (err) {
-          log.error(`registerNodeType collision in plugin "${pluginId}" for kind "${def.kind}"`, err as Error)
-          return `${pluginId}.${def.kind}`
-        }
+        const namespacedKind = registerPluginNodeType<T>(pluginId, def)
+        state.nodeKinds.push(namespacedKind)
+        return namespacedKind
       },
       registerNotificationChannel: (def: PluginNotificationChannelInput): string => {
-        try {
-          const namespacedId = registerPluginNotificationChannel(pluginId, def)
-          state.channelIds.push(namespacedId)
-          return namespacedId
-        } catch (err) {
-          log.error(`registerNotificationChannel collision in plugin "${pluginId}" for id "${def.id}"`, err as Error)
-          return `${pluginId}.${def.id}`
-        }
+        const namespacedId = registerPluginNotificationChannel(pluginId, def)
+        state.channelIds.push(namespacedId)
+        return namespacedId
       },
       registerHealthCheck: (def: PluginHealthCheckInput): string => {
-        try {
-          const namespacedId = registerPluginHealthCheck(pluginId, def)
-          state.healthCheckIds.push(namespacedId)
-          return namespacedId
-        } catch (err) {
-          log.error(`registerHealthCheck collision in plugin "${pluginId}" for id "${def.id}"`, err as Error)
-          return `${pluginId}.${def.id}`
-        }
+        const namespacedId = registerPluginHealthCheck(pluginId, def)
+        state.healthCheckIds.push(namespacedId)
+        return namespacedId
       },
       watchFiles: (patterns: string[]) => { state.watchPatterns.push(...patterns) },
     }
@@ -648,6 +702,11 @@ class PluginRegistryImpl {
       activateSpan.end({ status: 'ok' })
     } catch (err) {
       activateSpan.end({ status: 'error', error: err instanceof Error ? err.message : String(err) })
+      // A throwing activate() is now the DESIGNED collision outcome (R18).
+      // Sweep everything the plugin registered before the throw — exec
+      // tools, hooks, skills, etc. would otherwise survive as callable
+      // registrations owned by a plugin whose status is `failed`.
+      this.sweepPluginRegistrations(plugin.id)
       throw err
     }
     state.ctx = ctx
@@ -1042,7 +1101,7 @@ class PluginRegistryImpl {
     return items.sort((a, b) => (a.order ?? 100) - (b.order ?? 100))
   }
 
-  findRoute(pluginId: string, path: string, method: string): APIRoute | null {
+  findRoute(pluginId: string, path: string, method: string): RegisteredAPIRoute | null {
     const state = this.plugins.get(pluginId)
     if (!state) return null
     return state.routes.find(r =>
@@ -1067,8 +1126,8 @@ class PluginRegistryImpl {
    * with the plugin id (scope) for OpenAPI / docs generation. Used by the
    * runtime `/api/docs` builder.
    */
-  getAllPluginRoutes(): Array<{ pluginId: string; route: APIRoute }> {
-    const out: Array<{ pluginId: string; route: APIRoute }> = []
+  getAllPluginRoutes(): Array<{ pluginId: string; route: RegisteredAPIRoute }> {
+    const out: Array<{ pluginId: string; route: RegisteredAPIRoute }> = []
     for (const [pluginId, state] of this.plugins.entries()) {
       for (const route of state.routes) {
         out.push({ pluginId, route })

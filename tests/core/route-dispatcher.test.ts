@@ -29,7 +29,7 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 }))
 mock.module('../../src/core/task-store', () => ({}))
 
-import { defineRoute } from '../../packages/core/src/routing'
+import { assertValidBodySpec, defineRoute } from '../../packages/core/src/routing'
 import { dispatchRoute } from '../../packages/core/src/routing/dispatcher'
 
 const stubCtx = {} as any
@@ -374,57 +374,87 @@ describe('dispatchRoute — response validation (NODE_ENV=test)', () => {
   })
 })
 
-describe('dispatchRoute — legacy adapter mapping', () => {
-  it('treats legacy `input` as JSON body and `output` as responses[200]', async () => {
-    // Legacy APIRoute shape — used when ctx.registerRoute({input, output}) is called.
-    const legacyRoute: any = {
-      path: '/',
-      method: 'POST',
-      summary: 'Legacy create',
-      input: z.object({ title: z.string() }),
-      output: z.object({ id: z.string() }),
-      handler: async (_req: Request, _ctx: any) => Response.json({ id: 'a' }),
-    }
-    const req = new Request('http://x/', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ title: 'hello' }),
-    })
-    const res = await dispatchRoute({ req, ctx: stubCtx, route: legacyRoute, params: {} })
-    expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ id: 'a' })
-  })
-
-  it('legacy route with no input/output does not validate', async () => {
-    const legacyRoute: any = {
+describe('dispatchRoute — no legacy adapter mapping (T19)', () => {
+  it('a route with no body/responses does not validate the body', async () => {
+    const route: any = {
       path: '/x',
       method: 'GET',
-      summary: 'Legacy x',
+      summary: 'Plain route',
       handler: async () => Response.json({ anything: true }),
     }
     const req = new Request('http://x/x')
-    const res = await dispatchRoute({ req, ctx: stubCtx, route: legacyRoute, params: {} })
+    const res = await dispatchRoute({ req, ctx: stubCtx, route, params: {} })
     expect(res.status).toBe(200)
   })
 
-  it('legacy handler signature (req, ctx) still works (no third arg)', async () => {
-    const legacyRoute: any = {
+  it('legacy `input`/`output` fields are ignored, not adapter-mapped', async () => {
+    // ctx.registerRoute and the legacy APIRoute shape were deleted; a stale
+    // dist bundle still carrying these fields must no-op harmlessly (no
+    // validation from `input`, no response checking from `output`).
+    const route: any = {
       path: '/',
       method: 'POST',
-      summary: 'Two-arg handler',
-      input: z.object({ x: z.number() }),
-      output: z.object({ doubled: z.number() }),
-      handler: async (req: Request) => {
-        const body = await req.clone().json() as { x: number }
-        return Response.json({ doubled: body.x * 2 })
-      },
+      summary: 'Stale legacy fields',
+      input: z.object({ title: z.string() }),
+      output: z.object({ id: z.string() }),
+      handler: async () => Response.json({ not: 'the output shape' }),
     }
     const req = new Request('http://x/', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ x: 21 }),
+      body: JSON.stringify({ wrong: true }),
     })
-    const res = await dispatchRoute({ req, ctx: stubCtx, route: legacyRoute, params: {} })
-    expect(await res.json()).toEqual({ doubled: 42 })
+    const res = await dispatchRoute({ req, ctx: stubCtx, route, params: {} })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ not: 'the output shape' })
+  })
+})
+
+describe('body contentType validation', () => {
+  it('assertValidBodySpec accepts every sanctioned shape', () => {
+    expect(() => assertValidBodySpec(z.object({}), 'r')).not.toThrow()
+    expect(() => assertValidBodySpec({ contentType: 'application/json', schema: z.object({}) }, 'r')).not.toThrow()
+    expect(() => assertValidBodySpec({ contentType: 'multipart/form-data' }, 'r')).not.toThrow()
+    expect(() => assertValidBodySpec({ contentType: '*/*' }, 'r')).not.toThrow()
+    expect(() => assertValidBodySpec({ contentType: 'none' }, 'r')).not.toThrow()
+    expect(() => assertValidBodySpec(undefined, 'r')).not.toThrow()
+  })
+
+  it('rejects unknown contentType values loudly (the "json" typo footgun)', () => {
+    expect(() => assertValidBodySpec({ contentType: 'json' } as any, 'GET /x')).toThrow(/route GET \/x: unknown body contentType 'json'/)
+    expect(() => assertValidBodySpec({ contentType: 'text/plain' } as any, 'r')).toThrow(/unknown body contentType/)
+    expect(() => assertValidBodySpec({} as any, 'r')).toThrow(/body spec/)
+  })
+
+  it('rejects application/json without a schema', () => {
+    expect(() => assertValidBodySpec({ contentType: 'application/json' } as any, 'r')).toThrow(/schema/)
+  })
+
+  it('defineRoute throws at definition time on an unknown contentType', () => {
+    expect(() =>
+      defineRoute({
+        path: '/broken',
+        method: 'POST',
+        body: { contentType: 'json', schema: z.object({}) } as any,
+        handler: async () => new Response('ok'),
+      }),
+    ).toThrow(/unknown body contentType 'json'/)
+  })
+
+  it('dispatcher fails loudly (500) if a bad spec reaches request time anyway', async () => {
+    const route = {
+      path: '/smuggled',
+      method: 'POST',
+      body: { contentType: 'json', schema: z.object({}) },
+      handler: async () => new Response('ok'),
+    } as any
+    const res = await dispatchRoute({
+      req: new Request('http://x/smuggled', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }),
+      route,
+      params: {},
+      ctx: stubCtx,
+    })
+    expect(res.status).toBe(500)
+    expect((await res.json()).error).toMatch(/unknown body contentType/)
   })
 })

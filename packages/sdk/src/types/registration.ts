@@ -1,7 +1,7 @@
 // Part of the @makinbakin/sdk/types contract — see ./index.ts for the
 // module's self-containment + two-tier rationale.
 import type { ComponentType } from 'react'
-import type { ZodRawShape } from 'zod'
+import type { z, ZodRawShape } from 'zod'
 import type { ActivityAPI, EventBus, HookAPI, PluginContext, StorageAdapter } from './context'
 import type { ContractStability, ContractVisibility, DocsExample, HttpMethod, SchemaLike, SourceLocation } from './primitives'
 import type { AgentRuntimeAdapter } from './runtime'
@@ -53,35 +53,10 @@ export interface NavItem {
   placement?: 'bottom'
 }
 
-/** HTTP route handler registered by a plugin via `ctx.registerRoute()`. */
-export interface APIRoute {
-  /** Route path relative to `/api/plugins/{pluginId}`. */
-  path: string
-  /** HTTP method. */
-  method: HttpMethod
-  /** Request handler. Receives a standard Request and the plugin context. */
-  handler: (req: Request, ctx: PluginContext) => Response | Promise<Response>
-  /** One-line summary for docs. */
-  summary?: string
-  /** Full description for docs. */
-  description?: string
-  /** Path param descriptor (e.g. ":id"). */
-  params?: string
-  /** Input schema for validation and docs. */
-  input?: SchemaLike
-  /** Output schema for docs. */
-  output?: SchemaLike
-  /** Visibility tier (public/internal/experimental). */
-  visibility?: ContractVisibility
-  /** Stability tier. */
-  stability?: ContractStability
-  /** Reference examples for the docs site. */
-  examples?: DocsExample[]
-  /** Source location for generated docs back-references. */
-  source?: SourceLocation
-  /** Permissions required to call this route. */
-  permissions?: string[]
-}
+// The legacy non-generic `APIRoute` (registered via the deleted
+// `ctx.registerRoute`) is gone — the ONE public route type is the
+// declarative-generic `APIRoute<C, P, Q, B>` re-exported from
+// `@makinbakin/sdk` root and `@makinbakin/sdk/routing` (audit 2026-07 H3).
 
 /** Slot registration record: place a component at a named extension point. */
 export interface UISlotRegistration {
@@ -132,7 +107,7 @@ export interface PluginToolContext {
 }
 
 /** MCP exec tool definition registered via `ctx.registerExecTool()`. */
-export interface ExecToolDefinition {
+export interface ExecToolDefinition<Shape extends ZodRawShape = ZodRawShape> {
   /** Tool name. Convention: `bakin_exec_{pluginId}_{action}`. */
   name: string
   /** Description shown to the agent (used for tool selection). */
@@ -142,9 +117,9 @@ export interface ExecToolDefinition {
   /** If true, this tool can fire multiple times in a single agent turn. */
   activityDuplicate?: boolean
   /** Zod raw shape describing the tool's parameters. */
-  parameters: ZodRawShape
-  /** Handler that executes the tool. */
-  handler: (params: Record<string, unknown>, agent: string, ctx?: PluginToolContext) => Promise<ExecToolResult>
+  parameters: Shape
+  /** Handler. Params are inferred from `parameters` — declare once, get typed params. */
+  handler: (params: z.infer<z.ZodObject<Shape>>, agent: string, ctx?: PluginToolContext) => Promise<ExecToolResult>
   /** Optional source-file path for generated docs. */
   source?: string
 }

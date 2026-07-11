@@ -71,9 +71,12 @@ const plugin = {
   version: '1.0.0',
   routes: [
     { path: '/hello', method: 'GET', summary: 'Say hello', handler: () => new Response('hi') },
+    { path: '/legacy', method: 'POST', handler: () => new Response('ok') },
   ],
   activate: function(ctx) {
-    ctx.registerRoute({ path: '/legacy', method: 'POST', handler: () => new Response('ok') })
+    // ctx.registerRoute is GONE (T19) — old dist bundles that still call it
+    // hit the recording context's no-op proxy and are simply not captured.
+    ctx.registerRoute({ path: '/ghost', method: 'POST', handler: () => new Response('ok') })
     ctx.registerExecTool({ name: 'bakin_exec___ID___do', description: 'Do the thing\\nlonger text', parameters: {}, handler: async () => ({ ok: true }) })
     // arbitrary other ctx use must be side-effect-free no-ops:
     ctx.hooks.register('__ID__.thing', async () => ({}))
@@ -86,7 +89,7 @@ module.exports.default = plugin
 `
 
 describe('syncPluginManifest', () => {
-  it('captures declarative routes, legacy routes, and exec tools; writes with derived summaries', async () => {
+  it('captures declarative routes and exec tools (legacy registerRoute is a dead no-op); writes with derived summaries', async () => {
     const dir = writePlugin({ dist: DIST_WITH_SURFACES })
     const result = await syncPluginManifest(dir, { skipBuild: true })
     expect(result.ok).toBe(true)
@@ -206,11 +209,12 @@ module.exports.default = plugin
       dist: `
 const plugin = {
   id: '__ID__', name: '__ID__', version: '1.0.0',
-  activate: function(ctx) {
-    ctx.registerRoute({ method: 'GET', path: 'stats', handler: () => new Response('x') })
-    ctx.registerRoute({ method: 'GET', path: '/a/../b', handler: () => new Response('x') })
-    ctx.registerRoute({ method: 'OPTIONS', path: '/opts', handler: () => new Response('x') })
-  },
+  routes: [
+    { method: 'GET', path: 'stats', handler: () => new Response('x') },
+    { method: 'GET', path: '/a/../b', handler: () => new Response('x') },
+    { method: 'OPTIONS', path: '/opts', handler: () => new Response('x') },
+  ],
+  activate: function(ctx) {},
 }
 module.exports = plugin
 module.exports.default = plugin

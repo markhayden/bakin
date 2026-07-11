@@ -1,0 +1,56 @@
+{
+  "id": "reference-bookmarks",
+  "name": "Bookmarks (reference plugin)",
+  "version": "0.1.0",
+  "bakin": ">=0.1.0",
+  "description": "The canonical Bakin plugin template: a small bookmarks manager exercising routes, exec tools, settings, search, health checks, SSE events, and storage — written only against @makinbakin/sdk.",
+  "permissions": ["storage.read", "storage.write"],
+  "contributes": {
+    "apiRoutes": [
+      {
+        "method": "GET",
+        "path": "/",
+        "summary": "List bookmarks",
+        "description": "All bookmarks, optionally filtered by ?tag=."
+      },
+      {
+        "method": "POST",
+        "path": "/",
+        "summary": "Create a bookmark",
+        "description": "Saves a bookmark, indexes it for search, and emits reference-bookmarks.changed."
+      },
+      {
+        "method": "DELETE",
+        "path": "/:id",
+        "summary": "Delete a bookmark",
+        "description": "Removes the bookmark and its search document."
+      },
+      {
+        "method": "GET",
+        "path": "/search",
+        "summary": "Search reference-bookmarks",
+        "description": "Auto-registered by the search content type; declared here because user-plugin routes must be mirrored in the manifest."
+      }
+    ],
+    "routes": [
+      { "path": "/reference-bookmarks", "summary": "Bookmarks page" }
+    ],
+    "nav": [
+      {
+        "id": "reference-bookmarks",
+        "label": "Bookmarks",
+        "icon": "Bookmark",
+        "href": "/reference-bookmarks",
+        "order": 200
+      }
+    ],
+    "execTools": [
+      {
+        "name": "bakin_exec_reference-bookmarks_save",
+        "summary": "Save a bookmark",
+        "description": "Lets agents save a bookmark with tags and an optional note. Same code path as the POST route."
+      }
+    ]
+  },
+  "dependencies": []
+}

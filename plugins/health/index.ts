@@ -749,6 +749,6 @@ const healthPlugin: BakinPlugin = definePlugin({
       log.info('Ready — no cached doctor results yet')
     }
   },
-}) as unknown as BakinPlugin
+})
 
 export default healthPlugin

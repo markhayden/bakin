@@ -17,7 +17,7 @@ import type {
   PluginContext,
   StorageAdapter,
   EventBus,
-  APIRoute,
+  RegisteredAPIRoute,
   PluginLogger,
 } from '@bakin/core/plugin-types'
 import type { AppServices } from '@bakin/core/app-services'
@@ -37,7 +37,13 @@ import {
 /** The registration methods — real (activate-time) or no-op (per-request). */
 export interface PluginContextRegistrars {
   registerNav: PluginContext['registerNav']
-  registerRoute: PluginContext['registerRoute']
+  /**
+   * INTERNAL route sink — not on PluginContext (the public `ctx.registerRoute`
+   * died with the legacy route API). Still a registrar because the search
+   * API's auto-`GET /search` wiring registers through the same seam the
+   * declarative path lands in.
+   */
+  registerRoute: (route: RegisteredAPIRoute) => void
   registerSlot: PluginContext['registerSlot']
   registerExecTool: PluginContext['registerExecTool']
   registerSkill: PluginContext['registerSkill']
@@ -60,7 +66,7 @@ export interface BuildPluginContextOptions {
   skipFileBackedWiring?: boolean
   /** Audit source tag ('rest' for the per-request path; undefined = default). */
   auditSource?: 'human' | 'mcp' | 'rest' | 'cli' | 'system'
-  /** Plugin-scoped logger (activate-time). Optional on the per-request path. */
+  /** Plugin-scoped logger. Defaults to a console-backed logger when omitted. */
   log?: PluginLogger
   /** Fired after updateSettings persists — the notification both paths now share. */
   onSettingsChange?: (merged: Record<string, unknown>) => void
@@ -82,7 +88,6 @@ export function buildPluginContext(opts: BuildPluginContextOptions): PluginConte
     tasks: createPluginTaskService(services.tasks),
     assets: createPluginAssetsAPI(),
     registerNav: registrars.registerNav,
-    registerRoute: registrars.registerRoute,
     registerSlot: registrars.registerSlot,
     registerExecTool: registrars.registerExecTool,
     registerSkill: registrars.registerSkill,
@@ -125,7 +130,7 @@ export function buildPluginContext(opts: BuildPluginContextOptions): PluginConte
         }
       },
     },
-    ...(opts.log ? { log: opts.log } : {}),
+    log: opts.log ?? consoleLogger(pluginId),
     search: buildSearchAPI(pluginId, {
       registerRoute: registrars.registerRoute,
       ...(opts.skipFileBackedWiring ? { skipFileBackedWiring: true } : {}),
@@ -147,11 +152,22 @@ export function buildPluginContext(opts: BuildPluginContextOptions): PluginConte
   })
 }
 
+/** ctx.log fallback — `log` is contractually always present on PluginContext. */
+function consoleLogger(pluginId: string): PluginLogger {
+  const prefix = `[plugin:${pluginId}]`
+  return {
+    debug: (m, d) => console.debug(prefix, m, d ?? ''),
+    info: (m, d) => console.info(prefix, m, d ?? ''),
+    warn: (m, e, d) => console.warn(prefix, m, e ?? '', d ?? ''),
+    error: (m, e, d) => console.error(prefix, m, e ?? '', d ?? ''),
+  }
+}
+
 /** No-op registrars for the per-request path (everything is already registered). */
 export function noopRegistrars(pluginId: string): PluginContextRegistrars {
   return {
     registerNav: () => {},
-    registerRoute: (_route: APIRoute) => {},
+    registerRoute: (_route: RegisteredAPIRoute) => {},
     registerSlot: () => {},
     registerExecTool: () => {},
     registerSkill: () => {},

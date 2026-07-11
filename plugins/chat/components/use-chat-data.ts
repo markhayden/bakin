@@ -7,8 +7,8 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { usePluginEvent } from '@makinbakin/sdk/hooks'
-
-const API = '/api/plugins/chat'
+import type { RuntimeChatChunk } from '@makinbakin/sdk/types'
+import { pluginFetch } from '@makinbakin/sdk/utils'
 
 export interface ChatSummaryDto {
   id: string
@@ -25,12 +25,8 @@ export type TranscriptRowDto =
   | { kind: 'tool'; ts: string; summary: string }
   | { kind: 'error'; ts: string; message: string }
 
-export interface LiveToolChip {
-  key: string
-  toolName: string
-  summary?: string
-  status: 'running' | 'completed' | 'failed'
-}
+// Live tool-chip folding now lives in the SDK's TurnOutputView
+// (foldTurnChunks) — the hook just accumulates the turn's chunks.
 
 export function useChats(agentFilter: string) {
   const [chats, setChats] = useState<ChatSummaryDto[]>([])
@@ -38,8 +34,8 @@ export function useChats(agentFilter: string) {
 
   const refresh = useCallback(async () => {
     try {
-      const url = agentFilter ? `${API}/chats?agent=${encodeURIComponent(agentFilter)}` : `${API}/chats`
-      const res = await fetch(url)
+      const url = agentFilter ? `chats?agent=${encodeURIComponent(agentFilter)}` : 'chats'
+      const res = await pluginFetch('chat', url)
       if (res.ok) setChats(((await res.json()) as { chats: ChatSummaryDto[] }).chats)
     } finally {
       setLoading(false)
@@ -54,7 +50,7 @@ export function useChats(agentFilter: string) {
 }
 
 export async function createChatRequest(agentId: string): Promise<ChatSummaryDto | null> {
-  const res = await fetch(`${API}/chats`, {
+  const res = await pluginFetch('chat', 'chats', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ agentId }),
@@ -64,15 +60,15 @@ export async function createChatRequest(agentId: string): Promise<ChatSummaryDto
 }
 
 export async function deleteChatRequest(chatId: string): Promise<boolean> {
-  const res = await fetch(`${API}/chats/${chatId}`, { method: 'DELETE' })
+  const res = await pluginFetch('chat', `chats/${chatId}`, { method: 'DELETE' })
   return res.ok
 }
 
 export interface ChatStreamState {
   chat: ChatSummaryDto | null
   rows: TranscriptRowDto[]
-  liveText: string
-  liveTools: LiveToolChip[]
+  /** The in-flight turn's normalized chunks — render via TurnOutputView. */
+  liveChunks: RuntimeChatChunk[]
   streaming: boolean
   sendError: string | null
   send: (content: string) => Promise<void>
@@ -81,8 +77,7 @@ export interface ChatStreamState {
 export function useChatStream(chatId: string): ChatStreamState {
   const [chat, setChat] = useState<ChatSummaryDto | null>(null)
   const [rows, setRows] = useState<TranscriptRowDto[]>([])
-  const [liveText, setLiveText] = useState('')
-  const [liveTools, setLiveTools] = useState<LiveToolChip[]>([])
+  const [liveChunks, setLiveChunks] = useState<RuntimeChatChunk[]>([])
   const [streaming, setStreaming] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
   // Guard against SSE events for other chats / stale fetches after switching.
@@ -91,7 +86,7 @@ export function useChatStream(chatId: string): ChatStreamState {
 
   const loadTranscript = useCallback(async () => {
     if (!chatId) { setChat(null); setRows([]); return }
-    const res = await fetch(`${API}/chats/${chatId}`)
+    const res = await pluginFetch('chat', `chats/${chatId}`)
     if (!res.ok || activeChatRef.current !== chatId) return
     const body = (await res.json()) as { chat: ChatSummaryDto; messages: TranscriptRowDto[] }
     setChat(body.chat)
@@ -99,8 +94,7 @@ export function useChatStream(chatId: string): ChatStreamState {
   }, [chatId])
 
   useEffect(() => {
-    setLiveText('')
-    setLiveTools([])
+    setLiveChunks([])
     setStreaming(false)
     setSendError(null)
     void loadTranscript()
@@ -108,32 +102,27 @@ export function useChatStream(chatId: string): ChatStreamState {
 
   usePluginEvent('chat.chunk', (payload) => {
     if (payload.chatId !== activeChatRef.current) return
-    const chunk = payload.chunk as { type: string; content?: string; data?: Record<string, unknown> } | undefined
-    if (!chunk) return
+    const chunk = payload.chunk as RuntimeChatChunk | undefined
+    if (!chunk?.type) return
     setStreaming(true)
-    if (chunk.type === 'text' && chunk.content) {
-      setLiveText((prev) => prev + chunk.content)
-    } else if (chunk.type === 'tool' && chunk.data) {
-      const tool = chunk.data as { callId?: string; toolName?: string; phase?: string; summary?: string; status?: string }
-      const key = tool.callId ?? `${tool.toolName}-${Date.now()}`
-      setLiveTools((prev) => {
-        const status: LiveToolChip['status'] =
-          tool.phase === 'result' ? (tool.status === 'failed' ? 'failed' : 'completed') : 'running'
-        const existing = prev.findIndex((c) => c.key === key)
-        // Result chunks usually carry no summary — keep the call's summary
-        // instead of wiping the chip back to a bare tool name.
-        const summary = tool.summary ?? (existing >= 0 ? prev[existing].summary : undefined)
-        const chip: LiveToolChip = { key, toolName: tool.toolName ?? 'tool', summary, status }
-        if (existing >= 0) return prev.map((c, i) => (i === existing ? chip : c))
-        return [...prev, chip]
-      })
-    }
+    setLiveChunks((prev) => {
+      // Coalesce consecutive same-format text deltas so a long turn stays a
+      // handful of chunks instead of hundreds; folding/rendering policy
+      // itself lives in TurnOutputView.
+      const last = prev[prev.length - 1]
+      if (
+        chunk.type === 'text' && chunk.content &&
+        last?.type === 'text' && (last.format ?? 'markdown') === (chunk.format ?? 'markdown')
+      ) {
+        return [...prev.slice(0, -1), { ...last, content: (last.content ?? '') + chunk.content }]
+      }
+      return [...prev, chunk]
+    })
   })
 
   const settle = useCallback(() => {
     setStreaming(false)
-    setLiveText('')
-    setLiveTools([])
+    setLiveChunks([])
     void loadTranscript()
   }, [loadTranscript])
 
@@ -149,7 +138,7 @@ export function useChatStream(chatId: string): ChatStreamState {
     // Optimistic user row; the durable copy replaces it on the next refetch.
     setRows((prev) => [...prev, { kind: 'user', ts: new Date().toISOString(), content }])
     setStreaming(true)
-    const res = await fetch(`${API}/chats/${chatId}/messages`, {
+    const res = await pluginFetch('chat', `chats/${chatId}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content }),
@@ -161,5 +150,5 @@ export function useChatStream(chatId: string): ChatStreamState {
     }
   }, [chatId])
 
-  return { chat, rows, liveText, liveTools, streaming, sendError, send }
+  return { chat, rows, liveChunks, streaming, sendError, send }
 }
