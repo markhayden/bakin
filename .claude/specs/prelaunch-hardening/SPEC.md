@@ -1,7 +1,7 @@
 # Spec: Pre-Launch Battle-Hardening
 
 **Source:** 2026-07-09 architecture audit (adapter architecture, plugin SDK DX, turn-notification latency, mcporter sweep).
-**Status:** Draft — pending approval.
+**Status:** COMPLETE (2026-07-11). All 34 tasks shipped across PRs #632-#644; six success criteria verified against main (suite 6511/0; live validation: streaming/abort/chips/latency confirmed by user on the production box).
 **Companion:** `PLAN.md` (task breakdown + commit strategy detail) follows approval of this spec.
 
 ## Objective

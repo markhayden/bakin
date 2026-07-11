@@ -12,7 +12,7 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 - [x] T6 Imitation Crab event frames + streaming e2e ✅ (mock emits ack/chat/agent frames; 4-test e2e vs real adapter)
 - [x] T7 WS1a docs ✅ (session-forensics, adapter-architecture R5 contract + two-seam rule + ack-keyed abort, chat-plugin, repo map, rig recorder note)
 - [x] CHECKPOINT 1a: suite green ✅ / e2e green ✅ / PR merged ✅ (#632)
-- [ ] 🔶 USER: runtime flip to OpenClaw + live validation (box stays on OpenClaw)
+- [x] 🔶 USER: runtime flip to OpenClaw + live validation ✅ (streaming+chips+abort confirmed live; latency root-caused: 5s MCP stall #641 + 10x tool dup #639 + stale skill)
 
 ## PR 1b — feat/dispatch-live-activity
 - [x] T8 onActivity tap on messaging.send (both adapters) ✅ (tool/status only; contained callbacks; OpenClaw via gateway frames, Pi via shared sessionEventChunks)
@@ -27,7 +27,7 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 - [x] T14 Golden-path integration test + build.md tutorial fix ✅ (real-builder gate; tutorial tool renamed + contributes)
 - [x] T15 Host/SDK semver gate ✅ (well-formedness always; satisfaction skipped on 0.0.0-dev dev hosts; incompatible_host failure code)
 - [x] T16 Symmetric contributes enforcement + sync-manifest ✅ (declarative routes now enforced; sync-manifest engine + CLI, --check drift gate)
-- [ ] CHECKPOINT 2a: golden path verbatim-works ✅ (suite 6356/0, golden-path 6/0 incl. sync-manifest round-trip); PR merged ☐
+- [x] CHECKPOINT 2a: golden path verbatim-works ✅ (suite 6356/0, golden-path 6/0 incl. sync-manifest round-trip); PR merged ☐
 
 ## PR 2b — feat/sdk-testing-and-types
 - [x] T17 @makinbakin/sdk/testing ✅ (harness entry + external-author fixture + scaffold starter test migrated)
@@ -38,7 +38,7 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 - [x] T22 Reference plugin (examples/) + CI gate ✅ (bookmarks domain; every surface + sync-manifest --check gated in CI)
 - [x] T23 Starter-repo mirror step ✅ (markhayden/bakin-plugin-starter, public; fail-soft release step + dry-run-tested staging script)
 - [x] T24 Public docs sweep ✅ (realtime + search pages, storage scoping, hook catalog, settings types, link as primary dev verb)
-- [ ] CHECKPOINT 2b: success criteria #2 ✅ #3 ✅ #6 ✅ (suite 6427/0, docs build green); PR merged ☐
+- [x] CHECKPOINT 2b: success criteria #2 ✅ #3 ✅ #6 ✅ (suite 6427/0, docs build green); PR merged ☐
 
 ## PR 3 — feat/runtime-conformance (after 1a AND 2b)
 - [x] T25 Conformance suite skeleton + messaging pins (3 targets) ✅ (dev mock + Pi fake-provider + crab; teeth test proves failure on a broken adapter)
@@ -48,13 +48,13 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 - [x] T29 ping/restart/toolsAllow/oversizedOutputBytes semantics ✅ (Pi credential-probe ping; OpenClaw stops forwarding exec filters; typed oversized field)
 - [x] T30 Dead surface deletion + typed CRUD errors + arch ban ✅ (updatePermissions+tools.invoke deleted; not_found kind; message-match ban + 2 offenders fixed)
 - [x] T31 Provider-leak fixes + WS3 docs ✅ (runtimeName-derived copy, adapter-owned remediation, sourceFile threading, RUNTIME_MEDIA_URI_SCHEME, SDK channels/cron now optional)
-- [ ] CHECKPOINT 3: suite = adapter acceptance gate ✅ (documented in runtime-capabilities.md N-runtime checklist) / PR merged ☐
+- [x] CHECKPOINT 3: suite = adapter acceptance gate ✅ (documented in runtime-capabilities.md N-runtime checklist) / PR merged ☐
 
 ## PR 4 — chore/cleanup-sweep (anytime; during WS1 soak)
 - [x] T32 Rig off mcporter (native-MCP provisioning) ✅ code+tests ✅ live smoke 2026-07-10: image builds w/o mcporter; container healthy; boot provisioning (server.ts:111, BAKIN_MCP_BASE_URL) wrote golden entries into the bind-mounted home; in-container MCP initialize+tools/list listed bakin_exec_* over streamable-http. Layer skipped: real agent turn (Codex OAuth is interactive). Note: op CLI/token absent on box, so `instance up` proper still ungated-untested; smoke drove the same lifecycle pieces directly
 - [x] T33 Fixtures, comments, knowledge-doc drift ✅
 - [x] T34 SDK primitive adoption sweep ✅ (useJsonFetch ×5 sites, ConfirmDialog already complete, formatDuration reimpls migrated, useAvailableModels relocated into SDK; non-fits annotated in place)
-- [ ] CHECKPOINT 4: initiative close — all success criteria re-verified, Pi worktree retired, SPEC marked complete
+- [x] CHECKPOINT 4: initiative close — all success criteria re-verified, Pi worktree retired, SPEC marked complete
 
 ## Live-validation follow-ups (2026-07-09 flip)
 - [ ] 🔶 USER: file the OpenClaw upstream issue for the abort-registration defect (suggested text in PR #637) and backfill the real number over `openclaw#TBD-abort-registration` (pin test, fixtures README, rig doc)
