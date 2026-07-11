@@ -5,6 +5,7 @@ import type { AssetVersionDetail } from '@makinbakin/sdk/types'
 import { isValidAssetId } from '@makinbakin/sdk/utils'
 import type { ExecToolResult, PluginContext } from '@bakin/core/plugin-types'
 import type { RuntimeImageGenerationResult } from '@bakin/core/adapters/runtime'
+import { RUNTIME_MEDIA_URI_SCHEME } from '@bakin/core/adapters/runtime'
 import type { ImageProviderId, ImageProviderReadiness } from '../types'
 import { effectiveImageSettings, getImageProvider, providerReadiness } from './providers'
 import { resolveImageRoute } from './routing'
@@ -268,13 +269,14 @@ async function resolveReferences(
   const paths: string[] = []
   const lineage: Array<{ assetId: string; version: number }> = []
   for (const rawEntry of entries) {
-    // Runtime-private media URIs (e.g. a Discord attachment OpenClaw stored as
-    // media://inbound/…) resolve to a local path adapter-side, then flow
-    // through the same auto-import as any raw path — tracked, task-linked.
+    // Runtime-private media URIs (e.g. a channel attachment the runtime
+    // stored) resolve to a local path adapter-side, then flow through the
+    // same auto-import as any raw path — tracked, task-linked. The scheme
+    // constant is the contract's; the adapter owns what the URI means.
     let entry = rawEntry
-    if (/^media:\/\//.test(rawEntry)) {
+    if (rawEntry.startsWith(RUNTIME_MEDIA_URI_SCHEME)) {
       if (!ctx.runtime.media?.resolveUri) {
-        return { error: `The active runtime cannot resolve media:// URIs (reference ${rawEntry}); pass an assetId or local path instead` }
+        return { error: `The active runtime cannot resolve ${RUNTIME_MEDIA_URI_SCHEME} URIs (reference ${rawEntry}); pass an assetId or local path instead` }
       }
       const resolved = await ctx.runtime.media.resolveUri(rawEntry)
       if (!resolved) return { error: `Reference media URI not found: ${rawEntry}` }

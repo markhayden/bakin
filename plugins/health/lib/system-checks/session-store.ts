@@ -1,11 +1,13 @@
 /**
  * System check — runtime session-store growth (#435).
  *
- * OpenClaw's built-in maintenance (session.maintenance) prunes store
- * entries on writes, but unreferenced transcript/trajectory artifacts only
- * get GC'd by explicit cleanup runs or a configured disk budget. This check
- * is the early warning when accumulation outruns maintenance. Read-only:
- * remediation mutates runtime-owned data, so it is never auto-fixed.
+ * Runtime session stores prune live entries on writes, but unreferenced
+ * transcript artifacts typically only get GC'd by explicit cleanup runs or
+ * a configured disk budget. This check is the early warning when
+ * accumulation outruns maintenance. Read-only: remediation mutates
+ * runtime-owned data, so it is never auto-fixed — and the remediation TEXT
+ * is adapter-provided (`RuntimeSessionStoreStats.remediation`), because the
+ * cleanup commands are provider-specific and belong behind the adapter.
  */
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import type { HealthCheckResult } from '../../../../packages/core/src/plugin-types'
@@ -17,8 +19,6 @@ export const SESSION_STORE_ERROR_BYTES = 1024 * 1024 * 1024
 export const SESSION_STORE_ORPHAN_RATIO = 10
 export const SESSION_STORE_ORPHAN_MIN_FILES = 100
 
-const REMEDIATION =
-  'Run `openclaw sessions cleanup --enforce` and consider setting `session.maintenance.maxDiskBytes` so the gateway self-maintains.'
 
 function formatMb(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
@@ -41,17 +41,19 @@ export async function checkSessionStore(
 
   const results: HealthCheckResult[] = []
   for (const agent of stats) {
+    // Adapter-owned guidance; neutral fallback when the adapter offers none.
+    const remediation = agent.remediation ?? "Run the runtime's session cleanup to prune old session artifacts."
     const orphanRatio = agent.fileCount / Math.max(agent.storeEntries, 1)
     const detail = `${agent.agentId}: ${formatMb(agent.diskBytes)}, ${agent.fileCount} files, ${agent.storeEntries} store entries`
     if (agent.diskBytes > SESSION_STORE_ERROR_BYTES) {
-      results.push({ check, status: 'error', message: `Session store oversized — ${detail}. ${REMEDIATION}`, autoFixable: false })
+      results.push({ check, status: 'error', message: `Session store oversized — ${detail}. ${remediation}`, autoFixable: false })
     } else if (agent.diskBytes > SESSION_STORE_WARN_BYTES) {
-      results.push({ check, status: 'warn', message: `Session store growing — ${detail}. ${REMEDIATION}`, autoFixable: false })
+      results.push({ check, status: 'warn', message: `Session store growing — ${detail}. ${remediation}`, autoFixable: false })
     } else if (agent.fileCount >= SESSION_STORE_ORPHAN_MIN_FILES && orphanRatio > SESSION_STORE_ORPHAN_RATIO) {
       results.push({
         check,
         status: 'warn',
-        message: `Orphaned session artifacts accumulating — ${detail} (${orphanRatio.toFixed(0)}x files per entry). ${REMEDIATION}`,
+        message: `Orphaned session artifacts accumulating — ${detail} (${orphanRatio.toFixed(0)}x files per entry). ${remediation}`,
         autoFixable: false,
       })
     }

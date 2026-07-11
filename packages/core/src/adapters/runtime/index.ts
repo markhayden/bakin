@@ -95,3 +95,4 @@ export type {
   WorkspaceFile,
   WorkspaceFileStat,
 } from './concepts'
+export { RUNTIME_MEDIA_URI_SCHEME } from './concepts'

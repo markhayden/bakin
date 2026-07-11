@@ -404,6 +404,12 @@ export interface RuntimeSessionStoreStats {
   fileCount: number
   /** Total bytes of the agent's sessions directory, subtrees included. */
   diskBytes: number
+  /**
+   * Adapter-owned operator guidance for shrinking this agent's store (CLI
+   * commands, config knobs). Health surfaces render it verbatim — provider
+   * specifics belong HERE, never hardcoded upstream of the adapter.
+   */
+  remediation?: string
 }
 
 export interface RuntimeMemoryTier {
@@ -739,6 +745,14 @@ export interface RawCronSnapshot {
   snapshot: unknown
 }
 
+/**
+ * URI scheme for runtime-private media references (`media://inbound/…`).
+ * The ONE place upstream code may learn the scheme: callers detect
+ * media references with this constant and hand them to `media.resolveUri`
+ * (feature-detected) — the adapter owns what the URI means.
+ */
+export const RUNTIME_MEDIA_URI_SCHEME = 'media://'
+
 export interface AgentRuntimeAdapter {
   readonly name: string
   readonly version: string
@@ -951,10 +965,10 @@ export interface AgentRuntimeAdapter {
 
   /**
    * Access to the runtime's private media store (e.g. channel attachments).
-   * `resolveUri` maps a runtime-private URI (OpenClaw's `media://…`) to an
-   * absolute local file path; null for unknown schemes or missing files —
-   * never throws for not-found. Optional: runtimes without a media store
-   * omit it, and callers must treat absence as "cannot resolve".
+   * `resolveUri` maps a runtime-private URI (`RUNTIME_MEDIA_URI_SCHEME`-
+   * prefixed) to an absolute local file path; null for unknown schemes or
+   * missing files — never throws for not-found. Optional: runtimes without a
+   * media store omit it, and callers must treat absence as "cannot resolve".
    */
   media?: {
     resolveUri(uri: string): Promise<string | null>

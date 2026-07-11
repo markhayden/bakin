@@ -931,7 +931,16 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
             error: String(err),
           })
         }
-        stats.push({ agentId: entry.name, storeEntries, fileCount, diskBytes })
+        stats.push({
+          agentId: entry.name,
+          storeEntries,
+          fileCount,
+          diskBytes,
+          // Adapter-owned operator guidance (R29): the provider-specific
+          // cleanup command lives HERE, never in upstream health copy.
+          remediation:
+            'Run `openclaw sessions cleanup --enforce` and consider setting `session.maintenance.maxDiskBytes` so the gateway self-maintains.',
+        })
       }
       return stats
     },

@@ -17,6 +17,17 @@ import type { RuntimeMemoryEntry } from '@bakin/core/adapters/runtime'
 import type { PluginContext } from '@bakin/core/plugin-types'
 import { createLogger } from '../../../src/core/logger'
 import { MEMORY_TIERS } from './types'
+
+/**
+ * Session artifact filename as reported by the runtime memory surface —
+ * upstream never invents a `<sessionId>.jsonl` convention (R29). Synthetic
+ * `runtime:` paths carry no filename; the parser falls back to sessionId.
+ */
+function sessionSourceFile(path: string | undefined): string | undefined {
+  if (!path || path.startsWith('runtime:')) return undefined
+  const base = path.split('/').pop()
+  return base || undefined
+}
 import type { MemoryRow, MemoryTier } from './types'
 import { parseAuditLine } from './tier-parsers/audit-parser'
 import { parseDurableFile, rowId as durableRowId } from './tier-parsers/durable-parser'
@@ -619,7 +630,7 @@ export class MemoryIndexer {
     const sessionKey = `agent:${agent}:${sessionId}`
     const threshold = this.opts.skipSessionOverBytes ?? DEFAULT_SKIP_SESSION_BYTES
     if (reportedSize > threshold) {
-      await this.indexSessionJsonlHead(agent, sessionId, sessionKey, tierId)
+      await this.indexSessionJsonlHead(agent, sessionId, sessionKey, tierId, path)
       return
     }
     await this.indexSessionJsonlIncremental(agent, sessionId, sessionKey, tierId, path)
@@ -635,6 +646,7 @@ export class MemoryIndexer {
     sessionId: string,
     sessionKey: string,
     tierId: string,
+    path?: string,
   ): Promise<MemoryRow[] | null> {
     const stat = await this.ctx.runtime.memory.statEntry(tierId, sessionId, { agentId: agent })
     if (!stat) return null
@@ -648,7 +660,7 @@ export class MemoryIndexer {
     const chunk = parseJsonlChunk(
       range.content,
       0,
-      (line, lineStart) => parseTurnLine(agent, sessionId, sessionKey, line, lineStart),
+      (line, lineStart) => parseTurnLine(agent, sessionId, sessionKey, line, lineStart, sessionSourceFile(path)),
       HEAD_CHUNK_MAX_ROWS,
     )
     return chunk.rows
@@ -659,8 +671,9 @@ export class MemoryIndexer {
     sessionId: string,
     sessionKey: string,
     tierId: string,
+    path?: string,
   ): Promise<void> {
-    const rows = await this.collectSessionJsonlHeadRows(agent, sessionId, sessionKey, tierId)
+    const rows = await this.collectSessionJsonlHeadRows(agent, sessionId, sessionKey, tierId, path)
     if (rows === null) return
     for (const row of rows) {
       await this.writeRow(row)
@@ -702,7 +715,7 @@ export class MemoryIndexer {
     })
     if (!range) return null
     return parseJsonlChunk(range.content, offset, (line, lineStart) =>
-      parseTurnLine(agent, sessionId, sessionKey, line, lineStart),
+      parseTurnLine(agent, sessionId, sessionKey, line, lineStart, sessionSourceFile(path)),
     )
   }
 
@@ -986,7 +999,7 @@ export class MemoryIndexer {
         const sessionKey = `agent:${agent}:${sessionId}`
         const path = file.path ?? `runtime:${file.tierId}:${agent}:${file.id}`
         if (entrySizeBytes(file) > threshold) {
-          const rows = await this.collectSessionJsonlHeadRows(agent, sessionId, sessionKey, file.tierId)
+          const rows = await this.collectSessionJsonlHeadRows(agent, sessionId, sessionKey, file.tierId, path)
           if (rows) yield* this.emitRows(rows)
         } else {
           const chunk = await this.collectSessionJsonlRows(agent, sessionId, sessionKey, file.tierId, path, 0)
