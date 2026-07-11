@@ -73,6 +73,18 @@ import { topologicalSortPlugins } from './plugin-topo-sort'
 
 // Re-exported so `@/lib/plugin-registry` consumers (server.ts) keep their
 // import path for the static core-plugin table's element type.
+
+/**
+ * Thrown when a live (running-server) plugin operation is attempted before
+ * the registry has been initialized with a runtime. Callers classify with
+ * `instanceof` — never by matching the message text (arch rule).
+ */
+export class PluginRegistryNotInitializedError extends Error {
+  constructor(detail: string) {
+    super(`plugin registry is not initialized; ${detail}`)
+    this.name = 'PluginRegistryNotInitializedError'
+  }
+}
 export type { CorePluginRegistration } from './plugin-registry-types'
 
 /**
@@ -431,7 +443,7 @@ class PluginRegistryImpl {
 
   async activateUserPluginFromDir(pluginPath: string, opts: { cacheBust?: boolean } = {}): Promise<{ id: string; version: string }> {
     if (!this.runtime) {
-      throw new Error('plugin registry is not initialized; cannot activate user plugin')
+      throw new PluginRegistryNotInitializedError('cannot activate user plugin')
     }
 
     const manifestPath = join(pluginPath, 'bakin-plugin.json')

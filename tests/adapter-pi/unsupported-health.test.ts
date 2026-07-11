@@ -70,9 +70,6 @@ describe('honest-empty surfaces', () => {
     expect(caps.delivery.mode).toBe('unavailable')
   })
 
-  test('tools.invoke: typed failure', async () => {
-    await expectUnsupported(adapter.tools.invoke('main', 'anything', {}))
-  })
 
   test('optional members: images present (shim-backed, #627); the rest genuinely absent', () => {
     expect(adapter.images).toBeDefined()

@@ -186,6 +186,6 @@ describe('models + capabilities', () => {
   })
 
   test('describeToolAccess declares in-process invocation', () => {
-    expect(adapter.describeToolAccess!()).toEqual({ style: 'in-process' })
+    expect(adapter.describeToolAccess!()).toEqual({ style: 'in-process', perTurnExecToolFiltering: true })
   })
 })

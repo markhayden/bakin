@@ -18,6 +18,24 @@ interface AppServices {
 Core code creates the object once in `src/core/app-services.ts`. Plugins and
 exec tools receive the same services through `PluginContext` / tool context.
 
+**Behavioral guarantees are executable, not prose:** the runtime conformance
+suite (`tests/integration/runtime-conformance/` — shared checks, one runner
+per target: dev mock, Pi/fake-provider, OpenClaw/Imitation Crab, plus a
+teeth file proving the checks reject violators) is the acceptance gate for
+any adapter. It pins messaging (sessionId, clean abort, typed kinds), the
+stream chunk contract, the `onActivity` tap, capability honesty in both
+directions (declared mode ⇔ working surface — the SDK's reduced runtime
+type now declares `channels`/`cron` optional to match), provisioning
+idempotency, and `not_found`-typed CRUD mutations. Specified semantics
+(T29/T30): `ping` = cheap can-serve-a-turn probe; `restart` = re-read all
+durable config; `toolsAllow`/`toolsDeny` scope Bakin exec tools only;
+`oversizedOutputBytes` is a typed `MessageArgs` field; `updatePermissions`
+and `tools.invoke` are deleted; `updateAllowlist` patches agent ids
+(subagent-dispatch allowlist). Session-store remediation text and the
+session-file naming convention are adapter-provided data
+(`RuntimeSessionStoreStats.remediation`, memory-surface paths); the
+`media://` scheme is the contract's `RUNTIME_MEDIA_URI_SCHEME` constant.
+
 The current implementations are:
 
 | Contract | Factory | Implementation |
@@ -208,8 +226,15 @@ optional structured `providerInfo`) BEFORE it crosses the boundary.
 `RuntimeTurnError` (kind `session_death`) carries a `RuntimeTurnDiagnosis`
 assembled from provider session forensics inside the adapter. Core classifies
 on `kind` exclusively — provider error strings are interpreted in exactly one
-adapter module (`packages/adapter-openclaw/src/errors.ts`). Deep reference:
-`.claude/knowledge/session-forensics.md`.
+adapter module (`packages/adapter-openclaw/src/errors.ts`). The kind union
+also carries `not_found` (nonexistent-id CRUD mutations) and `aborted`
+(deliberate cancellation). An architecture test BANS error-message string
+matching upstream of the adapters (`tests/architecture/adapter-boundary.test.ts`,
+incl. `const msg = err.message` aliasing and `.toLowerCase()` chains) — the
+fix is always `err instanceof RuntimeError && err.kind === '…'` or a typed
+error class; for the rare genuinely-untyped source (raw `fetch` failures in
+the CLI), annotate the line with `// arch:allow-error-message <reason>`.
+Deep reference: `.claude/knowledge/session-forensics.md`.
 
 ## Typed Search Errors
 

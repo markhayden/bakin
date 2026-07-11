@@ -41,14 +41,14 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 - [ ] CHECKPOINT 2b: success criteria #2 ✅ #3 ✅ #6 ✅ (suite 6427/0, docs build green); PR merged ☐
 
 ## PR 3 — feat/runtime-conformance (after 1a AND 2b)
-- [ ] T25 Conformance suite skeleton + messaging pins (3 targets)
-- [ ] T26 Stream/capability/provisioning pins
-- [ ] T27 Mock default flip (minimal shape) + test sweep
-- [ ] T28 OpenClaw sessions.list/get for real
-- [ ] T29 ping/restart/toolsAllow/oversizedOutputBytes semantics
-- [ ] T30 Dead surface deletion + typed CRUD errors + arch ban
-- [ ] T31 Provider-leak fixes + WS3 docs
-- [ ] CHECKPOINT 3: suite = adapter acceptance gate; PR merged
+- [x] T25 Conformance suite skeleton + messaging pins (3 targets) ✅ (dev mock + Pi fake-provider + crab; teeth test proves failure on a broken adapter)
+- [x] T26 Stream/capability/provisioning pins ✅ (tool-turn taxonomy, typed-error streams, tap, capability honesty, provisioning idempotency; sessions pin OpenClaw-flagged for T28)
+- [x] T27 Mock default flip (minimal shape) + test sweep ✅ (channels/cron opt-in via mockChannels()/mockCron(); delivery honesty auto-paired; zero real bare-deref bugs found — all prod code already guarded)
+- [x] T28 OpenClaw sessions.list/get for real ✅ (sessions.json store reads via mtime/LRU cache; crab mirrors gateway bookkeeping; honesty pin ON)
+- [x] T29 ping/restart/toolsAllow/oversizedOutputBytes semantics ✅ (Pi credential-probe ping; OpenClaw stops forwarding exec filters; typed oversized field)
+- [x] T30 Dead surface deletion + typed CRUD errors + arch ban ✅ (updatePermissions+tools.invoke deleted; not_found kind; message-match ban + 2 offenders fixed)
+- [x] T31 Provider-leak fixes + WS3 docs ✅ (runtimeName-derived copy, adapter-owned remediation, sourceFile threading, RUNTIME_MEDIA_URI_SCHEME, SDK channels/cron now optional)
+- [ ] CHECKPOINT 3: suite = adapter acceptance gate ✅ (documented in runtime-capabilities.md N-runtime checklist) / PR merged ☐
 
 ## PR 4 — chore/cleanup-sweep (anytime; during WS1 soak)
 - [x] T32 Rig off mcporter (native-MCP provisioning) ✅ code+tests ✅ live smoke 2026-07-10: image builds w/o mcporter; container healthy; boot provisioning (server.ts:111, BAKIN_MCP_BASE_URL) wrote golden entries into the bind-mounted home; in-container MCP initialize+tools/list listed bakin_exec_* over streamable-http. Layer skipped: real agent turn (Codex OAuth is interactive). Note: op CLI/token absent on box, so `instance up` proper still ungated-untested; smoke drove the same lifecycle pieces directly

@@ -121,6 +121,7 @@ mock.module('@/core/task-store', () => ({
 
 // task-service surface used by the tasks plugin's exec tools.
 mock.module('../../../src/core/task-service', () => ({
+  WorkflowTaskMoveError: class WorkflowTaskMoveError extends Error {},
   validateTeamRef: async () => undefined,
   validateTeamAssignment: async () => undefined,
   TaskValidationError: class extends Error {},

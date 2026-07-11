@@ -2,6 +2,7 @@ import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { getAppServices } from './app-services'
 import { planDoctorRepair, type DoctorRepairPlanReport } from './doctor-repair'
 import {
+  DoctorRepairRequestNotFoundError,
   createDoctorRepairRequest,
   getDoctorRepairRequest,
   updateDoctorRepairRequest,
@@ -138,7 +139,7 @@ export async function verifyDoctorRepairRequest(
   options: Pick<DoctorDelegateOptions, 'contentDir' | 'projectRoot'> & { requestId: string },
 ): Promise<DoctorDelegateVerificationReport> {
   const request = getDoctorRepairRequest(options.contentDir, options.requestId)
-  if (!request) throw new Error(`Doctor repair request not found: ${options.requestId}`)
+  if (!request) throw new DoctorRepairRequestNotFoundError(options.requestId)
 
   const original = new Set(request.unresolved.map(rowSignature))
   const plan = await planDoctorRepair({

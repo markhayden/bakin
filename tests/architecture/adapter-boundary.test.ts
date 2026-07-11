@@ -209,6 +209,66 @@ function scanContentFiles(): string[] {
 }
 
 /** Transport-string violations in one shipped-content file. */
+
+/**
+ * R28 ban: production code upstream of the adapters must never CLASSIFY an
+ * error by matching its message text — adapters map provider failures to
+ * typed RuntimeError kinds inside their own errors modules (which live under
+ * packages/adapter-*, outside these scan roots, and are the sanctioned
+ * interpretation sites). The identifier list is deliberately narrow
+ * (err/error/cause/failure) so non-error `.message` DATA fields (task-log
+ * entries, audit payloads, zod issues) stay legal. Escape hatch for a
+ * genuinely justified case: `// arch:allow-error-message <reason>` on the
+ * same line.
+ */
+const ERROR_MESSAGE_MATCH_RE =
+  /\b(?:err|error|cause|failure)[!?]?\.message[!?]?\s*(?:(?:\??\.toLowerCase\(\)\s*)?\.(?:includes|startsWith|endsWith|match|test)\(|===)/
+
+/**
+ * `const msg = err.message` / `const msg = err instanceof Error ?
+ * err.message : ...` — the RHS must read `.message` off an ERROR-ish
+ * receiver (same narrow identifier list as the direct regex), so data
+ * `message` fields (chat content, task logs, run payloads) never alias.
+ */
+const MESSAGE_ALIAS_ASSIGN_RE =
+  /\b(?:const|let|var)\s+(\w+)\s*(?::\s*string\s*)?=[^;\n]*\b(?:err|error|cause|failure)[!?]?\.message\b/
+
+const ALIAS_MATCHER_SUFFIX =
+  String.raw`\s*(?:(?:\??\.toLowerCase\(\)\s*)?\.(?:includes|startsWith|endsWith|match|test)\(|===)`
+
+export function findErrorMessageMatchViolations(rel: string, content: string): string[] {
+  const hits: string[] = []
+  const lines = content.split('\n')
+
+  // Pass 1: identifiers assigned FROM `.message` in this file (the alias
+  // hole: `const msg = err.message; msg.includes(...)` evades the direct
+  // receiver regex). File-scoped and name-based — pragmatic, not a parser.
+  const aliases = new Set<string>()
+  for (const line of lines) {
+    if (line.includes('arch:allow-error-message')) continue
+    const m = MESSAGE_ALIAS_ASSIGN_RE.exec(line)
+    if (m) aliases.add(m[1])
+  }
+
+  // Pass 2: direct receivers, `.toLowerCase()` chains, and alias matches.
+  lines.forEach((line, idx) => {
+    if (line.includes('arch:allow-error-message')) return
+    if (ERROR_MESSAGE_MATCH_RE.test(line)) {
+      hits.push(`${rel}:${idx + 1}: ${line.trim()}`)
+      return
+    }
+    for (const alias of aliases) {
+      // The assignment line itself is legal; classification USES are not.
+      if (MESSAGE_ALIAS_ASSIGN_RE.test(line)) continue
+      if (new RegExp(String.raw`\b${alias}${ALIAS_MATCHER_SUFFIX}`).test(line)) {
+        hits.push(`${rel}:${idx + 1}: ${line.trim()}`)
+        return
+      }
+    }
+  })
+  return hits
+}
+
 export function findTransportViolations(rel: string, content: string): string[] {
   const hits: string[] = []
   for (const { re, label } of TRANSPORT_BANS) {
@@ -305,6 +365,36 @@ describe('adapter boundary architecture', () => {
       hits.push(...findTransportViolations(relative(ROOT, file), content))
     }
     expect(hits).toEqual([])
+  })
+
+
+  it('never classifies errors by message text upstream of the adapters', () => {
+    const hits: string[] = []
+    for (const file of scanFiles()) {
+      hits.push(...findErrorMessageMatchViolations(relative(ROOT, file), readFileSync(file, 'utf-8')))
+    }
+    expect(hits).toEqual([])
+  })
+
+  it('the error-message-matching ban catches violations (fixture)', () => {
+    expect(findErrorMessageMatchViolations('x.ts', "if (err.message.includes('session died')) retry()"))
+      .toEqual(["x.ts:1: if (err.message.includes('session died')) retry()"])
+    expect(findErrorMessageMatchViolations('x.ts', "if (error.message === 'boom') {}").length).toBe(1)
+    // Non-error data fields named `message` stay legal (task logs, audit rows).
+    expect(findErrorMessageMatchViolations('x.ts', "entry.message.startsWith('ALERT:')")).toEqual([])
+    expect(findErrorMessageMatchViolations('x.ts', "issue.message.includes('Unrecognized key')")).toEqual([])
+    // The sanctioned escape hatch.
+    expect(findErrorMessageMatchViolations('x.ts', "err.message.includes('x') // arch:allow-error-message probe")).toEqual([])
+    // The alias hole: assignment is legal, classification through it is not.
+    expect(findErrorMessageMatchViolations('x.ts',
+      "const msg = err instanceof Error ? err.message : String(err)\nconst status = msg.includes('not found') ? 404 : 500",
+    ).length).toBe(1)
+    // Non-matching alias uses stay legal (payload interpolation).
+    expect(findErrorMessageMatchViolations('x.ts',
+      "const msg = err instanceof Error ? err.message : String(err)\nreturn Response.json({ error: msg })",
+    )).toEqual([])
+    // toLowerCase() chains can't launder a match.
+    expect(findErrorMessageMatchViolations('x.ts', "if (err.message.toLowerCase().includes('boom')) {}").length).toBe(1)
   })
 
   it('the transport-neutrality check catches violations (fixture)', () => {

@@ -156,6 +156,10 @@ export function createSessionsSurface(): AgentRuntimeAdapter['sessions'] {
           storeEntries: jsonlCount,
           fileCount: topLevelFiles.length,
           diskBytes: dirSizeBytes(dir),
+          // Adapter-owned operator guidance (R29): Pi sessions are plain
+          // JSONL under the agent's sessions dir — archiving/deleting old
+          // files while the agent is idle is the supported cleanup.
+          remediation: `Archive or delete old session JSONL files under ${dir} while the agent is idle.`,
         }
       })
     },

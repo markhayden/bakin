@@ -4,6 +4,7 @@
  * (that is the adapter's job — same posture as adapter-openclaw/errors.ts).
  */
 import {
+  DEFAULT_OVERSIZED_OUTPUT_BYTES,
   RuntimeError,
   RuntimeTurnError,
   type RuntimeTurnDiagnosis,
@@ -94,6 +95,9 @@ const SALVAGE_CAP_BYTES = 16_384
  * Mid-turn stream death (assistant stream ended in an error event with
  * partial output) → typed session-death with salvage evidence so the
  * recovery ladder can act without reading anything provider-side.
+ * `oversizedOutput` compares the salvaged completion against the caller's
+ * threshold (T29 — this was hardcoded `false`, so the ladder never saw
+ * runaway-output deaths on Pi).
  */
 export function buildStreamDeathError(input: {
   sessionId?: string
@@ -101,6 +105,7 @@ export function buildStreamDeathError(input: {
   lastToolCall?: string
   cause?: unknown
   detail?: string
+  oversizedOutputBytes?: number
 }): RuntimeTurnError {
   const completionBytes = Buffer.byteLength(input.partialText, 'utf-8')
   const diagnosis: RuntimeTurnDiagnosis = {
@@ -108,7 +113,7 @@ export function buildStreamDeathError(input: {
     sessionId: input.sessionId,
     sessionStatus: 'stream_error',
     completionBytes,
-    oversizedOutput: false,
+    oversizedOutput: completionBytes > (input.oversizedOutputBytes ?? DEFAULT_OVERSIZED_OUTPUT_BYTES),
     lastToolCall: input.lastToolCall,
     salvagedText: input.partialText.slice(0, SALVAGE_CAP_BYTES) || undefined,
     detail: input.detail ?? 'Pi assistant stream errored before the turn completed',

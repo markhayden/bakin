@@ -22,7 +22,7 @@ import {
   type BrandManifest,
   type PortableBrand,
 } from './schemas'
-import { getBrand, listDocs, readDoc, deleteBrand } from './store'
+import { getBrand, listDocs, readDoc, deleteBrand, BrandStoreError } from './store'
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg'])
 const PDF_EXTS = new Set(['.pdf'])
@@ -113,7 +113,7 @@ export async function importBrand(opts: ImportOptions): Promise<ImportResult> {
 
   const existing = getBrand(portable.id)
   if (existing.status !== 'missing' && !opts.overwrite) {
-    throw new Error(`brand '${portable.id}' already exists — re-import with overwrite to replace it (local edits win otherwise)`)
+    throw new BrandStoreError('exists', `brand '${portable.id}' already exists — re-import with overwrite to replace it (local edits win otherwise)`)
   }
 
   // Ingest every referenced file as a managed asset (dedup within this import).
@@ -208,7 +208,7 @@ export interface ExportResult {
 /** Export an installed brand to a portable directory (assetIds → copied files). */
 export async function exportBrand(brandId: string, destDir: string, ctx: PluginContext): Promise<ExportResult> {
   const read = getBrand(brandId)
-  if (read.status !== 'ok') throw new Error(`brand not found: ${brandId}`)
+  if (read.status !== 'ok') throw new BrandStoreError('missing', `brand not found: ${brandId}`)
   const manifest = read.manifest
   const files: string[] = []
 
@@ -218,7 +218,7 @@ export async function exportBrand(brandId: string, destDir: string, ctx: PluginC
     const cached = fileByAssetId.get(assetId)
     if (cached) return cached
     const resolved = await ctx.assets.resolveVersionFile(assetId)
-    if (!resolved) throw new Error(`asset not found while exporting: ${assetId}`)
+    if (!resolved) throw new BrandStoreError('missing', `asset not found while exporting: ${assetId}`)
     const ext = extname(resolved.absPath) || ''
     const rel = `assets/${assetId}${ext}`
     copyFileSync(resolved.absPath, join(destDir, rel))

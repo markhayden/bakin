@@ -13,6 +13,7 @@ import { getLastResults, runDiagnostics } from '../../src/core/doctor'
 import { createLogger } from '../../src/core/logger'
 import { getAllAgentUsage } from '../../src/core/agent-usage'
 import { startUsageHistoryTimer, stopUsageHistoryTimer, getLastUsageScan, DEFAULT_SCAN_MINUTES } from './lib/usage-history-timer'
+import { DoctorRepairRequestNotFoundError } from '../../src/core/doctor-repair-store'
 import { getContentDir } from '../../src/core/content-dir'
 import { applyDoctorRepair, planDoctorRepair } from '../../src/core/doctor-repair'
 import { delegateDoctorRepair, verifyDoctorRepairRequest } from '../../src/core/doctor-delegate'
@@ -535,7 +536,7 @@ const routes = [
         }))
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
-        const status = message.includes('not found') ? 404 : 500
+        const status = err instanceof DoctorRepairRequestNotFoundError ? 404 : 500
         return Response.json({ error: message }, { status })
       }
     },

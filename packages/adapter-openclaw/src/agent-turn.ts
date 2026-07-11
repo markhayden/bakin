@@ -4,31 +4,13 @@
  * usage from the gateway/CLI turn response. Pure parsing/formatting over the
  * turn payload; the adapter's turn methods own the exec + session wiring.
  */
-import type { MessageUsage, RuntimeMetadata } from '@bakin/core/adapters/runtime'
+import type { MessageUsage } from '@bakin/core/adapters/runtime'
 import { getJsonPath, isPlainObject, parseJsonObject } from './runtime-utils'
-
-export function oversizedOutputBytesFrom(metadata: RuntimeMetadata | undefined): number | undefined {
-  const value = metadata?.oversizedOutputBytes
-  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined
-}
 
 export function messagesToOpenClawPrompt(messages: Array<{ role: string; content: string }>): string {
   const lastUser = [...messages].reverse().find((message) => message.role === 'user' && message.content.trim())
   if (lastUser) return lastUser.content
   return messages.map((message) => message.content).filter(Boolean).join('\n\n')
-}
-
-export function normalizeToolList(value: string[] | undefined): string[] | undefined {
-  if (!Array.isArray(value)) return undefined
-  const seen = new Set<string>()
-  const tools: string[] = []
-  for (const entry of value) {
-    const tool = typeof entry === 'string' ? entry.trim() : ''
-    if (!tool || seen.has(tool)) continue
-    seen.add(tool)
-    tools.push(tool)
-  }
-  return tools.length > 0 ? tools : undefined
 }
 
 export function extractOpenClawAgentText(value: unknown): string {

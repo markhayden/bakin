@@ -237,15 +237,11 @@ export function createPluginRuntimeFacade(runtime: AgentRuntimeAdapter): AgentRu
       readWorkspaceFile: async () => { throw new Error('Runtime workspace files are not exposed to plugins') },
       writeWorkspaceFile: async () => { throw new Error('Runtime workspace files are not exposed to plugins') },
       removeWorkspaceFile: async () => { throw new Error('Runtime workspace files are not exposed to plugins') },
-      updatePermissions: async () => { throw new Error('Runtime permissions are not exposed to plugins') },
       updateAllowlist: async () => { throw new Error('Runtime allowlists are not exposed to plugins') },
     },
     messaging: {
       send: runtime.messaging.send.bind(runtime.messaging),
       stream: runtime.messaging.stream.bind(runtime.messaging),
-    },
-    tools: {
-      invoke: async () => { throw new Error('Runtime tool invocation is not exposed to plugins') },
     },
     // channels/cron are optional capabilities (P2.1) — forwarded only when
     // the runtime provides them, so plugin feature-detection sees the truth.

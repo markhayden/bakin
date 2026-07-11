@@ -8,6 +8,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'fs'
 import { join, resolve, sep } from 'path'
 import type { RuntimeAgent } from '@bakin/core/adapters/runtime'
+import { RuntimeError } from '@bakin/core/adapters/runtime'
 import {
   readOpenClawConfig,
   resetOpenClawConfigCache,
@@ -86,7 +87,7 @@ export function upsertOpenClawAgentConfig(input: {
 export function updateOpenClawAgentIdentity(agentId: string, input: { name?: string; emoji?: string }): void {
   const config = readOpenClawConfig()
   const agent = config?.agents?.list?.find((entry) => entry.id === agentId)
-  if (!agent) throw new Error(`Agent not found: ${agentId}`)
+  if (!agent) throw new RuntimeError(`Agent not found: ${agentId}`, { kind: 'not_found' })
   agent.identity = {
     ...(agent.identity ?? {}),
     ...(input.name ? { name: input.name } : {}),
@@ -100,7 +101,7 @@ export function updateAgentAllowlist(agentId: string, updater: (current: string[
   const agent = agentId === 'main' && config
     ? materializeImplicitMainAgent(config)
     : config?.agents?.list?.find((entry) => entry.id === agentId)
-  if (!agent) throw new Error(`Agent not found: ${agentId}`)
+  if (!agent) throw new RuntimeError(`Agent not found: ${agentId}`, { kind: 'not_found' })
   agent.subagents ??= {}
   agent.subagents.allowAgents = updater(agent.subagents.allowAgents ?? [])
   writeOpenClawConfig(config as unknown as Record<string, unknown>)

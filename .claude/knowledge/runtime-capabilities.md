@@ -140,8 +140,39 @@ the original adapter.
 2. Register in `src/core/runtime-adapter-factory.ts` +
    `RuntimeAdapterName` (`packages/core/src/settings.ts`) +
    `RUNTIME_ADAPTER_NAMES` (`src/core/runtime-switch.ts`).
-3. Nothing else: prompts, AGENTS.md sections, provisioning, onboarding
+3. Make the runtime conformance suite green — it is the ACCEPTANCE GATE
+   for any adapter (`tests/integration/runtime-conformance/`): one shared
+   check module (`runtimeConformanceChecks`) run by one thin runner per
+   target (dev mock, Pi over the fake provider, OpenClaw over the
+   Imitation Crab gateway). Pins: threaded sends return
+   `metadata.sessionId`; abort settles `kind:'aborted'` clean; messaging
+   errors are typed `RuntimeError`s (kind, never message text); stream
+   taxonomy (classified chunks, structured tool data, `done`
+   exactly-once-and-last, error chunk + no throw); `onActivity` tap;
+   capability honesty (declared mode ⇒ working surface, both directions —
+   e.g. `delivery: 'native'` ⇔ `channels` present); provisioning
+   idempotency; nonexistent-id `agents.update`/`agents.remove` reject
+   `kind:'not_found'` (reads return null; workspace-file writes provision
+   on demand by design). `teeth.conformance.test.ts` proves the checks
+   reject violators — a new runner is three target hooks, not new checks.
+4. Nothing else: prompts, AGENTS.md sections, provisioning, onboarding
    checks, the switch, and the management page all derive from the contract.
+
+**Static capability declarations are legal only when the surface is
+unconditionally implemented** — declaring `sessions: 'native'` over a stub
+was the audit's M1 dishonesty; T28 restored the standard by implementing
+real `sessions.list/get` on OpenClaw (store-mapped, mtime-cached).
+
+**Specified contract semantics (T29/T30):** `ping()` = "can serve a turn,
+cheaply probed" (Pi checks initialized + ≥1 LLM credential — never an LLM
+call); `restart()` = "re-read all durable config"; `MessageArgs.toolsAllow`
+/`toolsDeny` scope Bakin EXEC TOOLS only (native tool policy is
+adapter-private via `toolsMode`; OpenClaw warns-and-ignores since MCP
+servers are session-static); `MessageArgs.oversizedOutputBytes` is a typed
+field (no metadata bag) honored by both adapters' turn diagnoses;
+`updatePermissions` and `tools.invoke` are DELETED (dead surface);
+`agents.updateAllowlist` patches AGENT IDS (the subagent-dispatch
+allowlist — see the contract doc, born of the P5.3 conflation below).
 
 ## Known deferred items (plan addenda)
 
@@ -161,6 +192,9 @@ the original adapter.
   agent to main's list), but the Pi session builder fed that field to the
   exec-tool filter as tool names → main silently lost every `bakin_exec_*`
   tool. Fixed + regression-pinned (`tests/adapter-pi/tool-bridge.test.ts`).
+  The contract now states the semantics on `updateAllowlist` itself (agent
+  ids, per-adapter storage documented) — the incident class is closed at
+  the type/doc level, not just patched.
 - Installed agent packages from `bakin-bits-official-private` (nemo/zen/
   scout) and the `projects` plugin carried mcporter invocation forms —
   neutralized at source (0.2.1 / 0.5.2+1.0.1) and re-synced. Shipped-repo

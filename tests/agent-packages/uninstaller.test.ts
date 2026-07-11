@@ -135,7 +135,6 @@ function installRuntimeMock(): void {
         rmSync(target, { force: true })
         rmSync(`${target}.installedBy`, { force: true })
       },
-      updatePermissions: async () => {},
       updateAllowlist: async (agentId: string, patch: Record<string, unknown>) => {
         if (patch.remove) adapterCalls.removeFromAllowLists.push({ agentId, patch })
         else adapterCalls.addToAllowLists.push({ agentId, patch })

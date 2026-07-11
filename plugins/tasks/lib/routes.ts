@@ -31,6 +31,7 @@ import {
   setDependencyWithEffects,
   getTaskDetails,
   logProgress,
+  WorkflowTaskMoveError,
 } from '../../../src/core/task-service'
 import { readTaskOutcome, readTaskRuns } from './runs-reader'
 import type { ColumnId } from '../types'
@@ -281,7 +282,7 @@ export const tasksRoutes = [
         return Response.json({ ok: true as const, ...(alreadyComplete ? { alreadyComplete: true as const } : {}) })
       } catch (err) {
         const msg = (err as Error).message
-        if (msg.includes('Workflow tasks cannot be moved')) {
+        if (err instanceof WorkflowTaskMoveError) {
           return Response.json({ error: msg }, { status: 403 })
         }
         return Response.json({ error: msg }, { status: 500 })

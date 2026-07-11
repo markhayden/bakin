@@ -89,9 +89,6 @@ describe('imitation-crab runtime failure contract', () => {
     harness = await createImitationCrabHarness({ toolMode: 'error' })
     const { runtime } = harness.services
 
-    await expect(runtime.tools.invoke('pixel', 'message_send', { message: 'hello' }))
-      .rejects.toThrow('OpenClaw invokeTool failed (500)')
-
     await expect(runtime.channels!.sendMessage({
       channels: ['discord'],
       message: { body: 'This channel message should fail' },

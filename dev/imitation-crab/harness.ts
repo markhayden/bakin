@@ -39,6 +39,12 @@ export interface ImitationCrabEnvironment {
 export interface ImitationCrabHarnessOptions extends ImitationCrabEnvironmentOptions {
   startGateway?: boolean
   interceptFetch?: boolean
+  /**
+   * Forwarded to the adapter's initialize so provisionToolAccess writes the
+   * per-agent `bakin-<agent>` MCP entries into the mock home's openclaw.json
+   * (the runtime-conformance provisioning pins need a provisionable target).
+   */
+  bakinMcpBaseUrl?: string
 }
 
 export interface ImitationCrabHarness {
@@ -245,7 +251,11 @@ export async function createImitationCrabHarness(options: ImitationCrabHarnessOp
   const search = createMockSearchAdapter()
   const tasks = createFileBakinTaskStore(join(env.home, 'tasks'))
 
-  await runtime.initialize({ contentDir: env.home, logger })
+  await runtime.initialize({
+    contentDir: env.home,
+    logger,
+    ...(options.bakinMcpBaseUrl ? { bakinMcpBaseUrl: options.bakinMcpBaseUrl } : {}),
+  })
   await search.initialize({ contentDir: env.home, logger })
 
   const services: AppServices = {

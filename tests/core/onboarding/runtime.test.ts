@@ -102,12 +102,12 @@ describe('onboarding runtime component', () => {
       expect(result.remediation).toContain(RUNTIME_SETUP_URL)
     })
 
-    it('reports missing when the runtime adapter is not reachable', async () => {
+    it('reports missing when the runtime adapter is cannot serve turns', async () => {
       runtimeAvailable = false
 
       const result = await runtimeComponent.check()
       expect(result.status).toBe('missing')
-      expect(result.message).toContain('not reachable')
+      expect(result.message).toContain('cannot serve turns')
     })
 
     it('reports broken when the runtime returns no agents', async () => {

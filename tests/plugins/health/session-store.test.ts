@@ -56,15 +56,31 @@ describe('session-store system check', () => {
     expect(results[0]?.check).toBe('session-store')
   })
 
-  it('warns when an agent dir exceeds the warn byte threshold', async () => {
+  it('warns when an agent dir exceeds the warn byte threshold, rendering adapter remediation verbatim', async () => {
     const results = await checkSessionStore(
-      runtimeWith([healthy('scout'), { agentId: 'main', storeEntries: 50, fileCount: 80, diskBytes: SESSION_STORE_WARN_BYTES + 1 }]),
+      runtimeWith([healthy('scout'), {
+        agentId: 'main',
+        storeEntries: 50,
+        fileCount: 80,
+        diskBytes: SESSION_STORE_WARN_BYTES + 1,
+        remediation: 'Run `fake-runtime gc --now`.',
+      }]),
     )
     expect(results).toHaveLength(1)
     expect(results[0]?.status).toBe('warn')
     expect(results[0]?.message).toContain('main')
-    expect(results[0]?.message).toContain('openclaw sessions cleanup --enforce')
+    // Adapter-owned guidance flows through untouched (R29) — the check has
+    // no provider strings of its own.
+    expect(results[0]?.message).toContain('Run `fake-runtime gc --now`.')
     expect(results[0]?.autoFixable).toBe(false)
+  })
+
+  it('falls back to neutral remediation when the adapter offers none', async () => {
+    const results = await checkSessionStore(
+      runtimeWith([{ agentId: 'main', storeEntries: 50, fileCount: 80, diskBytes: SESSION_STORE_WARN_BYTES + 1 }]),
+    )
+    expect(results[0]?.message).toContain("Run the runtime's session cleanup")
+    expect(results[0]?.message).not.toContain('openclaw')
   })
 
   it('errors when an agent dir exceeds the error byte threshold', async () => {
@@ -83,7 +99,7 @@ describe('session-store system check', () => {
     }
     const results = await checkSessionStore(runtimeWith([stats]))
     expect(results[0]?.status).toBe('warn')
-    expect(results[0]?.message).toContain('session.maintenance.maxDiskBytes')
+    expect(results[0]?.message).toContain('files per entry')
   })
 
   it('suppresses the orphan ratio below the minimum file count', async () => {

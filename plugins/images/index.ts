@@ -119,6 +119,9 @@ const routes = [
       // on this runtime: native / shimmed / unavailable. Per-provider detail
       // below refines it; this is the top-level truth UIs and agents gate on.
       imageGen: (await ctx.runtime.capabilities()).imageGen,
+      // Adapter identity for UI copy — surfaces derive the runtime's display
+      // name from here instead of hardcoding a provider (R29).
+      runtimeName: ctx.runtime.name,
       providers: listImageProviders(),
       readiness: await providerReadiness(ctx as PluginContext),
     }),

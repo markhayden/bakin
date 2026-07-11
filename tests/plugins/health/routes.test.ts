@@ -141,6 +141,7 @@ mock.module('../../../src/core/doctor-delegate', () => ({
 }))
 
 mock.module('../../../src/core/doctor-repair-store', () => ({
+  DoctorRepairRequestNotFoundError: class DoctorRepairRequestNotFoundError extends Error {},
   listDoctorRepairRequests: mock(() => [mockDelegateRequest]),
   getDoctorRepairRequest: mock((_contentDir: string, id: string) => id === 'repair-1' ? mockDelegateRequest : null),
 }))

@@ -55,6 +55,7 @@ mock.module('../../../src/core/doctor-delegate', () => ({
   verifyDoctorRepairRequest: async () => ({ verified: true }),
 }))
 mock.module('../../../src/core/doctor-repair-store', () => ({
+  DoctorRepairRequestNotFoundError: class DoctorRepairRequestNotFoundError extends Error {},
   listDoctorRepairRequests: () => [],
   getDoctorRepairRequest: () => null,
 }))

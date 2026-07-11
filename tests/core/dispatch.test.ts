@@ -740,7 +740,9 @@ describe('dispatch', () => {
       expect(mockRuntimeSend).toHaveBeenCalledTimes(1)
       const args = mockRuntimeSend.mock.calls[0]?.[0] as Record<string, unknown>
       expect(args.threadId).toBe('task:t-thread:d1')
-      expect((args.metadata as Record<string, unknown>).oversizedOutputBytes).toBeGreaterThan(0)
+      // Typed contract field (T29) — core policy never rides the metadata bag.
+      expect(args.oversizedOutputBytes).toBeGreaterThan(0)
+      expect(args.metadata).toBeUndefined()
       // Seq ownership moved to the execution ledger (run rows + watermarks).
       const { currentSeq } = require('../../src/core/execution-ledger') as typeof import('../../src/core/execution-ledger')
       expect(currentSeq('t-thread')).toBe(1)
