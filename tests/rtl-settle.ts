@@ -38,17 +38,56 @@ import { act, cleanup } from '@testing-library/react'
 // would never resolve and time the hook out at the per-test limit.
 const realSetTimeout = globalThis.setTimeout
 
+function realTimerYield(ms = 0): Promise<void> {
+  return new Promise<void>((resolve) => realSetTimeout(resolve, ms))
+}
+
+/**
+ * One round-trip through the SAME channel React's scheduler uses to resume
+ * yielded time-sliced renders. Our message queues BEHIND any pending
+ * continuation, so when it delivers, every previously-scheduled slice has
+ * run. Raced with a real-timer fallback so a broken MessageChannel can
+ * never hang the hook.
+ */
+function schedulerTick(): Promise<void> {
+  return Promise.race([
+    new Promise<void>((resolve) => {
+      const ch = new MessageChannel()
+      ch.port1.onmessage = () => resolve()
+      ch.port2.postMessage(null)
+    }),
+    realTimerYield(50),
+  ])
+}
+
+/**
+ * Drain in-flight React work until quiescent. React 19 REFUSES root.unmount()
+ * while a yielded concurrent render is paused between slices — not just
+ * inside a render callstack — so act(unmount) alone cannot make unmounting
+ * safe (PR #640's gap, surfaced by PR #643's CI): the paused render must be
+ * allowed to RESUME (its MessageChannel continuation) and COMPLETE first.
+ * Also exported for tests that end interactions with work deliberately in
+ * flight (e.g. asserting a fetch call was made while the response-handling
+ * re-render is still pending): `await settleReact()` as the last statement
+ * makes the test honest about its terminal state.
+ */
+export async function settleReact(rounds = 3): Promise<void> {
+  for (let i = 0; i < rounds; i++) {
+    await schedulerTick()    // let paused render slices resume + finish
+    await realTimerYield(0)  // let timer-scheduled work (happy-dom rAF) land
+  }
+}
+
 afterEach(async () => {
   const g = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
   const prev = g.IS_REACT_ACT_ENVIRONMENT
   g.IS_REACT_ACT_ENVIRONMENT = true
   try {
+    await settleReact()
     await act(async () => {
-      // One macrotask yield inside act lets already-queued timers (happy-dom
-      // backs rAF with timers) land so their updates are flushed by act...
-      await new Promise<void>((resolve) => realSetTimeout(resolve, 0))
-      // ...and the unmount itself runs under act, which joins any in-flight
-      // render before executing — the race from fact 3 is structurally gone.
+      // The unmount runs under act (joins act-visible work) AFTER the
+      // scheduler drain above let any yielded render complete — unmounting
+      // between paused slices is what React 19 forbids.
       cleanup()
     })
   } finally {

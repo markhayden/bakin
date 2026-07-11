@@ -2,7 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
-import '../rtl-settle'
+import { settleReact } from '../rtl-settle'
 import type { Task, TaskColumns } from '../../plugins/tasks/types'
 
 const { mockMove, mockUseSortable } = (() => ({
@@ -329,6 +329,10 @@ describe('KanbanBoard drag and drop', () => {
         orderedIds: ['task-2', 'task-3', 'task-1'],
       })
     })
+
+    // Let the post-persist refetch's re-render complete — the reorder
+    // assertion above races the response-handling setState (see rtl-settle).
+    await settleReact()
   })
 
   it('cross-column move to populated column calls /move and both /reorder endpoints', async () => {
@@ -377,6 +381,10 @@ describe('KanbanBoard drag and drop', () => {
       expect(reorderCalls).toHaveLength(2)
       expect(reorderCalls.map((call) => call.body.columnId).sort()).toEqual(['inProgress', 'todo'])
     })
+
+    // Settle the post-persist refetch re-render before the test ends (see
+    // rtl-settle — the fetch-call assertion races the response handling).
+    await settleReact()
   })
 
   it('cross-column move to empty column calls /move', async () => {
@@ -417,6 +425,10 @@ describe('KanbanBoard drag and drop', () => {
       const moveCall = fetchCalls.find((call) => call.url.includes('/move'))
       expect(moveCall!.body.to).toBe('inProgress')
     })
+
+    // Settle the post-persist refetch re-render before the test ends (see
+    // rtl-settle — the fetch-call assertion races the response handling).
+    await settleReact()
   })
 
   it('canceled drag restores state with no API calls', async () => {
@@ -518,6 +530,10 @@ describe('KanbanBoard drag and drop', () => {
       expect(moveCall!.body.from).toBe('todo')
       expect(moveCall!.body.to).toBe('inProgress')
     })
+
+    // Settle the post-persist refetch re-render before the test ends (see
+    // rtl-settle — the fetch-call assertion races the response handling).
+    await settleReact()
   })
 
   it('drop on blocked defers to the block dialog path', async () => {
@@ -545,6 +561,10 @@ describe('KanbanBoard drag and drop', () => {
       const moveCall = fetchCalls.find((call) => call.url.includes('/move'))
       expect(moveCall).toBeFalsy()
     })
+
+    // Settle the post-persist refetch re-render before the test ends (see
+    // rtl-settle — the fetch-call assertion races the response handling).
+    await settleReact()
   })
 
   it('drop on archived calls /move with to=archived', async () => {
@@ -572,6 +592,10 @@ describe('KanbanBoard drag and drop', () => {
       const moveCall = fetchCalls.find((call) => call.url.includes('/move'))
       expect(moveCall!.body.to).toBe('archived')
     })
+
+    // Settle the post-persist refetch re-render before the test ends (see
+    // rtl-settle — the fetch-call assertion races the response handling).
+    await settleReact()
   })
 
   it('same-column reorder with search filter preserves hidden task positions', async () => {
@@ -621,6 +645,10 @@ describe('KanbanBoard drag and drop', () => {
         orderedIds: ['task-1', 'task-4', 'task-3', 'task-2'],
       })
     })
+
+    // Let the post-persist refetch's re-render complete — the reorder
+    // assertion above races the response-handling setState (see rtl-settle).
+    await settleReact()
   })
 })
 
