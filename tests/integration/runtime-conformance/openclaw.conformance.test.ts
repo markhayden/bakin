@@ -27,11 +27,21 @@ const openClawHomeMock = () => ({
 mock.module('@bakin/adapter-openclaw/home', openClawHomeMock)
 mock.module('../../../packages/adapter-openclaw/src/home', openClawHomeMock)
 
+import { readFileSync } from 'fs'
+import type { ChatChunk } from '../../../packages/core/src/adapters/runtime'
 import { createImitationCrabHarness, type ImitationCrabHarness } from '../../../dev/imitation-crab/harness'
 import { runRuntimeConformanceSuite, type RuntimeConformanceTarget } from './conformance'
 
 let harness: ImitationCrabHarness
 let threadSeq = 0
+
+/**
+ * Sessions capability-honesty pin is OFF for OpenClaw: the adapter declares
+ * sessions 'native' but list/get are stubs until T28 (PLAN.md) implements
+ * them against the real session store. T28 MUST flip this to true — the pin
+ * failing today is exactly the dishonesty T28 exists to fix.
+ */
+const SESSIONS_PIN_ENABLED = false
 
 /** Run `fn` with the mock gateway in `mode` (read per RPC), restoring after. */
 async function withChatMode<T>(mode: string, fn: () => Promise<T>, extraEnv?: Record<string, string>): Promise<T> {
@@ -52,7 +62,12 @@ async function withChatMode<T>(mode: string, fn: () => Promise<T>, extraEnv?: Re
 }
 
 beforeAll(async () => {
-  harness = await createImitationCrabHarness({ chatMode: 'echo' })
+  harness = await createImitationCrabHarness({
+    chatMode: 'echo',
+    // Gives provisionToolAccess a target: bakin-<agent> MCP entries land in
+    // the mock home's openclaw.json (the provisioning idempotency pin).
+    bakinMcpBaseUrl: 'http://localhost:3737',
+  })
   mockHome = harness.env.home
 })
 
@@ -101,6 +116,32 @@ const target: RuntimeConformanceTarget = {
     setTimeout(() => controller.abort('conformance: mid-turn'), 300)
     return { settled }
   },
+  // The crab's [[tool]] content trigger emits tool/item/command_output
+  // frames like the real wire (fixture-shaped).
+  prepareToolTurn: () => 'conformance: run the listing [[tool]] then summarize',
+  failingStream: () => {
+    // The mode env is read when the RPC arrives (first iteration) — hold it
+    // for the whole stream and restore on exit, error, or early break.
+    const inner = harness.services.runtime.messaging.stream({
+      agentId: 'pixel',
+      content: 'conformance: failing stream',
+      threadId: `conf:openclaw:fail-stream:${++threadSeq}`,
+    })
+    async function* withErrorMode(): AsyncIterable<ChatChunk> {
+      const prev = process.env.OPENCLAW_MOCK_CHAT_MODE
+      process.env.OPENCLAW_MOCK_CHAT_MODE = 'error'
+      try {
+        yield* inner
+      } finally {
+        if (prev === undefined) delete process.env.OPENCLAW_MOCK_CHAT_MODE
+        else process.env.OPENCLAW_MOCK_CHAT_MODE = prev
+      }
+    }
+    return withErrorMode()
+  },
+  // Provisioning writes bakin-<agent> MCP entries into the mock home's
+  // openclaw.json — the durable state the idempotency pin snapshots.
+  observeProvisionedState: () => readFileSync(join(mockHome, 'openclaw.json'), 'utf-8'),
 }
 
-runRuntimeConformanceSuite('openclaw (imitation crab)', () => target)
+runRuntimeConformanceSuite('openclaw (imitation crab)', () => target, { sessionsPin: SESSIONS_PIN_ENABLED })

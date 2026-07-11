@@ -5,8 +5,9 @@
  * runner file here is green. Cases assert CONTRACT behavior only — anything
  * pinned here must hold for every conforming runtime, never provider quirks.
  *
- * v1 scope (T25): messaging pins. Stream/capability/provisioning/ping pins
- * land in T26; capability-shape honesty in T27.
+ * Scope: messaging pins (T25) + stream/tap/capability/provisioning pins
+ * (T26). Mock-default capability-shape honesty lands in T27; ping/restart
+ * semantics in T29.
  *
  * Deliberately NOT pinned: send-level idempotency. `messaging.send` is NOT
  * idempotent at the contract level — callers own dedupe (the execution
@@ -45,6 +46,35 @@ export interface RuntimeConformanceTarget {
    * `settled` is the send promise; it must reject kind 'aborted'.
    */
   startAbortableTurn(): Promise<{ settled: Promise<MessageResult> }> | { settled: Promise<MessageResult> }
+  /**
+   * Seed/prepare a TOOL-USING turn and return the content to send (the
+   * target owns the trigger: the crab/mock `[[tool]]` marker, a Pi toolCall
+   * provider script). Drives the stream taxonomy and onActivity-tap pins.
+   */
+  prepareToolTurn(): string | Promise<string>
+  /**
+   * A stream that must end in TERMINAL FAILURE (typed `error` chunk, no
+   * `done`, iterator never throws). The target owns the recipe AND any env
+   * restore — the returned iterable is consumed to completion.
+   */
+  failingStream(): AsyncIterable<ChatChunk> | Promise<AsyncIterable<ChatChunk>>
+  /**
+   * Snapshot whatever provisioning durably writes (config bytes etc.) for
+   * the idempotency pin; return null when the runtime provisions nothing
+   * durable (in-process runtimes). Compared with deep equality across a
+   * second provision run.
+   */
+  observeProvisionedState?(): unknown | Promise<unknown>
+}
+
+export interface RuntimeConformanceSuiteOptions {
+  /**
+   * Sessions capability-honesty pin (declared 'native' ⇒ sessions.list
+   * returns the sessions real turns created). Default ON. OpenClaw's runner
+   * disables it until T28 implements sessions.list/get for real — flip it
+   * on there when T28 lands (tracked in PLAN.md T28).
+   */
+  sessionsPin?: boolean
 }
 
 function fail(message: string): never {
@@ -114,17 +144,187 @@ export const runtimeConformanceChecks = {
     })) {
       chunks.push(chunk)
     }
-    const doneIndexes = chunks.map((c, i) => (c.type === 'done' ? i : -1)).filter((i) => i >= 0)
-    if (doneIndexes.length !== 1) {
-      fail(`stream yielded ${doneIndexes.length} done chunks (must be exactly 1)`)
+    assertDoneExactlyOnceAndLast(chunks)
+  },
+
+  /**
+   * Tool-using streams carry the R5b taxonomy: classified chunk types only,
+   * structured RuntimeToolActivity on every tool chunk, valid format hints,
+   * done exactly-once-and-last.
+   */
+  async toolTurnStreamsClassifiedStructuredChunks(target: RuntimeConformanceTarget): Promise<void> {
+    const content = await target.prepareToolTurn()
+    const chunks: ChatChunk[] = []
+    for await (const chunk of target.runtime.messaging.stream({
+      agentId: target.agentId,
+      content,
+      threadId: target.newThreadId(),
+    })) {
+      chunks.push(chunk)
     }
-    if (doneIndexes[0] !== chunks.length - 1) {
-      fail(`done was not the final chunk (done at ${doneIndexes[0]}, ${chunks.length - 1 - doneIndexes[0]} chunk(s) after it)`)
+    assertClassifiedChunks(chunks)
+    const tools = chunks.filter((c) => c.type === 'tool')
+    if (tools.length === 0) fail('tool-using turn streamed no tool chunks')
+    for (const chunk of tools) {
+      const data = chunk.data as { phase?: unknown; toolName?: unknown } | undefined
+      if (!data || (data.phase !== 'call' && data.phase !== 'result')) {
+        fail(`tool chunk data.phase is '${String(data?.phase)}' (must be 'call' or 'result')`)
+      }
+      if (typeof data.toolName !== 'string' || data.toolName.length === 0) {
+        fail('tool chunk data.toolName is missing/empty — tool chunks carry structured RuntimeToolActivity')
+      }
+    }
+    if (chunks.some((c) => c.type === 'error')) fail('happy-path tool turn streamed an error chunk')
+    assertDoneExactlyOnceAndLast(chunks)
+  },
+
+  /**
+   * Terminal failure ends the stream with a typed `error` chunk (data.kind
+   * when known) and NO done — and the iterator itself never throws.
+   */
+  async streamTerminalFailureIsTypedErrorChunk(target: RuntimeConformanceTarget): Promise<void> {
+    const chunks: ChatChunk[] = []
+    try {
+      for await (const chunk of await target.failingStream()) {
+        chunks.push(chunk)
+      }
+    } catch (err) {
+      fail(`failing stream THREW (${String(err)}) — terminal failure must surface as an error chunk, the iterator never throws`)
+    }
+    const last = chunks.at(-1)
+    if (!last || last.type !== 'error') {
+      fail(`failing stream ended with '${last?.type ?? 'nothing'}' (must end with an error chunk)`)
+    }
+    const kind = (last.data as { kind?: unknown } | undefined)?.kind
+    if (typeof kind !== 'string' || kind.length === 0) {
+      fail('terminal error chunk carries no data.kind — consumers classify on kind, never message text')
+    }
+    if (chunks.some((c) => c.type === 'done')) {
+      fail('failing stream also yielded done — terminal failure ends with error INSTEAD of done')
+    }
+  },
+
+  /**
+   * The send() onActivity tap fires on a tool turn with tool+status chunks
+   * ONLY (text never taps), and a throwing callback never fails the turn.
+   */
+  async onActivityTapsToolAndStatusOnly(target: RuntimeConformanceTarget): Promise<void> {
+    const content = await target.prepareToolTurn()
+    const tapped: ChatChunk[] = []
+    await target.runtime.messaging.send({
+      agentId: target.agentId,
+      content,
+      threadId: target.newThreadId(),
+      onActivity: (chunk) => tapped.push(chunk),
+    })
+    if (!tapped.some((c) => c.type === 'tool')) {
+      fail('onActivity tap received no tool chunk during a tool-using send()')
+    }
+    const offender = tapped.find((c) => c.type !== 'tool' && c.type !== 'status')
+    if (offender) {
+      fail(`onActivity tapped a '${offender.type}' chunk — the tap carries tool+status only (text rides messaging.stream)`)
+    }
+
+    const content2 = await target.prepareToolTurn()
+    const result = await target.runtime.messaging.send({
+      agentId: target.agentId,
+      content: content2,
+      threadId: target.newThreadId(),
+      onActivity: () => {
+        throw new Error('tap explosion')
+      },
+    }).catch((err: unknown) => {
+      fail(`a throwing onActivity callback failed the turn (${String(err)}) — adapters must contain tap exceptions`)
+    })
+    if (!result || typeof result.id !== 'string') fail('tap-throwing turn returned no MessageResult')
+  },
+
+  /**
+   * capabilities() must describe surfaces that actually exist and work:
+   * toolCalling.access agrees with describeToolAccess(); delivery 'native'
+   * implies the channels surface is present; sessions 'native' implies
+   * sessions.list returns the sessions real turns created (opt-out via
+   * suite options until an adapter's T28-style implementation lands).
+   */
+  async capabilitiesAreHonest(target: RuntimeConformanceTarget, opts?: RuntimeConformanceSuiteOptions): Promise<void> {
+    const caps = await target.runtime.capabilities()
+    const declaredAccess = JSON.stringify(caps.toolCalling.access)
+    const describedAccess = JSON.stringify(target.runtime.describeToolAccess())
+    if (declaredAccess !== describedAccess) {
+      fail(`capabilities().toolCalling.access (${declaredAccess}) disagrees with describeToolAccess() (${describedAccess})`)
+    }
+    if (caps.delivery.mode === 'native' && !target.runtime.channels) {
+      fail("capabilities() declares delivery 'native' but the channels surface is absent")
+    }
+    if (caps.sessions.mode === 'native' && opts?.sessionsPin !== false) {
+      await target.prepareOkTurn?.()
+      const threadId = target.newThreadId()
+      await target.runtime.messaging.send({
+        agentId: target.agentId,
+        content: 'conformance: session-producing turn',
+        threadId,
+      })
+      const sessions = await target.runtime.sessions.list(target.agentId)
+      if (sessions.length === 0) {
+        fail("capabilities() declares sessions 'native' but sessions.list returned nothing after a completed threaded turn")
+      }
+    }
+  },
+
+  /**
+   * provisionToolAccess is idempotent: after a successful provision,
+   * verifyToolAccess reports ok and a second provision changes nothing
+   * durable (snapshot deep-equal via the target's observation hook).
+   */
+  async provisionToolAccessIsIdempotent(target: RuntimeConformanceTarget): Promise<void> {
+    await target.runtime.provisionToolAccess()
+    const verified = await target.runtime.verifyToolAccess()
+    if (!verified.ok) {
+      fail(`verifyToolAccess reports drift right after provisioning: ${verified.issues.join('; ')}`)
+    }
+    const before = JSON.stringify((await target.observeProvisionedState?.()) ?? null)
+    await target.runtime.provisionToolAccess()
+    const after = JSON.stringify((await target.observeProvisionedState?.()) ?? null)
+    if (before !== after) {
+      fail('a second provisionToolAccess changed durable state — provisioning must be idempotent')
+    }
+    const reverified = await target.runtime.verifyToolAccess()
+    if (!reverified.ok) {
+      fail(`verifyToolAccess reports drift after re-provisioning: ${reverified.issues.join('; ')}`)
     }
   },
 } as const
 
-export function runRuntimeConformanceSuite(name: string, getTarget: () => RuntimeConformanceTarget): void {
+const CHUNK_TYPES = new Set(['text', 'tool', 'status', 'done', 'error'])
+const TEXT_FORMATS = new Set(['markdown', 'plain', 'code'])
+
+/** Classified chunk types only; format hints valid when present (R5b). */
+function assertClassifiedChunks(chunks: ChatChunk[]): void {
+  for (const chunk of chunks) {
+    if (!CHUNK_TYPES.has((chunk as { type: string }).type)) {
+      fail(`stream yielded unclassified chunk type '${(chunk as { type: string }).type}'`)
+    }
+    if (chunk.type === 'text' && chunk.format !== undefined && !TEXT_FORMATS.has(chunk.format)) {
+      fail(`text chunk carries invalid format hint '${String(chunk.format)}'`)
+    }
+  }
+}
+
+function assertDoneExactlyOnceAndLast(chunks: ChatChunk[]): void {
+  const doneIndexes = chunks.map((c, i) => (c.type === 'done' ? i : -1)).filter((i) => i >= 0)
+  if (doneIndexes.length !== 1) {
+    fail(`stream yielded ${doneIndexes.length} done chunks (must be exactly 1)`)
+  }
+  if (doneIndexes[0] !== chunks.length - 1) {
+    fail(`done was not the final chunk (done at ${doneIndexes[0]}, ${chunks.length - 1 - doneIndexes[0]} chunk(s) after it)`)
+  }
+}
+
+export function runRuntimeConformanceSuite(
+  name: string,
+  getTarget: () => RuntimeConformanceTarget,
+  options?: RuntimeConformanceSuiteOptions,
+): void {
   describe(`runtime conformance: ${name}`, () => {
     it('threaded send returns metadata.sessionId', async () => {
       await runtimeConformanceChecks.threadedSendReturnsSessionId(getTarget())
@@ -140,6 +340,26 @@ export function runRuntimeConformanceSuite(name: string, getTarget: () => Runtim
 
     it('stream yields done exactly once, last', async () => {
       await runtimeConformanceChecks.streamDoneExactlyOnceAndLast(getTarget())
+    })
+
+    it('tool turns stream classified, structured chunks', async () => {
+      await runtimeConformanceChecks.toolTurnStreamsClassifiedStructuredChunks(getTarget())
+    })
+
+    it('terminal stream failure is a typed error chunk (iterator never throws)', async () => {
+      await runtimeConformanceChecks.streamTerminalFailureIsTypedErrorChunk(getTarget())
+    })
+
+    it('onActivity taps tool+status only; throwing taps are contained', async () => {
+      await runtimeConformanceChecks.onActivityTapsToolAndStatusOnly(getTarget())
+    })
+
+    it('capabilities() is honest about its surfaces', async () => {
+      await runtimeConformanceChecks.capabilitiesAreHonest(getTarget(), options)
+    })
+
+    it('provisionToolAccess is idempotent', async () => {
+      await runtimeConformanceChecks.provisionToolAccessIsIdempotent(getTarget())
     })
   })
 }

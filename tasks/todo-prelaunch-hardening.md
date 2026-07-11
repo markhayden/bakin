@@ -42,7 +42,7 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 
 ## PR 3 — feat/runtime-conformance (after 1a AND 2b)
 - [x] T25 Conformance suite skeleton + messaging pins (3 targets) ✅ (dev mock + Pi fake-provider + crab; teeth test proves failure on a broken adapter)
-- [ ] T26 Stream/capability/provisioning pins
+- [x] T26 Stream/capability/provisioning pins ✅ (tool-turn taxonomy, typed-error streams, tap, capability honesty, provisioning idempotency; sessions pin OpenClaw-flagged for T28)
 - [ ] T27 Mock default flip (minimal shape) + test sweep
 - [ ] T28 OpenClaw sessions.list/get for real
 - [ ] T29 ping/restart/toolsAllow/oversizedOutputBytes semantics

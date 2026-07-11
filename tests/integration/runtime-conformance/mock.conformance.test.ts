@@ -64,6 +64,18 @@ beforeEach(() => {
       controller.abort('conformance: mid-turn')
       return { settled }
     },
+    // The mock's content markers mirror real-adapter behavior: [[tool]]
+    // streams/taps a structured tool call+result pair, [[fail]] is a typed
+    // terminal failure.
+    prepareToolTurn: () => 'conformance: use the tool [[tool]]',
+    failingStream: () =>
+      runtime.messaging.stream({
+        agentId: 'main',
+        content: 'conformance: fail this turn [[fail]]',
+        threadId: `conf:mock:fail-stream:${++threadSeq}`,
+      }),
+    // The mock provisions nothing durable (in-process semantics).
+    observeProvisionedState: () => null,
   }
 })
 

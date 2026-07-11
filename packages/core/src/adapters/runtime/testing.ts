@@ -1,7 +1,41 @@
-import type { AgentRuntimeAdapter, ChatChunk, MessageArgs, RuntimeAgent } from './concepts'
+import type { AgentRuntimeAdapter, ChatChunk, MessageArgs, RuntimeAgent, RuntimeSession, RuntimeToolActivity } from './concepts'
 import { RuntimeError } from './errors'
 
 const mockAbortError = () => new RuntimeError('mock send aborted', { kind: 'aborted' })
+
+/**
+ * Content markers the mock honors so tests can exercise contract behavior
+ * real adapters have (pinned by the runtime conformance suite):
+ *  - `[[tool]]`  → the turn "uses a tool": structured tool call/result chunks
+ *    on the stream, and tool+status chunks to a send() onActivity tap.
+ *  - `[[fail]]`  → terminal failure: the STREAM ends with a typed `error`
+ *    chunk (no `done`, iterator never throws); a SEND rejects with a typed
+ *    RuntimeError. Mirrors provider/gateway failures on real runtimes.
+ */
+const TOOL_MARKER = '[[tool]]'
+const FAIL_MARKER = '[[fail]]'
+
+const mockFailureError = () =>
+  new RuntimeError('mock provider failure ([[fail]] marker)', { kind: 'runtime_failed' })
+
+function mockToolActivity(phase: 'call' | 'result'): RuntimeToolActivity {
+  return {
+    phase,
+    callId: 'mock-call-1',
+    toolName: 'mock_tool',
+    status: phase === 'call' ? 'running' : 'completed',
+    ...(phase === 'result' ? { outputPreview: 'mock tool output' } : { inputPreview: 'mock tool input' }),
+  }
+}
+
+/** Contained tap invocation — a throwing onActivity callback never fails the turn. */
+function tap(args: MessageArgs, chunk: ChatChunk): void {
+  try {
+    args.onActivity?.(chunk)
+  } catch {
+    // contract: adapters contain tap exceptions
+  }
+}
 
 /**
  * One macrotask yield so a caller holding MessageArgs.signal can abort
@@ -24,15 +58,25 @@ function mockTurnDelay(signal: AbortSignal | undefined): Promise<void> {
 }
 
 /**
- * Contract-conformant mock stream (R5): status → text → exactly-one trailing
- * done; a caller abort ends the stream with a clean done (never an error
- * chunk — deliberate aborts settle clean).
+ * Contract-conformant mock stream (R5): status → [tool call/result] → text →
+ * exactly-one trailing done; a caller abort ends the stream with a clean done
+ * (never an error chunk — deliberate aborts settle clean); a `[[fail]]`
+ * marker ends the stream with a typed `error` chunk and NO done (the
+ * iterator itself never throws).
  */
 async function* mockChatStream(args: MessageArgs): AsyncIterable<ChatChunk> {
   if (!args.signal?.aborted) {
     yield { type: 'status', content: 'thinking' }
     try {
       await mockTurnDelay(args.signal)
+      if (args.content.includes(FAIL_MARKER)) {
+        yield { type: 'error', content: 'mock provider failure', data: { kind: 'runtime_failed' } }
+        return
+      }
+      if (args.content.includes(TOOL_MARKER)) {
+        yield { type: 'tool', data: mockToolActivity('call') }
+        yield { type: 'tool', data: mockToolActivity('result') }
+      }
       yield { type: 'text', content: `mock reply: ${args.content}` }
     } catch {
       // aborted mid-turn — fall through to the clean done
@@ -45,6 +89,7 @@ export function createMockRuntimeAdapter(
   overrides: Partial<AgentRuntimeAdapter> = {}
 ): AgentRuntimeAdapter {
   const agents = new Map<string, RuntimeAgent>()
+  const sessions = new Map<string, RuntimeSession>()
   // In-memory routing policy (P2.3) — mutated by setRoutingPolicy.
   const mockRoutingPolicy = {
     defaultModel: '',
@@ -112,13 +157,35 @@ export function createMockRuntimeAdapter(
     messaging: {
       send: async (args) => {
         if (args.signal?.aborted) throw mockAbortError()
+        // Best-effort live-activity tap (MessageArgs.onActivity): tool +
+        // status chunks only, exceptions contained — same v1 semantics the
+        // real adapters implement (T8/D-plan-1).
+        tap(args, { type: 'status', content: 'thinking' })
+        if (args.content.includes(TOOL_MARKER)) {
+          tap(args, { type: 'tool', data: mockToolActivity('call') })
+          tap(args, { type: 'tool', data: mockToolActivity('result') })
+        }
         await mockTurnDelay(args.signal)
+        if (args.content.includes(FAIL_MARKER)) throw mockFailureError()
+        // Threaded sends carry the session identity, per the contract the
+        // conformance suite pins (stable per agent+thread, like real
+        // adapters' deterministic session mapping) — and the session shows
+        // up in sessions.list, because the mock declares sessions 'native'
+        // and declared-native surfaces must actually work.
+        if (args.threadId) {
+          const sessionId = `mock-session-${args.agentId}-${args.threadId}`
+          const now = new Date().toISOString()
+          const existing = sessions.get(sessionId)
+          sessions.set(sessionId, {
+            id: sessionId,
+            agentId: args.agentId,
+            startedAt: existing?.startedAt ?? now,
+            updatedAt: now,
+          })
+        }
         return {
           id: `msg-${Date.now()}`,
           content: `mock reply: ${args.content}`,
-          // Threaded sends carry the session identity, per the contract the
-          // conformance suite pins (stable per agent+thread, like real
-          // adapters' deterministic session mapping).
           ...(args.threadId ? { metadata: { sessionId: `mock-session-${args.agentId}-${args.threadId}` } } : {}),
         }
       },
@@ -149,8 +216,12 @@ export function createMockRuntimeAdapter(
     },
 
     sessions: {
-      list: async () => [],
-      get: async () => null,
+      // Backed by threaded sends: the mock declares sessions 'native', so
+      // list/get return the sessions real turns created (capability-honesty
+      // pin — a declared-native surface must work, not stub).
+      list: async (agentId?: string) =>
+        Array.from(sessions.values()).filter((s) => !agentId || s.agentId === agentId),
+      get: async (sessionId: string) => sessions.get(sessionId) ?? null,
     },
 
     memory: {

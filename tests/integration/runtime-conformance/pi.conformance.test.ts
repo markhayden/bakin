@@ -28,6 +28,7 @@ mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }),
 }))
 
+import type { RuntimeExecToolProvider } from '../../../packages/core/src/adapters/runtime'
 import { createPiRuntimeAdapter } from '../../../packages/adapter-pi/src/index'
 import { resetPiHome } from '../../../packages/adapter-pi/src/home'
 import { resetModelRegistry } from '../../../packages/adapter-pi/src/models'
@@ -37,6 +38,21 @@ import { runRuntimeConformanceSuite, type RuntimeConformanceTarget } from './con
 let provider: FakeProvider | undefined
 const adapter = createPiRuntimeAdapter()
 let threadSeq = 0
+
+// Minimal echo exec tool so toolCall provider scripts round-trip (mirrors
+// tests/integration/pi/turn.test.ts).
+const execToolProvider: RuntimeExecToolProvider = {
+  list: () => [{
+    name: 'bakin_exec_conf_echo',
+    description: 'Echo a message',
+    parametersSchema: {
+      type: 'object',
+      properties: { message: { type: 'string' } },
+      required: ['message'],
+    },
+  }],
+  invoke: async (_name, params) => ({ ok: true, text: JSON.stringify({ ok: true, echoed: params.message }) }),
+}
 
 function seedProvider(scripts: FakeTurnScript[]): void {
   provider?.stop()
@@ -73,6 +89,7 @@ beforeAll(async () => {
   }))
   await adapter.initialize({
     contentDir: join(testDir, 'bakin'),
+    execTools: execToolProvider,
     // Bakin's dispatch owns retries — disable Pi's inner retry layers so
     // failure cases settle immediately (same rationale as pi/turn.test.ts).
     settings: { retry: { enabled: false, provider: { maxRetries: 0 } } },
@@ -109,6 +126,24 @@ const target: RuntimeConformanceTarget = {
     setTimeout(() => controller.abort('conformance: mid-turn'), 250)
     return { settled }
   },
+  prepareToolTurn: () => {
+    // Tool round-trip: the model "calls" the echo exec tool, then replies.
+    seedProvider([
+      { steps: [{ toolCall: { name: 'bakin_exec_conf_echo', args: { message: 'conformance ping' } } }] },
+      { steps: [{ text: 'tool replied' }], usage: { prompt: 4, completion: 2 } },
+    ])
+    return 'conformance: use the echo tool'
+  },
+  failingStream: () => {
+    seedProvider([{ status: 500, errorBody: { error: { message: 'fake provider exploded' } } }])
+    return adapter.messaging.stream({
+      agentId: 'main',
+      content: 'conformance: failing stream',
+      threadId: `conf:pi:fail-stream:${++threadSeq}`,
+    })
+  },
+  // Pi provisions in-process (no durable writes) — nothing to snapshot.
+  observeProvisionedState: () => null,
 }
 
 runRuntimeConformanceSuite('pi (fake provider)', () => target)
