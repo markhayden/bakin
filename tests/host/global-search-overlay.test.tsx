@@ -5,8 +5,9 @@
  * deep-links, honest engine-down state.
  */
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import '../rtl-settle'
+import { settleReact } from '../rtl-settle'
 
 const contentDirMock = () => ({
   getContentDir: () => '/tmp/bakin-test-global-overlay',
@@ -168,6 +169,30 @@ describe('GlobalSearchOverlay', () => {
       setLazyPluginLoader(null)
       configureLazyPlugins({ slotOwners: new Map(), routeOwners: [] })
     }
+  })
+
+  it('renders score overlays only when the debug toggle is on', async () => {
+    mockSearchFetch(() => ({
+      status: 200,
+      body: { results: [HIT('a1', 'bakin_assets')], meta: { query: 'x', total: 1, took_ms: 1, source: 'search' } },
+    }))
+
+    // require() (not a top-level import) so the store loads through the same
+    // already-initialized module graph as the component under test.
+    const { useContentStore } = require('../../src/hooks/use-content-store')
+    act(() => { useContentStore.setState({ debug: false }) })
+    render(<GlobalSearchOverlay />)
+    openOverlay()
+    const input = await screen.findByPlaceholderText(/Search assets/)
+    fireEvent.input(input, { target: { value: 'rose' } })
+    await waitFor(() => expect(screen.getByTestId('global-search-hit-a1')).toBeTruthy(), { timeout: 3000 })
+    expect(screen.queryAllByTestId('score-overlay').length).toBe(0)
+
+    // flip debug on — badges appear without a re-search
+    act(() => { useContentStore.setState({ debug: true }) })
+    await waitFor(() => expect(screen.queryAllByTestId('score-overlay').length).toBeGreaterThan(0))
+    act(() => { useContentStore.setState({ debug: false }) })
+    await settleReact()
   })
 
   it('does not hijack ⌘K while typing in an input', async () => {

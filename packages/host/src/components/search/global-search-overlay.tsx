@@ -88,7 +88,7 @@ export function GlobalSearchOverlay() {
   const [query, setQuery] = useState('')
   const [activeTypes, setActiveTypes] = useState<string[]>([])
   const navigate = useNavigate()
-  const debug = useDebug()
+  const [debug] = useDebug()
 
   const renderers = useSyncExternalStore(
     subscribeSearchHitRenderers,
