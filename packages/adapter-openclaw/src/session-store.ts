@@ -36,18 +36,24 @@ export interface OpenClawSessionStoreEntry {
 // LRU-capped: each entry holds a fully-parsed store, and the Map previously
 // grew without bound (one entry per store path, never evicted).
 export const SESSION_STORE_CACHE_MAX = 64
-const sessionStoreCache = new Map<string, { mtimeMs: number; store: Record<string, OpenClawSessionStoreEntry> | null }>()
+// mtime + size guard: mtime alone can miss a torn read of the gateway's
+// non-atomic write landing within the filesystem's mtime granularity
+// (negligible on APFS, belt-and-braces elsewhere).
+const sessionStoreCache = new Map<string, { mtimeMs: number; size: number; store: Record<string, OpenClawSessionStoreEntry> | null }>()
 
 export function readSessionStoreCached(storePath: string): Record<string, OpenClawSessionStoreEntry> | null {
   let mtimeMs: number
+  let size: number
   try {
-    mtimeMs = statSync(storePath).mtimeMs
+    const stat = statSync(storePath)
+    mtimeMs = stat.mtimeMs
+    size = stat.size
   } catch {
     sessionStoreCache.delete(storePath)
     return null
   }
   const hit = sessionStoreCache.get(storePath)
-  if (hit && hit.mtimeMs === mtimeMs) {
+  if (hit && hit.mtimeMs === mtimeMs && hit.size === size) {
     // Map preserves insertion order — delete + re-set marks recency.
     sessionStoreCache.delete(storePath)
     sessionStoreCache.set(storePath, hit)
@@ -55,7 +61,7 @@ export function readSessionStoreCached(storePath: string): Record<string, OpenCl
   }
   const store = readJsonFile<Record<string, OpenClawSessionStoreEntry>>(storePath)
   sessionStoreCache.delete(storePath)
-  sessionStoreCache.set(storePath, { mtimeMs, store })
+  sessionStoreCache.set(storePath, { mtimeMs, size, store })
   while (sessionStoreCache.size > SESSION_STORE_CACHE_MAX) {
     const oldest = sessionStoreCache.keys().next().value
     if (oldest === undefined) break

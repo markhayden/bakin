@@ -156,9 +156,12 @@ function mockTurnDelay(signal: AbortSignal | undefined): Promise<void> {
  * exactly-one trailing done; a caller abort ends the stream with a clean done
  * (never an error chunk — deliberate aborts settle clean); a `[[fail]]`
  * marker ends the stream with a typed `error` chunk and NO done (the
- * iterator itself never throws).
+ * iterator itself never throws). `recordSession` mirrors send(): threaded
+ * STREAM turns create sessions too, like real adapters (chat's
+ * `chat:<id>` threads show up in sessions.list on OpenClaw/Pi — the mock
+ * must not invert that).
  */
-async function* mockChatStream(args: MessageArgs): AsyncIterable<ChatChunk> {
+async function* mockChatStream(args: MessageArgs, recordSession: (args: MessageArgs) => void): AsyncIterable<ChatChunk> {
   if (!args.signal?.aborted) {
     yield { type: 'status', content: 'thinking' }
     try {
@@ -171,6 +174,7 @@ async function* mockChatStream(args: MessageArgs): AsyncIterable<ChatChunk> {
         yield { type: 'tool', data: mockToolActivity('call') }
         yield { type: 'tool', data: mockToolActivity('result') }
       }
+      recordSession(args)
       yield { type: 'text', content: `mock reply: ${args.content}` }
     } catch {
       // aborted mid-turn — fall through to the clean done
@@ -184,6 +188,24 @@ export function createMockRuntimeAdapter(
 ): AgentRuntimeAdapter {
   const agents = new Map<string, RuntimeAgent>()
   const sessions = new Map<string, RuntimeSession>()
+  // Per-agent in-memory workspace files — a REAL write→read round-trip so
+  // the declared-'native' workspaceFiles capability is truthful (same
+  // honesty standard as the send-backed sessions).
+  const workspaceFiles = new Map<string, Map<string, { path: string; content: string }>>()
+
+  /** Threaded turns create/refresh a session (shared by send and stream). */
+  const recordSession = (args: MessageArgs): void => {
+    if (!args.threadId) return
+    const sessionId = `mock-session-${args.agentId}-${args.threadId}`
+    const now = new Date().toISOString()
+    const existing = sessions.get(sessionId)
+    sessions.set(sessionId, {
+      id: sessionId,
+      agentId: args.agentId,
+      startedAt: existing?.startedAt ?? now,
+      updatedAt: now,
+    })
+  }
   // In-memory routing policy (P2.3) — mutated by setRoutingPolicy.
   const mockRoutingPolicy = {
     defaultModel: '',
@@ -254,10 +276,21 @@ export function createMockRuntimeAdapter(
         }
         agents.delete(agentId)
       },
-      listWorkspaceFiles: async () => [],
-      readWorkspaceFile: async () => null,
-      writeWorkspaceFile: async () => {},
-      removeWorkspaceFile: async () => {},
+      // Real in-memory round-trip (write → list/read → remove) — the
+      // declared-'native' workspaceFiles capability must work, not stub.
+      listWorkspaceFiles: async (agentId) => [...(workspaceFiles.get(agentId)?.keys() ?? [])],
+      readWorkspaceFile: async (agentId, path) => {
+        const file = workspaceFiles.get(agentId)?.get(path)
+        return file ? { path: file.path, content: file.content } : null
+      },
+      writeWorkspaceFile: async (agentId, file) => {
+        const files = workspaceFiles.get(agentId) ?? new Map<string, { path: string; content: string }>()
+        files.set(file.path, { path: file.path, content: file.content ?? '' })
+        workspaceFiles.set(agentId, files)
+      },
+      removeWorkspaceFile: async (agentId, path) => {
+        workspaceFiles.get(agentId)?.delete(path)
+      },
       updateAllowlist: async () => {},
     },
 
@@ -274,29 +307,19 @@ export function createMockRuntimeAdapter(
         }
         await mockTurnDelay(args.signal)
         if (args.content.includes(FAIL_MARKER)) throw mockFailureError()
-        // Threaded sends carry the session identity, per the contract the
+        // Threaded turns carry the session identity, per the contract the
         // conformance suite pins (stable per agent+thread, like real
         // adapters' deterministic session mapping) — and the session shows
         // up in sessions.list, because the mock declares sessions 'native'
         // and declared-native surfaces must actually work.
-        if (args.threadId) {
-          const sessionId = `mock-session-${args.agentId}-${args.threadId}`
-          const now = new Date().toISOString()
-          const existing = sessions.get(sessionId)
-          sessions.set(sessionId, {
-            id: sessionId,
-            agentId: args.agentId,
-            startedAt: existing?.startedAt ?? now,
-            updatedAt: now,
-          })
-        }
+        recordSession(args)
         return {
           id: `msg-${Date.now()}`,
           content: `mock reply: ${args.content}`,
           ...(args.threadId ? { metadata: { sessionId: `mock-session-${args.agentId}-${args.threadId}` } } : {}),
         }
       },
-      stream: (args) => mockChatStream(args),
+      stream: (args) => mockChatStream(args, recordSession),
     },
 
     // NOTE: no `channels`, no `cron` — the minimal default (R24). Both are
@@ -385,6 +408,12 @@ function mockCapabilities(deliveryNative: boolean) {
     },
     delivery: { mode: deliveryNative ? ('native' as const) : ('unavailable' as const) },
     imageGen: { mode: 'unavailable' as const },
+    // 'native' is honest here: memory is a READ-ONLY surface and the mock
+    // runtime genuinely has no tiers — empty reads report real (empty)
+    // state, unlike a write→read surface where a no-op write would lie
+    // (which is why workspaceFiles got a real in-memory round-trip). The
+    // memory mode union has no 'shimmed'; widening the contract for a test
+    // double would be the tail wagging the dog.
     memory: { mode: 'native' as const },
     sessions: { mode: 'native' as const },
     workspaceFiles: { mode: 'native' as const },

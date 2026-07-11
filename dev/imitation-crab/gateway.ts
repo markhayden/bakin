@@ -222,9 +222,14 @@ function recordSessionStoreEntry(agentId: string, sessionKey: string, sessionId:
   }
   const existing = store[sessionKey]
   const now = Date.now()
+  const resolvedSessionId = sessionId ?? (typeof existing?.sessionId === 'string' ? existing.sessionId : randomUUID())
   store[sessionKey] = {
     ...existing,
-    sessionId: sessionId ?? (typeof existing?.sessionId === 'string' ? existing.sessionId : randomUUID()),
+    sessionId: resolvedSessionId,
+    // The real gateway always writes sessionFile — mirror it so the adapter's
+    // primary path (store-provided file) is what e2e exercises, not only the
+    // synthesized-path fallback.
+    sessionFile: join(dir, `${resolvedSessionId}.jsonl`),
     sessionStartedAt: typeof existing?.sessionStartedAt === 'number' ? existing.sessionStartedAt : now,
     updatedAt: now,
     model: 'mock-model',

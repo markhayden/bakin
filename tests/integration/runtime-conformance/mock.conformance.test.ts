@@ -4,7 +4,8 @@
  * every real adapter must satisfy — plugin tests that pass against the mock
  * must not be passing against fantasy semantics.
  */
-import { beforeEach, mock } from 'bun:test'
+import { afterAll, beforeEach, mock } from 'bun:test'
+import { rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
@@ -43,15 +44,14 @@ beforeEach(() => {
     runtime,
     agentId: 'main',
     newThreadId: () => `conf:mock:${++threadSeq}`,
-    // The mock's only genuine failure mode is a caller abort — its typed
-    // rejection demonstrates the taxonomy pin. Real failure taxonomies
-    // (provider/gateway errors) are exercised by the Pi and OpenClaw runners.
-    failingSend: () => {
-      const controller = new AbortController()
-      controller.abort('conformance: pre-aborted')
-      return runtime.messaging.send({ agentId: 'main', content: 'must fail', signal: controller.signal })
-    },
-    expectedFailingKind: 'aborted',
+    // The mock's [[fail]] marker is its provider-failure recipe (typed
+    // runtime_failed) — the same taxonomy class the Pi and OpenClaw runners
+    // exercise with real provider/gateway errors, and distinct from the
+    // abort pin's code path. Plugin tests rely on this marker (documented in
+    // testing.ts), so the suite pins the send half here.
+    failingSend: () =>
+      runtime.messaging.send({ agentId: 'main', content: 'conformance: must fail [[fail]]' }),
+    expectedFailingKind: 'runtime_failed',
     startAbortableTurn: () => {
       const controller = new AbortController()
       const settled = runtime.messaging.send({
@@ -83,6 +83,10 @@ beforeEach(() => {
       return dead
     },
   }
+})
+
+afterAll(() => {
+  rmSync(testDir, { recursive: true, force: true })
 })
 
 runRuntimeConformanceSuite('dev mock', () => target)

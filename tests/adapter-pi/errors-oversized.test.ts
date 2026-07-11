@@ -5,10 +5,11 @@
  * Pure unit test: no PI_HOME, no provider — buildStreamDeathError is a pure
  * diagnosis constructor.
  */
-import { describe, test, expect, mock } from 'bun:test'
+import { describe, test, expect, mock, afterAll } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
+import { rmSync } from 'fs'
 
 // Pure diagnosis-constructor test — the content-dir mocks are blanket
 // isolation policy (no code path here touches storage).
@@ -19,6 +20,10 @@ const contentDirMock = () => ({
 })
 mock.module('../../src/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
+
+afterAll(() => {
+  rmSync(testDir, { recursive: true, force: true })
+})
 
 import {
   buildStreamDeathError,

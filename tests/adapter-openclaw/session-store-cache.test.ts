@@ -15,11 +15,11 @@ process.env.BAKIN_HOME = join(testDir, 'bakin')
 
 mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => join(testDir, 'bakin'),
-  getBakinPaths: () => ({ tasks: join(testDir, 'bakin', 'tasks') }),
+  getBakinPaths: () => ({ tasks: join(testDir, 'bakin', 'tasks'), db: join(testDir, 'bakin', 'bakin.db') }),
 }))
 mock.module('../../packages/core/src/content-dir', () => ({
   getContentDir: () => join(testDir, 'bakin'),
-  getBakinPaths: () => ({ tasks: join(testDir, 'bakin', 'tasks') }),
+  getBakinPaths: () => ({ tasks: join(testDir, 'bakin', 'tasks'), db: join(testDir, 'bakin', 'bakin.db') }),
 }))
 
 import {

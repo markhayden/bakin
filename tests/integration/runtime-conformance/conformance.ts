@@ -181,7 +181,11 @@ export const runtimeConformanceChecks = {
     if (result !== false) fail('ping() returned true on an unserveable runtime')
   },
 
-  /** Streams yield `done` exactly once, and it is the final chunk (R5). */
+  /**
+   * Streams yield `done` exactly once, and it is the final chunk (R5) — and
+   * plain (non-tool) turns carry classified chunk types only, same as tool
+   * turns (R5b applies to EVERY stream, not just tool scenarios).
+   */
   async streamDoneExactlyOnceAndLast(target: RuntimeConformanceTarget): Promise<void> {
     await target.prepareOkTurn?.()
     const chunks: ChatChunk[] = []
@@ -192,6 +196,7 @@ export const runtimeConformanceChecks = {
     })) {
       chunks.push(chunk)
     }
+    assertClassifiedChunks(chunks)
     assertDoneExactlyOnceAndLast(chunks)
   },
 
@@ -296,8 +301,11 @@ export const runtimeConformanceChecks = {
    */
   async capabilitiesAreHonest(target: RuntimeConformanceTarget, opts?: RuntimeConformanceSuiteOptions): Promise<void> {
     const caps = await target.runtime.capabilities()
-    const declaredAccess = JSON.stringify(caps.toolCalling.access)
-    const describedAccess = JSON.stringify(target.runtime.describeToolAccess())
+    // Canonical (key-order-insensitive) compare: a fourth adapter building
+    // the two objects with different key insertion order must not fail a
+    // check it semantically satisfies.
+    const declaredAccess = canonicalJson(caps.toolCalling.access)
+    const describedAccess = canonicalJson(target.runtime.describeToolAccess())
     if (declaredAccess !== describedAccess) {
       fail(`capabilities().toolCalling.access (${declaredAccess}) disagrees with describeToolAccess() (${describedAccess})`)
     }
@@ -307,14 +315,22 @@ export const runtimeConformanceChecks = {
     if (caps.sessions.mode === 'native' && opts?.sessionsPin !== false) {
       await target.prepareOkTurn?.()
       const threadId = target.newThreadId()
-      await target.runtime.messaging.send({
+      const result = await target.runtime.messaging.send({
         agentId: target.agentId,
         content: 'conformance: session-producing turn',
         threadId,
       })
+      const createdSessionId = result.metadata?.sessionId
+      if (typeof createdSessionId !== 'string' || createdSessionId.length === 0) {
+        fail('session-producing threaded send returned no metadata.sessionId')
+      }
+      // A lying-but-non-empty stub must not pass: the list must contain THE
+      // session this turn just created, not merely any session.
       const sessions = await target.runtime.sessions.list(target.agentId)
-      if (sessions.length === 0) {
-        fail("capabilities() declares sessions 'native' but sessions.list returned nothing after a completed threaded turn")
+      if (!sessions.some((s) => s.id === createdSessionId)) {
+        fail(
+          "capabilities() declares sessions 'native' but sessions.list is missing the session a completed threaded turn just created — declared-native surfaces must reflect real turns, not stubs",
+        )
       }
     }
   },
@@ -342,6 +358,23 @@ export const runtimeConformanceChecks = {
     }
   },
 } as const
+
+/** Stable stringify with recursively-sorted object keys (structural compare). */
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(sortKeysDeep(value))
+}
+
+function sortKeysDeep(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortKeysDeep)
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([k, v]) => [k, sortKeysDeep(v)]),
+    )
+  }
+  return value
+}
 
 const CHUNK_TYPES = new Set(['text', 'tool', 'status', 'done', 'error'])
 const TEXT_FORMATS = new Set(['markdown', 'plain', 'code'])

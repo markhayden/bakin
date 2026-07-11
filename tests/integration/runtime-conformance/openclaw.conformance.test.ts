@@ -90,6 +90,9 @@ const target: RuntimeConformanceTarget = {
         threadId: `conf:openclaw:fail:${++threadSeq}`,
       }),
     ),
+  // Gateway error frames map to 'runtime_failed' (structured runtime
+  // failure) — pinned exactly, matching the Pi and mock runners.
+  expectedFailingKind: 'runtime_failed',
   startAbortableTurn: async () => {
     const controller = new AbortController()
     // The slow mode holds the final response for 10s; the mode env is read
