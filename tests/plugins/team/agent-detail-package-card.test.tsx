@@ -12,7 +12,7 @@
  * from the Zustand store, which we prime per test.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -113,10 +113,6 @@ function mockProfileFetch() {
 
 afterAll(() => {
   try { rmSync(testDir, { recursive: true, force: true }) } catch {}
-})
-
-afterEach(() => {
-  cleanup()
 })
 
 beforeEach(() => {

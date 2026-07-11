@@ -23,6 +23,14 @@ describe('resolvePlan — native', () => {
     expect(p.hostEnv.BAKIN_HOME).toBeUndefined()
     expect(p.wipeBeforeUp).toEqual([])
   })
+
+  it('points provisionToolAccess at the container-reachable MCP base URL', () => {
+    // The adapter writes bakin-<agent> mcp.servers entries at Bakin boot using
+    // BAKIN_MCP_BASE_URL; from inside the container, the host Bakin is
+    // host.docker.internal, never localhost.
+    expect(plan(['up']).hostEnv.BAKIN_MCP_BASE_URL).toBe('http://host.docker.internal:3737')
+    expect(plan(['up', '--mode', 'isolated']).hostEnv.BAKIN_MCP_BASE_URL).toBe('http://host.docker.internal:3737')
+  })
 })
 
 describe('resolvePlan — isolated', () => {
@@ -44,6 +52,9 @@ describe('resolvePlan — sandbox', () => {
     expect(p.services).toEqual(['sandbox'])
     expect(p.bakin).toEqual({ placement: 'container', source: 'repo', onboard: 'manual' })
     expect(p.hostEnv.BAKIN_HOME).toBeUndefined()
+    // In-container Bakin reaches its own MCP server on localhost — the adapter
+    // default — so sandbox must NOT override BAKIN_MCP_BASE_URL.
+    expect(p.hostEnv.BAKIN_MCP_BASE_URL).toBeUndefined()
   })
 
   it('auto-onboards when --preconfigure is set', () => {

@@ -10,7 +10,7 @@
  * shows the "does not exist" empty state.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -51,10 +51,6 @@ function setupFetch(opts: { ok?: boolean } = {}) {
 
 afterAll(() => {
   try { rmSync(testDir, { recursive: true, force: true }) } catch {}
-})
-
-afterEach(() => {
-  cleanup()
 })
 
 beforeEach(() => {

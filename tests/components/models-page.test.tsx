@@ -230,7 +230,6 @@ describe('ModelsPage component', () => {
   })
 
   afterEach(() => {
-    cleanup()
     vi.unstubAllGlobals()
   })
 

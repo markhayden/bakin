@@ -9,7 +9,7 @@
  * `clearSlotsOwnedBy` with a test-scoped owner id.
  */
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import '../rtl-settle'
 
 // Defensive isolation per CLAUDE.md — this test is pure in-memory React but
@@ -54,7 +54,6 @@ function Alt({ text }: { text: string }) {
 
 afterEach(() => {
   clearSlotsOwnedBy(TEST_OWNER)
-  cleanup()
 })
 
 describe('@makinbakin/sdk/slots — registry', () => {

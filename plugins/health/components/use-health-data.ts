@@ -34,6 +34,10 @@ interface PolledOptions<T> {
  * lifecycle. The health page's former all-or-nothing Promise.all gated every
  * panel behind one loading flag and blanked them all on a single fault; each
  * section now owns its own fetch so a failing endpoint only faults its own card.
+ *
+ * Deliberately NOT `useJsonFetch`: this hook adds polling cadence,
+ * swallow-errors, select-validation, and keep-prior-data-on-fault semantics
+ * that the SDK's one-shot hook intentionally doesn't carry.
  */
 export function usePolledJson<T>(url: string | null, opts: PolledOptions<T> = {}): PolledResult<T> {
   const { intervalMs, refreshNonce = 0, swallowErrors = false, select } = opts

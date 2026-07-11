@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -39,10 +39,6 @@ mock.module('@makinbakin/sdk/components', () => ({
 }))
 
 import { DeleteScheduleDialog } from '../../../plugins/schedule/components/delete-schedule-dialog'
-
-afterEach(() => {
-  cleanup()
-})
 
 describe('DeleteScheduleDialog', () => {
   it('renders the standard destructive confirmation dialog', () => {

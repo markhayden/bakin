@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
-import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import '../rtl-settle'
 
 // Mandatory mocks per CLAUDE.md test isolation rules — keep filesystem,
@@ -72,7 +72,6 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  cleanup()
   vi.useRealTimers()
   vi.unstubAllGlobals()
   mock.restore()

@@ -25,7 +25,6 @@ import {
   CHART_OTHER_COLOR,
 } from '../../src/components/charts/palette'
 
-afterEach(cleanup)
 
 describe('assignSeriesColors', () => {
   it('assigns slots in fixed order over the sorted entity set', () => {

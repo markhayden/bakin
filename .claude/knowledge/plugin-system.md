@@ -598,6 +598,7 @@ current runtime/data capability surface:
 PermissionSchema = z.enum([
   'events.emit',
   'assets.read',
+  'assets.write',
   'runtime.read',
   'runtime.agents',
   'runtime.messaging',
@@ -744,10 +745,11 @@ it to the adapter contract first; do not pierce the boundary from plugin code.
 ```typescript
 interface SettingsField {
   key: string
-  type: 'string' | 'number' | 'boolean' | 'select'
+  type: 'string' | 'text' | 'number' | 'boolean' | 'select' | 'agent' | 'skill' | 'list'
   label: string
   description?: string
-  options?: { value: string; label: string }[]
+  options?: { value: string; label: string }[]  // select
+  itemFields?: SettingsField[]                  // list: per-item shape
   default?: unknown
 }
 
@@ -781,24 +783,33 @@ event references their plugin id. The server still calls
 `onSettingsChange` handlers.
 
 ### PluginManifest (`bakin-plugin.json`)
+
+There are NO entry-point fields: every plugin uses the canonical root layout —
+`index.ts` (server entry) and optional `client.tsx` (browser entry) at the
+plugin root. The removed `entry` and `tests` fields are tombstoned — the
+parser (`packages/core/src/plugins/manifest.ts`) rejects manifests that still
+carry them with actionable errors naming the root-layout convention.
+
 ```typescript
 interface PluginManifest {
   id: string
   name: string
   version: string
-  bakin: string                // semver range for compatibility
+  bakin: string                // semver range — enforced at install AND activation
   description: string
-  server: string               // path to server bundle (e.g. "dist/index.js")
-  client?: string              // path to client bundle (e.g. "dist/client.js")
+  contributes?: PluginContributions  // declared nav/routes/apiRoutes/execTools/slots
+                                     // (drives lazy client loading + consent review;
+                                     //  regenerate with `bakin plugins sync-manifest`)
   contentFiles?: string[]
   secrets?: Array<{
     name: string                // canonical env var name, e.g. ANTHROPIC_API_KEY
     description: string         // setup note; never include a secret value
     required: boolean           // omitted JSON values default to true when parsed
   }>
-  tests?: string
   dependencies?: string[]      // other plugin IDs — drives topological sort
   permissions?: Permission[]   // strict Zod enum — see PermissionSchema. Empty/missing → []
+  runtimeCapabilities?: RuntimeCapability[]  // runtime features the plugin needs
+  devWatch?: string[]          // file globs that trigger hot reload in dev
   signature?: {
     algorithm: 'ed25519'
     signer: string             // display metadata only
@@ -807,6 +818,9 @@ interface PluginManifest {
   }
 }
 ```
+
+(Shape excerpt. The full shape, including every `contributes` sub-type, lives
+in `packages/sdk/src/types/manifest.ts` — treat that file as canonical.)
 
 ## Runtime Plugin Loader (browser)
 
@@ -1195,11 +1209,19 @@ interface PluginToolContext {
   storage: StorageAdapter
   events: EventBus
   pluginId: string
-  hooks: HookAPI
-  activity: ActivityAPI
+  runtime: PluginRuntimeFacade   // adapter-neutral runtime surface
+  tasks: PluginTaskService
+  assets: PluginAssetService
+  search: SearchAPI
+  hooks: HookAPI                 // register/call/callAll/has/invoke
+  activity: ActivityAPI          // log (SSE) + audit (audit.jsonl)
   getSettings<T = Record<string, unknown>>(): T
 }
 ```
+
+The context is wrapped by `wrapPluginContextPermissions` before handlers see
+it — manifest permissions gate the capability surfaces (the bare `core`
+context used by built-in tools gets the full set).
 
 Tool handlers receive it as an optional third argument:
 ```typescript

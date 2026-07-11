@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, mock, beforeEach } from 'bun:test'
-import { cleanup, renderHook, waitFor, act } from '@testing-library/react'
+import { renderHook, waitFor, act } from '@testing-library/react'
 import '../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -21,7 +21,6 @@ function mockFetch(impl: (url: string, init?: RequestInit) => Promise<Response>)
 }
 
 afterEach(() => {
-  cleanup()
   globalThis.fetch = originalFetch
 })
 

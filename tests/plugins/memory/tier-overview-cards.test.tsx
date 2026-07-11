@@ -10,7 +10,7 @@
  * partial data matters more than exhaustive prettiness.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 
 // Defensive isolation per CLAUDE.md.
@@ -67,7 +67,6 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  cleanup()
   ;(global as { fetch: FetchFn }).fetch = originalFetch
 })
 

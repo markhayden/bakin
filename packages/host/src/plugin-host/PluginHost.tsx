@@ -535,6 +535,7 @@ function AppBootLoader() {
 export function PluginHost({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false)
 
+  // Not a fetch: gates readiness on the module-level plugin boot promise.
   useEffect(() => {
     let cancelled = false
     const boot = acquirePluginBoot()

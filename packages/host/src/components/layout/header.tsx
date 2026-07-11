@@ -42,6 +42,8 @@ function useDispatchPaused(): { paused: boolean; resuming: boolean; resume: () =
   const [paused, setPaused] = useState(false)
   const [resuming, setResuming] = useState(false)
 
+  // Deliberately NOT `useJsonFetch`: 15s poll + SSE overlay + keep-prior-value
+  // on transient failure — a different lifecycle than the one-shot hook.
   useEffect(() => {
     let cancelled = false
     const check = async () => {

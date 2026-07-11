@@ -6,7 +6,7 @@
 # CLI commands via the shim:
 #   ./dev/docker/openclaw-shim.sh cron list --all --json
 
-# All services build the same custom image (openclaw + bun + mcporter) — see Dockerfile.
+# All services build the same custom image (openclaw + bun) — see Dockerfile.
 x-bakin-build: &bakin-build
   context: .
   dockerfile: Dockerfile

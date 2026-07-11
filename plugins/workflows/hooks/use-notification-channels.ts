@@ -7,6 +7,8 @@ import type { NotificationChannelDef } from '@bakin/core/workflows/notification-
  * Module-level cache + single-flight promise. Two components mounting in
  * the same paint share one network round-trip. Settings/registry edits
  * require a page reload for v1 (see #124 for the live-refresh follow-up).
+ * Deliberately NOT `useJsonFetch` — that hook is per-component state with
+ * no cross-mount dedupe, which is the whole point here.
  */
 let cached: NotificationChannelDef[] | null = null
 let inFlight: Promise<NotificationChannelDef[]> | null = null

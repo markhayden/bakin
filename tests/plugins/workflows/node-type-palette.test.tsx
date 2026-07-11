@@ -13,7 +13,7 @@
  */
 
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -53,7 +53,6 @@ const FIXTURES: PaletteNodeType[] = [
   { kind: 'fx.noise-gate', runtime: 'plugin', pluginId: 'fx', formFields: [] },
 ]
 
-afterEach(cleanup)
 
 describe('NodeTypePalette', () => {
   it('renders Builtin and Plugins groups from initialNodeTypes', () => {
@@ -131,7 +130,9 @@ describe('NodeTypePalette', () => {
     render(<NodeTypePalette />)
     // Wait a tick for fetch resolution.
     await screen.findByText('Agent Task')
-    expect(fetchMock).toHaveBeenCalledWith('/api/plugins/workflows/node-types')
+    // useJsonFetch passes an abort signal as the second argument.
+    const firstCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit?]
+    expect(firstCall[0]).toBe('/api/plugins/workflows/node-types')
 
     vi.unstubAllGlobals()
   })

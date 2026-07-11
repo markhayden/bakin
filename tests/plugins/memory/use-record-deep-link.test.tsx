@@ -9,7 +9,7 @@
  * - close() clears the param
  */
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
-import { renderHook, waitFor, act, cleanup } from '@testing-library/react'
+import { renderHook, waitFor, act } from '@testing-library/react'
 import '../../rtl-settle'
 
 const contentDirMock = () => ({
@@ -49,7 +49,6 @@ beforeEach(() => {
   fetchCalls = []
 })
 
-afterEach(cleanup)
 
 function mockRecordFetch(status: number, body: unknown) {
   ;(globalThis as Record<string, unknown>).fetch = mock((url: string) => {

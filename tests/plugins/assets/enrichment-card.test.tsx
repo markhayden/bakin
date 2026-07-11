@@ -4,7 +4,7 @@
  * Fetch is stubbed; no engine, no billing.
  */
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -54,7 +54,6 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = realFetch
-  cleanup()
 })
 
 describe('EnrichmentCard', () => {

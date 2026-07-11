@@ -3,7 +3,7 @@
  * import-all, honest empty state. Fetch is stubbed; no engine involved.
  */
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -53,7 +53,6 @@ beforeEach(() => {
   }) as typeof fetch
 })
 
-afterEach(cleanup)
 
 describe('ImportView', () => {
   it('lists scan results with suggested types', async () => {

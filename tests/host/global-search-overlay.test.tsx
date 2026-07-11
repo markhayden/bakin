@@ -5,7 +5,7 @@
  * deep-links, honest engine-down state.
  */
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
-import { render, cleanup, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import '../rtl-settle'
 
 const contentDirMock = () => ({
@@ -54,7 +54,6 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  cleanup()
   unregisterPlugin('assets')
 })
 

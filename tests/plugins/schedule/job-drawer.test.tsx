@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import '../../rtl-settle'
 
 mock.module('@makinbakin/sdk/hooks', () => ({
@@ -74,10 +74,6 @@ function makeJob(overrides: Partial<ScheduleJob> = {}): ScheduleJob {
     ...overrides,
   }
 }
-
-afterEach(() => {
-  cleanup()
-})
 
 describe('JobDrawer', () => {
   it('requests deletion from the drawer actions menu', () => {

@@ -26,7 +26,7 @@
  * the rest of the mechanism.
  */
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
-import { cleanup, render, screen, waitFor, act } from '@testing-library/react'
+import { render, screen, waitFor, act } from '@testing-library/react'
 import '../rtl-settle'
 import { mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
@@ -129,7 +129,6 @@ afterEach(() => {
   delete (globalThis as Record<string, unknown>).__bakinHotSwapImportCount
   window.localStorage.clear()
   vi.unstubAllGlobals()
-  cleanup()
 })
 
 describe('PluginHost — boot', () => {

@@ -11,7 +11,7 @@
  * model + team interactions fire the right round-trips.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -83,10 +83,6 @@ function setupFetch(exp: FetchExpectation) {
 
 afterAll(() => {
   try { rmSync(testDir, { recursive: true, force: true }) } catch {}
-})
-
-afterEach(() => {
-  cleanup()
 })
 
 beforeEach(() => {
@@ -202,5 +198,35 @@ describe('OverviewTab', () => {
   it('renders the embedded PackageCard for the agent (delegating to its own surface)', async () => {
     renderTab({ agentId: 'pixel', state: 'managed', packageId: 'examples/pixel@0.1.0' })
     expect(screen.getByText('managed')).toBeDefined()
+  })
+
+  it('never renders agent A\'s stats on agent B when B\'s fetch fails (error-guarded)', async () => {
+    // useJsonFetch keeps the previous payload across url changes; a surviving
+    // component instance navigating pixel → blur with a failing stats
+    // endpoint must render blur's fallback, never pixel's numbers.
+    global.fetch = mock((url: RequestInfo | URL) => {
+      const u = String(url)
+      if (u.endsWith('/pixel/stats')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ usage: { agent: 'pixel', sessionId: 's', sessionStarted: '', model: 'claude-opus-4-7', messages: 12, tokens: { input: 1000, output: 500, cacheRead: 200, cacheWrite: 50, total: 1750 }, cost: { input: 0.01, output: 0.02, cacheRead: 0.001, cacheWrite: 0.001, total: 0.03, source: 'runtime' } } }) } as Response)
+      }
+      if (u.endsWith('/blur/stats')) {
+        return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) } as Response)
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, skills: [], lessons: [] }) } as Response)
+    }) as unknown as typeof global.fetch
+
+    const props = {
+      profile: PROFILE,
+      packageState: undefined,
+      availableModels: [{ id: 'claude-opus-4-7', name: 'Opus 4.7', label: 'Opus' } as never],
+      onModelChange: mock(async () => {}),
+      savingModel: false,
+    }
+    const view = render(<OverviewTab agentId="pixel" {...props} />)
+    await waitFor(() => expect(screen.getByText('1,750')).toBeDefined())
+
+    view.rerender(<OverviewTab agentId="blur" {...props} />)
+    await waitFor(() => expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2))
+    expect(screen.queryByText('1,750')).toBeNull()
   })
 })

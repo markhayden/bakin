@@ -40,10 +40,14 @@ GlobalRegistrator.register()
 //
 // INTRA-file root leakage is the other dimension (--isolate can't help):
 // bun clears document.body between tests but never unmounts React roots, and
-// a bare sync cleanup() can unmount mid-slice on a slow machine (the
-// kanban/TaskCard CI failures). Every RTL-rendering test file imports
-// tests/rtl-settle.ts, whose afterEach unmounts inside act() — see that
-// module for the full fact chain.
+// React 19 refuses unmounting while a yielded time-sliced render is paused
+// between slices — a state act() cannot join (it resumes via the scheduler's
+// MessageChannel, not the act queue). Every RTL-rendering test file imports
+// tests/rtl-settle.ts, whose afterEach drains the scheduler (settleReact:
+// MessageChannel round-trips + timer yields) and only then unmounts inside
+// act(). Tests that end with work deliberately in flight (fetch-call
+// assertions racing the response re-render) call settleReact() themselves —
+// see that module for the full fact chain.
 // ---------------------------------------------------------------------------
 
 // NOTE: we don't register a global main-agent stub here — bun:test has no

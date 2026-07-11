@@ -7,7 +7,7 @@
  * Unknown or absent lessonId → no card highlighted, normal render.
  */
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
-import { render, cleanup, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import '../../rtl-settle'
 
 const contentDirMock = () => ({
@@ -52,7 +52,6 @@ beforeEach(() => {
   )
 })
 
-afterEach(cleanup)
 
 describe('LessonToggleList ?lessonId= highlight', () => {
   it('highlights the matching lesson card', async () => {

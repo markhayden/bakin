@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, afterEach, mock } from 'bun:test'
 import React from 'react'
-import { cleanup, render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -34,10 +34,6 @@ mock.module('@/core/task-store', () => ({
 
 import { MapChildrenPanel } from '../../../plugins/tasks/components/task-workflow-panels'
 import type { TaskDetail } from '../../../plugins/tasks/components/use-task-detail'
-
-afterEach(() => {
-  cleanup()
-})
 
 function makeModel(overrides: Record<string, unknown> = {}): TaskDetail {
   return {

@@ -297,8 +297,9 @@ export interface SearchAPI {
   registerContentType(def: SearchContentTypeDefinition): void
   /**
    * Register a file-backed content type. Wraps `registerContentType` and wires
-   * watcher sync + unlink hooks scoped to the declared file patterns, plus a
-   * startup reconcile that detects mtime drift on boot.
+   * watcher sync + unlink hooks scoped to the declared file patterns. Writes
+   * journal through the durable search outbox — boot performs no reconcile
+   * (change detection is the outbox's acked-hash).
    */
   registerFileBackedContentType(def: FileBackedContentTypeDefinition): void
   /** Index or update a document. Fire-and-forget. */

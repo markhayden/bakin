@@ -277,10 +277,6 @@ beforeEach(() => {
   scheduleState.loading = false
 })
 
-afterEach(() => {
-  cleanup()
-})
-
 describe('SchedulePage smoke', () => {
   it('renders a loading state while jobs are loading', () => {
     scheduleState.loading = true

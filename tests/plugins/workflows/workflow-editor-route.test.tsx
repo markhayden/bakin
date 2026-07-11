@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -118,7 +118,6 @@ describe('/workflows/$id/edit route', () => {
   })
 
   afterEach(() => {
-    cleanup()
     vi.unstubAllGlobals()
   })
 

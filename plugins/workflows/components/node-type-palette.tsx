@@ -9,7 +9,8 @@
  * registry, the client just hydrates.
  */
 
-import { useEffect, useState, type DragEvent } from 'react'
+import { useState, type DragEvent } from 'react'
+import { usePluginJsonFetch } from '@makinbakin/sdk/hooks'
 import {
   CheckCircle2,
   ChevronLeft,
@@ -129,35 +130,17 @@ export function NodeTypePalette({
   onCollapsedChange,
 }: NodeTypePaletteProps) {
   const [internalCollapsed, setInternalCollapsed] = useState(false)
-  const [nodeTypes, setNodeTypes] = useState<PaletteNodeType[]>(initialNodeTypes ?? [])
-  const [loading, setLoading] = useState(!initialNodeTypes)
-  const [error, setError] = useState<string | null>(null)
   const collapsed = controlledCollapsed ?? internalCollapsed
   const setCollapsed = onCollapsedChange ?? setInternalCollapsed
 
-  useEffect(() => {
-    if (initialNodeTypes) return
-    let cancelled = false
-    async function load() {
-      try {
-        const res = await fetch('/api/plugins/workflows/node-types')
-        if (!res.ok) {
-          if (!cancelled) setError(`Failed to load palette (${res.status})`)
-          return
-        }
-        const data = (await res.json()) as { nodeTypes: PaletteNodeType[] }
-        if (!cancelled) setNodeTypes(data.nodeTypes)
-      } catch (e) {
-        if (!cancelled) setError((e as Error).message)
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    load()
-    return () => {
-      cancelled = true
-    }
-  }, [initialNodeTypes])
+  // Tests pre-seed via initialNodeTypes (null url skips the fetch entirely).
+  const fetched = usePluginJsonFetch<{ nodeTypes: PaletteNodeType[] }>(
+    'workflows',
+    initialNodeTypes ? null : 'node-types',
+  )
+  const nodeTypes = initialNodeTypes ?? fetched.data?.nodeTypes ?? []
+  const loading = fetched.loading
+  const error = fetched.error
 
   if (collapsed) {
     return (

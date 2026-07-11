@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import '../../rtl-settle'
 
 mock.module('@makinbakin/sdk/hooks', () => ({
@@ -32,10 +32,6 @@ function makeJob(overrides: Partial<ScheduleJob> = {}): ScheduleJob {
     ...overrides,
   }
 }
-
-afterEach(() => {
-  cleanup()
-})
 
 describe('Schedule calendar views', () => {
   it('shows jobs scheduled after 10pm in the Today timeline', () => {

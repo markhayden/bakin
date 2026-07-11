@@ -26,7 +26,13 @@ The rig is OpenClaw-specific dev tooling at the adapter layer, so
 - `modes.ts` — mode → execution plan (native/isolated/sandbox)
 - `lifecycle.ts` — up/reset/down/status; the bootstrap + ordering live here
 - `sandbox.ts` — exec-into-container helpers
-- `mcporter.ts` — write per-agent `bakin-<agent>` MCP config into the agent container. **STALE (runtime-capabilities post-α addendum):** agents are now instructed to use native MCP entries provisioned by the adapter, which bake `http://localhost:<port>` — container-unreachable. The rig needs re-plumbing onto `BAKIN_MCP_BASE_URL` + adapter provisioning before it can validate OpenClaw tool access again.
+- (Bakin MCP tool access has no rig module: the adapter's `provisionToolAccess`
+  writes per-agent `bakin-<agent>` `mcp.servers` entries at Bakin boot — the
+  production path. The rig only sets `BAKIN_MCP_BASE_URL=http://host.docker.internal:3737`
+  in the host env (`modes.ts`) so those entries are container-reachable; the
+  bind-mounted openclaw home puts them where the gateway reads them. Sandbox
+  mode needs no override — Bakin runs in-container and the localhost default
+  is correct.)
 - `device-approve.ts` — generate + pre-approve the gateway device (dispatch)
 - `record-gateway-frames.ts` — standalone gateway frame recorder (WS1a T1):
   drives an `agent` RPC against any gateway (reuses the adapter's device-auth)
@@ -75,9 +81,11 @@ These cost real debugging; don't re-derive them.
   `EACCES: mkdir '/Users'`, #467).
 - **`BAKIN_URL`** = the container's callback URL (`host.docker.internal:3737`); the
   host-run Bakin CLI uses `localhost:3737` instead (`instance run`/`shell` override it).
-  The per-agent mcporter `bakin-<agent>` configs **bake this URL in at `up` time** —
-  running Bakin on a non-default port for testing means rewiring those configs in the
-  container (and reverting after); a plain server restart on 3737 needs nothing.
+  The per-agent `bakin-<agent>` `mcp.servers` entries bake `BAKIN_MCP_BASE_URL` in
+  **when Bakin boots and provisions** — running Bakin on a non-default port for
+  testing means re-provisioning with a matching `BAKIN_MCP_BASE_URL` (a restart
+  with the changed env suffices; the adapter re-provisions at boot); a plain
+  server restart on 3737 needs nothing.
 
 ## Secret handling
 

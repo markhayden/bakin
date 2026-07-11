@@ -15,7 +15,7 @@
  */
 
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -59,7 +59,6 @@ import { NodeConfigDrawer } from '../../../plugins/workflows/components/node-con
 import { registerNodeType, unregisterNodeType } from '@bakin/core/workflows/node-type-registry'
 
 afterEach(() => {
-  cleanup()
   vi.unstubAllGlobals()
 })
 

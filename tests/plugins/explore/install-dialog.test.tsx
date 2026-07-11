@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react'
 
@@ -80,7 +80,6 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = originalFetch
-  cleanup()
 })
 
 function lastCall(): { url: string; body: Record<string, unknown> } {

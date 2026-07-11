@@ -4,7 +4,7 @@
  * doctor data.agents, and the effort-vs-outcome table with delta columns.
  */
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import '../../rtl-settle'
 import type { ReactNode } from 'react'
 
@@ -56,7 +56,6 @@ function summaryResult(doctor: unknown): PolledResult<HealthSummary> {
   }
 }
 
-afterEach(cleanup)
 
 describe('deriveAttentionChips', () => {
   it('builds chips only from data.agents on the three attention checks', () => {

@@ -20,7 +20,7 @@ mock.module('../../packages/core/src/content-dir', () => ({
 import { usePluginEvent, emitPluginEvent } from '@/hooks/use-plugin-event'
 mock.module('@makinbakin/sdk/hooks', () => ({ usePluginEvent }))
 
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import '../rtl-settle'
 import { useHealthSummary } from '../../plugins/health/hooks/use-health-summary'
 
@@ -34,10 +34,6 @@ const fetchMock = mock()
 beforeEach(() => {
   fetchMock.mockReset()
   ;(globalThis as { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch
-})
-
-afterEach(() => {
-  cleanup()
 })
 
 function summaryResponse(body: unknown) {

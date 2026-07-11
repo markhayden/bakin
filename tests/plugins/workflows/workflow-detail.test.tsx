@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -165,7 +165,6 @@ function setupUserDefinitionFetch() {
 }
 
 afterEach(() => {
-  cleanup()
   vi.unstubAllGlobals()
   routerPush.mockClear()
   workflowCanvasCalls.length = 0

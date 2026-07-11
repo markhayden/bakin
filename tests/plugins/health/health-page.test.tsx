@@ -117,7 +117,6 @@ function setupHealthFetch(options: {
 }
 
 afterEach(() => {
-  cleanup()
   vi.unstubAllGlobals()
   clearReindexProgress.mockClear()
 })

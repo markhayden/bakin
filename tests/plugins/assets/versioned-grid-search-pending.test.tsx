@@ -10,7 +10,7 @@
  * search is in flight with nothing settled, the grid says "Searching…".
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import type { ReactNode, ButtonHTMLAttributes, InputHTMLAttributes } from 'react'
 import { rmSync } from 'fs'
@@ -131,7 +131,6 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  cleanup()
   globalThis.fetch = realFetch
   for (const key of Object.keys(queryStateRefs)) delete queryStateRefs[key]
 })

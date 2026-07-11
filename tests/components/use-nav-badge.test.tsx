@@ -19,7 +19,7 @@ mock.module('../../packages/core/src/content-dir', () => ({
 const setNavBadge = mock()
 mock.module('@makinbakin/sdk', () => ({ setNavBadge }))
 
-import { cleanup, render } from '@testing-library/react'
+import { render } from '@testing-library/react'
 import '../rtl-settle'
 import { useNavBadge } from '@/hooks/use-nav-badge'
 
@@ -29,7 +29,6 @@ function Probe({ badge }: { badge: NavBadge | null }) {
 }
 
 afterEach(() => {
-  cleanup()
   setNavBadge.mockClear()
 })
 
