@@ -393,6 +393,17 @@ export function outboxStats(): OutboxStats {
   }
 }
 
+/**
+ * Drop every journal + ack row for a logical table. Used when the table's
+ * content type is purged (plugin removal, orphan-row sweep) — undelivered
+ * writes for a dead table must not sit in the journal forever.
+ */
+export function purgeTable(logicalTable: string): number {
+  const removed = db().prepare('DELETE FROM search_outbox WHERE logical_table = ?').run(logicalTable)
+  db().prepare('DELETE FROM search_acked WHERE logical_table = ?').run(logicalTable)
+  return Number(removed.changes ?? 0)
+}
+
 /** Revive quarantined rows (doctor repair / `bakin search retry`). */
 export function retryQuarantined(): number {
   const result = db()

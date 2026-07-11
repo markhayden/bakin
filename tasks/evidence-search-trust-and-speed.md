@@ -19,9 +19,17 @@ All timestamps MDT (2026-07-11 unless noted).
 - #317 fix verified present in rc.18: `zig/pkg/antfly/src/api/httpx_handler.zig` diff rc.17→rc.18 replaces the errdefer+defer double-free with single defers — identical to our proposed patch (`tasks/antfly-main-local-patches.diff`, now deleted as upstreamed).
 - #319 OPEN upstream as of 2026-07-11 (checked via gh).
 
-## T3 — rollback point
+## T3 — rollback point (17:10)
 
-_(pending)_
+- `~/.bakin/backups/search-trust-2026-07-11/`: settings.json, search.db (sqlite .backup), antfly-version.txt (rc.17), service-state.txt (launchd `io.bakin.antfly`).
+- Rollback: restore both files, `git revert` the pin commit, `bakin install search`, rebuild.
+
+## T4 — rc.18 installed (17:10–17:14)
+
+- Download + SHA256 verify + swap OK (3.2s). The installer's service restart did NOT re-bootstrap the launch agent — manual `launchctl bootstrap gui/$UID ~/Library/LaunchAgents/io.bakin.antfly.plist` required. **Follow-up: harden service restart in installer (found during T4).**
+- rc.18 CANNOT read rc.17 on-disk state: every dense_vector index fails `UnsupportedVersion`; startup catch-up replay fails `InvalidDerivedApplyState` on old tables (memory/tasks/team/projects). Doc counts reset to 0 on affected tables; assets embeddings legs `state=failed`. On-disk format break between rc's — full rebuild required (already planned as T5).
+- Engine log also reveals `bakin_projects_v1_3a1b6f23` exists engine-side (registry expects `_49da8817`) — the projects 404 is fingerprint drift from the hot-patched user plugin.
+- **Latency transformation confirmed:** direct FTS query 2.70s (rc.17, spinning) → **40–53ms** (rc.18). Engine CPU ~7% post-boot vs 301% before.
 
 ## GATE A — #319 verdict on rc.18
 

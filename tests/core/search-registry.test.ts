@@ -77,7 +77,11 @@ import {
   resetSearchRegistry,
   crossTableSearch,
   getSearchHealth,
+  purgeContentType,
 } from '@/core/search-registry'
+import { sweepOrphanRegistryRows } from '@/core/search-orphan-sweep'
+import { tableStatus } from '@bakin/core/search/tables'
+import { enqueueIndex, outboxStats } from '@bakin/core/search/outbox'
 import { broadcast } from '@/core/sse'
 
 describe('search-registry', () => {
@@ -737,6 +741,64 @@ describe('search-registry', () => {
     expect(health.tables[0]!.docCount).toBe(5)
     expect(health.tables[0]!.legs).toEqual([])
     expect(health.tables[0]!.healthy).toBe(true)
+  })
+
+  describe('registry-row lifecycle', () => {
+    it('purgeContentType removes the search_tables registry row and outbox rows', async () => {
+      const api = buildSearchAPI('zombie')
+      api.registerContentType(makeDef('zombie'))
+      await createRegisteredTables()
+      expect(tableStatus('bakin_zombie')).not.toBeNull()
+
+      enqueueIndex('bakin_zombie', 'k1', { title: 'stale' })
+      const before = outboxStats().pending
+
+      await purgeContentType('zombie')
+
+      // In-memory registration gone, registry row gone, journal purged —
+      // nothing left to resurrect the table on the next rebuild pass.
+      expect(getContentTypes().has('bakin_zombie')).toBe(false)
+      expect(tableStatus('bakin_zombie')).toBeNull()
+      expect(outboxStats().pending).toBe(before - 1)
+    })
+
+    it('sweepOrphanRegistryRows drops rows whose content type has no live registrant', async () => {
+      const api = buildSearchAPI('keeper')
+      api.registerContentType(makeDef('keeper'))
+      buildSearchAPI('gone-plugin').registerContentType(makeDef('gone'))
+      await createRegisteredTables()
+      const gonePhysical = tableStatus('bakin_gone')!.physical
+      enqueueIndex('bakin_gone', 'k1', { title: 'stale' })
+
+      // Simulate the leak: the plugin was removed without purge — its
+      // in-memory registration is gone, the registry row survives.
+      resetSearchRegistry()
+      const api2 = buildSearchAPI('keeper')
+      api2.registerContentType(makeDef('keeper'))
+
+      const removed = await sweepOrphanRegistryRows()
+
+      expect(removed).toEqual(['bakin_gone'])
+      expect(tableStatus('bakin_gone')).toBeNull()
+      expect(searchHarness.calls.tablesDrop).toHaveBeenCalledWith(gonePhysical)
+      // registered row untouched
+      expect(tableStatus('bakin_keeper')).not.toBeNull()
+    })
+
+    it('sweepOrphanRegistryRows also drops a half-migrated green physical', async () => {
+      buildSearchAPI('gone-plugin').registerContentType(makeDef('gone'))
+      await createRegisteredTables()
+      const { openNamedDb } = require('../../packages/core/src/storage/db') as typeof import('../../packages/core/src/storage/db')
+      const store = openNamedDb('search', () => join(testDir, 'search.db'))
+      store.db().prepare("UPDATE search_tables SET state = 'migrating', migrating_to = 'bakin_gone_v1_deadbeef', migration_phase = 'parked' WHERE logical = 'bakin_gone'").run()
+
+      resetSearchRegistry()
+      const removed = await sweepOrphanRegistryRows()
+
+      expect(removed).toEqual(['bakin_gone'])
+      expect(searchHarness.calls.tablesDrop).toHaveBeenCalledWith('bakin_gone_v1_deadbeef')
+      expect(tableStatus('bakin_gone')).toBeNull()
+    })
   })
 
   it('getSearchHealth returns enabled false when search adapter is unavailable', async () => {

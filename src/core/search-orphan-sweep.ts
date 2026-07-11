@@ -70,6 +70,37 @@ export async function sweepTableOrphans(
   return stats
 }
 
+/**
+ * Sweep orphaned REGISTRY ROWS: `search_tables` entries whose logical
+ * table has no live content-type registrant. These leak when a plugin is
+ * removed without purge (pre-fix `purgeContentType` never deleted the
+ * row) and would otherwise be resurrected as zombie engine tables by the
+ * next rebuild pass. Drops the engine physicals (active + any migration
+ * green), the registry row, and any journal rows. Returns the removed
+ * logical names.
+ */
+export async function sweepOrphanRegistryRows(): Promise<string[]> {
+  const search = getAppServices().search
+  if (!await search.available()) return []
+  const { listTableStates, removeTableRegistration } = await import('@bakin/core/search/tables')
+  const { purgeTable } = await import('@bakin/core/search/outbox')
+  const registered = getContentTypes()
+  const removed: string[] = []
+  for (const row of listTableStates()) {
+    if (registered.has(row.logical)) continue
+    log.warn(`Orphan registry row: ${row.logical} has no live registrant — purging`, {
+      physical: row.physical,
+      migratingTo: row.migratingTo,
+    })
+    for (const physical of removeTableRegistration(row.logical)) {
+      await search.tables.drop(physical).catch(() => {})
+    }
+    purgeTable(row.logical)
+    removed.push(row.logical)
+  }
+  return removed
+}
+
 /** Sweep every registered content type. Single-flight per process. */
 export async function runOrphanSweep(): Promise<OrphanSweepStats[]> {
   if (_g.__bakinOrphanSweepRunning) {

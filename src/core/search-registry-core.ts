@@ -351,6 +351,18 @@ export async function purgeContentType(name: string): Promise<number> {
     throw err
   }
 
+  // Tear down ALL durable state, not just the engine table: the registry
+  // row (a survivor here resurrects the table on the next rebuild pass —
+  // the bakin_messaging_brainstorm leak) and any undelivered journal rows.
+  const { removeTableRegistration } = await import('@bakin/core/search/tables')
+  const { purgeTable } = await import('@bakin/core/search/outbox')
+  for (const leftover of removeTableRegistration(tableName)) {
+    if (leftover !== physical) {
+      await search.tables.drop(leftover).catch(() => {})
+    }
+  }
+  purgeTable(tableName)
+
   if (def) forgetContentType(tableName, def)
 
   log.info(`Purged content type ${tableName} (${removed} docs)`)

@@ -230,6 +230,19 @@ async function converged(adapter: SearchAdapter, physical: string, expected: num
   return true
 }
 
+/**
+ * Delete a logical table's registry row. Returns every physical the row
+ * referenced (active + mid-migration green) so the caller can drop them
+ * engine-side. Used by content-type purge and the orphan-row sweep.
+ */
+export function removeTableRegistration(logical: string): string[] {
+  const row = getRow(logical)
+  if (!row) return []
+  const physicals = [row.physical, ...(row.migrating_to ? [row.migrating_to] : [])]
+  db().prepare('DELETE FROM search_tables WHERE logical = ?').run(logical)
+  return physicals
+}
+
 function noteTombstone(physical: string): void {
   db()
     .prepare('INSERT INTO search_table_tombstones (physical, noted_at) VALUES (?, ?) ON CONFLICT (physical) DO NOTHING')

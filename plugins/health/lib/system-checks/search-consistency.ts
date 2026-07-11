@@ -70,13 +70,17 @@ export async function checkSearchConsistency(): Promise<HealthCheckResult[]> {
   if (Date.now() - lastSweepAt >= SWEEP_INTERVAL_MS) {
     lastSweepAt = Date.now()
     try {
-      const { runOrphanSweep } = await import('../../../../src/core/search-orphan-sweep')
+      const { runOrphanSweep, sweepOrphanRegistryRows } = await import('../../../../src/core/search-orphan-sweep')
       const { sweepTombstones } = await import('@bakin/core/search/tables')
       const orphanStats = await runOrphanSweep()
       const removed = orphanStats.reduce((sum, s) => sum + s.orphans, 0)
+      const orphanRows = await sweepOrphanRegistryRows()
       const tombstonesLeft = await sweepTombstones(search)
       if (removed > 0) {
         results.push(healthOk('search-consistency', `Deep sweep removed ${removed} orphaned index row(s)`))
+      }
+      if (orphanRows.length > 0) {
+        results.push(healthOk('search-consistency', `Deep sweep purged ${orphanRows.length} orphaned registry row(s): ${orphanRows.join(', ')}`))
       }
       if (tombstonesLeft > 0) {
         results.push(healthWarn('search-consistency', `${tombstonesLeft} old physical table(s) still refusing to drop — retrying next sweep`))
