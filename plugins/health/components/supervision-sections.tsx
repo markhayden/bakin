@@ -19,6 +19,7 @@
 import { Card, CardHeader, CardTitle, CardContent, Badge } from '@makinbakin/sdk/ui'
 import { useQueryState } from '@makinbakin/sdk/hooks'
 import { ChartExplainer } from '@makinbakin/sdk/components'
+import { formatDuration } from '@makinbakin/sdk/utils'
 import type { PolledResult } from './use-health-data'
 import { usePolledJson, HEALTH_POLL_MS } from './use-health-data'
 import { formatTokenCount, formatRuntimeCost } from '../lib/format'
@@ -28,15 +29,6 @@ import type { HealthSummary, LiveNowData, AgentEffortData, AgentEffortWindow } f
 
 /** Heartbeat older than this renders amber — the agent may be wedged. */
 const STALE_HEARTBEAT_MS = 2 * 60 * 1000
-
-function formatDuration(ms: number): string {
-  const s = Math.floor(ms / 1000)
-  if (s < 60) return `${s}s`
-  const m = Math.floor(s / 60)
-  if (m < 60) return `${m}m ${s % 60}s`
-  const h = Math.floor(m / 60)
-  return `${h}h ${m % 60}m`
-}
 
 export function LiveNowSection({ refreshNonce }: { refreshNonce: number }) {
   const result = usePolledJson<LiveNowData>('/api/plugins/health/live-now', {
@@ -83,9 +75,9 @@ export function LiveNowSection({ refreshNonce }: { refreshNonce: number }) {
                     <td className="py-1.5 pr-3 truncate max-w-[280px]" title={run.taskId}>
                       {run.taskTitle ?? <span className="text-muted-foreground">{run.taskId}</span>}
                     </td>
-                    <td className="py-1.5 pl-3 text-right tabular-nums">{formatDuration(run.runningForMs)}</td>
+                    <td className="py-1.5 pl-3 text-right tabular-nums">{formatDuration(run.runningForMs) ?? ''}</td>
                     <td className={`py-1.5 pl-3 text-right tabular-nums ${stale ? 'text-amber-500' : 'text-muted-foreground'}`}>
-                      {formatDuration(run.heartbeatAgeMs)} ago{stale ? ' ⚠' : ''}
+                      {formatDuration(run.heartbeatAgeMs) ?? ''} ago{stale ? ' ⚠' : ''}
                     </td>
                   </tr>
                 )

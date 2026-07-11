@@ -53,7 +53,7 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 ## PR 4 — chore/cleanup-sweep (anytime; during WS1 soak)
 - [x] T32 Rig off mcporter (native-MCP provisioning) ✅ code+tests — ⚠️ live rig smoke (`bun run instance up`) OUTSTANDING: docker unavailable on this box; run before initiative close
 - [x] T33 Fixtures, comments, knowledge-doc drift ✅
-- [ ] T34 SDK primitive adoption sweep (ex-sdk-gaps A2/A3/A4 + useAvailableModels relocation; after PR 2b)
+- [x] T34 SDK primitive adoption sweep ✅ (useJsonFetch ×5 sites, ConfirmDialog already complete, formatDuration reimpls migrated, useAvailableModels relocated into SDK; non-fits annotated in place)
 - [ ] CHECKPOINT 4: initiative close — all success criteria re-verified, Pi worktree retired, SPEC marked complete
 
 ## Live-validation follow-ups (2026-07-09 flip)

@@ -6,9 +6,11 @@ import type { AvailableModel } from '@makinbakin/sdk/types'
 /**
  * Module-level cache + single-flight promise for the available-models catalog
  * (`GET /api/plugins/models/available`). Two pickers mounting in the same paint
- * share one round-trip. Mirrors useNotificationChannels: read-only and cached —
- * the models management page owns the live `/refresh` mutation flow and keeps its
- * own state rather than using this hook.
+ * share one round-trip. Read-only and cached — the models management page owns
+ * the live `/refresh` mutation flow and keeps its own state rather than using
+ * this hook. Deliberately NOT `useJsonFetch` (per-component state, no
+ * cross-mount dedupe). Lives in the SDK proper (not the models plugin) since
+ * T34: the wire contract is just the stable catalog URL.
  */
 let cached: AvailableModel[] | null = null
 let inFlight: Promise<AvailableModel[]> | null = null

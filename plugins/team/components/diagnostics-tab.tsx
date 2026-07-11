@@ -22,6 +22,7 @@ import { Loader2, RefreshCw } from 'lucide-react'
 import { Button, Badge, Skeleton } from '@makinbakin/sdk/ui'
 import { Sparkline, ChartExplainer } from '@makinbakin/sdk/components'
 import { usePluginEvent, useJsonFetch } from '@makinbakin/sdk/hooks'
+import { formatDuration } from '@makinbakin/sdk/utils'
 import type { ScanFinding, TimelineEventView } from '../types'
 
 // ── Small shared bits ────────────────────────────────────────────────────────
@@ -52,14 +53,6 @@ function formatTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
   return String(n)
-}
-
-function formatDuration(ms: number): string {
-  const s = Math.floor(ms / 1000)
-  if (s < 60) return `${s}s`
-  const m = Math.floor(s / 60)
-  if (m < 60) return `${m}m ${s % 60}s`
-  return `${Math.floor(m / 60)}h ${m % 60}m`
 }
 
 async function getJson<T>(url: string): Promise<T | null> {
@@ -516,7 +509,7 @@ function TimelinePanel({ agentId }: { agentId: string }) {
                   </div>
                   <div className="mt-0.5 text-xs text-muted-foreground">
                     {event.model && <span>{event.model} · </span>}
-                    {event.durationMs !== null ? `${formatDuration(event.durationMs)} · ` : 'in flight · '}
+                    {event.durationMs !== null ? `${formatDuration(event.durationMs) ?? ''} · ` : 'in flight · '}
                     {event.inputTokens !== null && `${formatTokens(event.inputTokens)} in`}
                     {event.outputTokens !== null && ` / ${formatTokens(event.outputTokens)} out`}
                     {event.costUsdMicros !== null && ` · $${(event.costUsdMicros / 1_000_000).toFixed(2)}`}
