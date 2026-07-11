@@ -1,6 +1,100 @@
 import type { AgentRuntimeAdapter, ChatChunk, MessageArgs, RuntimeAgent, RuntimeSession, RuntimeToolActivity } from './concepts'
 import { RuntimeError } from './errors'
 
+/**
+ * Opt-in channels surface for the mock (delivery capability pairs with it —
+ * see createMockRuntimeAdapter). The DEFAULT mock omits `channels` entirely:
+ * it is an optional contract member (Pi omits it in production), so plugin
+ * code must feature-detect. A bare `runtime.channels.x()` against the default
+ * mock now throws instead of silently passing (audit finding H2).
+ *
+ * Usage: `createMockRuntimeAdapter({ channels: mockChannels() })`
+ */
+export function mockChannels(): NonNullable<AgentRuntimeAdapter['channels']> {
+  return {
+    list: async () => [],
+    sendNotification: async () => ({ deliveries: [] }),
+    sendMessage: async () => ({ deliveries: [] }),
+    deliverContent: async () => ({ deliveries: [] }),
+    createApproval: async () => ({ deliveries: [] }),
+    editApproval: async (args) => ({ deliveries: args.deliveries }),
+    cancelApproval: async () => {},
+    resolveApproval: async () => {},
+    subscribeApprovalResponses: () => () => {},
+  }
+}
+
+/**
+ * Opt-in cron surface for the mock — same rationale as mockChannels():
+ * `cron` is an optional contract member (Pi omits it), so the default mock
+ * omits it and consumers feature-detect.
+ *
+ * Usage: `createMockRuntimeAdapter({ cron: mockCron() })`
+ */
+export function mockCron(): NonNullable<AgentRuntimeAdapter['cron']> {
+  const cron: NonNullable<AgentRuntimeAdapter['cron']> = {
+    list: async () => [],
+    get: async () => null,
+    create: async (input) => ({
+      id: input.id ?? `cron-${Date.now()}`,
+      name: input.name,
+      schedule: input.schedule,
+      command: input.command,
+      enabled: input.enabled ?? true,
+      toolsAllow: input.toolsAllow,
+      metadata: input.metadata,
+    }),
+    update: async (id, patch) => ({
+      id,
+      name: patch.name ?? id,
+      schedule: patch.schedule ?? '* * * * *',
+      command: patch.command ?? '',
+      enabled: patch.enabled ?? true,
+      toolsAllow: patch.toolsAllow === null ? undefined : patch.toolsAllow,
+      metadata: patch.metadata,
+    }),
+    remove: async () => {},
+    runNow: async (jobId) => ({
+      id: `run-${Date.now()}`,
+      jobId,
+      status: 'succeeded',
+      startedAt: new Date().toISOString(),
+      endedAt: new Date().toISOString(),
+    }),
+    listRuns: async () => [],
+    getRaw: async (id, reason) => {
+      if (!reason) throw new Error('cron.getRaw requires a reason')
+      return (await cron.get(id)) ?? null
+    },
+    restoreRaw: async (id, snapshot, reason) => {
+      if (!reason) throw new Error('cron.restoreRaw requires a reason')
+      const raw = snapshot && typeof snapshot === 'object' ? snapshot as Partial<{
+        id: string
+        name: string
+        schedule: string | { expr?: string; value?: string }
+        command: string
+        payload: { message?: string; text?: string }
+        toolsAllow: string[]
+        enabled: boolean
+        metadata: Record<string, unknown>
+      }> : {}
+      const schedule = typeof raw.schedule === 'string'
+        ? raw.schedule
+        : raw.schedule?.expr ?? raw.schedule?.value ?? '* * * * *'
+      return {
+        id,
+        name: raw.name ?? raw.id ?? id,
+        schedule,
+        command: raw.command ?? raw.payload?.message ?? raw.payload?.text ?? '',
+        enabled: raw.enabled ?? true,
+        toolsAllow: raw.toolsAllow,
+        metadata: raw.metadata,
+      }
+    },
+  }
+  return cron
+}
+
 const mockAbortError = () => new RuntimeError('mock send aborted', { kind: 'aborted' })
 
 /**
@@ -196,17 +290,9 @@ export function createMockRuntimeAdapter(
       invoke: async () => ({ ok: true }),
     },
 
-    channels: {
-      list: async () => [],
-      sendNotification: async () => ({ deliveries: [] }),
-      sendMessage: async () => ({ deliveries: [] }),
-      deliverContent: async () => ({ deliveries: [] }),
-      createApproval: async () => ({ deliveries: [] }),
-      editApproval: async (args) => ({ deliveries: args.deliveries }),
-      cancelApproval: async () => {},
-      resolveApproval: async () => {},
-      subscribeApprovalResponses: () => () => {},
-    },
+    // NOTE: no `channels`, no `cron` — the minimal default (R24). Both are
+    // OPTIONAL contract members (Pi omits them in production); consumers must
+    // feature-detect. Opt in per test: mockChannels() / mockCron().
 
     skills: {
       list: async () => [],
@@ -250,21 +336,13 @@ export function createMockRuntimeAdapter(
       },
     },
 
-    // Conservative default matching production's no-app-services fallback
-    // (dispatch-prompts DEFAULT_TOOL_ACCESS) so mock-driven prompts render the
-    // same mcp-prefixed bytes; tests override per-case ({...mock, ...}).
-    capabilities: async (_opts?: { agentId?: string }) => ({
-      toolCalling: {
-        mode: 'native' as const,
-        access: { style: 'mcp' as const, mcpServerTemplate: 'bakin-<agent>' },
-      },
-      delivery: { mode: 'native' as const },
-      imageGen: { mode: 'unavailable' as const },
-      memory: { mode: 'native' as const },
-      sessions: { mode: 'native' as const },
-      workspaceFiles: { mode: 'native' as const },
-      input: { imageInput: false, audioInput: false },
-    }),
+    // Honest for the minimal default shape (no channels ⇒ delivery
+    // unavailable); the post-merge fixup below flips delivery to 'native'
+    // when a test opts into channels. Conservative toolCalling default
+    // matches production's no-app-services fallback (dispatch-prompts
+    // DEFAULT_TOOL_ACCESS) so mock-driven prompts render the same
+    // mcp-prefixed bytes; tests override per-case.
+    capabilities: async (_opts?: { agentId?: string }) => mockCapabilities(false),
 
     describeToolAccess: () => ({ style: 'mcp' as const, mcpServerTemplate: 'bakin-<agent>' }),
 
@@ -275,68 +353,32 @@ export function createMockRuntimeAdapter(
     deprovisionToolAccess: async () => {},
     verifyToolAccess: async () => ({ style: 'mcp' as const, ok: true, issues: [] }),
 
-    cron: {
-      list: async () => [],
-      get: async () => null,
-      create: async (input) => ({
-        id: input.id ?? `cron-${Date.now()}`,
-        name: input.name,
-        schedule: input.schedule,
-        command: input.command,
-        enabled: input.enabled ?? true,
-        toolsAllow: input.toolsAllow,
-        metadata: input.metadata,
-      }),
-      update: async (id, patch) => ({
-        id,
-        name: patch.name ?? id,
-        schedule: patch.schedule ?? '* * * * *',
-        command: patch.command ?? '',
-        enabled: patch.enabled ?? true,
-        toolsAllow: patch.toolsAllow === null ? undefined : patch.toolsAllow,
-        metadata: patch.metadata,
-      }),
-      remove: async () => {},
-      runNow: async (jobId) => ({
-        id: `run-${Date.now()}`,
-        jobId,
-        status: 'succeeded',
-        startedAt: new Date().toISOString(),
-        endedAt: new Date().toISOString(),
-      }),
-      listRuns: async () => [],
-      getRaw: async (id, reason) => {
-        if (!reason) throw new Error('cron.getRaw requires a reason')
-        return (await adapter.cron?.get(id)) ?? null
-      },
-      restoreRaw: async (id, snapshot, reason) => {
-        if (!reason) throw new Error('cron.restoreRaw requires a reason')
-        const raw = snapshot && typeof snapshot === 'object' ? snapshot as Partial<{
-          id: string
-          name: string
-          schedule: string | { expr?: string; value?: string }
-          command: string
-          payload: { message?: string; text?: string }
-          toolsAllow: string[]
-          enabled: boolean
-          metadata: Record<string, unknown>
-        }> : {}
-        const schedule = typeof raw.schedule === 'string'
-          ? raw.schedule
-          : raw.schedule?.expr ?? raw.schedule?.value ?? '* * * * *'
-        return {
-          id,
-          name: raw.name ?? raw.id ?? id,
-          schedule,
-          command: raw.command ?? raw.payload?.message ?? raw.payload?.text ?? '',
-          enabled: raw.enabled ?? true,
-          toolsAllow: raw.toolsAllow,
-          metadata: raw.metadata,
-        }
-      },
-    },
-
   }
 
-  return { ...adapter, ...overrides }
+  const merged = { ...adapter, ...overrides }
+
+  // Capability honesty across the merge (the conformance suite pins
+  // native ⇒ surface-present in BOTH directions): opting into channels via
+  // overrides flips delivery to 'native' automatically. Tests that override
+  // `capabilities` themselves own their own honesty.
+  if (!('capabilities' in overrides) && merged.channels) {
+    merged.capabilities = async (_opts?: { agentId?: string }) => mockCapabilities(true)
+  }
+
+  return merged
+}
+
+function mockCapabilities(deliveryNative: boolean) {
+  return {
+    toolCalling: {
+      mode: 'native' as const,
+      access: { style: 'mcp' as const, mcpServerTemplate: 'bakin-<agent>' },
+    },
+    delivery: { mode: deliveryNative ? ('native' as const) : ('unavailable' as const) },
+    imageGen: { mode: 'unavailable' as const },
+    memory: { mode: 'native' as const },
+    sessions: { mode: 'native' as const },
+    workspaceFiles: { mode: 'native' as const },
+    input: { imageInput: false, audioInput: false },
+  }
 }

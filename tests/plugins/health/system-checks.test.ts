@@ -287,7 +287,7 @@ import { checkSearchOutbox, searchOutboxRepair } from '../../../plugins/health/l
 import { checkSearchConsistency } from '../../../plugins/health/lib/system-checks/search-consistency'
 import { checkAndSyncSkill, syncSkillRepair } from '../../../plugins/health/lib/system-checks/sync-skill'
 import { checkPluginAssets } from '../../../plugins/health/lib/system-checks/plugin-assets'
-import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
+import { createMockRuntimeAdapter, mockChannels } from '@bakin/core/adapters/runtime/testing'
 import type { AgentRuntimeAdapter, RuntimeSkill } from '@bakin/core/adapters/runtime'
 
 let mockRuntime: AgentRuntimeAdapter
@@ -299,7 +299,8 @@ function runtimeFileKey(agentId: string, path: string): string {
 }
 
 function makeHealthRuntime(): AgentRuntimeAdapter {
-  const runtime = createMockRuntimeAdapter()
+  // Channel-check describes mutate runtime.channels — explicit opt-in (R24).
+  const runtime = createMockRuntimeAdapter({ channels: mockChannels() })
   runtime.agents.list = async () => [{ id: 'main', name: 'Main', role: 'Orchestrator', status: 'active' }]
   runtime.agents.readWorkspaceFile = async (agentId, path) => {
     const content = runtimeWorkspaceFiles.get(runtimeFileKey(agentId, path))
