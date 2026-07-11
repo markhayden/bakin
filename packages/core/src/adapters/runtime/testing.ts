@@ -1,9 +1,44 @@
-import type { AgentRuntimeAdapter, RuntimeAgent } from './concepts'
+import type { AgentRuntimeAdapter, ChatChunk, MessageArgs, RuntimeAgent } from './concepts'
 import { RuntimeError } from './errors'
 
-async function* emptyStream(): AsyncIterable<never> {
-  const items: never[] = []
-  for (const item of items) yield item
+const mockAbortError = () => new RuntimeError('mock send aborted', { kind: 'aborted' })
+
+/**
+ * One macrotask yield so a caller holding MessageArgs.signal can abort
+ * mid-turn (the contract behavior real adapters have; pinned by the runtime
+ * conformance suite). A synchronous `controller.abort()` issued after send()
+ * starts rejects; without a signal the send resolves on the next tick.
+ */
+function mockTurnDelay(signal: AbortSignal | undefined): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(resolve, 0)
+    signal?.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer)
+        reject(mockAbortError())
+      },
+      { once: true },
+    )
+  })
+}
+
+/**
+ * Contract-conformant mock stream (R5): status → text → exactly-one trailing
+ * done; a caller abort ends the stream with a clean done (never an error
+ * chunk — deliberate aborts settle clean).
+ */
+async function* mockChatStream(args: MessageArgs): AsyncIterable<ChatChunk> {
+  if (!args.signal?.aborted) {
+    yield { type: 'status', content: 'thinking' }
+    try {
+      await mockTurnDelay(args.signal)
+      yield { type: 'text', content: `mock reply: ${args.content}` }
+    } catch {
+      // aborted mid-turn — fall through to the clean done
+    }
+  }
+  yield { type: 'done' }
 }
 
 export function createMockRuntimeAdapter(
@@ -76,12 +111,18 @@ export function createMockRuntimeAdapter(
 
     messaging: {
       send: async (args) => {
-        if (args.signal?.aborted) {
-          throw new RuntimeError('mock send aborted', { kind: 'aborted' })
+        if (args.signal?.aborted) throw mockAbortError()
+        await mockTurnDelay(args.signal)
+        return {
+          id: `msg-${Date.now()}`,
+          content: `mock reply: ${args.content}`,
+          // Threaded sends carry the session identity, per the contract the
+          // conformance suite pins (stable per agent+thread, like real
+          // adapters' deterministic session mapping).
+          ...(args.threadId ? { metadata: { sessionId: `mock-session-${args.agentId}-${args.threadId}` } } : {}),
         }
-        return { id: `msg-${Date.now()}` }
       },
-      stream: () => emptyStream(),
+      stream: (args) => mockChatStream(args),
     },
 
     tools: {

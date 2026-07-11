@@ -41,7 +41,7 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 - [ ] CHECKPOINT 2b: success criteria #2 ✅ #3 ✅ #6 ✅ (suite 6427/0, docs build green); PR merged ☐
 
 ## PR 3 — feat/runtime-conformance (after 1a AND 2b)
-- [ ] T25 Conformance suite skeleton + messaging pins (3 targets)
+- [x] T25 Conformance suite skeleton + messaging pins (3 targets) ✅ (dev mock + Pi fake-provider + crab; teeth test proves failure on a broken adapter)
 - [ ] T26 Stream/capability/provisioning pins
 - [ ] T27 Mock default flip (minimal shape) + test sweep
 - [ ] T28 OpenClaw sessions.list/get for real
