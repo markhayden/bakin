@@ -25,10 +25,8 @@ afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
 })
 
-import {
-  buildStreamDeathError,
-  DEFAULT_OVERSIZED_OUTPUT_BYTES,
-} from '../../packages/adapter-pi/src/errors'
+import { buildStreamDeathError } from '../../packages/adapter-pi/src/errors'
+import { DEFAULT_OVERSIZED_OUTPUT_BYTES } from '../../packages/core/src/adapters/runtime'
 
 describe('pi oversized-output diagnosis (T29)', () => {
   test('completion above the caller threshold marks oversizedOutput true', () => {

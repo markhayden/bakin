@@ -344,7 +344,7 @@ export const brandRoutes = [
         return Response.json(result)
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
-        return Response.json({ error: message }, { status: message.includes('already exists') ? 409 : 400 })
+        return Response.json({ error: message }, { status: err instanceof BrandStoreError && err.code === 'exists' ? 409 : 400 })
       } finally {
         materialized.cleanup()
       }
@@ -400,7 +400,7 @@ export const brandRoutes = [
         return Response.json(result)
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
-        return Response.json({ error: message }, { status: message.includes('not found') ? 404 : 400 })
+        return Response.json({ error: message }, { status: err instanceof BrandStoreError && err.code === 'missing' ? 404 : 400 })
       }
     },
   }),

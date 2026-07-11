@@ -136,7 +136,7 @@ async function check(): Promise<CheckResult> {
     return {
       name: 'runtime',
       status: 'missing',
-      message: `${runtime.name} runtime adapter is not reachable`,
+      message: `${runtime.name} runtime adapter cannot serve turns (gateway down or credentials missing)`,
       remediation: SETUP_MESSAGE,
       details: { runtime: runtime.name, installUrl: SETUP_URL },
     }

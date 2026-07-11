@@ -4,6 +4,7 @@
  * (that is the adapter's job — same posture as adapter-openclaw/errors.ts).
  */
 import {
+  DEFAULT_OVERSIZED_OUTPUT_BYTES,
   RuntimeError,
   RuntimeTurnError,
   type RuntimeTurnDiagnosis,
@@ -89,14 +90,6 @@ export function toRuntimeError(err: unknown, ctx: PiErrorContext = {}): RuntimeE
 }
 
 const SALVAGE_CAP_BYTES = 16_384
-
-/**
- * Oversized-output fallback threshold when the caller passed no
- * `MessageArgs.oversizedOutputBytes` — parity with OpenClaw's
- * DEFAULT_OVERSIZED_OUTPUT_BYTES (trajectory-forensics) and the
- * `settings.dispatch.oversizedOutputBytes` default (128 KiB).
- */
-export const DEFAULT_OVERSIZED_OUTPUT_BYTES = 128 * 1024
 
 /**
  * Mid-turn stream death (assistant stream ended in an error event with

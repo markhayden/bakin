@@ -44,13 +44,17 @@ export function listAuthCredentials(): Array<{ provider: string; kind: 'api-key'
   } catch {
     return []
   }
-  return Object.entries(parsed).map(([provider, entry]) => {
-    const obj = entry !== null && typeof entry === 'object' ? entry as Record<string, unknown> : {}
-    const oauth = obj.type === 'oauth'
-      || typeof obj.access === 'string'
-      || typeof obj.refresh === 'string'
-    return { provider, kind: oauth ? 'oauth' as const : 'api-key' as const }
-  })
+  return Object.entries(parsed)
+    // Garbage guard: `{"openai": null}` (or any non-object entry) is not a
+    // credential — counting it made ping() true on a junk auth.json.
+    .filter(([, entry]) => entry !== null && typeof entry === 'object')
+    .map(([provider, entry]) => {
+      const obj = entry as Record<string, unknown>
+      const oauth = obj.type === 'oauth'
+        || typeof obj.access === 'string'
+        || typeof obj.refresh === 'string'
+      return { provider, kind: oauth ? 'oauth' as const : 'api-key' as const }
+    })
 }
 
 export function writePiSettings(next: Record<string, unknown>): void {

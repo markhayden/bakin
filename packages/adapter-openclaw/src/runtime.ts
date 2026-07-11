@@ -401,6 +401,10 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       }
     },
     remove: async (agentId: string): Promise<void> => {
+      // Removing a MISSING agent is typed not_found (R28) — matching Pi and
+      // the contract doc; previously the CLI failure surfaced as an opaque
+      // runtime_failed.
+      if (!findAgentById(agentId)) throw new RuntimeError(`Agent not found: ${agentId}`, { kind: 'not_found' })
       const workspace = getWorkspacePath(agentId)
       await this.exec(['agents', 'delete', agentId, '--force', '--json'])
       resetOpenClawConfigCache()
@@ -1028,7 +1032,9 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
    * discipline applies to runtimes too).
    */
   /** OpenClaw agents reach Bakin exec tools via their native MCP client (verified: Phase-0 spike). */
-  describeToolAccess = (): RuntimeToolAccess => ({ style: 'mcp', mcpServerTemplate: 'bakin-<agent>' })
+  // perTurnExecToolFiltering false: exec tools ride session-static per-agent
+  // MCP servers — toolsAllow/toolsDeny are unenforceable per turn here.
+  describeToolAccess = (): RuntimeToolAccess => ({ style: 'mcp', mcpServerTemplate: 'bakin-<agent>', perTurnExecToolFiltering: false })
 
   /**
    * Presence-only credential report (P2.2): provider names from the agent's
@@ -1914,15 +1920,23 @@ function applyRuntimeMessageToolPolicy(params: Record<string, unknown>, opts: Op
   if (opts.toolsMode === 'none' || opts.toolsMode === 'auto') params.toolsMode = opts.toolsMode
 }
 
-/** Loud honesty: callers supplying exec-tool filters must know OpenClaw cannot enforce them per-turn. */
+/**
+ * Loud honesty: callers supplying exec-tool filters must know OpenClaw cannot
+ * enforce them per-turn. Deduped once per agent — a caller that adopts the
+ * fields would otherwise log every single turn. (Callers can feature-detect
+ * via describeToolAccess().perTurnExecToolFiltering === false and refuse
+ * instead of degrading.)
+ */
+const warnedUnenforceableToolPolicyAgents = new Set<string>()
 function warnUnenforceableToolPolicy(args: MessageArgs, logger: AdapterLogger): void {
-  if (args.toolsAllow?.length || args.toolsDeny?.length) {
-    logger.warn('toolsAllow/toolsDeny ignored: OpenClaw exec tools ride session-static MCP servers — per-turn exec-tool filtering is unenforceable on this runtime (fields are never applied to native tools)', {
-      agentId: args.agentId,
-      toolsAllow: args.toolsAllow?.length ?? 0,
-      toolsDeny: args.toolsDeny?.length ?? 0,
-    })
-  }
+  if (!args.toolsAllow?.length && !args.toolsDeny?.length) return
+  if (warnedUnenforceableToolPolicyAgents.has(args.agentId)) return
+  warnedUnenforceableToolPolicyAgents.add(args.agentId)
+  logger.warn('toolsAllow/toolsDeny ignored: OpenClaw exec tools ride session-static MCP servers — per-turn exec-tool filtering is unenforceable on this runtime (fields are never applied to native tools)', {
+    agentId: args.agentId,
+    toolsAllow: args.toolsAllow?.length ?? 0,
+    toolsDeny: args.toolsDeny?.length ?? 0,
+  })
 }
 
 /**

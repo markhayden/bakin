@@ -445,14 +445,14 @@ describe('checkRuntime', () => {
     const results = await checkRuntime(mockRuntime)
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('ok')
-    expect(results[0].message).toMatch(/reachable/)
+    expect(results[0].message).toMatch(/can serve turns/)
   })
 
   it('reports error when ping returns false', async () => {
     mockRuntime.ping = async () => false
     const results = await checkRuntime(mockRuntime)
     expect(results[0].status).toBe('error')
-    expect(results[0].message).toMatch(/not responding/)
+    expect(results[0].message).toMatch(/cannot serve turns/)
   })
 
   it('reports error when ping throws', async () => {

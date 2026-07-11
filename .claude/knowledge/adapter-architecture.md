@@ -226,8 +226,15 @@ optional structured `providerInfo`) BEFORE it crosses the boundary.
 `RuntimeTurnError` (kind `session_death`) carries a `RuntimeTurnDiagnosis`
 assembled from provider session forensics inside the adapter. Core classifies
 on `kind` exclusively — provider error strings are interpreted in exactly one
-adapter module (`packages/adapter-openclaw/src/errors.ts`). Deep reference:
-`.claude/knowledge/session-forensics.md`.
+adapter module (`packages/adapter-openclaw/src/errors.ts`). The kind union
+also carries `not_found` (nonexistent-id CRUD mutations) and `aborted`
+(deliberate cancellation). An architecture test BANS error-message string
+matching upstream of the adapters (`tests/architecture/adapter-boundary.test.ts`,
+incl. `const msg = err.message` aliasing and `.toLowerCase()` chains) — the
+fix is always `err instanceof RuntimeError && err.kind === '…'` or a typed
+error class; for the rare genuinely-untyped source (raw `fetch` failures in
+the CLI), annotate the line with `// arch:allow-error-message <reason>`.
+Deep reference: `.claude/knowledge/session-forensics.md`.
 
 ## Typed Search Errors
 

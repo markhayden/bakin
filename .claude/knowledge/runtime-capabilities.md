@@ -151,8 +151,9 @@ the original adapter.
    exactly-once-and-last, error chunk + no throw); `onActivity` tap;
    capability honesty (declared mode ⇒ working surface, both directions —
    e.g. `delivery: 'native'` ⇔ `channels` present); provisioning
-   idempotency; nonexistent-id mutations reject `kind:'not_found'`
-   (reads return null). `teeth.conformance.test.ts` proves the checks
+   idempotency; nonexistent-id `agents.update`/`agents.remove` reject
+   `kind:'not_found'` (reads return null; workspace-file writes provision
+   on demand by design). `teeth.conformance.test.ts` proves the checks
    reject violators — a new runner is three target hooks, not new checks.
 4. Nothing else: prompts, AGENTS.md sections, provisioning, onboarding
    checks, the switch, and the management page all derive from the contract.

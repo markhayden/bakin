@@ -259,6 +259,7 @@ mock.module('@bakin/core/adapters/runtime/testing', () => ({
 // ---------------------------------------------------------------------------
 
 import { activatePlugin, findRoute, callSearchRoute, callRoute } from '../test-helpers'
+import { RuntimeError } from '../../../packages/core/src/adapters/runtime'
 const teamPlugin = (await import('../../../plugins/team/index')).default as typeof import('../../../plugins/team/index').default
 import type { ActivatedPlugin } from '../test-helpers'
 import { installedByPath } from '@bakin/core/agent-packages/markers'
@@ -845,6 +846,42 @@ describe('team plugin — PUT /:agentId/permissions', () => {
     })
     expect(status).toBe(400)
     expect((body as { error: string }).error).toMatch(/ghost/)
+  })
+
+  it("maps the adapters' typed not_found to 404 (kind classification, never message text)", async () => {
+    // Both real adapters reject allowlist mutations on a missing agent with
+    // RuntimeError kind 'not_found' (R28) — the route must classify by kind.
+    runtimeMocks.updateAllowlist.mockRejectedValueOnce(
+      new RuntimeError('anything: the message text must not matter', { kind: 'not_found' }),
+    )
+    const route = findRoute(activated.routes, 'PUT', '/:agentId/permissions')!
+    const { status } = await callRoute(route, activated.ctx, {
+      searchParams: { agentId: 'main' },
+      body: { allowAgents: ['chef'] },
+    })
+    expect(status).toBe(404)
+  })
+
+  it('maps untyped runtime failures to 500 even when the text says "not found"', async () => {
+    // The old string classifier would have returned 404 here — kind-based
+    // classification must not.
+    runtimeMocks.updateAllowlist.mockRejectedValueOnce(new Error('thing not found somewhere'))
+    const route = findRoute(activated.routes, 'PUT', '/:agentId/permissions')!
+    const { status } = await callRoute(route, activated.ctx, {
+      searchParams: { agentId: 'main' },
+      body: { allowAgents: ['chef'] },
+    })
+    expect(status).toBe(500)
+  })
+
+  it('maps the self-dispatch guard to 400 via its typed class', async () => {
+    const route = findRoute(activated.routes, 'PUT', '/:agentId/permissions')!
+    const { status, body } = await callRoute(route, activated.ctx, {
+      searchParams: { agentId: 'main' },
+      body: { allowAgents: ['main', 'chef'] },
+    })
+    expect(status).toBe(400)
+    expect((body as { error: string }).error).toMatch(/cannot dispatch to itself/)
   })
 })
 

@@ -80,10 +80,13 @@ export function apiErrorPayload(status: number, body: string): Record<string, un
 }
 
 export function isServerConnectionError(err: unknown): boolean {
-  const message = err instanceof Error ? err.message : String(err)
-  return message.includes('ECONNREFUSED') ||
-    message.includes('Unable to connect') ||
-    message.includes('fetch failed')
+  // Raw fetch() failures carry no typed taxonomy (this is the CLI probing a
+  // possibly-down local server, upstream of any adapter) — message sniffing
+  // is the only signal available here.
+  const message = err instanceof Error ? err.message : String(err) // arch:allow-error-message untyped fetch errors
+  return message.includes('ECONNREFUSED') || // arch:allow-error-message untyped fetch errors
+    message.includes('Unable to connect') || // arch:allow-error-message untyped fetch errors
+    message.includes('fetch failed') // arch:allow-error-message untyped fetch errors
 }
 
 export async function apiPostJson(

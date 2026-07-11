@@ -122,6 +122,13 @@ export const runtimeConformanceChecks = {
       if (err instanceof Error && err.message.startsWith('conformance violation')) throw err
       assertTypedRuntimeError(err, 'not_found')
     }
+    try {
+      await target.runtime.agents.remove(ghost)
+      fail('agents.remove of a missing agent resolved — must reject typed not_found')
+    } catch (err) {
+      if (err instanceof Error && err.message.startsWith('conformance violation')) throw err
+      assertTypedRuntimeError(err, 'not_found')
+    }
   },
 
   /** Threaded sends return the provider session identity for forensics/usage attribution. */

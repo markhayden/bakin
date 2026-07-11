@@ -49,7 +49,7 @@ Pi is a minimal single-session coding harness — it has no agent roster, channe
 | Surface | Behavior on Pi |
 |---|---|
 | channels | `list() → []`; sends/approvals throw typed `runtime_failed` ("not supported by the pi runtime"); the Chat plugin is the conversational surface |
-| cron | empty reads, typed failure on mutation (Bakin-owned task scheduling unaffected) |
+| cron | omitted entirely (optional contract member — consumers feature-detect; Bakin-owned task scheduling unaffected) |
 | images | **FULLY SUPPORTED, ZERO KEYS** (`images.ts` + `codex-images.ts`): the existing openai-codex OAuth drives the ChatGPT backend's hosted `image_generation` tool (gpt-image-2) — generation AND edits with input images (both probed live 2026-07-07). `providers()` reports `openai-codex` configured → plugin routes `servedBy: 'runtime'`. Explicit `provider: openai/google` routes still ride the shared direct-provider shim with a Bakin key (generate-only fallback). Caveats: the hosted tool takes no size params (`sizingHonored: false` — plugin probes real dims, exports own geometry); the endpoint is reverse-engineered (`chatgpt.com/backend-api/codex/responses`), so failures classify typed and the shim remains the keyed escape hatch |
 | media / createThread / editMessage | members genuinely absent — callers skip |
 

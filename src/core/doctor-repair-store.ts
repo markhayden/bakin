@@ -4,6 +4,14 @@ import { atomicWriteJson } from '@bakin/core/storage/atomic-write'
 import type { HealthCheckResult } from '../../packages/core/src/plugin-types'
 import type { DoctorRepairPlanReport } from './doctor-repair'
 
+/** Typed absence — routes map to 404 by instanceof, never message text. */
+export class DoctorRepairRequestNotFoundError extends Error {
+  constructor(requestId: string) {
+    super(`Doctor repair request not found: ${requestId}`)
+    this.name = 'DoctorRepairRequestNotFoundError'
+  }
+}
+
 export type DoctorRepairRequestStatus = 'planned' | 'sent' | 'completed' | 'verified' | 'failed'
 
 export interface DoctorRepairRequestEvent {
@@ -95,7 +103,7 @@ export function updateDoctorRepairRequest(
   update: (request: DoctorRepairRequest) => DoctorRepairRequest,
 ): DoctorRepairRequest {
   const path = findRequestPath(contentDir, requestId)
-  if (!path) throw new Error(`Doctor repair request not found: ${requestId}`)
+  if (!path) throw new DoctorRepairRequestNotFoundError(requestId)
   const current = readRequestFile(path)
   const next = { ...update(current), updatedAt: nowIso() }
   atomicWriteJson(path, next)

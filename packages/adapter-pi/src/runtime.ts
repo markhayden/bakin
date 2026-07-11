@@ -80,8 +80,8 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
     this._images = null
   }
 
-  /** Pi agents call Bakin exec tools natively (in-process tool bridge). */
-  describeToolAccess = (): RuntimeToolAccess => ({ style: 'in-process' })
+  /** Pi agents call Bakin exec tools natively (in-process tool bridge, filtered per turn). */
+  describeToolAccess = (): RuntimeToolAccess => ({ style: 'in-process', perTurnExecToolFiltering: true })
 
   /**
    * Presence-only credential report (P2.2): provider names from Pi's

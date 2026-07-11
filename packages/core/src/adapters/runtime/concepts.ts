@@ -150,6 +150,15 @@ export interface MessageArgs extends RuntimeMessageToolPolicy {
   metadata?: RuntimeMetadata
 }
 
+/**
+ * Fallback for `MessageArgs.oversizedOutputBytes` when the caller omits it —
+ * THE single source both adapters and `settings.dispatch.oversizedOutputBytes`
+ * default from (previously duplicated per adapter; parity by reference, not
+ * by copy). Both adapters measure the same thing: UTF-8 bytes of the turn's
+ * assistant output text, strict `>`.
+ */
+export const DEFAULT_OVERSIZED_OUTPUT_BYTES = 128 * 1024
+
 /** Token usage for one agent turn, when the runtime reports it. */
 export interface MessageUsage {
   input?: number
@@ -496,6 +505,15 @@ export interface RuntimeToolAccess {
   shimCommand?: string
   /** One canonical, style-appropriate example call. */
   example?: string
+  /**
+   * Whether this runtime can ENFORCE `MessageArgs.toolsAllow`/`toolsDeny`
+   * per turn. In-process runtimes filter their tool bridge per call (true);
+   * runtimes whose exec tools ride session-static transports (OpenClaw's
+   * per-agent MCP servers) cannot (false) — they ignore the fields with a
+   * loud warning. Callers needing a RESTRICTED turn must feature-detect
+   * this and refuse rather than degrade fail-open.
+   */
+  perTurnExecToolFiltering?: boolean
 }
 
 /**
@@ -781,11 +799,16 @@ export interface AgentRuntimeAdapter {
 
   /**
    * CRUD error contract (R28): `get` returns `null` for a missing agent —
-   * absence is a value, never a throw. Mutations (`update`, `remove`,
-   * `updateAllowlist`, workspace-file writes) on a missing agent reject with
-   * a typed `RuntimeError` kind `'not_found'`; every other CRUD failure is a
-   * typed `RuntimeError` (adapters map provider errors in their own errors
-   * module — core never classifies on message text).
+   * absence is a value, never a throw. Mutations addressing a MISSING agent
+   * (`update`, `updateAllowlist`, `remove`) reject with a typed
+   * `RuntimeError` kind `'not_found'`. Workspace-file writes are exempt BY
+   * DESIGN: they provision the workspace directory on demand (creating an
+   * agent's first file is a legitimate provisioning step, not an error).
+   * Provider/runtime failures on these surfaces are typed `RuntimeError`s
+   * (adapters map them in their own errors module — core never classifies
+   * on message text); caller-INPUT validation (invalid names/paths,
+   * unsupported options) may throw plain `Error`s — those signal programmer
+   * error before any runtime interaction, not runtime state.
    */
   agents: {
     list(): Promise<RuntimeAgent[]>

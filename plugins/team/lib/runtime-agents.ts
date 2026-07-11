@@ -10,7 +10,7 @@
 import { basename } from 'path'
 
 import { resolveAgentAvatar } from '@bakin/core/agents/avatar'
-import { getRuntimeMainAgentId, type AgentRuntimeAdapter, type RuntimeAgent } from '@bakin/core/adapters/runtime'
+import { getRuntimeMainAgentId, RuntimeError, type AgentRuntimeAdapter, type RuntimeAgent } from '@bakin/core/adapters/runtime'
 
 import type {
   AgentMeta,
@@ -203,7 +203,8 @@ export async function updateRuntimeAgentIdentity(
   fields: IdentityFields & { soul?: string; tools?: string },
 ): Promise<string[]> {
   const agent = await runtime.agents.get(agentId)
-  if (!agent) throw new Error(`Agent "${agentId}" not found in roster`)
+  // Typed not_found (R28) so routes classify by kind, never message text.
+  if (!agent) throw new RuntimeError(`Agent "${agentId}" not found in roster`, { kind: 'not_found' })
 
   const updated: string[] = []
   if (fields.name || fields.emoji || fields.role || fields.vibe || fields.primaryFunction || fields.defaultMode) {
@@ -254,13 +255,21 @@ export async function updateRuntimeAgentIdentity(
   return updated
 }
 
+/** Caller-input validation: an agent may never appear in its own subagent allowlist. */
+export class SelfDispatchError extends Error {
+  constructor(agentId: string) {
+    super(`Agent "${agentId}" cannot dispatch to itself`)
+    this.name = 'SelfDispatchError'
+  }
+}
+
 export async function setRuntimeSubagentPermissions(
   runtime: AgentRuntimeAdapter,
   agentId: string,
   allowAgents: string[],
 ): Promise<void> {
   if (allowAgents.includes(agentId)) {
-    throw new Error(`Agent "${agentId}" cannot dispatch to itself`)
+    throw new SelfDispatchError(agentId)
   }
   await runtime.agents.updateAllowlist(agentId, { replace: allowAgents })
 }
