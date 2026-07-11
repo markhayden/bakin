@@ -531,6 +531,20 @@ class PluginRegistryImpl {
    * The only other producer onto state.routes is the search auto-route
    * (an internal registrar — `ctx.registerRoute` no longer exists).
    */
+  /**
+   * Re-register a reloaded module's declarative routes. Boot registers them
+   * inside finalizeActivation; the hot-reload pipeline re-runs activate()
+   * against a swept state and must repeat this step itself or every
+   * declarative route 404s until re-link (found live: linked bits plugins
+   * after the ctx.registerRoute removal). Same validation + manifest
+   * enforcement + route-doc registration as boot.
+   */
+  registerDeclarativeRoutesForReload(plugin: BakinPlugin, pluginId: string): void {
+    const state = this.plugins.get(pluginId)
+    if (!state) throw new Error(`registerDeclarativeRoutesForReload: plugin "${pluginId}" not registered`)
+    this.registerDeclarativeRoutes(plugin, state)
+  }
+
   private registerDeclarativeRoutes(plugin: BakinPlugin, state: PluginState): void {
     const declarative = plugin.routes ?? []
     if (declarative.length === 0) return

@@ -1,3 +1,14 @@
+/**
+ * ⚠ QUARANTINED — runs as a dedicated SERIAL step, excluded from the parallel
+ * suite (package.json test script + both CI workflows). These tests race on
+ * CI's 2-vCPU runners despite per-file isolation (#638), the rtl-settle
+ * scheduler-drain + act-unmount hook (#640), and the removal of inner-hook
+ * cleanup preemption (#643) — a happy-dom/React-scheduler interaction this
+ * file's dnd profile uniquely provokes. Tracking: issue #650 (mechanism
+ * history + exit criteria there). The serial step still GATES CI — do not
+ * confuse quarantine with skip, and do not re-add this file to the parallel
+ * run without closing #650.
+ */
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
