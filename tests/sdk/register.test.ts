@@ -30,8 +30,12 @@ mock.module('../../packages/core/src/content-dir', () => {
 
 import {
   registerPlugin,
-  unregisterPlugin,
   registerPluginCleanup,
+  setNavBadge,
+  getNavBadge,
+} from '@makinbakin/sdk'
+import {
+  unregisterPlugin,
   getRegistryVersion,
   subscribeRegistry,
   getAllNavItems,
@@ -39,11 +43,9 @@ import {
   getPluginNavItems,
   getPluginRoute,
   getPluginRoutes,
-  setNavBadge,
-  getNavBadge,
   getNavBadgesSnapshot,
   subscribeNavBadges,
-} from '@makinbakin/sdk'
+} from '@makinbakin/sdk/internal'
 import { getSlotEntries } from '@makinbakin/sdk/slots'
 
 function NoopComp() { return null }

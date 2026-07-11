@@ -34,6 +34,9 @@ function makeContext(overrides: Partial<PluginContext> = {}, sourceRef: { absPat
   const exported: ExportCall[] = []
   const ctx = {
     getSettings: mock(() => ({})),
+    // Billable tools refuse when the referenced task is gone (deleted mid-run
+    // second line of defense); default stub: task exists.
+    tasks: { get: mock(async (id: string) => ({ id })) },
     assets: {
       createAsset: mock(async (input: Record<string, unknown>) => { created.push(input); return { assetId: '20260529-img-a1b2c3d4', version: 1 } }),
       addVersion: mock(async (assetId: string, input: Record<string, unknown>) => { versioned.push({ assetId, input }); return { assetId, version: 2 } }),
@@ -90,6 +93,17 @@ describe('images tools', () => {
     resetContentDir()
     rmSync(testDir, { recursive: true, force: true })
     mock.restore()
+  })
+
+  it('refuses billable generation when the task was deleted — before any billing', async () => {
+    const generate = mock(async () => { throw new Error('must never be called') })
+    const { ctx } = makeContext({
+      tasks: { get: mock(async () => null) } as never,
+      runtime: { images: { providers: mock(async () => []), generate } } as never,
+    })
+    const result = await generateImage(ctx, { prompt: 'x', taskId: 'task-deleted-1', surface: 'blog-hero' }, 'pixel')
+    expect(result.error ?? '').toContain('no longer exists')
+    expect(generate).toHaveBeenCalledTimes(0)
   })
 
   it("fails honestly when the runtime reports imageGen 'unavailable' — before any route math (P4.1)", async () => {

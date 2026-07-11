@@ -27,6 +27,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { cleanup, render, screen, waitFor, act } from '@testing-library/react'
+import '../rtl-settle'
 import { mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -54,15 +55,15 @@ mock.module('../../packages/core/src/content-dir', () => {
 })
 
 import { PluginHost } from '../../packages/host/src/plugin-host/PluginHost'
+import { registerPlugin } from '@makinbakin/sdk'
 import {
   configureLazyPlugins,
   getAllNavItems,
   getPluginLoadState,
-  registerPlugin,
   setManifestNav,
   setPluginLoadState,
   unregisterPlugin,
-} from '@makinbakin/sdk'
+} from '@makinbakin/sdk/internal'
 import { Slot } from '@makinbakin/sdk/slots'
 
 function SlotPage() {

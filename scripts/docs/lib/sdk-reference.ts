@@ -101,7 +101,6 @@ const TYPE_DOMAIN_GROUPS: Record<string, string> = {
   // Manifest
   PluginPermission: 'Manifest Contracts',
   RuntimeCapability: 'Manifest Contracts',
-  PluginEntryPoints: 'Manifest Contracts',
   SecretDeclaration: 'Manifest Contracts',
   ApiRouteContribution: 'Manifest Contracts',
   JsonSchemaContribution: 'Manifest Contracts',
@@ -220,6 +219,9 @@ export function readSdkExports(): SdkSubpath[] {
 
   const subpathSources: Array<{ subpath: string; importPath: string; sourcePath: string }> = []
   for (const [subpath, source] of Object.entries(pkg.exports)) {
+    // Host-shell plumbing, not author API — deliberately absent from the
+    // generated SDK reference (see packages/sdk/src/internal/index.ts).
+    if (subpath === './internal') continue
     const importPath = subpath === '.' ? '@makinbakin/sdk' : `@makinbakin/sdk${subpath.slice(1)}`
     const sourcePath = join(repoRoot, 'packages/sdk', source.replace(/^\.\//, ''))
     subpathSources.push({ subpath, importPath, sourcePath })

@@ -51,6 +51,6 @@ const brandsPlugin: BakinPlugin = definePlugin({
 
     log.info('Brands plugin activated')
   },
-}) as unknown as BakinPlugin
+})
 
 export default brandsPlugin

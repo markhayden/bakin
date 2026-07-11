@@ -92,3 +92,6 @@ export { readBrainstormSseResponse } from '../../../../src/components/integrated
 
 /** Structured-value (JSON → human) renderers — labeled prose, one-line summary, tool-envelope unwrap. */
 export { humanizeKey, formatStructured, summarizeStructured, unwrapToolResult, type FormatStructuredOptions } from '@bakin/core/format'
+
+/** Fetch a plugin's own API route (`/api/plugins/<id>/<path>`) with JSON defaults. */
+export { pluginFetch, pluginApiUrl } from './plugin-fetch'

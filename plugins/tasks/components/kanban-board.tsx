@@ -24,6 +24,7 @@ import { toast } from "@makinbakin/sdk/hooks"
 import { useGateStatus } from '../hooks/use-gate-status'
 import { useBudgetStatus, budgetHoldReason, type BudgetHold } from '../hooks/use-budget-status'
 import { useBrandStatus, brandHoldReason, type BrandHold } from '../hooks/use-brand-status'
+import { useLiveActivity } from '../hooks/use-live-activity'
 import { Button, Skeleton } from "@makinbakin/sdk/ui"
 import { Kanban, Table2, Plus } from 'lucide-react'
 import type { TaskScoreInfo } from './task-card'
@@ -247,6 +248,7 @@ export function KanbanBoard() {
   // spend gate is currently holding — derived from the side-effect-free
   // status poll, never from task metadata.
   const budgetStatus = useBudgetStatus()
+  const liveActivity = useLiveActivity()
   const budgetHolds = useMemo(() => {
     const holds: Record<string, BudgetHold> = {}
     for (const task of columns.todo) {
@@ -530,6 +532,7 @@ export function KanbanBoard() {
                       childTaskLabels={childTaskLabels}
                       budgetHolds={budgetHolds}
                       brandHolds={brandHolds}
+                      liveActivity={liveActivity}
                       warnUnbranded={warnUnbranded}
                       scoreMap={scoreMap}
                       onDelete={setDeleteTarget}

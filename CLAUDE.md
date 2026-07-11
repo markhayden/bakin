@@ -154,7 +154,7 @@ process.env.PI_HOME = pathJoin(testDir, 'pi')
 import { ... } from '...'
 ```
 
-Run the full suite with `bun run test` (CI) or `bun run test:watch` (dev) — both pass `--path-ignore-patterns "dev/**"` so the dockerized-rig's disposable home (`dev/bakin-instances/`, gitignored) doesn't leak stray test files into the run (the pattern is root-anchored — `tests/dev/` still runs; an unanchored `**/dev/**` once hid those tests from every local run). Individual file: `bun test tests/path/to/foo.test.ts --isolate`. `--isolate` gives each test file a fresh global so `mock.module` overlays don't leak across files. Integration tests that do REAL HTTP must use `Bun.fetch` — the happy-dom preload replaces global `fetch` with a browser emulation that breaks on real sockets.
+Run the full suite with `bun run test` (CI) or `bun run test:watch` (dev) — both pass `--path-ignore-patterns "dev/**"` so the dockerized-rig's disposable home (`dev/bakin-instances/`, gitignored) doesn't leak stray test files into the run (the pattern is root-anchored — `tests/dev/` still runs; an unanchored `**/dev/**` once hid those tests from every local run). Individual file: `bun test tests/path/to/foo.test.ts --isolate`. `--isolate` gives each test file a fresh process/global so `mock.module` overlays and mounted React roots don't leak across files — the full suite and CI run with it too (RTL auto-cleanup is inert under bun:test, so shared-process runs corrupt co-scheduled component tests; see tests/setup.ts for why the preload must NOT import @testing-library/react). Every test file that renders with RTL must also `import '<rel>/rtl-settle'` — bun wipes the DOM between tests but never unmounts React roots, and unmounting outside act() races time-sliced renders on slow runners (intra-file corruption CI hit that fast dev machines never reproduce). Integration tests that do REAL HTTP must use `Bun.fetch` — the happy-dom preload replaces global `fetch` with a browser emulation that breaks on real sockets.
 
 Additional mandatory rules:
 - **Always clean up:** `afterAll(() => rmSync(testDir, { recursive: true, force: true }))`
@@ -164,7 +164,7 @@ Additional mandatory rules:
 - **Never hardcode `~/.bakin/`** or `process.env.HOME` in test fixtures
 - **Use `tests/plugins/test-helpers.ts`** (`activatePlugin`, `callRoute`, `callTool`) for plugin tests — these provide properly isolated mock contexts
 
-If a test does not mock the content-dir resolvers, it **will** eventually write to `~/.bakin/` and corrupt production data. Pure scanner tests under `tests/architecture/` are the only exception because they do not import app modules; the mock checker hook handles that case explicitly.
+If a test does not mock the content-dir resolvers, it **will** eventually write to `~/.bakin/` and corrupt production data. Pure scanner tests under `tests/architecture/` and the external-author-style tests under `tests/sdk-testing/` and `examples/*/tests/` are the only exceptions — the former import no app modules, the latter import only the published `@makinbakin/sdk/testing` harness (whose per-test temp dir IS the isolation); the mock checker hook handles both cases explicitly.
 
 ## Key Patterns
 

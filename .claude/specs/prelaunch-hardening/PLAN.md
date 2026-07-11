@@ -261,6 +261,7 @@ PR 4 (cleanup) — independent
 **Verify:** docs build + snippet check.
 **Dependencies:** T17–T22 (document what shipped). **Files:** `docs/src/content/docs/extending/plugins/*`. **Size:** M.
 **Commit:** `docs(plugins): SSE, storage scoping, search guide, hooks catalog`
+**Note (PR #635 review):** mention in release-facing docs/notes that the manifest `entry`/`tests` removal breaks previously-installed user plugins on host upgrade — remedy is stripping the field (tombstone message spells it out) or reinstalling; no automated migration by design (no-shims directive).
 
 ### Checkpoint 2b
 - [ ] Spec Success Criteria #2, #3, #6 met; PR merged
@@ -293,7 +294,7 @@ PR 4 (cleanup) — independent
 **Commit:** `refactor(core)!: mock runtime defaults to minimal capability shape`
 
 ### Task 28: Implement OpenClaw sessions.list/get
-**Description:** Read OpenClaw's session store (adapter-private paths) so `sessions.list`/`get` return real data matching Pi's semantics; flip on the sessions honesty pin from T26.
+**Description:** Read OpenClaw's session store (adapter-private paths) so `sessions.list`/`get` return real data matching Pi's semantics; flip on the sessions honesty pin from T26. Note: the sessions.json resolve + mtime/LRU cache helpers (`resolveOpenClawSessionFile`/`readSessionStoreCached`) were deleted as dead code in the PR #633 review fixes — resurrect from git history (`session-store.ts` pre-fix) if useful here.
 **Acceptance:** [ ] Conformance sessions pin green on all 3 targets; memory-plugin tier + diagnostics behavior verified on OpenClaw mock.
 **Verify:** suite ×3; targeted memory-plugin test.
 **Dependencies:** T26. **Files:** `packages/adapter-openclaw/src/runtime.ts` (or new `sessions.ts`), tests. **Size:** M.

@@ -23,13 +23,20 @@ import {
   type PluginLockEntry,
 } from '@bakin/core/plugins/lockfile'
 import { parseManifestPermissions } from '@bakin/core/plugins/permissions'
+import { readPluginManifestJson } from '@bakin/core/plugins/manifest'
+import { checkBakinRangeCompatibility } from '@bakin/core/plugins/compat'
+import type { PluginManifest } from '@makinbakin/sdk/types'
 import { acquireLock, releaseLock } from '@/core/install-core/install-lock'
 import { commitStaging } from '@/core/install-core/transaction'
 import { materializeArtifact } from './consumer-install'
 import { isExternalsContractCompatible } from './provenance'
 import type { WhiskitArtifactResolver } from './resolver'
 
-export type LiveInstallErrorCode = 'MANIFEST_MISMATCH' | 'EXTERNALS_CONTRACT_INCOMPATIBLE'
+export type LiveInstallErrorCode =
+  | 'MANIFEST_MISMATCH'
+  | 'MANIFEST_INVALID'
+  | 'INCOMPATIBLE_HOST'
+  | 'EXTERNALS_CONTRACT_INCOMPATIBLE'
 
 export class LiveInstallError extends Error {
   readonly code: LiveInstallErrorCode
@@ -58,7 +65,8 @@ export interface InstallArtifactResult {
 /**
  * Install a published artifact into the content dir + lockfile. Throws
  * NO_PREBUILT_ARTIFACT / CHECKSUM_MISMATCH (from materialize) or
- * MANIFEST_MISMATCH / EXTERNALS_CONTRACT_INCOMPATIBLE.
+ * MANIFEST_MISMATCH / MANIFEST_INVALID / INCOMPATIBLE_HOST /
+ * EXTERNALS_CONTRACT_INCOMPATIBLE.
  */
 export async function installArtifact(opts: InstallArtifactOptions): Promise<InstallArtifactResult> {
   const contentDir = getContentDir()
@@ -76,18 +84,30 @@ export async function installArtifact(opts: InstallArtifactOptions): Promise<Ins
       stagingRoot,
     )
     try {
-      // Validate the manifest in the extracted artifact.
+      // Full manifest parse — the artifact path gets the same tombstone and
+      // shape enforcement as source installs (not just an id/permissions peek).
       const manifestPath = join(materialized.stagingDir, 'bakin-plugin.json')
-      const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8')) as {
-        id?: string
-        version?: string
-        permissions?: unknown
+      let manifest: PluginManifest
+      try {
+        manifest = readPluginManifestJson(readFileSync(manifestPath, 'utf-8'))
+      } catch (err) {
+        throw new LiveInstallError(
+          'MANIFEST_INVALID',
+          `artifact manifest is invalid: ${err instanceof Error ? err.message : String(err)}`,
+        )
       }
       if (manifest.id !== opts.pluginId) {
         throw new LiveInstallError(
           'MANIFEST_MISMATCH',
           `artifact manifest id "${manifest.id}" does not match requested plugin "${opts.pluginId}"`,
         )
+      }
+
+      // Same host-compatibility gate as source installs (pre-consent there;
+      // pre-commit here).
+      const compat = checkBakinRangeCompatibility(manifest.bakin)
+      if (!compat.ok) {
+        throw new LiveInstallError('INCOMPATIBLE_HOST', compat.message)
       }
 
       // The host must still provide the externals the artifact was built for.

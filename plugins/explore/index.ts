@@ -189,6 +189,6 @@ const explorePlugin: BakinPlugin = definePlugin({
   async activate() {
     log.info('Explore plugin activated')
   },
-}) as unknown as BakinPlugin
+})
 
 export default explorePlugin

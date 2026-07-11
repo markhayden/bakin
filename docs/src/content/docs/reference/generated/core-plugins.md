@@ -20,6 +20,20 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>none</td>
     </tr>
     <tr>
+      <td>Brands<br/><span>Structured brand definitions — voice, palette, rules, and reference assets injected per-task so agent output stays on brand</span></td>
+      <td><code>brands</code></td>
+      <td>Core</td>
+      <td><code>0.1.0</code></td>
+      <td>none</td>
+    </tr>
+    <tr>
+      <td>Chat<br/><span>Direct conversations with your agents — streamed multi-chat sessions from the Bakin UI, runtime-agnostic via the adapter layer</span></td>
+      <td><code>chat</code></td>
+      <td>Core</td>
+      <td><code>0.1.0</code></td>
+      <td>none</td>
+    </tr>
+    <tr>
       <td>Explore<br/><span>Discover and install official agents, plugins, and packs — the do-more-with-Bakin storefront</span></td>
       <td><code>explore</code></td>
       <td>Core</td>
@@ -72,7 +86,7 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Projects<br/><span>Project management with specs, checklists, task linking, and agent access via MCP tools</span></td>
       <td><code>projects</code></td>
       <td>Official</td>
-      <td><code>0.5.1</code></td>
+      <td><code>0.5.2</code></td>
       <td><code>tasks</code> <code>assets</code> <code>team</code></td>
     </tr>
     <tr>
@@ -107,5 +121,5 @@ description: Generated catalog of official plugins supported by Bakin.
 </table>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 7, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 9, 2026 · Bakin 0.0.0-dev</span>
 </aside>

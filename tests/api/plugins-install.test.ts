@@ -81,8 +81,7 @@ function writeSourceManifest(manifest: Record<string, unknown> = {}) {
       version: '1.0.0',
       bakin: '>=1.0.0',
       description: 'Test plugin',
-      entry: { server: 'index.ts' },
-      permissions: [],
+            permissions: [],
       ...manifest,
     }, null, 2),
   )

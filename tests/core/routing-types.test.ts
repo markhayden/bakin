@@ -107,6 +107,7 @@ describe('routing types', () => {
       id: 'sample',
       name: 'Sample',
       version: '1.0.0',
+      activate() {},
       routes: [
         defineRoute({
           path: '/',

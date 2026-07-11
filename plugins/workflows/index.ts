@@ -164,6 +164,6 @@ const workflowsPlugin: BakinPlugin = definePlugin({
       log.warn(`Shutting down with ${active.length} active workflow instance(s)`)
     }
   },
-}) as unknown as BakinPlugin
+})
 
 export default workflowsPlugin

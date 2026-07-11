@@ -5,6 +5,7 @@
  */
 import { describe, it, expect, afterEach, mock } from 'bun:test'
 import { cleanup, render } from '@testing-library/react'
+import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
 

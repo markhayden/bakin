@@ -23,7 +23,7 @@ import { createLogger } from '@/core/logger'
 import { appendAudit } from '@/core/audit'
 import { pluginRegistry } from '@/core/plugin-registry'
 import { stampPluginResponse } from '@/core/plugin-host/version-stamp'
-import type { PluginContext, APIRoute } from '@bakin/core/plugin-types'
+import type { PluginContext, RegisteredAPIRoute } from '@bakin/core/plugin-types'
 import { dispatchRoute } from '@bakin/core/routing'
 
 const log = createLogger('plugin-route')
@@ -67,10 +67,10 @@ function buildCtx(pluginId: string): PluginContext {
  * `:param` segments. Exact matches take priority over parameterized ones.
  */
 function matchRoute(
-  routes: APIRoute[],
+  routes: RegisteredAPIRoute[],
   path: string,
   method: string,
-): { route: APIRoute; params: Record<string, string> } | null {
+): { route: RegisteredAPIRoute; params: Record<string, string> } | null {
   const upperMethod = method.toUpperCase()
 
   const exact = routes.find(r => r.path === path && r.method === upperMethod)

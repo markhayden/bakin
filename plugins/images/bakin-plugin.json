@@ -4,9 +4,6 @@
   "version": "0.1.0",
   "bakin": ">=1.0.0",
   "description": "Provider-routed image generation, import, export, prompt routing, and platform surface profiles",
-  "entry": {
-    "server": "index.ts"
-  },
   "contentFiles": [],
   "secrets": [
     {
@@ -25,7 +22,6 @@
       "required": false
     }
   ],
-  "tests": "tests/",
   "dependencies": [
     "assets",
     "models"

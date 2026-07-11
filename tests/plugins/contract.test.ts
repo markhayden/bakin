@@ -88,7 +88,7 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
   resetOpenClawHome: () => {},
 }))
 
-import type { PluginContext, BakinPlugin, APIRoute, NavItem } from '@bakin/core/plugin-types'
+import type { PluginContext, BakinPlugin, RegisteredAPIRoute, NavItem } from '@bakin/core/plugin-types'
 import { BakinEventBus } from '../../src/lib/events/event-bus'
 import { MarkdownStorageAdapter } from '../../src/lib/storage/markdown-adapter'
 import fs from 'fs'
@@ -111,10 +111,10 @@ const ORIGINAL_OPENCLAW_HOME = process.env.OPENCLAW_HOME
 
 function createMockContext(pluginId: string): {
   ctx: PluginContext
-  routes: APIRoute[]
+  routes: RegisteredAPIRoute[]
   navItems: NavItem[]
 } {
-  const routes: APIRoute[] = []
+  const routes: RegisteredAPIRoute[] = []
   const navItems: NavItem[] = []
 
   if (!fs.existsSync(TEST_DIR)) {
@@ -158,7 +158,6 @@ function createMockContext(pluginId: string): {
       resolveStoreFile: async () => null,
     },
     registerNav: (items) => navItems.push(...items),
-    registerRoute: (route) => routes.push(route),
     registerSlot: () => {},
     registerExecTool: () => {},
     registerSkill: () => {},
@@ -173,6 +172,7 @@ function createMockContext(pluginId: string): {
       log: () => {},
       audit: () => {},
     },
+    log: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
     search: {
       registerContentType: () => maybeAutoRegisterSearchRoute(),
       registerFileBackedContentType: () => maybeAutoRegisterSearchRoute(),
@@ -232,14 +232,11 @@ describe('Plugin Contract', () => {
         expect(typeof plugin.activate).toBe('function')
       })
 
-      it('exposes at least one route (declarative or via activate)', async () => {
-        const { ctx, routes } = createMockContext(plugin.id)
-        await plugin.activate(ctx)
-        // T20: every in-repo plugin declares routes statically on
-        // `plugin.routes`. Older plugins may still use the legacy
-        // `ctx.registerRoute(...)` adapter during activate. Count both.
-        const declarative = (plugin as { routes?: unknown[] }).routes ?? []
-        expect(declarative.length + routes.length).toBeGreaterThan(0)
+      it('exposes at least one declarative route', () => {
+        // Every in-repo plugin declares routes statically on `plugin.routes`;
+        // the legacy `ctx.registerRoute` adapter is gone (T19).
+        const declarative = plugin.routes ?? []
+        expect(declarative.length).toBeGreaterThan(0)
       })
 
       it('has a settingsSchema with valid fields', () => {

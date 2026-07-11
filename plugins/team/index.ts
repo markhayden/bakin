@@ -126,7 +126,7 @@ const teamPlugin: BakinPlugin = definePlugin({
         type: 'select',
         label: 'Task routing provider',
         description: 'LLM provider for resolving team-assigned tasks to the best-suited member (key from env or secret store)',
-        options: ['anthropic', 'openai', 'google'],
+        options: [{ value: 'anthropic', label: 'anthropic' }, { value: 'openai', label: 'openai' }, { value: 'google', label: 'google' }],
         default: 'anthropic',
       },
       {
@@ -760,6 +760,6 @@ const teamPlugin: BakinPlugin = definePlugin({
   onShutdown() {
     log.info('Shutting down team plugin')
   },
-}) as unknown as BakinPlugin
+})
 
 export default teamPlugin

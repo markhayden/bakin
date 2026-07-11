@@ -46,6 +46,8 @@ bakin plugins upgrade my-plugin
 
 `--check` records the latest published version in the plugin lockfile; the plugins UI and CLI surface `update available` when it differs from the installed version. `upgrade` refetches the latest artifact through the same verify/extract pipeline as install, gates widened permissions behind consent before touching disk, refuses artifacts built for a newer host contract (update Bakin first), and atomically replaces the installed plugin.
 
+One host-upgrade note for older plugins: the manifest `entry` and `tests` fields were removed. A previously-installed plugin whose manifest still carries them fails to load after a Bakin upgrade with a message naming the field — the remedy is deleting the field from the installed `bakin-plugin.json` (or reinstalling the plugin); there is no automated migration.
+
 ## Develop Against a Live Bakin
 
 ```sh
@@ -54,6 +56,10 @@ BAKIN_DEV_HOTRELOAD=1 bakin start  # rebuild + hot-swap on save
 ```
 
 Linked plugins rebuild through the same build backend on every save — in-process fast path from a source run, system `bun` under the compiled binary — and hot-swap into the browser without a page reload. Build failures keep the previous version active and surface in the dev overlay.
+
+## Starting Point
+
+The reference plugin is mirrored to [`markhayden/bakin-plugin-starter`](https://github.com/markhayden/bakin-plugin-starter) on stable releases — fork it for a complete, working starting point whose SDK dependency matches a released Bakin.
 
 ## Next
 

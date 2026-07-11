@@ -34,6 +34,17 @@ function isPureArchitectureTest(p) {
   return /(^|\/)tests\/architecture\/.+\.test\.tsx?$/.test(p)
 }
 
+// tests/sdk-testing/ holds external-author acceptance fixtures for
+// @makinbakin/sdk/testing, and examples/*/tests/ are example-plugin tests
+// written the external-author way. Both deliberately import ONLY the
+// published SDK surface (no repo-internal modules to mock) — isolation comes
+// from the harness itself, which roots ctx.storage in a per-test temp dir.
+// Requiring content-dir mocks here would invalidate exactly what they prove.
+function isSdkTestingFixture(p) {
+  return /(^|\/)tests\/sdk-testing\/.+\.test\.tsx?$/.test(p)
+    || /(^|\/)examples\/[^/]+\/tests\/.+\.test\.tsx?$/.test(p)
+}
+
 // Matches both `mock.module('...', ...)` (Bun) and `vi.mock('...', ...)` (Vitest).
 const MOCK_RE = /(?:vi\.mock|mock\.module)\(\s*['"]([^'"]+)['"]/g
 
@@ -130,7 +141,7 @@ function check(filePath) {
   }
 
   const missing = []
-  if (!isPureArchitectureTest(filePath)) {
+  if (!isPureArchitectureTest(filePath) && !isSdkTestingFixture(filePath)) {
     for (const req of REQUIRED_PATTERNS) {
       const found = mockPaths.some(req.matches)
       if (found) continue

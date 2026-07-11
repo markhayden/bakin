@@ -8,6 +8,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { render, cleanup, screen, waitFor, fireEvent } from '@testing-library/react'
+import '../../rtl-settle'
 
 const contentDirMock = () => ({
   getContentDir: () => '/tmp/bakin-test-lesson-highlight',

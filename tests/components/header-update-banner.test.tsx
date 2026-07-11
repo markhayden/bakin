@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import '../rtl-settle'
 import { SidebarContext } from '@/context/sidebar-context'
 import { Header } from '../../packages/host/src/components/layout/header'
 

@@ -256,7 +256,8 @@ export function getSource(id: string): DefinitionSource | undefined {
 
 /**
  * Test-only helper: clear all registry state. Production code must not call
- * this — plugin hot-reload uses unregisterPluginDefinitions and agent-package
+ * this — the plugin registry's sweep (activation failure, hot reload,
+ * deactivate/uninstall) calls unregisterPluginDefinitions, and agent-package
  * removal uses unregisterAgentPackageDefinitions instead.
  */
 export function clearSourceRegistry(): void {

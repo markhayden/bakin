@@ -263,7 +263,7 @@ import { activatePlugin, findRoute, callSearchRoute, callRoute } from '../test-h
 const teamPlugin = (await import('../../../plugins/team/index')).default as typeof import('../../../plugins/team/index').default
 import type { ActivatedPlugin } from '../test-helpers'
 import { installedByPath } from '@bakin/core/agent-packages/markers'
-import type { APIRoute, PluginContext } from '@bakin/core/plugin-types'
+import type { RegisteredAPIRoute, PluginContext } from '@bakin/core/plugin-types'
 
 // ---------------------------------------------------------------------------
 // Lifecycle
@@ -372,7 +372,7 @@ const JUNK = new Uint8Array([0x00, 0x01, 0x02, 0x03])
 // The upload route reads a raw binary body; callRoute JSON-encodes bodies, so
 // build the Request directly and invoke the handler (agentId comes via query,
 // matching how the dispatcher injects the path param).
-async function uploadAvatar(route: APIRoute, ctx: PluginContext, agentId: string, bytes: Uint8Array): Promise<Response> {
+async function uploadAvatar(route: RegisteredAPIRoute, ctx: PluginContext, agentId: string, bytes: Uint8Array): Promise<Response> {
   const req = new Request(`http://localhost/${agentId}/avatar?agentId=${agentId}`, {
     method: 'POST',
     headers: { 'content-type': 'application/octet-stream' },
@@ -412,7 +412,7 @@ describe('team plugin — avatar upload (dual-format)', () => {
     const serve = findRoute(activated.routes, 'GET', '/:agentId/avatar')!
     // Undeclared statuses make the dev-mode response validator warn on every
     // conditional browser refetch ("undeclared response status 304").
-    // `responses` is a RouteDefinition field the legacy APIRoute type omits.
+    // `responses` is a RouteDefinition field the legacy RegisteredAPIRoute type omits.
     const declared = (serve as unknown as { responses?: Record<string, unknown> }).responses
     expect(Object.keys(declared ?? {})).toContain('304')
 

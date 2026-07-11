@@ -101,7 +101,7 @@ async function publishVersion(v: string, permissions: string[] = ['storage.read'
   mkdirSync(join(builtDir, 'dist'), { recursive: true })
   writeFileSync(join(builtDir, 'bakin-plugin.json'), JSON.stringify({
     id: 'messaging', name: 'Messaging', version: v, bakin: '>=0.0.1',
-    description: 'fixture', entry: { server: 'index.ts' }, permissions,
+    description: 'fixture', permissions,
   }))
   writeFileSync(join(builtDir, 'dist', 'index.js'), `export default { id: 'messaging', version: '${v}', activate() {} }\n`)
 

@@ -128,7 +128,6 @@ function makeCtx() {
       resolveStoreFile: mock(async () => null),
     },
     registerNav: mock(),
-    registerRoute: mock(),
     registerSlot: mock(),
     registerExecTool: mock(),
     registerSkill: mock(),
@@ -140,6 +139,7 @@ function makeCtx() {
     getSettings: (() => ({})) as PluginContext['getSettings'],
     updateSettings: mock(),
     activity: { log: mock(), audit: mock() },
+    log: { debug: mock(), info: mock(), warn: mock(), error: mock() },
     search: {
       registerContentType: mock(),
       registerFileBackedContentType: mock(),

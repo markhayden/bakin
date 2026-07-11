@@ -3,7 +3,7 @@ title: Client UI
 description: Register plugin navigation, pages, routes, slots, and shell-integrated UI through @makinbakin/sdk.
 ---
 
-Client entries use `registerPlugin()` from `@makinbakin/sdk`. Beyond `navItems`/`routes`/`slots`, a plugin can register `search: { hitRenderers }` — plain data-mapping functions (`(hit) => { title, subtitle?, href, thumbnailUrl?, icon?, meta? }`; `meta` is the small type · agent · date line under the subtitle) that render its content type in the global ⌘K search overlay; unknown types get a default renderer. Keep UI contributions predictable and built from SDK components where practical. Plugin UI should feel like part of Bakin: dense enough for repeated work, accessible, and clear about loading, empty, error, and permission states.
+Client entries use `registerPlugin()` from `@makinbakin/sdk`. Beyond `navItems`/`routes`/`slots`, a plugin can register `search: { hitRenderers }` — plain data-mapping functions (`(hit) => { title, subtitle?, href, thumbnailUrl?, icon?, meta? }`; `meta` is the small type · agent · date line under the subtitle) that render its content type in the global ⌘K search overlay; unknown types get a default renderer (see [Search](/docs/extending/plugins/search/)). For live UI updates when server-side data changes, subscribe with `usePluginEvent` — see [Realtime Events](/docs/extending/plugins/realtime/). Keep UI contributions predictable and built from SDK components where practical (`pluginFetch`/`usePluginJsonFetch` for your own routes, `PluginHeader`, `EmptyState`, `ConfirmDialog`, `TurnOutputView` for agent turn output). The reference plugin's [`client.tsx`](https://github.com/markhayden/bakin/tree/main/examples/reference-plugin) is the worked example. Plugin UI should feel like part of Bakin: dense enough for repeated work, accessible, and clear about loading, empty, error, and permission states.
 
 The tested minimal client entry lives at `docs/snippets/plugin-basic/client.tsx`.
 
@@ -123,6 +123,27 @@ registerPlugin({
 ```
 
 Patterns support exact paths and dynamic segments in `:id`, `[id]`, or `$id` form. Declare every registered pattern in `bakin-plugin.json` `contributes.routes` so direct navigation lazy-loads your client; if a route is visible in navigation, also declare it in `contributes.clientRoutes` for docs generation.
+
+## Calling your API routes
+
+Never hand-build `/api/plugins/<id>/...` strings — use `pluginFetch` (raw
+`Response`, JSON defaults; plain-object bodies are stringified with the JSON
+content type) or `usePluginJsonFetch` (the `{ data, loading, error, refresh }`
+lifecycle) scoped to your plugin id:
+
+```tsx
+import { pluginFetch } from '@makinbakin/sdk/utils'
+import { usePluginJsonFetch } from '@makinbakin/sdk/hooks'
+
+// component lifecycle
+const { data, loading, refresh } = usePluginJsonFetch<{ items: Item[] }>('docs-basic', 'items')
+
+// imperative mutation
+await pluginFetch('docs-basic', 'items', { method: 'POST', body: { name: 'New item' } })
+```
+
+Both compose with the host's dev-mode hot-reload fetch instrumentation
+automatically.
 
 ## Page Slots
 

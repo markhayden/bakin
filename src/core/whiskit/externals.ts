@@ -32,6 +32,7 @@ export const SDK_EXTERNALS: string[] = [
   '@makinbakin/sdk/utils',
   '@makinbakin/sdk/metadata',
   '@makinbakin/sdk/routing',
+  '@makinbakin/sdk/internal',
 ]
 
 /**

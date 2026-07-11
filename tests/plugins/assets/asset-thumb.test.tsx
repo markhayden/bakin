@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'bun:test'
 import { render, screen } from '@testing-library/react'
+import '../../rtl-settle'
 import { AssetThumb } from '../../../plugins/assets/components/versioned/atoms'
 
 describe('AssetThumb', () => {

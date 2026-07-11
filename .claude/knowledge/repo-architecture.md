@@ -168,10 +168,8 @@ packages/adapter-openclaw/src/
 ├── approval-helpers.ts     ← Bakin ⇄ OpenClaw approval payload mapping
 ├── cron-store.ts           ← runtime.cron persistence + CLI argv + parsing
 ├── memory.ts               ← runtime memory tier reads
-├── session-activity.ts     ← session-store cache + legacy transcript tail
-│                             (unused by streamChat since WS1a; PR 1b deletes
-│                             the live tail)
-├── activity-summary.ts     ← transcript records → displayable activity
+├── session-store.ts        ← deterministic agent/sessionKey → CLI session-id mapping
+├── activity-summary.ts     ← tool-call/shell summarizers + redacting previews
 ├── trajectory-forensics.ts ← read-only session death-watch / post-mortems
 ├── image-inference.ts      ← `openclaw image` arg formatting + parsers
 ├── errors.ts               ← the ONE place provider error text → typed RuntimeError
@@ -386,7 +384,7 @@ Browser →  HTTP request → Bakin (server.ts)
   Dispatch by URL prefix:
     /api/sse           → handleSSE                   (streams)
     /api/*             → dispatchWebHandler(handler) (Web Fetch shape)
-    /mcp               → handleMcpRequest            (SSE + Streamable HTTP)
+    /mcp               → handleMcpRequest            (Streamable HTTP only; sessionless GET → 405)
     /api/plugins/<id>/<path> → plugin catch-all router
     /vendor/*          → static handler (from public/vendor or embedded)
     /_app/*            → host shell bundle (packages/host/dist; NOT /assets —
@@ -488,7 +486,7 @@ Created by `bakin onboard` or `initBakinHome()`.
 | Core plugin config | `bakin.config.ts` | Imported by `server.ts` + `registerCorePlugins` |
 | Plugin loading | `src/core/plugin-registry.ts` | `registerCorePlugins(CORE_PLUGIN_IMPORTS)` + `pluginRegistry` called by `server.ts` during startup |
 | HTTP router | `src/core/server/request-handler.ts` | `createRequestHandler({...})` factory passed to `http.createServer` by `server.ts` |
-| MCP tools | `src/core/mcp-server.ts` | Calls `getAllExecTools()` from `src/core/exec-tools/registry.ts`; built-in tools self-register via `addExecTool()` on import (`src/core/exec-tools/tools/*`), plugins register via `ctx.registerExecTool()`. Supports Streamable HTTP and SSE transports. |
+| MCP tools | `src/core/mcp-server.ts` | Calls `getAllExecTools()` from `src/core/exec-tools/registry.ts`; built-in tools self-register via `addExecTool()` on import (`src/core/exec-tools/tools/*`), plugins register via `ctx.registerExecTool()`. Streamable HTTP only — sessionless GETs are 405 (the legacy SSE auto-handshake made codex MCP clients stall a fixed 5s per turn before falling back; provisioned OpenClaw entries declare `type: "streamable-http"` because the embedded runtime defaults to legacy SSE). |
 | Runtime adapters | `packages/adapter-*` | Provider-specific runtime implementations for agents, channels, approvals, cron, memory, and raw access gates |
 | Doctor cron | `src/core/doctor.ts` | `doctor.start(contentDir, projectRoot)` from `server.ts`. ~200-line orchestrator (cron + cache + audit + notify); every check is plugin-registered. Deep ref: `.claude/knowledge/doctor-and-health-checks.md`. |
 | TanStack router | `packages/host/src/router.ts` | Boots on client, matches URL to `routes/*.tsx` |

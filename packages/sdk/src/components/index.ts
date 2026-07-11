@@ -88,6 +88,9 @@ export type { SortDir } from '@/components/sortable-head'
 /** Tab list with animated underline indicator. */
 export { UnderlineTabs } from '@/components/underline-tabs'
 export type { UnderlineTab } from '@/components/underline-tabs'
+/** THE single renderer for normalized turn chunks (text/tool/status/error) — turn-output surfaces consume this, never hand-rolled format heuristics. */
+export { TurnOutputView, TurnToolChip, foldTurnChunks } from '@/components/turn-output-view'
+export type { TurnOutputViewProps, TurnToolChipState, TurnTextSegment, FoldedTurnOutput } from '@/components/turn-output-view'
 
 // Notification channel icon (from workflows plugin registry)
 

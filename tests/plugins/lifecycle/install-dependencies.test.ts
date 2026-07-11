@@ -44,8 +44,7 @@ function writePluginSource(id: string, dependencies: string[]): string {
     version: '1.0.0',
     bakin: '>=1.0.0',
     description: `${id} test plugin`,
-    entry: { server: 'index.ts' },
-    dependencies,
+        dependencies,
     permissions: [],
   }, null, 2))
   writeFileSync(join(dir, 'index.ts'), `export default { id: '${id}', activate() {} }`)

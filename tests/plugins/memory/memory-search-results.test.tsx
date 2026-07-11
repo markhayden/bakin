@@ -11,6 +11,7 @@
  */
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import '../../rtl-settle'
 
 // Defensive isolation per CLAUDE.md — this component never reads from disk,
 // but keeping these in place guarantees no accidental regression can ever

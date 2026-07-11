@@ -37,12 +37,6 @@ export type RuntimeCapability =
   | 'tasks'
   | 'search'
 
-/** Server and client entry-point file paths for a plugin. */
-export interface PluginEntryPoints {
-  server: string
-  client?: string
-}
-
 /** Secret (env var) a plugin declares it needs (rendered in setup/health). */
 export interface SecretDeclaration {
   /** Canonical environment variable name, for example `ANTHROPIC_API_KEY`. */
@@ -224,18 +218,20 @@ export interface PluginManifest {
   name: string
   /** Plugin version (semver). */
   version: string
-  /** Minimum Bakin version this plugin supports. */
+  /**
+   * Semver range of Bakin host versions this plugin supports (e.g.
+   * `">=0.5.0"`). Enforced at install and at activation: an incompatible or
+   * malformed range rejects with an actionable error. Dev-source hosts
+   * (version `0.0.0-dev`) skip the satisfaction check but still reject
+   * malformed ranges.
+   */
   bakin: string
   /** One-line summary shown in the plugin manager. */
   description: string
-  /** Server + optional client entry-point file paths. */
-  entry: PluginEntryPoints
   /** Static content files the plugin ships (rendered as docs/pages). */
   contentFiles?: string[]
   /** Environment-variable secrets the plugin requires. */
   secrets?: SecretDeclaration[]
-  /** Path to a test entry-point (for `bakin plugins test`). */
-  tests?: string
   /** Other plugin IDs this plugin depends on. */
   dependencies?: string[]
   /** Capabilities this plugin requests access to. */

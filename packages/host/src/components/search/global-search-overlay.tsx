@@ -19,12 +19,12 @@ import {
 } from 'lucide-react'
 import { useSearch, useDebug, type SearchResult } from '@makinbakin/sdk/hooks'
 import { SearchUnavailable, ScoreOverlay } from '@makinbakin/sdk/components'
+import { type SearchHitDescriptor } from '@makinbakin/sdk'
 import {
   getSearchHitRenderersSnapshot,
   requestAllPlugins,
   subscribeSearchHitRenderers,
-  type SearchHitDescriptor,
-} from '@makinbakin/sdk'
+} from '@makinbakin/sdk/internal'
 import {
   Command,
   CommandDialog,

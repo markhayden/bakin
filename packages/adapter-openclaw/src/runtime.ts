@@ -49,7 +49,7 @@ import { RuntimeError, RuntimeTurnError } from '@bakin/core/adapters/runtime'
 import { tryGetMainAgentId } from './main-agent'
 import { buildOpenClawAttachments } from './attachments'
 import { safeFileSize } from './file-utils'
-import { inspectTrajectoryRun, trajectoryFilePathFor, watchTrajectoryForDeath, TrajectoryRecoveredTurn, type TrajectoryUsage } from './trajectory-forensics'
+import { OPENCLAW_TRAJECTORY_POLL_MS, inspectTrajectoryRun, trajectoryFilePathFor, watchTrajectoryForDeath, TrajectoryRecoveredTurn, type TrajectoryUsage } from './trajectory-forensics'
 import { generateDirectImage, isDirectImageProvider, resolveProviderApiKeySource } from '@bakin/core/media'
 import { isUserEdited } from '@bakin/core/agent-packages/markers'
 import {
@@ -91,11 +91,8 @@ import {
   approvalEventFromOpenClawPayload, openClawDecisionFromBakinOption,
   parseNativeApprovalRef, isExpectedNativeApprovalResolveMiss,
 } from './approval-helpers'
-import {
-  OPENCLAW_SESSION_ACTIVITY_POLL_MS,
-  openClawCliSessionId,
-} from './session-activity'
-import { streamOpenClawTurnChunks } from './stream-events'
+import { openClawCliSessionId, openClawExplicitSessionKey } from './session-store'
+import { streamOpenClawTurnChunks, tapOpenClawTurnActivity, type OpenClawActivityTap } from './stream-events'
 import {
   writeOpenClawConfig, upsertOpenClawAgentConfig,
   updateOpenClawAgentIdentity, updateAgentAllowlist, removeOpenClawAgentConfig,
@@ -115,11 +112,6 @@ import {
   oversizedOutputBytesFrom, messagesToOpenClawPrompt, normalizeToolList,
   extractOpenClawAgentText, extractOpenClawAgentUsage,
 } from './agent-turn'
-// Re-exported so the session-store-cache test's `from '.../runtime'` path stays stable.
-export {
-  SESSION_STORE_CACHE_MAX, __readSessionStoreCachedForTest,
-  __sessionStoreCacheKeysForTest, __resetSessionStoreCacheForTest,
-} from './session-activity'
 import {
   OPENCLAW_CRON_TIMEOUT_MS,
   readCronStore, writeCronStore, readCronJobs, cronStoreJobToRuntime, cronCreateArgs,
@@ -199,6 +191,8 @@ interface OpenClawAgentTurnOptions {
   idempotencyKey?: string
   /** Fires on the gateway's `accepted` ack (streaming: thinking + authoritative runId). */
   onAccepted?: (ack: OpenClawGatewayAcceptedAck) => void
+  /** Send-path live-activity tap (MessageArgs.onActivity): tool/status chunks only. */
+  onActivity?: (chunk: ChatChunk) => void
 }
 
 /** Result of one OpenClaw agent turn: the assistant text plus token usage
@@ -538,6 +532,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         thinking: args.thinking,
         oversizedOutputBytes: oversizedOutputBytesFrom(args.metadata),
         signal: args.signal,
+        onActivity: args.onActivity,
       })
       // Threaded sends expose the real (deterministic) provider session id
       // so callers can correlate the turn with forensics, usage, and audit.
@@ -1073,11 +1068,14 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
   /**
    * Write `mcp.servers[bakin-<agent>]` for every agent (pruning stale Bakin
-   * entries), so OpenClaw's native MCP client can reach Bakin's tools. Reads +
-   * writes the runtime config directly and audits the change set. Idempotent —
-   * skips the write when nothing changed. Needs `bakinMcpBaseUrl` from init;
-   * warns and no-ops if absent (can't build URLs). The `execTools` provider is
-   * unused: OpenClaw reaches the live registry over MCP, not by value.
+   * entries), so OpenClaw's native MCP client can reach Bakin's tools. Each
+   * entry is scoped to its own agent via `codex.agents` — without it OpenClaw
+   * attaches every server to every Codex app-server thread (N agents = N
+   * duplicate tool catalogs per turn). Reads + writes the runtime config
+   * directly and audits the change set. Idempotent — skips the write when
+   * nothing changed. Needs `bakinMcpBaseUrl` from init; warns and no-ops if
+   * absent (can't build URLs). The `execTools` provider is unused: OpenClaw
+   * reaches the live registry over MCP, not by value.
    */
   provisionToolAccess = async (): Promise<void> => {
     const baseUrl = this.bakinMcpBaseUrl
@@ -1525,8 +1523,9 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     cliSessionId: string | null,
   ): void {
     // The gateway keys explicit-sessionId sessions as
-    // agent:<agentId>:explicit:<sessionId> (verified via sessions.list).
-    const sessionKey = ack?.sessionKey ?? (cliSessionId ? `agent:${agentId}:explicit:${cliSessionId}` : null)
+    // agent:<agentId>:explicit:<sessionId> (verified via sessions.list) —
+    // openClawExplicitSessionKey is the single owner of that format.
+    const sessionKey = ack?.sessionKey ?? (cliSessionId ? openClawExplicitSessionKey(agentId, cliSessionId) : null)
     if (!sessionKey) return
     const params: Record<string, unknown> = { sessionKey }
     if (ack?.runId) params.runId = ack.runId
@@ -1542,6 +1541,10 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
           ...(ack?.runId ? { runId: ack.runId } : {}),
           aborted,
           runIds,
+          // Registration evidence: an ack WITHOUT sessionKey means the run
+          // was never registered gateway-side (sessionId-only send shape) —
+          // an aborted:false here is the upstream defect, not a Bakin bug.
+          ackHadSessionKey: Boolean(ack?.sessionKey),
         })
         if (aborted) {
           this.logger.info('OpenClaw run aborted server-side', { agentId, sessionKey, runIds })
@@ -1570,22 +1573,32 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     }
     const cliSessionId = opts.sessionKey ? openClawCliSessionId(opts.agentId, opts.sessionKey) : null
     const prompt = messagesToOpenClawPrompt(opts.messages)
+    // Per-turn key: the gateway DEDUPES on this for ~5 minutes and replays
+    // the cached payload, so two DIFFERENT logical turns on one thread must
+    // carry different keys (the enrichment corrective re-ask was the first
+    // multi-message-per-thread caller — a thread-only key silently replayed
+    // the first turn's reply to the re-ask). Hashing the rendered prompt
+    // keeps transport retries idempotent: same turn → same content → same
+    // key. Unthreaded sends keep a random key — each is its own turn. The
+    // gateway echoes this key back as the runId, so the activity tap below
+    // can pre-key its frame filter before the ack arrives.
+    const idempotencyKey = opts.idempotencyKey ?? openClawTurnIdempotencyKey(prompt, opts.sessionKey)
     const params: Record<string, unknown> = {
       agentId: opts.agentId,
       message: prompt,
       deliver: false,
       timeout: OPENCLAW_AGENT_TIMEOUT_SECONDS,
-      // Per-turn key: the gateway DEDUPES on this for ~5 minutes and replays
-      // the cached payload, so two DIFFERENT logical turns on one thread must
-      // carry different keys (the enrichment corrective re-ask was the first
-      // multi-message-per-thread caller — a thread-only key silently replayed
-      // the first turn's reply to the re-ask). Hashing the rendered prompt
-      // keeps transport retries idempotent: same turn → same content → same
-      // key. Unthreaded sends keep a random key — each is its own turn.
-      idempotencyKey: opts.idempotencyKey ?? openClawTurnIdempotencyKey(prompt, opts.sessionKey),
+      idempotencyKey,
     }
     applyRuntimeMessageToolPolicy(params, opts)
-    if (cliSessionId) params.sessionId = cliSessionId
+    // BOTH sessionId and its canonical sessionKey: sessionId alone leaves
+    // the run unregistered in the gateway's chat-abort registry (server-side
+    // abort silently fails — the 2026-07-09 delete-didn't-abort incident;
+    // fixtures abort-explicit-session.jsonl / abort-sessionkey-addressed.jsonl).
+    if (cliSessionId) {
+      params.sessionId = cliSessionId
+      params.sessionKey = openClawExplicitSessionKey(opts.agentId, cliSessionId)
+    }
     // Per-turn routing overrides (Bakin's policy → gateway agent RPC). Omit
     // when unset so the runtime uses the agent's configured model/default.
     if (opts.model) params.model = opts.model
@@ -1616,16 +1629,21 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     const requestAbort = new AbortController()
     // Caller cancellation (MessageArgs.signal): reject the local awaiter via
     // requestAbort and stop the run server-side. chat.abort addressed by the
-    // accepted ack's exact {sessionKey, runId} DOES abort backend `agent`
-    // RPC runs (live-verified 2026-07-09; T1 fixture abort-turn.jsonl shows
-    // {ok:true, aborted:true, runIds:[…]} + terminal `chat state:'aborted'`).
+    // accepted ack's exact {sessionKey, runId} aborts backend `agent` RPC
+    // runs ONLY when the run was registered at accept time — which requires
+    // the send to carry `sessionKey` (set above alongside sessionId; a
+    // sessionId-only run is unregistered and NO abort surface can reach it —
+    // fixtures abort-turn.jsonl, abort-explicit-session.jsonl,
+    // abort-sessionkey-addressed.jsonl; live-verified 2026-07-09).
     // Before the ack arrives nothing is runId-addressable — fall back to the
     // best-known explicit session key (threaded) or skip (unthreaded); a
     // late ack can never surface after the local abort because the pending
     // entry is gone. The local rejection below never waits on any of this.
     let acceptedAck: OpenClawGatewayAcceptedAck | null = null
+    let activityTap: OpenClawActivityTap | null = null
     const onAccepted = (ack: OpenClawGatewayAcceptedAck): void => {
       acceptedAck = ack
+      activityTap?.onAccepted(ack)
       opts.onAccepted?.(ack)
     }
     const onCallerAbort = () => {
@@ -1647,7 +1665,25 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
           trajectoryFile,
           sinceByteOffset: trajectoryOffset,
           oversizedOutputBytes: opts.oversizedOutputBytes,
-          pollMs: OPENCLAW_SESSION_ACTIVITY_POLL_MS,
+          pollMs: OPENCLAW_TRAJECTORY_POLL_MS,
+        })
+      : null
+    // MessageArgs.onActivity (T8): tool/status liveness for send() turns,
+    // fed from the same push-event subscription streaming uses. Absent tap
+    // → no subscription, zero behavior change. Created LAST, immediately
+    // before the try whose finally unsubscribes it — nothing may throw
+    // between the subscription and that finally.
+    activityTap = opts.onActivity
+      ? tapOpenClawTurnActivity({
+          events: this.openClawChatGateway(),
+          idempotencyKey,
+          onActivity: opts.onActivity,
+          onCallbackError: (err) => {
+            this.logger.warn('onActivity callback threw; contained', {
+              agentId: opts.agentId,
+              err: err instanceof Error ? err.message : String(err),
+            })
+          },
         })
       : null
 
@@ -1743,6 +1779,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       throw typed
     } finally {
       opts.signal?.removeEventListener('abort', onCallerAbort)
+      activityTap?.unsubscribe()
       deathWatch?.stop()
     }
   }
@@ -1812,6 +1849,10 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       scopes: ['operator.read', 'operator.write'],
       useDeviceAuth: true,
       label: 'OpenClaw chat gateway',
+      // Long-lived adapter client: per-turn tap/stream subscriptions must
+      // not close the socket on every settle (close() in shutdown() remains
+      // the explicit teardown).
+      keepAlive: true,
     })
     return this.chatGatewayClient
   }
@@ -1935,81 +1976,4 @@ function gatewayWebSocketUrl(settings: OpenClawSettings): string {
   const url = new URL(`${settings.gatewayUrl}:${settings.gatewayPort}`)
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
   return url.toString().replace(/\/$/, '')
-}
-
-// Exported for tests — pure stream-merging helper with no adapter state.
-export async function* mergeChatStreams(
-  primary: AsyncIterable<ChatChunk>,
-  secondary: AsyncIterable<ChatChunk>,
-  stopSecondary: () => void,
-): AsyncIterable<ChatChunk> {
-  type QueueItem =
-    | { source: 'primary' | 'secondary'; chunk: ChatChunk }
-    | { source: 'primary' | 'secondary'; done: true }
-    | { source: 'primary' | 'secondary'; error: unknown }
-
-  const queue: QueueItem[] = []
-  let notify: (() => void) | null = null
-  const push = (item: QueueItem): void => {
-    queue.push(item)
-    notify?.()
-    notify = null
-  }
-
-  const pump = async (source: 'primary' | 'secondary', iterable: AsyncIterable<ChatChunk>): Promise<void> => {
-    try {
-      for await (const chunk of iterable) {
-        if (source === 'primary' && chunk.type === 'done') {
-          push({ source, done: true })
-          return
-        }
-        push({ source, chunk })
-      }
-      push({ source, done: true })
-    } catch (error) {
-      // The secondary (session-activity poller) is advisory — a poller
-      // hiccup must never abort a live turn and mask the primary result.
-      // Degrade to "secondary done"; primary errors still propagate.
-      if (source === 'secondary') {
-        push({ source, done: true })
-        return
-      }
-      push({ source, error })
-    }
-  }
-
-  void pump('primary', primary)
-  void pump('secondary', secondary)
-
-  // finally-guarded: if the consumer abandons the stream (early break /
-  // generator return), the suspended yield exits through here — without it
-  // the 200ms session-activity poller leaks and spins forever (audit C2).
-  try {
-    let primaryDone = false
-    let secondaryDone = false
-    while (!primaryDone || !secondaryDone) {
-      if (queue.length === 0) {
-        await new Promise<void>((resolve) => { notify = resolve })
-      }
-      const item = queue.shift()
-      if (!item) continue
-      if ('error' in item) {
-        throw item.error
-      }
-      if ('done' in item) {
-        if (item.source === 'primary') {
-          primaryDone = true
-          stopSecondary()
-        } else {
-          secondaryDone = true
-        }
-        continue
-      }
-      yield item.chunk
-    }
-
-    yield { type: 'done' }
-  } finally {
-    stopSecondary()
-  }
 }

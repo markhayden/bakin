@@ -11,34 +11,34 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 - [x] T5 Server-side abort via accepted run ids ✅
 - [x] T6 Imitation Crab event frames + streaming e2e ✅ (mock emits ack/chat/agent frames; 4-test e2e vs real adapter)
 - [x] T7 WS1a docs ✅ (session-forensics, adapter-architecture R5 contract + two-seam rule + ack-keyed abort, chat-plugin, repo map, rig recorder note)
-- [ ] CHECKPOINT 1a: suite green ✅ / e2e green ✅ / PR merged ☐
+- [x] CHECKPOINT 1a: suite green ✅ / e2e green ✅ / PR merged ✅ (#632)
 - [ ] 🔶 USER: runtime flip to OpenClaw + live validation (box stays on OpenClaw)
 
 ## PR 1b — feat/dispatch-live-activity
-- [ ] T8 onActivity tap on messaging.send (both adapters)
-- [ ] T9 Live task activity on board + timeline (ephemeral SSE)
-- [ ] T10 Delete trajectory activity tail (forensics only)
-- [ ] T11 WS1b docs
-- [ ] CHECKPOINT 1b: live box shows dispatch chips; PR merged
+- [x] T8 onActivity tap on messaging.send (both adapters) ✅ (tool/status only; contained callbacks; OpenClaw via gateway frames, Pi via shared sessionEventChunks)
+- [x] T9 Live task activity on board + timeline (ephemeral SSE) ✅ (turn-activity SSE event; board chip + team timeline live row)
+- [x] T10 Delete trajectory activity tail (forensics only) ✅ (tail + mergeChatStreams + transcript-chunk path deleted; survivors → session-store.ts, poll const → trajectory-forensics)
+- [x] T11 WS1b docs ✅ (+ tool-chip MCP-prefix fix; dispatch.md, adapter-architecture.md onActivity contract, agent-health-diagnostics.md live row; CLAUDE.md bullets verified still true)
+- [ ] CHECKPOINT 1b: suite green ✅ / live box shows dispatch chips ☐ / PR merged ☐
 
 ## PR 2a — fix/sdk-golden-path (parallel worktree)
-- [ ] T12 Delete manifest.entry (+ tests field); single root layout
-- [ ] T13 Scaffold rewrite
-- [ ] T14 Golden-path integration test + build.md tutorial fix
-- [ ] T15 Host/SDK semver gate
-- [ ] T16 Symmetric contributes enforcement + sync-manifest
-- [ ] CHECKPOINT 2a: golden path verbatim-works; PR merged
+- [x] T12 Delete manifest.entry (+ tests field); single root layout ✅ (tombstone rejections; 18 manifests + docs swept)
+- [x] T13 Scaffold rewrite ✅ (root layout, real APIs, tsconfig, contributes/permissions, starter test, standalone tsc+test verified)
+- [x] T14 Golden-path integration test + build.md tutorial fix ✅ (real-builder gate; tutorial tool renamed + contributes)
+- [x] T15 Host/SDK semver gate ✅ (well-formedness always; satisfaction skipped on 0.0.0-dev dev hosts; incompatible_host failure code)
+- [x] T16 Symmetric contributes enforcement + sync-manifest ✅ (declarative routes now enforced; sync-manifest engine + CLI, --check drift gate)
+- [ ] CHECKPOINT 2a: golden path verbatim-works ✅ (suite 6356/0, golden-path 6/0 incl. sync-manifest round-trip); PR merged ☐
 
 ## PR 2b — feat/sdk-testing-and-types
-- [ ] T17 @makinbakin/sdk/testing
-- [ ] T18 In-repo tests consume sdk/testing
-- [ ] T19 Type tightening (contract commit + adoption commit)
-- [ ] T20 Uniform duplicate-throw + /internal split + pluginFetch
-- [ ] T21 TurnOutputView + migrate chat & step-output
-- [ ] T22 Reference plugin (examples/) + CI gate
-- [ ] T23 🔶 Starter-repo mirror step (ask-first: OQ1 repo name/visibility)
-- [ ] T24 Public docs sweep
-- [ ] CHECKPOINT 2b: success criteria #2 #3 #6; PR merged
+- [x] T17 @makinbakin/sdk/testing ✅ (harness entry + external-author fixture + scaffold starter test migrated)
+- [x] T18 In-repo tests consume sdk/testing ✅ (test-helpers is a thin adapter: spies + 3 global registries + caller-owned dirs are the whole delta)
+- [x] T19 Type tightening ✅ (closed definePlugin w/ exactness, inferred exec params, legacy route API deleted, log/storage required, 13 casts removed)
+- [x] T20 Uniform duplicate-throw + /internal split + pluginFetch ✅ (internal entry, R18 throws, pluginFetch/usePluginJsonFetch adopted in chat+brands)
+- [x] T21 TurnOutputView + migrate chat & step-output ✅ (single renderer + thinking indicator; chat + step-output migrated)
+- [x] T22 Reference plugin (examples/) + CI gate ✅ (bookmarks domain; every surface + sync-manifest --check gated in CI)
+- [x] T23 Starter-repo mirror step ✅ (markhayden/bakin-plugin-starter, public; fail-soft release step + dry-run-tested staging script)
+- [x] T24 Public docs sweep ✅ (realtime + search pages, storage scoping, hook catalog, settings types, link as primary dev verb)
+- [ ] CHECKPOINT 2b: success criteria #2 ✅ #3 ✅ #6 ✅ (suite 6427/0, docs build green); PR merged ☐
 
 ## PR 3 — feat/runtime-conformance (after 1a AND 2b)
 - [ ] T25 Conformance suite skeleton + messaging pins (3 targets)
@@ -55,3 +55,9 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 - [x] T33 Fixtures, comments, knowledge-doc drift ✅
 - [ ] T34 SDK primitive adoption sweep (ex-sdk-gaps A2/A3/A4 + useAvailableModels relocation; after PR 2b)
 - [ ] CHECKPOINT 4: initiative close — all success criteria re-verified, Pi worktree retired, SPEC marked complete
+
+## Live-validation follow-ups (2026-07-09 flip)
+- [ ] 🔶 USER: file the OpenClaw upstream issue for the abort-registration defect (suggested text in PR #637) and backfill the real number over `openclaw#TBD-abort-registration` (pin test, fixtures README, rig doc)
+- [ ] Run rig-validate R7 (abort workaround re-verify) after every OpenClaw version bump
+- [ ] 🔶 USER: create the public repo markhayden/bakin-plugin-starter (empty) + add a STARTER_REPO_TOKEN secret before the next stable release — until then the mirror step warns and skips (release never breaks)
+- [ ] Note for the first stable release notes: plugins scaffolded from a dev/prerelease host resolve SDK `latest`, which lacks `/testing` until the first stable release with PR #642 publishes — scaffolded starter tests import-fail until then (self-resolving)

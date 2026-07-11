@@ -145,15 +145,11 @@ Start with [Package Manifest](/docs/extending/agents/packages/).
 
 ## Manifest Shape
 
-Plugins use `bakin-plugin.json`. The manifest declares identity, entry points, permissions, runtime capabilities, and public contributions.
+Plugins use `bakin-plugin.json`. The manifest declares identity, permissions, runtime capabilities, and public contributions. Entry points are fixed by convention: `index.ts` (server) and optional `client.tsx` at the plugin root.
 
 ```json
 {
   "id": "lead-intel",
-  "entry": {
-    "server": "index.ts",
-    "client": "client.tsx"
-  },
   "permissions": ["storage.read", "tasks.write"],
   "contributes": {
     "clientRoutes": [{ "path": "/lead-intel", "summary": "Lead intelligence view" }],

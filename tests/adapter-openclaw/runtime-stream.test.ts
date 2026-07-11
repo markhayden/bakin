@@ -877,6 +877,223 @@ describe('OpenClaw runtime Gateway chat', () => {
     })
     expect(JSON.stringify(chunks)).not.toContain('secret')
   })
+
+  // MessageArgs.onActivity — the send-path live-activity tap (T8/D-plan-1).
+  describe('onActivity tap on messaging.send', () => {
+    function scriptedToolTurn(ws: FakeWebSocket, frame: { id: string }): void {
+      ws.emitMessage({ type: 'res', id: frame.id, ok: true, payload: gatewayAgentAcceptedAck() })
+      setTimeout(() => {
+        ws.emitMessage({
+          type: 'event',
+          event: 'agent',
+          payload: {
+            runId: 'run-1',
+            stream: 'tool',
+            seq: 2,
+            data: { phase: 'start', name: 'exec', toolCallId: 'call-1', args: { command: 'ls' } },
+          },
+        })
+        // Cross-run + heartbeat noise: neither may reach the tap.
+        ws.emitMessage({
+          type: 'event',
+          event: 'agent',
+          payload: {
+            runId: 'other-run',
+            stream: 'tool',
+            seq: 1,
+            data: { phase: 'start', name: 'exec', toolCallId: 'call-x', args: { command: 'whoami' } },
+          },
+        })
+        ws.emitMessage({
+          type: 'event',
+          event: 'agent',
+          payload: { runId: 'run-1', stream: 'thinking', seq: 3, isHeartbeat: true, data: { text: 'hb' } },
+        })
+        ws.emitMessage({
+          type: 'event',
+          event: 'agent',
+          payload: {
+            runId: 'run-1',
+            stream: 'tool',
+            seq: 4,
+            data: { phase: 'result', name: 'exec', toolCallId: 'call-1', result: 'ok', isError: false },
+          },
+        })
+        // A real thinking stretch: the gateway coalesces to ~150ms per frame,
+        // so a long turn emits MANY of these — the tap must once-gate.
+        for (const seq of [5, 6, 7]) {
+          ws.emitMessage({
+            type: 'event',
+            event: 'agent',
+            payload: { runId: 'run-1', stream: 'thinking', seq, data: { text: 'pondering…' } },
+          })
+        }
+      }, 20)
+      setTimeout(() => {
+        ws.emitMessage({ type: 'res', id: frame.id, ok: true, payload: gatewayAgentPayload('tap done') })
+      }, 120)
+    }
+
+    it('taps tool + status activity during a send turn, filtered to this run', async () => {
+      FakeWebSocket.onRequest = (frame, ws) => {
+        if (frame.method === 'agent') scriptedToolTurn(ws, frame)
+      }
+      const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+      const runtime = createOpenClawRuntimeAdapter()
+
+      const activity: Array<{ type: string; content?: string; data?: Record<string, unknown> }> = []
+      const result = await runtime.messaging.send({
+        agentId: 'pixel',
+        content: 'run the tool',
+        threadId: 'task:t-tap:d1',
+        onActivity: (chunk) => activity.push(chunk as never),
+      })
+
+      expect(result.content).toBe('tap done')
+      // thinking status on ack, then the run's own tool start + result.
+      expect(activity[0]).toEqual({ type: 'status', content: 'thinking' })
+      // Once-gated: the scripted turn carries three more thinking frames —
+      // exactly ONE thinking status may reach the tap (SSE flood guard).
+      expect(activity.filter((c) => c.type === 'status' && c.content === 'thinking')).toHaveLength(1)
+      const tools = activity.filter((c) => c.type === 'tool')
+      expect(tools).toHaveLength(2)
+      expect(tools[0]!.data).toMatchObject({ phase: 'call', toolName: 'exec', callId: 'call-1', status: 'running' })
+      expect(tools[1]!.data).toMatchObject({ phase: 'result', toolName: 'exec', callId: 'call-1', status: 'completed' })
+      // v1 scope: tool + status only — never text/done/error; no cross-run leaks.
+      expect(activity.every((c) => c.type === 'tool' || c.type === 'status')).toBe(true)
+      expect(JSON.stringify(activity)).not.toContain('call-x')
+      expect(JSON.stringify(activity)).not.toContain('whoami')
+    })
+
+    it('contains a throwing onActivity callback — the turn still succeeds', async () => {
+      FakeWebSocket.onRequest = (frame, ws) => {
+        if (frame.method === 'agent') scriptedToolTurn(ws, frame)
+      }
+      const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+      const runtime = createOpenClawRuntimeAdapter()
+
+      let calls = 0
+      const result = await runtime.messaging.send({
+        agentId: 'pixel',
+        content: 'run the tool',
+        threadId: 'task:t-tap-throw:d1',
+        onActivity: () => {
+          calls += 1
+          throw new Error('tap exploded')
+        },
+      })
+
+      expect(result.content).toBe('tap done')
+      expect(calls).toBeGreaterThan(0)
+    })
+
+    it('absent tap: send behaves exactly as before', async () => {
+      FakeWebSocket.onRequest = (frame, ws) => {
+        if (frame.method === 'agent') scriptedToolTurn(ws, frame)
+      }
+      const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+      const runtime = createOpenClawRuntimeAdapter()
+
+      const result = await runtime.messaging.send({
+        agentId: 'pixel',
+        content: 'run the tool',
+        threadId: 'task:t-no-tap:d1',
+      })
+      expect(result.content).toBe('tap done')
+    })
+
+    it('unsubscribes on an ERROR settle — later frames never reach the tap', async () => {
+      let ws: FakeWebSocket | null = null
+      FakeWebSocket.onRequest = (frame, socket) => {
+        if (frame.method !== 'agent') return
+        ws = socket
+        socket.emitMessage({ type: 'res', id: frame.id, ok: true, payload: gatewayAgentAcceptedAck() })
+        setTimeout(() => {
+          socket.emitMessage({
+            type: 'event',
+            event: 'agent',
+            payload: { runId: 'run-1', stream: 'tool', seq: 2, data: { phase: 'start', name: 'exec', toolCallId: 'c1', args: {} } },
+          })
+          socket.emitMessage({ type: 'res', id: frame.id, ok: false, error: { message: 'gateway exploded' } })
+        }, 20)
+      }
+      const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+      const runtime = createOpenClawRuntimeAdapter()
+
+      const activity: Array<{ type: string }> = []
+      await expect(runtime.messaging.send({
+        agentId: 'pixel',
+        content: 'run the tool',
+        threadId: 'task:t-err-settle:d1',
+        onActivity: (chunk) => activity.push(chunk as never),
+      })).rejects.toThrow()
+
+      const seen = activity.length
+      // The turn settled with an error — a straggler frame on the same run
+      // must be invisible (subscription released in the finally).
+      ws!.emitMessage({
+        type: 'event',
+        event: 'agent',
+        payload: { runId: 'run-1', stream: 'tool', seq: 9, data: { phase: 'result', name: 'exec', toolCallId: 'c1', result: 'late' } },
+      })
+      await wait(10)
+      expect(activity.length).toBe(seen)
+    })
+
+    it('unsubscribes on an ABORT settle — later frames never reach the tap', async () => {
+      let ws: FakeWebSocket | null = null
+      FakeWebSocket.onRequest = (frame, socket) => {
+        if (frame.method === 'agent') {
+          ws = socket
+          socket.emitMessage({ type: 'res', id: frame.id, ok: true, payload: gatewayAgentAcceptedAck() })
+          // No final — the caller aborts mid-turn.
+        }
+        if (frame.method === 'chat.abort') {
+          socket.emitMessage({ type: 'res', id: frame.id, ok: true, payload: { ok: true, aborted: true, runIds: ['run-1'] } })
+        }
+      }
+      const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+      const runtime = createOpenClawRuntimeAdapter()
+
+      const abort = new AbortController()
+      const activity: Array<{ type: string }> = []
+      const turn = runtime.messaging.send({
+        agentId: 'pixel',
+        content: 'count slowly',
+        threadId: 'task:t-abort-settle:d1',
+        signal: abort.signal,
+        onActivity: (chunk) => activity.push(chunk as never),
+      })
+      await wait(20)
+      abort.abort()
+      await expect(turn).rejects.toMatchObject({ kind: 'aborted' })
+
+      const seen = activity.length
+      ws!.emitMessage({
+        type: 'event',
+        event: 'agent',
+        payload: { runId: 'run-1', stream: 'tool', seq: 9, data: { phase: 'start', name: 'exec', toolCallId: 'c9', args: {} } },
+      })
+      await wait(10)
+      expect(activity.length).toBe(seen)
+    })
+
+    it('keepAlive: two sequential tapped turns reuse ONE gateway connection', async () => {
+      FakeWebSocket.onRequest = (frame, ws) => {
+        if (frame.method === 'agent') scriptedToolTurn(ws, frame)
+      }
+      const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+      const runtime = createOpenClawRuntimeAdapter()
+
+      await runtime.messaging.send({ agentId: 'pixel', content: 'one', threadId: 'task:t-ka1:d1', onActivity: () => {} })
+      await runtime.messaging.send({ agentId: 'pixel', content: 'two', threadId: 'task:t-ka2:d1', onActivity: () => {} })
+
+      // Without keepAlive the first turn's tap-unsubscribe closes the shared
+      // socket (its pending entry is already gone at settle) and the second
+      // turn pays a full reconnect + device-auth handshake — instances 2.
+      expect(FakeWebSocket.instances.length).toBe(1)
+    })
+  })
 })
 
 function gatewayAgentAcceptedAck(): Record<string, unknown> {

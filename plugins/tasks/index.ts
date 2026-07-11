@@ -136,6 +136,6 @@ const tasksPlugin: BakinPlugin = definePlugin({
     stopMaintenance()
     log.info('Shutting down tasks plugin')
   },
-}) as unknown as BakinPlugin
+})
 
 export default tasksPlugin

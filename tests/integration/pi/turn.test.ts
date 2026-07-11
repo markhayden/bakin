@@ -91,9 +91,11 @@ beforeAll(async () => {
   await adapter.initialize({
     contentDir: join(testDir, 'bakin'),
     execTools: execToolProvider,
-    // Bakin's dispatch owns retries — disable Pi's inner auto-retry so
-    // provider-failure tests settle immediately.
-    settings: { retry: { enabled: false } },
+    // Bakin's dispatch owns retries — disable BOTH of Pi's inner retry
+    // layers so provider-failure tests settle immediately: session-level
+    // auto-retry (retry.enabled) and provider-level HTTP retry with
+    // exponential backoff (retry.provider.maxRetries).
+    settings: { retry: { enabled: false, provider: { maxRetries: 0 } } },
   })
   await adapter.agents.update('main', { model: 'fakeai/fake-model' })
   await adapter.agents.writeWorkspaceFile('main', { path: 'SOUL.md', content: 'You are the test soul.' })
@@ -161,11 +163,57 @@ describe('messaging.send', () => {
     expect(req.tools ?? []).toHaveLength(0)
   })
 
-  test('provider 429 maps to provider_cooldown', async () => {
+  test('onActivity taps tool + status chunks during a send turn (T8/D-plan-1)', async () => {
+    invocations.length = 0
     seedProvider([
-      { status: 429, errorBody: { error: { message: 'rate limited, slow down' } } },
-      { status: 429, errorBody: { error: { message: 'rate limited, slow down' } } },
-      { status: 429, errorBody: { error: { message: 'rate limited, slow down' } } },
+      // Token-bearing arg: previews leave the adapter (SSE → every browser),
+      // so safePreview must redact before truncation (parity with OpenClaw).
+      { steps: [{ toolCall: { name: 'bakin_exec_test_echo', args: { message: 'fetch https://api.example.com/data?apiKey=hunter2-super-secret' } } }] },
+      { steps: [{ text: 'tap reply' }] },
+    ])
+    const activity: ChatChunk[] = []
+    const result = await adapter.messaging.send({
+      agentId: 'main',
+      content: 'use the tool',
+      threadId: 'task:tap:d1',
+      onActivity: (chunk) => activity.push(chunk),
+    })
+    expect(result.content).toBe('tap reply')
+    // v1 scope: tool + status only — never text/done/error.
+    expect(activity.length).toBeGreaterThan(0)
+    expect(activity.every((c) => c.type === 'tool' || c.type === 'status')).toBe(true)
+    const tools = activity.filter((c) => c.type === 'tool')
+    expect(tools.length).toBe(2)
+    expect(tools[0]!.data).toMatchObject({ phase: 'call', toolName: 'bakin_exec_test_echo', status: 'running' })
+    expect(tools[1]!.data).toMatchObject({ phase: 'result', toolName: 'bakin_exec_test_echo', status: 'completed' })
+    const call = tools[0]!.data as { inputPreview?: string }
+    expect(call.inputPreview).toContain('apiKey=[redacted]')
+    expect(JSON.stringify(activity)).not.toContain('hunter2-super-secret')
+  })
+
+  test('a throwing onActivity callback never fails the turn', async () => {
+    seedProvider([
+      { steps: [{ toolCall: { name: 'bakin_exec_test_echo', args: { message: 'boom' } } }] },
+      { steps: [{ text: 'still fine' }] },
+    ])
+    let calls = 0
+    const result = await adapter.messaging.send({
+      agentId: 'main',
+      content: 'use the tool',
+      threadId: 'task:tap-throw:d1',
+      onActivity: () => {
+        calls += 1
+        throw new Error('tap exploded')
+      },
+    })
+    expect(result.content).toBe('still fine')
+    expect(calls).toBeGreaterThan(0)
+  })
+
+  test('provider 429 maps to provider_cooldown', async () => {
+    // One seed only: with provider retries disabled exactly one request
+    // fires; a residual retry would hit the empty-queue 500 and fail loudly.
+    seedProvider([
       { status: 429, errorBody: { error: { message: 'rate limited, slow down' } } },
     ])
     try {
@@ -232,9 +280,6 @@ describe('messaging.stream', () => {
 
   test('provider failure surfaces as an error chunk carrying the typed kind, never a throw from iteration', async () => {
     seedProvider([
-      { status: 500, errorBody: { error: { message: 'exploded' } } },
-      { status: 500, errorBody: { error: { message: 'exploded' } } },
-      { status: 500, errorBody: { error: { message: 'exploded' } } },
       { status: 500, errorBody: { error: { message: 'exploded' } } },
     ])
     const chunks: ChatChunk[] = []

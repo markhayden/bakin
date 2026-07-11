@@ -63,7 +63,7 @@ mock.module('../../packages/host/src/plugin-host/user-plugin-builder', () => ({
 }))
 
 import { evaluateConsentGate, consentSourceIdentity } from '../../packages/host/src/api/plugins/install/consent-gate'
-import { coreIdSquattingError } from '../../packages/host/src/api/plugins/install/validate-manifest'
+import { coreIdSquattingError, validateStagedManifest } from '../../packages/host/src/api/plugins/install/validate-manifest'
 import { buildSourceInstall } from '../../packages/host/src/api/plugins/install/commit'
 import { signConsentToken } from '../../src/core/plugins/consent-token'
 import type { InstallBody } from '../../packages/host/src/api/plugins/install/body'
@@ -223,5 +223,47 @@ describe('buildSourceInstall — FW1.7 dist deleted before non-artifact builds',
 
     expect(buildProbe.calls).toBe(1)
     expect(buildProbe.distExistedAtBuildTime).toBe(false)
+  })
+})
+
+describe('validateStagedManifest — bakin range gate (T15/R13)', () => {
+  function stageManifest(name: string, bakin: string): { stagingDir: string; body: { source: string; type: 'local' } } {
+    const stagingDir = join(testDir, 'staging', name)
+    mkdirSync(stagingDir, { recursive: true })
+    writeFileSync(join(stagingDir, 'bakin-plugin.json'), JSON.stringify({
+      id: name,
+      name,
+      version: '1.0.0',
+      bakin,
+      description: 'range-gate fixture',
+    }))
+    return { stagingDir, body: { source: `./${name}`, type: 'local' } }
+  }
+
+  it('rejects a malformed range with an actionable 400 and tears down staging', async () => {
+    const { stagingDir, body } = stageManifest('bad-range', 'banana')
+    const result = validateStagedManifest(body as never, stagingDir, stagingDir)
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.response.status).toBe(400)
+      const json = await result.response.json()
+      expect(json.error).toContain('banana')
+      expect(json.error).toContain('not a valid semver range')
+    }
+    expect(existsSync(stagingDir)).toBe(false)
+  })
+
+  it('accepts a release-floor range on a dev host (0.0.0-dev skips satisfaction)', () => {
+    // The repo's unstamped APP_VERSION is 0.0.0-dev — a well-formed range
+    // that no real host could fail on THIS build must pass (dev-host skip).
+    const { stagingDir, body } = stageManifest('future-range', '>=999.0.0')
+    const result = validateStagedManifest(body as never, stagingDir, stagingDir)
+    expect(result.ok).toBe(true)
+  })
+
+  it('accepts the scaffold dev-floor range', () => {
+    const { stagingDir, body } = stageManifest('dev-floor', '>=0.0.0-dev')
+    const result = validateStagedManifest(body as never, stagingDir, stagingDir)
+    expect(result.ok).toBe(true)
   })
 })

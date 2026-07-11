@@ -30,7 +30,9 @@ export function extractHookRegistrations(): HookRegistrationDoc[] {
     const lines = text.split('\n')
     for (let i = 0; i < lines.length; i++) {
       const match = lines[i].match(/hooks\.register\(['"`]([^'"`]+)['"`]/)
-      if (match) {
+      // Interpolated names (`${...}`) are code templates (e.g. the plugin
+      // scaffold), not real registrations — and raw `${}` breaks MDX rendering.
+      if (match && !match[1].includes('${')) {
         const block = lines.slice(i, Math.min(lines.length, i + 45)).join('\n')
         const label = block.match(/label:\s*(["'`])((?:\\[\s\S]|(?!\1)[\s\S])*)\1/)?.[2]
         const summary = block.match(/summary:\s*(["'`])((?:\\[\s\S]|(?!\1)[\s\S])*)\1/)?.[2]

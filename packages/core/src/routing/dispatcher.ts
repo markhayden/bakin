@@ -11,10 +11,11 @@
  *   - In dev / test, validate the response body against `responses[status]`
  *     and surface mismatches (test → throw, dev → console.warn).
  *
- * Adapter mapping: legacy `APIRoute.input` is treated as a JSON `body` schema
- * and legacy `APIRoute.output` is treated as `responses[200]`. This keeps
- * routes registered via the migration-window `ctx.registerRoute({...})` shim
- * flowing through the same validation path.
+ * There is no legacy `input`/`output` adapter mapping here: `ctx.registerRoute`
+ * and the legacy `APIRoute` shape were deleted (T19) — declarative routes and
+ * core routes are the only producers, and both speak `body`/`responses`.
+ * (The OpenAPI builder keeps a read-side mapping for historical doc callers;
+ * see packages/core/src/openapi/operation.ts.)
  */
 
 import { z } from 'zod'
@@ -38,9 +39,6 @@ export interface DispatchableRoute {
   body?: BodySpec<unknown>
   responses?: Partial<Record<string | number, ResponseSpec>>
   handler: (req: Request, ctx: any, parsed?: any) => Response | Promise<Response>
-  // Legacy fields supported via adapter mapping.
-  input?: z.ZodType<unknown>
-  output?: z.ZodType<unknown>
 }
 
 export interface DispatchInput {
@@ -54,9 +52,8 @@ export async function dispatchRoute(input: DispatchInput): Promise<Response> {
   const { req, ctx, route, params: pathParams } = input
   const url = new URL(req.url)
 
-  // ─── 1. Adapt legacy { input, output } to { body, responses } ────────────
-  const bodySpec = effectiveBodySpec(route)
-  const responses = effectiveResponses(route)
+  const bodySpec = route.body as BodySpec<unknown> | undefined
+  const responses = route.responses as Partial<Record<string, ResponseSpec>> | undefined
 
   // ─── 2. Body content-type gate ──────────────────────────────────────────
   if (bodySpec && typeof bodySpec === 'object' && 'contentType' in bodySpec
@@ -139,31 +136,39 @@ export async function dispatchRoute(input: DispatchInput): Promise<Response> {
 }
 
 // ---------------------------------------------------------------------------
-// Adapter mapping helpers
-// ---------------------------------------------------------------------------
-
-function effectiveBodySpec(route: DispatchInput['route']): BodySpec<unknown> | undefined {
-  if (route.body !== undefined) return route.body as BodySpec<unknown>
-  // Legacy: treat `input` as JSON body schema.
-  if (route.input) return route.input as z.ZodType<unknown>
-  return undefined
-}
-
-function effectiveResponses(
-  route: DispatchInput['route'],
-): Partial<Record<string, ResponseSpec>> | undefined {
-  if (route.responses) return route.responses as Partial<Record<string, ResponseSpec>>
-  // Legacy: synthesize `{ 200: output }` if present.
-  if (route.output) return { '200': route.output as z.ZodType }
-  return undefined
-}
-
-// ---------------------------------------------------------------------------
 // Body parsing
 // ---------------------------------------------------------------------------
 
 interface BodyOk { ok: true; value: unknown }
 interface BodyErr { ok: false; status: number; error: string; issues?: unknown[] }
+
+const VALID_BODY_CONTENT_TYPES = ['application/json', 'multipart/form-data', '*/*', 'none'] as const
+
+/**
+ * Loudly reject malformed `body` specs. A typo'd contentType (`'json'`)
+ * previously fell through parseBodySpec as a silent pass-through with an
+ * undefined parsed body — the handler then read `parsed.body.title` off
+ * undefined at request time with no hint why. Definition/registration time
+ * is the right place to fail: defineRoute/defineCoreRoute call this at
+ * module eval, and the plugin registry calls it for bare-literal routes at
+ * activation. `label` names the route in the error (e.g. `POST /items`).
+ */
+export function assertValidBodySpec(body: unknown, label: string): void {
+  if (body === undefined || body === null) return
+  if (isZodType(body)) return
+  if (typeof body !== 'object' || !('contentType' in body)) {
+    throw new Error(`route ${label}: body spec must be a zod schema or declare a contentType (got ${JSON.stringify(body)})`)
+  }
+  const ct = (body as { contentType: unknown }).contentType
+  if (!VALID_BODY_CONTENT_TYPES.includes(ct as (typeof VALID_BODY_CONTENT_TYPES)[number])) {
+    throw new Error(
+      `route ${label}: unknown body contentType '${String(ct)}' — valid values: ${VALID_BODY_CONTENT_TYPES.join(', ')}`,
+    )
+  }
+  if (ct === 'application/json' && !isZodType((body as { schema?: unknown }).schema)) {
+    throw new Error(`route ${label}: contentType 'application/json' requires a zod schema`)
+  }
+}
 
 async function parseBodySpec(req: Request, body: BodySpec<unknown>): Promise<BodyOk | BodyErr> {
   // Zod shorthand → JSON
@@ -177,7 +182,12 @@ async function parseBodySpec(req: Request, body: BodySpec<unknown>): Promise<Bod
       return { ok: true, value: undefined }
     }
   }
-  return { ok: true, value: undefined }
+  // Unreachable for routes that passed assertValidBodySpec; loud for smuggled specs.
+  return {
+    ok: false,
+    status: 500,
+    error: `unknown body contentType '${String((body as { contentType?: unknown }).contentType)}' — route was registered without validation`,
+  }
 }
 
 async function parseJsonBody(req: Request, schema: z.ZodType<unknown>): Promise<BodyOk | BodyErr> {

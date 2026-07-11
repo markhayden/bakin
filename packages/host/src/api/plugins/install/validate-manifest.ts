@@ -17,6 +17,7 @@ import type { PluginLockEntry } from '@bakin/core/plugins/lockfile'
 import { getSettings } from '@bakin/core/settings'
 import { parseManifestPermissions } from '@bakin/core/plugins/permissions'
 import { PLUGIN_ID_RE, readPluginManifestJson, PluginManifestError } from '@bakin/core/plugins/manifest'
+import { checkBakinRangeCompatibility } from '@bakin/core/plugins/compat'
 import { verifyPluginManifestSignature } from '@bakin/core/plugins/signatures'
 import { auditInstallRejected } from './audit'
 import type { InstallBody } from './body'
@@ -160,6 +161,23 @@ export function validateStagedManifest(
       response: Response.json({
         ok: false,
         error: `plugin "${id}": ${err instanceof Error ? err.message : String(err)}`,
+      }, { status: 400 }),
+    }
+  }
+
+  // Host-compatibility gate (T15/R13): the manifest's required `bakin`
+  // range must be a well-formed semver range that this host satisfies.
+  // Rejecting before consent means the user never approves a plugin that
+  // could not activate.
+  const compat = checkBakinRangeCompatibility(String(manifest.bakin ?? ''))
+  if (!compat.ok) {
+    rmSync(stagingDir, { recursive: true, force: true })
+    auditInstallRejected('incompatible_bakin_range', body.source, { id, error: compat.message })
+    return {
+      ok: false,
+      response: Response.json({
+        ok: false,
+        error: `plugin "${id}": ${compat.message}`,
       }, { status: 400 }),
     }
   }
