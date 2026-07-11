@@ -92,6 +92,7 @@ import {
   parseNativeApprovalRef, isExpectedNativeApprovalResolveMiss,
 } from './approval-helpers'
 import { openClawCliSessionId, openClawExplicitSessionKey } from './session-store'
+import { getOpenClawSession, listOpenClawSessions } from './sessions'
 import { streamOpenClawTurnChunks, tapOpenClawTurnActivity, type OpenClawActivityTap } from './stream-events'
 import {
   writeOpenClawConfig, upsertOpenClawAgentConfig,
@@ -910,8 +911,8 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   sessions = {
-    list: async () => [],
-    get: async () => null,
+    list: async (agentId?: string) => listOpenClawSessions(agentId),
+    get: async (sessionId: string) => getOpenClawSession(sessionId),
     storeStats: async (): Promise<RuntimeSessionStoreStats[]> => {
       const agentsDir = getOpenClawPath('agents')
       if (!existsSync(agentsDir)) return []

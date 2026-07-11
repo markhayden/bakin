@@ -36,12 +36,11 @@ let harness: ImitationCrabHarness
 let threadSeq = 0
 
 /**
- * Sessions capability-honesty pin is OFF for OpenClaw: the adapter declares
- * sessions 'native' but list/get are stubs until T28 (PLAN.md) implements
- * them against the real session store. T28 MUST flip this to true — the pin
- * failing today is exactly the dishonesty T28 exists to fix.
+ * Sessions capability-honesty pin: ON since T28 — sessions.list/get read
+ * the real per-agent sessions.json store (the crab mirrors the gateway's
+ * bookkeeping at run acceptance), so the declared 'native' mode is truthful.
  */
-const SESSIONS_PIN_ENABLED = false
+const SESSIONS_PIN_ENABLED = true
 
 /** Run `fn` with the mock gateway in `mode` (read per RPC), restoring after. */
 async function withChatMode<T>(mode: string, fn: () => Promise<T>, extraEnv?: Record<string, string>): Promise<T> {
