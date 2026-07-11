@@ -61,6 +61,9 @@ import {
   __resetReloadPipelineForTest,
 } from '../../../src/core/plugin-host/reload-pipeline'
 import { pluginRegistry } from '../../../src/core/plugin-registry'
+import { getAllRoutes, _resetRouteDocsForTests } from '../../../src/core/api-docs'
+
+const registeredSkills: string[] = []
 import { __resetVersionsForTest, getVersion } from '../../../src/core/plugin-host/version-stamp'
 
 // Each test gets its own pluginRoot under a random subdir so Bun's
@@ -79,6 +82,8 @@ beforeEach(() => {
   distPath = join(pluginRoot, 'dist')
   mkdirSync(distPath, { recursive: true })
   broadcasts.length = 0
+  registeredSkills.length = 0
+  _resetRouteDocsForTests()
   __resetVersionsForTest()
   __resetReloadPipelineForTest()
   // Reset the registry for an idempotent baseline. _resetForTests is
@@ -107,13 +112,18 @@ function writeFixture(version: 'v1' | 'v2' | 'throws-activate' | 'broken-import'
     `, 'utf-8')
     return
   }
+  // Declarative routes — the only route style since the legacy
+  // ctx.registerRoute removal. The reload pipeline must re-register these
+  // itself (boot does it in finalizeActivation, outside activate()).
   writeFileSync(filePath, `
     export default {
       id: 'fixture',
       name: 'Fixture',
       version: '${version}',
+      routes: [
+        { method: 'GET', path: '/', description: '${version}', handler: async () => new Response('${version}') },
+      ],
       activate: async (ctx) => {
-        ctx.registerRoute({ method: 'GET', path: '/', description: '${version}', handler: async () => new Response('${version}') })
         ctx.registerHealthCheck({ id: 'reach', name: 'Reach', run: async () => [] })
       },
     }
@@ -123,6 +133,8 @@ function writeFixture(version: 'v1' | 'v2' | 'throws-activate' | 'broken-import'
 interface SeedOptions {
   initialActivate?: (ctx: unknown) => void | Promise<void>
   onShutdown?: () => void | Promise<void>
+  source?: 'core' | 'user'
+  manifest?: Record<string, unknown>
 }
 
 /**
@@ -139,6 +151,8 @@ function seedRegistryEntry(opts: SeedOptions = {}): void {
       activate: async () => {},
       onShutdown: opts.onShutdown ?? (async () => {}),
     },
+    source: opts.source,
+    manifest: opts.manifest,
     description: '',
     navItems: [] as unknown[],
     routes: [] as unknown[],
@@ -150,10 +164,9 @@ function seedRegistryEntry(opts: SeedOptions = {}): void {
     ctx: {
       pluginId: 'fixture',
       registerNav: () => {},
-      registerRoute: (route: unknown) => { state.routes.push(route) },
       registerSlot: (slot: unknown) => { state.slots.push(slot) },
       registerExecTool: () => {},
-      registerSkill: () => {},
+      registerSkill: (skill: { name: string }) => { registeredSkills.push(skill.name) },
       registerWorkflow: () => {},
       registerNodeType: () => 'fixture.kind',
       registerNotificationChannel: () => 'fixture.id',
@@ -280,5 +293,62 @@ describe('runReloadPipeline — failure modes', () => {
     const result = await runReloadPipeline({ pluginId: 'fixture', dir: pluginRoot })
     expect(result.ok).toBe(true)
     expect(result.version).toBe(1)
+  })
+})
+
+describe('runReloadPipeline — boot-parity registrations (declarative routes + skills)', () => {
+  it('re-registers declarative routes and dedupes route docs across consecutive reloads', async () => {
+    writeFixture('v1')
+    seedRegistryEntry()
+
+    expect((await runReloadPipeline({ pluginId: 'fixture', dir: pluginRoot })).ok).toBe(true)
+    let state = pluginRegistry.getPluginState('fixture')!
+    expect(state.routes.length).toBe(1)
+    expect((state.routes[0] as { method: string; path: string }).method).toBe('GET')
+
+    // Second reload: routes must be re-registered again (sweep clears them),
+    // and the /api/docs surface must not grow per reload cycle.
+    writeFixture('v2')
+    expect((await runReloadPipeline({ pluginId: 'fixture', dir: pluginRoot })).ok).toBe(true)
+    state = pluginRegistry.getPluginState('fixture')!
+    expect(state.routes.length).toBe(1)
+    expect((state.routes[0] as { description: string }).description).toBe('v2')
+
+    const fixtureDocs = getAllRoutes().filter((d) => d.path.includes('fixture') || d.description === 'v2' || d.description === 'v1')
+    expect(fixtureDocs.length).toBe(1)
+    expect(fixtureDocs[0]!.description).toBe('v2')
+  })
+
+  it('re-runs the plugin-dir workflow-skill loader after activate', async () => {
+    writeFixture('v1')
+    seedRegistryEntry()
+    const skillsDir = join(pluginRoot, 'defaults', 'workflow-skills')
+    mkdirSync(skillsDir, { recursive: true })
+    writeFileSync(join(skillsDir, 'demo-skill.md'), '# Demo skill\nDo the demo.\n', 'utf-8')
+
+    const result = await runReloadPipeline({ pluginId: 'fixture', dir: pluginRoot })
+    expect(result.ok).toBe(true)
+    expect(registeredSkills).toContain('demo-skill')
+  })
+
+  it('user plugins: undeclared declarative route fails the reload with the manifest hint', async () => {
+    writeFixture('v1')
+    seedRegistryEntry({ source: 'user', manifest: { contributes: { apiRoutes: [] } } })
+
+    const result = await runReloadPipeline({ pluginId: 'fixture', dir: pluginRoot })
+    expect(result.ok).toBe(false)
+    expect(result.failedAt).toBe('activate')
+    expect(result.error).toContain('undeclared API route')
+    // Failed reload leaves no partial registrations behind.
+    expect(pluginRegistry.getPluginState('fixture')!.routes.length).toBe(0)
+  })
+
+  it('user plugins: declared declarative route reloads clean', async () => {
+    writeFixture('v1')
+    seedRegistryEntry({ source: 'user', manifest: { contributes: { apiRoutes: [{ method: 'GET', path: '/' }] } } })
+
+    const result = await runReloadPipeline({ pluginId: 'fixture', dir: pluginRoot })
+    expect(result.ok).toBe(true)
+    expect(pluginRegistry.getPluginState('fixture')!.routes.length).toBe(1)
   })
 })

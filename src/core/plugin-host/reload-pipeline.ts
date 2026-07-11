@@ -13,10 +13,13 @@
  *      uninstall/remove owns destructive table purging.
  *   4. Empty the state's per-plugin arrays so the next activate doesn't
  *      pile registrations on top of the swept ones.
- *   5. Run the new plugin's `activate(ctx)`. The same `ctx` from the
- *      previous activation is reused; its closures already reference the
- *      `state` arrays we just emptied, so the new plugin's registrations
- *      land cleanly.
+ *   5. Re-register the new module's declarative `routes` (the same step
+ *      boot's finalizeActivation performs — activate() alone no longer
+ *      registers routes since the legacy ctx.registerRoute removal), run
+ *      the new plugin's `activate(ctx)`, then re-run the plugin-dir
+ *      workflow-skill loader. The same `ctx` from the previous activation
+ *      is reused; its closures already reference the `state` arrays we
+ *      just emptied, so the new plugin's registrations land cleanly.
  *   6. On success: replace `state.plugin` with the new module, refresh
  *      plugin search readiness, bump the version, and broadcast the reload
  *      so dev tabs hot-swap the client bundle.
@@ -46,6 +49,7 @@ import {
   broadcastPluginError,
   broadcastPluginRecover,
 } from '@/core/sse'
+import { loadPluginSkills } from '@/lib/plugin-skill-loader'
 import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 
 const log = createLogger('reload-pipeline')
@@ -209,10 +213,23 @@ export async function runReloadPipeline(args: {
   await sweepPluginRegistrations(pluginId)
   clearStateArrays(state)
 
-  // Step 4: activate. On throw, re-sweep so any partial registrations
-  // the activate body managed to complete are gone.
+  // Step 4: re-register + activate, converging on the same steps boot's
+  // finalizeActivation performs. Declarative routes and workflow skills
+  // are registered OUTSIDE activate() at boot; the sweep just cleared
+  // both, so skipping them here leaves every declarative route 404ing
+  // and every plugin-shipped workflow skill missing until re-link
+  // (found live on the linked bits plugins after the legacy-route
+  // removal). On throw, re-sweep so partial registrations are gone.
   try {
+    pluginRegistry.registerDeclarativeRoutesForReload(newPlugin, pluginId)
     await newPlugin.activate(ctx)
+    const skillResult = loadPluginSkills(dir, ctx, log)
+    if (skillResult.registered.length > 0) {
+      log.info(`reload: re-registered ${skillResult.registered.length} workflow skill(s)`, {
+        pluginId,
+        skills: skillResult.registered,
+      })
+    }
     await refreshPluginSearch(pluginId)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
