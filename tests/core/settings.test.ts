@@ -200,4 +200,46 @@ describe('Settings', () => {
     expect(s1).not.toBe(s2) // different reference
     expect(s1).toEqual(s2) // same values
   })
+
+  describe('BAKIN_RUNTIME_ADAPTER override', () => {
+    afterEach(() => {
+      delete process.env.BAKIN_RUNTIME_ADAPTER
+      resetSettingsCache()
+    })
+
+    it('overrides the default adapter', () => {
+      process.env.BAKIN_RUNTIME_ADAPTER = 'pi'
+      expect(getSettings().runtime.adapter).toBe('pi')
+    })
+
+    it('overrides a stored adapter from settings.json', () => {
+      fs.mkdirSync(TEST_CONTENT_DIR, { recursive: true })
+      fs.writeFileSync(SETTINGS_FILE, JSON.stringify({ runtime: { adapter: 'openclaw' } }))
+      process.env.BAKIN_RUNTIME_ADAPTER = 'pi'
+      expect(getSettings().runtime.adapter).toBe('pi')
+    })
+
+    it('ignores invalid values and keeps the stored adapter', () => {
+      process.env.BAKIN_RUNTIME_ADAPTER = 'bogus'
+      expect(getSettings().runtime.adapter).toBe('openclaw')
+    })
+
+    it('applies per cache generation — removing the env restores the stored value', () => {
+      process.env.BAKIN_RUNTIME_ADAPTER = 'pi'
+      expect(getSettings().runtime.adapter).toBe('pi')
+      delete process.env.BAKIN_RUNTIME_ADAPTER
+      resetSettingsCache()
+      expect(getSettings().runtime.adapter).toBe('openclaw')
+    })
+
+    it('does not leak the override into settings.json on updateSettings', () => {
+      process.env.BAKIN_RUNTIME_ADAPTER = 'pi'
+      const updated = updateSettings({ sse: { maxClients: 42 } })
+      // Live view keeps the override…
+      expect(updated.runtime.adapter).toBe('pi')
+      // …but the file never records it.
+      const onDisk = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8'))
+      expect(onDisk.runtime?.adapter).toBeUndefined()
+    })
+  })
 })
