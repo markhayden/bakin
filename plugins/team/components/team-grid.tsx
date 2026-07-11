@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useCallback, useState, useEffect } from 'react'
+import { useMemo, useCallback, useState } from 'react'
 import { useRouter } from '@makinbakin/sdk/hooks'
 import { Plus, Users, Settings2, Loader2, ScrollText } from 'lucide-react'
 import {
@@ -25,7 +25,7 @@ import {
 } from "@makinbakin/sdk/ui"
 import { BakinDrawer } from "@makinbakin/sdk/components"
 import { useRuntimeStatus } from "@makinbakin/sdk/hooks"
-import { useAgentStore, useAgentColor, useMainAgentId, usePackageState } from '@makinbakin/sdk/hooks'
+import { useAgentStore, useAgentColor, useMainAgentId, usePackageState, usePluginJsonFetch } from '@makinbakin/sdk/hooks'
 import { buildGraph } from '../lib/build-graph'
 import { AgentForm, type AgentFormData } from './agent-form'
 import { TeamManager } from './team-manager'
@@ -210,23 +210,20 @@ export function TeamGrid() {
   const reload = useAgentStore((s) => s.load)
   const [showCreate, setShowCreate] = useState(false)
   const [showTeams, setShowTeams] = useState(false)
-  const [teamsWithContext, setTeamsWithContext] = useState<Set<string>>(new Set())
 
-  useEffect(() => {
-    let cancelled = false
-    void (async () => {
-      try {
-        const res = await fetch('/api/plugins/team/context')
-        const json = await res.json()
-        if (cancelled || !json.ok) return
-        const ids = (json.teams ?? [])
-          .filter((t: { content: string | null }) => (t.content ?? '').trim().length > 0)
-          .map((t: { teamId: string }) => t.teamId)
-        setTeamsWithContext(new Set(ids))
-      } catch { /* badge is best-effort */ }
-    })()
-    return () => { cancelled = true }
-  }, [])
+  // Badge data is best-effort: a failed fetch just renders no badges.
+  const teamContextRes = usePluginJsonFetch<{
+    ok?: boolean
+    teams?: Array<{ teamId: string; content: string | null }>
+  }>('team', 'context')
+  const teamsWithContext = useMemo(() => {
+    if (!teamContextRes.data?.ok) return new Set<string>()
+    return new Set(
+      (teamContextRes.data.teams ?? [])
+        .filter((t) => (t.content ?? '').trim().length > 0)
+        .map((t) => t.teamId),
+    )
+  }, [teamContextRes.data])
   const runtimeStatus = useRuntimeStatus()
   const [submitting, setSubmitting] = useState(false)
   const [pendingCreate, setPendingCreate] = useState<{ data: AgentFormData; avatarFile: File | null } | null>(null)

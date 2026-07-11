@@ -52,6 +52,9 @@ export function LessonToggleList({ agentId }: LessonToggleListProps) {
     }
   }, [lessons, highlightId])
 
+  // Deliberately NOT `useJsonFetch`: the fetched list becomes local mutable
+  // state (optimistic toggle updates + revert), which a read-only hook result
+  // can't model without an extra copy-into-state effect.
   useEffect(() => {
     let cancelled = false
     async function load() {

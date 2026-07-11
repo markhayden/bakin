@@ -17,11 +17,11 @@
  * drift/context/burn status chips, derived from the CACHED doctor results
  * (data.agents) — same source as the dashboard attention rollup.
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Loader2, RefreshCw } from 'lucide-react'
 import { Button, Badge, Skeleton } from '@makinbakin/sdk/ui'
 import { Sparkline, ChartExplainer } from '@makinbakin/sdk/components'
-import { usePluginEvent } from '@makinbakin/sdk/hooks'
+import { usePluginEvent, useJsonFetch } from '@makinbakin/sdk/hooks'
 import type { ScanFinding, TimelineEventView } from '../types'
 
 // ── Small shared bits ────────────────────────────────────────────────────────
@@ -100,24 +100,20 @@ function rowFlagsAgent(rows: DoctorRowLike[], check: string, agentId: string): b
 
 /** Drift/context/burn flags for one agent from the cached doctor results. */
 export function useAgentAttention(agentId: string): AgentAttention {
-  const [attention, setAttention] = useState<AgentAttention>({
-    loaded: false, drift: false, context: false, burn: false,
-  })
-  useEffect(() => {
-    let cancelled = false
-    getJson<{ doctor?: { results?: DoctorRowLike[] } | null }>('/api/plugins/health/summary').then((body) => {
-      if (cancelled) return
-      const rows = body?.doctor?.results ?? []
-      setAttention({
-        loaded: Boolean(body?.doctor),
-        drift: rowFlagsAgent(rows, 'agent-sync', agentId),
-        context: rowFlagsAgent(rows, 'context.startup-size', agentId),
-        burn: rowFlagsAgent(rows, 'usage.agent-burn', agentId),
-      })
-    })
-    return () => { cancelled = true }
-  }, [agentId])
-  return attention
+  // A failed summary fetch leaves data null → same "not loaded" flags the
+  // old swallow-errors getJson produced.
+  const summary = useJsonFetch<{ doctor?: { results?: DoctorRowLike[] } | null }>(
+    '/api/plugins/health/summary',
+  )
+  return useMemo(() => {
+    const rows = summary.data?.doctor?.results ?? []
+    return {
+      loaded: Boolean(summary.data?.doctor),
+      drift: rowFlagsAgent(rows, 'agent-sync', agentId),
+      context: rowFlagsAgent(rows, 'context.startup-size', agentId),
+      burn: rowFlagsAgent(rows, 'usage.agent-burn', agentId),
+    }
+  }, [summary.data, agentId])
 }
 
 export function DiagnosticsChips({ agentId, onOpen }: { agentId: string; onOpen: () => void }) {
@@ -308,24 +304,17 @@ interface ContextReportPayload {
 const DEFAULT_CONTEXT_BUDGET = 64 * 1024
 
 function ContextPanel({ agentId }: { agentId: string }) {
-  const [payload, setPayload] = useState<ContextReportPayload | null>(null)
-  const [budget, setBudget] = useState<number>(DEFAULT_CONTEXT_BUDGET)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    let cancelled = false
-    Promise.all([
-      getJson<ContextReportPayload>(`/api/context-report/${encodeURIComponent(agentId)}`),
-      getJson<{ dispatch?: { contextBudgetBytes?: number } }>('/api/settings'),
-    ]).then(([report, settings]) => {
-      if (cancelled) return
-      setPayload(report)
-      const configured = settings?.dispatch?.contextBudgetBytes
-      if (typeof configured === 'number' && configured > 0) setBudget(configured)
-      setLoading(false)
-    })
-    return () => { cancelled = true }
-  }, [agentId])
+  // Both reads degrade independently: a failed report renders the
+  // "unavailable" panel; failed settings keep the default budget.
+  const reportRes = useJsonFetch<ContextReportPayload>(
+    `/api/context-report/${encodeURIComponent(agentId)}`,
+  )
+  const settingsRes = useJsonFetch<{ dispatch?: { contextBudgetBytes?: number } }>('/api/settings')
+  const loading = reportRes.loading || settingsRes.loading
+  const payload = reportRes.data
+  const configured = settingsRes.data?.dispatch?.contextBudgetBytes
+  const budget =
+    typeof configured === 'number' && configured > 0 ? configured : DEFAULT_CONTEXT_BUDGET
 
   if (loading) return <Panel title="Context budget"><Skeleton className="h-16 w-full" /></Panel>
   const report = payload?.report

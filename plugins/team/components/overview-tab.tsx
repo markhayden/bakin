@@ -9,10 +9,9 @@
  * activity (5m/1h/24h dispatch counts), model selector, and team
  * selector — both moved out of the agent-detail header.
  */
-import { useEffect, useState } from 'react'
 import { Loader2, Sparkles, BookOpen, MessageSquare, Coins, Database, Activity } from 'lucide-react'
 import { ModelSelect } from '@makinbakin/sdk/components'
-import { useAgentStore, useAgentColor } from '@makinbakin/sdk/hooks'
+import { useAgentStore, useAgentColor, useJsonFetch } from '@makinbakin/sdk/hooks'
 import type { AgentUsage, AvailableModel } from '@makinbakin/sdk/types'
 import { useQueryState } from '@makinbakin/sdk/hooks'
 import type { AgentProfile, PackageStateRow, RecentActivity } from '../types'
@@ -134,42 +133,32 @@ export function OverviewTab({
       ? { ...packageState, state: 'drifted' }
       : packageState
 
-  const [usage, setUsage] = useState<AgentUsage | null>(null)
-  const [activity, setActivity] = useState<RecentActivity | null>(null)
-  const [skillCount, setSkillCount] = useState<number | null>(null)
-  const [lessonsMeta, setLessonsMeta] = useState<LessonsMeta | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    Promise.all([
-      fetch(`/api/plugins/team/${agentId}/stats`).then((r) => r.json()).catch(() => ({ usage: null })),
-      fetch(`/api/plugins/team/${agentId}/recent-activity`).then((r) => r.json()).catch(() => ({ ok: false })),
-      fetch(`/api/plugins/team/${agentId}/skills`).then((r) => r.json()).catch(() => ({ skills: [] })),
-      fetch(`/api/agent-packages/${agentId}/lessons`).then((r) => r.json()).catch(() => ({ ok: false })),
-    ]).then(([statsBody, activityBody, skillsBody, lessonsBody]) => {
-      if (cancelled) return
-      const stats = statsBody as { usage: AgentUsage | null }
-      const act = activityBody as { ok: boolean; activity?: RecentActivity }
-      const skills = skillsBody as { skills?: unknown[] }
-      const lessons = lessonsBody as { ok: boolean; lessons?: Array<{ enabled: boolean }> }
-
-      setUsage(stats.usage ?? null)
-      setActivity(act.ok && act.activity ? act.activity : null)
-      setSkillCount(Array.isArray(skills.skills) ? skills.skills.length : 0)
-      if (lessons.ok && Array.isArray(lessons.lessons)) {
-        setLessonsMeta({
-          total: lessons.lessons.length,
-          enabled: lessons.lessons.filter((l) => l.enabled).length,
-        })
-      } else {
-        setLessonsMeta({ total: 0, enabled: 0 })
-      }
-      setLoading(false)
-    })
-    return () => { cancelled = true }
-  }, [agentId])
+  // Four independent reads; a failed endpoint degrades to the same fallback
+  // the old Promise.all catch-defaults produced (hook data stays null).
+  const statsRes = useJsonFetch<{ usage: AgentUsage | null }>(`/api/plugins/team/${agentId}/stats`)
+  const activityRes = useJsonFetch<{ ok: boolean; activity?: RecentActivity }>(
+    `/api/plugins/team/${agentId}/recent-activity`,
+  )
+  const skillsRes = useJsonFetch<{ skills?: unknown[] }>(`/api/plugins/team/${agentId}/skills`)
+  const lessonsRes = useJsonFetch<{ ok: boolean; lessons?: Array<{ enabled: boolean }> }>(
+    `/api/agent-packages/${agentId}/lessons`,
+  )
+  const loading = statsRes.loading || activityRes.loading || skillsRes.loading || lessonsRes.loading
+  const usage = statsRes.data?.usage ?? null
+  const activity = activityRes.data?.ok && activityRes.data.activity ? activityRes.data.activity : null
+  const skillCount = skillsRes.loading
+    ? null
+    : Array.isArray(skillsRes.data?.skills)
+      ? skillsRes.data.skills.length
+      : 0
+  const lessonsMeta: LessonsMeta | null = lessonsRes.loading
+    ? null
+    : lessonsRes.data?.ok && Array.isArray(lessonsRes.data.lessons)
+      ? {
+          total: lessonsRes.data.lessons.length,
+          enabled: lessonsRes.data.lessons.filter((l) => l.enabled).length,
+        }
+      : { total: 0, enabled: 0 }
 
   const resolvedModelId = availableModels.find((m) => m.id === profile.model)?.id ?? profile.model
 

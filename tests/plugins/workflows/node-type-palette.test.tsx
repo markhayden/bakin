@@ -131,7 +131,8 @@ describe('NodeTypePalette', () => {
     render(<NodeTypePalette />)
     // Wait a tick for fetch resolution.
     await screen.findByText('Agent Task')
-    expect(fetchMock).toHaveBeenCalledWith('/api/plugins/workflows/node-types')
+    // useJsonFetch passes an abort signal as the second argument.
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/plugins/workflows/node-types')
 
     vi.unstubAllGlobals()
   })

@@ -98,6 +98,8 @@ function TextPreview({ assetId, fileUrl, mimeType, currentFile, onSaved }: {
   const [error, setError] = useState<string | null>(null)
   const editable = isEditableMimeType(mimeType)
 
+  // Deliberately NOT `useJsonFetch`: this loads the raw text body, and the
+  // SDK hook is JSON-only.
   useEffect(() => {
     let cancelled = false
     setContent(null)
