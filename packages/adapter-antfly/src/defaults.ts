@@ -7,6 +7,8 @@ export interface AntflySettings {
     /** Hybrid fusion algorithm — upstream main supports both; tuned in T21. */
     fusionStrategy: 'rrf' | 'rsf'
     defaultLimit: number
+    /** Per-table cooperative query deadline (ms); see core settings. */
+    queryBudgetMs?: number
     reranker: {
       enabled: boolean
       provider: string
@@ -54,6 +56,7 @@ export const DEFAULT_SETTINGS: AntflySettings = {
     // (exact caption or visual match) from being diluted by rank-only fusion.
     fusionStrategy: 'rsf',
     defaultLimit: 20,
+    queryBudgetMs: 2000,
     reranker: {
       // Still disabled at v0.2.0-rc.9, but for a NEW reason. The rc.2 mxbai
       // SIGABRT (bakin#456) IS fixed — the reranker no longer crashes the server

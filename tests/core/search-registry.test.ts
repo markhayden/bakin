@@ -576,6 +576,49 @@ describe('search-registry', () => {
 
   // ── crossTableSearch ────────────────────────────────────────────────
 
+  it('crossTableSearch passes the query budget as per-table deadlineMs (default 2000)', async () => {
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    await crossTableSearch('build', { table: 'tasks' })
+    expect(searchHarness.calls.query).toHaveBeenCalledWith(
+      'bakin_tasks',
+      expect.objectContaining({ deadlineMs: 2000 }),
+    )
+
+    await crossTableSearch('build')
+    const entries = searchHarness.calls.multiQuery.mock.calls.at(-1)![0] as Array<{ query: { deadlineMs?: number } }>
+    expect(entries[0]!.query.deadlineMs).toBe(2000)
+  })
+
+  it('crossTableSearch reports per-table outcomes and a partial flag when a source misses budget', async () => {
+    buildSearchAPI('tasks').registerContentType(makeDef('tasks'))
+    buildSearchAPI('assets').registerContentType(makeDef('assets'))
+
+    searchHarness.calls.multiQuery.mockResolvedValue([
+      { hits: [{ key: 'd1', document: {}, score: 0.9 }], total: 1, diagnostics: { strategy: 'hybrid', durationMs: 5 } },
+      { hits: [], total: 0, diagnostics: { strategy: 'none', budget: 'omitted', durationMs: 2001 } },
+    ])
+
+    const result = await crossTableSearch('hello')
+
+    expect(result.meta.partial).toBe(true)
+    expect(result.meta.tables).toEqual([
+      { table: 'bakin_tasks', hits: 1, took_ms: 5 },
+      { table: 'bakin_assets', hits: 0, took_ms: 2001, budget: 'omitted' },
+    ])
+  })
+
+  it('crossTableSearch omits the partial flag when every source answered in budget', async () => {
+    buildSearchAPI('tasks').registerContentType(makeDef('tasks'))
+    searchHarness.calls.multiQuery.mockResolvedValue([
+      { hits: [{ key: 'd1', document: {}, score: 0.9 }], total: 1, diagnostics: { strategy: 'hybrid', durationMs: 5 } },
+    ])
+    const result = await crossTableSearch('hello')
+    expect(result.meta.partial).toBeUndefined()
+    expect(result.meta.tables).toEqual([{ table: 'bakin_tasks', hits: 1, took_ms: 5 }])
+  })
+
   it('crossTableSearch returns fallback when search adapter is unavailable', async () => {
     searchHarness.setAvailable(false)
 

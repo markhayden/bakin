@@ -4,6 +4,7 @@
  * barrel.
  */
 import type { SearchResponse } from '../../packages/core/src/plugin-types'
+import { getSettings } from './settings'
 import { recordUsage } from './usage'
 import {
   TABLE_PREFIX,
@@ -69,6 +70,7 @@ async function crossTableSearchInner(q: string, opts?: {
 
   const registry = getRegistry()
   const limit = opts?.limit ?? 20
+  const deadlineMs = queryBudgetMs()
 
   // Single-table search
   if (opts?.table) {
@@ -86,6 +88,7 @@ async function crossTableSearchInner(q: string, opts?: {
     const result = await search.query(resolvePhysicalTable(tableName), {
       text: q,
       limit,
+      deadlineMs,
       offset: opts?.offset,
       filters: filtersFromRecord(opts?.filters),
       facets: opts?.facets ?? def.facets,
@@ -101,7 +104,14 @@ async function crossTableSearchInner(q: string, opts?: {
       results: result.hits.map((hit) => ({ ...adapterHitToPluginResult(hit, tableName), _table: tableName })),
       aggregations: mapFacetCounts(result.facets),
       rawAggregations: result.aggregations,
-      meta: { query: q, total: result.total ?? result.hits.length, took_ms: result.diagnostics?.durationMs ?? 0, source: 'search' },
+      meta: {
+        query: q,
+        total: result.total ?? result.hits.length,
+        took_ms: result.diagnostics?.durationMs ?? 0,
+        source: 'search',
+        ...(result.diagnostics?.budget ? { partial: true } : {}),
+        tables: [tableMeta(tableName, result)],
+      },
     }
   }
 
@@ -132,6 +142,7 @@ async function crossTableSearchInner(q: string, opts?: {
     query: {
       text: q,
       limit: perTableLimit,
+      deadlineMs,
       filters: filtersFromRecord(opts?.filters),
       // Facets merge across tables below; only request them when asked.
       ...(facets && facets.length > 0 ? { facets } : {}),
@@ -149,6 +160,8 @@ async function crossTableSearchInner(q: string, opts?: {
   const hits = results.flatMap((result, index) => result.hits.map((hit) => adapterHitToPluginResult(hit, tables[index])))
     .sort((a, b) => b.score - a.score)
     .slice(offset, offset + limit)
+  const tableMetas = results.map((result, index) => tableMeta(tables[index]!, result))
+  const partial = tableMetas.some((t) => t.budget !== undefined)
   return {
     results: hits,
     ...(facets && facets.length > 0 ? { aggregations: mapFacetCounts(mergeFacetCounts(results)) } : {}),
@@ -157,7 +170,31 @@ async function crossTableSearchInner(q: string, opts?: {
       total: results.reduce((sum, result) => sum + (result.total ?? result.hits.length), 0),
       took_ms: Math.max(0, ...results.map((result) => result.diagnostics?.durationMs ?? 0)),
       source: 'search',
+      ...(partial ? { partial: true } : {}),
+      tables: tableMetas,
     },
+  }
+}
+
+/** Per-table wall budget from settings (SD2); tables fan out in parallel. */
+function queryBudgetMs(): number {
+  try {
+    const configured = getSettings().search.settings.search?.queryBudgetMs
+    if (typeof configured === 'number' && configured > 0) return configured
+  } catch {
+    // settings unavailable (early boot, tests) — use the spec default
+  }
+  return 2000
+}
+
+type TableQueryResult = { hits: unknown[]; diagnostics?: { durationMs?: number; budget?: 'degraded' | 'omitted' } }
+
+function tableMeta(table: string, result: TableQueryResult): NonNullable<SearchResponse['meta']['tables']>[number] {
+  return {
+    table,
+    hits: result.hits.length,
+    took_ms: result.diagnostics?.durationMs ?? 0,
+    ...(result.diagnostics?.budget ? { budget: result.diagnostics.budget } : {}),
   }
 }
 
