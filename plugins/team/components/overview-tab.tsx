@@ -134,7 +134,10 @@ export function OverviewTab({
       : packageState
 
   // Four independent reads; a failed endpoint degrades to the same fallback
-  // the old Promise.all catch-defaults produced (hook data stays null).
+  // the old Promise.all catch-defaults produced. useJsonFetch keeps the
+  // previous payload across url changes and on error, and this component can
+  // survive /team/a → /team/b navigation — so every read is error-guarded:
+  // a failed fetch for agent B must render B's fallback, never A's numbers.
   const statsRes = useJsonFetch<{ usage: AgentUsage | null }>(`/api/plugins/team/${agentId}/stats`)
   const activityRes = useJsonFetch<{ ok: boolean; activity?: RecentActivity }>(
     `/api/plugins/team/${agentId}/recent-activity`,
@@ -144,16 +147,17 @@ export function OverviewTab({
     `/api/agent-packages/${agentId}/lessons`,
   )
   const loading = statsRes.loading || activityRes.loading || skillsRes.loading || lessonsRes.loading
-  const usage = statsRes.data?.usage ?? null
-  const activity = activityRes.data?.ok && activityRes.data.activity ? activityRes.data.activity : null
+  const usage = statsRes.error ? null : (statsRes.data?.usage ?? null)
+  const activity =
+    !activityRes.error && activityRes.data?.ok && activityRes.data.activity ? activityRes.data.activity : null
   const skillCount = skillsRes.loading
     ? null
-    : Array.isArray(skillsRes.data?.skills)
+    : !skillsRes.error && Array.isArray(skillsRes.data?.skills)
       ? skillsRes.data.skills.length
       : 0
   const lessonsMeta: LessonsMeta | null = lessonsRes.loading
     ? null
-    : lessonsRes.data?.ok && Array.isArray(lessonsRes.data.lessons)
+    : !lessonsRes.error && lessonsRes.data?.ok && Array.isArray(lessonsRes.data.lessons)
       ? {
           total: lessonsRes.data.lessons.length,
           enabled: lessonsRes.data.lessons.filter((l) => l.enabled).length,

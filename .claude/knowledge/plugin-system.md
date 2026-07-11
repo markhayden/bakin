@@ -783,19 +783,23 @@ event references their plugin id. The server still calls
 `onSettingsChange` handlers.
 
 ### PluginManifest (`bakin-plugin.json`)
+
+There are NO entry-point fields: every plugin uses the canonical root layout —
+`index.ts` (server entry) and optional `client.tsx` (browser entry) at the
+plugin root. The removed `entry` and `tests` fields are tombstoned — the
+parser (`packages/core/src/plugins/manifest.ts`) rejects manifests that still
+carry them with actionable errors naming the root-layout convention.
+
 ```typescript
 interface PluginManifest {
   id: string
   name: string
   version: string
-  bakin: string                // semver range for compatibility
+  bakin: string                // semver range — enforced at install AND activation
   description: string
-  entry: {                     // entry-point file paths
-    server: string             // e.g. "index.ts"
-    client?: string            // e.g. "client.tsx"
-  }
   contributes?: PluginContributions  // declared nav/routes/apiRoutes/execTools/slots
-                                     // (drives lazy client loading + consent review)
+                                     // (drives lazy client loading + consent review;
+                                     //  regenerate with `bakin plugins sync-manifest`)
   contentFiles?: string[]
   secrets?: Array<{
     name: string                // canonical env var name, e.g. ANTHROPIC_API_KEY
@@ -804,6 +808,8 @@ interface PluginManifest {
   }>
   dependencies?: string[]      // other plugin IDs — drives topological sort
   permissions?: Permission[]   // strict Zod enum — see PermissionSchema. Empty/missing → []
+  runtimeCapabilities?: RuntimeCapability[]  // runtime features the plugin needs
+  devWatch?: string[]          // file globs that trigger hot reload in dev
   signature?: {
     algorithm: 'ed25519'
     signer: string             // display metadata only
@@ -813,8 +819,8 @@ interface PluginManifest {
 }
 ```
 
-(The full shape, including every `contributes` sub-type, lives in
-`packages/sdk/src/types/manifest.ts` — treat that file as canonical.)
+(Shape excerpt. The full shape, including every `contributes` sub-type, lives
+in `packages/sdk/src/types/manifest.ts` — treat that file as canonical.)
 
 ## Runtime Plugin Loader (browser)
 

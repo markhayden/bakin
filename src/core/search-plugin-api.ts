@@ -81,10 +81,10 @@ export interface BuildSearchAPIOptions {
    */
   registerRoute?: (route: RegisteredAPIRoute) => void
   /**
-   * Skip the side effects of `registerFileBackedContentType` — watcher
-   * sync/unlink hooks and pending startup reconcile. The primary register
-   * (content type + auto /search route) still runs. Used by the Next.js
-   * catch-all route where the real custom-server activation already wired
+   * Skip the side effects of `registerFileBackedContentType` — the watcher
+   * sync/unlink hooks (there is no boot reconcile; the durable outbox owns
+   * change detection). The primary register (content type + auto /search
+   * route) still runs. Used where the real activation already wired
    * watchers; re-wiring them here would double-fire on every file change.
    */
   skipFileBackedWiring?: boolean

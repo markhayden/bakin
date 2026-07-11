@@ -17,7 +17,7 @@
  * drift/context/burn status chips, derived from the CACHED doctor results
  * (data.agents) — same source as the dashboard attention rollup.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, RefreshCw } from 'lucide-react'
 import { Button, Badge, Skeleton } from '@makinbakin/sdk/ui'
 import { Sparkline, ChartExplainer } from '@makinbakin/sdk/components'
@@ -98,6 +98,17 @@ export function useAgentAttention(agentId: string): AgentAttention {
   const summary = useJsonFetch<{ doctor?: { results?: DoctorRowLike[] } | null }>(
     '/api/plugins/health/summary',
   )
+  // Re-fetch when the agent changes (matches the old per-effect behavior):
+  // an instance surviving /team/a → /team/b navigation must not flag the new
+  // agent from a stale doctor snapshot. Skips the mount run — the hook
+  // already fetches on mount; this only covers agentId CHANGES.
+  const { refresh } = summary
+  const mountedAgent = useRef(agentId)
+  useEffect(() => {
+    if (mountedAgent.current === agentId) return
+    mountedAgent.current = agentId
+    refresh()
+  }, [agentId, refresh])
   return useMemo(() => {
     const rows = summary.data?.doctor?.results ?? []
     return {
