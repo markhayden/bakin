@@ -313,7 +313,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     create: async (input: CreateRuntimeAgentInput): Promise<RuntimeAgent> => {
       const id = input.id ?? slug(input.name)
       const workspace = getWorkspacePath(id)
-      if (findAgentById(id)) throw new Error(`Agent already exists: ${id}`)
+      if (findAgentById(id)) throw new RuntimeError(`Agent already exists: ${id}`, { kind: 'runtime_failed' })
       const args = ['agents', 'add', id, '--workspace', workspace, '--non-interactive', '--json']
       if (input.model) args.splice(3, 0, '--model', input.model)
       const emoji = metadataValue(input.metadata, 'emoji')
@@ -371,7 +371,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       }
     },
     update: async (agentId: string, input: UpdateRuntimeAgentInput): Promise<RuntimeAgent> => {
-      if (!findAgentById(agentId)) throw new Error(`Agent not found: ${agentId}`)
+      if (!findAgentById(agentId)) throw new RuntimeError(`Agent not found: ${agentId}`, { kind: 'not_found' })
       const args = ['agents', 'set-identity', '--agent', agentId]
       if (input.name) args.push('--name', input.name)
       const emoji = metadataValue(input.metadata, 'emoji')
@@ -496,15 +496,6 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       rmSync(target, { force: true })
       rmSync(`${target}.installedBy`, { force: true })
     },
-    updatePermissions: async (agentId: string, patch: { allow?: string[]; deny?: string[]; replace?: boolean }): Promise<void> => {
-      updateAgentAllowlist(agentId, (current) => {
-        const next = new Set(patch.replace ? [] : current)
-        for (const id of patch.allow ?? []) next.add(id)
-        for (const id of patch.deny ?? []) next.delete(id)
-        next.delete(agentId)
-        return Array.from(next)
-      })
-    },
     updateAllowlist: async (agentId: string, patch: { add?: string[]; remove?: string[]; replace?: string[] }): Promise<void> => {
       updateAgentAllowlist(agentId, (current) => {
         const next = new Set(patch.replace ?? current)
@@ -559,12 +550,6 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     },
   }
 
-  tools = {
-    invoke: async (_agentId: string, name: string, args: unknown) => {
-      const value = await this.invokeTool(name, args as Record<string, unknown>)
-      return { ok: true, output: value }
-    },
-  }
 
   channels = {
     list: async (): Promise<ChannelInfo[]> => readChannelInfos(),
@@ -1399,7 +1384,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
   private async updateCronJob(id: string, patch: UpdateCronJobInput): Promise<CronJob> {
     const current = await this.getCronJob(id)
-    if (!current) throw new Error(`Cron job not found: ${id}`)
+    if (!current) throw new RuntimeError(`Cron job not found: ${id}`, { kind: 'not_found' })
 
     const args = cronUpdateArgs(id, current, patch)
     if (args.length > 5) await this.execCron(args)
@@ -1856,15 +1841,6 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     return this.chatGatewayClient
   }
 
-  private async invokeTool(toolName: string, args: Record<string, unknown> = {}): Promise<unknown> {
-    const res = await fetch(`${this.baseUrl()}/tools/invoke`, {
-      method: 'POST',
-      headers: this.headers(),
-      body: JSON.stringify({ tool: toolName, action: 'json', args }),
-    })
-    if (!res.ok) throw new RuntimeError(`OpenClaw invokeTool failed (${res.status}): ${await res.text()}`, { kind: 'runtime_failed' })
-    return res.json()
-  }
 
   private async runImageInference(
     command: 'generate' | 'edit',

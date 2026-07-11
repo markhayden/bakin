@@ -123,7 +123,6 @@ function installRuntimeMock(): void {
         rmSync(target, { force: true })
         rmSync(`${target}.installedBy`, { force: true })
       },
-      updatePermissions: async () => {},
       updateAllowlist: async () => {},
       heartbeat: async () => true,
     },

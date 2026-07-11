@@ -46,7 +46,7 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 - [x] T27 Mock default flip (minimal shape) + test sweep ✅ (channels/cron opt-in via mockChannels()/mockCron(); delivery honesty auto-paired; zero real bare-deref bugs found — all prod code already guarded)
 - [x] T28 OpenClaw sessions.list/get for real ✅ (sessions.json store reads via mtime/LRU cache; crab mirrors gateway bookkeeping; honesty pin ON)
 - [x] T29 ping/restart/toolsAllow/oversizedOutputBytes semantics ✅ (Pi credential-probe ping; OpenClaw stops forwarding exec filters; typed oversized field)
-- [ ] T30 Dead surface deletion + typed CRUD errors + arch ban
+- [x] T30 Dead surface deletion + typed CRUD errors + arch ban ✅ (updatePermissions+tools.invoke deleted; not_found kind; message-match ban + 2 offenders fixed)
 - [ ] T31 Provider-leak fixes + WS3 docs
 - [ ] CHECKPOINT 3: suite = adapter acceptance gate; PR merged
 

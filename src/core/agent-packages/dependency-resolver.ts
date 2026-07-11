@@ -45,6 +45,9 @@ const MAX_DEPTH = 8
 const WARN_PACKAGE_COUNT = 5
 const WARN_TREE_SIZE_BYTES = 25 * 1024 * 1024 // 25 MB
 
+
+/** Rethrown as-is by the manifest-read catch — classified by instanceof, never message text. */
+class DependencyManifestValidationError extends Error {}
 export interface ResolvedDep {
   /** The sub-package manifest, fully validated. */
   manifest: Manifest
@@ -167,13 +170,13 @@ function visitDep(
     const raw = JSON.parse(readFileSync(manifestPath, 'utf-8'))
     const parseResult = safeParseManifest(raw)
     if (!parseResult.success) {
-      throw new Error(
+      throw new DependencyManifestValidationError(
         `Dependency manifest at ${spec.source}@${spec.ref} failed validation: ${formatManifestError(parseResult.error)}`,
       )
     }
     subManifest = parseResult.data
   } catch (err) {
-    if (err instanceof Error && err.message.includes('failed validation')) throw err
+    if (err instanceof DependencyManifestValidationError) throw err
     throw new Error(
       `Dependency manifest at ${spec.source}@${spec.ref} unreadable: ${err instanceof Error ? err.message : String(err)}`,
     )
@@ -250,13 +253,13 @@ async function visitDepAsync(
     const raw = JSON.parse(readFileSync(manifestPath, 'utf-8'))
     const parseResult = safeParseManifest(raw)
     if (!parseResult.success) {
-      throw new Error(
+      throw new DependencyManifestValidationError(
         `Dependency manifest at ${spec.source}@${spec.ref} failed validation: ${formatManifestError(parseResult.error)}`,
       )
     }
     subManifest = parseResult.data
   } catch (err) {
-    if (err instanceof Error && err.message.includes('failed validation')) throw err
+    if (err instanceof DependencyManifestValidationError) throw err
     throw new Error(
       `Dependency manifest at ${spec.source}@${spec.ref} unreadable: ${err instanceof Error ? err.message : String(err)}`,
     )

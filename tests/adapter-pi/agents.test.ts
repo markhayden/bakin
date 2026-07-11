@@ -24,6 +24,7 @@ mock.module('../../src/core/logger', () => ({
 import { createPiRuntimeAdapter } from '../../packages/adapter-pi/src/index'
 import { getPiHome, getAgentWorkspaceDir, resetPiHome } from '../../packages/adapter-pi/src/home'
 import { selectRuntimeMainAgent } from '../../packages/core/src/adapters/runtime/helpers'
+import { RuntimeError } from '@bakin/core/adapters/runtime'
 
 const adapter = createPiRuntimeAdapter()
 
@@ -111,7 +112,7 @@ describe('workspace files', () => {
   })
 
   // allowlist = SUBAGENT dispatch allowlist (agent ids) — never tool names.
-  test('allowlist + permissions patches persist on the record', async () => {
+  test('allowlist patches persist on the record; unknown agent is typed not_found', async () => {
     await adapter.agents.updateAllowlist('main', { add: ['scout', 'pixel'] })
     await adapter.agents.updateAllowlist('main', { remove: ['pixel'] })
     let main = await adapter.agents.get('main')
@@ -121,8 +122,14 @@ describe('workspace files', () => {
     main = await adapter.agents.get('main')
     expect(main?.metadata?.allowlist).toBeUndefined()
 
-    await adapter.agents.updatePermissions('main', { allow: ['fs.read'], deny: ['net'] })
-    await expect(adapter.agents.updatePermissions('ghost', { allow: [] })).rejects.toThrow('unknown agent')
+    // Mutations addressing a missing agent reject typed not_found (R28) —
+    // core classifies on kind, never message text.
+    const rejection = await adapter.agents.updateAllowlist('ghost', { add: ['scout'] }).then(
+      () => null,
+      (err: unknown) => err,
+    )
+    expect(rejection).toBeInstanceOf(RuntimeError)
+    expect((rejection as RuntimeError).kind).toBe('not_found')
   })
 
   test('corrupt registry fails loudly instead of silently starting empty', async () => {

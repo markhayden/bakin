@@ -209,6 +209,30 @@ function scanContentFiles(): string[] {
 }
 
 /** Transport-string violations in one shipped-content file. */
+
+/**
+ * R28 ban: production code upstream of the adapters must never CLASSIFY an
+ * error by matching its message text — adapters map provider failures to
+ * typed RuntimeError kinds inside their own errors modules (which live under
+ * packages/adapter-*, outside these scan roots, and are the sanctioned
+ * interpretation sites). The identifier list is deliberately narrow
+ * (err/error/cause/failure) so non-error `.message` DATA fields (task-log
+ * entries, audit payloads, zod issues) stay legal. Escape hatch for a
+ * genuinely justified case: `// arch:allow-error-message <reason>` on the
+ * same line.
+ */
+const ERROR_MESSAGE_MATCH_RE =
+  /\b(?:err|error|cause|failure)[!?]?\.message[!?]?\s*(?:\.(?:includes|startsWith|endsWith|match|test)\(|===)/
+
+export function findErrorMessageMatchViolations(rel: string, content: string): string[] {
+  const hits: string[] = []
+  content.split('\n').forEach((line, idx) => {
+    if (line.includes('arch:allow-error-message')) return
+    if (ERROR_MESSAGE_MATCH_RE.test(line)) hits.push(`${rel}:${idx + 1}: ${line.trim()}`)
+  })
+  return hits
+}
+
 export function findTransportViolations(rel: string, content: string): string[] {
   const hits: string[] = []
   for (const { re, label } of TRANSPORT_BANS) {
@@ -305,6 +329,26 @@ describe('adapter boundary architecture', () => {
       hits.push(...findTransportViolations(relative(ROOT, file), content))
     }
     expect(hits).toEqual([])
+  })
+
+
+  it('never classifies errors by message text upstream of the adapters', () => {
+    const hits: string[] = []
+    for (const file of scanFiles()) {
+      hits.push(...findErrorMessageMatchViolations(relative(ROOT, file), readFileSync(file, 'utf-8')))
+    }
+    expect(hits).toEqual([])
+  })
+
+  it('the error-message-matching ban catches violations (fixture)', () => {
+    expect(findErrorMessageMatchViolations('x.ts', "if (err.message.includes('session died')) retry()"))
+      .toEqual(["x.ts:1: if (err.message.includes('session died')) retry()"])
+    expect(findErrorMessageMatchViolations('x.ts', "if (error.message === 'boom') {}").length).toBe(1)
+    // Non-error data fields named `message` stay legal (task logs, audit rows).
+    expect(findErrorMessageMatchViolations('x.ts', "entry.message.startsWith('ALERT:')")).toEqual([])
+    expect(findErrorMessageMatchViolations('x.ts', "issue.message.includes('Unrecognized key')")).toEqual([])
+    // The sanctioned escape hatch.
+    expect(findErrorMessageMatchViolations('x.ts', "err.message.includes('x') // arch:allow-error-message probe")).toEqual([])
   })
 
   it('the transport-neutrality check catches violations (fixture)', () => {

@@ -226,7 +226,10 @@ export function createMockRuntimeAdapter(
         return agent
       },
       update: async (agentId, input) => {
-        const existing = agents.get(agentId) ?? { id: agentId, name: agentId, status: 'unknown' as const }
+        // Mutating a missing agent is typed not_found (R28) — matching the
+        // real adapters, and pinned by the conformance suite.
+        const existing = agents.get(agentId)
+        if (!existing) throw new RuntimeError(`mock: unknown agent: ${agentId}`, { kind: 'not_found' })
         const next: RuntimeAgent = {
           ...existing,
           ...(input.name !== undefined ? { name: input.name } : {}),
@@ -246,13 +249,15 @@ export function createMockRuntimeAdapter(
         return next
       },
       remove: async (agentId) => {
+        if (!agents.has(agentId)) {
+          throw new RuntimeError(`mock: unknown agent: ${agentId}`, { kind: 'not_found' })
+        }
         agents.delete(agentId)
       },
       listWorkspaceFiles: async () => [],
       readWorkspaceFile: async () => null,
       writeWorkspaceFile: async () => {},
       removeWorkspaceFile: async () => {},
-      updatePermissions: async () => {},
       updateAllowlist: async () => {},
     },
 
@@ -292,10 +297,6 @@ export function createMockRuntimeAdapter(
         }
       },
       stream: (args) => mockChatStream(args),
-    },
-
-    tools: {
-      invoke: async () => ({ ok: true }),
     },
 
     // NOTE: no `channels`, no `cron` — the minimal default (R24). Both are

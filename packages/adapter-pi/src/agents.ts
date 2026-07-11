@@ -19,11 +19,11 @@ import type {
   CreateRuntimeAgentInput,
   RuntimeAgent,
   RuntimeAllowlistPatch,
-  RuntimePermissionPatch,
   UpdateRuntimeAgentInput,
   WorkspaceFile,
   WorkspaceFileStat,
 } from '@bakin/core/adapters/runtime'
+import { RuntimeError } from '@bakin/core/adapters/runtime'
 import { getAgentWorkspaceDir } from './home'
 import {
   assertValidAgentId,
@@ -33,6 +33,12 @@ import {
   scaffoldAgentDirs,
   type PiAgentRecord,
 } from './registry'
+
+
+/** Typed not_found for mutations addressing a missing agent (R28). */
+function unknownAgent(agentId: string): RuntimeError {
+  return new RuntimeError(`adapter-pi: unknown agent: ${agentId}`, { kind: 'not_found' })
+}
 
 function toRuntimeAgent(record: PiAgentRecord): RuntimeAgent {
   return {
@@ -92,7 +98,7 @@ export function createAgentsSurface(): AgentRuntimeAdapter['agents'] {
       assertValidAgentId(id)
       return mutateRegistry((registry) => {
         if (registry.agents.some((a) => a.id === id)) {
-          throw new Error(`adapter-pi: agent already exists: ${id}`)
+          throw new RuntimeError(`adapter-pi: agent already exists: ${id}`, { kind: 'runtime_failed' })
         }
         const now = new Date().toISOString()
         const record: PiAgentRecord = {
@@ -118,7 +124,7 @@ export function createAgentsSurface(): AgentRuntimeAdapter['agents'] {
       }
       return mutateRegistry((registry) => {
         const record = registry.agents.find((a) => a.id === agentId)
-        if (!record) throw new Error(`adapter-pi: unknown agent: ${agentId}`)
+        if (!record) throw unknownAgent(agentId)
         if (input.name !== undefined) record.name = input.name
         if (input.role !== undefined) record.role = input.role
         // null clears the assignment → agent falls back to routing.defaultModel.
@@ -136,7 +142,7 @@ export function createAgentsSurface(): AgentRuntimeAdapter['agents'] {
         const before = registry.agents.length
         registry.agents = registry.agents.filter((a) => a.id !== agentId)
         if (registry.agents.length === before) {
-          throw new Error(`adapter-pi: unknown agent: ${agentId}`)
+          throw unknownAgent(agentId)
         }
       })
       removeAgentDirs(agentId)
@@ -185,29 +191,11 @@ export function createAgentsSurface(): AgentRuntimeAdapter['agents'] {
       })
     },
 
-    async updatePermissions(agentId: string, patch: RuntimePermissionPatch): Promise<void> {
-      await mutateRegistry((registry) => {
-        const record = registry.agents.find((a) => a.id === agentId)
-        if (!record) throw new Error(`adapter-pi: unknown agent: ${agentId}`)
-        const current = record.permissions ?? { allow: [], deny: [] }
-        const next = patch.replace ? { allow: [], deny: [] } : current
-        for (const item of patch.allow ?? []) {
-          if (!next.allow.includes(item)) next.allow.push(item)
-          next.deny = next.deny.filter((d) => d !== item)
-        }
-        for (const item of patch.deny ?? []) {
-          if (!next.deny.includes(item)) next.deny.push(item)
-          next.allow = next.allow.filter((a) => a !== item)
-        }
-        record.permissions = next
-        record.updatedAt = new Date().toISOString()
-      })
-    },
 
     async updateAllowlist(agentId: string, patch: RuntimeAllowlistPatch): Promise<void> {
       await mutateRegistry((registry) => {
         const record = registry.agents.find((a) => a.id === agentId)
-        if (!record) throw new Error(`adapter-pi: unknown agent: ${agentId}`)
+        if (!record) throw unknownAgent(agentId)
         if (patch.replace) {
           record.allowlist = [...patch.replace]
         } else {

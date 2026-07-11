@@ -32,12 +32,6 @@ export interface UpdateRuntimeAgentInput {
   metadata?: RuntimeMetadata
 }
 
-export interface RuntimePermissionPatch {
-  allow?: string[]
-  deny?: string[]
-  replace?: boolean
-}
-
 export interface RuntimeAllowlistPatch {
   add?: string[]
   remove?: string[]
@@ -229,12 +223,6 @@ export type ChatChunk =
   | { type: 'done'; content?: string; data?: RuntimeMetadata }
   /** Terminal failure — `data.kind` carries the RuntimeError kind when known. */
   | { type: 'error'; content?: string; data?: RuntimeMetadata }
-
-export interface ToolResult {
-  ok: boolean
-  output?: unknown
-  error?: { message: string; recoverable: boolean }
-}
 
 export interface ChannelInfo {
   id: string
@@ -777,6 +765,14 @@ export interface AgentRuntimeAdapter {
   restart(): Promise<void>
   getHealthChecks(): AdapterHealthCheckDefinition[]
 
+  /**
+   * CRUD error contract (R28): `get` returns `null` for a missing agent —
+   * absence is a value, never a throw. Mutations (`update`, `remove`,
+   * `updateAllowlist`, workspace-file writes) on a missing agent reject with
+   * a typed `RuntimeError` kind `'not_found'`; every other CRUD failure is a
+   * typed `RuntimeError` (adapters map provider errors in their own errors
+   * module — core never classifies on message text).
+   */
   agents: {
     list(): Promise<RuntimeAgent[]>
     get(agentId: string): Promise<RuntimeAgent | null>
@@ -795,7 +791,15 @@ export interface AgentRuntimeAdapter {
      * skip, never error.
      */
     workspaceFileStats?(agentId: string): Promise<WorkspaceFileStat[] | null>
-    updatePermissions(agentId: string, patch: RuntimePermissionPatch): Promise<void>
+    /**
+     * The SUBAGENT-DISPATCH allowlist: the patch strings are AGENT IDS this
+     * agent may dispatch subtasks to (P5.3 live incident: these were once fed
+     * into an exec-tool name filter — they are never tool names). OpenClaw
+     * writes `agents.list[].subagents.allowAgents` in its config; Pi stores
+     * the registry record's `allowlist`, consumed by its tool bridge when
+     * filtering subagent dispatch targets. Installer/team flows add every
+     * newly installed agent to its dispatchers here.
+     */
     updateAllowlist(agentId: string, patch: RuntimeAllowlistPatch): Promise<void>
   }
 
@@ -809,10 +813,6 @@ export interface AgentRuntimeAdapter {
      * iteration), classified/structured chunks only.
      */
     stream(args: MessageArgs): AsyncIterable<ChatChunk>
-  }
-
-  tools: {
-    invoke(agentId: string, name: string, args: unknown): Promise<ToolResult>
   }
 
   /**

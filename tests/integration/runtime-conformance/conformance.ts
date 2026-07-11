@@ -80,9 +80,10 @@ export interface RuntimeConformanceTarget {
 export interface RuntimeConformanceSuiteOptions {
   /**
    * Sessions capability-honesty pin (declared 'native' ⇒ sessions.list
-   * returns the sessions real turns created). Default ON. OpenClaw's runner
-   * disables it until T28 implements sessions.list/get for real — flip it
-   * on there when T28 lands (tracked in PLAN.md T28).
+   * returns the sessions real turns created). Default ON — and ON for all
+   * three shipped runners since T28 implemented OpenClaw sessions for real.
+   * A future adapter may disable it only while a sessions surface is
+   * declared 'unavailable'.
    */
   sessionsPin?: boolean
 }
@@ -104,6 +105,25 @@ function assertTypedRuntimeError(err: unknown, expectedKind?: string): void {
 }
 
 export const runtimeConformanceChecks = {
+  /**
+   * CRUD error contract (R28): reads return null for absence; mutations on a
+   * missing agent reject with a typed RuntimeError kind 'not_found'. Ghost id
+   * is randomized per run so accumulating stores (the crab home) can't
+   * collide with it.
+   */
+  async unknownAgentCrudIsTypedNotFound(target: RuntimeConformanceTarget): Promise<void> {
+    const ghost = `conformance-ghost-${Math.random().toString(36).slice(2, 10)}`
+    const got = await target.runtime.agents.get(ghost)
+    if (got !== null) fail(`agents.get of a missing agent must return null (got ${JSON.stringify(got)})`)
+    try {
+      await target.runtime.agents.update(ghost, { name: 'nope' })
+      fail('agents.update of a missing agent resolved — must reject typed not_found')
+    } catch (err) {
+      if (err instanceof Error && err.message.startsWith('conformance violation')) throw err
+      assertTypedRuntimeError(err, 'not_found')
+    }
+  },
+
   /** Threaded sends return the provider session identity for forensics/usage attribution. */
   async threadedSendReturnsSessionId(target: RuntimeConformanceTarget): Promise<void> {
     await target.prepareOkTurn?.()
@@ -392,6 +412,10 @@ export function runRuntimeConformanceSuite(
 
     it('provisionToolAccess is idempotent', async () => {
       await runtimeConformanceChecks.provisionToolAccessIsIdempotent(getTarget())
+    })
+
+    it("unknown-agent CRUD: get returns null, mutations reject typed 'not_found'", async () => {
+      await runtimeConformanceChecks.unknownAgentCrudIsTypedNotFound(getTarget())
     })
   })
 }

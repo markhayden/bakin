@@ -94,10 +94,9 @@ describe('imitation-crab runtime contract', () => {
       content: 'Stream a contract message',
     }))).resolves.toBe('[mock:Jessica] Stream a contract message')
 
-    await expect(runtime.tools.invoke('pixel', 'message_send', { message: 'hello' })).resolves.toEqual({
-      ok: true,
-      output: { ok: true, mock: true },
-    })
+    // tools.invoke was deleted from the contract (T30) — zero production
+    // callers; the runtime-native tool registry is not a Bakin surface.
+    expect((runtime as unknown as Record<string, unknown>).tools).toBeUndefined()
 
     await expect(runtime.channels!.list()).resolves.toEqual(expect.arrayContaining([
       expect.objectContaining({

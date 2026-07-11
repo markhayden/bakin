@@ -44,6 +44,12 @@ function createBrokenAdapter() {
         yield { type: 'text', content: 'after done' }
       },
     },
+    agents: {
+      ...base.agents,
+      // Mutating a missing agent throws a PLAIN Error — violates the typed
+      // not_found CRUD pin.
+      update: async (agentId: string) => { throw new Error(`no such agent ${agentId}`) },
+    },
     // Capability LIES: declares delivery 'native' with the channels surface
     // deleted, and a toolCalling access that disagrees with
     // describeToolAccess().
@@ -111,4 +117,9 @@ describe('conformance suite teeth (broken adapter must fail every check)', () =>
     await expect(runtimeConformanceChecks.capabilitiesAreHonest(brokenTarget()))
       .rejects.toThrow(/conformance violation: capabilities\(\)/)
   })
+  it('fails the unknown-agent not_found check', async () => {
+    await expect(runtimeConformanceChecks.unknownAgentCrudIsTypedNotFound(brokenTarget()))
+      .rejects.toThrow(/not a RuntimeError|conformance violation/)
+  })
+
 })

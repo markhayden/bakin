@@ -25,7 +25,6 @@ import { codexImageAuth } from './codex-images'
 import { resolveProviderApiKeySource } from '@bakin/core/media'
 import { createSessionsSurface } from './sessions'
 import { createSkillsSurface } from './skills'
-import { createToolsSurface } from './unsupported'
 
 export interface PiRuntimeAdapterOptions {
   settings?: Record<string, unknown>
@@ -163,7 +162,6 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
     getSettings: () => this.initOpts?.settings ?? this.options.settings,
   })
 
-  tools: AgentRuntimeAdapter['tools'] = createToolsSurface()
 
   /**
    * Codex-native image generation (primary) + direct-provider shim
