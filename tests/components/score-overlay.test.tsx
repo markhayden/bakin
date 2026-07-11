@@ -4,7 +4,7 @@
  * neutral name — no engine key sniffing; distance legs render as similarity.
  */
 import { describe, it, expect, mock, afterEach } from 'bun:test'
-import { render, cleanup, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import '../rtl-settle'
 
 const contentDirMock = () => ({
@@ -16,7 +16,6 @@ mock.module('../../packages/core/src/content-dir', contentDirMock)
 
 import { ScoreOverlay } from '../../src/components/score-overlay'
 
-afterEach(cleanup)
 
 describe('ScoreOverlay', () => {
   it('renders the fused score and one badge per neutral leg', () => {

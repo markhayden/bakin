@@ -47,7 +47,6 @@ const entry = (over: Partial<ExploreCatalogEntry> = {}): ExploreCatalogEntry => 
   ...over,
 })
 
-afterEach(cleanup)
 
 describe('entryStatusBadge', () => {
   it('prioritizes builtin over everything', () => {

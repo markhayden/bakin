@@ -32,17 +32,13 @@ mock.module('../../../plugins/tasks/hooks/use-task-summary', () => ({
 const useNavBadge = mock()
 mock.module('@makinbakin/sdk/hooks', () => ({ useNavBadge }))
 
-import { cleanup, render } from '@testing-library/react'
+import { render } from '@testing-library/react'
 import '../../rtl-settle'
 import { TasksBadgeProvider } from '../../../plugins/tasks/components/tasks-badge-provider'
 
 beforeEach(() => {
   mockSummary = null
   useNavBadge.mockClear()
-})
-
-afterEach(() => {
-  cleanup()
 })
 
 describe('TasksBadgeProvider', () => {

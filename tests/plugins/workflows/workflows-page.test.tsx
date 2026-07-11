@@ -11,7 +11,7 @@
  *  5. Clicking a card triggers router.push.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -219,7 +219,6 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  cleanup()
   vi.unstubAllGlobals()
 })
 

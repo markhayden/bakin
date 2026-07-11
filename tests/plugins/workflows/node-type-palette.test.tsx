@@ -13,7 +13,7 @@
  */
 
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -53,7 +53,6 @@ const FIXTURES: PaletteNodeType[] = [
   { kind: 'fx.noise-gate', runtime: 'plugin', pluginId: 'fx', formFields: [] },
 ]
 
-afterEach(cleanup)
 
 describe('NodeTypePalette', () => {
   it('renders Builtin and Plugins groups from initialNodeTypes', () => {

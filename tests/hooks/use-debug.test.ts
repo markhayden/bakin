@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { act, cleanup, renderHook } from '@testing-library/react'
+import { act, renderHook } from '@testing-library/react'
 import '../rtl-settle'
 
 // Mock fetch globally so initialize() doesn't hit the network
@@ -29,7 +29,6 @@ describe('useContentStore — debug state', () => {
   })
 
   afterEach(() => {
-    cleanup()
     storage.clear()
   })
 
@@ -124,7 +123,6 @@ describe('useDebug hook', () => {
   })
 
   afterEach(() => {
-    cleanup()
     storage.clear()
   })
 
@@ -182,7 +180,6 @@ describe('DebugSeed', () => {
   })
 
   afterEach(() => {
-    cleanup()
     storage.clear()
   })
 

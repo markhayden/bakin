@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -74,10 +74,6 @@ beforeEach(() => {
   ;(globalThis as { fetch: typeof fetch }).fetch = (mock(async () => {
     throw new Error('workflow definitions unavailable in this test')
   })) as unknown as typeof fetch
-})
-
-afterEach(() => {
-  cleanup()
 })
 
 describe('TaskDetailDrawer dispatch failure context', () => {

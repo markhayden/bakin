@@ -14,7 +14,7 @@
  * logic lives entirely inside the node component.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -68,10 +68,6 @@ function primeState(packageStates: Record<string, PackageStateRow> = {}) {
 
 afterAll(() => {
   try { rmSync(testDir, { recursive: true, force: true }) } catch {}
-})
-
-afterEach(() => {
-  cleanup()
 })
 
 describe('AgentCardNode — package state badge wiring', () => {

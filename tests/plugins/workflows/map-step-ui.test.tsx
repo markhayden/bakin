@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, afterEach, mock } from 'bun:test'
 import React from 'react'
-import { cleanup, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -41,10 +41,6 @@ import { MapWorkflowNode } from '../../../plugins/workflows/components/nodes/map
 import { StepDetailDrawer } from '../../../plugins/workflows/components/step-detail-drawer'
 import type { MapWorkflowStep } from '../../../plugins/workflows/types'
 import type { NodeProps } from '@xyflow/react'
-
-afterEach(() => {
-  cleanup()
-})
 
 const mapStep: MapWorkflowStep = {
   id: 'generate-variants',

@@ -8,7 +8,7 @@
  * Both stores are browser-global, so each test cleans up the ids it used.
  */
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import '../rtl-settle'
 
 // Defensive content-dir mocks per CLAUDE.md test-isolation rules.
@@ -62,7 +62,6 @@ afterEach(() => {
   }
   configureLazyPlugins({ slotOwners: new Map(), routeOwners: [] })
   setLazyPluginLoader(null)
-  cleanup()
 })
 
 describe('setManifestNav — declarative nav channel', () => {

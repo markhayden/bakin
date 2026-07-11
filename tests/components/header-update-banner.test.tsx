@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import '../rtl-settle'
 import { SidebarContext } from '@/context/sidebar-context'
 import { Header } from '../../packages/host/src/components/layout/header'
@@ -28,7 +28,6 @@ function response(body: unknown): Response {
 
 describe('Header update banner', () => {
   afterEach(() => {
-    cleanup()
     document.documentElement.style.removeProperty('--bakin-header-top')
     document.documentElement.style.removeProperty('--bakin-shell-top')
     mock.restore()

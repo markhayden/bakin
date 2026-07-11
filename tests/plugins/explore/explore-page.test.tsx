@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import type { ReactNode } from 'react'
 
@@ -117,7 +117,6 @@ const PLUGINS = [
 const PACK = { ...baseEntry, id: 'writing', kind: 'lesson-pack', name: 'Writing', description: 'Lessons', category: 'Content', useCases: ['Write better'], source: 'github:x#packs/writing' }
 const SKILL_PACK = { ...baseEntry, id: 'ops-skills', kind: 'skill-pack', name: 'Ops Skills', description: 'Skills', category: 'Operations', useCases: ['Automate ops'], source: 'github:x#packs/ops-skills' }
 
-afterEach(cleanup)
 
 describe('ExplorePage', () => {
   it('renders agent cards on the default tab only', () => {

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../rtl-settle'
 import { ProviderKeysTab } from '../../src/components/provider-keys-tab'
 
@@ -29,7 +29,6 @@ function mockFetch(stored: string[] = []) {
 }
 
 afterEach(() => {
-  cleanup()
   mock.restore()
 })
 

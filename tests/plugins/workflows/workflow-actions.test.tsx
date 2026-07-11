@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -38,10 +38,6 @@ mock.module('../../../packages/core/src/content-dir', () => ({
 
 import { ManagedWorkflowCopyDialog } from '../../../plugins/workflows/components/managed-workflow-copy-dialog'
 import { WorkflowDeleteAction } from '../../../plugins/workflows/components/workflow-delete-action'
-
-afterEach(() => {
-  cleanup()
-})
 
 describe('workflow action components', () => {
   it('collects copy metadata before creating a managed workflow copy', () => {

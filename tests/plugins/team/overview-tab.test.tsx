@@ -11,7 +11,7 @@
  * model + team interactions fire the right round-trips.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -83,10 +83,6 @@ function setupFetch(exp: FetchExpectation) {
 
 afterAll(() => {
   try { rmSync(testDir, { recursive: true, force: true }) } catch {}
-})
-
-afterEach(() => {
-  cleanup()
 })
 
 beforeEach(() => {

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import { settleReact } from '../rtl-settle'
 import type { Task, TaskColumns } from '../../plugins/tasks/types'
 
@@ -253,7 +253,6 @@ describe('KanbanBoard drag and drop', () => {
   })
 
   afterEach(() => {
-    cleanup()
     mock.restore()
   })
 
@@ -654,7 +653,6 @@ describe('KanbanBoard drag and drop', () => {
 
 describe('TaskCard rendering', () => {
   afterEach(() => {
-    cleanup()
     mock.restore()
   })
 

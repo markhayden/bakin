@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '../rtl-settle'
 
 // Pure client component, but pin the resolvers per the repo-wide
@@ -25,7 +25,6 @@ mock.module('@/hooks/use-search-warm', () => ({
 import { PluginHeader } from '../../src/components/plugin-header'
 
 afterEach(() => {
-  cleanup()
   warmState = 'warm'
   mock.clearAllMocks()
 })

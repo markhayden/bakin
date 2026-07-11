@@ -7,7 +7,7 @@
  * last-updated formatting, absence of any edit/save affordance.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -43,10 +43,6 @@ function setupFetch(body: { ok: boolean; heartbeat: { content: string; lastUpdat
 
 afterAll(() => {
   try { rmSync(testDir, { recursive: true, force: true }) } catch {}
-})
-
-afterEach(() => {
-  cleanup()
 })
 
 describe('HeartbeatTab', () => {
