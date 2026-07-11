@@ -284,4 +284,36 @@ describe('mapIndexStatuses', () => {
       { leg: 'vis', state: 'error', indexedCount: 0, error: 'ModelNotFound' },
     ])
   })
+
+  // rc.18 WORKAROUND — a full_text leg (no enrichment_runtime) on an empty
+  // or fully caught-up table reports rebuilding/backfill_active FOREVER.
+  // Observed live 2026-07-11: every empty green parked because its FTS leg
+  // never went ready (bakin#spec search-trust-and-speed, GATE B). Idle
+  // detection for runtime-less legs: caught up (indexed >= docs) with the
+  // flags still up ⇒ ready.
+  it('treats a caught-up runtime-less (full_text) leg as ready despite stuck flags', () => {
+    const entries: WireIndexStatusEntry[] = [
+      // empty table — the parked-green case
+      { config: { name: 'full_text_index_v0', type: 'full_text' }, status: { index_type: 'full_text', rebuilding: true, total_indexed: 0, backfill_active: true, backfill_state: 'running', doc_count: 0 } },
+      // caught up with docs — the stuck-flags case
+      { config: { name: 'ft2', type: 'full_text' }, status: { index_type: 'full_text', rebuilding: true, total_indexed: 60, backfill_active: true, backfill_state: 'running', doc_count: 60 } },
+      // genuinely mid-backfill — must stay building
+      { config: { name: 'ft3', type: 'full_text' }, status: { index_type: 'full_text', rebuilding: true, total_indexed: 10, backfill_active: true, backfill_state: 'running', doc_count: 60 } },
+    ]
+    expect(mapIndexStatuses(entries)).toEqual([
+      { leg: 'full_text_index_v0', state: 'ready', indexedCount: 0 },
+      { leg: 'ft2', state: 'ready', indexedCount: 60 },
+      { leg: 'ft3', state: 'building', indexedCount: 10 },
+    ])
+  })
+
+  it('does not apply runtime-less idle detection to embeddings legs with a runtime', () => {
+    const entries: WireIndexStatusEntry[] = [
+      // embeddings leg with pending work — building even though counts match
+      { config: { name: 'sem', type: 'embeddings' }, status: { index_type: 'embeddings', rebuilding: true, total_indexed: 5, backfill_active: true, backfill_state: 'running', doc_count: 5, enrichment_runtime: { pending_sequence_count: 3, retrying: false, active_embed_batch_items: 0 } } },
+    ]
+    expect(mapIndexStatuses(entries)).toEqual([
+      { leg: 'sem', state: 'building', indexedCount: 5 },
+    ])
+  })
 })

@@ -7,18 +7,18 @@ Plan: `tasks/plan-search-trust-and-speed.md` · Spec: `.claude/specs/search-trus
 
 ## P1 — engine upgrade (live ops)
 - [x] T2 chore(search): pin antfly v0.2.0-rc.18 (+ delete tasks/antfly-main-local-patches.diff)
-- [ ] T3 ops: backup settings.json + search.db + version note (rollback point)
-- [ ] T4 ops: bakin install search → rc.18 live, tables queryable
-- [ ] T5 fix(search): orphan registry-row sweep + team-migration restart + projects rebuild + full clean rebuild
+- [x] T3 ops: backup settings.json + search.db + version note (rollback point)
+- [x] T4 ops: bakin install search → rc.18 live, tables queryable
+- [x] T5 fix(search): orphan registry-row sweep + team-migration restart + projects rebuild + full clean rebuild
 - [ ] **GATE A:** all legs ready, CPU ≤5% idle 10 min, registry==engine, #319 verdict recorded
 
 ## P2 — shims
-- [ ] T6 canary sweep vs rc.18 → **GATE B** per-shim verdicts in evidence file
-- [ ] T7 refactor(adapter-antfly): sort → order_by (if landed)
+- [x] T6 canary sweep vs rc.18 → **GATE B** per-shim verdicts in evidence file
+- [x] T7 refactor(adapter-antfly): sort — NOT ADOPTED (needs schema-mapped sortable fields; no Bakin sort surface). Canary stays → order_by (if landed)
 - [ ] T8 refactor(adapter-antfly): server-side query deadlines (if landed)
 - [ ] T9 refactor(adapter-antfly): totals count-twin delete-or-concurrent
-- [ ] T10 refactor(adapter-antfly): lookup body / filter_query removals (if flipped)
-- [ ] T11 refactor(assets): WebP EMBED_SAFE_RE removal (if #338 covers)
+- [x] T10 refactor(adapter-antfly): lookup/filter_query — still broken upstream, shims stay body / filter_query removals (if flipped)
+- [x] T11 refactor(assets): WebP — still broken upstream (#322), shim stays: WebP EMBED_SAFE_RE removal (if #338 covers)
 
 ## P3 — latency contract
 - [ ] T12 feat(search): queryBudgetMs + per-table degrade/omit + metadata + telemetry

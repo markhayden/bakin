@@ -181,6 +181,35 @@ if (!binary) {
       expect(vis?.indexedCount).toBe(1)
     }, 180_000)
 
+    it('PIN rc.18: an EMPTY (never-written) table reports backfill running forever on every leg', async () => {
+      // WHEN THIS FAILS (flags clear on an empty table): upstream fixed
+      // empty-table backfill accounting → delete the !runtime idle-detection
+      // block in mapIndexStatuses + this pin. (A written-then-caught-up FTS
+      // leg clears its flags fine on rc.18 — verified here 2026-07-11; the
+      // lie is specific to tables no write has ever touched. Live impact:
+      // every empty blue/green green parks because converged() never sees
+      // ready legs — bakin_team / bakin_brands, evidence file GATE B.)
+      const T4 = 'pins_empty_table'
+      await api('POST', `/db/v1/tables/${T4}`, { num_shards: 1 })
+      await sleep(3000)
+      const st = await api('GET', `/db/v1/tables/${T4}/indexes`)
+      const entries = Array.isArray(st.json) ? st.json as Array<{ config?: { name?: string; type?: string }; status?: Record<string, unknown> }> : []
+      const ft = entries.find((e) => e.config?.type === 'full_text')?.status as Record<string, unknown> | undefined
+      expect(ft).toBeDefined()
+      expect(ft!.doc_count).toBe(0)
+      // CANARY: raw flags lie on the never-written table.
+      expect(ft!.rebuilding === true || ft!.backfill_active === true).toBe(true)
+      expect(ft!.backfill_state).toBe('running')
+      // WORKAROUND GUARD: our health mapping overrides to ready (caught up:
+      // indexed 0 >= docs 0, no enrichment runtime to consult).
+      const { AntflySearchClient } = await import('../../../packages/adapter-antfly/src/client')
+      const { DEFAULT_SETTINGS } = await import('../../../packages/adapter-antfly/src/defaults')
+      const client = new AntflySearchClient({ ...DEFAULT_SETTINGS, url: instance.url }, { fetchImpl: nativeFetch })
+      const legs = await client.tables.health(T4)
+      const ftLeg = legs.find((l) => l.leg.includes('full_text'))
+      expect(ftLeg?.state).toBe('ready')
+    }, 60_000)
+
     it('PIN antfly#322: a WebP media_url fails the ENTIRE batch (engine decodes PNG/JPEG/GIF only)', async () => {
       // WHEN THIS FAILS: upstream added WebP decode (or per-doc batch errors)
       // → widen EMBED_SAFE_RE in plugins/assets/lib/search-doc.ts (and

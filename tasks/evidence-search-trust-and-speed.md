@@ -31,9 +31,30 @@ All timestamps MDT (2026-07-11 unless noted).
 - Engine log also reveals `bakin_projects_v1_3a1b6f23` exists engine-side (registry expects `_49da8817`) — the projects 404 is fingerprint drift from the hot-patched user plugin.
 - **Latency transformation confirmed:** direct FTS query 2.70s (rc.17, spinning) → **40–53ms** (rc.18). Engine CPU ~7% post-boot vs 301% before.
 
-## GATE A — #319 verdict on rc.18
+## GATE A — #319 verdict on rc.18 (in progress)
 
-_(pending)_
+- rc.17 on-disk state is unreadable by rc.18 (`UnsupportedVersion` dense-vector indexes + `InvalidDerivedApplyState` startup-replay loop, ~34k log lines). Decisive cure executed 17:42–17:44: engine stopped, data dir moved to `~/.bakin/antfly.rc17-corrupt-backup`, `search_tables` + tombstones cleared (outbox kept: 48 rows), engine booted FRESH, `POST /api/reindex` recreated tables from source via the create+seed path (agent-lessons 77 docs, tasks 60, team 0-by-design, …).
+- On the healthy engine: FTS on a 60-doc table `ready` with flags cleared; queries 40–50ms. Full convergence + idle-CPU measurement pending (embeddings backfill still running).
+
+## GATE B — per-shim canary verdicts on rc.18 (17:50)
+
+All 8 pre-existing canaries PASS on an ephemeral rc.18 → every pinned limitation still stands. Per-shim:
+
+| Shim | Verdict | Action |
+|---|---|---|
+| `order_by` rejected | Feature LANDED upstream (public exact-sort w/ SortField, 422 taxonomy) but only for schema-mapped sortable fields — Bakin sends no schema (type inference), and no Bakin surface offers field sort. Canary still passes for our shape. | KEEP no-sort; canary comment updated in spirit — revisit only when a sort feature exists. Do NOT adopt speculatively. |
+| Page-scoped totals | Still page-scoped. | Keep count-twin; T9 makes it concurrent. |
+| `aknn` removed | Still removed. | Keep. |
+| Bodyless lookup rejected | Still rejected. | Keep `{}` body. |
+| antfly#319 idle-detection (media legs) | Raw flags still lie; canary holds. | Keep override. |
+| **NEW rc.18: empty-table legs** | A never-written table reports `backfill running` FOREVER on every leg (a written-then-caught-up leg clears fine). This parked every empty green (team, brands) during the upgrade. | mapIndexStatuses extended: runtime-less leg with `indexed >= docs` ⇒ ready. New canary `PIN rc.18: EMPTY (never-written) table` (9/9 green). |
+| antfly#322 WebP fails batch | Still broken. | Keep `EMBED_SAFE_RE`. |
+| `filter_query` match_phrase | Still rejected. | Keep `composeFtsWithFilters`. |
+| Duplicate-create hang guard | Not re-verified (harmless GET). | Keep. |
+| **NEW rc.18: `termite` embedder provider enum removed** | `provider:"termite"` → 500 InvalidEnumTag; `antfly` → 200. Bakin defaults already send `antfly` (only test mocks said termite) — no production impact; scratch A/B proof. | Update test mocks opportunistically. |
+| **NEW rc.18 available: server-side query deadlines** | "Preserve public query deadline across retries" landed — adopt in T8/T12 (budget work). | Adopt. |
+
+Also fixed at the source: `purgeContentType` now removes the search_tables row + journal rows (the messaging_brainstorm zombie), with `sweepOrphanRegistryRows()` as the doctor backstop.
 
 ## GATE B — per-shim canary verdicts on rc.18
 
