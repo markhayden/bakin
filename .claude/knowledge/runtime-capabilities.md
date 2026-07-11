@@ -52,7 +52,19 @@ Rules of the model:
   survives). Entries carry `requestTimeoutMs: 600_000` — OpenClaw's MCP
   client default (60s) killed `bakin_exec_images_generate` mid-render in
   P5.3 live validation; verify flags timeout-less entries as incorrect so
-  provisioning heals pre-timeout installs. Pi is a no-op (exec tools ride
+  provisioning heals pre-timeout installs. Entries also carry
+  `codex: { agents: [<agent>] }` — OpenClaw's per-server agent filter for
+  Codex app-server threads (`isCodexMcpServerAllowedForAgent`). Without it,
+  OpenClaw attaches EVERY `mcp.servers` entry to EVERY agent thread, so each
+  of N agents carried N duplicate copies of Bakin's whole tool catalog per
+  turn (live 2026-07: 10 agents x 134 tools = 1,340 tool entries per turn,
+  vs 134 scoped). Verify flags unscoped entries as incorrect so provisioning
+  heals pre-scoping installs; OpenClaw rotates the Codex thread
+  automatically when its `userMcpServersFingerprint` changes. The scoping
+  key applies to Codex app-server threads only — OpenClaw's embedded
+  runtime has no per-agent server filter (its `mcp.servers` merge is
+  agent-blind; only per-agent `tools.allow`/`deny` name globs filter
+  materialized MCP tools there). Pi is a no-op (exec tools ride
   the `execTools` provider passed to `initialize`). Provisioning runs at server BOOT (`server.ts`), onboarding
   `install()`, and adapter roster changes — NEVER inside `createAppServices()`
   (a read-only CLI check must not write runtime config, and per-process env

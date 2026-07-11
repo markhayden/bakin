@@ -13,6 +13,8 @@ export interface BakinMcpServerEntry {
   description?: string
   /** OpenClaw per-server MCP request timeout (ms). */
   requestTimeoutMs?: number
+  /** OpenClaw Codex projection controls (per-agent scoping). */
+  codex?: { agents?: string[] }
   /**
    * OpenClaw HTTP transport selection. MUST be `streamable-http`: the
    * embedded runtime's MCP client DEFAULTS to the legacy SSE transport when
@@ -61,6 +63,29 @@ export function mcpUrl(agent: string, baseUrl: string): string {
 }
 
 /**
+ * Scoped correctly = `codex.agents` names exactly this agent. Without it,
+ * OpenClaw attaches EVERY configured `mcp.servers` entry to EVERY Codex
+ * app-server thread (`isCodexMcpServerAllowedForAgent` defaults to allow),
+ * so each of N agents carried N duplicate copies of Bakin's whole tool
+ * catalog per turn (live: 10 agents x 134 tools = 1,340 tool entries).
+ */
+function isScopedToAgent(entry: BakinMcpServerEntry, agent: string): boolean {
+  const agents = entry.codex?.agents
+  return Array.isArray(agents) && agents.length === 1 && agents[0] === agent
+}
+
+/** Whether an existing entry already matches the golden shape for `agent`. */
+function isCurrentEntry(entry: BakinMcpServerEntry | undefined, agent: string, url: string): boolean {
+  return (
+    entry !== undefined &&
+    entry.url === url &&
+    entry.requestTimeoutMs === BAKIN_MCP_REQUEST_TIMEOUT_MS &&
+    entry.type === BAKIN_MCP_TRANSPORT_TYPE &&
+    isScopedToAgent(entry, agent)
+  )
+}
+
+/**
  * Add/refresh Bakin's per-agent entries and prune Bakin entries for agents
  * that no longer exist. Mutates `config` in place; returns human-readable
  * change descriptions (empty when already current).
@@ -79,17 +104,13 @@ export function applyBakinMcpEntries(
     const name = serverName(agent)
     const url = mcpUrl(agent, baseUrl)
     const existing = servers[name]
-    if (
-      !existing ||
-      existing.url !== url ||
-      existing.requestTimeoutMs !== BAKIN_MCP_REQUEST_TIMEOUT_MS ||
-      existing.type !== BAKIN_MCP_TRANSPORT_TYPE
-    ) {
+    if (!isCurrentEntry(existing, agent, url)) {
       servers[name] = {
         url,
         description: `Bakin MCP for ${agent}`,
         requestTimeoutMs: BAKIN_MCP_REQUEST_TIMEOUT_MS,
         type: BAKIN_MCP_TRANSPORT_TYPE,
+        codex: { agents: [agent] },
       }
       changes.push(existing ? `updated ${name}` : `added ${name}`)
     }
@@ -137,10 +158,7 @@ export function verifyBakinMcpEntries(
     const name = serverName(agent)
     const expectedUrl = mcpUrl(agent, baseUrl)
     const entry = servers[name]
-    const correct =
-      entry?.url === expectedUrl &&
-      entry?.requestTimeoutMs === BAKIN_MCP_REQUEST_TIMEOUT_MS &&
-      entry?.type === BAKIN_MCP_TRANSPORT_TYPE
+    const correct = isCurrentEntry(entry, agent, expectedUrl)
     return { agent, name, url: entry?.url ?? '', correct }
   })
   const staleEntries = Object.keys(servers).filter(
