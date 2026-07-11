@@ -91,9 +91,20 @@ export function toRuntimeError(err: unknown, ctx: PiErrorContext = {}): RuntimeE
 const SALVAGE_CAP_BYTES = 16_384
 
 /**
+ * Oversized-output fallback threshold when the caller passed no
+ * `MessageArgs.oversizedOutputBytes` — parity with OpenClaw's
+ * DEFAULT_OVERSIZED_OUTPUT_BYTES (trajectory-forensics) and the
+ * `settings.dispatch.oversizedOutputBytes` default (128 KiB).
+ */
+export const DEFAULT_OVERSIZED_OUTPUT_BYTES = 128 * 1024
+
+/**
  * Mid-turn stream death (assistant stream ended in an error event with
  * partial output) → typed session-death with salvage evidence so the
  * recovery ladder can act without reading anything provider-side.
+ * `oversizedOutput` compares the salvaged completion against the caller's
+ * threshold (T29 — this was hardcoded `false`, so the ladder never saw
+ * runaway-output deaths on Pi).
  */
 export function buildStreamDeathError(input: {
   sessionId?: string
@@ -101,6 +112,7 @@ export function buildStreamDeathError(input: {
   lastToolCall?: string
   cause?: unknown
   detail?: string
+  oversizedOutputBytes?: number
 }): RuntimeTurnError {
   const completionBytes = Buffer.byteLength(input.partialText, 'utf-8')
   const diagnosis: RuntimeTurnDiagnosis = {
@@ -108,7 +120,7 @@ export function buildStreamDeathError(input: {
     sessionId: input.sessionId,
     sessionStatus: 'stream_error',
     completionBytes,
-    oversizedOutput: false,
+    oversizedOutput: completionBytes > (input.oversizedOutputBytes ?? DEFAULT_OVERSIZED_OUTPUT_BYTES),
     lastToolCall: input.lastToolCall,
     salvagedText: input.partialText.slice(0, SALVAGE_CAP_BYTES) || undefined,
     detail: input.detail ?? 'Pi assistant stream errored before the turn completed',

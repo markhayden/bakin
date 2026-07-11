@@ -71,11 +71,23 @@ export interface RuntimeMessageToolPolicy {
   /**
    * Controls whether runtime-native tools are available for this agent turn.
    * `none` disables tools. Omit or use `auto` for runtime/provider defaults.
+   * Native tool policy beyond on/off is ADAPTER-PRIVATE — callers never name
+   * native tools.
    */
   toolsMode?: RuntimeMessageToolsMode
-  /** Optional runtime-native tool allowlist for this turn. */
+  /**
+   * Per-turn allowlist of BAKIN EXEC TOOLS by exact name (e.g.
+   * `bakin_exec_tasks_get`). Scope is the exec-tool set ONLY — never
+   * runtime-native tools (audit M3: OpenClaw once forwarded these as native
+   * policy while Pi filtered exec tools, so `toolsAllow: ['read']` meant two
+   * different things). Enforcement is mechanism-dependent: in-process
+   * runtimes filter the tool bridge per turn; runtimes whose exec tools ride
+   * session-static transports (OpenClaw's per-agent MCP servers) cannot
+   * filter per-turn and must IGNORE the fields with a loud warning — never
+   * misapply them to native tools.
+   */
   toolsAllow?: string[]
-  /** Optional runtime-native tool denylist for this turn. */
+  /** Per-turn denylist of Bakin exec tools by exact name (same scope/enforcement as `toolsAllow`). */
   toolsDeny?: string[]
 }
 
@@ -132,6 +144,15 @@ export interface MessageArgs extends RuntimeMessageToolPolicy {
    * Ignored by `messaging.stream`, whose iterator already carries chunks.
    */
   onActivity?: (chunk: ChatChunk) => void
+  /**
+   * Byte threshold above which a died turn's completion counts as
+   * "oversized output" in its RuntimeTurnDiagnosis (the recovery ladder
+   * treats runaway-output deaths differently from ordinary interrupts).
+   * Dispatch passes `settings.dispatch.oversizedOutputBytes`; adapters fall
+   * back to their own default (128 KiB) when omitted. Typed here — NOT a
+   * metadata-bag key (audit M4: core policy must never ride the opaque bag).
+   */
+  oversizedOutputBytes?: number
   metadata?: RuntimeMetadata
 }
 
@@ -737,7 +758,22 @@ export interface AgentRuntimeAdapter {
 
   initialize(opts: AdapterInitOpts): Promise<void>
   shutdown(): Promise<void>
+  /**
+   * "Can this runtime serve a turn?" — a CHEAP probe (an HTTP health hit, a
+   * credential-presence read; never an LLM call). Resolves `false` rather
+   * than throwing when the runtime cannot serve (unreachable process,
+   * uninitialized adapter, no LLM credentials). Deep diagnostics belong to
+   * getHealthChecks(), not here — the health plugin's `runtime` check
+   * renders this as reachable/not-responding.
+   */
   ping(): Promise<boolean>
+  /**
+   * Re-read ALL durable config: credentials, model registry, settings,
+   * provisioned tool access. External-process runtimes may bounce the
+   * process; in-process runtimes must drop every cache so the next call
+   * re-reads disk. Callers (team/models plugins) invoke this after config
+   * writes and expect the next read to reflect them.
+   */
   restart(): Promise<void>
   getHealthChecks(): AdapterHealthCheckDefinition[]
 
@@ -858,6 +894,11 @@ export interface AgentRuntimeAdapter {
    * model-dependent (input modality). Async: the report surface for the
    * runtime-switch UI + plugin capability queries. `input` is conservative-
    * false on any ambiguity, never model-name heuristics.
+   *
+   * Modes are HONEST: a static `'native'` declaration is acceptable only
+   * when the surface is unconditionally implemented (the standard the T28
+   * sessions fix restored — a declared-native stub is a contract violation,
+   * pinned by the runtime conformance suite's capability-honesty check).
    */
   capabilities(opts?: { agentId?: string }): Promise<CapabilitySet>
 

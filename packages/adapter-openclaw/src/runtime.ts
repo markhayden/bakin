@@ -110,7 +110,7 @@ import {
   threadIdFromOpenClawOutput, messageIdFromDeliveryRef,
 } from './channel-helpers'
 import {
-  oversizedOutputBytesFrom, messagesToOpenClawPrompt, normalizeToolList,
+  messagesToOpenClawPrompt,
   extractOpenClawAgentText, extractOpenClawAgentUsage,
 } from './agent-turn'
 import {
@@ -174,8 +174,6 @@ interface OpenClawAgentTurnOptions {
   attachments?: MessageArgs['attachments']
   ephemeral?: boolean
   toolsMode?: MessageArgs['toolsMode']
-  toolsAllow?: string[]
-  toolsDeny?: string[]
   /** Per-turn model override (`provider/model`); omit to use the agent default. */
   model?: string
   /** Per-turn thinking level; omit to use the runtime default. */
@@ -520,6 +518,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
   messaging = {
     send: async (args: MessageArgs) => {
+      warnUnenforceableToolPolicy(args, this.logger)
       const { content, usage } = await this.chatCompletion({
         agentId: args.agentId,
         messages: [{ role: 'user', content: args.content }],
@@ -527,11 +526,9 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         attachments: args.attachments,
         ephemeral: args.ephemeral,
         toolsMode: args.toolsMode,
-        toolsAllow: args.toolsAllow,
-        toolsDeny: args.toolsDeny,
         model: args.model,
         thinking: args.thinking,
-        oversizedOutputBytes: oversizedOutputBytesFrom(args.metadata),
+        oversizedOutputBytes: args.oversizedOutputBytes,
         signal: args.signal,
         onActivity: args.onActivity,
       })
@@ -545,20 +542,21 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         ...(sessionId ? { metadata: { sessionId } } : {}),
       }
     },
-    stream: (args: MessageArgs): AsyncIterable<ChatChunk> => this.streamChat({
-      agentId: args.agentId,
-      messages: [{ role: 'user', content: args.content }],
-      sessionKey: args.threadId,
-      attachments: args.attachments,
-      ephemeral: args.ephemeral,
-      toolsMode: args.toolsMode,
-      toolsAllow: args.toolsAllow,
-      toolsDeny: args.toolsDeny,
-      model: args.model,
-      thinking: args.thinking,
-      oversizedOutputBytes: oversizedOutputBytesFrom(args.metadata),
-      signal: args.signal,
-    }),
+    stream: (args: MessageArgs): AsyncIterable<ChatChunk> => {
+      warnUnenforceableToolPolicy(args, this.logger)
+      return this.streamChat({
+        agentId: args.agentId,
+        messages: [{ role: 'user', content: args.content }],
+        sessionKey: args.threadId,
+        attachments: args.attachments,
+        ephemeral: args.ephemeral,
+        toolsMode: args.toolsMode,
+        model: args.model,
+        thinking: args.thinking,
+        oversizedOutputBytes: args.oversizedOutputBytes,
+        signal: args.signal,
+      })
+    },
   }
 
   tools = {
@@ -1918,12 +1916,28 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   }
 }
 
+/**
+ * Per-turn tool policy → gateway params: toolsMode ONLY. The contract's
+ * toolsAllow/toolsDeny name Bakin exec tools — OpenClaw's exec tools ride
+ * session-static per-agent MCP servers, so per-turn filtering is not
+ * enforceable here, and forwarding the fields as gateway-native tool policy
+ * misapplied them to native tools (audit M3: `toolsAllow: ['read']`
+ * restricted natives on OpenClaw while Pi filtered exec tools). The fields
+ * are ignored with a loud warning (warnUnenforceableToolPolicy).
+ */
 function applyRuntimeMessageToolPolicy(params: Record<string, unknown>, opts: OpenClawAgentTurnOptions): void {
   if (opts.toolsMode === 'none' || opts.toolsMode === 'auto') params.toolsMode = opts.toolsMode
-  const toolsAllow = normalizeToolList(opts.toolsAllow)
-  const toolsDeny = normalizeToolList(opts.toolsDeny)
-  if (toolsAllow) params.toolsAllow = toolsAllow
-  if (toolsDeny) params.toolsDeny = toolsDeny
+}
+
+/** Loud honesty: callers supplying exec-tool filters must know OpenClaw cannot enforce them per-turn. */
+function warnUnenforceableToolPolicy(args: MessageArgs, logger: AdapterLogger): void {
+  if (args.toolsAllow?.length || args.toolsDeny?.length) {
+    logger.warn('toolsAllow/toolsDeny ignored: OpenClaw exec tools ride session-static MCP servers — per-turn exec-tool filtering is unenforceable on this runtime (fields are never applied to native tools)', {
+      agentId: args.agentId,
+      toolsAllow: args.toolsAllow?.length ?? 0,
+      toolsDeny: args.toolsDeny?.length ?? 0,
+    })
+  }
 }
 
 /**

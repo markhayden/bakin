@@ -45,7 +45,7 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 - [x] T26 Stream/capability/provisioning pins ✅ (tool-turn taxonomy, typed-error streams, tap, capability honesty, provisioning idempotency; sessions pin OpenClaw-flagged for T28)
 - [x] T27 Mock default flip (minimal shape) + test sweep ✅ (channels/cron opt-in via mockChannels()/mockCron(); delivery honesty auto-paired; zero real bare-deref bugs found — all prod code already guarded)
 - [x] T28 OpenClaw sessions.list/get for real ✅ (sessions.json store reads via mtime/LRU cache; crab mirrors gateway bookkeeping; honesty pin ON)
-- [ ] T29 ping/restart/toolsAllow/oversizedOutputBytes semantics
+- [x] T29 ping/restart/toolsAllow/oversizedOutputBytes semantics ✅ (Pi credential-probe ping; OpenClaw stops forwarding exec filters; typed oversized field)
 - [ ] T30 Dead surface deletion + typed CRUD errors + arch ban
 - [ ] T31 Provider-leak fixes + WS3 docs
 - [ ] CHECKPOINT 3: suite = adapter acceptance gate; PR merged

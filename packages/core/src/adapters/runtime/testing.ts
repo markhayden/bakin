@@ -192,13 +192,21 @@ export function createMockRuntimeAdapter(
     aliases: {} as Record<string, string>,
   }
 
+  // Serveability mirrors the contract: ready by construction, dead after
+  // shutdown() — so ping() is a real signal, not a hardcoded true (T29).
+  let alive = true
+
   const adapter: AgentRuntimeAdapter = {
     name: 'mock-runtime',
     version: '0.0.0',
     requiredCoreVersion: '*',
-    initialize: async () => {},
-    shutdown: async () => {},
-    ping: async () => true,
+    initialize: async () => {
+      alive = true
+    },
+    shutdown: async () => {
+      alive = false
+    },
+    ping: async () => alive,
     restart: async () => {},
     getHealthChecks: () => [],
 

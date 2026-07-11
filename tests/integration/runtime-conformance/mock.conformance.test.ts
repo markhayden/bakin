@@ -76,6 +76,12 @@ beforeEach(() => {
       }),
     // The mock provisions nothing durable (in-process semantics).
     observeProvisionedState: () => null,
+    // Shutdown flips the mock's alive flag — ping must read false after.
+    makeUnserveableRuntime: async () => {
+      const dead = createMockRuntimeAdapter()
+      await dead.shutdown()
+      return dead
+    },
   }
 })
 

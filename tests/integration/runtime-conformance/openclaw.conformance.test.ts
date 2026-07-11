@@ -30,6 +30,7 @@ mock.module('../../../packages/adapter-openclaw/src/home', openClawHomeMock)
 import { readFileSync } from 'fs'
 import type { ChatChunk } from '../../../packages/core/src/adapters/runtime'
 import { createImitationCrabHarness, type ImitationCrabHarness } from '../../../dev/imitation-crab/harness'
+import { createOpenClawRuntimeAdapter } from '../../../packages/adapter-openclaw/src/index'
 import { runRuntimeConformanceSuite, type RuntimeConformanceTarget } from './conformance'
 
 let harness: ImitationCrabHarness
@@ -141,6 +142,11 @@ const target: RuntimeConformanceTarget = {
   // Provisioning writes bakin-<agent> MCP entries into the mock home's
   // openclaw.json — the durable state the idempotency pin snapshots.
   observeProvisionedState: () => readFileSync(join(mockHome, 'openclaw.json'), 'utf-8'),
+  // An adapter pointed at a dead port: ping's HTTP probe must resolve false.
+  makeUnserveableRuntime: () =>
+    createOpenClawRuntimeAdapter({
+      settings: { gatewayUrl: 'http://127.0.0.1', gatewayPort: 1 },
+    }),
 }
 
 runRuntimeConformanceSuite('openclaw (imitation crab)', () => target, { sessionsPin: SESSIONS_PIN_ENABLED })

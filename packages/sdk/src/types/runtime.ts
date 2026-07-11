@@ -24,16 +24,21 @@ export interface RuntimeChannel {
 /** Whether to expose runtime-native tools for this agent turn. */
 export type RuntimeMessageToolsMode = 'auto' | 'none'
 
-/** Per-turn policy for which runtime tools the agent may call. */
+/** Per-turn policy for which tools the agent may call. */
 export interface RuntimeMessageToolPolicy {
   /**
    * Controls whether runtime-native tools are available for this agent turn.
    * `none` disables tools. Omit or use `auto` for runtime/provider defaults.
    */
   toolsMode?: RuntimeMessageToolsMode
-  /** Optional runtime-native tool allowlist for this turn. */
+  /**
+   * Per-turn allowlist of BAKIN EXEC TOOLS by exact name (never
+   * runtime-native tools — those are governed only by `toolsMode`).
+   * Runtimes whose exec tools ride session-static transports cannot filter
+   * per-turn and ignore these fields with a warning.
+   */
   toolsAllow?: string[]
-  /** Optional runtime-native tool denylist for this turn. */
+  /** Per-turn denylist of Bakin exec tools by exact name (same scope as `toolsAllow`). */
   toolsDeny?: string[]
 }
 

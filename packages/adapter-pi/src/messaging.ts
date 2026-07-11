@@ -474,6 +474,7 @@ function throwOnTerminalFailure(
       lastToolCall: observer.lastToolCall,
       detail: `Pi turn died after partial output: ${observer.terminalError}`,
       cause: new Error(observer.terminalError),
+      oversizedOutputBytes: args.oversizedOutputBytes,
     })
   }
   throw toRuntimeError(new Error(observer.terminalError), {

@@ -144,6 +144,10 @@ const target: RuntimeConformanceTarget = {
   },
   // Pi provisions in-process (no durable writes) — nothing to snapshot.
   observeProvisionedState: () => null,
+  // An uninitialized Pi adapter cannot serve a turn. The credential-presence
+  // half of Pi's probe is unit-tested in tests/adapter-pi/ping-serveability
+  // (PI_HOME is process-global — can't vary it mid-file here).
+  makeUnserveableRuntime: () => createPiRuntimeAdapter(),
 }
 
 runRuntimeConformanceSuite('pi (fake provider)', () => target)

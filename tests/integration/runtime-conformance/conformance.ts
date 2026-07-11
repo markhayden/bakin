@@ -6,8 +6,9 @@
  * pinned here must hold for every conforming runtime, never provider quirks.
  *
  * Scope: messaging pins (T25) + stream/tap/capability/provisioning pins
- * (T26). Mock-default capability-shape honesty lands in T27; ping/restart
- * semantics in T29.
+ * (T26) + mock-default honesty (T27) + ping-serveability (T29). toolsAllow
+ * exec-scope and oversizedOutputBytes threading are unit-pinned per adapter
+ * (T29) — their observable effects are adapter-mechanism-specific.
  *
  * Deliberately NOT pinned: send-level idempotency. `messaging.send` is NOT
  * idempotent at the contract level — callers own dedupe (the execution
@@ -65,6 +66,15 @@ export interface RuntimeConformanceTarget {
    * second provision run.
    */
   observeProvisionedState?(): unknown | Promise<unknown>
+  /**
+   * An UNSERVEABLE instance of this runtime (uninitialized adapter, dead
+   * gateway port, shutdown mock) for the ping pin: its ping() must resolve
+   * false — never throw. The healthy target's ping() must resolve true.
+   * (Pi's credential-presence probe is additionally unit-tested in
+   * tests/adapter-pi/ping-serveability.test.ts — PI_HOME is process-global,
+   * so the no-credentials recipe needs its own file.)
+   */
+  makeUnserveableRuntime?(): Promise<Pick<AgentRuntimeAdapter, 'ping'>> | Pick<AgentRuntimeAdapter, 'ping'>
 }
 
 export interface RuntimeConformanceSuiteOptions {
@@ -131,6 +141,24 @@ export const runtimeConformanceChecks = {
     }
     if (caught === null) fail('failing send resolved instead of rejecting')
     assertTypedRuntimeError(caught, target.expectedFailingKind)
+  },
+
+  /**
+   * ping() is a cheap serveability probe (T29): true on a runtime that can
+   * serve turns, false — resolved, never thrown — on one that cannot.
+   */
+  async pingReflectsServeability(target: RuntimeConformanceTarget): Promise<void> {
+    const healthy = await target.runtime.ping()
+    if (healthy !== true) fail('ping() returned false on a runtime that is serving conformance turns')
+    if (!target.makeUnserveableRuntime) return
+    const broken = await target.makeUnserveableRuntime()
+    let result: boolean
+    try {
+      result = await broken.ping()
+    } catch (err) {
+      fail(`ping() THREW on an unserveable runtime (${String(err)}) — the contract resolves false, never throws`)
+    }
+    if (result !== false) fail('ping() returned true on an unserveable runtime')
   },
 
   /** Streams yield `done` exactly once, and it is the final chunk (R5). */
@@ -336,6 +364,10 @@ export function runRuntimeConformanceSuite(
 
     it('messaging failures are typed RuntimeErrors', async () => {
       await runtimeConformanceChecks.failuresAreTypedRuntimeErrors(getTarget())
+    })
+
+    it('ping reflects serveability (false, never throws, when unserveable)', async () => {
+      await runtimeConformanceChecks.pingReflectsServeability(getTarget())
     })
 
     it('stream yields done exactly once, last', async () => {
