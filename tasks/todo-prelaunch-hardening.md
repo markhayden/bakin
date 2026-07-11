@@ -47,8 +47,8 @@ Rule: one task = 1–2 green conventional commits; check off only after verifica
 - [x] T28 OpenClaw sessions.list/get for real ✅ (sessions.json store reads via mtime/LRU cache; crab mirrors gateway bookkeeping; honesty pin ON)
 - [x] T29 ping/restart/toolsAllow/oversizedOutputBytes semantics ✅ (Pi credential-probe ping; OpenClaw stops forwarding exec filters; typed oversized field)
 - [x] T30 Dead surface deletion + typed CRUD errors + arch ban ✅ (updatePermissions+tools.invoke deleted; not_found kind; message-match ban + 2 offenders fixed)
-- [ ] T31 Provider-leak fixes + WS3 docs
-- [ ] CHECKPOINT 3: suite = adapter acceptance gate; PR merged
+- [x] T31 Provider-leak fixes + WS3 docs ✅ (runtimeName-derived copy, adapter-owned remediation, sourceFile threading, RUNTIME_MEDIA_URI_SCHEME, SDK channels/cron now optional)
+- [ ] CHECKPOINT 3: suite = adapter acceptance gate ✅ (documented in runtime-capabilities.md N-runtime checklist) / PR merged ☐
 
 ## PR 4 — chore/cleanup-sweep (anytime; during WS1 soak)
 - [ ] T32 Rig off mcporter (native-MCP provisioning)
