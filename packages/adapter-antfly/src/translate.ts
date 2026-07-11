@@ -179,6 +179,11 @@ export function buildQueryRequest(table: string, q: Query, settings: AntflySetti
     table,
     limit: q.limit ?? settings.search.defaultLimit,
   }
+  if (q.deadlineMs !== undefined && q.deadlineMs > 0) {
+    // rc.18 cooperative server-side deadline (expiry → 504). The client
+    // enforces deadline + grace as its abort timeout — see client.query.
+    request.timeout_ms = Math.round(q.deadlineMs)
+  }
 
   // Filters compose INTO the full_text_search node (rc.17 filter_query is
   // broken — see composeFtsWithFilters).

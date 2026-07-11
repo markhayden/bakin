@@ -123,8 +123,11 @@ describe('query', () => {
     expect(result.hits).toHaveLength(1)
     expect(result.diagnostics?.strategy).toBe('fts')
     expect((result.diagnostics?.adapter as Record<string, unknown>)?.degraded).toBe('semantic-embed-timeout')
-    // attempt 1 (semantic, timed out) + retry (fts) — companion count skipped when degraded
-    expect(calls).toBe(2)
+    expect(result.diagnostics?.budget).toBe('degraded')
+    // attempt 1 (semantic, timed out) + concurrent companion count (fired
+    // before the outcome was known; its result is discarded on degrade) +
+    // fts retry
+    expect(calls).toBe(3)
   })
 
   it('non-timeout semantic failures are NOT silently degraded', async () => {
@@ -170,6 +173,87 @@ describe('query', () => {
     ])
     await client.query('t', { text: 'x', strategy: 'fts' })
     expect(calls).toBe(1)
+  })
+})
+
+describe('query deadlines (rc.18 timeout_ms)', () => {
+  it('propagates Query.deadlineMs to the wire as timeout_ms', async () => {
+    const bodies: Array<Record<string, unknown>> = []
+    const client = makeClient([
+      {
+        match: (url) => url.includes('/query'),
+        handle: (_url, init) => {
+          bodies.push(JSON.parse(String(init?.body)))
+          return json({ responses: [{ hits: { total: 0, hits: [], max_score: 0 }, aggregations: null, took: 1, status: 200, error: null, table: 't' }] })
+        },
+      },
+    ])
+    await client.query('t', { text: 'x', deadlineMs: 1500 })
+    expect(bodies[0]!.timeout_ms).toBe(1500)
+  })
+
+  it('a server 504 (deadline expired) with semantic degrades to a labeled fts retry', async () => {
+    const client = makeClient([
+      {
+        match: (url) => url.includes('/query'),
+        handle: (_url, init) => {
+          const req = JSON.parse(String(init?.body))
+          if (req.semantic_search !== undefined) return new Response('deadline exceeded', { status: 504 })
+          return json({
+            responses: [{
+              hits: { total: 1, max_score: 0.5, hits: [{ _id: 'a', _score: 0.5, _index_scores: { full_text: 0.5 }, _source: { title: 'x' }, _sort: null }] },
+              aggregations: null, took: 2, status: 200, error: null, table: 't',
+            }],
+          })
+        },
+      },
+    ])
+    const result = await client.query('t', { text: 'x', deadlineMs: 2000, adapterOptions: { indexes: ['sem'] } })
+    expect(result.hits).toHaveLength(1)
+    expect(result.diagnostics?.budget).toBe('degraded')
+  })
+
+  it('companion count runs CONCURRENTLY with the main query', async () => {
+    // The main response is held until the count request has ARRIVED. A
+    // sequential implementation (count after main) deadlocks here and the
+    // 1s guard fails the test.
+    let countArrived: () => void
+    const countGate = new Promise<void>((resolve) => { countArrived = resolve })
+    const client = makeClient([
+      {
+        match: (url) => url.includes('/query'),
+        handle: async (_url, init) => {
+          const req = JSON.parse(String(init?.body))
+          if (req.count) {
+            countArrived!()
+            return json({ responses: [{ hits: { total: 42, hits: [], max_score: 0 }, aggregations: null, took: 1, status: 200, error: null, table: 't' }] })
+          }
+          await Promise.race([countGate, new Promise((_, reject) => setTimeout(() => reject(new Error('count never arrived — sequential twin')), 1000))])
+          return json({ responses: [{ hits: { total: 1, hits: [{ _id: 'a', _score: 1, _index_scores: null, _source: {}, _sort: null }], max_score: 1 }, aggregations: null, took: 1, status: 200, error: null, table: 't' }] })
+        },
+      },
+    ])
+    const result = await client.query('t', { text: 'x', adapterOptions: { indexes: ['sem'] } })
+    expect(result.total).toBe(42)
+  })
+
+  it('multiQuery marks a table that missed its deadline entirely as budget: omitted', async () => {
+    const client = makeClient([
+      { match: (url) => url.includes('/tables/slow/query'), handle: () => new Response('deadline exceeded', { status: 504 }) },
+      {
+        match: (url) => url.includes('/tables/fast/query'),
+        handle: () => json({ responses: [{ hits: { total: 1, hits: [{ _id: 'f', _score: 1, _index_scores: null, _source: {}, _sort: null }], max_score: 1 }, aggregations: null, took: 1, status: 200, error: null, table: 'fast' }] }),
+      },
+    ])
+    // slow: FTS-only query (no semantic to degrade to) → 504 → omitted
+    const results = await client.multiQuery([
+      { table: 'slow', query: { text: 'x', deadlineMs: 500 } },
+      { table: 'fast', query: { text: 'x', deadlineMs: 500 } },
+    ])
+    expect(results[0]!.hits).toHaveLength(0)
+    expect(results[0]!.diagnostics?.budget).toBe('omitted')
+    expect(results[1]!.hits).toHaveLength(1)
+    expect(results[1]!.diagnostics?.budget).toBeUndefined()
   })
 })
 

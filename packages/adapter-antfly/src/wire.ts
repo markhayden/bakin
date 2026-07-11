@@ -45,6 +45,8 @@ export interface WireQueryRequest {
   merge_config?: WireMergeConfig
   limit?: number
   offset?: number
+  /** rc.18+: cooperative server-side execution deadline; expiry → HTTP 504. */
+  timeout_ms?: number
   count?: boolean
   aggregations?: Record<string, unknown>
   reranker?: Record<string, unknown>
