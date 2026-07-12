@@ -42,10 +42,10 @@ mock.module('@/core/settings', () => ({
         search: {
           strategy: 'rrf',
           defaultLimit: 20,
-          reranker: { enabled: true, provider: 'termite', model: 'mixedbread-ai/mxbai-rerank-base-v1', threshold: 0.0 },
+          reranker: { enabled: true, provider: 'antfly', model: 'mixedbread-ai/mxbai-rerank-base-v1', threshold: 0.0 },
         },
         embedders: {
-          default: { provider: 'termite', model: 'BAAI/bge-small-en-v1.5' },
+          default: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5' },
           visual: { provider: 'antfly', model: 'openai/clip-vit-base-patch32' },
         },
         chunking: { defaultTargetTokens: 200, defaultOverlapTokens: 25 },
