@@ -122,6 +122,47 @@ export async function abortTurnRequest(chatId: string): Promise<void> {
   await pluginFetch('chat', `chats/${chatId}/abort`, { method: 'POST' }).catch(() => {})
 }
 
+export interface UploadedAttachment {
+  name: string
+  mimeType: string
+  path: string
+}
+
+export async function uploadAttachmentRequest(chatId: string, file: File): Promise<UploadedAttachment | null> {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await pluginFetch('chat', `chats/${chatId}/attachments`, { method: 'POST', body: form })
+  if (!res.ok) return null
+  return ((await res.json()) as { attachment: UploadedAttachment }).attachment
+}
+
+// Capability probes are per (agent, model) and stable within a session —
+// cache so switching chats doesn't re-fetch.
+const imageInputCache = new Map<string, boolean>()
+
+export function useAgentImageInput(agentId: string): boolean {
+  const [enabled, setEnabled] = useState(imageInputCache.get(agentId) ?? false)
+  useEffect(() => {
+    const cached = imageInputCache.get(agentId)
+    if (cached !== undefined) {
+      setEnabled(cached)
+      return
+    }
+    let cancelled = false
+    void pluginFetch('chat', `capabilities?agent=${encodeURIComponent(agentId)}`)
+      .then(async (res) => {
+        const value = res.ok ? ((await res.json()) as { imageInput?: boolean }).imageInput === true : false
+        imageInputCache.set(agentId, value)
+        if (!cancelled) setEnabled(value)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [agentId])
+  return enabled
+}
+
 export interface ChatStreamState {
   chat: ChatSummaryDto | null
   /** Durable transcript as kit rows (attachments URL-mapped). */

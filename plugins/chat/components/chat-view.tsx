@@ -17,7 +17,65 @@ import {
 } from '@makinbakin/sdk/components'
 import { useAgent } from '@makinbakin/sdk/hooks'
 
-import { patchChatRequest, useChatStream, type ChatSummaryDto } from './use-chat-data'
+import {
+  patchChatRequest,
+  uploadAttachmentRequest,
+  useAgentImageInput,
+  useChatStream,
+  type ChatSummaryDto,
+  type UploadedAttachment,
+} from './use-chat-data'
+
+interface StagedAttachment extends UploadedAttachment {
+  id: string
+  previewUrl: string
+}
+
+/** Staged-attachment state + Composer wiring, gated by the agent's imageInput. */
+function useComposerAttachments(chatId: string, agentId: string) {
+  const imageInput = useAgentImageInput(agentId)
+  const [staged, setStaged] = useState<StagedAttachment[]>([])
+
+  const onAdd = (files: File[]) => {
+    for (const file of files) {
+      void uploadAttachmentRequest(chatId, file).then((uploaded) => {
+        if (!uploaded) return
+        setStaged((prev) => [
+          ...prev,
+          { ...uploaded, id: uploaded.path, previewUrl: URL.createObjectURL(file) },
+        ])
+      })
+    }
+  }
+
+  const onRemove = (id: string) => {
+    setStaged((prev) => {
+      const item = prev.find((a) => a.id === id)
+      if (item) URL.revokeObjectURL(item.previewUrl)
+      // The uploaded file stays on disk until the chat is deleted — orphaned
+      // staging files are bounded and swept with the chat (single-user box).
+      return prev.filter((a) => a.id !== id)
+    })
+  }
+
+  const take = (): UploadedAttachment[] => {
+    const out = staged.map(({ name, mimeType, path }) => ({ name, mimeType, path }))
+    for (const item of staged) URL.revokeObjectURL(item.previewUrl)
+    setStaged([])
+    return out
+  }
+
+  return {
+    take,
+    composerProps: {
+      enabled: imageInput,
+      disabledReason: `${agentId}'s model can't see images`,
+      items: staged.map(({ id, name, previewUrl }) => ({ id, name, previewUrl })),
+      onAdd,
+      onRemove,
+    },
+  }
+}
 
 const CONTENT_MAX = 64_000
 
@@ -170,6 +228,7 @@ export function DraftChatView({
 export function ChatView({ chatId, onChanged }: { chatId: string; onChanged: () => void }) {
   const { chat, messages, liveChunks, streaming, sendError, send, abort, retry } = useChatStream(chatId)
   const [openCall, setOpenCall] = useState<ConversationToolCall | null>(null)
+  const attachments = useComposerAttachments(chatId, chat?.agentId ?? '')
 
   if (!chat) return null
 
@@ -204,10 +263,11 @@ export function ChatView({ chatId, onChanged }: { chatId: string; onChanged: () 
       <Composer
         storageKey={`chat:${chatId}`}
         placeholder="Message the agent…"
-        onSend={(content) => { void send(content) }}
+        onSend={(content) => { void send(content, attachments.take()) }}
         busy={streaming}
         onAbort={abort}
         maxLength={CONTENT_MAX}
+        attachments={attachments.composerProps}
       />
 
       <ToolCallDrawer call={openCall} open={openCall !== null} onOpenChange={(open) => !open && setOpenCall(null)} />

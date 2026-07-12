@@ -379,7 +379,10 @@ export function makeRequest(
     for (const [k, v] of Object.entries(opts.searchParams)) url.searchParams.set(k, v)
   }
   const init: RequestInit = { method: opts.method || 'GET' }
-  if (opts.body !== undefined) {
+  if (opts.body instanceof FormData) {
+    // Multipart passes through — Request derives the boundary header.
+    init.body = opts.body
+  } else if (opts.body !== undefined) {
     init.body = JSON.stringify(opts.body)
     init.headers = { 'Content-Type': 'application/json' }
   }

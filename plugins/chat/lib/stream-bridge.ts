@@ -17,6 +17,7 @@
 import { randomUUID } from 'crypto'
 
 import type { PluginContext } from '@bakin/core/plugin-types'
+import { cleanupPreparedAttachment, prepareImageAttachment, type PreparedAttachment } from '@bakin/core/media/downscale'
 import { createTurnRecorder } from '@makinbakin/sdk/utils'
 
 import { createLogger } from '../../../src/core/logger'
@@ -76,6 +77,10 @@ export async function startChatTurn(
   if (!chat) return 'not_found'
   if (inflight.has(chatId)) return 'busy'
 
+  // Attachment-only sends carry a visible placeholder — the transcript
+  // shows exactly what the runtime was asked.
+  if (!content.trim() && attachments?.length) content = 'See the attached image.'
+
   await appendTranscriptRow(chatId, {
     kind: 'user',
     ts: new Date().toISOString(),
@@ -102,6 +107,9 @@ async function runTurn(
   const turnId = randomUUID()
   const recorder = createTurnRecorder({ turnId })
   let assistantText = ''
+  // Oversized images downscale to temp JPEGs (the shared 2 MB inline-cap
+  // shim); prepared temp files are cleaned after the turn settles.
+  const prepared: PreparedAttachment[] = []
 
   const persist = async (rows: ChatTranscriptRow[]) => {
     for (const row of rows) {
@@ -116,13 +124,18 @@ async function runTurn(
   }
 
   try {
+    if (attachments?.length) {
+      for (const a of attachments) {
+        prepared.push(await prepareImageAttachment(a.path, a.mimeType))
+      }
+    }
     for await (const chunk of ctx.runtime.messaging.stream({
       agentId,
       content,
       threadId: `chat:${chatId}`,
       signal: controller.signal,
-      ...(attachments?.length
-        ? { attachments: attachments.map((a) => ({ path: a.path, mimeType: a.mimeType })) }
+      ...(prepared.length
+        ? { attachments: prepared.map((a) => ({ path: a.path, mimeType: a.mimeType })) }
         : {}),
     })) {
       // Only liveness chunks ride chat.chunk — done/error have dedicated
@@ -179,6 +192,8 @@ async function runTurn(
       { kind: 'error', ts: new Date().toISOString(), turnId, message, ...(kind ? { errorKind: kind } : {}) },
     ])
     ctx.events.emit('chat.error', { chatId, agentId, message, ...(kind ? { kind } : {}) })
+  } finally {
+    for (const p of prepared) cleanupPreparedAttachment(p)
   }
 }
 
