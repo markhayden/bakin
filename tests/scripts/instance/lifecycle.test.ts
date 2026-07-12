@@ -222,7 +222,10 @@ describe('up — fresh', () => {
     const { deps, calls, wiped } = fakeDeps()
     await up(plan, paths, 'BRAVE_API_KEY=op://V/brave/cred', deps)
     expect(calls.some((c) => c.join(' ').includes('compose -f') && c.join(' ').includes('down'))).toBe(true)
-    expect(wiped).toEqual(['/tmp/fake-repo/dev/openclaw-home'])
+    expect(wiped).toEqual([
+      '/tmp/fake-repo/dev/openclaw-home',
+      '/tmp/fake-repo/dev/pi-home',
+    ])
   })
 })
 
@@ -233,7 +236,9 @@ describe('reset', () => {
     await reset(plan, paths, deps)
     expect(wiped).toEqual([
       '/tmp/fake-repo/dev/openclaw-home',
+      '/tmp/fake-repo/dev/pi-home',
       '/tmp/fake-repo/dev/bakin-instances/isolated/home',
+      '/tmp/fake-repo/dev/bakin-instances/isolated/antfly',
     ])
     for (const w of wiped) expect(w.startsWith('/tmp/fake-repo/dev/')).toBe(true)
   })

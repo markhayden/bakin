@@ -185,6 +185,12 @@ export async function up(
   secretTemplateText: string,
   deps: LifecycleDeps,
 ): Promise<void> {
+  if (plan.runtime === 'pi' || !plan.docker) {
+    // Pi lifecycle (home prep, /login, settings patch) lands in T5 of the
+    // dual-runtime plan; the matrix (args/paths/modes) ships first.
+    throw new Error('`--runtime pi` provisioning is not wired yet — coming in the pi lifecycle change')
+  }
+  const docker = plan.docker
   await preflight(deps)
 
   if (plan.wipeBeforeUp.length > 0) {
@@ -246,7 +252,7 @@ export async function up(
   // OPENCLAW_IMAGE_TAG build arg, which loadEnvFile already put on process.env).
   // Passing resolved tokens here would widen their exposure for no reason.
   const upResult = await deps.runner.run(
-    composeUpArgs(paths.composeFile, plan.services, plan.composeProfile),
+    composeUpArgs(paths.composeFile, docker.services, docker.composeProfile),
   )
   if (upResult.code !== 0) {
     throw new Error(`docker compose up failed: ${upResult.stderr.trim() || `exit ${upResult.code}`}`)
@@ -282,7 +288,7 @@ export async function up(
   } else {
     deps.log('codex: ChatGPT device-code login — open the printed URL and enter the code…')
     const loginArgs = plan.bakin.placement === 'container'
-      ? codexLoginExecArgs(paths.composeFile, plan.services[0])
+      ? codexLoginExecArgs(paths.composeFile, docker.services[0])
       : codexLoginRunArgs(openclawImage(deps), paths.openclawHome)
     const login = await deps.runner.run(loginArgs, { interactive: true })
     if (login.code !== 0) {
@@ -300,7 +306,7 @@ export async function up(
   // The gateway started before config ran, so restart it to load the now-enabled
   // codex provider (+ its auth) and, when configured, the Discord bot.
   deps.log(`restarting gateway to load the provider${discordEnabled ? ' + Discord bot' : ''}…`)
-  await deps.runner.run(composeRestartArgs(paths.composeFile, plan.services, plan.composeProfile))
+  await deps.runner.run(composeRestartArgs(paths.composeFile, docker.services, docker.composeProfile))
   await waitForGatewayHealthy(deps, paths)
 
   // Bakin's MCP tool access is provisioned by Bakin itself, not the rig: at

@@ -18,13 +18,14 @@ const SCAN_ROOTS = [
 const EXT_RE = /\.(ts|tsx|mjs|mts|js|jsx|cjs|json|ya?ml)$/
 const WORKFLOW_DEFAULTS_RE = /(^|\/)plugins\/[^/]+\/defaults\/workflows\/[^/]+\.ya?ml$/
 
-// The disposable OpenClaw Docker dev rig (scripts/instance*) is, by definition,
-// OpenClaw-specific orchestration: it speaks the OpenClaw CLI, mounts the
-// OpenClaw home, and drives Docker. It sits AT the adapter layer (never ships
-// in the binary, can never be runtime-agnostic), so the three provider-boundary
-// rules below exempt it. All other rules (antfly/sqlite/flow_runs/discord
-// endpoints) still apply to keep the rig honest.
-const isOpenClawDevRig = (rel: string) =>
+// The disposable dev rig (scripts/instance*) is, by definition, provider-
+// specific orchestration: it speaks the OpenClaw CLI, mounts runtime homes
+// (openclaw AND pi), spawns the rig's own antfly child, and drives Docker.
+// It sits AT the adapter layer (never ships in the binary, can never be
+// runtime-agnostic), so the provider-boundary rules below exempt it. All
+// other rules (sqlite/flow_runs/discord endpoints) still apply to keep the
+// rig honest.
+const isDevRig = (rel: string) =>
   rel === 'scripts/instance.ts' || rel.startsWith('scripts/instance/')
 
 const DENYLIST = [
@@ -47,6 +48,7 @@ const DENYLIST = [
     // helpers, and the Pi SDK package must never leak upstream — a second
     // (third) runtime must require zero changes above the factory.
     regex: /(?:~\/\.pi\b|PI_HOME|getPiHome|getPiPath|@earendil-works)/,
+    allow: (rel: string) => isDevRig(rel),
   },
   {
     label: 'legacy core Antfly facade import',
@@ -59,12 +61,12 @@ const DENYLIST = [
   {
     label: 'raw OpenClaw home/path access outside adapter-openclaw',
     regex: /(?:~\/\.openclaw|OPENCLAW_HOME|getOpenClawHome|getOpenClawPath)/,
-    allow: (rel: string) => rel === 'scripts/bin/check-home-bypasses.mjs' || isOpenClawDevRig(rel),
+    allow: (rel: string) => rel === 'scripts/bin/check-home-bypasses.mjs' || isDevRig(rel),
   },
   {
     label: 'legacy OpenClaw implementation module',
     regex: /(?:openclaw-home|openclaw-config|openclaw-client|discord-gateway)/,
-    allow: (rel: string) => isOpenClawDevRig(rel),
+    allow: (rel: string) => isDevRig(rel),
   },
   {
     label: 'legacy flow_runs task metadata',
@@ -88,9 +90,11 @@ const DENYLIST = [
       || rel === 'src/core/settings.ts'
       || rel === 'packages/core/src/settings.ts'
       || rel.startsWith('src/core/onboarding/')
-      // Engine-specific dev tooling (same footing as the OpenClaw rig):
-      // the chaos drills deliberately drive a real antfly binary.
-      || rel === 'scripts/dev/search-chaos-drills.ts',
+      // Engine-specific dev tooling (same footing as the rest of the rig):
+      // the chaos drills and the rig's antfly child deliberately drive a
+      // real antfly binary.
+      || rel === 'scripts/dev/search-chaos-drills.ts'
+      || isDevRig(rel),
   },
   {
     label: 'raw SQLite access outside adapter packages',
@@ -103,7 +107,7 @@ const DENYLIST = [
   {
     label: 'raw OpenClaw CLI command outside runtime adapter',
     regex: /openclaw\s+(?:cron|flows|agent|config)\b/,
-    allow: (rel: string) => isOpenClawDevRig(rel),
+    allow: (rel: string) => isDevRig(rel),
   },
   {
     label: 'raw Discord provider endpoint outside runtime adapter',

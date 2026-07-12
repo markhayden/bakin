@@ -61,8 +61,10 @@ mc-server-error.log
 # full-res headshot originals (keep only thumbnails in repo)
 public/headshots/full/
 
-# Docker dev environment (runtime data + secrets)
+# Dev rig (runtime data + secrets)
 dev/openclaw-home/
+dev/pi-home/
+dev/pi-home-sandbox/
 dev/bakin-instances/
 dev/docker/.env
 

@@ -12,12 +12,17 @@ export type Verb = (typeof VERBS)[number]
 export const MODES = ['native', 'isolated', 'sandbox'] as const
 export type Mode = (typeof MODES)[number]
 
+export const RUNTIMES = ['openclaw', 'pi'] as const
+export type Runtime = (typeof RUNTIMES)[number]
+
 export const SOURCES = ['repo', 'installed'] as const
 export type Source = (typeof SOURCES)[number]
 
 export interface InstanceArgs {
   verb: Verb
   mode: Mode
+  /** Which agent runtime this instance targets. reset/down are runtime-blind. */
+  runtime: Runtime
   /** Wipe instance state before bringing it up. */
   fresh: boolean
   /** Where Bakin comes from in isolated/sandbox modes. */
@@ -42,10 +47,12 @@ export function parseInstanceArgs(argv: string[]): InstanceArgs {
   }
 
   let mode: Mode = 'native'
+  let runtime: Runtime = 'openclaw'
   let fresh = false
   let source: Source = 'repo'
   let preconfigure = false
   let sourceProvided = false
+  let runtimeProvided = false
   const rest: string[] = []
 
   for (let i = 1; i < argv.length; i++) {
@@ -61,6 +68,15 @@ export function parseInstanceArgs(argv: string[]): InstanceArgs {
           throw new Error(`Invalid --mode "${value ?? ''}". Expected one of: ${MODES.join(', ')}`)
         }
         mode = value as Mode
+        break
+      }
+      case '--runtime': {
+        const value = argv[++i]
+        if (!value || !(RUNTIMES as readonly string[]).includes(value)) {
+          throw new Error(`Invalid --runtime "${value ?? ''}". Expected one of: ${RUNTIMES.join(', ')}`)
+        }
+        runtime = value as Runtime
+        runtimeProvided = true
         break
       }
       case '--source': {
@@ -84,15 +100,24 @@ export function parseInstanceArgs(argv: string[]): InstanceArgs {
   }
 
   // Cross-flag validation.
+  if (runtimeProvided && (verb === 'reset' || verb === 'down')) {
+    throw new Error(`--runtime is not valid with \`${verb}\` — it acts on the whole mode, both runtimes`)
+  }
   if (sourceProvided && mode === 'native') {
     throw new Error('--source is only valid with --mode isolated or sandbox (native always runs this repo)')
   }
+  if (sourceProvided && source === 'installed' && runtime === 'pi' && mode !== 'sandbox') {
+    throw new Error('--source installed is not valid for pi host modes (they always run this repo)')
+  }
   if (preconfigure && mode !== 'sandbox') {
     throw new Error('--preconfigure is only valid with --mode sandbox')
+  }
+  if (preconfigure && runtime === 'pi') {
+    throw new Error('--preconfigure is openclaw-only — pi sandbox onboarding is manual (`instance shell` then `bakin onboard`)')
   }
   if (verb === 'run' && rest.length === 0) {
     throw new Error('run requires passthrough args, e.g. `instance run -- doctor --json`')
   }
 
-  return { verb, mode, fresh, source, preconfigure, rest }
+  return { verb, mode, runtime, fresh, source, preconfigure, rest }
 }
