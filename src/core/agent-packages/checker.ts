@@ -12,7 +12,7 @@ import {
   readLockfile,
   type PackageEntry,
 } from '../../../packages/core/src/agent-packages/lockfile'
-import { fetchSource, fetchSourceAsync, sourceSpecWithRef, type FetchedSource } from './source-fetcher'
+import { fetchSourceAsync, sourceSpecWithRef, type FetchedSource } from './source-fetcher'
 
 export interface PackageUpdateStatus {
   currentVersion: string
@@ -85,32 +85,12 @@ function statusFromError(entry: PackageEntry, checkedAt: string, err: unknown): 
   }
 }
 
-export function checkPackageUpdate(
-  packageId: string,
-  options: CheckPackageUpdateOptions = {},
-): PackageUpdateStatus {
-  const checkedAt = (options.now ?? (() => new Date()))().toISOString()
-  const lock = readLockfile()
-  const entry = lock.packages[packageId]
-  if (!entry) {
-    throw new Error(`Package "${packageId}" is not installed.`)
-  }
-
-  let fetched: FetchedSource | null = null
-  try {
-    fetched = fetchSource(sourceWithRef(entry))
-    return statusFromFetched(packageId, entry, fetched, checkedAt)
-  } catch (err) {
-    return statusFromError(entry, checkedAt, err)
-  } finally {
-    cleanupFetched(fetched)
-  }
-}
-
 /**
- * Async variant for request-path callers: the git/network fetch runs off the
- * event loop (fetchSourceAsync), so a slow remote can't stall the server the
- * way the execFileSync-backed sync path can.
+ * The git/network fetch runs off the event loop (fetchSourceAsync) so a slow
+ * remote can't stall the server. The old execFileSync-backed sync variant is
+ * deliberately GONE: `/api/agent-packages?check=1` (the Team page) once froze
+ * the whole server for N × git-timeout through it — every request, including
+ * the plugin manifest, queued behind blocking clones.
  */
 export async function checkPackageUpdateAsync(
   packageId: string,

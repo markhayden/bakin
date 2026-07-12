@@ -54,7 +54,7 @@ import { unmarkUserEdited } from '../../../packages/core/src/agent-packages/mark
 import { PackageNotInstalledError } from './errors'
 import { projectPackage, type ProjectorResult } from './projector'
 import { updatePackageById } from './updater'
-import { checkPackageUpdate } from './checker'
+import { checkPackageUpdateAsync } from './checker'
 import {
   COMPOSABLE_FILES,
   type SyncFinding,
@@ -266,7 +266,7 @@ export async function syncAgent(agentId: string, opts: SyncOptions = {}): Promis
     if (check) {
       if (fetch) {
         try {
-          const status = await checkPackageUpdate(owner.id)
+          const status = await checkPackageUpdateAsync(owner.id)
           versionAfter = status.latestVersion ?? versionBefore
           commitAfter = status.latestCommitSha ?? commitBefore
           changed = status.upgradeAvailable === true
@@ -473,7 +473,7 @@ export async function syncPack(
   }
 
   if (opts.check) {
-    const status = await checkPackageUpdate(packageId)
+    const status = await checkPackageUpdateAsync(packageId)
     return {
       packageId,
       kind: entry.kind,

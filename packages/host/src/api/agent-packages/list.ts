@@ -9,7 +9,7 @@
  * `bakin agents list`. Distinct from `/api/agents` (runtime status).
  */
 import { listAllAgentStates } from '@/core/agent-packages/agent-state'
-import { checkPackageUpdate } from '@/core/agent-packages/checker'
+import { checkPackageUpdateAsync } from '@/core/agent-packages/checker'
 
 export async function get(_req: Request, url: URL): Promise<Response> {
   void _req
@@ -20,7 +20,7 @@ export async function get(_req: Request, url: URL): Promise<Response> {
         if (!state.packageId) return state
         return {
           ...state,
-          updateStatus: checkPackageUpdate(state.packageId),
+          updateStatus: await checkPackageUpdateAsync(state.packageId),
         }
       }))
       return Response.json({ ok: true, agents: enriched })
