@@ -68,6 +68,7 @@
     ],
     "slots": [
       "page:/brands",
+      "page:/brands/:brandId",
       "task-brand"
     ]
   }

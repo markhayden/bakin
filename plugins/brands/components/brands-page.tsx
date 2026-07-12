@@ -4,11 +4,10 @@
  * Phase 6; this proves the plugin end-to-end in the browser.
  */
 import { useCallback, useEffect, useState } from 'react'
+import { useNavigate } from '@tanstack/react-router'
 import { PluginHeader } from '@makinbakin/sdk/components'
-import { useQueryState } from '@makinbakin/sdk/hooks'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 import type { BrandManifest } from '../types'
-import { BrandDetail } from './brand-detail'
 import { BrandBuilder } from './brand-builder'
 
 type ListedBrand = BrandManifest & { counts?: { guidelines: number; lessons: number; assets: number } }
@@ -39,7 +38,11 @@ const slugify = (name: string) =>
     .slice(0, 64)
 
 export function BrandsPage() {
-  const [selectedBrand, setSelectedBrand] = useQueryState('brand', '')
+  const navigate = useNavigate()
+  const openBrand = useCallback(
+    (brandId: string) => void navigate({ to: '/brands/$brandId', params: { brandId } }),
+    [navigate],
+  )
   const [data, setData] = useState<ListResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
@@ -89,10 +92,6 @@ export function BrandsPage() {
     }
   }, [newName, refresh])
 
-  if (selectedBrand) {
-    return <BrandDetail brandId={selectedBrand} onBack={() => { setSelectedBrand(''); void refresh() }} />
-  }
-
   return (
     <div className="flex flex-col gap-4 p-4">
       <PluginHeader title="Brands" count={data?.brands.length ?? 0} />
@@ -131,7 +130,7 @@ export function BrandsPage() {
       <BrandBuilder
         open={builderOpen}
         onOpenChange={setBuilderOpen}
-        onCreated={(brandId) => { void refresh(); setSelectedBrand(brandId) }}
+        onCreated={(brandId) => { void refresh(); openBrand(brandId) }}
       />
 
       {importOpen && (
@@ -247,7 +246,7 @@ export function BrandsPage() {
             <button
               key={brand.id}
               className="overflow-hidden rounded-lg border text-left transition-colors hover:border-zinc-600"
-              onClick={() => setSelectedBrand(brand.id)}
+              onClick={() => openBrand(brand.id)}
             >
               {/* Palette band — the same visual language as the detail hero. */}
               <div className="flex h-10">
