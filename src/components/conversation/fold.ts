@@ -41,11 +41,12 @@ export interface DisplayAttachment {
  */
 export type ConversationMessage =
   | { kind: 'user'; ts: string; content: string; attachments?: DisplayAttachment[] }
-  | { kind: 'assistant'; ts: string; turnId?: string; content: string }
+  | { kind: 'assistant'; ts: string; turnId?: string; agentId?: string; content: string }
   | {
       kind: 'tool'
       ts: string
       turnId?: string
+      agentId?: string
       callId?: string
       toolName: string
       status?: 'running' | 'completed' | 'failed' | string
@@ -85,6 +86,8 @@ export type ConversationTurn =
       kind: 'agent'
       key: string
       ts?: string
+      /** Author agent, when known (multi-agent embedded threads switch mid-conversation). */
+      agentId?: string
       items: TurnItem[]
       status: TurnStatus
       /** Latest runtime status label ('thinking', …) — meaningful while streaming. */
@@ -94,6 +97,8 @@ export type ConversationTurn =
 export interface FoldOptions {
   /** Raw chunks of the in-flight turn; presence (even empty) appends a streaming turn. */
   liveChunks?: readonly RuntimeChatChunk[]
+  /** Author of the live turn, when known. */
+  liveAgentId?: string
 }
 
 /** Mutable agent-turn accumulator shared by the row and chunk folders. */
@@ -102,6 +107,7 @@ interface AgentTurnBuilder {
   status: TurnStatus
   statusLabel?: string
   ts?: string
+  agentId?: string
   /** callId → call, for cross-group result pairing. */
   byCallId: Map<string, ConversationToolCall>
   keyCounter: number
@@ -219,6 +225,7 @@ function finishAgentTurn(builder: AgentTurnBuilder, key: string): ConversationTu
     kind: 'agent',
     key,
     ...(builder.ts ? { ts: builder.ts } : {}),
+    ...(builder.agentId ? { agentId: builder.agentId } : {}),
     items: builder.items,
     status: builder.status,
     ...(builder.statusLabel ? { statusLabel: builder.statusLabel } : {}),
@@ -272,6 +279,7 @@ export function foldConversation(
       currentTurnId = rowTurnId
     }
     if (currentTurnId === undefined && rowTurnId !== undefined) currentTurnId = rowTurnId
+    if (!current.agentId && 'agentId' in row && row.agentId) current.agentId = row.agentId
 
     switch (row.kind) {
       case 'assistant':
@@ -307,6 +315,7 @@ export function foldConversation(
 
   if (opts?.liveChunks) {
     const live = foldLiveChunks(opts.liveChunks)
+    if (opts.liveAgentId) live.agentId = opts.liveAgentId
     turns.push(finishAgentTurn(live, `live-${agentTurnIndex}`))
   }
 

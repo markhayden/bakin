@@ -280,6 +280,22 @@ describe('foldConversation — persisted rows', () => {
     expect(live.items).toEqual([{ type: 'text', format: 'markdown', content: 'streaming now' }])
   })
 
+  it('agent turns carry the agentId from their rows; liveAgentId labels the live turn', () => {
+    const turns = foldConversation(
+      [
+        user('q'),
+        { kind: 'assistant', ts: '2026-07-11T10:00:01.000Z', turnId: 't1', agentId: 'research', content: 'from research' },
+      ],
+      { liveChunks: [text('live')], liveAgentId: 'main' },
+    )
+    const persisted = turns[1]
+    if (persisted.kind !== 'agent') throw new Error('expected agent turn')
+    expect(persisted.agentId).toBe('research')
+    const live = turns[2]
+    if (live.kind !== 'agent') throw new Error('expected agent turn')
+    expect(live.agentId).toBe('main')
+  })
+
   it('turn keys are stable and unique across the conversation', () => {
     const turns = foldConversation(rows, { liveChunks: [text('live')] })
     const keys = turns.map((t) => t.key)

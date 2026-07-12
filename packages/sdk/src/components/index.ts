@@ -96,8 +96,10 @@ export type { UnderlineTab } from '@/components/underline-tabs'
 export { TurnOutputView, TurnToolChip, foldTurnChunks } from '@/components/turn-output-view'
 export type { TurnOutputViewProps, TurnToolChipState, TurnTextSegment, FoldedTurnOutput } from '@/components/turn-output-view'
 
-// Conversation kit — THE folding engine + turn model every conversational
-// surface builds on (chat plugin, embedded brainstorm panels, turn output).
+// Conversation kit — THE folding engine + turn model + renderers every
+// conversational surface builds on (chat plugin, embedded brainstorm
+// panels, turn output). New chat-like surfaces compose these; never
+// hand-roll message/tool rendering.
 export { foldConversation } from '@/components/conversation/fold'
 export type {
   ConversationMessage,
@@ -108,6 +110,17 @@ export type {
   DisplayAttachment,
   FoldOptions,
 } from '@/components/conversation/fold'
+export { Conversation } from '@/components/conversation/conversation'
+export type { ConversationProps } from '@/components/conversation/conversation'
+export { AgentTurn, ThinkingIndicator, CopyButton, TurnTimestamp } from '@/components/conversation/agent-turn'
+export type { AgentTurnProps } from '@/components/conversation/agent-turn'
+export { UserMessage } from '@/components/conversation/user-message'
+export type { UserMessageProps } from '@/components/conversation/user-message'
+export { ActivityGroup, ToolCallRow, formatDuration } from '@/components/conversation/activity-group'
+export type { ActivityGroupProps } from '@/components/conversation/activity-group'
+export { ConversationEmptyState } from '@/components/conversation/conversation-empty-state'
+export type { ConversationEmptyStateProps } from '@/components/conversation/conversation-empty-state'
+export { formatRelativeTime, formatAbsoluteTime } from '@/components/conversation/relative-time'
 
 // Notification channel icon (from workflows plugin registry)
 
