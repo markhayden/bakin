@@ -2,6 +2,28 @@ import type { RuntimeMetadata } from '../runtime/concepts'
 
 export type Document = Record<string, unknown>
 
+/**
+ * Engine-process introspection for the doctor's burn watchdog. Stateful by
+ * design: cpuUtilization is measured SINCE THE PREVIOUS engineStatus()
+ * call, so the doctor's own cadence is the sampling window.
+ */
+export interface SearchEngineStatus {
+  running: boolean
+  pid?: number
+  /**
+   * CPU fraction since the previous call (1.0 = one saturated core; can
+   * exceed 1 on multi-threaded engines). Null on the first sample, after a
+   * pid change, or when the mode cannot be measured.
+   */
+  cpuUtilization: number | null
+  /**
+   * Adapter-named wedge signatures observed since the previous call (e.g.
+   * a recurring zero-progress maintenance loop in the engine log). Any
+   * entry means the engine is burning CPU without making progress.
+   */
+  wedgeSignals: string[]
+}
+
 export interface TableInfo {
   name: string
   config?: TableConfig

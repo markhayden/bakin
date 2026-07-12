@@ -27,7 +27,8 @@ import type {
 } from '@bakin/core/adapters/search'
 import { AntflySearchClient } from './client'
 import { mergeSettings, type AntflySettings } from './defaults'
-import { detectServiceMode, ensureProvisioned, startChild, stopChild } from './service'
+import { createEngineStatusProbe } from './engine-status'
+import { detectServiceMode, ensureProvisioned, restartService, startChild, stopChild } from './service'
 
 const log = createLogger('antfly-adapter')
 
@@ -86,6 +87,21 @@ export class AntflyAdapter implements SearchAdapter {
 
   mappingFingerprint(): string {
     return this.client.mappingFingerprint()
+  }
+
+  // Engine-process introspection for the doctor's burn watchdog. One probe
+  // per adapter — it holds the previous CPU sample + log offset, so each
+  // call reports the rate/signals since the last one.
+  private engineProbe = createEngineStatusProbe(() => this.settings)
+
+  engineStatus() {
+    if (!this.settings.enabled) return Promise.resolve(null)
+    return this.engineProbe()
+  }
+
+  /** Graceful supervised restart (doctor repair for a wedged engine). */
+  restartEngine(): Promise<void> {
+    return restartService(this.settings)
   }
 
   tables = {

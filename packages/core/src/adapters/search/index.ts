@@ -8,6 +8,7 @@ import type {
   ScanOpts,
   ScannedDocument,
   SearchAdapterCapabilities,
+  SearchEngineStatus,
   TableConfig,
   TableInfo,
   TableLegHealth,
@@ -27,6 +28,21 @@ export interface SearchAdapter {
 
   /** What this adapter can build/serve, in capability terms (D17). */
   capabilities(): SearchAdapterCapabilities
+
+  /**
+   * OPTIONAL: engine-process introspection (pid/CPU/wedge signatures) for
+   * the doctor's burn watchdog. Absent or resolving null = the adapter (or
+   * its current mode, e.g. an externally managed guest engine) cannot
+   * measure — consumers feature-detect, never assume.
+   */
+  engineStatus?(): Promise<SearchEngineStatus | null>
+
+  /**
+   * OPTIONAL: gracefully restart the supervised engine (doctor repair for
+   * a wedged engine). Must throw with a clear message when the engine is
+   * not this adapter's to restart (guest mode).
+   */
+  restartEngine?(): Promise<void>
 
   /**
    * Hash over adapter settings that change the PHYSICAL index layout
@@ -121,6 +137,7 @@ export type {
   ScannedDocument,
   ScoreBreakdown,
   SearchAdapterCapabilities,
+  SearchEngineStatus,
   SearchFieldConfig,
   SearchHit,
   SearchIndexConfig,

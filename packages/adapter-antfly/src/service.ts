@@ -348,6 +348,43 @@ export async function startService(settings: AntflySettings, io: ServiceIo = def
   }
 }
 
+/**
+ * Gracefully restart the supervised engine (doctor repair for a wedged
+ * engine). SIGTERM first so the engine can flush — a hard kill mid-write
+ * is exactly what seeds the startup catch-up spin on the next boot.
+ */
+export async function restartService(settings: AntflySettings, io: ServiceIo = defaultServiceIo()): Promise<void> {
+  const mode = detectServiceMode(settings, io)
+  if (mode === 'guest') {
+    throw new Error(`engine is externally managed (${settings.url}) — restart it where it runs`)
+  }
+  if (mode === 'launchd') {
+    const uid = typeof process.getuid === 'function' ? process.getuid() : 501
+    // SIGTERM + KeepAlive=true → launchd respawns the service cleanly.
+    const kill = await io.exec('launchctl', ['kill', 'SIGTERM', `gui/${uid}/${LAUNCHD_LABEL}`])
+    if (kill.code !== 0) {
+      // Not loaded (or older macOS) — kickstart brings it up either way.
+      const kick = await io.exec('launchctl', ['kickstart', '-k', `gui/${uid}/${LAUNCHD_LABEL}`])
+      if (kick.code !== 0) await ensureProvisioned(settings, io)
+    }
+    return
+  }
+  if (mode === 'systemd') {
+    const restart = await io.exec('systemctl', ['--user', 'restart', SYSTEMD_UNIT])
+    if (restart.code !== 0) await ensureProvisioned(settings, io)
+    return
+  }
+  // strict child
+  stopChild()
+  startChild(settings)
+}
+
+/** Pid of the strict-child engine, when one is running (engine-status probe). */
+export function childPid(): number | null {
+  const child = g.__bakinAntflyChild
+  return child && child.exitCode === null ? child.pid ?? null : null
+}
+
 /** Remove the service entirely (uninstall path). */
 export async function removeService(settings: AntflySettings, io: ServiceIo = defaultServiceIo()): Promise<void> {
   const mode = detectServiceMode(settings, io)
