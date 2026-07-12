@@ -69,7 +69,7 @@ export function Conversation({
         {turns.length === 0 && emptyState ? (
           <div className="flex h-full items-center justify-center p-6">{emptyState}</div>
         ) : (
-          <div className="mx-auto max-w-3xl space-y-5 px-4 py-4">
+          <div className="w-full space-y-5 px-4 py-4">
             {turns.map((turn) => {
               const day = dayKey(turn.ts)
               const separator = day && day !== prevDay ? (

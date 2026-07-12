@@ -5,7 +5,8 @@
  * created on first send.
  */
 import { useEffect, useState } from 'react'
-import { AlertTriangle, Check, Loader2, Pencil, Pin, PinOff } from 'lucide-react'
+import { AlertTriangle, Check, Loader2, Pencil, Pin } from 'lucide-react'
+import { toast } from '@makinbakin/sdk/hooks'
 import {
   AgentAvatar,
   Composer,
@@ -26,24 +27,39 @@ import {
   type UploadedAttachment,
 } from './use-chat-data'
 
-interface StagedAttachment extends UploadedAttachment {
+interface StagedAttachment {
   id: string
+  name: string
   previewUrl: string
+  status: 'uploading' | 'ready'
+  /** Set once the upload lands. */
+  uploaded?: UploadedAttachment
 }
 
-/** Staged-attachment state + Composer wiring, gated by the agent's imageInput. */
+/**
+ * Staged-attachment state + Composer wiring, gated by the agent's
+ * imageInput. Every add gives immediate feedback: an uploading chip that
+ * becomes a removable thumbnail, or a toast when the upload fails.
+ */
 function useComposerAttachments(chatId: string, agentId: string) {
   const imageInput = useAgentImageInput(agentId)
   const [staged, setStaged] = useState<StagedAttachment[]>([])
 
   const onAdd = (files: File[]) => {
     for (const file of files) {
+      const id = `${Date.now()}-${file.name}-${Math.random().toString(36).slice(2, 7)}`
+      const previewUrl = URL.createObjectURL(file)
+      setStaged((prev) => [...prev, { id, name: file.name, previewUrl, status: 'uploading' }])
       void uploadAttachmentRequest(chatId, file).then((uploaded) => {
-        if (!uploaded) return
-        setStaged((prev) => [
-          ...prev,
-          { ...uploaded, id: uploaded.path, previewUrl: URL.createObjectURL(file) },
-        ])
+        if (uploaded) {
+          setStaged((prev) => prev.map((a) => (a.id === id ? { ...a, status: 'ready', uploaded } : a)))
+        } else {
+          setStaged((prev) => {
+            URL.revokeObjectURL(previewUrl)
+            return prev.filter((a) => a.id !== id)
+          })
+          toast(`Couldn't attach ${file.name} — upload failed`, 'error')
+        }
       })
     }
   }
@@ -59,7 +75,7 @@ function useComposerAttachments(chatId: string, agentId: string) {
   }
 
   const take = (): UploadedAttachment[] => {
-    const out = staged.map(({ name, mimeType, path }) => ({ name, mimeType, path }))
+    const out = staged.filter((a) => a.uploaded).map((a) => a.uploaded!)
     for (const item of staged) URL.revokeObjectURL(item.previewUrl)
     setStaged([])
     return out
@@ -70,7 +86,7 @@ function useComposerAttachments(chatId: string, agentId: string) {
     composerProps: {
       enabled: imageInput,
       disabledReason: `${agentId}'s model can't see images`,
-      items: staged.map(({ id, name, previewUrl }) => ({ id, name, previewUrl })),
+      items: staged.map(({ id, name, previewUrl, status }) => ({ id, name, previewUrl, status })),
       onAdd,
       onRemove,
     },
@@ -133,11 +149,13 @@ function ViewHeader({
   chat,
   streaming,
   onChanged,
+  refreshChat,
 }: {
   agentId: string
   chat: ChatSummaryDto | null
   streaming: boolean
   onChanged: () => void
+  refreshChat?: () => Promise<void>
 }) {
   const agent = useAgent(agentId)
   return (
@@ -163,10 +181,19 @@ function ViewHeader({
           type="button"
           aria-label={chat.pinned ? 'Unpin chat' : 'Pin chat'}
           title={chat.pinned ? 'Unpin chat' : 'Pin chat'}
-          onClick={() => { void patchChatRequest(chat.id, { pinned: !chat.pinned }).then(onChanged) }}
-          className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+          onClick={() => {
+            // Refresh the view's own chat state too — patching from stale
+            // state made the second click re-pin forever.
+            void patchChatRequest(chat.id, { pinned: !chat.pinned }).then(async () => {
+              await refreshChat?.()
+              onChanged()
+            })
+          }}
+          className={`rounded p-1.5 transition-colors hover:bg-accent ${
+            chat.pinned ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
+          }`}
         >
-          {chat.pinned ? <PinOff className="size-4" /> : <Pin className="size-4" />}
+          <Pin className={`size-4 ${chat.pinned ? 'fill-current' : ''}`} />
         </button>
       ) : null}
     </div>
@@ -226,7 +253,7 @@ export function DraftChatView({
 }
 
 export function ChatView({ chatId, onChanged }: { chatId: string; onChanged: () => void }) {
-  const { chat, messages, liveChunks, streaming, sendError, send, abort, retry } = useChatStream(chatId)
+  const { chat, messages, liveChunks, streaming, sendError, send, abort, retry, refreshChat } = useChatStream(chatId)
   const [openCall, setOpenCall] = useState<ConversationToolCall | null>(null)
   const attachments = useComposerAttachments(chatId, chat?.agentId ?? '')
 
@@ -236,7 +263,7 @@ export function ChatView({ chatId, onChanged }: { chatId: string; onChanged: () 
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      <ViewHeader agentId={chat.agentId} chat={chat} streaming={streaming} onChanged={onChanged} />
+      <ViewHeader agentId={chat.agentId} chat={chat} streaming={streaming} onChanged={onChanged} refreshChat={refreshChat} />
 
       <Conversation
         turns={turns}

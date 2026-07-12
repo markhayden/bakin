@@ -5,7 +5,7 @@
  * collapsible (persisted).
  */
 import { useState } from 'react'
-import { Loader2, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Trash2 } from 'lucide-react'
+import { Loader2, PanelLeftClose, PanelLeftOpen, Pin, Trash2 } from 'lucide-react'
 import { AgentAvatar, AgentFilter, ConfirmDialog, EmptyState, formatRelativeTime } from '@makinbakin/sdk/components'
 import { Skeleton } from '@makinbakin/sdk/ui'
 
@@ -116,10 +116,13 @@ function ChatRow({
         <button
           type="button"
           aria-label={chat.pinned ? 'Unpin chat' : 'Pin chat'}
+          title={chat.pinned ? 'Unpin chat' : 'Pin chat'}
           onClick={(e) => { e.stopPropagation(); onTogglePin() }}
-          className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          className={`rounded p-1 transition-colors hover:bg-accent ${
+            chat.pinned ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
+          }`}
         >
-          {chat.pinned ? <PinOff className="size-3" /> : <Pin className="size-3" />}
+          <Pin className={`size-3 ${chat.pinned ? 'fill-current' : ''}`} />
         </button>
         <button
           type="button"
@@ -173,10 +176,8 @@ export function ChatRail(props: {
   return (
     <div className="flex h-full w-72 shrink-0 flex-col border-r border-border">
       <div className="space-y-2 p-3">
-        <div className="flex items-center gap-2">
-          <div className="flex-1">
-            <AgentPicker onPick={onStartChat} />
-          </div>
+        <div className="flex items-center justify-between gap-2">
+          <AgentPicker onPick={onStartChat} iconOnly />
           <button
             type="button"
             aria-label="Collapse chat list"
@@ -187,11 +188,13 @@ export function ChatRail(props: {
           </button>
         </div>
         {agentIds.length > 1 ? (
-          <AgentFilter
-            agentIds={agentIds}
-            value={agentFilter || 'all'}
-            onChange={(id) => onAgentFilter(id === 'all' ? '' : id)}
-          />
+          <div className="pt-[5px]">
+            <AgentFilter
+              agentIds={agentIds}
+              value={agentFilter || 'all'}
+              onChange={(id) => onAgentFilter(id === 'all' ? '' : id)}
+            />
+          </div>
         ) : null}
       </div>
 

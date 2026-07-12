@@ -108,17 +108,13 @@ export function AgentTurn({ turn, agentId, onRetry, onOpenCall, transformText }:
   const copyText = turnText(turn.items)
 
   return (
-    <div className="group/turn flex items-start gap-3" data-conv-turn>
-      <span data-conv-avatar className="pt-0.5">
+    <div className="group/turn relative flex items-start gap-3" data-conv-turn>
+      {/* Avatar carries the identity (name in its tooltip) — no name line,
+          so the reply text sits directly beside it. */}
+      <span data-conv-avatar className="mt-0.5 shrink-0" title={name}>
         <AgentAvatar agentId={author ?? ''} size="sm" />
       </span>
-      <div className="min-w-0 flex-1 space-y-2">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">{name}</span>
-          <TurnTimestamp ts={turn.ts} />
-          {copyText ? <CopyButton text={copyText} label="Copy reply" /> : null}
-        </div>
-
+      <div className="min-w-0 flex-1 space-y-2 pt-1">
         {turn.items.map((item, i) => {
           if (item.type === 'text') {
             if (item.format !== 'markdown') {
@@ -167,6 +163,12 @@ export function AgentTurn({ turn, agentId, onRetry, onOpenCall, transformText }:
             <RotateCcw className="size-3" /> Try again
           </button>
         ) : null}
+      </div>
+
+      {/* Hover actions float top-right so the turn costs no header line. */}
+      <div className="absolute right-0 top-0 flex items-center gap-1.5">
+        <TurnTimestamp ts={turn.ts} />
+        {copyText ? <CopyButton text={copyText} label="Copy reply" /> : null}
       </div>
     </div>
   )

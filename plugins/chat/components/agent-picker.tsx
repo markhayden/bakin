@@ -20,11 +20,11 @@ import {
 
 export function AgentPicker({
   onPick,
-  compact = false,
+  iconOnly = false,
 }: {
   onPick: (agentId: string) => void
-  /** Compact header-action styling instead of the full-width rail button. */
-  compact?: boolean
+  /** Icon-only trigger (the rail); default is the outline button with label. */
+  iconOnly?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const agents = useAgentList()
@@ -33,13 +33,16 @@ export function AgentPicker({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         data-chat-start
+        aria-label="Start a chat"
+        title="Start a chat (⌘⇧O)"
         className={
-          compact
-            ? 'inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent'
-            : 'inline-flex w-full items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90'
+          iconOnly
+            ? 'inline-flex items-center justify-center rounded-md border border-border p-2 text-foreground transition-colors hover:bg-accent'
+            : 'inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent'
         }
       >
-        <MessageCirclePlus className="size-4" /> Start a chat
+        <MessageCirclePlus className="size-4" />
+        {iconOnly ? null : 'Start a chat'}
       </PopoverTrigger>
       <PopoverContent className="w-64 p-0" align="start">
         <Command>

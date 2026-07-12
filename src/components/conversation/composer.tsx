@@ -1,20 +1,22 @@
 'use client'
 
 /**
- * Composer — THE conversation input. Auto-grows with content, drag-resizable
- * (the handle raises the minimum height; typing can still grow to the cap),
- * Enter/Shift+Enter/Esc with an IME guard, shell-style ↑/↓ input history,
- * per-thread draft persistence, attachment affordance (capability-gated by
- * the caller), stop button while streaming — and typing is NEVER blocked
- * while a turn streams; only send waits.
+ * Composer — THE conversation input, styled after the ChatGPT input: one
+ * rounded container holding a dedicated attachment strip (thumbnails with
+ * remove, upload-progress chips), a `+` attach button in the left slot, a
+ * borderless auto-growing textarea, and a circular send/stop button on the
+ * right. Drag the handle above to raise the minimum height; typing can
+ * still grow to the cap. Enter/Shift+Enter/Esc with an IME guard,
+ * shell-style ↑/↓ input history, per-thread draft persistence — and typing
+ * is NEVER blocked while a turn streams; only send waits.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { Loader2, Paperclip, Send, Square, X } from 'lucide-react'
+import { ArrowUp, Loader2, Plus, Square, X } from 'lucide-react'
 
 import { useVerticalResize } from '@/hooks/use-vertical-resize'
 
 const HISTORY_LIMIT = 50
-const DEFAULT_MIN_HEIGHT = 60
+const DEFAULT_MIN_HEIGHT = 44
 const DEFAULT_MAX_HEIGHT = 480
 
 function draftKey(storageKey: string) {
@@ -65,6 +67,8 @@ export interface ComposerAttachmentItem {
   id: string
   name: string
   previewUrl?: string
+  /** 'uploading' renders a progress chip; absent/'ready' renders the thumbnail. */
+  status?: 'uploading' | 'ready'
 }
 
 export interface ComposerAttachments {
@@ -152,8 +156,9 @@ export function Composer({
   )
 
   const hasText = value.trim().length > 0
-  const hasAttachments = (attachments?.items.length ?? 0) > 0
-  const canSend = !disabled && !busy && (hasText || hasAttachments)
+  const readyAttachments = attachments?.items.filter((a) => a.status !== 'uploading') ?? []
+  const uploadsPending = (attachments?.items.length ?? 0) > readyAttachments.length
+  const canSend = !disabled && !busy && !uploadsPending && (hasText || readyAttachments.length > 0)
 
   const send = useCallback(() => {
     if (!canSend) return
@@ -232,7 +237,7 @@ export function Composer({
 
   return (
     <div
-      className="shrink-0 border-t border-border bg-background"
+      className="shrink-0 bg-background"
       onDrop={onDrop}
       onDragOver={(e) => {
         if (attachments?.enabled) e.preventDefault()
@@ -247,62 +252,74 @@ export function Composer({
       </div>
 
       <div className="px-4 pb-3">
-        {attachments?.items.length ? (
-          <div className="flex flex-wrap gap-2 pb-2">
-            {attachments.items.map((item) => (
-              <div key={item.id} className="group/att relative">
-                {item.previewUrl ? (
-                  <img src={item.previewUrl} alt={item.name} className="h-16 w-16 rounded-md border border-border object-cover" />
-                ) : (
-                  <div className="flex h-16 w-16 items-center justify-center rounded-md border border-border bg-muted/40 p-1 text-center text-[10px] text-muted-foreground">
-                    {item.name}
-                  </div>
-                )}
-                <button
-                  type="button"
-                  data-composer-attach-remove
-                  aria-label={`Remove ${item.name}`}
-                  onClick={() => attachments.onRemove(item.id)}
-                  className="absolute -right-1.5 -top-1.5 rounded-full border border-border bg-background p-0.5 text-muted-foreground shadow-sm hover:text-foreground"
-                >
-                  <X className="size-3" />
-                </button>
-              </div>
-            ))}
-          </div>
-        ) : null}
-
-        <div className="flex items-end gap-2">
-          {leadingSlot}
-          {attachments ? (
-            <>
-              <button
-                type="button"
-                data-composer-attach
-                disabled={!attachments.enabled || disabled}
-                title={attachments.enabled ? 'Attach an image' : attachments.disabledReason ?? 'Attachments unavailable'}
-                aria-label="Attach an image"
-                onClick={() => fileRef.current?.click()}
-                className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <Paperclip className="size-4" />
-              </button>
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={(e) => {
-                  const files = Array.from(e.target.files ?? [])
-                  if (files.length) attachments.onAdd(files)
-                  e.target.value = ''
-                }}
-              />
-            </>
+        <div className="rounded-2xl border border-border bg-muted/30 transition-colors focus-within:border-ring">
+          {attachments?.items.length ? (
+            <div className="flex flex-wrap gap-2 px-3 pt-3" data-composer-attachments>
+              {attachments.items.map((item) => (
+                <div key={item.id} className="relative">
+                  {item.status === 'uploading' ? (
+                    <div
+                      data-composer-attach-uploading
+                      className="flex h-20 w-20 items-center justify-center rounded-lg border border-border bg-muted/40"
+                      title={`Uploading ${item.name}…`}
+                    >
+                      <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : item.previewUrl ? (
+                    <img
+                      src={item.previewUrl}
+                      alt={item.name}
+                      className="h-20 w-20 rounded-lg border border-border object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-20 w-20 items-center justify-center rounded-lg border border-border bg-muted/40 p-1 text-center text-[10px] text-muted-foreground">
+                      {item.name}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    data-composer-attach-remove
+                    aria-label={`Remove ${item.name}`}
+                    onClick={() => attachments.onRemove(item.id)}
+                    className="absolute -right-1.5 -top-1.5 rounded-full border border-border bg-background p-1 text-foreground shadow-sm transition-colors hover:bg-accent"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
           ) : null}
 
-          <div className="relative min-w-0 flex-1">
+          <div className="flex items-end gap-1 px-2 py-1.5">
+            {attachments ? (
+              <>
+                <button
+                  type="button"
+                  data-composer-attach
+                  disabled={!attachments.enabled || disabled}
+                  title={attachments.enabled ? 'Add photos & files' : attachments.disabledReason ?? 'Attachments unavailable'}
+                  aria-label="Add photos & files"
+                  onClick={() => fileRef.current?.click()}
+                  className="mb-0.5 flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Plus className="size-4" />
+                </button>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files ?? [])
+                    if (files.length) attachments.onAdd(files)
+                    e.target.value = ''
+                  }}
+                />
+              </>
+            ) : null}
+            {leadingSlot}
+
             <textarea
               ref={taRef}
               value={value}
@@ -322,8 +339,9 @@ export function Composer({
               aria-label={placeholder}
               disabled={disabled}
               maxLength={maxLength}
-              className="block w-full resize-none rounded-lg border border-border bg-muted/30 px-3 py-2 pr-11 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none disabled:opacity-60"
+              className="block min-w-0 flex-1 resize-none border-0 bg-transparent px-2 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-60"
             />
+
             {busy ? (
               <button
                 type="button"
@@ -331,7 +349,7 @@ export function Composer({
                 onClick={onAbort}
                 aria-label="Stop the reply"
                 title="Stop the reply (Esc)"
-                className="absolute bottom-2 right-2 flex size-7 items-center justify-center rounded-md bg-destructive/90 text-destructive-foreground shadow-sm transition-colors hover:bg-destructive"
+                className="mb-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-foreground text-background shadow-sm transition-colors hover:opacity-90"
               >
                 <Square className="size-3 fill-current" />
               </button>
@@ -343,9 +361,9 @@ export function Composer({
                 disabled={!canSend}
                 aria-label="Send"
                 title="Send (Enter)"
-                className="absolute bottom-2 right-2 flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
+                className="mb-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
               >
-                {disabled ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+                <ArrowUp className="size-4" />
               </button>
             )}
           </div>
