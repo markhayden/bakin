@@ -18,7 +18,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useSearch, useDebug, type SearchResult } from '@makinbakin/sdk/hooks'
-import { SearchUnavailable, ScoreOverlay, SearchPartialChip } from '@makinbakin/sdk/components'
+import { SearchUnavailable, ScoreOverlay, SearchPartialChip, computeMatchedFields } from '@makinbakin/sdk/components'
 import { type SearchHitDescriptor } from '@makinbakin/sdk'
 import {
   getSearchHitRenderersSnapshot,
@@ -306,7 +306,7 @@ export function GlobalSearchOverlay() {
                       )}
                     </div>
                     {debug && (
-                      <ScoreOverlay info={{ score: result.score, indexScores: result.indexScores }} />
+                      <ScoreOverlay info={{ score: result.score, indexScores: result.indexScores, matchedFields: computeMatchedFields(query, result.fields) }} />
                     )}
                   </CommandItem>
                 ) : (
@@ -329,7 +329,7 @@ export function GlobalSearchOverlay() {
                       )}
                     </div>
                     {debug && (
-                      <ScoreOverlay info={{ score: result.score, indexScores: result.indexScores }} />
+                      <ScoreOverlay info={{ score: result.score, indexScores: result.indexScores, matchedFields: computeMatchedFields(query, result.fields) }} />
                     )}
                   </CommandItem>
                 )

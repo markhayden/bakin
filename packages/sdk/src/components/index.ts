@@ -28,7 +28,7 @@ export type { ConfirmDialogProps } from '@/components/confirm-dialog'
 export { EmptyState } from '@/components/empty-state'
 
 export { SearchUnavailable } from '@/components/search-unavailable'
-export { ScoreOverlay } from '@/components/score-overlay'
+export { ScoreOverlay, computeMatchedFields } from '@/components/score-overlay'
 export { SearchPartialChip } from '@/components/search-partial-chip'
 export type { SearchPartialMeta } from '@/components/search-partial-chip'
 export type { ScoreOverlayInfo } from '@/components/score-overlay'
