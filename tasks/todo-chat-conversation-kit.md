@@ -37,13 +37,18 @@ Plan: `tasks/plan-chat-conversation-kit.md` · Spec: `.claude/specs/chat-convers
 - [x] T7.1 feat(chat): transcripts as search content type + ⌘K hit renderer — 01f287d7
 - [x] **CHECKPOINT E (core gates)** — suite 6716 green (recurring onboarding-adapter-gating 15s-timeout flake only; passes isolated), asset chain + assert-production-assets pass, guest-guarded isolated boot serves chat page/bundle/11 routes/both slots, antfly guard held. Rig visual pass + PR opening pending user session
 
-## Phase 8 — bits migration (bakin-bits-official)
-- [ ] T8.0 chore: .build-sdk link + test-sdk stub updates
-- [ ] T8.1 feat(projects): brainstorm on the kit
-- [ ] T8.2 feat(messaging): brainstorm-view + plan-workspace on the kit (proposal events, readOnly, layout parity)
-- [ ] **CHECKPOINT F** — bits tests + builds + linked visual pass → PR-3 merge, rebuild installed plugins
+## Phase 8 — bits migration (bakin-bits-official, branch feat/conversation-kit)
+- [x] T8.0 chore: .build-sdk link (local SDK build 0.0.1-rc.5-kit.0) + test-sdk stub updates — bits 112f37c
+- [x] T8.1 feat(projects): brainstorm on the kit (stored rows migrated to ConversationMessage) — bits 37b7b44
+- [x] T8.2 feat(messaging): brainstorm-view + plan-workspace on the kit (proposal onCustom bridge, readOnly, layout parity; keeps its own SessionMessage storage) — bits 0d96481
+- [x] **CHECKPOINT F** — bits suite 408 green, both plugins build against the kit SDK, grep gate clean. REMAINING: .build-sdk must repoint to the published rc at SDK release; linked visual pass folds into the rig session
 
 ## Phase 9 — Deletion + docs (bakin)
-- [ ] T9.1 refactor(sdk)!: delete IntegratedBrainstorm + brainstorm utils (grep gate, size delta)
-- [ ] T9.2 docs: chat-plugin.md rewrite, NEW conversation-kit.md, CLAUDE.md, repo-architecture, docs site, README check
-- [ ] **FINAL CHECKPOINT** — both repos green, docs true → PR-4 merge
+- [x] T9.1 refactor(sdk)!: delete IntegratedBrainstorm + brainstorm utils (grep gate clean; vendors 1484 KB) — af715e14
+- [x] T9.2 docs: chat-plugin.md rewrite, NEW conversation-kit.md, CLAUDE.md, shared-ui-patterns, docs site + regenerated references (45 pages validated), README untouched (no chat refs) — 4f3744af
+- [x] **FINAL CHECKPOINT (code)** — bakin suite 6606/0 clean exit, typecheck clean, both repos green
+
+## Remaining for the user session
+- [ ] Rig visual pass (`bun run instance dev --mode isolated`): chat UX end-to-end (launcher, streaming, tool drawer, attention cross-page, attachments vs crab, sound), linked bits plugins
+- [ ] PR strategy call: everything is ONE ordered branch (feat/chat-conversation-kit, 19 commits) — split per plan's PR-1/2/4 or ship as one PR + bits PR
+- [ ] At SDK release: publish rc with the kit, repoint bits .build-sdk from the local file link, rebuild installed messaging/projects plugins
