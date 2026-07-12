@@ -78,7 +78,7 @@ describe('AgentTurn', () => {
     expect(activity!.compareDocumentPosition(text!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
-  it('bare-JSON replies render as a highlighted code block, not prose', () => {
+  it('bare-JSON replies render human-first with the raw JSON one disclosure away', () => {
     const { container } = render(
       <AgentTurn
         agentId="enrich"
@@ -89,11 +89,17 @@ describe('AgentTurn', () => {
         })}
       />,
     )
-    const code = container.querySelector('pre code')
-    expect(code).not.toBeNull()
-    expect(code!.className).toContain('hljs')
-    // pretty-printed, not the raw one-liner
-    expect(code!.textContent).toContain('"error": "no_attached_image"')
+    const card = container.querySelector('[data-conv-json]')
+    expect(card).not.toBeNull()
+    // humanized labels, not raw braces, are the primary view
+    expect(card!.textContent).toContain('The agent reported a problem')
+    expect(card!.textContent).toContain('Message:')
+    expect(card!.textContent).toContain("I can't see an attached image.")
+    // the raw pretty-printed JSON lives behind a disclosure, highlighted
+    const details = card!.querySelector('details')
+    expect(details).not.toBeNull()
+    expect(details!.textContent).toContain('Raw JSON')
+    expect(details!.querySelector('pre code')?.className ?? '').toContain('hljs')
   })
 
   it('error turns render the message, kind, and a Try again action', () => {

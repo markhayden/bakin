@@ -8,6 +8,7 @@
  */
 import { useCallback, useState } from 'react'
 import { AlertTriangle, Check, CircleSlash, Copy, Loader2, RotateCcw } from 'lucide-react'
+import { formatStructured } from '@bakin/core/format'
 import { useAgent } from '@makinbakin/sdk/hooks'
 
 import { AgentAvatar } from '../agent-avatar'
@@ -85,26 +86,59 @@ function turnText(items: TurnItem[]): string {
     .join('\n\n')
 }
 
-/**
- * Agents sometimes reply with BARE JSON (no fences) — as markdown that
- * renders as a prose paragraph. Detect whole-message JSON and fence it so
- * it pretty-prints through the highlighter instead.
- */
-export function normalizeAgentText(content: string): string {
+/** Whole-message JSON detection: the parsed object, or undefined. */
+function parseWholeJson(content: string): unknown {
   const trimmed = content.trim()
   const looksJson =
     (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
     (trimmed.startsWith('[') && trimmed.endsWith(']'))
-  if (!looksJson) return content
+  if (!looksJson) return undefined
   try {
-    const parsed = JSON.parse(trimmed)
-    if (parsed && typeof parsed === 'object') {
-      return `\`\`\`json\n${JSON.stringify(parsed, null, 2)}\n\`\`\``
-    }
+    const parsed: unknown = JSON.parse(trimmed)
+    return parsed && typeof parsed === 'object' ? parsed : undefined
   } catch {
-    // Not valid JSON after all — render as-is.
+    return undefined
   }
-  return content
+}
+
+/**
+ * Agents sometimes reply with BARE JSON — most users don't want to read
+ * it. Render it human-first (humanized labels via formatStructured, an
+ * error accent when the payload says so) with the raw JSON one disclosure
+ * away for the advanced look. Shapes vary per agent — this is generic,
+ * not a runtime contract.
+ */
+function JsonReply({ parsed }: { parsed: unknown }) {
+  const prose = formatStructured(parsed, { markdown: true, cap: 4000 })
+  const isError =
+    !!parsed &&
+    typeof parsed === 'object' &&
+    !Array.isArray(parsed) &&
+    typeof (parsed as { error?: unknown }).error === 'string'
+  const fenced = `\`\`\`json\n${JSON.stringify(parsed, null, 2)}\n\`\`\``
+
+  if (!prose) return <MarkdownContent content={fenced} />
+  return (
+    <div
+      data-conv-json
+      className={`rounded-md border px-3 py-2 ${
+        isError ? 'border-destructive/40 bg-destructive/5' : 'border-border/60 bg-muted/20'
+      }`}
+    >
+      {isError ? (
+        <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-destructive">
+          <AlertTriangle className="size-3.5" /> The agent reported a problem
+        </div>
+      ) : null}
+      <MarkdownContent content={prose} />
+      <details className="mt-1.5">
+        <summary className="cursor-pointer select-none text-[11px] text-muted-foreground hover:text-foreground">
+          Raw JSON
+        </summary>
+        <MarkdownContent content={fenced} />
+      </details>
+    </div>
+  )
 }
 
 export interface AgentTurnProps {
@@ -147,9 +181,10 @@ export function AgentTurn({ turn, agentId, onRetry, onOpenCall, transformText }:
               )
             }
             const transformed = transformText ? transformText(item.content) : { text: item.content }
+            const json = parseWholeJson(transformed.text)
             return (
               <div key={i}>
-                <MarkdownContent content={normalizeAgentText(transformed.text)} />
+                {json !== undefined ? <JsonReply parsed={json} /> : <MarkdownContent content={transformed.text} />}
                 {transformed.extras ?? null}
               </div>
             )
