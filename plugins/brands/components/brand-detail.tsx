@@ -10,12 +10,16 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { MarkdownEditor, MarkdownContent, UnderlineTabs, SaveBar, SectionCard, useUnsavedGuard } from '@makinbakin/sdk/components'
-import { Button, Badge, Input, Textarea } from '@makinbakin/sdk/ui'
-import { useQueryState } from '@makinbakin/sdk/hooks'
+import { MarkdownContent, UnderlineTabs, SaveBar, SectionCard, ConfirmDialog, useUnsavedGuard } from '@makinbakin/sdk/components'
+import {
+  Button, Badge, Input, Textarea, Switch, Label,
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
+} from '@makinbakin/sdk/ui'
+import { useQueryState, toast } from '@makinbakin/sdk/hooks'
 import {
   ArrowLeft, Palette, Rocket, Pencil, Plus, Check, AlertTriangle, ExternalLink,
-  Upload, FileText, BookOpen, ImageIcon, Trash2, Sparkles,
+  Upload, FileText, BookOpen, ImageIcon, Trash2, Sparkles, Info,
 } from 'lucide-react'
 import type { BrandManifest, PaletteEntry, Completeness } from '../types'
 
@@ -39,9 +43,9 @@ const BLANK_HEX = '#888888'
 
 export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () => void }) {
   const [detail, setDetail] = useState<DetailResponse | null>(null)
+  const navigate = useNavigate()
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const [editingDoc, setEditingDoc] = useState<{ kind: DocKind; name: string; content: string } | null>(null)
   const [tabParam, setTab] = useQueryState('tab', 'overview')
   const tab = TABS.some((t) => t.id === tabParam) ? tabParam : 'overview'
 
@@ -125,27 +129,16 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
     } finally { setSaving(false) }
   }, [staged, brandId, refresh])
 
-  const openDoc = useCallback(async (kind: DocKind, name: string) => {
-    const res = await fetch(`/api/plugins/brands/${brandId}/docs/${kind}/${encodeURIComponent(name)}`)
-    const body = (await res.json().catch(() => ({}))) as { content?: string }
-    setEditingDoc({ kind, name, content: body.content ?? '' })
-  }, [brandId])
-
-  const saveDoc = useCallback(async () => {
-    if (!editingDoc) return
-    setSaving(true)
-    try {
-      const res = await fetch(
-        `/api/plugins/brands/${brandId}/docs/${editingDoc.kind}/${encodeURIComponent(editingDoc.name)}`,
-        { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: editingDoc.content }) },
-      )
-      if (!res.ok) throw new Error(`doc save failed: ${res.status}`)
-      setEditingDoc(null)
-      await refresh()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally { setSaving(false) }
-  }, [brandId, editingDoc, refresh])
+  /** Every doc opens in the dedicated editor route — never an inline swap (spec §7e). */
+  const editDoc = useCallback(
+    (kind: DocKind, name: string, create = false) =>
+      void navigate({
+        to: '/brands/$brandId/docs/$kind/$name',
+        params: { brandId, kind, name },
+        search: (create ? { create: '1' } : {}) as never,
+      }),
+    [navigate, brandId],
+  )
 
   const publish = useCallback(async () => {
     const res = await fetch(`/api/plugins/brands/${brandId}/publish`, { method: 'POST' })
@@ -178,7 +171,7 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
 
       <UnderlineTabs tabs={TABS} value={tab} onValueChange={(id) => setTab(id as typeof tab)} />
 
-      {tab === 'overview' && <OverviewTab brand={b} detail={detail} brandId={brandId} onGoTo={setTab} />}
+      {tab === 'overview' && <OverviewTab brand={b} detail={detail} brandId={brandId} onGoTo={setTab} onEditDoc={editDoc} />}
 
       {tab === 'identity' && (
         <div className="grid gap-4 lg:grid-cols-2">
@@ -293,11 +286,10 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
           kind={tab}
           docs={tab === 'guidelines' ? detail.guidelines : detail.lessons}
           brand={b}
+          brandId={brandId}
           guidelines={detail.guidelines}
-          editingDoc={editingDoc}
-          setEditingDoc={setEditingDoc}
-          openDoc={openDoc}
-          saveDoc={saveDoc}
+          onEditDoc={editDoc}
+          onDeleted={() => void refresh()}
           onToggleCardDoc={(name, on) => {
             const current = b.cardDocs ?? (detail.guidelines.some((g) => g.name === 'voice.md') ? ['voice.md'] : [])
             stage({ cardDocs: on ? [...current, name] : current.filter((n) => n !== name) })
@@ -443,9 +435,10 @@ interface CardPreview { cardBytes: number; maxBytes: number; omitted: number }
 interface ActivityRow { ts: string; event: string; agent: string; data: Record<string, unknown> }
 
 function OverviewTab({
-  brand, detail, brandId, onGoTo,
+  brand, detail, brandId, onGoTo, onEditDoc,
 }: {
   brand: BrandManifest; detail: DetailResponse; brandId: string; onGoTo: (tab: string) => void
+  onEditDoc: (kind: DocKind, name: string, create?: boolean) => void
 }) {
   const [card, setCard] = useState<CardPreview | null>(null)
   const [voice, setVoice] = useState<string | null>(null)
@@ -504,7 +497,14 @@ function OverviewTab({
       <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
         <Section
           label="Voice" icon={Sparkles}
-          action={<Button variant="ghost" size="xs" className="text-muted-foreground" onClick={() => onGoTo('guidelines')}><Pencil className="size-3" /> Edit</Button>}
+          action={
+            <Button
+              variant="ghost" size="xs" className="text-muted-foreground"
+              onClick={() => onEditDoc('guidelines', 'voice.md', voice === null)}
+            >
+              <Pencil className="size-3" /> Edit voice
+            </Button>
+          }
         >
           {voice === null
             ? <p className="text-sm text-muted-foreground">No voice.md yet — the biggest lever on how on-brand output reads.</p>
@@ -613,65 +613,171 @@ function relTime(ts: string): string {
 
 // ─── Docs editor (guidelines + lessons) ───────────────────────────────────────
 
+const DOC_COPY: Record<DocKind, { title: string; description: string; noun: string }> = {
+  guidelines: {
+    title: 'Guidelines',
+    description: 'The docs that teach agents this brand — voice, style, anything they should read before producing work.',
+    noun: 'doc',
+  },
+  lessons: {
+    title: 'Lessons',
+    description: 'Learned from real tasks — the most relevant lessons are recalled automatically per task. Hard rules belong in Identity → Rules instead.',
+    noun: 'lesson',
+  },
+}
+
 function DocsEditor({
-  kind, docs, brand, guidelines, editingDoc, setEditingDoc, openDoc, saveDoc, onToggleCardDoc,
+  kind, docs, brand, brandId, guidelines, onEditDoc, onDeleted, onToggleCardDoc,
 }: {
   kind: DocKind
   docs: DocInfo[]
   brand: BrandManifest
+  brandId: string
   guidelines: DocInfo[]
-  editingDoc: { kind: DocKind; name: string; content: string } | null
-  setEditingDoc: (d: { kind: DocKind; name: string; content: string } | null) => void
-  openDoc: (kind: DocKind, name: string) => void
-  saveDoc: () => void
+  onEditDoc: (kind: DocKind, name: string, create?: boolean) => void
+  onDeleted: () => void
   onToggleCardDoc: (name: string, on: boolean) => void
 }) {
+  const [newOpen, setNewOpen] = useState(false)
   const [newDocName, setNewDocName] = useState('')
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const cardDocs = brand.cardDocs ?? (guidelines.some((g) => g.name === 'voice.md') ? ['voice.md'] : [])
-  const noun = kind === 'guidelines' ? 'doc' : 'lesson'
+  const copy = DOC_COPY[kind]
+
+  const deleteDoc = useCallback(async () => {
+    if (!deleting) return
+    setDeleteBusy(true)
+    setDeleteError(null)
+    try {
+      const res = await fetch(`/api/plugins/brands/${brandId}/docs/${kind}/${encodeURIComponent(deleting)}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error(`delete failed: ${res.status}`)
+      toast(`Deleted ${deleting}`, 'success')
+      setDeleting(null)
+      onDeleted()
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setDeleteBusy(false)
+    }
+  }, [deleting, brandId, kind, onDeleted])
+
+  const submitNewDoc = () => {
+    const raw = newDocName.trim()
+    if (!raw) return
+    const name = raw.endsWith('.md') ? raw : `${raw}.md`
+    setNewOpen(false)
+    setNewDocName('')
+    onEditDoc(kind, name, true)
+  }
 
   return (
-    <Section
-      label={kind}
+    <SectionCard
+      title={copy.title}
       icon={kind === 'guidelines' ? FileText : BookOpen}
-      action={<span className="text-[11px] text-muted-foreground">{kind === 'lessons' ? 'Always-rule? Put it in Identity → Rules.' : 'Check to ride the dispatch card.'}</span>}
+      description={copy.description}
+      action={
+        <Button variant="outline" size="sm" onClick={() => setNewOpen(true)} data-new-doc>
+          <Plus className="size-3.5" /> New {copy.noun}
+        </Button>
+      }
     >
       <div className="space-y-1">
-        {docs.length === 0 && <p className="text-sm text-muted-foreground">No {kind} yet.</p>}
+        {docs.length === 0 && (
+          <p className="text-sm text-muted-foreground">
+            No {copy.title.toLowerCase()} yet — create one and the editor opens on a fresh page.
+          </p>
+        )}
         {docs.map((d) => (
-          <div key={d.name} className="flex items-center gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-surface-bright/40">
-            <button className="flex items-center gap-1.5 font-mono text-sm hover:text-accent" onClick={() => openDoc(kind, d.name)}>
-              <FileText className="size-3.5 text-muted-foreground" />{d.name}
+          <div key={d.name} className="flex items-center gap-3 rounded-lg px-1.5 py-1.5 transition-colors hover:bg-foreground/5" data-doc-row={d.name}>
+            <button className="flex min-w-0 items-center gap-1.5 text-left" onClick={() => onEditDoc(kind, d.name)}>
+              <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="truncate font-mono text-sm">{d.name}</span>
             </button>
-            {d.description && <span className="truncate text-xs text-muted-foreground">— {d.description}</span>}
-            {kind === 'guidelines' && (
-              <label className="ml-auto flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground" title="Inline this doc into the dispatch card (budget permitting)">
-                <input type="checkbox" className="accent-accent" checked={cardDocs.includes(d.name)} onChange={(e) => onToggleCardDoc(d.name, e.target.checked)} />
-                inline in card
-              </label>
-            )}
+            {d.description && <span className="min-w-0 truncate text-xs text-muted-foreground">{d.description}</span>}
+            <div className="ml-auto flex shrink-0 items-center gap-3">
+              {kind === 'guidelines' && (
+                <TooltipProvider delay={200}>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                          <Switch
+                            checked={cardDocs.includes(d.name)}
+                            onCheckedChange={(on: boolean) => onToggleCardDoc(d.name, on)}
+                            aria-label={`Always include ${d.name} in agent context`}
+                          />
+                          Always in context
+                          <Info className="size-3" />
+                        </label>
+                      }
+                    />
+                    <TooltipContent side="top" className="max-w-64">
+                      Included verbatim in every branded task's context (within the size budget). Leave off to keep
+                      context small — agents can still fetch the doc on demand.
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+              <Button variant="ghost" size="xs" className="text-muted-foreground" onClick={() => onEditDoc(kind, d.name)}>
+                <Pencil className="size-3" /> Edit
+              </Button>
+              <Button
+                variant="ghost"
+                size="xs"
+                className="text-muted-foreground hover:text-destructive"
+                onClick={() => setDeleting(d.name)}
+                aria-label={`Delete ${d.name}`}
+              >
+                <Trash2 className="size-3" />
+              </Button>
+            </div>
           </div>
         ))}
       </div>
 
-      {editingDoc?.kind === kind && (
-        <div className="mt-3 space-y-2 rounded-lg bg-surface p-3">
-          <p className="font-mono text-xs text-muted-foreground">{editingDoc.name}</p>
-          <MarkdownEditor content={editingDoc.content} editing onChange={(content: string) => setEditingDoc({ ...editingDoc, content })} minHeight="240px" />
-          <div className="flex gap-2">
-            <Button variant="default" size="sm" onClick={saveDoc}><Check className="size-3.5" /> Save</Button>
-            <Button variant="ghost" size="sm" onClick={() => setEditingDoc(null)}>Cancel</Button>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={deleting !== null}
+        title={`Delete ${deleting}?`}
+        description={`The ${copy.noun} is removed from the brand — agents stop seeing it immediately. This can't be undone.`}
+        busy={deleteBusy}
+        error={deleteError}
+        onConfirm={() => void deleteDoc()}
+        onCancel={() => {
+          if (!deleteBusy) setDeleting(null)
+        }}
+      />
 
-      <div className="mt-2 flex items-center gap-2">
-        <input className={`${inputCls} max-w-xs`} placeholder={`new-${noun}.md`} value={newDocName} onChange={(e) => setNewDocName(e.target.value)} />
-        <Button variant="outline" size="sm" disabled={!newDocName.trim().endsWith('.md')} onClick={() => { setEditingDoc({ kind, name: newDocName.trim(), content: '' }); setNewDocName('') }}>
-          <Plus className="size-3.5" /> New {noun}
-        </Button>
-      </div>
-    </Section>
+      <Dialog open={newOpen} onOpenChange={setNewOpen}>
+        <DialogContent className="bg-card border-border sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>New {copy.noun}</DialogTitle>
+            <DialogDescription>Name the file — the editor opens on a fresh page and the first save creates it.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor="new-doc-name">File name</Label>
+            <Input
+              id="new-doc-name"
+              autoFocus
+              placeholder={kind === 'guidelines' ? 'imagery' : 'launch-learnings'}
+              value={newDocName}
+              onChange={(e) => setNewDocName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submitNewDoc()
+              }}
+            />
+            <p className="text-[11px] text-muted-foreground">.md is added for you{newDocName.trim() && !newDocName.trim().endsWith('.md') ? ` — creates ${newDocName.trim()}.md` : ''}</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewOpen(false)}>Cancel</Button>
+            <Button onClick={submitNewDoc} disabled={!newDocName.trim()} data-new-doc-create>
+              Create & edit
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </SectionCard>
   )
 }
 
