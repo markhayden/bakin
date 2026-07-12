@@ -69,7 +69,7 @@ import {
   type SyncReceipt,
   writeReceipt,
 } from './receipts'
-import { seedContextFiles } from '../team-context'
+import { refreshRoleContextBlocks, seedContextFiles } from '../team-context'
 
 const log = createLogger('agent-pkg:sync')
 
@@ -243,7 +243,14 @@ export async function syncAgent(agentId: string, opts: SyncOptions = {}): Promis
   const fetch = opts.fetch !== false
   const trigger = opts.trigger ?? 'cli'
 
-  if (!check) seedContextFiles()
+  if (!check) {
+    seedContextFiles()
+    // Refresh the Bakin-shipped role-default blocks BEFORE composing — a
+    // sync that composes from stale seeded roles keeps obsolete guidance
+    // alive forever (the mcporter incident: retired CLI-shim syntax
+    // survived in roles/*.md and re-projected into every AGENTS.md).
+    refreshRoleContextBlocks()
+  }
 
   const lock = readLockfile()
   const owner = findAgentPackage(lock, agentId)

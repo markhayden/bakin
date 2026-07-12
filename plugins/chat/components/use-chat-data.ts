@@ -256,8 +256,19 @@ export function useChatStream(chatId: string): ChatStreamState {
   ) => {
     setSendError(null)
     lastUserContentRef.current = content
-    // Optimistic user row; the durable copy replaces it on the next refetch.
-    setMessages((prev) => [...prev, { kind: 'user', ts: new Date().toISOString(), content }])
+    // Optimistic user row — WITH its attachments (they lagged to the post-turn
+    // refetch otherwise); the durable copy replaces it on the next refetch.
+    setMessages((prev) => [
+      ...prev,
+      {
+        kind: 'user',
+        ts: new Date().toISOString(),
+        content,
+        ...(attachments?.length
+          ? { attachments: attachments.map((a) => ({ name: a.name, mimeType: a.mimeType, url: attachmentUrl(chatId, a.name) })) }
+          : {}),
+      },
+    ])
     setStreaming(true)
     setLiveChunks([])
     const res = await pluginFetch('chat', `chats/${chatId}/messages`, {
