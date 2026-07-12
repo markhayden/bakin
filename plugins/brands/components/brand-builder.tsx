@@ -5,8 +5,9 @@
  * a DRAFT brand, and dispatches the drafting agent to author the rest.
  */
 import { useCallback, useMemo, useState } from 'react'
-import { BakinDrawer } from '@makinbakin/sdk/components'
-import { useAgentIds } from '@makinbakin/sdk/hooks'
+import { Loader2 } from 'lucide-react'
+import { AgentSelect, BakinDrawer } from '@makinbakin/sdk/components'
+import { Button, Input, Label, Textarea, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@makinbakin/sdk/ui'
 
 interface Answers {
   name: string
@@ -34,7 +35,6 @@ export function BrandBuilder({
   onOpenChange: (open: boolean) => void
   onCreated: (brandId: string) => void
 }) {
-  const agentIds = useAgentIds()
   const [step, setStep] = useState<Step>(0)
   const [a, setA] = useState<Answers>(EMPTY)
   const [logoFile, setLogoFile] = useState<File | null>(null)
@@ -44,7 +44,7 @@ export function BrandBuilder({
 
   const set = <K extends keyof Answers>(k: K, v: Answers[K]) => setA((prev) => ({ ...prev, [k]: v }))
   const id = useMemo(() => slugify(a.name), [a.name])
-  const dirty = a !== EMPTY || logoFile !== null
+  const dirty = logoFile !== null || (Object.keys(a) as Array<keyof Answers>).some((k) => a[k] !== EMPTY[k])
 
   const reset = useCallback(() => {
     setStep(0); setA(EMPTY); setLogoFile(null)
@@ -106,24 +106,50 @@ export function BrandBuilder({
     }
   }, [a, id, logoFile, onCreated, close])
 
+  // Disabled primary actions explain themselves (spec §7i).
+  const nextBlockedReason = !canNext ? 'Name and what-you-sell are needed first — the agent grounds everything in them.' : null
+  const createBlockedReason = !canCreate
+    ? !a.name.trim() || !a.product.trim()
+      ? 'Name and what-you-sell are needed first.'
+      : 'Choose which agent drafts the brand.'
+    : null
+
+  const gatedButton = (label: React.ReactNode, disabled: boolean, reason: string | null, onClick: () => void, testId: string) => {
+    const btn = (
+      <Button size="sm" onClick={onClick} disabled={disabled} data-testid={testId}>
+        {label}
+      </Button>
+    )
+    if (!disabled || !reason) return btn
+    return (
+      <TooltipProvider delay={200}>
+        <Tooltip>
+          {/* A disabled button swallows pointer events — the wrapper carries the tooltip. */}
+          <TooltipTrigger render={<span className="inline-flex">{btn}</span>} />
+          <TooltipContent side="top">{reason}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    )
+  }
+
   const footer = (
     <div className="flex items-center justify-between gap-2">
       <span className="text-xs text-muted-foreground">Step {step + 1} of {STEPS.length} · {STEPS[step]}</span>
       <div className="flex gap-2">
         {step > 0 && (
-          <button className="rounded-md border px-3 py-1.5 text-sm hover:bg-accent" onClick={() => setStep((s) => s - 1)} disabled={busy}>
+          <Button variant="outline" size="sm" onClick={() => setStep((s) => s - 1)} disabled={busy}>
             Back
-          </button>
+          </Button>
         )}
-        {step < STEPS.length - 1 ? (
-          <button className="rounded-md border bg-accent/20 px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50" onClick={() => setStep((s) => s + 1)} disabled={!canNext}>
-            Next
-          </button>
-        ) : (
-          <button className="rounded-md border bg-accent/20 px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50" onClick={() => void create()} disabled={!canCreate || busy}>
-            {busy ? 'Creating…' : 'Create draft'}
-          </button>
-        )}
+        {step < STEPS.length - 1
+          ? gatedButton('Next', !canNext, nextBlockedReason, () => setStep((s) => s + 1), 'builder-next')
+          : gatedButton(
+              busy ? <><Loader2 className="mr-1.5 size-3.5 animate-spin" /> Creating...</> : 'Create draft',
+              !canCreate || busy,
+              createBlockedReason,
+              () => void create(),
+              'builder-create',
+            )}
       </div>
     </div>
   )
@@ -151,11 +177,11 @@ export function BrandBuilder({
         {step === 0 && (
           <div className="space-y-5">
             <Field num={1} label="Brand name" hint="What the brand is called.">
-              <input className={input} placeholder="e.g. Acme" value={a.name} onChange={(e) => set('name', e.target.value)} autoFocus />
+              <Input placeholder="e.g. Acme" value={a.name} onChange={(e) => set('name', e.target.value)} autoFocus />
               {a.name.trim() && <p className="mt-1 text-[11px] text-muted-foreground">id: <span className="font-mono">{id}</span></p>}
             </Field>
             <Field num={2} label="What do you sell?" hint="One line — the agent grounds voice + positioning in this.">
-              <textarea className={input} rows={2} placeholder="e.g. Warm bakery-management software for independent bakers" value={a.product} onChange={(e) => set('product', e.target.value)} />
+              <Textarea rows={2} placeholder="e.g. Warm bakery-management software for independent bakers" value={a.product} onChange={(e) => set('product', e.target.value)} />
             </Field>
           </div>
         )}
@@ -163,13 +189,13 @@ export function BrandBuilder({
         {step === 1 && (
           <div className="space-y-5">
             <Field num={1} label="Audience" hint="Who reads this? What do they already know?">
-              <input className={input} placeholder="e.g. independent bakery owners, not enterprise buyers" value={a.audience} onChange={(e) => set('audience', e.target.value)} />
+              <Input placeholder="e.g. independent bakery owners, not enterprise buyers" value={a.audience} onChange={(e) => set('audience', e.target.value)} />
             </Field>
             <Field num={2} label="Three tone words" hint="How the brand should sound.">
-              <input className={input} placeholder="e.g. warm, direct, a little irreverent" value={a.tone} onChange={(e) => set('tone', e.target.value)} />
+              <Input placeholder="e.g. warm, direct, a little irreverent" value={a.tone} onChange={(e) => set('tone', e.target.value)} />
             </Field>
             <Field num={3} label="Competitors" hint="Brands to sound distinct from (optional).">
-              <input className={input} placeholder="e.g. Toast, Square" value={a.competitors} onChange={(e) => set('competitors', e.target.value)} />
+              <Input placeholder="e.g. Toast, Square" value={a.competitors} onChange={(e) => set('competitors', e.target.value)} />
             </Field>
           </div>
         )}
@@ -179,11 +205,11 @@ export function BrandBuilder({
             <Field num={1} label="Logo" hint="Shown on the brand dashboard and available to agents as a reference. PNG/SVG/JPG.">
               <LogoDrop preview={logoPreview} fileName={logoFile?.name ?? null} onPick={pickLogo} />
             </Field>
-            <Field num={2} label="Website URL(s)" hint="The drafting agent reads these to ground the brand in reality (optional).">
-              <input className={input} placeholder="https://…" value={a.urls} onChange={(e) => set('urls', e.target.value)} />
+            <Field num={2} label="Website URL(s)" hint="The drafting agent reads these to ground the brand in reality — palette, voice, and terminology get mined from them (optional).">
+              <Input placeholder="https://..." value={a.urls} onChange={(e) => set('urls', e.target.value)} />
             </Field>
             <Field num={3} label="Anything else" hint="Existing docs, phrases you love or hate — anything that helps (optional).">
-              <textarea className={input} rows={3} value={a.notes} onChange={(e) => set('notes', e.target.value)} />
+              <Textarea rows={3} value={a.notes} onChange={(e) => set('notes', e.target.value)} />
             </Field>
           </div>
         )}
@@ -203,11 +229,8 @@ export function BrandBuilder({
             <ReviewRow label="Tone" value={a.tone} />
             <ReviewRow label="Competitors" value={a.competitors} />
             <ReviewRow label="URLs" value={a.urls} />
-            <Field label="Drafting agent" hint="Who authors the brand from your answers.">
-              <select className={input} value={a.agent} onChange={(e) => set('agent', e.target.value)}>
-                <option value="">Choose an agent…</option>
-                {agentIds.map((agentId) => <option key={agentId} value={agentId}>{agentId}</option>)}
-              </select>
+            <Field label="Which agent drafts it?" hint="Who authors the brand from your answers.">
+              <AgentSelect value={a.agent} onValueChange={(v) => set('agent', v)} placeholder="Choose an agent..." />
             </Field>
             <p className="text-xs text-muted-foreground">
               This creates a <span className="text-fuchsia-400">draft</span> (invisible to tasks + image tools) and dispatches {a.agent || 'the agent'} to
@@ -220,11 +243,9 @@ export function BrandBuilder({
   )
 }
 
-const input = 'w-full rounded-md border bg-background px-2.5 py-1.5 text-sm'
-
 function Field({ num, label, hint, children }: { num?: number; label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <label className="block border-t border-border/60 pt-5 first:border-t-0 first:pt-0">
+    <div className="block border-t border-border/60 pt-5 first:border-t-0 first:pt-0">
       <div className="flex items-start gap-2.5">
         {num !== undefined && (
           <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border text-[11px] font-medium text-muted-foreground">
@@ -232,12 +253,12 @@ function Field({ num, label, hint, children }: { num?: number; label: string; hi
           </span>
         )}
         <div className="min-w-0 flex-1">
-          <span className="text-sm font-medium">{label}</span>
+          <Label className="text-sm font-medium">{label}</Label>
           {hint && <span className="mt-0.5 block text-[11px] text-muted-foreground">{hint}</span>}
           <div className="mt-2">{children}</div>
         </div>
       </div>
-    </label>
+    </div>
   )
 }
 
@@ -256,7 +277,7 @@ function LogoDrop({ preview, fileName, onPick }: { preview: string | null; fileN
   return (
     <div>
       <label
-        className={`flex cursor-pointer items-center gap-3 rounded-lg border border-dashed p-3 transition-colors ${over ? 'border-accent bg-accent/10' : 'hover:border-zinc-600'}`}
+        className={`flex cursor-pointer items-center gap-3 rounded-lg border border-dashed p-3 transition-colors ${over ? 'border-foreground/40 bg-foreground/5' : 'hover:border-foreground/30'}`}
         onDragOver={(e) => { e.preventDefault(); setOver(true) }}
         onDragLeave={() => setOver(false)}
         onDrop={(e) => { e.preventDefault(); setOver(false); const f = e.dataTransfer.files?.[0]; if (f) onPick(f) }}

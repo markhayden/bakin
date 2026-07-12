@@ -1,0 +1,133 @@
+/**
+ * Cover-art brand card (UX cleanup spec §5, layout B): tinted logo cover with
+ * the palette as its base edge, then name/status/completeness/meta. The
+ * brand's OWN colors are the only strong color — chrome stays neutral.
+ */
+import { Badge, Progress, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@makinbakin/sdk/ui'
+import type { BrandManifest } from '../types'
+
+export type ListedBrand = BrandManifest & {
+  counts?: { guidelines: number; lessons: number; assets: number }
+  completeness?: { percent: number; missing: string[] }
+}
+
+/**
+ * Human labels for completeness keys. The keys are a server contract pinned by
+ * tests/plugins/brands/completeness.test.ts — a new key must be added here too.
+ */
+export const COMPLETENESS_LABELS: Record<string, string> = {
+  logo: 'a logo',
+  palette: 'at least 3 colors',
+  description: 'a description',
+  voice: 'the voice guide',
+  'style-guide': 'the style guide',
+  rules: 'a rule',
+  terminology: 'terminology',
+  'reference-assets': 'reference assets',
+}
+
+const isHex = (h: string) => /^#[0-9a-fA-F]{6}$/.test(h)
+
+/** Initials-on-tinted-disc fallback when a brand has no logo (AgentAvatar convention). */
+function Monogram({ name, tint }: { name: string; tint?: string }) {
+  return (
+    <span
+      className="flex size-16 items-center justify-center rounded-2xl text-2xl font-semibold text-foreground/70 ring-1 ring-foreground/10"
+      style={tint ? { backgroundColor: `${tint}33` } : undefined}
+      data-brand-monogram
+    >
+      {(name.trim()[0] ?? '?').toUpperCase()}
+    </span>
+  )
+}
+
+export function BrandCoverCard({ brand, onOpen }: { brand: ListedBrand; onOpen: () => void }) {
+  const swatches = brand.palette.filter((c) => isHex(c.hex))
+  const primary = swatches[0]?.hex
+  const logo = brand.logos[0]
+  const completeness = brand.completeness
+
+  return (
+    <button
+      className="group overflow-hidden rounded-xl bg-card text-left ring-1 ring-foreground/10 transition-shadow hover:ring-foreground/25"
+      onClick={onOpen}
+      data-brand-card={brand.id}
+    >
+      {/* Cover: ambient tint from the brand's primary color, logo centered. */}
+      <div
+        className="flex h-28 items-center justify-center"
+        style={primary ? { backgroundColor: `${primary}1f` } : undefined}
+      >
+        {logo ? (
+          <img
+            src={`/api/assets/${logo.assetId}/thumb`}
+            alt=""
+            className="max-h-16 max-w-[55%] object-contain drop-shadow-sm"
+            onError={(e) => {
+              ;(e.currentTarget as HTMLImageElement).style.display = 'none'
+            }}
+          />
+        ) : (
+          <Monogram name={brand.name} tint={primary} />
+        )}
+      </div>
+      {/* Palette strip = the cover's base edge. */}
+      <div className="flex h-2">
+        {swatches.length > 0 ? (
+          swatches.map((c, i) => (
+            <div key={`${c.name}-${i}`} title={`${c.name} ${c.hex}`} style={{ backgroundColor: c.hex, flexGrow: swatches.length - i }} />
+          ))
+        ) : (
+          <div className="w-full bg-muted/40" />
+        )}
+      </div>
+
+      <div className="space-y-2 p-4">
+        <div className="flex items-center gap-2">
+          <h3 className="min-w-0 truncate font-medium">{brand.name}</h3>
+          <Badge variant={brand.draft ? 'outline' : 'secondary'} className="ml-auto shrink-0">
+            {brand.draft ? 'Draft' : 'Published'}
+          </Badge>
+        </div>
+        {brand.description ? (
+          <p className="line-clamp-2 text-sm text-muted-foreground">{brand.description}</p>
+        ) : (
+          <p className="text-sm text-muted-foreground/60">No description yet.</p>
+        )}
+
+        {completeness && (
+          <TooltipProvider delay={200}>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <div className="flex items-center gap-2" data-brand-completeness={completeness.percent}>
+                  <Progress
+                    value={completeness.percent}
+                    className="h-1.5 flex-1"
+                    aria-label={`Brand kit ${completeness.percent}% complete`}
+                  />
+                  <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                    {completeness.percent}% complete
+                  </span>
+                </div>
+              }
+            />
+            <TooltipContent side="bottom" className="max-w-64">
+              {completeness.missing.length === 0
+                ? 'Kit complete — every checklist item is filled in.'
+                : `Still missing: ${completeness.missing.map((k) => COMPLETENESS_LABELS[k] ?? k).join(', ')}.`}
+            </TooltipContent>
+          </Tooltip>
+          </TooltipProvider>
+        )}
+
+        {brand.counts && (
+          <p className="text-[11px] text-muted-foreground">
+            {brand.counts.guidelines} docs · {brand.counts.lessons} lessons · {brand.counts.assets} assets
+            {brand.source ? ' · imported' : ''}
+          </p>
+        )}
+      </div>
+    </button>
+  )
+}
