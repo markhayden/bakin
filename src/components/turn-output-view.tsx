@@ -1,27 +1,22 @@
 'use client'
 
 /**
- * TurnOutputView — THE single client renderer for normalized turn chunks
- * (the ChatChunk taxonomy: text with format hints, structured tool
- * activity, status, done, error).
+ * TurnOutputView — legacy-shaped renderer for normalized turn chunks,
+ * now a thin wrapper over the conversation kit: foldTurnChunks delegates
+ * to foldConversation (ONE folding engine) and flattens the turn model
+ * back to the flat segments/tools shape existing consumers pin.
  *
- * Presentation policy for turn output lives here, behind the two-seam rule
- * (adapters normalize into chunks; this component turns chunks into
- * pixels). New turn-output surfaces MUST consume it rather than hand-roll
- * format heuristics; beautification passes restyle this one component.
- *
- * Works for both streaming accumulation (feed the growing chunk list with
- * `live` while the turn is in flight) and static replay (feed the recorded
- * list). Chat-style chrome (avatars, bubbles, indentation) stays with the
- * caller via `textFrame` / `rowClassName` — layout is the caller's, the
- * rendering of the chunks themselves is not.
+ * New surfaces should compose the kit directly (Conversation/AgentTurn/
+ * ActivityGroup); this stays for single-turn output embeds (task step
+ * viewer, workflow step drawer).
  */
 import type { ReactNode } from 'react'
-import { AlertTriangle, Loader2, Wrench } from 'lucide-react'
+import { AlertTriangle, Loader2 } from 'lucide-react'
 import type { RuntimeChatChunk, RuntimeChatTextFormat } from '@makinbakin/sdk/types'
-import { summarizeStructured, unwrapToolResult } from '@bakin/core/format'
 
 import { MarkdownContent } from './markdown-content'
+import { foldConversation } from './conversation/fold'
+import { ToolCallRow } from './conversation/activity-group'
 
 export interface TurnTextSegment {
   format: RuntimeChatTextFormat
@@ -45,87 +40,55 @@ export interface FoldedTurnOutput {
 }
 
 /**
- * Fold a chunk list into renderable state: consecutive same-format text
- * chunks merge into segments, tool call/result pairs collapse into one chip
- * keyed by callId (a summary-less result keeps the call's summary), the
- * newest status wins, `done`/`error` mark the terminal state.
+ * Fold a chunk list into the flat renderable shape. Delegates to
+ * foldConversation and flattens: text items → segments (consecutive
+ * same-format segments re-merged across tool boundaries, preserving the
+ * legacy contract), activity calls → chips, latest status label, first
+ * error, done flag.
  */
 export function foldTurnChunks(chunks: readonly RuntimeChatChunk[]): FoldedTurnOutput {
+  const turns = foldConversation([], { liveChunks: chunks })
+  const turn = turns[0]
   const segments: TurnTextSegment[] = []
   const tools: TurnToolChipState[] = []
-  let status: string | null = null
   let error: FoldedTurnOutput['error'] = null
-  let done = false
 
-  for (const chunk of chunks) {
-    switch (chunk.type) {
-      case 'text': {
-        if (!chunk.content) break
-        const format = chunk.format ?? 'markdown'
+  if (turn?.kind === 'agent') {
+    for (const item of turn.items) {
+      if (item.type === 'text') {
         const last = segments[segments.length - 1]
-        if (last && last.format === format) last.text += chunk.content
-        else segments.push({ format, text: chunk.content })
-        break
-      }
-      case 'tool': {
-        const data = chunk.data
-        if (!data?.toolName) break
-        const chipStatus: TurnToolChipState['status'] =
-          data.phase === 'result' ? (data.status === 'failed' ? 'failed' : 'completed') : 'running'
-        // Pair call/result chips by callId when present. Adapters can omit
-        // callId (OpenClaw forwards toolCallId ?? undefined) — a callId-less
-        // RESULT then closes the most recent RUNNING chip for the same tool;
-        // generating a fresh key here would leave that chip spinning forever
-        // next to a duplicate completed one.
-        let existing = -1
-        if (data.callId) {
-          existing = tools.findIndex((c) => c.key === data.callId)
-        } else if (data.phase === 'result') {
-          for (let i = tools.length - 1; i >= 0; i--) {
-            if (tools[i].toolName === data.toolName && tools[i].status === 'running') {
-              existing = i
-              break
-            }
-          }
+        if (last && last.format === item.format) last.text += item.content
+        else segments.push({ format: item.format, text: item.content })
+      } else if (item.type === 'activity') {
+        for (const call of item.calls) {
+          tools.push({
+            key: call.key,
+            toolName: call.toolName,
+            ...(call.summary !== undefined ? { summary: call.summary } : {}),
+            status: call.status,
+          })
         }
-        const key = data.callId ?? (existing >= 0 ? tools[existing].key : `${data.toolName}-${tools.length}`)
-        const summary = data.summary ?? (existing >= 0 ? tools[existing].summary : undefined)
-        const chip: TurnToolChipState = { key, toolName: data.toolName, summary, status: chipStatus }
-        if (existing >= 0) tools[existing] = chip
-        else tools.push(chip)
-        break
+      } else if (!error) {
+        error = { message: item.message, ...(item.errorKind ? { kind: item.errorKind } : {}) }
       }
-      case 'status':
-        if (chunk.content) status = chunk.content
-        break
-      case 'error':
-        error = {
-          message: chunk.content || 'turn failed',
-          ...(typeof chunk.data?.kind === 'string' ? { kind: chunk.data.kind } : {}),
-        }
-        break
-      case 'done':
-        done = true
-        break
     }
   }
-  return { segments, tools, status, error, done }
+
+  return {
+    segments,
+    tools,
+    status: turn?.kind === 'agent' ? turn.statusLabel ?? null : null,
+    error,
+    done: chunks.some((c) => c.type === 'done'),
+  }
 }
 
-/** One tool-activity chip: spinner while running, wrench when settled. */
+/** One tool-activity chip (kit ToolCallRow under the legacy name/props). */
 export function TurnToolChip({ toolName, summary, status }: Omit<TurnToolChipState, 'key'>) {
-  // Defensive across runtimes: peel any tool-result envelope + JSON blob to
-  // a clean one-line summary (adapters normally do this at source).
-  const clean = summary ? summarizeStructured(unwrapToolResult(summary)) : ''
   return (
-    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-      {status === 'running'
-        ? <Loader2 className="size-3 animate-spin" />
-        : <Wrench className={`size-3 ${status === 'failed' ? 'text-destructive' : ''}`} />}
-      <span className="font-mono">{toolName}</span>
-      {status === 'failed' ? <span className="text-destructive">failed</span> : null}
-      {clean ? <span className="truncate">— {clean}</span> : null}
-    </div>
+    <ToolCallRow
+      call={{ key: toolName, toolName, status, ...(summary !== undefined ? { summary } : {}) }}
+    />
   )
 }
 
