@@ -17,6 +17,9 @@ export { AgentSelect, TEAM_VALUE_PREFIX, isTeamValue, teamIdFromValue } from '@/
 export { AgentDot } from '@/components/agent-status'
 /** Compound agent status (dot + label + last-seen timestamp). */
 export { AgentStatus } from '@/components/agent-status'
+/** Modal asset chooser (thumbnail grid + search + upload-new) over the assets plugin — never a raw id select. */
+export { AssetPicker } from '@/components/asset-picker'
+export type { AssetPickerProps, AssetPickerAsset } from '@/components/asset-picker'
 /** Right-side slide-out drawer with backdrop and focus trap. */
 export { BakinDrawer } from '@/components/bakin-drawer'
 /** Color picker swatch grid for tag/agent color assignment. */
