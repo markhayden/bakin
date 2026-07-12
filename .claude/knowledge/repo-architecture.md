@@ -52,6 +52,7 @@ Bun.
 │                                tools moved to src/core/exec-tools/tools/
 ├── cli/                       ← thin CLI wrapper delegated to by the binary dispatcher for HTTP-backed commands
 ├── dev/imitation-crab/        ← OpenClaw mock for dev without real OpenClaw
+├── dev/docker/                 ← dev-rig compose/Dockerfile/shim (scripts/instance*; see dev-rig.md)
 ├── tests/                     ← bun:test suite (bun test --isolate)
 └── docs/                      ← plugin-authoring.md and other human-facing docs
 ```

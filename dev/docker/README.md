@@ -1,75 +1,101 @@
-# Dockerized OpenClaw dev rig
+# Dev rig (OpenClaw in Docker · Pi in-process)
 
-One command spins up a fresh, fully-configured **OpenClaw in Docker** so you can
-develop Bakin on this machine without contaminating your host `~/.openclaw`, and
-exercise onboarding + the full agent-orchestration loop against a clean slate.
+One command spins up a fresh, fully-configured dev instance of **either agent
+runtime** so you can develop Bakin on this machine without contaminating your
+host `~/.openclaw`, `~/.pi`, `~/.bakin`, or any OS service — and exercise
+onboarding + the full agent-orchestration loop against a clean slate.
 
 Contributor/dev setup. End-user install lives in the
 [public docs](https://makinbakin.com/docs/start/install/).
 
 Driven by `bun run instance …` (`scripts/instance.ts`). All state lives under
-the gitignored `dev/openclaw-home/` + `dev/bakin-instances/`.
+the gitignored `dev/openclaw-home/`, `dev/pi-home*/`, `dev/bakin-instances/`.
+Deep reference: `.claude/knowledge/dev-rig.md`.
 
-## Prerequisites
+## Runtimes
 
-- Docker Desktop (or OrbStack)
-- Bun >= 1.2.0
-- **1Password CLI (`op`)** + a service-account token. Put it in the gitignored
-  `dev/docker/.env` (the rig auto-loads it):
-  ```
-  OP_SERVICE_ACCOUNT_TOKEN=ops_…
-  ```
-- 1Password items the rig resolves (references live in `dev/docker/secrets.op.env`):
-  - `brave-search` (required) — the one default tool
-  - `discord-bot-token` / `discord-guild-id` / `discord-user-id-…` (optional)
-
-Codex is **not** a stored secret — each fresh instance mints its own via a
-browser OAuth flow.
+| | OpenClaw (`--runtime openclaw`, default) | Pi (`--runtime pi`) |
+|---|---|---|
+| Where it runs | gateway daemon in Docker | in-process inside Bakin (no daemon, no container for host modes) |
+| Auth | Codex ChatGPT device-code OAuth at `up` | the pi TUI opens at `up` — type `/login` (ChatGPT login also unlocks image gen), then exit |
+| Prereqs | Docker, `op` CLI + `OP_SERVICE_ACCOUNT_TOKEN` | none — the pinned SDK ships the `pi` CLI |
 
 ## Quickstart
 
 ```bash
 bun run build:plugins && bun run build:host   # first time only
-bun run instance up                            # provision OpenClaw (codex OAuth on first/fresh run)
-bun run instance dev                           # run Bakin → http://localhost:3737
+
+# OpenClaw (as always)
+bun run instance up
+bun run instance dev                          # Bakin + hot reload → http://localhost:3737
+
+# Pi
+bun run instance up --runtime pi              # opens the pi TUI: /login, then exit
+bun run instance dev --runtime pi
 ```
 
 - **Bakin UI** → http://localhost:3737
-- **OpenClaw dashboard** → http://127.0.0.1:18789
+- **OpenClaw dashboard** (openclaw runs only) → http://127.0.0.1:18789
 
-`instance up` brings up a configured OpenClaw container — fresh Codex OAuth,
-brave-search (from 1Password), Discord (if its token is in the template), a
-pre-approved gateway device (for dispatch), and Bakin's MCP tools wired in.
-`instance dev` onboards the home if needed and runs Bakin with hot reload.
+`instance dev` runs the real dev loop (`scripts/dev.ts`): plugin HMR, shell
+reload, CSS swap — same as `bun run dev`, pointed at the instance.
 
 ## Modes
 
-The OpenClaw container is identical across modes; they differ in where Bakin runs.
+Modes choose where Bakin runs and which state it sees; `--runtime` chooses the
+agent runtime. All six combinations work.
 
 | Mode | Bakin runs | Best for |
 |------|-----------|----------|
 | `native` (default) | on your Mac (real `~/.bakin`) | everyday hot-reload dev |
 | `isolated` | on your Mac, throwaway `BAKIN_HOME` under `dev/` | replaying onboarding cleanly |
-| `sandbox` | inside the container (`--source repo`/`installed`) | clean-box onboarding tests |
+| `sandbox` | inside the container (`--source repo`/`installed`) | clean-box tests, sandboxed agent execution |
 
 ```bash
-bun run instance up --mode isolated
-bun run instance dev --mode isolated
+bun run instance up --mode isolated --runtime pi
+bun run instance dev --mode isolated --runtime pi
 ```
+
+Isolated instances get their **own search engine** on `127.0.0.1:3838` (spawned
+with `dev`, data inside the throwaway home at `dev/bakin-instances/isolated/home/antfly`) — the machine's
+real antfly service on 3738 is never touched, never re-provisioned. Requires the
+engine binary (`bakin install search` once, machine-wide).
 
 ## Commands
 
 ```
-instance up [--mode …] [--fresh] [--source repo|installed] [--preconfigure]
-instance dev [--mode …]          # run Bakin → :3737 (onboards if needed)
-instance run -- <bakin args>     # Bakin CLI in-context
-instance shell [--mode …]        # subshell with the instance env (sandbox: into the container)
-instance status | env
-instance down                    # stop containers (state preserved)
-instance reset [--mode …]        # stop + wipe state (fresh next up)
+instance up     [--mode …] [--runtime openclaw|pi] [--fresh] [--source repo|installed] [--preconfigure]
+instance dev    [--mode …] [--runtime …]   # Bakin + hot reload → :3737 (onboards if needed)
+instance run    [--mode …] [--runtime …] -- <bakin args>
+instance shell  [--mode …] [--runtime …]   # subshell with instance env (sandbox: into the container)
+instance status | env [--mode …] [--runtime …]
+instance down                              # stop containers (state preserved)
+instance reset  [--mode …]                 # stop + wipe state for the mode — BOTH runtimes
 ```
 
 OpenClaw CLI: `./dev/docker/openclaw-shim.sh <args>` (e.g. `mcp list`, `models status`).
+
+## Assets from container agents
+
+OpenClaw rig agents write deliverables inside the container; the rig exports
+`BAKIN_AGENT_PATH_MAP` so `bakin_exec_assets_save` (and image reference inputs)
+translate those paths to the bind-mounted `dev/openclaw-home/` before reading —
+agent-created assets land for real in every mode. Pi agents write host paths
+directly; no translation involved.
+
+## Pi sandbox (`--mode sandbox --runtime pi`)
+
+Bakin + Pi fully in-container (clean Linux box, sandboxed agent execution):
+
+```bash
+bun run instance up --mode sandbox --runtime pi    # compose up + in-container /login
+bun run instance shell --mode sandbox --runtime pi # then: bakin onboard --yes
+bun run instance run --mode sandbox --runtime pi -- doctor --json
+```
+
+In-container search: run `bakin install search` inside the container once (the
+host's macOS binary can't be mounted in). Onboarding is manual by design
+(`--preconfigure` is openclaw-only).
 
 ## Installing agent packages
 
@@ -78,36 +104,29 @@ bun run instance run --mode isolated -- agents install ../bakin-bits-official/ag
 ```
 
 The shim translates the host openclaw-home path → the container path, so the
-agent workspace lands correctly inside the container.
+agent workspace lands correctly inside the container (openclaw runtime).
 
-## Cross-agent dispatch (how it works)
+## Cross-agent dispatch (openclaw — how it works)
 
-Bakin (the operator) dispatches to agents through the gateway, which requires
-the `operator.write` scope. The rig wires this automatically:
-
-1. **Device identity** — Bakin's gateway client signs the connect challenge with
-   a device key (`adapter-openclaw/device-auth.ts`). Without it the gateway
-   strips `operator.write`.
-2. **Pre-approval** — `instance up` writes a pre-approved pairing record into the
-   disposable home (`device-approve.ts`), beating the operator-pairing bootstrap.
-3. **`plugins.allow`** — set when installing the Discord plugin, so `agents add`
-   doesn't fall back to writing a host workspace path that breaks in-container.
-
-Net: ask Penelope in Discord to "create a Bakin task for Pixel" and it dispatches
-through the task board to Pixel.
+Bakin (the operator) dispatches through the gateway, which requires
+`operator.write`. The rig wires this automatically: device identity (signed
+connect challenge), a pre-approved pairing record written into the disposable
+home, and `plugins.allow` so `agents add` doesn't write host workspace paths.
+Pi needs none of this — dispatch is an in-process call.
 
 ## Teardown
 
 ```bash
 bun run instance down            # stop containers, keep state
-bun run instance reset           # stop + wipe state (next up is fresh + re-auths codex)
+bun run instance reset           # stop + wipe state (next up is fresh + re-auths)
 docker compose -f dev/docker/docker-compose.yml --profile sandbox down --rmi local  # remove images too
 ```
 
-> **Credentials at rest:** `up` resolves your Brave key + Discord token from
-> 1Password and writes them in cleartext into `dev/openclaw-home/openclaw.json`
-> (gitignored). `down` preserves that; only `reset` scrubs it. Exclude
-> `dev/openclaw-home/` from Time Machine / backups, and `reset` when you're done.
+> **Credentials at rest:** `up` writes resolved secrets (Brave/Discord) into
+> `dev/openclaw-home/openclaw.json`, Codex auth under `dev/openclaw-home/codex/`,
+> and Pi auth under `dev/pi-home*/agent/auth.json` — all gitignored cleartext.
+> `down` preserves them; only `reset` scrubs. Exclude `dev/openclaw-home/` and
+> `dev/pi-home*/` from Time Machine / backups, and `reset` when you're done.
 
 ## Troubleshooting
 
@@ -115,13 +134,24 @@ docker compose -f dev/docker/docker-compose.yml --profile sandbox down --rmi loc
   exported in your shell overrides `.env`. Run with `env -u OP_SERVICE_ACCOUNT_TOKEN bun run instance up`.
 - **brave-search ref fails** — vault names with spaces: try the vault ID form in
   `secrets.op.env` (commented there).
-- **Discord "access not configured" + pairing code** — DMs are gated by `commands.ownerAllowFrom` (separate from the guild allowlist). `up` sets it from `DISCORD_USER_ID`, so a fresh instance answers DMs without pairing. If you ever hit the prompt manually, approve it via the shim: `./dev/docker/openclaw-shim.sh pairing list discord` then `… pairing approve discord <code>`.
-- **Codex auth** — `up` runs the Codex CLI **device-code** login: it prints `https://auth.openai.com/codex/device` + a one-time code; open the URL, enter the code (the browser-callback flow can't work behind the container's loopback). Only `reset`/`--fresh` wipes the home and forces re-auth.
-- **Image tag** — defaults are PINNED (Dockerfile/compose/lifecycle share one tag, currently `2026.6.11`) so rig runs are reproducible and match production; bump the pin alongside the Mac mini and override per-run via `OPENCLAW_IMAGE_TAG=<tag>` in `.env`. Floating `:latest` previously drifted 5 weeks stale unnoticed (#385 validation).
+- **Discord "access not configured" + pairing code** — DMs are gated by `commands.ownerAllowFrom`;
+  `up` sets it from `DISCORD_USER_ID`. Manual approval: `./dev/docker/openclaw-shim.sh pairing list discord`
+  then `… pairing approve discord <code>`.
+- **Codex auth (openclaw)** — `up` runs the device-code login: open the printed URL, enter the code.
+  Only `reset`/`--fresh` forces re-auth.
+- **Pi auth** — `up --runtime pi` opens the TUI; you MUST complete `/login` before exiting
+  (the rig verifies `auth.json` appeared and refuses to continue otherwise). Re-run `up` to retry.
+- **Pi model** — the rig writes `routing.defaultModel` from your authed provider; if it
+  warns instead, pick a model in the pi TUI or the Bakin UI.
+- **Rig search engine missing** — isolated modes need the machine-wide engine:
+  `bakin install search` (or set `ANTFLY_PATH`).
+- **Image tag (openclaw)** — defaults are PINNED (Dockerfile/compose/lifecycle share one tag);
+  bump alongside the Mac mini, override per-run via `OPENCLAW_IMAGE_TAG=<tag>` in `.env`.
 
 ## Other dev modes
 
-| Command | OpenClaw | Best for |
-|---------|----------|----------|
-| `bun run instance dev` | Containerized (real) | integration, agent work, dispatch |
+| Command | Runtime | Best for |
+|---------|---------|----------|
+| `bun run instance dev` | Containerized OpenClaw (real) | integration, agent work, dispatch |
+| `bun run instance dev --runtime pi` | In-process Pi (real) | pi integration, zero-docker agent work |
 | `bun run dev:mock` | Imitation Crab (mock) | UI dev, offline, zero API cost |

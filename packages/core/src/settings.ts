@@ -13,6 +13,8 @@ import { DEFAULT_OVERSIZED_OUTPUT_BYTES } from './adapters/runtime'
 const log = createLogger('settings')
 
 export type RuntimeAdapterName = 'openclaw' | 'pi'
+/** Colocated with the type; the factory's Record<RuntimeAdapterName, …> keeps it exhaustive. */
+export const RUNTIME_ADAPTER_NAMES: readonly RuntimeAdapterName[] = ['openclaw', 'pi']
 export type SearchAdapterName = 'antfly'
 
 export type RuntimeAdapterSettings = Record<string, unknown>
@@ -490,8 +492,39 @@ export function getSettings(): BakinSettings {
     overrides
   ) as unknown as BakinSettings)
 
+  applyRuntimeAdapterEnvOverride(settings, overrides)
+
   setCachedSettings(settings)
   return settings
+}
+
+/**
+ * BAKIN_RUNTIME_ADAPTER: process-scoped adapter override (dev rig / tests).
+ * Applied at the cache chokepoint so every consumer sees it; never persisted —
+ * updateSettings writes file overrides only, so the file cannot record it.
+ */
+function applyRuntimeAdapterEnvOverride(
+  settings: BakinSettings,
+  overrides: Record<string, unknown>,
+): void {
+  const envAdapter = process.env.BAKIN_RUNTIME_ADAPTER
+  if (!envAdapter) return
+  if (!(RUNTIME_ADAPTER_NAMES as readonly string[]).includes(envAdapter)) {
+    log.warn('Ignoring invalid BAKIN_RUNTIME_ADAPTER', { value: envAdapter })
+    return
+  }
+  const stored = (overrides.runtime as { adapter?: string } | undefined)?.adapter
+  if (stored && stored !== envAdapter) {
+    // e.g. `bakin runtime use` wrote one adapter but the env forces another.
+    log.warn('BAKIN_RUNTIME_ADAPTER shadows the adapter stored in settings.json', {
+      env: envAdapter,
+      stored,
+    })
+  }
+  // Replace, never mutate: deepMerge reuses DEFAULT_SETTINGS.runtime by
+  // reference when the file carries no runtime override — in-place mutation
+  // would contaminate the process-global defaults across cache resets.
+  settings.runtime = { ...settings.runtime, adapter: envAdapter as RuntimeAdapterName }
 }
 
 /**

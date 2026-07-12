@@ -51,6 +51,14 @@ platform detection):
 | `child` | No service manager (Docker rig, CI, tests) | Strict attached child: spawn on boot, kill on exit. No adoption, no sidecar, no restart ladder |
 | `guest` | Non-default `settings.url` | Externally managed engine — never provision, never spawn, never touch its disk |
 
+> **Dev-rig invariant:** the LaunchAgent label + port 3738 are machine
+> singletons and the unit is a byte-compared fingerprint of `getBakinPaths()` —
+> a foreign BAKIN_HOME that reaches `ensureProvisioned` REWRITES the real unit
+> (this fired live on 2026-07-11 from a rig isolated home). Rig instances are
+> therefore pinned to guest mode via a non-default URL (`127.0.0.1:3838`) and
+> get a rig-spawned child instead; `BAKIN_SEARCH_SERVICE_MODE=child` is the
+> belt. See `.claude/knowledge/dev-rig.md` § Search isolation.
+
 **The unit file IS the fingerprint.** `ensureProvisioned()` renders the
 desired plist/unit (argv includes `--data-dir`, `--models-dir`, and one
 `--preload-model` per configured embedder so the first embed never races a

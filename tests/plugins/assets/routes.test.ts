@@ -213,6 +213,38 @@ describe('exec tool: bakin_exec_assets_save', () => {
     expect(result.error).toMatch(/not found/i)
   })
 
+  it('translates agent paths via BAKIN_AGENT_PATH_MAP before reading', async () => {
+    // Simulates the dev rig: the agent reports a container path; the mapped
+    // host dir (a bind mount in the rig) holds the real file.
+    const hostDir = join(testDir, 'rig-agent-home', 'workspace')
+    mkdirSync(hostDir, { recursive: true })
+    writeFileSync(join(hostDir, 'deliverable.md'), 'container-written bytes')
+    process.env.BAKIN_AGENT_PATH_MAP = `/container/agent-home=${join(testDir, 'rig-agent-home')}`
+    try {
+      const tool = findTool(plugin.execTools, 'bakin_exec_assets_save')!
+      const result = await callTool(tool, {
+        filePath: '/container/agent-home/workspace/deliverable.md',
+        taskId: 'task-translate-001',
+        type: 'text',
+      }, 'pixel')
+      expect(result.ok).toBe(true)
+      expect(result.version).toBe(1)
+
+      // Re-saving the same container path upserts (dedup key is the
+      // translated host path — stays stable across calls).
+      const again = await callTool(tool, {
+        filePath: '/container/agent-home/workspace/deliverable.md',
+        taskId: 'task-translate-001',
+        type: 'text',
+      }, 'pixel')
+      expect(again.ok).toBe(true)
+      expect(again.assetId).toBe(result.assetId)
+      expect(again.changed).toBe(false)
+    } finally {
+      delete process.env.BAKIN_AGENT_PATH_MAP
+    }
+  })
+
   it('versions the existing asset when the same source is re-saved with new content', async () => {
     const sourceFile = join(testDir, 'evolving-doc.md')
     writeFileSync(sourceFile, '# v1\n')

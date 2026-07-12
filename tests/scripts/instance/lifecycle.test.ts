@@ -32,13 +32,15 @@ function planFor(argv: string[]) {
 function fakeDeps(over: Partial<{
   results: (argv: string[]) => RunResult
   env: Record<string, string | undefined>
-  exists: boolean
-  configText: string
+  exists: boolean | ((p: string) => boolean)
+  configText: string | ((p: string) => string)
+  piDefaultModels: Record<string, string> | null
 }> = {}) {
   const calls: string[][] = []
   const wiped: string[] = []
   const mkdirs: string[] = []
   const writes: Array<{ path: string; content: string; beforeCallCount: number }> = []
+  const logs: string[] = []
   const runner: CommandRunner = {
     async run(argv) {
       calls.push(argv)
@@ -53,15 +55,17 @@ function fakeDeps(over: Partial<{
     runner,
     emptyDir: async (p) => { wiped.push(p) },
     mkdirp: async (p) => { mkdirs.push(p) },
-    exists: () => over.exists ?? true, // default: config already present (init skipped)
+    // default: config already present (init skipped)
+    exists: (p) => (typeof over.exists === 'function' ? over.exists(p) : over.exists ?? true),
     ensureDevice: () => {},
-    readTextFile: () => over.configText ?? '{}',
+    readTextFile: (p) => (typeof over.configText === 'function' ? over.configText(p) : over.configText ?? '{}'),
     writeTextFile: (path, content) => { writes.push({ path, content, beforeCallCount: calls.length }) },
     sleep: async () => {},
-    log: () => {},
+    log: (m) => { logs.push(m) },
     env: over.env ?? { OP_SERVICE_ACCOUNT_TOKEN: 'tok' },
+    piDefaultModels: async () => (over.piDefaultModels === undefined ? { 'anthropic': 'claude-opus-4-8', 'openai-codex': 'gpt-5.5' } : over.piDefaultModels),
   }
-  return { deps, calls, wiped, mkdirs, writes }
+  return { deps, calls, wiped, mkdirs, writes, logs }
 }
 
 describe('compose argv builders', () => {
@@ -222,7 +226,109 @@ describe('up — fresh', () => {
     const { deps, calls, wiped } = fakeDeps()
     await up(plan, paths, 'BRAVE_API_KEY=op://V/brave/cred', deps)
     expect(calls.some((c) => c.join(' ').includes('compose -f') && c.join(' ').includes('down'))).toBe(true)
-    expect(wiped).toEqual(['/tmp/fake-repo/dev/openclaw-home'])
+    expect(wiped).toEqual([
+      '/tmp/fake-repo/dev/openclaw-home',
+      '/tmp/fake-repo/dev/pi-home',
+    ])
+  })
+})
+
+describe('up — pi (host modes)', () => {
+  const PI_AUTH = '/tmp/fake-repo/dev/pi-home/agent/auth.json'
+  const PI_SETTINGS = '/tmp/fake-repo/dev/pi-home/agent/settings.json'
+  const AUTHED = JSON.stringify({ anthropic: { type: 'api_key', key: 'sk' } })
+
+  it('native: touches neither docker nor op — only the pi home and the TUI', async () => {
+    const { paths, plan } = planFor(['up', '--runtime', 'pi'])
+    let authExists = false
+    const { deps, calls, mkdirs } = fakeDeps({
+      exists: (p) => (p === PI_AUTH ? authExists : false),
+      configText: () => AUTHED,
+      results: (argv) => {
+        if (argv[0] === 'node') authExists = true // the TUI /login wrote auth.json
+        return { code: 0, stdout: '', stderr: '' }
+      },
+    })
+    await up(plan, paths, '', deps)
+
+    expect(mkdirs).toContain('/tmp/fake-repo/dev/pi-home/agent')
+    // The ONLY spawned command is the interactive TUI (node <sdk cli>).
+    expect(calls).toHaveLength(1)
+    expect(calls[0]![0]).toBe('node')
+    expect(calls[0]![1]!.endsWith('/dist/cli.js')).toBe(true)
+    const flat = calls.map((c) => c.join(' ')).join('\n')
+    expect(flat).not.toContain('docker')
+    expect(flat).not.toContain('op ')
+  })
+
+  it('skips the TUI when auth.json already exists (idempotent up)', async () => {
+    const { paths, plan } = planFor(['up', '--runtime', 'pi'])
+    const { deps, calls } = fakeDeps({
+      exists: (p) => p === PI_AUTH,
+      configText: () => AUTHED,
+    })
+    await up(plan, paths, '', deps)
+    expect(calls.filter((c) => c[0] === 'node')).toHaveLength(0)
+  })
+
+  it('throws actionably when the TUI exits without writing auth.json', async () => {
+    const { paths, plan } = planFor(['up', '--runtime', 'pi'])
+    const { deps } = fakeDeps({ exists: () => false })
+    // TUI runs (code 0) but auth.json still absent afterwards.
+    await expect(up(plan, paths, '', deps)).rejects.toThrow(/\/login/)
+  })
+
+  it('writes routing.defaultModel from the authed provider (warn-don\'t-fail path)', async () => {
+    const { paths, plan } = planFor(['up', '--runtime', 'pi'])
+    const { deps, writes } = fakeDeps({
+      exists: (p) => p === PI_AUTH, // settings.json absent
+      configText: () => AUTHED,
+    })
+    await up(plan, paths, '', deps)
+    const settingsWrite = writes.find((w) => w.path === PI_SETTINGS)
+    expect(settingsWrite).toBeDefined()
+    expect(JSON.parse(settingsWrite!.content)).toEqual({
+      routing: { defaultModel: 'anthropic/claude-opus-4-8' },
+    })
+  })
+
+  it('logs a warning instead of failing when no default model can be derived', async () => {
+    const { paths, plan } = planFor(['up', '--runtime', 'pi'])
+    const { deps, writes, logs } = fakeDeps({
+      exists: (p) => p === PI_AUTH,
+      configText: () => AUTHED,
+      piDefaultModels: null, // SDK table unavailable
+    })
+    await up(plan, paths, '', deps)
+    expect(writes.find((w) => w.path === PI_SETTINGS)).toBeUndefined()
+    expect(logs.some((l) => /warning/i.test(l) && /model/i.test(l))).toBe(true)
+  })
+
+  it('isolated: writes the throwaway settings patch (adapter=pi + guest search url)', async () => {
+    const { paths, plan } = planFor(['up', '--mode', 'isolated', '--runtime', 'pi'])
+    const { deps, writes } = fakeDeps({
+      exists: (p) => p === '/tmp/fake-repo/dev/pi-home/agent/auth.json',
+      configText: (p) => (p.endsWith('auth.json') ? AUTHED : '{}'),
+    })
+    await up(plan, paths, '', deps)
+    const settingsWrite = writes.find((w) => w.path === '/tmp/fake-repo/dev/bakin-instances/isolated/home/settings.json')
+    expect(settingsWrite).toBeDefined()
+    const parsed = JSON.parse(settingsWrite!.content)
+    expect(parsed.runtime.adapter).toBe('pi')
+    expect(parsed.search.settings.url).toBe('http://127.0.0.1:3838')
+  })
+})
+
+describe('up — isolated × openclaw settings patch', () => {
+  it('writes the guest-search patch for isolated openclaw too (the clobber fired there)', async () => {
+    const { paths, plan } = planFor(['up', '--mode', 'isolated'])
+    const { deps, writes } = fakeDeps()
+    await up(plan, paths, 'BRAVE_API_KEY=op://V/brave/cred', deps)
+    const settingsWrite = writes.find((w) => w.path === '/tmp/fake-repo/dev/bakin-instances/isolated/home/settings.json')
+    expect(settingsWrite).toBeDefined()
+    const parsed = JSON.parse(settingsWrite!.content)
+    expect(parsed.runtime.adapter).toBe('openclaw')
+    expect(parsed.search.settings.url).toBe('http://127.0.0.1:3838')
   })
 })
 
@@ -233,6 +339,7 @@ describe('reset', () => {
     await reset(plan, paths, deps)
     expect(wiped).toEqual([
       '/tmp/fake-repo/dev/openclaw-home',
+      '/tmp/fake-repo/dev/pi-home',
       '/tmp/fake-repo/dev/bakin-instances/isolated/home',
     ])
     for (const w of wiped) expect(w.startsWith('/tmp/fake-repo/dev/')).toBe(true)

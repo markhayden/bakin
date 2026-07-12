@@ -200,6 +200,10 @@ if (skipFailureDrill) {
   report('R5 failure drill', true, 'skipped (--skip-failure-drill)')
 } else {
   const drill = timedSend(primary, `task:rigdrill-${runStamp}:d1`, 'Count slowly from 1 to 30, one number per line.')
+  // Attach a handler NOW: the drill usually rejects during the restart window
+  // below, before `await drill` — a late-attached handler leaves Bun's
+  // unhandled-rejection flag set and the process exits 1 after a clean run.
+  drill.catch(() => {})
   await new Promise((r) => setTimeout(r, 1500)) // let the turn start server-side
   const restart = Bun.spawn(['docker', 'restart', 'bakin-openclaw-gateway'], { stdout: 'pipe', stderr: 'pipe' })
   await restart.exited
@@ -218,8 +222,26 @@ if (skipFailureDrill) {
     } catch { /* booting */ }
     await new Promise((r) => setTimeout(r, 1000))
   }
-  const after = await timedSend(primary, `task:rigdrill-${runStamp}:d2`)
-  report('R5.2 post-restart recovery', after.content.length > 0, `turn ok in ${after.ms}ms after gateway restart`)
+  // healthz reports live before the RPC sidecars finish — a turn fired in
+  // that window dies with "gateway starting; retry shortly" (UNAVAILABLE,
+  // startup-sidecars). Retry through it, bounded; anything else rethrows.
+  let after: { content: string; ms: number } | null = null
+  let lastErr: unknown = null
+  for (let i = 0; i < 10 && !after; i++) {
+    try {
+      after = await timedSend(primary, `task:rigdrill-${runStamp}:d2`)
+    } catch (err) {
+      lastErr = err
+      const transient = err instanceof RuntimeError && /gateway starting|UNAVAILABLE/i.test(err.message)
+      if (!transient) throw err
+      await new Promise((r) => setTimeout(r, 2000))
+    }
+  }
+  if (after) {
+    report('R5.2 post-restart recovery', after.content.length > 0, `turn ok in ${after.ms}ms after gateway restart`)
+  } else {
+    report('R5.2 post-restart recovery', false, `no turn served after restart: ${lastErr instanceof Error ? lastErr.message.slice(0, 80) : String(lastErr)}`)
+  }
 }
 
 // ─── R6: session retention probe (#435) ─────────────────────────────────────
@@ -324,5 +346,7 @@ for (const b of bench) console.log(`  ${b.metric}: ${b.value}`)
 if (failed.length > 0) {
   console.log('\nFailed:')
   for (const f of failed) console.log(`  ✗ ${f.id} — ${f.detail}`)
-  process.exit(1)
 }
+// Explicit: the checks ARE the contract — don't let lingering gateway
+// handles or late-handled drill rejections pick the exit code.
+process.exit(failed.length > 0 ? 1 : 0)

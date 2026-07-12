@@ -33,12 +33,22 @@ describe('sandboxBakinArgs', () => {
       'docker', 'compose', '-f', C, 'exec', '-it', 'sandbox', 'bakin', 'onboard',
     ])
   })
+  it('targets the sandbox-pi service when given', () => {
+    expect(sandboxBakinArgs(C, 'repo', ['onboard', '--yes'], false, 'sandbox-pi')).toEqual([
+      'docker', 'compose', '-f', C, 'exec', '-T', 'sandbox-pi', 'bun', 'run', '/bakin/cli/bakin.ts', 'onboard', '--yes',
+    ])
+  })
 })
 
 describe('sandboxShellArgs', () => {
   it('opens an interactive shell in the sandbox container', () => {
     expect(sandboxShellArgs(C)).toEqual([
       'docker', 'compose', '-f', C, 'exec', '-it', 'sandbox', 'sh',
+    ])
+  })
+  it('opens the shell in sandbox-pi when given', () => {
+    expect(sandboxShellArgs(C, 'sandbox-pi')).toEqual([
+      'docker', 'compose', '-f', C, 'exec', '-it', 'sandbox-pi', 'sh',
     ])
   })
 })

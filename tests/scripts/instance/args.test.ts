@@ -3,11 +3,12 @@ import { describe, expect, it } from 'bun:test'
 import { parseInstanceArgs } from '../../../scripts/instance/args'
 
 describe('parseInstanceArgs — verbs', () => {
-  it('parses each known verb with native defaults', () => {
+  it('parses each known verb with native/openclaw defaults', () => {
     for (const verb of ['up', 'dev', 'reset', 'down', 'shell', 'status', 'env'] as const) {
       expect(parseInstanceArgs([verb])).toEqual({
         verb,
         mode: 'native',
+        runtime: 'openclaw',
         fresh: false,
         source: 'repo',
         preconfigure: false,
@@ -72,6 +73,36 @@ describe('parseInstanceArgs — --preconfigure', () => {
   it('rejects --preconfigure without sandbox', () => {
     expect(() => parseInstanceArgs(['up', '--preconfigure'])).toThrow(/--preconfigure/)
     expect(() => parseInstanceArgs(['up', '--mode', 'isolated', '--preconfigure'])).toThrow(/--preconfigure/)
+  })
+})
+
+describe('parseInstanceArgs — --runtime', () => {
+  it('parses --runtime pi on every mode', () => {
+    expect(parseInstanceArgs(['up', '--runtime', 'pi'])).toMatchObject({ runtime: 'pi', mode: 'native' })
+    expect(parseInstanceArgs(['dev', '--mode', 'isolated', '--runtime', 'pi'])).toMatchObject({ runtime: 'pi' })
+    expect(parseInstanceArgs(['shell', '--mode', 'sandbox', '--runtime', 'pi'])).toMatchObject({ runtime: 'pi' })
+  })
+
+  it('rejects an unknown runtime', () => {
+    expect(() => parseInstanceArgs(['up', '--runtime', 'gpt'])).toThrow(/runtime/i)
+  })
+
+  it('rejects --runtime on reset and down (they act on the whole mode)', () => {
+    expect(() => parseInstanceArgs(['reset', '--runtime', 'pi'])).toThrow(/--runtime/)
+    expect(() => parseInstanceArgs(['down', '--runtime', 'openclaw'])).toThrow(/--runtime/)
+  })
+
+  it('rejects --preconfigure with pi (pi sandbox onboarding is manual)', () => {
+    expect(() => parseInstanceArgs(['up', '--mode', 'sandbox', '--runtime', 'pi', '--preconfigure']))
+      .toThrow(/--preconfigure/)
+  })
+
+  it('rejects --source installed for pi host modes (they always run this repo)', () => {
+    expect(() => parseInstanceArgs(['up', '--mode', 'isolated', '--runtime', 'pi', '--source', 'installed']))
+      .toThrow(/--source/)
+    // …but sandbox may still use an installed binary.
+    expect(parseInstanceArgs(['up', '--mode', 'sandbox', '--runtime', 'pi', '--source', 'installed']))
+      .toMatchObject({ runtime: 'pi', source: 'installed' })
   })
 })
 

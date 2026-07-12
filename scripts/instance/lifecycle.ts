@@ -20,7 +20,18 @@ import {
 import { normalizeAgentPaths } from './agent-paths'
 import { buildConfigCommands } from './openclaw-config'
 import { parseSecretsTemplate, redactSecrets, resolveSecrets } from './op-resolve'
+import {
+  defaultModelFromAuth,
+  patchPiSettings,
+  piAgentDir,
+  piAuthFile,
+  piLoginArgs,
+  piLoginEnv,
+  piSettingsFile,
+  sandboxPiLoginArgs,
+} from './pi'
 import { bakinOnboardArgs, sandboxBakinArgs, sandboxExecArgs } from './sandbox'
+import { mergeThrowawaySettings } from './throwaway-settings'
 import type { InstancePaths } from './paths'
 import type { InstancePlan } from './modes'
 import type { CommandRunner } from './runner'
@@ -45,6 +56,11 @@ export interface LifecycleDeps {
   sleep: (ms: number) => Promise<void>
   log: (message: string) => void
   env: Record<string, string | undefined>
+  /**
+   * The pinned Pi SDK's defaultModelPerProvider table, or null when
+   * unavailable — the pi default-model step warn-don't-fails on null.
+   */
+  piDefaultModels: () => Promise<Record<string, string> | null>
 }
 
 // ── Pure argv builders ───────────────────────────────────────────────────────
@@ -179,23 +195,118 @@ async function waitForGatewayHealthy(deps: LifecycleDeps, paths: InstancePaths):
   throw new Error(`OpenClaw gateway did not become healthy. Inspect: docker compose -f ${paths.composeFile} logs`)
 }
 
+async function wipeIfFresh(plan: InstancePlan, paths: InstancePaths, deps: LifecycleDeps): Promise<void> {
+  if (plan.wipeBeforeUp.length === 0) return
+  // Stop containers FIRST so they release the bind mount, then wipe contents
+  // in place (never delete the mounted dir — see emptyDir).
+  if (plan.docker) await deps.runner.run(composeDownArgs(paths.composeFile))
+  for (const dir of plan.wipeBeforeUp) {
+    deps.log(`wiping ${dir}`)
+    await deps.emptyDir(dir)
+  }
+}
+
+/**
+ * Write the throwaway home's settings.json (isolated mode, both runtimes):
+ * runtime.adapter + the guest-mode search URL — layer 1 of the guard that
+ * keeps rig homes from ever provisioning the machine-global antfly unit.
+ */
+export async function applySettingsPatch(plan: InstancePlan, paths: InstancePaths, deps: LifecycleDeps): Promise<void> {
+  if (!plan.settingsPatch || !paths.bakinHome) return
+  await deps.mkdirp(paths.bakinHome)
+  const file = join(paths.bakinHome, 'settings.json')
+  const existing = deps.exists(file) ? deps.readTextFile(file) : null
+  deps.writeTextFile(file, mergeThrowawaySettings(existing, plan.settingsPatch))
+}
+
 export async function up(
   plan: InstancePlan,
   paths: InstancePaths,
   secretTemplateText: string,
   deps: LifecycleDeps,
 ): Promise<void> {
-  await preflight(deps)
+  if (plan.runtime === 'pi') {
+    await wipeIfFresh(plan, paths, deps)
+    await applySettingsPatch(plan, paths, deps)
+    return upPi(plan, paths, deps)
+  }
+  return upOpenClaw(plan, paths, secretTemplateText, deps)
+}
 
-  if (plan.wipeBeforeUp.length > 0) {
-    // Stop containers FIRST so they release the bind mount, then wipe contents
-    // in place (never delete the mounted dir — see emptyDir).
-    await deps.runner.run(composeDownArgs(paths.composeFile))
-    for (const dir of plan.wipeBeforeUp) {
-      deps.log(`wiping ${dir}`)
-      await deps.emptyDir(dir)
+/**
+ * Pi up: no gateway, no secrets, no device pairing — Pi is in-process inside
+ * Bakin. All this prepares is the throwaway pi home: agent dir, interactive
+ * TUI /login when unauthenticated, and a routing.defaultModel so the first
+ * dispatched turn resolves a model (warn-don't-fail, mirroring the openclaw
+ * `models set` step).
+ */
+async function upPi(plan: InstancePlan, paths: InstancePaths, deps: LifecycleDeps): Promise<void> {
+  await deps.mkdirp(piAgentDir(paths.piHome))
+
+  if (plan.docker) {
+    // sandbox-pi: bring the container up first; the TUI execs into it.
+    const upResult = await deps.runner.run(
+      composeUpArgs(paths.composeFile, plan.docker.services, plan.docker.composeProfile),
+    )
+    if (upResult.code !== 0) {
+      throw new Error(`docker compose up failed: ${upResult.stderr.trim() || `exit ${upResult.code}`}`)
     }
   }
+
+  const authFile = piAuthFile(paths.piHome)
+  if (deps.exists(authFile)) {
+    deps.log('pi: already authed')
+  } else {
+    deps.log('pi: opening the pi TUI — type /login, complete auth, then exit the TUI (Ctrl+C)…')
+    const loginArgs = plan.docker ? sandboxPiLoginArgs(paths.composeFile) : piLoginArgs(paths.repoRoot)
+    const loginEnv = plan.docker ? undefined : piLoginEnv(paths.piHome)
+    const login = await deps.runner.run(loginArgs, { interactive: true, env: loginEnv })
+    if (login.code !== 0 && !deps.exists(authFile)) {
+      throw new Error(`pi TUI exited with ${login.code} before /login completed. Re-run \`instance up --runtime pi\`.`)
+    }
+    if (!deps.exists(authFile)) {
+      // The TUI has no login subcommand, so its exit code proves nothing —
+      // the auth file is the only evidence.
+      throw new Error('pi auth.json is still missing — re-run `instance up --runtime pi` and complete /login before exiting the TUI.')
+    }
+  }
+
+  // Default model: seeded main agent has none; an unresolvable model makes the
+  // first turn fall to SDK defaults. Derive provider/model from auth.json +
+  // the SDK's own per-provider table. Never fatal.
+  try {
+    const table = await deps.piDefaultModels()
+    const model = defaultModelFromAuth(deps.readTextFile(authFile), table)
+    if (!model) {
+      deps.log('warning: could not derive a pi default model — pick one in the pi TUI or the Bakin UI')
+    } else {
+      const settingsFile = piSettingsFile(paths.piHome)
+      const existing = deps.exists(settingsFile) ? deps.readTextFile(settingsFile) : null
+      const patched = patchPiSettings(existing, model)
+      if (patched) {
+        deps.log(`pi: routing.defaultModel → ${model}`)
+        deps.writeTextFile(settingsFile, patched)
+      }
+    }
+  } catch (err) {
+    deps.log(`warning: pi default-model setup failed (${err instanceof Error ? err.message : String(err)}) — pick one in the UI`)
+  }
+
+  deps.log('pi runtime ready.')
+}
+
+async function upOpenClaw(
+  plan: InstancePlan,
+  paths: InstancePaths,
+  secretTemplateText: string,
+  deps: LifecycleDeps,
+): Promise<void> {
+  const docker = plan.docker
+  if (!docker) throw new Error('openclaw plan without docker services — resolvePlan bug')
+  await preflight(deps)
+
+  await wipeIfFresh(plan, paths, deps)
+  await applySettingsPatch(plan, paths, deps)
   // Ensure the bind-mount target exists as a real, host-owned dir. CODEX_HOME (a
   // subdir inside it) must exist too — the Codex CLI refuses to start otherwise.
   await deps.mkdirp(paths.openclawHome)
@@ -246,7 +357,7 @@ export async function up(
   // OPENCLAW_IMAGE_TAG build arg, which loadEnvFile already put on process.env).
   // Passing resolved tokens here would widen their exposure for no reason.
   const upResult = await deps.runner.run(
-    composeUpArgs(paths.composeFile, plan.services, plan.composeProfile),
+    composeUpArgs(paths.composeFile, docker.services, docker.composeProfile),
   )
   if (upResult.code !== 0) {
     throw new Error(`docker compose up failed: ${upResult.stderr.trim() || `exit ${upResult.code}`}`)
@@ -282,7 +393,7 @@ export async function up(
   } else {
     deps.log('codex: ChatGPT device-code login — open the printed URL and enter the code…')
     const loginArgs = plan.bakin.placement === 'container'
-      ? codexLoginExecArgs(paths.composeFile, plan.services[0])
+      ? codexLoginExecArgs(paths.composeFile, docker.services[0])
       : codexLoginRunArgs(openclawImage(deps), paths.openclawHome)
     const login = await deps.runner.run(loginArgs, { interactive: true })
     if (login.code !== 0) {
@@ -300,7 +411,7 @@ export async function up(
   // The gateway started before config ran, so restart it to load the now-enabled
   // codex provider (+ its auth) and, when configured, the Discord bot.
   deps.log(`restarting gateway to load the provider${discordEnabled ? ' + Discord bot' : ''}…`)
-  await deps.runner.run(composeRestartArgs(paths.composeFile, plan.services, plan.composeProfile))
+  await deps.runner.run(composeRestartArgs(paths.composeFile, docker.services, docker.composeProfile))
   await waitForGatewayHealthy(deps, paths)
 
   // Bakin's MCP tool access is provisioned by Bakin itself, not the rig: at
