@@ -1,0 +1,370 @@
+'use client'
+
+/**
+ * Composer — THE conversation input. Auto-grows with content, drag-resizable
+ * (the handle raises the minimum height; typing can still grow to the cap),
+ * Enter/Shift+Enter/Esc with an IME guard, shell-style ↑/↓ input history,
+ * per-thread draft persistence, attachment affordance (capability-gated by
+ * the caller), stop button while streaming — and typing is NEVER blocked
+ * while a turn streams; only send waits.
+ */
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { Loader2, Paperclip, Send, Square, X } from 'lucide-react'
+
+import { useVerticalResize } from '@/hooks/use-vertical-resize'
+
+const HISTORY_LIMIT = 50
+const DEFAULT_MIN_HEIGHT = 60
+const DEFAULT_MAX_HEIGHT = 480
+
+function draftKey(storageKey: string) {
+  return `bakin-composer-draft:${storageKey}`
+}
+function historyKey(storageKey: string) {
+  return `bakin-composer-history:${storageKey}`
+}
+
+function readDraft(storageKey: string): string {
+  try {
+    return localStorage.getItem(draftKey(storageKey)) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+function writeDraft(storageKey: string, value: string): void {
+  try {
+    if (value) localStorage.setItem(draftKey(storageKey), value)
+    else localStorage.removeItem(draftKey(storageKey))
+  } catch {
+    // Storage failures never break typing.
+  }
+}
+
+function readHistory(storageKey: string): string[] {
+  try {
+    const raw = localStorage.getItem(historyKey(storageKey))
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function appendHistory(storageKey: string, entry: string): void {
+  try {
+    const history = readHistory(storageKey)
+    if (history[history.length - 1] !== entry) history.push(entry)
+    localStorage.setItem(historyKey(storageKey), JSON.stringify(history.slice(-HISTORY_LIMIT)))
+  } catch {
+    // Storage failures never break sending.
+  }
+}
+
+export interface ComposerAttachmentItem {
+  id: string
+  name: string
+  previewUrl?: string
+}
+
+export interface ComposerAttachments {
+  /** Whether this agent/model accepts image input (capability-gated by the caller). */
+  enabled: boolean
+  /** Honest explanation shown on the disabled affordance. */
+  disabledReason?: string
+  items: ComposerAttachmentItem[]
+  onAdd: (files: File[]) => void
+  onRemove: (id: string) => void
+}
+
+export interface ComposerProps {
+  /** Thread identity: keys drafts, history, and the resize persistence. */
+  storageKey: string
+  onSend: (content: string) => void | Promise<void>
+  /** A turn is streaming: send is held (typing stays live), stop shows. */
+  busy?: boolean
+  onAbort?: () => void
+  /** Hard-disabled surface (read-only/archived). */
+  disabled?: boolean
+  placeholder?: string
+  maxLength?: number
+  attachments?: ComposerAttachments
+  /** Rendered left of the textarea (e.g. an agent switcher). */
+  leadingSlot?: React.ReactNode
+  autoFocus?: boolean
+  minHeight?: number
+  maxHeight?: number
+}
+
+export function Composer({
+  storageKey,
+  onSend,
+  busy = false,
+  onAbort,
+  disabled = false,
+  placeholder = 'Send a message…',
+  maxLength,
+  attachments,
+  leadingSlot,
+  autoFocus = true,
+  minHeight = DEFAULT_MIN_HEIGHT,
+  maxHeight = DEFAULT_MAX_HEIGHT,
+}: ComposerProps) {
+  const [value, setValue] = useState(() => readDraft(storageKey))
+  const taRef = useRef<HTMLTextAreaElement | null>(null)
+  const composingRef = useRef(false)
+  const fileRef = useRef<HTMLInputElement | null>(null)
+  // History cursor: null = not browsing; otherwise index into history.
+  const historyPosRef = useRef<number | null>(null)
+  const pendingDraftRef = useRef('')
+
+  const { height: dragMin, handleProps } = useVerticalResize({
+    defaultHeight: minHeight,
+    minHeight,
+    maxHeight,
+    storageKey: `composer:${storageKey}`,
+  })
+
+  // Thread switch: load that thread's draft, reset history browsing, focus.
+  useEffect(() => {
+    setValue(readDraft(storageKey))
+    historyPosRef.current = null
+    if (autoFocus) taRef.current?.focus()
+  }, [storageKey, autoFocus])
+
+  // Auto-grow between the dragged minimum and the cap.
+  useLayoutEffect(() => {
+    const el = taRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    const desired = Math.max(el.scrollHeight, dragMin)
+    const capped = Math.min(desired, maxHeight)
+    el.style.height = `${capped}px`
+    el.style.overflowY = desired > maxHeight ? 'auto' : 'hidden'
+  }, [value, dragMin, maxHeight])
+
+  const setDraft = useCallback(
+    (next: string) => {
+      setValue(next)
+      writeDraft(storageKey, next)
+    },
+    [storageKey],
+  )
+
+  const hasText = value.trim().length > 0
+  const hasAttachments = (attachments?.items.length ?? 0) > 0
+  const canSend = !disabled && !busy && (hasText || hasAttachments)
+
+  const send = useCallback(() => {
+    if (!canSend) return
+    const content = value.trim()
+    if (content) appendHistory(storageKey, content)
+    historyPosRef.current = null
+    setDraft('')
+    onSend(content)
+  }, [canSend, value, storageKey, setDraft, onSend])
+
+  const stepHistory = useCallback(
+    (direction: -1 | 1) => {
+      const history = readHistory(storageKey)
+      if (!history.length) return false
+      let pos = historyPosRef.current
+      if (pos === null) {
+        if (direction === 1) return false
+        pendingDraftRef.current = value
+        pos = history.length - 1
+      } else {
+        pos += direction
+      }
+      if (pos >= history.length) {
+        historyPosRef.current = null
+        setDraft(pendingDraftRef.current)
+        return true
+      }
+      if (pos < 0) return true
+      historyPosRef.current = pos
+      setDraft(history[pos])
+      return true
+    },
+    [storageKey, value, setDraft],
+  )
+
+  const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (disabled) return
+    if (e.key === 'Escape' && busy && onAbort) {
+      e.preventDefault()
+      onAbort()
+      return
+    }
+    const el = e.currentTarget
+    const caretAtStart = el.selectionStart === 0 && el.selectionEnd === 0
+    if (e.key === 'ArrowUp' && (value === '' || caretAtStart || historyPosRef.current !== null)) {
+      if (stepHistory(-1)) e.preventDefault()
+      return
+    }
+    if (e.key === 'ArrowDown' && historyPosRef.current !== null) {
+      if (stepHistory(1)) e.preventDefault()
+      return
+    }
+    if (e.key === 'Enter' && !e.shiftKey && !composingRef.current) {
+      e.preventDefault()
+      send()
+    }
+  }
+
+  const onPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (!attachments?.enabled) return
+    const files = Array.from(e.clipboardData?.files ?? []).filter((f) => f.type.startsWith('image/'))
+    if (!files.length) return
+    e.preventDefault()
+    attachments.onAdd(files)
+  }
+
+  const onDrop = (e: React.DragEvent) => {
+    if (!attachments?.enabled) return
+    const files = Array.from(e.dataTransfer?.files ?? []).filter((f) => f.type.startsWith('image/'))
+    if (!files.length) return
+    e.preventDefault()
+    attachments.onAdd(files)
+  }
+
+  const showCounter = maxLength !== undefined && value.length >= maxLength * 0.8
+
+  return (
+    <div
+      className="shrink-0 border-t border-border bg-background"
+      onDrop={onDrop}
+      onDragOver={(e) => {
+        if (attachments?.enabled) e.preventDefault()
+      }}
+    >
+      <div
+        {...handleProps}
+        aria-label="Resize message input"
+        className="group/handle flex h-2 w-full cursor-row-resize items-center justify-center"
+      >
+        <div className="h-0.5 w-10 rounded-full bg-border opacity-0 transition-opacity group-hover/handle:opacity-100" />
+      </div>
+
+      <div className="px-4 pb-3">
+        {attachments?.items.length ? (
+          <div className="flex flex-wrap gap-2 pb-2">
+            {attachments.items.map((item) => (
+              <div key={item.id} className="group/att relative">
+                {item.previewUrl ? (
+                  <img src={item.previewUrl} alt={item.name} className="h-16 w-16 rounded-md border border-border object-cover" />
+                ) : (
+                  <div className="flex h-16 w-16 items-center justify-center rounded-md border border-border bg-muted/40 p-1 text-center text-[10px] text-muted-foreground">
+                    {item.name}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  data-composer-attach-remove
+                  aria-label={`Remove ${item.name}`}
+                  onClick={() => attachments.onRemove(item.id)}
+                  className="absolute -right-1.5 -top-1.5 rounded-full border border-border bg-background p-0.5 text-muted-foreground shadow-sm hover:text-foreground"
+                >
+                  <X className="size-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        <div className="flex items-end gap-2">
+          {leadingSlot}
+          {attachments ? (
+            <>
+              <button
+                type="button"
+                data-composer-attach
+                disabled={!attachments.enabled || disabled}
+                title={attachments.enabled ? 'Attach an image' : attachments.disabledReason ?? 'Attachments unavailable'}
+                aria-label="Attach an image"
+                onClick={() => fileRef.current?.click()}
+                className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Paperclip className="size-4" />
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  const files = Array.from(e.target.files ?? [])
+                  if (files.length) attachments.onAdd(files)
+                  e.target.value = ''
+                }}
+              />
+            </>
+          ) : null}
+
+          <div className="relative min-w-0 flex-1">
+            <textarea
+              ref={taRef}
+              value={value}
+              onChange={(e) => {
+                historyPosRef.current = null
+                setDraft(e.target.value)
+              }}
+              onKeyDown={onKeyDown}
+              onPaste={onPaste}
+              onCompositionStart={() => {
+                composingRef.current = true
+              }}
+              onCompositionEnd={() => {
+                composingRef.current = false
+              }}
+              placeholder={placeholder}
+              aria-label={placeholder}
+              disabled={disabled}
+              maxLength={maxLength}
+              className="block w-full resize-none rounded-lg border border-border bg-muted/30 px-3 py-2 pr-11 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none disabled:opacity-60"
+            />
+            {busy ? (
+              <button
+                type="button"
+                data-composer-stop
+                onClick={onAbort}
+                aria-label="Stop the reply"
+                title="Stop the reply (Esc)"
+                className="absolute bottom-2 right-2 flex size-7 items-center justify-center rounded-md bg-destructive/90 text-destructive-foreground shadow-sm transition-colors hover:bg-destructive"
+              >
+                <Square className="size-3 fill-current" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                data-composer-send
+                onClick={send}
+                disabled={!canSend}
+                aria-label="Send"
+                title="Send (Enter)"
+                className="absolute bottom-2 right-2 flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {disabled ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between pt-1">
+          <div className="text-[11px] text-muted-foreground/70">
+            {busy ? 'Replying — you can keep typing; send waits for the reply to finish.' : ''}
+          </div>
+          {showCounter ? (
+            <div
+              data-composer-count
+              className={`font-mono text-[11px] ${value.length >= (maxLength ?? 0) ? 'text-destructive' : 'text-muted-foreground/70'}`}
+            >
+              {value.length} / {maxLength}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  )
+}

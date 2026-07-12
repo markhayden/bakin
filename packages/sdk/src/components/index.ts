@@ -120,6 +120,8 @@ export { ActivityGroup, ToolCallRow, formatDuration, humanizeActivity } from '@/
 export type { ActivityGroupProps } from '@/components/conversation/activity-group'
 export { ToolCallDrawer } from '@/components/conversation/tool-call-drawer'
 export type { ToolCallDrawerProps } from '@/components/conversation/tool-call-drawer'
+export { Composer } from '@/components/conversation/composer'
+export type { ComposerProps, ComposerAttachments, ComposerAttachmentItem } from '@/components/conversation/composer'
 export { ConversationEmptyState } from '@/components/conversation/conversation-empty-state'
 export type { ConversationEmptyStateProps } from '@/components/conversation/conversation-empty-state'
 export { formatRelativeTime, formatAbsoluteTime } from '@/components/conversation/relative-time'
