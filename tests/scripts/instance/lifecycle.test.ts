@@ -341,7 +341,6 @@ describe('reset', () => {
       '/tmp/fake-repo/dev/openclaw-home',
       '/tmp/fake-repo/dev/pi-home',
       '/tmp/fake-repo/dev/bakin-instances/isolated/home',
-      '/tmp/fake-repo/dev/bakin-instances/isolated/antfly',
     ])
     for (const w of wiped) expect(w.startsWith('/tmp/fake-repo/dev/')).toBe(true)
   })

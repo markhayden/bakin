@@ -69,7 +69,7 @@ describe('resolvePlan — isolated × openclaw', () => {
     expect(p.hostEnv.BAKIN_SEARCH_SERVICE_MODE).toBe('child')
     expect(p.antflyChild).toEqual({
       port: RIG_ANTFLY_PORT,
-      dataDir: '/tmp/fake-repo/dev/bakin-instances/isolated/antfly',
+      dataDir: '/tmp/fake-repo/dev/bakin-instances/isolated/home/antfly',
     })
   })
 })
@@ -125,7 +125,7 @@ describe('resolvePlan — isolated × pi', () => {
     expect(p.settingsPatch).toEqual({ runtimeAdapter: 'pi', searchUrl: rigAntflySearchUrl() })
     expect(p.antflyChild).toEqual({
       port: RIG_ANTFLY_PORT,
-      dataDir: '/tmp/fake-repo/dev/bakin-instances/isolated/antfly',
+      dataDir: '/tmp/fake-repo/dev/bakin-instances/isolated/home/antfly',
     })
   })
 })
@@ -152,7 +152,6 @@ describe('resolvePlan — fresh', () => {
       '/tmp/fake-repo/dev/openclaw-home',
       '/tmp/fake-repo/dev/pi-home',
       '/tmp/fake-repo/dev/bakin-instances/isolated/home',
-      '/tmp/fake-repo/dev/bakin-instances/isolated/antfly',
     ])
   })
 })

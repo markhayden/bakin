@@ -94,8 +94,12 @@ that structurally impossible:
    mode (`isLocalDefaultUrl`), which never provisions, spawns, or touches disk.
    Re-applied by `instance dev` after onboarding (onboard can rewrite settings.json).
 2. **Rig-managed antfly child**: `instance dev --mode isolated` spawns the engine
-   itself on 3838 (health 3839 — the real instance owns 3738/3739), data under
-   `dev/bakin-instances/isolated/antfly`, machine-wide binary + models read-only
+   itself on 3838 (health 3839 — the real instance owns 3738/3739), data at the
+   adapter-conventional `dev/bakin-instances/isolated/home/antfly` — INSIDE the
+   throwaway home, so the home's blue/green table state and its engine data live
+   and die together (boot makes zero engine calls when state matches; an
+   out-of-home data dir left a reattaching home querying missing tables — found
+   live in the T10 E2E). Machine-wide binary + models read-only
    (`ANTFLY_PATH`/`ANTFLY_HOME` overrides honored). Killed in `finally` with the
    server. Argv pins the adapter's `buildServiceArgv` shape minus `--preload-model`
    (dev accepts a first-embed cold load). Working search, zero OS-service paths.

@@ -10,7 +10,7 @@ import {
 import { RIG_ANTFLY_PORT } from '../../../scripts/instance/modes'
 
 const HOME = '/Users/fake'
-const DATA = '/tmp/fake-repo/dev/bakin-instances/isolated/antfly'
+const DATA = '/tmp/fake-repo/dev/bakin-instances/isolated/home/antfly'
 
 describe('binary + models resolution', () => {
   it('defaults to the machine-wide install under ~/.antfly', () => {

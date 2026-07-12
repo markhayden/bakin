@@ -36,7 +36,6 @@ describe('instancePaths', () => {
       '/tmp/fake-repo/dev/openclaw-home',
       '/tmp/fake-repo/dev/pi-home',
       '/tmp/fake-repo/dev/bakin-instances/isolated/home',
-      '/tmp/fake-repo/dev/bakin-instances/isolated/antfly',
     ])
     expect(instancePaths(ROOT, 'sandbox').resetTargets).toEqual([
       '/tmp/fake-repo/dev/openclaw-home',
@@ -52,9 +51,9 @@ describe('instancePaths', () => {
     expect(instancePaths(ROOT, 'sandbox').piHome).toBe('/tmp/fake-repo/dev/pi-home-sandbox')
   })
 
-  it('parks the rig antfly child data beside the isolated home', () => {
+  it('parks the rig antfly child data INSIDE the isolated home (adapter-conventional {home}/antfly)', () => {
     expect(instancePaths(ROOT, 'isolated').antflyDataDir).toBe(
-      '/tmp/fake-repo/dev/bakin-instances/isolated/antfly',
+      '/tmp/fake-repo/dev/bakin-instances/isolated/home/antfly',
     )
   })
 

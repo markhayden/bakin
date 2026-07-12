@@ -19,7 +19,13 @@ export interface InstancePaths {
    * paths (/home/node/.pi/…) a host-mode boot must never read.
    */
   piHome: string
-  /** Rig-managed antfly child data (isolated mode), sibling of the throwaway home. */
+  /**
+   * Rig-managed antfly child data (isolated mode) — INSIDE the throwaway home
+   * at the adapter-conventional `{BAKIN_HOME}/antfly`, so a home's blue/green
+   * table state and its engine data live and die together (boot makes zero
+   * engine calls when state matches; a home reattaching to an empty engine
+   * would query missing tables forever — found live in the T10 E2E).
+   */
   antflyDataDir: string
   /** Host BAKIN_HOME for this mode, or null when Bakin uses its real home / runs in-container. */
   bakinHome: string | null
@@ -37,13 +43,14 @@ export function instancePaths(repoRoot: string, mode: Mode): InstancePaths {
   const openclawHome = join(dev, 'openclaw-home')
   const piHome = mode === 'sandbox' ? join(dev, 'pi-home-sandbox') : join(dev, 'pi-home')
   const isolatedBakinHome = join(dev, 'bakin-instances', 'isolated', 'home')
-  const antflyDataDir = join(dev, 'bakin-instances', 'isolated', 'antfly')
+  const antflyDataDir = join(isolatedBakinHome, 'antfly')
 
   // native → real ~/.bakin; sandbox → Bakin lives in the container; isolated → throwaway host home.
   const bakinHome = mode === 'isolated' ? isolatedBakinHome : null
 
   const resetTargets = [openclawHome, piHome]
-  if (mode === 'isolated') resetTargets.push(isolatedBakinHome, antflyDataDir)
+  // antflyDataDir lives inside the home — the home wipe covers it.
+  if (mode === 'isolated') resetTargets.push(isolatedBakinHome)
 
   return {
     repoRoot,

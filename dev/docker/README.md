@@ -57,7 +57,7 @@ bun run instance dev --mode isolated --runtime pi
 ```
 
 Isolated instances get their **own search engine** on `127.0.0.1:3838` (spawned
-with `dev`, data under `dev/bakin-instances/isolated/antfly`) — the machine's
+with `dev`, data inside the throwaway home at `dev/bakin-instances/isolated/home/antfly`) — the machine's
 real antfly service on 3738 is never touched, never re-provisioned. Requires the
 engine binary (`bakin install search` once, machine-wide).
 
