@@ -80,6 +80,7 @@ export function useChats(agentFilter: string[]) {
   // A finished turn bumps updatedAt/title/unreadCount — keep the list fresh.
   usePluginEvent('chat.done', () => { void refresh() })
   usePluginEvent('chat.error', () => { void refresh() })
+  usePluginEvent('chat.titled', () => { void refresh() })
 
   const filtered = agentFilter.length ? chats.filter((c) => agentFilter.includes(c.agentId)) : chats
   return { chats: filtered, allChats: chats, loading, refresh }

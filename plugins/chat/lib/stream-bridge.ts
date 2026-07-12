@@ -24,6 +24,7 @@ import { createLogger } from '../../../src/core/logger'
 /** The bridge needs only messaging + the event bus — accept any context that has them. */
 type ChatTurnContext = Pick<PluginContext, 'runtime' | 'events'>
 import type { ChatAttachment, ChatTranscriptRow } from '../types'
+import { maybeAutoTitle } from './auto-title'
 import { appendTranscriptRow, getChatSummary } from './store'
 
 const log = createLogger('chat-stream')
@@ -162,6 +163,9 @@ async function runTurn(
       ...(assistantText ? { preview: firstLine(assistantText) } : {}),
       ...(aborted ? { aborted: true } : {}),
     })
+    // First-exchange auto-titling (budget-gated, ephemeral). Awaited so the
+    // turn promise settles deterministically; the UI already got its done.
+    if (!aborted) await maybeAutoTitle(ctx, chatId)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     // The typed kind the adapter attached to its error chunk survives to
