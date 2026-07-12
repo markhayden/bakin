@@ -17,7 +17,7 @@ import { mock } from 'bun:test'
 import { mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
-export type HookTask = { id: string; title: string; column: string; description?: string }
+export type HookTask = { id: string; title: string; column: string; description?: string; agent?: string }
 export const hookTasks = new Map<string, HookTask>()
 export const createTaskHook = mock(async (data: Record<string, unknown>) => {
   const id = data.id as string
@@ -26,6 +26,7 @@ export const createTaskHook = mock(async (data: Record<string, unknown>) => {
     title: data.title as string,
     column: data.column as string,
     description: data.description as string | undefined,
+    agent: data.agent as string | undefined,
   })
   return { id }
 })
@@ -72,12 +73,12 @@ export const taskStoreMock = {
   createTask: (
     title: string,
     column?: string,
-    _assignee?: string,
+    assignee?: string,
     description?: string,
     _workflowId?: string,
     _createdBy?: string,
     id?: string,
-  ) => createTaskHook({ id, title, column, description }),
+  ) => createTaskHook({ id, title, column, description, agent: assignee }),
   getTask: (id: string) => hookTasks.get(id) ?? null,
   getTaskWithColumn: (id: string) => {
     const task = hookTasks.get(id)
@@ -287,6 +288,28 @@ steps:
     description: Work one item
 `
 
+// Map parent whose children use a $preferred(...) agent selector — proves the
+// fan-out board tasks store a RESOLVED agent, not the raw selector string.
+export const mapPreferredWorkflow = `
+name: Map Preferred Flow
+description: Fan-out into preferred-selector children
+version: 1
+steps:
+  - id: source-step
+    type: agent
+    label: Segment
+    agent: chef
+  - id: produce-items
+    type: map_workflow
+    label: Produce Items
+    source: source-step.items
+    workflow_id: preferred
+  - id: after-map
+    type: agent
+    label: After Map
+    agent: main
+`
+
 // Map child WITH a gate — proves child gate approvals flow to the join
 export const mapGatedChildWorkflow = `
 name: Map Gated Child
@@ -411,5 +434,6 @@ export function seedWorkflowFixtures(testDir: string): void {
   writeFileSync(join(defsDir, 'map-wrapper.yaml'), mapWrapperWorkflow)
   writeFileSync(join(defsDir, 'map-gated-child.yaml'), mapGatedChildWorkflow)
   writeFileSync(join(defsDir, 'map-gated.yaml'), mapGatedWorkflow)
+  writeFileSync(join(defsDir, 'map-preferred.yaml'), mapPreferredWorkflow)
   writeFileSync(join(skillsDir, 'test-skill.md'), testSkillMarkdown)
 }

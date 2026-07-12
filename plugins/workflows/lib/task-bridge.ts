@@ -17,6 +17,7 @@ import {
 } from '../../../src/core/task-store'
 import { syncLedgerForStoreMove } from '../../../src/core/task-service'
 import { listInstances } from './instance-store'
+import { resolveAgent } from './step-context'
 
 const log = createLogger('workflow-runtime')
 
@@ -137,7 +138,7 @@ export function createBoardTaskForChild(
   parentTaskId: string,
   nestedStep: NestedWorkflowStep | MapWorkflowStep,
   childDef: WorkflowDefinition | null,
-  assignee?: string,
+  childInstance: WorkflowInstance,
   /** Map fan-out children: fraction titles + board-task revive on id reuse. */
   mapMeta?: { index: number; total: number },
 ) {
@@ -160,10 +161,15 @@ export function createBoardTaskForChild(
       title = parentTask?.title ? `${parentTask.title} — ${fraction}` : `${fraction} (sub-workflow)`
     }
     const description = nestedStep.description || childDef?.description || undefined
-    // Find the first agent step in the child workflow for the assignee
+    // Seed the assignee from the child workflow's first agent step, resolved
+    // through the same selector engine dispatch uses (resolveAgent handles
+    // $assigned and $preferred(...) against the instance's agent snapshot).
+    // Storing a raw selector string here left fan-out tasks with an
+    // unrenderable "$preferred(pixel,$assigned)" agent on the board.
     const childAgent = childDef?.steps.find(s => s.type === 'agent')
-    const agent = childAgent ? (childAgent as AgentStep).agent : assignee
-    const resolvedAgent = agent === '$assigned' ? assignee : agent
+    const agent = childAgent ? (childAgent as AgentStep).agent : childInstance.resolvedAgent
+    const resolved = agent ? resolveAgent(agent, childInstance) : undefined
+    const resolvedAgent = resolved && !resolved.startsWith('$') ? resolved : childInstance.resolvedAgent
 
     await createTask(
       title,
