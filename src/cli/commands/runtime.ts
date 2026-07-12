@@ -178,6 +178,14 @@ export async function run(args: string[]): Promise<void> {
   if (args[0] === 'runtime') {
     if (args[1] === 'use') {
       const rest = args.slice(2)
+      // Fail CLOSED on unknown flags: `--dryrun` silently ignored would run
+      // a REAL switch where the user intended a preview.
+      const KNOWN_FLAGS = ['--dry-run', '--no-copy-workspaces']
+      const unknown = rest.filter((arg) => arg.startsWith('--') && !KNOWN_FLAGS.includes(arg))
+      if (unknown.length > 0) {
+        console.error(`Unknown flag(s): ${unknown.join(', ')}. Supported: ${KNOWN_FLAGS.join(', ')}`)
+        process.exit(1)
+      }
       const target = rest.find((arg) => !arg.startsWith('--'))
       await cmdRuntimeUse(target, {
         dryRun: rest.includes('--dry-run'),

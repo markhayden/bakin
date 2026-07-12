@@ -74,6 +74,13 @@ export function jsonResponse(res: ServerResponse, status: number, data: unknown)
 /**
  * Handle a JSON POST request with validation and error handling.
  */
+/**
+ * Thrown by handleJsonPost handlers to reject a request as malformed —
+ * mapped to 400 instead of the generic 500. Boundary validation (zod
+ * safeParse failures) is the intended use.
+ */
+export class BadRequestError extends Error {}
+
 export async function handleJsonPost(
   req: IncomingMessage,
   res: ServerResponse,
@@ -101,6 +108,10 @@ export async function handleJsonPost(
     const result = await handler(body)
     jsonResponse(res, 200, result ?? { ok: true })
   } catch (err) {
+    if (err instanceof BadRequestError) {
+      jsonResponse(res, 400, { error: err.message })
+      return
+    }
     log.error('Request handler error', err)
     jsonResponse(res, 500, { error: err instanceof Error ? err.message : String(err) })
   }

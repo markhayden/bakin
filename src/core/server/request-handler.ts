@@ -14,7 +14,7 @@ import { createLogger } from '../logger'
 import { getSettings } from '../settings'
 import { getBakinPaths, isUsingBakinHome } from '../content-dir'
 import { handleSSE, broadcast } from '../sse'
-import { handleJsonPost, jsonResponse } from '../middleware'
+import { BadRequestError, handleJsonPost, jsonResponse } from '../middleware'
 import { writeCrossPluginSearchResponse } from '../api-search-handler'
 import * as dispatch from '../dispatch'
 import { checkAndContinueDependents } from '../continuation'
@@ -240,13 +240,19 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
     // completed switch requires a server restart to rebind plugin contexts —
     // the result says so, callers surface it.
     if (url.pathname === '/api/runtime/switch' && req.method === 'POST') {
+      const { switchRuntime, RuntimeSwitchRequestSchema } = require('../runtime-switch') as typeof import('../runtime-switch')
       handleJsonPost(req, res, async (body) => {
-        const payload = body as { target?: unknown; dryRun?: unknown; copyWorkspaces?: unknown }
-        const target = typeof payload.target === 'string' ? payload.target : ''
-        const { switchRuntime } = require('../runtime-switch') as typeof import('../runtime-switch')
+        const parsed = RuntimeSwitchRequestSchema.safeParse(body)
+        if (!parsed.success) {
+          // Boundary honesty: a malformed preview request must never fail
+          // open into a real switch (dryRun: "true" is NOT dryRun: true).
+          const detail = parsed.error.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`).join('; ')
+          throw new BadRequestError(`Invalid runtime switch request — ${detail}`)
+        }
+        const { target, dryRun, copyWorkspaces } = parsed.data
         const result = await switchRuntime(target, {
-          ...(payload.dryRun === true ? { dryRun: true } : {}),
-          ...(payload.copyWorkspaces === false ? { copyWorkspaces: false } : {}),
+          ...(dryRun !== undefined ? { dryRun } : {}),
+          ...(copyWorkspaces !== undefined ? { copyWorkspaces } : {}),
           onProgress: (event) => broadcast({ type: 'runtime:switch', ...event }),
         })
         broadcast({ type: 'runtime:switch:result', ok: result.ok, to: result.to, restartRequired: result.restartRequired })

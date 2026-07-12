@@ -19,6 +19,8 @@
 import { copyFileSync, existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
 
+import { z } from 'zod'
+
 import type {
   AgentRuntimeAdapter,
   CapabilitySet,
@@ -41,6 +43,20 @@ import { snapshotSourceCapabilities, buildCantCarryReport, type CantCarryLine, t
 const log = createLogger('runtime-switch')
 
 export const RUNTIME_ADAPTER_NAMES: readonly RuntimeAdapterName[] = getSupportedRuntimeAdapterNames()
+
+/**
+ * REST boundary schema for POST /api/runtime/switch. STRICT + boolean-only:
+ * a type-confused body (`dryRun: "true"`, a typo'd key) must 400 — the
+ * preview flag failing open into a REAL switch is the one mistake this
+ * endpoint cannot make.
+ */
+export const RuntimeSwitchRequestSchema = z
+  .object({
+    target: z.string().min(1),
+    dryRun: z.boolean().optional(),
+    copyWorkspaces: z.boolean().optional(),
+  })
+  .strict()
 
 export type SwitchPhase =
   | 'validate'

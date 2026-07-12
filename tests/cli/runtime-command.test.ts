@@ -235,6 +235,21 @@ describe('bakin runtime use', () => {
     expect(err).toContain('Previous runtime (openclaw) was restored')
   })
 
+  it('rejects unknown flags with exit 1 BEFORE posting — a typo like --dryrun must not run a real switch', async () => {
+    const restore = captureConsole()
+    const exitSpy = spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`exit:${code}`)
+    }) as never)
+    try {
+      await expect(run(['runtime', 'use', 'pi', '--dryrun'])).rejects.toThrow('exit:1')
+      expect(postCalls).toEqual([])
+      expect(errLines.join('\n')).toContain('--dryrun')
+    } finally {
+      exitSpy.mockRestore()
+      restore()
+    }
+  })
+
   it('exits 1 on a missing adapter argument', async () => {
     const restore = captureConsole()
     const exitSpy = spyOn(process, 'exit').mockImplementation(((code?: number) => {
