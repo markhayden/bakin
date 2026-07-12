@@ -839,14 +839,16 @@ bakin workflows submit <taskId> <stepId> <json>
 bakin serve
 ```
 </CliCommandCard>
-<CliCommandCard id="runtime" name="runtime" summary="Show the runtime capability report or switch runtime adapters." description="Without arguments, prints the active runtime adapter and its capability report (native/shimmed/unavailable per capability, tool-access status). `bakin runtime use &lt;adapter&gt;` runs the orchestrated switch: settings backup, tool-access deprovision/provision, best-effort roster carry-over with an honest unmapped-model report, drift-gated agent re-projection, and capability validation. A completed switch requires `bakin restart` so plugins rebind.">
+<CliCommandCard id="runtime" name="runtime" summary="Show the runtime capability report or switch runtime adapters." description="Without arguments, prints the active runtime adapter and its capability report (native/shimmed/unavailable per capability, tool-access status). `bakin runtime use &lt;adapter&gt;` runs the orchestrated switch: settings backup, tool-access deprovision/provision, roster carry-over with model + subagent-model mapping and an honest unmapped report, workspace content carry for switch-created agents (soul/memory verbatim, agent-authored skills to the target's skill location; `--no-copy-workspaces` opts out), honest stays-behind lines (channels, runtime crons, session context, provider config) plus the target's credential status, and drift-gated agent re-projection. `--dry-run` previews the entire report with zero writes. A completed switch requires `bakin restart` so plugins rebind.">
 ```sh frame="terminal"
-bakin runtime [use <openclaw|pi>]
+bakin runtime [use <openclaw|pi>] [--dry-run] [--no-copy-workspaces]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
       <tr><td><code>[value]</code><span class="cli-command__choices"><span>use &lt;openclaw</span><span>pi&gt;</span></span></td><td>choice</td><td>no</td><td>Choose one of these values.</td></tr>
+      <tr><td><code>[--dry-run]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
+      <tr><td><code>[--no-copy-workspaces]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
@@ -1001,5 +1003,5 @@ bakin brands remove <id> [--yes]
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 9, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 11, 2026 · Bakin 0.0.0-dev</span>
 </aside>

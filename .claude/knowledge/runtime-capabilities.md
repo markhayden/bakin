@@ -105,29 +105,65 @@ the dispatch builders; onboarding integrity requires a DECLARED orchestrator
 
 `switchRuntime(target)` (`src/core/runtime-switch.ts`) is the first-class
 lifecycle: validate → settings backup (`~/.bakin/.backups/`) → snapshot source
-roster → deprovision old → flip settings → fresh app services on the target →
-provision → `reconcileRoster` → drift-gated agent re-projection → capability +
-tool-access report. Any failure restores the backup and rebuilds services on
-the original adapter.
+roster + workspace content + optional-surface counts → deprovision old → flip
+settings → fresh app services on the target → provision → `reconcileRoster` →
+workspace content carry → drift-gated agent re-projection → capability +
+tool-access + can't-carry + credential report. Any failure before completion
+restores the backup and rebuilds services on the original adapter. ALWAYS
+switch via `bakin runtime use` (or the `/runtime` page) — hand-editing
+`settings.runtime.adapter` skips every carry/provision step and is
+unsupported.
 
+- **Dry run (#625)**: `bakin runtime use <adapter> --dry-run` /
+  `POST /api/runtime/switch { dryRun: true }` previews the ENTIRE report —
+  would-carry roster, model + subagent-model mapping, workspace content
+  counts, stays-behind lines, target credential status — with ZERO writes:
+  no backup, no flip, no provisioning, no target-home mutation, no audit
+  trace. The target is a read-only secondary adapter instance (the factory
+  is pure and `initialize()` is write-free by conformance pin — seeding and
+  config writes are provisioning concerns). Teeth:
+  `tests/integration/runtime-switch-dryrun.test.ts` (byte-identical
+  tree-hash assertions over real adapters).
 - **Carry-over matrix**: Bakin-owned state (tasks, assets, projects,
-  workflows, Bakin schedules, chat, audit) carries automatically — the switch
-  never touches `~/.bakin`. The roster is the one runtime-owned migration:
-  `reconcileRoster` (`src/core/roster-reconcile.ts`) creates missing agents on
-  the target, maps models onto the target catalog (exact id, else UNIQUE
-  bare-model match — `openai/gpt-5.5` ↔ `openai-codex/gpt-5.5`), and REPORTS
-  unmapped models (agent falls to the target routing default — never guessed).
-  Agents already on the target are untouched. Deep carry-over polish slots
-  into this seam (#625+).
+  workflows, Bakin schedules, budgets, usage history, chat transcripts,
+  avatars, audit) carries automatically — the switch never touches
+  `~/.bakin`, and agent ids are preserved so every reference keeps
+  resolving. Runtime-owned state:
+  - **Roster** — `reconcileRoster` (`src/core/roster-reconcile.ts`) creates
+    missing agents on the target, maps models AND subagent models onto the
+    target catalog (exact id, else UNIQUE bare-model match —
+    `openai/gpt-5.5` ↔ `openai-codex/gpt-5.5`), and REPORTS unmapped models
+    (agent falls to the target routing default — never guessed; subagent
+    models also honor `routingSupport().perAgentSubagentModel`). Agents
+    already on the target are untouched (round-trip preservation).
+  - **Workspace content** — the `carry-workspaces` phase
+    (`src/core/workspace-carry.ts`) copies canonical files (SOUL/IDENTITY/
+    AGENTS/TOOLS incl. everything outside managed blocks) and `memory/*.md`
+    verbatim for switch-created agents, and carries agent-authored skills
+    through the neutral `runtime.skills` surface so they land where the
+    TARGET reads skills (`skills/<name>/` on OpenClaw vs `.pi/skills/` on
+    Pi). Package-managed skills (`installedBy` marker) are left to
+    `agents sync` re-projection. Existing target agents are never written.
+    Failures degrade to the `workspaces` report on a completed flip — never
+    a rollback. Opt out: `--no-copy-workspaces`.
+  - **Stays behind, honestly** — `cantCarry` lines
+    (`src/core/switch-report.ts`): channels config and runtime-owned cron
+    jobs (derived from the optional surfaces, best-effort counts; count 0
+    emits nothing), runtime session context (chats keep their Bakin-owned
+    transcripts), and provider-private config/credentials. The report also
+    carries the TARGET's `credentialStatus()` — a carried roster with no
+    provider auth dispatches nothing, so the preview warns before the flip.
 - **Restart required**: plugins capture `ctx.runtime` at activation, so a
   completed switch returns `restartRequired: true`; everything durable happens
   before the restart.
-- Surfaces: `bakin runtime` (capability report) / `bakin runtime use <adapter>`
-  (CLI), `POST /api/runtime/switch` + `GET /api/runtime/capabilities` +
-  `GET /api/runtime/onboarding` (REST), and the `/runtime` host page
-  (capability matrix, confirm-to-switch, live progress via `runtime:switch`
-  SSE events, carry report, setup-status surfacing). e2e proof:
-  `tests/integration/runtime-switch{,-e2e}.test.ts` — the AGENTS.md
+- Surfaces: `bakin runtime` (capability report) /
+  `bakin runtime use <adapter> [--dry-run] [--no-copy-workspaces]` (CLI),
+  `POST /api/runtime/switch { target, dryRun?, copyWorkspaces? }` +
+  `GET /api/runtime/capabilities` + `GET /api/runtime/onboarding` (REST),
+  and the `/runtime` host page (capability matrix, confirm-to-switch, live
+  progress via `runtime:switch` SSE events, carry/workspace/stays-behind/
+  credential report, setup-status surfacing). e2e proof:
+  `tests/integration/runtime-switch{,-e2e,-dryrun}.test.ts` — the AGENTS.md
   tool-access section genuinely flips per runtime through the real projector,
   drift-gated (a repeat leg is a projection no-op).
 
