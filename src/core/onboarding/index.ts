@@ -299,6 +299,16 @@ async function runRuntimeInline(component: OnboardingComponent, onProgress?: (me
   try {
     onProgress?.('Checking runtime')
     check = await component.check()
+    if (check.status === 'broken' && check.details?.emptyRoster === true) {
+      // First-run state: the roster is empty because initialize() is
+      // write-free and nothing has provisioned yet. Onboarding IS a
+      // sanctioned provisioning call site — seed and re-check. Integrity
+      // breakage never carries the marker and is never auto-touched.
+      onProgress?.('Runtime roster is empty — provisioning (first-run seed)')
+      const { provisionRuntimeForOnboarding } = await import('./runtime')
+      await provisionRuntimeForOnboarding()
+      check = await component.check()
+    }
   } catch (err) {
     return {
       name: component.name,

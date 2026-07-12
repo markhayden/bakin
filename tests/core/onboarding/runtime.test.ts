@@ -17,11 +17,15 @@ let runtimeAvailable = true
 let runtimeAgents: Array<{ id: string; name: string; role?: string; status: string; metadata?: Record<string, unknown> }> = []
 let rosterError: Error | null = null
 
+let provisionCalls = 0
 const runtime = {
   name: 'test-runtime',
   version: 'test',
   requiredCoreVersion: '*',
   ping: async () => runtimeAvailable,
+  provisionToolAccess: async () => {
+    provisionCalls++
+  },
   agents: {
     list: async () => {
       if (rosterError) throw rosterError
@@ -110,12 +114,25 @@ describe('onboarding runtime component', () => {
       expect(result.message).toContain('cannot serve turns')
     })
 
-    it('reports broken when the runtime returns no agents', async () => {
+    it('reports broken with the emptyRoster marker when the runtime returns no agents', async () => {
       runtimeAgents = []
 
       const result = await runtimeComponent.check()
       expect(result.status).toBe('broken')
       expect(result.message).toContain('no agents')
+      // The orchestrator keys first-run seeding on this marker — a check
+      // stays read-only, onboarding provisions.
+      expect(result.details?.emptyRoster).toBe(true)
+    })
+
+    it('integrity-broken rosters carry NO emptyRoster marker (never auto-provisioned)', async () => {
+      runtimeAgents = [
+        { id: 'a', name: 'A', status: 'active' },
+        { id: 'a', name: 'A2', status: 'active' },
+      ]
+      const result = await runtimeComponent.check()
+      expect(result.status).toBe('broken')
+      expect(result.details?.emptyRoster).toBeUndefined()
     })
 
     it('reports broken when the roster cannot be read', async () => {
@@ -204,5 +221,16 @@ describe('onboarding runtime component', () => {
       expect(result.message).toContain(RUNTIME_SETUP_URL)
       expect(result.durationMs).toBe(0)
     })
+  })
+})
+
+describe('provisionRuntimeForOnboarding', () => {
+  it('provisions the active runtime (adapter-owned first-run seeding)', async () => {
+    const mod = await import('@/core/onboarding/runtime')
+    const before = (globalThis as Record<string, unknown>).__unused // noop
+    void before
+    const calls = provisionCalls
+    await mod.provisionRuntimeForOnboarding()
+    expect(provisionCalls).toBe(calls + 1)
   })
 })

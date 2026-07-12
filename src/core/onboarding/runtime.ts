@@ -157,12 +157,20 @@ async function check(): Promise<CheckResult> {
 
   const mainAgent = selectRuntimeMainAgent(agents)
   if (!mainAgent) {
+    // A completely empty roster is the FIRST-RUN state, not user breakage:
+    // initialize() is write-free by conformance pin, so a runtime that has
+    // never been provisioned has no agents yet. The check stays read-only
+    // (`bakin check runtime` never mutates); the onboarding orchestrator
+    // keys on `emptyRoster` to provision — the sanctioned seeding path —
+    // and re-check. Integrity-broken rosters below never get this marker.
     return {
       name: 'runtime',
       status: 'broken',
       message: 'Runtime adapter returned no agents',
-      remediation: 'Create at least one orchestrator agent, then rerun onboarding.',
-      details: { runtime: runtime.name, installUrl: SETUP_URL },
+      remediation: agents.length === 0
+        ? 'Run `bakin onboard` (or start the server) to provision the runtime and seed its main agent.'
+        : 'Create at least one orchestrator agent, then rerun onboarding.',
+      details: { runtime: runtime.name, installUrl: SETUP_URL, ...(agents.length === 0 ? { emptyRoster: true } : {}) },
     }
   }
 
@@ -195,6 +203,17 @@ async function install(): Promise<InstallResult> {
     message: SETUP_MESSAGE,
     durationMs: 0,
   }
+}
+
+/**
+ * Onboarding-only seeding hook: provisioning is adapter-owned and idempotent
+ * (Pi seeds its main orchestrator here; OpenClaw writes MCP entries), and
+ * onboarding is one of the sanctioned provisioning call sites (boot,
+ * install, roster change). Never called from `bakin check`.
+ */
+export async function provisionRuntimeForOnboarding(): Promise<void> {
+  const runtime = await getRuntimeForOnboarding()
+  await runtime.provisionToolAccess()
 }
 
 export const runtimeComponent: OnboardingComponent = {
