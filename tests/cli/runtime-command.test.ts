@@ -116,6 +116,101 @@ describe('bakin runtime use', () => {
     expect(out).toContain('Restart required')
   })
 
+  it('renders workspace carry, stays-behind lines, and a no-credentials warning', async () => {
+    postResponse = {
+      ok: true,
+      from: 'openclaw',
+      to: 'pi',
+      backupPath: null,
+      roster: {
+        carried: [{ agentId: 'pixel', model: 'openai-codex/x', subagentModel: 'openai-codex/x-mini' }],
+        existing: [],
+        unmappedModels: [{ agentId: 'pixel', sourceModel: 'openai/tiny', field: 'subagentModel' }],
+        failed: [],
+      },
+      workspaces: {
+        carried: [{ agentId: 'pixel', files: 3, bytes: 120 }],
+        skills: [{ agentId: 'pixel', carried: 1, skippedPackageManaged: 1 }],
+        skippedExisting: ['main'],
+        failed: [{ agentId: 'pixel', path: 'memory/x.md', error: 'denied' }],
+      },
+      cantCarry: [
+        { concern: 'cron', detail: 'runtime-owned cron jobs stay behind — the target runtime has no cron surface', count: 2 },
+        { concern: 'sessions', detail: 'runtime session context resets' },
+      ],
+      credentials: { llmProviders: [] },
+      sync: null,
+      capabilities: CAPABILITIES,
+      toolAccess: { style: 'in-process', ok: true, issues: [] },
+      restartRequired: true,
+    }
+    const restore = captureConsole()
+    try {
+      await run(['runtime', 'use', 'pi'])
+    } finally {
+      restore()
+    }
+    const out = logLines.join('\n')
+    expect(out).toContain('Workspace content: carried 3 file(s) + 1 skill(s) across 1 agent(s)')
+    expect(out).toContain('existing on target (workspaces untouched): main')
+    expect(out).toContain('✗ pixel memory/x.md: denied')
+    expect(out).toContain("subagent model 'openai/tiny' has no equivalent on pi")
+    expect(out).toContain('Stays behind:')
+    expect(out).toContain('✗ cron (2): runtime-owned cron jobs stay behind')
+    expect(out).toContain("'pi' has NO provider credentials")
+  })
+
+  it('--dry-run posts dryRun and renders the preview wording, no restart notice', async () => {
+    postResponse = {
+      ok: true,
+      dryRun: true,
+      from: 'openclaw',
+      to: 'pi',
+      backupPath: null,
+      roster: { carried: [{ agentId: 'pixel' }], existing: ['main'], unmappedModels: [], failed: [] },
+      workspaces: { carried: [{ agentId: 'pixel', files: 2, bytes: 64 }], skills: [], skippedExisting: [], failed: [] },
+      cantCarry: [],
+      credentials: { llmProviders: ['openai-codex'] },
+      sync: null,
+      capabilities: CAPABILITIES,
+      toolAccess: null,
+      restartRequired: false,
+    }
+    const restore = captureConsole()
+    try {
+      await run(['runtime', 'use', 'pi', '--dry-run'])
+    } finally {
+      restore()
+    }
+    expect(postCalls).toEqual([{ path: '/api/runtime/switch', body: { target: 'pi', dryRun: true } }])
+    const out = logLines.join('\n')
+    expect(out).toContain("Dry run — previewing a switch to 'pi'")
+    expect(out).toContain('Would switch openclaw → pi')
+    expect(out).toContain('Roster: would carry 1, existing 1, failed 0')
+    expect(out).toContain('Workspace content: would carry 2 file(s)')
+    expect(out).toContain('Target credentials: openai-codex')
+    expect(out).toContain('Dry run — nothing was changed')
+    expect(out).not.toContain('Restart required')
+  })
+
+  it('--no-copy-workspaces posts copyWorkspaces: false; flags may precede the target', async () => {
+    postResponse = {
+      ok: true, from: 'openclaw', to: 'pi', backupPath: null,
+      roster: { carried: [], existing: [], unmappedModels: [], failed: [] },
+      workspaces: null, cantCarry: null, credentials: null, sync: null,
+      capabilities: CAPABILITIES,
+      toolAccess: { style: 'in-process', ok: true, issues: [] },
+      restartRequired: true,
+    }
+    const restore = captureConsole()
+    try {
+      await run(['runtime', 'use', '--no-copy-workspaces', 'pi'])
+    } finally {
+      restore()
+    }
+    expect(postCalls).toEqual([{ path: '/api/runtime/switch', body: { target: 'pi', copyWorkspaces: false } }])
+  })
+
   it('exits 1 with the restore state on failure', async () => {
     postResponse = {
       ok: false,

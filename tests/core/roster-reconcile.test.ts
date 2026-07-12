@@ -149,6 +149,40 @@ describe('reconcileRoster — subagentModel carry', () => {
     ])
   })
 
+  it('dryRun classifies identically but never calls create or update', async () => {
+    const created: string[] = []
+    const updates: string[] = []
+    const target = targetWith({
+      existing: ['main'],
+      catalog: ['openai-codex/gpt-5.5', 'openai-codex/gpt-5.5-mini'],
+      createImpl: async (input) => {
+        created.push(input.id)
+        return { id: input.id, name: input.id }
+      },
+      updateImpl: async (agentId) => {
+        updates.push(agentId)
+        return { id: agentId, name: agentId }
+      },
+    })
+    const source: RuntimeAgent[] = [
+      { id: 'main', name: 'Main' },
+      { id: 'pixel', name: 'Pixel', model: 'openai/gpt-5.5', subagentModel: 'openai/gpt-5.5-mini' },
+      { id: 'rolo', name: 'Rolo', model: 'anthropic/claude-nope' },
+    ]
+    const report = await reconcileRoster(source, target, { dryRun: true })
+    expect(created).toEqual([])
+    expect(updates).toEqual([])
+    expect(report.existing).toEqual(['main'])
+    expect(report.carried).toEqual([
+      { agentId: 'pixel', model: 'openai-codex/gpt-5.5', mappedFrom: 'openai/gpt-5.5', subagentModel: 'openai-codex/gpt-5.5-mini' },
+      { agentId: 'rolo' },
+    ])
+    expect(report.unmappedModels).toEqual([
+      { agentId: 'rolo', sourceModel: 'anthropic/claude-nope', field: 'model' },
+    ])
+    expect(report.failed).toEqual([])
+  })
+
   it('a subagentModel update throw lands in failed[] while the agent stays carried', async () => {
     const target = targetWith({
       catalog: ['openai-codex/gpt-5.5', 'openai-codex/gpt-5.5-mini'],

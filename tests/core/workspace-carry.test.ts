@@ -19,7 +19,7 @@ mock.module('../../src/core/logger', () => ({
   createLogger: () => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }),
 }))
 
-import { snapshotAgentContent, carryAgentContent } from '../../src/core/workspace-carry'
+import { snapshotAgentContent, carryAgentContent, previewWorkspaceCarry } from '../../src/core/workspace-carry'
 import type { AgentRuntimeAdapter, RuntimeSkill, WorkspaceFile, WorkspaceFileStat } from '@bakin/core/adapters/runtime'
 
 function sourceWith(overrides: {
@@ -175,6 +175,19 @@ describe('carryAgentContent — degrade, never throw', () => {
       { agentId: 'pixel', path: 'SOUL.md', error: 'write denied: SOUL.md' },
       { agentId: 'pixel', path: 'skill:crafting', error: 'skill write denied: crafting' },
     ])
+  })
+
+  it('previewWorkspaceCarry reports the same counts as a real carry, with zero writes', async () => {
+    const snapshot = await snapshotOf({ 'SOUL.md': 'i am pixel', 'memory/a.md': 'notes' }, [
+      { name: 'crafting' },
+      { name: 'pack-skill', installedBy: { package: 'bits/pack' } },
+    ])
+    const preview = previewWorkspaceCarry(snapshot, ['pixel'], [])
+    const { target, writes, skillWrites } = targetRecorder()
+    const real = await carryAgentContent(snapshot, target, ['pixel'], [])
+    expect(preview).toEqual(real)
+    expect(writes.length).toBe(2)
+    expect(skillWrites.length).toBe(1)
   })
 
   it('snapshot-side read failures surface in failed[] for carried agents', async () => {

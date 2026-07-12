@@ -241,11 +241,12 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
     // the result says so, callers surface it.
     if (url.pathname === '/api/runtime/switch' && req.method === 'POST') {
       handleJsonPost(req, res, async (body) => {
-        const target = typeof (body as { target?: unknown }).target === 'string'
-          ? (body as { target: string }).target
-          : ''
+        const payload = body as { target?: unknown; dryRun?: unknown; copyWorkspaces?: unknown }
+        const target = typeof payload.target === 'string' ? payload.target : ''
         const { switchRuntime } = require('../runtime-switch') as typeof import('../runtime-switch')
         const result = await switchRuntime(target, {
+          ...(payload.dryRun === true ? { dryRun: true } : {}),
+          ...(payload.copyWorkspaces === false ? { copyWorkspaces: false } : {}),
           onProgress: (event) => broadcast({ type: 'runtime:switch', ...event }),
         })
         broadcast({ type: 'runtime:switch:result', ok: result.ok, to: result.to, restartRequired: result.restartRequired })

@@ -118,6 +118,45 @@ export async function snapshotAgentContent(
 }
 
 /**
+ * The dry-run half of `carryAgentContent`: identical classification and
+ * counts (would-carry files/bytes/skills, skipped-existing, snapshot-side
+ * errors) with ZERO writes. Kept next to the real carry so the preview can
+ * never drift from what a real switch would do.
+ */
+export function previewWorkspaceCarry(
+  snapshot: AgentContentSnapshot,
+  carriedIds: string[],
+  existingIds: string[],
+): WorkspaceCarryReport {
+  const report: WorkspaceCarryReport = { carried: [], skills: [], skippedExisting: [], failed: [] }
+
+  for (const agentId of existingIds) {
+    const content = snapshot.agents.get(agentId)
+    if (content && (content.files.length > 0 || content.skills.length > 0)) {
+      report.skippedExisting.push(agentId)
+    }
+  }
+
+  for (const agentId of carriedIds) {
+    const content = snapshot.agents.get(agentId)
+    if (!content) continue
+    report.carried.push({
+      agentId,
+      files: content.files.length,
+      bytes: content.files.reduce((sum, f) => sum + Buffer.byteLength(f.content, 'utf-8'), 0),
+    })
+    if (content.skills.length > 0 || content.skippedPackageManaged > 0) {
+      report.skills.push({ agentId, carried: content.skills.length, skippedPackageManaged: content.skippedPackageManaged })
+    }
+    for (const error of content.errors) {
+      report.failed.push({ agentId, path: '<snapshot>', error })
+    }
+  }
+
+  return report
+}
+
+/**
  * Write the snapshot onto the target for agents the roster carry CREATED
  * (`carriedIds`). `existingIds` agents are reported skipped when the source
  * had content for them — their target workspaces are already someone's

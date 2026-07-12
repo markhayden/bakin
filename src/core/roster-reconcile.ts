@@ -71,9 +71,15 @@ function carriedMetadata(agent: RuntimeAgent): Record<string, unknown> | undefin
   return entries.length > 0 ? Object.fromEntries(entries) : undefined
 }
 
+export interface ReconcileRosterOptions {
+  /** Classify (existing / would-carry / unmapped) without creating or updating anything. */
+  dryRun?: boolean
+}
+
 export async function reconcileRoster(
   sourceAgents: RuntimeAgent[],
   target: AgentRuntimeAdapter,
+  opts: ReconcileRosterOptions = {},
 ): Promise<RosterCarryReport> {
   const report: RosterCarryReport = { carried: [], existing: [], unmappedModels: [], failed: [] }
 
@@ -118,30 +124,32 @@ export async function reconcileRoster(
       else report.unmappedModels.push({ agentId: agent.id, sourceModel: agent.subagentModel, field: 'subagentModel' })
     }
 
-    try {
-      await target.agents.create({
-        id: agent.id,
-        name: agent.name || agent.id,
-        ...(agent.role ? { role: agent.role } : {}),
-        ...(model ? { model } : {}),
-        ...(carriedMetadata(agent) ? { metadata: carriedMetadata(agent) } : {}),
-      })
-    } catch (err) {
-      report.failed.push({ agentId: agent.id, error: err instanceof Error ? err.message : String(err) })
-      continue
-    }
-
-    if (subagentModel) {
+    if (!opts.dryRun) {
       try {
-        await target.agents.update(agent.id, { subagentModel })
-      } catch (err) {
-        // The agent itself carried — only the subagent-model application
-        // failed. Both facts are reported.
-        subagentModel = undefined
-        report.failed.push({
-          agentId: agent.id,
-          error: `subagentModel update: ${err instanceof Error ? err.message : String(err)}`,
+        await target.agents.create({
+          id: agent.id,
+          name: agent.name || agent.id,
+          ...(agent.role ? { role: agent.role } : {}),
+          ...(model ? { model } : {}),
+          ...(carriedMetadata(agent) ? { metadata: carriedMetadata(agent) } : {}),
         })
+      } catch (err) {
+        report.failed.push({ agentId: agent.id, error: err instanceof Error ? err.message : String(err) })
+        continue
+      }
+
+      if (subagentModel) {
+        try {
+          await target.agents.update(agent.id, { subagentModel })
+        } catch (err) {
+          // The agent itself carried — only the subagent-model application
+          // failed. Both facts are reported.
+          subagentModel = undefined
+          report.failed.push({
+            agentId: agent.id,
+            error: `subagentModel update: ${err instanceof Error ? err.message : String(err)}`,
+          })
+        }
       }
     }
 
@@ -153,7 +161,7 @@ export async function reconcileRoster(
     })
   }
 
-  log.info('Roster reconciled onto target runtime', {
+  log.info(opts.dryRun ? 'Roster reconcile previewed against target runtime (dry run)' : 'Roster reconciled onto target runtime', {
     carried: report.carried.length,
     existing: report.existing.length,
     unmapped: report.unmappedModels.length,
