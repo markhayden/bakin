@@ -862,6 +862,13 @@ curl -sS \
 
 <OpenApiReference tag="Chat" summary />
 
+<OpenApiReference operationId="chat.get.capabilities">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/chat/capabilities?agent=<agent>'
+```
+</OpenApiReference>
+
 <OpenApiReference operationId="chat.get.chats">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
@@ -886,11 +893,44 @@ curl -sS \
 ```
 </OpenApiReference>
 
+<OpenApiReference operationId="chat.patch.chats-chat-id">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PATCH \
+  'http://localhost:3737/api/plugins/chat/chats/<chatId>' \
+  -H 'Content-Type: application/json' \
+  --data '{"title":"value","pinned":true}'
+```
+</OpenApiReference>
+
 <OpenApiReference operationId="chat.delete.chats-chat-id">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   -X DELETE \
   'http://localhost:3737/api/plugins/chat/chats/<chatId>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="chat.post.chats-chat-id-abort">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/chat/chats/<chatId>/abort'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="chat.post.chats-chat-id-attachments">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/chat/chats/<chatId>/attachments'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="chat.get.chats-chat-id-attachments-name">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/chat/chats/<chatId>/attachments/<name>'
 ```
 </OpenApiReference>
 
@@ -900,7 +940,15 @@ curl -sS \
   -X POST \
   'http://localhost:3737/api/plugins/chat/chats/<chatId>/messages' \
   -H 'Content-Type: application/json' \
-  --data '{"content":"value"}'
+  --data '{"content":"value","attachments":[{"name":"value","mimeType":"value","path":"value"}]}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="chat.post.chats-chat-id-seen">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/chat/chats/<chatId>/seen'
 ```
 </OpenApiReference>
 
@@ -2099,5 +2147,5 @@ curl -sS \
 </OpenApiReference>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 9, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 12, 2026 · Bakin 0.0.0-dev</span>
 </aside>

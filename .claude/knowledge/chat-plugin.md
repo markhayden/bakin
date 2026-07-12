@@ -1,36 +1,53 @@
 # Chat Plugin
 
-The `chat` core plugin (#12) is Bakin's in-app conversational surface: streamed multi-chat with any agent from the dashboard. It exists so the app has a first-class way to talk to agents that does not depend on any runtime channel layer (Discord/Slack) — a prerequisite for runtimes like Pi that ship none (see `.claude/specs/adapter-pi/SPEC.md`, decision D3/D4).
+The `chat` core plugin is Bakin's day-to-day conversational hub: streamed multi-chat with any agent, built ON the SDK conversation kit (see `.claude/knowledge/conversation-kit.md` — chat is the kit's reference consumer in session-manager mode). It exists so the app has a first-class way to talk to agents that does not depend on any runtime channel layer — a prerequisite for runtimes like Pi that ship none.
+
+Spec/plan for the 2026-07 overhaul: `.claude/specs/chat-conversation-kit.md`, `tasks/plan-chat-conversation-kit.md`.
 
 ## Design invariants
 
-- **Runtime-agnostic.** The only runtime surface consumed is `ctx.runtime.agents.get` (roster validation) and `ctx.runtime.messaging.stream` with the adapter-neutral threadId **`chat:<chatId>`**. Any adapter that implements `messaging.stream` gets chat for free.
-- **Transcripts are Bakin-owned UI data.** `~/.bakin/chat/index.json` (zod-validated summaries) + `~/.bakin/chat/<chatId>.jsonl` (append-only rows: `user | assistant | tool | error`). The provider-side session (reached via threadId) remains the runtime's source of truth; the plugin persists the chunks it streamed, never re-reads provider files. Paths via `getBakinPaths().chat`.
-- **One in-flight turn per chat.** `POST /chats/:chatId/messages` returns **202** immediately (409 if busy); the turn runs server-side and streams to every open browser.
-- **Streaming rides the existing SSE bus** — no per-request streaming. Server: `ctx.events.emit('chat.chunk' | 'chat.done' | 'chat.error', …)` → global `/api/events`. Client: `usePluginEvent` (the shell's single EventSource fan-out). Chunks are the normalized `ChatChunk` union and stream as REAL deltas on both adapters (WS1a: OpenClaw now streams via gateway push events instead of yielding one blob at turn end); the stream-bridge forwards each text chunk's `format` hint (`markdown`|`plain`|`code`, absent = markdown) on the `chat.chunk` SSE event. Client rendering goes through the SDK's single-renderer `TurnOutputView` (chat's live region accumulates the turn's chunks — the thinking status now renders as immediate feedback — and durable assistant/tool/error rows map back to chunk form; chat owns only chrome: avatars, bubbles, indentation).
-- **Durability rules:** completed tool calls persist as one row (`"name: summary"`); assistant text persists once, aggregated, at turn end; a mid-stream failure keeps partial text and appends an honest `error` row. `call`-phase tool chips are SSE-ephemeral by design.
-- **Agents keep their tools.** The turn is a normal runtime turn — `bakin_*` exec tools (create tasks, save assets, …) work mid-chat exactly as in dispatch.
+- **Runtime-agnostic.** Consumed runtime surfaces: `agents.get` (roster validation), `messaging.stream` with the adapter-neutral threadId **`chat:<chatId>`** (+ `MessageArgs.signal` for abort and `attachments` for images), `messaging.send` (`ephemeral: true`, threadId `chat:<chatId>:title`) for auto-titling, and `capabilities({agentId}).input.imageInput` to gate the attach affordance.
+- **Transcripts are Bakin-owned UI data — schema v2.** `~/.bakin/chat/index.json` (zod summaries: title/titleSource/pinned/messageCount/unreadCount/lastSeenAt/lastMessageAt+Preview) + `<chatId>.jsonl` (append-only rows: `user (± attachments) | assistant | tool | error | aborted`, agent rows carry `turnId`). Tool rows are STRUCTURED (callId/toolName/status/summary/inputPreview/outputPreview/durationMs/metadata, previews clipped with `metadata.truncated`) so replay folds exactly like live streaming. Legacy v1 rows (`"name: summary"` strings) parse leniently — no migration files. User attachments live under `chat/attachments/<chatId>/` (chat-owned; NEVER auto-imported as assets — assets-D7).
+- **One in-flight turn per chat** (202/409); every turn registers an `AbortController` — `POST /chats/:id/abort` cancels the runtime stream (clean `done` per the runtime contract) and persists an `aborted` row.
+- **Streaming rides the existing SSE bus.** Server: `chat.chunk` / `chat.done` / `chat.error` / `chat.titled` plugin-events (all carry `agentId`; `done` adds a reply `preview` + `aborted` flag). Client folds durable rows + live chunks through the kit's `foldConversation` — chat owns NO rendering logic, only page chrome.
+- **Persistence via the kit's `createTurnRecorder`** (drain-per-chunk so a crash keeps the partial turn; interleaving preserved — text before a tool result flushes as its own row).
+- **Attention system.** `ChatBadgeProvider` in the global `nav-badge-providers` slot: nav badge (unread total, working dot while streaming), `(N)` tab-title prefix, click-to-jump toast + generated WebAudio chime + OS notification (via `src/lib/browser-notify`, self-suppressing when focused) when a reply lands while the user is elsewhere. Pure rules in `components/attention.ts`: viewing the chat = no fanfare + mark seen; aborted = silence. Toggles in the plugin `settingsSchema` (toasts/sound, default on). Unread is server-side (`unreadCount`/`lastSeenAt`, cleared by `POST /chats/:id/seen` or a user send).
+- **Titles**: first user message titles instantly (`titleSource: 'fallback'`); after the FIRST completed exchange one budget-gated ephemeral LLM call upgrades it (`lib/auto-title.ts` — gate = `dispatchPaused` + `budgetGate`, the dispatch primitives; blocked = silent skip). Precedence user > llm > fallback; renames are never overwritten.
+- **Search (S11):** file-backed `chats` content type (`lib/search.ts`) — one doc per chat (title, agent facet, recency-biased user+assistant body, 6k cap; tool noise never indexes). ⌘K hits deep-link `/chat?chat=<id>`.
+- **Agents keep their tools.** The turn is a normal runtime turn — `bakin_*` exec tools work mid-chat exactly as in dispatch.
 
 ## File map
 
 ```
 plugins/chat/
-  index.ts                    definePlugin shell (routes from lib/routes.ts)
-  lib/store.ts                index.json + JSONL store; atomic serialized index writes
-  lib/routes.ts               chat CRUD + POST /chats/:chatId/messages (202/404/409)
-  lib/stream-bridge.ts        in-flight registry; stream → persist + emit; waitForTurn() for tests
-  components/use-chat-data.ts useChats / useChatStream (live text + tool chips over durable rows)
-  components/chat-page.tsx    two-pane layout; URL state ?chat= & ?agent=
-  components/chat-list.tsx    rail: AgentSelect new-chat, filter, delete confirm
-  components/chat-view.tsx    transcript + live overlay; MarkdownContent for assistant rows
-  components/composer.tsx     Enter-to-send textarea
-tests/plugins/chat/           store.test.ts (CRUD), stream.test.ts (bridge: happy/error/busy)
+  index.ts                       definePlugin shell + settingsSchema + registerChatSearch
+  lib/store.ts                   index.json + JSONL v2 store; markSeen/setTitle/setPinned; attachmentsDir
+  lib/routes.ts                  CRUD, messages (202/404/409), PATCH rename/pin, seen, abort,
+                                 attachments upload/serve (multipart, image/*, 25 MB), GET /capabilities
+  lib/stream-bridge.ts           in-flight registry + AbortControllers; kit turn-recorder persistence;
+                                 attachment downscale (@bakin/core/media/downscale); waitForTurn() for tests
+  lib/auto-title.ts              budget-gated first-exchange titling
+  lib/search.ts                  file-backed 'chats' search content type
+  components/use-chat-data.ts    useChats/useChatStream (kit rows + live chunks), requests, useAgentImageInput
+  components/chat-page.tsx       header (search + Start a chat) + rail + view/draft/launcher; shortcuts
+                                 (⌘⇧O new, ⌥↑/⌥↓ switch, ⇧Esc focus); URL ?chat= ?draft= ?agents=
+  components/chat-rail.tsx       Pinned/Today/Yesterday/This week/Older groups, unread pills, working
+                                 spinner, FacetFilter, collapsible (persisted), hover pin/delete
+  components/chat-view.tsx       kit Conversation + Composer + ToolCallDrawer; inline title edit; retry;
+                                 staged attachments (capability-gated); DraftChatView (create on first send)
+  components/launcher.tsx        empty-pane launcher: agent cards + recents + skeletons
+  components/agent-picker.tsx    'Start a chat' popover (Command list of agents)
+  components/chat-badge-provider.tsx  global attention brain (renders null)
+  components/attention.ts        pure suppression/badge/title-prefix rules
+  components/notification-sound.ts    generated two-tone chime (no asset)
+tests/plugins/chat/              store/stream/attachments/auto-title/search/attention/chat-page suites
 ```
 
 ## Gotchas
 
-- The first user message titles an untitled chat (60-char cap) — done in `appendTranscriptRow`, not the route.
-- `chatId` is validated as a UUID before touching the filesystem (path-traversal guard in `transcriptPath`).
-- Deleting a chat mid-turn is legal: the bridge logs the failed append and keeps streaming to SSE; nothing durable is written after deletion.
-- `useChatStream` guards every SSE event and fetch against the *active* chat id (`activeChatRef`) so switching chats mid-stream can't cross-pollinate transcripts.
-- Tests: `waitForTurn(chatId)` is the deterministic settle point — never sleep. Mock `runtime.messaging.stream` with scripted async generators (see `tests/plugins/chat/stream.test.ts`).
+- `chatId` is validated as a UUID before touching the filesystem (traversal guard); attachment serving allows only immediate children of the chat's attachment dir, and the send route rejects attachment paths outside it.
+- Deleting a chat mid-turn is legal: the bridge logs the failed append and keeps streaming to SSE; the attachments dir is swept with the chat.
+- `useChatStream` guards every SSE event and fetch against the *active* chat id (`activeChatRef`).
+- Draft mode: `?draft=<agentId>` renders a chat-less view; `POST /chats` happens on FIRST send (no `Untitled chat · 0 msg` rows). Attachment staging starts after the chat exists.
+- Attachment-only sends get a visible `See the attached image.` placeholder — the transcript shows exactly what the runtime was asked.
+- Tests: `waitForTurn(chatId)` is the deterministic settle point — never sleep. Mock `runtime.messaging.stream` with scripted async generators. The auto-title tests mock `src/core/dispatch-turns` (gate decisions), and any test completing a first exchange should expect a titling `send` unless gated.

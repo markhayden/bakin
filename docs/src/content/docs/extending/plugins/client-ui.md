@@ -192,43 +192,58 @@ Custom UI is fine when the domain needs it, but keep Bakin conventions: small ra
 
 ## Agent Chat Surfaces
 
-Use `IntegratedBrainstorm` when a plugin needs a durable agent chat panel
-inside its own page. Keep the plugin-owned record as the source of truth for
-visible messages and pass a stable thread id to the server route so the runtime
-adapter can preserve conversation continuity.
+Use the conversation kit's `ConversationPanel` when a plugin needs a durable
+agent chat panel inside its own page. Keep the plugin-owned record as the
+source of truth for visible messages and pass a stable thread id (built with
+`conversationThreadId`) to the server route so the runtime adapter can
+preserve conversation continuity.
 
-`transformAssistantMessage` lets the plugin render structured artifacts below
-assistant text without forking the chat component. For example, a content
-planning plugin can parse proposal ids from an assistant message and render
-review cards inline:
+`transformText` lets the plugin post-process assistant text and render
+structured artifacts below it without forking the chat component. For
+example, a content planning plugin can strip proposal JSON from an assistant
+message and render a review badge inline:
 
 ```tsx
-import { IntegratedBrainstorm } from '@makinbakin/sdk/components'
+import { ConversationPanel, useConversationStream } from '@makinbakin/sdk/components'
+import { pluginFetch } from '@makinbakin/sdk/utils'
 
-function PlanningChat({ sessionId, agentId, proposalByMessageId }) {
+function PlanningChat({ sessionId, agentId, messages, refresh }) {
+  const stream = useConversationStream({
+    fetcher: (content, { signal }) =>
+      pluginFetch('messaging', `sessions/${sessionId}/messages`, {
+        method: 'POST',
+        body: { content },
+        signal,
+      }),
+    onCustom: (event, data) => {
+      if (event === 'proposal') mergeProposal(data)
+    },
+    onDone: refresh,
+  })
+
   return (
-    <IntegratedBrainstorm
-      endpoint={`/api/plugins/messaging/sessions/${sessionId}/messages`}
+    <ConversationPanel
+      messages={messages}
+      liveChunks={stream.liveChunks}
+      streaming={stream.streaming}
       agentId={agentId}
-      transformAssistantMessage={(message) => {
-        const proposals = proposalByMessageId.get(message.id) ?? []
-        return (
-          <>
-            <p>{message.content}</p>
-            {proposals.map((proposal) => (
-              <PlanProposalCard key={proposal.id} proposal={proposal} />
-            ))}
-          </>
-        )
-      }}
+      onSend={stream.send}
+      onAbort={stream.abort}
+      storageKey={`messaging:${sessionId}`}
+      fitParent
+      showHeader={false}
+      transformText={(text) => ({
+        text: text.replace(/```json[\s\S]*?```/g, '').trim(),
+        extras: <ProposalBadge />,
+      })}
     />
   )
 }
 ```
 
-Persist activity rows and parsed artifacts in plugin storage for reloads. Do
-not replay the whole stored transcript into every agent call unless the agent
-task explicitly needs that context.
+Persist `ConversationMessage` rows and parsed artifacts in plugin storage for
+reloads. Do not replay the whole stored transcript into every agent call
+unless the agent task explicitly needs that context.
 
 ## Runtime Cleanup
 

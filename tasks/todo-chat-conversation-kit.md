@@ -34,8 +34,8 @@ Plan: `tasks/plan-chat-conversation-kit.md` · Spec: `.claude/specs/chat-convers
 - [x] **CHECKPOINT D** — chat suite 46 green, conformance 49 green, typecheck clean
 
 ## Phase 7 — Search
-- [ ] T7.1 feat(chat): transcripts as search content type + ⌘K hit renderer
-- [ ] **CHECKPOINT E** — full suite + build + /verify + full visual pass → open PR-2
+- [x] T7.1 feat(chat): transcripts as search content type + ⌘K hit renderer — 01f287d7
+- [x] **CHECKPOINT E (core gates)** — suite 6716 green (recurring onboarding-adapter-gating 15s-timeout flake only; passes isolated), asset chain + assert-production-assets pass, guest-guarded isolated boot serves chat page/bundle/11 routes/both slots, antfly guard held. Rig visual pass + PR opening pending user session
 
 ## Phase 8 — bits migration (bakin-bits-official)
 - [ ] T8.0 chore: .build-sdk link + test-sdk stub updates

@@ -297,6 +297,10 @@ description: Generated reference for Bakin core settings defaults.
       <td><code>20</code></td>
     </tr>
     <tr>
+      <td><code>search.settings.search.queryBudgetMs</code></td>
+      <td><code>2000</code></td>
+    </tr>
+    <tr>
       <td><code>search.settings.search.reranker.enabled</code></td>
       <td><code>false</code></td>
     </tr>
@@ -441,5 +445,5 @@ description: Generated reference for Bakin core settings defaults.
 
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 9, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 12, 2026 · Bakin 0.0.0-dev</span>
 </aside>
