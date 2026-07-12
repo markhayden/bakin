@@ -253,6 +253,8 @@ export interface SearchHealthIndex {
   name: string
   totalIndexed: number
   rebuilding: boolean
+  /** Numeric backlog for this leg (docs queued for enrichment), when the engine reports one. */
+  pending?: number
   error?: string
 }
 
@@ -269,6 +271,12 @@ export interface SearchHealthTable {
   phase: string | null
   pluginId: string
   docCount: number | null
+  /** Epoch ms of the last delivered index write for this table (journal ack), null when never. */
+  lastIndexedAt: number | null
+  /** Epoch ms of the last registry transition (create/rebuild/flip), null when unknown. */
+  lastRebuildAt: number | null
+  /** Pending + inflight journal rows for this table (numeric backlog). */
+  journalPending: number
   legs: SearchHealthIndex[]
   healthy: boolean
 }

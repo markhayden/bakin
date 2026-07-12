@@ -313,7 +313,7 @@ describe('mapIndexStatuses', () => {
       { config: { name: 'sem', type: 'embeddings' }, status: { index_type: 'embeddings', rebuilding: true, total_indexed: 5, backfill_active: true, backfill_state: 'running', doc_count: 5, enrichment_runtime: { pending_sequence_count: 3, retrying: false, active_embed_batch_items: 0 } } },
     ]
     expect(mapIndexStatuses(entries)).toEqual([
-      { leg: 'sem', state: 'building', indexedCount: 5 },
+      { leg: 'sem', state: 'building', indexedCount: 5, pendingCount: 3 },
     ])
   })
 })

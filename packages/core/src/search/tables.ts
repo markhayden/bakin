@@ -56,6 +56,8 @@ export interface TableState {
   migratingTo: string | null
   phase: string | null
   backfillDone: number | null
+  /** Epoch ms of the last registry transition (create/rebuild/flip). */
+  updatedAt: number
 }
 
 const MODULE = 'search-tables'
@@ -128,6 +130,7 @@ interface Row {
   migrating_to: string | null
   migration_phase: string | null
   backfill_done: number | null
+  updated_at: number
 }
 
 function getRow(logical: string): Row | null {
@@ -166,6 +169,7 @@ export function tableStatus(logical: string): TableState | null {
     migratingTo: row.migrating_to,
     phase: row.migration_phase,
     backfillDone: row.backfill_done,
+    updatedAt: row.updated_at,
   }
 }
 
@@ -181,6 +185,7 @@ export function listTableStates(): TableState[] {
       migratingTo: row.migrating_to,
       phase: row.migration_phase,
       backfillDone: row.backfill_done,
+      updatedAt: row.updated_at,
     }))
 }
 

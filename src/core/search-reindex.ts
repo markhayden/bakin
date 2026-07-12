@@ -10,6 +10,7 @@
  */
 import type { SearchHealthSnapshot, SearchHealthTable } from '../../packages/core/src/plugin-types'
 import { tableStatus } from '@bakin/core/search/tables'
+import { lastAckedAtForTable, pendingCountForTable } from '@bakin/core/search/outbox'
 import { getRegistry, getSearchAdapter, resolvePhysicalTable } from './search-registry-core'
 import { outboxStats } from './search-outbox'
 
@@ -41,11 +42,16 @@ export async function getSearchHealth(): Promise<SearchHealthSnapshot> {
         name: leg.leg,
         totalIndexed: leg.indexedCount,
         rebuilding: leg.state === 'building',
+        ...(leg.pendingCount !== undefined ? { pending: leg.pendingCount } : {}),
         ...(leg.error ? { error: leg.error } : {}),
       }))
       healthy = legHealth.every((leg) => leg.state !== 'error')
     } catch { /* leg health unavailable — default to healthy */ }
 
+    // Freshness: the newest of the last delivered journal write and the
+    // last registry transition (create/rebuild seed bypasses the journal).
+    const lastAcked = lastAckedAtForTable(tableName)
+    const lastRebuildAt = state?.updatedAt ?? null
     tables.push({
       logical: tableName,
       physical,
@@ -54,6 +60,11 @@ export async function getSearchHealth(): Promise<SearchHealthSnapshot> {
       phase: state?.phase ?? null,
       pluginId: def.pluginId,
       docCount,
+      lastIndexedAt: lastAcked !== null || lastRebuildAt !== null
+        ? Math.max(lastAcked ?? 0, lastRebuildAt ?? 0)
+        : null,
+      lastRebuildAt,
+      journalPending: pendingCountForTable(tableName),
       legs,
       healthy,
     })

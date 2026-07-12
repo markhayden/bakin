@@ -393,6 +393,14 @@ export function outboxStats(): OutboxStats {
   }
 }
 
+/** Epoch ms of the most recent delivered write for a logical table. */
+export function lastAckedAtForTable(logicalTable: string): number | null {
+  const row = db()
+    .prepare<{ at: number | null }, [string]>('SELECT MAX(acked_at) AS at FROM search_acked WHERE logical_table = ?')
+    .get(logicalTable)
+  return row?.at ?? null
+}
+
 /** Pending journal rows for one logical table (spin-watchdog inflow guard). */
 export function pendingCountForTable(logicalTable: string): number {
   const row = db()

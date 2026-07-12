@@ -844,6 +844,29 @@ describe('search-registry', () => {
     })
   })
 
+  it('getSearchHealth reports freshness and numeric backlog per table', async () => {
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+    await createRegisteredTables() // registry row → lastRebuildAt
+    const physical = tableStatus('bakin_tasks')!.physical
+
+    searchHarness.setTableStats(physical, { table: physical, documents: 5 })
+    searchHarness.setLegHealth(physical, [
+      { leg: 'full_text', state: 'ready', indexedCount: 5 },
+      { leg: 'embeddings', state: 'building', indexedCount: 2, pendingCount: 3 },
+    ])
+    enqueueIndex('bakin_tasks', 'k9', { title: 'queued' })
+
+    const health = await getSearchHealth()
+    const table = health.tables.find((t) => t.logical === 'bakin_tasks')!
+
+    expect(table.journalPending).toBe(1)
+    expect(table.lastRebuildAt).toBeGreaterThan(0)
+    // no journal ack yet — freshness falls back to the registry transition
+    expect(table.lastIndexedAt).toBe(table.lastRebuildAt)
+    expect(table.legs.find((l) => l.name === 'embeddings')?.pending).toBe(3)
+  })
+
   it('getSearchHealth returns enabled false when search adapter is unavailable', async () => {
     searchHarness.setAvailable(false)
 

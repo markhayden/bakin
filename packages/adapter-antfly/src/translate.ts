@@ -421,6 +421,7 @@ export function mapIndexStatuses(entries: WireIndexStatusEntry[]): TableLegHealt
       leg: entry.config.name,
       state: failed ? 'error' as const : building ? 'building' as const : 'ready' as const,
       indexedCount: status?.total_indexed ?? 0,
+      ...(runtime?.pending_sequence_count !== undefined ? { pendingCount: runtime.pending_sequence_count } : {}),
       ...(failed && status?.last_error ? { error: status.last_error } : {}),
     }
   })

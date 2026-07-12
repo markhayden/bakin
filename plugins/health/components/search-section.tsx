@@ -235,6 +235,11 @@ export function SearchSection({ refreshNonce }: { refreshNonce: number }) {
                           ? (writing ? 'writing…' : 'catching up…')
                           : t.logical}
                   </p>
+                  <p className="text-[10px] text-muted-foreground/80 tabular-nums" data-testid={`search-table-freshness-${t.logical}`}>
+                    {t.lastIndexedAt ? `indexed ${relTime(t.lastIndexedAt)}` : 'never indexed'}
+                    {t.journalPending > 0 ? ` · ${t.journalPending} queued` : ''}
+                    {legBacklog(t) > 0 ? ` · ${legBacklog(t)} embedding` : ''}
+                  </p>
                 </div>
               )
             })}
@@ -243,4 +248,18 @@ export function SearchSection({ refreshNonce }: { refreshNonce: number }) {
       </CardContent>
     </Card>
   )
+}
+
+/** Compact relative time for freshness lines ("3m ago", "2h ago"). */
+function relTime(epochMs: number): string {
+  const s = Math.max(0, Math.floor((Date.now() - epochMs) / 1000))
+  if (s < 60) return `${s}s ago`
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
+  return `${Math.floor(s / 86400)}d ago`
+}
+
+/** Sum of numeric per-leg backlogs the engine reports. */
+function legBacklog(t: { legs: Array<{ pending?: number }> }): number {
+  return t.legs.reduce((sum, leg) => sum + (leg.pending ?? 0), 0)
 }

@@ -58,6 +58,8 @@ export interface TableLegHealth {
   leg: string
   state: 'ready' | 'building' | 'error'
   indexedCount: number
+  /** Numeric backlog for this leg (docs queued), when the engine reports one. */
+  pendingCount?: number
   error?: string
 }
 
