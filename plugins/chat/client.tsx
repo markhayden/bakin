@@ -5,10 +5,14 @@
  */
 import { registerPlugin } from '@makinbakin/sdk'
 import { ChatPage } from './components/chat-page'
+import { ChatBadgeProvider } from './components/chat-badge-provider'
 
 registerPlugin({
   id: 'chat',
   slots: {
     'page:/chat': ChatPage,
+    // Global (outside the router): unread nav badge, tab-title prefix,
+    // reply toasts/chime/OS notifications — works from any page.
+    'nav-badge-providers': ChatBadgeProvider,
   },
 })

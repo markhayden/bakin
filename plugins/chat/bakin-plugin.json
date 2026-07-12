@@ -68,7 +68,8 @@
       }
     ],
     "slots": [
-      "page:/chat"
+      "page:/chat",
+      "nav-badge-providers"
     ]
   }
 }

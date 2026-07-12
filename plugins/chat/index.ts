@@ -19,6 +19,13 @@ const chatPlugin: BakinPlugin = definePlugin({
   version: '0.1.0',
   routes: chatRoutes,
 
+  settingsSchema: {
+    fields: [
+      { key: 'toasts', type: 'boolean', label: 'Reply toasts', description: 'Show an in-app toast when an agent replies while you are on another page', default: true },
+      { key: 'sound', type: 'boolean', label: 'Reply sound', description: 'Play a soft chime when an agent replies while you are on another page', default: true },
+    ],
+  },
+
   activate(_ctx: PluginContext) {
     // Routes are declarative; nothing to register imperatively yet.
   },
