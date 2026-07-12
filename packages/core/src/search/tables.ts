@@ -64,6 +64,16 @@ const MODULE = 'search-tables'
 const BACKFILL_CHUNK = 50
 const DEFAULT_CONVERGE_TIMEOUT_MS = 10 * 60 * 1000
 const DEFAULT_CONVERGE_POLL_MS = 2_000
+/**
+ * An orphan candidate must stay unreferenced this long before it is
+ * dropped. A cross-process ensure (CLI onboarding against the same engine)
+ * creates + backfills a NEW logical's table long before its registry row
+ * lands, and a single observation cannot distinguish that window from a
+ * true orphan. Six hours comfortably outlasts any backfill.
+ */
+const ORPHAN_DROP_DWELL_MS = 6 * 60 * 60 * 1000
+/** Every physical this module has ever created: `{logical}_v{N}_{fp8}`. */
+const VERSIONED_PHYSICAL = /^.+_v\d+_[0-9a-f]{8}$/
 
 const store = openNamedDb('search', () => join(getContentDir(), 'search.db'))
 
@@ -88,6 +98,35 @@ const MIGRATIONS = [
         `CREATE TABLE search_table_tombstones (
            physical TEXT PRIMARY KEY,
            noted_at INTEGER NOT NULL
+         )`,
+      )
+    },
+  },
+  {
+    version: 2,
+    up: (db: Db) => {
+      // First-seen ledger for the orphan engine-table sweep: a candidate
+      // must survive a dwell window across sweeps before it is dropped.
+      db.exec(
+        `CREATE TABLE search_orphan_candidates (
+           physical   TEXT PRIMARY KEY,
+           first_seen INTEGER NOT NULL
+         )`,
+      )
+    },
+  },
+  {
+    version: 3,
+    up: (db: Db) => {
+      // Ownership ledger: every physical THIS instance created. The orphan
+      // sweep only ever drops tables recorded here — registry absence alone
+      // cannot distinguish our stale generation from another Bakin home's
+      // LIVE table on a shared engine (review finding: a second instance
+      // pointed at the same engine would otherwise drop production tables).
+      db.exec(
+        `CREATE TABLE search_created_physicals (
+           physical   TEXT PRIMARY KEY,
+           created_at INTEGER NOT NULL
          )`,
       )
     },
@@ -203,6 +242,18 @@ async function createTableTolerant(adapter: SearchAdapter, physical: string, con
     const stats = await adapter.tables.stats(physical).catch(() => null)
     if (!stats) throw err
   }
+  noteCreatedPhysical(physical)
+}
+
+/** Ownership ledger writes — see migration v3 for why this exists. */
+function noteCreatedPhysical(physical: string): void {
+  db()
+    .prepare('INSERT INTO search_created_physicals (physical, created_at) VALUES (?, ?) ON CONFLICT (physical) DO NOTHING')
+    .run(physical, Date.now())
+}
+
+function forgetCreatedPhysical(physical: string): void {
+  db().prepare('DELETE FROM search_created_physicals WHERE physical = ?').run(physical)
 }
 
 async function backfill(adapter: SearchAdapter, def: TableEnsureDef, physical: string, onProgress?: EnsureOpts['onProgress']): Promise<number> {
@@ -276,6 +327,7 @@ function noteTombstone(physical: string): void {
 async function dropTolerant(adapter: SearchAdapter, physical: string): Promise<void> {
   try {
     await adapter.tables.drop(physical)
+    forgetCreatedPhysical(physical)
   } catch (err) {
     log.warn('table drop failed — tombstoned for the doctor sweep', {
       physical,
@@ -285,6 +337,106 @@ async function dropTolerant(adapter: SearchAdapter, physical: string): Promise<v
   }
 }
 
+export interface OrphanTableSweepResult {
+  /** Physicals dropped this sweep (drop failures tombstone instead). */
+  dropped: string[]
+  /** Candidates still inside the dwell window — a later sweep drops them. */
+  pending: number
+  /**
+   * Unreferenced versioned tables NOT in this instance's ownership ledger —
+   * NEVER dropped (another Bakin home sharing the engine may own them, or
+   * they predate the ledger). Surfaced so the doctor can name them for a
+   * deliberate manual cleanup.
+   */
+  unclaimed: string[]
+}
+
+/**
+ * Doctor sweep: drop engine-side tables this instance created but no longer
+ * references. Orphan generations appear when search.db is recreated while
+ * the engine keeps its tables, or when a crash lands between the engine
+ * create and the registry insert. They are not just disk waste: a wedged
+ * orphan generation can pin the engine's startup catch-up loop at full CPU
+ * and starve every live query (2026-07-12 incident).
+ *
+ * Safety rails: only names in the OWNERSHIP ledger (created by this
+ * instance — see migration v3) are ever dropped; a candidate must stay
+ * unreferenced for a full dwell window (persisted first-seen ledger); and
+ * a candidate whose registry row (re)appears is forgiven. Together these
+ * make the migration chain unnecessary here: an in-flight create is owned
+ * but backfills for far less than the dwell, and holding serialized()
+ * across engine HTTP would couple the doctor to multi-minute migrations in
+ * both directions (review finding) — so this deliberately runs OFF the
+ * chain.
+ */
+export async function sweepOrphanEngineTables(
+  adapter: SearchAdapter,
+  opts?: { dwellMs?: number },
+): Promise<OrphanTableSweepResult> {
+  const dwellMs = opts?.dwellMs ?? ORPHAN_DROP_DWELL_MS
+  const engine = await adapter.tables.list()
+
+  const referenced = new Set<string>()
+  for (const row of db().prepare<Row, []>('SELECT * FROM search_tables').all()) {
+    referenced.add(row.physical)
+    if (row.migrating_to) referenced.add(row.migrating_to)
+  }
+  // Tombstoned physicals are already queued for drop — not ours to track.
+  for (const row of db().prepare<{ physical: string }, []>('SELECT physical FROM search_table_tombstones').all()) {
+    referenced.add(row.physical)
+  }
+  const owned = new Set(
+    db().prepare<{ physical: string }, []>('SELECT physical FROM search_created_physicals').all().map((row) => row.physical),
+  )
+
+  const unreferenced = engine
+    .map((table) => table.name)
+    .filter((name) => VERSIONED_PHYSICAL.test(name) && !referenced.has(name))
+  const candidates = new Set(unreferenced.filter((name) => owned.has(name)))
+  const unclaimed = unreferenced.filter((name) => !owned.has(name))
+
+  // Reconcile the first-seen ledger: rows for tables that are gone or
+  // referenced again must not linger and later justify a drop.
+  const firstSeen = new Map(
+    db()
+      .prepare<{ physical: string; first_seen: number }, []>('SELECT physical, first_seen FROM search_orphan_candidates')
+      .all()
+      .map((row) => [row.physical, row.first_seen] as const),
+  )
+  for (const physical of firstSeen.keys()) {
+    if (!candidates.has(physical)) {
+      db().prepare('DELETE FROM search_orphan_candidates WHERE physical = ?').run(physical)
+    }
+  }
+
+  const now = Date.now()
+  const dropped: string[] = []
+  for (const name of candidates) {
+    const seen = firstSeen.get(name)
+    if (seen === undefined) {
+      db().prepare('INSERT INTO search_orphan_candidates (physical, first_seen) VALUES (?, ?)').run(name, now)
+      continue
+    }
+    if (now - seen < dwellMs) continue
+    try {
+      await adapter.tables.drop(name)
+      forgetCreatedPhysical(name)
+      dropped.push(name)
+      log.info('orphan engine table dropped', { physical: name, orphanedForMs: now - seen })
+    } catch (err) {
+      log.warn('orphan engine table drop failed — tombstoned for the doctor sweep', {
+        physical: name,
+        err: err instanceof Error ? err.message : String(err),
+      })
+      noteTombstone(name)
+    }
+    db().prepare('DELETE FROM search_orphan_candidates WHERE physical = ?').run(name)
+  }
+
+  const pending = db().prepare<{ n: number }, []>('SELECT COUNT(*) AS n FROM search_orphan_candidates').get()?.n ?? 0
+  return { dropped, pending, unclaimed }
+}
+
 /** Doctor sweep: retry dropping tombstoned physicals. Returns remaining. */
 export async function sweepTombstones(adapter: SearchAdapter): Promise<number> {
   const rows = db().prepare<{ physical: string }, []>('SELECT physical FROM search_table_tombstones').all()
@@ -292,6 +444,7 @@ export async function sweepTombstones(adapter: SearchAdapter): Promise<number> {
     try {
       await adapter.tables.drop(row.physical)
       db().prepare('DELETE FROM search_table_tombstones WHERE physical = ?').run(row.physical)
+      forgetCreatedPhysical(row.physical)
     } catch {
       // still failing — stays tombstoned
     }
@@ -480,5 +633,5 @@ export async function resumeMigrations(
 /** Test-only: wipe registry + tombstones (close-first — see outbox note). */
 export function resetTablesForTests(): void {
   store.close()
-  db().exec('DELETE FROM search_tables; DELETE FROM search_table_tombstones;')
+  db().exec('DELETE FROM search_tables; DELETE FROM search_table_tombstones; DELETE FROM search_orphan_candidates; DELETE FROM search_created_physicals;')
 }

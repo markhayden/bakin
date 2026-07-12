@@ -8,9 +8,10 @@
  * physical, queries stay on the old one throughout) behind a destructive-
  * tier confirmation.
  *
- * The deep sweep (orphan rows + tombstone drops) rides THIS check's run —
- * i.e. the existing doctor interval — throttled to once an hour so doctor
- * cycles stay cheap. No timers of its own, nothing at boot.
+ * The deep sweep (orphan rows + tombstone drops + stale engine-table
+ * generations) rides THIS check's run — i.e. the existing doctor interval —
+ * throttled to once an hour so doctor cycles stay cheap. No timers of its
+ * own, nothing at boot.
  */
 import { healthOk, healthWarn } from '@makinbakin/sdk/utils'
 import type { HealthCheckResult, HealthRepairHandler } from '../../../../packages/core/src/plugin-types'
@@ -66,21 +67,36 @@ export async function checkSearchConsistency(): Promise<HealthCheckResult[]> {
     }
   }
 
-  // Hourly deep sweep: orphaned index rows + tombstoned physicals.
+  // Hourly deep sweep: orphaned index rows + tombstoned physicals + stale
+  // engine-side table generations the registry no longer references.
   if (Date.now() - lastSweepAt >= SWEEP_INTERVAL_MS) {
     lastSweepAt = Date.now()
     try {
       const { runOrphanSweep, sweepOrphanRegistryRows } = await import('../../../../src/core/search-orphan-sweep')
-      const { sweepTombstones } = await import('@bakin/core/search/tables')
+      const { sweepTombstones, sweepOrphanEngineTables } = await import('@bakin/core/search/tables')
       const orphanStats = await runOrphanSweep()
       const removed = orphanStats.reduce((sum, s) => sum + s.orphans, 0)
       const orphanRows = await sweepOrphanRegistryRows()
+      // Isolated: a transient tables.list() failure must not cost the
+      // tombstone retry its hourly slot (review finding).
+      let orphanTables: Awaited<ReturnType<typeof sweepOrphanEngineTables>> | null = null
+      try {
+        orphanTables = await sweepOrphanEngineTables(search)
+      } catch (err) {
+        results.push(healthWarn('search-consistency', `Stale engine-table sweep failed (retrying next hour): ${err instanceof Error ? err.message : String(err)}`))
+      }
       const tombstonesLeft = await sweepTombstones(search)
       if (removed > 0) {
         results.push(healthOk('search-consistency', `Deep sweep removed ${removed} orphaned index row(s)`))
       }
       if (orphanRows.length > 0) {
         results.push(healthOk('search-consistency', `Deep sweep purged ${orphanRows.length} orphaned registry row(s): ${orphanRows.join(', ')}`))
+      }
+      if (orphanTables && orphanTables.dropped.length > 0) {
+        results.push(healthOk('search-consistency', `Deep sweep dropped ${orphanTables.dropped.length} stale engine table(s): ${orphanTables.dropped.join(', ')}`))
+      }
+      if (orphanTables && orphanTables.unclaimed.length > 0) {
+        results.push(healthWarn('search-consistency', `${orphanTables.unclaimed.length} engine table(s) are unreferenced but not created by this Bakin home — left untouched (another instance may own them): ${orphanTables.unclaimed.join(', ')}. Drop manually if stale.`))
       }
       if (tombstonesLeft > 0) {
         results.push(healthWarn('search-consistency', `${tombstonesLeft} old physical table(s) still refusing to drop — retrying next sweep`))

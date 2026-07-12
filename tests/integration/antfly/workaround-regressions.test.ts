@@ -12,7 +12,7 @@
 import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
 import { join } from 'path'
 import { homedir } from 'os'
-import { existsSync } from 'fs'
+import { existsSync , readFileSync} from 'fs'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
 
@@ -322,6 +322,17 @@ if (!binary) {
       const hits = resp0(result.json)?.hits as { hits: unknown[] } | undefined
       expect(result.status).toBe(200)
       expect(hits?.hits).toHaveLength(2)
+    })
+  })
+
+  describe('engine-burn watchdog log signature', () => {
+    it('PIN: the pinned binary still emits the catch-up wedge signature the watchdog greps for', () => {
+      // packages/adapter-antfly/src/engine-status.ts WEDGE_PATTERNS depends
+      // on this exact upstream log string ("provisioned startup catch-up
+      // debt persists", antfly#350). A version bump that rewords it would
+      // silently blind one detection layer — this pin makes that loud.
+      const bytes = readFileSync(binary)
+      expect(bytes.includes('catch-up debt persists')).toBe(true)
     })
   })
 }

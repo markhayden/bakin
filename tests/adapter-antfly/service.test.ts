@@ -38,6 +38,7 @@ import {
   launchdPlistPath,
   renderLaunchdPlist,
   renderSystemdUnit,
+  restartService,
   servicePaths,
   systemdUnitPath,
   type ServiceIo,
@@ -168,5 +169,40 @@ describe('ensureProvisioned idempotence', () => {
     const child = fakeIo({ env: { HOME: testDir, BAKIN_SEARCH_SERVICE_MODE: 'child' } })
     expect(await ensureProvisioned(DEFAULT_SETTINGS, child)).toEqual({ mode: 'child', action: 'skipped' })
     expect(child.record).toHaveLength(0)
+  })
+})
+
+describe('restartService (graceful — SIGTERM, never a blind kill)', () => {
+  it('launchd: SIGTERM via launchctl kill; KeepAlive respawns', async () => {
+    const io = fakeIo()
+    await restartService(DEFAULT_SETTINGS, io)
+    expect(io.record).toHaveLength(1)
+    expect(io.record[0].slice(0, 3)).toEqual(['launchctl', 'kill', 'SIGTERM'])
+  })
+
+  it('launchd: falls back to kickstart when the label is not loaded', async () => {
+    const record: string[][] = []
+    const io = fakeIo({
+      record,
+      exec: async (cmd, args) => {
+        record.push([cmd, ...args])
+        // `launchctl kill` fails (service not loaded); kickstart succeeds.
+        return { code: args[0] === 'kill' ? 113 : 0, stdout: '', stderr: '' }
+      },
+    })
+    await restartService(DEFAULT_SETTINGS, io)
+    expect(record[1].slice(0, 3)).toEqual(['launchctl', 'kickstart', '-k'])
+  })
+
+  it('systemd: systemctl --user restart', async () => {
+    const io = fakeIo({ platform: 'linux' })
+    await restartService(DEFAULT_SETTINGS, io)
+    expect(io.record).toContainEqual(['systemctl', '--user', 'restart', 'bakin-antfly.service'])
+  })
+
+  it('guest: throws — the engine is not ours to restart', async () => {
+    const io = fakeIo()
+    await expect(restartService({ ...DEFAULT_SETTINGS, url: 'http://other:1234' }, io)).rejects.toThrow('externally managed')
+    expect(io.record).toHaveLength(0)
   })
 })

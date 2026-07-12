@@ -39,6 +39,7 @@ import { checkSearchAdapter } from './lib/system-checks/search'
 import { checkSearchOutbox, searchOutboxRepair } from './lib/system-checks/search-outbox'
 import { checkSearchConsistency, searchConsistencyRepair } from './lib/system-checks/search-consistency'
 import { checkSearchSpin, searchSpinRepair } from './lib/system-checks/search-spin'
+import { checkSearchCanary, checkSearchEngineBurn, searchCanaryRepair, searchEngineBurnRepair } from './lib/system-checks/search-engine-watch'
 import { checkAndSyncSkill, syncSkillRepair } from './lib/system-checks/sync-skill'
 import { checkPluginAssets } from './lib/system-checks/plugin-assets'
 import { checkPluginArtifacts } from './lib/system-checks/plugin-artifacts'
@@ -299,7 +300,8 @@ const routes = [
 
       const doctor = getLastResults()
       const searchRows = (doctor?.results ?? []).filter((row) =>
-        row.check === 'search' || row.check === 'search-outbox' || row.check === 'search-consistency' || row.check === 'search-spin')
+        row.check === 'search' || row.check === 'search-outbox' || row.check === 'search-consistency' || row.check === 'search-spin'
+        || row.check === 'search-canary' || row.check === 'search-engine-burn')
 
       return Response.json({
         windows: { '1h': byName('1h'), '24h': byName('24h') },
@@ -719,6 +721,18 @@ const healthPlugin: BakinPlugin = definePlugin({
       name: 'Search backfill-spin watchdog (zero-progress building legs)',
       run: () => checkSearchSpin(),
       repair: searchSpinRepair(),
+    })
+    ctx.registerHealthCheck({
+      id: 'search-canary',
+      name: 'Search canary (a real query through the production path)',
+      run: () => checkSearchCanary(),
+      repair: searchCanaryRepair(),
+    })
+    ctx.registerHealthCheck({
+      id: 'search-engine-burn',
+      name: 'Search engine burn watchdog (CPU + wedge signatures)',
+      run: () => checkSearchEngineBurn(),
+      repair: searchEngineBurnRepair(),
     })
     ctx.registerHealthCheck({
       id: 'skill',

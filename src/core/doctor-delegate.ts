@@ -16,6 +16,14 @@ export interface DoctorDelegateOptions {
   contentDir: string
   projectRoot: string
   accepted: boolean
+  /**
+   * Override the unresolved-row selection. The cron escalation passes its
+   * ERROR rows directly — including safe-repairable ones, which
+   * unresolvedRows() deliberately excludes for the interactive --delegate
+   * flow (there the answer is `--fix`); the delegated agent can run the
+   * fix itself.
+   */
+  rows?: HealthCheckResult[]
 }
 
 export interface DoctorDelegateReport {
@@ -71,7 +79,7 @@ export async function delegateDoctorRepair(options: DoctorDelegateOptions): Prom
     contentDir: options.contentDir,
     projectRoot: options.projectRoot,
   })
-  const unresolved = unresolvedRows(plan)
+  const unresolved = options.rows ?? unresolvedRows(plan)
   const request = createDoctorRepairRequest(options.contentDir, { plan, unresolved })
 
   if (unresolved.length === 0) {

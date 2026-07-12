@@ -343,11 +343,11 @@ describe('read-only CLI TUI screens', () => {
           ok: false,
           total: 12,
           errors: 1,
-          enrichmentErrors: 1,
+          parked: 1,
           tables: [
-            { table: 'bakin_tasks', indexed: 12, enrichment: { healthy: true, indexes: [] } },
+            { table: 'bakin_tasks', indexed: 12, result: 'migrated' },
             { table: 'agent_lessons', indexed: 0, error: 'schema missing' },
-            { table: 'assets', indexed: 4, enrichment: { healthy: false, indexes: [{ name: 'semantic', error: 'offline', walBacklog: 2 }] } },
+            { table: 'assets', indexed: 4, result: 'parked' },
           ],
         }}
       />,
@@ -359,7 +359,8 @@ describe('read-only CLI TUI screens', () => {
     expect(output).toContain('bakin_tasks')
     expect(output).toContain('agent_lessons')
     expect(output).toContain('schema missing')
-    expect(output).toContain('semantic: offline')
+    // Parked outcome must be VISIBLE (the '-' fallback once hid it).
+    expect(output).toContain('parked — green never converged')
     expect(output).not.toContain('Reindexing tasks into search')
   })
 
