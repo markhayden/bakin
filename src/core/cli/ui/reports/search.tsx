@@ -38,6 +38,7 @@ export interface SearchStatsTableData {
 export interface ReindexTableData {
   table?: unknown
   indexed?: unknown
+  result?: unknown
   error?: unknown
   enrichment?: unknown
 }
@@ -163,13 +164,14 @@ function reindexEnrichmentText(value: unknown): string {
 function reindexTableRows(tables: ReindexTableData[]): ReindexTableRow[] {
   return tables.map(table => {
     const hasError = Boolean(table.error)
+    const parked = table.result === 'parked'
     const enrichmentUnhealthy = isPlainRecord(table.enrichment) && table.enrichment.healthy === false
     return {
-      status: hasError ? 'fail' : enrichmentUnhealthy ? 'warn' : 'ok',
+      status: hasError ? 'fail' : parked || enrichmentUnhealthy ? 'warn' : 'ok',
       table: valueText(table.table, '(unknown)'),
       docs: valueText(table.indexed, '0'),
       enrichment: reindexEnrichmentText(table.enrichment),
-      issue: valueText(table.error),
+      issue: valueText(table.error) || (parked ? 'parked — green never converged' : ''),
     }
   })
 }

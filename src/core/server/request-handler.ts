@@ -321,13 +321,14 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
     if (url.pathname === '/api/reindex' && req.method === 'POST') {
       const { rebuildRegisteredTables } = require('../search-registry')
       const table = url.searchParams.get('table') || undefined
-      rebuildRegisteredTables(table).then((results: Array<{ table: string; result: string; error?: string }>) => {
+      rebuildRegisteredTables(table).then((results: Array<{ table: string; result: string; indexed?: number; error?: string }>) => {
         const errors = results.filter((r) => r.error).length
         const parked = results.filter((r) => r.result === 'parked').length
         jsonResponse(res, 200, {
           ok: errors === 0 && parked === 0,
           errors,
           parked,
+          total: results.reduce((sum, r) => sum + (r.indexed ?? 0), 0),
           tables: results,
         })
       }).catch((err: unknown) => {
