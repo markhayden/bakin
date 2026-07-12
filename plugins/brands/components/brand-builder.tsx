@@ -33,7 +33,8 @@ export function BrandBuilder({
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onCreated: (brandId: string) => void
+  /** taskId = the dispatched drafting task, so the detail page can link it in the drafting banner. */
+  onCreated: (brandId: string, taskId?: string) => void
 }) {
   const [step, setStep] = useState<Step>(0)
   const [a, setA] = useState<Answers>(EMPTY)
@@ -95,9 +96,9 @@ export function BrandBuilder({
           logoAssetId,
         }),
       })
-      const body = (await res.json().catch(() => ({}))) as { brand?: { id: string }; error?: string }
+      const body = (await res.json().catch(() => ({}))) as { brand?: { id: string }; taskId?: string; error?: string }
       if (!res.ok || !body.brand) throw new Error(body.error ?? `Create failed: ${res.status}`)
-      onCreated(body.brand.id)
+      onCreated(body.brand.id, body.taskId)
       close()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))

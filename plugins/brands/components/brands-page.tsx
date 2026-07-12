@@ -65,11 +65,16 @@ export function BrandsPage() {
 
   const startFlow = useCallback((path: CreatePath) => setActiveFlow(path), [])
   const flowDone = useCallback(
-    (brandId: string) => {
+    (brandId: string, taskId?: string) => {
       void refresh()
-      openBrand(brandId)
+      // Land on the new brand; the drafting banner links the dispatched task.
+      void navigate({
+        to: '/brands/$brandId',
+        params: { brandId },
+        search: (taskId ? { draftTask: taskId } : {}) as never,
+      })
     },
-    [refresh, openBrand],
+    [refresh, navigate],
   )
 
   const empty = data !== null && data.brands.length === 0

@@ -10,9 +10,9 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { MarkdownContent, UnderlineTabs, SaveBar, SectionCard, ConfirmDialog, AssetPicker, useUnsavedGuard } from '@makinbakin/sdk/components'
+import { MarkdownContent, UnderlineTabs, SaveBar, SectionCard, ConfirmDialog, AssetPicker, DangerZone, ErrorState, useUnsavedGuard } from '@makinbakin/sdk/components'
 import {
-  Button, Badge, Input, Textarea, Switch, Label,
+  Button, Badge, Input, Textarea, Switch, Label, Skeleton, Progress,
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from '@makinbakin/sdk/ui'
@@ -56,9 +56,14 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
   const dirty = staged !== null
   useUnsavedGuard(dirty)
 
+  const [notFound, setNotFound] = useState(false)
   const refresh = useCallback(async () => {
     try {
       const res = await fetch(`/api/plugins/brands/${brandId}`)
+      if (res.status === 404) {
+        setNotFound(true)
+        return
+      }
       if (!res.ok) throw new Error(`load failed: ${res.status}`)
       setDetail((await res.json()) as DetailResponse)
       setError(null)
@@ -140,21 +145,59 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
     [navigate, brandId],
   )
 
+  // Publishing gets a light confirm — it flips the switch agents act on.
+  const [publishConfirm, setPublishConfirm] = useState(false)
+  const [publishBusy, setPublishBusy] = useState(false)
+  const [publishError, setPublishError] = useState<string | null>(null)
   const publish = useCallback(async () => {
-    const res = await fetch(`/api/plugins/brands/${brandId}/publish`, { method: 'POST' })
-    if (res.ok) await refresh()
-    else setError(`publish failed: ${res.status}`)
-  }, [brandId, refresh])
+    setPublishBusy(true)
+    setPublishError(null)
+    try {
+      const res = await fetch(`/api/plugins/brands/${brandId}/publish`, { method: 'POST' })
+      if (!res.ok) throw new Error(`publish failed: ${res.status}`)
+      toast(`${detail?.brand.name ?? brandId} published — agents can use it now`, 'success')
+      setPublishConfirm(false)
+      await refresh()
+    } catch (err) {
+      setPublishError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setPublishBusy(false)
+    }
+  }, [brandId, detail, refresh])
 
+  if (notFound) {
+    return (
+      <div className="p-6">
+        <ErrorState
+          title="This brand doesn't exist"
+          message="It may have been deleted, or the link is stale."
+          retry={onBack}
+        />
+      </div>
+    )
+  }
   if (error && !detail) {
     return (
       <div className="p-6">
-        <Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft className="size-3.5" /> Brands</Button>
+        <Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft className="size-3.5" /> Branding</Button>
         <p className="mt-3 text-sm text-destructive">{error}</p>
       </div>
     )
   }
-  if (!detail) return <div className="p-6 text-sm text-muted-foreground">Loading…</div>
+  if (!detail) {
+    // Hero + tabs skeleton — never a blank pane while loading.
+    return (
+      <div className="flex flex-col gap-6 p-4 sm:p-6" data-brand-detail-loading>
+        <Skeleton className="h-8 w-24" />
+        <Skeleton className="h-40 rounded-2xl" />
+        <Skeleton className="h-8 w-96" />
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Skeleton className="h-40 rounded-xl" />
+          <Skeleton className="h-40 rounded-xl" />
+        </div>
+      </div>
+    )
+  }
 
   // Staged edits paint the page live (hero included) — what you see is what Save commits.
   const b = staged ?? detail.brand
@@ -165,7 +208,23 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
         <ArrowLeft className="size-3.5" /> Branding
       </Button>
 
-      <PaletteHero brand={b} onPublish={b.draft ? publish : undefined} />
+      <PaletteHero brand={b} onPublish={b.draft ? () => setPublishConfirm(true) : undefined} />
+
+      {b.draft && <DraftBanner brandId={brandId} onPublish={() => setPublishConfirm(true)} />}
+
+      <ConfirmDialog
+        open={publishConfirm}
+        title={`Publish ${b.name}?`}
+        description="Agents start using this brand on linked tasks immediately — and any tasks waiting on it unblock."
+        confirmLabel="Publish"
+        busyLabel="Publishing..."
+        busy={publishBusy}
+        error={publishError}
+        onConfirm={() => void publish()}
+        onCancel={() => {
+          if (!publishBusy) setPublishConfirm(false)
+        }}
+      />
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
@@ -300,30 +359,7 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
       {tab === 'assets' && <BrandAssetsSection brand={b} onSave={stage} />}
 
       {tab === 'settings' && (
-        <div className="flex flex-col gap-4">
-          {b.draft && (
-            <Section label="Draft" icon={Rocket}>
-              <p className="text-sm text-muted-foreground">
-                Invisible to task pickers, dispatch, and image tools until published. Review the sections,
-                then publish. Delete <code className="rounded bg-surface px-1 text-xs">_intake.md</code> under
-                Guidelines if you don't want the builder intake kept.
-              </p>
-              <Button variant="default" size="sm" className="w-fit" onClick={() => void publish()}>
-                <Rocket className="size-3.5" /> Publish brand
-              </Button>
-            </Section>
-          )}
-          {b.source && (
-            <Section label="Source" icon={ExternalLink}>
-              <p className="text-sm text-muted-foreground">
-                Imported from <span className="font-mono text-foreground/80">{b.source.repo}</span>
-                {b.source.commit ? ` @ ${b.source.commit.slice(0, 8)}` : ''}. Check for upstream drift:
-                <code className="ml-1 rounded bg-surface px-1 text-xs">bakin brands check {b.id}</code>
-              </p>
-            </Section>
-          )}
-          <BrandHealthSection brandId={b.id} onDeleted={onBack} />
-        </div>
+        <BrandSettingsTab brand={b} brandId={brandId} onPublish={() => setPublishConfirm(true)} onDeleted={onBack} />
       )}
 
       {/* ONE save path for the whole manifest — appears whenever anything is staged. */}
@@ -342,30 +378,6 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
 // ─── Shared shells ────────────────────────────────────────────────────────────
 
 const inputCls = 'w-full rounded-md bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/70 outline-none ring-1 ring-inset ring-outline-variant/30 transition-shadow focus-visible:ring-2 focus-visible:ring-ring/60'
-
-/** Elevated surface panel — the primary grouping device (no hard borders). */
-function Section({
-  label, icon: Icon, action, children, className,
-}: {
-  label: string
-  icon?: React.ComponentType<{ className?: string }>
-  action?: React.ReactNode
-  children: React.ReactNode
-  className?: string
-}) {
-  return (
-    <section className={`rounded-xl bg-card p-4 ring-1 ring-foreground/10 ${className ?? ''}`}>
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-muted-foreground">
-          {Icon && <Icon className="size-3.5" />}
-          <h3 className="text-[11px] font-medium uppercase tracking-wider">{label}</h3>
-        </div>
-        {action}
-      </div>
-      <div className="space-y-2.5">{children}</div>
-    </section>
-  )
-}
 
 function RemoveBtn({ onClick }: { onClick: () => void }) {
   return (
@@ -477,15 +489,44 @@ function OverviewTab({
     ...(brand.defaultImageReferences ?? []),
   ]).size, [brand])
 
-  const checklist = [
-    { ok: detail.guidelines.some((d) => d.name === 'voice.md'), label: 'Voice doc', gap: 'agents get only palette + rules, not how the brand talks', tab: 'guidelines' },
-    { ok: brand.palette.length > 0, label: 'Palette', gap: 'image generation has no brand colors to follow', tab: 'identity' },
-    { ok: (brand.rules?.length ?? 0) > 0, label: 'Rules', gap: 'no non-negotiables ride every dispatch', tab: 'identity' },
-    { ok: brand.logos.length > 0 || brand.assetGroups.length > 0, label: 'Brand assets', gap: 'no real logos/screenshots for agents to reference', tab: 'assets' },
-  ]
+  const completeness = detail.completeness
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Finish-your-kit checklist: server-computed, every miss is a jump link. */}
+      {completeness && completeness.percent < 100 && (
+        <SectionCard
+          title="Finish your kit"
+          icon={Check}
+          description="What's still missing before agents have the full picture — each item jumps to where you fix it."
+          action={
+            <span className="flex items-center gap-2">
+              <Progress value={completeness.percent} className="h-1.5 w-24" aria-label={`Kit ${completeness.percent}% complete`} />
+              <span className="text-xs tabular-nums text-muted-foreground">{completeness.percent}%</span>
+            </span>
+          }
+        >
+          <div className="grid gap-1 sm:grid-cols-2" data-kit-checklist>
+            {completeness.items.map((item) => (
+              <button
+                key={item.key}
+                className="flex items-start gap-2.5 rounded-lg px-1 py-1 text-left transition-colors hover:bg-foreground/5"
+                onClick={() => onGoTo(item.fixTab)}
+                data-kit-item={item.key}
+              >
+                {item.done
+                  ? <Check className="mt-0.5 size-4 shrink-0 text-success" />
+                  : <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />}
+                <span className="text-sm">
+                  <span className={item.done ? '' : 'text-warning'}>{item.label}</span>
+                  {!item.done && <span className="text-muted-foreground"> — {item.hint}</span>}
+                </span>
+              </button>
+            ))}
+          </div>
+        </SectionCard>
+      )}
+
       {/* Stat tiles */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <CardFootprintTile card={card} />
@@ -495,8 +536,10 @@ function OverviewTab({
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
-        <Section
-          label="Voice" icon={Sparkles}
+        <SectionCard
+          title="Voice"
+          icon={Sparkles}
+          description="How the brand talks — the biggest lever on how on-brand output reads."
           action={
             <Button
               variant="ghost" size="xs" className="text-muted-foreground"
@@ -507,50 +550,42 @@ function OverviewTab({
           }
         >
           {voice === null
-            ? <p className="text-sm text-muted-foreground">No voice.md yet — the biggest lever on how on-brand output reads.</p>
+            ? <p className="text-sm text-muted-foreground">No voice.md yet.</p>
             : <div className="prose-invert max-h-56 max-w-none overflow-hidden text-sm [mask-image:linear-gradient(to_bottom,black_70%,transparent)]"><MarkdownContent content={voice} /></div>}
-        </Section>
+        </SectionCard>
 
-        <Section
-          label="Rules & terminology" icon={AlertTriangle}
+        <SectionCard
+          title="Rules & terminology"
+          icon={AlertTriangle}
+          description="Non-negotiables that ride every branded task inline."
           action={<Button variant="ghost" size="xs" className="text-muted-foreground" onClick={() => onGoTo('identity')}><Pencil className="size-3" /> Edit</Button>}
         >
           {(brand.rules?.length ?? 0) === 0 && (brand.terminology?.length ?? 0) === 0 && (
-            <p className="text-sm text-muted-foreground">None set — rules and terms ride every dispatch inline.</p>
+            <p className="text-sm text-muted-foreground">None set yet.</p>
           )}
           {brand.rules?.map((r) => (
-            <div key={r} className="flex gap-2 text-sm"><span className="text-accent">›</span><span>{r}</span></div>
+            <div key={r} className="flex gap-2 text-sm"><span className="text-muted-foreground">›</span><span>{r}</span></div>
           ))}
           {brand.terminology?.map((t) => (
             <div key={t.term} className="text-sm"><span className="font-medium">{t.term}</span> <span className="text-muted-foreground">— {t.rule}</span></div>
           ))}
-        </Section>
+        </SectionCard>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Section label="Setup" icon={Check}>
-          {checklist.map((c) => (
-            <button key={c.label} className="flex w-full items-start gap-2.5 rounded-lg px-1 py-1 text-left transition-colors hover:bg-surface-bright/50" onClick={() => onGoTo(c.tab)}>
-              {c.ok ? <Check className="mt-0.5 size-4 shrink-0 text-success" /> : <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />}
-              <span className="text-sm">
-                <span className={c.ok ? '' : 'text-warning'}>{c.label}</span>
-                {!c.ok && <span className="text-muted-foreground"> — {c.gap}</span>}
-              </span>
-            </button>
+      <SectionCard
+        title="Recent activity"
+        icon={Rocket}
+        description="Edits, imports, publishes, and dispatch injections for this brand."
+      >
+        {activity.length === 0
+          ? <p className="text-sm text-muted-foreground">Nothing yet — activity shows up as the brand gets used.</p>
+          : activity.slice(0, 8).map((a, i) => (
+            <div key={`${a.ts}-${i}`} className="flex items-baseline justify-between gap-2 text-sm">
+              <span>{activityLabel(a)}</span>
+              <span className="shrink-0 text-xs text-muted-foreground">{relTime(a.ts)}</span>
+            </div>
           ))}
-        </Section>
-
-        <Section label="Recent activity" icon={Rocket}>
-          {activity.length === 0
-            ? <p className="text-sm text-muted-foreground">No activity yet. Brand edits, imports, and dispatch injections show up here.</p>
-            : activity.slice(0, 8).map((a, i) => (
-              <div key={`${a.ts}-${i}`} className="flex items-baseline justify-between gap-2 text-sm">
-                <span>{activityLabel(a)}</span>
-                <span className="shrink-0 text-xs text-muted-foreground">{relTime(a.ts)}</span>
-              </div>
-            ))}
-        </Section>
-      </div>
+      </SectionCard>
     </div>
   )
 }
@@ -1018,13 +1053,71 @@ function AssetTile({
   )
 }
 
-// ─── Settings health ──────────────────────────────────────────────────────────
+// ─── Draft banner + settings ──────────────────────────────────────────────────
 
-function BrandHealthSection({ brandId, onDeleted }: { brandId: string; onDeleted: () => void }) {
+/** Tasks in todo currently waiting on this brand (draft or missing). */
+function useBlockedCount(brandId: string, enabled: boolean): number {
+  const [count, setCount] = useState(0)
+  useEffect(() => {
+    if (!enabled) return
+    void (async () => {
+      try {
+        const res = await fetch('/api/plugins/brands/blocked-tasks')
+        if (!res.ok) return
+        const body = (await res.json()) as { perTask?: Record<string, string> }
+        setCount(Object.values(body.perTask ?? {}).filter((id) => id === brandId).length)
+      } catch { /* the count is a nudge, not a gate */ }
+    })()
+  }, [brandId, enabled])
+  return count
+}
+
+/**
+ * The wait-for-the-agent story (spec §7h): a fresh draft never looks silent.
+ * Links the drafting task when the create flow handed us its id (?draftTask=).
+ */
+function DraftBanner({ brandId, onPublish }: { brandId: string; onPublish: () => void }) {
+  const navigate = useNavigate()
+  const [draftTask] = useQueryState('draftTask', '')
+  const blocked = useBlockedCount(brandId, true)
+
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-xl bg-warning/10 p-4 ring-1 ring-warning/20" data-draft-banner>
+      <Sparkles className="size-4 shrink-0 text-warning" />
+      <div className="min-w-0 flex-1 text-sm">
+        <p className="font-medium">This brand is a draft</p>
+        <p className="text-muted-foreground">
+          {draftTask
+            ? 'An agent is drafting it from your intake — usually takes a few minutes. Review the tabs as they fill in, then publish.'
+            : 'Invisible to tasks and image tools until you publish it.'}
+          {blocked > 0 && ` ${blocked} task${blocked === 1 ? ' is' : 's are'} waiting on this brand.`}
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {draftTask && (
+          <Button variant="outline" size="sm" onClick={() => void navigate({ to: '/tasks', search: { taskId: draftTask } as never })} data-draft-task-link>
+            View the drafting task
+          </Button>
+        )}
+        <Button size="sm" onClick={onPublish}>
+          <Rocket className="size-3.5" /> Publish
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function BrandSettingsTab({
+  brand, brandId, onPublish, onDeleted,
+}: {
+  brand: BrandManifest; brandId: string; onPublish: () => void; onDeleted: () => void
+}) {
   const [cardInfo, setCardInfo] = useState<{ cardBytes: number; maxBytes: number; omitted: number } | null>(null)
   const [dangling, setDangling] = useState<Array<{ assetId: string; where: string }>>([])
-  const [deleteState, setDeleteState] = useState<{ linked: number } | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [linked, setLinked] = useState<number | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const blocked = useBlockedCount(brandId, Boolean(brand.draft))
 
   useEffect(() => {
     void (async () => {
@@ -1042,69 +1135,110 @@ function BrandHealthSection({ brandId, onDeleted }: { brandId: string; onDeleted
           setDangling(body.findings.find((f) => f.brandId === brandId)?.dangling ?? [])
         }
       } catch { /* integrity is best-effort here; the doctor is the backstop */ }
+      // How many open tasks reference this brand — context for the danger zone.
+      try {
+        const res = await fetch('/api/plugins/tasks/')
+        if (res.ok) {
+          const board = (await res.json()) as { columns?: Record<string, Array<{ brandId?: string }>> }
+          let n = 0
+          for (const [column, tasks] of Object.entries(board.columns ?? {})) {
+            if (column === 'done' || column === 'archived') continue
+            n += tasks.filter((t) => t.brandId === brandId).length
+          }
+          setLinked(n)
+        }
+      } catch { /* count is context, not a gate */ }
     })()
   }, [brandId])
 
+  const deleteBrand = useCallback(async () => {
+    setDeleteBusy(true)
+    setDeleteError(null)
+    try {
+      const res = await fetch(`/api/plugins/brands/${brandId}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error(`delete failed: ${res.status}`)
+      toast(`Deleted ${brand.name}`, 'success')
+      onDeleted()
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setDeleteBusy(false)
+    }
+  }, [brandId, brand.name, onDeleted])
+
   return (
-    <Section label="Dispatch footprint & health" icon={Sparkles}>
-      {cardInfo && (
-        <p className="text-sm text-muted-foreground">
-          This brand's card adds ~{(cardInfo.cardBytes / 1024).toFixed(1)} KB of the {(cardInfo.maxBytes / 1024).toFixed(0)} KB budget to every branded dispatch
-          {cardInfo.omitted > 0 ? ` — ${cardInfo.omitted} item(s) currently omitted for size (agents fetch them via tools).` : ' — nothing currently omitted.'}
-        </p>
-      )}
-      {dangling.length > 0 && (
-        <div className="rounded-lg bg-warning/10 p-3 ring-1 ring-warning/20">
-          {dangling.map((d) => <p key={d.assetId} className="flex items-center gap-1.5 text-xs text-warning"><AlertTriangle className="size-3" /> asset {d.assetId} missing ({d.where})</p>)}
-        </div>
-      )}
-      {error && <p className="text-xs text-destructive">{error}</p>}
-      {deleteState === null ? (
-        <Button
-          variant="ghost" size="sm" className="w-fit text-red-400 hover:bg-destructive/10 hover:text-red-400"
-          onClick={async () => {
-            let linked = 0
-            try {
-              const res = await fetch('/api/plugins/tasks/')
-              if (res.ok) {
-                const board = (await res.json()) as { columns?: Record<string, Array<{ brandId?: string }>> }
-                for (const [column, tasks] of Object.entries(board.columns ?? {})) {
-                  if (column === 'done' || column === 'archived') continue
-                  linked += tasks.filter((t) => t.brandId === brandId).length
-                }
-              }
-            } catch { /* guard is best-effort; the confirm below is the gate */ }
-            setDeleteState({ linked })
-          }}
-        >
-          <Trash2 className="size-3.5" /> Delete brand…
-        </Button>
-      ) : (
-        <div className="space-y-2 rounded-lg bg-destructive/5 p-3 ring-1 ring-destructive/20">
-          <p className="text-sm text-red-300">
-            {deleteState.linked > 0
-              ? `${deleteState.linked} pending task(s) link to this brand — they will NOT dispatch until it exists again.`
-              : 'No pending tasks link to this brand.'}
-            {' '}Guidelines and lessons are deleted; assets stay in the asset store.
-          </p>
-          <div className="flex gap-2">
-            <Button
-              variant="ghost" size="sm" className="text-red-400 hover:bg-destructive/10 hover:text-red-400"
-              onClick={async () => {
-                try {
-                  const res = await fetch(`/api/plugins/brands/${brandId}`, { method: 'DELETE' })
-                  if (!res.ok) throw new Error(`delete failed: ${res.status}`)
-                  onDeleted()
-                } catch (err) { setError(err instanceof Error ? err.message : String(err)) }
-              }}
-            >
-              <Trash2 className="size-3.5" /> Delete permanently
+    <div className="flex flex-col gap-4">
+      <SectionCard
+        title="Status"
+        icon={Rocket}
+        description={brand.draft ? 'Drafts are invisible to tasks and image tools until published.' : 'Published — agents use this brand on every linked task.'}
+      >
+        {brand.draft ? (
+          <>
+            <p className="text-sm text-muted-foreground">
+              Review the tabs, then publish. Delete <code className="rounded bg-surface px-1 text-xs">_intake.md</code> under
+              Guidelines if you don't want the builder intake kept.
+              {blocked > 0 && ` ${blocked} task${blocked === 1 ? ' is' : 's are'} waiting on this brand right now.`}
+            </p>
+            <Button variant="default" size="sm" className="w-fit" onClick={onPublish}>
+              <Rocket className="size-3.5" /> Publish brand
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => setDeleteState(null)}>Cancel</Button>
-          </div>
-        </div>
+          </>
+        ) : (
+          <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <Check className="size-4 text-success" /> Live since {new Date(brand.updatedAt).toLocaleDateString()}
+            {linked !== null && ` — linked to ${linked} open task${linked === 1 ? '' : 's'}.`}
+          </p>
+        )}
+      </SectionCard>
+
+      {brand.source && (
+        <SectionCard
+          title="Imported from"
+          icon={ExternalLink}
+          description="Where this brand kit came from — local edits win over the upstream copy."
+        >
+          <p className="text-sm text-muted-foreground">
+            <span className="font-mono text-foreground/80">{brand.source.repo}</span>
+            {brand.source.commit ? ` @ ${brand.source.commit.slice(0, 8)}` : ''}. Check for upstream changes:
+            <code className="ml-1 rounded bg-surface px-1 text-xs">bakin brands check {brand.id}</code>
+          </p>
+        </SectionCard>
       )}
-    </Section>
+
+      <SectionCard
+        title="What agents see"
+        icon={Sparkles}
+        description="Every branded task carries a compact card of this brand — rules, palette, terminology, and the always-in-context docs."
+      >
+        {cardInfo ? (
+          <p className="text-sm text-muted-foreground">
+            The card currently adds ~{(cardInfo.cardBytes / 1024).toFixed(1)} KB of its {(cardInfo.maxBytes / 1024).toFixed(0)} KB allowance to every branded task
+            {cardInfo.omitted > 0 ? ` — ${cardInfo.omitted} item${cardInfo.omitted === 1 ? ' is' : 's are'} left out for size (agents fetch them on demand).` : ' — nothing is left out.'}
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground">Measuring the card…</p>
+        )}
+        {dangling.length > 0 && (
+          <div className="rounded-lg bg-warning/10 p-3 ring-1 ring-warning/20">
+            {dangling.map((d) => <p key={d.assetId} className="flex items-center gap-1.5 text-xs text-warning"><AlertTriangle className="size-3" /> asset {d.assetId} is missing ({d.where}) — remove or replace it under Assets</p>)}
+          </div>
+        )}
+      </SectionCard>
+
+      <DangerZone
+        description={
+          linked !== null && linked > 0
+            ? `Deletes the brand, its guidelines, and lessons. ${linked} open task${linked === 1 ? '' : 's'} link${linked === 1 ? 's' : ''} to it and will pause until you remove the link. Assets stay in the asset store.`
+            : 'Deletes the brand, its guidelines, and lessons. Tasks linked to it later will pause until it exists again. Assets stay in the asset store.'
+        }
+        confirmLabel="Delete this brand"
+        confirmValue={brandId}
+        busy={deleteBusy}
+        error={deleteError}
+        onConfirm={() => void deleteBrand()}
+      />
+    </div>
   )
 }
 

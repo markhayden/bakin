@@ -109,7 +109,8 @@ export function FromWebsiteDialog({
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onCreated: (brandId: string) => void
+  /** taskId = the dispatched drafting task, so the detail page can link it in the drafting banner. */
+  onCreated: (brandId: string, taskId?: string) => void
 }) {
   const [name, setName] = useState('')
   const [urls, setUrls] = useState('')
@@ -142,12 +143,12 @@ export function FromWebsiteDialog({
           notes: notes.trim() || undefined,
         }),
       })
-      const body = (await res.json().catch(() => ({}))) as { brand?: { id: string }; error?: string }
+      const body = (await res.json().catch(() => ({}))) as { brand?: { id: string }; taskId?: string; error?: string }
       if (!res.ok || !body.brand) throw new Error(body.error ?? `Create failed: ${res.status}`)
       toast(`Draft created — the agent is reading your links`, 'success')
       reset()
       onOpenChange(false)
-      onCreated(body.brand.id)
+      onCreated(body.brand.id, body.taskId)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
