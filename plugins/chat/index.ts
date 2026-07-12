@@ -12,6 +12,7 @@ import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { definePlugin } from '@bakin/core/routing'
 
 import { chatRoutes } from './lib/routes'
+import { registerChatSearch } from './lib/search'
 
 const chatPlugin: BakinPlugin = definePlugin({
   id: 'chat',
@@ -26,8 +27,9 @@ const chatPlugin: BakinPlugin = definePlugin({
     ],
   },
 
-  activate(_ctx: PluginContext) {
-    // Routes are declarative; nothing to register imperatively yet.
+  activate(ctx: PluginContext) {
+    // Transcripts join global search (⌘K finds conversations by content).
+    registerChatSearch(ctx)
   },
 })
 

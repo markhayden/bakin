@@ -15,4 +15,14 @@ registerPlugin({
     // reply toasts/chime/OS notifications — works from any page.
     'nav-badge-providers': ChatBadgeProvider,
   },
+  search: {
+    hitRenderers: {
+      chats: (hit) => ({
+        title: String(hit.fields.title ?? 'New chat'),
+        subtitle: `chat · ${String(hit.fields.agent_id ?? '')}`,
+        href: `/chat?chat=${encodeURIComponent(hit.id)}`,
+        icon: 'message-square',
+      }),
+    },
+  },
 })
