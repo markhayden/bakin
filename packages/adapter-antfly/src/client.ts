@@ -286,26 +286,37 @@ export class AntflySearchClient implements SearchAdapter {
     // index mid-backfill 500s, a wedged shard) contributes zero hits with
     // a diagnostic instead of zeroing the whole cross-table search — the
     // exact failure observed at the rc.17 cutover with Promise.all.
+    // Failures log ONE aggregated line per fan-out, not one per table: a
+    // single degraded query (e.g. the first semantic fan-out after the
+    // engine's embed path went cold) used to spam 11 identical warns at
+    // every boot. Per-table detail stays in the response diagnostics.
+    const failures: Array<{ table: string; err: string }> = []
     const run = async (entry: { table: string; query: Query }): Promise<QueryResult> => {
       try {
         return await this.query(entry.table, entry.query)
       } catch (err) {
-        log.warn('multiQuery table failed — contributing zero hits', {
-          table: entry.table,
-          err: err instanceof Error ? err.message : String(err),
-        })
-        return { hits: [], total: 0, diagnostics: { strategy: 'none', budget: 'omitted', adapter: { error: err instanceof Error ? err.message : String(err) } } }
+        const message = err instanceof Error ? err.message : String(err)
+        failures.push({ table: entry.table, err: message })
+        return { hits: [], total: 0, diagnostics: { strategy: 'none', budget: 'omitted', adapter: { error: message } } }
       }
     }
     // Parallel by default; sequential only when something reranks (the
     // reranker serializes on one Metal queue — concurrent reranked queries
     // back up behind each other anyway).
+    let results: QueryResult[]
     if (queries.some((entry) => entry.query.rerank)) {
-      const results: QueryResult[] = []
+      results = []
       for (const entry of queries) results.push(await run(entry))
-      return results
+    } else {
+      results = await Promise.all(queries.map(run))
     }
-    return Promise.all(queries.map(run))
+    if (failures.length > 0) {
+      log.warn(`multiQuery degraded — ${failures.length}/${queries.length} table(s) contributed zero hits`, {
+        tables: failures.map((f) => f.table),
+        err: failures[0].err,
+      })
+    }
+    return results
   }
 
   async *scan(table: string, opts?: ScanOpts): AsyncIterable<ScannedDocument> {
