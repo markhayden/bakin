@@ -29,10 +29,10 @@ Plan: `tasks/plan-search-trust-and-speed.md` · Spec: `.claude/specs/search-trus
 - [x] T15 feat(search): lastIndexedAt/lastRebuildAt + numeric backlog (type+UI+CLI)
 
 ## P5 — surface trust
-- [ ] T16 fix(plugins): D11 engine-down states — memory, tasks, schedule, workflows
+- [x] T16 fix(plugins): D11 engine-down states — memory, tasks, schedule, workflows
 - [x] T17 feat(search): matched-field debug explanations
 
 ## P6 — prove + ship
 - [ ] T18 stress test: seed content, 20-query p50/p95, chaos drills, UX sweep → evidence
-- [ ] T19 docs(knowledge): search-system.md, search-plugin-guide.md, CLAUDE.md bullet
+- [x] T19 docs(knowledge): search-system.md, search-plugin-guide.md, CLAUDE.md bullet
 - [ ] T20 PR → merge → deploy to ../bakin-wt-pi → restart 3737 → live spot-check → ports clean
