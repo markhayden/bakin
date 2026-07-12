@@ -10,6 +10,7 @@ import { join } from 'node:path'
 import type { Mode } from './args'
 
 export interface InstancePaths {
+  repoRoot: string
   /** Shared OpenClaw home (bind-mounted into the container). */
   openclawHome: string
   /**
@@ -45,6 +46,7 @@ export function instancePaths(repoRoot: string, mode: Mode): InstancePaths {
   if (mode === 'isolated') resetTargets.push(isolatedBakinHome, antflyDataDir)
 
   return {
+    repoRoot,
     openclawHome,
     piHome,
     antflyDataDir,
