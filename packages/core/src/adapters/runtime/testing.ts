@@ -161,6 +161,13 @@ function mockTurnDelay(signal: AbortSignal | undefined): Promise<void> {
  * `chat:<id>` threads show up in sessions.list on OpenClaw/Pi — the mock
  * must not invert that).
  */
+/** Echo suffix so tests can assert attachment pass-through end-to-end. */
+function attachmentEcho(args: MessageArgs): string {
+  if (!args.attachments?.length) return ''
+  const names = args.attachments.map((a) => a.path.split('/').pop() ?? a.path).join(', ')
+  return ` [attachments: ${names}]`
+}
+
 async function* mockChatStream(args: MessageArgs, recordSession: (args: MessageArgs) => void): AsyncIterable<ChatChunk> {
   if (!args.signal?.aborted) {
     yield { type: 'status', content: 'thinking' }
@@ -175,7 +182,7 @@ async function* mockChatStream(args: MessageArgs, recordSession: (args: MessageA
         yield { type: 'tool', data: mockToolActivity('result') }
       }
       recordSession(args)
-      yield { type: 'text', content: `mock reply: ${args.content}` }
+      yield { type: 'text', content: `mock reply: ${args.content}${attachmentEcho(args)}` }
     } catch {
       // aborted mid-turn — fall through to the clean done
     }
@@ -315,7 +322,7 @@ export function createMockRuntimeAdapter(
         recordSession(args)
         return {
           id: `msg-${Date.now()}`,
-          content: `mock reply: ${args.content}`,
+          content: `mock reply: ${args.content}${attachmentEcho(args)}`,
           ...(args.threadId ? { metadata: { sessionId: `mock-session-${args.agentId}-${args.threadId}` } } : {}),
         }
       },
@@ -398,6 +405,20 @@ export function createMockRuntimeAdapter(
   }
 
   return merged
+}
+
+/**
+ * Opt-in image-input capability override for attachment tests:
+ * `createMockRuntimeAdapter({ capabilities: mockImageInputCapabilities() })`.
+ * The default mock declares `imageInput: false` (minimal shape); streams
+ * still echo attachments in the reply text so pass-through is assertable
+ * either way.
+ */
+export function mockImageInputCapabilities(): (opts?: { agentId?: string }) => Promise<ReturnType<typeof mockCapabilities>> {
+  return async () => ({
+    ...mockCapabilities(false),
+    input: { imageInput: true, audioInput: false },
+  })
 }
 
 function mockCapabilities(deliveryNative: boolean) {

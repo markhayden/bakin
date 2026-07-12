@@ -394,11 +394,16 @@ export async function handleGatewayRpcRequest(method: string, params: Record<str
     const wantsDroppedDelta = userMessage.includes('[[dropped-delta]]')
     const cleanMessage = userMessage.replace(/ ?\[\[(tool|dropped-delta)\]\]/g, '')
 
-    const reply = mode === 'echo'
+    // Acknowledge inbound attachments (the real gateway's native `attachments`
+    // param) so chat-attachment e2e drives can assert the pixels arrived.
+    const attachmentCount = Array.isArray(params.attachments) ? params.attachments.length : 0
+    const attachmentNote = attachmentCount ? ` [saw ${attachmentCount} attachment${attachmentCount === 1 ? '' : 's'}]` : ''
+
+    const reply = (mode === 'echo'
       ? `[mock:${agentName}] ${cleanMessage}`
       : mode === 'slow'
         ? `[mock:${agentName}] Acknowledged after a slow turn.`
-        : `[mock:${agentName}] Acknowledged. Task understood — working on it.`
+        : `[mock:${agentName}] Acknowledged. Task understood — working on it.`) + attachmentNote
 
     // Real-wire run identity: runId echoes the client idempotencyKey; the
     // canonical sessionKey is agent:<id>:explicit:<sessionId> for threaded
