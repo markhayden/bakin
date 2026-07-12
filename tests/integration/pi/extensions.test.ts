@@ -70,6 +70,7 @@ async function adapterWithPolicy(policy: Record<string, unknown> | undefined) {
     contentDir: join(testDir, 'bakin'),
     settings: { retry: { enabled: false }, ...(policy ? { piExtensions: policy } : {}) },
   })
+  await adapter.provisionToolAccess() // seeds main (write-free initialize)
   await adapter.agents.update('main', { model: 'fakeai/fake-model' })
   return adapter
 }

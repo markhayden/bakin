@@ -52,6 +52,7 @@ beforeAll(async () => {
     },
   }))
   await adapter.initialize({ contentDir: join(testDir, 'bakin') })
+  await adapter.provisionToolAccess() // seeds main (write-free initialize)
 })
 
 afterAll(() => {

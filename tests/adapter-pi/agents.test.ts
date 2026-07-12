@@ -44,7 +44,10 @@ describe('home resolution', () => {
 })
 
 describe('registry + agents surface', () => {
-  test('initialize seeds a main orchestrator resolvable by the neutral helper', async () => {
+  test('initialize is write-free; provision seeds a main orchestrator resolvable by the neutral helper', async () => {
+    // initialize alone (beforeAll) must not have seeded anything.
+    expect((await adapter.agents.list()).length).toBe(0)
+    await adapter.provisionToolAccess()
     const agents = await adapter.agents.list()
     expect(agents.length).toBe(1)
     const main = selectRuntimeMainAgent(agents)
@@ -54,8 +57,8 @@ describe('registry + agents surface', () => {
     expect(existsSync(getAgentWorkspaceDir('main'))).toBe(true)
   })
 
-  test('second initialize does not re-seed', async () => {
-    await adapter.initialize({ contentDir: join(testDir, 'bakin') })
+  test('second provision does not re-seed', async () => {
+    await adapter.provisionToolAccess()
     expect((await adapter.agents.list()).length).toBe(1)
   })
 

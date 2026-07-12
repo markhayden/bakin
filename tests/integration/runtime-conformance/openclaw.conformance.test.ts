@@ -150,6 +150,23 @@ const target: RuntimeConformanceTarget = {
     createOpenClawRuntimeAdapter({
       settings: { gatewayUrl: 'http://127.0.0.1', gatewayPort: 1 },
     }),
+  // Fresh adapter against a pristine home: initialize must create nothing.
+  // The home module is mocked to the closure-mutable `mockHome`, so the
+  // scenario re-points it and cleanup restores the harness home.
+  makeFreshInitScenario: () => {
+    const harnessHome = mockHome
+    const freshHome = join(tempDir, `openclaw-fresh-${++threadSeq}`)
+    mockHome = freshHome
+    const fresh = createOpenClawRuntimeAdapter()
+    return {
+      homeDir: freshHome,
+      initialize: () =>
+        fresh.initialize({ contentDir: freshHome, bakinMcpBaseUrl: 'http://localhost:3737' }),
+      cleanup: () => {
+        mockHome = harnessHome
+      },
+    }
+  },
 }
 
 runRuntimeConformanceSuite('openclaw (imitation crab)', () => target, { sessionsPin: SESSIONS_PIN_ENABLED })
