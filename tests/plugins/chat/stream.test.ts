@@ -226,6 +226,26 @@ describe('chat stream bridge', () => {
     expect(rows.at(-1)).toMatchObject({ kind: 'error', message: 'session died', errorKind: 'session_died' })
   })
 
+  test('resolveActiveTurnForAgent binds tools to the agent\'s current chat turn', async () => {
+    const { resolveActiveTurnForAgent } = await import('../../../plugins/chat/lib/stream-bridge')
+    const chat = await createChat({ agentId: 'main' })
+    let release!: () => void
+    const gate = new Promise<void>((r) => { release = r })
+    scriptStream(async function* () {
+      yield { type: 'text', content: 'working' } as ChatChunk
+      await gate
+      yield { type: 'done' } as ChatChunk
+    })
+
+    expect(resolveActiveTurnForAgent('main')).toBeNull()
+    await startChatTurn(activated.ctx, chat.id, 'go')
+    expect(resolveActiveTurnForAgent('main')).toEqual({ chatId: chat.id })
+    expect(resolveActiveTurnForAgent('someone-else')).toBeNull()
+    release()
+    await waitForTurn(chat.id)
+    expect(resolveActiveTurnForAgent('main')).toBeNull()
+  })
+
   test('one in-flight turn per chat: second send gets busy/409', async () => {
     const chat = await createChat({ agentId: 'main' })
     let release!: () => void

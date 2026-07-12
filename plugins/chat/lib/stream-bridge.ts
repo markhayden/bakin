@@ -42,6 +42,8 @@ class StreamTurnError extends Error {
 interface InflightTurn {
   promise: Promise<void>
   controller: AbortController
+  agentId: string
+  startedAt: number
 }
 
 // One in-flight turn per chat. The promise is retained so tests (and any
@@ -50,6 +52,22 @@ const inflight = new Map<string, InflightTurn>()
 
 export function isTurnInFlight(chatId: string): boolean {
   return inflight.has(chatId)
+}
+
+/**
+ * The chat an agent is CURRENTLY replying in, if any — resolved through the
+ * `chat.resolveActiveTurn` hook so tools called mid-turn (image generation)
+ * can bind their output to the right chat without the agent knowing ids.
+ * Ambiguity (same agent streaming in several chats) resolves to the most
+ * recently started turn.
+ */
+export function resolveActiveTurnForAgent(agentId: string): { chatId: string } | null {
+  let best: { chatId: string; startedAt: number } | null = null
+  for (const [chatId, turn] of inflight) {
+    if (turn.agentId !== agentId) continue
+    if (!best || turn.startedAt > best.startedAt) best = { chatId, startedAt: turn.startedAt }
+  }
+  return best ? { chatId: best.chatId } : null
 }
 
 /** Await the current turn for a chat (resolved immediately if idle). */
@@ -92,7 +110,7 @@ export async function startChatTurn(
   const promise = runTurn(ctx, chatId, chat.agentId, content, controller, attachments).finally(() => {
     inflight.delete(chatId)
   })
-  inflight.set(chatId, { promise, controller })
+  inflight.set(chatId, { promise, controller, agentId: chat.agentId, startedAt: Date.now() })
   return 'accepted'
 }
 

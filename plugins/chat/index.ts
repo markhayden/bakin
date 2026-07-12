@@ -13,6 +13,7 @@ import { definePlugin } from '@bakin/core/routing'
 
 import { chatRoutes } from './lib/routes'
 import { registerChatSearch } from './lib/search'
+import { resolveActiveTurnForAgent } from './lib/stream-bridge'
 
 const chatPlugin: BakinPlugin = definePlugin({
   id: 'chat',
@@ -30,6 +31,12 @@ const chatPlugin: BakinPlugin = definePlugin({
   activate(ctx: PluginContext) {
     // Transcripts join global search (⌘K finds conversations by content).
     registerChatSearch(ctx)
+    // Cross-plugin: lets tools called mid-turn (image generation) bind
+    // their output to the agent's current chat without the agent passing ids.
+    ctx.hooks.register('chat.resolveActiveTurn', async (data) => {
+      const agentId = (data as { agentId?: string })?.agentId
+      return agentId ? resolveActiveTurnForAgent(agentId) : null
+    })
   },
 })
 

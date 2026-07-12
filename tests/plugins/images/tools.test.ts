@@ -1121,6 +1121,51 @@ describe('images tools', () => {
     })
   })
 
+  it('without taskId and no active chat turn, fails honestly before any billing', async () => {
+    const generate = mock(async () => { throw new Error('must never be called') })
+    const { ctx, created } = makeContext({ runtime: { images: { providers: mock(async () => []), generate } } as never })
+    const result = await generateImage(ctx, { prompt: 'a pickle', surface: 'blog-hero' }, 'main')
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('no active chat turn')
+    expect(generate).not.toHaveBeenCalled()
+    expect(created).toEqual([])
+  })
+
+  it('chat-bound generation: no taskId auto-binds to the active chat turn (asset taskId null)', async () => {
+    const { getHookRegistry } = await import('../../../packages/core/src/hooks/hook-registry-singleton')
+    const registry = getHookRegistry()
+    registry.register(
+      'chat.resolveActiveTurn',
+      (data: Record<string, unknown>) => (data.agentId === 'main' ? { chatId: 'chat-42' } : null),
+      { pluginId: 'test-chat-context' } as never,
+    )
+    try {
+      const runtimeFile = join(testDir, 'chat-pickle.png')
+      writeFileSync(runtimeFile, 'pickle-image')
+      const generate = mock(async () => ({
+        provider: 'google',
+        model: 'gemini-3.1-flash-image-preview',
+        images: [{ filePath: runtimeFile, mimeType: 'image/png', width: 1200, height: 630 }],
+        metadata: {},
+      }))
+      const { ctx, created } = makeContext({ runtime: { images: { providers: mock(async () => []), generate } } as never })
+
+      const result = await generateImage(
+        ctx,
+        { prompt: 'a very serious pickle', provider: 'google', model: 'gemini-3.1-flash-image-preview', surface: 'blog-hero' },
+        'main',
+      )
+      expect(result.ok).toBe(true)
+      expect(typeof result.assetId).toBe('string')
+      expect(generate).toHaveBeenCalledTimes(1)
+      // Asset carries NO task linkage — it belongs to the chat context.
+      expect(created).toHaveLength(1)
+      expect((created[0] as { taskId?: string | null }).taskId).toBeNull()
+    } finally {
+      registry.unregisterByPlugin('test-chat-context')
+    }
+  })
+
   it('refuses a billed generation when the budget cap is exhausted — no provider call, typed refusal (cost-control v2)', async () => {
     const { getHookRegistry } = await import('../../../packages/core/src/hooks/hook-registry-singleton')
     const { recordRunCost } = await import('../../../src/core/execution-ledger')

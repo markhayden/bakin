@@ -4,6 +4,7 @@ import { basename } from 'node:path'
 import type { AssetVersionDetail } from '@makinbakin/sdk/types'
 import { isValidAssetId } from '@makinbakin/sdk/utils'
 import { translateAgentPath } from '@bakin/core/agent-path-map'
+import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { loadSharp } from '@bakin/core/media/sharp-loader'
 import type { ExecToolResult, PluginContext } from '@bakin/core/plugin-types'
 import type { RuntimeImageGenerationResult } from '@bakin/core/adapters/runtime'
@@ -25,7 +26,9 @@ const MAX_REFERENCE_IMAGES = 4
 export interface ImagesGenerateParams {
   prompt?: string
   promptPacket?: Record<string, unknown>
-  taskId: string
+  /** Task to link the asset to. Omit during an interactive chat turn — the
+   *  tool auto-binds to the agent's active chat via `chat.resolveActiveTurn`. */
+  taskId?: string
   surface?: string
   provider?: ImageProviderId | 'auto'
   model?: string
@@ -66,6 +69,24 @@ export interface ImagesExportParams {
 
 function fail(error: string): ExecToolResult {
   return { ok: false, error }
+}
+
+/**
+ * Billing/asset context for a generation or edit: an explicit taskId, or —
+ * during an interactive chat turn — the agent's active chat resolved via
+ * the `chat.resolveActiveTurn` hook. contextKey feeds the billed-call
+ * idempotency signature; taskId (null for chat) feeds asset linkage.
+ */
+async function resolveImageContext(
+  params: { taskId?: string },
+  agent: string,
+): Promise<{ taskId: string | null; contextKey: string } | { error: string }> {
+  if (params.taskId) return { taskId: params.taskId, contextKey: params.taskId }
+  const active = await getHookRegistry().invoke<{ chatId: string } | null>('chat.resolveActiveTurn', { agentId: agent })
+  if (!active?.chatId) {
+    return { error: 'No taskId given and no active chat turn found — pass taskId when working a task; in an interactive chat, call this during your reply turn.' }
+  }
+  return { taskId: null, contextKey: `chat:${active.chatId}` }
 }
 
 function errorMessage(err: unknown): string {
@@ -293,7 +314,7 @@ async function resolveReferences(
       // Auto-import the loose file so the reference is tracked provenance, not a
       // path+hash that can't be browsed later. Source-path dedup avoids dupes.
       const up = await ctx.assets.upsertFromSource(entry, {
-        sourceFilePath: entry, type: 'images', agent, taskId: params.taskId,
+        sourceFilePath: entry, type: 'images', agent, taskId: params.taskId ?? null,
         op: 'import', tool: 'bakin_exec_images_import',
         description: basename(entry), source: { kind: 'import', path: entry },
         // Tagged so the assets view can filter reference material out of
@@ -316,9 +337,13 @@ async function prepareImageRequest(ctx: PluginContext, params: ImagesGeneratePar
   // Second line of defense behind server-side abort (2026-07-09 incident:
   // a deleted task's turn kept running and billed a generation): billable
   // work for a task that no longer exists is refused BEFORE routing/billing.
-  const task = await ctx.tasks.get(params.taskId)
-  if (!task) {
-    return { error: `Task ${params.taskId} no longer exists (deleted). Do not continue work for it — stop and re-check your assignment with bakin_exec_tasks_get.` }
+  // Chat-bound generations (no taskId) have no task to gate on — the chat
+  // turn's own abort already cancels the stream.
+  if (params.taskId) {
+    const task = await ctx.tasks.get(params.taskId)
+    if (!task) {
+      return { error: `Task ${params.taskId} no longer exists (deleted). Do not continue work for it — stop and re-check your assignment with bakin_exec_tasks_get.` }
+    }
   }
 
   // Brand conditioning (#419): resolve BEFORE routing/billing — a bad brandId
@@ -409,7 +434,7 @@ async function persistImageResult(
 
   const ref = opts.create
     ? await ctx.assets.createAsset({
-        sourceFilePath: image.filePath, type: 'images', agent, taskId: params.taskId,
+        sourceFilePath: image.filePath, type: 'images', agent, taskId: params.taskId ?? null,
         slug: `${req.dims.surface}-image`, op: 'generate', tool,
         // No machine tags: provenance (surface/provider/model) lives in
         // `generation` + `op`; tags stay the user's organizational namespace.
@@ -429,7 +454,7 @@ async function persistImageResult(
     agent,
     model: `${req.route.provider}/${req.route.model}`,
     count: result.images.length,
-    taskId: params.taskId,
+    taskId: params.taskId ?? null,
   })
 
   return {
@@ -479,6 +504,9 @@ function versionMatchesRequest(version: AssetVersionDetail | undefined, req: Pre
 }
 
 async function reusableGenerateResult(ctx: PluginContext, params: ImagesGenerateParams, req: PreparedImageRequest, promptHash: string): Promise<ExecToolResult | null> {
+  // Task-scoped reuse only — chat-bound generations rely on the ledger's
+  // billed-call idempotency (cross-chat prompt dedupe would be surprising).
+  if (!params.taskId) return null
   const existing = await ctx.assets.listAssets({ type: 'images', taskId: params.taskId })
   for (const summary of existing) {
     const current = await currentVersionOf(ctx, summary.assetId)
@@ -532,6 +560,8 @@ function imageToolResultFromVersion(
 }
 
 export async function generateImage(ctx: PluginContext, params: ImagesGenerateParams, agent: string): Promise<ExecToolResult> {
+  const context = await resolveImageContext(params, agent)
+  if ('error' in context) return fail(context.error)
   const req = await prepareImageRequest(ctx, params, agent)
   if ('error' in req) return fail(req.error)
 
@@ -554,7 +584,7 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
       const summary = await ctx.assets.getAsset(ref.assetId)
       const current = await currentVersionOf(ctx, ref.assetId)
       if (!summary || !current) continue
-      if (summary.taskId === params.taskId && (current.op === 'generate' || current.op === 'edit')) {
+      if (params.taskId && summary.taskId === params.taskId && (current.op === 'generate' || current.op === 'edit')) {
         return fail(
           `Reference ${ref.assetId} is your own output on this task. If this is an iteration/correction of that deliverable, pass versionOf="${ref.assetId}" so the render appends a new VERSION (one asset, stable id). If it is a deliberately separate companion image, pass allowNewAsset=true.`,
         )
@@ -580,7 +610,7 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
   // with different references is not treated as a duplicate (#418); versionOf
   // participates so a re-roll into an asset is distinct from a fresh generate.
   const key: ImageCallKey = {
-    taskId: params.taskId, op: 'generate', source: params.versionOf ?? null,
+    taskId: context.contextKey, op: 'generate', source: params.versionOf ?? null,
     promptHash, provider: req.route.provider, model: req.route.model,
     width: req.dims.width, height: req.dims.height, quality: req.quality,
     references: req.references.fingerprint,
@@ -619,6 +649,8 @@ export async function editImage(ctx: PluginContext, params: ImagesEditParams, ag
   const source = await ctx.assets.resolveVersionFile(params.assetId)
   if (!source) return fail(`Asset not found: ${params.assetId}`)
 
+  const context = await resolveImageContext(params, agent)
+  if ('error' in context) return fail(context.error)
   const req = await prepareImageRequest(ctx, params, agent)
   if ('error' in req) return fail(req.error)
   // Re-check after resolution: a raw path or media:// reference whose
@@ -635,7 +667,7 @@ export async function editImage(ctx: PluginContext, params: ImagesEditParams, ag
   const runEdit = ctx.runtime.images.edit
 
   const key: ImageCallKey = {
-    taskId: params.taskId, op: 'edit', source: params.assetId,
+    taskId: context.contextKey, op: 'edit', source: params.assetId,
     promptHash, provider: req.route.provider, model: req.route.model,
     width: req.dims.width, height: req.dims.height, quality: req.quality,
     references: req.references.fingerprint,
