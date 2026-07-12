@@ -11,6 +11,7 @@
  */
 import { z } from 'zod'
 
+import { translateAgentPath } from '@bakin/core/agent-path-map'
 import type { PluginContext } from '@bakin/core/plugin-types'
 
 import { isValidAssetId } from './asset-id'
@@ -153,7 +154,9 @@ export function registerAssetsExecTools(ctx: PluginContext): void {
       slug: z.string().optional().describe('Custom slug for the asset id. Auto-derived from source filename if omitted.'),
     },
     handler: async (params: Record<string, unknown>, agent: string) => {
-      const filePath = typeof params.filePath === 'string' ? params.filePath : ''
+      // Dev-rig seam: agents may report container paths for bind-mounted
+      // workspaces (BAKIN_AGENT_PATH_MAP); production is a pass-through.
+      const filePath = typeof params.filePath === 'string' ? translateAgentPath(params.filePath) : ''
       if (!filePath) return { ok: false, error: 'filePath is required' }
       try {
         const r = await upsertFromSource(filePath, {

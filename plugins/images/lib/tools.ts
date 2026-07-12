@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { basename } from 'node:path'
 import type { AssetVersionDetail } from '@makinbakin/sdk/types'
 import { isValidAssetId } from '@makinbakin/sdk/utils'
+import { translateAgentPath } from '@bakin/core/agent-path-map'
 import type { ExecToolResult, PluginContext } from '@bakin/core/plugin-types'
 import type { RuntimeImageGenerationResult } from '@bakin/core/adapters/runtime'
 import { RUNTIME_MEDIA_URI_SCHEME } from '@bakin/core/adapters/runtime'
@@ -282,6 +283,9 @@ async function resolveReferences(
       if (!resolved) return { error: `Reference media URI not found: ${rawEntry}` }
       entry = resolved
     }
+    // Dev-rig seam: agent-reported container paths → host paths
+    // (BAKIN_AGENT_PATH_MAP). Asset ids and host paths pass through.
+    entry = translateAgentPath(entry)
     // A path INSIDE the asset store is already managed — reflect it to its
     // identity (and to the real version file when given a thumb) instead of
     // letting auto-import clone it.
