@@ -118,6 +118,13 @@ describe('chat stream bridge', () => {
     // threadId contract: chat:<chatId>
     expect(seenArgs[0]?.threadId).toBe(`chat:${chat.id}`)
     expect(seenArgs[0]?.agentId).toBe('main')
+    // Every turn carries the delivery framing (runtime-only); the persisted
+    // transcript keeps the user's clean text.
+    expect(seenArgs[0]?.content).toContain('hi')
+    expect(seenArgs[0]?.content).toContain('Bakin chat turn')
+    const userRow = readTranscript(chat.id).find((r) => r.kind === 'user')
+    if (userRow?.kind !== 'user') throw new Error('expected user row')
+    expect(userRow.content).toBe('hi')
 
     // SSE: text/tool/status chunks relayed on chat.chunk (done/error ride
     // their dedicated events — the wire matches the declared ChatChunkEvent

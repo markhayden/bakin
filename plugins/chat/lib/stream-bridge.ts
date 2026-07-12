@@ -32,6 +32,20 @@ const log = createLogger('chat-stream')
 
 const PREVIEW_MAX = 140
 
+/**
+ * Per-turn delivery framing — the chat counterpart of dispatch's OUTPUT
+ * DISCIPLINE. Sent to the runtime with every chat turn (the persisted
+ * transcript keeps the user's clean text); short by design. Without it,
+ * agents follow their runtime-native skills into the void and reply
+ * "here you go" with nothing delivered (the pickle/pumpkin incidents).
+ */
+export const CHAT_TURN_FRAMING =
+  '[Bakin chat turn: you are replying inside an interactive Bakin chat. ' +
+  'Deliverables must land IN this chat. Images: call bakin_exec_images_generate ' +
+  '(omit taskId — it auto-binds to this chat), then embed the result as ' +
+  '![desc](/api/assets/<assetId>) in your reply. Files: bakin_exec_assets_save, then embed. ' +
+  'Never claim delivery without the embedded asset. See the bakin skill for details.]'
+
 /** Carries an error chunk's typed RuntimeError kind through the throw. */
 class StreamTurnError extends Error {
   constructor(message: string, readonly kind?: string) {
@@ -149,7 +163,7 @@ async function runTurn(
     }
     for await (const chunk of ctx.runtime.messaging.stream({
       agentId,
-      content,
+      content: `${content}\n\n${CHAT_TURN_FRAMING}`,
       threadId: `chat:${chatId}`,
       signal: controller.signal,
       ...(prepared.length
