@@ -41,8 +41,8 @@ Plan: ./plan.md · Spec: /SPEC.md · Branch: feat/dev-rig-dual-runtime
 - [ ] sandbox×pi: needs in-container /login (user TTY)
 - [x] validate.ts campaign (2026-07-12): 18/18 after fixing R5.2's uncaught sidecar-startup
       window (8f2afd4b; reproduced twice, retried transient-only). R7.1/R7.2: abort workaround
-      still required — upstream defect STANDS. Follow-up: exit-1 after clean summary
-      (dangling gateway handle at teardown; cosmetic).
+      still required — upstream defect STANDS. Exit-1-after-clean-summary fixed too
+      (late-attached drill rejection handler + explicit exit code): verified exit=0, 18/18.
 - [~] reset scoping: unit-pinned (resetTargets provably under dev/; lifecycle wipe tests).
       Live reset deliberately NOT run — it wipes Codex + Pi auth (re-login cost). Run any time
       with: hash real dirs → `instance reset --mode isolated` → compare.

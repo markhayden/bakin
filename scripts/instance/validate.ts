@@ -200,6 +200,10 @@ if (skipFailureDrill) {
   report('R5 failure drill', true, 'skipped (--skip-failure-drill)')
 } else {
   const drill = timedSend(primary, `task:rigdrill-${runStamp}:d1`, 'Count slowly from 1 to 30, one number per line.')
+  // Attach a handler NOW: the drill usually rejects during the restart window
+  // below, before `await drill` — a late-attached handler leaves Bun's
+  // unhandled-rejection flag set and the process exits 1 after a clean run.
+  drill.catch(() => {})
   await new Promise((r) => setTimeout(r, 1500)) // let the turn start server-side
   const restart = Bun.spawn(['docker', 'restart', 'bakin-openclaw-gateway'], { stdout: 'pipe', stderr: 'pipe' })
   await restart.exited
@@ -342,5 +346,7 @@ for (const b of bench) console.log(`  ${b.metric}: ${b.value}`)
 if (failed.length > 0) {
   console.log('\nFailed:')
   for (const f of failed) console.log(`  ✗ ${f.id} — ${f.detail}`)
-  process.exit(1)
 }
+// Explicit: the checks ARE the contract — don't let lingering gateway
+// handles or late-handled drill rejections pick the exit code.
+process.exit(failed.length > 0 ? 1 : 0)
