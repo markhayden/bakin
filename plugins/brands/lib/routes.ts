@@ -27,6 +27,15 @@ import { brandIdSchema, brandManifestSchema } from './schemas'
 import { computeBrandFingerprint } from './fingerprint'
 import { scaffoldBrand } from './scaffold'
 import { buildBrandCard } from './card'
+import { computeCompleteness, summarizeCompleteness } from './completeness'
+
+/** Completeness over the manifest + the two scaffold-seeded guideline docs. */
+function brandCompleteness(manifest: Parameters<typeof computeCompleteness>[0]) {
+  return computeCompleteness(manifest, {
+    voice: readDoc(manifest.id, 'guidelines', 'voice.md'),
+    styleGuide: readDoc(manifest.id, 'guidelines', 'style-guide.md'),
+  })
+}
 
 const log = createLogger('brands')
 
@@ -100,6 +109,7 @@ export const brandRoutes = [
               ...b.assetGroups.flatMap((g) => g.assetIds),
             ]).size,
           },
+          completeness: summarizeCompleteness(brandCompleteness(b)),
         })),
         invalid,
         warnUnbranded,
@@ -549,6 +559,7 @@ export const brandRoutes = [
         guidelines: listDocs(read.manifest.id, 'guidelines'),
         lessons: listDocs(read.manifest.id, 'lessons'),
         fingerprint: computeBrandFingerprint(read.manifest.id),
+        completeness: brandCompleteness(read.manifest),
       })
     },
   }),

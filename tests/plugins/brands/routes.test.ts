@@ -79,6 +79,23 @@ describe('brand CRUD routes', () => {
     expect((list.body.brands as Array<{ id: string }>).map((b) => b.id)).toEqual(['acme'])
   })
 
+  it('carries completeness on both list (summary) and detail (full checklist)', async () => {
+    await createAcme()
+    const list = await callRoute(route('GET', '/'), activated.ctx)
+    const listed = (list.body.brands as Array<{ completeness: { percent: number; missing: string[] } }>)[0]
+    expect(typeof listed.completeness.percent).toBe('number')
+    // fresh scaffold-only brand: docs are unauthored, palette empty, no logo
+    expect(listed.completeness.missing).toContain('logo')
+    expect(listed.completeness.missing).toContain('voice')
+
+    const detail = await callRoute(route('GET', '/:brandId'), activated.ctx, {
+      searchParams: { brandId: 'acme' },
+    })
+    const full = detail.body.completeness as { percent: number; items: Array<{ key: string; done: boolean; fixTab: string }> }
+    expect(full.items).toHaveLength(8)
+    expect(full.items.every((i) => typeof i.done === 'boolean' && i.fixTab.length > 0)).toBe(true)
+  })
+
   it('rejects duplicates (409) and invalid slugs (400)', async () => {
     await createAcme()
     expect((await createAcme()).status).toBe(409)
