@@ -384,6 +384,34 @@ export const runtimeConformanceChecks = {
     }
   },
   /**
+   * listWorkspaceFiles enumerates RECURSIVELY (D5 of the runtime-switch-carry
+   * spec): agent memory lives in subdirectories (`memory/*.md`), and a
+   * top-level-only listing silently hides it from every consumer — the
+   * runtime-switch workspace carry most critically. Round-trips a nested
+   * write → list → read → remove through the workspace-file surface.
+   */
+  async workspaceFileEnumerationIsRecursive(target: RuntimeConformanceTarget): Promise<void> {
+    const rel = `memory/conformance-recursive-${Math.random().toString(36).slice(2, 10)}.md`
+    const content = '# conformance: nested workspace file'
+    await target.runtime.agents.writeWorkspaceFile(target.agentId, { path: rel, content })
+    try {
+      const files = await target.runtime.agents.listWorkspaceFiles(target.agentId)
+      if (!files.includes(rel)) {
+        fail(
+          `listWorkspaceFiles omitted nested '${rel}' — enumeration must be recursive `
+          + `(agent memory lives in subdirectories); got: ${JSON.stringify(files)}`,
+        )
+      }
+      const read = await target.runtime.agents.readWorkspaceFile(target.agentId, rel)
+      if (read?.content !== content) {
+        fail(`nested workspace file did not round-trip (read returned ${read === null ? 'null' : JSON.stringify(read?.content)})`)
+      }
+    } finally {
+      await target.runtime.agents.removeWorkspaceFile(target.agentId, rel)
+    }
+  },
+
+  /**
    * initialize() performs no filesystem writes to the adapter home (D4 of
    * the runtime-switch-carry spec). Seeding and config writes are
    * provisioning concerns — every supported boot/install/switch path calls
@@ -523,6 +551,10 @@ export function runRuntimeConformanceSuite(
 
     it('initialize() is write-free (provisioning owns home writes)', async () => {
       await runtimeConformanceChecks.initializeIsWriteFree(getTarget())
+    })
+
+    it('workspace file enumeration is recursive', async () => {
+      await runtimeConformanceChecks.workspaceFileEnumerationIsRecursive(getTarget())
     })
   })
 }

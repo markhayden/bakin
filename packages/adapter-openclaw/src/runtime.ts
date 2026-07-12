@@ -424,15 +424,27 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       }
     },
     listWorkspaceFiles: async (agentId: string): Promise<string[]> => {
+      // Recursive (conformance-pinned): agent memory lives in subdirectories
+      // (memory/*.md) — a top-level listing hides it from every consumer.
+      // Dot-entries are skipped (parity with the Pi adapter's walk).
       const root = getWorkspacePath(agentId)
-      try {
-        return readdirSync(root, { withFileTypes: true })
-          .filter((entry) => entry.isFile())
-          .map((entry) => entry.name)
-          .sort()
-      } catch {
-        return []
+      const out: string[] = []
+      const walk = (dir: string, rel: string): void => {
+        let entries
+        try {
+          entries = readdirSync(dir, { withFileTypes: true })
+        } catch {
+          return
+        }
+        for (const entry of entries) {
+          if (entry.name.startsWith('.')) continue
+          const relPath = rel ? `${rel}/${entry.name}` : entry.name
+          if (entry.isDirectory()) walk(join(dir, entry.name), relPath)
+          else if (entry.isFile()) out.push(relPath)
+        }
       }
+      walk(root, '')
+      return out.sort()
     },
     workspaceFileStats: async (agentId: string): Promise<WorkspaceFileStat[] | null> => {
       const root = getWorkspacePath(agentId)

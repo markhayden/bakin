@@ -195,6 +195,19 @@ describe('conformance suite teeth (broken adapter must fail every check)', () =>
       .rejects.toThrow(/conformance violation: onActivity tapped a 'text' chunk/)
   })
 
+  it('fails the recursive-enumeration check on a top-level-only listing', async () => {
+    const runtime = createMockRuntimeAdapter()
+    const list = runtime.agents.listWorkspaceFiles.bind(runtime.agents)
+    // Lie: only top-level files are enumerated (the pre-D5 OpenClaw shape).
+    runtime.agents = {
+      ...runtime.agents,
+      listWorkspaceFiles: async (agentId: string) => (await list(agentId)).filter((p) => !p.includes('/')),
+    }
+    const target = { ...honestTargetShell(runtime) }
+    await expect(runtimeConformanceChecks.workspaceFileEnumerationIsRecursive(target))
+      .rejects.toThrow(/conformance violation: listWorkspaceFiles omitted nested/)
+  })
+
   it('fails the write-free-initialize check when initialize writes into the home', async () => {
     const runtime = createMockRuntimeAdapter()
     const freshHome = join(tmpdir(), `bakin-teeth-init-${randomUUID()}`)
