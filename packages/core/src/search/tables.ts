@@ -224,15 +224,34 @@ async function backfill(adapter: SearchAdapter, def: TableEnsureDef, physical: s
   return emitted
 }
 
-async function converged(adapter: SearchAdapter, physical: string, expected: number): Promise<boolean> {
+async function legsReady(adapter: SearchAdapter, physical: string): Promise<boolean> {
+  if (!adapter.tables.health) return true
+  const legs = await adapter.tables.health(physical).catch(() => null)
+  if (!legs) return false
+  return legs.every((leg) => leg.state === 'ready')
+}
+
+/**
+ * Converge check for one poll. `expected` (the backfill's emitted count)
+ * is a point-in-time snapshot: a LIVE source can shrink after enumeration
+ * (deletes/orphan sweeps dual-write into the green), so a green can be
+ * complete yet never reach `expected` — that parked bakin_memory forever
+ * (2026-07-11). Accept either: the count reached the snapshot, OR the
+ * count is STABLE across two consecutive polls with every leg ready —
+ * nothing in flight, nothing pending, the green simply IS the source now.
+ */
+async function converged(
+  adapter: SearchAdapter,
+  physical: string,
+  expected: number,
+  prevCount: number | null,
+): Promise<{ ok: boolean; count: number }> {
   const stats = await adapter.tables.stats(physical).catch(() => null)
-  if ((stats?.documents ?? 0) < expected) return false
-  if (adapter.tables.health) {
-    const legs = await adapter.tables.health(physical).catch(() => null)
-    if (!legs) return false
-    if (legs.some((leg) => leg.state !== 'ready')) return false
-  }
-  return true
+  const count = stats?.documents ?? 0
+  const reached = count >= expected
+  const stable = prevCount !== null && count === prevCount
+  if (!reached && !stable) return { ok: false, count }
+  return { ok: await legsReady(adapter, physical), count }
 }
 
 /**
@@ -332,11 +351,12 @@ async function runMigration(
   const timeoutMs = opts?.convergeTimeoutMs ?? DEFAULT_CONVERGE_TIMEOUT_MS
   const pollMs = opts?.convergePollMs ?? DEFAULT_CONVERGE_POLL_MS
   const deadline = Date.now() + timeoutMs
-  let ok = await converged(adapter, green, emitted)
-  while (!ok && Date.now() < deadline) {
+  let check = await converged(adapter, green, emitted, null)
+  while (!check.ok && Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, pollMs))
-    ok = await converged(adapter, green, emitted)
+    check = await converged(adapter, green, emitted, check.count)
   }
+  const ok = check.ok
   if (!ok) {
     // NEVER flip early. Park with dual-write still on; the doctor surfaces
     // it and resumeMigrations() finishes the job when the engine recovers.

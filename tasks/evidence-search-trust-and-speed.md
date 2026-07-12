@@ -110,3 +110,11 @@ Migrations: memory (8.4k docs) + brand-lessons converging, brands parked behind 
 8. Canary suite green vs TRUE pinned engine ✅ (harness binary-preference fixed)
 9. Full suite ✅ 6538/0
 10. Docs ✅ (knowledge + CLAUDE.md + plugin guide)
+
+## Post-T18 completion (21:20–21:25)
+
+- Enrichment queue finished: **36/36 enriched, 0 failed** (including the previously-failed asset).
+- All 11 tables ACTIVE. bakin_memory required a manual flip: its converge demanded the backfill-time emitted count (8,723) while the live source had SHRUNK (orphan-swept audit rows dual-deleted from the green) — the green was complete at 8,258 and could never reach a number that no longer exists. Verified green == fresh enumeration, flipped the registry row by hand, dropped the stale blue (204).
+- Root-cause fix on this branch: `converged()` now also accepts legs-ready + doc-count STABLE across two consecutive polls (the shrunk-source case), with a regression test. Live-drift parking cannot recur.
+- Upstream filed: **antfly#346** (query-embed cache / vector input — the remaining ~1s of global-search wall time is N identical query embeds serialized on Metal).
+- Final: memory search 91ms; global search ~1s hybrid / instant FTS; engine idle; journal 0/0.
