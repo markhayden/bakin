@@ -31,6 +31,11 @@ All timestamps MDT (2026-07-11 unless noted).
 - Engine log also reveals `bakin_projects_v1_3a1b6f23` exists engine-side (registry expects `_49da8817`) — the projects 404 is fingerprint drift from the hot-patched user plugin.
 - **Latency transformation confirmed:** direct FTS query 2.70s (rc.17, spinning) → **40–53ms** (rc.18). Engine CPU ~7% post-boot vs 301% before.
 
+## Interim latency (18:40, old server code, rebuild still running)
+
+- `GET /api/search?q=…` × 5 mixed queries: **0.99–1.07s** (was 28.8s baseline) — measured WHILE the memory table's 2.4k-doc embeddings backfill ran. Engine CPU 3–7% idle / ~100% only during real embed bursts.
+- Expected to drop further on the new code (concurrent count twin, no 15s abandon).
+
 ## GATE A — #319 verdict on rc.18 (in progress)
 
 - rc.17 on-disk state is unreadable by rc.18 (`UnsupportedVersion` dense-vector indexes + `InvalidDerivedApplyState` startup-replay loop, ~34k log lines). Decisive cure executed 17:42–17:44: engine stopped, data dir moved to `~/.bakin/antfly.rc17-corrupt-backup`, `search_tables` + tombstones cleared (outbox kept: 48 rows), engine booted FRESH, `POST /api/reindex` recreated tables from source via the create+seed path (agent-lessons 77 docs, tasks 60, team 0-by-design, …).
