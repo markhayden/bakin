@@ -111,6 +111,30 @@ describe('attachment upload + serving', () => {
 })
 
 describe('attachment send-through', () => {
+  test('a crafted traversal path in the send body is rejected (server re-derives from name)', async () => {
+    const chat = await createChat({ agentId: 'main' })
+    const send = findRoute(activated.routes, 'POST', '/chats/:chatId/messages')!
+    const dir = join(testDir, 'chat', 'attachments', chat.id)
+    // Un-normalized startsWith passed this before the 2026-07-12 review.
+    const sneaky = await callRoute(send, activated.ctx, {
+      path: `/chats/${chat.id}/messages`,
+      body: {
+        content: 'read this',
+        attachments: [{ name: 'x.png', mimeType: 'image/png', path: `${dir}/../../../../index.json` }],
+      },
+    })
+    expect(sneaky.status).toBe(400)
+    // A legit name whose path doesn't match the derived location also fails.
+    const mismatched = await callRoute(send, activated.ctx, {
+      path: `/chats/${chat.id}/messages`,
+      body: {
+        content: 'read this',
+        attachments: [{ name: 'not-uploaded.png', mimeType: 'image/png', path: join(dir, 'not-uploaded.png') }],
+      },
+    })
+    expect(mismatched.status).toBe(400) // exists check: never send phantom files
+  })
+
   test('send with attachments threads them into messaging.stream and persists on the user row', async () => {
     const chat = await createChat({ agentId: 'main' })
     const uploaded = (await upload(chat.id, pngFile('ref.png'))).body.attachment as {

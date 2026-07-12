@@ -246,11 +246,31 @@ describe('chat stream bridge', () => {
 
     expect(resolveActiveTurnForAgent('main')).toBeNull()
     await startChatTurn(activated.ctx, chat.id, 'go')
-    expect(resolveActiveTurnForAgent('main')).toEqual({ chatId: chat.id })
+    expect(resolveActiveTurnForAgent('main')).toMatchObject({ chatId: chat.id })
+    expect(typeof resolveActiveTurnForAgent('main')?.turnId).toBe('string')
     expect(resolveActiveTurnForAgent('someone-else')).toBeNull()
     release()
     await waitForTurn(chat.id)
     expect(resolveActiveTurnForAgent('main')).toBeNull()
+  })
+
+  test('TOCTOU: two CONCURRENT sends — exactly one wins the busy slot', async () => {
+    const chat = await createChat({ agentId: 'main' })
+    let starts = 0
+    scriptStream(async function* () {
+      starts++
+      yield { type: 'text', content: 'only once' } as ChatChunk
+      yield { type: 'done' } as ChatChunk
+    })
+    // Fire both before either awaits — the old check-then-await guard let
+    // both through (review finding).
+    const [a, b] = await Promise.all([
+      startChatTurn(activated.ctx, chat.id, 'first'),
+      startChatTurn(activated.ctx, chat.id, 'second'),
+    ])
+    expect([a, b].sort()).toEqual(['accepted', 'busy'])
+    await waitForTurn(chat.id)
+    expect(starts).toBe(1)
   })
 
   test('one in-flight turn per chat: second send gets busy/409', async () => {

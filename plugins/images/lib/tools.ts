@@ -82,11 +82,13 @@ async function resolveImageContext(
   agent: string,
 ): Promise<{ taskId: string | null; contextKey: string } | { error: string }> {
   if (params.taskId) return { taskId: params.taskId, contextKey: params.taskId }
-  const active = await getHookRegistry().invoke<{ chatId: string } | null>('chat.resolveActiveTurn', { agentId: agent })
+  const active = await getHookRegistry().invoke<{ chatId: string; turnId: string } | null>('chat.resolveActiveTurn', { agentId: agent })
   if (!active?.chatId) {
-    return { error: 'No taskId given and no active chat turn found — pass taskId when working a task; in an interactive chat, call this during your reply turn.' }
+    return { error: 'No taskId given and no unambiguous active chat turn — pass taskId when working a task; in an interactive chat, call this during your reply turn (if you are replying in several chats at once, this cannot bind safely).' }
   }
-  return { taskId: null, contextKey: `chat:${active.chatId}` }
+  // Scope idempotency to THIS turn: a chat-lifetime key made every later
+  // identical prompt silently return the first billed image.
+  return { taskId: null, contextKey: `chat:${active.chatId}:${active.turnId}` }
 }
 
 function errorMessage(err: unknown): string {

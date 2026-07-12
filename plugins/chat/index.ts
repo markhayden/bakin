@@ -13,6 +13,7 @@ import { definePlugin } from '@bakin/core/routing'
 
 import { chatRoutes } from './lib/routes'
 import { registerChatSearch } from './lib/search'
+import { getChatSummary } from './lib/store'
 import { resolveActiveTurnForAgent } from './lib/stream-bridge'
 
 const chatPlugin: BakinPlugin = definePlugin({
@@ -35,7 +36,11 @@ const chatPlugin: BakinPlugin = definePlugin({
     // their output to the agent's current chat without the agent passing ids.
     ctx.hooks.register('chat.resolveActiveTurn', async (data) => {
       const agentId = (data as { agentId?: string })?.agentId
-      return agentId ? resolveActiveTurnForAgent(agentId) : null
+      const active = agentId ? resolveActiveTurnForAgent(agentId) : null
+      // Deleted-chat window: a turn can outlive its chat briefly — never
+      // bind billable work to a chat that no longer exists.
+      if (!active || !getChatSummary(active.chatId)) return null
+      return active
     })
   },
 })

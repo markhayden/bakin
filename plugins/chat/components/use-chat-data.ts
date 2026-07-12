@@ -192,17 +192,20 @@ export function useChatStream(chatId: string): ChatStreamState {
   // Guard against SSE events for other chats / stale fetches after switching.
   const activeChatRef = useRef(chatId)
   activeChatRef.current = chatId
-  const lastUserContentRef = useRef('')
+  const lastUserRef = useRef<{ content: string; attachments?: Array<{ name: string; mimeType: string; path: string }> }>({ content: '' })
 
   const loadTranscript = useCallback(async () => {
     if (!chatId) { setChat(null); setMessages([]); return }
     const res = await pluginFetch('chat', `chats/${chatId}`)
     if (!res.ok || activeChatRef.current !== chatId) return
     const body = (await res.json()) as { chat: ChatSummaryDto; messages: TranscriptRowDto[] }
+    // Re-check AFTER the body read too — a slow response for the previous
+    // chat could land post-switch and render the wrong transcript.
+    if (activeChatRef.current !== chatId) return
     setChat(body.chat)
     setMessages(body.messages.map((row) => rowToMessage(chatId, row)))
     const lastUser = [...body.messages].reverse().find((r) => r.kind === 'user')
-    if (lastUser?.kind === 'user') lastUserContentRef.current = lastUser.content
+    if (lastUser?.kind === 'user') lastUserRef.current = { content: lastUser.content, attachments: lastUser.attachments }
   }, [chatId])
 
   useEffect(() => {
@@ -255,7 +258,7 @@ export function useChatStream(chatId: string): ChatStreamState {
     attachments?: Array<{ name: string; mimeType: string; path: string }>,
   ) => {
     setSendError(null)
-    lastUserContentRef.current = content
+    lastUserRef.current = { content, attachments }
     // Optimistic user row — WITH its attachments (they lagged to the post-turn
     // refetch otherwise); the durable copy replaces it on the next refetch.
     setMessages((prev) => [
@@ -289,7 +292,9 @@ export function useChatStream(chatId: string): ChatStreamState {
   }, [chatId])
 
   const retry = useCallback(() => {
-    if (lastUserContentRef.current) void send(lastUserContentRef.current)
+    // Re-send text AND the failed turn's attachments (they were dropped).
+    const last = lastUserRef.current
+    if (last.content || last.attachments?.length) void send(last.content, last.attachments)
   }, [send])
 
   return { chat, messages, liveChunks, streaming, sendError, send, abort, retry, refreshChat: loadTranscript }

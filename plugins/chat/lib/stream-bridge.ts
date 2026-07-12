@@ -54,10 +54,11 @@ class StreamTurnError extends Error {
 }
 
 interface InflightTurn {
-  promise: Promise<void>
+  promise: Promise<unknown>
   controller: AbortController
   agentId: string
   startedAt: number
+  turnId: string
 }
 
 // One in-flight turn per chat. The promise is retained so tests (and any
@@ -72,21 +73,24 @@ export function isTurnInFlight(chatId: string): boolean {
  * The chat an agent is CURRENTLY replying in, if any — resolved through the
  * `chat.resolveActiveTurn` hook so tools called mid-turn (image generation)
  * can bind their output to the right chat without the agent knowing ids.
- * Ambiguity (same agent streaming in several chats) resolves to the most
- * recently started turn.
+ * AMBIGUITY IS NULL: the same agent streaming in several chats at once
+ * cannot be attributed safely (review finding: most-recent picked the
+ * wrong chat), so callers fail honestly instead. Includes the turnId so
+ * billed-call idempotency scopes to THIS turn, not the chat's lifetime.
  */
-export function resolveActiveTurnForAgent(agentId: string): { chatId: string } | null {
-  let best: { chatId: string; startedAt: number } | null = null
+export function resolveActiveTurnForAgent(agentId: string): { chatId: string; turnId: string } | null {
+  let found: { chatId: string; turnId: string } | null = null
   for (const [chatId, turn] of inflight) {
     if (turn.agentId !== agentId) continue
-    if (!best || turn.startedAt > best.startedAt) best = { chatId, startedAt: turn.startedAt }
+    if (found) return null // ambiguous — never guess
+    found = { chatId, turnId: turn.turnId }
   }
-  return best ? { chatId: best.chatId } : null
+  return found
 }
 
 /** Await the current turn for a chat (resolved immediately if idle). */
-export function waitForTurn(chatId: string): Promise<void> {
-  return inflight.get(chatId)?.promise ?? Promise.resolve()
+export async function waitForTurn(chatId: string): Promise<void> {
+  await (inflight.get(chatId)?.promise ?? Promise.resolve())
 }
 
 /** Abort the in-flight turn; returns false when the chat is idle. */
@@ -109,22 +113,44 @@ export async function startChatTurn(
   if (!chat) return 'not_found'
   if (inflight.has(chatId)) return 'busy'
 
+  // Reserve the slot SYNCHRONOUSLY — checking then awaiting before setting
+  // let two concurrent sends both pass the busy guard (review TOCTOU).
+  const controller = new AbortController()
+  const turnId = randomUUID()
+  const entry: InflightTurn = {
+    promise: Promise.resolve(),
+    controller,
+    agentId: chat.agentId,
+    startedAt: Date.now(),
+    turnId,
+  }
+  inflight.set(chatId, entry)
+
   // Attachment-only sends carry a visible placeholder — the transcript
   // shows exactly what the runtime was asked.
   if (!content.trim() && attachments?.length) content = 'See the attached image.'
 
-  await appendTranscriptRow(chatId, {
-    kind: 'user',
-    ts: new Date().toISOString(),
-    content,
-    ...(attachments?.length ? { attachments } : {}),
-  })
-
-  const controller = new AbortController()
-  const promise = runTurn(ctx, chatId, chat.agentId, content, controller, attachments).finally(() => {
+  try {
+    await appendTranscriptRow(chatId, {
+      kind: 'user',
+      ts: new Date().toISOString(),
+      content,
+      ...(attachments?.length ? { attachments } : {}),
+    })
+  } catch (err) {
     inflight.delete(chatId)
-  })
-  inflight.set(chatId, { promise, controller, agentId: chat.agentId, startedAt: Date.now() })
+    log.error(`user row append failed for chat ${chatId}`, err as Error)
+    return 'not_found'
+  }
+
+  // The busy slot releases when the TURN settles; auto-titling chains
+  // after release (review finding: awaiting it inside the turn held the
+  // slot through a whole LLM round-trip and 409'd quick follow-ups).
+  entry.promise = runTurn(ctx, chatId, chat.agentId, content, controller, turnId, attachments)
+    .finally(() => {
+      inflight.delete(chatId)
+    })
+    .then((outcome) => (outcome.aborted || outcome.errored ? undefined : maybeAutoTitle(ctx, chatId)))
   return 'accepted'
 }
 
@@ -134,9 +160,9 @@ async function runTurn(
   agentId: string,
   content: string,
   controller: AbortController,
+  turnId: string,
   attachments?: ChatAttachment[],
-): Promise<void> {
-  const turnId = randomUUID()
+): Promise<{ aborted: boolean; errored: boolean }> {
   const recorder = createTurnRecorder({ turnId })
   let assistantText = ''
   // Oversized images downscale to temp JPEGs (the shared 2 MB inline-cap
@@ -208,9 +234,7 @@ async function runTurn(
       ...(assistantText ? { preview: firstLine(assistantText) } : {}),
       ...(aborted ? { aborted: true } : {}),
     })
-    // First-exchange auto-titling (budget-gated, ephemeral). Awaited so the
-    // turn promise settles deterministically; the UI already got its done.
-    if (!aborted) await maybeAutoTitle(ctx, chatId)
+    return { aborted, errored: false }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     // The typed kind the adapter attached to its error chunk survives to
@@ -224,6 +248,8 @@ async function runTurn(
       { kind: 'error', ts: new Date().toISOString(), turnId, message, ...(kind ? { errorKind: kind } : {}) },
     ])
     ctx.events.emit('chat.error', { chatId, agentId, message, ...(kind ? { kind } : {}) })
+    // Failed turns still get a title shot on the next success; skip here.
+    return { aborted: false, errored: true }
   } finally {
     for (const p of prepared) cleanupPreparedAttachment(p)
   }

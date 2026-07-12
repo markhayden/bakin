@@ -1126,7 +1126,7 @@ describe('images tools', () => {
     const { ctx, created } = makeContext({ runtime: { images: { providers: mock(async () => []), generate } } as never })
     const result = await generateImage(ctx, { prompt: 'a pickle', surface: 'blog-hero' }, 'main')
     expect(result.ok).toBe(false)
-    expect(result.error).toContain('no active chat turn')
+    expect(result.error).toContain('no unambiguous active chat turn')
     expect(generate).not.toHaveBeenCalled()
     expect(created).toEqual([])
   })

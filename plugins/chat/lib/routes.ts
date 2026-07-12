@@ -6,7 +6,7 @@
  * and the per-agent capability probe the composer gates on.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
-import { basename, extname, join } from 'path'
+import { basename, extname, join, resolve } from 'path'
 import { randomUUID } from 'crypto'
 import { z } from 'zod'
 
@@ -109,12 +109,26 @@ export const chatRoutes = [
     body: sendMessageBody,
     responses: { 202: passthrough, 404: errorResponse, 409: errorResponse },
     handler: async (_req, ctx, { params, body }) => {
-      // Attachments must live in THIS chat's attachment dir — a crafted path
-      // can never point the runtime at arbitrary files.
-      if (body.attachments?.some((a) => !a.path.startsWith(attachmentsDir(params.chatId)))) {
-        return Response.json({ error: 'attachment path outside this chat' }, { status: 400 })
+      // NEVER trust a caller-supplied path (a raw startsWith check passed
+      // `..` traversal, review finding 2026-07-12): the server re-derives
+      // every attachment path from its NAME inside this chat's attachment
+      // dir and requires the provided path to match exactly and exist.
+      let attachments = body.attachments
+      if (attachments?.length) {
+        const dir = attachmentsDir(params.chatId)
+        const derived = attachments.map((a) => ({
+          ...a,
+          path: join(dir, basename(a.name)),
+        }))
+        const invalid = derived.find(
+          (a, i) => resolve(attachments![i].path) !== a.path || !existsSync(a.path),
+        )
+        if (invalid) {
+          return Response.json({ error: 'attachment path outside this chat (or not uploaded)' }, { status: 400 })
+        }
+        attachments = derived
       }
-      const result = await startChatTurn(ctx, params.chatId, body.content, body.attachments)
+      const result = await startChatTurn(ctx, params.chatId, body.content, attachments)
       if (result === 'not_found') return Response.json({ error: 'chat not found' }, { status: 404 })
       if (result === 'busy') return Response.json({ error: 'a turn is already in flight for this chat' }, { status: 409 })
       return Response.json({ accepted: true, streaming: isTurnInFlight(params.chatId) }, { status: 202 })
@@ -254,6 +268,9 @@ export const chatRoutes = [
     params: chatIdParams,
     responses: { 200: passthrough, 404: errorResponse },
     handler: async (_req, _ctx, { params }) => {
+      // Abort any in-flight turn FIRST — a deleted chat must never keep
+      // billing runtime/image work (the deleted-task incident class).
+      abortChatTurn(params.chatId)
       const removed = await deleteChat(params.chatId)
       if (!removed) return Response.json({ error: 'chat not found' }, { status: 404 })
       return Response.json({ ok: true })

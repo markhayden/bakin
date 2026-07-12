@@ -84,7 +84,16 @@ function readRosterCache(): RosterCache | null {
     const raw = window.localStorage.getItem(ROSTER_CACHE_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw) as RosterCache
-    return Array.isArray(parsed.agents) ? parsed : null
+    if (!Array.isArray(parsed.agents)) return null
+    // Shape-validate — a malformed cache must never poison the shell.
+    const agents = parsed.agents.filter(
+      (a): a is AgentMeta => !!a && typeof a === 'object' && typeof (a as AgentMeta).id === 'string' && typeof (a as AgentMeta).name === 'string',
+    )
+    return {
+      agents,
+      displaySettings: parsed.displaySettings && typeof parsed.displaySettings === 'object' ? parsed.displaySettings : {},
+      mainAgentId: typeof parsed.mainAgentId === 'string' ? parsed.mainAgentId : null,
+    }
   } catch {
     return null
   }
