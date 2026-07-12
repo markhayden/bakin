@@ -33,6 +33,6 @@ Plan: `tasks/plan-search-trust-and-speed.md` · Spec: `.claude/specs/search-trus
 - [x] T17 feat(search): matched-field debug explanations
 
 ## P6 — prove + ship
-- [ ] T18 stress test: seed content, 20-query p50/p95, chaos drills, UX sweep → evidence
+- [x] T18 stress test: seed content, 20-query p50/p95, chaos drills, UX sweep → evidence
 - [x] T19 docs(knowledge): search-system.md, search-plugin-guide.md, CLAUDE.md bullet
-- [ ] T20 PR → merge → deploy to ../bakin-wt-pi → restart 3737 → live spot-check → ports clean
+- [x] T20 PR → merge → deploy to ../bakin-wt-pi → restart 3737 → live spot-check → ports clean

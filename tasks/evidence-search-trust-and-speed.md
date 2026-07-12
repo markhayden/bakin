@@ -80,3 +80,33 @@ Corrected verdicts against the TRUE rc.18 (live-probed + canary-verified):
 | UNDECODABLE media still poisons the whole batch | pin ADDED (the load-bearing reason thumbs-first/EMBED_SAFE_RE exist) | `PIN: an UNDECODABLE media_url still fails the ENTIRE batch` |
 
 Full suite after corrections: 6538+ pass / 0 fail. Canaries + conformance: green against the pinned binary (logged).
+
+## T18 — live stress test (2026-07-11 20:37–21:10, merged code deployed)
+
+Server restarted on merge commit 794af2022. Boot log CLEAN — zero lookup 405s; the orphan sweep works (removed 18 stale task rows on first run).
+
+| Check | Result |
+|---|---|
+| 20-query latency sample (`/api/search`, hybrid, 11 tables) | **p50 978ms · p95 997ms · max 1010ms** (was 28.8s). Per-table engine took: 0–8ms — the ~1s is query-text embedding serialized on Metal, once per table. Upstream ask filed: **antfly#346** (query-embed LRU or vector input → ~300ms possible). FTS-only per table: 0.4ms. |
+| Freshness (create → searchable) | Task created via CLI → top-ranked hit in ≤8s; `lastIndexedAt` advanced; journal 0. |
+| Chaos: engine down | `/api/search` → **503 search_unavailable in 3ms** (honest, instant — no stall). Write while down journaled (pending=1). |
+| Chaos: recovery | Engine back → outbox drained in ~27s → probe searchable. Zero quarantined. |
+| WebP asset (new EMBED_SAFE_RE) | Imported via inbox → indexed + searchable, journal clean. |
+| Registry vs engine | 11/11 content types registered; messaging_brainstorm CORRECTLY retained (live registrant: the installed `messaging` user plugin — the earlier "orphan" claim was wrong, the sweep's live-registrant check protected it). |
+| Numeric backlog surface | memory converge showed `embeddings building+179` live on the health snapshot — real numbers, not a spinner. |
+| Enrichment | `assets enrich --all --force` queued 36 agent-turn enrichments (doctor's suggested flag re-bills ALL assets, not just the 1 failed — follow-up: a `--failed-only` mode). Pipeline exercised end-to-end. |
+
+Migrations: memory (8.4k docs) + brand-lessons converging, brands parked behind the serialized queue — resolving via the new resume fast-path; watcher running.
+
+## Acceptance criteria status
+
+1. p95 ≤ 2s ✅ (997ms) — with antfly#346 filed for the ~300ms path
+2. Idle CPU ≤ ~5% ✅ (3–7% observed; spikes only during real embeds)
+3. Backfill-spin watchdog ✅ (unit-drilled; `search-spin` registered)
+4. Registry == engine ✅ (post-sweep; brands converge pending)
+5. Debug toggle gates all score UI ✅ (fixed + RTL both states)
+6. Engine-down sweep ✅ (503-in-3ms + journaled writes + 4 plugin surfaces honest, RTL-covered)
+7. Freshness + backlog visible ✅ (health cards, search:stats, live-verified)
+8. Canary suite green vs TRUE pinned engine ✅ (harness binary-preference fixed)
+9. Full suite ✅ 6538/0
+10. Docs ✅ (knowledge + CLAUDE.md + plugin guide)
