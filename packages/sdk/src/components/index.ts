@@ -96,6 +96,19 @@ export type { UnderlineTab } from '@/components/underline-tabs'
 export { TurnOutputView, TurnToolChip, foldTurnChunks } from '@/components/turn-output-view'
 export type { TurnOutputViewProps, TurnToolChipState, TurnTextSegment, FoldedTurnOutput } from '@/components/turn-output-view'
 
+// Conversation kit — THE folding engine + turn model every conversational
+// surface builds on (chat plugin, embedded brainstorm panels, turn output).
+export { foldConversation } from '@/components/conversation/fold'
+export type {
+  ConversationMessage,
+  ConversationTurn,
+  ConversationToolCall,
+  TurnItem,
+  TurnStatus,
+  DisplayAttachment,
+  FoldOptions,
+} from '@/components/conversation/fold'
+
 // Notification channel icon (from workflows plugin registry)
 
 /** Icon component for a notification channel (Discord, Slack, email, etc.). */
