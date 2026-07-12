@@ -222,9 +222,10 @@ export function AgentTurn({ turn, agentId, onRetry, onOpenCall, transformText }:
         ) : null}
       </div>
 
-      {/* Hover actions float in a chip ABOVE the turn's top-right edge so
-          they never collide with content (cards, code blocks). */}
-      <div className="absolute -top-3 right-2 flex items-center gap-1 rounded-md border border-border bg-background px-1.5 py-0.5 opacity-0 shadow-sm transition-opacity group-hover/turn:opacity-100">
+      {/* Dedicated controls gutter: the right edge of every agent turn is
+          reserved for message controls (time, copy — menus later), so they
+          never overlap content and always have a home. */}
+      <div className="flex min-w-16 shrink-0 items-center justify-end gap-1 self-start pt-1">
         <TurnTimestamp ts={turn.ts} />
         {copyText ? <CopyButton text={copyText} label="Copy reply" /> : null}
       </div>
