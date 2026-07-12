@@ -34,7 +34,7 @@ import { resolvePlan, type InstancePlan } from './instance/modes'
 import { instancePaths, type InstancePaths } from './instance/paths'
 import { PI_CLI_ENTRY, piAuthFile } from './instance/pi'
 import { bunRunner } from './instance/runner'
-import { sandboxBakinArgs, sandboxShellArgs } from './instance/sandbox'
+import { sandboxBakinArgs, sandboxShellArgs, type SandboxService } from './instance/sandbox'
 
 const REPO_ROOT = resolve(import.meta.dir, '..')
 
@@ -274,7 +274,8 @@ async function main(argv: string[]): Promise<number> {
       }
       case 'shell': {
         if (plan.bakin.placement === 'container') {
-          const shell = await deps.runner.run(sandboxShellArgs(paths.composeFile), { interactive: true })
+          const service = plan.docker!.services[0] as SandboxService
+          const shell = await deps.runner.run(sandboxShellArgs(paths.composeFile, service), { interactive: true })
           return shell.code
         }
         console.log('# subshell with instance env. Bakin CLI: `bun run cli/bakin.ts …`  ·  OpenClaw CLI: `./dev/docker/openclaw-shim.sh …`  ·  `exit` to leave.')
@@ -287,8 +288,9 @@ async function main(argv: string[]): Promise<number> {
       }
       case 'run': {
         if (plan.bakin.placement === 'container') {
+          const service = plan.docker!.services[0] as SandboxService
           const ran = await deps.runner.run(
-            sandboxBakinArgs(paths.composeFile, plan.bakin.source, args.rest, true),
+            sandboxBakinArgs(paths.composeFile, plan.bakin.source, args.rest, true, service),
             { interactive: true },
           )
           return ran.code

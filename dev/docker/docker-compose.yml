@@ -52,6 +52,30 @@ services:
     entrypoint: ["node", "dist/index.js"]
     profiles: ["cli"]
 
+  # Pi full-sandbox: Bakin + the in-process Pi runtime in one clean Linux box.
+  # No gateway (pi has no daemon) — the image's default entrypoint would exit
+  # on an empty openclaw home, so the main process is an inert sleep and
+  # everything runs via `docker exec` (instance shell / run; pi TUI /login).
+  sandbox-pi:
+    build: *bakin-build
+    container_name: bakin-pi-sandbox
+    ports:
+      - "127.0.0.1:3737:3737"    # Bakin UI only
+    volumes:
+      - ../pi-home-sandbox:/home/node/.pi
+      - ../..:/bakin
+    working_dir: /bakin
+    environment:
+      - PI_HOME=/home/node/.pi
+      - PI_CODING_AGENT_DIR=/home/node/.pi/agent
+      - BAKIN_RUNTIME_ADAPTER=pi
+      # Strict-child antfly INSIDE the container (Linux, no systemd): the
+      # adapter spawns/kills its own engine on 3738 — container-local, so it
+      # can never collide with (or provision over) the host's real service.
+      - BAKIN_SEARCH_SERVICE_MODE=child
+    entrypoint: ["sleep", "infinity"]
+    profiles: ["sandbox-pi"]
+
   # Full-sandbox: OpenClaw gateway + Bakin (repo mounted at /bakin) in one
   # container, Bakin run via `docker exec` (instance shell / run / --preconfigure).
   sandbox:

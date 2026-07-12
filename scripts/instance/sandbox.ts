@@ -10,17 +10,20 @@
  */
 import type { Source } from './args'
 
-function execPrefix(composeFile: string, interactive: boolean): string[] {
-  return ['docker', 'compose', '-f', composeFile, 'exec', interactive ? '-it' : '-T', 'sandbox']
+/** Which sandbox-family compose service to exec into. */
+export type SandboxService = 'sandbox' | 'sandbox-pi'
+
+function execPrefix(composeFile: string, interactive: boolean, service: SandboxService): string[] {
+  return ['docker', 'compose', '-f', composeFile, 'exec', interactive ? '-it' : '-T', service]
 }
 
 /** Run an OpenClaw CLI command (args after `openclaw`) inside the sandbox. */
 export function sandboxExecArgs(composeFile: string, openclawArgs: string[], interactive: boolean): string[] {
-  return [...execPrefix(composeFile, interactive), 'node', 'dist/index.js', ...openclawArgs]
+  return [...execPrefix(composeFile, interactive, 'sandbox'), 'node', 'dist/index.js', ...openclawArgs]
 }
 
 /**
- * Run a Bakin CLI command inside the sandbox.
+ * Run a Bakin CLI command inside the sandbox container.
  *   repo      → the mounted checkout via bun (/bakin/cli/bakin.ts)
  *   installed → the bakin binary on PATH (errors at runtime if absent — R3)
  */
@@ -29,16 +32,17 @@ export function sandboxBakinArgs(
   source: Source,
   bakinArgs: string[],
   interactive: boolean,
+  service: SandboxService = 'sandbox',
 ): string[] {
-  const prefix = execPrefix(composeFile, interactive)
+  const prefix = execPrefix(composeFile, interactive, service)
   return source === 'repo'
     ? [...prefix, 'bun', 'run', '/bakin/cli/bakin.ts', ...bakinArgs]
     : [...prefix, 'bakin', ...bakinArgs]
 }
 
 /** Interactive shell into the sandbox container. */
-export function sandboxShellArgs(composeFile: string): string[] {
-  return [...execPrefix(composeFile, true), 'sh']
+export function sandboxShellArgs(composeFile: string, service: SandboxService = 'sandbox'): string[] {
+  return [...execPrefix(composeFile, true, service), 'sh']
 }
 
 /** Non-interactive Bakin onboarding used by --preconfigure. */
