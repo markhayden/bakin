@@ -215,6 +215,14 @@ minting duplicates. The retired `bakin_exec_assets_update_content` tool is
 replaced by this. (`includeChildren` on the list is the task hierarchy
 `taskId--*`, unrelated and retained.)
 
+**Agent-path translation (`BAKIN_AGENT_PATH_MAP`):** the save handler (and the
+images plugin's reference inputs) run the agent-supplied absolute path through
+`translateAgentPath` (`packages/core/src/agent-path-map.ts`) BEFORE any read —
+`from=to[;from=to]` prefix map, boundary-safe, identity when unset. Exists for
+the dev rig, where agents report container paths on a bind mount the host can
+read; translation happens before `upsertFromSource` so the dedup `source.path`
+is the stable host path. Production never sets it.
+
 ## UI (`plugins/assets/components/versioned/`)
 
 Shared atoms (`asset-urls`, `AssetThumb`, `AssetMetaSummary`, `ProvenanceChips`,

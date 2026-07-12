@@ -27,7 +27,7 @@ Grounding facts (verified in-code during the spec interview):
   `filePath` read host-side. In native/isolated modes agents write inside the container
   (`/home/node/.openclaw/workspace/…`) — host-unreadable as-written, but the openclaw
   home is bind-mounted at `dev/openclaw-home/`, so a prefix translation closes the gap.
-  (Known limitation documented in `.claude/knowledge/dockerized-openclaw-rig.md`.)
+  (Known limitation documented in the rig knowledge doc, now `.claude/knowledge/dev-rig.md`.)
 - **Live hazard (must fix):** antfly's `detectServiceMode` defaults to `launchd` on
   macOS; the LaunchAgent label (`io.bakin.antfly`) and port (3738) are singletons, and
   the unit file is a byte-compared fingerprint of `getBakinPaths()`. A rig home that

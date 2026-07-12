@@ -74,4 +74,8 @@ The codex image path bills against the **ChatGPT subscription's rolling usage wi
 
 ## Live operation on this box
 
-Flip: `~/.bakin/settings.json` → `"runtime": { "adapter": "pi" }` → restart. Rollback is the same edit in reverse. Pi auth lives in `~/.pi/agent/auth.json` (managed by `pi` itself — log in via the pi CLI). Doctor surfaces `pi.home`/`pi.auth`/`pi.models` checks.
+Flip: `~/.bakin/settings.json` → `"runtime": { "adapter": "pi" }` → restart (or process-scoped: the `BAKIN_RUNTIME_ADAPTER` env override, applied at the `getSettings()` cache chokepoint — never persisted). Rollback is the same edit in reverse. Pi auth lives in `~/.pi/agent/auth.json`, written by the **pi TUI's `/login` slash command** — there is NO `pi login` subcommand; the SDK's own home override is `PI_CODING_AGENT_DIR` and it points at the AGENT dir (`…/agent`), not the home root. Doctor surfaces `pi.home`/`pi.auth`/`pi.models` checks.
+
+## Dev loop (rig)
+
+`bun run instance up --runtime pi && bun run instance dev --runtime pi` — Pi in-process on the host against a throwaway `PI_HOME` under `dev/pi-home` (state isolation; agent tools execute on this Mac inside dev-scoped workspaces), real HMR, no docker. `--mode sandbox --runtime pi` runs Bakin+Pi fully in-container (execution sandboxing). The rig drives the TUI `/login` at `up` and seeds `routing.defaultModel` from auth.json + the SDK's `defaultModelPerProvider`. A ChatGPT `/login` alone unlocks codex image gen/edit in the rig. Deep reference: `.claude/knowledge/dev-rig.md`.
