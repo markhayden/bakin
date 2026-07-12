@@ -78,6 +78,24 @@ describe('AgentTurn', () => {
     expect(activity!.compareDocumentPosition(text!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
+  it('bare-JSON replies render as a highlighted code block, not prose', () => {
+    const { container } = render(
+      <AgentTurn
+        agentId="enrich"
+        turn={agentTurn({
+          items: [
+            { type: 'text', format: 'markdown', content: '{"error":"no_attached_image","message":"I can\'t see an attached image."}' },
+          ],
+        })}
+      />,
+    )
+    const code = container.querySelector('pre code')
+    expect(code).not.toBeNull()
+    expect(code!.className).toContain('hljs')
+    // pretty-printed, not the raw one-liner
+    expect(code!.textContent).toContain('"error": "no_attached_image"')
+  })
+
   it('error turns render the message, kind, and a Try again action', () => {
     const retried: string[] = []
     const { container, getByText } = render(

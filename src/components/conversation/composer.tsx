@@ -16,7 +16,7 @@ import { ArrowUp, Loader2, Plus, Square, X } from 'lucide-react'
 import { useVerticalResize } from '@/hooks/use-vertical-resize'
 
 const HISTORY_LIMIT = 50
-const DEFAULT_MIN_HEIGHT = 44
+const DEFAULT_MIN_HEIGHT = 88
 const DEFAULT_MAX_HEIGHT = 480
 
 function draftKey(storageKey: string) {
@@ -290,57 +290,60 @@ export function Composer({
             </div>
           ) : null}
 
-          <div className="flex items-end gap-1 px-2 py-1.5">
-            {attachments ? (
-              <>
-                <button
-                  type="button"
-                  data-composer-attach
-                  disabled={!attachments.enabled || disabled}
-                  title={attachments.enabled ? 'Add photos & files' : attachments.disabledReason ?? 'Attachments unavailable'}
-                  aria-label="Add photos & files"
-                  onClick={() => fileRef.current?.click()}
-                  className="mb-0.5 flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <Plus className="size-4" />
-                </button>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  className="hidden"
-                  onChange={(e) => {
-                    const files = Array.from(e.target.files ?? [])
-                    if (files.length) attachments.onAdd(files)
-                    e.target.value = ''
-                  }}
-                />
-              </>
-            ) : null}
-            {leadingSlot}
+          {/* Text on top (flush left), action row along the bottom. */}
+          <textarea
+            ref={taRef}
+            value={value}
+            onChange={(e) => {
+              historyPosRef.current = null
+              setDraft(e.target.value)
+            }}
+            onKeyDown={onKeyDown}
+            onPaste={onPaste}
+            onCompositionStart={() => {
+              composingRef.current = true
+            }}
+            onCompositionEnd={() => {
+              composingRef.current = false
+            }}
+            placeholder={placeholder}
+            aria-label={placeholder}
+            disabled={disabled}
+            maxLength={maxLength}
+            className="block w-full resize-none border-0 bg-transparent px-3 pt-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-60"
+          />
 
-            <textarea
-              ref={taRef}
-              value={value}
-              onChange={(e) => {
-                historyPosRef.current = null
-                setDraft(e.target.value)
-              }}
-              onKeyDown={onKeyDown}
-              onPaste={onPaste}
-              onCompositionStart={() => {
-                composingRef.current = true
-              }}
-              onCompositionEnd={() => {
-                composingRef.current = false
-              }}
-              placeholder={placeholder}
-              aria-label={placeholder}
-              disabled={disabled}
-              maxLength={maxLength}
-              className="block min-w-0 flex-1 resize-none border-0 bg-transparent px-2 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-60"
-            />
+          <div className="flex items-center justify-between px-2 pb-2 pt-1">
+            <div className="flex items-center gap-1">
+              {attachments ? (
+                <>
+                  <button
+                    type="button"
+                    data-composer-attach
+                    disabled={!attachments.enabled || disabled}
+                    title={attachments.enabled ? 'Add photos & files' : attachments.disabledReason ?? 'Attachments unavailable'}
+                    aria-label="Add photos & files"
+                    onClick={() => fileRef.current?.click()}
+                    className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <Plus className="size-4" />
+                  </button>
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files ?? [])
+                      if (files.length) attachments.onAdd(files)
+                      e.target.value = ''
+                    }}
+                  />
+                </>
+              ) : null}
+              {leadingSlot}
+            </div>
 
             {busy ? (
               <button
@@ -349,7 +352,7 @@ export function Composer({
                 onClick={onAbort}
                 aria-label="Stop the reply"
                 title="Stop the reply (Esc)"
-                className="mb-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-foreground text-background shadow-sm transition-colors hover:opacity-90"
+                className="flex size-8 shrink-0 items-center justify-center rounded-full bg-foreground text-background shadow-sm transition-colors hover:opacity-90"
               >
                 <Square className="size-3 fill-current" />
               </button>
@@ -361,7 +364,7 @@ export function Composer({
                 disabled={!canSend}
                 aria-label="Send"
                 title="Send (Enter)"
-                className="mb-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
+                className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
               >
                 <ArrowUp className="size-4" />
               </button>

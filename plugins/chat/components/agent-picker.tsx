@@ -37,7 +37,7 @@ export function AgentPicker({
         title="Start a chat (⌘⇧O)"
         className={
           iconOnly
-            ? 'inline-flex items-center justify-center rounded-md border border-border p-2 text-foreground transition-colors hover:bg-accent'
+            ? 'inline-flex items-center justify-center rounded-md bg-primary p-2 text-primary-foreground shadow-sm transition-colors hover:bg-primary/90'
             : 'inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent'
         }
       >
@@ -53,14 +53,19 @@ export function AgentPicker({
               {agents.map((agent) => (
                 <CommandItem
                   key={agent.id}
-                  value={`${agent.name} ${agent.id}`}
+                  value={`${agent.name} ${agent.id} ${agent.role ?? ''}`}
                   onSelect={() => {
                     setOpen(false)
                     onPick(agent.id)
                   }}
                 >
                   <AgentAvatar agentId={agent.id} size="xs" />
-                  <span className="ml-2 truncate">{agent.name || agent.id}</span>
+                  <span className="ml-2 min-w-0">
+                    <span className="block truncate">{agent.name || agent.id}</span>
+                    {agent.role ? (
+                      <span className="block truncate text-xs text-muted-foreground">{agent.role}</span>
+                    ) : null}
+                  </span>
                 </CommandItem>
               ))}
             </CommandGroup>

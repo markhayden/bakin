@@ -85,6 +85,28 @@ function turnText(items: TurnItem[]): string {
     .join('\n\n')
 }
 
+/**
+ * Agents sometimes reply with BARE JSON (no fences) — as markdown that
+ * renders as a prose paragraph. Detect whole-message JSON and fence it so
+ * it pretty-prints through the highlighter instead.
+ */
+export function normalizeAgentText(content: string): string {
+  const trimmed = content.trim()
+  const looksJson =
+    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']'))
+  if (!looksJson) return content
+  try {
+    const parsed = JSON.parse(trimmed)
+    if (parsed && typeof parsed === 'object') {
+      return `\`\`\`json\n${JSON.stringify(parsed, null, 2)}\n\`\`\``
+    }
+  } catch {
+    // Not valid JSON after all — render as-is.
+  }
+  return content
+}
+
 export interface AgentTurnProps {
   turn: Extract<ConversationTurn, { kind: 'agent' }>
   /** Fallback author when the turn doesn't carry its own agentId. */
@@ -127,7 +149,7 @@ export function AgentTurn({ turn, agentId, onRetry, onOpenCall, transformText }:
             const transformed = transformText ? transformText(item.content) : { text: item.content }
             return (
               <div key={i}>
-                <MarkdownContent content={transformed.text} />
+                <MarkdownContent content={normalizeAgentText(transformed.text)} />
                 {transformed.extras ?? null}
               </div>
             )

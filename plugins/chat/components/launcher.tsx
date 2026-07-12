@@ -63,10 +63,15 @@ export function Launcher({
                   type="button"
                   data-chat-agent-card={agent.id}
                   onClick={() => onStartChat(agent.id)}
-                  className="flex flex-col items-center gap-2 rounded-lg border border-border p-4 transition-colors hover:border-ring hover:bg-accent/50"
+                  className="flex flex-col items-center gap-2 rounded-lg border border-border p-4 transition-colors hover:border-ring"
                 >
                   <AgentAvatar agentId={agent.id} size="lg" />
-                  <span className="w-full truncate text-center text-sm">{agent.name || agent.id}</span>
+                  <span className="w-full truncate text-center text-sm font-medium">{agent.name || agent.id}</span>
+                  {agent.role ? (
+                    <span className="line-clamp-2 w-full text-center text-xs leading-snug text-muted-foreground">
+                      {agent.role}
+                    </span>
+                  ) : null}
                 </button>
               ))}
             </div>
