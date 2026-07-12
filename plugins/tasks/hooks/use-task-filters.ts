@@ -109,5 +109,13 @@ export function useTaskFilters(columns: TaskColumns, state: TaskFilterState) {
     allTasksFlat,
     aggregations: searchHook.aggregations,
     searchResults: searchHook.results,
+    /**
+     * Honest search lifecycle (spec D11). The board keeps its client-side
+     * substring fallback so browsing works engine-down, but consumers MUST
+     * surface `unavailable` (degraded-signal chip) and `loading` — the
+     * fallback is never allowed to impersonate real search silently.
+     */
+    searchStatus: searchHook.status,
+    searchMeta: searchHook.meta,
   }
 }

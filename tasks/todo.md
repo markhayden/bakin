@@ -22,15 +22,15 @@ Plan: `tasks/plan-search-trust-and-speed.md` · Spec: `.claude/specs/search-trus
 
 ## P3 — latency contract
 - [x] T12 feat(search): queryBudgetMs + per-table degrade/omit + metadata + telemetry
-- [ ] T13 feat(host): ⌘K progress stages + partial-results chip (SDK-shared)
+- [x] T13 feat(host): ⌘K progress stages + partial-results chip (SDK-shared)
 
 ## P4 — observability
-- [ ] T14 feat(health): backfill-spin watchdog + one-click rebuild repair
-- [ ] T15 feat(search): lastIndexedAt/lastRebuildAt + numeric backlog (type+UI+CLI)
+- [x] T14 feat(health): backfill-spin watchdog + one-click rebuild repair
+- [x] T15 feat(search): lastIndexedAt/lastRebuildAt + numeric backlog (type+UI+CLI)
 
 ## P5 — surface trust
 - [ ] T16 fix(plugins): D11 engine-down states — memory, tasks, schedule, workflows
-- [ ] T17 feat(search): matched-field debug explanations
+- [x] T17 feat(search): matched-field debug explanations
 
 ## P6 — prove + ship
 - [ ] T18 stress test: seed content, 20-query p50/p95, chaos drills, UX sweep → evidence

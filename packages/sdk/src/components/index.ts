@@ -31,6 +31,8 @@ export { SearchUnavailable } from '@/components/search-unavailable'
 export { ScoreOverlay, computeMatchedFields } from '@/components/score-overlay'
 export { SearchPartialChip } from '@/components/search-partial-chip'
 export type { SearchPartialMeta } from '@/components/search-partial-chip'
+/** Amber "search down — basic text matching" chip for surfaces with a substring fallback. */
+export { SearchDegradedChip } from '@/components/search-degraded-chip'
 export type { ScoreOverlayInfo } from '@/components/score-overlay'
 /** Inline error banner with dismiss + retry actions. */
 export { ErrorBanner } from '@/components/error-banner'

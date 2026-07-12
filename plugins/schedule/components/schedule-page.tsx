@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams, useRouter, usePathname } from '@makinbakin/sdk/hooks'
-import { List, CalendarDays, CalendarRange, Clock, Plus } from 'lucide-react'
+import { List, CalendarDays, CalendarRange, Clock, Plus, Loader2 } from 'lucide-react'
 import { Button } from "@makinbakin/sdk/ui"
 import { BakinDrawer } from "@makinbakin/sdk/components"
-import { PluginHeader } from "@makinbakin/sdk/components"
+import { PluginHeader, SearchDegradedChip, SearchPartialChip } from "@makinbakin/sdk/components"
 import { Skeleton } from "@makinbakin/sdk/ui"
 import { AgentFilter } from "@makinbakin/sdk/components"
 import { useAgentIds } from "@makinbakin/sdk/hooks"
@@ -60,6 +60,12 @@ export function SchedulePage() {
     else searchHook.clear()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search])
+
+  // Honest search signal (spec D11): the substring fallback below keeps the
+  // page browsable when the engine is down, but never silently — surface
+  // loading, engine-down, and partial-results states next to the filters.
+  const searchSignalActive = Boolean(search.trim()) &&
+    (searchHook.status === 'loading' || searchHook.status === 'unavailable' || Boolean(searchHook.meta?.partial))
 
   // Build a score map keyed by job id. Schedule indexes by the raw jobId
   // (see plugins/schedule/index.ts → ctx.search.index(jobId, ...)), so no
@@ -266,6 +272,19 @@ export function SchedulePage() {
 
       {/* Filters */}
       <AgentFilter agentIds={agentIds} value={agentFilter} onChange={setAgentFilter} />
+
+      {searchSignalActive && (
+        <div className="flex items-center gap-2">
+          {searchHook.status === 'loading' && (
+            <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground" data-testid="schedule-search-loading">
+              <Loader2 className="size-3 animate-spin" />
+              Searching…
+            </span>
+          )}
+          {searchHook.status === 'unavailable' && <SearchDegradedChip testId="schedule-search-degraded" />}
+          {searchHook.meta?.partial && <SearchPartialChip meta={searchHook.meta} />}
+        </div>
+      )}
 
       {jobNotFound && (
         <div
