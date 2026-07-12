@@ -34,6 +34,7 @@ import { getContentDir } from './content-dir'
 import { createLogger } from './logger'
 import { reconcileRoster, type RosterCarryReport } from './roster-reconcile'
 import { getSettings, updateSettings } from './settings'
+import { snapshotAgentContent, carryAgentContent, type AgentContentSnapshot, type WorkspaceCarryReport } from './workspace-carry'
 
 const log = createLogger('runtime-switch')
 
@@ -48,6 +49,7 @@ export type SwitchPhase =
   | 'initialize'
   | 'provision'
   | 'reconcile-roster'
+  | 'carry-workspaces'
   | 'sync-agents'
   | 'validate-capabilities'
   | 'restore'
@@ -65,6 +67,8 @@ export interface RuntimeSwitchResult {
   /** Settings backup — the rollback artifact (null only if validate failed). */
   backupPath: string | null
   roster: RosterCarryReport | null
+  /** Workspace/skill content carried for switch-created agents (null when the phase didn't run). */
+  workspaces: WorkspaceCarryReport | null
   /** Drift-gated re-projection outcome (null when the phase didn't run). */
   sync: { drifted: boolean; findings: number; syncedAgents: number } | null
   capabilities: CapabilitySet | null
@@ -78,6 +82,12 @@ export interface RuntimeSwitchResult {
 
 export interface SwitchRuntimeOptions {
   onProgress?: (event: SwitchProgressEvent) => void
+  /**
+   * Carry source workspace content (canonical files, memory, agent-authored
+   * skills) onto agents the switch creates. Default true — a switch that
+   * silently strands agent memory is the failure mode this exists to fix.
+   */
+  copyWorkspaces?: boolean
 }
 
 function isRuntimeAdapterName(value: string): value is RuntimeAdapterName {
@@ -120,6 +130,7 @@ export async function switchRuntime(
     to: target as RuntimeAdapterName,
     backupPath: null,
     roster: null,
+    workspaces: null,
     sync: null,
     capabilities: null,
     toolAccess: null,
@@ -217,9 +228,24 @@ export async function switchRuntime(
     emit({ phase: 'snapshot-roster', status: 'start' })
     const oldRuntime = await currentRuntime()
     let sourceRoster: RuntimeAgent[] = []
+    let contentSnapshot: AgentContentSnapshot | null = null
+    const copyWorkspaces = opts.copyWorkspaces !== false
     try {
       sourceRoster = await oldRuntime.agents.list()
-      emit({ phase: 'snapshot-roster', status: 'ok', detail: `${sourceRoster.length} agent(s)` })
+      // Workspace content must be captured NOW — the source runtime is torn
+      // down before the target exists (snapshotAgentContent degrades read
+      // failures to per-agent notes; it never throws).
+      if (copyWorkspaces && sourceRoster.length > 0) {
+        contentSnapshot = await snapshotAgentContent(oldRuntime, sourceRoster)
+      }
+      const snapshotFiles = contentSnapshot
+        ? [...contentSnapshot.agents.values()].reduce((sum, c) => sum + c.files.length + c.skills.length, 0)
+        : 0
+      emit({
+        phase: 'snapshot-roster',
+        status: 'ok',
+        detail: `${sourceRoster.length} agent(s)${contentSnapshot ? `, ${snapshotFiles} content file(s)/skill(s)` : ''}`,
+      })
     } catch (err) {
       // A dead source runtime must not block LEAVING it — carry nothing.
       emit({ phase: 'snapshot-roster', status: 'skip', detail: `source roster unreadable: ${err instanceof Error ? err.message : String(err)}` })
@@ -282,6 +308,30 @@ export async function switchRuntime(
       status: 'ok',
       detail: `carried ${result.roster.carried.length}, existing ${result.roster.existing.length}, unmapped models ${result.roster.unmappedModels.length}, failed ${result.roster.failed.length}`,
     })
+
+    // ── workspace content carry (switch-created agents only) ─────────────
+    emit({ phase: 'carry-workspaces', status: 'start' })
+    if (!copyWorkspaces) {
+      emit({ phase: 'carry-workspaces', status: 'skip', detail: 'disabled by caller (copyWorkspaces: false)' })
+    } else if (!contentSnapshot) {
+      emit({ phase: 'carry-workspaces', status: 'skip', detail: 'no source content snapshot' })
+    } else {
+      // Content-copy failures degrade to report entries on a completed flip
+      // (D9) — they never trigger the restore path.
+      result.workspaces = await carryAgentContent(
+        contentSnapshot,
+        newRuntime,
+        result.roster.carried.map((c) => c.agentId),
+        result.roster.existing,
+      )
+      const filesCarried = result.workspaces.carried.reduce((sum, c) => sum + c.files, 0)
+      const skillsCarried = result.workspaces.skills.reduce((sum, s) => sum + s.carried, 0)
+      emit({
+        phase: 'carry-workspaces',
+        status: 'ok',
+        detail: `${filesCarried} file(s) + ${skillsCarried} skill(s) for ${result.workspaces.carried.length} agent(s), skipped existing ${result.workspaces.skippedExisting.length}, failed ${result.workspaces.failed.length}`,
+      })
+    }
 
     // ── drift-gated re-projection ─────────────────────────────────────────
     emit({ phase: 'sync-agents', status: 'start' })

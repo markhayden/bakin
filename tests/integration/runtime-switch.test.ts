@@ -84,7 +84,24 @@ function seedOpenClawHome(): void {
     },
   }, null, 2))
   resetOpenClawConfigCache()
+
+  // Pixel's workspace content — what makes the agent ITSELF (D2 carry):
+  // canonical soul (with self-edits), memory, one agent-authored skill, and
+  // one package-managed skill that must be left to `agents sync`.
+  const pixelWs = pathJoin(testDir, 'openclaw', 'workspaces', 'pixel')
+  mkdirSync(pathJoin(pixelWs, 'memory'), { recursive: true })
+  writeFileSync(pathJoin(pixelWs, 'SOUL.md'), PIXEL_SOUL)
+  writeFileSync(pathJoin(pixelWs, 'memory', 'notes.md'), PIXEL_MEMORY)
+  mkdirSync(pathJoin(pixelWs, 'skills', 'crafting'), { recursive: true })
+  writeFileSync(pathJoin(pixelWs, 'skills', 'crafting', 'SKILL.md'), PIXEL_SKILL)
+  mkdirSync(pathJoin(pixelWs, 'skills', 'packskill'), { recursive: true })
+  writeFileSync(pathJoin(pixelWs, 'skills', 'packskill', 'SKILL.md'), '# projected by a package')
+  writeFileSync(pathJoin(pixelWs, 'skills', 'packskill', '.installedBy'), JSON.stringify({ package: 'bits/pack', version: '1.0.0' }))
 }
+
+const PIXEL_SOUL = '# Pixel\n\nI collect tiny pixel-art references and prefer terse replies.\n'
+const PIXEL_MEMORY = '## 2026-07\n\n- the user likes crab emojis\n'
+const PIXEL_SKILL = '# crafting\n\nHow pixel crafts sprite sheets.\n'
 
 function seedPiHome(): void {
   const agentDir = pathJoin(testDir, 'pi', 'agent')
@@ -183,6 +200,24 @@ describe('switchRuntime — OpenClaw → Pi', () => {
     const ids = registry.agents.map((a) => a.id).sort()
     expect(ids).toEqual(['main', 'pixel', 'rolo'])
     expect(registry.agents.find((a) => a.id === 'pixel')?.model).toBe('openai-codex/gpt-test-vision')
+
+    // Workspace content carried for switch-created agents (D2, kind-aware):
+    // soul + memory byte-identical on Pi, agent-authored skill at PI's skill
+    // location, package-managed skill left to sync, no dead skills/ files.
+    expect(phases).toContain('carry-workspaces:ok')
+    const piPixelWs = pathJoin(testDir, 'pi', 'agent', 'agents', 'pixel', 'workspace')
+    expect(readFileSync(pathJoin(piPixelWs, 'SOUL.md'), 'utf-8')).toBe(PIXEL_SOUL)
+    expect(readFileSync(pathJoin(piPixelWs, 'memory', 'notes.md'), 'utf-8')).toBe(PIXEL_MEMORY)
+    expect(existsSync(pathJoin(piPixelWs, 'skills'))).toBe(false)
+    expect(readFileSync(pathJoin(piPixelWs, '.pi', 'skills', 'crafting', 'SKILL.md'), 'utf-8')).toBe(PIXEL_SKILL)
+    expect(existsSync(pathJoin(piPixelWs, '.pi', 'skills', 'packskill'))).toBe(false)
+
+    const pixelCarry = result.workspaces!.carried.find((c) => c.agentId === 'pixel')!
+    expect(pixelCarry.files).toBe(2)
+    expect(pixelCarry.bytes).toBeGreaterThan(0)
+    expect(result.workspaces!.skills).toEqual([{ agentId: 'pixel', carried: 1, skippedPackageManaged: 1 }])
+    expect(result.workspaces!.skippedExisting).toEqual([])
+    expect(result.workspaces!.failed).toEqual([])
   })
 
   it('round-trip back: OpenClaw roster untouched while inactive (existing, not re-created)', async () => {
@@ -202,6 +237,36 @@ describe('switchRuntime — OpenClaw → Pi', () => {
     // Provisioning rebuilt the per-agent MCP entries on the way back in.
     expect(ocConfig.mcp.servers['bakin-main']).toBeDefined()
     expect(result.capabilities!.toolCalling.access.style).toBe('mcp')
+
+    // Pixel exists on OpenClaw — its workspace is NEVER written, only
+    // reported skipped (the Pi copy stays behind on Pi).
+    expect(result.workspaces!.carried).toEqual([])
+    expect(result.workspaces!.skippedExisting).toEqual(['pixel'])
+    expect(readFileSync(pathJoin(testDir, 'openclaw', 'workspaces', 'pixel', 'SOUL.md'), 'utf-8')).toBe(PIXEL_SOUL)
+  })
+})
+
+describe('switchRuntime — copyWorkspaces: false skips the content carry', () => {
+  it('carries the roster but writes no workspace content', async () => {
+    expect(getSettings().runtime.adapter).toBe('openclaw')
+    // A fresh agent with content that would otherwise carry.
+    const config = JSON.parse(readFileSync(openclawConfigPath, 'utf-8'))
+    config.agents.list.push({ id: 'nova', identity: { name: 'Nova' } })
+    writeFileSync(openclawConfigPath, JSON.stringify(config, null, 2))
+    resetOpenClawConfigCache()
+    const novaWs = pathJoin(testDir, 'openclaw', 'workspaces', 'nova')
+    mkdirSync(novaWs, { recursive: true })
+    writeFileSync(pathJoin(novaWs, 'SOUL.md'), '# Nova soul')
+
+    const result = await switchRuntime('pi', { copyWorkspaces: false })
+    expect(result.ok).toBe(true)
+    expect(result.roster!.carried.map((c) => c.agentId)).toEqual(['nova'])
+    expect(result.workspaces).toBeNull()
+    expect(existsSync(pathJoin(testDir, 'pi', 'agent', 'agents', 'nova', 'workspace', 'SOUL.md'))).toBe(false)
+
+    // Restore state for the failure-path test below.
+    const back = await switchRuntime('openclaw')
+    expect(back.ok).toBe(true)
   })
 })
 
