@@ -73,7 +73,8 @@ beforeEach(() => {
 const railProps = {
   loading: false,
   selectedId: '',
-  agentFilter: [] as string[],
+  agentIds: ['main', 'pixel'],
+  agentFilter: '',
   collapsed: false,
   onCollapse: () => {},
   onSelect: () => {},

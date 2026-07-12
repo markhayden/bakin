@@ -11,7 +11,7 @@
  */
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { PluginHeader } from '@makinbakin/sdk/components'
-import { usePluginEvent, useQueryArrayState, useQueryState } from '@makinbakin/sdk/hooks'
+import { usePluginEvent, useQueryState, useRouter } from '@makinbakin/sdk/hooks'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 
 import { AgentPicker } from './agent-picker'
@@ -33,12 +33,30 @@ async function createAndSend(agentId: string, content: string): Promise<string |
 }
 
 function ChatPageInner() {
-  const [chatId, setChatId] = useQueryState('chat', '')
-  const [draftAgent, setDraftAgent] = useQueryState('draft', '')
-  const [agentFilter, setAgentFilter] = useQueryArrayState('agents')
+  const [chatId] = useQueryState('chat', '')
+  const [draftAgent] = useQueryState('draft', '')
+  const [agentFilter, setAgentFilter] = useQueryState('agent', '')
   const [search, setSearch] = useState('')
   const [collapsed, setCollapsed] = useRailCollapsed()
-  const { chats, loading, refresh } = useChats(agentFilter)
+  const { chats, allChats, loading, refresh } = useChats(agentFilter)
+  const router = useRouter()
+
+  // ONE navigation per transition. Two useQueryState setters in the same
+  // tick lose updates (each builds from the pre-navigation params snapshot,
+  // so the second clobbers the first — the "booted back to the launcher"
+  // bug). Reads window.location.search at CALL time.
+  const setParams = useCallback(
+    (patch: Record<string, string>) => {
+      const params = new URLSearchParams(window.location.search)
+      for (const [key, value] of Object.entries(patch)) {
+        if (value) params.set(key, value)
+        else params.delete(key)
+      }
+      const qs = params.toString()
+      router.replace(qs ? `/chat?${qs}` : '/chat')
+    },
+    [router],
+  )
 
   // Live in-flight indicators: seed from the list, keep fresh via events.
   const [streamingIds, setStreamingIds] = useState<ReadonlySet<string>>(new Set())
@@ -72,19 +90,13 @@ function ChatPageInner() {
   }, [chats, search])
 
   const openChat = useCallback(
-    (id: string) => {
-      setChatId(id)
-      setDraftAgent('')
-    },
-    [setChatId, setDraftAgent],
+    (id: string) => setParams({ chat: id, draft: '' }),
+    [setParams],
   )
 
   const startDraft = useCallback(
-    (agentId: string) => {
-      setChatId('')
-      setDraftAgent(agentId)
-    },
-    [setChatId, setDraftAgent],
+    (agentId: string) => setParams({ chat: '', draft: agentId }),
+    [setParams],
   )
 
   // Page-scoped keyboard shortcuts.
@@ -93,8 +105,7 @@ function ChatPageInner() {
       // ⌘⇧O — new chat (back to the launcher)
       if (e.metaKey && e.shiftKey && e.key.toLowerCase() === 'o') {
         e.preventDefault()
-        setChatId('')
-        setDraftAgent('')
+        setParams({ chat: '', draft: '' })
         return
       }
       // ⌥↑ / ⌥↓ — previous/next chat in the visible list
@@ -121,7 +132,7 @@ function ChatPageInner() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [chatId, visibleChats, openChat, setChatId, setDraftAgent])
+  }, [chatId, visibleChats, openChat, setParams])
 
   return (
     <div className="flex h-full flex-col" data-chat-pane>
@@ -136,6 +147,7 @@ function ChatPageInner() {
       <div className="flex min-h-0 flex-1 border-t border-border">
         <ChatRail
           chats={visibleChats}
+          agentIds={[...new Set(allChats.map((c) => c.agentId))]}
           loading={loading}
           selectedId={chatId}
           agentFilter={agentFilter}

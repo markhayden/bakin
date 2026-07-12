@@ -6,8 +6,7 @@
  */
 import { useState } from 'react'
 import { Loader2, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Trash2 } from 'lucide-react'
-import { AgentAvatar, ConfirmDialog, EmptyState, FacetFilter, formatRelativeTime } from '@makinbakin/sdk/components'
-import { useAgentList } from '@makinbakin/sdk/hooks'
+import { AgentAvatar, AgentFilter, ConfirmDialog, EmptyState, formatRelativeTime } from '@makinbakin/sdk/components'
 import { Skeleton } from '@makinbakin/sdk/ui'
 
 import { AgentPicker } from './agent-picker'
@@ -137,23 +136,24 @@ function ChatRow({
 
 export function ChatRail(props: {
   chats: ChatSummaryDto[]
+  /** Agents that have chats — drives the filter pill strip. */
+  agentIds: string[]
   loading: boolean
   selectedId: string
-  agentFilter: string[]
+  agentFilter: string
   streamingIds: ReadonlySet<string>
   collapsed: boolean
   onCollapse: (v: boolean) => void
   onSelect: (chatId: string) => void
   onStartChat: (agentId: string) => void
-  onAgentFilter: (agents: string[]) => void
+  onAgentFilter: (agentId: string) => void
   onChanged: () => void
 }) {
   const {
-    chats, loading, selectedId, agentFilter, streamingIds, collapsed,
+    chats, agentIds, loading, selectedId, agentFilter, streamingIds, collapsed,
     onCollapse, onSelect, onStartChat, onAgentFilter, onChanged,
   } = props
   const [pendingDelete, setPendingDelete] = useState<ChatSummaryDto | null>(null)
-  const agents = useAgentList()
 
   if (collapsed) {
     return (
@@ -186,12 +186,13 @@ export function ChatRail(props: {
             <PanelLeftClose className="size-4" />
           </button>
         </div>
-        <FacetFilter
-          label="Agents"
-          options={agents.map((a) => ({ value: a.id, label: a.name || a.id }))}
-          selected={agentFilter}
-          onChange={onAgentFilter}
-        />
+        {agentIds.length > 1 ? (
+          <AgentFilter
+            agentIds={agentIds}
+            value={agentFilter || 'all'}
+            onChange={(id) => onAgentFilter(id === 'all' ? '' : id)}
+          />
+        ) : null}
       </div>
 
       <div className="flex-1 space-y-3 overflow-y-auto px-2 pb-2">

@@ -63,7 +63,7 @@ function rowToMessage(chatId: string, row: TranscriptRowDto): ConversationMessag
   return row as ConversationMessage
 }
 
-export function useChats(agentFilter: string[]) {
+export function useChats(agentFilter: string) {
   const [chats, setChats] = useState<ChatSummaryDto[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -82,7 +82,7 @@ export function useChats(agentFilter: string[]) {
   usePluginEvent('chat.error', () => { void refresh() })
   usePluginEvent('chat.titled', () => { void refresh() })
 
-  const filtered = agentFilter.length ? chats.filter((c) => agentFilter.includes(c.agentId)) : chats
+  const filtered = agentFilter ? chats.filter((c) => c.agentId === agentFilter) : chats
   return { chats: filtered, allChats: chats, loading, refresh }
 }
 
