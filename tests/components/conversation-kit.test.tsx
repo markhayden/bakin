@@ -65,6 +65,9 @@ describe('AgentTurn', () => {
         })}
       />,
     )
+    // collapsed header reads as human activity; expanding reveals the call
+    expect(container.textContent).toContain('Searched the web')
+    fireEvent.click(container.querySelector('button[data-conv-activity-header]')!)
     expect(container.textContent).toContain('web_search')
     expect(container.textContent).toContain('site:reddit.com')
     expect(container.querySelector('strong')?.textContent).toBe('found')
