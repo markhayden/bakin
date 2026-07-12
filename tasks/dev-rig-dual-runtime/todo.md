@@ -49,6 +49,22 @@ Plan: ./plan.md · Spec: /SPEC.md · Branch: feat/dev-rig-dual-runtime
 
 ## Coordination points (Mark)
 
-- [ ] /login once for the shared dev pi-home (T5 or T10)
-- [ ] Stop the running isolated dev server before T8 remediation
-- [ ] ChatGPT /login recommended (gives Pi image gen+edit for free)
+- [x] /login once for the shared dev pi-home — done 2026-07-12 (openai-codex)
+- [x] Stop the running isolated dev server before T8 remediation — done
+- [x] ChatGPT /login (gives Pi image gen+edit for free) — done
+
+## Follow-ups (post-PR, one by one)
+
+- [ ] PluginHost boot hardening: no timeout or error surface — a single hung
+      manifest fetch / module import shows an infinite "Loading plugins"
+      spinner with zero feedback (bit Mark live when a tab loaded mid-server-
+      restart). Add a boot timeout + honest error panel with retry.
+- [ ] build-plugins log honesty: prints "built plugins/git/dist/" for
+      server-only plugins (git, images) that produce NO dist — cost real
+      debugging time chasing phantom deletions. Log "no client — skipped".
+- [ ] sandbox×pi live smoke (implemented + compose-validated; needs one
+      in-container /login).
+- [ ] Old isolated home carries two 'failed' github user plugins
+      (projects, messaging) — stale June installs; reinstall or
+      `instance reset --mode isolated` clears them.
+- [ ] Live reset-scoping proof (optional; recipe above).
