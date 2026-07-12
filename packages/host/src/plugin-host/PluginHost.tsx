@@ -76,6 +76,33 @@ interface LoadedPluginModule {
 interface PluginBootResult {
   status: 'ok' | 'error'
   count: number
+  /** False when the manifest never arrived — the app shell would render blind. */
+  manifestOk: boolean
+  /** Eager plugins whose bundle import failed or timed out. */
+  failedPlugins: string[]
+}
+
+export const DEFAULT_MANIFEST_TIMEOUT_MS = 10_000
+export const DEFAULT_IMPORT_TIMEOUT_MS = 20_000
+
+/**
+ * Boot deadlines (mutable for tests). Without them, a manifest fetch or
+ * bundle import that lands on a dying socket (server restart under an open
+ * tab) never settles and the shell shows "Loading plugins" forever.
+ */
+export const PLUGIN_BOOT_TIMEOUTS = {
+  manifestMs: DEFAULT_MANIFEST_TIMEOUT_MS,
+  importMs: DEFAULT_IMPORT_TIMEOUT_MS,
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value) },
+      (err) => { clearTimeout(timer); reject(err) },
+    )
+  })
 }
 
 interface StartupResourceTiming {
@@ -336,7 +363,11 @@ async function loadPluginClient(plugin: ManifestPlugin): Promise<void> {
     : plugin.clientEntry
   const startedAt = nowMs()
   try {
-    const mod = await import(/* @vite-ignore */ importUrl) as LoadedPluginModule
+    const mod = await withTimeout(
+      import(/* @vite-ignore */ importUrl),
+      PLUGIN_BOOT_TIMEOUTS.importMs,
+      `plugin "${plugin.id}" bundle import`,
+    ) as LoadedPluginModule
     // If the plugin exports its React instance (e.g. via `export { React }`
     // or a marker), verify it matches the shell's. Plugins aren't required
     // to expose this — the lack of an export is a non-event.
@@ -374,7 +405,11 @@ const appliedHotSwapUrls = new Map<string, string>()
 async function refreshManifest(): Promise<Manifest | null> {
   const startedAt = nowMs()
   try {
-    const res = await fetch('/api/plugins/manifest')
+    // Bounded: a fetch on a dying socket (server restart) can otherwise
+    // hang forever and pin the boot spinner.
+    const res = await fetch('/api/plugins/manifest', {
+      signal: AbortSignal.timeout(PLUGIN_BOOT_TIMEOUTS.manifestMs),
+    })
     if (!res.ok) {
       debugPluginStartup('pluginHost.manifestFetch', {
         status: 'error',
@@ -464,12 +499,15 @@ async function bootPluginClients(): Promise<PluginBootResult> {
   let status: 'ok' | 'error' = 'ok'
   let count = 0
   let lazyCount = 0
+  let manifestOk = true
+  const failedPlugins: string[] = []
   try {
     const manifest = await refreshManifest()
     if (!manifest) {
       console.error('[bakin] Failed to fetch plugin manifest')
       status = 'error'
-      return { status, count }
+      manifestOk = false
+      return { status, count, manifestOk, failedPlugins }
     }
     // Declarative metadata first: sidebar nav + lazy ownership index exist
     // before (and regardless of) any client bundle loading.
@@ -478,6 +516,10 @@ async function bootPluginClients(): Promise<PluginBootResult> {
     count = eagerPlugins.length
     lazyCount = manifest.plugins.filter((p) => isLoadablePlugin(p) && !isEagerPlugin(p)).length
     await Promise.all(eagerPlugins.map(loadPluginClient))
+    // loadPluginClient never rejects — failures land in the load-state store.
+    for (const plugin of eagerPlugins) {
+      if (getPluginLoadState(plugin.id) === 'error') failedPlugins.push(plugin.id)
+    }
   } catch (err) {
     status = 'error'
     console.error('[bakin] Plugin host boot failed:', err)
@@ -491,7 +533,7 @@ async function bootPluginClients(): Promise<PluginBootResult> {
     })
     logStartupResourceSummary(startedAt, endedAt)
   }
-  return { status, count }
+  return { status, count, manifestOk, failedPlugins }
 }
 
 function startPluginBoot(): Promise<PluginBootResult> {
@@ -507,6 +549,20 @@ function acquirePluginBoot(): Promise<PluginBootResult> {
   pluginBootConsumers += 1
   pluginBootReleaseQueued = false
   return startPluginBoot()
+}
+
+/** Retry after a failed boot: drop the (settled) in-flight promise and go again. */
+function restartPluginBoot(): Promise<PluginBootResult> {
+  pluginBootInFlight = null
+  return acquirePluginBoot()
+}
+
+/** Tests only: clear module-scoped boot state (manifest cache + in-flight boot). */
+export function __resetPluginBootForTests(): void {
+  latestManifest = null
+  pluginBootInFlight = null
+  pluginBootConsumers = 0
+  pluginBootReleaseQueued = false
 }
 
 function releasePluginBoot(): void {
@@ -532,22 +588,81 @@ function AppBootLoader() {
   )
 }
 
+function BootErrorPanel({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="fixed inset-0 flex items-center justify-center bg-background text-foreground" role="alert" data-testid="plugin-boot-error">
+      <div className="flex max-w-md flex-col items-center gap-4 text-center">
+        <div className="text-sm font-medium">Couldn&apos;t load plugins</div>
+        <p className="text-sm text-muted-foreground">
+          The server didn&apos;t answer the plugin manifest request. It may be
+          restarting — retry in a moment, or check that Bakin is running.
+        </p>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent"
+        >
+          Retry
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function PluginFailureBanner({ pluginIds, onDismiss }: { pluginIds: string[]; onDismiss: () => void }) {
+  return (
+    <div
+      className="fixed inset-x-0 bottom-0 z-50 flex items-center justify-between gap-4 border-t border-border bg-background px-4 py-2.5 text-sm"
+      role="alert"
+      data-testid="plugin-boot-failures"
+    >
+      <span className="text-muted-foreground">
+        {pluginIds.length === 1 ? 'A plugin' : `${pluginIds.length} plugins`} failed to load:{' '}
+        <span className="font-medium text-foreground">{pluginIds.join(', ')}</span> — features they
+        provide are missing. See the browser console for details.
+      </span>
+      <span className="flex shrink-0 items-center gap-2">
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="rounded-md border border-border px-2.5 py-1 hover:bg-accent"
+        >
+          Reload
+        </button>
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Dismiss"
+          className="rounded-md px-2 py-1 text-muted-foreground hover:bg-accent"
+        >
+          Dismiss
+        </button>
+      </span>
+    </div>
+  )
+}
+
 export function PluginHost({ children }: { children: ReactNode }) {
-  const [ready, setReady] = useState(false)
+  const [boot, setBoot] = useState<PluginBootResult | null>(null)
+  const [attempt, setAttempt] = useState(0)
+  const [failuresDismissed, setFailuresDismissed] = useState(false)
 
   // Not a fetch: gates readiness on the module-level plugin boot promise.
+  // `attempt` re-runs it after a failed-manifest retry.
   useEffect(() => {
     let cancelled = false
-    const boot = acquirePluginBoot()
+    setBoot(null)
+    const bootPromise = attempt === 0 ? acquirePluginBoot() : restartPluginBoot()
     ;(async () => {
-      await boot
-      if (!cancelled) setReady(true)
+      const result = await bootPromise
+      if (!cancelled) setBoot(result)
     })()
     return () => {
       cancelled = true
       releasePluginBoot()
     }
-  }, [])
+  }, [attempt])
+  const ready = boot !== null
 
   // Install the lazy demand loader: <Slot> and the plugin route catch-all
   // request a plugin id on first render of something it owns; we resolve it
@@ -597,6 +712,11 @@ export function PluginHost({ children }: { children: ReactNode }) {
   }, [])
 
   if (!ready) return <AppBootLoader />
+  // No manifest = the shell would render blind (no nav, no routes, no
+  // slots). Show an honest error with retry instead of a broken app.
+  if (!boot.manifestOk) {
+    return <BootErrorPanel onRetry={() => setAttempt((n) => n + 1)} />
+  }
   // Plugins can contribute background hook runners (rendered null,
   // mounted purely so their hooks run while the plugin is registered)
   // via the well-known `nav-badge-providers` slot. Currently used by
@@ -606,6 +726,12 @@ export function PluginHost({ children }: { children: ReactNode }) {
     <>
       {children}
       <Slot name="nav-badge-providers" />
+      {boot.failedPlugins.length > 0 && !failuresDismissed && (
+        <PluginFailureBanner
+          pluginIds={boot.failedPlugins}
+          onDismiss={() => setFailuresDismissed(true)}
+        />
+      )}
     </>
   )
 }

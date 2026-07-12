@@ -54,7 +54,12 @@ mock.module('../../packages/core/src/content-dir', () => {
   }
 })
 
-import { PluginHost } from '../../packages/host/src/plugin-host/PluginHost'
+import {
+  PluginHost,
+  PLUGIN_BOOT_TIMEOUTS,
+  DEFAULT_MANIFEST_TIMEOUT_MS,
+  __resetPluginBootForTests,
+} from '../../packages/host/src/plugin-host/PluginHost'
 import { registerPlugin } from '@makinbakin/sdk'
 import {
   configureLazyPlugins,
@@ -103,6 +108,9 @@ const EMPTY_MANIFEST = { plugins: [] }
 const USED_IDS = ['x', 'y']
 
 beforeEach(() => {
+  // Module-scoped manifest cache + boot promise must not leak across tests
+  // (refreshManifest deliberately falls back to the last-known manifest).
+  __resetPluginBootForTests()
   // Mock fetch so PluginHost's manifest load resolves deterministically.
   vi.stubGlobal('fetch', mock(async (url: string) => {
     if (url === '/api/plugins/manifest') {
@@ -151,6 +159,91 @@ describe('PluginHost — boot', () => {
       </PluginHost>,
     )
     await waitFor(() => expect(screen.queryByText('Loading plugins')).toBeNull())
+  })
+
+  it('bounds a hung manifest fetch and surfaces an error panel with retry', async () => {
+    // A server restart under an open tab can leave the manifest fetch
+    // hanging forever — previously an infinite "Loading plugins" spinner.
+    PLUGIN_BOOT_TIMEOUTS.manifestMs = 50
+    try {
+      let attempts = 0
+      vi.stubGlobal('fetch', mock((_url: string, init?: RequestInit) => {
+        attempts++
+        if (attempts === 1) {
+          // Hang until aborted by the boot timeout signal.
+          return new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+          })
+        }
+        return Promise.resolve(new Response(JSON.stringify(EMPTY_MANIFEST), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }))
+      }))
+
+      render(
+        <PluginHost>
+          <ProbeTree />
+        </PluginHost>,
+      )
+
+      const panel = await screen.findByTestId('plugin-boot-error')
+      expect(panel.textContent).toMatch(/plugins/i)
+
+      // Retry re-runs the boot against the now-healthy server.
+      await act(async () => {
+        screen.getByRole('button', { name: /retry/i }).click()
+      })
+      await waitFor(() => expect(screen.queryByTestId('plugin-boot-error')).toBeNull())
+      await waitFor(() => expect(screen.queryByText('Loading plugins')).toBeNull())
+    } finally {
+      PLUGIN_BOOT_TIMEOUTS.manifestMs = DEFAULT_MANIFEST_TIMEOUT_MS
+    }
+  })
+
+  it('surfaces the error panel when the manifest fetch rejects outright', async () => {
+    vi.stubGlobal('fetch', mock(() => Promise.reject(new TypeError('socket died'))))
+    render(
+      <PluginHost>
+        <ProbeTree />
+      </PluginHost>,
+    )
+    await screen.findByTestId('plugin-boot-error')
+    // The broken app is NOT rendered behind the panel.
+    expect(screen.queryByTestId('slot-content')).toBeNull()
+  })
+
+  it('renders the app plus a failure banner when an eager plugin bundle fails', async () => {
+    vi.stubGlobal('fetch', mock(async (url: string) => {
+      if (url === '/api/plugins/manifest') {
+        return new Response(JSON.stringify({
+          plugins: [{
+            id: 'x',
+            name: 'X',
+            status: 'active',
+            // Legacy shape (no contributes metadata) → eager import; the
+            // URL rejects, which must NOT block boot.
+            clientEntry: pathToFileURL(join(tmpdir(), 'bakin-nonexistent-bundle.mjs')).href,
+          }],
+        }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      return new Response('not found', { status: 404 })
+    }))
+
+    render(
+      <PluginHost>
+        <ProbeTree />
+      </PluginHost>,
+    )
+
+    await waitFor(() => expect(screen.queryByText('Loading plugins')).toBeNull())
+    const banner = await screen.findByTestId('plugin-boot-failures')
+    expect(banner.textContent).toContain('x')
+    // App still usable; banner is dismissible.
+    await act(async () => {
+      screen.getByRole('button', { name: /dismiss/i }).click()
+    })
+    expect(screen.queryByTestId('plugin-boot-failures')).toBeNull()
   })
 
   it('shares in-flight boot work during React StrictMode remounts', async () => {
