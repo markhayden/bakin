@@ -248,6 +248,38 @@ describe('blue/green migration', () => {
     expect(tableStatus('bakin_notes')?.state).toBe('active')
   })
 
+  it('resume skips the re-backfill when the green already holds the emitted corpus', async () => {
+    const adapter = createMockSearchAdapter()
+    await ensureTable(adapter, makeDef(), 'fp-a')
+    const blue = queryTarget('bakin_notes')!
+
+    // Park a migration whose backfill fully landed (green has the docs)
+    // but converge timed out — the live case: an embeddings leg that needs
+    // longer than the converge window while the engine keeps working.
+    const neverReady: SearchAdapter = {
+      ...adapter,
+      tables: {
+        ...adapter.tables,
+        health: async (name) => (name === blue
+          ? [{ leg: 'full_text', state: 'ready' as const, indexedCount: 2 }]
+          : [{ leg: 'full_text', state: 'building' as const, indexedCount: 0 }]),
+      },
+    }
+    await ensureTable(neverReady, makeDef({ schemaVersion: 3 }), 'fp-a', { convergeTimeoutMs: 100, convergePollMs: 20 })
+    expect(tableStatus('bakin_notes')?.state).toBe('migrating')
+
+    // Resume with a poisoned reindex(): if resume re-backfills, this throws.
+    const defNoReindex = makeDef({
+      schemaVersion: 3,
+      reindex: async function* (): AsyncGenerator<{ key: string; doc: Record<string, unknown> }> {
+        throw new Error('resume must not re-backfill an already-landed green')
+      },
+    })
+    await resumeMigrations(adapter, [defNoReindex], 'fp-a')
+    expect(queryTarget('bakin_notes')).toMatch(/^bakin_notes_v3_/)
+    expect(tableStatus('bakin_notes')?.state).toBe('active')
+  })
+
   it('crash mid-migration resumes from persisted state (dual-write already on)', async () => {
     const adapter = createMockSearchAdapter()
     await ensureTable(adapter, makeDef(), 'fp-a')

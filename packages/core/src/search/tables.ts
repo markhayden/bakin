@@ -304,9 +304,28 @@ async function runMigration(
 
   await createTableTolerant(adapter, green, def.config)
 
-  setPhase(def.logical, 'backfilling', 0)
-  opts?.onProgress?.('backfilling', 0)
-  const emitted = await backfill(adapter, def, green, opts?.onProgress)
+  // Park→resume fast path: when a previous attempt's backfill fully landed
+  // (green already holds the emitted corpus — the registry remembers the
+  // count), re-running it would re-embed everything just to wait out
+  // another converge window. Skip straight to converge; dual-write has
+  // kept the green current in the meantime.
+  const priorEmitted = old.migrating_to === green ? old.backfill_done ?? 0 : 0
+  let emitted: number
+  if (priorEmitted > 0) {
+    const greenStats = await adapter.tables.stats(green).catch(() => null)
+    if ((greenStats?.documents ?? 0) >= priorEmitted) {
+      emitted = priorEmitted
+      log.info('resume: green already backfilled — skipping re-backfill', { logical: def.logical, green, emitted })
+    } else {
+      setPhase(def.logical, 'backfilling', 0)
+      opts?.onProgress?.('backfilling', 0)
+      emitted = await backfill(adapter, def, green, opts?.onProgress)
+    }
+  } else {
+    setPhase(def.logical, 'backfilling', 0)
+    opts?.onProgress?.('backfilling', 0)
+    emitted = await backfill(adapter, def, green, opts?.onProgress)
+  }
 
   setPhase(def.logical, 'converging')
   opts?.onProgress?.('converging', emitted)
