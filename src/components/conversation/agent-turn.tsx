@@ -167,10 +167,10 @@ export function AgentTurn({ turn, agentId, onRetry, onOpenCall, transformText }:
     <div className="group/turn relative flex items-start gap-3" data-conv-turn>
       {/* Avatar carries the identity (name in its tooltip) — no name line,
           so the reply text sits directly beside it. */}
-      <span data-conv-avatar className="mt-0.5 shrink-0" title={name}>
+      <span data-conv-avatar className="shrink-0" title={name}>
         <AgentAvatar agentId={author ?? ''} size="sm" />
       </span>
-      <div className="min-w-0 flex-1 space-y-2 pt-1">
+      <div className="min-w-0 flex-1 space-y-2">
         {turn.items.map((item, i) => {
           if (item.type === 'text') {
             if (item.format !== 'markdown') {
