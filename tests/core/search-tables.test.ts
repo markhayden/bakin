@@ -248,6 +248,44 @@ describe('blue/green migration', () => {
     expect(tableStatus('bakin_notes')?.state).toBe('active')
   })
 
+  it('converges when the source SHRANK after backfill (green stable below the emitted count)', async () => {
+    const adapter = createMockSearchAdapter()
+    await ensureTable(adapter, makeDef(), 'fp-a')
+
+    // v3 backfill emits 3 docs, but one source doc is deleted right after
+    // enumeration — the green will only ever hold 2. The old converge
+    // (green >= emitted) parked FOREVER on this (live: bakin_memory,
+    // 2026-07-11 — orphan-swept audit rows shrank the source mid-migration).
+    const def3 = makeDef({
+      schemaVersion: 3,
+      reindex: async function* () {
+        yield { key: 'n1', doc: { title: 'one' } }
+        yield { key: 'n2', doc: { title: 'two' } }
+        yield { key: 'gone', doc: { title: 'deleted-after-enumeration' } }
+      },
+    })
+    // Simulate the shrink: the mock adapter indexes all 3, then the doc is
+    // removed from the green (dual-written delete) before converge.
+    const wrapped: SearchAdapter = {
+      ...adapter,
+      tables: {
+        ...adapter.tables,
+        stats: async (name) => {
+          const stats = await adapter.tables.stats(name)
+          if (stats && name.startsWith('bakin_notes_v3_')) {
+            await adapter.documents.remove(name, 'gone').catch(() => {})
+            const fresh = await adapter.tables.stats(name)
+            return fresh
+          }
+          return stats
+        },
+      },
+    }
+    const result = await ensureTable(wrapped, def3, 'fp-a', { convergeTimeoutMs: 5_000, convergePollMs: 50 })
+    expect(result).toBe('migrated')
+    expect(queryTarget('bakin_notes')).toMatch(/^bakin_notes_v3_/)
+  }, 20_000)
+
   it('resume skips the re-backfill when the green already holds the emitted corpus', async () => {
     const adapter = createMockSearchAdapter()
     await ensureTable(adapter, makeDef(), 'fp-a')
