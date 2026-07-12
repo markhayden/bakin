@@ -1,7 +1,7 @@
 import { Box } from 'ink'
 import { DataTable, FindingRows, ScreenHeader, Section, StatusTable, SummaryStrip } from '../tui'
 import type { TuiStatus } from '../style-tokens'
-import { valueText, numberValue, objectField, isPlainRecord, plural } from './format'
+import { valueText, numberValue, objectField, plural } from './format'
 
 export interface SearchResultData {
   id?: unknown
@@ -38,15 +38,15 @@ export interface SearchStatsTableData {
 export interface ReindexTableData {
   table?: unknown
   indexed?: unknown
+  result?: unknown
   error?: unknown
-  enrichment?: unknown
 }
 
 export interface ReindexResultData {
   ok?: unknown
   total?: unknown
   errors?: unknown
-  enrichmentErrors?: unknown
+  parked?: unknown
   tables?: ReindexTableData[]
 }
 
@@ -69,7 +69,7 @@ interface ReindexTableRow {
   status: TuiStatus
   table: string
   docs: string
-  enrichment: string
+  outcome: string
   issue: string
 }
 
@@ -144,32 +144,18 @@ function searchStatsTableRows(tables: SearchStatsTableData[], enabled: boolean):
   }))
 }
 
-function reindexEnrichmentText(value: unknown): string {
-  if (!isPlainRecord(value)) return '-'
-  const indexes = Array.isArray(value.indexes) ? value.indexes : []
-  const issues = indexes.flatMap(index => {
-    if (!isPlainRecord(index)) return []
-    const name = valueText(index.name, 'index')
-    const error = valueText(index.error, '')
-    if (error) return [`${name}: ${error}`]
-    const walBacklog = numberValue(index.walBacklog)
-    if (walBacklog > 0) return [`${name}: ${walBacklog} wal`]
-    return []
-  })
-  if (issues.length > 0) return issues.join(', ')
-  return value.healthy === false ? 'unhealthy' : 'healthy'
-}
-
 function reindexTableRows(tables: ReindexTableData[]): ReindexTableRow[] {
   return tables.map(table => {
     const hasError = Boolean(table.error)
-    const enrichmentUnhealthy = isPlainRecord(table.enrichment) && table.enrichment.healthy === false
+    const parked = table.result === 'parked'
     return {
-      status: hasError ? 'fail' : enrichmentUnhealthy ? 'warn' : 'ok',
+      status: hasError ? 'fail' : parked ? 'warn' : 'ok',
       table: valueText(table.table, '(unknown)'),
       docs: valueText(table.indexed, '0'),
-      enrichment: reindexEnrichmentText(table.enrichment),
-      issue: valueText(table.error),
+      outcome: valueText(table.result),
+      // NEVER through valueText's '-' fallback here: the truthy '-' made
+      // the parked text unreachable (review finding).
+      issue: hasError ? valueText(table.error) : parked ? 'parked — green never converged' : '',
     }
   })
 }
@@ -266,7 +252,7 @@ export function ReindexReport({ result, target = 'all content', rebuild = false,
   const rows = reindexTableRows(result.tables ?? [])
   const total = numberValue(result.total)
   const errors = numberValue(result.errors)
-  const enrichmentErrors = numberValue(result.enrichmentErrors)
+  const parked = numberValue(result.parked)
 
   return (
     <Box flexDirection="column">
@@ -280,7 +266,7 @@ export function ReindexReport({ result, target = 'all content', rebuild = false,
         { label: plural(total, 'document'), value: total, status: total > 0 ? 'ok' : 'skip' },
         { label: plural(rows.length, 'table'), value: rows.length, status: rows.length > 0 ? 'ok' : 'skip' },
         { label: 'errors', value: errors, status: errors > 0 ? 'fail' : 'ok' },
-        { label: 'enrichment', value: enrichmentErrors, status: enrichmentErrors > 0 ? 'warn' : 'ok' },
+        { label: 'parked', value: parked, status: parked > 0 ? 'warn' : 'ok' },
       ]} color={color} />
       <Section title="Tables" color={color}>
         {rows.length > 0 ? (
@@ -289,7 +275,7 @@ export function ReindexReport({ result, target = 'all content', rebuild = false,
             columns={[
               { key: 'table', header: 'TABLE', width: 16, render: row => row.table },
               { key: 'docs', header: 'DOCS', width: 6, render: row => row.docs },
-              { key: 'enrichment', header: 'ENRICHMENT', width: 18, render: row => row.enrichment },
+              { key: 'outcome', header: 'OUTCOME', width: 12, render: row => row.outcome },
               { key: 'issue', header: 'ISSUE', width: 24, grow: true, render: row => row.issue },
             ]}
             color={color}

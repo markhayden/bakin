@@ -6,7 +6,7 @@
  * check-owned repair handler can mutate state.
  */
 import { appendAudit } from './audit'
-import { runDetailedPluginHealthChecks } from './doctor'
+import { runDetailedPluginHealthChecks } from './doctor-checks'
 import { getHealthCheck } from './health-check-registry'
 import type {
   HealthCheckDef,

@@ -22,13 +22,17 @@ import { createLogger } from './logger'
 const log = createLogger('roster-reconcile')
 
 export interface RosterCarryReport {
-  /** Created on the target (with the model actually applied, when mapped). */
-  carried: Array<{ agentId: string; model?: string; mappedFrom?: string }>
+  /** Created on the target (with the models actually applied, when mapped). */
+  carried: Array<{ agentId: string; model?: string; mappedFrom?: string; subagentModel?: string }>
   /** Already present on the target — left untouched. */
   existing: string[]
-  /** Source models with no target-catalog equivalent (agent carried modelless). */
-  unmappedModels: Array<{ agentId: string; sourceModel: string }>
-  /** Agents that could not be created on the target. */
+  /**
+   * Source models with no target equivalent (agent carried without them):
+   * no catalog match, or — for `subagentModel` — a runtime without
+   * per-agent subagent models (`routingSupport()`). Never guessed.
+   */
+  unmappedModels: Array<{ agentId: string; sourceModel: string; field: 'model' | 'subagentModel' }>
+  /** Agents that could not be created on the target, and post-create carry steps that failed. */
   failed: Array<{ agentId: string; error: string }>
 }
 
@@ -47,6 +51,15 @@ export function mapModelToCatalog(sourceModel: string, targetCatalog: string[]):
   return matches.length === 1 ? matches[0] : null
 }
 
+/** Feature-detect per-agent subagent-model support; an unreadable declaration reads as unsupported. */
+function supportsPerAgentSubagentModel(target: AgentRuntimeAdapter): boolean {
+  try {
+    return target.models.routingSupport().perAgentSubagentModel === true
+  } catch {
+    return false
+  }
+}
+
 /** Adapter-private keys never carried across runtimes. */
 const PRIVATE_METADATA_KEYS = new Set(['workspacePath', 'workspace', 'subagentAllowAgents'])
 
@@ -58,9 +71,15 @@ function carriedMetadata(agent: RuntimeAgent): Record<string, unknown> | undefin
   return entries.length > 0 ? Object.fromEntries(entries) : undefined
 }
 
+export interface ReconcileRosterOptions {
+  /** Classify (existing / would-carry / unmapped) without creating or updating anything. */
+  dryRun?: boolean
+}
+
 export async function reconcileRoster(
   sourceAgents: RuntimeAgent[],
   target: AgentRuntimeAdapter,
+  opts: ReconcileRosterOptions = {},
 ): Promise<RosterCarryReport> {
   const report: RosterCarryReport = { carried: [], existing: [], unmappedModels: [], failed: [] }
 
@@ -90,25 +109,59 @@ export async function reconcileRoster(
         model = mapped
         if (mapped !== agent.model) mappedFrom = agent.model
       } else {
-        report.unmappedModels.push({ agentId: agent.id, sourceModel: agent.model })
+        report.unmappedModels.push({ agentId: agent.id, sourceModel: agent.model, field: 'model' })
       }
     }
 
-    try {
-      await target.agents.create({
-        id: agent.id,
-        name: agent.name || agent.id,
-        ...(agent.role ? { role: agent.role } : {}),
-        ...(model ? { model } : {}),
-        ...(carriedMetadata(agent) ? { metadata: carriedMetadata(agent) } : {}),
-      })
-      report.carried.push({ agentId: agent.id, ...(model ? { model } : {}), ...(mappedFrom ? { mappedFrom } : {}) })
-    } catch (err) {
-      report.failed.push({ agentId: agent.id, error: err instanceof Error ? err.message : String(err) })
+    // Subagent model: same mapping rule, applied post-create via update()
+    // (CreateRuntimeAgentInput doesn't accept it) — and only on runtimes that
+    // support per-agent subagent models. Anything else is a report line.
+    let subagentModel: string | undefined
+    if (agent.subagentModel) {
+      const supported = supportsPerAgentSubagentModel(target)
+      const mapped = supported ? mapModelToCatalog(agent.subagentModel, targetCatalog) : null
+      if (mapped) subagentModel = mapped
+      else report.unmappedModels.push({ agentId: agent.id, sourceModel: agent.subagentModel, field: 'subagentModel' })
     }
+
+    if (!opts.dryRun) {
+      try {
+        await target.agents.create({
+          id: agent.id,
+          name: agent.name || agent.id,
+          ...(agent.role ? { role: agent.role } : {}),
+          ...(model ? { model } : {}),
+          ...(carriedMetadata(agent) ? { metadata: carriedMetadata(agent) } : {}),
+        })
+      } catch (err) {
+        report.failed.push({ agentId: agent.id, error: err instanceof Error ? err.message : String(err) })
+        continue
+      }
+
+      if (subagentModel) {
+        try {
+          await target.agents.update(agent.id, { subagentModel })
+        } catch (err) {
+          // The agent itself carried — only the subagent-model application
+          // failed. Both facts are reported.
+          subagentModel = undefined
+          report.failed.push({
+            agentId: agent.id,
+            error: `subagentModel update: ${err instanceof Error ? err.message : String(err)}`,
+          })
+        }
+      }
+    }
+
+    report.carried.push({
+      agentId: agent.id,
+      ...(model ? { model } : {}),
+      ...(mappedFrom ? { mappedFrom } : {}),
+      ...(subagentModel ? { subagentModel } : {}),
+    })
   }
 
-  log.info('Roster reconciled onto target runtime', {
+  log.info(opts.dryRun ? 'Roster reconcile previewed against target runtime (dry run)' : 'Roster reconciled onto target runtime', {
     carried: report.carried.length,
     existing: report.existing.length,
     unmapped: report.unmappedModels.length,

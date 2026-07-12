@@ -128,7 +128,7 @@ export function createInstance(
 
     // Create a board task so the child workflow's gates are visible in the UI
     const childDef = loadDefinition(nested.workflow_id, dir)
-    createBoardTaskForChild(childTaskId, taskId, nested, childDef, assignee)
+    createBoardTaskForChild(childTaskId, taskId, nested, childDef, childInstance)
   } else if (firstStep.type === 'map_workflow') {
     // Statically illegal (source must name an EARLIER step, so validation
     // rejects a first-step map) — but createInstance is reachable without
@@ -293,7 +293,7 @@ function fanOutMapStep(
     childInstance.parentTaskId = instance.taskId
     childInstance.parentStepId = mapStep.id
     saveInstance(childInstance, contentDir)
-    createBoardTaskForChild(childTaskId, instance.taskId, mapStep, childDef, instance.resolvedAgent, { index: i, total })
+    createBoardTaskForChild(childTaskId, instance.taskId, mapStep, childDef, childInstance, { index: i, total })
     // A child can fail during its own createInstance (e.g. a defensive
     // first-step map failure) — record an honest entry, never in_progress.
     children.push({ index: i, childTaskId, status: childInstance.status === 'failed' ? 'failed' : 'in_progress' })
@@ -613,7 +613,7 @@ export function advanceWorkflow(instance: WorkflowInstance, def: WorkflowDefinit
 
     // Create a board task so the child workflow's gates are visible in the UI
     const childDef = loadDefinition(nested.workflow_id, contentDir)
-    createBoardTaskForChild(childTaskId, instance.taskId, nested, childDef, instance.resolvedAgent)
+    createBoardTaskForChild(childTaskId, instance.taskId, nested, childDef, childInstance)
   } else if (nextStep.type === 'map_workflow') {
     // Dynamic fan-out — one child instance per source-array element.
     fanOutMapStep(instance, nextStep as MapWorkflowStep, def, contentDir, now)

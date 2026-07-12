@@ -52,6 +52,7 @@ beforeAll(async () => {
     },
   }))
   await adapter.initialize({ contentDir: join(testDir, 'bakin') })
+  await adapter.provisionToolAccess() // seeds main (write-free initialize)
 })
 
 afterAll(() => {
@@ -187,5 +188,16 @@ describe('models + capabilities', () => {
 
   test('describeToolAccess declares in-process invocation', () => {
     expect(adapter.describeToolAccess!()).toEqual({ style: 'in-process', perTurnExecToolFiltering: true })
+  })
+})
+
+describe('skills.write atomicity', () => {
+  test('validates every filename BEFORE writing — an invalid nested path leaves NO half-written skill', async () => {
+    await expect(
+      adapter.skills.write({ name: 'nested-carry', instructions: '# nested', files: { 'ref/aux.md': 'aux' } }, 'main'),
+    ).rejects.toThrow('invalid skill file name')
+    // The dir must not exist at all — a half-written SKILL.md would make
+    // skills.list report a valid skill that never fully carried.
+    expect(await adapter.skills.get('nested-carry', 'main')).toBeNull()
   })
 })

@@ -154,17 +154,17 @@ async function cmdReindex(options: { table?: string; rebuild?: boolean } = {}): 
   if (!process.stdout.isTTY) {
     console.log(`Reindexing ${target} into search${options.rebuild ? ' (rebuild indexes)' : ''}...`)
   }
+  // Response shape = the /api/reindex handler: per-table blue/green outcome
+  // ('migrated'/'parked'/'failed') + backfilled doc count. The old enrichment
+  // fields never existed on this route and printed "undefined documents".
+  // `total`/`parked` are OPTIONAL at runtime: an older not-yet-restarted
+  // server (this box's documented normal state) omits them.
   const result = await apiPost(url) as ReindexResultData & {
     ok: boolean
-    total: number
+    total?: number
     errors: number
-    enrichmentErrors?: number
-    tables: Array<{
-      table: string
-      indexed: number
-      error?: string
-      enrichment?: { healthy: boolean; indexes: Array<{ name: string; error?: string; walBacklog: number }> }
-    }>
+    parked?: number
+    tables: Array<import('../../core/search-registry-core').ReindexTableOutcome>
   }
   if (process.stdout.isTTY) {
     await printReindexTui(result, { target, rebuild: options.rebuild === true })
@@ -175,16 +175,14 @@ async function cmdReindex(options: { table?: string; rebuild?: boolean } = {}): 
       if (t.error) {
         console.log(`  ${t.table}: ERROR — ${t.error}`)
       } else {
-        const enrichTag = t.enrichment
-          ? t.enrichment.healthy ? '' : ' [enrichment unhealthy]'
-          : ''
-        console.log(`  ${t.table}: ${t.indexed} documents${enrichTag}`)
+        const parkedTag = t.result === 'parked' ? ' [PARKED — green never converged; doctor resumes it]' : ''
+        console.log(`  ${t.table}: ${t.indexed ?? 0} documents${parkedTag}`)
       }
     }
   }
-  console.log(`Done. ${result.total} total documents indexed.`)
-  if ((result.enrichmentErrors ?? 0) > 0) {
-    console.log(`WARNING: ${result.enrichmentErrors} table(s) have enrichment errors — check health page for details.`)
+  console.log(typeof result.total === 'number' ? `Done. ${result.total} total documents indexed.` : 'Done.')
+  if ((result.parked ?? 0) > 0) {
+    console.log(`WARNING: ${result.parked} table(s) parked mid-migration — queries keep answering from the old table; run \`bakin doctor\` to resume.`)
   }
 }
 

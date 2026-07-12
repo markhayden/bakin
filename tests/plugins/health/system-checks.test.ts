@@ -94,6 +94,7 @@ mock.module('@bakin/core/search/tables', () => ({
   queryTarget: () => null,
   resolveDrainTargets: (logical: string) => [logical],
   sweepTombstones: async () => 0,
+  sweepOrphanEngineTables: async () => ({ dropped: [], pending: 0, unclaimed: [] }),
   ensureTable: async () => 'unchanged',
   rebuildTable: async () => 'migrated',
   resumeMigrations: async () => {},

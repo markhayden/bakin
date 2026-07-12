@@ -219,6 +219,18 @@ export interface BakinSettings {
      * instead of drowning them in unrelated errors.
      */
     requireOnboard: boolean
+    /**
+     * What the PERIODIC doctor does when a cycle produces ERROR findings:
+     * 'task' creates ONE deduplicated delegated-repair task for the main
+     * agent (skipped while a covering repair task is open, and rate-limited
+     * by escalationCooldownMs); 'notify' messages the main agent; 'off'
+     * keeps the old dashboard-only behavior. Manual `bakin doctor` runs are
+     * never affected. Both agent-facing modes cost an agent turn and ride
+     * the normal budget gates.
+     */
+    escalation: 'off' | 'notify' | 'task'
+    /** Minimum gap before re-escalating the SAME error set as a new task. */
+    escalationCooldownMs: number
   }
   diagnostics: {
     startup: {
@@ -373,6 +385,8 @@ export const DEFAULT_SETTINGS: BakinSettings = {
   doctor: {
     intervalMs: 30 * 60 * 1000, // 30 minutes
     requireOnboard: true,
+    escalation: 'task',
+    escalationCooldownMs: 6 * 60 * 60 * 1000, // 6 hours
   },
   diagnostics: {
     startup: {

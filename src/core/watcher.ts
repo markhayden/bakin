@@ -153,6 +153,14 @@ export function shouldIgnoreContentWatcherPath(contentDir: string, path: string)
   // on os_unfair_lock), wedging the entire HTTP server seconds after boot.
   if (rel === 'antfly' || rel.startsWith('antfly/')) return true
 
+  // Backup/snapshot siblings of ANY content root (assets.pre-pivot-*,
+  // tasks.bak, workflows.old-2026) are dead copies, never live content.
+  // Watching one costs a kqueue fd per file under Bun and resurfaces stale
+  // files as unmanaged-import badges. Marker-based so legitimate top-level
+  // files (assets.md, MEMORY-LOG.md) stay watched.
+  const firstSegment = rel.split('/')[0]
+  if (/\.(bak|backup|old|orig|prev|pre-pivot)([.-][^/]*)?$/i.test(firstSegment)) return true
+
   const basename = path.split(/[\\/]/).pop() || ''
   // Allow .trash inside assets (we handle skipping in handleFileEvent)
   if (basename === '.trash' && rel.startsWith('assets/')) return false

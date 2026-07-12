@@ -115,6 +115,20 @@ describe('watcher', () => {
       expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'antfly-notes', 'file.md'))).toBe(false)
     })
 
+    it('ignores backup/snapshot siblings of ANY content root, never live content', () => {
+      // Dead sibling copies (assets.pre-pivot-*, tasks.bak) cost a kqueue fd
+      // per file under Bun and resurface stale files as import badges. The
+      // rule is marker-based so it covers the CLASS, not one past incident.
+      expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'assets.pre-pivot-20260417-215547'))).toBe(true)
+      expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'assets.pre-pivot-20260417-215547', 'images', 'old.png'))).toBe(true)
+      expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'tasks.bak', 'task.json'))).toBe(true)
+      expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'workflows.old-2026', 'w.yaml'))).toBe(true)
+      // Live content and legitimate dotted top-level files stay watched.
+      expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'assets', 'store', '2026-07', 'a1', 'v1.png'))).toBe(false)
+      expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'assets.md'))).toBe(false)
+      expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'MEMORY-LOG.md'))).toBe(false)
+    })
+
     it('stop is idempotent', async () => {
       await stop()
       // second call should not throw; bun:test's toThrow matcher doesn't

@@ -211,19 +211,31 @@ async function ensureTable(search: SearchAdapter, def: SearchContentTypeDefiniti
  * path). Queries keep answering from the old physical throughout; SSE
  * `search.rebuild.*` events drive the health page's live progress.
  */
-export async function rebuildRegisteredTables(tableName?: string): Promise<Array<{ table: string; result: string; error?: string }>> {
+/** Per-table rebuild outcome — the ONE shape the /api/reindex route and the CLI share. */
+export interface ReindexTableOutcome {
+  table: string
+  result: string
+  indexed?: number
+  error?: string
+}
+
+export async function rebuildRegisteredTables(tableName?: string): Promise<ReindexTableOutcome[]> {
   const registry = getRegistry()
   const search = getSearchAdapter()
-  const results: Array<{ table: string; result: string; error?: string }> = []
+  const results: ReindexTableOutcome[] = []
   for (const [logical, def] of registry.contentTypes) {
     if (tableName && logical !== tableName && def.table !== tableName) continue
     broadcastRebuild('search.rebuild.start', logical)
     try {
+      let indexed = 0
       const result = await rebuildVersionedTable(search, toVersionedDef(def), adapterFingerprint(search), {
-        onProgress: (phase, backfillDone) => broadcastRebuild('search.rebuild.progress', logical, { phase, indexed: backfillDone ?? 0 }),
+        onProgress: (phase, backfillDone) => {
+          if (backfillDone !== undefined) indexed = backfillDone
+          broadcastRebuild('search.rebuild.progress', logical, { phase, indexed: backfillDone ?? 0 })
+        },
       })
-      broadcastRebuild('search.rebuild.complete', logical, { result })
-      results.push({ table: logical, result })
+      broadcastRebuild('search.rebuild.complete', logical, { result, indexed })
+      results.push({ table: logical, result, indexed })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       broadcastRebuild('search.rebuild.complete', logical, { error: message })

@@ -183,9 +183,9 @@ describe('read-only CLI TTY commands — schedule, trash, search', () => {
       ok: false,
       total: 12,
       errors: 1,
-      enrichmentErrors: 1,
+      parked: 0,
       tables: [
-        { table: 'bakin_tasks', indexed: 12, enrichment: { healthy: true, indexes: [] } },
+        { table: 'bakin_tasks', indexed: 12, result: 'migrated' },
         { table: 'agent_lessons', indexed: 0, error: 'schema missing' },
       ],
     }))

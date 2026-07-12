@@ -611,7 +611,7 @@ bakin_exec_images_export
 ### bakin_exec_images_generate
 
 Label: Generated an image
-Purpose: Generate an image through a configured runtime image provider, save it as a NEW managed asset (v1), and return its assetId. Pass referenceImages to create a new image conditioned on existing assets/files (e.g. "in the style of these"); to revise an existing asset in place use bakin_exec_images_edit instead.
+Purpose: Generate an image through a configured runtime image provider, save it as a NEW managed asset (v1), and return its assetId. Pass referenceImages to create a new image conditioned on existing assets/files (e.g. "in the style of these"); to revise an existing asset in place use bakin_exec_images_edit instead. In an interactive chat: omit taskId and, after it returns, deliver the image by embedding ![desc](/api/assets/<assetId>) in your reply — text alone delivers nothing.
 
 Arguments: none.
 

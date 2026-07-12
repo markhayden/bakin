@@ -161,6 +161,28 @@ describe('runtime — map_workflow', () => {
       }
     })
 
+    it('stores a resolved agent on fan-out board tasks, never the raw $preferred selector', async () => {
+      createInstance('task-map-pref', 'map-preferred', testDir, 'roscoe', undefined, ['chef', 'pixel', 'main'])
+      completeStep('task-map-pref', 'source-step', { items: ['a', 'b'] }, undefined, testDir)
+      await settle()
+
+      for (let i = 0; i < 2; i++) {
+        const task = hookTasks.get(`task-map-pref--produce-items--${i}`)
+        expect(task, `board task ${i}`).toBeDefined()
+        expect(task!.agent).toBe('pixel')
+      }
+    })
+
+    it('resolves a $preferred child selector to the assignee when the preferred agent is off-roster', async () => {
+      createInstance('task-map-pref-fb', 'map-preferred', testDir, 'roscoe', undefined, ['chef', 'main'])
+      completeStep('task-map-pref-fb', 'source-step', { items: ['a'] }, undefined, testDir)
+      await settle()
+
+      const task = hookTasks.get('task-map-pref-fb--produce-items--0')
+      expect(task).toBeDefined()
+      expect(task!.agent).toBe('roscoe')
+    })
+
     it('falls back to a label-only board title when the parent task is unknown', async () => {
       startAndFan('task-map-noparent')
       await settle()

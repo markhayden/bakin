@@ -159,6 +159,14 @@ description: Generated reference for Bakin core settings defaults.
   </thead>
   <tbody>
     <tr>
+      <td><code>doctor.escalation</code></td>
+      <td><code>&quot;task&quot;</code></td>
+    </tr>
+    <tr>
+      <td><code>doctor.escalationCooldownMs</code></td>
+      <td><code>21600000</code></td>
+    </tr>
+    <tr>
       <td><code>doctor.intervalMs</code></td>
       <td><code>1800000</code></td>
     </tr>

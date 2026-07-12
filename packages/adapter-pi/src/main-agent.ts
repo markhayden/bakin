@@ -2,7 +2,8 @@
  * The 'main' orchestrator invariant. Bakin's neutral main-agent resolution
  * (selectRuntimeMainAgent) prefers id 'main' → role 'orchestrator' → first;
  * onboarding integrity hard-requires a resolvable main agent with a
- * workspace. First initialize() seeds it when the registry is empty.
+ * workspace. provisionToolAccess() seeds it when the registry is empty —
+ * never initialize(), which is read-only by conformance-pinned contract.
  */
 import type { AdapterLogger } from '@bakin/core/adapters/runtime'
 import { getAgentWorkspaceDir } from './home'
