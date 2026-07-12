@@ -57,7 +57,9 @@ export function CopyButton({ text, label = 'Copy' }: { text: string; label?: str
 /** Streaming shimmer label ('thinking…', custom verbs via `label`). */
 function ShimmerLabel({ label }: { label: string }) {
   return (
-    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+    // min-h matches the sm avatar (32px) so a bare 'thinking…' row centers
+    // against it; rows with real content above are unaffected.
+    <div className="flex min-h-8 items-center gap-2 text-xs text-muted-foreground">
       <Loader2 className="size-3 animate-spin" />
       <span className="animate-pulse">{label}…</span>
     </div>
