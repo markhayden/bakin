@@ -8,9 +8,9 @@
  * URL-backed (?tab=): Overview is a read-only dashboard, the rest are live
  * editors that round-trip through the manifest PUT / doc routes.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { MarkdownContent, UnderlineTabs, SaveBar, SectionCard, ConfirmDialog, useUnsavedGuard } from '@makinbakin/sdk/components'
+import { MarkdownContent, UnderlineTabs, SaveBar, SectionCard, ConfirmDialog, AssetPicker, useUnsavedGuard } from '@makinbakin/sdk/components'
 import {
   Button, Badge, Input, Textarea, Switch, Label,
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -19,7 +19,7 @@ import {
 import { useQueryState, toast } from '@makinbakin/sdk/hooks'
 import {
   ArrowLeft, Palette, Rocket, Pencil, Plus, Check, AlertTriangle, ExternalLink,
-  Upload, FileText, BookOpen, ImageIcon, Trash2, Sparkles, Info,
+  FileText, BookOpen, ImageIcon, Trash2, Sparkles, Info,
 } from 'lucide-react'
 import type { BrandManifest, PaletteEntry, Completeness } from '../types'
 
@@ -786,10 +786,13 @@ function DocsEditor({
 interface AssetInfo { assetId: string; description: string; type: string; hasThumb: boolean }
 const TYPE_ICON: Record<string, string> = { images: '🖼', pdf: '📄', video: '▷', audio: '♪', text: '¶', data: '⊞' }
 
+const LOGO_VARIANTS = ['primary', 'dark', 'light', 'mono', 'icon', 'wordmark']
+
 function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (patch: ManifestPatch) => void }) {
   const [assets, setAssets] = useState<Record<string, AssetInfo>>({})
-  const [options, setOptions] = useState<AssetInfo[]>([])
   const [groupDraft, setGroupDraft] = useState<{ name: string; description: string } | null>(null)
+  // ONE AssetPicker instance; whichever section opens it provides the target.
+  const [pickTarget, setPickTarget] = useState<{ title: string; description: string; onPick: (assetId: string) => void } | null>(null)
 
   const loadAssets = useCallback(async () => {
     try {
@@ -797,9 +800,8 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
       if (!res.ok) return
       const body = (await res.json()) as { assets?: Array<{ assetId: string; description?: string; type?: string; hasThumb?: boolean }> }
       const list = (body.assets ?? []).map((a) => ({ assetId: a.assetId, description: a.description ?? '', type: a.type ?? 'other', hasThumb: !!a.hasThumb }))
-      setOptions(list)
       setAssets(Object.fromEntries(list.map((a) => [a.assetId, a])))
-    } catch { /* picker degrades to manual entry when the assets plugin is unreachable */ }
+    } catch { /* tiles degrade to id-only when the assets plugin is unreachable */ }
   }, [])
 
   useEffect(() => { void loadAssets() }, [loadAssets])
@@ -813,120 +815,152 @@ function BrandAssetsSection({ brand, onSave }: { brand: BrandManifest; onSave: (
     } catch { /* optimistic; a reload reconciles */ }
   }, [])
 
-  const addAsset = (onPick: (assetId: string) => void) => <AddAsset options={options} onAdd={onPick} onUploaded={loadAssets} />
+  const openPicker = (title: string, description: string, onPick: (assetId: string) => void) =>
+    setPickTarget({ title, description, onPick })
+
   const tile = (assetId: string, onRemove: () => void, extra?: React.ReactNode) => (
     <AssetTile key={assetId} info={assets[assetId]} assetId={assetId} onDescription={(d) => void saveDescription(assetId, d)} onRemove={onRemove} extra={extra} />
   )
 
   return (
-    <Section label="Brand assets" icon={ImageIcon} action={<span className="max-w-md text-right text-[11px] text-muted-foreground">Real logos + screenshots agents reference. Add a note so agents know how to use each one.</span>}>
-      <div className="space-y-5">
-        <div className="space-y-2">
-          <SubLabel>Logos</SubLabel>
-          {brand.logos.map((logo, i) => tile(
+    <div className="flex flex-col gap-4">
+      <AssetPicker
+        open={pickTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setPickTarget(null)
+        }}
+        onPick={(assetId) => {
+          pickTarget?.onPick(assetId)
+          void loadAssets()
+        }}
+        title={pickTarget?.title ?? 'Choose an asset'}
+        description={pickTarget?.description}
+      />
+
+      <SectionCard
+        title="Logos"
+        icon={ImageIcon}
+        description="The face of the brand — the first logo shows on cards and covers; variants (dark/light) help agents pick the right one."
+        action={
+          <Button
+            variant="outline" size="sm" data-add-logo
+            onClick={() => openPicker('Add a logo', 'Pick or upload the logo image agents should use.', (assetId) => onSave({ logos: [...brand.logos, { assetId, variant: brand.logos.length === 0 ? 'primary' : 'dark' }] }))}
+          >
+            <Plus className="size-3.5" /> Add logo
+          </Button>
+        }
+      >
+        {brand.logos.length === 0 && (
+          <p className="text-sm text-muted-foreground">No logo yet — cards show a monogram until you add one.</p>
+        )}
+        {brand.logos.map((logo, i) =>
+          tile(
             logo.assetId,
             () => onSave({ logos: brand.logos.filter((_, j) => j !== i) }),
-            <input className={`${inputCls} w-24 py-1 text-[11px]`} value={logo.variant} title="variant (e.g. dark, light, primary)" onChange={(e) => onSave({ logos: brand.logos.map((l, j) => (j === i ? { ...l, variant: e.target.value } : l)) })} />,
-          ))}
-          {addAsset((assetId) => onSave({ logos: [...brand.logos, { assetId, variant: 'primary' }] }))}
-        </div>
+            <VariantSelect
+              value={logo.variant}
+              onChange={(variant) => onSave({ logos: brand.logos.map((l, j) => (j === i ? { ...l, variant } : l)) })}
+            />,
+          ),
+        )}
+      </SectionCard>
 
-        <div className="space-y-2">
-          <SubLabel>Asset groups</SubLabel>
-          {brand.assetGroups.map((group, gi) => (
-            <div key={group.name} className="space-y-2 rounded-lg bg-surface p-3">
-              <div className="flex items-center gap-2 text-sm">
-                <span className="font-medium">{group.name}</span>
-                {group.description && <span className="text-xs text-muted-foreground">— {group.description}</span>}
-                <Button variant="ghost" size="xs" className="ml-auto text-muted-foreground hover:text-destructive" onClick={() => onSave({ assetGroups: brand.assetGroups.filter((_, j) => j !== gi) })}>
+      <SectionCard
+        title="Asset groups"
+        icon={ImageIcon}
+        description="Bundles of reference material (product shots, UI screenshots) agents browse by name when they need the real thing."
+        action={
+          !groupDraft ? (
+            <Button variant="outline" size="sm" onClick={() => setGroupDraft({ name: '', description: '' })} data-add-group>
+              <Plus className="size-3.5" /> New group
+            </Button>
+          ) : undefined
+        }
+      >
+        {brand.assetGroups.length === 0 && !groupDraft && (
+          <p className="text-sm text-muted-foreground">No groups yet — e.g. "product-ui" for real screenshots agents should reference instead of inventing UI.</p>
+        )}
+        {brand.assetGroups.map((group, gi) => (
+          <div key={group.name} className="space-y-2 rounded-lg bg-surface p-3">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="font-medium">{group.name}</span>
+              {group.description && <span className="text-xs text-muted-foreground">— {group.description}</span>}
+              <div className="ml-auto flex shrink-0 items-center gap-1">
+                <Button
+                  variant="ghost" size="xs" className="text-muted-foreground"
+                  onClick={() => openPicker(`Add to ${group.name}`, group.description || 'Pick or upload reference material for this group.', (assetId) => onSave({ assetGroups: brand.assetGroups.map((g, j) => (j === gi && !g.assetIds.includes(assetId) ? { ...g, assetIds: [...g.assetIds, assetId] } : g)) }))}
+                >
+                  <Plus className="size-3" /> Add
+                </Button>
+                <Button variant="ghost" size="xs" className="text-muted-foreground hover:text-destructive" onClick={() => onSave({ assetGroups: brand.assetGroups.filter((_, j) => j !== gi) })}>
                   Remove group
                 </Button>
               </div>
-              {group.assetIds.map((assetId) => tile(
-                assetId,
-                () => onSave({ assetGroups: brand.assetGroups.map((g, j) => (j === gi ? { ...g, assetIds: g.assetIds.filter((id) => id !== assetId) } : g)) }),
-              ))}
-              {addAsset((assetId) => onSave({ assetGroups: brand.assetGroups.map((g, j) => (j === gi && !g.assetIds.includes(assetId) ? { ...g, assetIds: [...g.assetIds, assetId] } : g)) }))}
             </div>
-          ))}
-          {groupDraft ? (
-            <div className="flex items-center gap-2 rounded-lg bg-surface p-2">
-              <input className={`${inputCls} w-40`} placeholder="group name" value={groupDraft.name} onChange={(e) => setGroupDraft({ ...groupDraft, name: e.target.value })} />
-              <input className={`${inputCls} flex-1`} placeholder="usage note, e.g. real product UI — use for any product visual" value={groupDraft.description} onChange={(e) => setGroupDraft({ ...groupDraft, description: e.target.value })} />
-              <Button variant="default" size="sm" disabled={!groupDraft.name.trim()} onClick={() => { onSave({ assetGroups: [...brand.assetGroups, { name: groupDraft.name.trim(), description: groupDraft.description.trim() || undefined, assetIds: [] }] }); setGroupDraft(null) }}>Add</Button>
-              <Button variant="ghost" size="sm" onClick={() => setGroupDraft(null)}>Cancel</Button>
-            </div>
-          ) : (
-            <Button variant="outline" size="sm" onClick={() => setGroupDraft({ name: '', description: '' })}><Plus className="size-3.5" /> New group</Button>
-          )}
-        </div>
+            {group.assetIds.length === 0 && <p className="text-xs text-muted-foreground">Empty group — add screenshots or imagery.</p>}
+            {group.assetIds.map((assetId) =>
+              tile(assetId, () => onSave({ assetGroups: brand.assetGroups.map((g, j) => (j === gi ? { ...g, assetIds: g.assetIds.filter((id) => id !== assetId) } : g)) })),
+            )}
+          </div>
+        ))}
+        {groupDraft && (
+          <div className="flex items-center gap-2 rounded-lg bg-surface p-2">
+            <Input className="w-40" placeholder="product-ui" aria-label="Group name" value={groupDraft.name} onChange={(e) => setGroupDraft({ ...groupDraft, name: e.target.value })} />
+            <Input className="flex-1" placeholder="real product UI — use for any product visual" aria-label="Group usage note" value={groupDraft.description} onChange={(e) => setGroupDraft({ ...groupDraft, description: e.target.value })} />
+            <Button variant="default" size="sm" disabled={!groupDraft.name.trim()} onClick={() => { onSave({ assetGroups: [...brand.assetGroups, { name: groupDraft.name.trim(), description: groupDraft.description.trim() || undefined, assetIds: [] }] }); setGroupDraft(null) }}>Add group</Button>
+            <Button variant="ghost" size="sm" onClick={() => setGroupDraft(null)}>Cancel</Button>
+          </div>
+        )}
+      </SectionCard>
 
-        <div className="space-y-2">
-          <SubLabel>Default image references <span className="normal-case text-muted-foreground/70">(≤4)</span></SubLabel>
-          {(brand.defaultImageReferences ?? []).map((assetId) => tile(
-            assetId,
-            () => onSave({ defaultImageReferences: (brand.defaultImageReferences ?? []).filter((id) => id !== assetId) }),
-          ))}
-          {(brand.defaultImageReferences ?? []).length < 4 && addAsset((assetId) => {
-            const current = brand.defaultImageReferences ?? []
-            if (!current.includes(assetId)) onSave({ defaultImageReferences: [...current, assetId] })
-          })}
-        </div>
-      </div>
-    </Section>
+      <SectionCard
+        title="Default image references"
+        icon={ImageIcon}
+        description="Up to 4 images automatically attached as style references to every branded image generation — image tools consume these directly."
+        action={
+          (brand.defaultImageReferences ?? []).length < 4 ? (
+            <Button
+              variant="outline" size="sm" data-add-image-ref
+              onClick={() => openPicker('Add an image reference', 'Attached automatically to branded image generations as a style reference.', (assetId) => {
+                const current = brand.defaultImageReferences ?? []
+                if (!current.includes(assetId)) onSave({ defaultImageReferences: [...current, assetId] })
+              })}
+            >
+              <Plus className="size-3.5" /> Add reference
+            </Button>
+          ) : (
+            <span className="text-[11px] text-muted-foreground">4 of 4 — remove one to swap</span>
+          )
+        }
+      >
+        {(brand.defaultImageReferences ?? []).length === 0 && (
+          <p className="text-sm text-muted-foreground">None yet — without references, branded image generations rely on the palette and text alone.</p>
+        )}
+        {(brand.defaultImageReferences ?? []).map((assetId) =>
+          tile(assetId, () => onSave({ defaultImageReferences: (brand.defaultImageReferences ?? []).filter((id) => id !== assetId) })),
+        )}
+      </SectionCard>
+    </div>
   )
 }
 
-function SubLabel({ children }: { children: React.ReactNode }) {
-  return <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{children}</p>
-}
-
-/** Upload a new asset (button or drag-drop) OR pick an already-uploaded one. */
-function AddAsset({ options, onAdd, onUploaded }: { options: AssetInfo[]; onAdd: (assetId: string) => void; onUploaded: () => Promise<void> }) {
-  const fileRef = useRef<HTMLInputElement>(null)
-  const [busy, setBusy] = useState(false)
-  const [over, setOver] = useState(false)
-  const [pickOpen, setPickOpen] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const upload = useCallback(async (file: File) => {
-    setBusy(true); setError(null)
-    try {
-      const form = new FormData()
-      form.append('file', file)
-      const res = await fetch('/api/plugins/assets/upload', { method: 'POST', body: form })
-      const body = (await res.json().catch(() => ({}))) as { assetId?: string; error?: string }
-      if (!res.ok || !body.assetId) throw new Error(body.error ?? 'Upload failed')
-      await onUploaded()
-      onAdd(body.assetId)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally { setBusy(false) }
-  }, [onAdd, onUploaded])
-
+/** Labeled logo-variant picker — common variants plus whatever the manifest already says. */
+function VariantSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const options = LOGO_VARIANTS.includes(value) ? LOGO_VARIANTS : [value, ...LOGO_VARIANTS]
   return (
-    <div className="max-w-md space-y-1">
-      <div
-        className={`flex items-center gap-2 rounded-lg p-1.5 transition-colors ${over ? 'bg-accent/10 ring-2 ring-accent/40' : 'bg-surface ring-1 ring-inset ring-outline-variant/30'}`}
-        onDragOver={(e) => { e.preventDefault(); setOver(true) }}
-        onDragLeave={() => setOver(false)}
-        onDrop={(e) => { e.preventDefault(); setOver(false); const f = e.dataTransfer.files?.[0]; if (f) void upload(f) }}
+    <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+      variant
+      <select
+        className="rounded-md bg-surface px-1.5 py-1 text-[11px] text-foreground ring-1 ring-inset ring-outline-variant/30"
+        value={value}
+        aria-label="Logo variant"
+        onChange={(e) => onChange(e.target.value)}
       >
-        <Button variant="secondary" size="sm" disabled={busy} onClick={() => fileRef.current?.click()}>
-          <Upload className="size-3.5" /> {busy ? 'Uploading…' : 'Upload image'}
-        </Button>
-        <span className="text-[11px] text-muted-foreground">or drag one here</span>
-        <Button variant="ghost" size="xs" className="ml-auto text-muted-foreground" onClick={() => setPickOpen((v) => !v)}>Choose existing</Button>
-      </div>
-      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = '' }} />
-      {error && <p className="text-[11px] text-destructive">{error}</p>}
-      {pickOpen && (
-        <select className={`${inputCls} w-full`} value="" onChange={(e) => { if (e.target.value) { onAdd(e.target.value); setPickOpen(false) } }}>
-          <option value="">Choose an already-uploaded asset…</option>
-          {options.map((o) => <option key={o.assetId} value={o.assetId}>{o.description ? o.description.slice(0, 50) : o.assetId} ({o.type})</option>)}
-        </select>
-      )}
-    </div>
+        {options.map((v) => (
+          <option key={v} value={v}>{v}</option>
+        ))}
+      </select>
+    </label>
   )
 }
 
@@ -953,11 +987,14 @@ function AssetTile({
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <button className="flex items-center gap-1 truncate font-mono text-[11px] text-muted-foreground transition-colors hover:text-foreground" onClick={open}>
-            {assetId}<ExternalLink className="size-3 opacity-60" />
+          {/* Human title first; the machine id is demoted to small mono. */}
+          <button className="flex min-w-0 items-center gap-1.5 text-left transition-colors hover:text-foreground" onClick={open}>
+            <span className="truncate text-sm font-medium">{info?.description || 'Untitled asset'}</span>
+            <span className="hidden shrink-0 font-mono text-[10px] text-muted-foreground/70 sm:inline">{assetId}</span>
+            <ExternalLink className="size-3 shrink-0 text-muted-foreground opacity-60" />
           </button>
           {extra}
-          <button className="ml-auto shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-surface-bright hover:text-destructive" onClick={onRemove} aria-label="Remove"><Trash2 className="size-3.5" /></button>
+          <button className="ml-auto shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-destructive" onClick={onRemove} aria-label="Remove"><Trash2 className="size-3.5" /></button>
         </div>
         {editing ? (
           <input
@@ -970,10 +1007,10 @@ function AssetTile({
             onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setDraft(info?.description ?? ''); setEditing(false) } }}
           />
         ) : (
-          <button className="mt-1.5 flex max-w-full items-center gap-1.5 truncate text-left text-sm" onClick={() => { setDraft(info?.description ?? ''); setEditing(true) }}>
+          <button className="mt-1.5 flex max-w-full items-center gap-1 truncate text-left text-xs text-muted-foreground transition-colors hover:text-foreground" onClick={() => { setDraft(info?.description ?? ''); setEditing(true) }}>
             {info?.description
-              ? <span className="truncate text-foreground/90">{info.description} <Pencil className="inline size-3 text-muted-foreground" /></span>
-              : <span className="flex items-center gap-1 text-muted-foreground hover:text-foreground"><Plus className="size-3" /> add a note (what it is, how agents should use it)</span>}
+              ? <><Pencil className="size-3" /> Edit note</>
+              : <><Plus className="size-3" /> Add a note (what it is, how agents should use it)</>}
           </button>
         )}
       </div>
