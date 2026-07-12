@@ -5,8 +5,7 @@
  * image methods own the exec + provider cache and import these helpers; this
  * module is pure formatting/parsing over the CLI's JSON.
  */
-import { existsSync, mkdtempSync } from 'fs'
-import { tmpdir } from 'os'
+import { existsSync, mkdirSync, mkdtempSync } from 'fs'
 import { join } from 'path'
 import type {
   RuntimeImageGenerateInput,
@@ -14,12 +13,20 @@ import type {
   RuntimeImageProvider,
   RuntimeMetadata,
 } from '@bakin/core/adapters/runtime'
+import { getOpenClawPath } from './home'
 import { firstString, isRecord, parseJsonValue } from './runtime-utils'
 
 export function defaultOpenClawImageOutputPath(format?: string): string {
   const normalized = normalizeOpenClawOutputFormat(format)
   const ext = normalized === 'jpeg' ? 'jpg' : normalized
-  return join(mkdtempSync(join(tmpdir(), 'bakin-openclaw-image-')), `image.${ext}`)
+  // Under the OPENCLAW HOME, never the OS temp dir: when the CLI is a shim
+  // into a container (the dev rig), the openclaw home is the one path both
+  // sides share — a host /var/folders/... output path EACCESed inside the
+  // container (2026-07-12 pumpkin incident). Works identically when the CLI
+  // runs directly on the host.
+  const root = getOpenClawPath('tmp', 'bakin-images')
+  mkdirSync(root, { recursive: true })
+  return join(mkdtempSync(join(root, 'image-')), `image.${ext}`)
 }
 
 export function normalizeOpenClawOutputFormat(format?: string): string {
