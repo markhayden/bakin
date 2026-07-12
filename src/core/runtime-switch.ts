@@ -23,6 +23,7 @@ import type {
   AgentRuntimeAdapter,
   CapabilitySet,
   RuntimeAgent,
+  RuntimeCredentialStatus,
   ToolAccessProvisioningStatus,
 } from '@bakin/core/adapters/runtime'
 import type { RuntimeAdapterName } from '@bakin/core/settings'
@@ -35,6 +36,7 @@ import { createLogger } from './logger'
 import { reconcileRoster, type RosterCarryReport } from './roster-reconcile'
 import { getSettings, updateSettings } from './settings'
 import { snapshotAgentContent, carryAgentContent, type AgentContentSnapshot, type WorkspaceCarryReport } from './workspace-carry'
+import { snapshotSourceCapabilities, buildCantCarryReport, type CantCarryLine, type SourceCapabilitySnapshot } from './switch-report'
 
 const log = createLogger('runtime-switch')
 
@@ -73,6 +75,10 @@ export interface RuntimeSwitchResult {
   sync: { drifted: boolean; findings: number; syncedAgents: number } | null
   capabilities: CapabilitySet | null
   toolAccess: ToolAccessProvisioningStatus | null
+  /** What stays behind, honestly (capability diff + counts; null when the phase didn't run). */
+  cantCarry: CantCarryLine[] | null
+  /** The TARGET's credential presence — a carried roster with no provider auth dispatches nothing. */
+  credentials: RuntimeCredentialStatus | null
   /** Plugins hold the old adapter until the server restarts. */
   restartRequired: boolean
   error?: string
@@ -134,6 +140,8 @@ export async function switchRuntime(
     sync: null,
     capabilities: null,
     toolAccess: null,
+    cantCarry: null,
+    credentials: null,
     restartRequired: false,
   }
 
@@ -229,8 +237,11 @@ export async function switchRuntime(
     const oldRuntime = await currentRuntime()
     let sourceRoster: RuntimeAgent[] = []
     let contentSnapshot: AgentContentSnapshot | null = null
+    let sourceCapabilities: SourceCapabilitySnapshot | null = null
     const copyWorkspaces = opts.copyWorkspaces !== false
     try {
+      // Optional-surface presence + counts must be read pre-teardown too.
+      sourceCapabilities = await snapshotSourceCapabilities(oldRuntime)
       sourceRoster = await oldRuntime.agents.list()
       // Workspace content must be captured NOW — the source runtime is torn
       // down before the target exists (snapshotAgentContent degrades read
@@ -348,6 +359,16 @@ export async function switchRuntime(
     emit({ phase: 'validate-capabilities', status: 'start' })
     result.capabilities = await newRuntime.capabilities()
     result.toolAccess = await newRuntime.verifyToolAccess()
+    if (sourceCapabilities) {
+      result.cantCarry = buildCantCarryReport(sourceCapabilities, newRuntime)
+    }
+    try {
+      result.credentials = await newRuntime.credentialStatus()
+    } catch (err) {
+      // Preflight is advisory — an unreadable credential store never fails
+      // the switch, it just can't warn.
+      log.warn('target credentialStatus unavailable during switch', { error: String(err) })
+    }
     emit({
       phase: 'validate-capabilities',
       status: result.toolAccess.ok ? 'ok' : 'error',

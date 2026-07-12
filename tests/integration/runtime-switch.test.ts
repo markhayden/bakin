@@ -212,6 +212,15 @@ describe('switchRuntime — OpenClaw → Pi', () => {
     expect(readFileSync(pathJoin(piPixelWs, '.pi', 'skills', 'crafting', 'SKILL.md'), 'utf-8')).toBe(PIXEL_SKILL)
     expect(existsSync(pathJoin(piPixelWs, '.pi', 'skills', 'packskill'))).toBe(false)
 
+    // Honest can't-carry + credential preflight (D7/D8): channels list as
+    // verifiably empty (count 0 — no line); cron.list shells the OpenClaw
+    // CLI, dead in this env, so the line emits honestly WITHOUT a count;
+    // sessions + provider-config lines are true of every switch; Pi's
+    // credential presence comes from the seeded auth.json.
+    expect(result.cantCarry!.map((l) => l.concern)).toEqual(['cron', 'sessions', 'provider-config'])
+    expect(result.cantCarry!.find((l) => l.concern === 'cron')!.count).toBeUndefined()
+    expect(result.credentials!.llmProviders).toEqual(['openai-codex'])
+
     const pixelCarry = result.workspaces!.carried.find((c) => c.agentId === 'pixel')!
     expect(pixelCarry.files).toBe(2)
     expect(pixelCarry.bytes).toBeGreaterThan(0)
