@@ -36,7 +36,7 @@ export interface SearchAdapterSettings extends Record<string, unknown> {
      * enforced client-side with a small grace; a source that misses it
      * degrades to keyword-only or is omitted — labeled, never silent.
      */
-    queryBudgetMs: number
+    queryBudgetMs?: number
     /**
      * Cross-encoder reranker configuration. When `enabled` is true and a
      * query does not pass `rerank: false`, Bakin attaches this config to
