@@ -7,7 +7,7 @@
  * maps 1:1 onto the conversation kit's ConversationMessage rows.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { usePluginEvent } from '@makinbakin/sdk/hooks'
+import { emitPluginEvent, usePluginEvent } from '@makinbakin/sdk/hooks'
 import type { ConversationMessage } from '@makinbakin/sdk/components'
 import type { RuntimeChatChunk } from '@makinbakin/sdk/types'
 import { pluginFetch } from '@makinbakin/sdk/utils'
@@ -81,6 +81,7 @@ export function useChats(agentFilter: string) {
   usePluginEvent('chat.done', () => { void refresh() })
   usePluginEvent('chat.error', () => { void refresh() })
   usePluginEvent('chat.titled', () => { void refresh() })
+  usePluginEvent('chat.seen', () => { void refresh() })
 
   const filtered = agentFilter ? chats.filter((c) => c.agentId === agentFilter) : chats
   return { chats: filtered, allChats: chats, loading, refresh }
@@ -116,6 +117,10 @@ export async function patchChatRequest(
 
 export async function markSeenRequest(chatId: string): Promise<void> {
   await pluginFetch('chat', `chats/${chatId}/seen`, { method: 'POST' }).catch(() => {})
+  // Client-side synthetic event: the badge provider and chat lists refresh
+  // AFTER the seen write lands — refreshing on chat.done alone raced the
+  // seen POST and left a stale unread count on the nav badge.
+  emitPluginEvent({ event: 'chat.seen', chatId })
 }
 
 export async function abortTurnRequest(chatId: string): Promise<void> {

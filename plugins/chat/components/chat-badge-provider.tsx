@@ -117,6 +117,9 @@ export function ChatBadgeProvider() {
   })
 
   usePluginEvent('chat.titled', () => { void refreshUnread() })
+  // Fires after a seen write lands (view opened / reply seen in place) —
+  // the authoritative moment to drop the unread count.
+  usePluginEvent('chat.seen', () => { void refreshUnread() })
 
   // Nav badge: unread count (attention) or a working dot (info).
   useNavBadge('chat', 'chat', badgeFor(unreadTotal, inflight.size))
