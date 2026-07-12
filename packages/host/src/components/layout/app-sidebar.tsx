@@ -19,6 +19,7 @@ import {
   Settings,
   MessageSquare,
   Sparkles,
+  Paintbrush,
 } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 import { type NavBadge as NavBadgeData, type NavItem } from '@makinbakin/sdk'
@@ -49,6 +50,8 @@ import {
   collapsedParentAriaSuffix,
 } from './nav-badge-logic'
 
+// Manifest `nav[].icon` strings resolve here — an icon a plugin declares MUST
+// be imported and listed in this map or the nav item renders without an icon.
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   CheckSquare,
   Calendar,
@@ -67,6 +70,7 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   Compass,
   MessageSquare,
   Sparkles,
+  Paintbrush,
 }
 
 export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {

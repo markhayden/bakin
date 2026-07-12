@@ -61,8 +61,8 @@
     "nav": [
       {
         "id": "brands",
-        "label": "Brands",
-        "icon": "Palette",
+        "label": "Branding",
+        "icon": "Paintbrush",
         "href": "/brands"
       }
     ],
