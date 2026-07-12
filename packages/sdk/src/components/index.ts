@@ -42,33 +42,9 @@ export { ErrorState } from '@/components/error-state'
 export { FacetFilter } from '@/components/facet-filter'
 export type { FacetOption } from '@/components/facet-filter'
 /** Chat + plan-proposal review panel for brainstorm sessions. */
-export { IntegratedBrainstorm } from '@/components/integrated-brainstorm'
-export type {
-  BrainstormMessage,
-  IntegratedBrainstormProps,
-  BrainstormOnSend,
-  SendContext,
-  AssistantTransformed,
-  BrainstormActivityInput,
-  BrainstormActivityStorageInput,
-  BrainstormActivityStorageRecord,
-  BrainstormTimelineActivityInput,
-  BrainstormTimelineMessageInput,
-} from '@/components/integrated-brainstorm'
-/** Convert a custom activity message back into a brainstorm activity. */
-export { brainstormActivityMessageFromCustom } from '@/components/integrated-brainstorm'
-/** Compute the canonical thread ID for a brainstorm session. */
-export { brainstormThreadId } from '@/components/integrated-brainstorm'
-/** Normalize a brainstorm activity payload for persistence. */
-export { normalizeBrainstormActivityForStorage } from '@/components/integrated-brainstorm'
-/** Normalize a single brainstorm message for persistence. */
-export { normalizeBrainstormActivityMessageForStorage } from '@/components/integrated-brainstorm'
-/** Read an SSE response stream into brainstorm activity events. */
-export { readBrainstormSseResponse } from '@/components/integrated-brainstorm'
-/** Convert a runtime chat chunk to a brainstorm activity event. */
-export { runtimeChunkToBrainstormActivity } from '@/components/integrated-brainstorm'
-/** Fold a brainstorm session's events into a renderable timeline. */
-export { toBrainstormTimeline } from '@/components/integrated-brainstorm'
+// IntegratedBrainstorm was DELETED (2026-07): embedded conversation
+// surfaces compose ConversationPanel + useConversationStream instead
+// (see the conversation-kit exports below).
 /** Render markdown content with syntax highlighting and link handling. */
 export { MarkdownContent } from '@/components/markdown-content'
 /** Editable markdown text area with preview toggle. */
@@ -95,6 +71,42 @@ export type { UnderlineTab } from '@/components/underline-tabs'
 /** THE single renderer for normalized turn chunks (text/tool/status/error) — turn-output surfaces consume this, never hand-rolled format heuristics. */
 export { TurnOutputView, TurnToolChip, foldTurnChunks } from '@/components/turn-output-view'
 export type { TurnOutputViewProps, TurnToolChipState, TurnTextSegment, FoldedTurnOutput } from '@/components/turn-output-view'
+
+// Conversation kit — THE folding engine + turn model + renderers every
+// conversational surface builds on (chat plugin, embedded brainstorm
+// panels, turn output). New chat-like surfaces compose these; never
+// hand-roll message/tool rendering.
+export { foldConversation } from '@/components/conversation/fold'
+export type {
+  ConversationMessage,
+  ConversationTurn,
+  ConversationToolCall,
+  TurnItem,
+  TurnStatus,
+  DisplayAttachment,
+  FoldOptions,
+} from '@/components/conversation/fold'
+export { Conversation } from '@/components/conversation/conversation'
+export type { ConversationProps } from '@/components/conversation/conversation'
+export { AgentTurn, ThinkingIndicator, CopyButton, TurnTimestamp } from '@/components/conversation/agent-turn'
+export type { AgentTurnProps } from '@/components/conversation/agent-turn'
+export { UserMessage } from '@/components/conversation/user-message'
+export type { UserMessageProps } from '@/components/conversation/user-message'
+export { ActivityGroup, ToolCallRow, formatDuration, humanizeActivity } from '@/components/conversation/activity-group'
+export type { ActivityGroupProps } from '@/components/conversation/activity-group'
+export { ToolCallDrawer } from '@/components/conversation/tool-call-drawer'
+export type { ToolCallDrawerProps } from '@/components/conversation/tool-call-drawer'
+export { Composer } from '@/components/conversation/composer'
+export type { ComposerProps, ComposerAttachments, ComposerAttachmentItem } from '@/components/conversation/composer'
+export { ConversationPanel } from '@/components/conversation/conversation-panel'
+export type { ConversationPanelProps } from '@/components/conversation/conversation-panel'
+export { useConversationStream } from '@/components/conversation/use-conversation-stream'
+export type { ConversationStream, ConversationStreamOptions } from '@/components/conversation/use-conversation-stream'
+export { readConversationSseStream } from '@/components/conversation/sse'
+export type { ConversationSseHandlers } from '@/components/conversation/sse'
+export { ConversationEmptyState } from '@/components/conversation/conversation-empty-state'
+export type { ConversationEmptyStateProps } from '@/components/conversation/conversation-empty-state'
+export { formatRelativeTime, formatAbsoluteTime } from '@/components/conversation/relative-time'
 
 // Notification channel icon (from workflows plugin registry)
 

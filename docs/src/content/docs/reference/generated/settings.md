@@ -159,6 +159,14 @@ description: Generated reference for Bakin core settings defaults.
   </thead>
   <tbody>
     <tr>
+      <td><code>doctor.escalation</code></td>
+      <td><code>&quot;task&quot;</code></td>
+    </tr>
+    <tr>
+      <td><code>doctor.escalationCooldownMs</code></td>
+      <td><code>21600000</code></td>
+    </tr>
+    <tr>
       <td><code>doctor.intervalMs</code></td>
       <td><code>1800000</code></td>
     </tr>
@@ -295,6 +303,10 @@ description: Generated reference for Bakin core settings defaults.
     <tr>
       <td><code>search.settings.search.defaultLimit</code></td>
       <td><code>20</code></td>
+    </tr>
+    <tr>
+      <td><code>search.settings.search.queryBudgetMs</code></td>
+      <td><code>2000</code></td>
     </tr>
     <tr>
       <td><code>search.settings.search.reranker.enabled</code></td>
@@ -441,5 +453,5 @@ description: Generated reference for Bakin core settings defaults.
 
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 9, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 12, 2026 · Bakin 0.0.0-dev</span>
 </aside>

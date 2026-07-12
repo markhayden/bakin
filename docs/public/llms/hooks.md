@@ -137,6 +137,23 @@ const result = await ctx.hooks.invoke(
 )
 ```
 
+## Chat
+
+### chat.resolveActiveTurn
+
+Label: chat.resolveActiveTurn
+Kind: rpc
+Source: plugins/chat/index.ts:37
+
+Example:
+
+```ts
+const result = await ctx.hooks.invoke(
+  'chat.resolveActiveTurn',
+  {},
+)
+```
+
 ## Health
 
 Health hooks expose registered readiness and diagnostic checks so other surfaces can list or inspect them.
@@ -146,7 +163,7 @@ Health hooks expose registered readiness and diagnostic checks so other surfaces
 Label: Get a health check.
 Purpose: Returns metadata for one registered health check by id, without running the check. Use it when a plugin needs the check name, owner, and autofix capability before deciding what to show or run.
 Kind: rpc
-Source: plugins/health/index.ts:576
+Source: plugins/health/index.ts:580
 
 Example:
 
@@ -164,7 +181,7 @@ const result = await ctx.hooks.invoke(
 Label: List health checks.
 Purpose: Returns the health checks registered by core and plugins without executing them. Use it when another surface needs to show the available diagnostics or autofix support.
 Kind: rpc
-Source: plugins/health/index.ts:575
+Source: plugins/health/index.ts:579
 
 Example:
 
@@ -372,7 +389,7 @@ Task hooks let plugins enrich task details and react to task lifecycle changes.
 Label: Add project task context.
 Purpose: Adds project title, status, progress, and excerpt data to task detail payloads. Use it when a task surface wants project context without depending on project storage.
 Kind: waterfall
-Source: bakin-bits-official/plugins/projects/index.ts:222
+Source: bakin-bits-official/plugins/projects/index.ts:241
 
 Example:
 
@@ -393,7 +410,7 @@ const next = await ctx.hooks.call(
 Label: Sync project task state.
 Purpose: Updates linked project checklist items when a task moves into a completed state. Use it to keep project progress in sync with task lifecycle events.
 Kind: event
-Source: bakin-bits-official/plugins/projects/index.ts:211
+Source: bakin-bits-official/plugins/projects/index.ts:230
 
 Example:
 

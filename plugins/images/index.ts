@@ -48,7 +48,7 @@ const recommendShape = {
 const generateShape = {
   prompt: z.string().optional().describe('Provider-neutral image prompt. Required unless promptPacket is supplied.'),
   promptPacket: z.record(z.string(), z.unknown()).optional().describe('Structured prompt packet compiled into the provider prompt.'),
-  taskId: z.string().min(1).describe('Task ID to link the generated image asset.'),
+  taskId: z.string().min(1).optional().describe('Task ID to link the generated image asset. Omit during an interactive chat turn — the asset auto-binds to the chat you are replying in.'),
   surface: surfaceEnum.optional().describe('Image surface profile id. Omit to default from the routed dimensions.'),
   provider: imageProviderRoute.optional().describe('Provider route. Defaults to auto routing.'),
   model: z.string().optional().describe('Provider model id, such as gpt-image-2 or gemini-3.1-flash-image-preview.'),
@@ -64,7 +64,7 @@ const generateShape = {
 const editShape = {
   prompt: z.string().min(1).describe('Edit instruction, e.g. "add a capybara in the foreground".'),
   assetId: z.string().min(1).describe('Managed image assetId to edit. Edits the current version and appends a new one. Import a loose local file first to get an assetId.'),
-  taskId: z.string().min(1).describe('Task ID to link the edited image asset.'),
+  taskId: z.string().min(1).optional().describe('Task ID to link the edited image asset. Omit during an interactive chat turn — the edit auto-binds to the chat you are replying in.'),
   surface: surfaceEnum.optional().describe('Output surface profile id for sizing.'),
   provider: imageProviderRoute.optional().describe('Provider route. Defaults to auto routing.'),
   model: z.string().optional().describe('Provider model id.'),
@@ -227,7 +227,7 @@ const imagesPlugin = definePlugin({
     })
     ctx.registerExecTool({
       name: 'bakin_exec_images_generate',
-      description: 'Generate an image through a configured runtime image provider, save it as a NEW managed asset (v1), and return its assetId. Pass referenceImages to create a new image conditioned on existing assets/files (e.g. "in the style of these"); to revise an existing asset in place use bakin_exec_images_edit instead.',
+      description: 'Generate an image through a configured runtime image provider, save it as a NEW managed asset (v1), and return its assetId. Pass referenceImages to create a new image conditioned on existing assets/files (e.g. "in the style of these"); to revise an existing asset in place use bakin_exec_images_edit instead. In an interactive chat: omit taskId and, after it returns, deliver the image by embedding ![desc](/api/assets/<assetId>) in your reply — text alone delivers nothing.',
       label: 'Generated an image',
       parameters: generateShape,
       handler: async (params, agent) => generateImage(ctx, params as never, agent),

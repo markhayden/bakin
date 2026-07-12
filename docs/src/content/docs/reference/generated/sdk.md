@@ -19,42 +19,10 @@ The main entry. Re-exports the plugin contract types (`./types`) plus the high-t
 | Export | Description |
 | --- | --- |
 | `registerPlugin` | Register a plugin (single-call entry from a plugin's `client.tsx`). |
-| `unregisterPlugin` | Tear down all registrations owned by a plugin (used during hot-swap). |
 | `registerPluginCleanup` | Register a cleanup callback fired when the plugin is unregistered. |
-| `getRegistryVersion` | Current registry version — bumps on every mutation (for useSyncExternalStore). |
-| `subscribeRegistry` | Subscribe to registry-version changes. |
-| `getAllNavItems` | Get every registered nav item across all plugins. |
-| `getNavItemsSnapshot` | Get a snapshot of the current nav items (non-subscribing). |
-| `getPluginNavItems` | Get nav items contributed by a specific plugin. |
 | `setNavBadge` | Set or clear a runtime badge on a plugin-owned nav item. |
 | `getNavBadge` | Read the current badge for a nav item, or undefined if none. |
-| `getNavBadgesSnapshot` | Stable snapshot of every active nav badge keyed by navItemId. |
-| `subscribeNavBadges` | Subscribe to nav-badge mutations (separate channel from `subscribeRegistry`). |
-| `getPluginRoute` | Look up a specific client route by plugin id + path. |
-| `getPluginRoutes` | Get all registered client routes (across all plugins). |
-| `setManifestNav` | Seed a plugin's declarative nav from its manifest (host-side; survives unregisterPlugin). |
-| `getManifestNav` | Read the manifest nav currently seeded for a plugin (drift validation). |
-| `getSearchHitRenderer` | Look up the ⌘K hit renderer registered for a content type. |
-| `getSearchHitRenderersSnapshot` | Stable snapshot of all registered hit renderers keyed by content type. |
-| `subscribeSearchHitRenderers` | Subscribe to hit-renderer mutations (own channel). |
-| `ClientRouteEntry` | — |
-| `MatchedPluginRoute` | — |
 | `PluginRegistration` | — |
-| `configureLazyPlugins` | Install the manifest-derived slot/route ownership index for lazy loading (host-side). |
-| `setLazyPluginLoader` | Install the demand loader that imports a plugin's client bundle (host-side). |
-| `setPluginLoadState` | Report a plugin client's load progress: idle → loading → loaded \| error (host-side). |
-| `getPluginLoadState` | Current load state for a plugin client. Unknown plugins report 'idle'. |
-| `getPluginLoadError` | Last load error message for a plugin whose state is 'error', if any. |
-| `getSlotOwners` | Plugins whose manifests declare the given slot in `contributes.slots`. |
-| `getRouteOwners` | Plugins whose manifest `contributes.routes` patterns match a pathname. |
-| `requestSlotPlugins` | Ask the host to lazy-load every idle plugin that fills the named slot. |
-| `requestRoutePlugins` | Ask the host to lazy-load every idle plugin whose route patterns match the pathname. |
-| `requestAllPlugins` | Ask the host to lazy-load every idle plugin — cross-plugin surfaces (⌘K search). |
-| `retryPluginLoad` | Reset a failed plugin to idle and re-request its client bundle. |
-| `getLazyPluginsVersion` | Monotonic lazy-store version for useSyncExternalStore consumers. |
-| `subscribeLazyPlugins` | Subscribe to lazy-plugin store mutations. Returns an unsubscribe fn. |
-| `LazyPluginIndex` | — |
-| `PluginLoadState` | — |
 | `defineRoute` | Define a plugin HTTP route with typed input/output schemas. |
 | `defineCoreRoute` | Define a core (non-plugin) HTTP route. |
 | `definePlugin` | Compose a plugin's routes into a single definition for the server. |
@@ -152,6 +120,7 @@ import { useSearch, useDebug } from '@makinbakin/sdk/hooks'
 | --- | --- |
 | `useNavBadge` | Sync a nav item's badge to a derived value; the recommended provider glue. |
 | `useJsonFetch` | Cancellable JSON GET with a `{ data, loading, error, refresh }` lifecycle. |
+| `usePluginJsonFetch` | Cancellable JSON GET with a `{ data, loading, error, refresh }` lifecycle. |
 | `UseJsonFetchResult` | — |
 | `useTaskRunHistory` | Fetch dispatch run history for a task. |
 | `TaskOutcome` | — |
@@ -187,29 +156,15 @@ import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/componen
 | `EmptyState` | Centered empty-state component with icon, title, and CTA. |
 | `SearchUnavailable` | — |
 | `ScoreOverlay` | — |
+| `computeMatchedFields` | — |
+| `SearchPartialChip` | — |
+| `SearchPartialMeta` | — |
+| `SearchDegradedChip` | Amber "search down — basic text matching" chip for surfaces with a substring fallback. |
 | `ScoreOverlayInfo` | — |
 | `ErrorBanner` | Inline error banner with dismiss + retry actions. |
 | `ErrorState` | Full-page error state with title, description, and retry button. |
 | `FacetFilter` | Popover multi-select facet filter (column, owner, tag, etc.). |
 | `FacetOption` | — |
-| `IntegratedBrainstorm` | Chat + plan-proposal review panel for brainstorm sessions. |
-| `BrainstormMessage` | — |
-| `IntegratedBrainstormProps` | — |
-| `BrainstormOnSend` | — |
-| `SendContext` | — |
-| `AssistantTransformed` | — |
-| `BrainstormActivityInput` | — |
-| `BrainstormActivityStorageInput` | — |
-| `BrainstormActivityStorageRecord` | — |
-| `BrainstormTimelineActivityInput` | — |
-| `BrainstormTimelineMessageInput` | — |
-| `brainstormActivityMessageFromCustom` | Convert a custom activity message back into a brainstorm activity. |
-| `brainstormThreadId` | Compute the canonical thread ID for a brainstorm session. |
-| `normalizeBrainstormActivityForStorage` | Normalize a brainstorm activity payload for persistence. |
-| `normalizeBrainstormActivityMessageForStorage` | Normalize a single brainstorm message for persistence. |
-| `readBrainstormSseResponse` | Read an SSE response stream into brainstorm activity events. |
-| `runtimeChunkToBrainstormActivity` | Convert a runtime chat chunk to a brainstorm activity event. |
-| `toBrainstormTimeline` | Fold a brainstorm session's events into a renderable timeline. |
 | `MarkdownContent` | Render markdown content with syntax highlighting and link handling. |
 | `MarkdownEditor` | Editable markdown text area with preview toggle. |
 | `ModelSelect` | Model picker dropdown listing available models from the catalog. |
@@ -221,6 +176,52 @@ import { PluginHeader, FacetFilter, AgentAvatar } from '@makinbakin/sdk/componen
 | `SortDir` | — |
 | `UnderlineTabs` | Tab list with animated underline indicator. |
 | `UnderlineTab` | — |
+| `TurnOutputView` | THE single renderer for normalized turn chunks (text/tool/status/error) — turn-output surfaces consume this, never hand-rolled format heuristics. |
+| `TurnToolChip` | THE single renderer for normalized turn chunks (text/tool/status/error) — turn-output surfaces consume this, never hand-rolled format heuristics. |
+| `foldTurnChunks` | THE single renderer for normalized turn chunks (text/tool/status/error) — turn-output surfaces consume this, never hand-rolled format heuristics. |
+| `TurnOutputViewProps` | — |
+| `TurnToolChipState` | — |
+| `TurnTextSegment` | — |
+| `FoldedTurnOutput` | — |
+| `foldConversation` | — |
+| `ConversationMessage` | — |
+| `ConversationTurn` | — |
+| `ConversationToolCall` | — |
+| `TurnItem` | — |
+| `TurnStatus` | — |
+| `DisplayAttachment` | — |
+| `FoldOptions` | — |
+| `Conversation` | — |
+| `ConversationProps` | — |
+| `AgentTurn` | — |
+| `ThinkingIndicator` | — |
+| `CopyButton` | — |
+| `TurnTimestamp` | — |
+| `AgentTurnProps` | — |
+| `UserMessage` | — |
+| `UserMessageProps` | — |
+| `ActivityGroup` | — |
+| `ToolCallRow` | — |
+| `formatDuration` | — |
+| `humanizeActivity` | — |
+| `ActivityGroupProps` | — |
+| `ToolCallDrawer` | — |
+| `ToolCallDrawerProps` | — |
+| `Composer` | — |
+| `ComposerProps` | — |
+| `ComposerAttachments` | — |
+| `ComposerAttachmentItem` | — |
+| `ConversationPanel` | — |
+| `ConversationPanelProps` | — |
+| `useConversationStream` | — |
+| `ConversationStream` | — |
+| `ConversationStreamOptions` | — |
+| `readConversationSseStream` | — |
+| `ConversationSseHandlers` | — |
+| `ConversationEmptyState` | — |
+| `ConversationEmptyStateProps` | — |
+| `formatRelativeTime` | — |
+| `formatAbsoluteTime` | — |
 | `ChannelIcon` | Icon component for a notification channel (Discord, Slack, email, etc.). |
 | `StackedColumnChart` | Stacked column chart with legend toggle + per-column hover breakdown. |
 | `StackedColumnChartProps` | — |
@@ -283,23 +284,18 @@ Source: `packages/sdk/src/utils/index.ts`.
 | `formatDuration` | Format a millisecond count as an elapsed duration (e.g. "42s", "3m 5s"); null when undefined. |
 | `formatSize` | Format a byte count as a human-readable size string (e.g. "1.2 MB"). |
 | `isStale` | Returns true if a timestamp is older than a configurable staleness threshold. |
-| `brainstormActivityMessageFromCustom` | Convert a custom activity message into a brainstorm activity input. |
-| `runtimeChunkToBrainstormActivity` | Convert a runtime chat chunk into a brainstorm activity event. |
-| `toBrainstormTimeline` | Fold brainstorm events into a renderable timeline. |
-| `brainstormThreadId` | Compute the canonical thread id for a brainstorm session. |
-| `normalizeBrainstormActivityForStorage` | Normalize a brainstorm activity payload for persistence. |
-| `normalizeBrainstormActivityMessageForStorage` | Normalize a single brainstorm message for persistence. |
-| `BrainstormActivityInput` | — |
-| `BrainstormTimelineActivityInput` | — |
-| `BrainstormTimelineMessageInput` | — |
-| `BrainstormActivityStorageInput` | — |
-| `BrainstormActivityStorageRecord` | — |
-| `readBrainstormSseResponse` | Read an SSE response stream into brainstorm activity events. |
+| `conversationThreadId` | Canonical thread id for embedded conversation surfaces (scope:entity:agent). |
+| `createTurnRecorder` | Record one streamed turn's chunks into persistable ConversationMessage rows. |
+| `SUMMARY_MAX_CHARS` | Record one streamed turn's chunks into persistable ConversationMessage rows. |
+| `PREVIEW_MAX_CHARS` | Record one streamed turn's chunks into persistable ConversationMessage rows. |
+| `TurnRecorder` | — |
 | `humanizeKey` | Structured-value (JSON → human) renderers — labeled prose, one-line summary, tool-envelope unwrap. |
 | `formatStructured` | Structured-value (JSON → human) renderers — labeled prose, one-line summary, tool-envelope unwrap. |
 | `summarizeStructured` | Structured-value (JSON → human) renderers — labeled prose, one-line summary, tool-envelope unwrap. |
 | `unwrapToolResult` | Structured-value (JSON → human) renderers — labeled prose, one-line summary, tool-envelope unwrap. |
 | `FormatStructuredOptions` | Structured-value (JSON → human) renderers — labeled prose, one-line summary, tool-envelope unwrap. |
+| `pluginFetch` | Fetch a plugin's own API route (`/api/plugins/&lt;id>/&lt;path>`) with JSON defaults. |
+| `pluginApiUrl` | Fetch a plugin's own API route (`/api/plugins/&lt;id>/&lt;path>`) with JSON defaults. |
 
 ## `@makinbakin/sdk/metadata`
 
@@ -358,5 +354,5 @@ Source: `packages/sdk/src/routing/index.ts`.
 | `DefinePluginInput` | — |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jul 9, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jul 12, 2026 · Bakin 0.0.0-dev</span>
 </aside>

@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { resetContentDir } from '../../src/core/content-dir'
+import { resetOpenClawHome } from '../../packages/adapter-openclaw/src/home'
 import { setStoredProviderKey } from '../../packages/core/src/media/secret-store'
 
 describe('OpenClaw runtime images adapter', () => {
@@ -16,6 +17,10 @@ describe('OpenClaw runtime images adapter', () => {
     // no env key is set — point it at the temp dir so it stays isolated.
     process.env.BAKIN_HOME = testDir
     resetContentDir()
+    // Image output paths now live under the OPENCLAW HOME (container-shim
+    // compatibility) — isolate that too.
+    process.env.OPENCLAW_HOME = join(testDir, 'openclaw')
+    resetOpenClawHome()
     const binDir = join(testDir, 'bin')
     mkdirSync(binDir, { recursive: true })
     openclaw = join(binDir, 'openclaw')

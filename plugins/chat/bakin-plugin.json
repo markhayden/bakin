@@ -41,6 +41,36 @@
         "method": "POST",
         "path": "/chats/:chatId/messages",
         "summary": "Send a message; reply streams over the SSE bus as chat.chunk events"
+      },
+      {
+        "method": "PATCH",
+        "path": "/chats/:chatId",
+        "summary": "Rename or pin a chat"
+      },
+      {
+        "method": "POST",
+        "path": "/chats/:chatId/seen",
+        "summary": "Mark a chat as seen (clears unread)"
+      },
+      {
+        "method": "POST",
+        "path": "/chats/:chatId/abort",
+        "summary": "Stop the in-flight reply"
+      },
+      {
+        "method": "POST",
+        "path": "/chats/:chatId/attachments",
+        "summary": "Upload an image attachment (multipart, image/* only)"
+      },
+      {
+        "method": "GET",
+        "path": "/chats/:chatId/attachments/:name",
+        "summary": "Serve a chat attachment"
+      },
+      {
+        "method": "GET",
+        "path": "/capabilities",
+        "summary": "Whether an agent's model accepts image input (?agent=)"
       }
     ],
     "nav": [
@@ -53,7 +83,8 @@
       }
     ],
     "slots": [
-      "page:/chat"
+      "page:/chat",
+      "nav-badge-providers"
     ]
   }
 }

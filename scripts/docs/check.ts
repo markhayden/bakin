@@ -385,7 +385,10 @@ for (const file of walkMarkdown(docsContentRoot)) {
   if (text.includes('https://docs.makinbakin.com')) {
     errors.push(`${rel}: references retired docs.makinbakin.com host`)
   }
-  const rootDocsLinks = text.match(/\]\(\/(?!docs\/)/g)
+  // Internal docs links must be /docs/-prefixed; runtime API paths (/api/…,
+  // shown in tool descriptions like the /api/assets/<id> delivery example)
+  // are legitimate runtime URLs, not docs links.
+  const rootDocsLinks = text.match(/\]\(\/(?!docs\/|api\/)/g)
   if (rootDocsLinks) {
     errors.push(`${rel}: contains root-relative docs links that should start with /docs/`)
   }

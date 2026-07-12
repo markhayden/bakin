@@ -47,7 +47,7 @@ mock.module('../../../src/core/logger', () => ({
 
 import chatPlugin from '../../../plugins/chat'
 import { createChat, readTranscript } from '../../../plugins/chat/lib/store'
-import { startChatTurn, waitForTurn } from '../../../plugins/chat/lib/stream-bridge'
+import { abortChatTurn, startChatTurn, waitForTurn } from '../../../plugins/chat/lib/stream-bridge'
 import { activatePlugin, callRoute, findRoute, type ActivatedPlugin } from '../test-helpers'
 import type { ChatChunk, MessageArgs } from '../../../packages/core/src/adapters/runtime/concepts'
 
@@ -87,7 +87,13 @@ describe('chat stream bridge', () => {
 
     const rows = readTranscript(chat.id)
     const toolRow = rows.find((r) => r.kind === 'tool')
-    expect(toolRow).toMatchObject({ summary: 'bash: curl -s https://example.com' })
+    expect(toolRow).toMatchObject({
+      toolName: 'bash',
+      status: 'completed',
+      summary: 'curl -s https://example.com',
+      callId: 'c1',
+    })
+    expect((toolRow as { turnId?: string }).turnId).toBeTruthy()
   })
 
   test('happy path: chunks broadcast in order, durable rows persisted, chat.done emitted', async () => {
@@ -112,6 +118,13 @@ describe('chat stream bridge', () => {
     // threadId contract: chat:<chatId>
     expect(seenArgs[0]?.threadId).toBe(`chat:${chat.id}`)
     expect(seenArgs[0]?.agentId).toBe('main')
+    // Every turn carries the delivery framing (runtime-only); the persisted
+    // transcript keeps the user's clean text.
+    expect(seenArgs[0]?.content).toContain('hi')
+    expect(seenArgs[0]?.content).toContain('Bakin chat turn')
+    const userRow = readTranscript(chat.id).find((r) => r.kind === 'user')
+    if (userRow?.kind !== 'user') throw new Error('expected user row')
+    expect(userRow.content).toBe('hi')
 
     // SSE: text/tool/status chunks relayed on chat.chunk (done/error ride
     // their dedicated events — the wire matches the declared ChatChunkEvent
@@ -120,13 +133,56 @@ describe('chat stream bridge', () => {
     expect(chunkEvents.length).toBe(5)
     const wireTypes = chunkEvents.map((e) => (e.data.chunk as { type: string }).type)
     expect(wireTypes.every((t) => t === 'text' || t === 'tool' || t === 'status')).toBe(true)
-    expect(events.at(-1)?.event).toBe('chat.done')
 
-    // Durable transcript: user + completed tool + aggregated assistant text
+    // chat.done carries agentId + a reply preview for the attention system.
+    const done = events.at(-1)
+    expect(done?.event).toBe('chat.done')
+    expect(done?.data).toMatchObject({ chatId: chat.id, agentId: 'main', preview: 'Hello world' })
+
+    // Durable transcript v2: interleaving preserved — text before the tool
+    // result flushes as its own row, structured tool row, trailing text.
     const rows = readTranscript(chat.id)
-    expect(rows.map((r) => r.kind)).toEqual(['user', 'tool', 'assistant'])
-    expect(rows[1]).toMatchObject({ summary: 'bash: ls -la' })
-    expect(rows[2]).toMatchObject({ content: 'Hello world' })
+    expect(rows.map((r) => r.kind)).toEqual(['user', 'assistant', 'tool', 'assistant'])
+    expect(rows[1]).toMatchObject({ content: 'Hello ' })
+    expect(rows[2]).toMatchObject({ toolName: 'bash', status: 'completed', summary: 'ls -la' })
+    expect(rows[3]).toMatchObject({ content: 'world' })
+    // rows of one turn share a turnId so replay regroups exactly
+    const turnIds = rows.slice(1).map((r) => (r as { turnId?: string }).turnId)
+    expect(new Set(turnIds).size).toBe(1)
+    expect(turnIds[0]).toBeTruthy()
+  })
+
+  test('abort: stream cancels, partial text kept, aborted row persisted, chat.done carries aborted', async () => {
+    const chat = await createChat({ agentId: 'main' })
+    const events: Array<{ event: string; data: Record<string, unknown> }> = []
+    const off = activated.ctx.events.on('chat.*', (event, data) => events.push({ event, data }))
+
+    const seenArgs: MessageArgs[] = []
+    scriptStream(async function* () {
+      yield { type: 'text', content: 'partial thought' } as ChatChunk
+      // Mimic the adapter contract: a deliberate abort ends the stream with
+      // a clean done once the signal fires.
+      const signal = seenArgs[0]?.signal
+      await new Promise<void>((resolve) => {
+        if (signal?.aborted) return resolve()
+        signal?.addEventListener('abort', () => resolve(), { once: true })
+      })
+      yield { type: 'done' } as ChatChunk
+    }, seenArgs)
+
+    expect(await startChatTurn(activated.ctx, chat.id, 'go long')).toBe('accepted')
+    // Give the generator a beat to yield the first chunk, then abort.
+    await new Promise((r) => setTimeout(r, 10))
+    expect(abortChatTurn(chat.id)).toBe(true)
+    await waitForTurn(chat.id)
+    off()
+
+    const done = events.find((e) => e.event === 'chat.done')
+    expect(done?.data).toMatchObject({ chatId: chat.id, aborted: true })
+
+    const rows = readTranscript(chat.id)
+    expect(rows.map((r) => r.kind)).toEqual(['user', 'assistant', 'aborted'])
+    expect(rows[1]).toMatchObject({ content: 'partial thought' })
   })
 
   test('stream failure: partial text kept, error row persisted, chat.error emitted', async () => {
@@ -175,6 +231,46 @@ describe('chat stream bridge', () => {
     expect(wireTypes).toEqual(['text'])
     const rows = readTranscript(chat.id)
     expect(rows.at(-1)).toMatchObject({ kind: 'error', message: 'session died', errorKind: 'session_died' })
+  })
+
+  test('resolveActiveTurnForAgent binds tools to the agent\'s current chat turn', async () => {
+    const { resolveActiveTurnForAgent } = await import('../../../plugins/chat/lib/stream-bridge')
+    const chat = await createChat({ agentId: 'main' })
+    let release!: () => void
+    const gate = new Promise<void>((r) => { release = r })
+    scriptStream(async function* () {
+      yield { type: 'text', content: 'working' } as ChatChunk
+      await gate
+      yield { type: 'done' } as ChatChunk
+    })
+
+    expect(resolveActiveTurnForAgent('main')).toBeNull()
+    await startChatTurn(activated.ctx, chat.id, 'go')
+    expect(resolveActiveTurnForAgent('main')).toMatchObject({ chatId: chat.id })
+    expect(typeof resolveActiveTurnForAgent('main')?.turnId).toBe('string')
+    expect(resolveActiveTurnForAgent('someone-else')).toBeNull()
+    release()
+    await waitForTurn(chat.id)
+    expect(resolveActiveTurnForAgent('main')).toBeNull()
+  })
+
+  test('TOCTOU: two CONCURRENT sends — exactly one wins the busy slot', async () => {
+    const chat = await createChat({ agentId: 'main' })
+    let starts = 0
+    scriptStream(async function* () {
+      starts++
+      yield { type: 'text', content: 'only once' } as ChatChunk
+      yield { type: 'done' } as ChatChunk
+    })
+    // Fire both before either awaits — the old check-then-await guard let
+    // both through (review finding).
+    const [a, b] = await Promise.all([
+      startChatTurn(activated.ctx, chat.id, 'first'),
+      startChatTurn(activated.ctx, chat.id, 'second'),
+    ])
+    expect([a, b].sort()).toEqual(['accepted', 'busy'])
+    await waitForTurn(chat.id)
+    expect(starts).toBe(1)
   })
 
   test('one in-flight turn per chat: second send gets busy/409', async () => {

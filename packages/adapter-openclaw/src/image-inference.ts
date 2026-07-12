@@ -5,8 +5,7 @@
  * image methods own the exec + provider cache and import these helpers; this
  * module is pure formatting/parsing over the CLI's JSON.
  */
-import { existsSync, mkdtempSync } from 'fs'
-import { tmpdir } from 'os'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from 'fs'
 import { join } from 'path'
 import type {
   RuntimeImageGenerateInput,
@@ -14,12 +13,41 @@ import type {
   RuntimeImageProvider,
   RuntimeMetadata,
 } from '@bakin/core/adapters/runtime'
+import { getOpenClawPath } from './home'
 import { firstString, isRecord, parseJsonValue } from './runtime-utils'
 
 export function defaultOpenClawImageOutputPath(format?: string): string {
   const normalized = normalizeOpenClawOutputFormat(format)
   const ext = normalized === 'jpeg' ? 'jpg' : normalized
-  return join(mkdtempSync(join(tmpdir(), 'bakin-openclaw-image-')), `image.${ext}`)
+  // Under the OPENCLAW HOME, never the OS temp dir: when the CLI is a shim
+  // into a container (the dev rig), the openclaw home is the one path both
+  // sides share — a host /var/folders/... output path EACCESed inside the
+  // container (2026-07-12 pumpkin incident). Works identically when the CLI
+  // runs directly on the host.
+  const root = getOpenClawPath('tmp', 'bakin-images')
+  mkdirSync(root, { recursive: true })
+  sweepStaleImageDirs(root)
+  return join(mkdtempSync(join(root, 'image-')), `image.${ext}`)
+}
+
+/** Best-effort GC: results are copied into assets immediately, so anything
+ * older than a day is orphaned scratch (this dir would otherwise grow
+ * forever — review finding). */
+const IMAGE_TMP_MAX_AGE_MS = 24 * 60 * 60 * 1000
+function sweepStaleImageDirs(root: string): void {
+  try {
+    const cutoff = Date.now() - IMAGE_TMP_MAX_AGE_MS
+    for (const entry of readdirSync(root)) {
+      const dir = join(root, entry)
+      try {
+        if (statSync(dir).mtimeMs < cutoff) rmSync(dir, { recursive: true, force: true })
+      } catch {
+        // Concurrent generation may have removed it — never fail the caller.
+      }
+    }
+  } catch {
+    // Sweep is a nicety; generation proceeds regardless.
+  }
 }
 
 export function normalizeOpenClawOutputFormat(format?: string): string {

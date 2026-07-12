@@ -12,6 +12,9 @@ import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { definePlugin } from '@bakin/core/routing'
 
 import { chatRoutes } from './lib/routes'
+import { registerChatSearch } from './lib/search'
+import { getChatSummary } from './lib/store'
+import { resolveActiveTurnForAgent } from './lib/stream-bridge'
 
 const chatPlugin: BakinPlugin = definePlugin({
   id: 'chat',
@@ -19,8 +22,26 @@ const chatPlugin: BakinPlugin = definePlugin({
   version: '0.1.0',
   routes: chatRoutes,
 
-  activate(_ctx: PluginContext) {
-    // Routes are declarative; nothing to register imperatively yet.
+  settingsSchema: {
+    fields: [
+      { key: 'toasts', type: 'boolean', label: 'Reply toasts', description: 'Show an in-app toast when an agent replies while you are on another page', default: true },
+      { key: 'sound', type: 'boolean', label: 'Reply sound', description: 'Play a soft chime when an agent replies while you are on another page', default: true },
+    ],
+  },
+
+  activate(ctx: PluginContext) {
+    // Transcripts join global search (⌘K finds conversations by content).
+    registerChatSearch(ctx)
+    // Cross-plugin: lets tools called mid-turn (image generation) bind
+    // their output to the agent's current chat without the agent passing ids.
+    ctx.hooks.register('chat.resolveActiveTurn', async (data) => {
+      const agentId = (data as { agentId?: string })?.agentId
+      const active = agentId ? resolveActiveTurnForAgent(agentId) : null
+      // Deleted-chat window: a turn can outlive its chat briefly — never
+      // bind billable work to a chat that no longer exists.
+      if (!active || !getChatSummary(active.chatId)) return null
+      return active
+    })
   },
 })
 

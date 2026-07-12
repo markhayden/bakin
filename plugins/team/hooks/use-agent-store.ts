@@ -64,15 +64,62 @@ async function parsePackageStatesResponse(
   }
 }
 
+// ─── Roster snapshot cache ─────────────────────────────────────────────
+// The roster fetch round-trips the runtime adapter server-side, so a fresh
+// page shows letter-fallback avatars for seconds. Hydrating the lightweight
+// meta (agents/displaySettings/mainAgentId) from the last-known snapshot
+// renders avatars instantly; load() still refreshes from the server and
+// remains the source of truth (`loaded` only flips on a real fetch).
+const ROSTER_CACHE_KEY = 'bakin-agent-roster-v1'
+
+interface RosterCache {
+  agents: AgentMeta[]
+  displaySettings: AgentDisplaySettingsMap
+  mainAgentId: string | null
+}
+
+function readRosterCache(): RosterCache | null {
+  try {
+    if (typeof window === 'undefined') return null
+    const raw = window.localStorage.getItem(ROSTER_CACHE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as RosterCache
+    if (!Array.isArray(parsed.agents)) return null
+    // Shape-validate — a malformed cache must never poison the shell.
+    const agents = parsed.agents.filter(
+      (a): a is AgentMeta => !!a && typeof a === 'object' && typeof (a as AgentMeta).id === 'string' && typeof (a as AgentMeta).name === 'string',
+    )
+    return {
+      agents,
+      displaySettings: parsed.displaySettings && typeof parsed.displaySettings === 'object' ? parsed.displaySettings : {},
+      mainAgentId: typeof parsed.mainAgentId === 'string' ? parsed.mainAgentId : null,
+    }
+  } catch {
+    return null
+  }
+}
+
+function writeRosterCache(cache: RosterCache): void {
+  try {
+    window.localStorage.setItem(ROSTER_CACHE_KEY, JSON.stringify(cache))
+  } catch {
+    // Cache is a nicety — storage failures never break the roster.
+  }
+}
+
+const hydrated = readRosterCache()
+const hydratedMap: Record<string, AgentMeta> = {}
+for (const a of hydrated?.agents ?? []) hydratedMap[a.id] = a
+
 export const useAgentStore = create<AgentStore>((set, get) => ({
-  agents: [],
-  agentIds: [],
-  agentMap: {},
+  agents: hydrated?.agents ?? [],
+  agentIds: (hydrated?.agents ?? []).map((a) => a.id),
+  agentMap: hydratedMap,
   agentsWithStatus: [],
-  displaySettings: {},
+  displaySettings: hydrated?.displaySettings ?? {},
   teams: [],
   packageStates: {},
-  mainAgentId: null,
+  mainAgentId: hydrated?.mainAgentId ?? null,
   loaded: false,
 
   load: async () => {
@@ -113,6 +160,11 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         packageStates,
         mainAgentId: data.mainAgentId ?? null,
         loaded: true,
+      })
+      writeRosterCache({
+        agents,
+        displaySettings: data.displaySettings,
+        mainAgentId: data.mainAgentId ?? null,
       })
     } catch {
       set({ loaded: true })
