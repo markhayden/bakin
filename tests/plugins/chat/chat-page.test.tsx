@@ -101,7 +101,7 @@ describe('ChatRail', () => {
     expect(container.querySelector('[data-chat-working]')).not.toBeNull()
     // selected-state contrast comes from paired tokens, never accent-on-accent
     const row = container.querySelector(`[data-chat-row="${CHAT_B}"]`)
-    expect(row?.className).toContain('hover:bg-muted/60')
+    expect(row?.className).toContain('hover:bg-foreground/5')
   })
 
   it('unread pill renders when idle; selected row uses the muted-gray token', () => {
@@ -115,7 +115,7 @@ describe('ChatRail', () => {
     )
     expect(container.querySelector('[data-chat-unread]')?.textContent).toBe('2')
     const row = container.querySelector(`[data-chat-row="${CHAT_A}"]`)
-    expect(row?.className).toContain('bg-muted')
+    expect(row?.className).toContain('bg-foreground/10')
     // never the theme accent (pink) — selection reads as a subtle gray
     expect(row?.className).not.toContain('bg-accent')
   })

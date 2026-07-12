@@ -84,7 +84,7 @@ function ChatRow({
     <div
       data-chat-row={chat.id}
       className={`group relative flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-left transition-colors ${
-        selected ? 'bg-muted' : 'hover:bg-muted/60'
+        selected ? 'bg-foreground/10' : 'hover:bg-foreground/5'
       }`}
       onClick={onSelect}
       role="button"
