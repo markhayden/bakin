@@ -1,6 +1,6 @@
 /**
- * Chat rail — the session-manager sidebar: Start-a-chat, agent facet
- * filter, and chats grouped Pinned / Today / Yesterday / This week /
+ * Chat rail — the session-manager sidebar: agent filter pills and chats
+ * grouped Pinned / Today / Yesterday / This week /
  * Older. Rows carry unread pills and a working spinner; the rail is
  * collapsible (persisted).
  */
@@ -9,7 +9,6 @@ import { Loader2, PanelLeftClose, PanelLeftOpen, Pin, Trash2 } from 'lucide-reac
 import { AgentAvatar, AgentFilter, ConfirmDialog, EmptyState, formatRelativeTime } from '@makinbakin/sdk/components'
 import { Skeleton } from '@makinbakin/sdk/ui'
 
-import { AgentPicker } from './agent-picker'
 import { deleteChatRequest, patchChatRequest, type ChatSummaryDto } from './use-chat-data'
 
 const COLLAPSE_KEY = 'bakin-chat-rail-collapsed'
@@ -148,13 +147,12 @@ export function ChatRail(props: {
   collapsed: boolean
   onCollapse: (v: boolean) => void
   onSelect: (chatId: string) => void
-  onStartChat: (agentId: string) => void
   onAgentFilter: (agentId: string) => void
   onChanged: () => void
 }) {
   const {
     chats, agentIds, loading, selectedId, agentFilter, streamingIds, collapsed,
-    onCollapse, onSelect, onStartChat, onAgentFilter, onChanged,
+    onCollapse, onSelect, onAgentFilter, onChanged,
   } = props
   const [pendingDelete, setPendingDelete] = useState<ChatSummaryDto | null>(null)
 
@@ -175,9 +173,17 @@ export function ChatRail(props: {
 
   return (
     <div className="flex h-full w-72 shrink-0 flex-col border-r border-border">
-      <div className="space-y-2 p-3">
-        <div className="flex items-center justify-between gap-2">
-          <AgentPicker onPick={onStartChat} iconOnly />
+      <div className="p-3">
+        <div className="flex items-center justify-between gap-2 pt-[5px]">
+          {agentIds.length > 1 ? (
+            <AgentFilter
+              agentIds={agentIds}
+              value={agentFilter || 'all'}
+              onChange={(id) => onAgentFilter(id === 'all' ? '' : id)}
+            />
+          ) : (
+            <span />
+          )}
           <button
             type="button"
             aria-label="Collapse chat list"
@@ -187,15 +193,6 @@ export function ChatRail(props: {
             <PanelLeftClose className="size-4" />
           </button>
         </div>
-        {agentIds.length > 1 ? (
-          <div className="pt-[5px]">
-            <AgentFilter
-              agentIds={agentIds}
-              value={agentFilter || 'all'}
-              onChange={(id) => onAgentFilter(id === 'all' ? '' : id)}
-            />
-          </div>
-        ) : null}
       </div>
 
       <div className="flex-1 space-y-3 overflow-y-auto px-2 pb-2">
@@ -213,7 +210,7 @@ export function ChatRail(props: {
           </div>
         ) : chats.length === 0 ? (
           <div className="pt-4">
-            <EmptyState title="No chats yet" description="Start one with any agent above." />
+            <EmptyState title="No chats yet" description="Use Start a chat (top right) to begin one." />
           </div>
         ) : (
           groupChats(chats).map((group) => (

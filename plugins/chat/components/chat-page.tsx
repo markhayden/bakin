@@ -14,6 +14,7 @@ import { PluginHeader } from '@makinbakin/sdk/components'
 import { usePluginEvent, useQueryState, useRouter } from '@makinbakin/sdk/hooks'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 
+import { AgentPicker } from './agent-picker'
 import { ChatRail, useRailCollapsed } from './chat-rail'
 import { ChatView, DraftChatView } from './chat-view'
 import { Launcher } from './launcher'
@@ -140,6 +141,7 @@ function ChatPageInner() {
           title="Chat"
           count={loading ? undefined : chats.length}
           search={{ value: search, onChange: setSearch, placeholder: 'Search chats…' }}
+          actions={<AgentPicker onPick={startDraft} />}
         />
       </div>
       <div className="flex min-h-0 flex-1 border-t border-border">
@@ -153,7 +155,6 @@ function ChatPageInner() {
           collapsed={collapsed}
           onCollapse={setCollapsed}
           onSelect={openChat}
-          onStartChat={startDraft}
           onAgentFilter={setAgentFilter}
           onChanged={() => { void refresh() }}
         />

@@ -78,7 +78,6 @@ const railProps = {
   collapsed: false,
   onCollapse: () => {},
   onSelect: () => {},
-  onStartChat: () => {},
   onAgentFilter: () => {},
   onChanged: () => {},
 }
