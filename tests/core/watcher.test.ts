@@ -115,6 +115,16 @@ describe('watcher', () => {
       expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'antfly-notes', 'file.md'))).toBe(false)
     })
 
+    it('ignores assets backup snapshots (assets.<suffix>) but not live assets', () => {
+      // Dead sibling copies like assets.pre-pivot-20260417 cost a kqueue fd
+      // per file under Bun and resurface stale files as import badges.
+      expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'assets.pre-pivot-20260417-215547'))).toBe(true)
+      expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'assets.pre-pivot-20260417-215547', 'images', 'old.png'))).toBe(true)
+      expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'assets.bak', 'file.md'))).toBe(true)
+      // The live assets tree stays watched.
+      expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'assets', 'store', '2026-07', 'a1', 'v1.png'))).toBe(false)
+    })
+
     it('stop is idempotent', async () => {
       await stop()
       // second call should not throw; bun:test's toThrow matcher doesn't
