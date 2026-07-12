@@ -168,7 +168,7 @@ describe('switchRuntime — OpenClaw → Pi', () => {
     expect(pixel.mappedFrom).toBe('openai/gpt-test-vision')
     const rolo = result.roster!.carried.find((c) => c.agentId === 'rolo')!
     expect(rolo.model).toBeUndefined()
-    expect(result.roster!.unmappedModels).toEqual([{ agentId: 'rolo', sourceModel: 'anthropic/claude-nope' }])
+    expect(result.roster!.unmappedModels).toEqual([{ agentId: 'rolo', sourceModel: 'anthropic/claude-nope', field: 'model' }])
     expect(result.roster!.failed).toEqual([])
 
     // Drift-gated projection skipped (no drift), capabilities + access honest.

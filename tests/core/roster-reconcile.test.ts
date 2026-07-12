@@ -25,14 +25,18 @@ function targetWith(overrides: {
   existing?: string[]
   catalog?: string[]
   createImpl?: (input: { id: string; model?: string }) => Promise<unknown>
+  updateImpl?: (agentId: string, input: { subagentModel?: string | null }) => Promise<unknown>
+  perAgentSubagentModel?: boolean
 }): AgentRuntimeAdapter {
   return {
     agents: {
       list: async () => (overrides.existing ?? []).map((id) => ({ id, name: id })),
       create: overrides.createImpl ?? (async (input: { id: string }) => ({ id: input.id, name: input.id })),
+      update: overrides.updateImpl ?? (async (agentId: string) => ({ id: agentId, name: agentId })),
     },
     models: {
       listAvailable: async () => (overrides.catalog ?? []).map((id) => ({ id, name: id, available: true })),
+      routingSupport: () => ({ perAgentSubagentModel: overrides.perAgentSubagentModel ?? true }),
     },
   } as unknown as AgentRuntimeAdapter
 }
@@ -84,8 +88,78 @@ describe('reconcileRoster — honest reporting', () => {
       },
     })
     const report = await reconcileRoster([source[0]], target)
-    expect(report.unmappedModels).toEqual([{ agentId: 'main', sourceModel: 'openai/gpt-5.5' }])
+    expect(report.unmappedModels).toEqual([{ agentId: 'main', sourceModel: 'openai/gpt-5.5', field: 'model' }])
     expect(created[0].model).toBeUndefined()
     expect(report.carried).toEqual([{ agentId: 'main' }])
+  })
+})
+
+describe('reconcileRoster — subagentModel carry', () => {
+  const withSubagent: RuntimeAgent[] = [
+    { id: 'main', name: 'Main', model: 'openai/gpt-5.5', subagentModel: 'openai/gpt-5.5-mini' },
+  ]
+
+  it('maps the subagent model against the target catalog and applies it via agents.update', async () => {
+    const updates: Array<{ agentId: string; subagentModel?: string | null }> = []
+    const target = targetWith({
+      catalog: ['openai-codex/gpt-5.5', 'openai-codex/gpt-5.5-mini'],
+      updateImpl: async (agentId, input) => {
+        updates.push({ agentId, ...input })
+        return { id: agentId, name: agentId }
+      },
+    })
+    const report = await reconcileRoster(withSubagent, target)
+    expect(updates).toEqual([{ agentId: 'main', subagentModel: 'openai-codex/gpt-5.5-mini' }])
+    expect(report.carried).toEqual([
+      { agentId: 'main', model: 'openai-codex/gpt-5.5', mappedFrom: 'openai/gpt-5.5', subagentModel: 'openai-codex/gpt-5.5-mini' },
+    ])
+    expect(report.unmappedModels).toEqual([])
+  })
+
+  it('an unmappable subagent model is REPORTED, never guessed, never updated', async () => {
+    const updates: string[] = []
+    const target = targetWith({
+      catalog: ['openai-codex/gpt-5.5'],
+      updateImpl: async (agentId) => {
+        updates.push(agentId)
+        return { id: agentId, name: agentId }
+      },
+    })
+    const report = await reconcileRoster(withSubagent, target)
+    expect(updates).toEqual([])
+    expect(report.unmappedModels).toEqual([
+      { agentId: 'main', sourceModel: 'openai/gpt-5.5-mini', field: 'subagentModel' },
+    ])
+  })
+
+  it('a runtime without per-agent subagent models gets a report line, not an update call', async () => {
+    const updates: string[] = []
+    const target = targetWith({
+      catalog: ['openai-codex/gpt-5.5', 'openai-codex/gpt-5.5-mini'],
+      perAgentSubagentModel: false,
+      updateImpl: async (agentId) => {
+        updates.push(agentId)
+        return { id: agentId, name: agentId }
+      },
+    })
+    const report = await reconcileRoster(withSubagent, target)
+    expect(updates).toEqual([])
+    expect(report.unmappedModels).toEqual([
+      { agentId: 'main', sourceModel: 'openai/gpt-5.5-mini', field: 'subagentModel' },
+    ])
+  })
+
+  it('a subagentModel update throw lands in failed[] while the agent stays carried', async () => {
+    const target = targetWith({
+      catalog: ['openai-codex/gpt-5.5', 'openai-codex/gpt-5.5-mini'],
+      updateImpl: async () => {
+        throw new Error('update denied')
+      },
+    })
+    const report = await reconcileRoster(withSubagent, target)
+    expect(report.carried.map((c) => c.agentId)).toEqual(['main'])
+    expect(report.failed).toEqual([
+      { agentId: 'main', error: 'subagentModel update: update denied' },
+    ])
   })
 })
