@@ -12,12 +12,20 @@
  *   isolated  like native, but Bakin uses a throwaway BAKIN_HOME under dev/.
  *   sandbox   Bakin runs inside the container (clean Linux box).
  */
+import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, openSync, readFileSync, writeFileSync } from 'node:fs'
 import { mkdir, readdir, rm } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 import { getContentDir } from '../packages/core/src/content-dir'
+import {
+  antflyBinary,
+  antflyModelsDir,
+  startAntflyChild,
+  type AntflyChildDeps,
+} from './instance/antfly-child'
 import { parseInstanceArgs, type InstanceArgs } from './instance/args'
 import { ensureApprovedDevice } from './instance/device-approve'
 import { loadEnvFile } from './instance/env-file'
@@ -97,6 +105,32 @@ function makeDeps(paths: InstancePaths): LifecycleDeps {
         return null
       }
     },
+  }
+}
+
+/** Real-process deps for the rig antfly child (engine output → <dataDir>.log). */
+function antflyChildDeps(): AntflyChildDeps {
+  return {
+    spawn: (argv) => {
+      const logFd = openSync(`${argv[argv.indexOf('--data-dir') + 1]}.log`, 'a')
+      const child = spawn(argv[0]!, argv.slice(1), { stdio: ['ignore', logFd, logFd] })
+      return {
+        kill: (signal) => { child.kill(signal as NodeJS.Signals) },
+        exited: new Promise<number>((r) => child.once('exit', (code) => r(code ?? 1))),
+      }
+    },
+    fetchOk: async (url) => {
+      try {
+        const res = await fetch(url)
+        return res.ok || res.status < 500
+      } catch {
+        return false
+      }
+    },
+    mkdirp: async (path) => { await mkdir(path, { recursive: true }) },
+    exists: (path) => existsSync(path),
+    sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+    log: (message) => console.log(`▸ ${message}`),
   }
 }
 
@@ -184,15 +218,34 @@ async function main(argv: string[]): Promise<number> {
           // guard patch (guest search URL + adapter) before the server boots.
           await applySettingsPatch(plan, paths, deps)
         }
-        console.log('▸ starting Bakin (hot reload) → http://localhost:3737  (Ctrl+C to stop)')
-        // scripts/dev.ts is env-driven (it reads BAKIN_HOME/OPENCLAW_HOME/
-        // PI_HOME/… from process.env and imports the server in-process), so
-        // the rig env flows straight through — and the browser gets real HMR.
-        const server = await deps.runner.run(
-          ['bun', 'run', 'scripts/dev.ts'],
-          { interactive: true, env: plan.hostEnv, cwd: REPO_ROOT },
-        )
-        return server.code
+        // Isolated mode: the instance's own antfly child (guest-URL settings
+        // keep the adapter from ever touching the machine-global service).
+        // Lives exactly as long as the server; killed in finally.
+        let antfly: { stop: () => Promise<void> } | null = null
+        if (plan.antflyChild) {
+          antfly = await startAntflyChild(
+            {
+              binary: antflyBinary(process.env, homedir()),
+              port: plan.antflyChild.port,
+              dataDir: plan.antflyChild.dataDir,
+              modelsDir: antflyModelsDir(process.env, homedir()),
+            },
+            antflyChildDeps(),
+          )
+        }
+        try {
+          console.log('▸ starting Bakin (hot reload) → http://localhost:3737  (Ctrl+C to stop)')
+          // scripts/dev.ts is env-driven (it reads BAKIN_HOME/OPENCLAW_HOME/
+          // PI_HOME/… from process.env and imports the server in-process), so
+          // the rig env flows straight through — and the browser gets real HMR.
+          const server = await deps.runner.run(
+            ['bun', 'run', 'scripts/dev.ts'],
+            { interactive: true, env: plan.hostEnv, cwd: REPO_ROOT },
+          )
+          return server.code
+        } finally {
+          await antfly?.stop()
+        }
       }
       case 'reset':
         await reset(plan, paths, deps)
