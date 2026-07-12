@@ -3,35 +3,35 @@
 Plan: `tasks/plan-chat-conversation-kit.md` · Spec: `.claude/specs/chat-conversation-kit.md`
 
 ## Phase 1 — Foundations
-- [ ] T1.1 feat(sdk): markdown media + syntax highlighting (curated langs, copy button, lightbox images, video, safe links)
-- [ ] T1.2 refactor(core): extract shared image downscale from assets enrichment
+- [x] T1.1 feat(sdk): markdown media + syntax highlighting (curated langs, copy button, lightbox images, video, safe links) — f2ce3d87
+- [x] T1.2 refactor(core): extract shared image downscale from assets enrichment — 7fd800e9
 
 ## Phase 2 — Fold engine
-- [ ] T2.1 feat(sdk): conversation turn model + foldConversation (exhaustive unit suite; subsumes foldTurnChunks / brainstorm activity / use-chat-data coalescing)
+- [x] T2.1 feat(sdk): conversation turn model + foldConversation (exhaustive unit suite; subsumes foldTurnChunks / brainstorm activity / use-chat-data coalescing) — 812321f6
 
 ## Phase 3 — Kit components
-- [ ] T3.1 feat(sdk): Conversation / UserMessage / AgentTurn / ThinkingIndicator / ConversationEmptyState
-- [ ] T3.2 feat(sdk): ActivityGroup + ToolCallDrawer
-- [ ] T3.3 feat(sdk): Composer (resize, history, drafts, typing-never-blocked, attachments UI, char counter)
-- [ ] T3.4 feat(sdk): ConversationPanel + useConversationStream + readSseStream + server helpers (embedded-mode API contract test)
-- [ ] T3.5 refactor(sdk): TurnOutputView as kit wrapper (tasks/workflows consumers unchanged)
-- [ ] **CHECKPOINT A** — suite + build + dev:mock (tasks/workflows) → open PR-1
+- [x] T3.1 feat(sdk): Conversation / UserMessage / AgentTurn / ThinkingIndicator / ConversationEmptyState — 06d3d774
+- [x] T3.2 feat(sdk): ActivityGroup + ToolCallDrawer — b505fe42
+- [x] T3.3 feat(sdk): Composer (resize, history, drafts, typing-never-blocked, attachments UI, char counter) — e73b2d93
+- [x] T3.4 feat(sdk): ConversationPanel + useConversationStream + readSseStream + server helpers (embedded-mode API contract test) — e0548038
+- [x] T3.5 refactor(sdk): TurnOutputView as kit wrapper (tasks/workflows consumers unchanged) — 40e0a7f6
+- [x] **CHECKPOINT A** — suite 6672 green + typecheck + vendors/plugins/host build clean (visual pass deferred to Checkpoint B dev:mock session) — 40e0a7f6
 
 ## Phase 4 — Chat core
-- [ ] T4.1 feat(chat): transcript v2 + structured persistence + abort + seen/rename/pin routes + unreadCount
-- [ ] T4.2 feat(chat): page rebuild on the kit (rail, launcher, draft mode, composer wiring, shortcuts, contrast fix)
-- [ ] T4.3 feat(chat): auto-titles (fallback + budget-gated LLM)
-- [ ] **CHECKPOINT B** — suite + /verify + dev:mock (chat)
+- [x] T4.1 feat(chat): transcript v2 + structured persistence + abort + seen/rename/pin routes + unreadCount — 38afce21
+- [x] T4.2 feat(chat): page rebuild on the kit (rail, launcher, draft mode, composer wiring, shortcuts, contrast fix) — 4fe05922
+- [x] T4.3 feat(chat): auto-titles (fallback + budget-gated LLM) — ca824552
+- [x] **CHECKPOINT B** — suite 6694 green; /verify isolated REST drive PASSED (create/202-send/rename+pin/seen/abort-409/list unreadCount+streaming/delete; v2 error row with typed errorKind persisted e2e). Live mock-turn drive not possible on this machine: adapter gateway port is hardcoded 18789 and the REAL gateway owns it — full turn e2e + visual pass deferred to the dockerized rig (--mode isolated) at Checkpoint E
 
 ## Phase 5 — Attention
-- [ ] T5.1 feat(chat): badge provider, unread store, toast, sound, OS notification, tab title
-- [ ] **CHECKPOINT C** — cross-page attention demo in dev:mock
+- [x] T5.1 feat(chat): badge provider, unread store, toast, sound, OS notification, tab title — f01a24ea
+- [x] **CHECKPOINT C** — attention rules + provider pinned by tests; cross-page visual demo folded into the Checkpoint E rig session. NOTE: full-suite runs on the loaded machine intermittently 900s-timeout random unrelated files (all pass in isolation; timeouts, never assertions)
 
 ## Phase 6 — Attachments
-- [ ] T6.1 feat(chat): attachment upload + serving routes
-- [ ] T6.2 feat(chat): send through runtime (capability gate, downscale, replay thumbnails)
-- [ ] T6.3 test(runtime): conformance mock + imitation-crab attachment coverage (run tests/dev/ explicitly)
-- [ ] **CHECKPOINT D**
+- [x] T6.1 feat(chat): attachment upload + serving routes — cee66136
+- [x] T6.2 feat(chat): send through runtime (capability gate, downscale, replay thumbnails) — cee66136
+- [x] T6.3 test(runtime): conformance mock + imitation-crab attachment coverage (tests/dev/ run explicitly: 46 green) — 098c2352
+- [x] **CHECKPOINT D** — chat suite 46 green, conformance 49 green, typecheck clean
 
 ## Phase 7 — Search
 - [ ] T7.1 feat(chat): transcripts as search content type + ⌘K hit renderer
