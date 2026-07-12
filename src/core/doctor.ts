@@ -11,110 +11,21 @@
 import { createLogger } from './logger'
 import { getSettings } from './settings'
 import { appendAudit } from './audit'
-import { getAppServices } from './app-services'
-import { meterAgentTurn } from './agent-cost'
-import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { isOnboarded } from './onboarding/state'
-import { listHealthChecks } from './health-check-registry'
-import type { HealthCheckDef, HealthCheckResult } from '../../packages/core/src/plugin-types'
+import type { HealthCheckResult } from '../../packages/core/src/plugin-types'
 
-import { escalateCronErrors } from './doctor-escalation'
+import { runPluginHealthChecks } from './doctor-checks'
+import { escalateCronErrors, notifyUnfixableIssues, clearNotifiedIssues } from './doctor-escalation'
+
+// Re-exported for existing consumers; the implementation lives in the leaf
+// module so doctor-repair can import it without a cycle.
+export { runDetailedPluginHealthChecks, runPluginHealthChecks, type DetailedHealthCheckRun } from './doctor-checks'
 
 const log = createLogger('doctor')
 
 let doctorTimer: NodeJS.Timeout | null = null
 let lastResults: HealthCheckResult[] | null = null
 let lastResultTime: number = 0
-
-// Track what we've already notified about to avoid spamming the main agent
-const notifiedIssues = new Set<string>()
-
-export interface DetailedHealthCheckRun {
-  def: HealthCheckDef
-  results: HealthCheckResult[]
-}
-
-/**
- * Run every plugin-registered health check in parallel. Per-check try/catch
- * isolates failures — a single bad handler yields one synthetic error result
- * and never crashes the doctor sweep. Exported separately from runDiagnostics
- * so the isolation behavior can be tested without mocking every plugin's
- * dependency tree.
- */
-export async function runDetailedPluginHealthChecks(): Promise<DetailedHealthCheckRun[]> {
-  const defs = listHealthChecks()
-  return Promise.all(
-    defs.map(async (def) => {
-      try {
-        const rows = await def.run()
-        if (!Array.isArray(rows)) {
-          return {
-            def,
-            results: [{
-              check: def.id,
-              status: 'error' as const,
-              message: `Plugin health check returned non-array: ${typeof rows}`,
-              autoFixable: false,
-            }],
-          }
-        }
-        return { def, results: rows }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        return {
-          def,
-          results: [{
-            check: def.id,
-            status: 'error' as const,
-            message: `Plugin health check threw: ${message}`,
-            autoFixable: false,
-          }],
-        }
-      }
-    }),
-  )
-}
-
-export async function runPluginHealthChecks(): Promise<HealthCheckResult[]> {
-  const groups = await runDetailedPluginHealthChecks()
-  return groups.flatMap(group => group.results)
-}
-
-export async function notifyUnfixableIssues(results: HealthCheckResult[]): Promise<void> {
-  // Errors ALWAYS qualify — an autoFixable error is still an incident the
-  // user must hear about (the 17h search-dark burn stayed silent partly
-  // because fixable errors were filtered here); only fixable WARNS stay
-  // quiet to bound noise.
-  const issues = results.filter(r =>
-    r.status === 'error' || (r.status === 'warn' && !r.autoFixable)
-  )
-
-  if (issues.length === 0) return
-
-  // Build a dedup key from the issues so we don't spam
-  const issueKey = issues.map(i => `${i.check}:${i.status}`).sort().join('|')
-  if (notifiedIssues.has(issueKey)) return
-  notifiedIssues.add(issueKey)
-
-  const lines = issues.map(i => {
-    const icon = i.status === 'error' ? 'ERROR' : 'WARN'
-    const hint = i.autoFixable ? ' (repair available: `bakin doctor --fix`)' : ''
-    return `[${icon}] ${i.check}: ${i.message}${hint}`
-  })
-
-  const message = `Bakin Doctor found ${issues.length} issue(s) that need your attention:\n\n${lines.join('\n')}\n\nRun \`bakin doctor\` for full details.`
-
-  try {
-    const runtime = getAppServices().runtime
-    const mainAgentId = await getRuntimeMainAgentId(runtime)
-    const result = await runtime.messaging.send({ agentId: mainAgentId, content: message })
-    await meterAgentTurn({ agent: mainAgentId, result, name: 'doctor-notify' })
-    log.info('Notified main agent of unfixable issues', { count: issues.length })
-  } catch (err) {
-    // Runtime might be the issue — can't notify about that
-    log.warn('Could not notify main agent of doctor issues (runtime may be down)', err)
-  }
-}
 
 export async function runDiagnostics(
   contentDir: string,
@@ -192,7 +103,7 @@ export function start(contentDir: string, projectRoot: string): void {
   doctorTimer = setInterval(() => {
     // Clear notification cache each cycle so recurring issues get re-reported
     // (but not within the same cycle)
-    notifiedIssues.clear()
+    clearNotifiedIssues()
     runDiagnostics(contentDir, projectRoot)
       .then(results => escalateCronErrors(results, contentDir, projectRoot))
       .catch(err => {

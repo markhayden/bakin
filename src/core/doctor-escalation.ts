@@ -22,9 +22,55 @@
  */
 import { createLogger } from './logger'
 import { getSettings } from './settings'
+import { getAppServices } from './app-services'
+import { meterAgentTurn } from './agent-cost'
+import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import type { HealthCheckResult } from '../../packages/core/src/plugin-types'
 
 const log = createLogger('doctor-escalation')
+
+// Track what we've already notified about to avoid spamming the main agent.
+// The doctor cron clears this each cycle so recurring issues re-report.
+const notifiedIssues = new Set<string>()
+
+export function clearNotifiedIssues(): void {
+  notifiedIssues.clear()
+}
+
+export async function notifyUnfixableIssues(results: HealthCheckResult[]): Promise<void> {
+  // Errors ALWAYS qualify — an autoFixable error is still an incident the
+  // user must hear about (the 17h search-dark burn stayed silent partly
+  // because fixable errors were filtered here); only fixable WARNS stay
+  // quiet to bound noise.
+  const issues = results.filter(r =>
+    r.status === 'error' || (r.status === 'warn' && !r.autoFixable)
+  )
+
+  if (issues.length === 0) return
+
+  // Build a dedup key from the issues so we don't spam
+  const issueKey = issues.map(i => `${i.check}:${i.status}`).sort().join('|')
+  if (notifiedIssues.has(issueKey)) return
+  notifiedIssues.add(issueKey)
+
+  const lines = issues.map(i => {
+    const icon = i.status === 'error' ? 'ERROR' : 'WARN'
+    const hint = i.autoFixable ? ' (repair available: `bakin doctor --fix`)' : ''
+    return `[${icon}] ${i.check}: ${i.message}${hint}`
+  })
+
+  const message = `Bakin Doctor found ${issues.length} issue(s) that need your attention:\n\n${lines.join('\n')}\n\nRun \`bakin doctor\` for full details.`
+
+  try {
+    const runtime = getAppServices().runtime
+    const mainAgentId = await getRuntimeMainAgentId(runtime)
+    const result = await runtime.messaging.send({ agentId: mainAgentId, content: message })
+    await meterAgentTurn({ agent: mainAgentId, result, name: 'doctor-notify' })
+    log.info('Notified main agent of unfixable issues', { count: issues.length })
+  } catch (err) {
+    log.error('Failed to notify main agent of doctor issues', err instanceof Error ? err : undefined)
+  }
+}
 
 export async function escalateCronErrors(
   results: HealthCheckResult[],
@@ -41,7 +87,6 @@ export async function escalateCronErrors(
 
   try {
     if (escalation === 'notify') {
-      const { notifyUnfixableIssues } = await import('./doctor')
       await notifyUnfixableIssues(results)
       return
     }

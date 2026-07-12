@@ -49,10 +49,14 @@ const delegateDoctorRepair = mock(async (options: { rows?: unknown[] }) => ({
   unresolved: options.rows ?? [],
 }))
 mock.module('../../src/core/doctor-delegate', () => ({ delegateDoctorRepair }))
-const notifyUnfixableIssues = mock(async () => {})
-mock.module('../../src/core/doctor', () => ({ notifyUnfixableIssues }))
+// notify mode sends through the runtime — spy at the messaging boundary
+const messagingSend = mock(async () => ({ ok: true }))
+const appServices = () => ({ runtime: { messaging: { send: messagingSend } } })
+mock.module('../../src/core/app-services', () => ({ getAppServices: appServices, maybeGetAppServices: appServices }))
+mock.module('../../src/core/agent-cost', () => ({ meterAgentTurn: async () => {} }))
+mock.module('@bakin/core/adapters/runtime', () => ({ getRuntimeMainAgentId: async () => 'main' }))
 
-import { escalateCronErrors } from '../../src/core/doctor-escalation'
+import { clearNotifiedIssues, escalateCronErrors } from '../../src/core/doctor-escalation'
 import type { HealthCheckResult } from '../../packages/core/src/plugin-types'
 
 afterAll(() => {
@@ -65,7 +69,8 @@ beforeEach(() => {
   repairRequests = []
   openTaskColumns = {}
   delegateDoctorRepair.mockClear()
-  notifyUnfixableIssues.mockClear()
+  messagingSend.mockClear()
+  clearNotifiedIssues()
 })
 
 const errorRow = (check: string): HealthCheckResult => ({ check, status: 'error', message: `${check} broke`, autoFixable: true })
@@ -137,10 +142,14 @@ describe('escalateCronErrors', () => {
     expect(delegateDoctorRepair).toHaveBeenCalledTimes(1)
   })
 
-  it('notify mode messages the main agent instead of creating a task', async () => {
+  it('notify mode messages the main agent instead of creating a task — autoFixable errors included', async () => {
     escalationMode = 'notify'
     await escalateCronErrors([errorRow('search-canary')], testDir, testDir)
-    expect(notifyUnfixableIssues).toHaveBeenCalledTimes(1)
+    expect(messagingSend).toHaveBeenCalledTimes(1)
+    const sent = (messagingSend.mock.calls[0] as unknown[])[0] as { agentId: string; content: string }
+    expect(sent.agentId).toBe('main')
+    expect(sent.content).toContain('search-canary')
+    expect(sent.content).toContain('repair available')
     expect(delegateDoctorRepair).not.toHaveBeenCalled()
   })
 
