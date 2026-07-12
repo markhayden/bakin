@@ -222,8 +222,9 @@ export function AgentTurn({ turn, agentId, onRetry, onOpenCall, transformText }:
         ) : null}
       </div>
 
-      {/* Hover actions float top-right so the turn costs no header line. */}
-      <div className="absolute right-0 top-0 flex items-center gap-1.5">
+      {/* Hover actions float in a chip ABOVE the turn's top-right edge so
+          they never collide with content (cards, code blocks). */}
+      <div className="absolute -top-3 right-2 flex items-center gap-1 rounded-md border border-border bg-background px-1.5 py-0.5 opacity-0 shadow-sm transition-opacity group-hover/turn:opacity-100">
         <TurnTimestamp ts={turn.ts} />
         {copyText ? <CopyButton text={copyText} label="Copy reply" /> : null}
       </div>
