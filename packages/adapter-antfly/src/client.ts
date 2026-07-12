@@ -35,7 +35,6 @@ import {
   buildTableCreate,
   mapIndexStatuses,
   mapQueryResponse,
-  toCountRequest,
 } from './translate'
 import { paths, type WireBatchResponse, type WireIndexStatusEntry, type WireQueryEnvelope, type WireQueryRequest } from './wire'
 
@@ -238,17 +237,6 @@ export class AntflySearchClient implements SearchAdapter {
   async query(table: string, q: Query): Promise<QueryResult> {
     const started = Date.now()
     const request = buildQueryRequest(table, q, this.settings)
-    const wantsTrueTotals = !request.count && (request.aggregations !== undefined || request.semantic_search !== undefined)
-    // Companion count (page-scoped-totals workaround) fires CONCURRENTLY —
-    // a sequential twin doubled per-table latency on every faceted/semantic
-    // query. On degrade its result is discarded (never spliced onto an
-    // fts-only answer it doesn't describe).
-    const countPromise = wantsTrueTotals
-      ? this.runQuery(table, toCountRequest(request), q.deadlineMs).then(
-          (envelope) => envelope,
-          () => null,
-        )
-      : Promise.resolve(null)
     let main: WireQueryEnvelope | null
     let degraded = false
     try {
@@ -269,7 +257,8 @@ export class AntflySearchClient implements SearchAdapter {
       main = await this.runQuery(table, ftsOnly, remaining)
       degraded = true
     }
-    const count = degraded ? null : await countPromise
+    // rc.18 totals and aggregation buckets are corpus-true on every
+    // response — the old page-scoped-totals count twin is gone.
     const result = mapQueryResponse(main, table)
     if (degraded) {
       result.diagnostics = {
@@ -278,11 +267,6 @@ export class AntflySearchClient implements SearchAdapter {
         budget: 'degraded',
         adapter: { ...(result.diagnostics?.adapter ?? {}), degraded: 'semantic-embed-timeout' },
       }
-    }
-    if (count) {
-      const countResult = mapQueryResponse(count, table)
-      result.total = countResult.total
-      if (countResult.facets) result.facets = countResult.facets
     }
     return result
   }
@@ -339,13 +323,13 @@ export class AntflySearchClient implements SearchAdapter {
       } catch {
         continue
       }
-      // Live servers emit `key`; older docs said `_key` — accept both.
-      const key = (row.key ?? row._key) as string | undefined
+      // rc.18's /documents scan emits `_id`; older engines said `key`/`_key`.
+      const key = (row._id ?? row.key ?? row._key) as string | undefined
       if (typeof key !== 'string') {
         warnedKeyless = true
         continue
       }
-      const { key: _k, _key: _k2, ...fields } = row
+      const { _id: _k0, key: _k1, _key: _k2, ...fields } = row
       yield { key, document: fields }
     }
     if (warnedKeyless) {

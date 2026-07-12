@@ -64,3 +64,19 @@ Also fixed at the source: `purgeContentType` now removes the search_tables row +
 ## GATE B — per-shim canary verdicts on rc.18
 
 _(pending)_
+
+## GATE B CORRECTION (2026-07-11 evening — post-restart discovery)
+
+**The original GATE B ran against a STALE engine.** The ephemeral-test harness preferred a July-2 dev-built binary (`antfly-main/zig/zig-out/bin/antfly`, pre-rc.18) over the installed pin — every "rc.18" canary verdict actually certified the old engine. Caught when the restarted server's orphan sweep failed live: rc.18 removed `POST /{t}/lookup` (405). Harness now prefers `~/.antfly/bin/antfly` and logs its choice.
+
+Corrected verdicts against the TRUE rc.18 (live-probed + canary-verified):
+
+| Change | Verdict | Action taken |
+|---|---|---|
+| `/lookup` → `POST /{t}/documents` (NDJSON, `_id` keys, still needs `{}` body) | BREAKING — scans were dead on rc.18 | wire path + scan parser fixed; pin rewritten |
+| `hits.total` is `{value, relation}` and CORPUS-TRUE (aggregation buckets too) | FIX to adopt (the old page-scoped totals ALSO meant deployed old code reads objects as numbers — live bug until deploy) | normalizeTotal + **count-twin deleted entirely** (T9 completes as removal, not just concurrency) |
+| `order_by` rejection is now 422 (sort taxonomy), still unusable on inferred fields | unchanged verdict | pin expects 422 |
+| WebP decode landed (lossy + lossless verified live) | FIX adopted | `EMBED_SAFE_RE` includes `.webp`; guard test by key-lookup |
+| UNDECODABLE media still poisons the whole batch | pin ADDED (the load-bearing reason thumbs-first/EMBED_SAFE_RE exist) | `PIN: an UNDECODABLE media_url still fails the ENTIRE batch` |
+
+Full suite after corrections: 6538+ pass / 0 fail. Canaries + conformance: green against the pinned binary (logged).

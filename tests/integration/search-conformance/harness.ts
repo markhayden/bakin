@@ -19,13 +19,21 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const DEV_BUILD = '/Users/roscoe/go/src/github.com/antflydb/antfly-main/zig/zig-out/bin/antfly'
 
 export function resolveAntflyBinary(): string | null {
+  // PINNED binary before any dev build: canaries and conformance certify
+  // the engine Bakin actually ships (pin.ts). A stale dev build silently
+  // green-lit pins against a pre-rc.18 engine (missed the /lookup →
+  // /documents move — caught live 2026-07-11). BAKIN_ANTFLY_BIN stays
+  // first as the explicit override for upstream-dev testing.
   const candidates = [
     process.env.BAKIN_ANTFLY_BIN,
-    DEV_BUILD,
     join(homedir(), '.antfly', 'bin', 'antfly'),
+    DEV_BUILD,
   ]
   for (const candidate of candidates) {
-    if (candidate && existsSync(candidate)) return candidate
+    if (candidate && existsSync(candidate)) {
+      console.warn(`search-conformance: antfly binary = ${candidate}`)
+      return candidate
+    }
   }
   return null
 }

@@ -87,27 +87,32 @@ if (!binary) {
   })
 
   describe('antfly workaround pins', () => {
-    it('PIN: order_by is rejected by the Zig engine (query_contract.zig hard-reject)', async () => {
-      // WHEN THIS FAILS: upstream added order_by support → implement sort in
-      // translate.ts (Query.sort → order_by [{field, desc}]) + delete this pin.
+    it('PIN rc.18: order_by on an inferred (schema-less) field is rejected with the 422 sort taxonomy', async () => {
+      // rc.18 shipped public exact-sort, but only for schema-mapped fields
+      // with sortable doc-values — Bakin sends no schema, so sort stays
+      // unusable and Query.sort is never sent. WHEN THIS FAILS (200):
+      // inferred fields became sortable → implement Query.sort → order_by
+      // + delete this pin.
       const result = await api('POST', `/db/v1/tables/${T}/query`, {
         full_text_search: { match_all: {} },
         order_by: [{ field: 'n', desc: true }],
         limit: 3,
       })
-      expect(result.status).toBe(400)
+      expect(result.status).toBe(422)
     })
 
-    it('PIN: totals are page-scoped without count:true', async () => {
-      // WHEN THIS FAILS: totals became true corpus counts → drop the
-      // companion-count twin in client.query + delete this pin.
+    it('GUARD rc.18: totals are corpus-true {value, relation} objects on every response', async () => {
+      // Bakin now RELIES on this (the page-scoped-totals count twin was
+      // deleted). WHEN THIS FAILS: totals regressed to page-scoped or a
+      // bare number — normalizeTotal already tolerates the number shape,
+      // but page-scoped counts would need the count twin back.
       const result = await api('POST', `/db/v1/tables/${T}/query`, {
         full_text_search: { match_all: {} },
         limit: 1,
       })
-      const hits = resp0(result.json)?.hits as { total: number } | undefined
+      const hits = resp0(result.json)?.hits as { total: { value: number; relation: string } } | undefined
       expect(result.status).toBe(200)
-      expect(hits?.total).toBe(1) // page-scoped: NOT the corpus size (3)
+      expect(hits?.total).toEqual({ value: 3, relation: 'exact' }) // corpus size, not the page
     })
 
     it('PIN: sync_level aknn stays removed (breaking change absorbed)', async () => {
@@ -120,11 +125,16 @@ if (!binary) {
       expect(result.status).toBeGreaterThanOrEqual(400)
     })
 
-    it('PIN: lookup without a body is rejected (client always sends {})', async () => {
-      // WHEN THIS FAILS: bodyless lookup became legal → optional cleanup in
-      // client.scan + delete this pin.
-      const result = await api('POST', `/db/v1/tables/${T}/lookup`)
-      expect(result.status).toBeGreaterThanOrEqual(400)
+    it('PIN rc.18: /lookup is gone (405) — scans live at /documents, still needing a {} body', async () => {
+      // WHEN THE 405 HALF FAILS: /lookup came back — no action, we use
+      // /documents. WHEN THE BODYLESS HALF FAILS: bodyless scans became
+      // legal → optional cleanup in client.scan + shrink this pin.
+      const legacy = await api('POST', `/db/v1/tables/${T}/lookup`, {})
+      expect(legacy.status).toBe(405)
+      const bodyless = await api('POST', `/db/v1/tables/${T}/documents`)
+      expect(bodyless.status).toBeGreaterThanOrEqual(400)
+      const withBody = await api('POST', `/db/v1/tables/${T}/documents`, {})
+      expect(withBody.status).toBe(200)
     })
 
     it('PIN antfly#319: mixed-corpus media leg — raw flags stuck building, health() overrides to ready', async () => {
@@ -210,10 +220,9 @@ if (!binary) {
       expect(ftLeg?.state).toBe('ready')
     }, 60_000)
 
-    it('PIN antfly#322: a WebP media_url fails the ENTIRE batch (engine decodes PNG/JPEG/GIF only)', async () => {
-      // WHEN THIS FAILS: upstream added WebP decode (or per-doc batch errors)
-      // → widen EMBED_SAFE_RE in plugins/assets/lib/search-doc.ts (and
-      // consider passing originals again) + delete this pin.
+    it('GUARD rc.18 (was antfly#322): a WebP media_url no longer fails the batch', async () => {
+      // Upstream fixed the whole-batch poison (per-item embedding error
+      // policy, #338). EMBED_SAFE_RE now passes .webp originals.
       if (!instance.modelsAvailable || !existsSync(join(homedir(), '.antfly', 'inference', 'models', 'antflydb', 'clipclap'))) {
         console.warn('⚠ webp pin skipped — clipclap model not present')
         return
@@ -228,12 +237,46 @@ if (!binary) {
       const webp = join(instance.root, 'pin-webp.webp')
       await sharp({ create: { width: 8, height: 8, channels: 3, background: { r: 200, g: 120, b: 40 } } }).webp().toFile(webp)
       // Retry loop mirrors beforeAll: early attempts can race table
-      // provisioning (transient non-2xx). The pinned behavior is that the
-      // batch NEVER lands — including the innocent sibling doc.
+      // provisioning (transient non-2xx). rc.18 GUARD: the batch LANDS
+      // (WebP no longer poisons the write — EMBED_SAFE_RE passes .webp
+      // originals again). WHEN THIS FAILS (5xx): the whole-batch poison is
+      // back → narrow EMBED_SAFE_RE + restore the pin.
       let status = 0
       for (let i = 0; i < 10; i++) {
         const r = await api('POST', `/db/v1/tables/${T3}/batch`, {
           inserts: { w1: { title: 'tacos', media_url: `file://${webp}` }, ok1: { title: 'innocent sibling' } },
+          sync_level: 'full_index',
+        })
+        status = r.status
+        if (r.status === 500 || r.status < 300) break
+        await sleep(500)
+      }
+      expect(status).toBeLessThan(300)
+      // Both docs landed — retrievable by key (no FTS-visibility timing).
+      const w1 = await api('GET', `/db/v1/tables/${T3}/documents/w1`)
+      const ok1 = await api('GET', `/db/v1/tables/${T3}/documents/ok1`)
+      expect(w1.status).toBe(200)
+      expect(ok1.status).toBe(200)
+    }, 120_000)
+
+    it('PIN: an UNDECODABLE media_url still fails the ENTIRE batch (per-doc errors absent)', async () => {
+      // This is the load-bearing reason EMBED_SAFE_RE + thumbs-first exist:
+      // one bad media file poisons every sibling in the write. WHEN THIS
+      // FAILS (batch lands): upstream added per-document batch errors →
+      // consider passing originals unconditionally + delete this pin.
+      const T5 = 'pins_badmedia'
+      await api('POST', `/db/v1/tables/${T5}`, {
+        num_shards: 1,
+        indexes: { vis: { name: 'vis', type: 'embeddings', template: '{{#if media_url}}{{remoteMedia url=media_url}}{{/if}}', dimension: 512, embedder: { provider: 'antfly', model: 'antflydb/clipclap' } } },
+      })
+      await sleep(1200)
+      const { writeFileSync } = await import('node:fs')
+      const bad = join(instance.root, 'pin-bad.webp')
+      writeFileSync(bad, Buffer.from('RIFFnope-not-webp-data'))
+      let status = 0
+      for (let i = 0; i < 10; i++) {
+        const r = await api('POST', `/db/v1/tables/${T5}/batch`, {
+          inserts: { bad1: { title: 'broken', media_url: `file://${bad}` }, ok2: { title: 'sibling' } },
           sync_level: 'full_index',
         })
         status = r.status

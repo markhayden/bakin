@@ -32,7 +32,6 @@ import {
   buildBatchDeletes,
   mapQueryResponse,
   mapIndexStatuses,
-  toCountRequest,
 } from '../../packages/adapter-antfly/src/translate'
 import { DEFAULT_SETTINGS } from '../../packages/adapter-antfly/src/defaults'
 import type { WireQueryEnvelope, WireIndexStatusEntry } from '../../packages/adapter-antfly/src/wire'
@@ -150,13 +149,6 @@ describe('buildQueryRequest', () => {
     expect('order_by' in req).toBe(false)
   })
 
-  it('toCountRequest builds the true-totals twin', () => {
-    const req = buildQueryRequest('t', { text: 'x', offset: 0, facets: ['kind'] }, S)
-    const count = toCountRequest(req)
-    expect(count.count).toBe(true)
-    expect(count.offset).toBeUndefined()
-    expect(count.aggregations).toEqual(req.aggregations)
-  })
 })
 
 describe('buildFilterQuery', () => {
@@ -179,6 +171,17 @@ describe('buildFilterQuery', () => {
 })
 
 describe('mapQueryResponse (responses[] envelope, _id keys, neutral leg scores)', () => {
+  it('normalizes rc.18 object totals to numbers (corpus-true {value, relation})', () => {
+    const envelope: WireQueryEnvelope = {
+      responses: [{
+        hits: { total: { value: 42, relation: 'exact' }, max_score: 0, hits: [] },
+        aggregations: null, took: 1, status: 200, error: null, table: 't',
+      }],
+    }
+    expect(mapQueryResponse(envelope, 't').total).toBe(42)
+  })
+
+
   it('unwraps the envelope and passes _index_scores through verbatim', () => {
     const envelope: WireQueryEnvelope = {
       responses: [{

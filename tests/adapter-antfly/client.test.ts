@@ -69,29 +69,23 @@ describe('error taxonomy', () => {
 })
 
 describe('query', () => {
-  it('unwraps the responses[] envelope and maps _id/_index_scores', async () => {
+  it('unwraps the responses[] envelope, maps _id/_index_scores, and normalizes object totals', async () => {
     const client = makeClient([
       {
         match: (url, init) => url.includes('/query') && init?.method === 'POST',
-        handle: (_url, init) => {
-          const req = JSON.parse(String(init?.body))
-          if (req.count) {
-            return json({ responses: [{ hits: { total: 42, hits: [], max_score: 0 }, aggregations: null, took: 1, status: 200, error: null, table: 't' }] })
-          }
-          return json({
-            responses: [{
-              hits: {
-                total: 2,
-                max_score: 0.9,
-                hits: [{ _id: 'a', _score: 0.9, _index_scores: { full_text: 0.7, sem: -0.2 }, _source: { title: 'x' }, _sort: null }],
-              },
-              aggregations: null, took: 2, status: 200, error: null, table: 't',
-            }],
-          })
-        },
+        handle: () => json({
+          responses: [{
+            hits: {
+              // rc.18: corpus-true object total on every response
+              total: { value: 42, relation: 'exact' },
+              max_score: 0.9,
+              hits: [{ _id: 'a', _score: 0.9, _index_scores: { full_text: 0.7, sem: -0.2 }, _source: { title: 'x' }, _sort: null }],
+            },
+            aggregations: null, took: 2, status: 200, error: null, table: 't',
+          }],
+        }),
       },
     ])
-    // semantic query → companion count fires → true total 42
     const result = await client.query('t', { text: 'x', adapterOptions: { indexes: ['sem'] } })
     expect(result.hits[0].key).toBe('a')
     expect(result.hits[0].scoreBreakdown).toEqual({ full_text: 0.7, sem: -0.2 })
@@ -124,10 +118,9 @@ describe('query', () => {
     expect(result.diagnostics?.strategy).toBe('fts')
     expect((result.diagnostics?.adapter as Record<string, unknown>)?.degraded).toBe('semantic-embed-timeout')
     expect(result.diagnostics?.budget).toBe('degraded')
-    // attempt 1 (semantic, timed out) + concurrent companion count (fired
-    // before the outcome was known; its result is discarded on degrade) +
-    // fts retry
-    expect(calls).toBe(3)
+    // attempt 1 (semantic, timed out) + fts retry — nothing else (the old
+    // count twin is gone; rc.18 totals are corpus-true on every response)
+    expect(calls).toBe(2)
   })
 
   it('non-timeout semantic failures are NOT silently degraded', async () => {
@@ -213,30 +206,6 @@ describe('query deadlines (rc.18 timeout_ms)', () => {
     expect(result.diagnostics?.budget).toBe('degraded')
   })
 
-  it('companion count runs CONCURRENTLY with the main query', async () => {
-    // The main response is held until the count request has ARRIVED. A
-    // sequential implementation (count after main) deadlocks here and the
-    // 1s guard fails the test.
-    let countArrived: () => void
-    const countGate = new Promise<void>((resolve) => { countArrived = resolve })
-    const client = makeClient([
-      {
-        match: (url) => url.includes('/query'),
-        handle: async (_url, init) => {
-          const req = JSON.parse(String(init?.body))
-          if (req.count) {
-            countArrived!()
-            return json({ responses: [{ hits: { total: 42, hits: [], max_score: 0 }, aggregations: null, took: 1, status: 200, error: null, table: 't' }] })
-          }
-          await Promise.race([countGate, new Promise((_, reject) => setTimeout(() => reject(new Error('count never arrived — sequential twin')), 1000))])
-          return json({ responses: [{ hits: { total: 1, hits: [{ _id: 'a', _score: 1, _index_scores: null, _source: {}, _sort: null }], max_score: 1 }, aggregations: null, took: 1, status: 200, error: null, table: 't' }] })
-        },
-      },
-    ])
-    const result = await client.query('t', { text: 'x', adapterOptions: { indexes: ['sem'] } })
-    expect(result.total).toBe(42)
-  })
-
   it('multiQuery marks a table that missed its deadline entirely as budget: omitted', async () => {
     const client = makeClient([
       { match: (url) => url.includes('/tables/slow/query'), handle: () => new Response('deadline exceeded', { status: 504 }) },
@@ -304,19 +273,21 @@ describe('documents', () => {
 })
 
 describe('scan', () => {
-  it('parses NDJSON lines, accepts key/_key, skips keyless rows', async () => {
+  it('parses NDJSON lines, accepts _id/key/_key, skips keyless rows', async () => {
     const nd = [
+      JSON.stringify({ _id: 'r18', title: 'zero' }),
       JSON.stringify({ key: 'a', title: 'one' }),
       JSON.stringify({ _key: 'b', title: 'two' }),
       JSON.stringify({ title: 'keyless' }),
       '',
     ].join('\n')
     const client = makeClient([
-      { match: (url) => url.includes('/lookup'), handle: () => new Response(nd, { status: 200 }) },
+      { match: (url) => url.includes('/documents'), handle: () => new Response(nd, { status: 200 }) },
     ])
     const rows: Array<{ key: string; document: Record<string, unknown> }> = []
     for await (const row of client.scan('t', { fields: ['title'] })) rows.push(row)
     expect(rows).toEqual([
+      { key: 'r18', document: { title: 'zero' } },
       { key: 'a', document: { title: 'one' } },
       { key: 'b', document: { title: 'two' } },
     ])

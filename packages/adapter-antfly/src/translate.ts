@@ -16,7 +16,8 @@
  *
  * Still-standing engine constraints (probe-verified, keep):
  *   - `order_by` unsupported on the Zig engine → never sent.
- *   - totals are page-scoped → `count: true` twin for true totals.
+ *   - totals are corpus-true `{value, relation}` objects (rc.18; the old
+ *     page-scoped count-twin is gone).
  *   - `semantic + offset>0` hard-400s → offset only on FTS-only queries.
  */
 import type {
@@ -253,15 +254,10 @@ function buildAggregations(q: Query): Record<string, unknown> | undefined {
   return Object.keys(aggs).length > 0 ? aggs : undefined
 }
 
-/**
- * Companion count request for true totals: same query, count-only.
- * Needed for faceted/semantic flows — totals are page-scoped otherwise.
- */
-export function toCountRequest(request: WireQueryRequest): WireQueryRequest {
-  const count: WireQueryRequest = { ...request, count: true }
-  delete count.reranker
-  delete count.offset
-  return count
+/** rc.18 totals are `{value, relation}` objects (corpus-true); tolerate the old number. */
+function normalizeTotal(total: number | { value: number; relation?: string } | undefined): number | undefined {
+  if (total === undefined || total === null) return undefined
+  return typeof total === 'number' ? total : total.value
 }
 
 export function mapQueryResponse(envelope: WireQueryEnvelope | null, _table: string): QueryResult {
@@ -283,7 +279,7 @@ export function mapQueryResponse(envelope: WireQueryEnvelope | null, _table: str
   }
   return {
     hits,
-    total: response.hits?.total ?? hits.length,
+    total: normalizeTotal(response.hits?.total) ?? hits.length,
     ...(Object.keys(facets).length > 0 ? { facets } : {}),
     diagnostics: {
       strategy: 'hybrid',

@@ -63,7 +63,8 @@ export interface WireHit {
 
 export interface WireQueryResponse {
   hits: {
-    total: number
+    /** rc.18+: ES-style object with the CORPUS-TRUE count; was a page-scoped number. */
+    total: number | { value: number; relation?: string }
     hits: WireHit[]
     max_score: number
   } | null
@@ -130,5 +131,7 @@ export const paths = {
   query: (t: string) => `/db/v1/tables/${encodeURIComponent(t)}/query`,
   indexes: (t: string) => `/db/v1/tables/${encodeURIComponent(t)}/indexes`,
   document: (t: string, key: string) => `/db/v1/tables/${encodeURIComponent(t)}/documents/${encodeURIComponent(key)}`,
-  lookup: (t: string) => `/db/v1/tables/${encodeURIComponent(t)}/lookup`,
+  // rc.18 moved bulk key scans from /lookup (now 405) to /documents —
+  // same NDJSON contract, same needs-a-body quirk.
+  lookup: (t: string) => `/db/v1/tables/${encodeURIComponent(t)}/documents`,
 } as const
