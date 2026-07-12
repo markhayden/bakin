@@ -240,3 +240,18 @@ search itself is honestly down.
 4. **Keys must be stable** — the item's unique ID, never a mutable path. Prefix multi-pattern keys.
 5. **`reindex()` is a backfill source, not a sync mechanism.** Side-effect free, restartable, throws on unavailable dependencies. A generator that yields nothing on failure will let a blue/green migration converge on an empty table.
 6. **Test the unlink hook** — copy `tests/integration/search-watcher-sync.test.ts`.
+
+## Surface Obligations (D11 + latency contract)
+
+Any UI that consumes `useSearch` must render ALL of:
+
+- `status === 'loading'` — a visible in-flight indicator.
+- `status === 'unavailable'` — the SDK `SearchUnavailable` panel (engine
+  down; the hook maps HTTP 503 `search_unavailable`). If the page keeps
+  working via a client-side fallback (e.g. substring filtering), SAY SO
+  with an inline degraded banner — never silently substitute.
+- `meta.partial` — the SDK `SearchPartialChip` (a source missed its query
+  budget; tooltip names it).
+- Debug mode — `ScoreOverlay` gated on `useDebug()[0]`, optionally with
+  `matchedFields: computeMatchedFields(query, hit.fields)` for the
+  "matched: title, tags" / "semantic match" line.

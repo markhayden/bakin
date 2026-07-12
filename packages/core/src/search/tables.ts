@@ -56,6 +56,8 @@ export interface TableState {
   migratingTo: string | null
   phase: string | null
   backfillDone: number | null
+  /** Epoch ms of the last registry transition (create/rebuild/flip). */
+  updatedAt: number
 }
 
 const MODULE = 'search-tables'
@@ -128,6 +130,7 @@ interface Row {
   migrating_to: string | null
   migration_phase: string | null
   backfill_done: number | null
+  updated_at: number
 }
 
 function getRow(logical: string): Row | null {
@@ -166,6 +169,7 @@ export function tableStatus(logical: string): TableState | null {
     migratingTo: row.migrating_to,
     phase: row.migration_phase,
     backfillDone: row.backfill_done,
+    updatedAt: row.updated_at,
   }
 }
 
@@ -181,6 +185,7 @@ export function listTableStates(): TableState[] {
       migratingTo: row.migrating_to,
       phase: row.migration_phase,
       backfillDone: row.backfill_done,
+      updatedAt: row.updated_at,
     }))
 }
 
@@ -228,6 +233,19 @@ async function converged(adapter: SearchAdapter, physical: string, expected: num
     if (legs.some((leg) => leg.state !== 'ready')) return false
   }
   return true
+}
+
+/**
+ * Delete a logical table's registry row. Returns every physical the row
+ * referenced (active + mid-migration green) so the caller can drop them
+ * engine-side. Used by content-type purge and the orphan-row sweep.
+ */
+export function removeTableRegistration(logical: string): string[] {
+  const row = getRow(logical)
+  if (!row) return []
+  const physicals = [row.physical, ...(row.migrating_to ? [row.migrating_to] : [])]
+  db().prepare('DELETE FROM search_tables WHERE logical = ?').run(logical)
+  return physicals
 }
 
 function noteTombstone(physical: string): void {
@@ -286,9 +304,28 @@ async function runMigration(
 
   await createTableTolerant(adapter, green, def.config)
 
-  setPhase(def.logical, 'backfilling', 0)
-  opts?.onProgress?.('backfilling', 0)
-  const emitted = await backfill(adapter, def, green, opts?.onProgress)
+  // Park→resume fast path: when a previous attempt's backfill fully landed
+  // (green already holds the emitted corpus — the registry remembers the
+  // count), re-running it would re-embed everything just to wait out
+  // another converge window. Skip straight to converge; dual-write has
+  // kept the green current in the meantime.
+  const priorEmitted = old.migrating_to === green ? old.backfill_done ?? 0 : 0
+  let emitted: number
+  if (priorEmitted > 0) {
+    const greenStats = await adapter.tables.stats(green).catch(() => null)
+    if ((greenStats?.documents ?? 0) >= priorEmitted) {
+      emitted = priorEmitted
+      log.info('resume: green already backfilled — skipping re-backfill', { logical: def.logical, green, emitted })
+    } else {
+      setPhase(def.logical, 'backfilling', 0)
+      opts?.onProgress?.('backfilling', 0)
+      emitted = await backfill(adapter, def, green, opts?.onProgress)
+    }
+  } else {
+    setPhase(def.logical, 'backfilling', 0)
+    opts?.onProgress?.('backfilling', 0)
+    emitted = await backfill(adapter, def, green, opts?.onProgress)
+  }
 
   setPhase(def.logical, 'converging')
   opts?.onProgress?.('converging', emitted)

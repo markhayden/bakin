@@ -216,6 +216,19 @@ export interface SearchResult {
   indexScores?: Record<string, number>
 }
 
+/** Per-source outcome for one table inside a cross-table search. */
+export interface SearchTableMeta {
+  /** Logical table name (e.g. bakin_assets). */
+  table: string
+  hits: number
+  took_ms: number
+  /**
+   * Present when this table missed its query budget: 'degraded' = answered
+   * keyword-only (semantic lane dropped), 'omitted' = contributed nothing.
+   */
+  budget?: 'degraded' | 'omitted'
+}
+
 /** Full search response: results, aggregations, and query metadata. */
 export interface SearchResponse {
   results: SearchResult[]
@@ -227,6 +240,10 @@ export interface SearchResponse {
     took_ms: number
     /** 'unavailable' = the engine was down; HTTP boundaries surface it as 503. */
     source: 'search' | 'unavailable'
+    /** True when any source degraded or was omitted — surface it, never hide it (D11). */
+    partial?: boolean
+    /** Per-source outcomes (cross-table searches). */
+    tables?: SearchTableMeta[]
   }
 }
 
@@ -236,6 +253,8 @@ export interface SearchHealthIndex {
   name: string
   totalIndexed: number
   rebuilding: boolean
+  /** Numeric backlog for this leg (docs queued for enrichment), when the engine reports one. */
+  pending?: number
   error?: string
 }
 
@@ -252,6 +271,12 @@ export interface SearchHealthTable {
   phase: string | null
   pluginId: string
   docCount: number | null
+  /** Epoch ms of the last delivered index write for this table (journal ack), null when never. */
+  lastIndexedAt: number | null
+  /** Epoch ms of the last registry transition (create/rebuild/flip), null when unknown. */
+  lastRebuildAt: number | null
+  /** Pending + inflight journal rows for this table (numeric backlog). */
+  journalPending: number
   legs: SearchHealthIndex[]
   healthy: boolean
 }

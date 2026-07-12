@@ -32,7 +32,6 @@ import {
   buildBatchDeletes,
   mapQueryResponse,
   mapIndexStatuses,
-  toCountRequest,
 } from '../../packages/adapter-antfly/src/translate'
 import { DEFAULT_SETTINGS } from '../../packages/adapter-antfly/src/defaults'
 import type { WireQueryEnvelope, WireIndexStatusEntry } from '../../packages/adapter-antfly/src/wire'
@@ -150,13 +149,6 @@ describe('buildQueryRequest', () => {
     expect('order_by' in req).toBe(false)
   })
 
-  it('toCountRequest builds the true-totals twin', () => {
-    const req = buildQueryRequest('t', { text: 'x', offset: 0, facets: ['kind'] }, S)
-    const count = toCountRequest(req)
-    expect(count.count).toBe(true)
-    expect(count.offset).toBeUndefined()
-    expect(count.aggregations).toEqual(req.aggregations)
-  })
 })
 
 describe('buildFilterQuery', () => {
@@ -179,6 +171,17 @@ describe('buildFilterQuery', () => {
 })
 
 describe('mapQueryResponse (responses[] envelope, _id keys, neutral leg scores)', () => {
+  it('normalizes rc.18 object totals to numbers (corpus-true {value, relation})', () => {
+    const envelope: WireQueryEnvelope = {
+      responses: [{
+        hits: { total: { value: 42, relation: 'exact' }, max_score: 0, hits: [] },
+        aggregations: null, took: 1, status: 200, error: null, table: 't',
+      }],
+    }
+    expect(mapQueryResponse(envelope, 't').total).toBe(42)
+  })
+
+
   it('unwraps the envelope and passes _index_scores through verbatim', () => {
     const envelope: WireQueryEnvelope = {
       responses: [{
@@ -282,6 +285,38 @@ describe('mapIndexStatuses', () => {
       { leg: 'full_text_index_v0', state: 'ready', indexedCount: 5 },
       { leg: 'sem', state: 'building', indexedCount: 2 },
       { leg: 'vis', state: 'error', indexedCount: 0, error: 'ModelNotFound' },
+    ])
+  })
+
+  // rc.18 WORKAROUND — a full_text leg (no enrichment_runtime) on an empty
+  // or fully caught-up table reports rebuilding/backfill_active FOREVER.
+  // Observed live 2026-07-11: every empty green parked because its FTS leg
+  // never went ready (bakin#spec search-trust-and-speed, GATE B). Idle
+  // detection for runtime-less legs: caught up (indexed >= docs) with the
+  // flags still up ⇒ ready.
+  it('treats a caught-up runtime-less (full_text) leg as ready despite stuck flags', () => {
+    const entries: WireIndexStatusEntry[] = [
+      // empty table — the parked-green case
+      { config: { name: 'full_text_index_v0', type: 'full_text' }, status: { index_type: 'full_text', rebuilding: true, total_indexed: 0, backfill_active: true, backfill_state: 'running', doc_count: 0 } },
+      // caught up with docs — the stuck-flags case
+      { config: { name: 'ft2', type: 'full_text' }, status: { index_type: 'full_text', rebuilding: true, total_indexed: 60, backfill_active: true, backfill_state: 'running', doc_count: 60 } },
+      // genuinely mid-backfill — must stay building
+      { config: { name: 'ft3', type: 'full_text' }, status: { index_type: 'full_text', rebuilding: true, total_indexed: 10, backfill_active: true, backfill_state: 'running', doc_count: 60 } },
+    ]
+    expect(mapIndexStatuses(entries)).toEqual([
+      { leg: 'full_text_index_v0', state: 'ready', indexedCount: 0 },
+      { leg: 'ft2', state: 'ready', indexedCount: 60 },
+      { leg: 'ft3', state: 'building', indexedCount: 10 },
+    ])
+  })
+
+  it('does not apply runtime-less idle detection to embeddings legs with a runtime', () => {
+    const entries: WireIndexStatusEntry[] = [
+      // embeddings leg with pending work — building even though counts match
+      { config: { name: 'sem', type: 'embeddings' }, status: { index_type: 'embeddings', rebuilding: true, total_indexed: 5, backfill_active: true, backfill_state: 'running', doc_count: 5, enrichment_runtime: { pending_sequence_count: 3, retrying: false, active_embed_batch_items: 0 } } },
+    ]
+    expect(mapIndexStatuses(entries)).toEqual([
+      { leg: 'sem', state: 'building', indexedCount: 5, pendingCount: 3 },
     ])
   })
 })

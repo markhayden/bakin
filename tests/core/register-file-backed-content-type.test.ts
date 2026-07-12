@@ -45,7 +45,7 @@ mock.module('@/core/settings', () => ({
           reranker: { enabled: false },
         },
         embedders: {
-          default: { provider: 'termite', model: 'BAAI/bge-small-en-v1.5' },
+          default: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5' },
         },
         chunking: { defaultTargetTokens: 200, defaultOverlapTokens: 25 },
         auditTtl: '90d',

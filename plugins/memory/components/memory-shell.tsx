@@ -42,6 +42,7 @@ import {
 import { PluginHeader } from "@makinbakin/sdk/components"
 import { FacetFilter, type FacetOption } from "@makinbakin/sdk/components"
 import { AgentFilter } from "@makinbakin/sdk/components"
+import { SearchUnavailable } from "@makinbakin/sdk/components"
 import { Switch } from "@makinbakin/sdk/ui"
 import { useSearch, type SearchResult } from "@makinbakin/sdk/hooks"
 import { useQueryState, useQueryArrayState } from "@makinbakin/sdk/hooks"
@@ -165,11 +166,24 @@ function MemoryShellInner() {
   // and turn content is up to 32 KB, so bumping to 100 pushed latency to
   // 30s. When Debug is off and every top-20 hit is turn/audit, the client
   // renders a targeted empty state pointing the user at the Debug toggle.
-  const { results: searchResults, aggregations, loading: searchLoading, error: searchError, search, clear } = useSearch({
+  const {
+    results: searchResults,
+    aggregations,
+    status: searchStatus,
+    loading: searchLoading,
+    error: searchError,
+    search,
+    clear,
+    retry,
+  } = useSearch({
     plugin: 'memory',
     facets: ['tier', 'agent', 'kind'],
     debounce: 250,
   })
+
+  // Engine-down is an explicit state (spec D11): render the honest
+  // SearchUnavailable panel, never a misleading "no results" empty state.
+  const searchUnavailable = searchActive && searchStatus === 'unavailable'
 
   const { results: recentResults, loading: recentLoading, error: recentError } = useRecentFeed(
     !searchActive,
@@ -365,15 +379,19 @@ function MemoryShellInner() {
         </div>
       )}
 
-      <MemorySearchResults
-        results={filtered}
-        loading={loading}
-        error={error}
-        query={query}
-        hiddenByDebug={hiddenByDebug}
-        onEnableDebug={() => setDebugParam('1')}
-        onSelect={record.open}
-      />
+      {searchUnavailable ? (
+        <SearchUnavailable retry={retry} />
+      ) : (
+        <MemorySearchResults
+          results={filtered}
+          loading={loading}
+          error={error}
+          query={query}
+          hiddenByDebug={hiddenByDebug}
+          onEnableDebug={() => setDebugParam('1')}
+          onSelect={record.open}
+        />
+      )}
 
       <MemoryDetailDrawer
         result={record.row}

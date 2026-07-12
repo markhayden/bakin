@@ -10,7 +10,7 @@ import { DeleteTaskDialog } from './delete-task-dialog'
 import { BlockReasonDialog } from './block-reason-dialog'
 import { TaskDetailDrawer } from './task-detail-dialog'
 import { TaskMetrics } from './task-metrics'
-import { PluginHeader } from "@makinbakin/sdk/components"
+import { PluginHeader, SearchDegradedChip, SearchPartialChip } from "@makinbakin/sdk/components"
 import { TaskFilters } from './task-filters'
 import { TaskLogTable } from './task-log-table'
 import { filterBoardColumns, useTaskFilters } from '../hooks/use-task-filters'
@@ -26,7 +26,7 @@ import { useBudgetStatus, budgetHoldReason, type BudgetHold } from '../hooks/use
 import { useBrandStatus, brandHoldReason, type BrandHold } from '../hooks/use-brand-status'
 import { useLiveActivity } from '../hooks/use-live-activity'
 import { Button, Skeleton } from "@makinbakin/sdk/ui"
-import { Kanban, Table2, Plus } from 'lucide-react'
+import { Kanban, Table2, Plus, Loader2 } from 'lucide-react'
 import type { TaskScoreInfo } from './task-card'
 import type { Task, TaskColumns, ColumnId } from '../types'
 
@@ -188,9 +188,15 @@ export function KanbanBoard() {
   const [taskIdParam, setTaskIdParam] = useQueryState('taskId', '')
   const hasBoardFilters = Boolean(search) || agentFilter !== 'all' || brandFilter.length > 0
 
-  const { filteredColumns, allTasksFlat, aggregations, searchResults } = useTaskFilters(displayColumns, {
+  const { filteredColumns, allTasksFlat, aggregations, searchResults, searchStatus, searchMeta } = useTaskFilters(displayColumns, {
     search, agentFilter, statusFilter, brandFilter,
   })
+
+  // Honest search signal (spec D11): the substring fallback keeps the board
+  // browsable when the engine is down, but the user must SEE that search is
+  // degraded — plus in-flight and partial-results states while it's up.
+  const searchSignalActive = Boolean(search.trim()) &&
+    (searchStatus === 'loading' || searchStatus === 'unavailable' || Boolean(searchMeta?.partial))
 
   // Brand facet options + the opt-in unbranded nudge flag ride the brands
   // list response (#419) — no separate settings fetch from the tasks plugin.
@@ -497,6 +503,19 @@ export function KanbanBoard() {
             }
           />
         </div>
+
+        {searchSignalActive && (
+          <div className="px-6 pb-2 flex items-center gap-2">
+            {searchStatus === 'loading' && (
+              <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground" data-testid="tasks-search-loading">
+                <Loader2 className="size-3 animate-spin" />
+                Searching…
+              </span>
+            )}
+            {searchStatus === 'unavailable' && <SearchDegradedChip testId="tasks-search-degraded" />}
+            {searchMeta?.partial && <SearchPartialChip meta={searchMeta} />}
+          </div>
+        )}
 
         <div className="px-6 pb-3">
           <TaskFilters

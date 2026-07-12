@@ -31,6 +31,13 @@ export interface SearchAdapterSettings extends Record<string, unknown> {
     strategy: 'rrf' | 'semantic_only' | 'full_text_only'
     defaultLimit: number
     /**
+     * Wall budget (ms) for one search request, applied per table (tables
+     * run in parallel). Passed to the engine as a cooperative deadline and
+     * enforced client-side with a small grace; a source that misses it
+     * degrades to keyword-only or is omitted — labeled, never silent.
+     */
+    queryBudgetMs?: number
+    /**
      * Cross-encoder reranker configuration. When `enabled` is true and a
      * query does not pass `rerank: false`, Bakin attaches this config to
      * every search adapter query request. Reranking adds ~100-500ms latency
@@ -264,6 +271,9 @@ export const DEFAULT_SETTINGS: BakinSettings = {
       search: {
         strategy: 'rrf',
         defaultLimit: 20,
+        // ~2s wall budget per search request (spec: search-trust-and-speed
+        // SD2). Applied per table; tables fan out in parallel.
+        queryBudgetMs: 2000,
         reranker: {
           // Still disabled at v0.2.0-rc.9, for a new reason. The rc.2 mxbai
           // SIGABRT (bakin#456) is fixed — reranking no longer crashes the

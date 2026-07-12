@@ -63,10 +63,10 @@ mock.module('@/core/settings', () => ({
         search: {
           strategy: 'rrf',
           defaultLimit: 20,
-          reranker: { enabled: false, provider: 'termite', model: 'm', threshold: 0 },
+          reranker: { enabled: false, provider: 'antfly', model: 'm', threshold: 0 },
         },
         embedders: {
-          default: { provider: 'termite', model: 'BAAI/bge-small-en-v1.5' },
+          default: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5' },
         },
         chunking: { defaultTargetTokens: 200, defaultOverlapTokens: 25 },
         auditTtl: '90d',

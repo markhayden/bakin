@@ -74,9 +74,13 @@ interface MockSearchResult {
 const mockSearchState: {
   results: MockSearchResult[]
   aggregations: Record<string, Array<{ value: string; count: number }>>
+  status: string
+  meta: { query: string; total: number; took_ms: number; source: string; partial?: boolean } | null
 } = {
   results: [],
   aggregations: {},
+  status: 'idle',
+  meta: null,
 }
 
 const searchSpy = mock()
@@ -86,11 +90,13 @@ mock.module('@/hooks/use-search', () => ({
   useSearch: () => ({
     results: mockSearchState.results,
     aggregations: mockSearchState.aggregations,
-    loading: false,
+    status: mockSearchState.status,
+    loading: mockSearchState.status === 'loading',
     error: null,
-    meta: null,
+    meta: mockSearchState.meta,
     search: searchSpy,
     clear: clearSpy,
+    retry: mock(),
   }),
   reorderBySearchResults: <T extends { id: string }>(items: T[], results: MockSearchResult[]): T[] => {
     if (!results.length) return items
@@ -149,6 +155,8 @@ function makeColumns(): TaskColumns {
 beforeEach(() => {
   mockSearchState.results = []
   mockSearchState.aggregations = {}
+  mockSearchState.status = 'idle'
+  mockSearchState.meta = null
   searchSpy.mockClear()
   clearSpy.mockClear()
   cleanup()
@@ -288,5 +296,20 @@ describe('useTaskFilters', () => {
       useTaskFilters(emptyColumns(), { search: '', agentFilter: 'all', statusFilter: [] }),
     )
     expect(result.current.allTasksFlat).toEqual([])
+  })
+
+  it('passes searchStatus and searchMeta through so the board can render honest signals', () => {
+    mockSearchState.status = 'unavailable'
+    mockSearchState.meta = { query: 'x', total: 0, took_ms: 1, source: 'search', partial: true }
+
+    const cols = makeColumns()
+    const { result } = renderHook(() =>
+      useTaskFilters(cols, { search: 'banana', agentFilter: 'all', statusFilter: [] }),
+    )
+
+    expect(result.current.searchStatus).toBe('unavailable')
+    expect(result.current.searchMeta?.partial).toBe(true)
+    // The substring fallback still browses the board while degraded.
+    expect(result.current.allTasksFlat.map(t => t.id)).toEqual(['b'])
   })
 })

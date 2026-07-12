@@ -460,14 +460,21 @@ weights come from the content type's `indexes[].weight` and ride
 - **`_index_scores` keys are neutral leg names** (`full_text`, the declared
   embedding-leg names) — they map 1:1 onto `scoreBreakdown` with no
   normalization. Embedding legs report `-cosine_distance`.
-- **`filter_query` works and filters BOTH lanes** (full-text and semantic)
-  server-side. Bakin filters translate to one boolean AST node
-  (`match_phrase` / numeric range / disjunction / `must_not`) in
-  `buildFilterQuery()`. The old filter-in-AST workaround and the client-side
-  semantic post-filter are gone.
-- **`order_by` is unsupported on the Zig engine** (hard-rejected, along with
-  `search_after`/`search_before`/`join`; the Go server supports it — engine
-  skew, not a bug). `Query.sort` is never sent.
+- **`filter_query` is BROKEN on the pinned Zig engine** (rejects
+  `match_phrase`, analyzer-mangles keyword matches — live-probed, canary-
+  pinned). Filters compose INTO the `full_text_search` node
+  (`composeFtsWithFilters`) and force the FTS-only lane so an unfiltered
+  semantic leg can't leak filter-violating docs. Delete when upstream fixes
+  `filter_query` (canary flips).
+- **`order_by` LANDED in rc.18** (public exact-sort with a SortField
+  contract + 422 rejection taxonomy) but only for schema-mapped sortable
+  fields — Bakin sends no schema (type inference), and no Bakin surface
+  offers field sort, so `Query.sort` is still never sent. Adopt only when a
+  sort feature exists: declare sortable field capabilities at create, then
+  map `Query.sort → order_by`.
+- **`timeout_ms` (rc.18) is the cooperative server-side query deadline**
+  (expiry → 504). Bakin sends it on every budgeted query — see Latency
+  Contract below.
 - **Totals are page-scoped** without `count: true`. `limit: 0` flows send
   `count: true` (true total + full-corpus facet buckets; incompatible with a
   reranker — a count has nothing to rerank). Queries that want hits AND true
@@ -547,6 +554,29 @@ unrelated image's `description` higher). Multimodal tables get raw fusion of
 full-text + text-embedding + media-embedding legs; the cross-encoder pass is
 skipped entirely.
 
+## Latency Contract & Query Budget (search-trust-and-speed)
+
+One wall budget for every search request:
+`settings.search.settings.search.queryBudgetMs` (default **2000**). Tables
+fan out in parallel, so the budget applies per table:
+
+- `crossTableSearch` stamps `Query.deadlineMs` on every table query.
+- The adapter sends it server-side (`timeout_ms`, rc.18 — expiry 504) and
+  aborts client-side at deadline + 500ms grace (dead-engine backstop only).
+- A table whose semantic lane misses the deadline retries ONCE fts-only
+  inside the REMAINING budget → `diagnostics.budget = 'degraded'`. A table
+  that can't answer at all contributes zero hits with
+  `diagnostics.budget = 'omitted'` (multiQuery isolation).
+- The response meta carries per-source outcomes — `meta.tables[]`
+  (`table`/`hits`/`took_ms`/`budget?`) and `meta.partial: true` when any
+  source degraded/omitted. HTTP surfaces pass it through verbatim.
+- UI: `SearchPartialChip` (SDK component) renders the amber "Partial
+  results" chip with a tooltip naming each slow source. The ⌘K overlay and
+  plugin surfaces all use it — slowness is never anonymous, degradation is
+  never silent (D11).
+- The page-scoped-totals companion count query runs CONCURRENTLY with the
+  main query (it used to double per-table latency).
+
 ## Embedders
 
 Model choices live in **adapter settings**, never in content-type definitions
@@ -592,9 +622,23 @@ adapter's media template. Full rationale:
 
 - `ctx.search.health()` / `getSearchHealth()` (`src/core/search-reindex.ts`):
   per registered table — physical-resolved stats + per-leg
-  `indexHealth` (`name`/`totalIndexed`/`rebuilding`/`error`) from
-  `tables.health()`, `healthy` = no leg in `error`. Read from status
+  `indexHealth` (`name`/`totalIndexed`/`rebuilding`/`pending?`/`error`) from
+  `tables.health()`, `healthy` = no leg in `error`, plus **freshness &
+  backlog**: `lastIndexedAt` (newest journal ack, falling back to the
+  registry transition), `lastRebuildAt`, `journalPending` (pending+inflight
+  rows for that table). Health cards render "indexed 3m ago · N queued · M
+  embedding"; `bakin search:stats` prints the same. Read from status
   surfaces, never a query.
+- **Backfill-spin watchdog** (`search-spin` check, health plugin): two
+  doctor-cadence samples ≥10min apart where a leg is `building` with zero
+  `indexedCount` progress and an empty journal ⇒ error finding naming the
+  tables + a confirmed (never automatic) blue/green rebuild repair. This is
+  the antfly#319 signature that burned 300% CPU for weeks on rc.17.
+- **Orphan registry-row sweep** (`sweepOrphanRegistryRows`, rides the
+  hourly deep sweep): drops `search_tables` rows whose content type has no
+  live registrant (plugin removed without purge) — engine physicals,
+  registry row, and journal rows. `purgeContentType` now tears all three
+  down at removal time, so the sweep is the backstop.
 - `GET /api/plugins/health/search-status` (health plugin) serves that
   snapshot to the health page.
 - `search.rebuild.{start,progress,complete}` SSE events drive live rebuild
@@ -618,6 +662,7 @@ the default `dimension`):
 | `search.strategy` | `string` | Default strategy (`rrf` \| `semantic_only` \| `full_text_only`) |
 | `search.fusionStrategy` | `string` | Hybrid fusion algorithm (`rrf` \| `rsf`, default `rrf`) |
 | `search.defaultLimit` | `number` | Default result count |
+| `search.queryBudgetMs` | `number` | Per-table cooperative query deadline (default `2000`) — see Latency Contract |
 | `search.reranker.provider` / `.model` | `string` | Reranker config; attaches only on per-query `rerank: true` (the content type's `rerankField` rides along when declared) |
 | `search.reranker.enabled` | `boolean` | Legacy master switch (default `false`); the current gate is per-query opt-in |
 | `embedders.default.{provider,model,dimension}` | | Text embedder (default `384` dims) |

@@ -2,11 +2,11 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from '@makinbakin/sdk/hooks'
-import { PluginHeader } from "@makinbakin/sdk/components"
+import { PluginHeader, SearchDegradedChip, SearchPartialChip } from "@makinbakin/sdk/components"
 import { EmptyState } from "@makinbakin/sdk/components"
 import { Skeleton } from "@makinbakin/sdk/ui"
 import { Button } from "@makinbakin/sdk/ui"
-import { Plus, Workflow } from 'lucide-react'
+import { Plus, Workflow, Loader2 } from 'lucide-react'
 import { useQueryState } from "@makinbakin/sdk/hooks"
 import { useSearch } from "@makinbakin/sdk/hooks"
 import { useDebug } from "@makinbakin/sdk/hooks"
@@ -74,6 +74,12 @@ export function WorkflowsPage() {
     else searchHook.clear()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search])
+
+  // Honest search signal (spec D11): the substring fallback below keeps the
+  // page browsable when the engine is down, but never silently — surface
+  // loading, engine-down, and partial-results states near the search input.
+  const searchSignalActive = Boolean(normalizedSearch) &&
+    (searchHook.status === 'loading' || searchHook.status === 'unavailable' || Boolean(searchHook.meta?.partial))
 
   // Build a score map keyed by workflow id/filename (stripping the `def:` search key prefix).
   // Used for both the relevance reorder AND the debug-mode RRF/BM25/SEM overlay.
@@ -216,6 +222,19 @@ export function WorkflowsPage() {
           </Button>
         }
       />
+
+      {searchSignalActive && (
+        <div className="flex items-center gap-2">
+          {searchHook.status === 'loading' && (
+            <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground" data-testid="workflows-search-loading">
+              <Loader2 className="size-3 animate-spin" />
+              Searching…
+            </span>
+          )}
+          {searchHook.status === 'unavailable' && <SearchDegradedChip testId="workflows-search-degraded" />}
+          {searchHook.meta?.partial && <SearchPartialChip meta={searchHook.meta} />}
+        </div>
+      )}
 
       <div className="flex-1 min-h-0 overflow-auto">
         {loading ? (

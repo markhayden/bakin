@@ -38,6 +38,7 @@ import { checkAgentBurn } from './lib/system-checks/agent-burn'
 import { checkSearchAdapter } from './lib/system-checks/search'
 import { checkSearchOutbox, searchOutboxRepair } from './lib/system-checks/search-outbox'
 import { checkSearchConsistency, searchConsistencyRepair } from './lib/system-checks/search-consistency'
+import { checkSearchSpin, searchSpinRepair } from './lib/system-checks/search-spin'
 import { checkAndSyncSkill, syncSkillRepair } from './lib/system-checks/sync-skill'
 import { checkPluginAssets } from './lib/system-checks/plugin-assets'
 import { checkPluginArtifacts } from './lib/system-checks/plugin-artifacts'
@@ -298,7 +299,7 @@ const routes = [
 
       const doctor = getLastResults()
       const searchRows = (doctor?.results ?? []).filter((row) =>
-        row.check === 'search' || row.check === 'search-outbox' || row.check === 'search-consistency')
+        row.check === 'search' || row.check === 'search-outbox' || row.check === 'search-consistency' || row.check === 'search-spin')
 
       return Response.json({
         windows: { '1h': byName('1h'), '24h': byName('24h') },
@@ -712,6 +713,12 @@ const healthPlugin: BakinPlugin = definePlugin({
       name: 'Search table consistency + deep sweep',
       run: () => checkSearchConsistency(),
       repair: searchConsistencyRepair(),
+    })
+    ctx.registerHealthCheck({
+      id: 'search-spin',
+      name: 'Search backfill-spin watchdog (zero-progress building legs)',
+      run: () => checkSearchSpin(),
+      repair: searchSpinRepair(),
     })
     ctx.registerHealthCheck({
       id: 'skill',

@@ -16,7 +16,8 @@
  *
  * Still-standing engine constraints (probe-verified, keep):
  *   - `order_by` unsupported on the Zig engine → never sent.
- *   - totals are page-scoped → `count: true` twin for true totals.
+ *   - totals are corpus-true `{value, relation}` objects (rc.18; the old
+ *     page-scoped count-twin is gone).
  *   - `semantic + offset>0` hard-400s → offset only on FTS-only queries.
  */
 import type {
@@ -179,6 +180,11 @@ export function buildQueryRequest(table: string, q: Query, settings: AntflySetti
     table,
     limit: q.limit ?? settings.search.defaultLimit,
   }
+  if (q.deadlineMs !== undefined && q.deadlineMs > 0) {
+    // rc.18 cooperative server-side deadline (expiry → 504). The client
+    // enforces deadline + grace as its abort timeout — see client.query.
+    request.timeout_ms = Math.round(q.deadlineMs)
+  }
 
   // Filters compose INTO the full_text_search node (rc.17 filter_query is
   // broken — see composeFtsWithFilters).
@@ -248,15 +254,10 @@ function buildAggregations(q: Query): Record<string, unknown> | undefined {
   return Object.keys(aggs).length > 0 ? aggs : undefined
 }
 
-/**
- * Companion count request for true totals: same query, count-only.
- * Needed for faceted/semantic flows — totals are page-scoped otherwise.
- */
-export function toCountRequest(request: WireQueryRequest): WireQueryRequest {
-  const count: WireQueryRequest = { ...request, count: true }
-  delete count.reranker
-  delete count.offset
-  return count
+/** rc.18 totals are `{value, relation}` objects (corpus-true); tolerate the old number. */
+function normalizeTotal(total: number | { value: number; relation?: string } | undefined): number | undefined {
+  if (total === undefined || total === null) return undefined
+  return typeof total === 'number' ? total : total.value
 }
 
 export function mapQueryResponse(envelope: WireQueryEnvelope | null, _table: string): QueryResult {
@@ -278,7 +279,7 @@ export function mapQueryResponse(envelope: WireQueryEnvelope | null, _table: str
   }
   return {
     hits,
-    total: response.hits?.total ?? hits.length,
+    total: normalizeTotal(response.hits?.total) ?? hits.length,
     ...(Object.keys(facets).length > 0 ? { facets } : {}),
     diagnostics: {
       strategy: 'hybrid',
@@ -401,10 +402,22 @@ export function mapIndexStatuses(entries: WireIndexStatusEntry[]): TableLegHealt
       && (runtime.active_embed_batch_items ?? 0) === 0) {
       building = false
     }
+    // rc.18 WORKAROUND — runtime-less legs (full_text) report
+    // rebuilding/backfill_active FOREVER once caught up, including on
+    // freshly created EMPTY tables (observed live 2026-07-11: every empty
+    // green parked because its FTS leg never went ready). Caught up
+    // (indexed >= docs) with the flags still raised and no runtime to
+    // consult ⇒ idle ⇒ ready. Pinned by the runtime-less-leg canary in
+    // workaround-regressions; delete when upstream clears the flags.
+    if (building && !runtime
+      && (status?.total_indexed ?? 0) >= (status?.doc_count ?? 0)) {
+      building = false
+    }
     return {
       leg: entry.config.name,
       state: failed ? 'error' as const : building ? 'building' as const : 'ready' as const,
       indexedCount: status?.total_indexed ?? 0,
+      ...(runtime?.pending_sequence_count !== undefined ? { pendingCount: runtime.pending_sequence_count } : {}),
       ...(failed && status?.last_error ? { error: status.last_error } : {}),
     }
   })

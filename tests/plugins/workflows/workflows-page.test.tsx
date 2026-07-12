@@ -108,11 +108,13 @@ mock.module('@/hooks/use-search', () => ({
   useSearch: () => ({
     results: searchState.results,
     aggregations: {},
+    status: 'ok',
     loading: false,
     error: null,
     meta: searchState.meta,
     search: searchState.search,
     clear: searchState.clear,
+    retry: mock(),
   }),
 }))
 

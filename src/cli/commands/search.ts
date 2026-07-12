@@ -78,33 +78,50 @@ async function cmdSearch(query: string, options: { table?: string; limit?: numbe
 }
 
 async function cmdSearchStats(): Promise<void> {
+  // Shape = SearchHealthSnapshot (getSearchHealth); the old num_docs/
+  // walBacklog fields never existed on this route and printed "? docs".
   const result = await apiGet('/api/plugins/health/search-status') as {
     enabled: boolean
+    outbox?: { pending: number; quarantined: number; oldestPendingAt: number | null }
     tables: Array<{
-      table: string
+      logical: string
       pluginId: string
-      stats: Record<string, unknown> | null
-      indexHealth?: Array<{ name: string; error?: string; walBacklog: number; rebuilding: boolean }>
-      healthy?: boolean
+      docCount: number | null
+      lastIndexedAt: number | null
+      journalPending: number
+      state: 'active' | 'migrating'
+      phase: string | null
+      legs: Array<{ name: string; totalIndexed: number; rebuilding: boolean; pending?: number; error?: string }>
+      healthy: boolean
     }>
   }
   if (process.stdout.isTTY) {
-    await printSearchStatsTui(result.enabled, result.tables as Array<Record<string, unknown>>)
+    await printSearchStatsTui(result.enabled, result.tables as unknown as Array<Record<string, unknown>>)
     return
   }
   console.log(`Search: ${result.enabled ? 'enabled' : 'disabled'}`)
-  if (result.tables?.length) {
-    for (const t of result.tables) {
-      const docs = (t.stats as any)?.num_docs ?? '?'
-      const healthTag = t.healthy === false ? ' [unhealthy]'
-        : t.indexHealth?.some(i => i.walBacklog > 0) ? ' [enriching]'
-        : ''
-      console.log(`  ${t.table} (${t.pluginId}): ${docs} docs${healthTag}`)
-      if (t.healthy === false && t.indexHealth) {
-        for (const idx of t.indexHealth) {
-          if (idx.error) console.log(`    ${idx.name}: ERROR — ${idx.error}`)
-        }
-      }
+  if (result.outbox) {
+    console.log(`Journal: ${result.outbox.pending} pending · ${result.outbox.quarantined} quarantined`)
+  }
+  const ago = (ms: number | null): string => {
+    if (ms === null) return 'never'
+    const s = Math.max(0, Math.floor((Date.now() - ms) / 1000))
+    if (s < 60) return `${s}s ago`
+    if (s < 3600) return `${Math.floor(s / 60)}m ago`
+    if (s < 86400) return `${Math.floor(s / 3600)}h ago`
+    return `${Math.floor(s / 86400)}d ago`
+  }
+  for (const t of result.tables ?? []) {
+    const backlog = t.legs.reduce((sum, leg) => sum + (leg.pending ?? 0), 0)
+    const tags = [
+      t.healthy === false ? '[unhealthy]' : '',
+      t.state === 'migrating' ? `[migrating${t.phase ? `: ${t.phase}` : ''}]` : '',
+      t.journalPending > 0 ? `[${t.journalPending} queued]` : '',
+      backlog > 0 ? `[${backlog} embedding]` : '',
+    ].filter(Boolean).join(' ')
+    console.log(`  ${t.logical} (${t.pluginId}): ${t.docCount ?? '?'} docs · indexed ${ago(t.lastIndexedAt)}${tags ? ` ${tags}` : ''}`)
+    for (const leg of t.legs) {
+      if (leg.error) console.log(`    ${leg.name}: ERROR — ${leg.error}`)
     }
   }
 }

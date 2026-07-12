@@ -35,13 +35,16 @@ import {
   buildTableCreate,
   mapIndexStatuses,
   mapQueryResponse,
-  toCountRequest,
 } from './translate'
 import { paths, type WireBatchResponse, type WireIndexStatusEntry, type WireQueryEnvelope, type WireQueryRequest } from './wire'
 
 const log = createLogger('antfly-client')
 
 const QUERY_TIMEOUT_MS = 15_000
+/** Client-side grace past a query's cooperative deadline (see runQuery). */
+const DEADLINE_GRACE_MS = 500
+/** Below this remaining budget the fts-only degrade retry can't help. */
+const MIN_RETRY_BUDGET_MS = 100
 const WRITE_TIMEOUT_MS = 30_000
 const AVAILABLE_TTL_MS = 3_000
 
@@ -232,44 +235,50 @@ export class AntflySearchClient implements SearchAdapter {
   }
 
   async query(table: string, q: Query): Promise<QueryResult> {
+    const started = Date.now()
     const request = buildQueryRequest(table, q, this.settings)
-    const wantsTrueTotals = !request.count && (request.aggregations !== undefined || request.semantic_search !== undefined)
     let main: WireQueryEnvelope | null
     let degraded = false
     try {
-      main = await this.runQuery(table, request)
+      main = await this.runQuery(table, request, q.deadlineMs)
     } catch (err) {
       // D11's sanctioned degrade, implemented client-side: while a large
       // embeddings backfill saturates the inference queue, the QUERY's own
-      // embed job starves and the whole request times out. Retry once
-      // FTS-only and LABEL it — visible in diagnostics, never silent.
-      const timedOut = err instanceof SearchEngineUnavailableError && /timed out|TimeoutError/i.test(err.message)
-      if (!timedOut || request.semantic_search === undefined) throw err
-      const ftsOnly = buildQueryRequest(table, { ...q, strategy: 'fts' }, this.settings)
-      main = await this.runQuery(table, ftsOnly)
+      // embed job starves and the request times out — client-side abort,
+      // or the engine's own rc.18 cooperative deadline (504). Retry once
+      // FTS-only inside the REMAINING budget and LABEL it — visible in
+      // diagnostics, never silent.
+      const deadlineMiss = err instanceof SearchEngineUnavailableError
+        && /timed out|TimeoutError|antfly 504 /i.test(err.message)
+      if (!deadlineMiss || request.semantic_search === undefined) throw err
+      const remaining = q.deadlineMs === undefined ? undefined : q.deadlineMs - (Date.now() - started)
+      if (remaining !== undefined && remaining < MIN_RETRY_BUDGET_MS) throw err
+      const ftsOnly = buildQueryRequest(table, { ...q, strategy: 'fts', deadlineMs: remaining }, this.settings)
+      main = await this.runQuery(table, ftsOnly, remaining)
       degraded = true
     }
-    const count = wantsTrueTotals && !degraded
-      ? await this.runQuery(table, toCountRequest(request)).catch(() => null)
-      : null
+    // rc.18 totals and aggregation buckets are corpus-true on every
+    // response — the old page-scoped-totals count twin is gone.
     const result = mapQueryResponse(main, table)
     if (degraded) {
       result.diagnostics = {
         ...(result.diagnostics ?? { strategy: 'fts' }),
         strategy: 'fts',
+        budget: 'degraded',
         adapter: { ...(result.diagnostics?.adapter ?? {}), degraded: 'semantic-embed-timeout' },
       }
-    }
-    if (count) {
-      const countResult = mapQueryResponse(count, table)
-      result.total = countResult.total
-      if (countResult.facets) result.facets = countResult.facets
     }
     return result
   }
 
-  private runQuery(table: string, request: WireQueryRequest): Promise<WireQueryEnvelope | null> {
-    return this.requestJson<WireQueryEnvelope>('POST', paths.query(table), request, QUERY_TIMEOUT_MS)
+  private runQuery(table: string, request: WireQueryRequest, deadlineMs?: number): Promise<WireQueryEnvelope | null> {
+    // Client abort = deadline + grace: the server owns the deadline
+    // (timeout_ms → 504); the abort only covers an engine that stopped
+    // answering entirely.
+    const timeout = deadlineMs !== undefined && deadlineMs > 0
+      ? Math.round(deadlineMs) + DEADLINE_GRACE_MS
+      : QUERY_TIMEOUT_MS
+    return this.requestJson<WireQueryEnvelope>('POST', paths.query(table), request, timeout)
   }
 
   async multiQuery(queries: Array<{ table: string; query: Query }>): Promise<QueryResult[]> {
@@ -285,7 +294,7 @@ export class AntflySearchClient implements SearchAdapter {
           table: entry.table,
           err: err instanceof Error ? err.message : String(err),
         })
-        return { hits: [], total: 0, diagnostics: { strategy: 'none', adapter: { error: err instanceof Error ? err.message : String(err) } } }
+        return { hits: [], total: 0, diagnostics: { strategy: 'none', budget: 'omitted', adapter: { error: err instanceof Error ? err.message : String(err) } } }
       }
     }
     // Parallel by default; sequential only when something reranks (the
@@ -314,13 +323,13 @@ export class AntflySearchClient implements SearchAdapter {
       } catch {
         continue
       }
-      // Live servers emit `key`; older docs said `_key` — accept both.
-      const key = (row.key ?? row._key) as string | undefined
+      // rc.18's /documents scan emits `_id`; older engines said `key`/`_key`.
+      const key = (row._id ?? row.key ?? row._key) as string | undefined
       if (typeof key !== 'string') {
         warnedKeyless = true
         continue
       }
-      const { key: _k, _key: _k2, ...fields } = row
+      const { _id: _k0, key: _k1, _key: _k2, ...fields } = row
       yield { key, document: fields }
     }
     if (warnedKeyless) {

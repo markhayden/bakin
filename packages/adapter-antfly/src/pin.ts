@@ -18,19 +18,20 @@ export interface AntflyPin {
 }
 
 export const ANTFLY_PIN: AntflyPin = {
-  // Ship-tag validated 2026-07-02 (tasks/evidence-search-rebuild.md §T23):
-  // full integration suite 58/58 + chaos drills 5/5 against this exact
-  // published artifact. Known-open upstream at this pin: #317 (batch
-  // double-free on internal write failure — never triggered by our suites;
-  // OS supervision + the outbox absorb a crash if it fires) and #319
-  // (mixed-corpus backfill accounting — idle-detection workaround +
-  // canary pin in tests/integration/antfly/workaround-regressions.test.ts).
-  version: '0.2.0-rc.17',
+  // rc.18 (tagged 2026-07-09), adopted 2026-07-11 for the search trust &
+  // speed initiative (.claude/specs/search-trust-and-speed.md). Fixes #317
+  // (batch double-free on internal write failure — our proposed patch
+  // landed verbatim; the local copy in tasks/ was deleted). Known-open
+  // upstream at this pin: #319 (mixed-corpus backfill accounting —
+  // idle-detection workaround + canary pin in
+  // tests/integration/antfly/workaround-regressions.test.ts). Empirical
+  // rc.18 verdicts per shim live in tasks/evidence-search-trust-and-speed.md.
+  version: '0.2.0-rc.18',
   baseUrl: 'https://releases.antfly.io/antfly',
   checksums: {
-    'darwin-arm64': '3cbf8aeff3110407cd89e0525ebdd972ccea9818438f81c6c309be9711a71a59',
-    'linux-arm64': '9c177b9ebaf902c15b5e0e2b0c3120c4e492cf702d1acb9141f01814d04391ab',
-    'linux-x64': 'f564472149ff44a047e1a616f2aaf233894e7b0364aeded5e287b7d67d7ecc96',
+    'darwin-arm64': 'e2b0df4461d78782d11a4e2740f299844a9a6cfed4df1a167c632a5b9ecdafe1',
+    'linux-arm64': 'c74b3ea59b3e99f46cb8d3bbc723b9fd672b8a62779ca050ce11de1f5044a1ad',
+    'linux-x64': 'e3d606d153f7713f389e414b40b855850347c4f67aec8827217e6076cc31a0be',
   },
 }
 

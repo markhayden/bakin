@@ -5,8 +5,9 @@
  * deep-links, honest engine-down state.
  */
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import '../rtl-settle'
+import { settleReact } from '../rtl-settle'
 
 const contentDirMock = () => ({
   getContentDir: () => '/tmp/bakin-test-global-overlay',
@@ -168,6 +169,66 @@ describe('GlobalSearchOverlay', () => {
       setLazyPluginLoader(null)
       configureLazyPlugins({ slotOwners: new Map(), routeOwners: [] })
     }
+  })
+
+  it('shows the honest partial-results chip when a source missed its budget', async () => {
+    mockSearchFetch(() => ({
+      status: 200,
+      body: {
+        results: [HIT('a1', 'bakin_assets')],
+        meta: {
+          query: 'x', total: 1, took_ms: 2001, source: 'search', partial: true,
+          tables: [
+            { table: 'bakin_assets', hits: 1, took_ms: 40 },
+            { table: 'bakin_memory', hits: 0, took_ms: 2001, budget: 'omitted' },
+          ],
+        },
+      },
+    }))
+    render(<GlobalSearchOverlay />)
+    openOverlay()
+    const input = await screen.findByPlaceholderText(/Search assets/)
+    fireEvent.input(input, { target: { value: 'rose' } })
+    await waitFor(() => expect(screen.getByTestId('search-partial-chip')).toBeTruthy(), { timeout: 3000 })
+    // tooltip names the slow source, stripped of the table prefix
+    expect(screen.getByTestId('search-partial-chip').getAttribute('title')).toContain('memory: no answer in time')
+  })
+
+  it('renders no partial chip when every source answered in budget', async () => {
+    mockSearchFetch(() => ({
+      status: 200,
+      body: { results: [HIT('a1', 'bakin_assets')], meta: { query: 'x', total: 1, took_ms: 30, source: 'search', tables: [{ table: 'bakin_assets', hits: 1, took_ms: 30 }] } },
+    }))
+    render(<GlobalSearchOverlay />)
+    openOverlay()
+    const input = await screen.findByPlaceholderText(/Search assets/)
+    fireEvent.input(input, { target: { value: 'rose' } })
+    await waitFor(() => expect(screen.getByTestId('global-search-hit-a1')).toBeTruthy(), { timeout: 3000 })
+    expect(screen.queryAllByTestId('search-partial-chip').length).toBe(0)
+  })
+
+  it('renders score overlays only when the debug toggle is on', async () => {
+    mockSearchFetch(() => ({
+      status: 200,
+      body: { results: [HIT('a1', 'bakin_assets')], meta: { query: 'x', total: 1, took_ms: 1, source: 'search' } },
+    }))
+
+    // require() (not a top-level import) so the store loads through the same
+    // already-initialized module graph as the component under test.
+    const { useContentStore } = require('../../src/hooks/use-content-store')
+    act(() => { useContentStore.setState({ debug: false }) })
+    render(<GlobalSearchOverlay />)
+    openOverlay()
+    const input = await screen.findByPlaceholderText(/Search assets/)
+    fireEvent.input(input, { target: { value: 'rose' } })
+    await waitFor(() => expect(screen.getByTestId('global-search-hit-a1')).toBeTruthy(), { timeout: 3000 })
+    expect(screen.queryAllByTestId('score-overlay').length).toBe(0)
+
+    // flip debug on — badges appear without a re-search
+    act(() => { useContentStore.setState({ debug: true }) })
+    await waitFor(() => expect(screen.queryAllByTestId('score-overlay').length).toBeGreaterThan(0))
+    act(() => { useContentStore.setState({ debug: false }) })
+    await settleReact()
   })
 
   it('does not hijack ⌘K while typing in an input', async () => {

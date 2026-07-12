@@ -116,29 +116,16 @@ export interface HealthSummary {
 // Promoted from the inline shape the health page previously declared in-place,
 // so the page component and /search-status route type against one contract.
 
-export interface SearchHealthLeg {
-  name: string
-  totalIndexed: number
-  rebuilding: boolean
-  error?: string
-}
-
-export interface SearchHealthTable {
-  logical: string
-  physical: string
-  schemaVersion: number
-  state: 'active' | 'migrating'
-  phase: string | null
-  pluginId: string
-  docCount: number | null
-  legs: SearchHealthLeg[]
-  healthy: boolean
-}
+// Canonical shapes live in the SDK (services.ts) — re-exported here so the
+// page component and /search-status route keep one import site. The old
+// local duplicate drifted the moment the SDK gained freshness fields.
+import type { SearchHealthTable as SdkSearchHealthTable } from '@makinbakin/sdk'
+export type { SearchHealthIndex as SearchHealthLeg, SearchHealthTable } from '@makinbakin/sdk'
 
 export interface SearchHealthData {
   enabled: boolean
   outbox?: { pending: number; quarantined: number; oldestPendingAt: number | null }
-  tables: SearchHealthTable[]
+  tables: SdkSearchHealthTable[]
 }
 
 export interface SearchTelemetryWindow {

@@ -20,6 +20,9 @@ export interface SearchResponse {
     total: number
     took_ms: number
     source: 'search' | 'unavailable'
+    /** True when any source degraded/was omitted under the query budget. */
+    partial?: boolean
+    tables?: Array<{ table: string; hits: number; took_ms: number; budget?: 'degraded' | 'omitted' }>
   }
 }
 

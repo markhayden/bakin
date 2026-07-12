@@ -93,7 +93,12 @@ describe('buildVersionedAssetSearchDoc', () => {
     const current = manifest.versions.find((v) => v.version === manifest.currentVersion)!
     current.thumb = null
     expect(String((await buildVersionedAssetSearchDoc(manifest, assetId)).media_url)).toContain('v1.png')
+    // rc.18 decodes WebP — originals pass through now (GATE B re-verdict).
     current.file = 'v1.webp'
+    expect(String((await buildVersionedAssetSearchDoc(manifest, assetId)).media_url)).toContain('v1.webp')
+    // Still-undecodable formats stay excluded: one bad media_url poisons
+    // the row's entire batch write (pinned in workaround-regressions).
+    current.file = 'v1.tiff'
     expect((await buildVersionedAssetSearchDoc(manifest, assetId)).media_url).toBe('')
   })
 

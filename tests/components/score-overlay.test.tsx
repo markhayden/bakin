@@ -14,7 +14,7 @@ const contentDirMock = () => ({
 mock.module('../../src/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
 
-import { ScoreOverlay } from '../../src/components/score-overlay'
+import { ScoreOverlay, computeMatchedFields } from '../../src/components/score-overlay'
 
 
 describe('ScoreOverlay', () => {
@@ -36,5 +36,44 @@ describe('ScoreOverlay', () => {
     render(<ScoreOverlay info={{ score: 0.5 }} />)
     const overlay = screen.getByTestId('score-overlay')
     expect(overlay.textContent).toBe('RRF 0.5000')
+  })
+})
+
+describe('computeMatchedFields', () => {
+  it('lists fields whose text contains any query term, case-insensitive', () => {
+    expect(computeMatchedFields('Rose bouquet', {
+      title: 'A dozen roses',
+      description: 'red flowers',
+      tags: ['bouquet', 'floral'],
+      count: 3,
+    })).toEqual(['title', 'tags'])
+  })
+
+  it('returns empty for a pure semantic hit (no textual overlap)', () => {
+    expect(computeMatchedFields('happiness', { title: 'a dozen roses' })).toEqual([])
+  })
+
+  it('ignores one-character terms and empty queries', () => {
+    expect(computeMatchedFields('a', { title: 'a dozen roses' })).toEqual([])
+    expect(computeMatchedFields('', { title: 'x' })).toEqual([])
+  })
+})
+
+describe('ScoreOverlay matched-reason line', () => {
+  afterEach(() => { document.body.innerHTML = '' })
+
+  it('shows matched fields when provided', () => {
+    render(<ScoreOverlay info={{ score: 0.5, matchedFields: ['title', 'caption'] }} />)
+    expect(screen.getByTestId('score-overlay-matched').textContent).toBe('matched: title, caption')
+  })
+
+  it('labels a pure semantic hit honestly', () => {
+    render(<ScoreOverlay info={{ score: 0.5, matchedFields: [] }} />)
+    expect(screen.getByTestId('score-overlay-matched').textContent).toBe('semantic match')
+  })
+
+  it('renders no matched line when the surface did not compute one', () => {
+    render(<ScoreOverlay info={{ score: 0.5 }} />)
+    expect(screen.queryAllByTestId('score-overlay-matched').length).toBe(0)
   })
 })

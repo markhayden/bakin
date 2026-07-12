@@ -42,10 +42,10 @@ mock.module('@/core/settings', () => ({
         search: {
           strategy: 'rrf',
           defaultLimit: 20,
-          reranker: { enabled: true, provider: 'termite', model: 'mixedbread-ai/mxbai-rerank-base-v1', threshold: 0.0 },
+          reranker: { enabled: true, provider: 'antfly', model: 'mixedbread-ai/mxbai-rerank-base-v1', threshold: 0.0 },
         },
         embedders: {
-          default: { provider: 'termite', model: 'BAAI/bge-small-en-v1.5' },
+          default: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5' },
           visual: { provider: 'antfly', model: 'openai/clip-vit-base-patch32' },
         },
         chunking: { defaultTargetTokens: 200, defaultOverlapTokens: 25 },
@@ -77,7 +77,11 @@ import {
   resetSearchRegistry,
   crossTableSearch,
   getSearchHealth,
+  purgeContentType,
 } from '@/core/search-registry'
+import { sweepOrphanRegistryRows } from '@/core/search-orphan-sweep'
+import { tableStatus } from '@bakin/core/search/tables'
+import { enqueueIndex, outboxStats } from '@bakin/core/search/outbox'
 import { broadcast } from '@/core/sse'
 
 describe('search-registry', () => {
@@ -572,6 +576,49 @@ describe('search-registry', () => {
 
   // ── crossTableSearch ────────────────────────────────────────────────
 
+  it('crossTableSearch passes the query budget as per-table deadlineMs (default 2000)', async () => {
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+
+    await crossTableSearch('build', { table: 'tasks' })
+    expect(searchHarness.calls.query).toHaveBeenCalledWith(
+      'bakin_tasks',
+      expect.objectContaining({ deadlineMs: 2000 }),
+    )
+
+    await crossTableSearch('build')
+    const entries = searchHarness.calls.multiQuery.mock.calls.at(-1)![0] as Array<{ query: { deadlineMs?: number } }>
+    expect(entries[0]!.query.deadlineMs).toBe(2000)
+  })
+
+  it('crossTableSearch reports per-table outcomes and a partial flag when a source misses budget', async () => {
+    buildSearchAPI('tasks').registerContentType(makeDef('tasks'))
+    buildSearchAPI('assets').registerContentType(makeDef('assets'))
+
+    searchHarness.calls.multiQuery.mockResolvedValue([
+      { hits: [{ key: 'd1', document: {}, score: 0.9 }], total: 1, diagnostics: { strategy: 'hybrid', durationMs: 5 } },
+      { hits: [], total: 0, diagnostics: { strategy: 'none', budget: 'omitted', durationMs: 2001 } },
+    ])
+
+    const result = await crossTableSearch('hello')
+
+    expect(result.meta.partial).toBe(true)
+    expect(result.meta.tables).toEqual([
+      { table: 'bakin_tasks', hits: 1, took_ms: 5 },
+      { table: 'bakin_assets', hits: 0, took_ms: 2001, budget: 'omitted' },
+    ])
+  })
+
+  it('crossTableSearch omits the partial flag when every source answered in budget', async () => {
+    buildSearchAPI('tasks').registerContentType(makeDef('tasks'))
+    searchHarness.calls.multiQuery.mockResolvedValue([
+      { hits: [{ key: 'd1', document: {}, score: 0.9 }], total: 1, diagnostics: { strategy: 'hybrid', durationMs: 5 } },
+    ])
+    const result = await crossTableSearch('hello')
+    expect(result.meta.partial).toBeUndefined()
+    expect(result.meta.tables).toEqual([{ table: 'bakin_tasks', hits: 1, took_ms: 5 }])
+  })
+
   it('crossTableSearch returns fallback when search adapter is unavailable', async () => {
     searchHarness.setAvailable(false)
 
@@ -737,6 +784,87 @@ describe('search-registry', () => {
     expect(health.tables[0]!.docCount).toBe(5)
     expect(health.tables[0]!.legs).toEqual([])
     expect(health.tables[0]!.healthy).toBe(true)
+  })
+
+  describe('registry-row lifecycle', () => {
+    it('purgeContentType removes the search_tables registry row and outbox rows', async () => {
+      const api = buildSearchAPI('zombie')
+      api.registerContentType(makeDef('zombie'))
+      await createRegisteredTables()
+      expect(tableStatus('bakin_zombie')).not.toBeNull()
+
+      enqueueIndex('bakin_zombie', 'k1', { title: 'stale' })
+      const before = outboxStats().pending
+
+      await purgeContentType('zombie')
+
+      // In-memory registration gone, registry row gone, journal purged —
+      // nothing left to resurrect the table on the next rebuild pass.
+      expect(getContentTypes().has('bakin_zombie')).toBe(false)
+      expect(tableStatus('bakin_zombie')).toBeNull()
+      expect(outboxStats().pending).toBe(before - 1)
+    })
+
+    it('sweepOrphanRegistryRows drops rows whose content type has no live registrant', async () => {
+      const api = buildSearchAPI('keeper')
+      api.registerContentType(makeDef('keeper'))
+      buildSearchAPI('gone-plugin').registerContentType(makeDef('gone'))
+      await createRegisteredTables()
+      const gonePhysical = tableStatus('bakin_gone')!.physical
+      enqueueIndex('bakin_gone', 'k1', { title: 'stale' })
+
+      // Simulate the leak: the plugin was removed without purge — its
+      // in-memory registration is gone, the registry row survives.
+      resetSearchRegistry()
+      const api2 = buildSearchAPI('keeper')
+      api2.registerContentType(makeDef('keeper'))
+
+      const removed = await sweepOrphanRegistryRows()
+
+      expect(removed).toEqual(['bakin_gone'])
+      expect(tableStatus('bakin_gone')).toBeNull()
+      expect(searchHarness.calls.tablesDrop).toHaveBeenCalledWith(gonePhysical)
+      // registered row untouched
+      expect(tableStatus('bakin_keeper')).not.toBeNull()
+    })
+
+    it('sweepOrphanRegistryRows also drops a half-migrated green physical', async () => {
+      buildSearchAPI('gone-plugin').registerContentType(makeDef('gone'))
+      await createRegisteredTables()
+      const { openNamedDb } = require('../../packages/core/src/storage/db') as typeof import('../../packages/core/src/storage/db')
+      const store = openNamedDb('search', () => join(testDir, 'search.db'))
+      store.db().prepare("UPDATE search_tables SET state = 'migrating', migrating_to = 'bakin_gone_v1_deadbeef', migration_phase = 'parked' WHERE logical = 'bakin_gone'").run()
+
+      resetSearchRegistry()
+      const removed = await sweepOrphanRegistryRows()
+
+      expect(removed).toEqual(['bakin_gone'])
+      expect(searchHarness.calls.tablesDrop).toHaveBeenCalledWith('bakin_gone_v1_deadbeef')
+      expect(tableStatus('bakin_gone')).toBeNull()
+    })
+  })
+
+  it('getSearchHealth reports freshness and numeric backlog per table', async () => {
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+    await createRegisteredTables() // registry row → lastRebuildAt
+    const physical = tableStatus('bakin_tasks')!.physical
+
+    searchHarness.setTableStats(physical, { table: physical, documents: 5 })
+    searchHarness.setLegHealth(physical, [
+      { leg: 'full_text', state: 'ready', indexedCount: 5 },
+      { leg: 'embeddings', state: 'building', indexedCount: 2, pendingCount: 3 },
+    ])
+    enqueueIndex('bakin_tasks', 'k9', { title: 'queued' })
+
+    const health = await getSearchHealth()
+    const table = health.tables.find((t) => t.logical === 'bakin_tasks')!
+
+    expect(table.journalPending).toBe(1)
+    expect(table.lastRebuildAt).toBeGreaterThan(0)
+    // no journal ack yet — freshness falls back to the registry transition
+    expect(table.lastIndexedAt).toBe(table.lastRebuildAt)
+    expect(table.legs.find((l) => l.name === 'embeddings')?.pending).toBe(3)
   })
 
   it('getSearchHealth returns enabled false when search adapter is unavailable', async () => {

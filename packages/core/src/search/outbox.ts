@@ -393,6 +393,33 @@ export function outboxStats(): OutboxStats {
   }
 }
 
+/** Epoch ms of the most recent delivered write for a logical table. */
+export function lastAckedAtForTable(logicalTable: string): number | null {
+  const row = db()
+    .prepare<{ at: number | null }, [string]>('SELECT MAX(acked_at) AS at FROM search_acked WHERE logical_table = ?')
+    .get(logicalTable)
+  return row?.at ?? null
+}
+
+/** Pending journal rows for one logical table (spin-watchdog inflow guard). */
+export function pendingCountForTable(logicalTable: string): number {
+  const row = db()
+    .prepare<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM search_outbox WHERE logical_table = ? AND status IN ('pending','inflight')")
+    .get(logicalTable)
+  return row?.n ?? 0
+}
+
+/**
+ * Drop every journal + ack row for a logical table. Used when the table's
+ * content type is purged (plugin removal, orphan-row sweep) — undelivered
+ * writes for a dead table must not sit in the journal forever.
+ */
+export function purgeTable(logicalTable: string): number {
+  const removed = db().prepare('DELETE FROM search_outbox WHERE logical_table = ?').run(logicalTable)
+  db().prepare('DELETE FROM search_acked WHERE logical_table = ?').run(logicalTable)
+  return Number(removed.changes ?? 0)
+}
+
 /** Revive quarantined rows (doctor repair / `bakin search retry`). */
 export function retryQuarantined(): number {
   const result = db()

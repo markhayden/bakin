@@ -58,6 +58,8 @@ export interface TableLegHealth {
   leg: string
   state: 'ready' | 'building' | 'error'
   indexedCount: number
+  /** Numeric backlog for this leg (docs queued), when the engine reports one. */
+  pendingCount?: number
   error?: string
 }
 
@@ -120,6 +122,14 @@ export interface Query {
   offset?: number
   strategy?: 'auto' | 'fts' | 'vector' | 'hybrid'
   rerank?: boolean
+  /**
+   * Cooperative execution deadline for this query in milliseconds. Adapters
+   * pass it to the engine where supported and enforce it client-side with a
+   * small grace; a miss degrades the query (drop the semantic lane) or, when
+   * even that can't answer in time, fails it — it never stalls the caller
+   * past the deadline. Reported via `QueryDiagnostics.budget`.
+   */
+  deadlineMs?: number
   adapterOptions?: Record<string, unknown>
 }
 
@@ -173,6 +183,12 @@ export interface FacetCount {
 export interface QueryDiagnostics {
   strategy: 'fts' | 'vector' | 'hybrid' | 'none'
   durationMs?: number
+  /**
+   * Set when the query could not complete inside its deadline (D11 —
+   * honest degrade, never silent): 'degraded' = answered without the
+   * semantic lane, 'omitted' = could not answer at all (zero hits).
+   */
+  budget?: 'degraded' | 'omitted'
   adapter?: RuntimeMetadata
 }
 
