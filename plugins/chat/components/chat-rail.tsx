@@ -84,7 +84,7 @@ function ChatRow({
     <div
       data-chat-row={chat.id}
       className={`group relative flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-left transition-colors ${
-        selected ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/50'
+        selected ? 'bg-muted' : 'hover:bg-muted/60'
       }`}
       onClick={onSelect}
       role="button"
@@ -98,7 +98,7 @@ function ChatRow({
         <div className={`truncate text-sm ${chat.unreadCount > 0 ? 'font-semibold' : ''}`}>
           {chat.title || 'New chat'}
         </div>
-        <div className={`truncate text-xs ${selected ? 'text-accent-foreground/70' : 'text-muted-foreground'}`}>
+        <div className="truncate text-xs text-muted-foreground">
           {chat.lastMessagePreview || chat.agentId} · {formatRelativeTime(chat.updatedAt)}
         </div>
       </div>
