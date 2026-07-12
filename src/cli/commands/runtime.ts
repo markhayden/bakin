@@ -55,7 +55,8 @@ interface CapabilityReportPayload {
   adapters: string[]
   runtime: { name: string; version: string }
   capabilities: Record<string, unknown>
-  toolAccess: { style: string; ok: boolean; issues: string[] }
+  /** Null when the run never verified tool access (dry-run preview). */
+  toolAccess: { style: string; ok: boolean; issues: string[] } | null
 }
 
 function printCapabilityReport(report: CapabilityReportPayload): void {
@@ -69,7 +70,7 @@ function printCapabilityReport(report: CapabilityReportPayload): void {
     const mode = (value as { mode?: string })?.mode ?? String(value)
     console.log(`  ${name.padEnd(16)} ${mode}`)
   }
-  console.log(`Tool access:    ${report.toolAccess.ok ? 'ok' : `ISSUES — ${report.toolAccess.issues.join('; ')}`}`)
+  console.log(`Tool access:    ${report.toolAccess === null ? 'not verified (dry run)' : report.toolAccess.ok ? 'ok' : `ISSUES — ${report.toolAccess.issues.join('; ')}`}`)
 }
 
 async function cmdRuntimeCapabilities(): Promise<void> {
@@ -163,7 +164,7 @@ async function cmdRuntimeUse(target: string | undefined, flags: RuntimeUseFlags)
     adapters: [],
     runtime: { name: String(result.to), version: '' },
     capabilities: (result.capabilities ?? {}) as CapabilityReportPayload['capabilities'],
-    toolAccess: (result.toolAccess ?? { style: 'unknown', ok: true, issues: [] }) as CapabilityReportPayload['toolAccess'],
+    toolAccess: (result.toolAccess ?? null) as CapabilityReportPayload['toolAccess'],
   })
   if (flags.dryRun) {
     console.log('')

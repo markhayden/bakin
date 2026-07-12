@@ -31,9 +31,20 @@ export interface AgentContent {
   files: WorkspaceFile[]
   skills: RuntimeSkill[]
   skippedPackageManaged: number
-  /** Snapshot-side read failures (partial snapshot honesty). */
-  errors: string[]
+  /** Snapshot-side read failures and cap omissions (partial snapshot honesty). */
+  errors: Array<{ path: string; error: string }>
 }
+
+/**
+ * Carry byte budgets. Workspaces are WORKING directories — an agent may
+ * have cloned repos, datasets, or node_modules in there — while the carry
+ * exists for identity-sized text (soul, memory, notes). Everything over
+ * budget is a VISIBLE omission in the report, never a silent drop (same
+ * doctrine as dispatch.maxWorkflowContextBytes).
+ */
+export const MAX_CARRY_FILE_BYTES = 1_000_000
+export const MAX_CARRY_AGENT_BYTES = 20_000_000
+export const MAX_CARRY_AGENT_FILES = 500
 
 export interface AgentContentSnapshot {
   agents: Map<string, AgentContent>
@@ -91,19 +102,54 @@ export async function snapshotAgentContent(
 
     try {
       const excluded = await skillPathPrefixes(source, agent.id)
+      let totalBytes = 0
       for (const path of await source.agents.listWorkspaceFiles(agent.id)) {
         if (excluded.some((prefix) => path.startsWith(prefix))) continue
-        const file = await source.agents.readWorkspaceFile(agent.id, path)
-        if (file) content.files.push(file)
+        if (content.files.length >= MAX_CARRY_AGENT_FILES) {
+          content.errors.push({ path: '<budget>', error: `carry capped at ${MAX_CARRY_AGENT_FILES} files — remaining workspace files omitted` })
+          break
+        }
+        try {
+          const file = await source.agents.readWorkspaceFile(agent.id, path)
+          if (!file) {
+            content.errors.push({ path, error: 'listed but unreadable — omitted from the carry' })
+            continue
+          }
+          const bytes = Buffer.byteLength(file.content, 'utf-8')
+          if (bytes > MAX_CARRY_FILE_BYTES) {
+            content.errors.push({ path, error: `${bytes} bytes exceeds the ${MAX_CARRY_FILE_BYTES}-byte per-file carry cap — omitted` })
+            continue
+          }
+          // The workspace-file surface is UTF-8 text; a decoded replacement
+          // char means binary content that a copy would mangle.
+          if (file.content.includes('\uFFFD')) {
+            content.errors.push({ path, error: 'binary/non-UTF-8 content — omitted (workspace-file carry is text-only)' })
+            continue
+          }
+          if (totalBytes + bytes > MAX_CARRY_AGENT_BYTES) {
+            content.errors.push({ path: '<budget>', error: `per-agent carry budget (${MAX_CARRY_AGENT_BYTES} bytes) reached at '${path}' — remaining workspace files omitted` })
+            break
+          }
+          totalBytes += bytes
+          content.files.push(file)
+        } catch (err) {
+          content.errors.push({ path, error: errMsg(err) })
+        }
       }
     } catch (err) {
-      content.errors.push(`workspace files: ${errMsg(err)}`)
+      content.errors.push({ path: '<workspace>', error: errMsg(err) })
     }
 
     try {
       for (const entry of await source.skills.list(agent.id)) {
         // list() may be shallow (OpenClaw) — get() returns files + markers.
-        const skill = (await source.skills.get(entry.name, agent.id)) ?? entry
+        const skill = await source.skills.get(entry.name, agent.id)
+        if (!skill) {
+          // A skill dir without a readable SKILL.md: carrying the shallow
+          // list entry would fabricate an EMPTY skill on the target.
+          content.errors.push({ path: `skill:${entry.name}`, error: 'skill unreadable (no SKILL.md) — omitted from the carry' })
+          continue
+        }
         if (skill.metadata?.installedBy) {
           content.skippedPackageManaged += 1
           continue
@@ -111,7 +157,7 @@ export async function snapshotAgentContent(
         content.skills.push(skill)
       }
     } catch (err) {
-      content.errors.push(`skills: ${errMsg(err)}`)
+      content.errors.push({ path: '<skills>', error: errMsg(err) })
     }
   }
   return snapshot
@@ -132,7 +178,7 @@ export function previewWorkspaceCarry(
 
   for (const agentId of existingIds) {
     const content = snapshot.agents.get(agentId)
-    if (content && (content.files.length > 0 || content.skills.length > 0)) {
+    if (content && (content.files.length > 0 || content.skills.length > 0 || content.errors.length > 0)) {
       report.skippedExisting.push(agentId)
     }
   }
@@ -148,8 +194,8 @@ export function previewWorkspaceCarry(
     if (content.skills.length > 0 || content.skippedPackageManaged > 0) {
       report.skills.push({ agentId, carried: content.skills.length, skippedPackageManaged: content.skippedPackageManaged })
     }
-    for (const error of content.errors) {
-      report.failed.push({ agentId, path: '<snapshot>', error })
+    for (const { path, error } of content.errors) {
+      report.failed.push({ agentId, path, error })
     }
   }
 
@@ -172,7 +218,9 @@ export async function carryAgentContent(
 
   for (const agentId of existingIds) {
     const content = snapshot.agents.get(agentId)
-    if (content && (content.files.length > 0 || content.skills.length > 0)) {
+    // Errors count as content: an unreadable source agent must not vanish
+    // from the report just because its target twin already exists.
+    if (content && (content.files.length > 0 || content.skills.length > 0 || content.errors.length > 0)) {
       report.skippedExisting.push(agentId)
     }
   }
@@ -203,8 +251,8 @@ export async function carryAgentContent(
       }
     }
 
-    for (const error of content.errors) {
-      report.failed.push({ agentId, path: '<snapshot>', error })
+    for (const { path, error } of content.errors) {
+      report.failed.push({ agentId, path, error })
     }
 
     report.carried.push({ agentId, files, bytes })

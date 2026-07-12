@@ -124,6 +124,10 @@ describe('switchRuntime — dry run is a full preview with ZERO writes', () => {
     const settingsBefore = readFileSync(pathJoin(testDir, 'settings.json'), 'utf-8')
     const openclawBefore = snapshotTree(pathJoin(testDir, 'openclaw'))
     const piBefore = snapshotTree(pathJoin(testDir, 'pi'))
+    // The whole home too — a stray write to plugin-settings/, bakin.db, or
+    // any other corner of BAKIN_HOME must fail this test, not just the
+    // adapter homes.
+    const homeBefore = snapshotTree(testDir)
 
     const phases: string[] = []
     const result = await switchRuntime('pi', {
@@ -158,6 +162,7 @@ describe('switchRuntime — dry run is a full preview with ZERO writes', () => {
     expect(existsSync(pathJoin(testDir, 'audit.jsonl'))).toBe(false)
     expect(snapshotTree(pathJoin(testDir, 'openclaw'))).toBe(openclawBefore)
     expect(snapshotTree(pathJoin(testDir, 'pi'))).toBe(piBefore)
+    expect(snapshotTree(testDir)).toBe(homeBefore)
     expect(existsSync(pathJoin(testDir, 'pi', 'agent', 'bakin-agents.json'))).toBe(false)
   })
 

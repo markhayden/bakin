@@ -307,6 +307,11 @@ function RuntimePage() {
                         ⚠ {u.agentId}: {u.field === 'subagentModel' ? 'subagent model' : 'model'} “{u.sourceModel}” has no {result.to} equivalent — falls back to the routing default
                       </div>
                     ))}
+                    {result.roster?.failed.map((f) => (
+                      <div key={f.agentId} className="mt-1 text-red-600 dark:text-red-400">
+                        ✗ {f.agentId}: {f.error}
+                      </div>
+                    ))}
                     {result.workspaces && (
                       <div className="mt-1">
                         Workspace content: {result.dryRun ? 'would carry' : 'carried'}{' '}

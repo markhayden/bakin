@@ -19,13 +19,13 @@ mock.module('../../src/core/logger', () => ({
   createLogger: () => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }),
 }))
 
-import { snapshotAgentContent, carryAgentContent, previewWorkspaceCarry } from '../../src/core/workspace-carry'
+import { snapshotAgentContent, carryAgentContent, previewWorkspaceCarry, MAX_CARRY_FILE_BYTES, MAX_CARRY_AGENT_FILES } from '../../src/core/workspace-carry'
 import type { AgentRuntimeAdapter, RuntimeSkill, WorkspaceFile, WorkspaceFileStat } from '@bakin/core/adapters/runtime'
 
 function sourceWith(overrides: {
   files?: Record<string, string>
   stats?: WorkspaceFileStat[] | null
-  skills?: Array<{ name: string; installedBy?: unknown }>
+  skills?: Array<{ name: string; installedBy?: unknown; unreadable?: boolean }>
   listThrows?: boolean
   skillsThrow?: boolean
 }): AgentRuntimeAdapter {
@@ -48,7 +48,7 @@ function sourceWith(overrides: {
       },
       get: async (name: string): Promise<RuntimeSkill | null> => {
         const found = (overrides.skills ?? []).find((s) => s.name === name)
-        if (!found) return null
+        if (!found || found.unreadable) return null
         return {
           name,
           instructions: `# ${name}`,
@@ -133,8 +133,47 @@ describe('snapshotAgentContent — kind-aware capture', () => {
     const content = snapshot.agents.get('pixel')!
     expect(content.files).toEqual([])
     expect(content.errors).toEqual([
-      'workspace files: source workspace unreadable',
-      'skills: skills unreadable',
+      { path: '<workspace>', error: 'source workspace unreadable' },
+      { path: '<skills>', error: 'skills unreadable' },
+    ])
+  })
+
+  it('oversized and binary files are VISIBLE omissions, and unreadable files get per-file notes', async () => {
+    const source = sourceWith({
+      files: {
+        'SOUL.md': 'kept',
+        'huge.md': 'x'.repeat(MAX_CARRY_FILE_BYTES + 1),
+        'blob.bin': 'data \uFFFD mangled',
+      },
+      stats: null,
+    })
+    const snapshot = await snapshotAgentContent(source, AGENT)
+    const content = snapshot.agents.get('pixel')!
+    expect(content.files.map((f) => f.path)).toEqual(['SOUL.md'])
+    expect(content.errors.map((e) => e.path).sort()).toEqual(['blob.bin', 'huge.md'])
+    expect(content.errors.find((e) => e.path === 'huge.md')!.error).toContain('per-file carry cap')
+    expect(content.errors.find((e) => e.path === 'blob.bin')!.error).toContain('binary')
+  })
+
+  it('the per-agent file-count cap stops the walk with a visible budget omission', async () => {
+    const files: Record<string, string> = {}
+    for (let i = 0; i < MAX_CARRY_AGENT_FILES + 5; i++) files[`notes/f${String(i).padStart(4, '0')}.md`] = 'x'
+    const source = sourceWith({ files, stats: null })
+    const snapshot = await snapshotAgentContent(source, AGENT)
+    const content = snapshot.agents.get('pixel')!
+    expect(content.files.length).toBe(MAX_CARRY_AGENT_FILES)
+    expect(content.errors).toEqual([
+      { path: '<budget>', error: `carry capped at ${MAX_CARRY_AGENT_FILES} files — remaining workspace files omitted` },
+    ])
+  })
+
+  it('a skill dir whose get() returns null is omitted with a note — never fabricated empty on the target', async () => {
+    const source = sourceWith({ skills: [{ name: 'ghost', unreadable: true }, { name: 'real' }] })
+    const snapshot = await snapshotAgentContent(source, AGENT)
+    const content = snapshot.agents.get('pixel')!
+    expect(content.skills.map((s) => s.name)).toEqual(['real'])
+    expect(content.errors).toEqual([
+      { path: 'skill:ghost', error: 'skill unreadable (no SKILL.md) — omitted from the carry' },
     ])
   })
 })
@@ -195,7 +234,15 @@ describe('carryAgentContent — degrade, never throw', () => {
     const { target } = targetRecorder()
     const report = await carryAgentContent(snapshot, target, ['pixel'], [])
     expect(report.failed).toEqual([
-      { agentId: 'pixel', path: '<snapshot>', error: 'workspace files: source workspace unreadable' },
+      { agentId: 'pixel', path: '<workspace>', error: 'source workspace unreadable' },
     ])
+  })
+
+  it('an unreadable EXISTING source agent still surfaces as skipped — never vanishes from the report', async () => {
+    const snapshot = await snapshotAgentContent(sourceWith({ listThrows: true }), AGENT)
+    const { target, writes } = targetRecorder()
+    const report = await carryAgentContent(snapshot, target, [], ['pixel'])
+    expect(writes).toEqual([])
+    expect(report.skippedExisting).toEqual(['pixel'])
   })
 })

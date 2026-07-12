@@ -121,9 +121,13 @@ unsupported.
   no backup, no flip, no provisioning, no target-home mutation, no audit
   trace. The target is a read-only secondary adapter instance (the factory
   is pure and `initialize()` is write-free by conformance pin — seeding and
-  config writes are provisioning concerns). Teeth:
-  `tests/integration/runtime-switch-dryrun.test.ts` (byte-identical
-  tree-hash assertions over real adapters).
+  config writes are provisioning concerns). One scoped exception: probing an
+  OpenClaw TARGET shells its CLI, which lazily materializes internal state
+  (`.openclaw/state/`, `.openclaw/identity/`) on any first read — the same
+  lazy init `bakin check` triggers; never config/roster/workspace content.
+  Teeth: `tests/integration/runtime-switch-dryrun{,-reverse}.test.ts`
+  (byte-identical tree-hash assertions over real adapters, both directions,
+  the reverse leg pinning the internal-state-only tolerance).
 - **Carry-over matrix**: Bakin-owned state (tasks, assets, projects,
   workflows, Bakin schedules, budgets, usage history, chat transcripts,
   avatars, audit) carries automatically — the switch never touches
