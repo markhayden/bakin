@@ -10,17 +10,17 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { MarkdownEditor, MarkdownContent, UnderlineTabs } from '@makinbakin/sdk/components'
-import { Button, Badge } from '@makinbakin/sdk/ui'
+import { MarkdownEditor, MarkdownContent, UnderlineTabs, SaveBar, SectionCard, useUnsavedGuard } from '@makinbakin/sdk/components'
+import { Button, Badge, Input, Textarea } from '@makinbakin/sdk/ui'
 import { useQueryState } from '@makinbakin/sdk/hooks'
 import {
   ArrowLeft, Palette, Rocket, Pencil, Plus, Check, AlertTriangle, ExternalLink,
   Upload, FileText, BookOpen, ImageIcon, Trash2, Sparkles,
 } from 'lucide-react'
-import type { BrandManifest, PaletteEntry } from '../types'
+import type { BrandManifest, PaletteEntry, Completeness } from '../types'
 
 interface DocInfo { name: string; description?: string; bytes: number }
-interface DetailResponse { brand: BrandManifest; guidelines: DocInfo[]; lessons: DocInfo[]; fingerprint: string | null }
+interface DetailResponse { brand: BrandManifest; guidelines: DocInfo[]; lessons: DocInfo[]; fingerprint: string | null; completeness?: Completeness }
 type ManifestPatch = Partial<Omit<BrandManifest, 'id' | 'createdAt' | 'updatedAt'>>
 type DocKind = 'guidelines' | 'lessons'
 
@@ -34,6 +34,8 @@ const TABS = [
 ] as const
 
 const isHex = (h: string) => /^#[0-9a-fA-F]{6}$/.test(h)
+/** Placeholder hex for a freshly added palette row — a pristine row is dropped on save, not blocked. */
+const BLANK_HEX = '#888888'
 
 export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () => void }) {
   const [detail, setDetail] = useState<DetailResponse | null>(null)
@@ -42,6 +44,13 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
   const [editingDoc, setEditingDoc] = useState<{ kind: DocKind; name: string; content: string } | null>(null)
   const [tabParam, setTab] = useQueryState('tab', 'overview')
   const tab = TABS.some((t) => t.id === tabParam) ? tabParam : 'overview'
+
+  // ONE staged draft spans every manifest-backed field across tabs (spec §7a):
+  // edits mutate `staged`; the SaveBar commits the whole manifest in one PUT.
+  const [staged, setStaged] = useState<BrandManifest | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const dirty = staged !== null
+  useUnsavedGuard(dirty)
 
   const refresh = useCallback(async () => {
     try {
@@ -56,27 +65,65 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
 
   useEffect(() => { void refresh() }, [refresh])
 
-  const putManifest = useCallback(
-    async (patch: ManifestPatch) => {
-      if (!detail) return
-      setSaving(true)
-      try {
-        const { id: _id, createdAt: _c, updatedAt: _u, ...current } = detail.brand
-        const res = await fetch(`/api/plugins/brands/${brandId}`, {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...current, ...patch }),
-        })
-        if (!res.ok) {
-          const body = (await res.json().catch(() => ({}))) as { error?: string }
-          throw new Error(body.error ?? `save failed: ${res.status}`)
-        }
-        await refresh()
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err))
-      } finally { setSaving(false) }
+  const stage = useCallback(
+    (patch: ManifestPatch) => {
+      setStaged((prev) => {
+        const base = prev ?? detail?.brand
+        return base ? { ...base, ...patch } : prev
+      })
     },
-    [brandId, detail, refresh],
+    [detail],
   )
+
+  const discard = useCallback(() => {
+    setStaged(null)
+    setSaveError(null)
+  }, [])
+
+  /** Drop rows the user added but never filled in; they're scaffolding, not intent. */
+  const cleanStaged = (m: BrandManifest): BrandManifest => ({
+    ...m,
+    name: m.name.trim() || m.name,
+    description: m.description?.trim() || undefined,
+    palette: m.palette.filter((c) => c.name.trim() !== '' || (c.hex !== BLANK_HEX && c.hex.trim() !== '')),
+    rules: (m.rules ?? []).filter((r) => r.trim() !== ''),
+    terminology: (m.terminology ?? []).filter((t) => t.term.trim() !== '' || t.rule.trim() !== ''),
+  })
+
+  const save = useCallback(async () => {
+    if (!staged) return
+    const cleaned = cleanStaged(staged)
+    // Honest validation BEFORE the PUT — invalid rows hold the save.
+    if (!cleaned.name.trim()) {
+      setSaveError('The brand needs a name.')
+      return
+    }
+    if (cleaned.palette.some((c) => !isHex(c.hex) || !c.name.trim())) {
+      setSaveError('Fix the highlighted colors first — every color needs a name and a hex value like #FF5A00.')
+      return
+    }
+    if ((cleaned.terminology ?? []).some((t) => !t.term.trim() || !t.rule.trim())) {
+      setSaveError('Every terminology entry needs both the term and its rule.')
+      return
+    }
+    setSaving(true)
+    setSaveError(null)
+    try {
+      const { id: _id, createdAt: _c, updatedAt: _u, ...body } = cleaned
+      const res = await fetch(`/api/plugins/brands/${brandId}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const resBody = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(resBody.error ?? `save failed: ${res.status}`)
+      }
+      await refresh()
+      setStaged(null)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : String(err))
+    } finally { setSaving(false) }
+  }, [staged, brandId, refresh])
 
   const openDoc = useCallback(async (kind: DocKind, name: string) => {
     const res = await fetch(`/api/plugins/brands/${brandId}/docs/${kind}/${encodeURIComponent(name)}`)
@@ -116,15 +163,16 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
   }
   if (!detail) return <div className="p-6 text-sm text-muted-foreground">Loading…</div>
 
-  const b = detail.brand
+  // Staged edits paint the page live (hero included) — what you see is what Save commits.
+  const b = staged ?? detail.brand
 
   return (
     <div className="flex flex-col gap-6 p-4 sm:p-6">
       <Button variant="ghost" size="sm" className="w-fit -ml-2 text-muted-foreground" onClick={onBack}>
-        <ArrowLeft className="size-3.5" /> Brands
+        <ArrowLeft className="size-3.5" /> Branding
       </Button>
 
-      <PaletteHero brand={b} saving={saving} onPublish={b.draft ? publish : undefined} />
+      <PaletteHero brand={b} onPublish={b.draft ? publish : undefined} />
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
@@ -133,69 +181,110 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
       {tab === 'overview' && <OverviewTab brand={b} detail={detail} brandId={brandId} onGoTo={setTab} />}
 
       {tab === 'identity' && (
-        <div className="grid gap-4 lg:grid-cols-2 [&>*:nth-child(-n+2)]:lg:col-span-2">
-          <Section label="Name & description" icon={Sparkles}>
-            <input
-              className={inputCls}
-              defaultValue={b.name}
-              onBlur={(e) => { if (e.target.value.trim() && e.target.value !== b.name) void putManifest({ name: e.target.value.trim() }) }}
+        <div className="grid gap-4 lg:grid-cols-2">
+          <SectionCard
+            className="lg:col-span-2"
+            title="Name & description"
+            icon={Sparkles}
+            description="The first thing agents read about this brand — the description rides every branded task and image prompt."
+          >
+            <Input
+              value={b.name}
+              aria-label="Brand name"
+              onChange={(e) => stage({ name: e.target.value })}
             />
-            <input
-              className={inputCls}
-              placeholder="One-line description (rides the dispatch card + image prompts)"
-              defaultValue={b.description ?? ''}
-              onBlur={(e) => { if (e.target.value !== (b.description ?? '')) void putManifest({ description: e.target.value || undefined }) }}
+            <Textarea
+              rows={3}
+              placeholder="One or two sentences on what this brand is and how it should come across."
+              aria-label="Brand description"
+              value={b.description ?? ''}
+              onChange={(e) => stage({ description: e.target.value || undefined })}
             />
-          </Section>
+          </SectionCard>
 
-          <ListEditor
-            label="Palette" icon={Palette}
-            hint="Image tools consume these directly."
-            items={b.palette}
-            render={(c, update, remove) => (
-              <div className="flex items-center gap-2">
-                <input type="color" value={isHex(c.hex) ? c.hex : '#000000'} onChange={(e) => update({ ...c, hex: e.target.value })} className="h-8 w-10 shrink-0 cursor-pointer rounded-md bg-transparent" />
-                <input className={`${inputCls} w-32`} placeholder="name" value={c.name} onChange={(e) => update({ ...c, name: e.target.value })} />
-                <input className={`${inputCls} w-28 font-mono`} value={c.hex} onChange={(e) => update({ ...c, hex: e.target.value })} />
-                <input className={`${inputCls} flex-1`} placeholder="usage (e.g. primary text)" value={c.usage ?? ''} onChange={(e) => update({ ...c, usage: e.target.value || undefined })} />
-                <RemoveBtn onClick={remove} />
-              </div>
+          <SectionCard
+            className="lg:col-span-2"
+            title="Palette"
+            icon={Palette}
+            description="Agents pull these exact values into everything they generate — images, docs, UI. First color is the primary."
+            action={
+              <Button variant="outline" size="sm" onClick={() => stage({ palette: [...b.palette, { name: '', hex: BLANK_HEX }] })} data-add-color>
+                <Plus className="size-3.5" /> Add color
+              </Button>
+            }
+          >
+            {b.palette.length === 0 && (
+              <p className="text-sm text-muted-foreground">No colors yet — without a palette, image tools have no brand colors to follow.</p>
             )}
-            blank={(): PaletteEntry => ({ name: '', hex: '#888888' })}
-            valid={(c) => c.name.trim().length > 0 && isHex(c.hex)}
-            onSave={(palette) => void putManifest({ palette })}
-          />
+            {b.palette.map((c, i) => {
+              const hexInvalid = c.hex.trim() !== '' && c.hex !== BLANK_HEX && !isHex(c.hex)
+              const update = (next: PaletteEntry) => stage({ palette: b.palette.map((row, j) => (j === i ? next : row)) })
+              return (
+                <div key={i} data-palette-row={i}>
+                  <div className="flex items-center gap-2">
+                    {/* Swatch and hex field are two views of ONE value — either edits both. */}
+                    <input
+                      type="color"
+                      aria-label={`${c.name || 'color'} swatch`}
+                      value={isHex(c.hex) ? c.hex : '#000000'}
+                      onChange={(e) => update({ ...c, hex: e.target.value })}
+                      className="h-8 w-10 shrink-0 cursor-pointer rounded-md bg-transparent"
+                    />
+                    <Input className="w-32" placeholder="Primary" aria-label="Color name" value={c.name} onChange={(e) => update({ ...c, name: e.target.value })} />
+                    <Input
+                      className={`w-28 font-mono ${hexInvalid ? 'ring-1 ring-destructive' : ''}`}
+                      aria-label="Hex value"
+                      aria-invalid={hexInvalid || undefined}
+                      value={c.hex}
+                      onChange={(e) => update({ ...c, hex: e.target.value })}
+                    />
+                    <Input className="flex-1" placeholder="buttons, links, calls-to-action" aria-label="Where it's used" value={c.usage ?? ''} onChange={(e) => update({ ...c, usage: e.target.value || undefined })} />
+                    <RemoveBtn onClick={() => stage({ palette: b.palette.filter((_, j) => j !== i) })} />
+                  </div>
+                  {hexInvalid && <p className="mt-1 pl-12 text-xs text-destructive">Hex colors look like #FF5A00</p>}
+                </div>
+              )
+            })}
+          </SectionCard>
 
-          <ListEditor
-            label="Rules" icon={AlertTriangle}
-            hint="Absolute — ride every dispatch inline."
-            items={(b.rules ?? []).map((text) => ({ text }))}
-            render={(r, update, remove) => (
-              <div className="flex items-center gap-2">
-                <input className={`${inputCls} flex-1`} placeholder='e.g. "Never use emojis"' value={r.text} onChange={(e) => update({ text: e.target.value })} />
-                <RemoveBtn onClick={remove} />
+          <SectionCard
+            title="Rules"
+            icon={AlertTriangle}
+            description="Hard do's and don'ts — injected into every branded task, never optional."
+            action={
+              <Button variant="outline" size="sm" onClick={() => stage({ rules: [...(b.rules ?? []), ''] })} data-add-rule>
+                <Plus className="size-3.5" /> Add rule
+              </Button>
+            }
+          >
+            {(b.rules ?? []).length === 0 && <p className="text-sm text-muted-foreground">No rules yet — e.g. "Never use exclamation marks in headlines."</p>}
+            {(b.rules ?? []).map((r, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <Input className="flex-1" placeholder='e.g. "Never use emojis"' value={r} onChange={(e) => stage({ rules: (b.rules ?? []).map((row, j) => (j === i ? e.target.value : row)) })} />
+                <RemoveBtn onClick={() => stage({ rules: (b.rules ?? []).filter((_, j) => j !== i) })} />
               </div>
-            )}
-            blank={() => ({ text: '' })}
-            valid={(r) => r.text.trim().length > 0}
-            onSave={(rules) => void putManifest({ rules: rules.map((r) => r.text.trim()) })}
-          />
+            ))}
+          </SectionCard>
 
-          <ListEditor
-            label="Terminology" icon={BookOpen}
-            hint='Do/don&apos;t pairs, always inline.'
-            items={b.terminology ?? []}
-            render={(t, update, remove) => (
-              <div className="flex items-center gap-2">
-                <input className={`${inputCls} w-56`} placeholder="term" value={t.term} onChange={(e) => update({ ...t, term: e.target.value })} />
-                <input className={`${inputCls} flex-1`} placeholder="rule" value={t.rule} onChange={(e) => update({ ...t, rule: e.target.value })} />
-                <RemoveBtn onClick={remove} />
+          <SectionCard
+            title="Terminology"
+            icon={BookOpen}
+            description="Say-this-not-that words agents must get right — product names, banned phrases."
+            action={
+              <Button variant="outline" size="sm" onClick={() => stage({ terminology: [...(b.terminology ?? []), { term: '', rule: '' }] })} data-add-term>
+                <Plus className="size-3.5" /> Add term
+              </Button>
+            }
+          >
+            {(b.terminology ?? []).length === 0 && <p className="text-sm text-muted-foreground">Nothing yet — e.g. "workspace", never "dashboard".</p>}
+            {(b.terminology ?? []).map((t, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <Input className="w-56" placeholder="workspace" aria-label="Term" value={t.term} onChange={(e) => stage({ terminology: (b.terminology ?? []).map((row, j) => (j === i ? { ...row, term: e.target.value } : row)) })} />
+                <Input className="flex-1" placeholder='never "dashboard"' aria-label="Rule" value={t.rule} onChange={(e) => stage({ terminology: (b.terminology ?? []).map((row, j) => (j === i ? { ...row, rule: e.target.value } : row)) })} />
+                <RemoveBtn onClick={() => stage({ terminology: (b.terminology ?? []).filter((_, j) => j !== i) })} />
               </div>
-            )}
-            blank={() => ({ term: '', rule: '' })}
-            valid={(t) => t.term.trim().length > 0 && t.rule.trim().length > 0}
-            onSave={(terminology) => void putManifest({ terminology })}
-          />
+            ))}
+          </SectionCard>
         </div>
       )}
 
@@ -211,12 +300,12 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
           saveDoc={saveDoc}
           onToggleCardDoc={(name, on) => {
             const current = b.cardDocs ?? (detail.guidelines.some((g) => g.name === 'voice.md') ? ['voice.md'] : [])
-            void putManifest({ cardDocs: on ? [...current, name] : current.filter((n) => n !== name) })
+            stage({ cardDocs: on ? [...current, name] : current.filter((n) => n !== name) })
           }}
         />
       )}
 
-      {tab === 'assets' && <BrandAssetsSection brand={b} onSave={(patch) => void putManifest(patch)} />}
+      {tab === 'assets' && <BrandAssetsSection brand={b} onSave={stage} />}
 
       {tab === 'settings' && (
         <div className="flex flex-col gap-4">
@@ -244,6 +333,16 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
           <BrandHealthSection brandId={b.id} onDeleted={onBack} />
         </div>
       )}
+
+      {/* ONE save path for the whole manifest — appears whenever anything is staged. */}
+      <SaveBar
+        dirty={dirty}
+        saving={saving}
+        error={saveError}
+        saveLabel="Save brand"
+        onSave={() => void save()}
+        onDiscard={discard}
+      />
     </div>
   )
 }
@@ -286,7 +385,7 @@ function RemoveBtn({ onClick }: { onClick: () => void }) {
 
 // ─── Hero: the brand paints its own header ────────────────────────────────────
 
-function PaletteHero({ brand, saving, onPublish }: { brand: BrandManifest; saving: boolean; onPublish?: () => void }) {
+function PaletteHero({ brand, onPublish }: { brand: BrandManifest; onPublish?: () => void }) {
   const colors = brand.palette.filter((c) => isHex(c.hex))
   const primary = colors[0]?.hex
   const logo = brand.logos.find((l) => l.variant === 'primary') ?? brand.logos[0]
@@ -323,8 +422,7 @@ function PaletteHero({ brand, saving, onPublish }: { brand: BrandManifest; savin
               {brand.draft
                 ? <Badge className="bg-accent/15 text-accent">Draft</Badge>
                 : <Badge className="bg-success/15 text-success"><Check className="size-3" /> Published</Badge>}
-              {brand.source && <Badge variant="secondary" className="gap-1 text-muted-foreground"><ExternalLink className="size-3" /> repo</Badge>}
-              {saving && <span className="text-[11px] text-muted-foreground">saving…</span>}
+              {brand.source && <Badge variant="secondary" className="gap-1 text-muted-foreground"><ExternalLink className="size-3" /> imported</Badge>}
             </div>
             {brand.description && <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">{brand.description}</p>}
           </div>
@@ -867,38 +965,3 @@ function BrandHealthSection({ brandId, onDeleted }: { brandId: string; onDeleted
   )
 }
 
-// ─── List editor (Identity) ───────────────────────────────────────────────────
-
-function ListEditor<T>({
-  label, icon, hint, items, render, blank, valid, onSave,
-}: {
-  label: string
-  icon?: React.ComponentType<{ className?: string }>
-  hint: string
-  items: readonly T[]
-  render: (item: T, update: (next: T) => void, remove: () => void) => React.ReactNode
-  blank: () => T
-  valid: (item: T) => boolean
-  onSave: (items: T[]) => void
-}) {
-  const [draft, setDraft] = useState<T[] | null>(null)
-  const rows = draft ?? [...items]
-  const dirty = draft !== null
-
-  return (
-    <Section label={label} icon={icon} action={<span className="text-[11px] text-muted-foreground">{hint}</span>}>
-      {rows.map((item, i) => (
-        <div key={i}>{render(item, (next) => setDraft(rows.map((r, j) => (j === i ? next : r))), () => setDraft(rows.filter((_, j) => j !== i)))}</div>
-      ))}
-      <div className="flex gap-2 pt-1">
-        <Button variant="outline" size="sm" onClick={() => setDraft([...rows, blank()])}><Plus className="size-3.5" /> Add</Button>
-        {dirty && (
-          <>
-            <Button variant="default" size="sm" disabled={!rows.every(valid)} onClick={() => { onSave(rows); setDraft(null) }}><Check className="size-3.5" /> Save</Button>
-            <Button variant="ghost" size="sm" onClick={() => setDraft(null)}>Discard</Button>
-          </>
-        )}
-      </div>
-    </Section>
-  )
-}
