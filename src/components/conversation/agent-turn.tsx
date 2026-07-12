@@ -47,7 +47,7 @@ export function CopyButton({ text, label = 'Copy' }: { text: string; label?: str
       data-conv-copy
       onClick={copy}
       aria-label={label}
-      className="inline-flex items-center rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover/turn:opacity-100"
+      className="inline-flex items-center rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-foreground/10 hover:text-foreground group-hover/turn:opacity-100"
     >
       {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
     </button>
@@ -215,7 +215,7 @@ export function AgentTurn({ turn, agentId, onRetry, onOpenCall, transformText }:
           <button
             type="button"
             onClick={onRetry}
-            className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-accent"
+            className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-foreground/10"
           >
             <RotateCcw className="size-3" /> Try again
           </button>

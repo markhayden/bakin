@@ -38,7 +38,7 @@ export function AgentPicker({
         className={
           iconOnly
             ? 'inline-flex items-center justify-center rounded-md bg-primary p-2 text-primary-foreground shadow-sm transition-colors hover:bg-primary/90'
-            : 'inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent'
+            : 'inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-foreground/10'
         }
       >
         <MessageCirclePlus className="size-4" />

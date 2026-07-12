@@ -189,7 +189,7 @@ function ViewHeader({
               onChanged()
             })
           }}
-          className={`rounded p-1.5 transition-colors hover:bg-accent ${
+          className={`rounded p-1.5 transition-colors hover:bg-foreground/10 ${
             chat.pinned ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
           }`}
         >

@@ -117,7 +117,7 @@ function ChatRow({
           aria-label={chat.pinned ? 'Unpin chat' : 'Pin chat'}
           title={chat.pinned ? 'Unpin chat' : 'Pin chat'}
           onClick={(e) => { e.stopPropagation(); onTogglePin() }}
-          className={`rounded p-1 transition-colors hover:bg-accent ${
+          className={`rounded p-1 transition-colors hover:bg-foreground/10 ${
             chat.pinned ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
           }`}
         >
@@ -127,7 +127,7 @@ function ChatRow({
           type="button"
           aria-label="Delete chat"
           onClick={(e) => { e.stopPropagation(); onDelete() }}
-          className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-destructive"
+          className="rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive"
         >
           <Trash2 className="size-3" />
         </button>
@@ -163,7 +163,7 @@ export function ChatRail(props: {
           type="button"
           aria-label="Expand chat list"
           onClick={() => onCollapse(false)}
-          className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+          className="rounded p-1.5 text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
         >
           <PanelLeftOpen className="size-4" />
         </button>
@@ -188,7 +188,7 @@ export function ChatRail(props: {
             type="button"
             aria-label="Collapse chat list"
             onClick={() => onCollapse(true)}
-            className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+            className="rounded p-1.5 text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
           >
             <PanelLeftClose className="size-4" />
           </button>

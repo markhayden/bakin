@@ -78,7 +78,7 @@ export function ToolCallRow({
         type="button"
         data-conv-call={call.key}
         onClick={() => onOpen(call)}
-        className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs hover:bg-accent/50"
+        className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs hover:bg-foreground/5"
       >
         {body}
       </button>
@@ -115,7 +115,7 @@ export function ActivityGroup({ calls, onOpenCall, defaultExpanded = false }: Ac
         data-conv-activity-header
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
-        className="flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent/40"
+        className="flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-foreground/5"
       >
         <ChevronRight className={`size-3 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} />
         {running ? (

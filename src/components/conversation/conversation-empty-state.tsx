@@ -37,7 +37,7 @@ export function ConversationEmptyState({
               key={s}
               type="button"
               onClick={() => onSuggestion?.(s)}
-              className="rounded-full border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              className="rounded-full border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
             >
               {s}
             </button>

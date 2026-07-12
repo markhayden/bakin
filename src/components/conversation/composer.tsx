@@ -281,7 +281,7 @@ export function Composer({
                     data-composer-attach-remove
                     aria-label={`Remove ${item.name}`}
                     onClick={() => attachments.onRemove(item.id)}
-                    className="absolute -right-1.5 -top-1.5 rounded-full border border-border bg-background p-1 text-foreground shadow-sm transition-colors hover:bg-accent"
+                    className="absolute -right-1.5 -top-1.5 rounded-full border border-border bg-background p-1 text-foreground shadow-sm transition-colors hover:bg-foreground/10"
                   >
                     <X className="size-3" />
                   </button>
@@ -324,7 +324,7 @@ export function Composer({
                     title={attachments.enabled ? 'Add photos & files' : attachments.disabledReason ?? 'Attachments unavailable'}
                     aria-label="Add photos & files"
                     onClick={() => fileRef.current?.click()}
-                    className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                    className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <Plus className="size-4" />
                   </button>

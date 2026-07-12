@@ -87,7 +87,7 @@ export function Launcher({
                   key={chat.id}
                   type="button"
                   onClick={() => onOpenChat(chat.id)}
-                  className="flex w-full items-center gap-3 rounded-lg border border-transparent px-3 py-2 text-left transition-colors hover:border-border hover:bg-accent/50"
+                  className="flex w-full items-center gap-3 rounded-lg border border-transparent px-3 py-2 text-left transition-colors hover:border-border hover:bg-foreground/5"
                 >
                   <AgentAvatar agentId={chat.agentId} size="sm" />
                   <div className="min-w-0 flex-1">
