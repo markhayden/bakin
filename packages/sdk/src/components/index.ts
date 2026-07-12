@@ -42,33 +42,9 @@ export { ErrorState } from '@/components/error-state'
 export { FacetFilter } from '@/components/facet-filter'
 export type { FacetOption } from '@/components/facet-filter'
 /** Chat + plan-proposal review panel for brainstorm sessions. */
-export { IntegratedBrainstorm } from '@/components/integrated-brainstorm'
-export type {
-  BrainstormMessage,
-  IntegratedBrainstormProps,
-  BrainstormOnSend,
-  SendContext,
-  AssistantTransformed,
-  BrainstormActivityInput,
-  BrainstormActivityStorageInput,
-  BrainstormActivityStorageRecord,
-  BrainstormTimelineActivityInput,
-  BrainstormTimelineMessageInput,
-} from '@/components/integrated-brainstorm'
-/** Convert a custom activity message back into a brainstorm activity. */
-export { brainstormActivityMessageFromCustom } from '@/components/integrated-brainstorm'
-/** Compute the canonical thread ID for a brainstorm session. */
-export { brainstormThreadId } from '@/components/integrated-brainstorm'
-/** Normalize a brainstorm activity payload for persistence. */
-export { normalizeBrainstormActivityForStorage } from '@/components/integrated-brainstorm'
-/** Normalize a single brainstorm message for persistence. */
-export { normalizeBrainstormActivityMessageForStorage } from '@/components/integrated-brainstorm'
-/** Read an SSE response stream into brainstorm activity events. */
-export { readBrainstormSseResponse } from '@/components/integrated-brainstorm'
-/** Convert a runtime chat chunk to a brainstorm activity event. */
-export { runtimeChunkToBrainstormActivity } from '@/components/integrated-brainstorm'
-/** Fold a brainstorm session's events into a renderable timeline. */
-export { toBrainstormTimeline } from '@/components/integrated-brainstorm'
+// IntegratedBrainstorm was DELETED (2026-07): embedded conversation
+// surfaces compose ConversationPanel + useConversationStream instead
+// (see the conversation-kit exports below).
 /** Render markdown content with syntax highlighting and link handling. */
 export { MarkdownContent } from '@/components/markdown-content'
 /** Editable markdown text area with preview toggle. */

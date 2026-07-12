@@ -64,39 +64,13 @@ export { formatSize } from '@bakin/core/format'
 /** Returns true if a timestamp is older than a configurable staleness threshold. */
 export { isStale } from '@bakin/core/format'
 
-/** Convert a custom activity message into a brainstorm activity input. */
-export { brainstormActivityMessageFromCustom } from '../../../../src/components/integrated-brainstorm/activity'
-/** Convert a runtime chat chunk into a brainstorm activity event. */
-export { runtimeChunkToBrainstormActivity } from '../../../../src/components/integrated-brainstorm/activity'
-/** Fold brainstorm events into a renderable timeline. */
-export { toBrainstormTimeline } from '../../../../src/components/integrated-brainstorm/activity'
-/** Compute the canonical thread id for a brainstorm session. */
-export { brainstormThreadId } from '../../../../src/components/integrated-brainstorm/session'
-
-// Conversation kit server-side helpers (successors to the brainstorm
-// helpers above — those are deleted with IntegratedBrainstorm).
+// Conversation kit server-side helpers (the brainstorm helpers they
+// superseded were deleted with IntegratedBrainstorm, 2026-07).
 /** Canonical thread id for embedded conversation surfaces (scope:entity:agent). */
 export { conversationThreadId } from '../../../../src/components/conversation/thread-id'
 /** Record one streamed turn's chunks into persistable ConversationMessage rows. */
 export { createTurnRecorder, SUMMARY_MAX_CHARS, PREVIEW_MAX_CHARS } from '../../../../src/components/conversation/turn-recorder'
 export type { TurnRecorder } from '../../../../src/components/conversation/turn-recorder'
-/** Normalize a brainstorm activity payload for persistence. */
-export { normalizeBrainstormActivityForStorage } from '../../../../src/components/integrated-brainstorm/session'
-/** Normalize a single brainstorm message for persistence. */
-export { normalizeBrainstormActivityMessageForStorage } from '../../../../src/components/integrated-brainstorm/session'
-
-export type {
-  BrainstormActivityInput,
-  BrainstormTimelineActivityInput,
-  BrainstormTimelineMessageInput,
-} from '../../../../src/components/integrated-brainstorm/activity'
-export type {
-  BrainstormActivityStorageInput,
-  BrainstormActivityStorageRecord,
-} from '../../../../src/components/integrated-brainstorm/session'
-
-/** Read an SSE response stream into brainstorm activity events. */
-export { readBrainstormSseResponse } from '../../../../src/components/integrated-brainstorm/sse'
 
 /** Structured-value (JSON → human) renderers — labeled prose, one-line summary, tool-envelope unwrap. */
 export { humanizeKey, formatStructured, summarizeStructured, unwrapToolResult, type FormatStructuredOptions } from '@bakin/core/format'

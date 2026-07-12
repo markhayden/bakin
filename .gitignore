@@ -91,3 +91,4 @@ packages/host/public/__bakin-dev/
 # snapshot-agent.ts. Used as conversion source for hand-built reference
 # packages; never committed.
 agents/*/.snapshot/
+dist-sdk/
