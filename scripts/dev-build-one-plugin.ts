@@ -30,7 +30,8 @@ export interface BuildOnePluginOptions {
 }
 
 export type BuildOnePluginResult =
-  | { ok: true }
+  /** clientBuilt=false: server-only plugin (no client.tsx) — no dist produced. */
+  | { ok: true; clientBuilt: boolean }
   | { ok: false; stderr: string }
 
 interface RunResult {
@@ -81,20 +82,23 @@ export async function buildOnePlugin(
   }
 
   const clientEntry = join(pluginDir, 'client.tsx')
-  if (existsSync(clientEntry)) {
-    const clientRes = await run('bun', [
-      'build', clientEntry,
-      '--outdir', distDir,
-      '--target', 'browser',
-      '--format', 'esm',
-      '--entry-naming', 'client.[ext]',
-      ...(opts.production ? ['--production'] : []),
-      ...externalArgs,
-    ])
-    if (clientRes.exitCode !== 0) {
-      return { ok: false, stderr: `client entry for ${id}:\n${clientRes.stderr}` }
-    }
+  if (!existsSync(clientEntry)) {
+    // Server-only plugin (e.g. git, images): nothing to bundle, no dist.
+    // Callers must not log "built <dist>" — that phantom cost real debugging.
+    return { ok: true, clientBuilt: false }
+  }
+  const clientRes = await run('bun', [
+    'build', clientEntry,
+    '--outdir', distDir,
+    '--target', 'browser',
+    '--format', 'esm',
+    '--entry-naming', 'client.[ext]',
+    ...(opts.production ? ['--production'] : []),
+    ...externalArgs,
+  ])
+  if (clientRes.exitCode !== 0) {
+    return { ok: false, stderr: `client entry for ${id}:\n${clientRes.stderr}` }
   }
 
-  return { ok: true }
+  return { ok: true, clientBuilt: true }
 }

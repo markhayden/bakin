@@ -55,16 +55,19 @@ Plan: ./plan.md · Spec: /SPEC.md · Branch: feat/dev-rig-dual-runtime
 
 ## Follow-ups (post-PR, one by one)
 
-- [ ] PluginHost boot hardening: no timeout or error surface — a single hung
-      manifest fetch / module import shows an infinite "Loading plugins"
-      spinner with zero feedback (bit Mark live when a tab loaded mid-server-
-      restart). Add a boot timeout + honest error panel with retry.
-- [ ] build-plugins log honesty: prints "built plugins/git/dist/" for
-      server-only plugins (git, images) that produce NO dist — cost real
-      debugging time chasing phantom deletions. Log "no client — skipped".
+- [x] PluginHost boot hardening — merged (#654): bounded boot, error panel + retry,
+      failure banner.
+- [x] build-plugins log honesty — done: buildOnePlugin reports clientBuilt;
+      log now reads "11 client bundles built, 2 server-only".
 - [ ] sandbox×pi live smoke (implemented + compose-validated; needs one
       in-container /login).
-- [ ] Old isolated home carries two 'failed' github user plugins
-      (projects, messaging) — stale June installs; reinstall or
-      `instance reset --mode isolated` clears them.
+- [x] Stale failed user plugins removed from the isolated home
+      (`plugins remove projects/messaging --yes`, 2026-07-12).
 - [ ] Live reset-scoping proof (optional; recipe above).
+
+## Machine baseline (2026-07-12, post-button-up)
+
+- Engine upgraded rc.17 → rc.18 (`bakin install search`; checksum verified).
+  NOTE for the search initiative: the installer's stop→swap→restart left the
+  LaunchAgent booted out — needed a manual `launchctl bootstrap`. Worth a look.
+- Full suite on this machine: 6607 pass / 0 fail, exit 0 (rc.18 pins + conformance green).

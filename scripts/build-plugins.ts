@@ -23,6 +23,7 @@ const CORE_PLUGINS = CORE_PLUGIN_IDS
 // Single source for the externals contract — see src/core/whiskit/externals.ts.
 const EXTERNAL = PLUGIN_CLIENT_EXTERNALS
 
+let built = 0
 for (const id of CORE_PLUGINS) {
   // serverEntry: false — core plugin server code is statically imported from
   // source (src/lib/plugin-static-imports.ts); dist holds browser assets only (#421).
@@ -31,9 +32,14 @@ for (const id of CORE_PLUGINS) {
     console.error(`Failed to build ${result.stderr}`)
     process.exit(1)
   }
-  console.log(`  built plugins/${id}/dist/`)
+  if (result.clientBuilt) {
+    built++
+    console.log(`  built plugins/${id}/dist/`)
+  } else {
+    console.log(`  plugins/${id}: server-only (no client.tsx) — no dist`)
+  }
 }
 
-console.log(`plugins/<id>/dist: ${CORE_PLUGINS.length} plugins built`)
+console.log(`plugins/<id>/dist: ${built} client bundles built, ${CORE_PLUGINS.length - built} server-only`)
 
 export {}
