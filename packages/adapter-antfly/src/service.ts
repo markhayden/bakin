@@ -362,11 +362,8 @@ export async function restartService(settings: AntflySettings, io: ServiceIo = d
     const uid = typeof process.getuid === 'function' ? process.getuid() : 501
     // SIGTERM + KeepAlive=true → launchd respawns the service cleanly.
     const kill = await io.exec('launchctl', ['kill', 'SIGTERM', `gui/${uid}/${LAUNCHD_LABEL}`])
-    if (kill.code !== 0) {
-      // Not loaded (or older macOS) — kickstart brings it up either way.
-      const kick = await io.exec('launchctl', ['kickstart', '-k', `gui/${uid}/${LAUNCHD_LABEL}`])
-      if (kick.code !== 0) await ensureProvisioned(settings, io)
-    }
+    // Not loaded (or older macOS) — the one start path owns the fallbacks.
+    if (kill.code !== 0) await startService(settings, io)
     return
   }
   if (mode === 'systemd') {
@@ -374,9 +371,37 @@ export async function restartService(settings: AntflySettings, io: ServiceIo = d
     if (restart.code !== 0) await ensureProvisioned(settings, io)
     return
   }
-  // strict child
-  stopChild()
+  // Strict child: wait for the old process to actually release the port —
+  // spawning immediately races the dying engine for the 3738 bind, and a
+  // bind-failure exit is never respawned (strict child, no restart ladder),
+  // which would convert a wedged engine into a dead one (review finding).
+  await stopChildAndWait()
   startChild(settings)
+}
+
+/**
+ * SIGTERM the strict child and wait for it to exit (SIGKILL fallback after
+ * the grace window — a child that ignores SIGTERM while wedged must still
+ * release the port).
+ */
+export async function stopChildAndWait(graceMs = 10_000): Promise<void> {
+  const child = g.__bakinAntflyChild
+  stopChild()
+  if (!child || child.exitCode !== null) return
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(() => {
+      try {
+        child.kill('SIGKILL')
+      } catch {
+        // already gone
+      }
+      resolve()
+    }, graceMs)
+    child.once('exit', () => {
+      clearTimeout(timer)
+      resolve()
+    })
+  })
 }
 
 /** Pid of the strict-child engine, when one is running (engine-status probe). */

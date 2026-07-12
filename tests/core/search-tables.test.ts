@@ -33,6 +33,7 @@ mock.module('../../packages/core/src/logger', loggerMock)
 
 import {
   ensureTable,
+  removeTableRegistration,
   resolveDrainTargets,
   queryTarget,
   rebuildTable,
@@ -352,34 +353,52 @@ describe('sweepOrphanEngineTables', () => {
     legs: [{ name: 'full_text', capability: 'full-text', fields: ['title'] }],
   } as TableEnsureDef['config']
 
-  it('drops an unreferenced versioned table only after it survives the dwell window', async () => {
-    const adapter = createMockSearchAdapter()
+  /** An orphan THIS instance owns: ensured, then its registry row purged. */
+  async function makeOwnedOrphan(adapter: SearchAdapter): Promise<string> {
     await ensureTable(adapter, makeDef(), 'fp-a')
-    const active = queryTarget('bakin_notes')!
-    // Orphan generation from a wiped registry (never referenced by a row).
-    await adapter.tables.create('bakin_notes_v1_deadbeef', TABLE_CONFIG)
+    const physical = queryTarget('bakin_notes')!
+    removeTableRegistration('bakin_notes')
+    return physical
+  }
+
+  it('drops an owned unreferenced table only after it survives the dwell window', async () => {
+    const adapter = createMockSearchAdapter()
+    const orphan = await makeOwnedOrphan(adapter)
 
     // First observation only records the candidate — nothing dropped yet.
     const first = await sweepOrphanEngineTables(adapter, { dwellMs: 0 })
     expect(first.dropped).toEqual([])
     expect(first.pending).toBe(1)
+    expect(first.unclaimed).toEqual([])
 
-    // Second observation past the dwell drops it; the active table survives.
+    // Second observation past the dwell drops it.
     const second = await sweepOrphanEngineTables(adapter, { dwellMs: 0 })
-    expect(second.dropped).toEqual(['bakin_notes_v1_deadbeef'])
+    expect(second.dropped).toEqual([orphan])
     expect(second.pending).toBe(0)
-    expect(await adapter.tables.stats('bakin_notes_v1_deadbeef')).toBeNull()
-    expect(await adapter.tables.stats(active)).not.toBeNull()
+    expect(await adapter.tables.stats(orphan)).toBeNull()
+  })
+
+  it('NEVER drops an unreferenced table it did not create — reports it unclaimed (shared-engine safety)', async () => {
+    const adapter = createMockSearchAdapter()
+    // Another Bakin home's live table on a shared engine: versioned name,
+    // absent from this instance's registry AND ownership ledger.
+    await adapter.tables.create('bakin_tasks_v3_ab12cd34', TABLE_CONFIG)
+    await sweepOrphanEngineTables(adapter, { dwellMs: 0 })
+    const second = await sweepOrphanEngineTables(adapter, { dwellMs: 0 })
+    expect(second.dropped).toEqual([])
+    expect(second.pending).toBe(0)
+    expect(second.unclaimed).toEqual(['bakin_tasks_v3_ab12cd34'])
+    expect(await adapter.tables.stats('bakin_tasks_v3_ab12cd34')).not.toBeNull()
   })
 
   it('never drops inside the dwell window', async () => {
     const adapter = createMockSearchAdapter()
-    await adapter.tables.create('bakin_notes_v1_deadbeef', TABLE_CONFIG)
+    const orphan = await makeOwnedOrphan(adapter)
     await sweepOrphanEngineTables(adapter, { dwellMs: 60_000 })
     const second = await sweepOrphanEngineTables(adapter, { dwellMs: 60_000 })
     expect(second.dropped).toEqual([])
     expect(second.pending).toBe(1)
-    expect(await adapter.tables.stats('bakin_notes_v1_deadbeef')).not.toBeNull()
+    expect(await adapter.tables.stats(orphan)).not.toBeNull()
   })
 
   it('ignores names that do not match the versioned physical pattern', async () => {
@@ -390,18 +409,14 @@ describe('sweepOrphanEngineTables', () => {
     const second = await sweepOrphanEngineTables(adapter, { dwellMs: 0 })
     expect(second.dropped).toEqual([])
     expect(second.pending).toBe(0)
+    expect(second.unclaimed).toEqual([])
     expect(await adapter.tables.stats('someone_elses_table')).not.toBeNull()
-    expect(await adapter.tables.stats('bakin_notes_backup')).not.toBeNull()
   })
 
   it('a candidate that becomes referenced again is forgiven — first-seen does not linger', async () => {
     const adapter = createMockSearchAdapter()
     const def = makeDef()
-    // Simulate the cross-process create window: the physical exists
-    // engine-side before any registry row references it.
-    await ensureTable(adapter, def, 'fp-a')
-    const physical = queryTarget('bakin_notes')!
-    resetTablesForTests() // wipe the registry; the engine keeps the table
+    const physical = await makeOwnedOrphan(adapter)
     await sweepOrphanEngineTables(adapter, { dwellMs: 0 }) // records candidate
     await ensureTable(adapter, def, 'fp-a') // registry row returns (same physical)
     expect(queryTarget('bakin_notes')).toBe(physical)
@@ -435,7 +450,7 @@ describe('sweepOrphanEngineTables', () => {
 
   it('a failing drop is tombstoned for the tombstone sweep instead of retrying forever', async () => {
     const base = createMockSearchAdapter()
-    await base.tables.create('bakin_notes_v1_deadbeef', TABLE_CONFIG)
+    const orphan = await makeOwnedOrphan(base)
     const failing: SearchAdapter = {
       ...base,
       tables: { ...base.tables, drop: async () => { throw new Error('engine 500') } },
@@ -452,6 +467,6 @@ describe('sweepOrphanEngineTables', () => {
     // The tombstone sweep finishes the job once the engine recovers.
     const left = await sweepTombstones(base)
     expect(left).toBe(0)
-    expect(await base.tables.stats('bakin_notes_v1_deadbeef')).toBeNull()
+    expect(await base.tables.stats(orphan)).toBeNull()
   })
 })

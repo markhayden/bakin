@@ -52,7 +52,9 @@ mock.module('../../../src/core/app-services', () => ({
   maybeGetAppServices: services,
 }))
 
-mock.module('../../../src/core/search-query', () => ({
+// The check imports the search-registry FACADE (the mockable surface —
+// review finding: bypassing it broke facade-level test mocking).
+mock.module('../../../src/core/search-registry', () => ({
   crossTableSearch: async (q: string) => ({
     results: [],
     meta: {
@@ -72,14 +74,15 @@ import {
   classifyCanary,
   resetEngineWatchStateForTests,
   searchCanaryRepair,
+  searchEngineBurnRepair,
 } from '../../../plugins/health/lib/system-checks/search-engine-watch'
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
 })
 
-beforeEach(() => {
-  resetEngineWatchStateForTests()
+beforeEach(async () => {
+  await resetEngineWatchStateForTests()
   searchAvailable = true
   engineStatus = undefined
   restartEngine = undefined
@@ -144,6 +147,25 @@ describe('checkSearchCanary', () => {
     searchAvailable = false
     expect(await checkSearchCanary()).toEqual([])
   })
+
+  it('an outage gap RESETS the streak — non-adjacent dark samples never escalate', async () => {
+    canaryTables = [t({ budget: 'omitted' })]
+    await checkSearchCanary() // dark #1
+    searchAvailable = false
+    await checkSearchCanary() // outage — chain broken, streak reset
+    searchAvailable = true
+    const [result] = await checkSearchCanary() // dark again = #1, not #2
+    expect(result.status).toBe('warn')
+  })
+
+  it('streaks survive a simulated restart (persisted, not module state)', async () => {
+    canaryTables = [t({ budget: 'omitted' })]
+    await checkSearchCanary() // dark #1 — persisted to plugin-data
+    // A server restart re-evaluates the module; the persisted file is the
+    // continuity. Same-process second call reads it back the same way.
+    const [second] = await checkSearchCanary()
+    expect(second.status).toBe('error')
+  })
 })
 
 describe('checkSearchEngineBurn', () => {
@@ -188,6 +210,16 @@ describe('checkSearchEngineBurn', () => {
     const [result] = await checkSearchEngineBurn()
     expect(result.status).toBe('ok')
   })
+
+  it('a not-running gap RESETS the wedge streak — a respawn does not inherit it', async () => {
+    engineStatus = async () => status({ wedgeSignals: ['startup-catchup-spin'] })
+    await checkSearchEngineBurn() // wedge #1
+    engineStatus = async () => status({ running: false })
+    await checkSearchEngineBurn() // crash gap — streak reset
+    engineStatus = async () => status({ wedgeSignals: ['startup-catchup-spin'] })
+    const [result] = await checkSearchEngineBurn() // wedge #1 again
+    expect(result.status).toBe('warn')
+  })
 })
 
 describe('engine restart repair', () => {
@@ -205,13 +237,27 @@ describe('engine restart repair', () => {
     expect(plan[0].requiresConfirmation).toBe(true)
   })
 
-  it('applies via restartEngine and reports applied once the engine answers', async () => {
+  it('applies via restartEngine and reports applied once the engine SERVES QUERIES (not just health probes)', async () => {
     let restarted = false
     restartEngine = async () => { restarted = true }
+    canaryTables = [t(), t()] // post-restart probe answers clean
     const plan = await searchCanaryRepair().plan([errorRow])
     const [result] = await searchCanaryRepair().apply(plan)
     expect(restarted).toBe(true)
     expect(result.status).toBe('applied')
+  })
+
+  it('a second correlated repair inside the debounce window skips the duplicate bounce', async () => {
+    let restarts = 0
+    restartEngine = async () => { restarts++ }
+    canaryTables = [t()]
+    const canaryPlan = await searchCanaryRepair().plan([errorRow])
+    await searchCanaryRepair().apply(canaryPlan)
+    const burnPlan = await searchEngineBurnRepair().plan([{ ...errorRow, check: 'search-engine-burn' }])
+    const [second] = await searchEngineBurnRepair().apply(burnPlan)
+    expect(restarts).toBe(1) // one bounce serves both detections
+    expect(second.status).toBe('applied')
+    expect(second.message).toContain('skipped a duplicate bounce')
   })
 
   it('fails honestly when the adapter cannot restart the engine', async () => {

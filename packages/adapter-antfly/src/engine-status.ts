@@ -92,7 +92,13 @@ export function scanLogDelta(
     } finally {
       closeSync(fd)
     }
-  } catch {
+  } catch (err) {
+    // Fails safe (offset preserved, no false signals) but never silently:
+    // a persistently unreadable log would blind the wedge watchdog.
+    log.warn('engine log read failed — wedge scan skipped this window', {
+      logFile,
+      err: err instanceof Error ? err.message : String(err),
+    })
     return { signals: [], nextOffset: prevOffset }
   }
   const delta = buffer.toString('utf-8')

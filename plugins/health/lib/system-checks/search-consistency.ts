@@ -77,7 +77,14 @@ export async function checkSearchConsistency(): Promise<HealthCheckResult[]> {
       const orphanStats = await runOrphanSweep()
       const removed = orphanStats.reduce((sum, s) => sum + s.orphans, 0)
       const orphanRows = await sweepOrphanRegistryRows()
-      const orphanTables = await sweepOrphanEngineTables(search)
+      // Isolated: a transient tables.list() failure must not cost the
+      // tombstone retry its hourly slot (review finding).
+      let orphanTables: Awaited<ReturnType<typeof sweepOrphanEngineTables>> | null = null
+      try {
+        orphanTables = await sweepOrphanEngineTables(search)
+      } catch (err) {
+        results.push(healthWarn('search-consistency', `Stale engine-table sweep failed (retrying next hour): ${err instanceof Error ? err.message : String(err)}`))
+      }
       const tombstonesLeft = await sweepTombstones(search)
       if (removed > 0) {
         results.push(healthOk('search-consistency', `Deep sweep removed ${removed} orphaned index row(s)`))
@@ -85,8 +92,11 @@ export async function checkSearchConsistency(): Promise<HealthCheckResult[]> {
       if (orphanRows.length > 0) {
         results.push(healthOk('search-consistency', `Deep sweep purged ${orphanRows.length} orphaned registry row(s): ${orphanRows.join(', ')}`))
       }
-      if (orphanTables.dropped.length > 0) {
+      if (orphanTables && orphanTables.dropped.length > 0) {
         results.push(healthOk('search-consistency', `Deep sweep dropped ${orphanTables.dropped.length} stale engine table(s): ${orphanTables.dropped.join(', ')}`))
+      }
+      if (orphanTables && orphanTables.unclaimed.length > 0) {
+        results.push(healthWarn('search-consistency', `${orphanTables.unclaimed.length} engine table(s) are unreferenced but not created by this Bakin home — left untouched (another instance may own them): ${orphanTables.unclaimed.join(', ')}. Drop manually if stale.`))
       }
       if (tombstonesLeft > 0) {
         results.push(healthWarn('search-consistency', `${tombstonesLeft} old physical table(s) still refusing to drop — retrying next sweep`))

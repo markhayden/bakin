@@ -211,10 +211,18 @@ async function ensureTable(search: SearchAdapter, def: SearchContentTypeDefiniti
  * path). Queries keep answering from the old physical throughout; SSE
  * `search.rebuild.*` events drive the health page's live progress.
  */
-export async function rebuildRegisteredTables(tableName?: string): Promise<Array<{ table: string; result: string; indexed?: number; error?: string }>> {
+/** Per-table rebuild outcome — the ONE shape the /api/reindex route and the CLI share. */
+export interface ReindexTableOutcome {
+  table: string
+  result: string
+  indexed?: number
+  error?: string
+}
+
+export async function rebuildRegisteredTables(tableName?: string): Promise<ReindexTableOutcome[]> {
   const registry = getRegistry()
   const search = getSearchAdapter()
-  const results: Array<{ table: string; result: string; indexed?: number; error?: string }> = []
+  const results: ReindexTableOutcome[] = []
   for (const [logical, def] of registry.contentTypes) {
     if (tableName && logical !== tableName && def.table !== tableName) continue
     broadcastRebuild('search.rebuild.start', logical)

@@ -79,8 +79,12 @@ export async function runPluginHealthChecks(): Promise<HealthCheckResult[]> {
 }
 
 async function notifyUnfixableIssues(results: HealthCheckResult[]): Promise<void> {
+  // Errors ALWAYS qualify — an autoFixable error is still an incident the
+  // user must hear about (the 17h search-dark burn stayed silent partly
+  // because fixable errors were filtered here); only fixable WARNS stay
+  // quiet to bound noise.
   const issues = results.filter(r =>
-    (r.status === 'warn' || r.status === 'error') && !r.autoFixable
+    r.status === 'error' || (r.status === 'warn' && !r.autoFixable)
   )
 
   if (issues.length === 0) return
@@ -92,7 +96,8 @@ async function notifyUnfixableIssues(results: HealthCheckResult[]): Promise<void
 
   const lines = issues.map(i => {
     const icon = i.status === 'error' ? 'ERROR' : 'WARN'
-    return `[${icon}] ${i.check}: ${i.message}`
+    const hint = i.autoFixable ? ' (repair available: `bakin doctor --fix`)' : ''
+    return `[${icon}] ${i.check}: ${i.message}${hint}`
   })
 
   const message = `Bakin Doctor found ${issues.length} issue(s) that need your attention:\n\n${lines.join('\n')}\n\nRun \`bakin doctor\` for full details.`

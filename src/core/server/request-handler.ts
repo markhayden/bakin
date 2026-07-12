@@ -321,7 +321,7 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
     if (url.pathname === '/api/reindex' && req.method === 'POST') {
       const { rebuildRegisteredTables } = require('../search-registry')
       const table = url.searchParams.get('table') || undefined
-      rebuildRegisteredTables(table).then((results: Array<{ table: string; result: string; indexed?: number; error?: string }>) => {
+      rebuildRegisteredTables(table).then((results: import('../search-registry').ReindexTableOutcome[]) => {
         const errors = results.filter((r) => r.error).length
         const parked = results.filter((r) => r.result === 'parked').length
         jsonResponse(res, 200, {

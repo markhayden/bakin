@@ -157,12 +157,14 @@ async function cmdReindex(options: { table?: string; rebuild?: boolean } = {}): 
   // Response shape = the /api/reindex handler: per-table blue/green outcome
   // ('migrated'/'parked'/'failed') + backfilled doc count. The old enrichment
   // fields never existed on this route and printed "undefined documents".
+  // `total`/`parked` are OPTIONAL at runtime: an older not-yet-restarted
+  // server (this box's documented normal state) omits them.
   const result = await apiPost(url) as ReindexResultData & {
     ok: boolean
-    total: number
+    total?: number
     errors: number
-    parked: number
-    tables: Array<{ table: string; result: string; indexed?: number; error?: string }>
+    parked?: number
+    tables: Array<import('../../core/search-registry-core').ReindexTableOutcome>
   }
   if (process.stdout.isTTY) {
     await printReindexTui(result, { target, rebuild: options.rebuild === true })
@@ -178,8 +180,8 @@ async function cmdReindex(options: { table?: string; rebuild?: boolean } = {}): 
       }
     }
   }
-  console.log(`Done. ${result.total} total documents indexed.`)
-  if (result.parked > 0) {
+  console.log(typeof result.total === 'number' ? `Done. ${result.total} total documents indexed.` : 'Done.')
+  if ((result.parked ?? 0) > 0) {
     console.log(`WARNING: ${result.parked} table(s) parked mid-migration — queries keep answering from the old table; run \`bakin doctor\` to resume.`)
   }
 }
