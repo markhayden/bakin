@@ -156,11 +156,11 @@ describe('WorkflowsPage — search signals', () => {
     await waitFor(() => {
       expect(screen.getByTestId('workflows-search-degraded')).toBeDefined()
     }, { timeout: 3000 })
-    expect(screen.queryByTestId('workflows-search-loading')).toBeNull()
+    expect(screen.queryAllByTestId('workflows-search-loading').length).toBe(0)
 
     // …while basic text matching keeps the list usable.
     expect(screen.getByTestId('card-onboarding')).toBeDefined()
-    expect(screen.queryByTestId('card-content-pipeline')).toBeNull()
+    expect(screen.queryAllByTestId('card-content-pipeline').length).toBe(0)
   })
 
   it('shows the SearchPartialChip when the response is partial', async () => {
@@ -182,7 +182,7 @@ describe('WorkflowsPage — search signals', () => {
     await waitFor(() => {
       expect(screen.getByTestId('search-partial-chip')).toBeDefined()
     }, { timeout: 3000 })
-    expect(screen.queryByTestId('workflows-search-degraded')).toBeNull()
+    expect(screen.queryAllByTestId('workflows-search-degraded').length).toBe(0)
     expect(screen.getByTestId('card-onboarding')).toBeDefined()
   })
 
@@ -197,9 +197,9 @@ describe('WorkflowsPage — search signals', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('card-onboarding')).toBeDefined()
-      expect(screen.queryByTestId('workflows-search-loading')).toBeNull()
+      expect(screen.queryAllByTestId('workflows-search-loading').length).toBe(0)
     }, { timeout: 3000 })
-    expect(screen.queryByTestId('workflows-search-degraded')).toBeNull()
-    expect(screen.queryByTestId('search-partial-chip')).toBeNull()
+    expect(screen.queryAllByTestId('workflows-search-degraded').length).toBe(0)
+    expect(screen.queryAllByTestId('search-partial-chip').length).toBe(0)
   })
 })

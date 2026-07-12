@@ -211,7 +211,7 @@ describe('MemoryShell — engine down', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
 
     await waitFor(() => {
-      expect(screen.queryByTestId('search-unavailable')).toBeNull()
+      expect(screen.queryAllByTestId('search-unavailable').length).toBe(0)
       expect(screen.getByText('Beef stew notes')).toBeDefined()
     }, { timeout: 3000 })
   })

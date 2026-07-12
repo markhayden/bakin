@@ -228,11 +228,11 @@ describe('SchedulePage — search signals', () => {
     await waitFor(() => {
       expect(screen.getByTestId('schedule-search-degraded')).toBeDefined()
     }, { timeout: 3000 })
-    expect(screen.queryByTestId('schedule-search-loading')).toBeNull()
+    expect(screen.queryAllByTestId('schedule-search-loading').length).toBe(0)
 
     // …while basic text matching keeps the list usable.
     expect(screen.getByTestId('job-a')).toBeDefined()
-    expect(screen.queryByTestId('job-b')).toBeNull()
+    expect(screen.queryAllByTestId('job-b').length).toBe(0)
   })
 
   it('shows the SearchPartialChip when the response is partial', async () => {
@@ -257,7 +257,7 @@ describe('SchedulePage — search signals', () => {
     await waitFor(() => {
       expect(screen.getByTestId('search-partial-chip')).toBeDefined()
     }, { timeout: 3000 })
-    expect(screen.queryByTestId('schedule-search-degraded')).toBeNull()
+    expect(screen.queryAllByTestId('schedule-search-degraded').length).toBe(0)
     expect(screen.getByTestId('job-a')).toBeDefined()
   })
 
@@ -275,9 +275,9 @@ describe('SchedulePage — search signals', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('job-a')).toBeDefined()
-      expect(screen.queryByTestId('schedule-search-loading')).toBeNull()
+      expect(screen.queryAllByTestId('schedule-search-loading').length).toBe(0)
     }, { timeout: 3000 })
-    expect(screen.queryByTestId('schedule-search-degraded')).toBeNull()
-    expect(screen.queryByTestId('search-partial-chip')).toBeNull()
+    expect(screen.queryAllByTestId('schedule-search-degraded').length).toBe(0)
+    expect(screen.queryAllByTestId('search-partial-chip').length).toBe(0)
   })
 })

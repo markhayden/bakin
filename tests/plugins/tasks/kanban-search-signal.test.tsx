@@ -18,6 +18,7 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
+import { settleReact } from '../../rtl-settle'
 import { rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -235,12 +236,12 @@ describe('KanbanBoard — search signals', () => {
     await waitFor(() => {
       expect(screen.getByTestId('tasks-search-degraded')).toBeDefined()
     }, { timeout: 3000 })
-    expect(screen.queryByTestId('tasks-search-loading')).toBeNull()
+    expect(screen.queryAllByTestId('tasks-search-loading').length).toBe(0)
 
     // …while basic text matching keeps the board usable (the fix is the
     // SIGNAL — the fallback stays).
     expect(screen.getByTestId('task-task-beef')).toBeDefined()
-    expect(screen.queryByTestId('task-task-web')).toBeNull()
+    expect(screen.queryAllByTestId('task-task-web').length).toBe(0)
   })
 
   it('shows the SearchPartialChip when the search response is partial', async () => {
@@ -266,7 +267,7 @@ describe('KanbanBoard — search signals', () => {
       expect(screen.getByTestId('search-partial-chip')).toBeDefined()
     }, { timeout: 3000 })
     // No degraded chip — the engine answered, just not completely.
-    expect(screen.queryByTestId('tasks-search-degraded')).toBeNull()
+    expect(screen.queryAllByTestId('tasks-search-degraded').length).toBe(0)
     expect(screen.getByTestId('task-task-beef')).toBeDefined()
   })
 
@@ -282,11 +283,16 @@ describe('KanbanBoard — search signals', () => {
       render(<KanbanBoard />)
     })
 
+    // Drain the scheduler first: on CI's 2-vCPU runners the fetch-response
+    // re-render can still be time-sliced when waitFor starts, and the
+    // spinner assertion must observe the SETTLED state (see rtl-settle).
+    await settleReact()
     await waitFor(() => {
-      expect(screen.getByTestId('task-task-beef')).toBeDefined()
-      expect(screen.queryByTestId('tasks-search-loading')).toBeNull()
-    }, { timeout: 3000 })
-    expect(screen.queryByTestId('tasks-search-degraded')).toBeNull()
-    expect(screen.queryByTestId('search-partial-chip')).toBeNull()
+      expect(screen.queryAllByTestId('task-task-beef').length).toBe(1)
+      expect(screen.queryAllByTestId('tasks-search-loading').length).toBe(0)
+    }, { timeout: 10_000 })
+    expect(screen.queryAllByTestId('tasks-search-degraded').length).toBe(0)
+    expect(screen.queryAllByTestId('search-partial-chip').length).toBe(0)
+    await settleReact()
   })
 })
