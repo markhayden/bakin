@@ -15,13 +15,13 @@ Plan: `tasks/plan-search-trust-and-speed.md` · Spec: `.claude/specs/search-trus
 ## P2 — shims
 - [x] T6 canary sweep vs rc.18 → **GATE B** per-shim verdicts in evidence file
 - [x] T7 refactor(adapter-antfly): sort — NOT ADOPTED (needs schema-mapped sortable fields; no Bakin sort surface). Canary stays → order_by (if landed)
-- [ ] T8 refactor(adapter-antfly): server-side query deadlines (if landed)
-- [ ] T9 refactor(adapter-antfly): totals count-twin delete-or-concurrent
+- [x] T8 refactor(adapter-antfly): server-side query deadlines (landed — adopted via Query.deadlineMs → timeout_ms)
+- [x] T9 refactor(adapter-antfly): totals count-twin made concurrent (still needed upstream)
 - [x] T10 refactor(adapter-antfly): lookup/filter_query — still broken upstream, shims stay body / filter_query removals (if flipped)
 - [x] T11 refactor(assets): WebP — still broken upstream (#322), shim stays: WebP EMBED_SAFE_RE removal (if #338 covers)
 
 ## P3 — latency contract
-- [ ] T12 feat(search): queryBudgetMs + per-table degrade/omit + metadata + telemetry
+- [x] T12 feat(search): queryBudgetMs + per-table degrade/omit + metadata + telemetry
 - [ ] T13 feat(host): ⌘K progress stages + partial-results chip (SDK-shared)
 
 ## P4 — observability

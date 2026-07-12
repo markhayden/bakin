@@ -29,6 +29,8 @@ export { EmptyState } from '@/components/empty-state'
 
 export { SearchUnavailable } from '@/components/search-unavailable'
 export { ScoreOverlay } from '@/components/score-overlay'
+export { SearchPartialChip } from '@/components/search-partial-chip'
+export type { SearchPartialMeta } from '@/components/search-partial-chip'
 export type { ScoreOverlayInfo } from '@/components/score-overlay'
 /** Inline error banner with dismiss + retry actions. */
 export { ErrorBanner } from '@/components/error-banner'

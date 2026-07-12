@@ -171,6 +171,42 @@ describe('GlobalSearchOverlay', () => {
     }
   })
 
+  it('shows the honest partial-results chip when a source missed its budget', async () => {
+    mockSearchFetch(() => ({
+      status: 200,
+      body: {
+        results: [HIT('a1', 'bakin_assets')],
+        meta: {
+          query: 'x', total: 1, took_ms: 2001, source: 'search', partial: true,
+          tables: [
+            { table: 'bakin_assets', hits: 1, took_ms: 40 },
+            { table: 'bakin_memory', hits: 0, took_ms: 2001, budget: 'omitted' },
+          ],
+        },
+      },
+    }))
+    render(<GlobalSearchOverlay />)
+    openOverlay()
+    const input = await screen.findByPlaceholderText(/Search assets/)
+    fireEvent.input(input, { target: { value: 'rose' } })
+    await waitFor(() => expect(screen.getByTestId('search-partial-chip')).toBeTruthy(), { timeout: 3000 })
+    // tooltip names the slow source, stripped of the table prefix
+    expect(screen.getByTestId('search-partial-chip').getAttribute('title')).toContain('memory: no answer in time')
+  })
+
+  it('renders no partial chip when every source answered in budget', async () => {
+    mockSearchFetch(() => ({
+      status: 200,
+      body: { results: [HIT('a1', 'bakin_assets')], meta: { query: 'x', total: 1, took_ms: 30, source: 'search', tables: [{ table: 'bakin_assets', hits: 1, took_ms: 30 }] } },
+    }))
+    render(<GlobalSearchOverlay />)
+    openOverlay()
+    const input = await screen.findByPlaceholderText(/Search assets/)
+    fireEvent.input(input, { target: { value: 'rose' } })
+    await waitFor(() => expect(screen.getByTestId('global-search-hit-a1')).toBeTruthy(), { timeout: 3000 })
+    expect(screen.queryAllByTestId('search-partial-chip').length).toBe(0)
+  })
+
   it('renders score overlays only when the debug toggle is on', async () => {
     mockSearchFetch(() => ({
       status: 200,
