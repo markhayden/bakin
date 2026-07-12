@@ -18,6 +18,8 @@ import { isOnboarded } from './onboarding/state'
 import { listHealthChecks } from './health-check-registry'
 import type { HealthCheckDef, HealthCheckResult } from '../../packages/core/src/plugin-types'
 
+import { escalateCronErrors } from './doctor-escalation'
+
 const log = createLogger('doctor')
 
 let doctorTimer: NodeJS.Timeout | null = null
@@ -78,7 +80,7 @@ export async function runPluginHealthChecks(): Promise<HealthCheckResult[]> {
   return groups.flatMap(group => group.results)
 }
 
-async function notifyUnfixableIssues(results: HealthCheckResult[]): Promise<void> {
+export async function notifyUnfixableIssues(results: HealthCheckResult[]): Promise<void> {
   // Errors ALWAYS qualify — an autoFixable error is still an incident the
   // user must hear about (the 17h search-dark burn stayed silent partly
   // because fixable errors were filtered here); only fixable WARNS stay
@@ -180,18 +182,22 @@ export function start(contentDir: string, projectRoot: string): void {
   const settings = getSettings()
 
   // Run immediately on startup
-  runDiagnostics(contentDir, projectRoot).catch(err => {
-    log.error('Doctor startup check failed', err)
-  })
+  runDiagnostics(contentDir, projectRoot)
+    .then(results => escalateCronErrors(results, contentDir, projectRoot))
+    .catch(err => {
+      log.error('Doctor startup check failed', err)
+    })
 
   // Then run on interval
   doctorTimer = setInterval(() => {
     // Clear notification cache each cycle so recurring issues get re-reported
     // (but not within the same cycle)
     notifiedIssues.clear()
-    runDiagnostics(contentDir, projectRoot).catch(err => {
-      log.error('Doctor periodic check failed', err)
-    })
+    runDiagnostics(contentDir, projectRoot)
+      .then(results => escalateCronErrors(results, contentDir, projectRoot))
+      .catch(err => {
+        log.error('Doctor periodic check failed', err)
+      })
   }, settings.doctor.intervalMs)
 
   log.info('Doctor started', { intervalMs: settings.doctor.intervalMs })
