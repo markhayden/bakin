@@ -1,14 +1,15 @@
 /**
- * Pre-send image preparation for the runtime enrichment engine: gateway
- * attachments hard-cap at 2 MB inline (larger silently degrades upstream —
- * the model never sees pixels, bakin#583 territory), so anything bigger is
- * downscaled to a temp JPEG first. ~1568px max dimension keeps OCR-able
- * detail while landing far under the cap for photographic content.
+ * Pre-send image preparation shared by every surface that sends image
+ * attachments to a runtime (assets enrichment, chat): gateway attachments
+ * hard-cap at 2 MB inline (larger silently degrades upstream — the model
+ * never sees pixels, bakin#583 territory), so anything bigger is downscaled
+ * to a temp JPEG first. ~1568px max dimension keeps OCR-able detail while
+ * landing far under the cap for photographic content.
  */
 import { statSync, mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { dirname, join } from 'path'
-import { loadSharp } from '../asset-media'
+import { loadSharp } from './sharp-loader'
 
 export const INLINE_ATTACHMENT_LIMIT_BYTES = 2_000_000
 const MAX_DIMENSION = 1568
@@ -35,7 +36,7 @@ export async function prepareImageAttachment(path: string, mimeType: string): Pr
       `attachment ${path}: ${size} bytes exceeds the ${INLINE_ATTACHMENT_LIMIT_BYTES}-byte inline limit and sharp is unavailable to downscale it — larger images silently degrade upstream (the model never sees the pixels).`,
     )
   }
-  const outDir = mkdtempSync(join(tmpdir(), 'bakin-enrich-'))
+  const outDir = mkdtempSync(join(tmpdir(), 'bakin-downscale-'))
   const outPath = join(outDir, 'attachment.jpg')
   await sharp(path)
     .rotate() // honor EXIF orientation before stripping metadata
@@ -53,9 +54,9 @@ export async function prepareImageAttachment(path: string, mimeType: string): Pr
 }
 
 /**
- * Remove the temp dir a downscale created. Callers own the lifetime — the
- * engine calls this after its LAST send (the corrective re-ask reuses the
- * file). No-op for originals.
+ * Remove the temp dir a downscale created. Callers own the lifetime — e.g.
+ * the enrichment engine calls this after its LAST send (the corrective
+ * re-ask reuses the file). No-op for originals.
  */
 export function cleanupPreparedAttachment(prepared: PreparedAttachment): void {
   if (!prepared.downscaled) return

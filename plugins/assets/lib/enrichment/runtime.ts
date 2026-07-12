@@ -16,8 +16,8 @@
  */
 import { VisionEnrichmentResultSchema, type VisionEnrichmentResult } from '@bakin/core/media'
 import type { AgentRuntimeAdapter, MessageAttachment } from '@bakin/core/adapters/runtime'
+import { cleanupPreparedAttachment, prepareImageAttachment, type PreparedAttachment } from '@bakin/core/media/downscale'
 import type { EnrichmentEngine, EnrichmentJobInput } from './engine'
-import { cleanupPreparedAttachment, prepareImageAttachment, type PreparedAttachment } from './downscale'
 
 export type RuntimeAvailability =
   | { ok: true }

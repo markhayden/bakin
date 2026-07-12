@@ -8,30 +8,19 @@
  * and tolerated-absent — image metadata/export degrade to null rather than
  * failing the asset operation.
  *
- * This `loadSharp` is the ONE sharp loader for the assets plugin — mutations
- * and enrichment import it from here; don't add another module-level cache.
- * (The images plugin keeps its own tiny copy: plugin boundaries forbid the
- * cross-plugin import and its single call site doesn't justify a hook.)
+ * The sharp loader itself lives in @bakin/core/media/sharp-loader (ONE
+ * module-level cache shared by assets, images, and chat attachments); this
+ * module re-exports it so plugin-local consumers keep their import site.
  */
 import { existsSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 
+import { loadSharp } from '@bakin/core/media/sharp-loader'
 import { createLogger } from '../../../src/core/logger'
 
 const log = createLogger('asset-service')
 
-type Sharp = typeof import('sharp')
-let sharpModule: Promise<Sharp | null> | null = null
-
-export async function loadSharp(): Promise<Sharp | null> {
-  sharpModule ??= import('sharp')
-    .then((mod): Sharp => (mod as unknown as { default?: Sharp }).default ?? (mod as unknown as Sharp))
-    .catch((err) => {
-      log.warn('sharp unavailable; image metadata/export support disabled', { error: err instanceof Error ? err.message : String(err) })
-      return null
-    })
-  return sharpModule
-}
+export { loadSharp }
 
 export async function imageDimensions(filePath: string): Promise<{ width: number | null; height: number | null }> {
   try {

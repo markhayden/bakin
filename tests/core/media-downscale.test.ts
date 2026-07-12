@@ -1,5 +1,7 @@
 /**
- * Attachment preparation lifecycle: under-limit originals pass through
+ * Shared pre-send image downscale (packages/core/src/media/downscale.ts) —
+ * extracted from the assets enrichment engine so chat attachments and
+ * enrichment share ONE implementation. Under-limit originals pass through
  * untouched; downscaled temp JPEGs are the CALLER's to clean up and
  * cleanupPreparedAttachment removes exactly the temp dir (never originals).
  */
@@ -9,7 +11,7 @@ import { tmpdir } from 'os'
 import { rmSync, mkdirSync, mkdtempSync, writeFileSync, existsSync } from 'fs'
 import { randomUUID } from 'crypto'
 
-const testDir = join(tmpdir(), `bakin-test-enrich-downscale-${Date.now()}-${randomUUID()}`)
+const testDir = join(tmpdir(), `bakin-test-media-downscale-${Date.now()}-${randomUUID()}`)
 process.env.BAKIN_HOME = testDir
 
 const contentDirMock = () => ({
@@ -23,23 +25,19 @@ const contentDirMock = () => ({
     db: join(testDir, 'bakin.db'),
   }),
 })
-mock.module('../../../src/core/content-dir', contentDirMock)
-mock.module('../../../packages/core/src/content-dir', contentDirMock)
-mock.module('@bakin/adapter-openclaw/home', () => ({
-  getOpenClawHome: () => join(testDir, 'openclaw'),
-  getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
-  resetOpenClawHome: () => {},
-}))
+mock.module('../../src/core/content-dir', contentDirMock)
+mock.module('../../packages/core/src/content-dir', contentDirMock)
 const loggerMock = () => ({
   createLogger: () => ({ debug: mock(), info: mock(), warn: mock(), error: mock() }),
 })
-mock.module('../../../src/core/logger', loggerMock)
-mock.module('../../../packages/core/src/logger', loggerMock)
+mock.module('../../src/core/logger', loggerMock)
+mock.module('../../packages/core/src/logger', loggerMock)
 
 import {
   prepareImageAttachment,
   cleanupPreparedAttachment,
-} from '../../../plugins/assets/lib/enrichment/downscale'
+  INLINE_ATTACHMENT_LIMIT_BYTES,
+} from '../../packages/core/src/media/downscale'
 
 mkdirSync(testDir, { recursive: true })
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
@@ -51,11 +49,15 @@ describe('prepareImageAttachment', () => {
     const prepared = await prepareImageAttachment(original, 'image/png')
     expect(prepared).toEqual({ path: original, mimeType: 'image/png', downscaled: false })
   })
+
+  it('exports the 2 MB inline cap the adapters enforce', () => {
+    expect(INLINE_ATTACHMENT_LIMIT_BYTES).toBe(2_000_000)
+  })
 })
 
 describe('cleanupPreparedAttachment', () => {
   it('removes the temp dir of a downscaled attachment', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'bakin-enrich-'))
+    const dir = mkdtempSync(join(tmpdir(), 'bakin-downscale-'))
     const path = join(dir, 'attachment.jpg')
     writeFileSync(path, Buffer.alloc(64))
     cleanupPreparedAttachment({ path, mimeType: 'image/jpeg', downscaled: true })

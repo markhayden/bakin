@@ -4,6 +4,7 @@ import { basename } from 'node:path'
 import type { AssetVersionDetail } from '@makinbakin/sdk/types'
 import { isValidAssetId } from '@makinbakin/sdk/utils'
 import { translateAgentPath } from '@bakin/core/agent-path-map'
+import { loadSharp } from '@bakin/core/media/sharp-loader'
 import type { ExecToolResult, PluginContext } from '@bakin/core/plugin-types'
 import type { RuntimeImageGenerationResult } from '@bakin/core/adapters/runtime'
 import { RUNTIME_MEDIA_URI_SCHEME } from '@bakin/core/adapters/runtime'
@@ -20,8 +21,6 @@ const MAX_IMAGE_EDGE = 2048
 /** Upper bound on reference/context images per call (#418). Providers cap input
  *  images; keep it conservative and bump here if a workflow needs more. */
 const MAX_REFERENCE_IMAGES = 4
-type Sharp = typeof import('sharp')
-let sharpModule: Promise<Sharp | null> | null = null
 
 export interface ImagesGenerateParams {
   prompt?: string
@@ -71,17 +70,6 @@ function fail(error: string): ExecToolResult {
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
-}
-
-// Deliberate small duplicate of plugins/assets/lib/asset-media.ts loadSharp:
-// the plugin-boundaries architecture test bans cross-plugin imports, images'
-// only sharp use is the single imageDimensions probe below, and a hook-based
-// bridge for a 6-line lazy loader isn't worth the indirection.
-async function loadSharp(): Promise<Sharp | null> {
-  sharpModule ??= import('sharp')
-    .then((mod): Sharp => (mod as unknown as { default?: Sharp }).default ?? (mod as unknown as Sharp))
-    .catch(() => null)
-  return sharpModule
 }
 
 function hashPrompt(prompt: string): string {
