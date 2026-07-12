@@ -173,19 +173,25 @@ export const brandRoutes = [
     summary: 'Build-my-brand: create a draft + dispatch the drafting task',
     description:
       'The cold-start flow (§9.1): questionnaire answers become guidelines/_intake.md on a draft brand (invisible to pickers/resolution/injection), and a NORMAL Bakin task dispatches to the chosen agent, which authors the brand via the draft-gated write tools. Publish makes it real.',
-    body: z.object({
-      id: brandIdSchema,
-      name: z.string().min(1),
-      agent: z.string().min(1),
-      product: z.string().min(1),
-      audience: z.string().optional(),
-      tone: z.string().optional(),
-      competitors: z.string().optional(),
-      urls: z.string().optional(),
-      notes: z.string().optional(),
-      /** Optional logo the operator uploaded in the wizard (already a managed assetId). */
-      logoAssetId: z.string().optional(),
-    }),
+    body: z
+      .object({
+        id: brandIdSchema,
+        name: z.string().min(1),
+        agent: z.string().min(1),
+        /** Optional in website mode — the agent extracts what-we-sell from the sources. */
+        product: z.string().min(1).optional(),
+        audience: z.string().optional(),
+        tone: z.string().optional(),
+        competitors: z.string().optional(),
+        /** Website/style-guide URLs the agent mines. Required when no product is given. */
+        urls: z.string().optional(),
+        notes: z.string().optional(),
+        /** Optional logo the operator uploaded in the wizard (already a managed assetId). */
+        logoAssetId: z.string().optional(),
+      })
+      .refine((b) => Boolean(b.product?.trim()) || Boolean(b.urls?.trim()), {
+        message: 'either product or urls is required — the agent needs SOMETHING to author from',
+      }),
     responses: { 200: passthrough, 400: errorResponse, 409: errorResponse, 500: errorResponse },
     handler: async (_req, ctx, parsed) => {
       const b = parsed.body
@@ -209,15 +215,30 @@ export const brandRoutes = [
           '',
           `# Brand intake: ${b.name}`,
           '',
-          `- What we sell: ${b.product}`,
+          ...(b.product ? [`- What we sell: ${b.product}`] : []),
           ...(b.audience ? [`- Audience: ${b.audience}`] : []),
           ...(b.tone ? [`- Tone words: ${b.tone}`] : []),
           ...(b.competitors ? [`- Competitors: ${b.competitors}`] : []),
-          ...(b.urls ? [`- URLs to read: ${b.urls}`] : []),
+          ...(b.urls ? [`- Source URLs to mine: ${b.urls}`] : []),
           ...(b.notes ? ['', '## Notes', '', b.notes] : []),
           '',
         ].join('\n')
         writeDoc(brand.id, 'guidelines', '_intake.md', intake)
+
+        // Source mining is a numbered step of its own when URLs exist — the
+        // website-mode flow may carry NOTHING except a name and these links.
+        const miningStep = b.urls
+          ? [
+              `Fetch and READ each source URL from the intake (${b.urls}). Extract: the palette (real hex values from the site's CSS/design), voice and tone (how they actually write), terminology (product names, phrases they repeat, words they avoid), and logo candidates. Append a '## Source findings' section to _intake.md via bakin_exec_brands_write_doc recording what came from where.`,
+            ]
+          : []
+        const steps = [
+          `Read the intake: bakin_exec_brands_read_doc brandId="${brand.id}" kind="guidelines" name="_intake.md".`,
+          ...miningStep,
+          `Write voice.md (personality, sentences we would/would never write, audience) and style-guide.md (color usage, imagery, formatting) via bakin_exec_brands_write_doc.`,
+          `Set description, palette (real hex colors), rules (absolute do/don'ts), and terminology via bakin_exec_brands_update_manifest.`,
+          `Do NOT touch other brands. When done, complete this task — the operator reviews the draft on the Branding page and publishes it.`,
+        ]
 
         // A NORMAL task — deliberately unbranded (a draft brand would trip
         // the dispatch brand gate); the description names the draft instead.
@@ -225,12 +246,9 @@ export const brandRoutes = [
           title: `Author brand '${brand.id}' from its intake`,
           agent: b.agent,
           description: [
-            `Author the DRAFT brand '${brand.id}' from its intake questionnaire.`,
+            `Author the DRAFT brand '${brand.id}' from its intake${b.urls ? ' and source URLs' : ' questionnaire'}.`,
             '',
-            `1. Read the intake: bakin_exec_brands_read_doc brandId="${brand.id}" kind="guidelines" name="_intake.md" (read any listed URLs too).`,
-            `2. Write voice.md (personality, sentences we would/would never write, audience) and style-guide.md (color usage, imagery, formatting) via bakin_exec_brands_write_doc.`,
-            `3. Set description, palette (real hex colors), rules (absolute do/don'ts), and terminology via bakin_exec_brands_update_manifest.`,
-            `4. Do NOT touch other brands. When done, complete this task — the operator reviews the draft on the Brands page and publishes it.`,
+            ...steps.map((s, i) => `${i + 1}. ${s}`),
           ].join('\n'),
           skipWorkflowReason: 'brand-builder authoring task — direct tool work, no workflow applies',
         })

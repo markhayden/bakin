@@ -342,6 +342,40 @@ describe('builder flow (#419 §9.1)', () => {
     expect(again.status).toBe(400) // already published
   })
 
+  it('website mode: url-only payload works and the task prompt mines the sources', async () => {
+    const created = await callRoute(route('POST', '/builder'), activated.ctx, {
+      body: { id: 'from-web', name: 'From Web', agent: 'pixel', urls: 'https://acme.example https://acme.example/styleguide' },
+    })
+    expect(created.status).toBe(200)
+    expect((created.body.brand as { draft?: boolean }).draft).toBe(true)
+    expect(created.body.taskId).toBeTruthy() // drafting banner links this
+
+    const task = await activated.ctx.tasks.get(String(created.body.taskId))
+    expect(task?.description).toContain('Fetch and READ each source URL')
+    expect(task?.description).toContain('https://acme.example/styleguide')
+    expect(task?.description).toContain('Source findings')
+
+    const intake = await callRoute(route('GET', '/:brandId/docs/:kind/:name'), activated.ctx, {
+      searchParams: { brandId: 'from-web', kind: 'guidelines', name: '_intake.md' },
+    })
+    expect(String(intake.body.content)).toContain('Source URLs to mine')
+  })
+
+  it('rejects a builder payload with neither product nor urls', async () => {
+    const bad = await callRoute(route('POST', '/builder'), activated.ctx, {
+      body: { id: 'nothing', name: 'Nothing', agent: 'pixel' },
+    })
+    expect(bad.status).toBe(400)
+  })
+
+  it('questionnaire mode without urls has no mining step', async () => {
+    const created = await callRoute(route('POST', '/builder'), activated.ctx, {
+      body: { id: 'no-urls', name: 'No Urls', agent: 'pixel', product: 'Widgets' },
+    })
+    const task = await activated.ctx.tasks.get(String(created.body.taskId))
+    expect(task?.description).not.toContain('Fetch and READ')
+  })
+
   it('builder wires an uploaded logo onto the draft (#419 wizard)', async () => {
     const created = await callRoute(route('POST', '/builder'), activated.ctx, {
       body: { id: 'logo-brand', name: 'Logo Brand', agent: 'pixel', product: 'x', logoAssetId: '20260101-logo-abcd1234' },
