@@ -104,12 +104,19 @@ export function createSkillsSurface(): AgentRuntimeAdapter['skills'] {
 
     async write(skill: RuntimeSkill, agentId?: string): Promise<void> {
       const dir = skillDir(skill.name, agentId)
-      mkdirSync(dir, { recursive: true })
-      writeFileSync(join(dir, 'SKILL.md'), skill.instructions ?? '')
-      for (const [fileName, content] of Object.entries(skill.files ?? {})) {
+      // Validate EVERY filename before the first write: a mid-loop throw
+      // used to leave a half-written directory that skills.list would then
+      // report as a valid skill (observed via the runtime-switch skill
+      // carry, where OpenClaw skills may carry nested file paths).
+      const files = Object.entries(skill.files ?? {})
+      for (const [fileName] of files) {
         if (fileName.includes('/') || fileName.includes('..') || SKILL_SIDECARS.has(fileName)) {
           throw new Error(`adapter-pi: invalid skill file name "${fileName}"`)
         }
+      }
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(join(dir, 'SKILL.md'), skill.instructions ?? '')
+      for (const [fileName, content] of files) {
         writeFileSync(join(dir, fileName), content)
       }
       const installedBy = skill.metadata?.installedBy

@@ -97,6 +97,7 @@ beforeAll(async () => {
     // exponential backoff (retry.provider.maxRetries).
     settings: { retry: { enabled: false, provider: { maxRetries: 0 } } },
   })
+  await adapter.provisionToolAccess() // seeds main (write-free initialize)
   await adapter.agents.update('main', { model: 'fakeai/fake-model' })
   await adapter.agents.writeWorkspaceFile('main', { path: 'SOUL.md', content: 'You are the test soul.' })
 })

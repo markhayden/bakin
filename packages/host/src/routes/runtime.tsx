@@ -43,12 +43,21 @@ interface SwitchResultPayload {
   restored?: boolean
   backupPath: string | null
   restartRequired: boolean
+  dryRun?: boolean
   roster: {
-    carried: Array<{ agentId: string; model?: string; mappedFrom?: string }>
+    carried: Array<{ agentId: string; model?: string; mappedFrom?: string; subagentModel?: string }>
     existing: string[]
-    unmappedModels: Array<{ agentId: string; sourceModel: string }>
+    unmappedModels: Array<{ agentId: string; sourceModel: string; field?: 'model' | 'subagentModel' }>
     failed: Array<{ agentId: string; error: string }>
   } | null
+  workspaces: {
+    carried: Array<{ agentId: string; files: number; bytes: number }>
+    skills: Array<{ agentId: string; carried: number; skippedPackageManaged: number }>
+    skippedExisting: string[]
+    failed: Array<{ agentId: string; path: string; error: string }>
+  } | null
+  cantCarry: Array<{ concern: string; detail: string; count?: number }> | null
+  credentials: { llmProviders: string[] } | null
   sync: { drifted: boolean; findings: number; syncedAgents: number } | null
 }
 
@@ -145,6 +154,9 @@ function RuntimePage() {
         backupPath: null,
         restartRequired: false,
         roster: null,
+        workspaces: null,
+        cantCarry: null,
+        credentials: null,
         sync: null,
       })
     } finally {
@@ -284,17 +296,53 @@ function RuntimePage() {
               <div className={`mt-4 rounded-md border p-3 text-sm ${result.ok ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-red-500/30 bg-red-500/10'}`} data-testid="switch-result">
                 {result.ok ? (
                   <>
-                    <div className="font-medium">Switched {result.from} → {result.to}</div>
+                    <div className="font-medium">{result.dryRun ? 'Dry run — would switch' : 'Switched'} {result.from} → {result.to}</div>
                     {result.roster && (
                       <div className="mt-1">
-                        Roster: carried {result.roster.carried.length}, existing {result.roster.existing.length}, failed {result.roster.failed.length}
+                        Roster: {result.dryRun ? 'would carry' : 'carried'} {result.roster.carried.length}, existing {result.roster.existing.length}, failed {result.roster.failed.length}
                       </div>
                     )}
                     {result.roster?.unmappedModels.map((u) => (
-                      <div key={u.agentId} className="mt-1 text-amber-600 dark:text-amber-400">
-                        ⚠ {u.agentId}: model “{u.sourceModel}” has no {result.to} equivalent — falls back to the routing default
+                      <div key={`${u.agentId}:${u.field ?? 'model'}`} className="mt-1 text-amber-600 dark:text-amber-400">
+                        ⚠ {u.agentId}: {u.field === 'subagentModel' ? 'subagent model' : 'model'} “{u.sourceModel}” has no {result.to} equivalent — falls back to the routing default
                       </div>
                     ))}
+                    {result.roster?.failed.map((f) => (
+                      <div key={f.agentId} className="mt-1 text-red-600 dark:text-red-400">
+                        ✗ {f.agentId}: {f.error}
+                      </div>
+                    ))}
+                    {result.workspaces && (
+                      <div className="mt-1">
+                        Workspace content: {result.dryRun ? 'would carry' : 'carried'}{' '}
+                        {result.workspaces.carried.reduce((sum, c) => sum + c.files, 0)} file(s) +{' '}
+                        {result.workspaces.skills.reduce((sum, s) => sum + s.carried, 0)} skill(s) across{' '}
+                        {result.workspaces.carried.length} agent(s)
+                        {result.workspaces.skippedExisting.length > 0 && (
+                          <span className="text-muted-foreground"> — existing on target (untouched): {result.workspaces.skippedExisting.join(', ')}</span>
+                        )}
+                      </div>
+                    )}
+                    {result.workspaces?.failed.map((f) => (
+                      <div key={`${f.agentId}:${f.path}`} className="mt-1 text-amber-600 dark:text-amber-400">
+                        ⚠ {f.agentId} {f.path}: {f.error}
+                      </div>
+                    ))}
+                    {result.cantCarry && result.cantCarry.length > 0 && (
+                      <div className="mt-2">
+                        <div className="font-medium">Stays behind:</div>
+                        {result.cantCarry.map((line) => (
+                          <div key={line.concern} className="mt-0.5 text-xs text-muted-foreground">
+                            ✗ {line.concern}{line.count !== undefined ? ` (${line.count})` : ''}: {line.detail}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {result.credentials && result.credentials.llmProviders.length === 0 && (
+                      <div className="mt-2 font-medium text-amber-600 dark:text-amber-400">
+                        ⚠ {result.to} has no provider credentials — agents cannot dispatch until auth is configured on the target runtime.
+                      </div>
+                    )}
                     {result.backupPath && (
                       <div className="mt-1 text-xs text-muted-foreground">Rollback backup: {result.backupPath}</div>
                     )}

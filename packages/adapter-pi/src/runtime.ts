@@ -43,9 +43,14 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
 
   constructor(private readonly options: PiRuntimeAdapterOptions = {}) {}
 
+  /**
+   * Read-only by contract (conformance-pinned): stores opts, writes NOTHING.
+   * Seeding the main agent is a provisioning concern — read-only consumers
+   * (`bakin check`, the runtime-switch dry-run's secondary target) initialize
+   * without ever mutating ~/.pi.
+   */
   async initialize(opts: AdapterInitOpts): Promise<void> {
     this.initOpts = opts
-    await seedMainAgentIfEmpty(opts.logger)
   }
 
   async shutdown(): Promise<void> {}
@@ -99,9 +104,16 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
 
   /**
    * No external wiring to provision — Pi's exec tools are injected per
-   * session via the `execTools` provider passed to `initialize`.
+   * session via the `execTools` provider passed to `initialize`. What
+   * provisioning DOES own on Pi is first-boot seeding: every supported
+   * mutating path (server boot, onboarding install, runtime switch) calls
+   * provisionToolAccess, so an empty registry gains its main orchestrator
+   * here — never during read-only initialize. Idempotent: seeds only when
+   * the registry is empty.
    */
-  provisionToolAccess = async (): Promise<void> => {}
+  provisionToolAccess = async (): Promise<void> => {
+    await seedMainAgentIfEmpty(this.initOpts?.logger)
+  }
   deprovisionToolAccess = async (): Promise<void> => {}
   verifyToolAccess = async (): Promise<ToolAccessProvisioningStatus> => ({
     style: 'in-process',

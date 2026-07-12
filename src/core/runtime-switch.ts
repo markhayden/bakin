@@ -19,25 +19,44 @@
 import { copyFileSync, existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
 
+import { z } from 'zod'
+
 import type {
   AgentRuntimeAdapter,
   CapabilitySet,
   RuntimeAgent,
+  RuntimeCredentialStatus,
   ToolAccessProvisioningStatus,
 } from '@bakin/core/adapters/runtime'
 import type { RuntimeAdapterName } from '@bakin/core/settings'
 
 import { createAppServices, maybeGetAppServices } from './app-services'
-import { getSupportedRuntimeAdapterNames } from './runtime-adapter-factory'
+import { createRuntimeAdapter, getSupportedRuntimeAdapterNames } from './runtime-adapter-factory'
 import { syncBakinRuntimeSkill } from './bakin-skill'
 import { getContentDir } from './content-dir'
 import { createLogger } from './logger'
 import { reconcileRoster, type RosterCarryReport } from './roster-reconcile'
 import { getSettings, updateSettings } from './settings'
+import { snapshotAgentContent, carryAgentContent, previewWorkspaceCarry, type AgentContentSnapshot, type WorkspaceCarryReport } from './workspace-carry'
+import { snapshotSourceCapabilities, buildCantCarryReport, type CantCarryLine, type SourceCapabilitySnapshot } from './switch-report'
 
 const log = createLogger('runtime-switch')
 
 export const RUNTIME_ADAPTER_NAMES: readonly RuntimeAdapterName[] = getSupportedRuntimeAdapterNames()
+
+/**
+ * REST boundary schema for POST /api/runtime/switch. STRICT + boolean-only:
+ * a type-confused body (`dryRun: "true"`, a typo'd key) must 400 — the
+ * preview flag failing open into a REAL switch is the one mistake this
+ * endpoint cannot make.
+ */
+export const RuntimeSwitchRequestSchema = z
+  .object({
+    target: z.string().min(1),
+    dryRun: z.boolean().optional(),
+    copyWorkspaces: z.boolean().optional(),
+  })
+  .strict()
 
 export type SwitchPhase =
   | 'validate'
@@ -48,6 +67,7 @@ export type SwitchPhase =
   | 'initialize'
   | 'provision'
   | 'reconcile-roster'
+  | 'carry-workspaces'
   | 'sync-agents'
   | 'validate-capabilities'
   | 'restore'
@@ -65,10 +85,18 @@ export interface RuntimeSwitchResult {
   /** Settings backup — the rollback artifact (null only if validate failed). */
   backupPath: string | null
   roster: RosterCarryReport | null
+  /** Workspace/skill content carried for switch-created agents (null when the phase didn't run). */
+  workspaces: WorkspaceCarryReport | null
   /** Drift-gated re-projection outcome (null when the phase didn't run). */
   sync: { drifted: boolean; findings: number; syncedAgents: number } | null
   capabilities: CapabilitySet | null
   toolAccess: ToolAccessProvisioningStatus | null
+  /** What stays behind, honestly (capability diff + counts; null when the phase didn't run). */
+  cantCarry: CantCarryLine[] | null
+  /** The TARGET's credential presence — a carried roster with no provider auth dispatches nothing. */
+  credentials: RuntimeCredentialStatus | null
+  /** True for a preview run: nothing was written anywhere. */
+  dryRun?: boolean
   /** Plugins hold the old adapter until the server restarts. */
   restartRequired: boolean
   error?: string
@@ -78,6 +106,19 @@ export interface RuntimeSwitchResult {
 
 export interface SwitchRuntimeOptions {
   onProgress?: (event: SwitchProgressEvent) => void
+  /**
+   * Carry source workspace content (canonical files, memory, agent-authored
+   * skills) onto agents the switch creates. Default true — a switch that
+   * silently strands agent memory is the failure mode this exists to fix.
+   */
+  copyWorkspaces?: boolean
+  /**
+   * Preview the full switch report (roster carry, workspace content,
+   * can't-carry lines, target credentials) with ZERO writes: no backup, no
+   * flip, no provisioning, no target-home mutation. The target adapter is
+   * constructed as a read-only secondary instance and shut down after.
+   */
+  dryRun?: boolean
 }
 
 function isRuntimeAdapterName(value: string): value is RuntimeAdapterName {
@@ -120,9 +161,12 @@ export async function switchRuntime(
     to: target as RuntimeAdapterName,
     backupPath: null,
     roster: null,
+    workspaces: null,
     sync: null,
     capabilities: null,
     toolAccess: null,
+    cantCarry: null,
+    credentials: null,
     restartRequired: false,
   }
 
@@ -143,10 +187,23 @@ export async function switchRuntime(
     emit({ phase: 'validate', status: 'error', detail: result.error })
     return result
   }
-  emit({ phase: 'validate', status: 'ok', detail: `${from} → ${target}` })
+  emit({ phase: 'validate', status: 'ok', detail: `${from} → ${target}${opts.dryRun ? ' (dry run)' : ''}` })
   switchInFlight = true
 
   try {
+
+  // ── dry run: full preview, zero writes, no restore semantics ──────────
+  if (opts.dryRun) {
+    result.dryRun = true
+    try {
+      return await dryRunSwitch(result, target, opts, emit)
+    } catch (err) {
+      // Nothing was changed — a dry-run failure needs no restore, only honesty.
+      result.error = err instanceof Error ? err.message : String(err)
+      log.error('Runtime switch dry run failed', err, { from, to: target })
+      return result
+    }
+  }
 
   // ── backup ────────────────────────────────────────────────────────────
   emit({ phase: 'backup', status: 'start' })
@@ -217,9 +274,27 @@ export async function switchRuntime(
     emit({ phase: 'snapshot-roster', status: 'start' })
     const oldRuntime = await currentRuntime()
     let sourceRoster: RuntimeAgent[] = []
+    let contentSnapshot: AgentContentSnapshot | null = null
+    let sourceCapabilities: SourceCapabilitySnapshot | null = null
+    const copyWorkspaces = opts.copyWorkspaces !== false
     try {
+      // Optional-surface presence + counts must be read pre-teardown too.
+      sourceCapabilities = await snapshotSourceCapabilities(oldRuntime)
       sourceRoster = await oldRuntime.agents.list()
-      emit({ phase: 'snapshot-roster', status: 'ok', detail: `${sourceRoster.length} agent(s)` })
+      // Workspace content must be captured NOW — the source runtime is torn
+      // down before the target exists (snapshotAgentContent degrades read
+      // failures to per-agent notes; it never throws).
+      if (copyWorkspaces && sourceRoster.length > 0) {
+        contentSnapshot = await snapshotAgentContent(oldRuntime, sourceRoster)
+      }
+      const snapshotFiles = contentSnapshot
+        ? [...contentSnapshot.agents.values()].reduce((sum, c) => sum + c.files.length + c.skills.length, 0)
+        : 0
+      emit({
+        phase: 'snapshot-roster',
+        status: 'ok',
+        detail: `${sourceRoster.length} agent(s)${contentSnapshot ? `, ${snapshotFiles} content file(s)/skill(s)` : ''}`,
+      })
     } catch (err) {
       // A dead source runtime must not block LEAVING it — carry nothing.
       emit({ phase: 'snapshot-roster', status: 'skip', detail: `source roster unreadable: ${err instanceof Error ? err.message : String(err)}` })
@@ -283,6 +358,30 @@ export async function switchRuntime(
       detail: `carried ${result.roster.carried.length}, existing ${result.roster.existing.length}, unmapped models ${result.roster.unmappedModels.length}, failed ${result.roster.failed.length}`,
     })
 
+    // ── workspace content carry (switch-created agents only) ─────────────
+    emit({ phase: 'carry-workspaces', status: 'start' })
+    if (!copyWorkspaces) {
+      emit({ phase: 'carry-workspaces', status: 'skip', detail: 'disabled by caller (copyWorkspaces: false)' })
+    } else if (!contentSnapshot) {
+      emit({ phase: 'carry-workspaces', status: 'skip', detail: 'no source content snapshot' })
+    } else {
+      // Content-copy failures degrade to report entries on a completed flip
+      // (D9) — they never trigger the restore path.
+      result.workspaces = await carryAgentContent(
+        contentSnapshot,
+        newRuntime,
+        result.roster.carried.map((c) => c.agentId),
+        result.roster.existing,
+      )
+      const filesCarried = result.workspaces.carried.reduce((sum, c) => sum + c.files, 0)
+      const skillsCarried = result.workspaces.skills.reduce((sum, s) => sum + s.carried, 0)
+      emit({
+        phase: 'carry-workspaces',
+        status: 'ok',
+        detail: `${filesCarried} file(s) + ${skillsCarried} skill(s) for ${result.workspaces.carried.length} agent(s), skipped existing ${result.workspaces.skippedExisting.length}, failed ${result.workspaces.failed.length}`,
+      })
+    }
+
     // ── drift-gated re-projection ─────────────────────────────────────────
     emit({ phase: 'sync-agents', status: 'start' })
     result.sync = await syncAgentsIfDrifted()
@@ -298,6 +397,16 @@ export async function switchRuntime(
     emit({ phase: 'validate-capabilities', status: 'start' })
     result.capabilities = await newRuntime.capabilities()
     result.toolAccess = await newRuntime.verifyToolAccess()
+    if (sourceCapabilities) {
+      result.cantCarry = buildCantCarryReport(sourceCapabilities, newRuntime)
+    }
+    try {
+      result.credentials = await newRuntime.credentialStatus()
+    } catch (err) {
+      // Preflight is advisory — an unreadable credential store never fails
+      // the switch, it just can't warn.
+      log.warn('target credentialStatus unavailable during switch', { error: String(err) })
+    }
     emit({
       phase: 'validate-capabilities',
       status: result.toolAccess.ok ? 'ok' : 'error',
@@ -318,5 +427,109 @@ export async function switchRuntime(
   }
   } finally {
     switchInFlight = false
+  }
+}
+
+/**
+ * The dry-run secondary target: constructed and initialized (write-free by
+ * conformance-pinned contract) with the same opts a real flip would hand it
+ * — but NEVER registered as app services, NEVER provisioned, and with a
+ * no-op audit sink (a preview leaves no trace anywhere, audit.jsonl
+ * included). Callers own shutdown().
+ */
+async function createSecondaryTargetRuntime(target: RuntimeAdapterName): Promise<AgentRuntimeAdapter> {
+  const { createRuntimeExecToolProvider } = await import('./exec-tools/provider')
+  const { resolveBakinMcpBaseUrl } = await import('./app-services')
+  const runtime = createRuntimeAdapter(target)
+  await runtime.initialize({
+    contentDir: getContentDir(),
+    logger: log,
+    audit: () => {},
+    settings: getSettings().runtime.settings,
+    execTools: createRuntimeExecToolProvider(),
+    bakinMcpBaseUrl: resolveBakinMcpBaseUrl(),
+  })
+  return runtime
+}
+
+/** The preview pipeline — mirrors the real phases it stands in for. */
+async function dryRunSwitch(
+  result: RuntimeSwitchResult,
+  target: RuntimeAdapterName,
+  opts: SwitchRuntimeOptions,
+  emit: (event: SwitchProgressEvent) => void,
+): Promise<RuntimeSwitchResult> {
+  const source = await currentRuntime()
+  const copyWorkspaces = opts.copyWorkspaces !== false
+
+  emit({ phase: 'snapshot-roster', status: 'start' })
+  let sourceRoster: RuntimeAgent[] = []
+  let contentSnapshot: AgentContentSnapshot | null = null
+  let sourceCapabilities: SourceCapabilitySnapshot | null = null
+  try {
+    sourceCapabilities = await snapshotSourceCapabilities(source)
+    sourceRoster = await source.agents.list()
+    if (copyWorkspaces && sourceRoster.length > 0) {
+      contentSnapshot = await snapshotAgentContent(source, sourceRoster)
+    }
+    emit({ phase: 'snapshot-roster', status: 'ok', detail: `${sourceRoster.length} agent(s)` })
+  } catch (err) {
+    emit({ phase: 'snapshot-roster', status: 'skip', detail: `source roster unreadable: ${err instanceof Error ? err.message : String(err)}` })
+  }
+
+  emit({ phase: 'initialize', status: 'start' })
+  const targetRuntime = await createSecondaryTargetRuntime(target)
+  emit({ phase: 'initialize', status: 'ok', detail: `${targetRuntime.name}@${targetRuntime.version} (read-only secondary)` })
+
+  try {
+    emit({ phase: 'reconcile-roster', status: 'start' })
+    result.roster = await reconcileRoster(sourceRoster, targetRuntime, { dryRun: true })
+    emit({
+      phase: 'reconcile-roster',
+      status: 'ok',
+      detail: `would carry ${result.roster.carried.length}, existing ${result.roster.existing.length}, unmapped models ${result.roster.unmappedModels.length}`,
+    })
+
+    emit({ phase: 'carry-workspaces', status: 'start' })
+    if (!copyWorkspaces) {
+      emit({ phase: 'carry-workspaces', status: 'skip', detail: 'disabled by caller (copyWorkspaces: false)' })
+    } else if (!contentSnapshot) {
+      emit({ phase: 'carry-workspaces', status: 'skip', detail: 'no source content snapshot' })
+    } else {
+      result.workspaces = previewWorkspaceCarry(
+        contentSnapshot,
+        result.roster.carried.map((c) => c.agentId),
+        result.roster.existing,
+      )
+      const files = result.workspaces.carried.reduce((sum, c) => sum + c.files, 0)
+      const skills = result.workspaces.skills.reduce((sum, s) => sum + s.carried, 0)
+      emit({
+        phase: 'carry-workspaces',
+        status: 'ok',
+        detail: `would carry ${files} file(s) + ${skills} skill(s) for ${result.workspaces.carried.length} agent(s)`,
+      })
+    }
+
+    emit({ phase: 'validate-capabilities', status: 'start' })
+    result.capabilities = await targetRuntime.capabilities()
+    if (sourceCapabilities) {
+      result.cantCarry = buildCantCarryReport(sourceCapabilities, targetRuntime)
+    }
+    try {
+      result.credentials = await targetRuntime.credentialStatus()
+    } catch (err) {
+      log.warn('target credentialStatus unavailable during dry run', { error: String(err) })
+    }
+    emit({ phase: 'validate-capabilities', status: 'ok' })
+
+    result.ok = true
+    result.restartRequired = false
+    return result
+  } finally {
+    try {
+      await targetRuntime.shutdown()
+    } catch (err) {
+      log.warn('secondary target shutdown failed after dry run', { error: String(err) })
+    }
   }
 }

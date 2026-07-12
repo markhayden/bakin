@@ -54,7 +54,15 @@ mock.module('@bakin/core/main-agent', () => ({
 
 mock.module('../../../src/core/onboarding/mkdir', () => ({ mkdirComponent: makeMock('mkdir') }))
 mock.module('../../../src/core/onboarding/settings', () => ({ settingsComponent: makeMock('settings') }))
-mock.module('../../../src/core/onboarding/runtime', () => ({ runtimeComponent: makeMock('runtime') }))
+let provisionSeedCalls = 0
+let provisionSeedImpl: (() => void) | null = null
+mock.module('../../../src/core/onboarding/runtime', () => ({
+  runtimeComponent: makeMock('runtime'),
+  provisionRuntimeForOnboarding: async () => {
+    provisionSeedCalls++
+    provisionSeedImpl?.()
+  },
+}))
 mock.module('../../../src/core/onboarding/search', () => ({ searchComponent: makeMock('search') }))
 mock.module('../../../src/core/onboarding/search-models', () => ({ searchModelsComponent: makeMock('search-models') }))
 mock.module('../../../src/core/onboarding/openclaw-integration', () => ({ openClawIntegrationComponent: makeMock('openclaw-integration') }))
@@ -428,6 +436,47 @@ describe('runOnboard orchestrator', () => {
       // Per spec: runtime missing is a hard stop - exit 1, no marker
       expect(result.exitCode).toBe(1)
       expect(result.markerWritten).toBe(false)
+    })
+
+    it('an empty roster is seeded via provisioning and the flow proceeds', async () => {
+      provisionSeedCalls = 0
+      scripts.runtime.check = {
+        name: 'runtime',
+        status: 'broken',
+        message: 'Runtime adapter returned no agents',
+        details: { emptyRoster: true },
+      }
+      // Provisioning seeds the main agent — the re-check comes back ok.
+      provisionSeedImpl = () => {
+        scripts.runtime.check = {
+          name: 'runtime',
+          status: 'ok',
+          message: 'test-runtime runtime adapter is available',
+        }
+      }
+      try {
+        const result = await runOnboard(opts)
+        expect(provisionSeedCalls).toBe(1)
+        expect(scripts.runtime.checkCalls).toBe(2) // broken → seed → re-check ok
+        expect(result.outcomes.find((o) => o.name === 'runtime')?.finalStatus).toBe('ok')
+        // Downstream components RUN — the flow was not aborted.
+        expect(scripts.search.checkCalls).toBe(1)
+        expect(result.exitCode).toBe(0)
+      } finally {
+        provisionSeedImpl = null
+      }
+    })
+
+    it('a broken roster WITHOUT the empty marker never provisions (user-owned mess)', async () => {
+      provisionSeedCalls = 0
+      scripts.runtime.check = {
+        name: 'runtime',
+        status: 'broken',
+        message: 'Runtime roster has 1 integrity issue',
+      }
+      const result = await runOnboard(opts)
+      expect(provisionSeedCalls).toBe(0)
+      expect(result.outcomes.find((o) => o.name === 'runtime')?.finalStatus).toBe('error')
     })
 
     it('runtime broken halts the flow with error status', async () => {

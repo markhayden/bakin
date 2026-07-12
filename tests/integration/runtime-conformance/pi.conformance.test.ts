@@ -94,6 +94,7 @@ beforeAll(async () => {
     // failure cases settle immediately (same rationale as pi/turn.test.ts).
     settings: { retry: { enabled: false, provider: { maxRetries: 0 } } },
   })
+  await adapter.provisionToolAccess() // seeds main (write-free initialize)
   await adapter.agents.update('main', { model: 'fakeai/fake-model' })
 })
 
@@ -148,6 +149,24 @@ const target: RuntimeConformanceTarget = {
   // half of Pi's probe is unit-tested in tests/adapter-pi/ping-serveability
   // (PI_HOME is process-global — can't vary it mid-file here).
   makeUnserveableRuntime: () => createPiRuntimeAdapter(),
+  // Fresh adapter against a pristine PI_HOME: initialize must create nothing
+  // (seeding happens at provisionToolAccess). PI_HOME is process-global, so
+  // the scenario re-points it and cleanup restores the shared home.
+  makeFreshInitScenario: () => {
+    const freshHome = join(testDir, `pi-fresh-${randomUUID()}`)
+    process.env.PI_HOME = freshHome
+    resetPiHome()
+    const fresh = createPiRuntimeAdapter()
+    return {
+      homeDir: freshHome,
+      initialize: () => fresh.initialize({ contentDir: join(testDir, 'bakin'), execTools: execToolProvider, settings: {} }),
+      cleanup: () => {
+        process.env.PI_HOME = join(testDir, 'pi')
+        resetPiHome()
+        resetModelRegistry()
+      },
+    }
+  },
 }
 
 runRuntimeConformanceSuite('pi (fake provider)', () => target)

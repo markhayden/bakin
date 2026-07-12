@@ -82,6 +82,16 @@ beforeEach(() => {
       await dead.shutdown()
       return dead
     },
+    // The mock is purely in-memory: a fresh initialize against a pristine
+    // dir must leave it absent.
+    makeFreshInitScenario: () => {
+      const freshHome = join(testDir, `mock-fresh-${randomUUID()}`)
+      const fresh = createMockRuntimeAdapter()
+      return {
+        homeDir: freshHome,
+        initialize: () => fresh.initialize({ contentDir: freshHome }),
+      }
+    },
   }
 })
 

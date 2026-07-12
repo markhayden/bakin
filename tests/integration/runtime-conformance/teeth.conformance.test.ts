@@ -11,7 +11,7 @@
  * the describe/it wrapper runs, so a check that goes toothless fails here.
  */
 import { describe, it, expect, mock, afterAll } from 'bun:test'
-import { rmSync } from 'fs'
+import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
@@ -193,6 +193,38 @@ describe('conformance suite teeth (broken adapter must fail every check)', () =>
     const target = { ...honestTargetShell(runtime) }
     await expect(runtimeConformanceChecks.onActivityTapsToolAndStatusOnly(target))
       .rejects.toThrow(/conformance violation: onActivity tapped a 'text' chunk/)
+  })
+
+  it('fails the recursive-enumeration check on a top-level-only listing', async () => {
+    const runtime = createMockRuntimeAdapter()
+    const list = runtime.agents.listWorkspaceFiles.bind(runtime.agents)
+    // Lie: only top-level files are enumerated (the pre-D5 OpenClaw shape).
+    runtime.agents = {
+      ...runtime.agents,
+      listWorkspaceFiles: async (agentId: string) => (await list(agentId)).filter((p) => !p.includes('/')),
+    }
+    const target = { ...honestTargetShell(runtime) }
+    await expect(runtimeConformanceChecks.workspaceFileEnumerationIsRecursive(target))
+      .rejects.toThrow(/conformance violation: listWorkspaceFiles omitted nested/)
+  })
+
+  it('fails the write-free-initialize check when initialize writes into the home', async () => {
+    const runtime = createMockRuntimeAdapter()
+    const freshHome = join(tmpdir(), `bakin-teeth-init-${randomUUID()}`)
+    const target = {
+      ...honestTargetShell(runtime),
+      makeFreshInitScenario: () => ({
+        homeDir: freshHome,
+        // Lie: initialization seeds state into the home (a write).
+        initialize: async () => {
+          mkdirSync(freshHome, { recursive: true })
+          writeFileSync(join(freshHome, 'seeded.json'), '{"agents":["main"]}')
+        },
+        cleanup: () => rmSync(freshHome, { recursive: true, force: true }),
+      }),
+    }
+    await expect(runtimeConformanceChecks.initializeIsWriteFree(target))
+      .rejects.toThrow(/conformance violation: initialize\(\) wrote to the adapter home/)
   })
 
   it('fails the provisioning check when a second provision changes durable state', async () => {

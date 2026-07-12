@@ -22,6 +22,9 @@
  * implementations.
  */
 import { describe, it } from 'bun:test'
+import { createHash } from 'crypto'
+import { existsSync, readdirSync, readFileSync } from 'fs'
+import { join } from 'path'
 import type { AgentRuntimeAdapter, ChatChunk, MessageResult } from '../../../packages/core/src/adapters/runtime'
 import { RuntimeError } from '../../../packages/core/src/adapters/runtime'
 
@@ -75,6 +78,22 @@ export interface RuntimeConformanceTarget {
    * so the no-credentials recipe needs its own file.)
    */
   makeUnserveableRuntime?(): Promise<Pick<AgentRuntimeAdapter, 'ping'>> | Pick<AgentRuntimeAdapter, 'ping'>
+  /**
+   * For the write-free-initialize pin: a FRESH uninitialized adapter of this
+   * runtime pointed at a pristine home. The check snapshots `homeDir` before
+   * and after `initialize()` and fails on ANY tree change — initialization
+   * must be read-only (seeding/config writes belong to provisioning; the
+   * runtime-switch dry-run relies on this to construct a secondary target
+   * adapter with zero side effects). `cleanup` restores whatever env/global
+   * state the scenario re-pointed; always invoked.
+   */
+  makeFreshInitScenario?(): Promise<FreshInitScenario> | FreshInitScenario
+}
+
+export interface FreshInitScenario {
+  homeDir: string
+  initialize(): Promise<void>
+  cleanup?(): void | Promise<void>
 }
 
 export interface RuntimeConformanceSuiteOptions {
@@ -364,7 +383,79 @@ export const runtimeConformanceChecks = {
       fail(`verifyToolAccess reports drift after re-provisioning: ${reverified.issues.join('; ')}`)
     }
   },
+  /**
+   * listWorkspaceFiles enumerates RECURSIVELY (D5 of the runtime-switch-carry
+   * spec): agent memory lives in subdirectories (`memory/*.md`), and a
+   * top-level-only listing silently hides it from every consumer — the
+   * runtime-switch workspace carry most critically. Round-trips a nested
+   * write → list → read → remove through the workspace-file surface.
+   */
+  async workspaceFileEnumerationIsRecursive(target: RuntimeConformanceTarget): Promise<void> {
+    const rel = `memory/conformance-recursive-${Math.random().toString(36).slice(2, 10)}.md`
+    const content = '# conformance: nested workspace file'
+    await target.runtime.agents.writeWorkspaceFile(target.agentId, { path: rel, content })
+    try {
+      const files = await target.runtime.agents.listWorkspaceFiles(target.agentId)
+      if (!files.includes(rel)) {
+        fail(
+          `listWorkspaceFiles omitted nested '${rel}' — enumeration must be recursive `
+          + `(agent memory lives in subdirectories); got: ${JSON.stringify(files)}`,
+        )
+      }
+      const read = await target.runtime.agents.readWorkspaceFile(target.agentId, rel)
+      if (read?.content !== content) {
+        fail(`nested workspace file did not round-trip (read returned ${read === null ? 'null' : JSON.stringify(read?.content)})`)
+      }
+    } finally {
+      await target.runtime.agents.removeWorkspaceFile(target.agentId, rel)
+    }
+  },
+
+  /**
+   * initialize() performs no filesystem writes to the adapter home (D4 of
+   * the runtime-switch-carry spec). Seeding and config writes are
+   * provisioning concerns — every supported boot/install/switch path calls
+   * provisionToolAccess, while read-only consumers (bakin check, dry-run
+   * secondary construction) call only initialize and must stay write-free.
+   */
+  async initializeIsWriteFree(target: RuntimeConformanceTarget): Promise<void> {
+    if (!target.makeFreshInitScenario) return
+    const scenario = await target.makeFreshInitScenario()
+    try {
+      const before = snapshotTree(scenario.homeDir)
+      await scenario.initialize()
+      const after = snapshotTree(scenario.homeDir)
+      if (before !== after) {
+        fail(
+          `initialize() wrote to the adapter home — initialization must be read-only (provisioning owns writes).\n`
+          + `before:\n${before || '<empty>'}\nafter:\n${after || '<empty>'}`,
+        )
+      }
+    } finally {
+      await scenario.cleanup?.()
+    }
+  },
 } as const
+
+/**
+ * Deterministic snapshot of a directory tree: sorted relative paths with a
+ * content hash per file. An absent root is a valid (distinct) state — a
+ * write-free initialize against a never-created home must not create it.
+ */
+function snapshotTree(root: string): string {
+  if (!existsSync(root)) return '<absent>'
+  const lines: string[] = []
+  const walk = (dir: string, rel: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const abs = join(dir, entry.name)
+      const relPath = rel ? `${rel}/${entry.name}` : entry.name
+      if (entry.isDirectory()) walk(abs, relPath)
+      else lines.push(`${relPath} ${createHash('sha256').update(readFileSync(abs)).digest('hex')}`)
+    }
+  }
+  walk(root, '')
+  return lines.sort().join('\n')
+}
 
 /** Stable stringify with recursively-sorted object keys (structural compare). */
 function canonicalJson(value: unknown): string {
@@ -456,6 +547,14 @@ export function runRuntimeConformanceSuite(
 
     it("unknown-agent CRUD: get returns null, mutations reject typed 'not_found'", async () => {
       await runtimeConformanceChecks.unknownAgentCrudIsTypedNotFound(getTarget())
+    })
+
+    it('initialize() is write-free (provisioning owns home writes)', async () => {
+      await runtimeConformanceChecks.initializeIsWriteFree(getTarget())
+    })
+
+    it('workspace file enumeration is recursive', async () => {
+      await runtimeConformanceChecks.workspaceFileEnumerationIsRecursive(getTarget())
     })
   })
 }
