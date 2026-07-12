@@ -72,6 +72,14 @@ export { runtimeChunkToBrainstormActivity } from '../../../../src/components/int
 export { toBrainstormTimeline } from '../../../../src/components/integrated-brainstorm/activity'
 /** Compute the canonical thread id for a brainstorm session. */
 export { brainstormThreadId } from '../../../../src/components/integrated-brainstorm/session'
+
+// Conversation kit server-side helpers (successors to the brainstorm
+// helpers above — those are deleted with IntegratedBrainstorm).
+/** Canonical thread id for embedded conversation surfaces (scope:entity:agent). */
+export { conversationThreadId } from '../../../../src/components/conversation/thread-id'
+/** Record one streamed turn's chunks into persistable ConversationMessage rows. */
+export { createTurnRecorder, SUMMARY_MAX_CHARS, PREVIEW_MAX_CHARS } from '../../../../src/components/conversation/turn-recorder'
+export type { TurnRecorder } from '../../../../src/components/conversation/turn-recorder'
 /** Normalize a brainstorm activity payload for persistence. */
 export { normalizeBrainstormActivityForStorage } from '../../../../src/components/integrated-brainstorm/session'
 /** Normalize a single brainstorm message for persistence. */
