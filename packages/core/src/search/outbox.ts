@@ -393,6 +393,14 @@ export function outboxStats(): OutboxStats {
   }
 }
 
+/** Pending journal rows for one logical table (spin-watchdog inflow guard). */
+export function pendingCountForTable(logicalTable: string): number {
+  const row = db()
+    .prepare<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM search_outbox WHERE logical_table = ? AND status IN ('pending','inflight')")
+    .get(logicalTable)
+  return row?.n ?? 0
+}
+
 /**
  * Drop every journal + ack row for a logical table. Used when the table's
  * content type is purged (plugin removal, orphan-row sweep) — undelivered
