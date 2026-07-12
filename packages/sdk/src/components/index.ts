@@ -21,11 +21,20 @@ export { AgentStatus } from '@/components/agent-status'
 export { BakinDrawer } from '@/components/bakin-drawer'
 /** Color picker swatch grid for tag/agent color assignment. */
 export { ColorPicker } from '@/components/color-picker'
-/** Controlled confirmation dialog for destructive actions (busy/error aware). */
+/** Controlled confirmation dialog for destructive actions (busy/error aware; optional typed confirmation via `confirmValue`). */
 export { ConfirmDialog } from '@/components/confirm-dialog'
 export type { ConfirmDialogProps } from '@/components/confirm-dialog'
+/** Red-bordered destructive settings section with typed-confirmation delete — bottom of every settings surface. */
+export { DangerZone } from '@/components/danger-zone'
+export type { DangerZoneProps } from '@/components/danger-zone'
 /** Centered empty-state component with icon, title, and CTA. */
 export { EmptyState } from '@/components/empty-state'
+/** Sticky save/discard bar for staged-draft pages (THE dirty-state pattern) + `useUnsavedGuard`. */
+export { SaveBar, useUnsavedGuard } from '@/components/save-bar'
+export type { SaveBarProps } from '@/components/save-bar'
+/** Titled card with icon + a one-line "why this matters" description — the standard section wrapper. */
+export { SectionCard } from '@/components/section-card'
+export type { SectionCardProps } from '@/components/section-card'
 
 export { SearchUnavailable } from '@/components/search-unavailable'
 export { ScoreOverlay, computeMatchedFields } from '@/components/score-overlay'
