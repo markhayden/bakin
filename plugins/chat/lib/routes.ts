@@ -8,8 +8,8 @@ import { z } from 'zod'
 
 import { defineRoute } from '@bakin/core/routing'
 
-import { createChat, deleteChat, getChatSummary, listChats, readTranscript } from './store'
-import { isTurnInFlight, startChatTurn } from './stream-bridge'
+import { createChat, deleteChat, getChatSummary, listChats, markSeen, readTranscript, setPinned, setTitle } from './store'
+import { abortChatTurn, isTurnInFlight, startChatTurn } from './stream-bridge'
 
 const errorResponse = z.object({ error: z.string() }).passthrough()
 const passthrough = z.object({}).passthrough()
@@ -34,7 +34,11 @@ export const chatRoutes = [
     query: z.object({ agent: z.string().optional() }),
     responses: { 200: passthrough },
     handler: async (_req, _ctx, { query }) => {
-      return Response.json({ chats: listChats(query.agent) })
+      // streaming is included so a freshly-loaded client can seed its
+      // in-flight indicators without waiting for the next chat.chunk.
+      return Response.json({
+        chats: listChats(query.agent).map((chat) => ({ ...chat, streaming: isTurnInFlight(chat.id) })),
+      })
     },
   }),
 
@@ -81,6 +85,55 @@ export const chatRoutes = [
       if (result === 'not_found') return Response.json({ error: 'chat not found' }, { status: 404 })
       if (result === 'busy') return Response.json({ error: 'a turn is already in flight for this chat' }, { status: 409 })
       return Response.json({ accepted: true, streaming: isTurnInFlight(params.chatId) }, { status: 202 })
+    },
+  }),
+
+  defineRoute({
+    path: '/chats/:chatId',
+    method: 'PATCH',
+    summary: 'Rename or pin a chat',
+    description: 'title sets a user rename (never overwritten by auto-titling); pinned toggles the pinned group.',
+    params: chatIdParams,
+    body: z.object({
+      title: z.string().min(1).max(200).optional(),
+      pinned: z.boolean().optional(),
+    }),
+    responses: { 200: passthrough, 404: errorResponse },
+    handler: async (_req, _ctx, { params, body }) => {
+      let chat = getChatSummary(params.chatId)
+      if (!chat) return Response.json({ error: 'chat not found' }, { status: 404 })
+      if (body.title !== undefined) chat = (await setTitle(params.chatId, body.title, 'user')) ?? chat
+      if (body.pinned !== undefined) chat = (await setPinned(params.chatId, body.pinned)) ?? chat
+      return Response.json({ chat })
+    },
+  }),
+
+  defineRoute({
+    path: '/chats/:chatId/seen',
+    method: 'POST',
+    summary: 'Mark a chat as seen',
+    description: 'Stamps lastSeenAt and clears the unread count (the client calls this when the chat is visible).',
+    params: chatIdParams,
+    responses: { 200: passthrough, 404: errorResponse },
+    handler: async (_req, _ctx, { params }) => {
+      const chat = await markSeen(params.chatId)
+      if (!chat) return Response.json({ error: 'chat not found' }, { status: 404 })
+      return Response.json({ chat })
+    },
+  }),
+
+  defineRoute({
+    path: '/chats/:chatId/abort',
+    method: 'POST',
+    summary: 'Stop the in-flight reply',
+    description: 'Aborts the streaming turn; partial text is kept and the turn settles with an aborted marker. 409 when the chat is idle.',
+    params: chatIdParams,
+    responses: { 200: passthrough, 404: errorResponse, 409: errorResponse },
+    handler: async (_req, _ctx, { params }) => {
+      if (!getChatSummary(params.chatId)) return Response.json({ error: 'chat not found' }, { status: 404 })
+      const aborted = abortChatTurn(params.chatId)
+      if (!aborted) return Response.json({ error: 'no turn in flight' }, { status: 409 })
+      return Response.json({ aborted: true })
     },
   }),
 

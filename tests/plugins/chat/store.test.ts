@@ -46,8 +46,10 @@ mock.module('../../../src/core/logger', () => ({
   }),
 }))
 
+import { appendFileSync } from 'fs'
+
 import chatPlugin from '../../../plugins/chat'
-import { appendTranscriptRow, createChat, listChats, readTranscript } from '../../../plugins/chat/lib/store'
+import { appendTranscriptRow, createChat, listChats, markSeen, readTranscript, setPinned, setTitle } from '../../../plugins/chat/lib/store'
 import { activatePlugin, callRoute, findRoute, type ActivatedPlugin } from '../test-helpers'
 
 let activated: ActivatedPlugin
@@ -62,27 +64,126 @@ afterAll(() => {
 })
 
 describe('chat store', () => {
-  test('createChat + appendTranscriptRow maintain index and transcript', async () => {
+  test('createChat + appendTranscriptRow maintain index and transcript (v2 rows)', async () => {
     const chat = await createChat({ agentId: 'main' })
     expect(chat.messageCount).toBe(0)
     expect(chat.title).toBe('')
+    expect(chat.titleSource).toBe('fallback')
+    expect(chat.pinned).toBe(false)
+    expect(chat.unreadCount).toBe(0)
 
     await appendTranscriptRow(chat.id, { kind: 'user', ts: new Date().toISOString(), content: 'Hello there, agent friend' })
-    await appendTranscriptRow(chat.id, { kind: 'tool', ts: new Date().toISOString(), summary: 'ran bash' })
-    await appendTranscriptRow(chat.id, { kind: 'assistant', ts: new Date().toISOString(), content: 'Hi!' })
+    await appendTranscriptRow(chat.id, {
+      kind: 'tool', ts: new Date().toISOString(), turnId: 't1', callId: 'c1',
+      toolName: 'bash', status: 'completed', summary: 'ran bash', durationMs: 40,
+    })
+    await appendTranscriptRow(chat.id, { kind: 'assistant', ts: new Date().toISOString(), turnId: 't1', content: 'Hi!' })
 
     const rows = readTranscript(chat.id)
     expect(rows.map((r) => r.kind)).toEqual(['user', 'tool', 'assistant'])
+    expect(rows[1]).toMatchObject({ toolName: 'bash', status: 'completed', summary: 'ran bash', callId: 'c1', turnId: 't1' })
 
     const listed = listChats('main').find((c) => c.id === chat.id)
     expect(listed?.messageCount).toBe(2) // tool rows don't count
     expect(listed?.title).toBe('Hello there, agent friend') // titled from first user row
+    expect(listed?.unreadCount).toBe(1) // the assistant reply is unseen
+    expect(listed?.lastMessagePreview).toBe('Hi!')
+  })
+
+  test('legacy v1 tool rows parse leniently into structured summary-only rows', async () => {
+    const chat = await createChat({ agentId: 'main' })
+    appendFileSync(
+      join(testDir, 'chat', `${chat.id}.jsonl`),
+      `${JSON.stringify({ kind: 'tool', ts: new Date().toISOString(), summary: 'bash: curl -s example.com' })}\n`,
+    )
+    const rows = readTranscript(chat.id)
+    expect(rows[0]).toMatchObject({ kind: 'tool', toolName: 'bash', status: 'completed', summary: 'curl -s example.com' })
+  })
+
+  test('markSeen clears unread; a user send also clears it', async () => {
+    const chat = await createChat({ agentId: 'main' })
+    await appendTranscriptRow(chat.id, { kind: 'assistant', ts: new Date().toISOString(), content: 'ping' })
+    await appendTranscriptRow(chat.id, { kind: 'assistant', ts: new Date().toISOString(), content: 'ping again' })
+    expect(listChats().find((c) => c.id === chat.id)?.unreadCount).toBe(2)
+
+    const seen = await markSeen(chat.id)
+    expect(seen?.unreadCount).toBe(0)
+    expect(seen?.lastSeenAt).toBeTruthy()
+
+    await appendTranscriptRow(chat.id, { kind: 'assistant', ts: new Date().toISOString(), content: 'ping 3' })
+    await appendTranscriptRow(chat.id, { kind: 'user', ts: new Date().toISOString(), content: 'saw it' })
+    expect(listChats().find((c) => c.id === chat.id)?.unreadCount).toBe(0)
+  })
+
+  test('setTitle precedence: user renames beat llm; llm beats fallback and never overwrites user', async () => {
+    const chat = await createChat({ agentId: 'main' })
+    await appendTranscriptRow(chat.id, { kind: 'user', ts: new Date().toISOString(), content: 'first message title seed' })
+    expect((await setTitle(chat.id, 'LLM title', 'llm'))?.title).toBe('LLM title')
+    expect((await setTitle(chat.id, 'My rename', 'user'))?.title).toBe('My rename')
+    const after = await setTitle(chat.id, 'LLM tries again', 'llm')
+    expect(after?.title).toBe('My rename')
+    expect(after?.titleSource).toBe('user')
+  })
+
+  test('pinned chats sort first in listChats', async () => {
+    const a = await createChat({ agentId: 'main' })
+    const b = await createChat({ agentId: 'main' })
+    await appendTranscriptRow(b.id, { kind: 'user', ts: new Date().toISOString(), content: 'newer activity' })
+    await setPinned(a.id, true)
+    const ids = listChats().map((c) => c.id)
+    expect(ids.indexOf(a.id)).toBeLessThan(ids.indexOf(b.id))
   })
 
   test('appendTranscriptRow to unknown chat throws', async () => {
     await expect(
       appendTranscriptRow('00000000-0000-0000-0000-000000000000', { kind: 'user', ts: '', content: 'x' }),
     ).rejects.toThrow('unknown chat')
+  })
+})
+
+describe('chat routes v2', () => {
+  test('PATCH /chats/:chatId renames (user precedence) and pins', async () => {
+    const post = findRoute(activated.routes, 'POST', '/chats')!
+    const created = await callRoute(post, activated.ctx, { body: { agentId: 'main' } })
+    const chatId = (created.body.chat as { id: string }).id
+
+    const patch = findRoute(activated.routes, 'PATCH', '/chats/:chatId')!
+    const renamed = await callRoute(patch, activated.ctx, { path: `/chats/${chatId}`, body: { title: 'Ops standup', pinned: true } })
+    expect(renamed.status).toBe(200)
+    expect(renamed.body.chat).toMatchObject({ title: 'Ops standup', titleSource: 'user', pinned: true })
+
+    const missing = await callRoute(patch, activated.ctx, { path: '/chats/00000000-0000-0000-0000-000000000000', body: { title: 'x' } })
+    expect(missing.status).toBe(404)
+  })
+
+  test('POST /chats/:chatId/seen clears unread; list carries unreadCount + streaming', async () => {
+    const post = findRoute(activated.routes, 'POST', '/chats')!
+    const created = await callRoute(post, activated.ctx, { body: { agentId: 'main' } })
+    const chatId = (created.body.chat as { id: string }).id
+    await appendTranscriptRow(chatId, { kind: 'assistant', ts: new Date().toISOString(), content: 'unseen reply' })
+
+    const list = findRoute(activated.routes, 'GET', '/chats')!
+    const listed = await callRoute(list, activated.ctx)
+    const row = (listed.body.chats as Array<{ id: string; unreadCount: number; streaming: boolean }>).find((c) => c.id === chatId)
+    expect(row?.unreadCount).toBe(1)
+    expect(row?.streaming).toBe(false)
+
+    const seen = findRoute(activated.routes, 'POST', '/chats/:chatId/seen')!
+    const marked = await callRoute(seen, activated.ctx, { path: `/chats/${chatId}/seen` })
+    expect(marked.status).toBe(200)
+    expect((marked.body.chat as { unreadCount: number }).unreadCount).toBe(0)
+  })
+
+  test('POST /chats/:chatId/abort is 409 when idle, 404 when unknown', async () => {
+    const post = findRoute(activated.routes, 'POST', '/chats')!
+    const created = await callRoute(post, activated.ctx, { body: { agentId: 'main' } })
+    const chatId = (created.body.chat as { id: string }).id
+
+    const abort = findRoute(activated.routes, 'POST', '/chats/:chatId/abort')!
+    const idle = await callRoute(abort, activated.ctx, { path: `/chats/${chatId}/abort` })
+    expect(idle.status).toBe(409)
+    const missing = await callRoute(abort, activated.ctx, { path: '/chats/00000000-0000-0000-0000-000000000000/abort' })
+    expect(missing.status).toBe(404)
   })
 })
 

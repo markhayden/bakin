@@ -6,30 +6,69 @@
  * adapter-neutral threadId `chat:<chatId>`; the plugin persists the chunks
  * it streamed as its own transcript under ~/.bakin/chat/ (UI data — the
  * runtime session stays the provider-side source of truth).
+ *
+ * Transcript schema v2: rows are the conversation kit's storable shape
+ * (structured tool rows with callId/status/previews, turnId grouping,
+ * aborted markers) so replay folds exactly like live streaming. v1 rows
+ * (aggregate `"name: summary"` tool strings, no turnId) still parse via a
+ * lenient union — no migration, degraded-but-honest replay.
  */
+
+/** How the chat's title was set; user renames are never overwritten. */
+export type ChatTitleSource = 'fallback' | 'llm' | 'user'
 
 /** Chat index entry (one per chat, stored in index.json). */
 export interface ChatSummary {
   id: string
   agentId: string
   title: string
+  titleSource: ChatTitleSource
+  pinned: boolean
   createdAt: string
   updatedAt: string
   /** Count of user+assistant messages for list display. */
   messageCount: number
+  /** Agent replies since the user last viewed the chat (reset by markSeen). */
+  unreadCount: number
+  /** When the user last viewed this chat. */
+  lastSeenAt?: string
+  lastMessageAt?: string
+  /** First line of the newest message, for list rows + notifications. */
+  lastMessagePreview?: string
+}
+
+/** A user-sent attachment as persisted (path-addressed; served by GET route). */
+export interface ChatAttachment {
+  name: string
+  mimeType: string
+  path: string
 }
 
 /** A persisted transcript row (one JSONL line in <chatId>.jsonl). */
 export type ChatTranscriptRow =
-  | { kind: 'user'; ts: string; content: string }
-  | { kind: 'assistant'; ts: string; content: string }
-  | { kind: 'tool'; ts: string; summary: string }
-  | { kind: 'error'; ts: string; message: string; errorKind?: string }
+  | { kind: 'user'; ts: string; content: string; attachments?: ChatAttachment[] }
+  | { kind: 'assistant'; ts: string; turnId?: string; content: string }
+  | {
+      kind: 'tool'
+      ts: string
+      turnId?: string
+      callId?: string
+      toolName: string
+      status: 'completed' | 'failed'
+      summary?: string
+      inputPreview?: string
+      outputPreview?: string
+      durationMs?: number
+      metadata?: Record<string, unknown>
+    }
+  | { kind: 'error'; ts: string; turnId?: string; message: string; errorKind?: string }
+  | { kind: 'aborted'; ts: string; turnId?: string }
 
 /** SSE payloads broadcast on the global bus while a turn streams. */
 export interface ChatChunkEvent {
   type: 'chat.chunk'
   chatId: string
+  agentId: string
   chunk: {
     type: 'text' | 'tool' | 'status'
     content?: string
@@ -42,11 +81,17 @@ export interface ChatChunkEvent {
 export interface ChatDoneEvent {
   type: 'chat.done'
   chatId: string
+  agentId: string
+  /** First line of the reply, for toasts/notifications. */
+  preview?: string
+  /** True when the turn ended via user abort (no notification fanfare). */
+  aborted?: boolean
 }
 
 export interface ChatErrorEvent {
   type: 'chat.error'
   chatId: string
+  agentId: string
   message: string
   /** Typed RuntimeError kind when the runtime provided one. */
   kind?: string

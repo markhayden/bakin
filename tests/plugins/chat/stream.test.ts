@@ -47,7 +47,7 @@ mock.module('../../../src/core/logger', () => ({
 
 import chatPlugin from '../../../plugins/chat'
 import { createChat, readTranscript } from '../../../plugins/chat/lib/store'
-import { startChatTurn, waitForTurn } from '../../../plugins/chat/lib/stream-bridge'
+import { abortChatTurn, startChatTurn, waitForTurn } from '../../../plugins/chat/lib/stream-bridge'
 import { activatePlugin, callRoute, findRoute, type ActivatedPlugin } from '../test-helpers'
 import type { ChatChunk, MessageArgs } from '../../../packages/core/src/adapters/runtime/concepts'
 
@@ -87,7 +87,13 @@ describe('chat stream bridge', () => {
 
     const rows = readTranscript(chat.id)
     const toolRow = rows.find((r) => r.kind === 'tool')
-    expect(toolRow).toMatchObject({ summary: 'bash: curl -s https://example.com' })
+    expect(toolRow).toMatchObject({
+      toolName: 'bash',
+      status: 'completed',
+      summary: 'curl -s https://example.com',
+      callId: 'c1',
+    })
+    expect((toolRow as { turnId?: string }).turnId).toBeTruthy()
   })
 
   test('happy path: chunks broadcast in order, durable rows persisted, chat.done emitted', async () => {
@@ -120,13 +126,56 @@ describe('chat stream bridge', () => {
     expect(chunkEvents.length).toBe(5)
     const wireTypes = chunkEvents.map((e) => (e.data.chunk as { type: string }).type)
     expect(wireTypes.every((t) => t === 'text' || t === 'tool' || t === 'status')).toBe(true)
-    expect(events.at(-1)?.event).toBe('chat.done')
 
-    // Durable transcript: user + completed tool + aggregated assistant text
+    // chat.done carries agentId + a reply preview for the attention system.
+    const done = events.at(-1)
+    expect(done?.event).toBe('chat.done')
+    expect(done?.data).toMatchObject({ chatId: chat.id, agentId: 'main', preview: 'Hello world' })
+
+    // Durable transcript v2: interleaving preserved — text before the tool
+    // result flushes as its own row, structured tool row, trailing text.
     const rows = readTranscript(chat.id)
-    expect(rows.map((r) => r.kind)).toEqual(['user', 'tool', 'assistant'])
-    expect(rows[1]).toMatchObject({ summary: 'bash: ls -la' })
-    expect(rows[2]).toMatchObject({ content: 'Hello world' })
+    expect(rows.map((r) => r.kind)).toEqual(['user', 'assistant', 'tool', 'assistant'])
+    expect(rows[1]).toMatchObject({ content: 'Hello ' })
+    expect(rows[2]).toMatchObject({ toolName: 'bash', status: 'completed', summary: 'ls -la' })
+    expect(rows[3]).toMatchObject({ content: 'world' })
+    // rows of one turn share a turnId so replay regroups exactly
+    const turnIds = rows.slice(1).map((r) => (r as { turnId?: string }).turnId)
+    expect(new Set(turnIds).size).toBe(1)
+    expect(turnIds[0]).toBeTruthy()
+  })
+
+  test('abort: stream cancels, partial text kept, aborted row persisted, chat.done carries aborted', async () => {
+    const chat = await createChat({ agentId: 'main' })
+    const events: Array<{ event: string; data: Record<string, unknown> }> = []
+    const off = activated.ctx.events.on('chat.*', (event, data) => events.push({ event, data }))
+
+    const seenArgs: MessageArgs[] = []
+    scriptStream(async function* () {
+      yield { type: 'text', content: 'partial thought' } as ChatChunk
+      // Mimic the adapter contract: a deliberate abort ends the stream with
+      // a clean done once the signal fires.
+      const signal = seenArgs[0]?.signal
+      await new Promise<void>((resolve) => {
+        if (signal?.aborted) return resolve()
+        signal?.addEventListener('abort', () => resolve(), { once: true })
+      })
+      yield { type: 'done' } as ChatChunk
+    }, seenArgs)
+
+    expect(await startChatTurn(activated.ctx, chat.id, 'go long')).toBe('accepted')
+    // Give the generator a beat to yield the first chunk, then abort.
+    await new Promise((r) => setTimeout(r, 10))
+    expect(abortChatTurn(chat.id)).toBe(true)
+    await waitForTurn(chat.id)
+    off()
+
+    const done = events.find((e) => e.event === 'chat.done')
+    expect(done?.data).toMatchObject({ chatId: chat.id, aborted: true })
+
+    const rows = readTranscript(chat.id)
+    expect(rows.map((r) => r.kind)).toEqual(['user', 'assistant', 'aborted'])
+    expect(rows[1]).toMatchObject({ content: 'partial thought' })
   })
 
   test('stream failure: partial text kept, error row persisted, chat.error emitted', async () => {

@@ -137,6 +137,19 @@ describe('createTurnRecorder', () => {
     expect(tool.metadata?.truncated).toBe(true)
   })
 
+  it('drain() returns settled rows incrementally; finish() flushes the tail only', () => {
+    const recorder = createTurnRecorder({ turnId: 't4' })
+    recorder.ingest({ type: 'text', content: 'before ' })
+    expect(recorder.drain()).toEqual([]) // pending text stays buffered
+    recorder.ingest({ type: 'tool', data: { phase: 'result', toolName: 'bash', status: 'completed' } })
+    const first = recorder.drain()
+    expect(first.map((r) => r.kind)).toEqual(['assistant', 'tool'])
+    recorder.ingest({ type: 'text', content: 'after' })
+    const rest = recorder.finish()
+    expect(rest.map((r) => r.kind)).toEqual(['assistant'])
+    expect(rest[0]).toMatchObject({ content: 'after' })
+  })
+
   it('records error chunks as error rows and keeps partial text', () => {
     const recorder = createTurnRecorder({ turnId: 't3' })
     recorder.ingest({ type: 'text', content: 'partial ' })

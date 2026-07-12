@@ -41,6 +41,21 @@
         "method": "POST",
         "path": "/chats/:chatId/messages",
         "summary": "Send a message; reply streams over the SSE bus as chat.chunk events"
+      },
+      {
+        "method": "PATCH",
+        "path": "/chats/:chatId",
+        "summary": "Rename or pin a chat"
+      },
+      {
+        "method": "POST",
+        "path": "/chats/:chatId/seen",
+        "summary": "Mark a chat as seen (clears unread)"
+      },
+      {
+        "method": "POST",
+        "path": "/chats/:chatId/abort",
+        "summary": "Stop the in-flight reply"
       }
     ],
     "nav": [

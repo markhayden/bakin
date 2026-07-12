@@ -27,7 +27,13 @@ interface RecorderOptions {
 
 export interface TurnRecorder {
   ingest: (chunk: RuntimeChatChunk) => void
-  /** Rows persisted so far plus the trailing text row; call once at turn end. */
+  /**
+   * Rows settled since the last drain (tool results, flushed text) — lets
+   * callers persist incrementally so a crash keeps the partial turn.
+   * Pending (unflushed) text stays buffered until finish().
+   */
+  drain: () => ConversationMessage[]
+  /** Flush trailing text and return the remaining undrained rows; call once at turn end. */
   finish: () => ConversationMessage[]
 }
 
@@ -109,11 +115,19 @@ export function createTurnRecorder({ turnId, agentId, now }: RecorderOptions): T
     }
   }
 
+  let drained = 0
   return {
     ingest,
+    drain: () => {
+      const fresh = rows.slice(drained)
+      drained = rows.length
+      return fresh
+    },
     finish: () => {
       flushText()
-      return rows
+      const fresh = rows.slice(drained)
+      drained = rows.length
+      return fresh
     },
   }
 }
