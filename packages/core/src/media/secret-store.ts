@@ -22,12 +22,16 @@ import { getContentDir } from '../content-dir'
 import { resolveDirectImageKey } from './direct-image-provider'
 import { type DirectImageProviderId } from './image-format'
 
-interface ProviderSecret {
-  apiKey?: string
-}
+/**
+ * Named secrets per provider/integration. The historical shape
+ * `{ apiKey: string }` is a valid instance (apiKey is just a secret name),
+ * so pre-existing stores load unchanged — no migration code exists or is
+ * needed.
+ */
+type ProviderSecrets = Record<string, string>
 
 interface SecretStoreFile {
-  providers: Record<string, ProviderSecret>
+  providers: Record<string, ProviderSecrets>
 }
 
 function secretsPath(): string {
@@ -80,29 +84,70 @@ function nonEmpty(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value : null
 }
 
-/** Read a stored provider key (store only — does not consult env). */
-export function getStoredProviderKey(providerId: string): string | null {
-  return nonEmpty(readStore().providers[providerId]?.apiKey)
+/**
+ * Validate a secret name: same safe-slug rules as provider ids (camelCase
+ * names like `apiKey`/`botToken` pass via the `i` flag), never a reserved
+ * object key.
+ */
+export function isValidSecretName(name: unknown): name is string {
+  return typeof name === 'string' && /^[a-z0-9][a-z0-9._-]{0,63}$/i.test(name) && !RESERVED_KEYS.has(name)
 }
 
-/** Persist a provider key to the 0600 store. Rejects invalid/reserved ids. */
-export function setStoredProviderKey(providerId: string, apiKey: string): void {
+/** Read one named secret (store only — does not consult env). */
+export function getStoredSecret(providerId: string, name: string): string | null {
+  return nonEmpty(readStore().providers[providerId]?.[name])
+}
+
+/** Persist one named secret to the 0600 store. Rejects invalid ids/names. */
+export function setStoredSecret(providerId: string, name: string, value: string): void {
   if (!isValidProviderId(providerId)) throw new Error(`Invalid provider id: ${providerId}`)
+  if (!isValidSecretName(name)) throw new Error(`Invalid secret name: ${name}`)
   const store = readStore()
-  store.providers[providerId] = { apiKey }
+  store.providers[providerId] = { ...store.providers[providerId], [name]: value }
   writeStore(store)
 }
 
-/** Remove a stored provider key. Returns false when nothing was set. */
-export function unsetStoredProviderKey(providerId: string): boolean {
+/**
+ * Remove one named secret; drops the provider entry when it holds no other
+ * secrets. Returns false when nothing was set.
+ */
+export function unsetStoredSecret(providerId: string, name: string): boolean {
   const store = readStore()
-  if (!store.providers[providerId]) return false
-  delete store.providers[providerId]
+  const secrets = store.providers[providerId]
+  if (!secrets || !(name in secrets)) return false
+  delete secrets[name]
+  if (Object.keys(secrets).length === 0) delete store.providers[providerId]
   writeStore(store)
   return true
 }
 
-/** Provider ids that currently have a non-empty stored key. */
+/** Secret NAMES per provider (sorted) — values never leave this module unmasked callers. */
+export function listStoredSecrets(): Record<string, string[]> {
+  const store = readStore()
+  const out: Record<string, string[]> = {}
+  for (const [id, secrets] of Object.entries(store.providers)) {
+    const names = Object.keys(secrets).filter(name => nonEmpty(secrets[name])).sort()
+    if (names.length > 0) out[id] = names
+  }
+  return out
+}
+
+/** Read a stored provider key (store only — does not consult env). */
+export function getStoredProviderKey(providerId: string): string | null {
+  return getStoredSecret(providerId, 'apiKey')
+}
+
+/** Persist a provider key to the 0600 store. Rejects invalid/reserved ids. */
+export function setStoredProviderKey(providerId: string, apiKey: string): void {
+  setStoredSecret(providerId, 'apiKey', apiKey)
+}
+
+/** Remove a stored provider key. Returns false when nothing was set. */
+export function unsetStoredProviderKey(providerId: string): boolean {
+  return unsetStoredSecret(providerId, 'apiKey')
+}
+
+/** Provider ids that currently have a non-empty stored `apiKey` secret. */
 export function listStoredProviders(): string[] {
   const store = readStore()
   return Object.keys(store.providers).filter(id => nonEmpty(store.providers[id]?.apiKey))
@@ -112,6 +157,11 @@ export function listStoredProviders(): string[] {
  * Resolve a direct-image provider key with the full Bakin-owned precedence
  * (env override → secret store) AND report which source supplied it, so callers
  * can label the credential source accurately for diagnostics.
+ *
+ * Extension point (spec pi-parity §13): secret-manager references (e.g.
+ * 1Password `op://vault/item/field`) would resolve HERE — env →
+ * reference-resolution → stored value — so keep every read funneled through
+ * this cascade rather than reading the store directly.
  */
 export function resolveProviderApiKeySource(
   provider: DirectImageProviderId,

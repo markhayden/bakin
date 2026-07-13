@@ -5,10 +5,14 @@ import { tmpdir } from 'os'
 import { resetContentDir } from '../../../src/core/content-dir'
 import {
   getStoredProviderKey,
+  getStoredSecret,
   listStoredProviders,
+  listStoredSecrets,
   resolveProviderApiKeySource,
   setStoredProviderKey,
+  setStoredSecret,
   unsetStoredProviderKey,
+  unsetStoredSecret,
 } from '../../../packages/core/src/media/secret-store'
 
 describe('media secret-store', () => {
@@ -80,5 +84,59 @@ describe('media secret-store', () => {
   it('falls back to the store when no env key is present', () => {
     setStoredProviderKey('google', 'g-stored')
     expect(resolveProviderApiKeySource('google')).toEqual({ apiKey: 'g-stored', source: 'store' })
+  })
+
+  describe('named secrets', () => {
+    it('round-trips a named secret per provider', () => {
+      setStoredSecret('brave', 'apiKey', 'bsk-1')
+      setStoredSecret('discord', 'botToken', 'tok-1')
+      expect(getStoredSecret('brave', 'apiKey')).toBe('bsk-1')
+      expect(getStoredSecret('discord', 'botToken')).toBe('tok-1')
+      expect(getStoredSecret('discord', 'apiKey')).toBeNull()
+    })
+
+    it('lists secret NAMES per provider — never values', () => {
+      setStoredSecret('brave', 'apiKey', 'bsk-1')
+      setStoredSecret('discord', 'botToken', 'tok-1')
+      setStoredSecret('discord', 'appId', 'app-1')
+      expect(listStoredSecrets()).toEqual({ brave: ['apiKey'], discord: ['appId', 'botToken'] })
+    })
+
+    it('unsets a single named secret and drops the provider when empty', () => {
+      setStoredSecret('discord', 'botToken', 'tok-1')
+      setStoredSecret('discord', 'appId', 'app-1')
+      expect(unsetStoredSecret('discord', 'botToken')).toBe(true)
+      expect(getStoredSecret('discord', 'botToken')).toBeNull()
+      expect(getStoredSecret('discord', 'appId')).toBe('app-1')
+      expect(unsetStoredSecret('discord', 'appId')).toBe(true)
+      expect(listStoredSecrets()).toEqual({})
+      expect(unsetStoredSecret('discord', 'appId')).toBe(false)
+    })
+
+    it('interoperates with the legacy apiKey wrappers (same slot)', () => {
+      setStoredProviderKey('openai', 'sk-legacy')
+      expect(getStoredSecret('openai', 'apiKey')).toBe('sk-legacy')
+      setStoredSecret('openai', 'apiKey', 'sk-named')
+      expect(getStoredProviderKey('openai')).toBe('sk-named')
+      expect(listStoredProviders()).toEqual(['openai'])
+    })
+
+    it('a provider with only non-apiKey secrets is absent from listStoredProviders', () => {
+      setStoredSecret('discord', 'botToken', 'tok-1')
+      expect(listStoredProviders()).toEqual([])
+      expect(listStoredSecrets()).toEqual({ discord: ['botToken'] })
+    })
+
+    it('rejects invalid secret names and reserved keys', () => {
+      expect(() => setStoredSecret('brave', '__proto__', 'x')).toThrow(/Invalid secret name/)
+      expect(() => setStoredSecret('brave', 'bad name!', 'x')).toThrow(/Invalid secret name/)
+      expect(() => setStoredSecret('__proto__', 'apiKey', 'x')).toThrow(/Invalid provider id/)
+      expect(listStoredSecrets()).toEqual({})
+    })
+
+    it('keeps 0600 permissions when writing named secrets', () => {
+      setStoredSecret('brave', 'apiKey', 'bsk-1')
+      expect(statSync(join(testDir, 'secrets.json')).mode & 0o777).toBe(0o600)
+    })
   })
 })
