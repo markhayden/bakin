@@ -56,7 +56,7 @@ export function CatalogCard({
       type="button"
       onClick={() => onSelect(entry)}
       data-testid={`catalog-card-${entry.kind}-${entry.id}`}
-      className="flex flex-col gap-2 rounded-xl border border-border bg-card p-4 text-left transition-colors hover:border-foreground/20 hover:bg-accent/40"
+      className="flex flex-col gap-2 rounded-xl bg-card p-4 text-left ring-1 ring-foreground/10 transition-shadow hover:ring-foreground/25"
     >
       <div className="flex items-center gap-2.5">
         <EntryVisual entry={entry} />
@@ -92,7 +92,7 @@ export function CatalogCard({
                 onInstall(entry)
               }
             }}
-            className="flex items-center gap-1 rounded-full border border-pink-500/40 bg-pink-500/10 px-2.5 py-0.5 text-[11px] font-medium text-pink-400 transition-colors hover:bg-pink-500/20"
+            className="flex items-center gap-1 rounded-full border border-accent/40 bg-accent/10 px-2.5 py-0.5 text-[11px] font-medium text-accent transition-colors hover:bg-accent/20"
           >
             <Plus className="size-3" />
             Install
