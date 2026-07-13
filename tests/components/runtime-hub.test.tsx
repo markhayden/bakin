@@ -63,6 +63,7 @@ describe('OverviewTab', () => {
     render(
       <OverviewTab
         report={report}
+        onRefreshOnboarding={() => {}}
         onboarding={[
           { name: 'runtime', status: 'ok', message: 'pi runtime adapter is available' },
           { name: 'budget', status: 'warn', message: 'No spending budget is set', remediation: 'Set one in Settings' },
@@ -79,6 +80,31 @@ describe('OverviewTab', () => {
     expect(screen.getByText(/Via Bakin — Bakin fills the gap itself/)).toBeTruthy()
     // Setup rows carry remediation for non-ok
     expect(screen.getByText('→ Set one in Settings')).toBeTruthy()
+    // budget is not headless-fixable — no Fix button; fixable components get one
+    expect(screen.queryByTestId('setup-fix-budget')).toBeNull()
+  })
+
+  it('warn rows for headless-fixable components expose a Fix button that posts the install', async () => {
+    const posts: Array<Record<string, unknown>> = []
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes('/api/runtime/onboarding/install')) {
+        posts.push(JSON.parse(String(init?.body)))
+        return new Response(JSON.stringify({ ok: true, result: { status: 'installed' } }), { status: 200 })
+      }
+      return new Response('{}', { status: 200 })
+    }) as unknown as typeof fetch
+
+    const refreshed: number[] = []
+    render(
+      <OverviewTab
+        report={report}
+        onRefreshOnboarding={() => refreshed.push(1)}
+        onboarding={[{ name: 'agent-sync', status: 'warn', message: '3 findings', remediation: 'Run bakin install agent-sync' }]}
+      />,
+    )
+    fireEvent.click(screen.getByTestId('setup-fix-agent-sync'))
+    await waitFor(() => expect(posts).toEqual([{ component: 'agent-sync' }]))
+    await waitFor(() => expect(refreshed.length).toBe(1))
   })
 })
 

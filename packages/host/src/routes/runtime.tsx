@@ -69,7 +69,9 @@ function RuntimePage() {
   useEffect(() => { refresh() }, [refresh])
 
   return (
-    <div className="flex flex-1 flex-col">
+    // PluginHeader ships unpadded — it lives INSIDE the p-6 frame, exactly
+    // like the health page wraps it.
+    <div className="flex flex-1 flex-col space-y-6 p-6">
       <PluginHeader
         title="Runtime"
         subtitle={report ? `${report.adapter} · ${report.runtime.name}@${report.runtime.version}` : 'The engine that runs your agents'}
@@ -79,7 +81,7 @@ function RuntimePage() {
           </Button>
         }
       />
-      <div className="flex-1 space-y-6 p-6">
+      <div className="flex-1 space-y-6">
         <UnderlineTabs tabs={TABS} value={tab} onValueChange={setTab} />
 
         {reportError && (
@@ -93,7 +95,7 @@ function RuntimePage() {
           </div>
         )}
 
-        {report && tab === 'overview' && <OverviewTab report={report} onboarding={onboarding} />}
+        {report && tab === 'overview' && <OverviewTab report={report} onboarding={onboarding} onRefreshOnboarding={() => void loadOnboarding()} />}
         {tab === 'capabilities' && <CapabilitiesTab />}
         {report && tab === 'switch' && <SwitchTab report={report} onSwitched={refresh} />}
       </div>

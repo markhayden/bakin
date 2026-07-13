@@ -3,6 +3,9 @@
  * plain language), and whether setup is healthy. Every non-native state
  * says what happens instead — the reader never has to decode an enum.
  */
+import { useState } from 'react'
+import { Loader2, Wrench } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { capabilityRows } from '../../lib/runtime-report'
@@ -90,7 +93,35 @@ function CapabilityGrid({ report }: { report: CapabilityReport }) {
   )
 }
 
-function SetupSection({ onboarding }: { onboarding: OnboardingComponentStatus[] | null | undefined }) {
+/** Setup checks whose install() is safe to run headlessly from the UI. */
+const FIXABLE_COMPONENTS = new Set(['mkdir', 'settings', 'search', 'search-models', 'plugin-assets', 'agent-sync'])
+
+function SetupSection({ onboarding, onFixed }: { onboarding: OnboardingComponentStatus[] | null | undefined; onFixed: () => void }) {
+  const [fixing, setFixing] = useState<string | null>(null)
+  const [fixError, setFixError] = useState<string | null>(null)
+
+  const runFix = async (name: string) => {
+    setFixing(name)
+    setFixError(null)
+    try {
+      const res = await fetch('/api/runtime/onboarding/install', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ component: name }),
+      })
+      const body = await res.json().catch(() => null) as { ok?: boolean; result?: { message?: string }; error?: string } | null
+      if (!res.ok || body?.ok === false) {
+        setFixError(`${name}: ${body?.result?.message ?? body?.error ?? `HTTP ${res.status}`}`)
+        return
+      }
+      onFixed()
+    } catch (err) {
+      setFixError(`${name}: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setFixing(null)
+    }
+  }
+
   return (
     <section className="space-y-3" data-testid="onboarding-status">
       <div>
@@ -106,21 +137,41 @@ function SetupSection({ onboarding }: { onboarding: OnboardingComponentStatus[] 
       {onboarding === null && (
         <p className="text-sm text-muted-foreground">Setup checks are unavailable right now — retry with Refresh.</p>
       )}
+      {fixError && (
+        <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">{fixError}</p>
+      )}
       {onboarding && (
         <Card>
           <CardContent className="divide-y divide-border p-0">
-            {onboarding.map((component) => (
-              <div key={component.name} className="flex items-start justify-between gap-3 px-4 py-2.5">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium">{component.name}</p>
-                  <p className="truncate text-xs text-muted-foreground" title={component.message}>{component.message}</p>
-                  {component.remediation && component.status !== 'ok' && (
-                    <p className="mt-0.5 text-xs text-muted-foreground/80">→ {component.remediation}</p>
-                  )}
+            {onboarding.map((component) => {
+              const fixable = component.status !== 'ok' && FIXABLE_COMPONENTS.has(component.name)
+              return (
+                <div key={component.name} className="flex items-start justify-between gap-3 px-4 py-2.5">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">{component.name}</p>
+                    <p className="truncate text-xs text-muted-foreground" title={component.message}>{component.message}</p>
+                    {component.remediation && component.status !== 'ok' && (
+                      <p className="mt-0.5 text-xs text-muted-foreground/80">→ {component.remediation}</p>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {fixable && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={fixing !== null}
+                        onClick={() => void runFix(component.name)}
+                        data-testid={`setup-fix-${component.name}`}
+                      >
+                        {fixing === component.name ? <Loader2 className="mr-1.5 size-3 animate-spin" /> : <Wrench className="mr-1.5 size-3" />}
+                        Fix
+                      </Button>
+                    )}
+                    <StatusBadge status={component.status} />
+                  </div>
                 </div>
-                <StatusBadge status={component.status} />
-              </div>
-            ))}
+              )
+            })}
           </CardContent>
         </Card>
       )}
@@ -131,15 +182,17 @@ function SetupSection({ onboarding }: { onboarding: OnboardingComponentStatus[] 
 export function OverviewTab({
   report,
   onboarding,
+  onRefreshOnboarding,
 }: {
   report: CapabilityReport
   onboarding: OnboardingComponentStatus[] | null | undefined
+  onRefreshOnboarding: () => void
 }) {
   return (
     <div className="space-y-6" data-testid="runtime-summary">
       <CredentialTiles report={report} />
       <CapabilityGrid report={report} />
-      <SetupSection onboarding={onboarding} />
+      <SetupSection onboarding={onboarding} onFixed={onRefreshOnboarding} />
     </div>
   )
 }
