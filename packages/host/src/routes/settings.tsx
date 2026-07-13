@@ -63,7 +63,7 @@ export function groupAndSortSchemas(schemas: PluginSchemaEntry[]): GroupedSchema
     a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
   core.sort(alpha)
   extensions.sort(alpha)
-  // System & Alerts pinned first, then Provider Keys, then built-ins A-Z.
+  // System & Alerts pinned first, then Integrations & Keys, then built-ins A-Z.
   return { core: [...system, ...providerKeys, ...core], extensions }
 }
 
@@ -82,7 +82,7 @@ function SettingsPage() {
       .then((data: PluginSchemaEntry[]) => {
         const withSystem: PluginSchemaEntry[] = [
           { id: SYSTEM_SETTINGS_TAB_ID, name: 'System & Alerts', schema: SYSTEM_SETTINGS_SCHEMA, source: 'built-in' },
-          { id: PROVIDER_KEYS_TAB_ID, name: 'Provider Keys', schema: { fields: [] }, source: 'built-in' },
+          { id: PROVIDER_KEYS_TAB_ID, name: 'Integrations & Keys', schema: { fields: [] }, source: 'built-in' },
           ...data,
         ]
         setPlugins(withSystem)
@@ -96,7 +96,7 @@ function SettingsPage() {
   // /api/settings (core settings.json) instead of /api/plugin-settings/*.
   useEffect(() => {
     if (!activePlugin) return
-    // Provider Keys manages its own data via /api/secrets + the images
+    // Integrations & Keys manages its own data via /api/secrets + the images
     // readiness route, so the generic values fetch is skipped.
     if (activePlugin === PROVIDER_KEYS_TAB_ID) {
       setValues({})
