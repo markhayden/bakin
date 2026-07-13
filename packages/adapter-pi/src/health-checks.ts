@@ -1,70 +1,238 @@
 /**
- * Adapter-contributed doctor checks: is the Pi world on this machine
- * actually usable? (Auth present, registry parseable, a model available,
- * agent dirs writable.) Read-only probes — autoFix stays false.
+ * Canonical Health registrations contributed by the Pi adapter package.
+ *
+ * These probes are intentionally separate from AgentRuntimeAdapter: app
+ * composition registers them with adapter ownership in the one Health
+ * registry. Runs are diagnostic-only and never provision or repair Pi state.
  */
-import { accessSync, constants, existsSync, mkdirSync } from 'fs'
+import { accessSync, constants, existsSync } from 'fs'
 
-import type { AdapterHealthCheckDefinition, AdapterHealthCheckResult } from '@bakin/core/adapters/runtime'
+import type {
+  ActionIncidentInput,
+  HealthCheckRegistrationInput,
+  HealthCheckRunInput,
+  JsonObject,
+} from '@bakin/core/plugin-types'
+
 import { listAuthProviders } from './config'
-import { getPiAgentsRoot, getPiHome } from './home'
+import { getPiAgentsRoot, getPiHome, getPiPath, getPiRegistryPath } from './home'
 import { getModelRegistry } from './models'
 import { readRegistry } from './registry'
 
-function result(check: string, status: AdapterHealthCheckResult['status'], message: string): AdapterHealthCheckResult {
-  return { check, status, message, autoFixable: false }
+const RUNTIME_GROUP = { key: 'runtime', label: 'Runtime' } as const
+
+function observedHealthy(key: string, summary: string, evidence?: JsonObject): HealthCheckRunInput {
+  return {
+    outcome: 'observed',
+    observations: [{ key, status: 'healthy', summary, evidence }],
+  }
 }
 
-export function createHealthChecks(): AdapterHealthCheckDefinition[] {
+function observedError(
+  key: string,
+  summary: string,
+  incident: ActionIncidentInput,
+  detail?: string,
+): HealthCheckRunInput {
+  return {
+    outcome: 'observed',
+    observations: [{ key, status: 'error', summary, detail, incident }],
+  }
+}
+
+function installationIncident(resourcePath: string): ActionIncidentInput {
+  return {
+    key: 'installation',
+    disposition: 'action_required',
+    title: 'Pi runtime files are unavailable',
+    impact: 'Pi cannot load or create Bakin agent workspaces until its runtime directories are available.',
+    resources: [{ kind: 'directory', id: resourcePath, label: resourcePath }],
+    resolution: {
+      key: 'initialize-pi',
+      type: 'instructions',
+      label: 'Initialize Pi',
+      steps: [
+        'Install Pi if it is not already installed.',
+        'Run Pi once and confirm its agent directory is writable by the Bakin process.',
+        'Rerun Health checks.',
+      ],
+      command: 'pi',
+    },
+  }
+}
+
+function providerConfigurationIncident(): ActionIncidentInput {
+  return {
+    key: 'provider-configuration',
+    disposition: 'action_required',
+    title: 'Pi has no usable model provider',
+    impact: 'Pi cannot serve agent turns until at least one authenticated model is available.',
+    resources: [
+      { kind: 'file', id: getPiPath('agent', 'auth.json'), label: 'Pi provider authentication' },
+      { kind: 'capability', id: 'runtime.models', label: 'Runtime models' },
+    ],
+    resolution: {
+      key: 'configure-provider',
+      type: 'instructions',
+      label: 'Configure a Pi provider',
+      steps: [
+        'Run Pi and sign in to, or add an API key for, a model provider.',
+        'Confirm at least one model is available.',
+        'Rerun Health checks.',
+      ],
+      command: 'pi',
+    },
+  }
+}
+
+/** Four independent Pi signals registered by the application composition root. */
+export function createPiHealthChecks(): HealthCheckRegistrationInput[] {
   return [
     {
-      id: 'pi.home',
-      name: 'Pi home + agent registry',
+      id: 'home',
+      name: 'Pi home and agent registry',
+      description: 'Verifies that the Pi home exists and Bakin can read its Pi agent registry.',
+      group: RUNTIME_GROUP,
       run: async () => {
-        const out: AdapterHealthCheckResult[] = []
-        if (!existsSync(getPiHome())) {
-          out.push(result('pi.home', 'error', `Pi home not found at ${getPiHome()} — install pi and run it once`))
-          return out
+        const home = getPiHome()
+        if (!existsSync(home)) {
+          return observedError(
+            'home',
+            `Pi home is missing at ${home}.`,
+            installationIncident(home),
+          )
         }
+
         try {
           const registry = readRegistry()
-          out.push(result('pi.home', 'ok', `Pi home present; ${registry.agents.length} Bakin agent(s) registered`))
+          return observedHealthy(
+            'home',
+            `Pi home is available with ${registry.agents.length} registered Bakin agent${registry.agents.length === 1 ? '' : 's'}.`,
+            { home, registryPath: getPiRegistryPath(), registeredAgents: registry.agents.length },
+          )
         } catch (err) {
-          out.push(result('pi.home', 'error', err instanceof Error ? err.message : String(err)))
-          return out
+          const detail = err instanceof Error ? err.message : String(err)
+          return observedError(
+            'home',
+            'The Pi agent registry cannot be read.',
+            {
+              key: 'agent-registry',
+              disposition: 'action_required',
+              title: 'Pi agent registry is unreadable',
+              impact: 'Bakin cannot safely resolve the Pi agent roster or its workspaces.',
+              resources: [{ kind: 'file', id: getPiRegistryPath(), label: 'Pi agent registry' }],
+              resolution: {
+                key: 'repair-registry',
+                type: 'instructions',
+                label: 'Repair the Pi agent registry',
+                steps: [
+                  'Inspect the Pi agent registry for invalid JSON or an unsupported shape.',
+                  'Restore a valid registry or recover it from backup.',
+                  'Rerun Health checks.',
+                ],
+              },
+            },
+            detail,
+          )
         }
-        try {
-          mkdirSync(getPiAgentsRoot(), { recursive: true })
-          accessSync(getPiAgentsRoot(), constants.W_OK)
-          out.push(result('pi.agents-root', 'ok', 'Agent workspace root is writable'))
-        } catch {
-          out.push(result('pi.agents-root', 'error', `Agent root not writable: ${getPiAgentsRoot()}`))
-        }
-        return out
       },
     },
     {
-      id: 'pi.auth',
-      name: 'Pi provider auth + models',
+      id: 'agents-root',
+      name: 'Pi agent workspace directory',
+      description: 'Verifies that the Pi agent workspace root exists and is writable without modifying it.',
+      group: RUNTIME_GROUP,
       run: async () => {
-        const out: AdapterHealthCheckResult[] = []
+        const root = getPiAgentsRoot()
+        try {
+          accessSync(root, constants.W_OK)
+          return observedHealthy(
+            'agents-root',
+            'The Pi agent workspace root is writable.',
+            { path: root },
+          )
+        } catch (err) {
+          return observedError(
+            'agents-root',
+            `The Pi agent workspace root is not writable at ${root}.`,
+            installationIncident(root),
+            err instanceof Error ? err.message : String(err),
+          )
+        }
+      },
+    },
+    {
+      id: 'auth',
+      name: 'Pi provider authentication',
+      description: 'Verifies that Pi has authentication configured for at least one model provider.',
+      group: RUNTIME_GROUP,
+      run: async () => {
         const providers = listAuthProviders()
         if (providers.length === 0) {
-          out.push(result('pi.auth', 'error', 'No providers in Pi auth.json — run `pi` and log in'))
-        } else {
-          out.push(result('pi.auth', 'ok', `Auth configured for: ${providers.join(', ')}`))
+          return observedError(
+            'auth',
+            'Pi has no configured model-provider authentication.',
+            providerConfigurationIncident(),
+          )
         }
+        return observedHealthy(
+          'auth',
+          `Pi authentication is configured for ${providers.join(', ')}.`,
+          { providers },
+        )
+      },
+    },
+    {
+      id: 'models',
+      name: 'Pi model availability',
+      description: 'Refreshes the Pi model registry and verifies that at least one authenticated model is available.',
+      group: RUNTIME_GROUP,
+      run: async () => {
         try {
           const { registry } = getModelRegistry()
           registry.refresh()
           const available = registry.getAvailable()
-          out.push(available.length > 0
-            ? result('pi.models', 'ok', `${available.length} model(s) available`)
-            : result('pi.models', 'error', 'No Pi models have configured auth'))
+          if (available.length === 0) {
+            return observedError(
+              'models',
+              'Pi has no models with configured authentication.',
+              providerConfigurationIncident(),
+            )
+          }
+          return observedHealthy(
+            'models',
+            `${available.length} Pi model${available.length === 1 ? ' is' : 's are'} available.`,
+            { availableModels: available.length },
+          )
         } catch (err) {
-          out.push(result('pi.models', 'error', `Model registry failed: ${err instanceof Error ? err.message : String(err)}`))
+          const detail = err instanceof Error ? err.message : String(err)
+          return observedError(
+            'models',
+            'The Pi model registry could not be refreshed.',
+            {
+              key: 'model-registry',
+              disposition: 'action_required',
+              title: 'Pi model registry failed',
+              impact: 'Bakin cannot determine which Pi models are available for agent turns.',
+              resources: [
+                { kind: 'file', id: getPiPath('agent', 'models.json'), label: 'Pi model configuration' },
+                { kind: 'capability', id: 'runtime.models', label: 'Runtime models' },
+              ],
+              resolution: {
+                key: 'repair-model-config',
+                type: 'instructions',
+                label: 'Repair Pi model configuration',
+                steps: [
+                  'Inspect Pi model and provider configuration for invalid entries.',
+                  'Correct the configuration or restore a known-good copy.',
+                  'Rerun Health checks.',
+                ],
+                command: 'pi',
+              },
+            },
+            detail,
+          )
         }
-        return out
       },
     },
   ]

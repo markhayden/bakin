@@ -3,7 +3,6 @@ import { AsyncResource } from 'async_hooks'
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync, symlinkSync } from 'fs'
 import { dirname, join } from 'path'
 import { tmpdir } from 'os'
-import { createHealthService } from '@bakin/core/app-services'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 import { createMockSearchAdapter } from '@bakin/core/adapters/search/testing'
 import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
@@ -127,7 +126,6 @@ describe('PluginRegistryImpl', () => {
       runtime,
       search,
       tasks: createMockBakinTaskStore(),
-      health: createHealthService([runtime, search]),
     }
 
     // Reset modules to get a fresh registry singleton

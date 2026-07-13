@@ -11,6 +11,8 @@ import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 
 import { PiRuntimeAdapter, type PiRuntimeAdapterOptions } from './runtime'
 
+export { createPiHealthChecks } from './health-checks'
+
 export function createPiRuntimeAdapter(options: PiRuntimeAdapterOptions = {}): AgentRuntimeAdapter {
   return new PiRuntimeAdapter(options)
 }

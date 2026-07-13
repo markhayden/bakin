@@ -95,6 +95,7 @@ function clearStateArrays(state: {
   nodeKinds: unknown[]
   channelIds: unknown[]
   healthCheckIds: unknown[]
+  healthRepairActionIds: unknown[]
 }): void {
   state.routes.length = 0
   state.slots.length = 0
@@ -103,6 +104,7 @@ function clearStateArrays(state: {
   state.nodeKinds.length = 0
   state.channelIds.length = 0
   state.healthCheckIds.length = 0
+  state.healthRepairActionIds.length = 0
 }
 
 /**

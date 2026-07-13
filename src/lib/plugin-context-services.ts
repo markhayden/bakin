@@ -215,7 +215,6 @@ export function createPluginRuntimeFacade(runtime: AgentRuntimeAdapter): AgentRu
     shutdown: runtime.shutdown.bind(runtime),
     ping: runtime.ping.bind(runtime),
     restart: runtime.restart.bind(runtime),
-    getHealthChecks: runtime.getHealthChecks.bind(runtime),
     // Read-only capability declaration (enrichment + capability queries) and
     // the sync tool-access descriptor — both required on the contract.
     capabilities: runtime.capabilities.bind(runtime),

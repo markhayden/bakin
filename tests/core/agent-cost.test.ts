@@ -45,16 +45,16 @@ beforeEach(() => {
 describe('meterAgentTurn', () => {
   it('records a non-dispatch row with a synthetic runId and null taskId', async () => {
     priceTurnImpl = () => ({ model: 'anthropic/claude-sonnet-4-6', costUsdMicros: 4200 })
-    await meterAgentTurn({ agent: 'main', result: { id: 'm', usage: { input: 100, output: 50, total: 150 } }, name: 'watchdog-alert' })
+    await meterAgentTurn({ agent: 'main', activityClass: 'system', result: { id: 'm', usage: { input: 100, output: 50, total: 150 } }, name: 'watchdog-alert' })
     expect(costRows).toHaveLength(1)
     expect(costRows[0].taskId).toBeNull()
     expect(String(costRows[0].runId)).toStartWith('turn:')
     expect(costRows[0].costUsdMicros).toBe(4200)
-    expect(usageRows[0]).toMatchObject({ kind: 'agent', name: 'watchdog-alert', tokensIn: 100, tokensOut: 50, costUsdMicros: 4200 })
+    expect(usageRows[0]).toMatchObject({ kind: 'agent', activityClass: 'system', name: 'watchdog-alert', tokensIn: 100, tokensOut: 50, costUsdMicros: 4200 })
   })
 
   it('uses the dispatch runId + taskId when provided', async () => {
-    await meterAgentTurn({ runId: 'task:t1:d1', taskId: 't1', agent: 'pixel', result: { id: 'm', usage: { input: 1, output: 1 } } })
+    await meterAgentTurn({ runId: 'task:t1:d1', taskId: 't1', agent: 'pixel', activityClass: 'user', result: { id: 'm', usage: { input: 1, output: 1 } } })
     expect(costRows[0].runId).toBe('task:t1:d1')
     expect(costRows[0].taskId).toBe('t1')
   })
@@ -62,6 +62,7 @@ describe('meterAgentTurn', () => {
   it('threads cache read/write tokens into the cost row and the usage entry', async () => {
     await meterAgentTurn({
       runId: 'task:t-cache:d1', taskId: 't-cache', agent: 'pixel',
+      activityClass: 'user',
       result: { id: 'm', usage: { input: 1000, output: 50, total: 1050, cacheRead: 900, cacheWrite: 40 } },
     })
     expect(costRows[0]).toMatchObject({ cacheReadTokens: 900, cacheWriteTokens: 40 })
@@ -69,7 +70,7 @@ describe('meterAgentTurn', () => {
   })
 
   it('omits cache fields entirely when the runtime reports no cache usage', async () => {
-    await meterAgentTurn({ agent: 'pixel', result: { id: 'm', usage: { input: 10, output: 5 } } })
+    await meterAgentTurn({ agent: 'pixel', activityClass: 'user', result: { id: 'm', usage: { input: 10, output: 5 } } })
     expect(costRows[0].cacheReadTokens ?? null).toBeNull()
     expect('tokensCacheRead' in usageRows[0]).toBe(false)
     expect('tokensCacheWrite' in usageRows[0]).toBe(false)
@@ -79,27 +80,27 @@ describe('meterAgentTurn', () => {
     // Runtime reports it ran modelY; routing had requested modelX.
     const seen: Record<string, unknown>[] = []
     priceTurnImpl = (d) => { seen.push(d); return { model: d.model as string, costUsdMicros: 999 } }
-    await meterAgentTurn({ agent: 'pixel', resolvedModel: 'modelX', result: { id: 'm', usage: { input: 1, output: 1, model: 'modelY' } } })
+    await meterAgentTurn({ agent: 'pixel', activityClass: 'user', resolvedModel: 'modelX', result: { id: 'm', usage: { input: 1, output: 1, model: 'modelY' } } })
     expect(seen[0].model).toBe('modelY') // priced against what ran
     expect(costRows[0].model).toBe('modelY')
   })
 
   it('persists the billing attribution (provider + lane) from the pricing hook', async () => {
     priceTurnImpl = () => ({ model: 'openai-codex/gpt-5.5-codex', provider: 'openai-codex', lane: 'subscription', costUsdMicros: null })
-    await meterAgentTurn({ agent: 'main', result: { id: 'm', usage: { input: 10, output: 5 } } })
+    await meterAgentTurn({ agent: 'main', activityClass: 'user', result: { id: 'm', usage: { input: 10, output: 5 } } })
     expect(costRows[0]).toMatchObject({ provider: 'openai-codex', lane: 'subscription' })
   })
 
   it('records null provider/lane when the hook does not attribute billing', async () => {
     priceTurnImpl = () => ({ model: 'm', costUsdMicros: 10 })
-    await meterAgentTurn({ agent: 'main', result: { id: 'm', usage: { input: 1, output: 1 } } })
+    await meterAgentTurn({ agent: 'main', activityClass: 'user', result: { id: 'm', usage: { input: 1, output: 1 } } })
     expect(costRows[0].provider ?? null).toBeNull()
     expect(costRows[0].lane ?? null).toBeNull()
   })
 
   it('records null cost (unmetered) when pricing is unavailable, never throws', async () => {
     priceTurnImpl = () => { throw new Error('boom') }
-    await meterAgentTurn({ agent: 'pixel', result: { id: 'm', usage: { input: 1, output: 1 } } })
+    await meterAgentTurn({ agent: 'pixel', activityClass: 'user', result: { id: 'm', usage: { input: 1, output: 1 } } })
     // priceTurn threw → whole meter swallowed; no row, no throw.
     expect(costRows).toHaveLength(0)
   })
@@ -108,7 +109,7 @@ describe('meterAgentTurn', () => {
 describe('meterImageTurn', () => {
   it('records an image spend event with cost from priceImage', async () => {
     priceImageImpl = () => ({ model: 'black-forest-labs/flux-pro', costUsdMicros: 110_000 })
-    await meterImageTurn({ agent: 'pixel', model: 'black-forest-labs/flux-pro', count: 2, taskId: 't1' })
+    await meterImageTurn({ agent: 'pixel', activityClass: 'user', model: 'black-forest-labs/flux-pro', count: 2, taskId: 't1' })
     expect(costRows).toHaveLength(1)
     expect(costRows[0]).toMatchObject({ agent: 'pixel', model: 'black-forest-labs/flux-pro', taskId: 't1', costUsdMicros: 110_000 })
     expect(String(costRows[0].runId)).toStartWith('image:')
@@ -117,14 +118,14 @@ describe('meterImageTurn', () => {
 
   it('records the run with null cost for a provider-priced model', async () => {
     priceImageImpl = () => ({ model: 'openai/gpt-image-2', costUsdMicros: null })
-    await meterImageTurn({ agent: 'pixel', model: 'openai/gpt-image-2', count: 1 })
+    await meterImageTurn({ agent: 'pixel', activityClass: 'user', model: 'openai/gpt-image-2', count: 1 })
     expect(costRows[0].costUsdMicros).toBeNull()
     expect(costRows[0].taskId).toBeNull()
   })
 
   it('persists the billing attribution from priceImage', async () => {
     priceImageImpl = () => ({ model: 'google/nanobanana', provider: 'google', lane: 'metered', costUsdMicros: 55_000 })
-    await meterImageTurn({ agent: 'pixel', model: 'google/nanobanana', count: 1 })
+    await meterImageTurn({ agent: 'pixel', activityClass: 'user', model: 'google/nanobanana', count: 1 })
     expect(costRows[0]).toMatchObject({ provider: 'google', lane: 'metered' })
   })
 })

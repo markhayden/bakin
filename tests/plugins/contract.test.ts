@@ -165,6 +165,7 @@ function createMockContext(pluginId: string): {
     registerNodeType: () => '',
     registerNotificationChannel: () => '',
     registerHealthCheck: () => '',
+    registerHealthRepairAction: () => '',
     watchFiles: () => {},
     getSettings: (() => ({})) as PluginContext['getSettings'],
     updateSettings: () => {},

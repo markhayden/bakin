@@ -21,6 +21,9 @@ import { checkAndContinueDependents } from '../continuation'
 import * as agents from '../agents'
 import { handleMcpRequest } from '../mcp-server'
 import { trackResponse } from '../rest-tracking'
+import type { ActivityClass } from '../usage'
+import { resolveRequestActivityClass } from '../rest-activity-class'
+import { pluginRegistry } from '../plugin-registry'
 import { getCachedOrBuild } from '../../../packages/host/src/api/docs-runtime'
 import type { buildOpenApiDocument } from '../../../packages/host/src/api/docs-runtime'
 import { dispatchWebHandler } from '../../../packages/host/src/api/_adapter'
@@ -79,7 +82,7 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
 
     // Track API requests (skip static assets and Next.js internals)
     if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/mcp')) {
-      trackResponse(req, res, url, reqStart)
+      trackResponse(req, res, url, reqStart, requestActivityClass(req, url))
     }
 
     // MCP endpoint — agent-facing tool server
@@ -613,4 +616,13 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
       }
     })
   }
+}
+
+/** Resolve explicit route metadata before the delayed response recorder runs. */
+export function requestActivityClass(req: IncomingMessage, url: URL): ActivityClass {
+  return resolveRequestActivityClass(
+    req.method,
+    url.pathname,
+    (pluginId) => pluginRegistry.getPluginState(pluginId)?.routes ?? [],
+  )
 }

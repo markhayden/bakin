@@ -34,11 +34,13 @@ import {
 } from '@bakin/core/workflows/notification-channel-registry'
 import {
   registerPluginHealthCheck,
+  registerPluginHealthRepairAction,
   unregisterPluginHealthChecks,
 } from './health-check-registry'
 import type {
   PluginNotificationChannelInput,
-  PluginHealthCheckInput,
+  HealthCheckRegistrationInput,
+  HealthRepairActionDefinition,
 } from '@bakin/core/plugin-types'
 import type { AppServices } from '@bakin/core/app-services'
 import { assertValidBodySpec } from '@bakin/core/routing'
@@ -327,6 +329,7 @@ class PluginRegistryImpl {
     state.nodeKinds.length = 0
     state.channelIds.length = 0
     state.healthCheckIds.length = 0
+    state.healthRepairActionIds.length = 0
   }
 
   /**
@@ -667,9 +670,14 @@ class PluginRegistryImpl {
         state.channelIds.push(namespacedId)
         return namespacedId
       },
-      registerHealthCheck: (def: PluginHealthCheckInput): string => {
-        const namespacedId = registerPluginHealthCheck(pluginId, def)
+      registerHealthCheck: (def: HealthCheckRegistrationInput): string => {
+        const namespacedId = registerPluginHealthCheck(pluginId, def, state.plugin.name)
         state.healthCheckIds.push(namespacedId)
+        return namespacedId
+      },
+      registerHealthRepairAction: (def: HealthRepairActionDefinition): string => {
+        const namespacedId = registerPluginHealthRepairAction(pluginId, def, state.plugin.name)
+        state.healthRepairActionIds.push(namespacedId)
         return namespacedId
       },
       watchFiles: (patterns: string[]) => { state.watchPatterns.push(...patterns) },
@@ -874,6 +882,7 @@ class PluginRegistryImpl {
         nodeKinds: [],
         channelIds: [],
         healthCheckIds: [],
+        healthRepairActionIds: [],
       }
 
       const skillResult = await this.finalizeActivation(plugin, state, pluginPath, storage, events, services, {
@@ -985,6 +994,7 @@ class PluginRegistryImpl {
       nodeKinds: [],
       channelIds: [],
       healthCheckIds: [],
+      healthRepairActionIds: [],
     }
 
     let skillResult: ReturnType<typeof loadPluginSkills>

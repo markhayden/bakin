@@ -74,7 +74,7 @@ export async function sendMessageToAgent(
 ): Promise<{ ok: boolean; reply?: string; error?: string }> {
   try {
     const result = await getAppServices().runtime.messaging.send({ agentId, content: message })
-    await meterAgentTurn({ agent: agentId, result, name: 'send' })
+    await meterAgentTurn({ agent: agentId, activityClass: 'user', result, name: 'send' })
     return { ok: true, reply: result.content ?? '' }
   } catch (err) {
     log.error(`Failed to send message to agent ${agentId}`, err)

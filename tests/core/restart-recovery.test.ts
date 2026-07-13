@@ -300,13 +300,16 @@ describe('restart recovery', () => {
       inProgress: [{ id: 'task-8', title: 'Health candidate', agent: 'pixel' }],
     })
 
-    const rows = await checkRestartRecovery()
+    const result = await checkRestartRecovery()
 
-    expect(rows).toEqual([
+    expect(result.outcome).toBe('observed')
+    if (result.outcome !== 'observed') throw new Error('expected observations')
+    expect(result.observations).toEqual([
       expect.objectContaining({
-        check: 'restart-recovery',
-        status: 'warn',
-        message: expect.stringContaining('Health candidate'),
+        key: 'candidates',
+        status: 'warning',
+        detail: expect.stringContaining('Health candidate'),
+        incident: expect.objectContaining({ disposition: 'action_required' }),
       }),
     ])
   })

@@ -13,6 +13,7 @@ import { randomUUID } from 'crypto'
 
 import { createLogger } from './logger'
 import type { MessageResult } from '@bakin/core/adapters/runtime'
+import type { ActivityClass } from '@makinbakin/sdk/types'
 
 const log = createLogger('agent-cost')
 
@@ -37,6 +38,7 @@ async function recordSpend(e: {
   runId: string
   taskId?: string | null
   agent: string
+  activityClass: ActivityClass
   model?: string | null
   /** Billing attribution from the pricing hook; null when unattributed. */
   provider?: string | null
@@ -70,6 +72,7 @@ async function recordSpend(e: {
     })
     recordUsage({
       kind: 'agent',
+      activityClass: e.activityClass,
       name: e.name,
       agent: e.agent,
       durationMs: null,
@@ -93,6 +96,8 @@ export async function meterAgentTurn(opts: {
   /** Owning task for dispatched turns; null/omitted for non-dispatch sends. */
   taskId?: string | null
   agent: string
+  /** Producer-assigned intent; automatic notifications are system work. */
+  activityClass: ActivityClass
   result: MessageResult
   /** Model dispatch routed this turn to, if any — used only when the runtime
    *  didn't report the model it actually ran. */
@@ -116,6 +121,7 @@ export async function meterAgentTurn(opts: {
       runId: opts.runId ?? `turn:${randomUUID()}`,
       taskId: opts.taskId,
       agent: opts.agent,
+      activityClass: opts.activityClass,
       // Prefer the hook's NORMALIZED id (it resolves from ranModel) — spend
       // facets and rule scopeIds must key identically or model-scoped caps
       // read zero spend. Raw ranModel is the no-plugin fallback only.
@@ -139,6 +145,7 @@ export async function meterAgentTurn(opts: {
  */
 export async function meterImageTurn(opts: {
   agent: string
+  activityClass: ActivityClass
   /** `provider/model` of the image generation. */
   model: string
   /** Number of images generated (billed count). */
@@ -156,6 +163,7 @@ export async function meterImageTurn(opts: {
       runId: `image:${randomUUID()}`,
       taskId: opts.taskId,
       agent: opts.agent,
+      activityClass: opts.activityClass,
       // Hook-normalized id preferred — same keying rule as chat turns.
       model: priced?.model ?? opts.model,
       provider: priced?.provider ?? null,

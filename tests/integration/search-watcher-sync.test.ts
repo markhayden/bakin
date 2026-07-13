@@ -142,6 +142,7 @@ function makeCtx(plugin: BakinPlugin): PluginContext {
     registerNodeType: mock(() => ''),
     registerNotificationChannel: mock(() => ''),
     registerHealthCheck: mock(() => ''),
+    registerHealthRepairAction: mock(() => ''),
     watchFiles: mock(),
     getSettings: (() => ({})) as PluginContext['getSettings'],
     updateSettings: mock(),

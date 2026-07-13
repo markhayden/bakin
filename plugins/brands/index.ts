@@ -46,7 +46,9 @@ const brandsPlugin: BakinPlugin = definePlugin({
     ctx.registerHealthCheck({
       id: 'integrity',
       name: 'Brand integrity (dangling refs, ghost-brand tasks, drafts)',
-      run: async () => [await checkBrandsIntegrity(ctx)],
+      description: 'Checks brand manifests, asset references, drafts, and tasks blocked by missing brands.',
+      group: { key: 'brands', label: 'Brands' },
+      run: () => checkBrandsIntegrity(ctx),
     })
 
     log.info('Brands plugin activated')

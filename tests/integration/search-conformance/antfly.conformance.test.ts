@@ -75,7 +75,6 @@ if (!binary) {
       initialize: adapter.initialize.bind(adapter),
       shutdown: adapter.shutdown.bind(adapter),
       available: adapter.available.bind(adapter),
-      getHealthChecks: adapter.getHealthChecks.bind(adapter),
       capabilities: adapter.capabilities?.bind(adapter),
       mappingFingerprint: adapter.mappingFingerprint?.bind(adapter),
       tables: adapter.tables,

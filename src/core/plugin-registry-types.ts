@@ -40,6 +40,8 @@ export interface PluginState {
   channelIds: string[]
   /** Namespaced health check ids registered via ctx.registerHealthCheck. */
   healthCheckIds: string[]
+  /** Namespaced repair action ids registered via ctx.registerHealthRepairAction. */
+  healthRepairActionIds: string[]
   /** Cached PluginContext — handed to onUninstall during plugin remove (#119). */
   ctx?: PluginContext
 }

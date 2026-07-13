@@ -29,21 +29,21 @@ const stub = async () => Response.json({ error: 'core route not handled by core-
 const agentsRoutes = [
   defineCoreRoute({ path: '/api/agents', method: 'GET', summary: 'List agents', description: 'Lists all agents with status and active tasks.', responses: { 200: passthrough }, handler: stub }),
   defineCoreRoute({ path: '/api/agents/avatar', method: 'GET', summary: 'Get agent avatar', description: 'Serves an agent avatar image.', query: z.object({ id: z.string() }), responses: { 200: { contentType: 'application/octet-stream' }, 404: errorResponse }, handler: stub }),
-  defineCoreRoute({ path: '/api/agents/health', method: 'GET', summary: 'List agent health status', description: 'Returns enriched heartbeat and staleness data for agents.', responses: { 200: passthrough }, handler: stub }),
+  defineCoreRoute({ path: '/api/agents/health', method: 'GET', activityClass: 'routine', summary: 'List agent health status', description: 'Returns enriched heartbeat and staleness data for agents.', responses: { 200: passthrough }, handler: stub }),
   defineCoreRoute({ path: '/api/agents/settings', method: 'GET', summary: 'Get agent settings', description: 'Returns host display and behavior settings for agents.', responses: { 200: passthrough }, handler: stub }),
   defineCoreRoute({ path: '/api/agents/settings', method: 'PUT', summary: 'Update agent settings', description: 'Updates host display and behavior settings for agents.', body: passthrough, responses: { 200: okResponse, 400: errorResponse }, handler: stub }),
   defineCoreRoute({ path: '/api/agents/start', method: 'POST', summary: 'Start an agent', body: z.object({ agentId: z.string() }), responses: { 200: okResponse, 400: errorResponse, 500: errorResponse }, handler: stub }),
   defineCoreRoute({ path: '/api/agents/stop', method: 'POST', summary: 'Stop an agent', body: z.object({ agentId: z.string() }), responses: { 200: okResponse, 400: errorResponse, 500: errorResponse }, handler: stub }),
   defineCoreRoute({ path: '/api/agents/restart', method: 'POST', summary: 'Restart an agent', body: z.object({ agentId: z.string() }), responses: { 200: okResponse, 400: errorResponse, 500: errorResponse }, handler: stub }),
-  defineCoreRoute({ path: '/api/agents/:id', method: 'GET', summary: 'Get agent status', params: z.object({ id: z.string() }), responses: { 200: passthrough, 404: errorResponse }, handler: stub }),
-  defineCoreRoute({ path: '/api/agents/:id/status', method: 'GET', summary: 'Get detailed agent status', params: z.object({ id: z.string() }), responses: { 200: passthrough, 404: errorResponse }, handler: stub }),
+  defineCoreRoute({ path: '/api/agents/:id', method: 'GET', activityClass: 'routine', summary: 'Get agent status', params: z.object({ id: z.string() }), responses: { 200: passthrough, 404: errorResponse }, handler: stub }),
+  defineCoreRoute({ path: '/api/agents/:id/status', method: 'GET', activityClass: 'routine', summary: 'Get detailed agent status', params: z.object({ id: z.string() }), responses: { 200: passthrough, 404: errorResponse }, handler: stub }),
   defineCoreRoute({ path: '/api/agents/:id/message', method: 'POST', summary: 'Send message to agent', params: z.object({ id: z.string() }), body: z.object({ message: z.string() }), responses: { 200: okResponse, 400: errorResponse, 404: errorResponse }, handler: stub }),
   defineCoreRoute({ path: '/api/agents/:id/tasks', method: 'GET', summary: 'Get agent tasks', params: z.object({ id: z.string() }), responses: { 200: passthrough, 404: errorResponse }, handler: stub }),
 ]
 
 // ─── /api/agent-packages, /api/packages, /api/dispatch, /api/settings (T15) ─
 const dispatchAndPackagesRoutes = [
-  defineCoreRoute({ path: '/api/dispatch', method: 'GET', summary: 'Get dispatch timer state', description: 'Returns interval, last run, next run, and dispatched count.', responses: { 200: passthrough }, handler: stub }),
+  defineCoreRoute({ path: '/api/dispatch', method: 'GET', activityClass: 'routine', summary: 'Get dispatch timer state', description: 'Returns interval, last run, next run, and dispatched count.', responses: { 200: passthrough }, handler: stub }),
   defineCoreRoute({ path: '/api/dispatch', method: 'POST', summary: 'Trigger dispatch', description: 'Triggers an immediate task dispatch cycle.', body: { contentType: 'none' }, responses: { 200: passthrough, 500: errorResponse }, handler: stub }),
   defineCoreRoute({ path: '/api/settings', method: 'GET', summary: 'Get settings', description: 'Returns current Bakin settings.', responses: { 200: passthrough }, handler: stub }),
   defineCoreRoute({ path: '/api/settings', method: 'POST', summary: 'Update settings', description: 'Updates Bakin settings with a partial merge.', body: passthrough, responses: { 200: okResponse, 400: errorResponse }, handler: stub }),
@@ -68,7 +68,7 @@ const dispatchAndPackagesRoutes = [
 const pluginsAndMiscRoutes = [
   defineCoreRoute({ path: '/api/plugins/install', method: 'POST', summary: 'Install plugin', body: z.object({ source: z.string(), type: z.enum(['local', 'github']) }), responses: { 200: passthrough, 400: errorResponse, 500: errorResponse }, handler: stub }),
   defineCoreRoute({ path: '/api/plugins/link', method: 'POST', summary: 'Link local plugin', body: z.object({ localPath: z.string(), force: z.boolean().optional() }), responses: { 200: passthrough, 400: errorResponse, 500: errorResponse }, handler: stub }),
-  defineCoreRoute({ path: '/api/plugins/manifest', method: 'GET', summary: 'Get plugin manifest bundle', responses: { 200: passthrough }, handler: stub }),
+  defineCoreRoute({ path: '/api/plugins/manifest', method: 'GET', activityClass: 'routine', summary: 'Get plugin manifest bundle', responses: { 200: passthrough }, handler: stub }),
   defineCoreRoute({ path: '/api/plugins/:pluginId/assets/:path', method: 'GET', summary: 'Serve plugin client asset', params: z.object({ pluginId: z.string(), path: z.string() }), responses: { 200: { contentType: 'application/octet-stream' }, 404: errorResponse }, handler: stub }),
   defineCoreRoute({ path: '/api/plugins/memory/audit', method: 'GET', summary: 'List memory audit entries', responses: { 200: passthrough }, handler: stub }),
   defineCoreRoute({ path: '/api/plugins/memory/workspace', method: 'GET', summary: 'Get memory workspace bundle', query: z.object({ agentId: z.string() }), responses: { 200: passthrough }, handler: stub }),
@@ -78,7 +78,7 @@ const pluginsAndMiscRoutes = [
   defineCoreRoute({ path: '/api/plugins/upgrade', method: 'POST', summary: 'Upgrade plugin', body: z.object({ pluginId: z.string() }), responses: { 200: passthrough, 400: errorResponse, 500: errorResponse }, handler: stub }),
 
   defineCoreRoute({ path: '/api/version', method: 'GET', summary: 'Get runtime version', description: 'Returns the running Bakin version.', responses: { 200: z.object({ version: z.string() }) }, handler: stub }),
-  defineCoreRoute({ path: '/api/update/status', method: 'GET', summary: 'Get Bakin update status', description: 'Returns whether a newer Bakin binary release is available and whether this runtime can self-update.', responses: { 200: passthrough }, handler: stub }),
+  defineCoreRoute({ path: '/api/update/status', method: 'GET', activityClass: 'routine', summary: 'Get Bakin update status', description: 'Returns whether a newer Bakin binary release is available and whether this runtime can self-update.', responses: { 200: passthrough }, handler: stub }),
   defineCoreRoute({ path: '/api/update/apply', method: 'POST', summary: 'Apply Bakin update', description: 'Runs the guarded Bakin binary self-update flow.', body: { contentType: 'none' }, responses: { 200: okResponse, 400: errorResponse, 500: errorResponse }, handler: stub }),
   defineCoreRoute({ path: '/api/paths', method: 'GET', summary: 'Get resolved runtime paths', description: 'Returns important local filesystem paths used by the runtime.', responses: { 200: passthrough }, handler: stub }),
   defineCoreRoute({ path: '/api/state', method: 'GET', summary: 'Get dashboard state snapshot', responses: { 200: passthrough }, handler: stub }),

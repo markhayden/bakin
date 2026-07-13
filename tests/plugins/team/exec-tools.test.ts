@@ -134,7 +134,6 @@ function makeRuntimeMock() {
     shutdown: async () => {},
     ping: async () => true,
     restart: async () => {},
-    getHealthChecks: () => [],
     agents: {
       list: async () => rosterAgents.current.map((agent) => ({
         id: agent.id,

@@ -42,7 +42,6 @@ import { createMemoryListAgentsTool } from './mcp/list-agents'
 import { createMemoryStatusTool } from './mcp/status'
 import { DEFAULTS, indexerOptionsFrom, resolveSettings } from './lib/settings'
 import { startTtlTimer, stopTtlTimer } from './lib/ttl-prune'
-import { checkSearchTables } from './lib/health-checks'
 
 const log = createLogger('memory')
 
@@ -248,13 +247,6 @@ const memoryPlugin: BakinPlugin = definePlugin({
         auditRetentionDays: settings.auditRetentionDays,
       })
     }
-
-    // ─── Health check (migrated out of core/doctor.ts per #139 C5) ──────
-    ctx.registerHealthCheck({
-      id: 'search-tables',
-      name: 'Search table stats',
-      run: () => checkSearchTables(ctx.search.health?.bind(ctx.search)),
-    })
 
     log.info('memory plugin activated', {
       backfillDays: settings.backfillDays,

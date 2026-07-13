@@ -68,7 +68,7 @@ function serialized<T>(fn: () => T): Promise<T> {
   return next
 }
 
-export function readRegistry(logger?: AdapterLogger): PiRegistry {
+export function readRegistry(_logger?: AdapterLogger): PiRegistry {
   const path = getPiRegistryPath()
   if (!existsSync(path)) return { version: 1, agents: [] }
   try {

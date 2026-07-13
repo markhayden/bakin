@@ -8,13 +8,14 @@
 
 import type { IncomingMessage, ServerResponse } from 'http'
 
-import { recordUsage } from './usage'
+import { recordUsage, type ActivityClass } from './usage'
 
 export function trackResponse(
   req: IncomingMessage,
   res: ServerResponse,
   url: URL,
   startMs: number,
+  activityClass: ActivityClass,
 ): void {
   const origEnd = res.end.bind(res)
   res.end = function (...args: Parameters<typeof res.end>) {
@@ -26,6 +27,7 @@ export function trackResponse(
 
     recordUsage({
       kind: 'rest',
+      activityClass,
       name: normalizePath(path),
       agent,
       durationMs,

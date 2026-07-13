@@ -69,6 +69,7 @@ import { useAgentStore } from '../../../plugins/team/hooks/use-agent-store'
 import { AgentDetail } from '../../../plugins/team/components/agent-detail'
 import { PackageCardBody } from '../../../plugins/team/components/package-card'
 import type { PackageStateRow } from '../../../plugins/team/types'
+import { HEALTHY_TEAM_HEALTH_REPORT } from './health-report-fixture'
 
 const PROFILE = {
   id: 'pixel',
@@ -102,6 +103,9 @@ function mockProfileFetch() {
     }
     if (u.startsWith('/api/plugins/models/available')) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: [] }) } as Response)
+    }
+    if (u === '/api/plugins/health/doctor') {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(HEALTHY_TEAM_HEALTH_REPORT) } as Response)
     }
     if (u.endsWith('/stats')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ usage: null }) } as Response)
     if (u.endsWith('/recent-activity')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, activity: { windowMs: { '5m': 0, '1h': 0, '24h': 0 }, errors: { '5m': 0, '1h': 0, '24h': 0 }, sinceServerStart: new Date().toISOString() } }) } as Response)
@@ -229,6 +233,7 @@ describe('PackageCard — main agent special-case', () => {
       const u = String(url)
       if (u === '/api/plugins/team/main') return Promise.resolve({ ok: true, json: () => Promise.resolve(MAIN_PROFILE) } as Response)
       if (u.startsWith('/api/plugins/models/available')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: [] }) } as Response)
+      if (u === '/api/plugins/health/doctor') return Promise.resolve({ ok: true, json: () => Promise.resolve(HEALTHY_TEAM_HEALTH_REPORT) } as Response)
       if (u.endsWith('/stats')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ usage: null }) } as Response)
       if (u.endsWith('/recent-activity')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, activity: { windowMs: { '5m': 0, '1h': 0, '24h': 0 }, errors: { '5m': 0, '1h': 0, '24h': 0 }, sinceServerStart: new Date().toISOString() } }) } as Response)
       if (u.endsWith('/skills')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ skills: [] }) } as Response)

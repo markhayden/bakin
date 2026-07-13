@@ -126,15 +126,18 @@ const schedulePlugin: BakinPlugin = definePlugin({
 
     // Doctor check + repair surfacing any schedule whose cutover didn't complete
     // (e.g. the runtime unreachable at boot) — the end-user migration command.
+    ctx.registerHealthRepairAction(scheduleCutoverRepair(runScheduleCutover))
     ctx.registerHealthCheck({
       id: 'schedule-cutover',
       name: 'Bakin schedules cut over from runtime cron',
+      description: 'Checks that Bakin-owned schedules no longer retain duplicate runtime cron fire paths.',
+      group: { key: 'schedules', label: 'Schedules' },
+      maxAgeMs: 2 * 60_000,
       run: async () => checkScheduleCutover(
         ctx.runtime.cron,
         () => Object.values(readSidecar().jobs).filter(j => j.isBakinJob).map(j => j.jobId),
         ctx.runtime.name,
       ),
-      repair: scheduleCutoverRepair(runScheduleCutover),
     })
 
     // Fire (or block) anything missed while the server was down, then start the

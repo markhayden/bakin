@@ -1,6 +1,6 @@
 /**
  * usage.agent-burn doctor check (#385) — maps burn evaluator reports to
- * warn-only HealthCheckResult rows with machine-readable data.agents.
+ * warning observations with machine-readable agent evidence.
  */
 import { describe, it, expect, mock } from 'bun:test'
 import { join } from 'path'
@@ -38,6 +38,8 @@ mock.module('../../src/core/agent-burn', () => ({
 
 import { checkAgentBurn } from '../../plugins/health/lib/system-checks/agent-burn'
 import { LedgerUnavailableError } from '../../packages/core/src/execution/ledger'
+import type { HealthCheckRunInput } from '@makinbakin/sdk'
+import { parseHealthCheckRunInput } from '../../src/core/health-contract'
 
 const cleanReport = {
   agent: 'scout',
@@ -51,13 +53,20 @@ const cleanReport = {
   flags: [],
 }
 
+function observed(run: HealthCheckRunInput) {
+  const parsed = parseHealthCheckRunInput(run)
+  expect(parsed.outcome).toBe('observed')
+  if (parsed.outcome !== 'observed') throw new Error(parsed.reason)
+  return parsed.observations
+}
+
 describe('checkAgentBurn', () => {
   it('reports ok when nothing is flagged', async () => {
     reports = [cleanReport]
-    const results = await checkAgentBurn()
+    const results = observed(await checkAgentBurn())
     expect(results).toHaveLength(1)
-    expect(results[0]!.status).toBe('ok')
-    expect(results[0]!.check).toBe('usage.agent-burn')
+    expect(results[0]!.status).toBe('healthy')
+    expect(results[0]!.key).toBe('usage')
   })
 
   it('emits one warn row per flagged agent with data.agents attribution', async () => {
@@ -74,28 +83,27 @@ describe('checkAgentBurn', () => {
         ],
       },
     ]
-    const results = await checkAgentBurn()
+    const results = observed(await checkAgentBurn())
     expect(results).toHaveLength(1)
     const row = results[0]!
-    expect(row.status).toBe('warn')
-    expect(row.autoFixable).toBe(false)
-    expect(row.message).toContain('pixel')
-    expect(row.message).toContain('outside Bakin-managed tasks')
-    expect(row.data).toEqual({ agents: ['pixel'], kinds: ['effort-no-outcome', 'unattributed'] })
+    expect(row.status).toBe('warning')
+    expect(row.summary).toContain('pixel')
+    expect(row.detail).toContain('outside Bakin-managed tasks')
+    expect(row.evidence).toEqual({ agents: ['pixel'], kinds: ['effort-no-outcome', 'unattributed'] })
   })
 
   it('fails loudly (error row) when the ledger is unavailable', async () => {
     throwLedger = true
-    const results = await checkAgentBurn()
+    const results = observed(await checkAgentBurn())
     expect(results[0]!.status).toBe('error')
-    expect(results[0]!.message).toContain('ledger')
+    expect(results[0]!.incident?.title).toContain('ledger')
     throwLedger = false
   })
 
   it('ok row notes an idle fleet honestly', async () => {
     reports = []
-    const results = await checkAgentBurn()
-    expect(results[0]!.status).toBe('ok')
-    expect(results[0]!.message).toContain('no agent activity')
+    const results = observed(await checkAgentBurn())
+    expect(results[0]!.status).toBe('healthy')
+    expect(results[0]!.detail).toContain('no agent activity')
   })
 })

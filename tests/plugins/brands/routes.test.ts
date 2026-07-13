@@ -231,6 +231,10 @@ describe('hooks', () => {
 })
 
 describe('observability routes (#419 §5.5)', () => {
+  it('classifies the blocked-task badge poll as routine activity', () => {
+    expect(route('GET', '/blocked-tasks').activityClass).toBe('routine')
+  })
+
   it('task-context resolves effective brand with provenance + blocked state', async () => {
     await createAcme()
     const t1 = await activated.ctx.tasks.create({ title: 'Branded', brandId: 'acme' } as never)
@@ -724,7 +728,9 @@ describe('brands.integrity doctor check (#419 §10)', () => {
     const assetsMock = activated.ctx.assets as unknown as { getAsset: (id: string) => Promise<unknown> }
     assetsMock.getAsset = async () => ({ assetId: 'x' })
     const clean = await checkBrandsIntegrity(activated.ctx)
-    expect(clean.status).toBe('ok')
+    expect(clean.outcome).toBe('observed')
+    if (clean.outcome !== 'observed') throw new Error('expected observed brand health')
+    expect(clean.observations[0].status).toBe('healthy')
 
     // Break it: dangling logo ref + a todo task pointing at a ghost brand
     await callRoute(route('PUT', '/:brandId'), activated.ctx, {
@@ -735,8 +741,10 @@ describe('brands.integrity doctor check (#419 §10)', () => {
     await activated.ctx.tasks.create({ title: 'Stuck', brandId: 'ghost', column: 'todo' } as never)
 
     const broken = await checkBrandsIntegrity(activated.ctx)
-    expect(broken.status).toBe('warn')
-    const data = broken.data as { dangling: Array<{ brandId: string }>; ghostTasks: Array<{ brandId: string }> }
+    expect(broken.outcome).toBe('observed')
+    if (broken.outcome !== 'observed') throw new Error('expected observed brand health')
+    expect(broken.observations[0].status).toBe('warning')
+    const data = broken.observations[0].evidence as { dangling: Array<{ brandId: string }>; ghostTasks: Array<{ brandId: string }> }
     expect(data.dangling[0].brandId).toBe('acme')
     expect(data.ghostTasks[0].brandId).toBe('ghost')
   })

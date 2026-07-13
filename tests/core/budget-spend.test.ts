@@ -50,7 +50,7 @@ mock.module('../../packages/core/src/usage-history/store', () => ({
 }))
 
 // Billing resolution for observed (usage.db) rows — the models plugin hook.
-let resolveBillingImpl: (data: Record<string, unknown>) => unknown = (d) => {
+const resolveBillingImpl: (data: Record<string, unknown>) => unknown = (d) => {
   const model = (d.model as string) ?? ''
   const provider = model.includes('/') ? model.split('/')[0] : model.startsWith('claude-') ? 'anthropic' : 'other'
   return { provider, lane: provider === 'openai-codex' ? 'subscription' : 'metered' }

@@ -92,7 +92,7 @@ const RUNTIME_DOMAIN_PERMISSIONS: Record<string, Permission> = {
   config: 'runtime.read',
 }
 
-for (const method of ['initialize', 'shutdown', 'ping', 'restart', 'getHealthChecks']) {
+for (const method of ['initialize', 'shutdown', 'ping', 'restart']) {
   METHOD_PERMISSIONS[`runtime.${method}`] = 'runtime.read'
 }
 

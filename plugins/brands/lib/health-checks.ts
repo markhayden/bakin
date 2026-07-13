@@ -6,14 +6,12 @@
  * Severity: dangling refs / ghost-brand tasks / currently-deferring tasks /
  * invalid manifests → warn; stale drafts alone → ok with a nudge in data.
  */
-import type { HealthCheckResult, PluginContext } from '@bakin/core/plugin-types'
-import { healthOk as ok, healthWarn as warn } from '@makinbakin/sdk/utils'
+import type { HealthCheckRunInput, JsonObject, PluginContext } from '@bakin/core/plugin-types'
+import { healthHealthy, healthObserved, healthWarning } from '@makinbakin/sdk/utils'
 import { scanBrandIntegrity } from './integrity'
 import { getBrand, listBrands } from './store'
 
-const CHECK = 'brands.integrity'
-
-export async function checkBrandsIntegrity(ctx: PluginContext): Promise<HealthCheckResult> {
+export async function checkBrandsIntegrity(ctx: PluginContext): Promise<HealthCheckRunInput> {
   const report = await scanBrandIntegrity(async (assetId) => (await ctx.assets.getAsset(assetId)) !== null)
 
   // Tasks pointing at ghost/draft brands = tasks currently deferring at the
@@ -42,11 +40,14 @@ export async function checkBrandsIntegrity(ctx: PluginContext): Promise<HealthCh
 
   const dangling = report.findings.filter((f) => f.dangling.length > 0)
   const staleDrafts = report.findings.filter((f) => f.staleDraft).map((f) => f.brandId)
-  const data = {
+  const data: JsonObject = {
     brands: listBrands().brands.length,
-    dangling: dangling.map((f) => ({ brandId: f.brandId, refs: f.dangling })),
-    invalid: report.invalid,
-    ghostTasks,
+    dangling: dangling.map((f) => ({
+      brandId: f.brandId,
+      refs: f.dangling.map((ref) => ({ assetId: ref.assetId, where: ref.where })),
+    })),
+    invalid: report.invalid.map((entry) => ({ id: entry.id, error: entry.error })),
+    ghostTasks: ghostTasks.map((task) => ({ taskId: task.taskId, brandId: task.brandId })),
     staleDrafts,
   }
 
@@ -56,12 +57,41 @@ export async function checkBrandsIntegrity(ctx: PluginContext): Promise<HealthCh
   if (ghostTasks.length) problems.push(`${ghostTasks.length} task(s) waiting on a missing/draft brand`)
 
   if (problems.length) {
-    const result = warn(CHECK, `Brand integrity: ${problems.join('; ')}.`)
-    return { ...result, data }
+    return healthObserved([healthWarning({
+      key: 'integrity',
+      summary: `Brand integrity: ${problems.join('; ')}.`,
+      evidence: data,
+      incident: {
+        key: 'integrity',
+        title: 'Brand references need attention',
+        impact: 'Tasks may wait at the brand gate or render with missing brand assets.',
+        disposition: 'action_required',
+        resources: [
+          ...dangling.map((finding) => ({ kind: 'other' as const, id: finding.brandId, label: finding.brandId })),
+          ...ghostTasks.map((task) => ({ kind: 'task' as const, id: task.taskId, label: task.taskId })),
+        ],
+        resolution: { key: 'review-brands', type: 'navigate', label: 'Review Brands', href: '/brands' },
+      },
+    })])
   }
-  const message = staleDrafts.length
-    ? `Brands healthy; ${staleDrafts.length} draft(s) older than 7 days await review/publish.`
-    : 'Brands healthy — no dangling refs, ghost-brand tasks, or invalid manifests.'
-  const result = ok(CHECK, message)
-  return { ...result, data }
+  if (staleDrafts.length) {
+    return healthObserved([healthWarning({
+      key: 'stale-drafts',
+      summary: `${staleDrafts.length} brand draft(s) older than 7 days await review.`,
+      evidence: data,
+      incident: {
+        key: 'stale-drafts',
+        title: 'Older brand drafts await review',
+        impact: 'Drafts do not block work, but may represent unfinished brand updates.',
+        disposition: 'advisory',
+        resources: staleDrafts.map((id) => ({ kind: 'other', id, label: id })),
+        resolution: { key: 'review-brands', type: 'navigate', label: 'Review Brands', href: '/brands' },
+      },
+    })])
+  }
+  return healthObserved([healthHealthy({
+    key: 'integrity',
+    summary: 'Brands have no dangling references, ghost-brand tasks, or invalid manifests.',
+    evidence: data,
+  })])
 }

@@ -134,7 +134,7 @@ function MediaImage({ src, alt }: { src?: string | Blob; alt?: string }) {
 
   if (!url) return null
   if (VIDEO_EXT.test(url)) {
-    // eslint-disable-next-line jsx-a11y/media-has-caption -- agent-produced media has no caption track
+    // Agent-produced media has no caption track.
     return <video src={url} controls className="my-2 max-h-96 max-w-full rounded-md" />
   }
   return (

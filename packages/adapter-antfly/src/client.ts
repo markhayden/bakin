@@ -10,7 +10,6 @@ import {
   SearchEngineUnavailableError,
   SearchRequestRejectedError,
 } from '@bakin/core/adapters/search/errors'
-import type { AdapterHealthCheckDefinition } from '@bakin/core/adapters/shared'
 import type {
   BatchResult,
   Document,
@@ -137,10 +136,6 @@ export class AntflySearchClient implements SearchAdapter {
     }
     this.availableCache = { value, at: now }
     return value
-  }
-
-  getHealthChecks(): AdapterHealthCheckDefinition[] {
-    return []
   }
 
   capabilities(): SearchAdapterCapabilities {

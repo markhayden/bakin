@@ -36,7 +36,7 @@ import type {
   WorkspaceFile,
   WorkspaceFileStat,
 } from '@bakin/core/adapters/runtime'
-import type { AdapterAuditEvent, AdapterHealthCheckDefinition, AdapterInitOpts, AdapterLogger } from '@bakin/core/adapters/shared'
+import type { AdapterAuditEvent, AdapterInitOpts, AdapterLogger } from '@bakin/core/adapters/shared'
 import {
   applyBakinMcpEntries,
   removeBakinMcpEntries,
@@ -268,40 +268,6 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
   async restart(): Promise<void> {
     await this.exec(['gateway', 'restart'])
-  }
-
-  getHealthChecks(): AdapterHealthCheckDefinition[] {
-    return [
-      {
-        id: 'gateway',
-        name: 'OpenClaw gateway',
-        run: async () => {
-          const reachable = await this.ping()
-          return [{
-            check: 'openclaw.gateway',
-            status: reachable ? 'ok' : 'warn',
-            message: reachable ? 'OpenClaw gateway is reachable' : 'OpenClaw gateway is unreachable',
-            autoFixable: false,
-          }]
-        },
-      },
-      {
-        id: 'channel-approval-responses',
-        name: 'OpenClaw channel approval responses',
-        run: async () => {
-          const channels = await this.channels.list()
-          const interactive = channels.filter(channel => channel.capabilities.includes('interactive-approval'))
-          return [{
-            check: 'openclaw.channel-approval-responses',
-            status: interactive.length > 0 ? 'ok' : 'warn',
-            message: interactive.length > 0
-              ? `OpenClaw channel approval responses are enabled for ${interactive.map(channel => channel.id).join(', ')}.`
-              : 'OpenClaw channel approval requests are render-only for configured channels. Approve/reject workflow gates in the Bakin UI until a channel advertises interactive-approval support.',
-            autoFixable: false,
-          }]
-        },
-      },
-    ]
   }
 
   agents = {

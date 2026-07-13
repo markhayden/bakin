@@ -62,20 +62,6 @@ export interface AdapterInitOpts {
   bakinMcpBaseUrl?: string
 }
 
-export interface AdapterHealthCheckResult {
-  check: string
-  status: 'ok' | 'warn' | 'error' | 'fixed'
-  message: string
-  autoFixable: boolean
-}
-
-export interface AdapterHealthCheckDefinition {
-  id: string
-  name: string
-  run(): Promise<AdapterHealthCheckResult[]>
-  autoFix?: boolean
-}
-
 export interface AdapterVersionInfo {
   readonly name: string
   readonly version: string

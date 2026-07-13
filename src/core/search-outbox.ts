@@ -74,6 +74,7 @@ export function nudgeOutboxPump(): Promise<DrainReport | null> {
       if (report.processed > 0 || report.failedTransient > 0 || report.failedPermanent > 0) {
         recordUsage({
           kind: 'rest',
+          activityClass: 'system',
           name: 'search.drain',
           agent: null,
           durationMs: Date.now() - startedAt,

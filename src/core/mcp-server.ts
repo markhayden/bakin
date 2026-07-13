@@ -25,6 +25,7 @@ import type { IncomingMessage, ServerResponse } from 'http'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js'
+import type { ActivityClass } from '@makinbakin/sdk/types'
 import { createLogger } from './logger'
 import { getContentDir } from './content-dir'
 import { appendAudit } from './audit'
@@ -130,6 +131,7 @@ export function registerTools(server: McpServer, getAgent: () => string): void {
       tool.parameters,
       async (params) => {
         const agent = getAgent()
+        const activityClass = tool.activityClass ?? 'user'
         const taskId = (params as Record<string, unknown>).taskId as string | undefined
         log.info('Exec tool called', { tool: tool.name, agent, taskId })
 
@@ -137,7 +139,7 @@ export function registerTools(server: McpServer, getAgent: () => string): void {
         if (!isToolAllowedByPolicy(policy, tool.name)) {
           const durationMs = Date.now() - start
           log.warn('Exec tool denied by MCP policy', { tool: tool.name, agent, taskId })
-          return buildDeniedToolResult(tool.name, agent, policy, tool.label, taskId, durationMs)
+          return buildDeniedToolResult(tool.name, agent, policy, tool.label, taskId, durationMs, activityClass)
         }
 
         try {
@@ -147,6 +149,7 @@ export function registerTools(server: McpServer, getAgent: () => string): void {
 
           recordUsage({
             kind: 'mcp',
+            activityClass,
             name: tool.name,
             agent,
             durationMs,
@@ -175,6 +178,7 @@ export function registerTools(server: McpServer, getAgent: () => string): void {
           const errMsg = err instanceof Error ? err.message : String(err)
           recordUsage({
             kind: 'mcp',
+            activityClass,
             name: tool.name,
             agent,
             durationMs,
@@ -200,10 +204,12 @@ function buildDeniedToolResult(
   label: string | undefined,
   taskId: string | undefined,
   durationMs: number,
+  activityClass: ActivityClass,
 ): { content: Array<{ type: 'text'; text: string }>; isError: true } {
   const reason = describeMcpToolDenial(policy)
   recordUsage({
     kind: 'mcp',
+    activityClass,
     name: toolName,
     agent,
     durationMs,
@@ -258,7 +264,15 @@ function installPolicyCallGuard(
         const agent = getAgent()
         const taskId = params?.arguments?.taskId as string | undefined
         log.warn('Exec tool denied by MCP policy', { tool: toolName, agent, taskId })
-        return buildDeniedToolResult(toolName, agent, policy, tool.label, taskId, 0)
+        return buildDeniedToolResult(
+          toolName,
+          agent,
+          policy,
+          tool.label,
+          taskId,
+          0,
+          tool.activityClass ?? 'user',
+        )
       }
     }
     return original(request, extra)

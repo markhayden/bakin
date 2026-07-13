@@ -4,10 +4,11 @@
  * panel (meter + sections + workspace), timeline panel (runs + events), and
  * the attention chips derivation.
  */
-import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { describe, expect, it, mock } from 'bun:test'
+import { fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react'
 import '../../rtl-settle'
 import type { ReactNode } from 'react'
+import { TEAM_ATTENTION_HEALTH_REPORT } from './health-report-fixture'
 
 const contentDirMock = () => ({
   getContentDir: () => '/tmp/bakin-test-diagnostics-tab-unused',
@@ -21,13 +22,14 @@ mock.module('@makinbakin/sdk/components', () => ({
   ChartExplainer: ({ children }: { children: ReactNode }) => <p role="note">{children}</p>,
 }))
 
-import { DiagnosticsTab, DiagnosticsChipsView } from '../../../plugins/team/components/diagnostics-tab'
+import { DiagnosticsTab, DiagnosticsChipsView, useAgentAttention } from '../../../plugins/team/components/diagnostics-tab'
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } })
 }
 
 const ROUTES: Record<string, unknown> = {
+  '/api/plugins/health/doctor': TEAM_ATTENTION_HEALTH_REPORT,
   '/api/agent-packages/pixel/scan': {
     ok: true,
     packageId: 'pixel',
@@ -35,7 +37,6 @@ const ROUTES: Record<string, unknown> = {
     findings: [{
       type: 'block-stale',
       severity: 'warn',
-      autoFixable: true,
       message: 'pixel/AGENTS.md managed block is stale (changed: in-place-edit)',
       agentId: 'pixel',
       file: 'AGENTS.md',
@@ -129,6 +130,15 @@ describe('DiagnosticsTab', () => {
 })
 
 describe('DiagnosticsChipsView', () => {
+  it('derives flags from canonical incident resources and observation check IDs', async () => {
+    const fetchMock = stubFetch()
+    const { result } = renderHook(() => useAgentAttention('pixel'))
+
+    await waitFor(() => expect(result.current.loaded).toBe(true))
+    expect(result.current).toEqual({ loaded: true, drift: true, context: true, burn: false })
+    expect(fetchMock.mock.calls.some((call: unknown[]) => String(call[0]).startsWith('/api/plugins/health/doctor'))).toBe(true)
+  })
+
   it('renders flagged and ok chips', () => {
     render(
       <DiagnosticsChipsView

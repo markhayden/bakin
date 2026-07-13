@@ -11,6 +11,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, mock } from 'bun
 import { mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import type { HealthReport } from '@makinbakin/sdk/types'
 import type { ActivatedPlugin } from '../test-helpers'
 
 const testDir = join(tmpdir(), `bakin-test-health-routes-${Date.now()}`)
@@ -56,56 +57,85 @@ mock.module('../../../src/core/settings', () => ({
   })),
 }))
 
-const mockDoctorResults = [
-  { check: 'runtime', status: 'ok', message: 'Runtime responding' },
-  { check: 'taskboard', status: 'warn', message: 'Missing columns' },
-  { check: 'agents', status: 'error', message: 'Roster mismatch' },
+const generatedAt = '2026-04-01T10:00:00.000Z'
+const searchStages = [
+  { key: 'engine' as const, label: 'Engine', status: 'healthy' as const, summary: 'Engine checks are healthy.', observedAt: generatedAt, staleAt: '2026-04-01T10:01:00.000Z', observationIds: ['health.search:engine'] },
+  { key: 'queries' as const, label: 'Queries', status: 'healthy' as const, summary: 'Queries checks are healthy.', observedAt: generatedAt, staleAt: '2026-04-01T10:02:00.000Z', observationIds: ['health.search-canary:queries'] },
+  { key: 'indexes' as const, label: 'Indexes', status: 'healthy' as const, summary: 'Indexes checks are healthy.', observedAt: generatedAt, staleAt: '2026-04-01T10:05:00.000Z', observationIds: ['health.search:indexes'] },
+  { key: 'journal' as const, label: 'Journal', status: 'healthy' as const, summary: 'Journal checks are healthy.', observedAt: generatedAt, staleAt: '2026-04-01T10:01:00.000Z', observationIds: ['health.search:journal'] },
 ]
 
+const cachedReport: HealthReport = {
+  id: 'health-report-1',
+  revision: 4,
+  generatedAt,
+  overallStatus: 'needs_attention',
+  lastFullSweep: { id: 'sweep-1', startedAt: generatedAt, completedAt: generatedAt },
+  checks: [],
+  observations: [],
+  incidents: [{
+    id: 'tasks:taskboard:missing-columns', status: 'error', disposition: 'action_required',
+    title: 'Task board columns are missing', impact: 'Tasks cannot move through the full workflow.',
+    resources: [{ kind: 'plugin', id: 'tasks', label: 'Tasks' }],
+    resolution: { key: 'repair-board', type: 'repair', label: 'Repair board', actionId: 'tasks.repair-store' },
+    observationIds: ['tasks.taskboard:columns'], observedAt: generatedAt, staleAt: '2026-04-01T10:02:00.000Z', stale: false,
+  }],
+  subsystems: {
+    search: {
+      status: 'healthy', summary: 'Search is healthy across engine, queries, indexes, and journal.',
+      observedAt: generatedAt, staleAt: '2026-04-01T10:01:00.000Z', stages: searchStages, incidentIds: [],
+    },
+  },
+  summary: {
+    checks: { registered: 37, completed: 37, failed: 0, invalid: 0, notApplicable: 0 },
+    incidents: { actionRequired: 1, watching: 0, advisory: 0, unknown: 0 },
+  },
+}
+
+const freshReport: HealthReport = { ...cachedReport, id: 'health-report-2', revision: 5 }
+
 mock.module('../../../src/core/doctor', () => ({
-  getLastResults: mock(() => ({
-    results: mockDoctorResults,
-    timestamp: Date.now(),
-  })),
-  runDiagnostics: mock(async () => mockDoctorResults),
+  getLastReport: mock(() => cachedReport),
+  runDiagnostics: mock(async () => freshReport),
+  runTargetedDiagnostics: mock(async () => freshReport),
 }))
 
 const mockRepairPlan = {
-  diagnostics: mockDoctorResults,
+  planId: 'repair-plan-1',
+  basedOnReportId: cachedReport.id,
+  target: { type: 'incidents' as const, reportId: cachedReport.id, ids: ['tasks:taskboard:missing-columns'] },
+  createdAt: generatedAt,
+  expiresAt: '2026-04-01T10:10:00.000Z',
   items: [{
-    id: 'repair.taskboard',
-    checkId: 'taskboard',
-    healthCheckId: 'tasks.taskboard',
-    pluginId: 'tasks',
-    checkName: 'Task board',
+    id: 'tasks.repair-store:repair.taskboard',
+    actionId: 'tasks.repair-store',
     title: 'Repair taskboard',
     reason: 'Missing columns',
-    safety: 'safe',
-    requiresConfirmation: true,
+    safety: 'safe' as const,
+    incidentIds: ['tasks:taskboard:missing-columns'],
+    observationIds: ['tasks.taskboard:columns'],
+    preconditions: [{ observationId: 'tasks.taskboard:columns', executionId: 'execution-1', status: 'error' as const, resolutionKey: 'repair-board' }],
     changes: [{ kind: 'file', target: 'tasks/board.json', action: 'update', description: 'Add missing columns' }],
   }],
-  errors: [],
-  summary: { diagnostics: 3, repairableChecks: 1, totalItems: 1, safeItems: 1, blockedItems: 0, planErrors: 0 },
 }
 const mockRepairApply = {
-  status: 'applied',
-  plan: mockRepairPlan,
-  applied: [{
-    id: 'repair.taskboard',
-    checkId: 'taskboard',
+  planId: mockRepairPlan.planId,
+  basedOnReportId: cachedReport.id,
+  results: [{
+    itemId: mockRepairPlan.items[0].id,
+    actionId: 'tasks.repair-store',
     status: 'applied',
     message: 'Added missing columns',
+    affectedCheckIds: ['tasks.taskboard'],
     changes: [{ kind: 'file', target: 'tasks/board.json', action: 'update', description: 'Add missing columns' }],
   }],
-  skipped: [],
-  errors: [],
-  verification: [{ check: 'taskboard', status: 'ok', message: 'Taskboard healthy', autoFixable: false }],
-  summary: { planned: 1, applied: 1, skipped: 0, failed: 0, verificationErrors: 0, verificationWarnings: 0 },
+  affectedCheckIds: ['tasks.taskboard'],
+  verifiedReportId: freshReport.id,
+  verifiedIncidentIds: [],
+  report: freshReport,
 }
 const planDoctorRepairMock = mock(async () => mockRepairPlan)
-const applyDoctorRepairMock = mock(async (options: { accepted: boolean }) => (
-  options.accepted ? mockRepairApply : { ...mockRepairApply, status: 'confirmation_required', applied: [], verification: [] }
-))
+const applyDoctorRepairMock = mock(async () => mockRepairApply)
 
 mock.module('../../../src/core/doctor-repair', () => ({
   planDoctorRepair: planDoctorRepairMock,
@@ -114,25 +144,28 @@ mock.module('../../../src/core/doctor-repair', () => ({
 
 const mockDelegateRequest = {
   id: 'repair-1',
+  version: 2,
   kind: 'delegate',
   status: 'sent',
   createdAt: '2026-04-01T00:00:00.000Z',
   updatedAt: '2026-04-01T00:01:00.000Z',
   plan: mockRepairPlan,
-  unresolved: [mockDoctorResults[2]],
+  incidentIds: ['tasks:taskboard:missing-columns'],
+  observationIds: ['tasks.taskboard:columns'],
   taskId: 'task-repair-1',
   agentId: 'main',
   events: [{ ts: '2026-04-01T00:00:00.000Z', type: 'created', message: 'created' }],
 }
 const delegateDoctorRepairMock = mock(async (options: { accepted: boolean }) => (
   options.accepted
-    ? { status: 'sent', request: mockDelegateRequest, unresolved: mockDelegateRequest.unresolved }
-    : { status: 'confirmation_required', request: { ...mockDelegateRequest, status: 'planned', taskId: undefined, agentId: undefined }, unresolved: mockDelegateRequest.unresolved }
+    ? { status: 'sent', request: mockDelegateRequest, incidents: cachedReport.incidents }
+    : { status: 'confirmation_required', request: { ...mockDelegateRequest, status: 'planned', taskId: undefined, agentId: undefined }, incidents: cachedReport.incidents }
 ))
 const verifyDoctorRepairRequestMock = mock(async () => ({
   request: { ...mockDelegateRequest, status: 'verified' },
-  remaining: [],
+  remainingIncidentIds: [],
   verified: true,
+  reportId: freshReport.id,
 }))
 
 mock.module('../../../src/core/doctor-delegate', () => ({
@@ -236,8 +269,8 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('Health Plugin Routes', () => {
-  it('registers 17 routes', () => {
-    expect(activated.routes.length).toBe(17)
+  it('registers 18 routes', () => {
+    expect(activated.routes.length).toBe(18)
   })
 
   it('registers 2 exec tools', () => {
@@ -255,7 +288,7 @@ describe('Health Plugin Routes', () => {
 
       const { status, body } = await callRoute(route, activated.ctx)
       expect(status).toBe(200)
-      expect(body.doctor).toBeDefined()
+      expect(body.doctor).toBeUndefined()
       expect(body.server).toBeDefined()
       expect(body.upSince).toBe('2026-04-01T00:00:00Z')
       expect(Array.isArray(body.activeSessions)).toBe(true)
@@ -280,21 +313,18 @@ describe('Health Plugin Routes', () => {
       expect((server.totalMemoryMB as number)).toBeGreaterThan(0)
     })
 
-    it('includes doctor summary with error/warning counts', async () => {
+    it('does not embed a competing doctor report', async () => {
       const route = findRoute(activated.routes, 'GET', '/summary')!
       const { body } = await callRoute(route, activated.ctx)
-      const doctor = body.doctor as Record<string, unknown>
-      const summary = doctor.summary as Record<string, number>
-      expect(summary.total).toBe(3)
-      expect(summary.errors).toBe(1)
-      expect(summary.warnings).toBe(1)
+      expect(body.doctor).toBeUndefined()
+      expect(body.report).toBeUndefined()
     })
 
     it('includes errors1h sourced from the real recorder', async () => {
-      recordUsage({ kind: 'mcp', name: 't1', agent: 'a', durationMs: 5, status: 'error' })
-      recordUsage({ kind: 'mcp', name: 't2', agent: 'a', durationMs: 5, status: 'error' })
-      recordUsage({ kind: 'rest', name: '/api/x', agent: null, durationMs: 5, status: 'error' })
-      recordUsage({ kind: 'agent', name: 'dispatch', agent: 'a', durationMs: null, status: 'ok' })
+      recordUsage({ kind: 'mcp', activityClass: 'user', name: 't1', agent: 'a', durationMs: 5, status: 'error' })
+      recordUsage({ kind: 'mcp', activityClass: 'user', name: 't2', agent: 'a', durationMs: 5, status: 'error' })
+      recordUsage({ kind: 'rest', activityClass: 'user', name: '/api/x', agent: null, durationMs: 5, status: 'error' })
+      recordUsage({ kind: 'agent', activityClass: 'user', name: 'dispatch', agent: 'a', durationMs: null, status: 'ok' })
 
       const route = findRoute(activated.routes, 'GET', '/summary')!
       const { body } = await callRoute(route, activated.ctx)
@@ -317,6 +347,23 @@ describe('Health Plugin Routes', () => {
     })
   })
 
+  describe('windowed telemetry query validation', () => {
+    it.each(['/usage-history', '/agent-effort'])(
+      'rejects unknown query keys on GET %s',
+      async (path) => {
+        const route = findRoute(activated.routes, 'GET', path)!
+        expect(route).toBeDefined()
+
+        const { status, body } = await callRoute(route, activated.ctx, {
+          searchParams: { window: '24h', unexpected: 'value' },
+        })
+
+        expect(status).toBe(400)
+        expect(body.error).toBe('invalid input')
+      },
+    )
+  })
+
   describe('GET /search-status', () => {
     it('returns search adapter health data', async () => {
       const route = findRoute(activated.routes, 'GET', '/search-status')!
@@ -328,11 +375,24 @@ describe('Health Plugin Routes', () => {
     })
   })
 
+  describe('GET /search-readiness', () => {
+    it('refreshes only the lightweight canonical Search check', async () => {
+      const { runTargetedDiagnostics } = await import('../../../src/core/doctor')
+      const route = findRoute(activated.routes, 'GET', '/search-readiness')!
+      const { status, body } = await callRoute(route, activated.ctx)
+
+      expect(status).toBe(200)
+      expect(body.reportId).toBe(freshReport.id)
+      expect((body.readiness as { status: string }).status).toBe('healthy')
+      expect(runTargetedDiagnostics).toHaveBeenCalledWith(['health.search'])
+    })
+  })
+
   describe('GET /search-telemetry', () => {
     it('composes usage windows, outbox stats, and search doctor rows', async () => {
-      recordUsage({ kind: 'rest', name: 'search.query', agent: null, durationMs: 12, status: 'ok' })
-      recordUsage({ kind: 'rest', name: 'search.query', agent: null, durationMs: 30, status: 'error' })
-      recordUsage({ kind: 'rest', name: 'search.drain', agent: null, durationMs: 5, status: 'ok', meta: { processed: 3 } })
+      recordUsage({ kind: 'rest', activityClass: 'user', name: 'search.query', agent: null, durationMs: 12, status: 'ok' })
+      recordUsage({ kind: 'rest', activityClass: 'user', name: 'search.query', agent: null, durationMs: 30, status: 'error' })
+      recordUsage({ kind: 'rest', activityClass: 'system', name: 'search.drain', agent: null, durationMs: 5, status: 'ok', meta: { processed: 3 } })
 
       const route = findRoute(activated.routes, 'GET', '/search-telemetry')!
       expect(route).toBeDefined()
@@ -341,13 +401,17 @@ describe('Health Plugin Routes', () => {
       const telemetry = body as unknown as {
         windows: Record<string, { query: { count: number; errors: number }; drain: { count: number } }>
         outbox: { pending: number; quarantined: number }
-        doctor: { rows: unknown[] }
+        reportId: string
+        readiness: { status: string }
+        observations: unknown[]
       }
       expect(telemetry.windows['1h'].query.count).toBe(2)
       expect(telemetry.windows['1h'].query.errors).toBe(1)
       expect(telemetry.windows['1h'].drain.count).toBe(1)
       expect(typeof telemetry.outbox.pending).toBe('number')
-      expect(Array.isArray(telemetry.doctor.rows)).toBe(true)
+      expect(telemetry.reportId).toBe(cachedReport.id)
+      expect(telemetry.readiness.status).toBe('healthy')
+      expect(Array.isArray(telemetry.observations)).toBe(true)
     })
   })
 
@@ -366,9 +430,9 @@ describe('Health Plugin Routes', () => {
 
   describe('GET /usage-feed', () => {
     it('returns usage entries from the real recorder', async () => {
-      recordUsage({ kind: 'mcp', name: 'bakin_exec_tasks_list', agent: 'main-operator', durationMs: 12, status: 'ok' })
-      recordUsage({ kind: 'mcp', name: 'bakin_exec_tasks_list', agent: 'main-operator', durationMs: 8, status: 'ok' })
-      recordUsage({ kind: 'rest', name: '/api/plugins/tasks/list', agent: null, durationMs: 20, status: 'ok' })
+      recordUsage({ kind: 'mcp', activityClass: 'user', name: 'bakin_exec_tasks_list', agent: 'main-operator', durationMs: 12, status: 'ok' })
+      recordUsage({ kind: 'mcp', activityClass: 'user', name: 'bakin_exec_tasks_list', agent: 'main-operator', durationMs: 8, status: 'ok' })
+      recordUsage({ kind: 'rest', activityClass: 'user', name: '/api/plugins/tasks/list', agent: null, durationMs: 20, status: 'ok' })
 
       const route = findRoute(activated.routes, 'GET', '/usage-feed')!
       expect(route).toBeDefined()
@@ -384,17 +448,29 @@ describe('Health Plugin Routes', () => {
       expect(topByName[0].count).toBe(2)
     })
 
-    it('defaults window to 1h when omitted', async () => {
-      recordUsage({ kind: 'agent', name: 'heartbeat', agent: 'main-operator', durationMs: null, status: 'ok' })
+    it('defaults to 1h and hides successful routine activity', async () => {
+      recordUsage({ kind: 'agent', activityClass: 'routine', name: 'heartbeat', agent: 'main-operator', durationMs: null, status: 'ok' })
       const route = findRoute(activated.routes, 'GET', '/usage-feed')!
       const { status, body } = await callRoute(route, activated.ctx)
       expect(status).toBe(200)
-      expect((body as { totals: { count: number } }).totals.count).toBe(1)
+      expect((body as { totals: { count: number } }).totals.count).toBe(0)
+    })
+
+    it('includes routine success only when requested and never hides routine failure', async () => {
+      recordUsage({ kind: 'agent', activityClass: 'routine', name: 'heartbeat', agent: 'main-operator', durationMs: null, status: 'ok' })
+      recordUsage({ kind: 'agent', activityClass: 'routine', name: 'heartbeat', agent: 'main-operator', durationMs: null, status: 'error' })
+      const route = findRoute(activated.routes, 'GET', '/usage-feed')!
+
+      const hidden = await callRoute(route, activated.ctx, { searchParams: { window: '1h' } })
+      expect((hidden.body as { totals: { count: number } }).totals.count).toBe(1)
+
+      const shown = await callRoute(route, activated.ctx, { searchParams: { window: '1h', includeRoutine: 'true' } })
+      expect((shown.body as { totals: { count: number } }).totals.count).toBe(2)
     })
 
     it('filters by agent', async () => {
-      recordUsage({ kind: 'mcp', name: 'x', agent: 'alice', durationMs: 1, status: 'ok' })
-      recordUsage({ kind: 'mcp', name: 'x', agent: 'bob', durationMs: 1, status: 'ok' })
+      recordUsage({ kind: 'mcp', activityClass: 'user', name: 'x', agent: 'alice', durationMs: 1, status: 'ok' })
+      recordUsage({ kind: 'mcp', activityClass: 'user', name: 'x', agent: 'bob', durationMs: 1, status: 'ok' })
       const route = findRoute(activated.routes, 'GET', '/usage-feed')!
       const { body } = await callRoute(route, activated.ctx, {
         searchParams: { window: '1h', agent: 'alice' },
@@ -421,16 +497,15 @@ describe('Health Plugin Routes', () => {
   })
 
   describe('GET /doctor', () => {
-    it('returns cached results by default', async () => {
+    it('returns the raw cached canonical report by default', async () => {
       const route = findRoute(activated.routes, 'GET', '/doctor')!
       expect(route).toBeDefined()
 
       const { status, body } = await callRoute(route, activated.ctx)
       expect(status).toBe(200)
-      expect(body.cachedAt).toBeDefined()
-      const summary = body.summary as Record<string, number>
-      expect(summary.total).toBe(3)
-      expect(summary.errors).toBe(1)
+      expect(body.id).toBe(cachedReport.id)
+      expect(body.overallStatus).toBe('needs_attention')
+      expect(body.results).toBeUndefined()
     })
 
     it('runs fresh diagnostics when ?fresh=true', async () => {
@@ -441,26 +516,27 @@ describe('Health Plugin Routes', () => {
         searchParams: { fresh: 'true' },
       })
       expect(status).toBe(200)
-      expect(body.cachedAt).toBeDefined()
+      expect(body.id).toBe(freshReport.id)
       expect(runDiagnostics).toHaveBeenCalled()
     })
   })
 
   describe('doctor repair routes', () => {
     it('returns a deterministic repair plan without applying it', async () => {
-      const route = findRoute(activated.routes, 'GET', '/doctor/repair/plan')!
+      const route = findRoute(activated.routes, 'POST', '/doctor/repair/plan')!
       expect(route).toBeDefined()
 
-      const { status, body } = await callRoute(route, activated.ctx)
+      const target = { type: 'incidents', reportId: cachedReport.id, ids: ['tasks:taskboard:missing-columns'] }
+      const { status, body } = await callRoute(route, activated.ctx, { body: { target } })
 
       expect(status).toBe(200)
-      expect(body.summary).toMatchObject({ totalItems: 1, safeItems: 1 })
+      expect(body.planId).toBe(mockRepairPlan.planId)
       expect(body.items).toEqual(mockRepairPlan.items)
-      expect(planDoctorRepairMock).toHaveBeenCalled()
+      expect(planDoctorRepairMock).toHaveBeenCalledWith(expect.objectContaining({ target }))
       expect(applyDoctorRepairMock).not.toHaveBeenCalled()
     })
 
-    it('requires accepted=true before applying deterministic repairs', async () => {
+    it('rejects the removed accepted=true repair shape', async () => {
       const route = findRoute(activated.routes, 'POST', '/doctor/repair/apply')!
       expect(route).toBeDefined()
 
@@ -468,24 +544,25 @@ describe('Health Plugin Routes', () => {
         body: { accepted: false },
       })
 
-      expect(status).toBe(409)
-      expect(body.status).toBe('confirmation_required')
-      expect(applyDoctorRepairMock).toHaveBeenCalledWith(expect.objectContaining({ accepted: false }))
+      expect(status).toBe(400)
+      expect(body.error).toBe('invalid input')
+      expect(applyDoctorRepairMock).not.toHaveBeenCalled()
     })
 
-    it('applies deterministic repairs when accepted=true', async () => {
+    it('applies selected items from a server-held repair plan', async () => {
       const route = findRoute(activated.routes, 'POST', '/doctor/repair/apply')!
 
       const { status, body } = await callRoute(route, activated.ctx, {
-        body: { accepted: true, itemIds: ['repair.taskboard'] },
+        body: { planId: mockRepairPlan.planId, itemIds: [mockRepairPlan.items[0].id], confirmedItemIds: [] },
       })
 
       expect(status).toBe(200)
-      expect(body.status).toBe('applied')
-      expect(body.summary).toMatchObject({ applied: 1, failed: 0 })
+      expect(body.verifiedReportId).toBe(freshReport.id)
+      expect(body.results).toEqual(mockRepairApply.results)
       expect(applyDoctorRepairMock).toHaveBeenCalledWith(expect.objectContaining({
-        accepted: true,
-        itemIds: ['repair.taskboard'],
+        planId: mockRepairPlan.planId,
+        itemIds: [mockRepairPlan.items[0].id],
+        confirmedItemIds: [],
       }))
     })
   })
@@ -555,8 +632,8 @@ describe('Health Exec Tools', () => {
     it('returns system health summary from real state', async () => {
       // Seed a few real usage entries; the exec tool now reads from the
       // unified recorder via getStatsByMs rather than a mocked HTTP source.
-      recordUsage({ kind: 'mcp', name: 'bakin_exec_tasks_list', agent: 'patch', durationMs: 5, status: 'ok' })
-      recordUsage({ kind: 'rest', name: '/api/plugins/tasks/list', agent: null, durationMs: 3, status: 'error' })
+      recordUsage({ kind: 'mcp', activityClass: 'user', name: 'bakin_exec_tasks_list', agent: 'patch', durationMs: 5, status: 'ok' })
+      recordUsage({ kind: 'rest', activityClass: 'user', name: '/api/plugins/tasks/list', agent: null, durationMs: 3, status: 'error' })
 
       const tool = findTool(activated.execTools, 'bakin_exec_health_status')!
       expect(tool).toBeDefined()
@@ -569,21 +646,20 @@ describe('Health Exec Tools', () => {
       expect(result.activeSessions).toBe(1)
       expect(result.calls1h).toBe(2)
       expect(result.errors1h).toBe(1)
-      expect(result.doctorErrors).toBe(1)
-      expect(result.doctorWarnings).toBe(1)
+      expect(result.overallStatus).toBe('needs_attention')
+      expect(result.reportId).toBe(cachedReport.id)
+      expect(result.incidents).toEqual(cachedReport.summary.incidents)
     })
   })
 
   describe('bakin_exec_health_doctor', () => {
-    it('returns cached results when fresh is not set', async () => {
+    it('returns the cached canonical report when fresh is not set', async () => {
       const tool = findTool(activated.execTools, 'bakin_exec_health_doctor')!
       expect(tool).toBeDefined()
 
       const result = await callTool(tool, {})
       expect(result.ok).toBe(true)
-      expect(result.cachedAt).toBeDefined()
-      const summary = result.summary as Record<string, number>
-      expect(summary.errors).toBe(1)
+      expect((result.report as HealthReport).id).toBe(cachedReport.id)
     })
 
     it('runs fresh diagnostics when fresh=true', async () => {
@@ -592,7 +668,7 @@ describe('Health Exec Tools', () => {
 
       const result = await callTool(tool, { fresh: true })
       expect(result.ok).toBe(true)
-      expect(result.cachedAt).toBeDefined()
+      expect((result.report as HealthReport).id).toBe(freshReport.id)
       expect(runDiagnostics).toHaveBeenCalled()
     })
   })

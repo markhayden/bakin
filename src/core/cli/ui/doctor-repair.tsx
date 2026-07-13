@@ -1,4 +1,12 @@
 import { Box, Text } from 'ink'
+import type {
+  HealthIncident,
+  HealthRepairApplyResult,
+  HealthRepairChange,
+  HealthRepairPlan,
+  HealthRepairPlanItem,
+  HealthReport,
+} from '@makinbakin/sdk/types'
 import type { TuiStatus } from './style-tokens'
 import {
   FindingRows,
@@ -13,68 +21,16 @@ import {
 } from './tui'
 import { plural } from './reports/format'
 
-export interface DoctorRepairDiagnostic {
-  check: string
-  status: string
-  message: string
-  autoFixable?: boolean
-}
-
-export interface DoctorRepairChange {
-  kind: string
-  target: string
-  action: string
-  description: string
-}
-
-export interface DoctorRepairPlanItem {
-  id: string
-  checkId: string
-  healthCheckId?: string
-  pluginId?: string
-  checkName?: string
-  title: string
-  reason: string
-  safety: 'safe' | 'manual' | 'destructive'
-  requiresConfirmation: boolean
-  changes: DoctorRepairChange[]
-}
-
-export interface DoctorRepairPlanData {
-  diagnostics: DoctorRepairDiagnostic[]
-  items: DoctorRepairPlanItem[]
-  errors: Array<{ phase: string; healthCheckId: string; message: string }>
-  summary: {
-    diagnostics: number
-    repairableChecks: number
-    totalItems: number
-    safeItems: number
-    blockedItems: number
-    planErrors: number
-  }
-}
+export type DoctorRepairPlanData = HealthRepairPlan
 
 export interface DoctorRepairApplyData {
-  status: 'confirmation_required' | 'applied'
-  plan: DoctorRepairPlanData
-  applied: Array<{ id: string; checkId: string; status: string; message: string; changes: DoctorRepairChange[] }>
-  skipped: Array<{ id: string; checkId: string; status: string; message: string; changes: DoctorRepairChange[] }>
-  errors: Array<{ phase: string; healthCheckId: string; message: string }>
-  verification: DoctorRepairDiagnostic[]
-  summary: {
-    planned: number
-    applied: number
-    skipped: number
-    failed: number
-    verificationErrors: number
-    verificationWarnings: number
-  }
-}
-
-export interface DoctorDelegateReportData {
-  status: 'confirmation_required' | 'sent' | 'no_unresolved'
-  request: Record<string, unknown>
-  unresolved: DoctorRepairDiagnostic[]
+  planId: string
+  basedOnReportId: string
+  results: HealthRepairApplyResult[]
+  affectedCheckIds: string[]
+  verifiedReportId: string
+  verifiedIncidentIds: string[]
+  report: HealthReport
 }
 
 export interface DoctorRepairRequestEventData {
@@ -85,26 +41,35 @@ export interface DoctorRepairRequestEventData {
 }
 
 export interface DoctorRepairRequestData {
+  version?: unknown
   id?: unknown
   kind?: unknown
   status?: unknown
   createdAt?: unknown
   updatedAt?: unknown
   plan?: unknown
-  unresolved?: unknown
+  incidentIds?: unknown
+  observationIds?: unknown
   taskId?: unknown
   agentId?: unknown
   events?: unknown
 }
 
-export interface DoctorRepairVerificationData {
-  request?: unknown
-  remaining?: unknown
-  verified?: unknown
+export interface DoctorDelegateReportData {
+  status: 'confirmation_required' | 'sent' | 'no_unresolved'
+  request: DoctorRepairRequestData
+  incidents: HealthIncident[]
 }
 
-// Note: this valueText is intentionally NOT the shared reports/format one — it
-// returns the fallback for objects/arrays rather than String(value). Local by design.
+export interface DoctorRepairVerificationData {
+  request?: unknown
+  remainingIncidentIds?: unknown
+  verified?: unknown
+  reportId?: unknown
+}
+
+// Objects and arrays intentionally use the fallback instead of implicit
+// String(value) rendering in the operator UI.
 function valueText(value: unknown, fallback = '-'): string {
   if (typeof value === 'string') return value.length > 0 ? value : fallback
   if (typeof value === 'number' || typeof value === 'boolean') return String(value)
@@ -117,37 +82,26 @@ function objectValue(value: unknown): Record<string, unknown> | null {
     : null
 }
 
-function diagnosticList(value: unknown): DoctorRepairDiagnostic[] {
+function stringList(value: unknown): string[] {
   if (!Array.isArray(value)) return []
-  return value.flatMap((row) => {
-    const item = objectValue(row)
-    if (!item) return []
-    return [{
-      check: valueText(item.check, 'finding'),
-      status: valueText(item.status, 'warn'),
-      message: valueText(item.message, 'No message provided.'),
-      autoFixable: typeof item.autoFixable === 'boolean' ? item.autoFixable : undefined,
-    }]
-  })
+  return value.filter((item): item is string => typeof item === 'string' && item.length > 0)
 }
 
-function statusForDiagnostic(status: string): TuiStatus {
-  switch (status) {
-    case 'ok':
-      return 'ok'
-    case 'fixed':
-    case 'applied':
-      return 'applied'
-    case 'warn':
-      return 'warn'
-    case 'error':
-    case 'failed':
-      return 'fail'
-    case 'skipped':
-      return 'skip'
-    default:
-      return 'run'
-  }
+function repairPlanItems(value: unknown): HealthRepairPlanItem[] {
+  const plan = objectValue(value)
+  if (!plan || !Array.isArray(plan.items)) return []
+  return plan.items.filter((item): item is HealthRepairPlanItem => {
+    const row = objectValue(item)
+    return Boolean(
+      row
+      && typeof row.id === 'string'
+      && typeof row.actionId === 'string'
+      && typeof row.title === 'string'
+      && typeof row.reason === 'string'
+      && (row.safety === 'safe' || row.safety === 'manual' || row.safety === 'destructive')
+      && Array.isArray(row.changes),
+    )
+  })
 }
 
 function statusForRequest(status: unknown): TuiStatus {
@@ -180,92 +134,118 @@ function statusForEvent(type: unknown): TuiStatus {
   }
 }
 
-function statusForSafety(safety: DoctorRepairPlanItem['safety']): TuiStatus {
+function statusForSafety(safety: HealthRepairPlanItem['safety']): TuiStatus {
   if (safety === 'safe') return 'ready'
   if (safety === 'manual') return 'warn'
   return 'blocked'
 }
 
-function changesDetail(changes: DoctorRepairChange[]): string | undefined {
+function statusForApply(status: HealthRepairApplyResult['status']): TuiStatus {
+  if (status === 'applied') return 'applied'
+  if (status === 'skipped') return 'skip'
+  return 'fail'
+}
+
+function statusForIncident(incident: HealthIncident): TuiStatus {
+  if (incident.disposition === 'action_required' || incident.status === 'error') return 'fail'
+  if (incident.status === 'unknown' || incident.stale) return 'run'
+  if (incident.disposition === 'advisory') return 'ok'
+  return 'warn'
+}
+
+function changesDetail(changes: readonly HealthRepairChange[]): string | undefined {
   if (changes.length === 0) return undefined
   return changes
     .map(change => `${change.action} ${change.target}: ${change.description}`)
     .join('; ')
 }
 
-function itemRows(items: DoctorRepairPlanItem[]): FindingRow[] {
+function itemRows(items: readonly HealthRepairPlanItem[]): FindingRow[] {
   return items.map((item) => {
     const reason = item.reason.replace(/[.!?]+$/, '')
     const changes = changesDetail(item.changes)
     return {
       status: statusForSafety(item.safety),
-      label: item.checkId,
+      label: item.actionId,
       message: item.title,
       detail: changes ? `Reason: ${reason}. Change: ${changes}` : `Reason: ${item.reason}`,
     }
   })
 }
 
-function diagnosticRows(rows: DoctorRepairDiagnostic[]): FindingRow[] {
-  return rows.map(row => ({
-    status: statusForDiagnostic(row.status),
-    label: row.check,
-    message: row.message,
+function incidentRows(incidents: readonly HealthIncident[]): FindingRow[] {
+  return incidents.map(incident => ({
+    status: statusForIncident(incident),
+    label: incident.id,
+    message: incident.title,
+    detail: `ID: ${incident.id}. Impact: ${incident.impact}`,
   }))
 }
 
-function errorRows(errors: DoctorRepairPlanData['errors'] | DoctorRepairApplyData['errors']): FindingRow[] {
-  return errors.map(error => ({
-    status: 'fail',
-    label: error.healthCheckId || error.phase,
-    message: error.message,
-    detail: `Phase: ${error.phase}`,
+function incidentIdRows(ids: readonly string[]): FindingRow[] {
+  return ids.map(id => ({
+    status: 'todo',
+    label: id,
+    message: `Stable Health incident: ${id}`,
   }))
 }
 
-function repairPlanSummary(plan: DoctorRepairPlanData): SummaryItem[] {
-  const manualItems = plan.items.filter(item => item.safety === 'manual' || item.safety === 'destructive').length
-  const items: SummaryItem[] = [
-    { label: 'safe', value: plan.summary.safeItems, status: plan.summary.safeItems > 0 ? 'ready' : 'ok' },
-    { label: 'manual', value: manualItems, status: manualItems > 0 ? 'warn' : 'ok' },
-    { label: 'blocked', value: plan.summary.blockedItems, status: plan.summary.blockedItems > 0 ? 'blocked' : 'ok' },
+function repairPlanSummary(plan: HealthRepairPlan): SummaryItem[] {
+  const safe = plan.items.filter(item => item.safety === 'safe').length
+  const manual = plan.items.filter(item => item.safety === 'manual').length
+  const destructive = plan.items.filter(item => item.safety === 'destructive').length
+  return [
+    { label: 'safe', value: safe, status: safe > 0 ? 'ready' : 'ok' },
+    { label: 'manual', value: manual, status: manual > 0 ? 'warn' : 'ok' },
+    { label: 'destructive', value: destructive, status: destructive > 0 ? 'blocked' : 'ok' },
   ]
-  if (plan.summary.planErrors > 0) {
-    items.push({ label: plural(plan.summary.planErrors, 'plan error'), value: plan.summary.planErrors, status: 'fail' })
-  }
-  return items
 }
 
 function applySummary(report: DoctorRepairApplyData): SummaryItem[] {
+  const applied = report.results.filter(result => result.status === 'applied').length
+  const skipped = report.results.filter(result => result.status === 'skipped').length
+  const failed = report.results.filter(result => result.status === 'failed').length
   return [
-    { label: 'applied', value: report.summary.applied, status: report.summary.applied > 0 ? 'applied' : 'ok' },
-    { label: 'skipped', value: report.summary.skipped, status: report.summary.skipped > 0 ? 'skip' : 'ok' },
-    { label: 'failed', value: report.summary.failed, status: report.summary.failed > 0 ? 'fail' : 'ok' },
+    { label: 'applied', value: applied, status: applied > 0 ? 'applied' : 'ok' },
+    { label: 'skipped', value: skipped, status: skipped > 0 ? 'skip' : 'ok' },
+    { label: 'failed', value: failed, status: failed > 0 ? 'fail' : 'ok' },
     {
-      label: 'verification',
-      value: report.summary.verificationErrors + report.summary.verificationWarnings,
-      status: report.summary.verificationErrors > 0 ? 'fail' : report.summary.verificationWarnings > 0 ? 'warn' : 'ok',
+      label: 'remaining',
+      value: report.verifiedIncidentIds.length,
+      status: report.verifiedIncidentIds.length > 0 ? 'warn' : 'ok',
     },
   ]
 }
 
-function resultRows(results: DoctorRepairApplyData['applied'] | DoctorRepairApplyData['skipped']): FindingRow[] {
+function resultRows(results: readonly HealthRepairApplyResult[]): FindingRow[] {
   return results.map(result => ({
-    status: statusForDiagnostic(result.status),
-    label: result.checkId || result.id,
+    status: statusForApply(result.status),
+    label: result.actionId || result.itemId,
     message: result.message,
     detail: changesDetail(result.changes),
   }))
 }
 
-function requestValue(request: Record<string, unknown>, key: string): string | undefined {
-  const value = request[key]
-  const text = valueText(value, '')
-  return text.length > 0 ? text : undefined
+function verificationRows(report: DoctorRepairApplyData): FindingRow[] {
+  if (report.verifiedIncidentIds.length === 0) {
+    return [{
+      status: 'done',
+      label: report.verifiedReportId,
+      message: 'Selected repair incidents no longer reproduce.',
+    }]
+  }
+  const byId = new Map(report.report.incidents.map(incident => [incident.id, incident]))
+  return report.verifiedIncidentIds.map((id) => {
+    const incident = byId.get(id)
+    return incident
+      ? incidentRows([incident])[0]!
+      : { status: 'warn', label: id, message: 'Incident still appears in the verification report.' }
+  })
 }
 
-function requestField(report: DoctorDelegateReportData, key: string): string | undefined {
-  return requestValue(report.request, key)
+function requestValue(request: DoctorRepairRequestData, key: keyof DoctorRepairRequestData): string | undefined {
+  const text = valueText(request[key], '')
+  return text.length > 0 ? text : undefined
 }
 
 type RequestTableRow = {
@@ -283,7 +263,7 @@ const requestColumns: Array<TableColumn<RequestTableRow>> = [
   { key: 'agent', header: 'AGENT', width: 10, render: row => row.agent },
 ]
 
-function requestTableRows(requests: DoctorRepairRequestData[]): RequestTableRow[] {
+function requestTableRows(requests: readonly DoctorRepairRequestData[]): RequestTableRow[] {
   return requests.map(request => ({
     status: statusForRequest(request.status),
     request: valueText(request.id, '(unknown)'),
@@ -293,7 +273,7 @@ function requestTableRows(requests: DoctorRepairRequestData[]): RequestTableRow[
   }))
 }
 
-function requestSummary(requests: DoctorRepairRequestData[]): SummaryItem[] {
+function requestSummary(requests: readonly DoctorRepairRequestData[]): SummaryItem[] {
   const active = requests.filter(request => !['verified', 'completed', 'failed'].includes(valueText(request.status, '').toLowerCase())).length
   const activeStatus = requests.some(request => valueText(request.status, '').toLowerCase() === 'sent') ? 'sent' : 'todo'
   const verified = requests.filter(request => ['verified', 'completed'].includes(valueText(request.status, '').toLowerCase())).length
@@ -345,10 +325,10 @@ function requestFromResult(result: DoctorRepairVerificationData): DoctorRepairRe
   return request ? request as DoctorRepairRequestData : null
 }
 
-function verificationMessage(result: DoctorRepairVerificationData, remaining: DoctorRepairDiagnostic[]): string {
-  if (result.verified === true) return 'Original delegated findings are resolved.'
-  if (remaining.length === 1) return '1 original delegated finding still reproduces.'
-  return `${remaining.length} original delegated findings still reproduce.`
+function verificationMessage(result: DoctorRepairVerificationData, remaining: readonly string[]): string {
+  if (result.verified === true) return 'Original delegated incidents are resolved.'
+  if (remaining.length === 1) return '1 original delegated incident still reproduces.'
+  return `${remaining.length} original delegated incidents still reproduce.`
 }
 
 export function DoctorRepairPlan({ plan, color = true }: {
@@ -362,23 +342,17 @@ export function DoctorRepairPlan({ plan, color = true }: {
     <Box flexDirection="column">
       <ScreenHeader title="Doctor repair plan" subtitle="Preview only; no changes have been applied" color={color} />
       <SummaryStrip items={repairPlanSummary(plan)} color={color} />
-      {safeItems.length > 0 ? (
-        <Section title="Safe deterministic repairs" color={color}>
-          <FindingRows rows={itemRows(safeItems)} color={color} />
-        </Section>
-      ) : (
-        <Section title="Safe deterministic repairs" color={color}>
-          <FindingRows rows={[{ status: 'ok', label: 'repairs', message: 'No deterministic repairs available.' }]} color={color} />
-        </Section>
-      )}
+      <Section title="Safe deterministic repairs" color={color}>
+        <FindingRows
+          rows={safeItems.length > 0
+            ? itemRows(safeItems)
+            : [{ status: 'ok', label: 'repairs', message: 'No deterministic repairs available.' }]}
+          color={color}
+        />
+      </Section>
       {manualItems.length > 0 ? (
         <Section title="Manual follow-up" color={color}>
           <FindingRows rows={itemRows(manualItems)} color={color} />
-        </Section>
-      ) : null}
-      {plan.errors.length > 0 ? (
-        <Section title="Plan errors" color={color}>
-          <FindingRows rows={errorRows(plan.errors)} color={color} />
         </Section>
       ) : null}
     </Box>
@@ -390,30 +364,31 @@ export function DoctorRepairApplyReport({ report, color = true, showBrand }: {
   color?: boolean
   showBrand?: boolean
 }) {
+  const applied = report.results.filter(result => result.status === 'applied')
+  const skipped = report.results.filter(result => result.status === 'skipped')
+  const failed = report.results.filter(result => result.status === 'failed')
   return (
     <Box flexDirection="column">
-      <ScreenHeader title="Doctor repair results" subtitle="Safe deterministic repairs applied" color={color} showBrand={showBrand} />
+      <ScreenHeader title="Doctor repair results" subtitle="Selected safe repairs applied and verified" color={color} showBrand={showBrand} />
       <SummaryStrip items={applySummary(report)} color={color} />
-      {report.applied.length > 0 ? (
+      {applied.length > 0 ? (
         <Section title="Applied" color={color}>
-          <FindingRows rows={resultRows(report.applied)} color={color} />
+          <FindingRows rows={resultRows(applied)} color={color} />
         </Section>
       ) : null}
-      {report.skipped.length > 0 ? (
+      {skipped.length > 0 ? (
         <Section title="Skipped" color={color}>
-          <FindingRows rows={resultRows(report.skipped)} color={color} />
+          <FindingRows rows={resultRows(skipped)} color={color} />
         </Section>
       ) : null}
-      {report.verification.length > 0 ? (
-        <Section title="Verification" color={color}>
-          <FindingRows rows={diagnosticRows(report.verification)} color={color} />
+      {failed.length > 0 ? (
+        <Section title="Failed" color={color}>
+          <FindingRows rows={resultRows(failed)} color={color} />
         </Section>
       ) : null}
-      {report.errors.length > 0 ? (
-        <Section title="Errors" color={color}>
-          <FindingRows rows={errorRows(report.errors)} color={color} />
-        </Section>
-      ) : null}
+      <Section title="Verification" color={color}>
+        <FindingRows rows={verificationRows(report)} color={color} />
+      </Section>
     </Box>
   )
 }
@@ -444,9 +419,9 @@ export function DoctorRepairRequestReport({ request, color = true }: {
   request: DoctorRepairRequestData
   color?: boolean
 }) {
-  const unresolved = diagnosticList(request.unresolved)
+  const incidentIds = stringList(request.incidentIds)
+  const planItems = repairPlanItems(request.plan)
   const events = eventRows(request.events)
-
   return (
     <Box flexDirection="column">
       <ScreenHeader
@@ -459,14 +434,19 @@ export function DoctorRepairRequestReport({ request, color = true }: {
       <Section title="Request" color={color}>
         <FindingRows rows={requestDetailRows(request)} color={color} />
       </Section>
-      <Section title="Unresolved findings" color={color}>
+      <Section title="Incidents" color={color}>
         <FindingRows
-          rows={unresolved.length > 0
-            ? diagnosticRows(unresolved)
-            : [{ status: 'ok', label: 'findings', message: 'No unresolved findings are stored on this request.' }]}
+          rows={incidentIds.length > 0
+            ? incidentIdRows(incidentIds)
+            : [{ status: 'ok', label: 'incidents', message: 'No incident IDs are stored on this request.' }]}
           color={color}
         />
       </Section>
+      {planItems.length > 0 ? (
+        <Section title="Planned actions" color={color}>
+          <FindingRows rows={itemRows(planItems)} color={color} />
+        </Section>
+      ) : null}
       {events.length > 0 ? (
         <Section title="Events" color={color}>
           <FindingRows rows={events} color={color} />
@@ -482,15 +462,14 @@ export function DoctorRepairVerifyReport({ requestId, result, color = true }: {
   color?: boolean
 }) {
   const request = requestFromResult(result)
-  const remaining = diagnosticList(result.remaining)
+  const remaining = stringList(result.remainingIncidentIds)
   const resolved = result.verified === true
   const id = valueText(request?.id, requestId)
-
   return (
     <Box flexDirection="column">
       <ScreenHeader
         title="Doctor repair verification"
-        subtitle={resolved ? 'Delegated repair no longer reproduces original findings' : 'Delegated repair still needs attention'}
+        subtitle={resolved ? 'Delegated repair no longer reproduces original incidents' : 'Delegated repair still needs attention'}
         meta={id}
         color={color}
       />
@@ -499,40 +478,37 @@ export function DoctorRepairVerifyReport({ requestId, result, color = true }: {
         { label: 'remaining', value: remaining.length, status: remaining.length > 0 ? 'warn' : 'ok' },
       ]} color={color} />
       <Section title="Result" color={color}>
-        <FindingRows
-          rows={[{
-            status: resolved ? 'done' : 'warn',
-            label: id,
-            message: verificationMessage(result, remaining),
-          }]}
-          color={color}
-        />
+        <FindingRows rows={[{
+          status: resolved ? 'done' : 'warn',
+          label: id,
+          message: verificationMessage(result, remaining),
+        }]} color={color} />
       </Section>
       {remaining.length > 0 ? (
-        <Section title="Remaining findings" color={color}>
-          <FindingRows rows={diagnosticRows(remaining)} color={color} />
+        <Section title="Remaining incidents" color={color}>
+          <FindingRows rows={incidentIdRows(remaining)} color={color} />
         </Section>
       ) : null}
     </Box>
   )
 }
 
-export function DoctorDelegatePreview({ unresolved, color = true }: {
-  unresolved: DoctorRepairDiagnostic[]
+export function DoctorDelegatePreview({ incidents, color = true }: {
+  incidents: HealthIncident[]
   color?: boolean
 }) {
   return (
     <Box flexDirection="column">
       <ScreenHeader title="Doctor delegated repair preview" subtitle="Preview only; no task has been created" color={color} />
       <SummaryStrip items={[
-        { label: 'unresolved', value: unresolved.length, status: unresolved.length > 0 ? 'warn' : 'ok' },
+        { label: 'action required', value: incidents.length, status: incidents.length > 0 ? 'warn' : 'ok' },
       ]} color={color} />
-      <Section title="Unresolved findings" color={color}>
+      <Section title="Action-required incidents" color={color}>
         <FindingRows
           color={color}
-          rows={unresolved.length > 0
-            ? diagnosticRows(unresolved)
-            : [{ status: 'ok', label: 'delegate', message: 'No unresolved findings need delegated repair.' }]}
+          rows={incidents.length > 0
+            ? incidentRows(incidents)
+            : [{ status: 'ok', label: 'delegate', message: 'No action-required incidents need delegated repair.' }]}
         />
       </Section>
     </Box>
@@ -545,23 +521,22 @@ export function DoctorDelegateResult({ report, color = true, showBrand }: {
   showBrand?: boolean
 }) {
   if (report.status === 'no_unresolved') {
-    return <DoctorDelegatePreview unresolved={[]} color={color} />
+    return <DoctorDelegatePreview incidents={[]} color={color} />
   }
 
-  const requestId = requestField(report, 'id') ?? '(unknown)'
-  const taskId = requestField(report, 'taskId')
-  const agentId = requestField(report, 'agentId')
-
+  const requestId = requestValue(report.request, 'id') ?? '(unknown)'
+  const taskId = requestValue(report.request, 'taskId')
+  const agentId = requestValue(report.request, 'agentId')
   return (
     <Box flexDirection="column">
-      <ScreenHeader title="Delegated doctor repair" subtitle="A board task was created for unresolved work" color={color} showBrand={showBrand} />
+      <ScreenHeader title="Delegated doctor repair" subtitle="A board task was created for action-required incidents" color={color} showBrand={showBrand} />
       <SummaryStrip items={[
         { label: 'request', value: requestId, status: 'sent' },
         ...(taskId ? [{ label: 'task', value: taskId, status: 'todo' as const }] : []),
         ...(agentId ? [{ label: 'agent', value: agentId }] : []),
       ]} color={color} />
       <Section title="Repair brief" color={color}>
-        <FindingRows rows={diagnosticRows(report.unresolved)} color={color} />
+        <FindingRows rows={incidentRows(report.incidents)} color={color} />
       </Section>
       <NextActions
         color={color}

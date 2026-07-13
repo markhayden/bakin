@@ -4,7 +4,8 @@
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
-import type { BakinPlugin, ExecToolResult, HealthCheckResult, PluginContext } from '@bakin/core/plugin-types'
+import type { ExecToolResult, HealthCheckRunInput, PluginContext } from '@bakin/core/plugin-types'
+import { healthError, healthHealthy, healthObserved, healthWarning } from '@makinbakin/sdk/utils'
 import { definePlugin, defineRoute } from '@bakin/core/routing'
 import { createLogger } from '../../src/core/logger'
 import { loadDefaultWorkflows } from '@bakin/core/workflows/load-defaults'
@@ -128,42 +129,57 @@ const routes = [
   }),
 ]
 
-async function checkImages(ctx: PluginContext): Promise<HealthCheckResult[]> {
-  const rows: HealthCheckResult[] = []
+export async function checkImages(ctx: PluginContext): Promise<HealthCheckRunInput> {
   // Readiness derives from the runtime's capability descriptor (P4.1);
   // per-provider readiness refines the message, never overrides the mode.
   const imageGen = (await ctx.runtime.capabilities()).imageGen
   const readiness = await providerReadiness(ctx)
   const readyProviders = readiness.filter(provider => provider.routable)
 
-  rows.push({
-    check: 'images.assets',
-    status: typeof ctx.assets.createAsset === 'function' ? 'ok' : 'error',
-    message: typeof ctx.assets.createAsset === 'function'
-      ? 'Images plugin can save generated files through the Assets plugin API.'
-      : 'Images plugin cannot save generated files because ctx.assets.createAsset is unavailable.',
-    autoFixable: false,
-  })
-
-  rows.push({
-    check: 'images.profiles',
-    status: listImageProfiles().length > 0 ? 'ok' : 'error',
-    message: `${listImageProfiles().length} image surface profiles registered.`,
-    autoFixable: false,
-  })
-
-  rows.push({
-    check: 'images.providers',
-    status: imageGen.mode !== 'unavailable' && readyProviders.length > 0 ? 'ok' : 'warn',
-    message: imageGen.mode === 'unavailable'
-      ? 'Image generation is unavailable on this runtime — no native image path is authenticated and no Bakin provider key is configured (set OPENAI_API_KEY, GEMINI_API_KEY, or GOOGLE_AI_API_KEY, or log the runtime into its image provider).'
-      : readyProviders.length > 0
-        ? `Image generation is ${imageGen.mode} on this runtime: ${readyProviders.map(provider => provider.label).join(', ')} configured.`
-        : `Runtime reports image generation as ${imageGen.mode}, but no provider route resolved — check provider configuration.`,
-    autoFixable: false,
-  })
-
-  return rows
+  const profiles = listImageProfiles()
+  return healthObserved([
+    typeof ctx.assets.createAsset === 'function'
+      ? healthHealthy({ key: 'assets', summary: 'Generated images can be saved through Assets.' })
+      : healthError({
+          key: 'assets', summary: 'The Assets save API is unavailable.',
+          incident: {
+            key: 'assets-unavailable', title: 'Images cannot save generated files',
+            impact: 'Image generation may succeed but its output cannot be stored as a managed asset.',
+            disposition: 'action_required', resources: [{ kind: 'plugin', id: 'assets', label: 'Assets' }],
+            resolution: { key: 'review-assets', type: 'navigate', label: 'Review Assets', href: '/assets' },
+          },
+        }),
+    profiles.length > 0
+      ? healthHealthy({ key: 'profiles', summary: `${profiles.length} image surface profiles are registered.`, evidence: { count: profiles.length } })
+      : healthError({
+          key: 'profiles', summary: 'No image surface profiles are registered.',
+          incident: {
+            key: 'profiles-missing', title: 'Image surface profiles are missing',
+            impact: 'Images cannot choose reliable dimensions for supported output surfaces.',
+            disposition: 'action_required',
+            resolution: { key: 'restart', type: 'instructions', label: 'Restore profiles', steps: ['Restore the built-in Images plugin files, then restart Bakin.'] },
+          },
+        }),
+    imageGen.mode !== 'unavailable' && readyProviders.length > 0
+      ? healthHealthy({
+          key: 'providers',
+          summary: `Image generation is ${imageGen.mode}: ${readyProviders.map((provider) => provider.label).join(', ')} configured.`,
+          evidence: { mode: imageGen.mode, providers: readyProviders.map((provider) => provider.id) },
+        })
+      : healthWarning({
+          key: 'providers',
+          summary: imageGen.mode === 'unavailable'
+            ? 'No authenticated image generation path is available.'
+            : 'The runtime reports image generation, but no provider route resolved.',
+          evidence: { mode: imageGen.mode, providers: readyProviders.map((provider) => provider.id) },
+          incident: {
+            key: 'providers-unavailable', title: 'Image generation is not configured',
+            impact: 'Image generation and editing requests are unavailable; other Bakin work can continue.',
+            disposition: 'advisory', resources: [{ kind: 'capability', id: 'image-generation', label: 'Image generation' }],
+            resolution: { key: 'configure-images', type: 'navigate', label: 'Review runtime settings', href: '/settings' },
+          },
+        }),
+  ])
 }
 
 const imagesPlugin = definePlugin({
@@ -274,6 +290,8 @@ const imagesPlugin = definePlugin({
     ctx.registerHealthCheck({
       id: 'readiness',
       name: 'Image generation readiness',
+      description: 'Checks managed-asset saving, surface profiles, and configured image provider routes.',
+      group: { key: 'images', label: 'Images' },
       run: async () => checkImages(ctx),
     })
   },

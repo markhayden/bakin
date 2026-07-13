@@ -1,113 +1,221 @@
 'use client'
 
-import { useState } from 'react'
-import { useQueryState } from "@makinbakin/sdk/hooks"
-import { Button } from "@makinbakin/sdk/ui"
-import { PluginHeader } from "@makinbakin/sdk/components"
-import type { AgentUsage } from '@makinbakin/sdk/types'
-import type { HealthSummary, MeteredSpendData, UsageKind, UsageFeedData } from '../types'
-import { formatDateShort } from '../lib/format'
-import { usePolledJson, HEALTH_POLL_MS } from './use-health-data'
-import {
-  SummaryCards,
-  SpendTokenSection,
-  UsageSection,
-  ContextUsageSection,
-  DiagnosticsSection,
-  ServerFooter,
-} from './health-sections'
-import { SearchSection } from './search-section'
-import { PluginsSection } from './plugins-section'
-import { UsageHistorySection } from './usage-history-section'
-import { LiveNowSection, AttentionSection, EffortSection } from './supervision-sections'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { HealthIncident, HealthRepairTarget } from '@makinbakin/sdk/types'
+import { PluginHeader } from '@makinbakin/sdk/components'
+import { useQueryState } from '@makinbakin/sdk/hooks'
+import { Button, Tabs, TabsContent, TabsList, TabsTrigger } from '@makinbakin/sdk/ui'
+import { RefreshCw } from 'lucide-react'
+import { useOverviewData } from '../hooks/use-overview-data'
+import { ActivityTab } from './activity-tab'
+import { AgentsTab } from './agents-tab'
+import { OverviewTab } from './overview-tab'
+import { RepairDialog } from './repair-dialog'
+import { SystemTab } from './system-tab'
+
+const HEALTH_TABS = [
+  { value: 'overview', label: 'Overview' },
+  { value: 'agents', label: 'Agents' },
+  { value: 'activity', label: 'Activity' },
+  { value: 'system', label: 'System' },
+] as const
+
+type HealthTab = typeof HEALTH_TABS[number]['value']
+type RunChecks = () => Promise<unknown>
+
+function isHealthTab(value: string): value is HealthTab {
+  return HEALTH_TABS.some((tab) => tab.value === value)
+}
+
+interface OverviewPanelProps {
+  onRunChecksReady: (runChecks: RunChecks | null) => void
+  onRunChecks: () => Promise<void>
+}
+
+interface SelectedRepair {
+  incident: HealthIncident
+  reportId: string
+}
 
 /**
- * The System Health dashboard shell. Each section fetches independently (see
- * usePolledJson) so a single failing endpoint faults only its own card rather
- * than blanking the whole page behind one loading gate — the deliberate
- * behavior change from the former all-or-nothing Promise.all. The shell owns
- * layout, the shared summary/usage feeds (consumed by multiple sections), and
- * the global Refresh nonce.
+ * Keeps Overview's polling resources inside its tab boundary. The page header
+ * receives only an imperative Run checks callback, so selecting another tab
+ * fully unmounts Overview and stops its background endpoint traffic.
  */
-export function HealthPage() {
-  const [refreshNonce, setRefreshNonce] = useState(0)
+function OverviewPanel({ onRunChecksReady, onRunChecks }: OverviewPanelProps) {
+  const overview = useOverviewData()
+  const [selectedRepair, setSelectedRepair] = useState<SelectedRepair | null>(null)
 
-  // Usage tabs state (URL-backed)
-  const [usageTab, setUsageTab] = useQueryState('usage_tab', 'tools')
-  const [usageWindow, setUsageWindow] = useQueryState('usage_window', '1h')
-  const kindForTab: UsageKind = usageTab === 'endpoints' ? 'rest' : usageTab === 'agents' ? 'agent' : 'mcp'
+  useEffect(() => {
+    onRunChecksReady(overview.runChecks)
+    return () => onRunChecksReady(null)
+  }, [onRunChecksReady, overview.runChecks])
 
-  // Shared feeds consumed by more than one section.
-  const summary = usePolledJson<HealthSummary>('/api/plugins/health/summary', { intervalMs: HEALTH_POLL_MS, refreshNonce })
-  const usageResult = usePolledJson<AgentUsage[]>('/api/plugins/health/usage', {
-    intervalMs: HEALTH_POLL_MS,
-    refreshNonce,
-    select: (raw) => (Array.isArray(raw) ? (raw as AgentUsage[]) : null),
-  })
-  const usageFeed = usePolledJson<UsageFeedData>(
-    `/api/plugins/health/usage-feed?kind=${kindForTab}&window=${usageWindow}`,
-    { intervalMs: HEALTH_POLL_MS, refreshNonce },
-  )
-  // Cross-plugin + optional: only trust a 2xx body — the /spend error path returns
-  // 500 with a {totalUsdMicros:0} shape, which must NOT render as a real $0 card.
-  const spend = usePolledJson<MeteredSpendData>('/api/plugins/models/spend?window=24h', {
-    intervalMs: HEALTH_POLL_MS,
-    refreshNonce,
-    swallowErrors: true,
-    select: (raw) => {
-      const body = raw as Partial<MeteredSpendData> | null
-      return body && typeof body.totalUsdMicros === 'number' ? (body as MeteredSpendData) : null
-    },
-  })
+  const reviewRepair = useCallback((incident: HealthIncident) => {
+    if (!overview.model.reportId) return
+    // Capture the report with the incident. A background refresh must not
+    // silently retarget an already-open repair plan to newer evidence.
+    setSelectedRepair({ incident, reportId: overview.model.reportId })
+  }, [overview.model.reportId])
 
-  const usage = usageResult.data ?? []
-  const lastRefresh = summary.lastUpdated ? new Date(summary.lastUpdated) : new Date()
+  const repairTarget: HealthRepairTarget | null = selectedRepair
+    ? {
+        type: 'incidents',
+        reportId: selectedRepair.reportId,
+        ids: [selectedRepair.incident.id],
+      }
+    : null
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <PluginHeader title="System Health" />
-        <div className="flex items-center gap-3">
-          <span className="text-xs whitespace-nowrap">
-            <span className="text-muted-foreground">{formatDateShort(lastRefresh)}</span>
-            <span className="text-muted-foreground/60 mx-1.5">·</span>
-            <span className="text-muted-foreground/80">{lastRefresh.toLocaleTimeString()}</span>
-          </span>
-          <Button variant="outline" size="sm" onClick={() => setRefreshNonce((n) => n + 1)}>
-            Refresh
-          </Button>
-        </div>
-      </div>
-
-      <SummaryCards result={summary} />
-
-      <LiveNowSection refreshNonce={refreshNonce} />
-
-      <AttentionSection result={summary} />
-
-      <SpendTokenSection usage={usage} meteredSpend={spend.data} />
-
-      <UsageHistorySection refreshNonce={refreshNonce} />
-
-      <EffortSection refreshNonce={refreshNonce} />
-
-      <UsageSection
-        feed={usageFeed.data}
-        usageTab={usageTab}
-        setUsageTab={setUsageTab}
-        usageWindow={usageWindow}
-        setUsageWindow={setUsageWindow}
+    <>
+      <OverviewTab
+        data={overview}
+        onRepair={reviewRepair}
+        onRerun={() => { void onRunChecks() }}
       />
 
-      <ContextUsageSection usage={usage} />
+      {selectedRepair && repairTarget && (
+        <RepairDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setSelectedRepair(null)
+          }}
+          target={repairTarget}
+          title={`Repair ${selectedRepair.incident.title}`}
+          onApplied={() => { void overview.refresh() }}
+        />
+      )}
+    </>
+  )
+}
 
-      <SearchSection refreshNonce={refreshNonce} />
+/** Four focused Health views with URL-backed navigation and on-demand checks. */
+export function HealthPage() {
+  const [tabParam, setTabParam] = useQueryState('tab', 'overview')
+  const activeTab: HealthTab = isHealthTab(tabParam) ? tabParam : 'overview'
+  const overviewRunChecksRef = useRef<RunChecks | null>(null)
+  const checksInFlightRef = useRef<Promise<void> | null>(null)
+  const [runningChecks, setRunningChecks] = useState(false)
+  const [announcement, setAnnouncement] = useState('')
 
-      <PluginsSection refreshNonce={refreshNonce} />
+  useEffect(() => {
+    if (!isHealthTab(tabParam)) setTabParam('overview')
+  }, [setTabParam, tabParam])
 
-      <DiagnosticsSection result={summary} />
+  const registerOverviewRunChecks = useCallback((runChecks: RunChecks | null) => {
+    overviewRunChecksRef.current = runChecks
+  }, [])
 
-      <ServerFooter result={summary} />
+  const runChecks = useCallback((): Promise<void> => {
+    if (checksInFlightRef.current) return checksInFlightRef.current
+
+    setRunningChecks(true)
+    setAnnouncement('Running health checks.')
+
+    const request = (async () => {
+      try {
+        if (overviewRunChecksRef.current) {
+          const report = await overviewRunChecksRef.current()
+          if (!report) throw new Error('Health checks did not return a report')
+        } else {
+          const response = await fetch('/api/plugins/health/doctor?fresh=true')
+          if (!response.ok) throw new Error(`Health checks failed (${response.status})`)
+          await response.json()
+        }
+        setAnnouncement('Health checks completed.')
+      } catch {
+        setAnnouncement('Health checks could not be completed. Existing evidence remains visible.')
+      } finally {
+        setRunningChecks(false)
+        checksInFlightRef.current = null
+      }
+    })()
+
+    checksInFlightRef.current = request
+    return request
+  }, [])
+
+  return (
+    <div
+      className="health-page @container/health min-w-0 space-y-5 p-4 sm:space-y-6 sm:p-6"
+      data-testid="health-page"
+    >
+      <PluginHeader
+        title="Health"
+        subtitle="Act on current issues, compare agents, review activity, and inspect system evidence."
+        meta={announcement ? (
+          <span
+            className={runningChecks
+              ? 'text-xs font-medium text-muted-foreground'
+              : announcement === 'Health checks completed.'
+                ? 'text-xs font-medium text-success'
+                : 'text-xs font-medium text-destructive'}
+            data-testid="health-action-visible-status"
+            aria-hidden="true"
+          >
+            {announcement}
+          </span>
+        ) : undefined}
+        actions={(
+          <Button type="button" onClick={() => { void runChecks() }} disabled={runningChecks}>
+            <RefreshCw
+              className={runningChecks ? 'animate-spin motion-reduce:animate-none' : undefined}
+              aria-hidden="true"
+            />
+            {runningChecks ? 'Running checks…' : 'Run checks'}
+          </Button>
+        )}
+      />
+
+      <p
+        className="sr-only"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        data-testid="health-action-status"
+      >
+        {announcement}
+      </p>
+
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => {
+          if (isHealthTab(String(value))) setTabParam(String(value))
+        }}
+      >
+        <div className="min-w-0 overflow-x-auto overflow-y-hidden border-b border-border/70">
+          <TabsList
+            variant="line"
+            activateOnFocus
+            aria-label="Health sections"
+            className="min-w-max justify-start px-1"
+          >
+            {HEALTH_TABS.map((tab) => (
+              <TabsTrigger key={tab.value} value={tab.value} className="min-w-24 px-3 py-2">
+                {tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
+
+        <TabsContent value="overview" className="min-w-0 pt-1">
+          {activeTab === 'overview' && (
+            <OverviewPanel
+              onRunChecksReady={registerOverviewRunChecks}
+              onRunChecks={runChecks}
+            />
+          )}
+        </TabsContent>
+        <TabsContent value="agents" className="min-w-0 pt-1">
+          {activeTab === 'agents' && <AgentsTab />}
+        </TabsContent>
+        <TabsContent value="activity" className="min-w-0 pt-1">
+          {activeTab === 'activity' && <ActivityTab />}
+        </TabsContent>
+        <TabsContent value="system" className="min-w-0 pt-1">
+          {activeTab === 'system' && <SystemTab />}
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

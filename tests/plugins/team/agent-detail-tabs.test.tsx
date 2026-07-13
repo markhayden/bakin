@@ -79,6 +79,7 @@ mock.module('@/components/markdown-content', () => ({ MarkdownContent: () => <di
 mock.module('@/components/model-select', () => ({ ModelSelect: () => <div /> }))
 
 import { AgentDetail } from '../../../plugins/team/components/agent-detail'
+import { HEALTHY_TEAM_HEALTH_REPORT } from './health-report-fixture'
 
 const originalFetch = global.fetch
 
@@ -89,6 +90,9 @@ beforeEach(() => {
   // Minimal profile payload so the component falls out of its loading shell.
   global.fetch = mock((url: RequestInfo | URL) => {
     const u = String(url)
+    if (u === '/api/plugins/health/doctor') {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(HEALTHY_TEAM_HEALTH_REPORT) } as Response)
+    }
     if (u.includes('/api/plugins/team/') && !u.includes('/avatar')) {
       return Promise.resolve({
         ok: true,

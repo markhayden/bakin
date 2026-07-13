@@ -19,7 +19,6 @@ import { createMemorySurface } from './memory'
 import { createMessagingSurface } from './messaging'
 import { capabilitiesForModel, createModelsSurface, resetModelRegistry } from './models'
 import { readRegistry } from './registry'
-import { createHealthChecks } from './health-checks'
 import { createImagesSurface } from './images'
 import { codexImageAuth } from './codex-images'
 import { resolveProviderApiKeySource } from '@bakin/core/media'
@@ -28,10 +27,6 @@ import { createSkillsSurface } from './skills'
 
 export interface PiRuntimeAdapterOptions {
   settings?: Record<string, unknown>
-}
-
-function notImplemented(member: string): never {
-  throw new Error(`adapter-pi: ${member} is not implemented yet (build in progress)`)
 }
 
 export class PiRuntimeAdapter implements AgentRuntimeAdapter {
@@ -62,7 +57,8 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
    * signal for an in-process runtime — the old `initOpts !== null` was
    * vacuously true after boot and made the health plugin's runtime check
    * meaningless on Pi. Resolves false, never throws (unreadable auth.json
-   * reads as no credentials). Deep probes stay in getHealthChecks().
+   * reads as no credentials). Deeper probes are registered separately with
+   * the canonical Health registry at application composition.
    */
   async ping(): Promise<boolean> {
     if (this.initOpts === null) return false
@@ -160,10 +156,6 @@ export class PiRuntimeAdapter implements AgentRuntimeAdapter {
     }
     const main = agents.find((a) => a.id === MAIN_AGENT_ID) ?? agents[0]
     return capabilitiesForModel(main?.model)
-  }
-
-  getHealthChecks(): ReturnType<AgentRuntimeAdapter['getHealthChecks']> {
-    return createHealthChecks()
   }
 
   agents: AgentRuntimeAdapter['agents'] = createAgentsSurface()

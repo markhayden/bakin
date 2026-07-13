@@ -143,6 +143,7 @@ export async function dispatchSingleTask(
         log.info('Single-task dispatch (workflow)', { id: taskId, title: task.title, source })
         recordUsage({
           kind: 'agent',
+          activityClass: 'user',
           name: 'dispatch',
           agent: wfAgent,
           durationMs: Date.now() - wfStart,
@@ -153,6 +154,7 @@ export async function dispatchSingleTask(
         log.error(`dispatchSingleTask: workflow dispatch failed for "${task.title}"`, err)
         recordUsage({
           kind: 'agent',
+          activityClass: 'user',
           name: 'dispatch',
           agent: wfAgent,
           durationMs: Date.now() - wfStart,
@@ -238,6 +240,7 @@ export async function dispatchSingleTask(
       onSettled: (outcome, err) => {
         recordUsage({
           kind: 'agent',
+          activityClass: 'user',
           name: 'dispatch',
           agent: targetAgent,
           durationMs: Date.now() - dispatchStart,

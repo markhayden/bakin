@@ -26,8 +26,9 @@
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
-import { healthOk, healthWarn } from '@makinbakin/sdk/utils'
-import type { HealthCheckResult, HealthRepairHandler } from '../../../../packages/core/src/plugin-types'
+import { healthError, healthHealthy, healthNotApplicable, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
+import type { HealthCheckRunInput, HealthRepairActionDefinition, HealthRepairPlanItem } from '@makinbakin/sdk'
+import { repairTargetSelection } from './repair-support'
 
 /** Sustained CPU (fraction of one core) that earns a busy warning. */
 const BUSY_UTILIZATION = 0.9
@@ -103,27 +104,38 @@ export async function resetEngineWatchStateForTests(): Promise<void> {
 
 // ── Checks ─────────────────────────────────────────────────────────────────
 
-export async function checkSearchCanary(): Promise<HealthCheckResult[]> {
+export async function checkSearchCanary(): Promise<HealthCheckRunInput> {
   const { getSettings } = await import('../../../../src/core/settings')
   if (!getSettings().search.settings.enabled) {
     await saveStreaks({ darkStreak: 0 })
-    return []
+    return healthNotApplicable('Search is disabled; a production query canary is not applicable.')
   }
 
   const { getAppServices } = await import('../../../../src/core/app-services')
   const search = getAppServices().search
-  if (!await search.available()) {
-    // The base search check owns "engine down" — and a down engine breaks
-    // the observation chain, so the streak must not survive the gap.
+  try {
+    if (!await search.available()) {
+      // The base search check owns "engine down" — and a down engine breaks
+      // the observation chain, so the streak must not survive the gap.
+      await saveStreaks({ darkStreak: 0 })
+      return healthNotApplicable('The Search engine is unavailable; the main Search check owns engine availability.')
+    }
+  } catch (err) {
     await saveStreaks({ darkStreak: 0 })
-    return []
+    return healthObserved([canaryUnknown(err)])
   }
 
   const { crossTableSearch } = await import('../../../../src/core/search-registry')
-  const response = await crossTableSearch('doctor canary probe', { limit: 1 })
+  let response: Awaited<ReturnType<typeof crossTableSearch>>
+  try {
+    response = await crossTableSearch('doctor canary probe', { limit: 1 })
+  } catch (err) {
+    await saveStreaks({ darkStreak: 0 })
+    return healthObserved([canaryUnknown(err)])
+  }
   if (response.meta.source === 'unavailable') {
     await saveStreaks({ darkStreak: 0 })
-    return [] // raced an outage — base check owns it
+    return healthNotApplicable('The canary raced an engine outage; the main Search check owns engine availability.')
   }
 
   const tables = response.meta.tables ?? []
@@ -132,41 +144,101 @@ export async function checkSearchCanary(): Promise<HealthCheckResult[]> {
   const { darkStreak } = await saveStreaks({ darkStreak: verdict === 'dark' ? prior.darkStreak + 1 : 0 })
 
   if (verdict === 'dark' && darkStreak >= 2) {
-    return [{
-      check: 'search-canary',
-      status: 'error',
-      message: `Search is DARK: a real query got zero contribution from all ${tables.length} tables (every source omitted under the query budget) on ${darkStreak} consecutive doctor runs — the engine answers health probes but cannot serve queries. Repair restarts the engine service; the write journal is durable, nothing is lost.`,
-      autoFixable: true,
-    }]
+    return healthObserved([healthError({
+      key: 'queries.canary',
+      summary: 'Search is not serving real queries.',
+      detail: `Every one of ${tables.length} tables was omitted under the query budget on ${darkStreak} consecutive Health runs, even though the engine answers health probes.`,
+      evidence: { verdict, tableCount: tables.length, darkStreak },
+      incident: {
+        key: 'search-dark',
+        title: 'Search is dark despite passing engine probes',
+        impact: 'Production searches return no indexed contribution from any table.',
+        disposition: 'action_required',
+        resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
+        resolution: {
+          key: 'restart-engine',
+          type: 'repair',
+          label: 'Restart and verify the Search engine',
+          actionId: 'search-canary-restart',
+        },
+      },
+    })])
   }
   if (verdict === 'dark') {
-    return [healthWarn('search-canary', `Canary query: every table omitted under the query budget — engine busy or wedged; escalates to an error (with restart repair) if the next doctor run agrees`)]
+    return healthObserved([healthWarning({
+      key: 'queries.canary',
+      summary: 'Canary query received no contribution from any table.',
+      detail: 'The engine may be busy or wedged; a second consecutive dark result becomes actionable.',
+      evidence: { verdict, tableCount: tables.length, darkStreak },
+      incident: {
+        key: 'search-dark-first-sample',
+        title: 'Search canary needs another sample',
+        impact: 'Real queries may be returning no indexed results under the current engine load.',
+        disposition: 'watch',
+        resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
+        resolution: { key: 'rerun', type: 'rerun', label: 'Run the canary again' },
+      },
+    })])
   }
   if (verdict === 'partial') {
     const omitted = tables.filter((t) => t.budget === 'omitted').length
     const degraded = tables.filter((t) => t.budget === 'degraded').length
-    return [healthWarn('search-canary', `Canary query degraded: ${omitted} of ${tables.length} table(s) omitted, ${degraded} keyword-only (semantic lane dropped) — honest degrade under load; investigate with \`bakin search:stats\` if it persists`)]
+    return healthObserved([healthWarning({
+      key: 'queries.canary',
+      summary: 'Canary query completed with degraded coverage.',
+      detail: `${omitted} of ${tables.length} tables were omitted and ${degraded} used keyword-only search.`,
+      evidence: { verdict, tableCount: tables.length, omitted, degraded, tookMs: response.meta.took_ms },
+      incident: {
+        key: 'query-degraded',
+        title: 'Search query coverage is degraded',
+        impact: 'Search remains available, but results may omit tables or semantic matches under load.',
+        disposition: 'watch',
+        resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
+        resolution: {
+          key: 'inspect-stats',
+          type: 'instructions',
+          label: 'Inspect Search load',
+          steps: ['Inspect Search statistics and backlog if degraded coverage persists.'],
+          command: 'bakin search:stats',
+        },
+      },
+    })])
   }
-  return [healthOk('search-canary', `Canary query answered from all ${tables.length} tables in ${response.meta.took_ms}ms`)]
+  return healthObserved([healthHealthy({
+    key: 'queries.canary',
+    summary: `Canary query answered from all ${tables.length} Search table${tables.length === 1 ? '' : 's'}.`,
+    detail: `${response.meta.took_ms} ms.`,
+    evidence: { verdict, tableCount: tables.length, tookMs: response.meta.took_ms },
+  })])
 }
 
-export async function checkSearchEngineBurn(): Promise<HealthCheckResult[]> {
+export async function checkSearchEngineBurn(): Promise<HealthCheckRunInput> {
   const { getSettings } = await import('../../../../src/core/settings')
   if (!getSettings().search.settings.enabled) {
     await saveStreaks({ wedgeStreak: 0, busyStreak: 0 })
-    return []
+    return healthNotApplicable('Search is disabled; engine burn monitoring is not applicable.')
   }
 
   const { getAppServices } = await import('../../../../src/core/app-services')
   const search = getAppServices().search
-  if (!search.engineStatus) return [] // adapter can't measure — feature-detect, never assume
-  const status = await search.engineStatus()
-  if (status === null) return [] // current mode can't measure (e.g. externally managed guest)
+  if (!search.engineStatus) {
+    return healthNotApplicable('The active Search adapter does not expose engine process telemetry.')
+  }
+  let status: Awaited<ReturnType<NonNullable<typeof search.engineStatus>>>
+  try {
+    status = await search.engineStatus()
+  } catch (err) {
+    await saveStreaks({ wedgeStreak: 0, busyStreak: 0 })
+    return healthObserved([engineBurnUnknown(err)])
+  }
+  if (status === null) {
+    return healthNotApplicable('The current Search supervision mode cannot measure engine process telemetry.')
+  }
   if (!status.running) {
     // Down engine = broken observation chain; a respawn's legitimate
     // catch-up must not inherit the pre-crash streak (review finding).
     await saveStreaks({ wedgeStreak: 0, busyStreak: 0 })
-    return [] // the base search check owns "engine down"
+    return healthNotApplicable('The Search engine is down; the main Search check owns engine availability.')
   }
 
   const prior = await loadStreaks()
@@ -176,22 +248,80 @@ export async function checkSearchEngineBurn(): Promise<HealthCheckResult[]> {
   })
 
   if (wedgeStreak >= 2) {
-    return [{
-      check: 'search-engine-burn',
-      status: 'error',
-      message: `Search engine is WEDGED: zero-progress signature(s) [${status.wedgeSignals.join(', ')}] recurring in the engine log across ${wedgeStreak} consecutive doctor runs (pid ${status.pid}, ~${Math.round((status.cpuUtilization ?? 0) * 100)}% CPU). This burned a dev box for 17h once — repair restarts the engine service.`,
-      autoFixable: true,
-    }]
+    return healthObserved([healthError({
+      key: 'engine.burn',
+      summary: 'Search engine is wedged.',
+      detail: `Zero-progress signatures recurred across ${wedgeStreak} consecutive Health runs while process ${status.pid} used about ${Math.round((status.cpuUtilization ?? 0) * 100)}% of one CPU core.`,
+      evidence: {
+        wedgeSignals: status.wedgeSignals,
+        wedgeStreak,
+        busyStreak,
+        pid: status.pid ?? null,
+        cpuUtilization: status.cpuUtilization,
+      },
+      incident: {
+        key: 'engine-wedged',
+        title: 'Search engine has a zero-progress wedge',
+        impact: 'The engine can consume sustained CPU while indexed queries remain starved.',
+        disposition: 'action_required',
+        resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
+        resolution: {
+          key: 'restart-engine',
+          type: 'repair',
+          label: 'Restart and verify the Search engine',
+          actionId: 'search-engine-burn-restart',
+        },
+      },
+    })])
   }
   if (status.wedgeSignals.length > 0) {
-    return [healthWarn('search-engine-burn', `Engine wedge signature(s) [${status.wedgeSignals.join(', ')}] observed — may be legitimate post-crash catch-up; escalates to an error (with restart repair) if the next doctor run agrees`)]
+    return healthObserved([healthWarning({
+      key: 'engine.burn',
+      summary: 'Search engine emitted a possible wedge signature.',
+      detail: `${status.wedgeSignals.join(', ')}. A second consecutive sample becomes actionable; this sample may be legitimate post-crash catch-up.`,
+      evidence: { wedgeSignals: status.wedgeSignals, wedgeStreak, busyStreak, pid: status.pid ?? null, cpuUtilization: status.cpuUtilization },
+      incident: {
+        key: 'wedge-first-sample',
+        title: 'Search engine wedge needs another sample',
+        impact: 'A persistent zero-progress signature can consume CPU while Search remains unresponsive.',
+        disposition: 'watch',
+        resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
+        resolution: { key: 'rerun', type: 'rerun', label: 'Measure engine burn again' },
+      },
+    })])
   }
   if (busyStreak >= 2) {
-    return [healthWarn('search-engine-burn', `Engine sustained ~${Math.round((status.cpuUtilization ?? 0) * 100)}% CPU across ${busyStreak} consecutive doctor runs with no wedge signature — normal during backfills/enrichment; check \`bakin search:stats\` backlog if search feels slow`)]
+    return healthObserved([healthWarning({
+      key: 'engine.burn',
+      summary: 'Search engine CPU use is sustained.',
+      detail: `About ${Math.round((status.cpuUtilization ?? 0) * 100)}% of one core across ${busyStreak} consecutive Health runs, with no wedge signature. This can be normal during backfills and enrichment.`,
+      evidence: { wedgeSignals: [], wedgeStreak, busyStreak, pid: status.pid ?? null, cpuUtilization: status.cpuUtilization },
+      incident: {
+        key: 'sustained-cpu',
+        title: 'Search engine load needs watching',
+        impact: 'Sustained engine load can slow queries, though active index work may explain it.',
+        disposition: 'watch',
+        resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
+        resolution: {
+          key: 'inspect-stats',
+          type: 'instructions',
+          label: 'Inspect Search workload',
+          steps: ['Inspect Search statistics and backlog to confirm active work explains the load.'],
+          command: 'bakin search:stats',
+        },
+      },
+    })])
   }
-  return [healthOk('search-engine-burn', status.cpuUtilization === null
-    ? 'Engine running (first CPU sample — rate available next run)'
-    : `Engine healthy (~${Math.round(status.cpuUtilization * 100)}% CPU, no wedge signatures)`)]
+  return healthObserved([healthHealthy({
+    key: 'engine.burn',
+    summary: status.cpuUtilization === null
+      ? 'Search engine is running; CPU rate will be available on the next sample.'
+      : 'Search engine process telemetry is healthy.',
+    detail: status.cpuUtilization === null
+      ? undefined
+      : `About ${Math.round(status.cpuUtilization * 100)}% of one CPU core with no wedge signatures.`,
+    evidence: { wedgeSignals: [], wedgeStreak, busyStreak, pid: status.pid ?? null, cpuUtilization: status.cpuUtilization },
+  })])
 }
 
 // ── Repair ─────────────────────────────────────────────────────────────────
@@ -203,18 +333,22 @@ export async function checkSearchEngineBurn(): Promise<HealthCheckResult[]> {
  * stays dark. Non-destructive — the outbox is durable and queries degrade
  * honestly during the bounce (D11).
  */
-function engineRestartRepair(checkId: 'search-canary' | 'search-engine-burn', title: string): HealthRepairHandler {
+function engineRestartRepair(
+  actionId: 'search-canary-restart' | 'search-engine-burn-restart',
+  checkId: 'search-canary' | 'search-engine-burn',
+  title: string,
+): HealthRepairActionDefinition {
   return {
-    async plan(rows) {
-      const matching = rows.filter((row) => row.check === checkId && row.autoFixable)
-      if (matching.length === 0) return []
+    id: actionId,
+    name: title,
+    async plan(target) {
       return [{
-        id: `health.repair-${checkId}`,
-        checkId,
+        id: `restart-engine-${checkId}`,
+        actionId,
         title,
-        reason: matching.map((row) => row.message).join('; '),
+        reason: 'The engine is running but production query or process telemetry shows a persistent wedge.',
         safety: 'safe',
-        requiresConfirmation: true,
+        ...repairTargetSelection(target),
         changes: [{
           kind: 'other',
           target: 'search engine service',
@@ -227,13 +361,7 @@ function engineRestartRepair(checkId: 'search-canary' | 'search-engine-burn', ti
       if (items.length === 0) return []
       const { getAppServices } = await import('../../../../src/core/app-services')
       const search = getAppServices().search
-      const done = (status: 'applied' | 'failed', message: string) => [{
-        id: `health.repair-${checkId}`,
-        checkId,
-        status,
-        message,
-        changes: [],
-      }]
+      const done = (status: 'applied' | 'failed', message: string) => repairResults(items, status, message, `health.${checkId}`)
       if (Date.now() - lastEngineRestartAt < RESTART_DEBOUNCE_MS) {
         return done('applied', 'Engine was already restarted moments ago by the companion check\'s repair — skipped a duplicate bounce; the next doctor run re-verifies')
       }
@@ -271,10 +399,58 @@ function engineRestartRepair(checkId: 'search-canary' | 'search-engine-burn', ti
   }
 }
 
-export function searchCanaryRepair(): HealthRepairHandler {
-  return engineRestartRepair('search-canary', 'Restart the search engine service (search is dark)')
+export function searchCanaryRepair(): HealthRepairActionDefinition {
+  return engineRestartRepair('search-canary-restart', 'search-canary', 'Restart the Search engine (queries are dark)')
 }
 
-export function searchEngineBurnRepair(): HealthRepairHandler {
-  return engineRestartRepair('search-engine-burn', 'Restart the search engine service (zero-progress wedge)')
+export function searchEngineBurnRepair(): HealthRepairActionDefinition {
+  return engineRestartRepair('search-engine-burn-restart', 'search-engine-burn', 'Restart the Search engine (zero-progress wedge)')
+}
+
+function canaryUnknown(error: unknown) {
+  return healthUnknown({
+    key: 'queries.canary',
+    summary: 'Production Search query behavior could not be verified.',
+    detail: error instanceof Error ? error.message : String(error),
+    incident: {
+      key: 'canary-unknown',
+      title: 'Search query canary is unknown',
+      impact: 'Health cannot confirm that the engine serves real indexed queries.',
+      disposition: 'watch',
+      resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
+      resolution: { key: 'rerun', type: 'rerun', label: 'Rerun the canary' },
+    },
+  })
+}
+
+function engineBurnUnknown(error: unknown) {
+  return healthUnknown({
+    key: 'engine.burn',
+    summary: 'Search engine process telemetry could not be verified.',
+    detail: error instanceof Error ? error.message : String(error),
+    incident: {
+      key: 'engine-burn-unknown',
+      title: 'Search engine burn status is unknown',
+      impact: 'Health cannot detect sustained CPU use or known zero-progress signatures.',
+      disposition: 'watch',
+      resources: [{ kind: 'service', id: 'search-engine', label: 'Search engine' }],
+      resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
+    },
+  })
+}
+
+function repairResults(
+  items: HealthRepairPlanItem[],
+  status: 'applied' | 'failed',
+  message: string,
+  affectedCheckId: string,
+) {
+  return items.map((item) => ({
+    itemId: item.id,
+    actionId: item.actionId,
+    status,
+    message,
+    affectedCheckIds: [affectedCheckId],
+    changes: item.changes,
+  }))
 }

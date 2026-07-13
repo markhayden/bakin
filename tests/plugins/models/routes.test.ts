@@ -222,6 +222,7 @@ describe('Models Plugin Activation', () => {
       'PUT /budget',
       'PUT /routing',
     ])
+    expect(activated.routes.find((route) => route.path === '/budget/status')?.activityClass).toBe('routine')
   })
 
   it('registers 2 exec tools', () => {

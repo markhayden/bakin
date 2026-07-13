@@ -6,6 +6,10 @@
  * See `.claude/knowledge/usage-recording.md` for the design motivation.
  */
 
+import type { ActivityClass } from '@makinbakin/sdk/types'
+
+export type { ActivityClass } from '@makinbakin/sdk/types'
+
 // Why: shared state on globalThis so repeat evaluations (server entry vs.
 // dynamically loaded plugin bundles) don't duplicate the store. Same
 // pattern as src/core/sse.ts.
@@ -16,6 +20,8 @@ export type UsageKind = 'mcp' | 'rest' | 'agent'
 export interface UsageEntry {
   ts: string
   kind: UsageKind
+  /** Assigned by the producer; never inferred from `name`. */
+  activityClass: ActivityClass
   name: string
   agent: string | null
   durationMs: number | null
@@ -35,6 +41,8 @@ export interface UsageQuery {
   kind?: UsageKind
   window: WindowKey
   agent?: string
+  /** Include successful cadence-only activity. Failed routine work is always included. */
+  includeRoutine?: boolean
 }
 
 export interface TopByNameRow {
@@ -56,6 +64,14 @@ export interface UsageFeed {
   topByName: TopByNameRow[]
   recent: UsageEntry[]
   byAgent: ByAgentRow[]
+  timeBuckets: UsageTimeBucket[]
+}
+
+export interface UsageTimeBucket {
+  start: string
+  count: number
+  failureCount: number
+  failureRate: number
 }
 
 export interface ErrorCount {
@@ -75,6 +91,12 @@ export const WINDOW_MS: Record<WindowKey, number> = {
   '5m': 300_000,
   '1h': 3_600_000,
   '24h': 86_400_000,
+}
+
+const TIME_BUCKET_COUNTS: Record<WindowKey, number> = {
+  '5m': 10,
+  '1h': 12,
+  '24h': 24,
 }
 
 const MAX_ENTRIES = 10_000
@@ -98,6 +120,7 @@ export function recordUsage(entry: Omit<UsageEntry, 'ts'> & { ts?: string }): vo
   const full: UsageEntry = {
     ts: entry.ts ?? new Date().toISOString(),
     kind: entry.kind,
+    activityClass: entry.activityClass,
     name: entry.name,
     agent: entry.agent,
     durationMs: entry.durationMs,
@@ -115,18 +138,50 @@ export function recordUsage(entry: Omit<UsageEntry, 'ts'> & { ts?: string }): vo
   }
 }
 
-function filterEntries(query: UsageQuery): UsageEntry[] {
+function filterEntries(query: UsageQuery, now = Date.now()): UsageEntry[] {
   const state = getState()
-  const cutoff = Date.now() - WINDOW_MS[query.window]
+  const cutoff = now - WINDOW_MS[query.window]
   const out: UsageEntry[] = []
   for (const e of state.entries) {
     const ts = Date.parse(e.ts)
-    if (isNaN(ts) || ts < cutoff) continue
+    if (isNaN(ts) || ts < cutoff || ts > now) continue
     if (query.kind && e.kind !== query.kind) continue
     if (query.agent && e.agent !== query.agent) continue
+    if (!query.includeRoutine && e.activityClass === 'routine' && e.status === 'ok') continue
     out.push(e)
   }
   return out
+}
+
+function buildTimeBuckets(
+  entries: UsageEntry[],
+  window: WindowKey,
+  now: number,
+): UsageTimeBucket[] {
+  const count = TIME_BUCKET_COUNTS[window]
+  const bucketMs = WINDOW_MS[window] / count
+  const windowStart = now - WINDOW_MS[window]
+  const buckets = Array.from({ length: count }, (_, index): UsageTimeBucket => ({
+    start: new Date(windowStart + index * bucketMs).toISOString(),
+    count: 0,
+    failureCount: 0,
+    failureRate: 0,
+  }))
+
+  for (const entry of entries) {
+    const timestamp = Date.parse(entry.ts)
+    if (!Number.isFinite(timestamp) || timestamp < windowStart || timestamp > now) continue
+    const index = Math.min(count - 1, Math.floor((timestamp - windowStart) / bucketMs))
+    const bucket = buckets[index]
+    if (!bucket) continue
+    bucket.count++
+    if (entry.status === 'error') bucket.failureCount++
+  }
+
+  for (const bucket of buckets) {
+    bucket.failureRate = bucket.count > 0 ? bucket.failureCount / bucket.count : 0
+  }
+  return buckets
 }
 
 function median(values: number[]): number | null {
@@ -139,7 +194,8 @@ function median(values: number[]): number | null {
 }
 
 export function getUsageFeed(query: UsageQuery): UsageFeed {
-  const entries = filterEntries(query)
+  const now = Date.now()
+  const entries = filterEntries(query, now)
   const totalCount = entries.length
   const errorCount = entries.reduce((n, e) => (e.status === 'error' ? n + 1 : n), 0)
 
@@ -187,6 +243,7 @@ export function getUsageFeed(query: UsageQuery): UsageFeed {
     topByName,
     recent,
     byAgent,
+    timeBuckets: buildTimeBuckets(entries, query.window, now),
   }
 }
 
@@ -200,16 +257,23 @@ export function getUsageStats(query: UsageQuery): { total: number; errors: numbe
 // Watchdog-facing variant: takes raw windowMs from settings rather than a
 // named WindowKey, so alert thresholds stay configurable without having to
 // pin to 5m/1h/24h buckets.
-export function getStatsByMs(query: { kind?: UsageKind; windowMs: number; agent?: string }): { total: number; errors: number } {
+export function getStatsByMs(query: {
+  kind?: UsageKind
+  windowMs: number
+  agent?: string
+  includeRoutine?: boolean
+}): { total: number; errors: number } {
   const state = getState()
-  const cutoff = Date.now() - query.windowMs
+  const now = Date.now()
+  const cutoff = now - query.windowMs
   let total = 0
   let errors = 0
   for (const e of state.entries) {
     const ts = Date.parse(e.ts)
-    if (isNaN(ts) || ts < cutoff) continue
+    if (isNaN(ts) || ts < cutoff || ts > now) continue
     if (query.kind && e.kind !== query.kind) continue
     if (query.agent && e.agent !== query.agent) continue
+    if (!query.includeRoutine && e.activityClass === 'routine' && e.status === 'ok') continue
     total++
     if (e.status === 'error') errors++
   }
@@ -218,13 +282,14 @@ export function getStatsByMs(query: { kind?: UsageKind; windowMs: number; agent?
 
 export function getErrorCount(windowMs: number): ErrorCount {
   const state = getState()
-  const cutoff = Date.now() - windowMs
+  const now = Date.now()
+  const cutoff = now - windowMs
   const byKind = { mcp: 0, rest: 0, agent: 0 }
   let total = 0
   for (const e of state.entries) {
     if (e.status !== 'error') continue
     const ts = Date.parse(e.ts)
-    if (isNaN(ts) || ts < cutoff) continue
+    if (isNaN(ts) || ts < cutoff || ts > now) continue
     total++
     byKind[e.kind]++
   }

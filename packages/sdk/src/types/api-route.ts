@@ -31,6 +31,9 @@ export type HttpStatus =
   | 400 | 401 | 403 | 404 | 409 | 410 | 415 | 422 | 429
   | 500 | 502 | 503 | 504
 
+/** Producer-assigned usage classification; consumers must never infer this from route names. */
+export type ActivityClass = 'user' | 'system' | 'routine'
+
 // ---------------------------------------------------------------------------
 // Body / response specs
 // ---------------------------------------------------------------------------
@@ -142,6 +145,8 @@ export interface APIRoute<
   operationId?: string
   tags?: string[]
   source?: SourceLocation
+  /** Override the REST request boundary's explicit foreground classification. */
+  activityClass?: ActivityClass
 
   handler: (
     req: Request,

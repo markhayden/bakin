@@ -352,7 +352,7 @@ export async function resolveDispatchRouting(task: DispatchTask, isRecovery: boo
  * path — a metering failure must not fail a successful turn.
  */
 function recordTurnCost(runId: string, taskId: string, agent: string, result: MessageResult, resolvedModel?: string): Promise<void> {
-  return meterAgentTurn({ runId, taskId, agent, result, resolvedModel })
+  return meterAgentTurn({ runId, taskId, agent, activityClass: 'user', result, resolvedModel })
 }
 
 /**

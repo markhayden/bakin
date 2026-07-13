@@ -15,6 +15,7 @@
  */
 import { definePlugin, defineRoute } from '@makinbakin/sdk'
 import type { EventBus, PluginContext, SearchAPI, StorageAdapter } from '@makinbakin/sdk/types'
+import { healthError, healthHealthy, healthObserved, healthWarning } from '@makinbakin/sdk/utils'
 import { z } from 'zod'
 import {
   addBookmark,
@@ -226,27 +227,51 @@ const plugin = definePlugin({
     ctx.registerHealthCheck({
       id: 'store-integrity',
       name: 'Bookmark store integrity',
+      description: 'Checks that bookmark storage is readable and has capacity for new bookmarks.',
+      group: { key: 'reference-bookmarks', label: 'Reference Bookmarks' },
+      maxAgeMs: 5 * 60_000,
       run: async () => {
         const { maxBookmarks } = settingsOf(ctx)
         try {
           const count = loadBookmarks(ctx.storage).length
           const nearLimit = count >= maxBookmarks * 0.9
-          return [{
-            check: 'store-integrity',
-            status: nearLimit ? 'warn' as const : 'ok' as const,
-            message: nearLimit
-              ? `${count}/${maxBookmarks} bookmarks — approaching the configured limit`
-              : `${count} bookmarks stored`,
-            autoFixable: false,
-            data: { count, maxBookmarks },
-          }]
+          return healthObserved([nearLimit
+            ? healthWarning({
+                key: 'capacity',
+                summary: `${count}/${maxBookmarks} bookmarks — approaching the configured limit.`,
+                evidence: { count, maxBookmarks },
+                incident: {
+                  key: 'capacity',
+                  title: 'Bookmark storage is approaching its limit',
+                  impact: 'New bookmarks will be rejected after the configured limit is reached.',
+                  disposition: 'advisory',
+                  resources: [{ kind: 'plugin', id: PLUGIN_ID, label: 'Reference Bookmarks' }],
+                  resolution: { key: 'review-bookmarks', type: 'navigate', label: 'Review bookmarks', href: '/reference-bookmarks' },
+                },
+              })
+            : healthHealthy({
+                key: 'capacity',
+                summary: `${count} bookmarks stored with capacity remaining.`,
+                evidence: { count, maxBookmarks },
+              })])
         } catch (err) {
-          return [{
-            check: 'store-integrity',
-            status: 'error' as const,
-            message: `bookmarks.json is unreadable: ${err instanceof Error ? err.message : String(err)}`,
-            autoFixable: false,
-          }]
+          return healthObserved([healthError({
+            key: 'readability',
+            summary: `bookmarks.json is unreadable: ${err instanceof Error ? err.message : String(err)}`,
+            incident: {
+              key: 'readability',
+              title: 'Bookmark storage is unreadable',
+              impact: 'Bookmarks cannot be listed, created, or removed until storage is restored.',
+              disposition: 'action_required',
+              resources: [{ kind: 'file', id: 'bookmarks.json', label: 'bookmarks.json' }],
+              resolution: {
+                key: 'restore-storage',
+                type: 'instructions',
+                label: 'Restore bookmark storage',
+                steps: ['Check the plugin storage directory permissions and repair or restore bookmarks.json, then rerun Health.'],
+              },
+            },
+          })])
         }
       },
     })

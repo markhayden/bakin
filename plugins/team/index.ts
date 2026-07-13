@@ -19,7 +19,15 @@ import { getLiveRun, LedgerUnavailableError } from '../../src/core/execution-led
 import { appendAudit } from '../../src/core/audit'
 import { retrieveAgentPackageLessons } from '../../src/core/agent-packages/lesson-retrieval'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
-import { agentSyncRepair, checkAgentRoster, checkPersonas, checkAgentSync, checkTeamRouting, personaRepair } from './lib/health-checks'
+import {
+  agentSyncMigrationRepair,
+  agentSyncRepair,
+  checkAgentRoster,
+  checkPersonas,
+  checkAgentSync,
+  checkTeamRouting,
+  personaRepair,
+} from './lib/health-checks'
 import {
   agentToMeta,
   listRuntimeAgentMetas,
@@ -726,26 +734,39 @@ const teamPlugin: BakinPlugin = definePlugin({
       list: () => ctx.runtime.agents.list(),
     }
 
+    ctx.registerHealthRepairAction(personaRepair(getContentDir(), runtimeAgentReader))
+    ctx.registerHealthRepairAction(agentSyncRepair())
+    ctx.registerHealthRepairAction(agentSyncMigrationRepair())
     ctx.registerHealthCheck({
       id: 'agent-roster',
       name: 'Runtime agent roster',
+      description: 'Checks that the runtime agent roster is readable and every agent has a unique stable id.',
+      group: { key: 'agents', label: 'Agents' },
+      maxAgeMs: 2 * 60_000,
       run: () => checkAgentRoster(runtimeAgentReader),
     })
     ctx.registerHealthCheck({
       id: 'personas',
       name: 'Persona files',
+      description: 'Checks that every runtime agent has a persona file.',
+      group: { key: 'agents', label: 'Agents' },
+      maxAgeMs: 5 * 60_000,
       run: () => checkPersonas(getContentDir(), runtimeAgentReader),
-      repair: personaRepair(getContentDir(), runtimeAgentReader),
     })
     ctx.registerHealthCheck({
       id: 'agent-sync',
       name: 'Agent sync (managed blocks + projections)',
+      description: 'Checks managed blocks, projections, role context, edit locks, and migration state.',
+      group: { key: 'agents', label: 'Agents' },
+      maxAgeMs: 2 * 60_000,
       run: () => checkAgentSync(),
-      repair: agentSyncRepair(),
     })
     ctx.registerHealthCheck({
       id: 'routing',
       name: 'Task routing readiness (#189)',
+      description: 'Checks that unresolved team-assigned tasks have credentials for their routing provider.',
+      group: { key: 'agents', label: 'Agents' },
+      maxAgeMs: 60_000,
       run: () => checkTeamRouting({
         routingProvider: ctx.getSettings<{ routingProvider?: string }>().routingProvider,
       }),

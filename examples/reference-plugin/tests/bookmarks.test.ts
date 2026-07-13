@@ -102,7 +102,10 @@ describe('reference-bookmarks', () => {
   it('health check reports the store state', async () => {
     const h = await ready
     const check = h.healthChecks.find((c) => c.id === 'store-integrity')!
-    const results = await check.run()
-    expect(results[0]).toMatchObject({ check: 'store-integrity', status: 'ok' })
+    const result = await check.run()
+    expect(result).toMatchObject({
+      outcome: 'observed',
+      observations: [{ key: 'capacity', status: 'healthy' }],
+    })
   })
 })

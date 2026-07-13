@@ -34,6 +34,8 @@ mock.module('../../../src/core/plugin-registry', hookRegistryMock)
 import { checkBudget } from '@bakin/health/lib/system-checks/budget'
 import { recordRunCost } from '../../../src/core/execution-ledger'
 import { closeDb } from '../../../packages/core/src/storage/db'
+import type { HealthCheckRunInput } from '@makinbakin/sdk'
+import { parseHealthCheckRunInput } from '../../../src/core/health-contract'
 
 beforeEach(() => {
   mkdirSync(testDir, { recursive: true })
@@ -50,39 +52,46 @@ function seedSpend(costUsdMicros: number): void {
   recordRunCost({ runId: `seed:${randomUUID()}`, taskId: 't', agent: 'pixel', model: 'm', inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsdMicros, occurredAt: Date.now() })
 }
 
+function observed(run: HealthCheckRunInput) {
+  const parsed = parseHealthCheckRunInput(run)
+  expect(parsed.outcome).toBe('observed')
+  if (parsed.outcome !== 'observed') throw new Error(parsed.reason)
+  return parsed.observations
+}
+
 describe('budget health check', () => {
   it('WARNS (standing nag) when no caps are configured — spend is uncapped', async () => {
-    const [r] = await checkBudget()
-    expect(r.status).toBe('warn')
-    expect(r.message).toContain('uncapped')
+    const [r] = observed(await checkBudget())
+    expect(r.status).toBe('warning')
+    expect(r.summary).toContain('uncapped')
   })
 
   it('is ok when spend is well under the cap', async () => {
     budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 100 }] }
     seedSpend(5_000_000) // $5 of $100
-    const [r] = await checkBudget()
-    expect(r.status).toBe('ok')
+    const [r] = observed(await checkBudget())
+    expect(r.status).toBe('healthy')
   })
 
   it('warns as spend approaches the cap (>= warnPct)', async () => {
     budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 10 }] }
     seedSpend(8_500_000) // $8.50 of $10 = 85%
-    const [r] = await checkBudget()
-    expect(r.status).toBe('warn')
+    const [r] = observed(await checkBudget())
+    expect(r.status).toBe('warning')
   })
 
   it('errors at/over the cap (dispatch blocked)', async () => {
     budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 10 }] }
     seedSpend(10_000_000)
-    const [r] = await checkBudget()
-    expect(r.status).toBe('error')
+    const rows = observed(await checkBudget())
+    expect(rows.some((row) => row.status === 'error' && row.key === 'spend')).toBe(true)
   })
 
   it('warns when runs were deferred even if utilization looks ok', async () => {
     budgetPolicy = { rules: [{ scope: 'global', lane: 'metered', dailyCap: 1000 }] }
     appendFileSync(join(testDir, 'audit.jsonl'), JSON.stringify({ ts: new Date().toISOString(), event: 'budget.deferred', agent: 'pixel', data: {} }) + '\n', 'utf-8')
-    const [r] = await checkBudget()
-    expect(r.status).toBe('warn')
+    const [r] = observed(await checkBudget())
+    expect(r.status).toBe('warning')
   })
 
   it('errors when the ledger is unreachable', async () => {
@@ -90,8 +99,8 @@ describe('budget health check', () => {
     closeDb()
     mkdirSync(join(testDir, 'blocked.db'), { recursive: true }) // a dir where the db file should be
     dbPath = join(testDir, 'blocked.db')
-    const [r] = await checkBudget()
-    expect(r.status).toBe('error')
+    const rows = observed(await checkBudget())
+    expect(rows.some((row) => row.status === 'error' && row.key === 'spend-ledger')).toBe(true)
   })
 
   it('is rule-aware: a breaching per-agent rule attributes the agent in data.agents (chips)', async () => {
@@ -102,9 +111,9 @@ describe('budget health check', () => {
       ],
     }
     seedSpend(3_000_000) // $3 by pixel: global fine, pixel's $2 cap breached
-    const [r] = await checkBudget()
+    const [r] = observed(await checkBudget())
     expect(r.status).toBe('error')
-    const data = r.data as { agents?: string[]; rules?: Array<Record<string, unknown>> }
+    const data = r.evidence as { agents?: string[]; rules?: Array<Record<string, unknown>> }
     expect(data.agents).toEqual(['pixel'])
     expect(data.rules?.some((x) => x.scope === 'agent' && x.scopeId === 'pixel' && x.action === 'defer')).toBe(true)
   })
@@ -115,8 +124,8 @@ describe('budget health check', () => {
     const { resetSettingsCache } = await import('../../../src/core/settings')
     resetSettingsCache()
     try {
-      const rows = await checkBudget()
-      expect(rows.some((r) => r.status === 'warn' && /PAUSED/.test(r.message))).toBe(true)
+      const rows = observed(await checkBudget())
+      expect(rows.some((r) => r.status === 'warning' && /paused/i.test(r.summary))).toBe(true)
     } finally {
       rmSync(join(testDir, 'settings.json'), { force: true })
       resetSettingsCache()

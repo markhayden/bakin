@@ -6,7 +6,7 @@
  * don't have). Both the page component and plugins/health/index.ts can now type
  * their route payloads against one set of contracts.
  */
-import type { HealthCheckResult } from '@makinbakin/sdk'
+import type { ActivityClass, HealthReport } from '@makinbakin/sdk'
 
 export interface McpSessionInfo {
   agent: string
@@ -15,9 +15,7 @@ export interface McpSessionInfo {
 }
 
 export interface DoctorData {
-  results: HealthCheckResult[]
-  summary: { total: number; errors: number; warnings: number }
-  cachedAt?: string
+  report: HealthReport
 }
 
 export interface ServerData {
@@ -76,6 +74,7 @@ export type UsageKind = 'mcp' | 'rest' | 'agent'
 export interface UsageEntry {
   ts: string
   kind: UsageKind
+  activityClass: ActivityClass
   name: string
   agent: string | null
   durationMs: number | null
@@ -102,10 +101,15 @@ export interface UsageFeedData {
   topByName: TopByNameRow[]
   byAgent: ByAgentRow[]
   recent: UsageEntry[]
+  timeBuckets: Array<{
+    start: string
+    count: number
+    failureCount: number
+    failureRate: number
+  }>
 }
 
 export interface HealthSummary {
-  doctor: DoctorData | null
   errors1h: ErrorsByKind | null
   activeSessions: McpSessionInfo[] | null
   upSince: string | null

@@ -1,28 +1,43 @@
-/**
- * Tasks-plugin-owned doctor checks.
- *
- * Migrated out of src/core/doctor.ts (#139 C2) — these three checks
- * operate on Bakin-owned task JSON files, so they belong with the plugin that
- * owns that data model.
- *
- * Registered in plugins/tasks/index.ts activate() via
- * ctx.registerHealthCheck. runDiagnostics() picks them up through the
- * plugin-check loop in src/core/doctor.ts's runPluginHealthChecks().
- */
+/** Canonical Health checks and repair actions owned by the Tasks plugin. */
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { selectRuntimeMainAgent, type AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
+import type {
+  HealthCheckRunInput,
+  HealthObservationInput,
+  HealthRepairActionDefinition,
+  HealthRepairChange,
+  HealthRepairPlanItem,
+  HealthRepairTarget,
+} from '@makinbakin/sdk'
+import {
+  healthError,
+  healthHealthy,
+  healthObserved,
+  healthUnknown,
+  healthWarning,
+} from '@makinbakin/sdk/utils'
 
-import type { HealthCheckResult, HealthRepairHandler } from '../../../packages/core/src/plugin-types'
-import { healthOk as ok, healthWarn as warn, healthError as error } from '@makinbakin/sdk/utils'
 import { maybeGetAppServices } from '../../../src/core/app-services'
 import { clearDependency, readTaskboard, reorderTasks } from '../../../src/core/task-store'
 import type { ColumnId, Task } from '../types'
 
-// ─── Result constructors (inlined; matches workflows precedent) ─────────────
-
-
 type RuntimeAgentReader = Pick<AgentRuntimeAdapter['agents'], 'list'>
+
+function repairTargetSelection(target: HealthRepairTarget): Pick<
+  HealthRepairPlanItem,
+  'incidentIds' | 'observationIds' | 'preconditions'
+> {
+  return {
+    incidentIds: target.type === 'incidents' ? [...target.ids] : [],
+    observationIds: target.type === 'observations' ? [...target.ids] : [],
+    preconditions: [],
+  }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
 
 async function resolveKnownAgentIds(agentReader?: RuntimeAgentReader): Promise<Set<string>> {
   const knownAgents = new Set<string>()
@@ -32,273 +47,421 @@ async function resolveKnownAgentIds(agentReader?: RuntimeAgentReader): Promise<S
     const mainAgent = selectRuntimeMainAgent(agents ?? [])
     if (mainAgent) knownAgents.add(mainAgent.id)
   } catch {
-    // Adapter health is reported separately; keep this check focused on tasks.
+    // Runtime availability has its own check; task consistency remains useful.
   }
   return knownAgents
 }
 
-// ─── Taskboard: Bakin JSON store reachability ──────────────────────────────
-
-/**
- * Verify the Bakin task JSON store is accessible and count Bakin-owned tasks.
- * Read-only — never writes.
- */
-export function checkTaskboard(): HealthCheckResult[] {
+/** Verify that the Bakin task JSON store is readable. */
+export function checkTaskboard(): HealthCheckRunInput {
   try {
     const board = readTaskboard()
-    const count = Object.values(board.columns).reduce((sum, tasks) => sum + tasks.length, 0)
-    return [ok('taskboard', `${count} tasks in Bakin task JSON store`)]
-  } catch (err) {
-    return [error('taskboard', `Failed to query Bakin task store: ${err}`)]
+    const taskCount = Object.values(board.columns).reduce((sum, tasks) => sum + tasks.length, 0)
+    return healthObserved([healthHealthy({
+      key: 'store',
+      summary: `${taskCount} tasks in the Bakin task store.`,
+      evidence: { taskCount },
+    })])
+  } catch (error) {
+    return healthObserved([healthError({
+      key: 'store',
+      summary: 'The Bakin task store could not be read.',
+      detail: errorMessage(error),
+      incident: {
+        key: 'store-unreadable',
+        title: 'Task data is unavailable',
+        impact: 'Task views, dispatch, and task-based automation may fail until the store is readable.',
+        disposition: 'action_required',
+        resources: [{ kind: 'system', id: 'task-store', label: 'Task store' }],
+        resolution: { key: 'rerun', type: 'rerun', label: 'Retry the task-store check' },
+      },
+    })])
   }
 }
 
-// ─── Task consistency: orphaned, overloaded, or stale in-progress tasks ───
-
-/**
- * Detect orphaned, overloaded, or stale in-progress tasks. Report-only:
- * orphaned done-task dependencies are repaired by taskConsistencyRepair.
- */
+/** Detect task assignments and state that need operator attention. */
 export async function checkTaskConsistency(
   contentDir: string,
   agentReader?: RuntimeAgentReader,
-): Promise<HealthCheckResult[]> {
-  const results: HealthCheckResult[] = []
+): Promise<HealthCheckRunInput> {
+  const observations: HealthObservationInput[] = []
 
   try {
     interface TaskEntry { id: string; title: string; agent?: string; dependsOn?: string; log?: unknown[] }
-    const board = readTaskboard() as unknown as { columns: { inProgress: TaskEntry[]; done: TaskEntry[]; todo: TaskEntry[]; blocked: TaskEntry[] } }
+    const board = readTaskboard() as unknown as {
+      columns: { inProgress: TaskEntry[]; done: TaskEntry[] }
+    }
     const { columns } = board
-
     const knownAgents = await resolveKnownAgentIds(agentReader)
-
-    // Count tasks per agent
     const agentTaskCount: Record<string, number> = {}
 
     for (const task of columns.inProgress) {
-      // Track agent load
-      if (task.agent) {
-        agentTaskCount[task.agent] = (agentTaskCount[task.agent] || 0) + 1
-      }
+      if (task.agent) agentTaskCount[task.agent] = (agentTaskCount[task.agent] ?? 0) + 1
+      const taskResource = { kind: 'task' as const, id: task.id, label: task.title }
 
-      // In-progress task assigned to unknown agent
       if (task.agent && !knownAgents.has(task.agent)) {
-        results.push(warn('task-consistency', `In-progress task "${task.title}" assigned to unknown agent "${task.agent}"`))
+        observations.push(healthWarning({
+          key: `unknown-agent:${task.id}`,
+          summary: `In-progress task “${task.title}” is assigned to unknown agent “${task.agent}”.`,
+          evidence: { taskId: task.id, agentId: task.agent },
+          incident: {
+            key: `unknown-agent:${task.id}`,
+            title: 'A running task is assigned to an unknown agent',
+            impact: 'The task may not have a runtime that can continue its work.',
+            disposition: 'action_required',
+            resources: [taskResource, { kind: 'agent', id: task.agent, label: task.agent }],
+            resolution: { key: 'review-task', type: 'navigate', label: 'Review task assignment', href: '/tasks' },
+          },
+        }))
       }
 
-      // In-progress task with no heartbeat file
-      const heartbeatPath = join(contentDir, 'heartbeats', `${task.agent || 'unknown'}.json`)
+      const agentId = task.agent ?? 'unassigned'
+      const heartbeatPath = join(contentDir, 'heartbeats', `${task.agent ?? 'unknown'}.json`)
       if (!existsSync(heartbeatPath)) {
-        results.push(warn('task-consistency', `In-progress task "${task.title}" — no heartbeat file for agent "${task.agent || 'unassigned'}"`))
+        observations.push(healthWarning({
+          key: `heartbeat-missing:${task.id}`,
+          summary: `In-progress task “${task.title}” has no heartbeat for “${agentId}”.`,
+          evidence: { taskId: task.id, agentId },
+          incident: {
+            key: `heartbeat-missing:${task.id}`,
+            title: 'A running task has no agent heartbeat',
+            impact: 'Work may be stalled even though the task is still marked in progress.',
+            disposition: 'watch',
+            resources: [taskResource, { kind: 'agent', id: agentId, label: agentId }],
+            resolution: { key: 'review-task', type: 'navigate', label: 'Review running task', href: '/tasks' },
+          },
+        }))
       }
 
-      // In-progress task with zero log entries
       if (!task.log || task.log.length === 0) {
-        results.push(warn('task-consistency', `In-progress task "${task.title}" has zero log entries`))
+        observations.push(healthWarning({
+          key: `progress-missing:${task.id}`,
+          summary: `In-progress task “${task.title}” has no progress entries.`,
+          evidence: { taskId: task.id, progressEntries: 0 },
+          incident: {
+            key: `progress-missing:${task.id}`,
+            title: 'A running task has no recorded progress',
+            impact: 'Operators cannot tell whether the task is actively advancing.',
+            disposition: 'advisory',
+            resources: [taskResource],
+            resolution: { key: 'review-task', type: 'navigate', label: 'Review task progress', href: '/tasks' },
+          },
+        }))
       }
     }
 
-    // Agent with > 3 concurrent in-progress tasks
-    for (const [agent, count] of Object.entries(agentTaskCount)) {
-      if (count > 3) {
-        results.push(warn('task-consistency', `Agent "${agent}" has ${count} concurrent in-progress tasks — may be overloaded`))
-      }
+    for (const [agentId, count] of Object.entries(agentTaskCount)) {
+      if (count <= 3) continue
+      observations.push(healthWarning({
+        key: `overloaded:${agentId}`,
+        summary: `Agent “${agentId}” has ${count} concurrent in-progress tasks.`,
+        evidence: { agentId, inProgressTasks: count },
+        incident: {
+          key: `overloaded:${agentId}`,
+          title: 'An agent may be overloaded',
+          impact: 'Too much concurrent work can slow progress and make failures harder to diagnose.',
+          disposition: 'advisory',
+          resources: [{ kind: 'agent', id: agentId, label: agentId }],
+          resolution: { key: 'review-workload', type: 'navigate', label: 'Review agent workload', href: '/tasks' },
+        },
+      }))
     }
 
-    // Done tasks with orphaned dependsOn
     for (const task of columns.done) {
-      if (task.dependsOn) {
-        results.push(warn('task-consistency', `Done task "${task.title}" has orphaned dependsOn="${task.dependsOn}"`, true))
-      }
+      if (!task.dependsOn) continue
+      observations.push(healthWarning({
+        key: `orphaned-dependency:${task.id}`,
+        summary: `Done task “${task.title}” still depends on “${task.dependsOn}”.`,
+        evidence: { taskId: task.id, dependsOn: task.dependsOn },
+        incident: {
+          key: `orphaned-dependency:${task.id}`,
+          title: 'A completed task retains a dependency',
+          impact: 'The stale dependency can make unrelated task relationships misleading.',
+          disposition: 'action_required',
+          resources: [{ kind: 'task', id: task.id, label: task.title }],
+          resolution: {
+            key: 'clear-dependency',
+            type: 'repair',
+            label: 'Clear completed-task dependency',
+            actionId: 'clear-done-depends-on',
+          },
+        },
+      }))
     }
 
-    if (results.length === 0) {
-      results.push(ok('task-consistency', `${columns.inProgress.length} in-progress, ${columns.done.length} done — all consistent`))
+    if (observations.length === 0) {
+      observations.push(healthHealthy({
+        key: 'consistency',
+        summary: `${columns.inProgress.length} in progress and ${columns.done.length} done; task state is consistent.`,
+        evidence: { inProgress: columns.inProgress.length, done: columns.done.length },
+      }))
     }
-  } catch (err) {
-    results.push(error('task-consistency', `Failed to check task consistency: ${err}`))
+  } catch (error) {
+    observations.push(healthUnknown({
+      key: 'verification',
+      summary: 'Task consistency could not be verified.',
+      detail: errorMessage(error),
+      incident: {
+        key: 'verification-failed',
+        title: 'Task consistency is unknown',
+        impact: 'Health cannot confirm whether running and completed tasks are internally consistent.',
+        disposition: 'watch',
+        resources: [{ kind: 'system', id: 'task-store', label: 'Task store' }],
+        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun task consistency' },
+      },
+    }))
   }
 
-  return results
+  return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
 }
 
-export function taskConsistencyRepair(): HealthRepairHandler {
+export function taskConsistencyRepair(): HealthRepairActionDefinition {
   return {
-    async plan(rows) {
-      const matching = rows.filter(row =>
-        row.check === 'task-consistency'
-        && row.autoFixable
-        && row.message.includes('orphaned dependsOn')
-      )
-      if (matching.length === 0) return []
+    id: 'clear-done-depends-on',
+    name: 'Clear completed-task dependencies',
+    async plan(target) {
+      const board = readTaskboard() as unknown as {
+        columns: { done: Array<{ id: string; dependsOn?: string }> }
+      }
+      const affected = board.columns.done.filter((task) => task.dependsOn)
+      if (affected.length === 0) return []
       return [{
-        id: 'tasks.clear-done-depends-on',
-        checkId: 'task-consistency',
-        title: 'Clear orphaned dependencies from done tasks',
-        reason: `${matching.length} done task(s) still carry dependsOn links.`,
+        id: 'clear-completed-task-dependencies',
+        actionId: 'clear-done-depends-on',
+        title: 'Clear dependencies from completed tasks',
+        reason: `${affected.length} completed task${affected.length === 1 ? '' : 's'} still carry dependency links.`,
         safety: 'safe',
-        requiresConfirmation: true,
-        changes: [{
-          kind: 'task',
-          target: 'done tasks with dependsOn',
-          action: 'update',
-          description: 'Remove dependsOn from done tasks so completed work no longer blocks unrelated tasks.',
-        }],
+        ...repairTargetSelection(target),
+        changes: affected.map((task) => ({
+          kind: 'task' as const,
+          target: task.id,
+          action: 'update' as const,
+          description: 'Remove dependsOn from this completed task.',
+        })),
       }]
     },
     async apply(items) {
       if (items.length === 0) return []
-      const board = readTaskboard() as unknown as { columns: { done: Array<{ id: string; title: string; dependsOn?: string }> } }
-      const affected = board.columns.done.filter(task => task.dependsOn)
-      for (const task of affected) {
-        await clearDependency(task.id)
+      try {
+        const board = readTaskboard() as unknown as {
+          columns: { done: Array<{ id: string; title: string; dependsOn?: string }> }
+        }
+        const affected = board.columns.done.filter((task) => task.dependsOn)
+        for (const task of affected) await clearDependency(task.id)
+        return items.map((item) => ({
+          itemId: item.id,
+          actionId: item.actionId,
+          status: affected.length > 0 ? 'applied' as const : 'skipped' as const,
+          message: affected.length > 0
+            ? `Cleared dependencies from ${affected.length} completed task${affected.length === 1 ? '' : 's'}.`
+            : 'No completed-task dependencies remain.',
+          affectedCheckIds: ['tasks.task-consistency'],
+          changes: item.changes,
+        }))
+      } catch (error) {
+        return items.map((item) => ({
+          itemId: item.id,
+          actionId: item.actionId,
+          status: 'failed' as const,
+          message: errorMessage(error),
+          affectedCheckIds: ['tasks.task-consistency'],
+          changes: item.changes,
+        }))
       }
-      return [{
-        id: 'tasks.clear-done-depends-on',
-        checkId: 'task-consistency',
-        status: 'applied',
-        message: `Cleared orphaned dependsOn from ${affected.length} done task(s).`,
-        changes: affected.map(task => ({
-          kind: 'task' as const,
-          target: task.id,
-          action: 'update' as const,
-          description: `Cleared dependsOn from "${task.title}".`,
-        })),
-      }]
     },
   }
 }
 
-// ─── Task position integrity: unique order values per column ───────────────
-
-/**
- * Verify every Bakin task has a unique numeric order value within its
- * column. Report-only; taskOrderRepair performs the deterministic reorder.
- *
- * Migration note (#139 C2): emitted check id renamed from
- * `tasks.order_integrity` to `order-integrity`. With plugin-namespacing
- * the dotted form becomes `tasks.order-integrity` (underscore→hyphen).
- */
-export async function checkTaskPositionIntegrity(): Promise<HealthCheckResult[]> {
-  const CHECK = 'order-integrity'
+/** Verify every task has a unique numeric order within its column. */
+export async function checkTaskPositionIntegrity(): Promise<HealthCheckRunInput> {
   try {
     const board = readTaskboard()
     const entries = Object.entries(board.columns) as Array<[ColumnId, Task[]]>
     const total = entries.reduce((sum, [, tasks]) => sum + tasks.length, 0)
-    if (total === 0) return [ok(CHECK, 'No tasks to check')]
+    if (total === 0) {
+      return healthObserved([healthHealthy({
+        key: 'order',
+        summary: 'No tasks need order validation.',
+        evidence: { taskCount: 0 },
+      })])
+    }
 
     let missingCount = 0
     let duplicateCount = 0
     for (const [, tasks] of entries) {
       const orders = tasks.map((task) => task.order).filter((order): order is number => typeof order === 'number')
       missingCount += tasks.length - orders.length
-      const unique = new Set(orders)
-      if (unique.size < orders.length) duplicateCount += orders.length - unique.size
+      duplicateCount += orders.length - new Set(orders).size
     }
 
     if (missingCount === 0 && duplicateCount === 0) {
-      return [ok(CHECK, `All ${total} tasks have valid unique order values`)]
+      return healthObserved([healthHealthy({
+        key: 'order',
+        summary: `All ${total} tasks have valid unique order values.`,
+        evidence: { taskCount: total, missing: 0, duplicates: 0 },
+      })])
     }
 
-    const issues = []
-    if (missingCount > 0) issues.push(`${missingCount} missing`)
-    if (duplicateCount > 0) issues.push(`${duplicateCount} duplicates`)
-
-    return [warn(CHECK, `Order issues: ${issues.join(', ')} across ${total} tasks`, true)]
-  } catch (err) {
-    return [error(CHECK, `Order check failed: ${(err as Error).message}`)]
+    const issueSummary = [
+      missingCount > 0 ? `${missingCount} missing` : null,
+      duplicateCount > 0 ? `${duplicateCount} duplicate${duplicateCount === 1 ? '' : 's'}` : null,
+    ].filter(Boolean).join(', ')
+    return healthObserved([healthWarning({
+      key: 'order',
+      summary: `Task order has ${issueSummary} across ${total} tasks.`,
+      evidence: { taskCount: total, missing: missingCount, duplicates: duplicateCount },
+      incident: {
+        key: 'order-invalid',
+        title: 'Task order values need rebuilding',
+        impact: 'Tasks may render in an unstable or misleading order within their columns.',
+        disposition: 'action_required',
+        resources: [{ kind: 'system', id: 'taskboard-order', label: 'Taskboard order' }],
+        resolution: {
+          key: 'reorder-columns',
+          type: 'repair',
+          label: 'Rebuild task order',
+          actionId: 'reorder-columns',
+        },
+      },
+    })])
+  } catch (error) {
+    return healthObserved([healthUnknown({
+      key: 'verification',
+      summary: 'Task order could not be verified.',
+      detail: errorMessage(error),
+      incident: {
+        key: 'verification-failed',
+        title: 'Task order integrity is unknown',
+        impact: 'Health cannot confirm that task columns have stable order values.',
+        disposition: 'watch',
+        resources: [{ kind: 'system', id: 'taskboard-order', label: 'Taskboard order' }],
+        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun task order validation' },
+      },
+    })])
   }
 }
 
-export function taskOrderRepair(): HealthRepairHandler {
+export function taskOrderRepair(): HealthRepairActionDefinition {
   return {
-    async plan(rows) {
-      const matching = rows.filter(row => row.check === 'order-integrity' && row.autoFixable)
-      if (matching.length === 0) return []
+    id: 'reorder-columns',
+    name: 'Rebuild task order values',
+    async plan(target) {
       return [{
-        id: 'tasks.reorder-columns',
-        checkId: 'order-integrity',
+        id: 'rebuild-task-order',
+        actionId: 'reorder-columns',
         title: 'Rebuild task order values',
-        reason: matching.map(row => row.message).join('; '),
+        reason: 'One or more task columns contain missing or duplicate order values.',
         safety: 'safe',
-        requiresConfirmation: true,
+        ...repairTargetSelection(target),
         changes: [{
           kind: 'task',
           target: 'task columns',
           action: 'update',
-          description: 'Reassign contiguous order values within each column using updatedAt descending.',
+          description: 'Assign contiguous order values within each column using updatedAt descending.',
         }],
       }]
     },
     async apply(items) {
       if (items.length === 0) return []
-      const board = readTaskboard()
-      const entries = Object.entries(board.columns) as Array<[ColumnId, Task[]]>
-      const changes = []
-      for (const [column, tasks] of entries) {
-        const ordered = [...tasks]
-          .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-          .map((task) => task.id)
-        await reorderTasks(column, ordered)
-        changes.push({
-          kind: 'task' as const,
-          target: column,
-          action: 'update' as const,
-          description: `Rebuilt order values for ${ordered.length} task(s).`,
-        })
+      try {
+        const board = readTaskboard()
+        const entries = Object.entries(board.columns) as Array<[ColumnId, Task[]]>
+        const changes: HealthRepairChange[] = []
+        for (const [column, tasks] of entries) {
+          const ordered = [...tasks]
+            .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+            .map((task) => task.id)
+          await reorderTasks(column, ordered)
+          changes.push({
+            kind: 'task' as const,
+            target: column,
+            action: 'update' as const,
+            description: `Rebuilt order values for ${ordered.length} task${ordered.length === 1 ? '' : 's'}.`,
+          })
+        }
+        return items.map((item) => ({
+          itemId: item.id,
+          actionId: item.actionId,
+          status: 'applied' as const,
+          message: 'Rebuilt task order values.',
+          affectedCheckIds: ['tasks.order-integrity'],
+          changes,
+        }))
+      } catch (error) {
+        return items.map((item) => ({
+          itemId: item.id,
+          actionId: item.actionId,
+          status: 'failed' as const,
+          message: errorMessage(error),
+          affectedCheckIds: ['tasks.order-integrity'],
+          changes: item.changes,
+        }))
       }
-      return [{
-        id: 'tasks.reorder-columns',
-        checkId: 'order-integrity',
-        status: 'applied',
-        message: 'Rebuilt task order values.',
-        changes,
-      }]
     },
   }
 }
 
-// ─── Session-death incidents (recovery-ladder observability) ────────────────
-
-/**
- * Surface recent runtime session deaths in `bakin doctor` / the health
- * dashboard. A session death means an agent turn was killed before
- * completion (usually oversized chat output) and the recovery ladder
- * engaged — recurring incidents signal an agent/package that needs its
- * output discipline fixed, not just a one-off blip.
- */
+/** Surface runtime session deaths from the last 24 hours. */
 export function checkSessionDeathIncidents(
   contentDir: string,
   queryAuditEvents: (
     contentDir: string,
     opts: { kinds?: string[]; sinceMs?: number },
   ) => Array<{ ts: string; agent: string; data: Record<string, unknown> }>,
-): HealthCheckResult[] {
-  const DAY_MS = 24 * 60 * 60 * 1000
+): HealthCheckRunInput {
+  const dayMs = 24 * 60 * 60 * 1000
   let incidents: Array<{ ts: string; agent: string; data: Record<string, unknown> }>
   try {
     incidents = queryAuditEvents(contentDir, {
       kinds: ['task.runtime_session_died'],
-      sinceMs: DAY_MS,
+      sinceMs: dayMs,
     })
-  } catch (err) {
-    return [error('session-death-incidents', `Failed to read audit trail: ${err instanceof Error ? err.message : String(err)}`)]
+  } catch (error) {
+    return healthObserved([healthUnknown({
+      key: 'verification',
+      summary: 'Recent runtime session deaths could not be read.',
+      detail: errorMessage(error),
+      incident: {
+        key: 'audit-unavailable',
+        title: 'Session-death history is unknown',
+        impact: 'Health cannot confirm whether agent sessions have recently died during execution.',
+        disposition: 'watch',
+        resources: [{ kind: 'system', id: 'audit-trail', label: 'Audit trail' }],
+        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun session history' },
+      },
+    })])
   }
 
   if (incidents.length === 0) {
-    return [ok('session-death-incidents', 'No runtime session deaths in the last 24h.')]
+    return healthObserved([healthHealthy({
+      key: 'recent',
+      summary: 'No runtime session deaths in the last 24 hours.',
+      evidence: { count: 0, windowHours: 24 },
+    })])
   }
 
-  const lines = incidents.slice(-5).map((incident) => {
-    const taskId = typeof incident.data.id === 'string' ? incident.data.id : 'unknown-task'
-    const bytes = typeof incident.data.completionBytes === 'number'
-      ? `${Math.round(incident.data.completionBytes / 1024)}KB`
-      : 'unknown size'
-    const oversized = incident.data.oversizedOutput === true ? ', oversized' : ''
-    return `${taskId} (${incident.agent}, ${bytes}${oversized})`
-  })
-  return [warn(
-    'session-death-incidents',
-    `${incidents.length} runtime session death(s) in the last 24h: ${lines.join('; ')}. Check the tasks' salvaged assets and consider tightening the agent's output discipline.`,
-  )]
+  const recent = incidents.slice(-5).map((incident) => ({
+    taskId: typeof incident.data.id === 'string' ? incident.data.id : 'unknown-task',
+    agentId: incident.agent,
+    completionBytes: typeof incident.data.completionBytes === 'number' ? incident.data.completionBytes : null,
+    oversizedOutput: incident.data.oversizedOutput === true,
+  }))
+  return healthObserved([healthWarning({
+    key: 'recent',
+    summary: `${incidents.length} runtime session death${incidents.length === 1 ? '' : 's'} occurred in the last 24 hours.`,
+    detail: 'Review the affected work and salvaged assets; repeated deaths often indicate oversized agent output.',
+    evidence: { count: incidents.length, windowHours: 24, recent },
+    incident: {
+      key: 'recent-session-deaths',
+      title: 'Agent sessions have died recently',
+      impact: 'Interrupted turns can delay tasks or leave partial work that needs operator review.',
+      disposition: 'watch',
+      resources: recent.flatMap((incident) => [
+        { kind: 'session' as const, id: `${incident.agentId}:${incident.taskId}`, label: incident.taskId },
+        { kind: 'agent' as const, id: incident.agentId, label: incident.agentId },
+        { kind: 'task' as const, id: incident.taskId, label: incident.taskId },
+      ]),
+      resolution: { key: 'review-activity', type: 'navigate', label: 'Review agent activity', href: '/health?tab=activity' },
+    },
+  })])
 }

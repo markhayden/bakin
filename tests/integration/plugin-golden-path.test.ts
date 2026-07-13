@@ -93,7 +93,6 @@ describe('plugin golden path (scaffold → install → activate → use)', () =>
   beforeAll(async () => {
     mkdirSync(testDir, { recursive: true })
 
-    const { createHealthService } = await import('@bakin/core/app-services')
     const { createMockRuntimeAdapter } = await import('@bakin/core/adapters/runtime/testing')
     const { createMockSearchAdapter } = await import('@bakin/core/adapters/search/testing')
     const { createMockBakinTaskStore } = await import('@bakin/core/tasks/testing')
@@ -103,7 +102,6 @@ describe('plugin golden path (scaffold → install → activate → use)', () =>
       runtime,
       search,
       tasks: createMockBakinTaskStore(),
-      health: createHealthService([runtime, search]),
     }
 
     // --- scaffold (the real function, into a scratch cwd) ---

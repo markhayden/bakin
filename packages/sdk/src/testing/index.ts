@@ -40,9 +40,10 @@ import type {
   BakinPlugin,
   ExecToolDefinition,
   ExecToolResult,
+  HealthCheckRegistrationInput,
+  HealthRepairActionDefinition,
   NavItem,
   PluginContext,
-  PluginHealthCheckInput,
   PluginNodeTypeInput,
   PluginNotificationChannelInput,
   PluginToolContext,
@@ -92,7 +93,9 @@ export interface PluginTestContext {
   /** Notification channels registered via `ctx.registerNotificationChannel`. */
   notificationChannels: PluginNotificationChannelInput[]
   /** Health checks registered via `ctx.registerHealthCheck`. */
-  healthChecks: PluginHealthCheckInput[]
+  healthChecks: HealthCheckRegistrationInput[]
+  /** Repair actions registered via `ctx.registerHealthRepairAction`. */
+  healthRepairActions: HealthRepairActionDefinition[]
   /** Runtime skills registered via `ctx.registerSkill`. */
   skills: SkillDefinition[]
   /** File-watch patterns passed to `ctx.watchFiles`. */
@@ -147,7 +150,8 @@ export function createTestContext(
   const workflows: WorkflowDefinitionInput[] = []
   const nodeTypes: PluginNodeTypeInput<unknown>[] = []
   const notificationChannels: PluginNotificationChannelInput[] = []
-  const healthChecks: PluginHealthCheckInput[] = []
+  const healthChecks: HealthCheckRegistrationInput[] = []
+  const healthRepairActions: HealthRepairActionDefinition[] = []
   const skills: SkillDefinition[] = []
   const watchedPatterns: string[] = []
   const logs: CapturedLog[] = []
@@ -230,6 +234,10 @@ export function createTestContext(
       healthChecks.push(def)
       return `${pluginId}.${def.id}`
     },
+    registerHealthRepairAction: (def) => {
+      healthRepairActions.push(def)
+      return `${pluginId}.${def.id}`
+    },
     watchFiles: (patterns) => watchedPatterns.push(...patterns),
     getSettings: (<T = Record<string, unknown>>() => settings as T) as PluginContext['getSettings'],
     updateSettings: (patch) => {
@@ -304,6 +312,7 @@ export function createTestContext(
     nodeTypes,
     notificationChannels,
     healthChecks,
+    healthRepairActions,
     skills,
     watchedPatterns,
     logs,

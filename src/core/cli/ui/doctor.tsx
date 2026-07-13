@@ -1,4 +1,12 @@
 import { Box } from 'ink'
+import type {
+  HealthCheckState,
+  HealthIncident,
+  HealthObservation,
+  HealthReport,
+  HealthReportStatus,
+  HealthResolution,
+} from '@makinbakin/sdk/types'
 import type { TuiStatus } from './style-tokens'
 import {
   FindingRows,
@@ -11,70 +19,126 @@ import {
 } from './tui'
 import { plural } from './reports/format'
 
-export interface DoctorResultRow {
-  check: string
-  status: string
-  message: string
-}
-
-export interface DoctorSummaryData {
-  total: number
-  errors: number
-  warnings: number
-}
-
 export type DoctorMode = 'offline' | 'full'
 
-function isSkippedDoctorResult(result: DoctorResultRow): boolean {
-  return result.status === 'skip' || /^Skipped\b/i.test(result.message)
-}
-
-function doctorStatus(result: DoctorResultRow): TuiStatus {
-  if (isSkippedDoctorResult(result)) return 'skip'
-
-  switch (result.status) {
-    case 'ok':
+function reportStatus(status: HealthReportStatus): TuiStatus {
+  switch (status) {
+    case 'healthy':
       return 'ok'
-    case 'fixed':
-      return 'applied'
-    case 'warn':
+    case 'degraded':
       return 'warn'
-    case 'error':
+    case 'needs_attention':
       return 'fail'
-    default:
+    case 'unknown_stale':
       return 'run'
   }
 }
 
-function doctorCounts(results: DoctorResultRow[], summary: DoctorSummaryData): {
-  skipped: number
-  warnings: number
-  fixed: number
-} {
-  const skipped = results.filter(isSkippedDoctorResult).length
-  return {
-    skipped,
-    warnings: Math.max(0, summary.warnings - skipped),
-    fixed: results.filter(result => result.status === 'fixed').length,
+function reportStatusLabel(status: HealthReportStatus): string {
+  switch (status) {
+    case 'healthy':
+      return 'healthy'
+    case 'degraded':
+      return 'degraded'
+    case 'needs_attention':
+      return 'needs attention'
+    case 'unknown_stale':
+      return 'unknown / stale'
   }
 }
 
-function summaryItems(results: DoctorResultRow[], summary: DoctorSummaryData): SummaryItem[] {
-  const counts = doctorCounts(results, summary)
+function observationStatus(observation: HealthObservation): TuiStatus {
+  if (observation.snapshot === 'last_known' && observation.status === 'healthy') return 'run'
+  switch (observation.status) {
+    case 'healthy':
+      return 'ok'
+    case 'warning':
+      return 'warn'
+    case 'error':
+      return 'fail'
+    case 'unknown':
+      return 'run'
+  }
+}
+
+function resolutionNext(resolution: HealthResolution): string | undefined {
+  switch (resolution.type) {
+    case 'repair':
+      return 'Run `bakin doctor --fix` to preview the targeted repair.'
+    case 'navigate':
+      return `Open ${resolution.href}.`
+    case 'instructions':
+      return resolution.command
+        ? `${resolution.steps.join(' ')} Command: ${resolution.command}`
+        : resolution.steps.join(' ')
+    case 'rerun':
+      return 'Run `bakin doctor --full` to collect fresh evidence.'
+  }
+}
+
+function observationRows(observations: readonly HealthObservation[]): FindingRow[] {
+  return observations.map((observation) => ({
+    status: observationStatus(observation),
+    label: observation.checkId,
+    message: observation.snapshot === 'last_known'
+      ? `Last known: ${observation.summary}`
+      : observation.summary,
+    ...(observation.detail ? { detail: observation.detail } : {}),
+    ...(observation.status === 'healthy'
+      ? {}
+      : { next: resolutionNext(observation.incident.resolution) }),
+  }))
+}
+
+function executionRow(check: HealthCheckState): FindingRow | null {
+  const execution = check.latestExecution
+  if (execution.outcome === 'observed') return null
+  if (execution.outcome === 'not_applicable') {
+    return {
+      status: 'skip',
+      label: check.checkId,
+      message: execution.reason ?? 'This check does not apply to the current configuration.',
+    }
+  }
+  return {
+    status: execution.outcome === 'invalid' ? 'fail' : 'run',
+    label: check.checkId,
+    message: execution.error?.message ?? `${check.checkName} did not produce current evidence.`,
+    next: 'Run `bakin doctor --full` to collect fresh evidence.',
+  }
+}
+
+function findingRows(report: HealthReport): FindingRow[] {
+  const rows = observationRows(report.observations)
+  const observedChecks = new Set(report.observations.map((observation) => observation.checkId))
+  for (const check of report.checks) {
+    if (observedChecks.has(check.checkId)) continue
+    const row = executionRow(check)
+    if (row) rows.push(row)
+  }
+  return rows.length > 0
+    ? rows
+    : [{ status: 'ok', label: 'health', message: 'No Health observations are registered.' }]
+}
+
+function summaryItems(report: HealthReport): SummaryItem[] {
+  const { incidents, checks } = report.summary
   const items: SummaryItem[] = [
-    { label: plural(summary.errors, 'error'), value: summary.errors, status: summary.errors > 0 ? 'fail' : 'ok' },
-    { label: plural(counts.warnings, 'warning', 'warnings'), value: counts.warnings, status: counts.warnings > 0 ? 'warn' : 'ok' },
+    { label: 'status', value: reportStatusLabel(report.overallStatus), status: reportStatus(report.overallStatus) },
   ]
-
-  if (counts.skipped > 0) {
-    items.push({ label: 'skipped', value: counts.skipped, status: 'skip' })
+  if (incidents.actionRequired > 0) {
+    items.push({ label: 'action required', value: incidents.actionRequired, status: 'fail' })
   }
-
-  if (counts.fixed > 0) {
-    items.push({ label: 'fixed', value: counts.fixed, status: 'applied' })
+  if (incidents.watching > 0) {
+    items.push({ label: 'watching', value: incidents.watching, status: incidents.unknown > 0 ? 'run' : 'warn' })
   }
-
-  items.push({ label: 'checks', value: summary.total })
+  if (incidents.unknown > 0) {
+    items.push({ label: 'unknown', value: incidents.unknown, status: 'run' })
+  }
+  if (incidents.advisory > 0) {
+    items.push({ label: plural(incidents.advisory, 'advisory', 'advisories'), value: incidents.advisory })
+  }
+  items.push({ label: 'checks', value: checks.registered })
   return items
 }
 
@@ -84,38 +148,40 @@ function subtitleForMode(mode?: DoctorMode): string {
   return 'Health diagnostics'
 }
 
-function findingRows(results: DoctorResultRow[]): FindingRow[] {
-  return results.map(result => ({
-    status: doctorStatus(result),
-    label: result.check,
-    message: result.message,
-  }))
+function hasUnknownEvidence(report: HealthReport): boolean {
+  return report.overallStatus === 'unknown_stale'
+    || report.incidents.some((incident) => incident.status === 'unknown' || incident.stale)
+    || report.checks.some((check) => check.latestExecution.outcome === 'failed' || check.latestExecution.outcome === 'invalid')
 }
 
-function nextActions(results: DoctorResultRow[], summary: DoctorSummaryData, mode?: DoctorMode): string[] {
-  const counts = doctorCounts(results, summary)
+function actionIncidents(report: HealthReport): HealthIncident[] {
+  return report.incidents.filter((incident) => incident.disposition === 'action_required')
+}
+
+function nextActions(report: HealthReport, mode?: DoctorMode): string[] {
   const actions: string[] = []
-
-  if (mode === 'offline' && counts.skipped > 0) {
-    actions.push('Run `bakin start`, then `bakin doctor --full` to include server-backed checks.')
+  if (hasUnknownEvidence(report)) {
+    actions.push(mode === 'offline'
+      ? 'Run `bakin start`, then `bakin doctor --full` to verify server-backed health.'
+      : 'Run `bakin doctor --full` to collect fresh evidence for unknown or stale checks.')
   }
 
-  if (summary.errors > 0) {
-    actions.push('Run `bakin doctor --fix` to preview deterministic repairs.')
-  } else if (counts.warnings > 0) {
-    actions.push('Run `bakin doctor --delegate` to create a board task for unresolved manual work.')
+  const actionable = actionIncidents(report)
+  if (actionable.some((incident) => incident.resolution.type === 'repair')) {
+    actions.push('Run `bakin doctor --fix` to preview safe targeted repairs.')
   }
-
+  if (actionable.some((incident) => incident.resolution.type !== 'repair')) {
+    actions.push('Run `bakin doctor --delegate` to preview a repair task for action-required incidents.')
+  }
   return actions
 }
 
-export function DoctorReport({ results, summary, mode, color = true }: {
-  results: DoctorResultRow[]
-  summary: DoctorSummaryData
+export function DoctorReport({ report, mode, color = true }: {
+  report: HealthReport
   mode?: DoctorMode
   color?: boolean
 }) {
-  const actions = nextActions(results, summary, mode)
+  const actions = nextActions(report, mode)
 
   return (
     <Box flexDirection="column">
@@ -125,9 +191,9 @@ export function DoctorReport({ results, summary, mode, color = true }: {
         meta={mode ? `mode: ${mode}` : undefined}
         color={color}
       />
-      <SummaryStrip items={summaryItems(results, summary)} color={color} />
-      <Section title="Health checks" color={color}>
-        <FindingRows rows={findingRows(results)} color={color} />
+      <SummaryStrip items={summaryItems(report)} color={color} />
+      <Section title="Health findings" color={color}>
+        <FindingRows rows={findingRows(report)} color={color} />
       </Section>
       {actions.length > 0 ? <NextActions actions={actions} color={color} /> : null}
     </Box>

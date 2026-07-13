@@ -1,4 +1,4 @@
-import { recordUsage } from '../../src/core/usage'
+import { recordUsage, type ActivityClass } from '../../src/core/usage'
 
 const MCP_TOOLS = [
   'bakin_exec_tasks_list',
@@ -15,15 +15,15 @@ const MCP_TOOLS = [
 ]
 
 const REST_ENDPOINTS = [
-  'GET /api/tasks',
-  'GET /api/agents',
-  'GET /api/plugins/assets',
-  'GET /api/plugins/health/usage-feed',
-  'GET /api/plugins/schedule',
-  'POST /api/dispatch',
-  'GET /api/search',
-  'GET /api/plugins/messaging/sessions',
-]
+  { name: 'GET /api/tasks', activityClass: 'user' },
+  { name: 'GET /api/agents', activityClass: 'user' },
+  { name: 'GET /api/plugins/assets', activityClass: 'user' },
+  { name: 'GET /api/plugins/health/usage-feed', activityClass: 'routine' },
+  { name: 'GET /api/plugins/schedule', activityClass: 'user' },
+  { name: 'POST /api/dispatch', activityClass: 'user' },
+  { name: 'GET /api/search', activityClass: 'user' },
+  { name: 'GET /api/plugins/messaging/sessions', activityClass: 'user' },
+] satisfies Array<{ name: string; activityClass: ActivityClass }>
 
 const AGENTS = ['pixel', 'rolo', 'jessica', 'patch']
 
@@ -40,12 +40,13 @@ function pastTimestamp(hoursAgo: number): string {
 }
 
 export function seedMockUsage(): void {
-  const entries: Array<{ hoursAgo: number; kind: 'mcp' | 'rest' | 'agent'; name: string; agent: string | null; durationMs: number; status: 'ok' | 'error' }> = []
+  const entries: Array<{ hoursAgo: number; kind: 'mcp' | 'rest' | 'agent'; activityClass: ActivityClass; name: string; agent: string | null; durationMs: number; status: 'ok' | 'error' }> = []
 
   for (let i = 0; i < 40; i++) {
     entries.push({
       hoursAgo: Math.random() * 24,
       kind: 'mcp',
+      activityClass: 'user',
       name: randomFrom(MCP_TOOLS),
       agent: randomFrom(AGENTS),
       durationMs: randomBetween(50, 2500),
@@ -54,10 +55,12 @@ export function seedMockUsage(): void {
   }
 
   for (let i = 0; i < 25; i++) {
+    const endpoint = randomFrom(REST_ENDPOINTS)
     entries.push({
       hoursAgo: Math.random() * 24,
       kind: 'rest',
-      name: randomFrom(REST_ENDPOINTS),
+      activityClass: endpoint.activityClass,
+      name: endpoint.name,
       agent: null,
       durationMs: randomBetween(5, 200),
       status: Math.random() < 0.03 ? 'error' : 'ok',
@@ -69,6 +72,7 @@ export function seedMockUsage(): void {
     entries.push({
       hoursAgo: Math.random() * 24,
       kind: 'agent',
+      activityClass: 'user',
       name: `dispatch:${agent}`,
       agent,
       durationMs: randomBetween(3000, 45000),
@@ -82,6 +86,7 @@ export function seedMockUsage(): void {
     recordUsage({
       ts: pastTimestamp(e.hoursAgo),
       kind: e.kind,
+      activityClass: e.activityClass,
       name: e.name,
       agent: e.agent,
       durationMs: e.durationMs,

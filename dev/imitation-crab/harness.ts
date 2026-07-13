@@ -2,7 +2,6 @@ import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import type { AppServices } from '@bakin/core/app-services'
-import { createHealthService } from '@bakin/core/app-services'
 import { createMockSearchAdapter } from '@bakin/core/adapters/search/testing'
 import { createFileBakinTaskStore } from '@bakin/core/tasks/store'
 import { createOpenClawRuntimeAdapter } from '@bakin/adapter-openclaw'
@@ -262,7 +261,6 @@ export async function createImitationCrabHarness(options: ImitationCrabHarnessOp
     runtime,
     search,
     tasks,
-    health: createHealthService([runtime, search]),
   }
 
   return {

@@ -1,135 +1,90 @@
-/**
- * Periodic-doctor escalation — turns cron ERROR findings into action.
- *
- * Before this, the 30-min doctor cron surfaced findings ONLY on the
- * dashboard: notifications were opt-in per CLI run (`--notify-agent`), so
- * the 2026-07-12 search-dark incident burned for 17h with a red row nobody
- * was looking at. Per settings.doctor.escalation, a cron cycle whose
- * results contain errors now either:
- *
- *  - 'task'   → creates ONE delegated-repair task for the main agent (the
- *               existing `bakin doctor --delegate` flow: durable request,
- *               board-visible task, dispatch kick, budget-gated like any
- *               task). Deduplicated: skipped while an open repair task
- *               already covers every current error check, and rate-limited
- *               by escalationCooldownMs so a persistent error never spawns
- *               a task per cycle.
- *  - 'notify' → messages the main agent (the --notify-agent path).
- *  - 'off'    → old behavior.
- *
- * Only the CRON escalates — runDiagnostics itself is untouched, so manual
- * `bakin doctor` runs never surprise-create tasks.
- */
+/** Cron/explicit escalation over fresh canonical action-required incidents. */
+import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
+import type { HealthIncident, HealthReport } from '../../packages/core/src/plugin-types'
+import { meterAgentTurn } from './agent-cost'
+import { getAppServices } from './app-services'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
-import { getAppServices } from './app-services'
-import { meterAgentTurn } from './agent-cost'
-import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
-import type { HealthCheckResult } from '../../packages/core/src/plugin-types'
 
 const log = createLogger('doctor-escalation')
-
-// Track what we've already notified about to avoid spamming the main agent.
-// The doctor cron clears this each cycle so recurring issues re-report.
-const notifiedIssues = new Set<string>()
+const notifiedIncidentIds = new Set<string>()
 
 export function clearNotifiedIssues(): void {
-  notifiedIssues.clear()
+  notifiedIncidentIds.clear()
 }
 
-export async function notifyUnfixableIssues(results: HealthCheckResult[]): Promise<void> {
-  // Errors ALWAYS qualify — an autoFixable error is still an incident the
-  // user must hear about (the 17h search-dark burn stayed silent partly
-  // because fixable errors were filtered here); only fixable WARNS stay
-  // quiet to bound noise.
-  const issues = results.filter(r =>
-    r.status === 'error' || (r.status === 'warn' && !r.autoFixable)
+export function freshActionRequiredIncidents(report: HealthReport): HealthIncident[] {
+  return report.incidents.filter((incident) =>
+    incident.disposition === 'action_required' && !incident.stale,
   )
+}
 
-  if (issues.length === 0) return
+export async function notifyActionRequiredIncidents(report: HealthReport): Promise<void> {
+  const incidents = freshActionRequiredIncidents(report)
+    .filter((incident) => !notifiedIncidentIds.has(incident.id))
+  if (incidents.length === 0) return
+  for (const incident of incidents) notifiedIncidentIds.add(incident.id)
 
-  // Build a dedup key from the issues so we don't spam
-  const issueKey = issues.map(i => `${i.check}:${i.status}`).sort().join('|')
-  if (notifiedIssues.has(issueKey)) return
-  notifiedIssues.add(issueKey)
-
-  const lines = issues.map(i => {
-    const icon = i.status === 'error' ? 'ERROR' : 'WARN'
-    const hint = i.autoFixable ? ' (repair available: `bakin doctor --fix`)' : ''
-    return `[${icon}] ${i.check}: ${i.message}${hint}`
-  })
-
-  const message = `Bakin Doctor found ${issues.length} issue(s) that need your attention:\n\n${lines.join('\n')}\n\nRun \`bakin doctor\` for full details.`
-
+  const lines = incidents.flatMap((incident) => [
+    `[NEEDS ATTENTION] ${incident.title} (${incident.id})`,
+    `Impact: ${incident.impact}`,
+  ])
+  const message = `Bakin Health found ${incidents.length} incident${incidents.length === 1 ? '' : 's'} that need attention:\n\n${lines.join('\n')}\n\nOpen Health or run \`bakin doctor\` for current evidence and resolution steps.`
   try {
     const runtime = getAppServices().runtime
-    const mainAgentId = await getRuntimeMainAgentId(runtime)
-    const result = await runtime.messaging.send({ agentId: mainAgentId, content: message })
-    await meterAgentTurn({ agent: mainAgentId, result, name: 'doctor-notify' })
-    log.info('Notified main agent of unfixable issues', { count: issues.length })
-  } catch (err) {
-    log.error('Failed to notify main agent of doctor issues', err instanceof Error ? err : undefined)
+    const agentId = await getRuntimeMainAgentId(runtime)
+    const result = await runtime.messaging.send({ agentId, content: message })
+    await meterAgentTurn({ agent: agentId, activityClass: 'system', result, name: 'doctor-notify' })
+    log.info('Notified main agent of Health incidents', { incidentIds: incidents.map((incident) => incident.id) })
+  } catch (error) {
+    log.error('Failed to notify main agent of Health incidents', error)
   }
 }
 
-export async function escalateCronErrors(
-  results: HealthCheckResult[],
+function onboardingOnly(incidents: readonly HealthIncident[]): boolean {
+  return incidents.length > 0 && incidents.every((incident) => incident.id === 'core:system:onboarding-required')
+}
+
+export async function escalateCronIncidents(
+  report: HealthReport,
   contentDir: string,
   projectRoot: string,
 ): Promise<void> {
-  const { escalation, escalationCooldownMs } = getSettings().doctor
+  const { escalation = 'off', escalationCooldownMs = 6 * 60 * 60_000 } = getSettings().doctor
   if (escalation === 'off') return
-  const errors = results.filter((row) => row.status === 'error')
-  if (errors.length === 0) return
-  // A not-onboarded machine has no main agent to escalate to — the
-  // onboarding surfaces own this state.
-  if (errors.some((row) => row.check === 'onboarded')) return
+  const incidents = freshActionRequiredIncidents(report)
+  if (incidents.length === 0 || onboardingOnly(incidents)) return
 
   try {
     if (escalation === 'notify') {
-      await notifyUnfixableIssues(results)
+      await notifyActionRequiredIncidents(report)
       return
     }
 
-    // 'task': ONE open repair task per persisting error set.
-    const errorChecks = [...new Set(errors.map((row) => row.check))]
+    const incidentIds = incidents.map((incident) => incident.id).sort()
     const { listDoctorRepairRequests } = await import('./doctor-repair-store')
     const { getTaskDetails } = await import('./task-service')
     for (const request of listDoctorRepairRequests(contentDir)) {
-      const covered = new Set(request.unresolved.map((row) => row.check))
-      if (!errorChecks.every((check) => covered.has(check))) continue
+      const covered = new Set(request.incidentIds)
+      if (!incidentIds.every((id) => covered.has(id))) continue
       if (request.taskId) {
         const details = await getTaskDetails(request.taskId).catch(() => null)
-        if (details && details.column !== 'done') {
-          log.info('escalation skipped — an open repair task already covers the current errors', {
-            taskId: request.taskId,
-            checks: errorChecks,
-          })
-          return
-        }
+        const column = details && 'column' in details ? details.column : null
+        if (column && column !== 'done' && column !== 'archived') return
       }
-      if (Date.now() - Date.parse(request.createdAt) < escalationCooldownMs) {
-        log.info('escalation skipped — same error set escalated inside the cooldown window', {
-          requestId: request.id,
-          checks: errorChecks,
-        })
-        return
-      }
+      if (Date.now() - Date.parse(request.createdAt) < escalationCooldownMs) return
     }
 
     const { delegateDoctorRepair } = await import('./doctor-delegate')
-    const report = await delegateDoctorRepair({ contentDir, projectRoot, accepted: true, rows: errors })
-    log.info('cron errors escalated as a delegated repair task', {
-      status: report.status,
-      taskId: report.request.taskId,
-      checks: errorChecks,
+    await delegateDoctorRepair({
+      contentDir,
+      projectRoot,
+      accepted: true,
+      target: { type: 'incidents', reportId: report.id, ids: incidentIds as [string, ...string[]] },
     })
-  } catch (err) {
-    // Escalation is best-effort on top of the diagnostics — a failure here
-    // must never take the doctor cycle down with it.
-    log.error('doctor escalation failed', err instanceof Error ? err : undefined, {
-      mode: escalation,
-      errors: errors.length,
-    })
+  } catch (error) {
+    log.error('Health escalation failed', error, { mode: escalation, incidentIds: incidents.map((incident) => incident.id) })
   }
 }
+
+/** Removed-name bridge is intentionally absent: callers use incident semantics. */

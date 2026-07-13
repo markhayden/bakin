@@ -40,6 +40,7 @@
     "docs:validate:routes": "bun run scripts/docs/route-contract-check.ts",
     "docs:build": "bun run docs:generate && bun run --cwd docs build",
     "docs:screenshots": "bun run scripts/docs/capture-screenshots.ts",
+    "verify:health-ui": "bun run scripts/verify-health-ui.ts",
     "docs:inject-screenshots": "bun run scripts/docs/inject-screenshots.ts",
     "docs:check": "bun run docs:generate && bun run docs:validate && bun run docs:validate:routes && bun run --cwd docs build",
     "cli:tui-gallery": "bun run scripts/cli-tui-gallery.tsx",

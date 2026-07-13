@@ -4,6 +4,10 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { z } from 'zod'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import type {
+  HealthCheckRegistrationInput,
+  HealthRepairActionDefinition,
+} from '@makinbakin/sdk/types'
 
 const TEST_DIR = join(tmpdir(), `bakin-mcp-registration-${process.pid}-${Date.now()}`)
 const TEST_OPENCLAW_HOME = join(TEST_DIR, '.openclaw')
@@ -96,6 +100,8 @@ describe('MCP server tool registration', () => {
     const storage = new MarkdownStorageAdapter(TEST_DIR)
     const events = new BakinEventBus(() => {})
     const runtime = createMockRuntimeAdapter()
+    const healthChecks: Array<{ id: string; definition: HealthCheckRegistrationInput }> = []
+    const healthRepairActions: Array<{ id: string; definition: HealthRepairActionDefinition }> = []
 
     for (const entry of config.plugins) {
       const mod = await import(/* @vite-ignore */ `../../${entry.path}/index`)
@@ -117,7 +123,16 @@ describe('MCP server tool registration', () => {
         registerWorkflow: () => {},
         registerNodeType: (def: { kind: string }) => `${plugin.id}.${def.kind}`,
         registerNotificationChannel: (def: { id: string }) => `${plugin.id}.${def.id}`,
-        registerHealthCheck: (def: { id: string }) => `${plugin.id}.${def.id}`,
+        registerHealthCheck: (definition: HealthCheckRegistrationInput) => {
+          const id = `${plugin.id}.${definition.id}`
+          healthChecks.push({ id, definition })
+          return id
+        },
+        registerHealthRepairAction: (definition: HealthRepairActionDefinition) => {
+          const id = `${plugin.id}.${definition.id}`
+          healthRepairActions.push({ id, definition })
+          return id
+        },
         watchFiles: () => {},
         getSettings: () => ({}),
         updateSettings: () => {},
@@ -143,6 +158,10 @@ describe('MCP server tool registration', () => {
 
     const tools = getAllExecTools()
     expect(tools.length).toBeGreaterThan(50)
+    expect(healthChecks.length).toBeGreaterThan(0)
+    expect(healthRepairActions.length).toBeGreaterThan(0)
+    expect(new Set(healthChecks.map(({ id }) => id)).size).toBe(healthChecks.length)
+    expect(new Set(healthRepairActions.map(({ id }) => id)).size).toBe(healthRepairActions.length)
 
     // 3. Every tool's parameters must be a ZodRawShape — every value an instance
     //    of z.ZodType. The original PR #80 regression (plain object literals)

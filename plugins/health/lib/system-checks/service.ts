@@ -8,86 +8,174 @@
  * human judgment.
  */
 import { execSync } from 'child_process'
-import { healthOk, healthWarn, healthError } from '@makinbakin/sdk/utils'
+import { healthError, healthHealthy, healthNotApplicable, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
+import type { HealthCheckRunInput, HealthObservationInput } from '@makinbakin/sdk'
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 
 import { getSettings } from '../../../../src/core/settings'
-import type { HealthCheckResult } from '../../../../packages/core/src/plugin-types'
 
 const SERVICE_LABEL = 'com.makinbakin.bakin'
 
-function ok(message: string): HealthCheckResult {
-  return healthOk('service', message)
-}
-function warn(message: string): HealthCheckResult {
-  return healthWarn('service', message)
-}
-function error(message: string): HealthCheckResult {
-  return healthError('service', message)
-}
-
-export function checkService(projectRoot: string): HealthCheckResult[] {
+export async function checkService(projectRoot: string): Promise<HealthCheckRunInput> {
   const settings = getSettings()
   if (!settings.service.enabled) {
-    return [ok('Skipped — service management disabled in settings')]
+    return healthNotApplicable('Service management is disabled in settings.')
   }
 
   if (process.platform !== 'darwin') {
-    return [ok('Skipped — macOS only')]
+    return healthNotApplicable('The managed background service is only available on macOS.')
   }
 
-  const results: HealthCheckResult[] = []
+  const observations: HealthObservationInput[] = []
   const homedir = process.env.HOME || '~'
   const plistPath = join(homedir, 'Library', 'LaunchAgents', `${SERVICE_LABEL}.plist`)
 
   if (!existsSync(plistPath)) {
-    results.push(warn('LaunchAgent plist not found — run: bakin setup service'))
-    return results
+    return healthObserved([healthWarning({
+      key: 'plist',
+      summary: 'Background service is not installed.',
+      detail: `Expected a LaunchAgent definition at ${plistPath}.`,
+      evidence: { plistPath, installed: false },
+      incident: serviceIncident(
+        'plist-missing',
+        'Background service is not installed',
+        'Bakin will not start automatically in the background.',
+      ),
+    })])
   }
 
   try {
     const plistContent = readFileSync(plistPath, 'utf-8')
 
     if (plistContent.includes('/$bunfs/')) {
-      results.push(error('LaunchAgent references Bun virtual filesystem path — run: bakin setup service'))
+      observations.push(serviceError(
+        'plist.bunfs-path',
+        'Background service uses a temporary Bun path.',
+        'The LaunchAgent points into Bun\'s virtual filesystem and will not survive runtime changes.',
+        plistPath,
+      ))
     }
 
     const wdMatch = plistContent.match(/<key>WorkingDirectory<\/key>\s*<string>([^<]+)<\/string>/)
     const serverMatch = plistContent.match(/<string>([^<]*server\.ts)<\/string>/)
 
     if (!wdMatch) {
-      results.push(error('LaunchAgent is missing WorkingDirectory — run: bakin setup service'))
+      observations.push(serviceError(
+        'plist.working-directory',
+        'Background service has no working directory.',
+        'The LaunchAgent is missing WorkingDirectory.',
+        plistPath,
+      ))
     }
 
     if (serverMatch && wdMatch && wdMatch[1] !== projectRoot) {
-      results.push(error(
-        `LaunchAgent WorkingDirectory is "${wdMatch[1]}" but project is at "${projectRoot}" — run: bakin setup service`
+      observations.push(serviceError(
+        'plist.project-path',
+        'Background service points to a different project directory.',
+        `Configured ${wdMatch[1]}; expected ${projectRoot}.`,
+        plistPath,
+        { configuredPath: wdMatch[1], expectedPath: projectRoot },
       ))
     }
 
     if (serverMatch && serverMatch[1] !== join(projectRoot, 'server.ts')) {
-      results.push(error('LaunchAgent references stale server.ts path — run: bakin setup service'))
+      observations.push(serviceError(
+        'plist.server-path',
+        'Background service references a stale server path.',
+        `Configured ${serverMatch[1]}; expected ${join(projectRoot, 'server.ts')}.`,
+        plistPath,
+        { configuredPath: serverMatch[1], expectedPath: join(projectRoot, 'server.ts') },
+      ))
     }
 
     if (!serverMatch && !/<string>serve<\/string>/.test(plistContent)) {
-      results.push(error('LaunchAgent does not run `bakin serve` — run: bakin setup service'))
+      observations.push(serviceError(
+        'plist.command',
+        'Background service does not run Bakin.',
+        'The LaunchAgent command does not invoke `bakin serve`.',
+        plistPath,
+      ))
     }
   } catch (err) {
-    results.push(error(`Failed to read plist: ${err}`))
-    return results
+    return healthObserved([healthUnknown({
+      key: 'plist.read',
+      summary: 'Background service configuration could not be verified.',
+      detail: err instanceof Error ? err.message : String(err),
+      incident: {
+        key: 'plist-unreadable',
+        title: 'Background service configuration is unreadable',
+        impact: 'Health cannot verify whether the managed service will start correctly.',
+        disposition: 'watch',
+        resources: [{ kind: 'file', id: 'launch-agent-plist', label: 'Bakin LaunchAgent plist' }],
+        resolution: { key: 'rerun', type: 'rerun', label: 'Rerun this check' },
+      },
+    })])
   }
 
   // Check service is loaded
   try {
     execSync(`launchctl list ${SERVICE_LABEL}`, { encoding: 'utf-8', stdio: 'pipe' })
   } catch {
-    results.push(warn('LaunchAgent plist exists but service is not loaded — run: bakin setup service'))
+    observations.push(healthWarning({
+      key: 'launchd.loaded',
+      summary: 'Background service is installed but not loaded.',
+      evidence: { installed: true, loaded: false },
+      incident: serviceIncident(
+        'service-unloaded',
+        'Background service is not loaded',
+        'Bakin will not run in the background until launchd loads the service.',
+      ),
+    }))
   }
 
-  if (results.length === 0) {
-    results.push(ok('LaunchAgent installed and loaded with correct paths'))
+  if (observations.length === 0) {
+    observations.push(healthHealthy({
+      key: 'ready',
+      summary: 'Background service is installed and loaded.',
+      evidence: { installed: true, loaded: true, plistPath },
+    }))
   }
 
-  return results
+  return healthObserved(observations as [HealthObservationInput, ...HealthObservationInput[]])
+}
+
+function serviceError(
+  key: string,
+  summary: string,
+  detail: string,
+  plistPath: string,
+  evidence: Record<string, string> = {},
+) {
+  return healthError({
+    key,
+    summary,
+    detail,
+    evidence: { plistPath, ...evidence },
+    incident: serviceIncident(
+      key,
+      'Background service configuration is stale',
+      'The managed service may fail to start or may run the wrong project.',
+    ),
+  })
+}
+
+function serviceIncident(key: string, title: string, impact: string) {
+  return {
+    key,
+    title,
+    impact,
+    disposition: 'action_required' as const,
+    resources: [
+      { kind: 'service' as const, id: SERVICE_LABEL, label: 'Bakin background service' },
+      { kind: 'file' as const, id: 'launch-agent-plist', label: 'Bakin LaunchAgent plist' },
+    ],
+    resolution: {
+      key: 'reinstall-service',
+      type: 'instructions' as const,
+      label: 'Reinstall the background service',
+      steps: ['Run the service setup command, then rerun Health.'] as [string],
+      command: 'bakin setup service',
+    },
+  }
 }

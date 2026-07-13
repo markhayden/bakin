@@ -43,8 +43,9 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 }))
 
 mock.module('../../../src/core/doctor', () => ({
-  getLastResults: () => null,
-  runDiagnostics: async () => [],
+  getLastReport: () => null,
+  runDiagnostics: async () => null,
+  runTargetedDiagnostics: async () => null,
 }))
 mock.module('../../../src/core/doctor-repair', () => ({
   planDoctorRepair: async () => ({ items: [], errors: [] }),

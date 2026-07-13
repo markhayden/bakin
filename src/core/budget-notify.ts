@@ -88,7 +88,7 @@ async function relayToMainAgent(n: BudgetIncidentNotification, message: string, 
       agentId: mainAgentId,
       content: `${message}\n\nReview and resolve: Models → Spend (or \`bakin budget incidents\`). Relay this to the operator if they are not watching the dashboard.`,
     })
-    await meterAgentTurn({ agent: mainAgentId, result, name: 'budget-alert' })
+    await meterAgentTurn({ agent: mainAgentId, activityClass: 'system', result, name: 'budget-alert' })
   } catch (err) {
     log.error('Failed to relay budget incident to the main agent', err, { incidentId: n.incidentId })
   }

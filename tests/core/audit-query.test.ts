@@ -195,19 +195,31 @@ describe('queryAuditEvents — reverse tail read equivalence', () => {
 
 describe('session-death-incidents health check', () => {
   it('warns with task/agent/size details when deaths occurred in the last 24h', () => {
-    const results = checkSessionDeathIncidents(testDir, queryAuditEvents)
-    expect(results).toHaveLength(1)
-    expect(results[0]).toMatchObject({ check: 'session-death-incidents', status: 'warn' })
-    expect(results[0]?.message).toContain('2 runtime session death(s)')
-    expect(results[0]?.message).toContain('t-100 (jessica, 692KB, oversized)')
-    expect(results[0]?.message).toContain('t-200 (jessica, 549KB, oversized)')
+    const result = checkSessionDeathIncidents(testDir, queryAuditEvents)
+    expect(result.outcome).toBe('observed')
+    if (result.outcome !== 'observed') throw new Error('expected observations')
+    expect(result.observations).toHaveLength(1)
+    expect(result.observations[0]).toMatchObject({
+      key: 'recent',
+      status: 'warning',
+      summary: '2 runtime session deaths occurred in the last 24 hours.',
+      evidence: {
+        count: 2,
+        recent: [
+          { taskId: 't-100', agentId: 'jessica', completionBytes: expect.any(Number), oversizedOutput: true },
+          { taskId: 't-200', agentId: 'jessica', completionBytes: expect.any(Number), oversizedOutput: true },
+        ],
+      },
+      incident: { disposition: 'watch' },
+    })
   })
 
   it('reports ok when the window is clean', () => {
     const cleanDir = join(testDir, 'clean')
     mkdirSync(cleanDir, { recursive: true })
     writeFileSync(join(cleanDir, 'audit.jsonl'), entry('task.dispatched', 1000, { id: 't-x' }) + '\n')
-    const results = checkSessionDeathIncidents(cleanDir, queryAuditEvents)
-    expect(results[0]).toMatchObject({ check: 'session-death-incidents', status: 'ok' })
+    const result = checkSessionDeathIncidents(cleanDir, queryAuditEvents)
+    if (result.outcome !== 'observed') throw new Error('expected observations')
+    expect(result.observations[0]).toMatchObject({ key: 'recent', status: 'healthy' })
   })
 })

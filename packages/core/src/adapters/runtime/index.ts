@@ -1,7 +1,5 @@
 export type {
   AdapterAuditEvent,
-  AdapterHealthCheckDefinition,
-  AdapterHealthCheckResult,
   AdapterInitOpts,
   AdapterLogger,
   RuntimeExecToolDescriptor,

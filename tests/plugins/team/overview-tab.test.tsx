@@ -45,6 +45,7 @@ mock.module('@makinbakin/sdk/components', () => ({
 import { useAgentStore } from '../../../plugins/team/hooks/use-agent-store'
 import { OverviewTab } from '../../../plugins/team/components/overview-tab'
 import type { PackageStateRow } from '../../../plugins/team/types'
+import { HEALTHY_TEAM_HEALTH_REPORT } from './health-report-fixture'
 
 const PROFILE = {
   id: 'pixel',
@@ -72,6 +73,7 @@ function setupFetch(exp: FetchExpectation) {
   global.fetch = mock((url: RequestInfo | URL, init?: RequestInit) => {
     const u = String(url)
     teamRoutes.push({ url: u, init })
+    if (u === '/api/plugins/health/doctor') return Promise.resolve({ ok: true, json: () => Promise.resolve(HEALTHY_TEAM_HEALTH_REPORT) } as Response)
     if (u.endsWith('/stats')) return Promise.resolve({ ok: true, json: () => Promise.resolve(exp.stats ?? { usage: null }) } as Response)
     if (u.endsWith('/recent-activity')) return Promise.resolve({ ok: true, json: () => Promise.resolve(exp.recentActivity ?? { ok: true, activity: { windowMs: { '5m': 0, '1h': 0, '24h': 0 }, errors: { '5m': 0, '1h': 0, '24h': 0 }, sinceServerStart: new Date().toISOString() } }) } as Response)
     if (u.endsWith('/skills')) return Promise.resolve({ ok: true, json: () => Promise.resolve(exp.skills ?? { skills: [] }) } as Response)
@@ -206,6 +208,9 @@ describe('OverviewTab', () => {
     // endpoint must render blur's fallback, never pixel's numbers.
     global.fetch = mock((url: RequestInfo | URL) => {
       const u = String(url)
+      if (u === '/api/plugins/health/doctor') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(HEALTHY_TEAM_HEALTH_REPORT) } as Response)
+      }
       if (u.endsWith('/pixel/stats')) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ usage: { agent: 'pixel', sessionId: 's', sessionStarted: '', model: 'claude-opus-4-7', messages: 12, tokens: { input: 1000, output: 500, cacheRead: 200, cacheWrite: 50, total: 1750 }, cost: { input: 0.01, output: 0.02, cacheRead: 0.001, cacheWrite: 0.001, total: 0.03, source: 'runtime' } } }) } as Response)
       }

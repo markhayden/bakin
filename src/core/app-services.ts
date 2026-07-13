@@ -1,5 +1,4 @@
 import type { AppServices } from '@bakin/core/app-services'
-import { createHealthService } from '@bakin/core/app-services'
 import {
   migrateAntflyPasswordToSecretStore,
   resolveAntflyPassword,
@@ -8,9 +7,10 @@ import { appendAudit } from './audit'
 import { getContentDir } from './content-dir'
 import { createLogger } from './logger'
 import { createRuntimeExecToolProvider } from './exec-tools/provider'
-import { createRuntimeAdapter } from './runtime-adapter-factory'
+import { createRuntimeAdapter, createRuntimeAdapterHealthChecks } from './runtime-adapter-factory'
 import { createSearchAdapter } from './search-adapter-factory'
 import { getSettings, resetSettingsCache } from './settings'
+import { registerAdapterHealthCheck, unregisterOwnerHealth } from './health-check-registry'
 // Accessors live in a leaf module (breaks the composition-root import cycle);
 // re-exported below so existing `from './app-services'` imports are unchanged.
 import { getAppServices, maybeGetAppServices, setAppServices } from './app-services-store'
@@ -88,11 +88,22 @@ export async function createAppServices(): Promise<AppServices> {
   })
   await search.initialize({ ...adapterInit, settings: withAntflyAuthSecret(settings.search.settings) })
 
+  // Adapter diagnostics join the same owner-aware registry as plugin/core
+  // checks. Recomposition replaces the active runtime's registrations so a
+  // restart or adapter switch cannot retain stale definitions.
+  const previousRuntimeName = maybeGetAppServices()?.runtime.name
+  for (const adapterId of new Set([previousRuntimeName, runtime.name])) {
+    if (adapterId) unregisterOwnerHealth('adapter', adapterId)
+  }
+  const runtimeLabel = runtime.name === 'pi' ? 'Pi' : runtime.name
+  for (const check of createRuntimeAdapterHealthChecks(settings.runtime.adapter)) {
+    registerAdapterHealthCheck(runtime.name, runtimeLabel, check)
+  }
+
   const services: AppServices = {
     runtime,
     search,
     tasks,
-    health: createHealthService([runtime, search]),
   }
   setAppServices(services)
   log.info('App services initialized', {

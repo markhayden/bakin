@@ -14,8 +14,8 @@
  *    (tokens/cost/outcome) interleaved with notable events, expandable logs.
  *
  * Also exports useAgentAttention + DiagnosticsChips: the Overview tab's
- * drift/context/burn status chips, derived from the CACHED doctor results
- * (data.agents) — same source as the dashboard attention rollup.
+ * drift/context/burn status chips, derived from canonical cached Health
+ * incidents and their structured agent resources.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, RefreshCw } from 'lucide-react'
@@ -23,6 +23,7 @@ import { Button, Badge, Skeleton } from '@makinbakin/sdk/ui'
 import { Sparkline, ChartExplainer } from '@makinbakin/sdk/components'
 import { usePluginEvent, useJsonFetch } from '@makinbakin/sdk/hooks'
 import { formatDuration } from '@makinbakin/sdk/utils'
+import type { HealthReport } from '@makinbakin/sdk/types'
 import type { ScanFinding, TimelineEventView } from '../types'
 
 // ── Small shared bits ────────────────────────────────────────────────────────
@@ -74,35 +75,27 @@ export interface AgentAttention {
   burn: boolean
 }
 
-interface DoctorRowLike {
-  check?: string
-  status?: string
-  data?: { agents?: unknown }
-}
-
-function rowFlagsAgent(rows: DoctorRowLike[], check: string, agentId: string): boolean {
-  return rows.some(
-    (row) =>
-      row.check === check &&
-      row.status !== 'ok' &&
-      row.status !== 'fixed' &&
-      Array.isArray(row.data?.agents) &&
-      (row.data.agents as unknown[]).includes(agentId),
+function reportFlagsAgent(report: HealthReport, checkId: string, agentId: string): boolean {
+  const observationIds = new Set(
+    report.observations
+      .filter(observation => observation.checkId === checkId)
+      .map(observation => observation.id),
   )
+  return report.incidents.some(incident => (
+    incident.disposition !== 'advisory'
+    && incident.resources.some(resource => resource.kind === 'agent' && resource.id === agentId)
+    && incident.observationIds.some(observationId => observationIds.has(observationId))
+  ))
 }
 
-/** Drift/context/burn flags for one agent from the cached doctor results. */
+/** Drift/context/burn flags for one agent from canonical cached Health incidents. */
 export function useAgentAttention(agentId: string): AgentAttention {
-  // A failed summary fetch leaves data null → same "not loaded" flags the
-  // old swallow-errors getJson produced.
-  const summary = useJsonFetch<{ doctor?: { results?: DoctorRowLike[] } | null }>(
-    '/api/plugins/health/summary',
-  )
+  const health = useJsonFetch<HealthReport>('/api/plugins/health/doctor')
   // Re-fetch when the agent changes (matches the old per-effect behavior):
   // an instance surviving /team/a → /team/b navigation must not flag the new
   // agent from a stale doctor snapshot. Skips the mount run — the hook
   // already fetches on mount; this only covers agentId CHANGES.
-  const { refresh } = summary
+  const { refresh } = health
   const mountedAgent = useRef(agentId)
   useEffect(() => {
     if (mountedAgent.current === agentId) return
@@ -110,14 +103,14 @@ export function useAgentAttention(agentId: string): AgentAttention {
     refresh()
   }, [agentId, refresh])
   return useMemo(() => {
-    const rows = summary.data?.doctor?.results ?? []
+    const report = health.data
     return {
-      loaded: Boolean(summary.data?.doctor),
-      drift: rowFlagsAgent(rows, 'agent-sync', agentId),
-      context: rowFlagsAgent(rows, 'context.startup-size', agentId),
-      burn: rowFlagsAgent(rows, 'usage.agent-burn', agentId),
+      loaded: report !== null,
+      drift: report ? reportFlagsAgent(report, 'team.agent-sync', agentId) : false,
+      context: report ? reportFlagsAgent(report, 'health.context.startup-size', agentId) : false,
+      burn: report ? reportFlagsAgent(report, 'health.usage.agent-burn', agentId) : false,
     }
-  }, [summary.data, agentId])
+  }, [health.data, agentId])
 }
 
 export function DiagnosticsChips({ agentId, onOpen }: { agentId: string; onOpen: () => void }) {

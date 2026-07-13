@@ -1,4 +1,4 @@
-import type { AdapterHealthCheckDefinition, AdapterInitOpts, RuntimeExecToolProvider, Unsubscribe } from '../shared'
+import type { AdapterInitOpts, RuntimeExecToolProvider, Unsubscribe } from '../shared'
 import type { ChannelCapability } from './capabilities'
 
 export type RuntimeMetadata = Record<string, unknown>
@@ -782,9 +782,8 @@ export interface AgentRuntimeAdapter {
    * "Can this runtime serve a turn?" — a CHEAP probe (an HTTP health hit, a
    * credential-presence read; never an LLM call). Resolves `false` rather
    * than throwing when the runtime cannot serve (unreachable process,
-   * uninitialized adapter, no LLM credentials). Deep diagnostics belong to
-   * getHealthChecks(), not here — the health plugin's `runtime` check
-   * renders this as reachable/not-responding.
+   * uninitialized adapter, no LLM credentials). Deeper diagnostics are
+   * registered separately with the canonical Health registry.
    */
   ping(): Promise<boolean>
   /**
@@ -795,7 +794,6 @@ export interface AgentRuntimeAdapter {
    * writes and expect the next read to reflect them.
    */
   restart(): Promise<void>
-  getHealthChecks(): AdapterHealthCheckDefinition[]
 
   /**
    * CRUD error contract (R28): `get` returns `null` for a missing agent —

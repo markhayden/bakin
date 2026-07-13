@@ -52,6 +52,7 @@ export function createRuntimeExecToolProvider(): RuntimeExecToolProvider {
       if (!tool) {
         return { ok: false, text: `ERROR: unknown exec tool: ${name}` }
       }
+      const activityClass = tool.activityClass ?? 'user'
       const start = Date.now()
       const taskId = params.taskId as string | undefined
       log.info('Exec tool called (runtime-native)', { tool: name, agent: agentId, taskId })
@@ -76,6 +77,7 @@ export function createRuntimeExecToolProvider(): RuntimeExecToolProvider {
         const durationMs = Date.now() - start
         recordUsage({
           kind: 'mcp',
+          activityClass,
           name,
           agent: agentId,
           durationMs,
@@ -104,6 +106,7 @@ export function createRuntimeExecToolProvider(): RuntimeExecToolProvider {
         log.error(`exec tool ${name} threw`, err as Error, { agent: agentId })
         recordUsage({
           kind: 'mcp',
+          activityClass,
           name,
           agent: agentId,
           durationMs,

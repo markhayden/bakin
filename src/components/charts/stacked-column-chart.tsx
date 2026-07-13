@@ -2,11 +2,12 @@
  * StackedColumnChart (#385) — hand-rolled div-based stacked columns for the
  * SDK chart kit. One column per x bucket, segments stacked by series with a
  * 2px surface gap between fills, legend with click-to-toggle when there are
- * ≥2 series (a single series needs no legend), and a per-column hover
- * tooltip carrying the full breakdown. Series beyond the palette fold into
- * a gray "Other" — a 9th hue is never generated.
+ * ≥2 series (a single series needs no legend), and a per-column pointer and
+ * keyboard tooltip carrying the full breakdown. Series beyond the palette
+ * fold into a gray "Other" — a 9th hue is never generated.
  */
-import { useMemo, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
+import { ChartDataTable, type ChartSeries } from './chart-data-table'
 import { CHART_SERIES_COLORS, CHART_OTHER_COLOR, CHART_MAX_SERIES } from './palette'
 
 export interface StackedColumnDatum {
@@ -74,10 +75,16 @@ export function StackedColumnChart({
   formatValue = (n) => n.toLocaleString(),
   emptyLabel = 'No data in this window.',
 }: StackedColumnChartProps) {
+  const tooltipId = useId()
   const [hidden, setHidden] = useState<Set<string>>(new Set())
   const [hovered, setHovered] = useState<number | null>(null)
 
   const series = useMemo(() => deriveSeries(data), [data])
+  const exactSeries = useMemo<ChartSeries[]>(() => (
+    [...new Set(data.flatMap((datum) => Object.keys(datum.values)))]
+      .sort()
+      .map((key) => ({ key, label: key }))
+  ), [data])
   const keptKeys = useMemo(
     () => new Set(series.filter((s) => s.key !== OTHER_KEY).map((s) => s.key)),
     [series],
@@ -88,6 +95,13 @@ export function StackedColumnChart({
     visible.reduce((sum, s) => sum + bucketValue(d, s, keptKeys), 0),
   )
   const max = Math.max(...columnTotals, 1)
+  const activeDatum = hovered === null ? null : data[hovered] ?? null
+  const activeDetail = activeDatum
+    ? visible
+      .map((item) => ({ item, value: bucketValue(activeDatum, item, keptKeys) }))
+      .filter(({ value }) => value > 0)
+    : []
+  const activeTotal = hovered === null ? 0 : columnTotals[hovered] ?? 0
 
   if (data.length === 0) {
     return <div className="py-8 text-center text-sm text-muted-foreground">{emptyLabel}</div>
@@ -105,16 +119,30 @@ export function StackedColumnChart({
   return (
     <div>
       <div className="relative">
-        <div className="flex items-end gap-1" style={{ height }} role="img" aria-label="Stacked column chart">
+        <div className="flex items-end gap-1" style={{ height }} role="group" aria-label="Stacked column chart">
           {data.map((datum, i) => {
             const total = columnTotals[i]!
+            const detail = visible
+              .map((item) => ({ item, value: bucketValue(datum, item, keptKeys) }))
+              .filter(({ value }) => value > 0)
+            const accessibleLabel = [
+              `${datum.xLabel ?? datum.x}:`,
+              ...detail.map(({ item, value }) => `${item.label} ${formatValue(value)},`),
+              `total ${formatValue(total)}`,
+            ].join(' ')
             return (
               <div
                 key={datum.x}
-                className="group relative flex min-w-0 flex-1 flex-col-reverse justify-start"
+                className="group relative flex min-w-0 flex-1 flex-col-reverse justify-start rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 style={{ height }}
+                role="img"
+                tabIndex={0}
+                aria-label={accessibleLabel}
+                aria-describedby={hovered === i ? tooltipId : undefined}
                 onMouseEnter={() => setHovered(i)}
                 onMouseLeave={() => setHovered((h) => (h === i ? null : h))}
+                onFocus={() => setHovered(i)}
+                onBlur={() => setHovered((h) => (h === i ? null : h))}
               >
                 {visible.map((s, si) => {
                   const value = bucketValue(datum, s, keptKeys)
@@ -129,29 +157,30 @@ export function StackedColumnChart({
                     />
                   )
                 })}
-                {hovered === i && total > 0 && (
-                  <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 -translate-x-1/2 whitespace-nowrap rounded border border-border bg-popover px-2.5 py-1.5 text-xs shadow-md">
-                    <div className="mb-1 font-medium text-foreground">{datum.xLabel ?? datum.x}</div>
-                    {visible.map((s) => {
-                      const value = bucketValue(datum, s, keptKeys)
-                      if (value <= 0) return null
-                      return (
-                        <div key={s.key} className="flex items-center gap-1.5 text-muted-foreground">
-                          <span className="inline-block h-2 w-2 rounded-sm" style={{ backgroundColor: s.color }} />
-                          <span>{s.label}</span>
-                          <span className="ml-auto pl-3 tabular-nums text-foreground">{formatValue(value)}</span>
-                        </div>
-                      )
-                    })}
-                    <div className="mt-1 border-t border-border pt-1 text-muted-foreground">
-                      Total <span className="tabular-nums text-foreground">{formatValue(total)}</span>
-                    </div>
-                  </div>
-                )}
               </div>
             )
           })}
         </div>
+        {activeDatum && hovered !== null && (
+          <div
+            id={tooltipId}
+            role="tooltip"
+            className="pointer-events-none absolute top-0 z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded border border-border bg-popover px-2.5 py-1.5 text-xs shadow-md"
+            style={{ left: `${((hovered + 0.5) / data.length) * 100}%` }}
+          >
+            <div className="mb-1 font-medium text-foreground">{activeDatum.xLabel ?? activeDatum.x}</div>
+            {activeDetail.map(({ item, value }) => (
+              <div key={item.key} className="flex items-center gap-1.5 text-muted-foreground">
+                <span className="inline-block h-2 w-2 rounded-sm" style={{ backgroundColor: item.color }} />
+                <span>{item.label}</span>
+                <span className="ml-auto pl-3 tabular-nums text-foreground">{formatValue(value)}</span>
+              </div>
+            ))}
+            <div className="mt-1 border-t border-border pt-1 text-muted-foreground">
+              Total <span className="tabular-nums text-foreground">{formatValue(activeTotal)}</span>
+            </div>
+          </div>
+        )}
         <div className="mt-1 flex gap-1 text-[10px] text-muted-foreground">
           {data.map((d) => (
             <div key={d.x} className="min-w-0 flex-1 truncate text-center" title={d.x}>
@@ -167,7 +196,7 @@ export function StackedColumnChart({
               key={s.key}
               type="button"
               onClick={() => toggle(s.key)}
-              className={`flex items-center gap-1.5 text-xs transition-opacity ${hidden.has(s.key) ? 'opacity-40' : ''}`}
+              className={`flex items-center gap-1.5 rounded-sm text-xs transition-opacity motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${hidden.has(s.key) ? 'opacity-40' : ''}`}
               aria-pressed={!hidden.has(s.key)}
             >
               <span className="inline-block h-2 w-2 rounded-sm" style={{ backgroundColor: s.color }} />
@@ -176,6 +205,12 @@ export function StackedColumnChart({
           ))}
         </div>
       )}
+      <ChartDataTable
+        data={data}
+        series={exactSeries}
+        caption="Stacked column chart data"
+        formatValue={formatValue}
+      />
     </div>
   )
 }
