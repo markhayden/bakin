@@ -48,6 +48,8 @@ export interface CapabilityReadiness {
   packageId: string
   version: string
   name: string
+  /** What this capability adds/unlocks — the pack manifest's description. */
+  description: string
   skills: CapabilitySkillStatus[]
   bins: CapabilityBinStatus[]
   secrets: CapabilitySecretStatus[]
@@ -132,6 +134,7 @@ export async function listCapabilities(): Promise<CapabilityReadiness[]> {
       packageId: id,
       version: entry.version,
       name: manifest.name,
+      description: manifest.description ?? '',
       skills,
       bins,
       secrets,

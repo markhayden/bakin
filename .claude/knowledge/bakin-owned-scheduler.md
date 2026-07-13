@@ -58,3 +58,15 @@ The cron→task **bridge webhook** + shared secret, the **reconcile-poll** (`rec
 - Ledger: `packages/core/src/execution/ledger.ts` (`cron_fires` + `skip_reason`, `listCronFires`), facade `src/core/execution-ledger.ts`
 - Run history: `plugins/schedule/lib/runs-reader.ts` (ownership routing), `components/run-history.tsx`, client type `src/hooks/use-schedule.ts` (`RunEntry`)
 - Tests: `tests/plugins/schedule/*` (engine + catch-up are fake-clock; cutover/health/routes are mocked)
+
+## Cron parity stance + switch-time adoption (pi-parity D5, 2026-07-13)
+
+Bakin schedules ARE the answer on cron-less runtimes — agents self-schedule
+via `bakin_exec_schedule_*` (taught in the shipped role context, pinned by
+`tests/core/schedule-context-pin.test.ts`); no fake `runtime.cron` exists on
+Pi. Leaving a cron-bearing runtime: `bakin runtime use <t> --adopt-cron`
+(opt-in) snapshots native jobs pre-teardown and the `schedule.adoptCronJobs`
+hook (`plugins/schedule/lib/cron-adoption.ts`) turns each into a Bakin job —
+`source: 'adopted'`, `originalRuntimeCron` snapshot preserved, idempotent
+per job id, dry-run previewable. Mirrors the per-job REST adopt handler
+minus live cron calls (the source runtime is already gone).

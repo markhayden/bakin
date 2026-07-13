@@ -202,3 +202,14 @@ dangling assetIds (logos/groups/defaultImageReferences), unreadable manifests,
 todo tasks waiting on ghost/draft brands (these are live brand-gate deferrals —
 warn → nav attention badge), and stale drafts (>7d unpublished, ok-level
 nudge). Structured `data` attached; no consumer parses message text.
+
+## pi-parity additions (2026-07-13)
+
+- `capabilities` — per-pack readiness findings (`capability.<slug>`),
+  warn + remediation from the single readiness engine; ok-with-invite when
+  none installed.
+- `github-readiness` — gh absent = informational ok; installed-but-
+  unauthenticated warns with `gh auth login`; probe-injected
+  (`plugins/health/lib/system-checks/github-readiness.ts`).
+- CLI: `bakin check capabilities` rides the `capabilities` onboarding
+  component (also the recommended-capability installer under `--yes`).

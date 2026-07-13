@@ -88,6 +88,7 @@ describe('CapabilitiesTab', () => {
       capabilities: [
         {
           capability: 'web-search', packageId: 'web-search-brave', version: '1.0.0', name: 'Web Search (Brave)',
+          description: 'Give your agents real web search — research, docs lookup, fresh information.',
           skills: [{ name: 'bx-search', status: 'ok' }],
           bins: [{ name: 'bx', status: 'ok' }],
           secrets: [{ name: 'BRAVE_SEARCH_API_KEY', required: true, secretSlot: 'brave.apiKey', status: 'missing' }],
@@ -99,6 +100,7 @@ describe('CapabilitiesTab', () => {
 
     render(<CapabilitiesTab />)
     await waitFor(() => screen.getByText('Web Search (Brave)'))
+    expect(screen.getByText(/Give your agents real web search/)).toBeTruthy()
     expect(screen.getByText('Needs attention')).toBeTruthy()
     expect(screen.getByText(/BRAVE_SEARCH_API_KEY not set/)).toBeTruthy()
     expect(screen.getByText('Add the key in Settings')).toBeTruthy()
@@ -160,14 +162,26 @@ describe('SwitchTab', () => {
     expect(screen.getByText('Stays behind')).toBeTruthy()
   })
 
-  it('the real switch is gated behind the confirm dialog', async () => {
+  it('the active runtime is marked and not selectable', () => {
+    render(<SwitchTab report={report} onSwitched={() => {}} />)
+    expect(screen.getByText('Active')).toBeTruthy()
+    expect((screen.getByTestId('switch-target-pi') as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByTestId('switch-target-openclaw') as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('the real switch is gated behind a TYPED confirm dialog', async () => {
     render(<SwitchTab report={report} onSwitched={() => {}} />)
     fireEvent.click(screen.getByTestId('switch-target-openclaw'))
+    // Consequence callout is visible before any action.
+    expect(screen.getByText('Before you switch')).toBeTruthy()
     fireEvent.click(screen.getByTestId('switch-execute'))
     await settleReact()
 
-    // Dialog open, nothing posted yet.
+    // Dialog open, nothing posted; confirm stays disabled until the adapter
+    // name is typed — switching is deliberate, not one accidental click.
     expect(posts).toEqual([])
+    expect((screen.getByTestId('switch-confirm') as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'openclaw' } })
     fireEvent.click(screen.getByTestId('switch-confirm'))
     await waitFor(() => expect(posts).toEqual([{ target: 'openclaw' }]))
   })

@@ -37,6 +37,7 @@ Pi is a minimal single-session coding harness — it has no agent roster, channe
 - Pi's own env override is `PI_CODING_AGENT_DIR` (NOT `PI_HOME`) — irrelevant here because the adapter passes explicit paths to every constructor.
 - Pi session JSONL **matches Bakin's session-usage parser contract 1:1** (`{type:'session'}` header; `{type:'message'}` with `message.usage.totalTokens` + `cost.total`) — the `pi-session-jsonl` tier serves raw file content and usage.db populates with zero core changes.
 - Pi's inner auto-retry (3 attempts, exponential) is tunable via `settings.runtime.settings.retry` (`{ enabled, maxRetries, baseDelayMs }`) — Bakin's dispatch owns the outer ladder; tests disable it.
+- **Auto-compaction is ON by default** (SDK settings default; long tasks compact, not die). The per-turn construction is `createTurnSettingsManager` (messaging.ts, exported) and `tests/adapter-pi/session-settings.test.ts` PINS the enabled default — an SDK flip fails the pin and forces an explicit override.
 
 ## Core seams added for Pi (adapter-neutral, OpenClaw unaffected)
 
@@ -48,10 +49,12 @@ Pi is a minimal single-session coding harness — it has no agent roster, channe
 
 | Surface | Behavior on Pi |
 |---|---|
-| channels | `list() → []`; sends/approvals throw typed `runtime_failed` ("not supported by the pi runtime"); the Chat plugin is the conversational surface |
-| cron | omitted entirely (optional contract member — consumers feature-detect; Bakin-owned task scheduling unaffected) |
+| channels | `list() → []`; sends/approvals throw typed `runtime_failed` ("not supported by the pi runtime"); the Chat plugin is the conversational surface. Pending workflow gates are NEVER silent: the workflows nav badge + toast/OS notification (`nav-badge-providers` slot) deliver approval attention in-app on every runtime |
+| cron | omitted entirely (optional contract member — consumers feature-detect). Agents self-schedule via `bakin_exec_schedule_*` (Bakin-owned scheduler); a switch OFF a cron-bearing runtime can adopt its native jobs into Bakin schedules (`--adopt-cron`, opt-in) |
 | images | **FULLY SUPPORTED, ZERO KEYS** (`images.ts` + `codex-images.ts`): the existing openai-codex OAuth drives the ChatGPT backend's hosted `image_generation` tool (gpt-image-2) — generation AND edits with input images (both probed live 2026-07-07). `providers()` reports `openai-codex` configured → plugin routes `servedBy: 'runtime'`. Explicit `provider: openai/google` routes still ride the shared direct-provider shim with a Bakin key (generate-only fallback). Caveats: the hosted tool takes no size params (`sizingHonored: false` — plugin probes real dims, exports own geometry); the endpoint is reverse-engineered (`chatgpt.com/backend-api/codex/responses`), so failures classify typed and the shim remains the keyed escape hatch |
 | media / createThread / editMessage | members genuinely absent — callers skip |
+| per-agent subagent models | `routingSupport().perAgentSubagentModel` stays FALSE (Pi has no native subagents) — but a switch onto Pi PRESERVES carried values in agent metadata (`carriedSubagentModel`, reconciler-owned) and restores them on the switch back; report line "preserved (not active on pi)" |
+| web search / browser / per-turn capabilities | capability packs (skill-packs) via agent-packages — see `.claude/knowledge/capability-packs.md`; Bakin ships no tool wrappers |
 
 Fast-follows on record: Discord bridge (reuse existing bot token), in-app approval channel.
 

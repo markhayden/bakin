@@ -85,7 +85,8 @@ export function CapabilitiesTab() {
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-sm font-medium">{cap.name}</p>
-                <p className="text-xs text-muted-foreground">{cap.packageId}@{cap.version}</p>
+                {cap.description && <p className="mt-0.5 text-xs text-muted-foreground">{cap.description}</p>}
+                <p className="mt-0.5 text-[11px] text-muted-foreground/70">{cap.packageId}@{cap.version}</p>
               </div>
               {cap.ready ? (
                 <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">Ready</Badge>

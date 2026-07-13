@@ -437,3 +437,12 @@ also runs after Claude Code edits and blocks the common provider-bypass and
 shipped-workflow-agent mistakes at edit time.
 
 Use `.claude/skills/check-adapter-boundary.md` for the full repeatable audit.
+
+## Ecosystem-first per-turn capabilities (pi-parity D3, 2026-07-13)
+
+Per-turn agent capabilities (web search, browser, transcription) are
+runtime-OWNED content, not Bakin exec tools — Bakin manages installs via
+capability packs (`.claude/knowledge/capability-packs.md`) and never wraps
+what both runtimes' ecosystems already ship. Daemons (channel bridges,
+cron, inbox watchers) remain Bakin-side by structure: Pi extensions are
+session-scoped and the adapter disposes sessions per turn.

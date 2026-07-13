@@ -38,9 +38,9 @@ Plan: `PLAN.md` · Spec: `SPEC.md` · One PR per phase, one commit per task.
 - [x] Gate: RTL all tabs green + rig visual review (all three tabs screenshotted) → PR
 
 ## P5 — chore/pi-parity-docs
-- [ ] T5.1 Knowledge/extending/CLAUDE.md/README docs
-- [ ] T5.2 Task-parity battery 5/5 recorded (spec acceptance 8)
-- [ ] T5.3 Close-out: memory, spec → SHIPPED, follow-up issues (Discord bridge, extension trust, fast-follow packs)
+- [x] T5.1 Knowledge/extending/CLAUDE.md/README docs
+- [x] T5.2 Task-parity battery 5/5 recorded (spec acceptance 8)
+- [x] T5.3 Close-out: memory, spec → SHIPPED, follow-up issues (Discord bridge, extension trust, fast-follow packs)
 
 ## Open questions (resolve before their tasks)
 - [ ] OQ1: subagent-model scope — recommend preservation-only (T3.2)

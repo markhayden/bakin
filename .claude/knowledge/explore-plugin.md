@@ -151,3 +151,14 @@ mandatory isolation-mock rules.
 - No auto-fetch of the remote catalog; refresh is a user action.
 - No provider-specific identifiers (adapter-neutral by construction — it
   only reads lockfiles and calls host REST).
+
+## Capabilities shelf (pi-parity P2, 2026-07-13)
+
+Skill-packs with a `capability` slug get their own tab ("teach your agents
+new tricks"): runtime-compat badges/gating against the ACTIVE adapter
+(catalog response carries `activeAdapter`; universal `['*']` packs
+unaffected), and the install dialog runs the guided key step when the
+install response reports missing store-backable secrets (masked POST
+/api/secrets, skippable — readiness stays honest). Explore remains the ONE
+UI install path; the runtime hub's Capabilities tab shows status and links
+here.
