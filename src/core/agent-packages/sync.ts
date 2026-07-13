@@ -185,10 +185,13 @@ async function reclaimTargets(
 }
 
 /**
- * Re-project a managed agent from its INSTALLED source dir (no network):
- * recompose blocks + re-write skills/assets, then update the lockfile's
- * projection records. Skipped (sentineled) targets keep their previous
- * lockfile entries so they stay tracked.
+ * Re-project a package from its INSTALLED source dir (no fetch of the
+ * package source): recompose blocks + re-write skills/assets, then update
+ * the lockfile's projection records. Skipped (sentineled) targets keep
+ * their previous lockfile entries so they stay tracked. The one exception
+ * to "no network": a capability pack's MISSING pinned binary is
+ * re-downloaded best-effort (bytes that aren't on disk can't be restored
+ * locally); an unchanged on-disk bin never touches the network.
  */
 async function applyLocalProjection(packageId: string): Promise<ProjectorResult> {
   const lock = readLockfile()
@@ -223,7 +226,20 @@ async function applyLocalProjection(packageId: string): Promise<ProjectorResult>
   // Bins are part of the projected surface — re-adding them here keeps the
   // lockfile honest AND makes local repair restore a deleted binary
   // (idempotent: an on-disk bin matching the pin is skipped, no download).
-  await installManifestBins(manifest, installedBy, result)
+  // Restoring MISSING bytes needs the network, so this leg is best-effort:
+  // offline, skills still repair and the previous bin rows stay tracked —
+  // readiness keeps reporting the missing bin with its remediation.
+  try {
+    await installManifestBins(manifest, installedBy, result)
+  } catch (err) {
+    log.warn('Bin restore failed during local re-projection — previous bin rows kept', {
+      packageId, error: err instanceof Error ? err.message : String(err),
+    })
+    const restored = new Set(result.projections.filter((p) => p.kind === 'bin').map((p) => p.target))
+    result.projections.push(
+      ...(entry.projections ?? []).filter((p) => p.kind === 'bin' && !restored.has(p.target)),
+    )
+  }
 
   // Preserve lockfile records for targets the projector skipped (.userEdited)
   // — they're still package projections, just locally locked.
@@ -469,38 +485,40 @@ export interface PackSyncReceipt {
   changed: boolean
 }
 
-/**
- * Minimal sync symmetry for standalone packs (skill/workflow/lesson packs):
- * fetch + re-project via the updater, or report-only with --check. Packs
- * have no workspace blocks or receipts file — the response IS the receipt.
- */
+/** Lockfile lookup shared by the standalone-pack verbs — packs only. */
+function requirePackEntry(packageKey: string): PackageEntry {
+  const entry = readLockfile().packages[packageKey]
+  if (!entry) throw new PackageNotInstalledError(packageKey)
+  if (entry.kind === 'agent') {
+    throw new Error(`"${packageKey}" is an agent package — use \`bakin agents sync ${entry.agentId ?? packageKey}\`.`)
+  }
+  return entry
+}
+
 /**
  * Local-only pack repair: re-project a standalone pack from its INSTALLED
  * source dir — no fetch, no version movement. This is the pack counterpart
- * of the always-local re-projection agents get in syncAgent (the updater
- * no-ops on an unchanged commit, so a fetching sync cannot repair drift).
+ * of the always-local re-projection agents get in syncAgent.
  * userEdited skills are skipped by the projector, reported in `skipped`.
  */
 export async function repairPackLocally(packageKey: string): Promise<ProjectorResult> {
-  const lock = readLockfile()
-  const entry = lock.packages[packageKey]
-  if (!entry) throw new PackageNotInstalledError(packageKey)
-  if (entry.kind === 'agent') {
-    throw new Error(`"${packageKey}" is an agent package — use syncAgent/bakin agents sync`)
-  }
+  requirePackEntry(packageKey)
   return applyLocalProjection(packageKey)
 }
 
+/**
+ * Sync symmetry for standalone packs (skill/workflow/lesson packs): fetch +
+ * re-project via the updater, then ALWAYS re-project locally — the updater
+ * no-ops on an unchanged commit, so without the local pass a plain
+ * `bakin packages sync` could never repair drift (agent-sync symmetry).
+ * Report-only with --check. Packs have no workspace blocks or receipts
+ * file — the response IS the receipt.
+ */
 export async function syncPack(
   packageId: string,
   opts: { check?: boolean } = {},
 ): Promise<PackSyncReceipt> {
-  const lock = readLockfile()
-  const entry = lock.packages[packageId]
-  if (!entry) throw new PackageNotInstalledError(packageId)
-  if (entry.kind === 'agent') {
-    throw new Error(`"${packageId}" is an agent package — use \`bakin agents sync ${entry.agentId ?? packageId}\`.`)
-  }
+  const entry = requirePackEntry(packageId)
 
   if (opts.check) {
     const status = await checkPackageUpdateAsync(packageId)
@@ -518,6 +536,7 @@ export async function syncPack(
   }
 
   const update = await updatePackageById({ packageId })
+  await applyLocalProjection(packageId)
   return {
     packageId,
     kind: entry.kind,

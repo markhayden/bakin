@@ -70,8 +70,10 @@ export interface RemoveResult {
  * Drop `bin` projections whose target another installed package (any key
  * except `selfKey`) still projects — shared binaries survive until their
  * LAST referencing package is removed. All other projections pass through.
+ * Exported for the updater: dropping a bin on version upgrade must honor
+ * the same sharing rule as package removal.
  */
-function withoutSharedBins(
+export function withoutSharedBins(
   lock: ReturnType<typeof readLockfile>,
   selfKey: string,
   projections: NonNullable<ReturnType<typeof readLockfile>['packages'][string]['projections']>,

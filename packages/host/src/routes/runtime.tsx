@@ -32,6 +32,9 @@ const TABS = [
 
 function RuntimePage() {
   const [tab, setTab] = useQueryState('tab', 'overview')
+  // Unknown ?tab= values (typos, the retired ?tab=switch id) must never
+  // strand the page on an empty pane — fall back to Overview.
+  const activeTab = TABS.some((t) => t.id === tab) ? tab : 'overview'
   const [report, setReport] = useState<CapabilityReport | null>(null)
   const [reportError, setReportError] = useState<string | null>(null)
   // undefined = in flight (the setup check runs every component live —
@@ -82,7 +85,7 @@ function RuntimePage() {
         }
       />
       <div className="flex-1 space-y-6">
-        <UnderlineTabs tabs={TABS} value={tab} onValueChange={setTab} />
+        <UnderlineTabs tabs={TABS} value={activeTab} onValueChange={setTab} />
 
         {reportError && (
           <ErrorBanner message={`The runtime report failed to load: ${reportError}`} onRetry={refresh} />
@@ -95,9 +98,9 @@ function RuntimePage() {
           </div>
         )}
 
-        {report && tab === 'overview' && <OverviewTab report={report} onboarding={onboarding} onRefreshOnboarding={() => void loadOnboarding()} />}
-        {tab === 'capabilities' && <CapabilitiesTab />}
-        {report && tab === 'runtimes' && <RuntimesTab report={report} onSwitched={refresh} />}
+        {report && activeTab === 'overview' && <OverviewTab report={report} onboarding={onboarding} onRefreshOnboarding={() => void loadOnboarding()} />}
+        {activeTab === 'capabilities' && <CapabilitiesTab />}
+        {report && activeTab === 'runtimes' && <RuntimesTab report={report} onSwitched={refresh} />}
       </div>
     </div>
   )

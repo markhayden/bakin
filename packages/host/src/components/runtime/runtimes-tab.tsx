@@ -46,7 +46,7 @@ function ProgressSteps({ steps }: { steps: SwitchStepRow[] }) {
   )
 }
 
-function ResultCards({ result, onProceed }: { result: SwitchResultPayload; onProceed?: () => void }) {
+function ResultCards({ result, onProceed, busy = false }: { result: SwitchResultPayload; onProceed?: () => void; busy?: boolean }) {
   const verb = result.dryRun ? 'Would carry' : 'Carried'
   const attention: string[] = []
   for (const u of result.roster?.unmappedModels ?? []) {
@@ -98,7 +98,7 @@ function ResultCards({ result, onProceed }: { result: SwitchResultPayload; onPro
             </div>
             {result.dryRun && onProceed && (
               <div className="flex items-center gap-2 border-t border-border/60 pt-3">
-                <Button size="sm" onClick={onProceed} data-testid="switch-execute">
+                <Button size="sm" onClick={onProceed} disabled={busy} data-testid="switch-execute">
                   Switch to {RUNTIME_LABELS[result.to] ?? result.to}…
                 </Button>
                 <span className="text-xs text-muted-foreground">Opens the confirmation — nothing has been written yet.</span>
@@ -172,7 +172,7 @@ export function RuntimesTab({ report, onSwitched }: { report: CapabilityReport; 
   const roster = [report.adapter, ...others]
 
   const run = useCallback(async (dryRun: boolean) => {
-    if (!target) return
+    if (!target || running !== null) return
     setRunning(dryRun ? 'preview' : 'switch')
     setSteps([])
     setResult(null)
@@ -227,7 +227,7 @@ export function RuntimesTab({ report, onSwitched }: { report: CapabilityReport; 
       esRef.current = null
       setRunning(null)
     }
-  }, [target, adoptCron, copyWorkspaces, report.adapter, onSwitched])
+  }, [target, running, adoptCron, copyWorkspaces, report.adapter, onSwitched])
 
   if (others.length === 0) {
     return <p className="text-sm text-muted-foreground">No other runtime adapters are available to switch to.</p>
@@ -246,7 +246,7 @@ export function RuntimesTab({ report, onSwitched }: { report: CapabilityReport; 
             <button
               key={name}
               type="button"
-              disabled={isActive}
+              disabled={isActive || running !== null}
               data-testid={`switch-target-${name}`}
               onClick={() => { setTarget(name); setResult(null); setSteps([]); setConfirming(true) }}
               className={`rounded-xl border bg-card p-5 text-left text-card-foreground shadow transition-colors ${
@@ -286,7 +286,7 @@ export function RuntimesTab({ report, onSwitched }: { report: CapabilityReport; 
         </p>
       )}
       <ProgressSteps steps={steps} />
-      {result && <ResultCards result={result} onProceed={() => setConfirming(true)} />}
+      {result && <ResultCards result={result} onProceed={() => setConfirming(true)} busy={running !== null} />}
 
       <ConfirmDialog
         open={confirming}
@@ -303,7 +303,7 @@ export function RuntimesTab({ report, onSwitched }: { report: CapabilityReport; 
             <span className="mt-2 block">A server restart finishes the change.</span>
           </>
         }
-        confirmLabel={`Switch to ${target}`}
+        confirmLabel={`Switch to ${target ? RUNTIME_LABELS[target] ?? target : ''}`}
         confirmValue={target ?? ''}
         confirmTestId="switch-confirm"
         onConfirm={() => {

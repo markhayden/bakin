@@ -98,27 +98,36 @@ beforeEach(() => {
 const platformKey = binPlatformKey()
 if (!platformKey) throw new Error('unsupported test platform')
 
-function seedCapabilityPack(version: string, urlPath: string, script: string): string {
-  const dir = join(testDir, 'websearch-pack')
-  mkdirSync(join(dir, 'skills', 'find-stuff'), { recursive: true })
-  writeFileSync(join(dir, 'skills', 'find-stuff', 'SKILL.md'), '# find-stuff\n\nSearch.')
+function seedCapabilityPack(
+  version: string,
+  urlPath: string,
+  script: string,
+  opts: { id?: string; bins?: boolean } = {},
+): string {
+  const id = opts.id ?? 'websearch'
+  const dir = join(testDir, `${id}-pack`)
+  const skillName = `find-stuff-${id}`
+  mkdirSync(join(dir, 'skills', skillName), { recursive: true })
+  writeFileSync(join(dir, 'skills', skillName, 'SKILL.md'), `# ${skillName} ${version}\n\nSearch.`)
   writeFileSync(
     join(dir, 'bakin-package.json'),
     JSON.stringify({
-      id: 'websearch',
+      id,
       kind: 'skill-pack',
-      name: 'websearch',
+      name: id,
       version,
-      capability: 'web-search',
-      contributions: { skills: ['skills/find-stuff'] },
-      requires: {
-        bins: [{
-          name: 'fixturebin',
-          version,
-          install: { [platformKey!]: { url: `http://127.0.0.1:${server.port}${urlPath}`, sha256: sha256(script) } },
-          verifyArgs: ['--version'],
-        }],
-      },
+      capability: `web-search-${id}`,
+      contributions: { skills: [`skills/${skillName}`] },
+      ...(opts.bins === false ? {} : {
+        requires: {
+          bins: [{
+            name: 'fixturebin',
+            version,
+            install: { [platformKey!]: { url: `http://127.0.0.1:${server.port}${urlPath}`, sha256: sha256(script) } },
+            verifyArgs: ['--version'],
+          }],
+        },
+      }),
     }),
   )
   return dir
@@ -168,5 +177,49 @@ describe('capability-pack bins survive projection passes', () => {
     expect(existsSync(binTarget())).toBe(true)
     expect(readFileSync(binTarget(), 'utf-8')).toBe(SCRIPT_V1)
     expect(lockBins()).toHaveLength(1)
+  })
+
+  it('a dropped bin another pack still projects survives the upgrade (shared-bin guard)', async () => {
+    await installPackage({ source: seedCapabilityPack('1.0.0', '/v1', SCRIPT_V1) })
+    await installPackage({ source: seedCapabilityPack('1.0.0', '/v1', SCRIPT_V1, { id: 'otherpack' }) })
+    expect(existsSync(binTarget())).toBe(true)
+
+    seedCapabilityPack('2.0.0', '/v1', SCRIPT_V1, { bins: false }) // websearch 2.0.0 drops the bin
+    await updatePackageById({ packageId: 'websearch@1.0.0' })
+
+    expect(existsSync(binTarget())).toBe(true) // otherpack still projects it
+    const other = readLockfile().packages['otherpack@1.0.0']!
+    expect(other.projections!.filter((p) => p.kind === 'bin')).toHaveLength(1)
+  })
+
+  it('a failed bin download aborts the upgrade BEFORE any state is torn down', async () => {
+    await installPackage({ source: seedCapabilityPack('1.0.0', '/v1', SCRIPT_V1) })
+    const skillBefore = readFileSync(
+      join(openClawDir, 'skills', 'find-stuff-websearch', 'SKILL.md'), 'utf-8')
+
+    seedCapabilityPack('2.0.0', '/missing', SCRIPT_V2) // new pin, unreachable URL
+    await expect(updatePackageById({ packageId: 'websearch@1.0.0' })).rejects.toThrow(/download failed/)
+
+    // Nothing was unprojected, projected, or lockfile-flipped.
+    expect(readLockfile().packages['websearch@1.0.0']!.version).toBe('1.0.0')
+    expect(readFileSync(join(openClawDir, 'skills', 'find-stuff-websearch', 'SKILL.md'), 'utf-8')).toBe(skillBefore)
+    expect(readFileSync(binTarget(), 'utf-8')).toBe(SCRIPT_V1)
+    expect(lockBins()).toHaveLength(1)
+  })
+
+  it('offline local repair still repairs skills and keeps bin rows tracked (best-effort bins)', async () => {
+    await installPackage({ source: seedCapabilityPack('1.0.0', '/v1', SCRIPT_V1) })
+
+    // Simulate offline: the installed source's pin now points at a dead URL,
+    // and the binary is gone from disk.
+    const installedManifest = join(testDir, 'packages', 'skill-packs', 'websearch@1.0.0', 'bakin-package.json')
+    const manifest = JSON.parse(readFileSync(installedManifest, 'utf-8'))
+    manifest.requires.bins[0].install[platformKey!].url = `http://127.0.0.1:${server.port}/missing`
+    writeFileSync(installedManifest, JSON.stringify(manifest))
+    rmSync(binTarget(), { force: true })
+
+    await repairPackLocally('websearch@1.0.0') // must NOT throw
+    expect(existsSync(binTarget())).toBe(false) // honestly still missing
+    expect(lockBins()).toHaveLength(1) // previous row kept — still tracked for uninstall
   })
 })

@@ -103,7 +103,7 @@ export function CapabilitiesTab() {
                 {!cap.ready && (
                   <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/60 pt-3.5">
                     {cap.skills.filter((s) => s.status !== 'ok').map((s) => <Leg key={`s-${s.name}`} ok={false} label={`skill ${s.name} missing`} />)}
-                    {cap.bins.filter((b) => b.status !== 'ok').map((b) => <Leg key={`b-${b.name}`} ok={false} label={`binary ${b.name} missing`} />)}
+                    {cap.bins.filter((b) => b.status !== 'ok').map((b) => <Leg key={`b-${b.name}`} ok={false} label={b.status === 'unsupported-platform' ? `binary ${b.name} not available for this platform` : `binary ${b.name} missing`} />)}
                     {cap.secrets.filter((s) => s.status === 'missing').map((s) => <Leg key={`k-${s.name}`} ok={false} label={`${s.name} not set`} />)}
                   </div>
                 )}

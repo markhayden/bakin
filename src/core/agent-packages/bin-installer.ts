@@ -142,7 +142,7 @@ export async function installBinRequirement(
 export async function installManifestBins(
   manifest: Manifest,
   installedBy: Omit<InstalledByMarker, 'sha256'>,
-  result: ProjectorResult,
+  result: Pick<ProjectorResult, 'projections'>,
 ): Promise<void> {
   if (manifest.kind !== 'skill-pack' || !manifest.requires?.bins?.length) return
   for (const bin of manifest.requires.bins) {

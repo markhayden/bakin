@@ -117,11 +117,14 @@ async function install(_opts: OnboardingOptions): Promise<InstallResult> {
       .map((f) => f.packageId)
       .filter((id): id is string => typeof id === 'string' && lock.packages[id] !== undefined && lock.packages[id].kind !== 'agent'),
   )]
+  const failedPacks: Array<{ packId: string; error: string }> = []
   for (const packId of packIds) {
     try {
       await repairPackLocally(packId)
     } catch (err) {
-      log.warn('agent-sync repair failed for pack', { packId, error: err instanceof Error ? err.message : String(err) })
+      const error = err instanceof Error ? err.message : String(err)
+      failedPacks.push({ packId, error })
+      log.warn('agent-sync repair failed for pack', { packId, error })
     }
   }
 
@@ -129,24 +132,37 @@ async function install(_opts: OnboardingOptions): Promise<InstallResult> {
   const durationMs = Date.now() - start
   const remaining = after.findings.length
 
-  if (failed.length > 0 && failed.length === results.length) {
+  // Honest failure: if NOTHING that needed repair succeeded, this is a
+  // failed install — a success toast over untouched drift is worse than
+  // no repair at all.
+  const attempted = results.length + packIds.length
+  const totalFailed = failed.length + failedPacks.length
+  if (attempted > 0 && totalFailed === attempted) {
+    const parts = [
+      ...failed.map((f) => `${f.agentId} (${f.error})`),
+      ...failedPacks.map((f) => `${f.packId} (${f.error})`),
+    ]
     return {
       name: 'agent-sync',
       status: 'failed',
-      message: `Repair failed for all ${failed.length} agent(s): ${failed.map((f) => `${f.agentId} (${f.error})`).join('; ')}`,
+      message: `Repair failed for all ${attempted} target(s): ${parts.join('; ')}`,
       durationMs,
-      error: failed,
+      error: [...failed, ...failedPacks],
     }
   }
 
   const failedNote = failed.length > 0 ? ` — ${failed.length} agent(s) failed: ${failed.map((f) => f.agentId).join(', ')}` : ''
+  const failedPacksNote = failedPacks.length > 0
+    ? ` — ${failedPacks.length} pack(s) failed: ${failedPacks.map((f) => `${f.packId} (${f.error})`).join('; ')}`
+    : ''
+  const syncedPacksNote = packIds.length - failedPacks.length > 0 ? ` and ${packIds.length - failedPacks.length} pack(s)` : ''
   const remainingNote = remaining > 0
-    ? ` ${remaining} finding(s) remain (user-edited locks and migration require explicit action).`
+    ? ` ${remaining} finding(s) remain — run \`bakin agents sync --check\` for details.`
     : ''
   return {
     name: 'agent-sync',
     status: 'installed',
-    message: `Synced ${results.length - failed.length} agent(s) locally.${remainingNote}${failedNote}`,
+    message: `Synced ${results.length - failed.length} agent(s)${syncedPacksNote} locally.${remainingNote}${failedNote}${failedPacksNote}`,
     durationMs,
   }
 }

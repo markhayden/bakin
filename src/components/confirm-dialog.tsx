@@ -29,6 +29,12 @@ export interface ConfirmDialogProps {
   cancelLabel?: string
   /** Cancel button variant (default "outline"). */
   cancelVariant?: 'outline' | 'ghost'
+  /**
+   * Confirm button variant (default "destructive"). Non-destructive
+   * confirm flows (repair, switch-with-preview) pass "default" so a
+   * healing action doesn't render as a red warning.
+   */
+  confirmVariant?: 'destructive' | 'default'
   /** Disables both buttons and shows a spinner on confirm while the action is in flight. */
   busy?: boolean
   /** Inline error shown above the footer. */
@@ -70,6 +76,7 @@ export function ConfirmDialog({
   busyLabel,
   cancelLabel = 'Cancel',
   cancelVariant = 'outline',
+  confirmVariant = 'destructive',
   busy = false,
   error,
   confirmTestId,
@@ -122,12 +129,12 @@ export function ConfirmDialog({
             />
           </div>
         )}
-        {error && <p className="text-sm text-destructive">{error}</p>}
+        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         <DialogFooter>
           <Button variant={cancelVariant} onClick={onCancel} disabled={busy}>
             {cancelLabel}
           </Button>
-          <Button variant="destructive" onClick={onConfirm} disabled={busy || confirmBlocked} data-testid={confirmTestId}>
+          <Button variant={confirmVariant} onClick={onConfirm} disabled={busy || confirmBlocked} data-testid={confirmTestId}>
             {busy ? (
               <>
                 <Loader2 className="size-3.5 animate-spin mr-1.5" />

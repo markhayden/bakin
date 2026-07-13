@@ -193,6 +193,7 @@ function SetupSection({ onboarding, onFixed }: { onboarding: OnboardingComponent
           ? `${dialogTarget.message}. This runs the same repair as \`bakin install ${dialogTarget.name}\` and may take a moment.`
           : ''}
         confirmLabel="Repair"
+        confirmVariant="default"
         busyLabel="Repairing…"
         busy={repairing}
         error={repairError ? `Repair failed: ${repairError}` : null}
