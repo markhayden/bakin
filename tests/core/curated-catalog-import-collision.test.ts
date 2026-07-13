@@ -28,12 +28,19 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
   resetOpenClawHome: () => {},
 }))
 
-// THE POISONING ORDER: the file-typed manifest import must evaluate before
-// the loader's JSON import — exactly what server.ts does.
-import '../../packages/host/src/api/_embedded-assets-static'
+// THE POISONING ORDER: a file-typed import of the same JSON path must
+// evaluate before the loader's plain import — the same shape server.ts
+// creates via _embedded-assets-static.ts. The fixture avoids importing the
+// real manifest, whose file-typed dist/vendor imports only exist post-build.
+import { catalogFilePath } from '../fixtures/catalog-file-import'
 import { staticCuratedCatalog } from '../../src/core/curated-catalog/load'
 
 describe('curated catalog vs file-typed import collision', () => {
+  it('the fixture actually poisons the module cache (path string, not JSON)', () => {
+    expect(typeof catalogFilePath).toBe('string')
+    expect(catalogFilePath).toContain('curated-catalog')
+  })
+
   it('staticCuratedCatalog still parses the shipped catalog', () => {
     const catalog = staticCuratedCatalog()
     expect(catalog.entries.length).toBeGreaterThan(0)
