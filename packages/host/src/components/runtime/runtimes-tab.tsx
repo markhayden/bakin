@@ -241,15 +241,15 @@ export function RuntimesTab({ report, onSwitched }: { report: CapabilityReport; 
               onClick={() => { setTarget(name); setResult(null); setSteps([]) }}
               className={`rounded-xl border bg-card p-5 text-left text-card-foreground shadow transition-colors ${
                 isActive
-                  ? 'cursor-default'
+                  ? 'cursor-default border-emerald-500/40 bg-emerald-500/5 ring-1 ring-emerald-500/40'
                   : isSelected
                     ? 'border-primary ring-1 ring-primary'
                     : 'border-border hover:bg-muted/40'
               }`}
             >
               <div className="flex items-start gap-4">
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted/60">
-                  <Cpu className="size-5 text-muted-foreground" />
+                <div className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${isActive ? 'bg-emerald-500/10' : 'bg-muted/60'}`}>
+                  <Cpu className={`size-5 ${isActive ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`} />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
