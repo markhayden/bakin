@@ -57,6 +57,9 @@ export { useSidebar } from '@/hooks/use-sidebar'
 export { useSSE } from '@/hooks/use-sse'
 /** Subscribe to a server-pushed plugin event over the shell's single connection. */
 export { usePluginEvent, emitPluginEvent, type PluginEventPayload } from '@/hooks/use-plugin-event'
+/** Headless drag-drop file intake (drag-over state + handlers + accept filter) — style your own zone. */
+export { useFileDrop } from '@/hooks/use-file-drop'
+export type { UseFileDropOptions, UseFileDropResult } from '@/hooks/use-file-drop'
 /** History-aware back for detail surfaces reachable from many places — real back() with a fallback route for cold deep-links. */
 export { useHistoryBack } from '@/hooks/use-history-back'
 /** Fire a toast notification (success/error/info). */

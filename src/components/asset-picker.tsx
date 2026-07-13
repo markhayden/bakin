@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/empty-state'
 import { ErrorState } from '@/components/error-state'
+import { useFileDrop } from '@/hooks/use-file-drop'
 import { cn } from '@/lib/utils'
 
 export interface AssetPickerAsset {
@@ -46,7 +47,6 @@ export function AssetPicker({ open, onOpenChange, onPick, title = 'Choose an ass
   const [query, setQuery] = useState('')
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
-  const [dragOver, setDragOver] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
@@ -107,6 +107,14 @@ export function AssetPicker({ open, onOpenChange, onPick, title = 'Choose an ass
     [pick],
   )
 
+  const { dragOver, dropProps } = useFileDrop({
+    accept: ['image/'],
+    onFiles: ([f]) => void upload(f),
+    // Match the browse input's accept="image/*" — a dropped file shouldn't
+    // sneak past the same restriction.
+    onRejected: () => setUploadError('Only images can be uploaded here.'),
+  })
+
   const visible = useMemo(() => {
     if (state.status !== 'ready') return []
     const base = filter ? state.assets.filter(filter) : state.assets
@@ -128,24 +136,7 @@ export function AssetPicker({ open, onOpenChange, onPick, title = 'Choose an ass
             'flex items-center gap-2 rounded-lg p-1.5 transition-colors',
             dragOver ? 'ring-2 ring-foreground/25' : 'ring-1 ring-inset ring-foreground/10',
           )}
-          onDragOver={(e) => {
-            e.preventDefault()
-            setDragOver(true)
-          }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={(e) => {
-            e.preventDefault()
-            setDragOver(false)
-            const f = e.dataTransfer.files?.[0]
-            if (!f) return
-            // Match the browse input's accept="image/*" — a dropped file
-            // shouldn't sneak past the same restriction.
-            if (!f.type.startsWith('image/')) {
-              setUploadError('Only images can be uploaded here.')
-              return
-            }
-            void upload(f)
-          }}
+          {...dropProps}
         >
           <Button variant="secondary" size="sm" disabled={uploading} onClick={() => fileRef.current?.click()} data-asset-picker-upload>
             {uploading ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}

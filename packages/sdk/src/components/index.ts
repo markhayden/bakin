@@ -41,6 +41,12 @@ export type { UnsavedChangesGuardOptions } from '@/components/unsaved-changes-gu
 /** Titled card with icon + a one-line "why this matters" description — the standard section wrapper. */
 export { SectionCard } from '@/components/section-card'
 export type { SectionCardProps } from '@/components/section-card'
+/** THE segmented control / mode toggle (Edit|Preview, Board|Log, time windows) — tablist semantics, neutral active segment. */
+export { SegmentedControl } from '@/components/segmented-control'
+export type { SegmentedControlProps, SegmentedControlOption } from '@/components/segmented-control'
+/** THE metric tile — icon + uppercase micro-label + tabular big number, optional sub/meter. */
+export { StatTile } from '@/components/stat-tile'
+export type { StatTileProps } from '@/components/stat-tile'
 /** THE status chip — one tone scale (neutral/success/warning/destructive/accent) for every state badge. */
 export { StatusBadge } from '@/components/status-badge'
 export type { StatusBadgeProps, StatusTone } from '@/components/status-badge'

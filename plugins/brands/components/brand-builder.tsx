@@ -7,6 +7,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { AgentSelect, BakinDrawer } from '@makinbakin/sdk/components'
+import { useFileDrop } from '@makinbakin/sdk/hooks'
 import { Button, Input, Label, Textarea, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@makinbakin/sdk/ui'
 
 interface Answers {
@@ -277,15 +278,19 @@ function Field({ num, label, hint, children }: { num?: number; label: string; hi
 
 /** Up to 3 brand-material files (PDF/screenshots) — chips with remove, drop or browse. */
 function MaterialsDrop({ files, onChange }: { files: File[]; onChange: (files: File[]) => void }) {
-  const [over, setOver] = useState(false)
   const full = files.length >= 3
 
-  const add = (incoming: FileList | null) => {
+  const add = (incoming: FileList | File[] | null) => {
     if (!incoming) return
     const accepted = Array.from(incoming).filter((f) => f.type.startsWith('image/') || f.type === 'application/pdf')
     if (accepted.length === 0) return
     onChange([...files, ...accepted].slice(0, 3))
   }
+  const { dragOver: over, dropProps } = useFileDrop({
+    accept: ['image/', 'application/pdf'],
+    multiple: true,
+    onFiles: add,
+  })
 
   return (
     <div className="space-y-1.5">
@@ -305,9 +310,7 @@ function MaterialsDrop({ files, onChange }: { files: File[]; onChange: (files: F
       {!full && (
         <label
           className={`flex cursor-pointer items-center gap-2 rounded-lg border border-dashed p-3 text-sm text-muted-foreground transition-colors ${over ? 'border-foreground/40 bg-foreground/5' : 'hover:border-foreground/30'}`}
-          onDragOver={(e) => { e.preventDefault(); setOver(true) }}
-          onDragLeave={() => setOver(false)}
-          onDrop={(e) => { e.preventDefault(); setOver(false); add(e.dataTransfer.files) }}
+          {...dropProps}
           data-materials-drop
         >
           <span>＋ Drop a PDF or screenshot here, or click to browse ({files.length}/3)</span>
@@ -329,14 +332,12 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
 }
 
 function LogoDrop({ preview, fileName, onPick }: { preview: string | null; fileName: string | null; onPick: (f: File | null) => void }) {
-  const [over, setOver] = useState(false)
+  const { dragOver: over, dropProps } = useFileDrop({ accept: ['image/'], onFiles: ([f]) => onPick(f) })
   return (
     <div>
       <label
         className={`flex cursor-pointer items-center gap-3 rounded-lg border border-dashed p-3 transition-colors ${over ? 'border-foreground/40 bg-foreground/5' : 'hover:border-foreground/30'}`}
-        onDragOver={(e) => { e.preventDefault(); setOver(true) }}
-        onDragLeave={() => setOver(false)}
-        onDrop={(e) => { e.preventDefault(); setOver(false); const f = e.dataTransfer.files?.[0]; if (f) onPick(f) }}
+        {...dropProps}
       >
         {preview
           ? <img src={preview} alt="logo preview" className="h-14 w-14 rounded-md border object-contain" />

@@ -2,7 +2,7 @@
 
 import { MoreHorizontal, Play, Pause, RotateCcw, Trash2, Pencil, Copy, SkipForward, CirclePlus, Undo2, ShieldAlert } from 'lucide-react'
 import { TableRow, TableCell } from "@makinbakin/sdk/ui"
-import { Badge } from "@makinbakin/sdk/ui"
+import { StatusBadge } from "@makinbakin/sdk/components"
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -18,25 +18,25 @@ export interface JobScoreInfo {
   indexScores?: Record<string, number>
 }
 
-function StatusBadge({ job }: { job: ScheduleJob }) {
+function JobStatusBadge({ job }: { job: ScheduleJob }) {
   if (job.paused) {
     const label = job.pauseReason === 'auto-failures'
       ? 'Auto-paused'
       : job.pauseUntil
         ? `Paused until ${new Date(job.pauseUntil).toLocaleDateString()}`
         : 'Paused'
-    return <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20">{label}</Badge>
+    return <StatusBadge tone="warning" variant="outline">{label}</StatusBadge>
   }
   if (job.skipNextN && job.skippedCount !== undefined && job.skippedCount < job.skipNextN) {
-    return <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20">Skipping {job.skippedCount}/{job.skipNextN}</Badge>
+    return <StatusBadge tone="warning" variant="outline">Skipping {job.skippedCount}/{job.skipNextN}</StatusBadge>
   }
   if (job.consecutiveFailures > 0) {
-    return <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20">{job.consecutiveFailures} failures</Badge>
+    return <StatusBadge tone="destructive" variant="outline">{job.consecutiveFailures} failures</StatusBadge>
   }
   if (!job.enabled) {
-    return <Badge variant="outline" className="bg-muted-foreground/10 text-muted-foreground border-muted-foreground/20">Disabled</Badge>
+    return <StatusBadge tone="neutral" variant="outline">Disabled</StatusBadge>
   }
-  return <Badge variant="outline" className="bg-success/10 text-success border-success/20">Active</Badge>
+  return <StatusBadge tone="success" variant="outline">Active</StatusBadge>
 }
 
 export function JobRow({
@@ -112,7 +112,7 @@ export function JobRow({
         )}
       </TableCell>
       <TableCell>
-        <StatusBadge job={job} />
+        <JobStatusBadge job={job} />
       </TableCell>
       <TableCell>
         <DropdownMenu>

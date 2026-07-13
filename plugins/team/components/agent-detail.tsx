@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { useRouter } from '@makinbakin/sdk/hooks'
+import { useRouter, useHistoryBack } from '@makinbakin/sdk/hooks'
 import { ArrowLeft, Camera, Trash2, BookOpen, Sparkles, Calendar } from 'lucide-react'
 import { Button } from "@makinbakin/sdk/ui"
 import { Skeleton } from "@makinbakin/sdk/ui"
@@ -35,6 +35,7 @@ const TABS: { id: Tab; label: string }[] = [
 
 export function AgentDetail({ agentId }: { agentId: string }) {
   const router = useRouter()
+  const goBack = useHistoryBack('/team')
   const accentColor = useAgentColor(agentId)
   const mainAgentId = useMainAgentId()
   const reload = useAgentStore((s) => s.load)
@@ -142,7 +143,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
     <div className="space-y-4 pb-12">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon-sm" onClick={() => router.push('/team')}>
+        <Button variant="ghost" size="icon-sm" onClick={goBack}>
           <ArrowLeft className="size-4" />
         </Button>
         <div

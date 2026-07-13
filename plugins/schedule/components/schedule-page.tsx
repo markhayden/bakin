@@ -5,7 +5,7 @@ import { useSearchParams, useRouter, usePathname } from '@makinbakin/sdk/hooks'
 import { List, CalendarDays, CalendarRange, Clock, Plus, Loader2 } from 'lucide-react'
 import { Button } from "@makinbakin/sdk/ui"
 import { BakinDrawer } from "@makinbakin/sdk/components"
-import { PluginHeader, SearchDegradedChip, SearchPartialChip } from "@makinbakin/sdk/components"
+import { PluginHeader, SearchDegradedChip, SearchPartialChip, SegmentedControl, type SegmentedControlOption } from "@makinbakin/sdk/components"
 import { Skeleton } from "@makinbakin/sdk/ui"
 import { AgentFilter } from "@makinbakin/sdk/components"
 import { useAgentIds } from "@makinbakin/sdk/hooks"
@@ -23,11 +23,11 @@ import { CalendarToday } from './calendar-today'
 
 type ViewMode = 'list' | 'today' | 'week' | 'month'
 
-const VIEWS: { id: ViewMode; icon: typeof List; label: string }[] = [
-  { id: 'list', icon: List, label: 'List' },
-  { id: 'today', icon: Clock, label: 'Today' },
-  { id: 'week', icon: CalendarRange, label: 'Week' },
-  { id: 'month', icon: CalendarDays, label: 'Month' },
+const VIEWS: SegmentedControlOption<ViewMode>[] = [
+  { value: 'list', icon: List, label: 'List', hideLabel: true },
+  { value: 'today', icon: Clock, label: 'Today', hideLabel: true },
+  { value: 'week', icon: CalendarRange, label: 'Week', hideLabel: true },
+  { value: 'month', icon: CalendarDays, label: 'Month', hideLabel: true },
 ]
 
 export function SchedulePage() {
@@ -243,25 +243,12 @@ export function SchedulePage() {
         search={{ value: search, onChange: setSearch, placeholder: 'Search jobs...' }}
         actions={
           <div className="flex items-center gap-2">
-            <div className="flex items-center bg-muted/50 rounded-lg p-0.5">
-              {VIEWS.map(v => {
-                const Icon = v.icon
-                return (
-                  <button
-                    key={v.id}
-                    onClick={() => setView(v.id)}
-                    className={`px-2 py-1 rounded-md text-xs font-medium transition-all ${
-                      view === v.id
-                        ? 'bg-accent text-accent-foreground'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                    title={v.label}
-                  >
-                    <Icon className="size-3.5" />
-                  </button>
-                )
-              })}
-            </div>
+            <SegmentedControl
+              options={VIEWS}
+              value={view as ViewMode}
+              onValueChange={setView}
+              ariaLabel="Calendar view"
+            />
             <Button size="sm" onClick={openCreate}>
               <Plus className="size-4" />
               New Job

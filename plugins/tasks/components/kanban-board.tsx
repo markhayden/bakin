@@ -10,7 +10,7 @@ import { DeleteTaskDialog } from './delete-task-dialog'
 import { BlockReasonDialog } from './block-reason-dialog'
 import { TaskDetailDrawer } from './task-detail-dialog'
 import { TaskMetrics } from './task-metrics'
-import { PluginHeader, SearchDegradedChip, SearchPartialChip } from "@makinbakin/sdk/components"
+import { PluginHeader, SearchDegradedChip, SearchPartialChip, SegmentedControl } from "@makinbakin/sdk/components"
 import { TaskFilters } from './task-filters'
 import { TaskLogTable } from './task-log-table'
 import { filterBoardColumns, useTaskFilters } from '../hooks/use-task-filters'
@@ -471,30 +471,15 @@ export function KanbanBoard() {
             search={{ value: search, onChange: setSearch, placeholder: 'Search tasks...' }}
             actions={
               <div className="flex items-center gap-2">
-                <div className="flex items-center bg-muted/50 rounded-lg p-0.5">
-                  <button
-                    onClick={() => setView('kanban')}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-                      view === 'kanban'
-                        ? 'bg-accent text-accent-foreground'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    <Kanban className="size-3.5" />
-                    Board
-                  </button>
-                  <button
-                    onClick={() => setView('table')}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-                      view === 'table'
-                        ? 'bg-accent text-accent-foreground'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    <Table2 className="size-3.5" />
-                    Log
-                  </button>
-                </div>
+                <SegmentedControl
+                  options={[
+                    { value: 'kanban', label: 'Board', icon: Kanban },
+                    { value: 'table', label: 'Log', icon: Table2 },
+                  ]}
+                  value={view as 'kanban' | 'table'}
+                  onValueChange={setView}
+                  ariaLabel="Board view"
+                />
                 <Button size="sm" onClick={() => { setDetailTask(null); setEditing(true) }}>
                   <Plus className="size-4" />
                   New Task

@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import { ArrowLeft, FileText, Sparkles } from 'lucide-react'
-import { MarkdownEditor, SaveBar, ErrorState, useUnsavedChangesGuard } from '@makinbakin/sdk/components'
+import { MarkdownEditor, SaveBar, ErrorState, SegmentedControl, useUnsavedChangesGuard } from '@makinbakin/sdk/components'
 import { Button } from '@makinbakin/sdk/ui'
 import { toast } from '@makinbakin/sdk/hooks'
 import { DocBrainstormPanel } from './brand-doc-brainstorm'
@@ -177,22 +177,15 @@ export function BrandDocEditorPage() {
           </span>
         </nav>
         <div className="ml-auto flex shrink-0 items-center gap-2">
-          <div className="flex items-center gap-0.5 rounded-lg bg-foreground/5 p-0.5" role="tablist" aria-label="Editor mode">
-            {(['edit', 'preview'] as const).map((m) => (
-              <button
-                key={m}
-                role="tab"
-                aria-selected={mode === m}
-                className={`rounded-md px-3 py-1 text-xs font-medium capitalize transition-colors ${
-                  mode === m ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
-                }`}
-                onClick={() => setMode(m)}
-                data-editor-mode={m}
-              >
-                {m}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            ariaLabel="Editor mode"
+            options={[
+              { value: 'edit', label: 'edit' },
+              { value: 'preview', label: 'preview' },
+            ]}
+            value={mode}
+            onValueChange={setMode}
+          />
           <Button
             variant={brainstormOpen ? 'secondary' : 'outline'}
             size="sm"

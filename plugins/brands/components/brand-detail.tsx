@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { MarkdownContent, UnderlineTabs, SaveBar, SectionCard, ConfirmDialog, AssetPicker, DangerZone, ErrorState, StatusBadge, useUnsavedChangesGuard } from '@makinbakin/sdk/components'
+import { MarkdownContent, UnderlineTabs, SaveBar, SectionCard, ConfirmDialog, AssetPicker, DangerZone, EmptyState, ErrorState, StatTile, StatusBadge, useUnsavedChangesGuard } from '@makinbakin/sdk/components'
 import {
   Button, Badge, Input, Textarea, Switch, Label, Skeleton, Progress,
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -41,16 +41,9 @@ const isHex = (h: string) => /^#[0-9a-fA-F]{6}$/.test(h)
 /** Frontmatter is machine metadata — previews render the body only. */
 const stripFrontmatter = (md: string) => md.replace(/^---\n[\s\S]*?\n---\n?/, '')
 
-/**
- * Centered, breathing empty state for a section body — inline muted sentences
- * blended into the section copy and read as content, not absence.
- */
+/** Thin alias over the SDK's section-variant empty state (promoted from here). */
 function SectionEmpty({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex min-h-24 items-center justify-center rounded-lg bg-foreground/[0.03] px-8 py-8 text-center text-sm text-muted-foreground" data-section-empty>
-      <p className="max-w-md">{children}</p>
-    </div>
-  )
+  return <EmptyState variant="section" title={children} />
 }
 
 /**
@@ -751,32 +744,25 @@ function RulesTermsSummary({ brand, onGoTo }: { brand: BrandManifest; onGoTo: (t
   )
 }
 
+/** The dispatch-footprint metric on the SDK StatTile (promoted from here). */
 function CardFootprintTile({ card }: { card: CardPreview | null }) {
   if (!card) return <StatTile icon={Sparkles} label="Card footprint" value="—" sub="per dispatch" />
   const kb = card.cardBytes / 1024
   const maxKb = card.maxBytes / 1024
   const pct = Math.min(100, (card.cardBytes / card.maxBytes) * 100)
-  const tight = pct > 85
   return (
-    <div className="rounded-xl bg-card p-3.5 ring-1 ring-foreground/10">
-      <div className="flex items-center gap-1.5 text-muted-foreground"><Sparkles className="size-3.5" /><p className="text-[11px] uppercase tracking-wider">Card footprint</p></div>
-      <p className="mt-1 text-2xl font-semibold tabular-nums">{kb.toFixed(1)}<span className="text-sm font-normal text-muted-foreground"> / {maxKb.toFixed(0)} KB</span></p>
-      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface">
-        <div className={`h-full rounded-full transition-all ${tight ? 'bg-warning' : 'bg-success'}`} style={{ width: `${pct}%` }} />
-      </div>
-      <p className="mt-1.5 text-[11px] text-muted-foreground">{card.omitted > 0 ? `${card.omitted} omitted for size` : 'nothing omitted'}</p>
-    </div>
-  )
-}
-
-function StatTile({ icon: Icon, label, value, sub, onClick }: { icon: React.ComponentType<{ className?: string }>; label: string; value: string | number; sub?: string; onClick?: () => void }) {
-  const Cmp = onClick ? 'button' : 'div'
-  return (
-    <Cmp className={`rounded-xl bg-card p-3.5 text-left ring-1 ring-foreground/10 transition-all ${onClick ? 'hover:bg-surface-bright/40 hover:ring-foreground/20' : ''}`} onClick={onClick}>
-      <div className="flex items-center gap-1.5 text-muted-foreground"><Icon className="size-3.5" /><p className="text-[11px] uppercase tracking-wider">{label}</p></div>
-      <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
-      {sub && <p className="text-[11px] text-muted-foreground">{sub}</p>}
-    </Cmp>
+    <StatTile
+      icon={Sparkles}
+      label="Card footprint"
+      value={
+        <>
+          {kb.toFixed(1)}
+          <span className="text-sm font-normal text-muted-foreground"> / {maxKb.toFixed(0)} KB</span>
+        </>
+      }
+      progress={{ percent: pct, tone: pct > 85 ? 'warning' : 'success' }}
+      sub={card.omitted > 0 ? `${card.omitted} omitted for size` : 'nothing omitted'}
+    />
   )
 }
 

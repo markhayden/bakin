@@ -27,7 +27,7 @@ export function MarkdownEditor({
       <Textarea
         value={content}
         onChange={(e) => onChange(e.target.value)}
-        className={`w-full font-mono text-sm leading-relaxed bg-zinc-900/40 border border-[rgba(255,255,255,0.06)] rounded-lg p-4 text-foreground placeholder:text-zinc-500 focus:outline-none focus:border-[#5e6ad2]/40 resize-y transition-colors ${className ?? ''}`}
+        className={`w-full font-mono text-sm leading-relaxed bg-surface border border-foreground/10 rounded-lg p-4 text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus:border-ring/40 resize-y transition-colors ${className ?? ''}`}
         style={{ minHeight }}
         placeholder={placeholder}
       />
@@ -35,7 +35,7 @@ export function MarkdownEditor({
   }
 
   if (!content) {
-    return <p className="text-sm text-zinc-600 italic">{placeholder}</p>
+    return <p className="text-sm text-muted-foreground/70 italic">{placeholder}</p>
   }
 
   if (format === 'markdown') {
@@ -54,7 +54,7 @@ export function MarkdownEditor({
   }
 
   return (
-    <pre className={`bg-zinc-900 rounded-lg p-4 text-sm text-zinc-300 overflow-auto font-mono ${format === 'text' ? 'whitespace-pre-wrap' : ''} ${className ?? ''}`}>
+    <pre className={`bg-surface rounded-lg p-4 text-sm text-foreground/80 overflow-auto font-mono ${format === 'text' ? 'whitespace-pre-wrap' : ''} ${className ?? ''}`}>
       {displayContent}
     </pre>
   )
